@@ -32,7 +32,7 @@ is derived from the beer name (see "Derived QR payload").
   0.815/0.69/0.44) as the default; `pdf/build.ts` `fillColor()` parses hex.
 - Description markdown syntax is unchanged: plain text renders in default
   gold, `_underscored_` renders as no-ink/white layer.
-- QR in the art PDF stays default gold.
+- QR fill defaults to gold but is pickable (see "QR color and stroke").
 - Config JSON stores hex strings; `parseConfigFile` migrates legacy values
   (`gold` → `#D0B070`, `black` → `#000000`, `white` → `none`) so old config
   files keep working.
