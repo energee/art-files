@@ -7,8 +7,10 @@ Status: approved
 
 Replace the vanilla-TS frontend (`index.html` + `src/main.ts` + `src/style.css`)
 with a React app styled with Tailwind CSS v4 and shadcn/ui, using a full
-Linear-style neutral dark theme (no gold accent). UI-only rewrite: behavior is
-identical to the current app.
+Linear-style neutral dark theme (no gold accent). Behavior is identical to the
+current app except two functional changes: per-row fill colors become free hex
+values chosen with a color picker (see "Hex fill colors"), and the QR payload
+is derived from the beer name (see "Derived QR payload").
 
 ## Stack
 
@@ -19,11 +21,38 @@ identical to the current app.
 - shadcn runtime deps: `class-variance-authority`, `clsx`, `tailwind-merge`,
   Radix primitives, `lucide-react`
 
+## Hex fill colors
+
+- `Fill` changes from `"gold" | "white" | "black"` to a hex string
+  (`#rrggbb`) or the literal `"none"` meaning no ink (replaces the old magic
+  meaning of `"white"`).
+- UI per row: native `<input type="color">` swatch + hex text field, plus a
+  "no ink" toggle. No color-picker library.
+- `layout.ts` keeps `GOLD = #D0B070` (the exact hex of the current gold RGB
+  0.815/0.69/0.44) as the default; `pdf/build.ts` `fillColor()` parses hex.
+- Description markdown syntax is unchanged: plain text renders in default
+  gold, `_underscored_` renders as no-ink/white layer.
+- QR in the art PDF stays default gold.
+- Config JSON stores hex strings; `parseConfigFile` migrates legacy values
+  (`gold` → `#D0B070`, `black` → `#000000`, `white` → `none`) so old config
+  files keep working.
+
+## Derived QR payload
+
+- The "QR data" form field is removed. The QR payload is always
+  `https://lolev.beer/beer/<machine-name>`, where the machine name is the
+  beer name lowercased, trimmed, with runs of non-alphanumeric characters
+  collapsed to single dashes and leading/trailing dashes stripped
+  (e.g. "Ultra Juice" → `ultra-juice`).
+- `qrData` is removed from `LabelConfig`; `parseConfigFile` ignores it in
+  legacy config files. `qrLayer` stays, with its form row.
+
 ## Untouched
 
-All label logic and its tests: `src/types.ts`, `src/defaults.ts`, `src/upc.ts`,
-`src/maskimage.ts`, `src/qr.ts`, `src/description.ts`, `src/layout.ts`,
-`src/pdf/build.ts`, `scripts/generate.ts`, `tests/*`.
+Label logic not related to fill colors, and its tests: `src/upc.ts`,
+`src/maskimage.ts`, `src/qr.ts`, `scripts/generate.ts`. `src/types.ts`,
+`src/defaults.ts`, `src/layout.ts`, `src/description.ts`, `src/pdf/build.ts`,
+and affected `tests/*` are touched only as far as the `Fill` change requires.
 
 ## Replaced
 
@@ -61,6 +90,11 @@ micro-headings for form sections. No gold anywhere.
 6. Both PDF previews (`art`, white-ink mask) live-update via embedded blob
    URLs, with old URLs revoked.
 7. Downloads are named `<beerName>.pdf` and `<beerName>-mask.pdf`.
+8. Each styled row's color swatch, hex field, and no-ink toggle write the new
+   `Fill` value into the config; loading a legacy config file with
+   `gold`/`white`/`black` fills produces the migrated hex/`none` values.
+9. The generated QR encodes `https://lolev.beer/beer/<machine-name>` derived
+   live from the beer name; there is no QR data field in the form.
 
 ## Validation
 
