@@ -1,0 +1,45 @@
+// layout.ts — single source of truth for label geometry, in PDF points with a
+// TOP-LEFT origin (y down). Draw helpers convert to PDF's bottom-left space.
+// Page matches the Photoshop-era deliverables: 8x5in art + 0.0633in bleed.
+
+export const PAGE = { w: 585.12, h: 369.12 };
+/** Art box inside the bleed. */
+export const ART = { x: 4.56, y: 4.56, w: 576, h: 360 };
+export const CENTER_X = PAGE.w / 2;
+
+/** Fill colors (RGB 0-1; the to-cmyk.sh step converts the whole PDF). Gold
+ *  sampled from the Labradorite reference render. */
+export const COLORS = {
+  gold: { r: 0.815, g: 0.69, b: 0.44 },
+  white: { r: 1, g: 1, b: 1 },
+  black: { r: 0.1, g: 0.1, b: 0.1 },
+  maskBlue: { r: 0, g: 156 / 255, b: 215 / 255 },
+};
+
+// Left column ------------------------------------------------------------
+export const LEFT_X = 24.9;
+export const VOLUME = { x: LEFT_X, baseline: 25, size: 8 };
+export const ABV = { x: LEFT_X, baseline: 34, size: 8 };
+export const DESC_HEADER = { x: LEFT_X, baseline: 58.5, size: 10 };
+export const DESC = { x: LEFT_X, firstBaseline: 68.4, leading: 10, size: 10 };
+
+// Center column ----------------------------------------------------------
+export const WORDMARK = { cx: CENTER_X, baseline: 38.5, size: 22, text: "Lolev Beer" };
+export const LOGO = { cx: CENTER_X, cy: 177, w: 40 }; // h follows the SVG aspect
+export const NAME = { cx: CENTER_X, baseline: 318, size: 16 };
+export const STYLE_LINE = { cx: CENTER_X, baseline: 338.5, size: 11 };
+
+// QR (bottom left) -------------------------------------------------------
+export const QR = { x: 23, yTop: 289, size: 59 };
+
+// Right rotated column (text rotated 90deg CCW, reads bottom-to-top) -----
+// x is the baseline's vertical line (glyphs extend to its RIGHT);
+// yStart is where the text begins (toward the label bottom).
+export const HANDLE_ADDR = { x: 502, yStart: 256, size: 10 };
+export const WARNING = { x: 511.5, yStart: 256, size: 3.2, leading: 3.6 };
+export const STORE_COLD = { x: 541, yStart: 152, size: 18 };
+
+// Barcode (right edge, rotated 90deg CCW: bars run horizontally) ---------
+// Block is the white rectangle; padRun insets the code along its run so the
+// first/last digits fit inside the block.
+export const BARCODE = { x: 526.7, yTop: 234, w: 36.5, h: 128, pad: 3, padRun: 13, textSize: 6 };

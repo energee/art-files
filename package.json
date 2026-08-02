@@ -1,0 +1,28 @@
+{
+  "name": "art-files",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Lolev beer label generator: texture + metallic mask + beer info -> 600dpi art & white-layer PDFs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "generate": "tsx scripts/generate.ts"
+  },
+  "devDependencies": {
+    "@types/pngjs": "^6.0.5",
+    "pngjs": "^7.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0",
+    "vitest": "^2.1.0"
+  },
+  "dependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
+    "pdf-lib": "^1.17.1",
+    "qrcode-generator": "^2.0.4",
+    "svgpath": "^2.6.0"
+  }
+}

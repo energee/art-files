@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lolev Label Generator</title>
+  </head>
+  <body>
+    <main id="app">
+      <aside id="form">
+        <h1>Lolev Label Generator</h1>
+        <section class="files">
+          <label class="drop" id="drop-texture">
+            <input type="file" id="file-texture" accept="image/png,image/jpeg" hidden />
+            <span>Texture PNG/JPG</span><em id="texture-name">drop or click</em>
+          </label>
+          <label class="drop" id="drop-mask">
+            <input type="file" id="file-mask" accept="image/png" hidden />
+            <span>Metallic mask PNG</span><em id="mask-name">drop or click</em>
+          </label>
+        </section>
+        <div id="errors"></div>
+        <section id="fields"></section>
+        <section class="actions">
+          <button id="save-config" type="button">Save config</button>
+          <button id="load-config" type="button">Load config</button>
+          <input type="file" id="file-config" accept="application/json" hidden />
+          <button id="dl-art" type="button" disabled>Download art PDF</button>
+          <button id="dl-mask" type="button" disabled>Download mask PDF</button>
+        </section>
+      </aside>
+      <section id="previews">
+        <figure><figcaption>Art</figcaption><embed id="prev-art" type="application/pdf" /></figure>
+        <figure><figcaption>White-ink layer</figcaption><embed id="prev-mask" type="application/pdf" /></figure>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
