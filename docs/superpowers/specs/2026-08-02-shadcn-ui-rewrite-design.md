@@ -47,6 +47,17 @@ is derived from the beer name (see "Derived QR payload").
 - `qrData` is removed from `LabelConfig`; `parseConfigFile` ignores it in
   legacy config files. `qrLayer` stays, with its form row.
 
+## QR color and stroke
+
+- The QR row gains a fill color picker (hex, same control as other rows,
+  default `#D0B070`); the art PDF no longer hard-codes gold for the QR.
+- Optional stroke: a toggle plus its own hex color picker (default
+  `#FFFFFF`), off by default. When on, QR modules are stroked in that color —
+  the same treatment as the white-stroked barcode — at a fixed width
+  consistent with the barcode's stroke.
+- New config fields: `qrFill` (hex), `qrStroke` (hex or `"none"`); legacy
+  configs without them get the defaults (`#D0B070`, `none`).
+
 ## Untouched
 
 Label logic not related to fill colors, and its tests: `src/upc.ts`,
@@ -95,6 +106,8 @@ micro-headings for form sections. No gold anywhere.
    `gold`/`white`/`black` fills produces the migrated hex/`none` values.
 9. The generated QR encodes `https://lolev.beer/beer/<machine-name>` derived
    live from the beer name; there is no QR data field in the form.
+10. The QR row's fill picker changes the QR color in the art PDF; enabling
+    the stroke toggle strokes the modules in the chosen stroke color.
 
 ## Validation
 
