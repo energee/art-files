@@ -17,6 +17,7 @@ import { WARNING_TEXT } from "../defaults";
 import * as L from "../layout";
 import { encodeUpc } from "../upc";
 import { qrPath, qrShapes } from "../qr";
+import { parseDescription } from "../description";
 
 export interface Assets {
   fonts: { regular: Uint8Array; semibold: Uint8Array; bold: Uint8Array };
@@ -223,10 +224,12 @@ function drawElements(
   drawLine(page, fonts, { text: `${cfg.abv}% alc by vol`, ...cfg.abvStyle }, mode, {
     x: L.ABV.x, baseline: L.ABV.baseline, size: L.ABV.size,
   });
-  drawLine(page, fonts, cfg.descriptionHeader, mode, {
-    x: L.DESC_HEADER.x, baseline: L.DESC_HEADER.baseline, size: L.DESC_HEADER.size,
-  });
-  cfg.descriptionLines.forEach((line, i) =>
+  const desc = parseDescription(cfg.description);
+  if (desc.header)
+    drawLine(page, fonts, desc.header, mode, {
+      x: L.DESC_HEADER.x, baseline: L.DESC_HEADER.baseline, size: L.DESC_HEADER.size,
+    });
+  desc.lines.forEach((line, i) =>
     drawLine(page, fonts, line, mode, {
       x: L.DESC.x, baseline: L.DESC.firstBaseline + i * L.DESC.leading, size: L.DESC.size,
     }),

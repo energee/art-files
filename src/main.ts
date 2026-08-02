@@ -50,7 +50,7 @@ function styleSelects(s: { fill: Fill; layer: Layer }, onChange: () => void, fil
 function textRow(
   label: string,
   line: StyledLine,
-  opts: { editable?: boolean; removable?: () => void } = {},
+  opts: { editable?: boolean } = {},
 ): HTMLElement {
   const row = document.createElement("div");
   row.className = "row";
@@ -71,13 +71,6 @@ function textRow(
   bold.checked = !!line.bold;
   bold.onchange = () => { line.bold = bold.checked; refresh(); };
   row.append(bold, ...styleSelects(line, refresh));
-  if (opts.removable) {
-    const rm = document.createElement("button");
-    rm.className = "ghost";
-    rm.textContent = "×";
-    rm.onclick = () => { opts.removable!(); renderForm(); refresh(); };
-    row.append(rm);
-  }
   return row;
 }
 
@@ -131,24 +124,17 @@ function renderForm() {
     plainRow("QR data", cfg.qrData, (v) => (cfg.qrData = v)),
     styleRow("QR layer", qrStyle, true),
     heading("Description"),
-    textRow("Header", cfg.descriptionHeader),
   );
-  cfg.descriptionLines.forEach((line, i) =>
-    root.append(
-      textRow(`Line ${i + 1}`, line, {
-        removable: () => cfg.descriptionLines.splice(i, 1),
-      }),
-    ),
-  );
-  const add = document.createElement("button");
-  add.className = "ghost";
-  add.textContent = "+ line";
-  add.onclick = () => {
-    cfg.descriptionLines.push({ text: "", fill: "gold", layer: "metallic" });
-    renderForm();
-  };
+  const desc = document.createElement("textarea");
+  desc.rows = 7;
+  desc.value = cfg.description;
+  desc.oninput = () => { cfg.description = desc.value; refresh(); };
+  const legend = document.createElement("p");
+  legend.className = "legend";
+  legend.textContent = "# header · **bold** · _white ink_ · plain = gold metallic";
   root.append(
-    add,
+    desc,
+    legend,
     heading("Template elements"),
     textRow("Volume", cfg.volume),
     styleRow("Wordmark", cfg.wordmark),

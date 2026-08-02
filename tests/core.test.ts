@@ -5,6 +5,7 @@ import { encodeUpc, upcCheckDigit, validateUpc } from "../src/upc";
 import { qrPath, qrShapes } from "../src/qr";
 import { recolorMaskForPdf, validateMask } from "../src/maskimage";
 import { defaultConfig, parseConfigFile, toConfigFile } from "../src/defaults";
+import { parseDescription } from "../src/description";
 
 describe("upc", () => {
   it("computes the Labradorite check digit", () => {
@@ -62,7 +63,41 @@ describe("mask", () => {
   });
 });
 
+describe("description markdown", () => {
+  it("parses header, bold, white-ink, and combined styles", () => {
+    const d = parseDescription(
+      "# HOPS\nFreestyle Motueka\n**_Roy Farms_**\n_Silvery_\n**Bold Gold**\n\n",
+    );
+    expect(d.header).toMatchObject({ text: "HOPS", bold: true, fill: "gold", layer: "metallic" });
+    expect(d.lines).toEqual([
+      { text: "Freestyle Motueka", bold: false, fill: "gold", layer: "metallic" },
+      { text: "Roy Farms", bold: true, fill: "white", layer: "white" },
+      { text: "Silvery", bold: false, fill: "white", layer: "white" },
+      { text: "Bold Gold", bold: true, fill: "gold", layer: "metallic" },
+    ]);
+  });
+  it("handles a headerless block", () => {
+    const d = parseDescription("just a line");
+    expect(d.header).toBeNull();
+    expect(d.lines).toHaveLength(1);
+  });
+});
+
 describe("config", () => {
+  it("migrates legacy per-line description configs", () => {
+    const legacy = {
+      ...toConfigFile(defaultConfig()),
+      description: undefined,
+      descriptionHeader: { text: "HOPS", fill: "gold", layer: "metallic", bold: true },
+      descriptionLines: [
+        { text: "Plain", fill: "gold", layer: "metallic" },
+        { text: "Roy", fill: "white", layer: "white", bold: true },
+      ],
+    };
+    const cfg = parseConfigFile(JSON.stringify(legacy));
+    expect(cfg.description).toBe("# HOPS\nPlain\n**_Roy_**");
+    expect(cfg).not.toHaveProperty("descriptionLines");
+  });
   it("round-trips through JSON", () => {
     const cfg = defaultConfig();
     cfg.beerName = "TEST";

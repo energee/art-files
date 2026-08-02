@@ -14,7 +14,9 @@ h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: 
 .row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
 .row label.name { width: 92px; color: #9aa0a8; flex: none; }
 .row input[type="text"] { flex: 1; min-width: 60px; }
-input[type="text"], select { background: #1c1f24; color: #e8e6e1; border: 1px solid #3a3e46; border-radius: 4px; padding: 5px 7px; font: inherit; }
+input[type="text"], select, textarea { background: #1c1f24; color: #e8e6e1; border: 1px solid #3a3e46; border-radius: 4px; padding: 5px 7px; font: inherit; }
+textarea { width: 100%; resize: vertical; font-family: ui-monospace, monospace; }
+.legend { color: #9aa0a8; font-size: 11px; margin: 4px 0 0; }
 select { flex: none; }
 .row input[type="checkbox"] { accent-color: #d0b070; }
 button { background: #d0b070; color: #14161a; border: 0; border-radius: 5px; padding: 7px 10px; font: inherit; font-weight: 600; cursor: pointer; }

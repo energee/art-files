@@ -13,6 +13,9 @@ printer:
 Every text element — and each description line individually — has a **fill**
 (gold / white / black, drawn in the art PDF) and a **layer** (`metallic`
 knocks out of the white layer; `white` gets a white-ink underlay). The
+description block is authored as a markdown subset, one label line per line:
+`# text` = header, `**text**` = bold, `_text_` = white ink, combinable;
+plain lines are gold metallic (parsed by `src/description.ts`). The
 barcode draws directly on the texture as white-stroked black bars and digits
 (no background block); its footprint is still white-inked in the mask for
 scan contrast. Design doc:

@@ -14,7 +14,9 @@ its label printer, replacing the manual Photoshop workflow that produced
 Variable per label:
 
 - beer name (e.g. "LABRADORITE"), style line ("Ultra Hopped Ale"), ABV
-- description block: header ("HOPS") + lines, each line individually styled
+- description block: a markdown subset, one label line per line (`# text` =
+  header, `**text**` = bold, `_text_` = white ink, combinable; plain =
+  gold metallic)
 - 12-digit UPC-A (rendered, validated with check digit; drawn as
   white-stroked black bars/digits directly on the texture — no background
   block — while the mask still white-inks the footprint)

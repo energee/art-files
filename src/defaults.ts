@@ -15,14 +15,14 @@ export function defaultConfig(): LabelConfig {
     styleLine: { text: "Ultra Hopped Ale", fill: "gold", layer: "metallic" },
     abv: "8",
     abvStyle: { fill: "gold", layer: "metallic" },
-    descriptionHeader: { text: "HOPS", fill: "gold", layer: "metallic", bold: true },
-    descriptionLines: [
-      { text: "Freestyle Motueka", fill: "gold", layer: "metallic" },
-      { text: "Freestyle Waimea", fill: "gold", layer: "metallic" },
-      { text: "Freestyle Nelson Sauvin", fill: "gold", layer: "metallic" },
-      { text: "Roy Farms Citra Liquid Lupulin", fill: "white", layer: "white", bold: true },
-      { text: "Fresh Wai-iti Cold-Pressed Hop Juice", fill: "gold", layer: "metallic" },
-    ],
+    description: [
+      "# HOPS",
+      "Freestyle Motueka",
+      "Freestyle Waimea",
+      "Freestyle Nelson Sauvin",
+      "**_Roy Farms Citra Liquid Lupulin_**",
+      "Fresh Wai-iti Cold-Pressed Hop Juice",
+    ].join("\n"),
     upc: "850051366224",
     qrData: "https://lolev.beer",
     qrLayer: "metallic",
@@ -43,11 +43,26 @@ export function toConfigFile(c: LabelConfig): ConfigFile {
   return { version: 1, ...c };
 }
 
-/** Parse a saved config JSON; throws with a readable message on mismatch. */
+/** Parse a saved config JSON; throws with a readable message on mismatch.
+ *  Configs saved before the markdown description migrate transparently. */
 export function parseConfigFile(json: string): LabelConfig {
   const data = JSON.parse(json);
   if (data?.version !== 1) throw new Error("Unsupported config version");
   const { version: _v, ...cfg } = data;
+  if (cfg.description === undefined && Array.isArray(cfg.descriptionLines)) {
+    const md = (l: { text: string; fill: string; layer: string; bold?: boolean }) => {
+      let s = l.text;
+      if (l.fill === "white" || l.layer === "white") s = `_${s}_`;
+      if (l.bold) s = `**${s}**`;
+      return s;
+    };
+    cfg.description = [
+      ...(cfg.descriptionHeader ? [`# ${cfg.descriptionHeader.text}`] : []),
+      ...cfg.descriptionLines.map(md),
+    ].join("\n");
+    delete cfg.descriptionHeader;
+    delete cfg.descriptionLines;
+  }
   const base = defaultConfig();
   for (const key of Object.keys(base) as (keyof LabelConfig)[]) {
     if (!(key in cfg)) throw new Error(`Config missing field: ${key}`);

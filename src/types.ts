@@ -28,9 +28,10 @@ export interface LabelConfig {
   /** Numeric string, e.g. "8" -> "8% alc by vol". */
   abv: string;
   abvStyle: Style;
-  /** Description block: header (e.g. "HOPS") + individually styled lines. */
-  descriptionHeader: StyledLine;
-  descriptionLines: StyledLine[];
+  /** Description block as a markdown subset — one line per label line:
+   *  `# text` = header, `**text**` = bold, `_text_` = white ink; plain lines
+   *  are gold metallic. Parsed by src/description.ts. */
+  description: string;
   /** 12-digit UPC-A. The barcode block is always white-ink with black bars. */
   upc: string;
   /** QR code payload (URL). QR modules are gold; layer assignable. */
