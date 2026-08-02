@@ -58,6 +58,27 @@ is derived from the beer name (see "Derived QR payload").
 - New config fields: `qrFill` (hex), `qrStroke` (hex or `"none"`); legacy
   configs without them get the defaults (`#D0B070`, `none`).
 
+## UI improvements (included in the rewrite)
+
+1. **Generation status**: a small "building…" indicator on the preview while
+   the debounced PDF build runs; previews visibly settle when current.
+2. **Inline validation**: per-field errors (UPC under its input, mask error
+   on the mask drop, name on the name input) instead of one error blob;
+   disabled download buttons explain why via tooltip.
+3. **Preview segmented control**: one large preview with an Art / White-ink /
+   Split toggle (shadcn Tabs or segmented buttons); Split shows both.
+4. **Asset thumbnails**: loaded texture/mask drops show a small image
+   thumbnail (mask on a checkerboard) instead of filename only.
+5. **Poppins headings**: the already-bundled Poppins is used for the app
+   title and section headings; body stays neutral.
+6. **Checkerboard "no ink" swatch**: `none` fill renders as a mini
+   checkerboard chip in the color control, not a labeled checkbox.
+7. **Command palette (⌘K)**: shadcn Command dialog with save config, load
+   config, download art, download mask, and preview-mode actions.
+
+(Deferred: localStorage recent-configs list — fast follow, not in this
+rewrite.)
+
 ## Untouched
 
 Label logic not related to fill colors, and its tests: `src/upc.ts`,
@@ -108,6 +129,10 @@ micro-headings for form sections. No gold anywhere.
    live from the beer name; there is no QR data field in the form.
 10. The QR row's fill picker changes the QR color in the art PDF; enabling
     the stroke toggle strokes the modules in the chosen stroke color.
+11. Build indicator appears during generation; errors render inline at their
+    fields; preview mode toggles Art / White-ink / Split; loaded assets show
+    thumbnails; ⌘K opens a command palette exposing save/load/download and
+    preview-mode actions.
 
 ## Validation
 
