@@ -15,7 +15,9 @@ Variable per label:
 
 - beer name (e.g. "LABRADORITE"), style line ("Ultra Hopped Ale"), ABV
 - description block: header ("HOPS") + lines, each line individually styled
-- 12-digit UPC-A (rendered, validated with check digit)
+- 12-digit UPC-A (rendered, validated with check digit; drawn as
+  white-stroked black bars/digits directly on the texture — no background
+  block — while the mask still white-inks the footprint)
 - QR data (URL)
 - background texture PNG/JPG (4800x3000, 8:5) + metallic mask PNG
   (same dimensions; exactly white `(255,255,255)` = metallic and blue

@@ -13,7 +13,9 @@ printer:
 Every text element — and each description line individually — has a **fill**
 (gold / white / black, drawn in the art PDF) and a **layer** (`metallic`
 knocks out of the white layer; `white` gets a white-ink underlay). The
-barcode block is always white-ink with black bars. Design doc:
+barcode draws directly on the texture as white-stroked black bars and digits
+(no background block); its footprint is still white-inked in the mask for
+scan contrast. Design doc:
 `docs/superpowers/specs/2026-08-02-label-pdf-generator-design.md`.
 
 ## Usage

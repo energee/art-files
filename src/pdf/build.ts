@@ -137,7 +137,8 @@ export function wrapWarning(font: PDFFont, size: number, maxLen: number): string
 function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode: Mode) {
   const B = L.BARCODE;
   if (mode === "mask") {
-    // The whole block gets white ink; bars are not part of the mask.
+    // The barcode footprint still gets white ink so the code scans over the
+    // texture; bars themselves are not part of the mask.
     page.drawRectangle({
       x: B.x,
       y: y(B.yTop + B.h),
@@ -147,13 +148,8 @@ function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode: Mode) 
     });
     return;
   }
-  page.drawRectangle({
-    x: B.x,
-    y: y(B.yTop + B.h),
-    width: B.w,
-    height: B.h,
-    color: toRgb(L.COLORS.white),
-  });
+  // No background block: black bars sit on the texture, outlined in white
+  // (stroked) for contrast — digits get the same treatment below.
   const { modules, guards } = encodeUpc(upcValue);
   const inGuard = (i: number) => guards.some(([a, b]) => i >= a && i < b);
   // Rotated layout: bars run horizontally, code advances bottom-to-top.
@@ -163,29 +159,51 @@ function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode: Mode) 
   const barLen = B.w - 2 * B.pad - textZone;
   const barX = B.x + B.pad + textZone;
   const bottom = B.yTop + B.h - B.padRun;
-  for (let i = 0; i < modules.length; i++) {
-    if (modules[i] !== "1") continue;
+  // Merge consecutive modules into single bars so strokes outline whole bars,
+  // not the seams between modules. Guard runs never merge with digit runs
+  // (guards are isolated single modules).
+  let i = 0;
+  while (i < modules.length) {
+    if (modules[i] !== "1") { i++; continue; }
+    let j = i;
+    while (j < modules.length && modules[j] === "1" && inGuard(j) === inGuard(i)) j++;
     const ext = inGuard(i) ? textZone * 0.7 : 0;
-    page.drawRectangle({
+    const rect = {
       x: barX - ext,
-      y: y(bottom - i * mod) - mod, // module i spans upward from the bottom
+      y: y(bottom - i * mod) - (j - i) * mod, // run spans upward from the bottom
       width: barLen + ext,
-      height: mod + 0.05, // slight overlap so adjacent modules fuse
-      color: toRgb(L.COLORS.black),
+      height: (j - i) * mod,
+    };
+    // White outline as an expanded underlay — a centered border would swallow
+    // bars only ~1pt tall.
+    const s = B.stroke;
+    page.drawRectangle({
+      x: rect.x - s, y: rect.y - s,
+      width: rect.width + 2 * s, height: rect.height + 2 * s,
+      color: toRgb(L.COLORS.white),
     });
+    page.drawRectangle({ ...rect, color: toRgb(L.COLORS.black) });
+    i = j;
   }
   // Digits: first and last outside the guards, two groups of five inside.
-  const black = toRgb(L.COLORS.black);
+  // pdf-lib cannot stroke text, so fake it: white copies offset in a ring,
+  // then the black digits on top.
   const put = (txt: string, centerModule: number) => {
     const w = fonts.regular.widthOfTextAtSize(txt, B.textSize);
-    page.drawText(txt, {
-      x: B.x + B.pad,
-      y: y(bottom - centerModule * mod) - w / 2,
+    const base = {
       size: B.textSize,
       font: fonts.regular,
-      color: black,
       rotate: degrees(90),
-    });
+    };
+    const tx = B.x + B.pad;
+    const ty = y(bottom - centerModule * mod) - w / 2;
+    const s = B.stroke;
+    for (const [dx, dy] of [
+      [-s, 0], [s, 0], [0, -s], [0, s],
+      [-s, -s], [-s, s], [s, -s], [s, s],
+    ])
+      page.drawText(txt, { ...base, x: tx + dx, y: ty + dy, color: toRgb(L.COLORS.white) });
+    page.drawText(txt, { ...base, x: tx, y: ty, color: toRgb(L.COLORS.black) });
   };
   put(upcValue[0], -8);
   put(upcValue.slice(1, 6), 24);

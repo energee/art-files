@@ -40,6 +40,12 @@ export const WARNING = { x: 511.5, yStart: 256, size: 3.2, leading: 3.6 };
 export const STORE_COLD = { x: 541, yStart: 152, size: 18 };
 
 // Barcode (right edge, rotated 90deg CCW: bars run horizontally) ---------
-// Block is the white rectangle; padRun insets the code along its run so the
-// first/last digits fit inside the block.
-export const BARCODE = { x: 526.7, yTop: 234, w: 36.5, h: 128, pad: 3, padRun: 13, textSize: 6 };
+// No background block: bars/digits are stroked white for contrast. The block
+// footprint (x/yTop/w/h) still defines the white-ink area in the mask PDF.
+// padRun insets the code along its run so the first/last digits fit inside.
+export const BARCODE = {
+  x: 526.7, yTop: 234, w: 36.5, h: 128,
+  // stroke 0.55 >= half a module (1.07pt), so single-module gaps between
+  // adjacent bars fill solid white instead of leaving a dark sliver.
+  pad: 3, padRun: 13, textSize: 6, stroke: 0.55,
+};
