@@ -45,6 +45,7 @@ export default function App() {
   const [mask, setMask] = useState<(Loaded & { error?: string }) | null>(null);
   const [pdfs, setPdfs] = useState<{ art: string; mask: string } | null>(null);
   const [building, setBuilding] = useState(false);
+  const [buildError, setBuildError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [view, setView] = useState<"art" | "mask" | "split">("split");
   const configInput = useRef<HTMLInputElement>(null);
@@ -65,9 +66,13 @@ export default function App() {
 
   async function onTexture(f: File) {
     const bytes = new Uint8Array(await f.arrayBuffer());
-    setTexture({
-      bytes, name: f.name, kind: /\.jpe?g$/i.test(f.name) ? "jpg" : "png",
-      previewUrl: URL.createObjectURL(f),
+    const previewUrl = URL.createObjectURL(f);
+    setTexture((old) => {
+      if (old) URL.revokeObjectURL(old.previewUrl);
+      return {
+        bytes, name: f.name, kind: /\.jpe?g$/i.test(f.name) ? "jpg" : "png",
+        previewUrl,
+      };
     });
   }
 
@@ -83,11 +88,16 @@ export default function App() {
     recolorMaskForPdf(data.data);
     ctx.putImageData(data, 0, 0);
     const blob = await new Promise<Blob>((res) => canvas.toBlob((b) => res(b!), "image/png"));
-    setMask({
-      bytes: new Uint8Array(await blob.arrayBuffer()),
-      name: f.name,
-      previewUrl: URL.createObjectURL(f),
-      error: check.ok ? undefined : check.error,
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const previewUrl = URL.createObjectURL(f);
+    setMask((old) => {
+      if (old) URL.revokeObjectURL(old.previewUrl);
+      return {
+        bytes,
+        name: f.name,
+        previewUrl,
+        error: check.ok ? undefined : check.error,
+      };
     });
   }
 
@@ -97,21 +107,27 @@ export default function App() {
     let stale = false;
     const timer = setTimeout(async () => {
       setBuilding(true);
-      const fonts = await fontsPromise;
-      const assets: Assets = {
-        fonts, logoSvg,
-        texture: { bytes: texture!.bytes, kind: texture!.kind },
-        maskPng: mask!.bytes,
-      };
-      const [art, maskPdf] = await Promise.all([
-        buildArtPdf(cfg, assets), buildMaskPdf(cfg, assets),
-      ]);
-      if (stale) return;
-      setPdfs((old) => {
-        if (old) { URL.revokeObjectURL(old.art); URL.revokeObjectURL(old.mask); }
-        return { art: blobUrl(art, "application/pdf"), mask: blobUrl(maskPdf, "application/pdf") };
-      });
-      setBuilding(false);
+      try {
+        const fonts = await fontsPromise;
+        const assets: Assets = {
+          fonts, logoSvg,
+          texture: { bytes: texture!.bytes, kind: texture!.kind },
+          maskPng: mask!.bytes,
+        };
+        const [art, maskPdf] = await Promise.all([
+          buildArtPdf(cfg, assets), buildMaskPdf(cfg, assets),
+        ]);
+        if (stale) return;
+        setPdfs((old) => {
+          if (old) { URL.revokeObjectURL(old.art); URL.revokeObjectURL(old.mask); }
+          return { art: blobUrl(art, "application/pdf"), mask: blobUrl(maskPdf, "application/pdf") };
+        });
+        setBuildError("");
+      } catch (err) {
+        if (!stale) setBuildError(String(err));
+      } finally {
+        if (!stale) setBuilding(false);
+      }
     }, 600);
     return () => { stale = true; clearTimeout(timer); };
   }, [cfg, texture, mask, blocked]);
@@ -203,6 +219,7 @@ export default function App() {
             {building && (
               <span className="animate-pulse text-xs text-muted-foreground">building…</span>
             )}
+            {buildError && <span className="text-xs text-destructive">{buildError}</span>}
           </div>
           <div className="flex min-h-0 flex-1 gap-3">
             {view !== "mask" && preview("art", "Art")}
