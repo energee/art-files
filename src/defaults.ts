@@ -21,7 +21,7 @@ export function defaultConfig(): LabelConfig {
       "Freestyle Motueka",
       "Freestyle Waimea",
       "Freestyle Nelson Sauvin",
-      "**_Roy Farms Citra Liquid Lupulin_**",
+      "Roy Farms Citra Liquid Lupulin",
       "Fresh Wai-iti Cold-Pressed Hop Juice",
     ].join("\n"),
     descStyle: { fill: GOLD, layer: "metallic" },
