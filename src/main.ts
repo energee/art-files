@@ -123,7 +123,6 @@ function renderForm() {
     plainRow("ABV %", cfg.abv, (v) => (cfg.abv = v)),
     styleRow("ABV style", cfg.abvStyle),
     plainRow("UPC-A", cfg.upc, (v) => (cfg.upc = v.trim())),
-    plainRow("QR data", cfg.qrData, (v) => (cfg.qrData = v)),
     styleRow("QR layer", qrStyle, true),
     heading("Description"),
   );

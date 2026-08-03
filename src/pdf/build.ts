@@ -16,7 +16,7 @@ import type { Fill, LabelConfig, StyledLine } from "../types";
 import { WARNING_TEXT } from "../defaults";
 import * as L from "../layout";
 import { encodeUpc } from "../upc";
-import { qrPath, qrShapes } from "../qr";
+import { qrPath, qrShapes, qrUrl } from "../qr";
 import { parseDescription } from "../description";
 
 export interface Assets {
@@ -259,13 +259,15 @@ function drawElements(
     cx: L.STYLE_LINE.cx, baseline: L.STYLE_LINE.baseline, size: L.STYLE_LINE.size,
   });
 
-  // QR
-  const qrColor = mode === "art" ? fillColor(L.GOLD) : maskColor(cfg.qrLayer);
-  page.drawSvgPath(qrPath(qrShapes(cfg.qrData), L.QR.size), {
-    x: L.QR.x,
-    y: y(L.QR.yTop),
-    color: qrColor,
-  });
+  // QR — payload derived from the beer name; optional stroked underlay.
+  const shapes = qrShapes(qrUrl(cfg.beerName));
+  const qrAt = { x: L.QR.x, y: y(L.QR.yTop) };
+  if (mode === "art" && cfg.qrStroke !== "none")
+    page.drawSvgPath(qrPath(shapes, L.QR.size, L.QR.stroke), {
+      ...qrAt, color: fillColor(cfg.qrStroke),
+    });
+  const qrColor = mode === "art" ? fillColor(cfg.qrFill) : maskColor(cfg.qrLayer);
+  page.drawSvgPath(qrPath(shapes, L.QR.size), { ...qrAt, color: qrColor });
 
   // Right rotated column
   drawRotated(page, fonts.semibold, cfg.handleAddress.text, mode, cfg.handleAddress, {

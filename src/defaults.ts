@@ -25,7 +25,8 @@ export function defaultConfig(): LabelConfig {
       "Fresh Wai-iti Cold-Pressed Hop Juice",
     ].join("\n"),
     upc: "850051366224",
-    qrData: "https://lolev.beer",
+    qrFill: GOLD,
+    qrStroke: "none",
     qrLayer: "metallic",
     volume: { text: "1 PINT", fill: GOLD, layer: "metallic", bold: true },
     wordmark: { fill: GOLD, layer: "metallic" },
@@ -73,6 +74,9 @@ export function parseConfigFile(json: string): LabelConfig {
     const s = cfg[k];
     if (s && typeof s.fill === "string" && s.fill in LEGACY_FILLS) s.fill = LEGACY_FILLS[s.fill];
   }
+  delete cfg.qrData; // payload is derived from beerName now
+  cfg.qrFill ??= GOLD;
+  cfg.qrStroke ??= "none";
   const base = defaultConfig();
   for (const key of Object.keys(base) as (keyof LabelConfig)[]) {
     if (!(key in cfg)) throw new Error(`Config missing field: ${key}`);

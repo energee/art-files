@@ -2,7 +2,7 @@
 // mask polarity rules, and config JSON round-trip.
 import { describe, expect, it } from "vitest";
 import { encodeUpc, upcCheckDigit, validateUpc } from "../src/upc";
-import { qrPath, qrShapes } from "../src/qr";
+import { qrPath, qrShapes, machineName, qrUrl } from "../src/qr";
 import { recolorMaskForPdf, validateMask } from "../src/maskimage";
 import { defaultConfig, parseConfigFile, toConfigFile } from "../src/defaults";
 import { parseDescription } from "../src/description";
@@ -127,5 +127,25 @@ describe("config", () => {
   it("rejects unknown versions and missing fields", () => {
     expect(() => parseConfigFile('{"version":2}')).toThrow(/version/);
     expect(() => parseConfigFile('{"version":1,"beerName":"X"}')).toThrow(/missing/);
+  });
+});
+
+describe("derived QR payload", () => {
+  it("machine-names beer titles", () => {
+    expect(machineName("Ultra Juice")).toBe("ultra-juice");
+    expect(machineName("  Käse & Bier!  ")).toBe("k-se-bier");
+    expect(machineName("LABRADORITE")).toBe("labradorite");
+  });
+  it("builds the beer URL", () => {
+    expect(qrUrl("Ultra Juice")).toBe("https://lolev.beer/beer/ultra-juice");
+  });
+  it("config migration drops qrData and defaults qrFill/qrStroke", () => {
+    const legacy = { ...toConfigFile(defaultConfig()), qrData: "https://old.example" } as Record<string, unknown>;
+    delete legacy.qrFill;
+    delete legacy.qrStroke;
+    const cfg = parseConfigFile(JSON.stringify(legacy)) as unknown as Record<string, unknown>;
+    expect("qrData" in cfg).toBe(false);
+    expect(cfg.qrFill).toBe(GOLD);
+    expect(cfg.qrStroke).toBe("none");
   });
 });

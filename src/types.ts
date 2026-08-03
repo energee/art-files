@@ -35,8 +35,11 @@ export interface LabelConfig {
   description: string;
   /** 12-digit UPC-A. The barcode block is always white-ink with black bars. */
   upc: string;
-  /** QR code payload (URL). QR modules are default gold (#D0B070); layer assignable. */
-  qrData: string;
+  /** QR payload is derived: https://lolev.beer/beer/<machineName(beerName)>.
+   *  Fill is free hex; qrStroke "none" = no stroke, else modules are
+   *  outlined in that color (like the barcode's white stroke). */
+  qrFill: Fill;
+  qrStroke: Fill;
   qrLayer: Layer;
   // Static template elements (text fixed, style assignable):
   volume: StyledLine; // "1 PINT"

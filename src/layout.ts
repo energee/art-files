@@ -40,7 +40,7 @@ export const NAME = { cx: CENTER_X, baseline: 318, size: 16 };
 export const STYLE_LINE = { cx: CENTER_X, baseline: 338.5, size: 11 };
 
 // QR (bottom left) -------------------------------------------------------
-export const QR = { x: 23, yTop: 289, size: 59 };
+export const QR = { x: 23, yTop: 289, size: 59, stroke: 0.55 };
 
 // Right rotated column (text rotated 90deg CCW, reads bottom-to-top) -----
 // x is the baseline's vertical line (glyphs extend to its RIGHT);
