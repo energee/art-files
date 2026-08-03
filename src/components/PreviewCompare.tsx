@@ -23,7 +23,9 @@ const RENDER_SCALE = 2.5;
 // id so its percentage can be read out of that map by key.
 const WHITE_INK_PANEL_ID = "white-ink";
 
-async function renderPdf(bytes: Uint8Array, canvas: HTMLCanvasElement | null) {
+async function renderPdf(
+  bytes: Uint8Array, canvas: HTMLCanvasElement | null, isCancelled: () => boolean,
+) {
   if (!canvas) return;
   // pdf.js transfers the buffer to its worker — hand it a copy. destroy()
   // lives on the loading task (not the resolved PDFDocumentProxy) in this
@@ -32,13 +34,17 @@ async function renderPdf(bytes: Uint8Array, canvas: HTMLCanvasElement | null) {
   try {
     const doc = await task.promise;
     const page = await doc.getPage(1);
+    // bytes can change while this render is in flight (each call spins up
+    // its own worker doc); bail before touching the shared canvas so a
+    // slower, superseded render can't overwrite a newer one.
+    if (isCancelled()) return;
     const vp = page.getViewport({ scale: RENDER_SCALE });
     canvas.width = vp.width;
     canvas.height = vp.height;
     // `canvas` (not the legacy `canvasContext`) is the required render target.
     await page.render({ canvas, viewport: vp }).promise;
   } finally {
-    void task.destroy();
+    void task.destroy().catch(() => {});
   }
 }
 
@@ -62,8 +68,16 @@ export const PreviewCompare = forwardRef<
     showMask: () => leftPanel.current?.resize("100%"),
   }));
 
-  useEffect(() => { if (artBytes) void renderPdf(artBytes, artCanvas.current); }, [artBytes]);
-  useEffect(() => { if (maskBytes) void renderPdf(maskBytes, maskCanvas.current); }, [maskBytes]);
+  useEffect(() => {
+    let cancelled = false;
+    if (artBytes) void renderPdf(artBytes, artCanvas.current, () => cancelled);
+    return () => { cancelled = true; };
+  }, [artBytes]);
+  useEffect(() => {
+    let cancelled = false;
+    if (maskBytes) void renderPdf(maskBytes, maskCanvas.current, () => cancelled);
+    return () => { cancelled = true; };
+  }, [maskBytes]);
 
   return (
     <div
