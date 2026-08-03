@@ -1,13 +1,15 @@
-// LabelForm.tsx — every LabelConfig field as tight Linear-style rows.
-// `update` clones the config, applies the mutation, and sets state upstream.
+// LabelForm.tsx — every LabelConfig field as calm two-control rows: a text
+// input (where editable) plus ONE StylePopover swatch. Style details live in
+// the popover; template rows live in a collapsed section.
+import { ChevronRight, Info } from "lucide-react";
 import type { Fill, LabelConfig, Layer, StyledLine } from "@/types";
-import { ColorField } from "./ColorField";
+import { StylePopover } from "./StylePopover";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+  Collapsible, CollapsibleContent, CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 type Update = (fn: (c: LabelConfig) => void) => void;
 
@@ -23,61 +25,31 @@ function Row(props: { label: string; error?: string; children: React.ReactNode }
   );
 }
 
-function LayerSelect(props: { value: Layer; onChange: (v: Layer) => void }) {
-  return (
-    <Select value={props.value} onValueChange={(v) => props.onChange(v as Layer)}>
-      <SelectTrigger className="h-6 w-24 text-xs"><SelectValue /></SelectTrigger>
-      <SelectContent>
-        <SelectItem value="metallic">metallic</SelectItem>
-        <SelectItem value="white">white</SelectItem>
-      </SelectContent>
-    </Select>
-  );
-}
-
-function StyleControls(props: {
-  fill: Fill; layer: Layer;
-  onFill: (v: Fill) => void; onLayer: (v: Layer) => void;
-}) {
-  return (
-    <>
-      <ColorField value={props.fill} onChange={props.onFill} />
-      <LayerSelect value={props.layer} onChange={props.onLayer} />
-    </>
-  );
-}
-
 function TextRow(props: {
   label: string; line: StyledLine; update: Update;
-  get: (c: LabelConfig) => StyledLine; editable?: boolean;
+  get: (c: LabelConfig) => StyledLine;
 }) {
   const { line, update, get } = props;
   return (
     <Row label={props.label}>
-      {props.editable !== false && (
-        <Input
-          className="h-6 min-w-0 flex-1 text-xs"
-          value={line.text}
-          onChange={(e) => update((c) => { get(c).text = e.target.value; })}
-        />
-      )}
-      <Checkbox
-        title="bold"
-        checked={!!line.bold}
-        onCheckedChange={(v) => update((c) => { get(c).bold = v === true; })}
+      <Input
+        className="h-6 min-w-0 flex-1 text-xs"
+        value={line.text}
+        onChange={(e) => update((c) => { get(c).text = e.target.value; })}
       />
-      <StyleControls
-        fill={line.fill} layer={line.layer}
+      <StylePopover
+        fill={line.fill} layer={line.layer} bold={!!line.bold}
         onFill={(v) => update((c) => { get(c).fill = v; })}
         onLayer={(v) => update((c) => { get(c).layer = v; })}
+        onBold={(v) => update((c) => { get(c).bold = v; })}
       />
     </Row>
   );
 }
 
-function Heading(props: { children: string }) {
+function Heading(props: { children?: React.ReactNode }) {
   return (
-    <h2 className="mb-1.5 mt-4 text-[11px] uppercase tracking-wider text-muted-foreground">
+    <h2 className="mb-1.5 mt-4 flex items-center gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
       {props.children}
     </h2>
   );
@@ -89,9 +61,9 @@ export function LabelForm(props: {
   update: Update;
 }) {
   const { cfg, errors, update } = props;
-  const style = (label: string, get: (c: LabelConfig) => { fill: Fill; layer: Layer }) => (
+  const styleOnly = (label: string, get: (c: LabelConfig) => { fill: Fill; layer: Layer }) => (
     <Row label={label}>
-      <StyleControls
+      <StylePopover
         fill={get(cfg).fill} layer={get(cfg).layer}
         onFill={(v) => update((c) => { get(c).fill = v; })}
         onLayer={(v) => update((c) => { get(c).layer = v; })}
@@ -104,51 +76,64 @@ export function LabelForm(props: {
       <Row label="Name" error={errors.name}>
         <Input className="h-6 flex-1 text-xs" value={cfg.beerName}
           onChange={(e) => update((c) => { c.beerName = e.target.value; })} />
+        <StylePopover
+          fill={cfg.nameStyle.fill} layer={cfg.nameStyle.layer}
+          onFill={(v) => update((c) => { c.nameStyle.fill = v; })}
+          onLayer={(v) => update((c) => { c.nameStyle.layer = v; })}
+        />
       </Row>
-      {style("Name style", (c) => c.nameStyle)}
       <TextRow label="Subtitle" line={cfg.styleLine} update={update} get={(c) => c.styleLine} />
       <Row label="ABV %">
         <Input className="h-6 flex-1 text-xs" value={cfg.abv}
           onChange={(e) => update((c) => { c.abv = e.target.value; })} />
+        <StylePopover
+          fill={cfg.abvStyle.fill} layer={cfg.abvStyle.layer}
+          onFill={(v) => update((c) => { c.abvStyle.fill = v; })}
+          onLayer={(v) => update((c) => { c.abvStyle.layer = v; })}
+        />
       </Row>
-      {style("ABV style", (c) => c.abvStyle)}
       <Row label="UPC-A" error={errors.upc}>
         <Input className="h-6 flex-1 font-mono text-xs" value={cfg.upc}
           onChange={(e) => update((c) => { c.upc = e.target.value.trim(); })} />
       </Row>
       <Row label="QR">
-        <ColorField value={cfg.qrFill} onChange={(v) => update((c) => { c.qrFill = v; })} allowNone={false} />
-        <LayerSelect value={cfg.qrLayer} onChange={(v) => update((c) => { c.qrLayer = v; })} />
-      </Row>
-      <Row label="QR stroke">
-        <Checkbox
-          title="stroke on/off"
-          checked={cfg.qrStroke !== "none"}
-          onCheckedChange={(v) =>
-            update((c) => { c.qrStroke = v === true ? "#FFFFFF" : "none"; })}
+        <StylePopover
+          fill={cfg.qrFill} layer={cfg.qrLayer} allowNone={false}
+          onFill={(v) => update((c) => { c.qrFill = v; })}
+          onLayer={(v) => update((c) => { c.qrLayer = v; })}
+          stroke={cfg.qrStroke}
+          onStroke={(v) => update((c) => { c.qrStroke = v; })}
         />
-        {cfg.qrStroke !== "none" && (
-          <ColorField value={cfg.qrStroke}
-            onChange={(v) => update((c) => { c.qrStroke = v; })} allowNone={false} />
-        )}
       </Row>
 
-      <Heading>Description</Heading>
+      <Heading>
+        Description
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Info className="size-3 cursor-help" aria-label="Description syntax" />
+          </TooltipTrigger>
+          <TooltipContent># header · **bold** · _white ink_ · plain = default gold</TooltipContent>
+        </Tooltip>
+      </Heading>
       <Textarea
         rows={7} className="font-mono text-xs" value={cfg.description}
         onChange={(e) => update((c) => { c.description = e.target.value; })}
       />
-      <p className="mt-1 text-[11px] text-muted-foreground">
-        # header · **bold** · _white ink_ · plain = default gold
-      </p>
 
-      <Heading>Template elements</Heading>
-      <TextRow label="Volume" line={cfg.volume} update={update} get={(c) => c.volume} />
-      {style("Wordmark", (c) => c.wordmark)}
-      {style("Logo", (c) => c.logo)}
-      <TextRow label="Handle/addr" line={cfg.handleAddress} update={update} get={(c) => c.handleAddress} />
-      {style("Warning", (c) => c.warning)}
-      <TextRow label="Store cold" line={cfg.storeCold} update={update} get={(c) => c.storeCold} />
+      <Collapsible>
+        <CollapsibleTrigger className="group mt-4 flex w-full items-center gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
+          <ChevronRight className="size-3 transition-transform group-data-[state=open]:rotate-90" />
+          Template
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-1.5">
+          <TextRow label="Volume" line={cfg.volume} update={update} get={(c) => c.volume} />
+          {styleOnly("Wordmark", (c) => c.wordmark)}
+          {styleOnly("Logo", (c) => c.logo)}
+          <TextRow label="Handle/addr" line={cfg.handleAddress} update={update} get={(c) => c.handleAddress} />
+          {styleOnly("Warning", (c) => c.warning)}
+          <TextRow label="Store cold" line={cfg.storeCold} update={update} get={(c) => c.storeCold} />
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }

@@ -177,35 +177,28 @@ export default function App() {
           </div>
           {loadError && <p className="mt-2 text-xs text-destructive">{loadError}</p>}
           <LabelForm cfg={cfg} errors={errors} update={update} />
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button variant="secondary" size="sm" onClick={saveConfig}>Save config</Button>
-            <Button variant="secondary" size="sm" onClick={() => configInput.current?.click()}>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button size="sm" disabled={blocked || !pdfs}
+                    onClick={() => {
+                      if (!pdfs) return;
+                      download(pdfs.art, `${cfg.beerName}.pdf`);
+                      download(pdfs.mask, `${cfg.beerName}-mask.pdf`);
+                    }}>
+                    Export PDFs
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {blocked && <TooltipContent>{blockedWhy}</TooltipContent>}
+            </Tooltip>
+            <Button variant="ghost" size="sm" onClick={saveConfig}>Save config</Button>
+            <Button variant="ghost" size="sm" onClick={() => configInput.current?.click()}>
               Load config
             </Button>
             <input ref={configInput} type="file" accept="application/json" hidden
               onChange={(e) => e.target.files?.[0] && void loadConfig(e.target.files[0])} />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span>
-                  <Button size="sm" disabled={blocked || !pdfs}
-                    onClick={() => pdfs && download(pdfs.art, `${cfg.beerName}.pdf`)}>
-                    Download art
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              {blocked && <TooltipContent>{blockedWhy}</TooltipContent>}
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span>
-                  <Button size="sm" disabled={blocked || !pdfs}
-                    onClick={() => pdfs && download(pdfs.mask, `${cfg.beerName}-mask.pdf`)}>
-                    Download mask
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              {blocked && <TooltipContent>{blockedWhy}</TooltipContent>}
-            </Tooltip>
           </div>
         </aside>
         <section className="flex min-w-0 flex-1 flex-col p-3">
