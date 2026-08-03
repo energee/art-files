@@ -50,12 +50,19 @@ async function renderPdf(
   }
 }
 
-/** Render `bytes` into `canvas` whenever they change, cancelling a superseded
- *  in-flight render so a slower, older PDF can't overwrite a newer one. */
+/** Render `bytes` into `canvas` whenever they change. Renders are chained:
+ *  pdf.js hard-throws on two concurrent render() calls into one canvas, so a
+ *  new render must wait out the one in flight; superseded queued renders skip
+ *  before copying bytes or opening a worker doc. The catch keeps a
+ *  superseded/failed render from surfacing as an unhandled rejection. */
 function useRenderPdf(bytes: Uint8Array | null, canvas: RefObject<HTMLCanvasElement | null>) {
+  const chain = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
     let cancelled = false;
-    if (bytes) void renderPdf(bytes, canvas.current, () => cancelled);
+    if (bytes)
+      chain.current = chain.current
+        .then(() => (cancelled ? undefined : renderPdf(bytes, canvas.current, () => cancelled)))
+        .catch(() => {});
     return () => { cancelled = true; };
   }, [bytes, canvas]);
 }

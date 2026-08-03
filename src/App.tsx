@@ -1,5 +1,6 @@
-// App.tsx — owns all state: LabelConfig, texture/mask assets, validation,
-// debounced PDF generation, overlay-compare preview, and downloads. Mirrors
+// App.tsx — owns all state: LabelConfig, texture/mask assets (full-res +
+// preview-res pairs), validation, debounced preview-resolution PDF builds,
+// overlay-compare preview, and on-demand full-resolution exports. Mirrors
 // the old main.ts wiring, componentized.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LabelConfig } from "@/types";
@@ -20,7 +21,24 @@ import poppinsSemiBold from "@/assets/fonts/Poppins-SemiBold.ttf?url";
 import poppinsBold from "@/assets/fonts/Poppins-Bold.ttf?url";
 import logoSvg from "@/assets/logo2025.svg?raw";
 
-type Loaded = { bytes: Uint8Array; name: string; previewUrl: string };
+/** bytes = full print resolution (exports); previewBytes = downscaled PNG the
+ *  debounced preview builds use, so keystroke-driven rebuilds never churn the
+ *  print-size image (a burst of those OOMs the tab). */
+type Loaded = { bytes: Uint8Array; previewBytes: Uint8Array; name: string; previewUrl: string };
+
+/** Longest preview-texture edge in px — covers PreviewCompare's canvas at its
+ *  2.5x oversample while keeping each preview rebuild a few MB. */
+const PREVIEW_PX = 1600;
+
+async function previewPng(src: ImageBitmap | HTMLCanvasElement): Promise<Uint8Array> {
+  const scale = Math.min(1, PREVIEW_PX / Math.max(src.width, src.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(src.width * scale);
+  c.height = Math.round(src.height * scale);
+  c.getContext("2d")!.drawImage(src, 0, 0, c.width, c.height);
+  const blob = await new Promise<Blob>((res) => c.toBlob((b) => res(b!), "image/png"));
+  return new Uint8Array(await blob.arrayBuffer());
+}
 
 const fontsPromise = (async () => {
   const get = async (u: string) => new Uint8Array(await (await fetch(u)).arrayBuffer());
@@ -46,9 +64,9 @@ export default function App() {
   const [cfg, setCfg] = useState<LabelConfig>(defaultConfig);
   const [texture, setTexture] = useState<(Loaded & { kind: "png" | "jpg" }) | null>(null);
   const [mask, setMask] = useState<(Loaded & { error?: string }) | null>(null);
-  const [pdfs, setPdfs] = useState<
-    { artBytes: Uint8Array; maskBytes: Uint8Array; artUrl: string; maskUrl: string; name: string } | null
-  >(null);
+  // Preview-resolution PDFs for the on-screen compare only; downloads always
+  // rebuild at full resolution (see buildFull).
+  const [pdfs, setPdfs] = useState<{ artBytes: Uint8Array; maskBytes: Uint8Array } | null>(null);
   const [building, setBuilding] = useState(false);
   const [buildError, setBuildError] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -71,11 +89,15 @@ export default function App() {
 
   async function onTexture(f: File) {
     const bytes = new Uint8Array(await f.arrayBuffer());
+    const bmp = await createImageBitmap(f);
+    const previewBytes = await previewPng(bmp);
+    bmp.close();
     const previewUrl = URL.createObjectURL(f);
     setTexture((old) => {
       if (old) URL.revokeObjectURL(old.previewUrl);
       return {
-        bytes, name: f.name, kind: /\.jpe?g$/i.test(f.name) ? "jpg" : "png",
+        bytes, previewBytes, name: f.name,
+        kind: /\.jpe?g$/i.test(f.name) ? "jpg" : "png",
         previewUrl,
       };
     });
@@ -94,11 +116,13 @@ export default function App() {
     ctx.putImageData(data, 0, 0);
     const blob = await new Promise<Blob>((res) => canvas.toBlob((b) => res(b!), "image/png"));
     const bytes = new Uint8Array(await blob.arrayBuffer());
+    const previewBytes = await previewPng(canvas); // recolored canvas, downscaled
     const previewUrl = URL.createObjectURL(f);
     setMask((old) => {
       if (old) URL.revokeObjectURL(old.previewUrl);
       return {
         bytes,
+        previewBytes,
         name: f.name,
         previewUrl,
         error: check.ok ? undefined : check.error,
@@ -106,53 +130,75 @@ export default function App() {
     });
   }
 
-  // Debounced regeneration on any input change.
+  // Debounced preview regeneration on any input change, at preview resolution
+  // (Loaded.previewBytes). Two guards keep keystroke bursts from OOMing the
+  // tab: builds are serialized through buildChain (the debounce alone can't
+  // stop overlap once a build outlasts the typing gap), and superseded builds
+  // bail before allocating anything.
+  const buildChain = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
     if (blocked) return;
     let stale = false;
-    const timer = setTimeout(async () => {
-      setBuilding(true);
-      try {
-        const fonts = await fontsPromise;
-        const assets: Assets = {
-          fonts, logoSvg,
-          texture: { bytes: texture!.bytes, kind: texture!.kind },
-          maskPng: mask?.bytes,
-        };
-        const [art, maskPdf] = await Promise.all([
-          buildArtPdf(cfg, assets), buildMaskPdf(cfg, assets),
-        ]);
-        if (stale) return;
-        setPdfs((old) => {
-          if (old) { URL.revokeObjectURL(old.artUrl); URL.revokeObjectURL(old.maskUrl); }
-          return {
-            artBytes: art, maskBytes: maskPdf,
-            artUrl: blobUrl(art, "application/pdf"),
-            maskUrl: blobUrl(maskPdf, "application/pdf"),
-            // Snapshot the name this build was made from — not the live cfg,
-            // which may have been renamed again before this debounce fired.
-            name: cfg.beerName,
+    const timer = setTimeout(() => {
+      buildChain.current = buildChain.current.then(async () => {
+        if (stale) return; // a newer edit is queued behind us — skip entirely
+        setBuilding(true);
+        try {
+          const fonts = await fontsPromise;
+          const assets: Assets = {
+            fonts, logoSvg,
+            texture: { bytes: texture!.previewBytes, kind: "png" },
+            maskPng: mask?.previewBytes,
           };
-        });
-        setBuildError("");
-      } catch (err) {
-        if (!stale) setBuildError(String(err));
-      } finally {
-        if (!stale) setBuilding(false);
-      }
+          // Sequential, not Promise.all — halves the transient memory peak.
+          const art = await buildArtPdf(cfg, assets);
+          if (stale) return;
+          const maskPdf = await buildMaskPdf(cfg, assets);
+          if (stale) return;
+          setPdfs({ artBytes: art, maskBytes: maskPdf });
+          setBuildError("");
+        } catch (err) {
+          if (!stale) setBuildError(String(err));
+        } finally {
+          if (!stale) setBuilding(false);
+        }
+      });
     }, 600);
     return () => { stale = true; clearTimeout(timer); };
   }, [cfg, texture, mask, blocked]);
 
-  // Filenames come from pdfs.name (the cfg snapshot the PDFs were actually
-  // built from), never the live cfg — see the debounce effect above.
-  const downloadArt = () => { if (pdfs) download(pdfs.artUrl, `${pdfs.name}.pdf`); };
-  const downloadMask = () => { if (pdfs) download(pdfs.maskUrl, `${pdfs.name}-mask.pdf`); };
-  // Shared by the sidebar "Export PDFs" button and the ⌘K palette action.
-  function exportPdfs() {
-    downloadArt();
-    downloadMask();
+  function saveBytes(bytes: Uint8Array, name: string) {
+    const url = blobUrl(bytes, "application/pdf");
+    download(url, name);
+    // Revoke once the download has had time to start — revoking immediately
+    // can abort a large download.
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
+
+  /** Downloads rebuild from the full-resolution assets on demand — the
+   *  preview PDFs on screen are deliberately low-res (see Loaded). */
+  async function buildFull(which: "art" | "mask" | "both") {
+    if (!texture) return;
+    setBuilding(true);
+    try {
+      const fonts = await fontsPromise;
+      const assets: Assets = {
+        fonts, logoSvg,
+        texture: { bytes: texture.bytes, kind: texture.kind },
+        maskPng: mask?.bytes,
+      };
+      if (which !== "mask") saveBytes(await buildArtPdf(cfg, assets), `${cfg.beerName}.pdf`);
+      if (which !== "art") saveBytes(await buildMaskPdf(cfg, assets), `${cfg.beerName}-mask.pdf`);
+    } catch (err) {
+      setBuildError(String(err));
+    } finally {
+      setBuilding(false);
+    }
+  }
+  const downloadArt = () => void buildFull("art");
+  const downloadMask = () => void buildFull("mask");
+  // Shared by the sidebar "Export PDFs" button and the ⌘K palette action.
+  const exportPdfs = () => void buildFull("both");
 
   function saveConfig() {
     const url = blobUrl(

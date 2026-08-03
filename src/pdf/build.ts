@@ -157,7 +157,7 @@ export function wrapWarning(font: PDFFont, size: number, maxLen: number): string
   return lines;
 }
 
-function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode: Mode) {
+export function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode: Mode) {
   const B = L.BARCODE;
   if (mode === "mask") {
     // The barcode footprint still gets white ink so the code scans over the
@@ -193,7 +193,10 @@ function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode: Mode) 
     const ext = inGuard(i) ? textZone * 0.7 : 0;
     const rect = {
       x: barX - ext,
-      y: y(bottom - i * mod) - (j - i) * mod, // run spans upward from the bottom
+      // y() of the run's lowest module IS the rect's bottom edge in PDF space
+      // (y grows upward past it) — subtracting the run height here again is
+      // what used to smear runs below their slots.
+      y: y(bottom - i * mod),
       width: barLen + ext,
       height: (j - i) * mod,
     };
