@@ -1148,7 +1148,9 @@ git add src && git commit -m "Command palette (⌘K) for downloads, config, and 
 
 - [ ] **Step 1: Update docs**
 
-`grep -rn "qrData\|main.ts\|style.css\|\"gold\"" README.md docs --include="*.md"` and update every hit: the UI is React + Tailwind + shadcn; fills are hex (`#rrggbb`) or `none`; QR payload is derived (`https://lolev.beer/beer/<machine-name>`) with fill + optional stroke; legacy configs auto-migrate on load.
+`grep -rn "qrData\|main.ts\|style.css\|\"gold\"" README.md docs --include="*.md"` and update every hit: the UI is React + Tailwind + shadcn; fills are hex (`#rrggbb`) or `none`, edited via per-row swatch popovers; QR payload is derived (`https://lolev.beer/beer/<machine-name>`) with fill + optional stroke; legacy configs auto-migrate on load; previews are pdf.js-rendered bitmaps in an overlay-compare frame (drag the divider to reveal the white-ink layer; no embedded PDF viewer); **Export PDFs** downloads both files; ⌘K palette for all actions.
+
+Note: Tasks 9 and 10 (below) execute BEFORE this task — this task is always last.
 
 - [ ] **Step 2: Full validation**
 
