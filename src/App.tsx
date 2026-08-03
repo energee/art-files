@@ -9,6 +9,7 @@ import { validateMask, recolorMaskForPdf } from "@/maskimage";
 import { buildArtPdf, buildMaskPdf, type Assets } from "@/pdf/build";
 import { LabelForm } from "@/components/LabelForm";
 import { FileDrop } from "@/components/FileDrop";
+import { CommandMenu } from "@/components/CommandMenu";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -226,7 +227,19 @@ export default function App() {
             {view !== "art" && preview("mask", "White-ink layer")}
           </div>
         </section>
-        {/* command palette mounts here (Task 7) */}
+        <CommandMenu
+          actions={[
+            { label: "Download art PDF", disabled: blocked || !pdfs,
+              run: () => pdfs && download(pdfs.art, `${cfg.beerName}.pdf`) },
+            { label: "Download mask PDF", disabled: blocked || !pdfs,
+              run: () => pdfs && download(pdfs.mask, `${cfg.beerName}-mask.pdf`) },
+            { label: "Save config", run: saveConfig },
+            { label: "Load config", run: () => configInput.current?.click() },
+            { label: "Preview: Art", run: () => setView("art") },
+            { label: "Preview: White-ink", run: () => setView("mask") },
+            { label: "Preview: Split", run: () => setView("split") },
+          ]}
+        />
       </main>
     </TooltipProvider>
   );
