@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Fill } from "@/types";
 import { cn } from "@/lib/utils";
+import { GOLD } from "@/layout";
 
 const CHECKER =
   "repeating-conic-gradient(#3a3d43 0% 25%, #1a1c1f 0% 50%) 0 0 / 8px 8px";
@@ -24,7 +25,7 @@ export function ColorField(props: {
           type="button"
           title='No ink ("none")'
           aria-pressed={none}
-          onClick={() => props.onChange(none ? "#D0B070" : "none")}
+          onClick={() => props.onChange(none ? GOLD : "none")}
           className={cn(
             "size-6 shrink-0 rounded-sm border border-border",
             none && "ring-2 ring-ring",

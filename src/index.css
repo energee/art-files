@@ -10,7 +10,6 @@
 
 :root {
   --background: #0e0f11;
-  --panel: #16171a;
   --foreground: #e2e3e5;
   --muted: #1e2024;
   --muted-foreground: #8b8e94;
@@ -31,7 +30,6 @@
 
 @theme inline {
   --color-background: var(--background);
-  --color-panel: var(--panel);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);

@@ -45,7 +45,7 @@ export default function App() {
   const [texture, setTexture] = useState<(Loaded & { kind: "png" | "jpg" }) | null>(null);
   const [mask, setMask] = useState<(Loaded & { error?: string }) | null>(null);
   const [pdfs, setPdfs] = useState<
-    { artBytes: Uint8Array; maskBytes: Uint8Array; artUrl: string; maskUrl: string } | null
+    { artBytes: Uint8Array; maskBytes: Uint8Array; artUrl: string; maskUrl: string; name: string } | null
   >(null);
   const [building, setBuilding] = useState(false);
   const [buildError, setBuildError] = useState("");
@@ -127,6 +127,9 @@ export default function App() {
             artBytes: art, maskBytes: maskPdf,
             artUrl: blobUrl(art, "application/pdf"),
             maskUrl: blobUrl(maskPdf, "application/pdf"),
+            // Snapshot the name this build was made from — not the live cfg,
+            // which may have been renamed again before this debounce fired.
+            name: cfg.beerName,
           };
         });
         setBuildError("");
@@ -138,6 +141,15 @@ export default function App() {
     }, 600);
     return () => { stale = true; clearTimeout(timer); };
   }, [cfg, texture, mask, blocked]);
+
+  // Shared by the sidebar "Export PDFs" button and the ⌘K palette action.
+  // Filenames come from pdfs.name (the cfg snapshot the PDFs were actually
+  // built from), never the live cfg — see the debounce effect above.
+  function exportPdfs() {
+    if (!pdfs) return;
+    download(pdfs.artUrl, `${pdfs.name}.pdf`);
+    download(pdfs.maskUrl, `${pdfs.name}-mask.pdf`);
+  }
 
   function saveConfig() {
     const url = blobUrl(
@@ -176,12 +188,7 @@ export default function App() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <span>
-                  <Button size="sm" disabled={blocked || !pdfs}
-                    onClick={() => {
-                      if (!pdfs) return;
-                      download(pdfs.artUrl, `${cfg.beerName}.pdf`);
-                      download(pdfs.maskUrl, `${cfg.beerName}-mask.pdf`);
-                    }}>
+                  <Button size="sm" disabled={blocked || !pdfs} onClick={exportPdfs}>
                     Export PDFs
                   </Button>
                 </span>
@@ -215,10 +222,11 @@ export default function App() {
         </section>
         <CommandMenu
           actions={[
+            { label: "Export PDFs (art + mask)", disabled: blocked || !pdfs, run: exportPdfs },
             { label: "Download art PDF", disabled: blocked || !pdfs,
-              run: () => pdfs && download(pdfs.artUrl, `${cfg.beerName}.pdf`) },
+              run: () => pdfs && download(pdfs.artUrl, `${pdfs.name}.pdf`) },
             { label: "Download mask PDF", disabled: blocked || !pdfs,
-              run: () => pdfs && download(pdfs.maskUrl, `${cfg.beerName}-mask.pdf`) },
+              run: () => pdfs && download(pdfs.maskUrl, `${pdfs.name}-mask.pdf`) },
             { label: "Save config", run: saveConfig },
             { label: "Load config", run: () => configInput.current?.click() },
             { label: "Preview: Art", run: () => previewRef.current?.showArt() },
