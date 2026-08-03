@@ -14,6 +14,7 @@ const CHECKER =
   "repeating-conic-gradient(#3a3d43 0% 25%, #1a1c1f 0% 50%) 0 0 / 8px 8px";
 
 export function StylePopover(props: {
+  label: string;
   fill: Fill;
   layer: Layer;
   onFill: (v: Fill) => void;
@@ -29,7 +30,7 @@ export function StylePopover(props: {
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label="Style"
+          aria-label={`${props.label} style`}
           className="size-6 shrink-0 cursor-pointer rounded-sm border border-border"
           style={
             props.fill === "none"

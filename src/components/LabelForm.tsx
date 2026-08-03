@@ -38,6 +38,7 @@ function TextRow(props: {
         onChange={(e) => update((c) => { get(c).text = e.target.value; })}
       />
       <StylePopover
+        label={props.label}
         fill={line.fill} layer={line.layer} bold={!!line.bold}
         onFill={(v) => update((c) => { get(c).fill = v; })}
         onLayer={(v) => update((c) => { get(c).layer = v; })}
@@ -64,6 +65,7 @@ export function LabelForm(props: {
   const styleOnly = (label: string, get: (c: LabelConfig) => { fill: Fill; layer: Layer }) => (
     <Row label={label}>
       <StylePopover
+        label={label}
         fill={get(cfg).fill} layer={get(cfg).layer}
         onFill={(v) => update((c) => { get(c).fill = v; })}
         onLayer={(v) => update((c) => { get(c).layer = v; })}
@@ -77,6 +79,7 @@ export function LabelForm(props: {
         <Input className="h-6 flex-1 text-xs" value={cfg.beerName}
           onChange={(e) => update((c) => { c.beerName = e.target.value; })} />
         <StylePopover
+          label="Name"
           fill={cfg.nameStyle.fill} layer={cfg.nameStyle.layer}
           onFill={(v) => update((c) => { c.nameStyle.fill = v; })}
           onLayer={(v) => update((c) => { c.nameStyle.layer = v; })}
@@ -87,6 +90,7 @@ export function LabelForm(props: {
         <Input className="h-6 flex-1 text-xs" value={cfg.abv}
           onChange={(e) => update((c) => { c.abv = e.target.value; })} />
         <StylePopover
+          label="ABV"
           fill={cfg.abvStyle.fill} layer={cfg.abvStyle.layer}
           onFill={(v) => update((c) => { c.abvStyle.fill = v; })}
           onLayer={(v) => update((c) => { c.abvStyle.layer = v; })}
@@ -98,6 +102,7 @@ export function LabelForm(props: {
       </Row>
       <Row label="QR">
         <StylePopover
+          label="QR"
           fill={cfg.qrFill} layer={cfg.qrLayer} allowNone={false}
           onFill={(v) => update((c) => { c.qrFill = v; })}
           onLayer={(v) => update((c) => { c.qrLayer = v; })}
@@ -121,10 +126,12 @@ export function LabelForm(props: {
       />
 
       <Collapsible>
-        <CollapsibleTrigger className="group mt-4 flex w-full items-center gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
-          <ChevronRight className="size-3 transition-transform group-data-[state=open]:rotate-90" />
-          Template
-        </CollapsibleTrigger>
+        <h2 className="mb-1.5 mt-4 text-[11px] uppercase tracking-wider text-muted-foreground">
+          <CollapsibleTrigger className="group flex w-full cursor-pointer items-center gap-1 uppercase tracking-wider">
+            <ChevronRight className="size-3 transition-transform group-data-[state=open]:rotate-90" />
+            Template
+          </CollapsibleTrigger>
+        </h2>
         <CollapsibleContent className="pt-1.5">
           <TextRow label="Volume" line={cfg.volume} update={update} get={(c) => c.volume} />
           {styleOnly("Wordmark", (c) => c.wordmark)}
