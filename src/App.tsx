@@ -1,6 +1,6 @@
 // App.tsx — owns all state: LabelConfig, texture/mask assets, validation,
-// debounced PDF generation, preview mode, and downloads. Mirrors the old
-// main.ts wiring, componentized.
+// debounced PDF generation, overlay-compare preview, and downloads. Mirrors
+// the old main.ts wiring, componentized.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LabelConfig } from "@/types";
 import { defaultConfig, parseConfigFile, toConfigFile } from "@/defaults";
@@ -10,8 +10,8 @@ import { buildArtPdf, buildMaskPdf, type Assets } from "@/pdf/build";
 import { LabelForm } from "@/components/LabelForm";
 import { FileDrop } from "@/components/FileDrop";
 import { CommandMenu } from "@/components/CommandMenu";
+import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip";
@@ -44,12 +44,14 @@ export default function App() {
   const [cfg, setCfg] = useState<LabelConfig>(defaultConfig);
   const [texture, setTexture] = useState<(Loaded & { kind: "png" | "jpg" }) | null>(null);
   const [mask, setMask] = useState<(Loaded & { error?: string }) | null>(null);
-  const [pdfs, setPdfs] = useState<{ art: string; mask: string } | null>(null);
+  const [pdfs, setPdfs] = useState<
+    { artBytes: Uint8Array; maskBytes: Uint8Array; artUrl: string; maskUrl: string } | null
+  >(null);
   const [building, setBuilding] = useState(false);
   const [buildError, setBuildError] = useState("");
   const [loadError, setLoadError] = useState("");
-  const [view, setView] = useState<"art" | "mask" | "split">("split");
   const configInput = useRef<HTMLInputElement>(null);
+  const previewRef = useRef<PreviewCompareHandle>(null);
 
   const update = (fn: (c: LabelConfig) => void) =>
     setCfg((c) => { const n = structuredClone(c); fn(n); return n; });
@@ -120,8 +122,12 @@ export default function App() {
         ]);
         if (stale) return;
         setPdfs((old) => {
-          if (old) { URL.revokeObjectURL(old.art); URL.revokeObjectURL(old.mask); }
-          return { art: blobUrl(art, "application/pdf"), mask: blobUrl(maskPdf, "application/pdf") };
+          if (old) { URL.revokeObjectURL(old.artUrl); URL.revokeObjectURL(old.maskUrl); }
+          return {
+            artBytes: art, maskBytes: maskPdf,
+            artUrl: blobUrl(art, "application/pdf"),
+            maskUrl: blobUrl(maskPdf, "application/pdf"),
+          };
         });
         setBuildError("");
       } catch (err) {
@@ -151,17 +157,6 @@ export default function App() {
     }
   }
 
-  const preview = (kind: "art" | "mask", caption: string) => (
-    <figure className="flex min-h-0 flex-1 flex-col">
-      <figcaption className="mb-1 text-xs text-muted-foreground">{caption}</figcaption>
-      <embed
-        src={pdfs?.[kind]}
-        type="application/pdf"
-        className="min-h-0 w-full flex-1 rounded-md border border-border bg-input"
-      />
-    </figure>
-  );
-
   return (
     <TooltipProvider>
       <main className="flex h-screen">
@@ -184,8 +179,8 @@ export default function App() {
                   <Button size="sm" disabled={blocked || !pdfs}
                     onClick={() => {
                       if (!pdfs) return;
-                      download(pdfs.art, `${cfg.beerName}.pdf`);
-                      download(pdfs.mask, `${cfg.beerName}-mask.pdf`);
+                      download(pdfs.artUrl, `${cfg.beerName}.pdf`);
+                      download(pdfs.maskUrl, `${cfg.beerName}-mask.pdf`);
                     }}>
                     Export PDFs
                   </Button>
@@ -202,35 +197,32 @@ export default function App() {
           </div>
         </aside>
         <section className="flex min-w-0 flex-1 flex-col p-3">
-          <div className="mb-2 flex items-center gap-2">
-            <Tabs value={view} onValueChange={(v) => setView(v as typeof view)}>
-              <TabsList>
-                <TabsTrigger value="art">Art</TabsTrigger>
-                <TabsTrigger value="mask">White-ink</TabsTrigger>
-                <TabsTrigger value="split">Split</TabsTrigger>
-              </TabsList>
-            </Tabs>
+          <div className="mb-2 flex h-5 items-center gap-2">
             {building && (
               <span className="animate-pulse text-xs text-muted-foreground">building…</span>
             )}
             {buildError && <span className="text-xs text-destructive">{buildError}</span>}
+            {!pdfs && !building && (
+              <span className="text-xs text-muted-foreground">
+                drop a texture and mask to see the label
+              </span>
+            )}
           </div>
-          <div className="flex min-h-0 flex-1 gap-3">
-            {view !== "mask" && preview("art", "Art")}
-            {view !== "art" && preview("mask", "White-ink layer")}
+          <div className="flex min-h-0 flex-1">
+            <PreviewCompare ref={previewRef}
+              artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null} />
           </div>
         </section>
         <CommandMenu
           actions={[
             { label: "Download art PDF", disabled: blocked || !pdfs,
-              run: () => pdfs && download(pdfs.art, `${cfg.beerName}.pdf`) },
+              run: () => pdfs && download(pdfs.artUrl, `${cfg.beerName}.pdf`) },
             { label: "Download mask PDF", disabled: blocked || !pdfs,
-              run: () => pdfs && download(pdfs.mask, `${cfg.beerName}-mask.pdf`) },
+              run: () => pdfs && download(pdfs.maskUrl, `${cfg.beerName}-mask.pdf`) },
             { label: "Save config", run: saveConfig },
             { label: "Load config", run: () => configInput.current?.click() },
-            { label: "Preview: Art", run: () => setView("art") },
-            { label: "Preview: White-ink", run: () => setView("mask") },
-            { label: "Preview: Split", run: () => setView("split") },
+            { label: "Preview: Art", run: () => previewRef.current?.showArt() },
+            { label: "Preview: White-ink", run: () => previewRef.current?.showMask() },
           ]}
         />
       </main>
