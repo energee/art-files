@@ -65,19 +65,18 @@ export function parseConfigFile(json: string): LabelConfig {
     delete cfg.descriptionHeader;
     delete cfg.descriptionLines;
   }
-  // Legacy fill migration: configs saved before free-hex fills.
+  const base = defaultConfig();
+  // Legacy fill migration: configs saved before free-hex fills. Every
+  // schema field shaped like a style ({ fill: string }) gets its named fill
+  // mapped, so new styled fields are covered without touching this loop.
   const LEGACY_FILLS: Record<string, string> = { gold: GOLD, black: "#000000", white: "none" };
-  for (const k of [
-    "nameStyle", "styleLine", "abvStyle", "volume", "wordmark",
-    "logo", "handleAddress", "warning", "storeCold",
-  ]) {
+  for (const k of Object.keys(base)) {
     const s = cfg[k];
     if (s && typeof s.fill === "string" && s.fill in LEGACY_FILLS) s.fill = LEGACY_FILLS[s.fill];
   }
   delete cfg.qrData; // payload is derived from beerName now
   cfg.qrFill ??= GOLD;
   cfg.qrStroke ??= "none";
-  const base = defaultConfig();
   for (const key of Object.keys(base) as (keyof LabelConfig)[]) {
     if (!(key in cfg)) throw new Error(`Config missing field: ${key}`);
   }

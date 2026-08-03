@@ -1,7 +1,9 @@
 // PreviewCompare.tsx — the single preview: both generated PDFs rendered to
 // bitmaps via pdf.js and stacked; a resizable divider reveals the white-ink
 // layer (left side) over the art (right side). Replaces <embed> + tabs.
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import {
+  forwardRef, useEffect, useImperativeHandle, useRef, useState, type RefObject,
+} from "react";
 import * as pdfjs from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import type { PanelImperativeHandle } from "react-resizable-panels";
@@ -48,6 +50,16 @@ async function renderPdf(
   }
 }
 
+/** Render `bytes` into `canvas` whenever they change, cancelling a superseded
+ *  in-flight render so a slower, older PDF can't overwrite a newer one. */
+function useRenderPdf(bytes: Uint8Array | null, canvas: RefObject<HTMLCanvasElement | null>) {
+  useEffect(() => {
+    let cancelled = false;
+    if (bytes) void renderPdf(bytes, canvas.current, () => cancelled);
+    return () => { cancelled = true; };
+  }, [bytes, canvas]);
+}
+
 export interface PreviewCompareHandle {
   showArt: () => void;
   showMask: () => void;
@@ -68,16 +80,8 @@ export const PreviewCompare = forwardRef<
     showMask: () => leftPanel.current?.resize("100%"),
   }));
 
-  useEffect(() => {
-    let cancelled = false;
-    if (artBytes) void renderPdf(artBytes, artCanvas.current, () => cancelled);
-    return () => { cancelled = true; };
-  }, [artBytes]);
-  useEffect(() => {
-    let cancelled = false;
-    if (maskBytes) void renderPdf(maskBytes, maskCanvas.current, () => cancelled);
-    return () => { cancelled = true; };
-  }, [maskBytes]);
+  useRenderPdf(artBytes, artCanvas);
+  useRenderPdf(maskBytes, maskCanvas);
 
   return (
     <div

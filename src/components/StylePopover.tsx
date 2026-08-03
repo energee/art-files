@@ -2,16 +2,13 @@
 // showing the current fill; its popover holds the full editor (ColorField,
 // layer select, optional bold toggle, optional QR stroke section).
 import type { Fill, Layer } from "@/types";
-import { ColorField } from "./ColorField";
+import { CHECKER, ColorField } from "./ColorField";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-
-const CHECKER =
-  "repeating-conic-gradient(#3a3d43 0% 25%, #1a1c1f 0% 50%) 0 0 / 8px 8px";
 
 export function StylePopover(props: {
   label: string;

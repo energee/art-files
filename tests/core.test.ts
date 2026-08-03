@@ -69,12 +69,12 @@ describe("description markdown", () => {
     const d = parseDescription(
       "# HOPS\nFreestyle Motueka\n**_Roy Farms_**\n_Silvery_\n**Bold Gold**\n\n",
     );
-    expect(d.header).toMatchObject({ text: "HOPS", bold: true, fill: "#D0B070", layer: "metallic" });
+    expect(d.header).toMatchObject({ text: "HOPS", bold: true, fill: GOLD, layer: "metallic" });
     expect(d.lines).toEqual([
-      { text: "Freestyle Motueka", bold: false, fill: "#D0B070", layer: "metallic" },
+      { text: "Freestyle Motueka", bold: false, fill: GOLD, layer: "metallic" },
       { text: "Roy Farms", bold: true, fill: "none", layer: "white" },
       { text: "Silvery", bold: false, fill: "none", layer: "white" },
-      { text: "Bold Gold", bold: true, fill: "#D0B070", layer: "metallic" },
+      { text: "Bold Gold", bold: true, fill: GOLD, layer: "metallic" },
     ]);
   });
   it("handles a headerless block", () => {

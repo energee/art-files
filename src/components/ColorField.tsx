@@ -5,7 +5,8 @@ import type { Fill } from "@/types";
 import { cn } from "@/lib/utils";
 import { GOLD } from "@/layout";
 
-const CHECKER =
+/** "No ink" checkerboard chip background (shared with StylePopover). */
+export const CHECKER =
   "repeating-conic-gradient(#3a3d43 0% 25%, #1a1c1f 0% 50%) 0 0 / 8px 8px";
 const HEX = /^#[0-9a-fA-F]{6}$/;
 

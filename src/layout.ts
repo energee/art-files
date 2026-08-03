@@ -39,8 +39,14 @@ export const LOGO = { cx: CENTER_X, cy: 177, w: 40 }; // h follows the SVG aspec
 export const NAME = { cx: CENTER_X, baseline: 318, size: 16 };
 export const STYLE_LINE = { cx: CENTER_X, baseline: 338.5, size: 11 };
 
+/** Contrast-stroke width shared by the barcode and QR underlays. Sized for
+ *  the barcode (0.55 >= half a module, 1.07pt, so single-module gaps fill
+ *  solid instead of leaving a dark sliver); the QR uses the same width per
+ *  spec ("consistent with the barcode's stroke"). */
+export const INK_STROKE = 0.55;
+
 // QR (bottom left) -------------------------------------------------------
-export const QR = { x: 23, yTop: 289, size: 59, stroke: 0.55 };
+export const QR = { x: 23, yTop: 289, size: 59, stroke: INK_STROKE };
 
 // Right rotated column (text rotated 90deg CCW, reads bottom-to-top) -----
 // x is the baseline's vertical line (glyphs extend to its RIGHT);
@@ -55,7 +61,5 @@ export const STORE_COLD = { x: 541, yStart: 152, size: 18 };
 // padRun insets the code along its run so the first/last digits fit inside.
 export const BARCODE = {
   x: 526.7, yTop: 234, w: 36.5, h: 128,
-  // stroke 0.55 >= half a module (1.07pt), so single-module gaps between
-  // adjacent bars fill solid white instead of leaving a dark sliver.
-  pad: 3, padRun: 13, textSize: 6, stroke: 0.55,
+  pad: 3, padRun: 13, textSize: 6, stroke: INK_STROKE,
 };

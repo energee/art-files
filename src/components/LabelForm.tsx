@@ -126,12 +126,12 @@ export function LabelForm(props: {
       />
 
       <Collapsible>
-        <h2 className="mb-1.5 mt-4 text-[11px] uppercase tracking-wider text-muted-foreground">
-          <CollapsibleTrigger className="group flex w-full cursor-pointer items-center gap-1 uppercase tracking-wider">
+        <Heading>
+          <CollapsibleTrigger className="group flex w-full cursor-pointer items-center gap-1">
             <ChevronRight className="size-3 transition-transform group-data-[state=open]:rotate-90" />
             Template
           </CollapsibleTrigger>
-        </h2>
+        </Heading>
         <CollapsibleContent className="pt-1.5">
           <TextRow label="Volume" line={cfg.volume} update={update} get={(c) => c.volume} />
           {styleOnly("Wordmark", (c) => c.wordmark)}

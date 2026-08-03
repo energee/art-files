@@ -30,8 +30,10 @@ const fontsPromise = (async () => {
   return { regular, semibold, bold };
 })();
 
+// Blob snapshots the bytes at construction (no transfer), so no copy needed —
+// unlike pdf.js, which neuters the buffer it's handed (see PreviewCompare).
 const blobUrl = (bytes: Uint8Array, type: string) =>
-  URL.createObjectURL(new Blob([bytes.slice() as unknown as BlobPart], { type }));
+  URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type }));
 
 function download(url: string, name: string) {
   const a = document.createElement("a");
@@ -142,13 +144,14 @@ export default function App() {
     return () => { stale = true; clearTimeout(timer); };
   }, [cfg, texture, mask, blocked]);
 
-  // Shared by the sidebar "Export PDFs" button and the ⌘K palette action.
   // Filenames come from pdfs.name (the cfg snapshot the PDFs were actually
   // built from), never the live cfg — see the debounce effect above.
+  const downloadArt = () => { if (pdfs) download(pdfs.artUrl, `${pdfs.name}.pdf`); };
+  const downloadMask = () => { if (pdfs) download(pdfs.maskUrl, `${pdfs.name}-mask.pdf`); };
+  // Shared by the sidebar "Export PDFs" button and the ⌘K palette action.
   function exportPdfs() {
-    if (!pdfs) return;
-    download(pdfs.artUrl, `${pdfs.name}.pdf`);
-    download(pdfs.maskUrl, `${pdfs.name}-mask.pdf`);
+    downloadArt();
+    downloadMask();
   }
 
   function saveConfig() {
@@ -223,10 +226,8 @@ export default function App() {
         <CommandMenu
           actions={[
             { label: "Export PDFs (art + mask)", disabled: blocked || !pdfs, run: exportPdfs },
-            { label: "Download art PDF", disabled: blocked || !pdfs,
-              run: () => pdfs && download(pdfs.artUrl, `${pdfs.name}.pdf`) },
-            { label: "Download mask PDF", disabled: blocked || !pdfs,
-              run: () => pdfs && download(pdfs.maskUrl, `${pdfs.name}-mask.pdf`) },
+            { label: "Download art PDF", disabled: blocked || !pdfs, run: downloadArt },
+            { label: "Download mask PDF", disabled: blocked || !pdfs, run: downloadMask },
             { label: "Save config", run: saveConfig },
             { label: "Load config", run: () => configInput.current?.click() },
             { label: "Preview: Art", run: () => previewRef.current?.showArt() },
