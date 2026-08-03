@@ -1160,3 +1160,455 @@ Expected: all clean. Then run the browser smoke test against `npx vite` covering
 ```bash
 git add -A && git commit -m "Docs: React/shadcn UI, hex fills, derived QR"
 ```
+
+---
+
+### Task 9: Progressive disclosure — StylePopover, merged rows, collapsed template, quiet actions
+
+**Files:**
+- Create: `src/components/StylePopover.tsx`
+- Modify: `src/components/LabelForm.tsx` (replace entirely with the version below)
+- Modify: `src/App.tsx` (actions row only: Export PDFs primary + ghost Save/Load)
+- Modify: `package.json` (via shadcn CLI)
+
+**Interfaces:**
+- Consumes: `ColorField` (Task 4, unchanged — it moves inside the popover); shadcn `Popover`, `Collapsible` (added here via CLI); existing `LabelForm({ cfg, errors, update })` contract with App (unchanged).
+- Produces: `StylePopover({ fill, layer, onFill, onLayer, bold?, onBold?, stroke?, onStroke?, allowNone? })` — the single visible style control per row. `bold`/`onBold` present = bold toggle shown; `stroke`/`onStroke` present = QR stroke section shown.
+
+- [ ] **Step 1: Add shadcn components**
+
+Run: `npx shadcn@latest add popover collapsible --yes`
+
+- [ ] **Step 2: StylePopover**
+
+Create `src/components/StylePopover.tsx`:
+
+```tsx
+// StylePopover.tsx — a row's single visible style control: a swatch chip
+// showing the current fill; its popover holds the full editor (ColorField,
+// layer select, optional bold toggle, optional QR stroke section).
+import type { Fill, Layer } from "@/types";
+import { ColorField } from "./ColorField";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+
+const CHECKER =
+  "repeating-conic-gradient(#3a3d43 0% 25%, #1a1c1f 0% 50%) 0 0 / 8px 8px";
+
+export function StylePopover(props: {
+  fill: Fill;
+  layer: Layer;
+  onFill: (v: Fill) => void;
+  onLayer: (v: Layer) => void;
+  bold?: boolean;
+  onBold?: (v: boolean) => void;
+  stroke?: Fill;
+  onStroke?: (v: Fill) => void;
+  allowNone?: boolean;
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="Style"
+          className="size-6 shrink-0 cursor-pointer rounded-sm border border-border"
+          style={
+            props.fill === "none"
+              ? { background: CHECKER }
+              : { background: props.fill }
+          }
+        />
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 space-y-3 p-3">
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Fill</Label>
+          <ColorField value={props.fill} onChange={props.onFill} allowNone={props.allowNone} />
+        </div>
+        <div className="flex items-center justify-between">
+          <Label className="text-xs text-muted-foreground">Layer</Label>
+          <Select value={props.layer} onValueChange={(v) => props.onLayer(v as Layer)}>
+            <SelectTrigger className="h-6 w-28 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="metallic">metallic</SelectItem>
+              <SelectItem value="white">white</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {props.onBold && (
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">Bold</Label>
+            <Checkbox checked={!!props.bold} onCheckedChange={(v) => props.onBold!(v === true)} />
+          </div>
+        )}
+        {props.onStroke && (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-muted-foreground">Stroke</Label>
+              <Checkbox
+                checked={props.stroke !== "none"}
+                onCheckedChange={(v) => props.onStroke!(v === true ? "#FFFFFF" : "none")}
+              />
+            </div>
+            {props.stroke !== "none" && (
+              <ColorField value={props.stroke!} onChange={props.onStroke!} allowNone={false} />
+            )}
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+```
+
+- [ ] **Step 3: LabelForm rewrite**
+
+Replace `src/components/LabelForm.tsx` entirely:
+
+```tsx
+// LabelForm.tsx — every LabelConfig field as calm two-control rows: a text
+// input (where editable) plus ONE StylePopover swatch. Style details live in
+// the popover; template rows live in a collapsed section.
+import { ChevronRight, Info } from "lucide-react";
+import type { Fill, LabelConfig, Layer, StyledLine } from "@/types";
+import { StylePopover } from "./StylePopover";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Collapsible, CollapsibleContent, CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+type Update = (fn: (c: LabelConfig) => void) => void;
+
+function Row(props: { label: string; error?: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-1.5">
+      <div className="flex items-center gap-1.5">
+        <span className="w-24 shrink-0 text-muted-foreground">{props.label}</span>
+        {props.children}
+      </div>
+      {props.error && <p className="ml-[6.375rem] text-xs text-destructive">{props.error}</p>}
+    </div>
+  );
+}
+
+function TextRow(props: {
+  label: string; line: StyledLine; update: Update;
+  get: (c: LabelConfig) => StyledLine;
+}) {
+  const { line, update, get } = props;
+  return (
+    <Row label={props.label}>
+      <Input
+        className="h-6 min-w-0 flex-1 text-xs"
+        value={line.text}
+        onChange={(e) => update((c) => { get(c).text = e.target.value; })}
+      />
+      <StylePopover
+        fill={line.fill} layer={line.layer} bold={!!line.bold}
+        onFill={(v) => update((c) => { get(c).fill = v; })}
+        onLayer={(v) => update((c) => { get(c).layer = v; })}
+        onBold={(v) => update((c) => { get(c).bold = v; })}
+      />
+    </Row>
+  );
+}
+
+function Heading(props: { children?: React.ReactNode }) {
+  return (
+    <h2 className="mb-1.5 mt-4 flex items-center gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
+      {props.children}
+    </h2>
+  );
+}
+
+export function LabelForm(props: {
+  cfg: LabelConfig;
+  errors: Record<string, string>;
+  update: Update;
+}) {
+  const { cfg, errors, update } = props;
+  const styleOnly = (label: string, get: (c: LabelConfig) => { fill: Fill; layer: Layer }) => (
+    <Row label={label}>
+      <StylePopover
+        fill={get(cfg).fill} layer={get(cfg).layer}
+        onFill={(v) => update((c) => { get(c).fill = v; })}
+        onLayer={(v) => update((c) => { get(c).layer = v; })}
+      />
+    </Row>
+  );
+  return (
+    <div>
+      <Heading>Beer</Heading>
+      <Row label="Name" error={errors.name}>
+        <Input className="h-6 flex-1 text-xs" value={cfg.beerName}
+          onChange={(e) => update((c) => { c.beerName = e.target.value; })} />
+        <StylePopover
+          fill={cfg.nameStyle.fill} layer={cfg.nameStyle.layer}
+          onFill={(v) => update((c) => { c.nameStyle.fill = v; })}
+          onLayer={(v) => update((c) => { c.nameStyle.layer = v; })}
+        />
+      </Row>
+      <TextRow label="Subtitle" line={cfg.styleLine} update={update} get={(c) => c.styleLine} />
+      <Row label="ABV %">
+        <Input className="h-6 flex-1 text-xs" value={cfg.abv}
+          onChange={(e) => update((c) => { c.abv = e.target.value; })} />
+        <StylePopover
+          fill={cfg.abvStyle.fill} layer={cfg.abvStyle.layer}
+          onFill={(v) => update((c) => { c.abvStyle.fill = v; })}
+          onLayer={(v) => update((c) => { c.abvStyle.layer = v; })}
+        />
+      </Row>
+      <Row label="UPC-A" error={errors.upc}>
+        <Input className="h-6 flex-1 font-mono text-xs" value={cfg.upc}
+          onChange={(e) => update((c) => { c.upc = e.target.value.trim(); })} />
+      </Row>
+      <Row label="QR">
+        <StylePopover
+          fill={cfg.qrFill} layer={cfg.qrLayer} allowNone={false}
+          onFill={(v) => update((c) => { c.qrFill = v; })}
+          onLayer={(v) => update((c) => { c.qrLayer = v; })}
+          stroke={cfg.qrStroke}
+          onStroke={(v) => update((c) => { c.qrStroke = v; })}
+        />
+      </Row>
+
+      <Heading>
+        Description
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Info className="size-3 cursor-help" aria-label="Description syntax" />
+          </TooltipTrigger>
+          <TooltipContent># header · **bold** · _white ink_ · plain = default gold</TooltipContent>
+        </Tooltip>
+      </Heading>
+      <Textarea
+        rows={7} className="font-mono text-xs" value={cfg.description}
+        onChange={(e) => update((c) => { c.description = e.target.value; })}
+      />
+
+      <Collapsible>
+        <CollapsibleTrigger className="group mt-4 flex w-full items-center gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
+          <ChevronRight className="size-3 transition-transform group-data-[state=open]:rotate-90" />
+          Template
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-1.5">
+          <TextRow label="Volume" line={cfg.volume} update={update} get={(c) => c.volume} />
+          {styleOnly("Wordmark", (c) => c.wordmark)}
+          {styleOnly("Logo", (c) => c.logo)}
+          <TextRow label="Handle/addr" line={cfg.handleAddress} update={update} get={(c) => c.handleAddress} />
+          {styleOnly("Warning", (c) => c.warning)}
+          <TextRow label="Store cold" line={cfg.storeCold} update={update} get={(c) => c.storeCold} />
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 4: App actions row**
+
+In `src/App.tsx`, replace the actions `<div className="mt-4 flex flex-wrap gap-2">…</div>` (Save/Load/two download buttons + their tooltips) with:
+
+```tsx
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button size="sm" disabled={blocked || !pdfs}
+                    onClick={() => {
+                      if (!pdfs) return;
+                      download(pdfs.art, `${cfg.beerName}.pdf`);
+                      download(pdfs.mask, `${cfg.beerName}-mask.pdf`);
+                    }}>
+                    Export PDFs
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {blocked && <TooltipContent>{blockedWhy}</TooltipContent>}
+            </Tooltip>
+            <Button variant="ghost" size="sm" onClick={saveConfig}>Save config</Button>
+            <Button variant="ghost" size="sm" onClick={() => configInput.current?.click()}>
+              Load config
+            </Button>
+            <input ref={configInput} type="file" accept="application/json" hidden
+              onChange={(e) => e.target.files?.[0] && void loadConfig(e.target.files[0])} />
+          </div>
+```
+
+(Individual art/mask downloads remain available via ⌘K. If Task 10 has already run and `pdfs` holds `artUrl`/`maskUrl` instead of `art`/`mask`, use those names.)
+
+- [ ] **Step 5: Verify + commit**
+
+Run: `npx tsc --noEmit && npx vite build && npx vitest run`
+Expected: clean / 18 passing.
+
+```bash
+git add src package.json package-lock.json && git commit -m "Progressive disclosure: swatch popovers, merged rows, collapsed template, Export button"
+```
+
+---
+
+### Task 10: Overlay compare preview (pdf.js bitmaps + resizable divider)
+
+**Files:**
+- Create: `src/components/PreviewCompare.tsx`
+- Modify: `src/App.tsx` (pdfs state shape, previews section, palette actions)
+- Modify: `package.json` (pdfjs-dist; shadcn resizable)
+
+**Interfaces:**
+- Consumes: `PAGE` from `@/layout`; shadcn `Resizable*` (added here); existing App state.
+- Produces: `PreviewCompare` (forwardRef) with props `{ artBytes: Uint8Array | null; maskBytes: Uint8Array | null }` and handle `{ showArt(): void; showMask(): void }`. App's `pdfs` state becomes `{ artBytes, maskBytes, artUrl, maskUrl }` (URLs only for downloads).
+
+- [ ] **Step 1: Dependencies**
+
+Run: `npm i pdfjs-dist && npx shadcn@latest add resizable --yes`
+
+- [ ] **Step 2: PreviewCompare**
+
+Create `src/components/PreviewCompare.tsx`:
+
+```tsx
+// PreviewCompare.tsx — the single preview: both generated PDFs rendered to
+// bitmaps via pdf.js and stacked; a resizable divider reveals the white-ink
+// layer (left side) over the art (right side). Replaces <embed> + tabs.
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import * as pdfjs from "pdfjs-dist";
+import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import type { ImperativePanelHandle } from "react-resizable-panels";
+import {
+  ResizableHandle, ResizablePanel, ResizablePanelGroup,
+} from "@/components/ui/resizable";
+import { PAGE } from "@/layout";
+
+pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+
+// ponytail: fixed oversample, CSS downscales; add a ResizeObserver only if
+// crispness on very large screens ever matters.
+const RENDER_SCALE = 2.5;
+
+async function renderPdf(bytes: Uint8Array, canvas: HTMLCanvasElement | null) {
+  if (!canvas) return;
+  // pdf.js transfers the buffer to its worker — hand it a copy.
+  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  try {
+    const page = await doc.getPage(1);
+    const vp = page.getViewport({ scale: RENDER_SCALE });
+    canvas.width = vp.width;
+    canvas.height = vp.height;
+    await page.render({ canvasContext: canvas.getContext("2d")!, viewport: vp }).promise;
+  } finally {
+    void doc.destroy();
+  }
+}
+
+export interface PreviewCompareHandle {
+  showArt: () => void;
+  showMask: () => void;
+}
+
+export const PreviewCompare = forwardRef<
+  PreviewCompareHandle,
+  { artBytes: Uint8Array | null; maskBytes: Uint8Array | null }
+>(function PreviewCompare({ artBytes, maskBytes }, ref) {
+  const artCanvas = useRef<HTMLCanvasElement>(null);
+  const maskCanvas = useRef<HTMLCanvasElement>(null);
+  const leftPanel = useRef<ImperativePanelHandle>(null);
+  const [split, setSplit] = useState(0); // % width showing white-ink
+
+  useImperativeHandle(ref, () => ({
+    showArt: () => leftPanel.current?.resize(0),
+    showMask: () => leftPanel.current?.resize(100),
+  }));
+
+  useEffect(() => { if (artBytes) void renderPdf(artBytes, artCanvas.current); }, [artBytes]);
+  useEffect(() => { if (maskBytes) void renderPdf(maskBytes, maskCanvas.current); }, [maskBytes]);
+
+  return (
+    <div
+      className="relative m-auto w-full max-w-[900px] overflow-hidden rounded-md border border-border bg-input"
+      style={{ aspectRatio: `${PAGE.w} / ${PAGE.h}` }}
+    >
+      <canvas ref={artCanvas} className="absolute inset-0 h-full w-full" />
+      <canvas
+        ref={maskCanvas}
+        className="absolute inset-0 h-full w-full"
+        style={{ clipPath: `inset(0 ${100 - split}% 0 0)` }}
+      />
+      <ResizablePanelGroup
+        direction="horizontal"
+        onLayout={(sizes) => setSplit(sizes[0] ?? 0)}
+        className="absolute inset-0"
+      >
+        <ResizablePanel ref={leftPanel} defaultSize={0} minSize={0} />
+        <ResizableHandle withHandle className="bg-border/60" />
+        <ResizablePanel minSize={0} />
+      </ResizablePanelGroup>
+      <span className="pointer-events-none absolute bottom-1 left-1.5 text-[10px] text-muted-foreground">
+        white-ink
+      </span>
+      <span className="pointer-events-none absolute bottom-1 right-1.5 text-[10px] text-muted-foreground">
+        art
+      </span>
+    </div>
+  );
+});
+```
+
+- [ ] **Step 3: App integration**
+
+In `src/App.tsx`:
+
+1. Remove the `Tabs` imports, the `view` state, and the whole `preview(kind, caption)` helper + tabbed previews JSX.
+2. Add imports: `import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";` and `const previewRef = useRef<PreviewCompareHandle>(null);`
+3. Change `pdfs` state to `{ artBytes: Uint8Array; maskBytes: Uint8Array; artUrl: string; maskUrl: string } | null`. In the debounce effect success path:
+
+```tsx
+      setPdfs((old) => {
+        if (old) { URL.revokeObjectURL(old.artUrl); URL.revokeObjectURL(old.maskUrl); }
+        return {
+          artBytes: art, maskBytes: maskPdf,
+          artUrl: blobUrl(art, "application/pdf"),
+          maskUrl: blobUrl(maskPdf, "application/pdf"),
+        };
+      });
+```
+
+4. Update every download call site to `pdfs.artUrl` / `pdfs.maskUrl` (Export button and ⌘K actions).
+5. Replace the previews `<section>` content with:
+
+```tsx
+        <section className="flex min-w-0 flex-1 flex-col p-3">
+          <div className="mb-2 flex h-5 items-center gap-2">
+            {building && (
+              <span className="animate-pulse text-xs text-muted-foreground">building…</span>
+            )}
+            {buildError && <span className="text-xs text-destructive">{buildError}</span>}
+            {!pdfs && !building && (
+              <span className="text-xs text-muted-foreground">
+                drop a texture and mask to see the label
+              </span>
+            )}
+          </div>
+          <div className="flex min-h-0 flex-1">
+            <PreviewCompare ref={previewRef}
+              artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null} />
+          </div>
+        </section>
+```
+
+6. ⌘K actions become: Download art PDF, Download mask PDF (both `disabled: blocked || !pdfs`, using `artUrl`/`maskUrl`), Save config, Load config, `{ label: "Preview: Art", run: () => previewRef.current?.showArt() }`, `{ label: "Preview: White-ink", run: () => previewRef.current?.showMask() }` (drop "Preview: Split").
+
+- [ ] **Step 4: Verify + commit**
+
+Run: `npx tsc --noEmit && npx vite build && npx vitest run`
+Expected: clean / 18 passing. Boot `npx vite` and confirm no console errors on load.
+
+```bash
+git add src package.json package-lock.json && git commit -m "Preview: pdf.js bitmaps in overlay-compare frame; drop embed + tabs"
+```
