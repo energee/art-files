@@ -12,6 +12,10 @@ export type Layer = "metallic" | "white";
 export interface Style {
   fill: Fill;
   layer: Layer;
+  /** Outer stroke drawn behind the element in the art PDF; "none"/absent = off. */
+  stroke?: Fill;
+  /** Stroke width in px at the 600dpi deliverable (default 15 ≈ 1.8pt). */
+  strokeWidth?: number;
 }
 
 export interface StyledLine extends Style {
@@ -36,10 +40,11 @@ export interface LabelConfig {
   /** 12-digit UPC-A. The barcode block is always white-ink with black bars. */
   upc: string;
   /** QR payload is derived: https://lolev.beer/beer/<machineName(beerName)>.
-   *  Fill is free hex; qrStroke "none" = no stroke, else modules are
-   *  outlined in that color (like the barcode's white stroke). */
+   *  Fill is free hex; qrStroke "none" = no stroke, else modules get an
+   *  outer stroke in that color, qrStrokeWidth px @600dpi wide. */
   qrFill: Fill;
   qrStroke: Fill;
+  qrStrokeWidth?: number;
   qrLayer: Layer;
   // Static template elements (text fixed, style assignable):
   volume: StyledLine; // "1 PINT"

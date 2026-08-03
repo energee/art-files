@@ -32,8 +32,10 @@ The UI is built with React 19, Tailwind v4, and shadcn/ui (Linear-style
 neutral dark theme). Each styled row shows a swatch chip; most rows also
 show a text input next to it, but style-only rows (QR, Wordmark, Logo,
 Warning) show just the chip. Click the chip to open a popover with the
-color picker/hex field/no-ink toggle, layer select, bold toggle, and (QR
-row only) a stroke toggle + stroke color. The six template rows (volume,
+color picker/hex field/no-ink toggle, layer select, bold toggle, and an
+outer-stroke toggle with its own color + width (px at the 600dpi
+deliverable, default 15px ≈ 1.8pt) — available on every element; the logo's
+classic dark keyline is just this stroke, on by default. The six template rows (volume,
 wordmark, logo, handle/addr, warning, store cold) live in a "Template"
 section collapsed by default. The preview is a single frame: both PDFs
 render to bitmaps via pdf.js and stack there, and a draggable divider

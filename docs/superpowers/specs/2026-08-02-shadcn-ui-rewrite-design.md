@@ -60,6 +60,19 @@ is derived from the beer name (see "Derived QR payload").
 - New config fields: `qrFill` (hex), `qrStroke` (hex or `"none"`); legacy
   configs without them get the defaults (`#D0B070`, `none`).
 
+## Per-element outer strokes (addendum, same day)
+
+- Every element style (`Style`) gains optional `stroke` (hex or `"none"`)
+  and `strokeWidth` (px at the 600dpi deliverable; default 15 ≈ 1.8pt),
+  editable in each row's swatch popover next to the existing controls.
+- Strokes are true OUTER strokes, art PDF only: QR/logo use grown/underlay
+  passes; text uses a 16-direction offset ring under the fill (pdf-lib
+  cannot stroke text — same technique as the barcode digits).
+- The logo's previously hard-coded dark keyline becomes this stroke
+  (`#1A1A1A`, on by default); pre-stroke configs migrate to keep it.
+  `qrStrokeWidth` joins `qrStroke`. The barcode's fixed white stroke is
+  unchanged (scannability, not styling).
+
 ## UI improvements (included in the rewrite)
 
 1. **Generation status**: a small "building…" indicator on the preview while

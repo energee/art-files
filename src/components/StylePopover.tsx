@@ -3,7 +3,9 @@
 // layer select, optional bold toggle, optional QR stroke section).
 import type { Fill, Layer } from "@/types";
 import { CHECKER, ColorField } from "./ColorField";
+import { DEFAULT_STROKE_PX } from "@/layout";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -20,8 +22,11 @@ export function StylePopover(props: {
   onBold?: (v: boolean) => void;
   stroke?: Fill;
   onStroke?: (v: Fill) => void;
+  strokeWidth?: number;
+  onStrokeWidth?: (v: number) => void;
   allowNone?: boolean;
 }) {
+  const strokeOn = !!props.stroke && props.stroke !== "none";
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -60,14 +65,24 @@ export function StylePopover(props: {
         {props.onStroke && (
           <div className="space-y-1">
             <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground">Stroke</Label>
+              <Label className="text-xs text-muted-foreground">Outer stroke</Label>
               <Checkbox
-                checked={props.stroke !== "none"}
+                checked={strokeOn}
                 onCheckedChange={(v) => props.onStroke!(v === true ? "#FFFFFF" : "none")}
               />
             </div>
-            {props.stroke !== "none" && (
-              <ColorField value={props.stroke!} onChange={props.onStroke!} allowNone={false} />
+            {strokeOn && (
+              <div className="flex items-center gap-1">
+                <ColorField value={props.stroke!} onChange={props.onStroke!} allowNone={false} />
+                <Input
+                  type="number" min={1} max={60}
+                  className="h-6 w-14 text-xs"
+                  value={props.strokeWidth ?? DEFAULT_STROKE_PX}
+                  onChange={(e) =>
+                    props.onStrokeWidth?.(Math.max(1, Number(e.target.value) || DEFAULT_STROKE_PX))}
+                />
+                <span className="text-[10px] text-muted-foreground">px</span>
+              </div>
             )}
           </div>
         )}

@@ -1,7 +1,7 @@
 // defaults.ts — default LabelConfig mirroring the Labradorite reference label,
 // plus the fixed template strings (warning text, address) used by the layout.
 import type { LabelConfig, ConfigFile } from "./types";
-import { GOLD } from "./layout";
+import { DEFAULT_STROKE_PX, GOLD } from "./layout";
 
 export const WARNING_TEXT =
   "GOVERNMENT WARNING: (1) ACCORDING TO THE SURGEON GENERAL, WOMEN SHOULD " +
@@ -30,7 +30,8 @@ export function defaultConfig(): LabelConfig {
     qrLayer: "metallic",
     volume: { text: "1 PINT", fill: GOLD, layer: "metallic", bold: true },
     wordmark: { fill: GOLD, layer: "metallic" },
-    logo: { fill: GOLD, layer: "metallic" },
+    // The laurel's classic dark keyline, now an ordinary editable stroke.
+    logo: { fill: GOLD, layer: "metallic", stroke: "#1A1A1A", strokeWidth: DEFAULT_STROKE_PX },
     handleAddress: {
       text: "@LOLEVBEER   5247 BUTLER ST, PITTSBURGH, PA",
       fill: GOLD,
@@ -77,6 +78,11 @@ export function parseConfigFile(json: string): LabelConfig {
   delete cfg.qrData; // payload is derived from beerName now
   cfg.qrFill ??= GOLD;
   cfg.qrStroke ??= "none";
+  // Configs saved before per-element strokes: keep the logo's classic keyline.
+  if (cfg.logo) {
+    cfg.logo.stroke ??= "#1A1A1A";
+    cfg.logo.strokeWidth ??= DEFAULT_STROKE_PX;
+  }
   for (const key of Object.keys(base) as (keyof LabelConfig)[]) {
     if (!(key in cfg)) throw new Error(`Config missing field: ${key}`);
   }

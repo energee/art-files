@@ -39,14 +39,17 @@ export const LOGO = { cx: CENTER_X, cy: 177, w: 40 }; // h follows the SVG aspec
 export const NAME = { cx: CENTER_X, baseline: 318, size: 16 };
 export const STYLE_LINE = { cx: CENTER_X, baseline: 338.5, size: 11 };
 
-/** Contrast-stroke width shared by the barcode and QR underlays. Sized for
- *  the barcode (0.55 >= half a module, 1.07pt, so single-module gaps fill
- *  solid instead of leaving a dark sliver); the QR uses the same width per
- *  spec ("consistent with the barcode's stroke"). */
+/** One px at the 600dpi deliverable, in PDF points (72/600). */
+export const PX = 72 / 600;
+/** Default per-element outer-stroke width, in px at 600dpi (≈1.8pt). */
+export const DEFAULT_STROKE_PX = 15;
+
+/** Barcode contrast-stroke width: 0.55 >= half a module (1.07pt), so
+ *  single-module gaps fill solid instead of leaving a dark sliver. */
 export const INK_STROKE = 0.55;
 
-// QR (bottom left) -------------------------------------------------------
-export const QR = { x: 23, yTop: 289, size: 59, stroke: INK_STROKE };
+// QR (bottom left; stroke width comes from cfg.qrStrokeWidth) ------------
+export const QR = { x: 23, yTop: 289, size: 59 };
 
 // Right rotated column (text rotated 90deg CCW, reads bottom-to-top) -----
 // x is the baseline's vertical line (glyphs extend to its RIGHT);

@@ -2,7 +2,7 @@
 // input (where editable) plus ONE StylePopover swatch. Style details live in
 // the popover; template rows live in a collapsed section.
 import { ChevronRight, Info } from "lucide-react";
-import type { Fill, LabelConfig, Layer, StyledLine } from "@/types";
+import type { LabelConfig, Style, StyledLine } from "@/types";
 import { StylePopover } from "./StylePopover";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -40,9 +40,12 @@ function TextRow(props: {
       <StylePopover
         label={props.label}
         fill={line.fill} layer={line.layer} bold={!!line.bold}
+        stroke={line.stroke} strokeWidth={line.strokeWidth}
         onFill={(v) => update((c) => { get(c).fill = v; })}
         onLayer={(v) => update((c) => { get(c).layer = v; })}
         onBold={(v) => update((c) => { get(c).bold = v; })}
+        onStroke={(v) => update((c) => { get(c).stroke = v; })}
+        onStrokeWidth={(v) => update((c) => { get(c).strokeWidth = v; })}
       />
     </Row>
   );
@@ -62,13 +65,16 @@ export function LabelForm(props: {
   update: Update;
 }) {
   const { cfg, errors, update } = props;
-  const styleOnly = (label: string, get: (c: LabelConfig) => { fill: Fill; layer: Layer }) => (
+  const styleOnly = (label: string, get: (c: LabelConfig) => Style) => (
     <Row label={label}>
       <StylePopover
         label={label}
         fill={get(cfg).fill} layer={get(cfg).layer}
+        stroke={get(cfg).stroke} strokeWidth={get(cfg).strokeWidth}
         onFill={(v) => update((c) => { get(c).fill = v; })}
         onLayer={(v) => update((c) => { get(c).layer = v; })}
+        onStroke={(v) => update((c) => { get(c).stroke = v; })}
+        onStrokeWidth={(v) => update((c) => { get(c).strokeWidth = v; })}
       />
     </Row>
   );
@@ -81,8 +87,11 @@ export function LabelForm(props: {
         <StylePopover
           label="Name"
           fill={cfg.nameStyle.fill} layer={cfg.nameStyle.layer}
+          stroke={cfg.nameStyle.stroke} strokeWidth={cfg.nameStyle.strokeWidth}
           onFill={(v) => update((c) => { c.nameStyle.fill = v; })}
           onLayer={(v) => update((c) => { c.nameStyle.layer = v; })}
+          onStroke={(v) => update((c) => { c.nameStyle.stroke = v; })}
+          onStrokeWidth={(v) => update((c) => { c.nameStyle.strokeWidth = v; })}
         />
       </Row>
       <TextRow label="Subtitle" line={cfg.styleLine} update={update} get={(c) => c.styleLine} />
@@ -92,8 +101,11 @@ export function LabelForm(props: {
         <StylePopover
           label="ABV"
           fill={cfg.abvStyle.fill} layer={cfg.abvStyle.layer}
+          stroke={cfg.abvStyle.stroke} strokeWidth={cfg.abvStyle.strokeWidth}
           onFill={(v) => update((c) => { c.abvStyle.fill = v; })}
           onLayer={(v) => update((c) => { c.abvStyle.layer = v; })}
+          onStroke={(v) => update((c) => { c.abvStyle.stroke = v; })}
+          onStrokeWidth={(v) => update((c) => { c.abvStyle.strokeWidth = v; })}
         />
       </Row>
       <Row label="UPC-A" error={errors.upc}>
@@ -106,8 +118,9 @@ export function LabelForm(props: {
           fill={cfg.qrFill} layer={cfg.qrLayer} allowNone={false}
           onFill={(v) => update((c) => { c.qrFill = v; })}
           onLayer={(v) => update((c) => { c.qrLayer = v; })}
-          stroke={cfg.qrStroke}
+          stroke={cfg.qrStroke} strokeWidth={cfg.qrStrokeWidth}
           onStroke={(v) => update((c) => { c.qrStroke = v; })}
+          onStrokeWidth={(v) => update((c) => { c.qrStrokeWidth = v; })}
         />
       </Row>
 

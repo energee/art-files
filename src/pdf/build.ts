@@ -12,7 +12,7 @@ import {
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import svgpath from "svgpath";
-import type { Fill, LabelConfig, StyledLine } from "../types";
+import type { Fill, LabelConfig, Style, StyledLine } from "../types";
 import { WARNING_TEXT } from "../defaults";
 import * as L from "../layout";
 import { encodeUpc } from "../upc";
@@ -45,6 +45,23 @@ function fillColor(fill: Fill) {
 /** Mask-mode paint for an element: knockout (white) or white-ink (blue). */
 function maskColor(layer: "metallic" | "white") {
   return layer === "metallic" ? toRgb(L.COLORS.white) : toRgb(L.COLORS.maskBlue);
+}
+
+/** Outer-stroke params for an element (art mode only), or null when off.
+ *  Widths are authored in px at the 600dpi deliverable. */
+function strokeOf(style: Style, mode: Mode) {
+  if (mode !== "art" || !style.stroke || style.stroke === "none") return null;
+  return { color: fillColor(style.stroke), w: (style.strokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX };
+}
+
+/** pdf-lib can't stroke text, so an outer stroke is faked as a ring of
+ *  offset copies drawn under the fill — the barcode-digit technique, at 16
+ *  directions so wider strokes stay round. */
+function ring(w: number): [number, number][] {
+  return Array.from({ length: 16 }, (_, i) => {
+    const a = (i * Math.PI) / 8;
+    return [w * Math.cos(a), w * Math.sin(a)];
+  });
 }
 
 const y = (topY: number) => L.PAGE.h - topY; // top-left origin -> PDF space
@@ -95,7 +112,12 @@ function drawLine(
     opts.cx !== undefined
       ? opts.cx - font.widthOfTextAtSize(line.text, opts.size) / 2
       : opts.x!;
-  page.drawText(line.text, { x, y: y(opts.baseline), size: opts.size, font, color });
+  const at = { y: y(opts.baseline), size: opts.size, font };
+  const stroke = strokeOf(line, mode);
+  if (stroke)
+    for (const [dx, dy] of ring(stroke.w))
+      page.drawText(line.text, { ...at, x: x + dx, y: at.y + dy, color: stroke.color });
+  page.drawText(line.text, { ...at, x, color });
 }
 
 /** Rotated 90deg CCW text (reads bottom-to-top). x = baseline vertical line,
@@ -105,18 +127,16 @@ function drawRotated(
   font: PDFFont,
   text: string,
   mode: Mode,
-  style: { fill: Fill; layer: "metallic" | "white" },
+  style: Style,
   opts: { x: number; yStart: number; size: number },
 ) {
   const color = mode === "art" ? fillColor(style.fill) : maskColor(style.layer);
-  page.drawText(text, {
-    x: opts.x,
-    y: y(opts.yStart),
-    size: opts.size,
-    font,
-    color,
-    rotate: degrees(90),
-  });
+  const base = { size: opts.size, font, rotate: degrees(90) };
+  const stroke = strokeOf(style, mode);
+  if (stroke)
+    for (const [dx, dy] of ring(stroke.w))
+      page.drawText(text, { ...base, x: opts.x + dx, y: y(opts.yStart) + dy, color: stroke.color });
+  page.drawText(text, { ...base, x: opts.x, y: y(opts.yStart), color });
 }
 
 /** Wrap the warning paragraph to fit the rotated column height. */
@@ -241,17 +261,20 @@ function drawElements(
   });
   const logo = parseLogo(assets.logoSvg, L.LOGO.w);
   const logoColor = mode === "art" ? fillColor(cfg.logo.fill) : maskColor(cfg.logo.layer);
-  for (const d of logo.paths) {
-    page.drawSvgPath(d, {
-      x: L.LOGO.cx - logo.w / 2,
-      y: y(L.LOGO.cy - logo.h / 2),
-      color: logoColor,
-      // Dark keyline around the gold laurel, as on the printed label.
-      ...(mode === "art"
-        ? { borderColor: toRgb(L.COLORS.black), borderWidth: 0.7 }
-        : {}),
-    });
-  }
+  const logoAt = { x: L.LOGO.cx - logo.w / 2, y: y(L.LOGO.cy - logo.h / 2) };
+  // Outer stroke: a centered border at 2w extends w beyond the shape; the
+  // fill pass on top then covers the inner half. All stroke paths draw
+  // before any fill so overlapping laurel branches keep clean edges.
+  const logoStroke = strokeOf(cfg.logo, mode);
+  if (logoStroke)
+    for (const d of logo.paths)
+      page.drawSvgPath(d, {
+        ...logoAt,
+        color: logoStroke.color,
+        borderColor: logoStroke.color,
+        borderWidth: 2 * logoStroke.w,
+      });
+  for (const d of logo.paths) page.drawSvgPath(d, { ...logoAt, color: logoColor });
   drawLine(page, fonts, { text: cfg.beerName.toUpperCase(), ...cfg.nameStyle, bold: true }, mode, {
     cx: L.NAME.cx, baseline: L.NAME.baseline, size: L.NAME.size,
   });
@@ -263,9 +286,10 @@ function drawElements(
   const shapes = qrShapes(qrUrl(cfg.beerName));
   const qrAt = { x: L.QR.x, y: y(L.QR.yTop) };
   if (mode === "art" && cfg.qrStroke !== "none")
-    page.drawSvgPath(qrPath(shapes, L.QR.size, L.QR.stroke), {
-      ...qrAt, color: fillColor(cfg.qrStroke),
-    });
+    page.drawSvgPath(
+      qrPath(shapes, L.QR.size, (cfg.qrStrokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX),
+      { ...qrAt, color: fillColor(cfg.qrStroke) },
+    );
   const qrColor = mode === "art" ? fillColor(cfg.qrFill) : maskColor(cfg.qrLayer);
   page.drawSvgPath(qrPath(shapes, L.QR.size), { ...qrAt, color: qrColor });
 
@@ -275,7 +299,7 @@ function drawElements(
   });
   const warnLines = wrapWarning(fonts.regular, L.WARNING.size, L.WARNING.yStart - 20);
   warnLines.forEach((line, i) =>
-    drawRotated(page, fonts.regular, line, mode, { fill: cfg.warning.fill, layer: cfg.warning.layer }, {
+    drawRotated(page, fonts.regular, line, mode, cfg.warning, {
       x: L.WARNING.x + i * L.WARNING.leading, yStart: L.WARNING.yStart, size: L.WARNING.size,
     }),
   );

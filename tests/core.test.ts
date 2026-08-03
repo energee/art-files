@@ -6,7 +6,7 @@ import { qrPath, qrShapes, machineName, qrUrl } from "../src/qr";
 import { recolorMaskForPdf, validateMask } from "../src/maskimage";
 import { defaultConfig, parseConfigFile, toConfigFile } from "../src/defaults";
 import { parseDescription } from "../src/description";
-import { GOLD, parseHexFill } from "../src/layout";
+import { DEFAULT_STROKE_PX, GOLD, parseHexFill } from "../src/layout";
 
 describe("upc", () => {
   it("computes the Labradorite check digit", () => {
@@ -89,6 +89,15 @@ describe("hex fills", () => {
     expect(parseHexFill("#D0B070")).toEqual({ r: 208 / 255, g: 176 / 255, b: 112 / 255 });
     expect(parseHexFill("#000000")).toEqual({ r: 0, g: 0, b: 0 });
     expect(parseHexFill("none")).toEqual({ r: 1, g: 1, b: 1 }); // no ink = white in art
+  });
+
+  it("keeps the logo's classic keyline on pre-stroke configs", () => {
+    const legacy = toConfigFile(defaultConfig()) as unknown as Record<string, unknown>;
+    delete (legacy.logo as Record<string, unknown>).stroke;
+    delete (legacy.logo as Record<string, unknown>).strokeWidth;
+    const cfg = parseConfigFile(JSON.stringify(legacy));
+    expect(cfg.logo.stroke).toBe("#1A1A1A");
+    expect(cfg.logo.strokeWidth).toBe(DEFAULT_STROKE_PX);
   });
 
   it("migrates legacy named fills in config files", () => {
