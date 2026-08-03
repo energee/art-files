@@ -182,12 +182,10 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode:
   // JsBarcode renders (bars, then the value row) turned a quarter turn.
   const runLen = B.h - 2 * B.padRun; // along the code
   const mod = runLen / modules.length;
-  const textZone = B.textSize + 1.5;
-  const barLen = B.w - 2 * B.pad - textZone;
   const barX = B.x + B.pad;
-  // rotate(90) turns the glyph body toward -x, so this is the digit column's
-  // RIGHT edge and the digits grow back toward the bars from it.
-  const textX = barX + barLen + textZone;
+  // rotate(90) turns the glyph body toward -x, so this is the digit
+  // baseline and the digits grow back toward the bars from it.
+  const textX = barX + B.textOffset;
   const bottom = B.yTop + B.h - B.padRun;
   // Merge consecutive modules into one rect so a run draws as a single bar.
   // Runs never merge across a guard boundary, which keeps the tall guard
@@ -198,14 +196,13 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode:
     let j = i;
     while (j < modules.length && modules[j] === "1" && inGuard(j) === inGuard(i)) j++;
     // Guard groups run long, into the digits column (JsBarcode's guardHeight).
-    const ext = inGuard(i) ? textZone * 0.7 : 0;
     const rect = {
       x: barX,
       // y() of the run's lowest module IS the rect's bottom edge in PDF space
       // (y grows upward past it) — subtracting the run height here again is
       // what used to smear runs below their slots.
       y: y(bottom - i * mod),
-      width: barLen + ext,
+      width: inGuard(i) ? B.guardLen : B.barLen,
       height: (j - i) * mod,
     };
     page.drawRectangle({ ...rect, color: toRgb(L.COLORS.black) });
@@ -214,21 +211,28 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode:
   // Digits: first and last outside the guards, two groups of five centered
   // under their 35-module halves. Plain black, no halo — the white ink
   // behind the whole barcode footprint (mask mode above) is the contrast.
-  const put = (txt: string, centerModule: number) => {
+  // `anchor` is a module position; "start"/"end" align the text's near/far
+  // edge to it (JsBarcode's textAlign left/right for the outer digits),
+  // "center" centres it (the two five-digit groups).
+  const put = (txt: string, anchor: number, align: "center" | "start" | "end" = "center") => {
     const w = fonts.regular.widthOfTextAtSize(txt, B.textSize);
+    const half = w / 2 / mod;
+    const center =
+      align === "start" ? anchor + half : align === "end" ? anchor - half : anchor;
     page.drawText(txt, {
       size: B.textSize,
       font: fonts.regular,
       rotate: degrees(90),
       x: textX,
-      y: y(bottom - centerModule * mod) - w / 2,
+      y: y(bottom - center * mod) - w / 2,
       color: toRgb(L.COLORS.black),
     });
   };
-  put(upcValue[0], -8); // outside the start guard
+  const quiet = B.padRun / mod; // the 8-module zone at each end
+  put(upcValue[0], -quiet, "start"); // number-system digit, before the symbol
   put(upcValue.slice(1, 6), 27.5); // centered on modules 10-45
   put(upcValue.slice(6, 11), 67.5); // centered on modules 50-85
-  put(upcValue[11], 103); // outside the end guard
+  put(upcValue[11], modules.length + quiet, "end"); // check digit, after it
 }
 
 function drawElements(

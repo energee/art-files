@@ -16,10 +16,13 @@ a **layer** (`metallic` knocks out of the white layer; `white` gets a
 white-ink underlay). The description block is authored as a markdown
 subset, one label line per line: `# text` = header, `**text**` = bold,
 `_text_` = white ink, combinable; plain lines are gold metallic (parsed by
-`src/description.ts`). The barcode follows JsBarcode's UPC-A rendering
-(matching the `barcode-qr` app): plain black bars with the digits column to
-their right, and the number-system/check digits printed outside the symbol
-with their bars run tall alongside the guards. Contrast comes from the
+`src/description.ts`). The barcode reproduces JsBarcode's UPC-A rendering,
+so it matches the `barcode-qr` app at any scale: all of its geometry is
+authored in modules (bars 15, digits 10, text gap 4, guards 24, quiet zone
+8 — the module counts that app's options produce) and scaled by one
+`UPC_MOD` in `src/layout.ts`. Digits are Poppins Regular in a column right
+of the bars, with the number-system and check digits printed outside the
+symbol in the quiet zones. Contrast comes from the
 white ink the mask lays under the whole footprint — per-bar white outlines
 distorted the module widths enough to stop it decoding. The QR code's payload is
 derived from the beer name (`https://lolev.beer/beer/<machine-name>`) with

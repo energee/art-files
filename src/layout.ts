@@ -56,12 +56,44 @@ export const WARNING = { x: 516.62, yStart: 344.56, size: 6.06, leading: 7, maxL
 export const STORE_COLD = { x: 559.2, yStart: 149, size: 17.83 };
 
 // Barcode (right edge, rotated 90deg CCW: bars run horizontally) ---------
+// Proportions are JsBarcode's UPC-A rendering, so this matches the
+// barcode-qr app exactly at any scale. That app passes width 1, height 15,
+// textMargin 4 and fontSize 20 — which JsBarcode's UPC-A clamps to
+// width * 10 — giving these module counts:
+const UPC_UNITS = {
+  /** The symbol itself. */
+  modules: 95,
+  /** Quiet zone each side; JsBarcode encodes it as "00000000" and prints
+   *  the number-system / check digits inside it. */
+  quiet: 8,
+  /** Plain bar length. */
+  barH: 15,
+  /** Digit em size (JsBarcode: min(fontSize, width * 10)). */
+  fontSize: 10,
+  /** Gap between the bar ends and the digit baseline. */
+  textMargin: 4,
+};
+/** Points per module: the run holds quiet + symbol + quiet. */
+const UPC_MOD = 128 / (UPC_UNITS.modules + 2 * UPC_UNITS.quiet);
+/** Bar-start to digit baseline — JsBarcode's text y for a bottom value row. */
+const UPC_DEPTH = (UPC_UNITS.barH + UPC_UNITS.textMargin + UPC_UNITS.fontSize) * UPC_MOD;
+
 // Bars and digits print plain black — contrast comes from the white ink the
 // mask PDF lays under the whole footprint (x/yTop/w/h), not from per-bar
 // outlines, which distorted module widths badly enough to stop it scanning.
-// padRun insets the code along its run so the first/last digits fit inside.
 // x clears the warning's third column (glyphs end ~535.2).
 export const BARCODE = {
-  x: 536, yTop: 234, w: 36.5, h: 128,
-  pad: 3, padRun: 13, textSize: 6,
+  x: 536, yTop: 234, h: 128,
+  /** White-ink margin around the symbol. */
+  pad: 1.5,
+  /** Quiet zone along the run, in points. */
+  padRun: UPC_UNITS.quiet * UPC_MOD,
+  /** Plain bar length. */
+  barLen: UPC_UNITS.barH * UPC_MOD,
+  /** Guard runs: JsBarcode's guardHeight = barH + fontSize/2 + textMargin. */
+  guardLen: (UPC_UNITS.barH + UPC_UNITS.fontSize / 2 + UPC_UNITS.textMargin) * UPC_MOD,
+  textSize: UPC_UNITS.fontSize * UPC_MOD,
+  /** Bar start to the digit baseline (glyphs grow back toward the bars). */
+  textOffset: UPC_DEPTH,
+  w: UPC_DEPTH + 2 * 1.5,
 };
