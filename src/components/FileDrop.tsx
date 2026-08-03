@@ -22,7 +22,12 @@ export function FileDrop(props: {
         role="button"
         tabIndex={0}
         onClick={() => input.current?.click()}
-        onKeyDown={(e) => e.key === "Enter" && input.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            input.current?.click();
+          }
+        }}
         onDragOver={(e) => { e.preventDefault(); setOver(true); }}
         onDragLeave={() => setOver(false)}
         onDrop={(e) => {
