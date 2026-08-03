@@ -34,10 +34,13 @@ show a text input next to it, but style-only rows (QR, Wordmark, Logo,
 Warning) show just the chip. Click the chip to open a popover with the
 color picker/hex field/no-ink toggle, layer select, bold toggle, and an
 outer-stroke toggle with its own color + width (px at the 600dpi
-deliverable, default 15px ≈ 1.8pt) — available on every element; the logo's
-classic dark keyline is just this stroke, on by default. The six template rows (volume,
-wordmark, logo, handle/addr, warning, store cold) live in a "Template"
-section collapsed by default. The preview is a single frame: both PDFs
+deliverable, default 15px ≈ 1.8pt) — available on every element, the
+description block included (its swatch sets the base fill/layer for plain
+lines and the header plus an outer stroke for all its lines; the `_white_`
+marker still overrides fill/layer per line); the logo's
+classic dark keyline is just this stroke, on by default. All rows — the six
+template ones (volume, wordmark, logo, handle/addr, warning, store cold)
+included — sit in one flat list, no collapsed section. The preview is a single frame: both PDFs
 render to bitmaps via pdf.js and stack there, and a draggable divider
 reveals the white-ink layer over the art in place — no embedded PDF
 viewer, no tabs. Live previews build against a downscaled copy of the

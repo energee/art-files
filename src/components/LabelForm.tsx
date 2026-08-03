@@ -1,16 +1,15 @@
 // LabelForm.tsx — every LabelConfig field as calm two-control rows: a text
-// input (where editable) plus ONE StylePopover swatch. Style details live in
-// the popover; template rows live in a collapsed section.
-import { ChevronRight, Info } from "lucide-react";
+// input (where editable) plus ONE StylePopover swatch, in one flat list —
+// template rows included. Style details (fill, layer, bold, outer stroke)
+// live in the popover; the description block gets the same swatch on its
+// heading (base style + stroke for its markdown lines).
+import { Info } from "lucide-react";
 import type { LabelConfig, Style, StyledLine } from "@/types";
 import { machineName } from "@/qr";
 import { StylePopover } from "./StylePopover";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Collapsible, CollapsibleContent, CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 type Update = (fn: (c: LabelConfig) => void) => void;
@@ -92,7 +91,7 @@ export function LabelForm(props: {
   );
   return (
     <div>
-      <Heading>Beer</Heading>
+      <Heading>Label</Heading>
       <Row label="Name" htmlFor="beer-name" error={errors.name}>
         <Input id="beer-name" className="h-6 flex-1 text-xs" value={cfg.beerName}
           onChange={(e) => update((c) => { c.beerName = e.target.value; })} />
@@ -137,36 +136,35 @@ export function LabelForm(props: {
         />
       </Row>
 
+      <TextRow label="Volume" line={cfg.volume} update={update} get={(c) => c.volume} />
+      {styleOnly("Wordmark", (c) => c.wordmark)}
+      {styleOnly("Logo", (c) => c.logo)}
+      <TextRow label="Handle/addr" line={cfg.handleAddress} update={update} get={(c) => c.handleAddress} />
+      {styleOnly("Warning", (c) => c.warning)}
+      <TextRow label="Store cold" line={cfg.storeCold} update={update} get={(c) => c.storeCold} />
+
       <Heading>
         Description
         <Tooltip>
           <TooltipTrigger asChild>
             <Info className="size-3 cursor-help" aria-label="Description syntax" />
           </TooltipTrigger>
-          <TooltipContent># header · **bold** · _white ink_ · plain = default gold</TooltipContent>
+          <TooltipContent># header · **bold** · _white ink_ · plain = the swatch's style</TooltipContent>
         </Tooltip>
+        <StylePopover
+          label="Description"
+          fill={cfg.descStyle.fill} layer={cfg.descStyle.layer}
+          stroke={cfg.descStyle.stroke} strokeWidth={cfg.descStyle.strokeWidth}
+          onFill={(v) => update((c) => { c.descStyle.fill = v; })}
+          onLayer={(v) => update((c) => { c.descStyle.layer = v; })}
+          onStroke={(v) => update((c) => { c.descStyle.stroke = v; })}
+          onStrokeWidth={(v) => update((c) => { c.descStyle.strokeWidth = v; })}
+        />
       </Heading>
       <Textarea
         rows={7} aria-label="Description" className="font-mono text-xs" value={cfg.description}
         onChange={(e) => update((c) => { c.description = e.target.value; })}
       />
-
-      <Collapsible>
-        <Heading>
-          <CollapsibleTrigger className="group flex w-full cursor-pointer items-center gap-1">
-            <ChevronRight className="size-3 transition-transform group-data-[state=open]:rotate-90" />
-            Template
-          </CollapsibleTrigger>
-        </Heading>
-        <CollapsibleContent className="pt-1.5">
-          <TextRow label="Volume" line={cfg.volume} update={update} get={(c) => c.volume} />
-          {styleOnly("Wordmark", (c) => c.wordmark)}
-          {styleOnly("Logo", (c) => c.logo)}
-          <TextRow label="Handle/addr" line={cfg.handleAddress} update={update} get={(c) => c.handleAddress} />
-          {styleOnly("Warning", (c) => c.warning)}
-          <TextRow label="Store cold" line={cfg.storeCold} update={update} get={(c) => c.storeCold} />
-        </CollapsibleContent>
-      </Collapsible>
     </div>
   );
 }

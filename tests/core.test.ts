@@ -82,6 +82,13 @@ describe("description markdown", () => {
     expect(d.header).toBeNull();
     expect(d.lines).toHaveLength(1);
   });
+  it("applies the base style, stroke included, with white overriding fill/layer", () => {
+    const base = { fill: "#123456", layer: "metallic", stroke: "#FFFFFF", strokeWidth: 20 } as const;
+    const d = parseDescription("# H\nplain\n_white_", base);
+    expect(d.header).toMatchObject({ fill: "#123456", stroke: "#FFFFFF", strokeWidth: 20 });
+    expect(d.lines[0]).toMatchObject({ fill: "#123456", layer: "metallic", stroke: "#FFFFFF" });
+    expect(d.lines[1]).toMatchObject({ fill: "none", layer: "white", stroke: "#FFFFFF" });
+  });
 });
 
 describe("hex fills", () => {
@@ -147,6 +154,12 @@ describe("derived QR payload", () => {
   });
   it("builds the beer URL", () => {
     expect(qrUrl("Ultra Juice")).toBe("https://lolev.beer/beer/ultra-juice");
+  });
+  it("defaults descStyle on pre-descStyle configs", () => {
+    const legacy = toConfigFile(defaultConfig()) as unknown as Record<string, unknown>;
+    delete legacy.descStyle;
+    const cfg = parseConfigFile(JSON.stringify(legacy));
+    expect(cfg.descStyle).toEqual({ fill: GOLD, layer: "metallic" });
   });
   it("config migration drops qrData and defaults qrFill/qrStroke", () => {
     const legacy = { ...toConfigFile(defaultConfig()), qrData: "https://old.example" } as Record<string, unknown>;

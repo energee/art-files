@@ -249,7 +249,7 @@ function drawElements(
   drawLine(page, fonts, { text: `${cfg.abv}% alc by vol`, ...cfg.abvStyle }, mode, {
     x: L.ABV.x, baseline: L.ABV.baseline, size: L.ABV.size,
   });
-  const desc = parseDescription(cfg.description);
+  const desc = parseDescription(cfg.description, cfg.descStyle);
   if (desc.header)
     drawLine(page, fonts, desc.header, mode, {
       x: L.DESC_HEADER.x, baseline: L.DESC_HEADER.baseline, size: L.DESC_HEADER.size,

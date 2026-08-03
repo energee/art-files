@@ -1,17 +1,21 @@
 // description.ts — parses the description block's markdown subset into styled
 // lines: `# text` = header, `**text**` = bold, `_text_` = white ink (white
-// fill + white layer), combinable; plain lines are default gold (#D0B070).
-// ponytail: per-line styling only, no inline spans or black fill — add if a
-// label ever needs them.
-import type { StyledLine } from "./types";
+// fill + white layer), combinable. Plain lines and the header take the
+// caller's base style (cfg.descStyle: fill, layer, outer stroke); the white
+// marker overrides fill/layer but keeps the base stroke.
+// ponytail: per-line styling only, no inline spans — add if a label ever
+// needs them.
+import type { Style, StyledLine } from "./types";
 import { GOLD } from "./layout";
+
+const DEFAULT_BASE: Style = { fill: GOLD, layer: "metallic" };
 
 export interface ParsedDescription {
   header: StyledLine | null;
   lines: StyledLine[];
 }
 
-function styleLine(raw: string, bold = false): StyledLine {
+function styleLine(raw: string, base: Style, bold = false): StyledLine {
   let s = raw.trim();
   let white = false;
   for (;;) {
@@ -24,18 +28,20 @@ function styleLine(raw: string, bold = false): StyledLine {
   return {
     text: s,
     bold,
-    fill: white ? "none" : GOLD,
-    layer: white ? "white" : "metallic",
+    fill: white ? "none" : base.fill,
+    layer: white ? "white" : base.layer,
+    stroke: base.stroke,
+    strokeWidth: base.strokeWidth,
   };
 }
 
-export function parseDescription(src: string): ParsedDescription {
+export function parseDescription(src: string, base: Style = DEFAULT_BASE): ParsedDescription {
   const out: ParsedDescription = { header: null, lines: [] };
   for (const raw of src.split("\n")) {
     const t = raw.trim();
     if (!t) continue;
-    if (t.startsWith("#")) out.header = styleLine(t.replace(/^#+\s*/, ""), true);
-    else out.lines.push(styleLine(t));
+    if (t.startsWith("#")) out.header = styleLine(t.replace(/^#+\s*/, ""), base, true);
+    else out.lines.push(styleLine(t, base));
   }
   return out;
 }

@@ -35,8 +35,12 @@ export interface LabelConfig {
   abvStyle: Style;
   /** Description block as a markdown subset — one line per label line:
    *  `# text` = header, `**text**` = bold, `_text_` = white ink; plain lines
-   *  are default gold (#D0B070). Parsed by src/description.ts. */
+   *  and the header take descStyle. Parsed by src/description.ts. */
   description: string;
+  /** Base style for the description block: fill/layer for plain lines and
+   *  the header (the `_white_` marker overrides those), outer stroke for
+   *  every description line. */
+  descStyle: Style;
   /** 12-digit UPC-A. The barcode block is always white-ink with black bars. */
   upc: string;
   /** QR payload is derived: https://lolev.beer/beer/<machineName(beerName)>.

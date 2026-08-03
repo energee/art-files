@@ -24,6 +24,7 @@ export function defaultConfig(): LabelConfig {
       "**_Roy Farms Citra Liquid Lupulin_**",
       "Fresh Wai-iti Cold-Pressed Hop Juice",
     ].join("\n"),
+    descStyle: { fill: GOLD, layer: "metallic" },
     upc: "850051366224",
     qrFill: GOLD,
     qrStroke: "none",
@@ -78,6 +79,8 @@ export function parseConfigFile(json: string): LabelConfig {
   delete cfg.qrData; // payload is derived from beerName now
   cfg.qrFill ??= GOLD;
   cfg.qrStroke ??= "none";
+  // Configs saved before the description block was styleable.
+  cfg.descStyle ??= { fill: GOLD, layer: "metallic" };
   // Configs saved before per-element strokes: keep the logo's classic keyline.
   if (cfg.logo) {
     cfg.logo.stroke ??= "#1A1A1A";
