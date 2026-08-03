@@ -173,8 +173,18 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode:
     });
     return;
   }
-  // Plain black bars, no per-bar white outline: the mask pass above lays
-  // white ink under the whole footprint, so that is the contrast.
+  // White backing plate, the same footprint the mask paints. Both the
+  // reference label and the finished labels put the code on a solid white
+  // block; without it the bars sit straight on the texture and lose
+  // contrast. Per-bar outlines are NOT the way to get this — at half a
+  // module wide they distorted the widths until the code stopped decoding.
+  page.drawRectangle({
+    x: B.x,
+    y: y(B.yTop + B.h),
+    width: B.w,
+    height: B.h,
+    color: toRgb(L.COLORS.white),
+  });
   const { modules, guards } = encodeUpc(upcValue);
   const inGuard = (i: number) => guards.some(([a, b]) => i >= a && i < b);
   // Rotated layout: bars run horizontally, code advances bottom-to-top, and
