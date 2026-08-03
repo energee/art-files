@@ -53,7 +53,8 @@ viewer, no tabs. Live previews build against a downscaled copy of the
 texture/mask (print-size images made every keystroke-triggered rebuild
 churn enough memory to crash the tab); downloads always rebuild at full
 resolution when clicked. One **Export
-PDFs** button downloads both files together; Save/Load config are small
+PDFs** button downloads both files together, and **Export PSD** writes a
+layered Photoshop file (see below); Save/Load config are small
 ghost buttons. Press <kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd> for a command
 palette covering save config, load config, download art PDF, download mask
 PDF, and preview snap actions ("Preview: Art" / "Preview: White-ink" jump
@@ -66,10 +67,22 @@ npm run dev        # open the app: the label previews immediately (text on bare
                    # previews update live, download both PDFs
 ```
 
+### Layered PSD
+
+`src/psd/build.ts` is a second renderer over the same `LabelConfig` and the
+same `src/layout.ts` geometry, for handing artwork to a designer. Text
+elements become editable Photoshop type layers; the logo, QR and barcode
+become vector shape layers with real bezier knots; the texture is the one
+raster layer. Layers are grouped as Texture / Left column / Center / Right
+column / Codes. Photoshop prompts to update text layers on open because
+ag-psd writes the text data without a rendered bitmap — choose **Update**.
+The PDFs remain the printer deliverable; the PSD is the editable handoff.
+
 Headless (same renderer, used for iteration/batches):
 
 ```bash
 npm run generate -- <texture.png|none> <mask.png|none> <outDir> [config.json]
+# writes {Name}.pdf, {Name}-mask.pdf and {Name}.psd
 ```
 
 The Save/Load config buttons round-trip the whole form as JSON (`{version: 1,

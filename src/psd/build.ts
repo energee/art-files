@@ -14,7 +14,9 @@
 // own docs warn it can emit a broken file.
 import { PDFDocument, type PDFFont } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
-import { writePsdBuffer, type BezierPath, type Layer, type Psd } from "ag-psd";
+// writePsdUint8Array, not writePsdBuffer — the latter returns a Node Buffer
+// and throws "Buffer not supported on this platform" in the browser.
+import { writePsdUint8Array, type BezierPath, type Layer, type Psd } from "ag-psd";
 import type { Fill, LabelConfig } from "../types";
 import * as L from "../layout";
 import { parseDescription } from "../description";
@@ -37,7 +39,10 @@ export interface PsdAssets {
 /** Points -> pixels at the 600dpi deliverable. */
 const PX = 600 / 72;
 const px = (n: number) => n * PX;
-const DOC = { w: Math.round(px(L.PAGE.w)), h: Math.round(px(L.PAGE.h)) };
+/** Document size in pixels. Exported so a caller can cover-fit the texture
+ *  to it before handing the pixels over — PSD layers hold pixels 1:1. */
+export const PSD_DOC = { w: Math.round(px(L.PAGE.w)), h: Math.round(px(L.PAGE.h)) };
+const DOC = PSD_DOC;
 
 const color255 = (fill: Fill) => {
   const c = L.parseHexFill(fill);
@@ -349,5 +354,5 @@ export async function buildPsd(cfg: LabelConfig, assets: PsdAssets): Promise<Uin
     height: DOC.h,
     children: buildLayers(cfg, assets, f),
   };
-  return new Uint8Array(writePsdBuffer(psd));
+  return writePsdUint8Array(psd);
 }

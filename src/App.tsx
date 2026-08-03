@@ -8,6 +8,7 @@ import { defaultConfig, parseConfigFile, toConfigFile } from "@/defaults";
 import { validateUpc } from "@/upc";
 import { validateMask, recolorMaskForPdf } from "@/maskimage";
 import { buildArtPdf, buildMaskPdf, type Assets } from "@/pdf/build";
+import { buildPsd, PSD_DOC, type PsdAssets } from "@/psd/build";
 import { LabelForm } from "@/components/LabelForm";
 import { FileDrop } from "@/components/FileDrop";
 import { CommandMenu } from "@/components/CommandMenu";
@@ -166,8 +167,8 @@ export default function App() {
     return () => { stale = true; clearTimeout(timer); };
   }, [cfg, texture, mask, blocked]);
 
-  function saveBytes(bytes: Uint8Array, name: string) {
-    const url = blobUrl(bytes, "application/pdf");
+  function saveBytes(bytes: Uint8Array, name: string, type = "application/pdf") {
+    const url = blobUrl(bytes, type);
     download(url, name);
     // Revoke once the download has had time to start — revoking immediately
     // can abort a large download.
@@ -197,6 +198,45 @@ export default function App() {
   const downloadMask = () => void buildFull("mask");
   // Shared by the sidebar "Export PDFs" button and the ⌘K palette action.
   const exportPdfs = () => void buildFull("both");
+
+  /** The PSD's texture layer needs raw RGBA at document size — PSD layers
+   *  hold pixels 1:1, so the cover-fit happens here rather than in the
+   *  builder. Only run on an explicit export, never in the preview loop:
+   *  the full-size ImageData is ~60MB. */
+  async function texturePixels(): Promise<PsdAssets["texture"]> {
+    if (!texture) return undefined;
+    const bmp = await createImageBitmap(new Blob([texture.bytes as unknown as BlobPart]));
+    const canvas = document.createElement("canvas");
+    canvas.width = PSD_DOC.w;
+    canvas.height = PSD_DOC.h;
+    const ctx = canvas.getContext("2d")!;
+    const s = Math.max(canvas.width / bmp.width, canvas.height / bmp.height);
+    const w = bmp.width * s;
+    const h = bmp.height * s;
+    ctx.drawImage(bmp, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+    bmp.close();
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    return { data: new Uint8Array(img.data.buffer), width: img.width, height: img.height };
+  }
+
+  /** Layered Photoshop file: editable type layers, vector logo/QR/barcode.
+   *  Built full-resolution on demand, like the PDF exports. */
+  async function exportPsd() {
+    setBuilding(true);
+    try {
+      const fonts = await fontsPromise;
+      const psd = await buildPsd(cfg, {
+        fonts, logoSvg,
+        texture: await texturePixels(),
+      });
+      saveBytes(psd, `${cfg.beerName}.psd`, "image/vnd.adobe.photoshop");
+      setBuildError("");
+    } catch (err) {
+      setBuildError(String(err));
+    } finally {
+      setBuilding(false);
+    }
+  }
 
   function saveConfig() {
     const url = blobUrl(
@@ -247,6 +287,9 @@ export default function App() {
               />
               {blocked && <TooltipContent>{blockedWhy}</TooltipContent>}
             </Tooltip>
+            <Button size="sm" variant="secondary" disabled={blocked} onClick={() => void exportPsd()}>
+              Export PSD
+            </Button>
             <Button variant="ghost" size="sm" onClick={saveConfig}>Save config</Button>
             <Button variant="ghost" size="sm" onClick={() => configInput.current?.click()}>
               Load config
@@ -277,6 +320,7 @@ export default function App() {
             { label: "Export PDFs (art + mask)", disabled: blocked || !pdfs, run: exportPdfs },
             { label: "Download art PDF", disabled: blocked || !pdfs, run: downloadArt },
             { label: "Download mask PDF", disabled: blocked || !pdfs, run: downloadMask },
+            { label: "Export layered PSD", disabled: blocked, run: () => void exportPsd() },
             { label: "Save config", run: saveConfig },
             { label: "Load config", run: () => configInput.current?.click() },
             { label: "Preview: Art", run: () => previewRef.current?.showArt() },
