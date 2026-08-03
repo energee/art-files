@@ -6,6 +6,7 @@ import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
 import { buildArtPdf, buildMaskPdf, type Assets } from "../src/pdf/build";
+import { buildPsd, type PsdAssets } from "../src/psd/build";
 import { defaultConfig, parseConfigFile } from "../src/defaults";
 import { validateMask, recolorMaskForPdf } from "../src/maskimage";
 import { validateUpc } from "../src/upc";
@@ -63,12 +64,35 @@ const assets: Assets = {
   maskPng,
 };
 
+// The PSD's texture layer takes decoded pixels at their native size — PSD
+// layers hold pixels 1:1, so nothing here rescales. PNG only; a JPG texture
+// still reaches both PDFs, the PSD just ships without the background layer.
+let texturePixels: PsdAssets["texture"];
+if (assets.texture && assets.texture.kind === "png") {
+  const t = PNG.sync.read(readFileSync(texturePath));
+  texturePixels = {
+    data: new Uint8Array(t.data.buffer, t.data.byteOffset, t.data.length),
+    width: t.width,
+    height: t.height,
+  };
+} else if (assets.texture) {
+  console.warn("warning: JPG texture — PSD will omit the background layer");
+}
+
 mkdirSync(resolve(outDir), { recursive: true });
 const art = await buildArtPdf(cfg, assets);
 const maskPdf = await buildMaskPdf(cfg, assets);
+const psd = await buildPsd(cfg, {
+  fonts: assets.fonts,
+  logoSvg: assets.logoSvg,
+  texture: texturePixels,
+});
 const artOut = join(outDir, `${cfg.beerName}.pdf`);
 const maskOut = join(outDir, `${cfg.beerName}-mask.pdf`);
+const psdOut = join(outDir, `${cfg.beerName}.psd`);
 writeFileSync(artOut, art);
 writeFileSync(maskOut, maskPdf);
+writeFileSync(psdOut, psd);
 console.log(`wrote ${artOut} (${(art.length / 1e6).toFixed(1)}MB)`);
 console.log(`wrote ${maskOut} (${(maskPdf.length / 1e6).toFixed(1)}MB)`);
+console.log(`wrote ${psdOut} (${(psd.length / 1e6).toFixed(1)}MB)`);

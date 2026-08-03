@@ -15,8 +15,8 @@ import {
   setLineJoin,
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
-import svgpath from "svgpath";
 import type { Fill, LabelConfig, Style, StyledLine } from "../types";
+import { parseLogo } from "../logo";
 import { WARNING_TEXT } from "../defaults";
 import * as L from "../layout";
 import { encodeUpc } from "../upc";
@@ -76,39 +76,6 @@ function ring(w: number): [number, number][] {
 }
 
 const y = (topY: number) => L.PAGE.h - topY; // top-left origin -> PDF space
-
-/** Extract the logo's paths pre-scaled to `width` points. Per-path transforms
- *  (the mirrored branch) are applied, and the output is normalized to absolute
- *  M/L/C/Z commands with rounded coordinates — pdf-lib's drawSvgPath cannot
- *  handle relative/shorthand/arc/H/V commands or its own scale option's
- *  exponent-notation output. */
-function parseLogo(svg: string, width: number): { paths: string[]; w: number; h: number } {
-  const vb = svg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/);
-  if (!vb) throw new Error("Could not parse logo SVG viewBox");
-  const scale = width / +vb[1];
-  const tags = [...svg.matchAll(/<path\b[^>]*>/g)].map((m) => m[0]);
-  const paths = tags.map((tag) => {
-    const d = tag.match(/ d="([^"]+)"/)?.[1];
-    if (!d) throw new Error("Logo path is missing d attribute");
-    const tf = tag.match(/ transform="([^"]+)"/)?.[1] ?? "";
-    const out: string[] = [];
-    svgpath(d)
-      .transform(tf)
-      .scale(scale)
-      .abs()
-      .unshort()
-      .unarc()
-      .round(4)
-      .iterate((seg, _i, x, y) => {
-        if (seg[0] === "H") out.push(`L ${seg[1]} ${y}`);
-        else if (seg[0] === "V") out.push(`L ${x} ${seg[1]}`);
-        else out.push(seg.join(" "));
-      });
-    return out.join(" ");
-  });
-  if (paths.length === 0) throw new Error("Could not parse logo SVG paths");
-  return { paths, w: +vb[1] * scale, h: +vb[2] * scale };
-}
 
 function drawLine(
   page: PDFPage,
