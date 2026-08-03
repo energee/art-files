@@ -23,7 +23,9 @@ export interface Assets {
   fonts: { regular: Uint8Array; semibold: Uint8Array; bold: Uint8Array };
   /** Raw contents of logo2025.svg. */
   logoSvg: string;
-  texture: { bytes: Uint8Array; kind: "png" | "jpg" };
+  /** Optional: without it the art PDF is just the elements on bare stock,
+   *  which is what the preview shows before a texture is dropped. */
+  texture?: { bytes: Uint8Array; kind: "png" | "jpg" };
   /** Mask recolored to blue/transparent (see maskimage.ts), re-encoded as
    *  PNG. Optional: without it the white-ink layer is just the per-element
    *  assignments on a knockout page. */
@@ -171,28 +173,34 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode:
     });
     return;
   }
-  // No background block: black bars sit on the texture, outlined in white
-  // (stroked) for contrast — digits get the same treatment below.
+  // Plain black bars, no per-bar white outline: the mask pass above lays
+  // white ink under the whole footprint, so that is the contrast.
   const { modules, guards } = encodeUpc(upcValue);
   const inGuard = (i: number) => guards.some(([a, b]) => i >= a && i < b);
-  // Rotated layout: bars run horizontally, code advances bottom-to-top.
+  // Rotated layout: bars run horizontally, code advances bottom-to-top, and
+  // the digits column sits to the RIGHT of the bars — the same arrangement
+  // JsBarcode renders (bars, then the value row) turned a quarter turn.
   const runLen = B.h - 2 * B.padRun; // along the code
   const mod = runLen / modules.length;
-  const textZone = B.textSize + 1.5; // digits column on the left of the bars
+  const textZone = B.textSize + 1.5;
   const barLen = B.w - 2 * B.pad - textZone;
-  const barX = B.x + B.pad + textZone;
+  const barX = B.x + B.pad;
+  // rotate(90) turns the glyph body toward -x, so this is the digit column's
+  // RIGHT edge and the digits grow back toward the bars from it.
+  const textX = barX + barLen + textZone;
   const bottom = B.yTop + B.h - B.padRun;
-  // Merge consecutive modules into single bars so strokes outline whole bars,
-  // not the seams between modules. Guard runs never merge with digit runs
-  // (guards are isolated single modules).
+  // Merge consecutive modules into one rect so a run draws as a single bar.
+  // Runs never merge across a guard boundary, which keeps the tall guard
+  // groups square-ended.
   let i = 0;
   while (i < modules.length) {
     if (modules[i] !== "1") { i++; continue; }
     let j = i;
     while (j < modules.length && modules[j] === "1" && inGuard(j) === inGuard(i)) j++;
+    // Guard groups run long, into the digits column (JsBarcode's guardHeight).
     const ext = inGuard(i) ? textZone * 0.7 : 0;
     const rect = {
-      x: barX - ext,
+      x: barX,
       // y() of the run's lowest module IS the rect's bottom edge in PDF space
       // (y grows upward past it) — subtracting the run height here again is
       // what used to smear runs below their slots.
@@ -200,41 +208,27 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode:
       width: barLen + ext,
       height: (j - i) * mod,
     };
-    // White outline as an expanded underlay — a centered border would swallow
-    // bars only ~1pt tall.
-    const s = B.stroke;
-    page.drawRectangle({
-      x: rect.x - s, y: rect.y - s,
-      width: rect.width + 2 * s, height: rect.height + 2 * s,
-      color: toRgb(L.COLORS.white),
-    });
     page.drawRectangle({ ...rect, color: toRgb(L.COLORS.black) });
     i = j;
   }
-  // Digits: first and last outside the guards, two groups of five inside.
-  // pdf-lib cannot stroke text, so fake it: white copies offset in a ring,
-  // then the black digits on top.
+  // Digits: first and last outside the guards, two groups of five centered
+  // under their 35-module halves. Plain black, no halo — the white ink
+  // behind the whole barcode footprint (mask mode above) is the contrast.
   const put = (txt: string, centerModule: number) => {
     const w = fonts.regular.widthOfTextAtSize(txt, B.textSize);
-    const base = {
+    page.drawText(txt, {
       size: B.textSize,
       font: fonts.regular,
       rotate: degrees(90),
-    };
-    const tx = B.x + B.pad;
-    const ty = y(bottom - centerModule * mod) - w / 2;
-    const s = B.stroke;
-    for (const [dx, dy] of [
-      [-s, 0], [s, 0], [0, -s], [0, s],
-      [-s, -s], [-s, s], [s, -s], [s, s],
-    ])
-      page.drawText(txt, { ...base, x: tx + dx, y: ty + dy, color: toRgb(L.COLORS.white) });
-    page.drawText(txt, { ...base, x: tx, y: ty, color: toRgb(L.COLORS.black) });
+      x: textX,
+      y: y(bottom - centerModule * mod) - w / 2,
+      color: toRgb(L.COLORS.black),
+    });
   };
-  put(upcValue[0], -8);
-  put(upcValue.slice(1, 6), 24);
-  put(upcValue.slice(6, 11), 71);
-  put(upcValue[11], 103);
+  put(upcValue[0], -8); // outside the start guard
+  put(upcValue.slice(1, 6), 27.5); // centered on modules 10-45
+  put(upcValue.slice(6, 11), 67.5); // centered on modules 50-85
+  put(upcValue[11], 103); // outside the end guard
 }
 
 function drawElements(
@@ -339,11 +333,13 @@ function coverPage(page: PDFPage, img: { width: number; height: number }) {
 
 export async function buildArtPdf(cfg: LabelConfig, assets: Assets): Promise<Uint8Array> {
   const { doc, page, fonts } = await newDoc(assets);
-  const img =
-    assets.texture.kind === "png"
-      ? await doc.embedPng(assets.texture.bytes)
-      : await doc.embedJpg(assets.texture.bytes);
-  page.drawImage(img, coverPage(page, img));
+  if (assets.texture) {
+    const img =
+      assets.texture.kind === "png"
+        ? await doc.embedPng(assets.texture.bytes)
+        : await doc.embedJpg(assets.texture.bytes);
+    page.drawImage(img, coverPage(page, img));
+  }
   drawElements(page, fonts, cfg, assets, "art");
   doc.setTitle(`${cfg.beerName} label art`);
   return doc.save();

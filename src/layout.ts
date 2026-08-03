@@ -44,10 +44,6 @@ export const PX = 72 / 600;
 /** Default per-element outer-stroke width, in px at 600dpi (≈1.8pt). */
 export const DEFAULT_STROKE_PX = 15;
 
-/** Barcode contrast-stroke width: 0.55 >= half a module (1.07pt), so
- *  single-module gaps fill solid instead of leaving a dark sliver. */
-export const INK_STROKE = 0.55;
-
 // QR (bottom left; stroke width comes from cfg.qrStrokeWidth) ------------
 export const QR = { x: 23, yTop: 289, size: 59 };
 
@@ -60,12 +56,12 @@ export const WARNING = { x: 516.62, yStart: 344.56, size: 6.06, leading: 7, maxL
 export const STORE_COLD = { x: 559.2, yStart: 149, size: 17.83 };
 
 // Barcode (right edge, rotated 90deg CCW: bars run horizontally) ---------
-// No background block: bars/digits are stroked white for contrast. The block
-// footprint (x/yTop/w/h) still defines the white-ink area in the mask PDF.
+// Bars and digits print plain black — contrast comes from the white ink the
+// mask PDF lays under the whole footprint (x/yTop/w/h), not from per-bar
+// outlines, which distorted module widths badly enough to stop it scanning.
 // padRun insets the code along its run so the first/last digits fit inside.
-// x clears the warning's third column (glyphs end ~535.2): with no white
-// block behind the bars, the digits column must not interleave with it.
+// x clears the warning's third column (glyphs end ~535.2).
 export const BARCODE = {
   x: 536, yTop: 234, w: 36.5, h: 128,
-  pad: 3, padRun: 13, textSize: 6, stroke: INK_STROKE,
+  pad: 3, padRun: 13, textSize: 6,
 };

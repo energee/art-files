@@ -23,7 +23,9 @@ describe("upc", () => {
     expect(modules.startsWith("101")).toBe(true);
     expect(modules.endsWith("101")).toBe(true);
     expect(modules.slice(45, 50)).toBe("01010");
-    expect(guards).toEqual([[0, 3], [45, 50], [92, 95]]);
+    // Tall runs: start guard + number-system digit, center guard, check
+    // digit + end guard (those two digits print outside the symbol).
+    expect(guards).toEqual([[0, 10], [45, 50], [85, 95]]);
   });
   it("encodes digit 0 as 0001101 in the left half", () => {
     expect(encodeUpc("000000000000").modules.slice(3, 10)).toBe("0001101");

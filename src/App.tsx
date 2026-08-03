@@ -80,12 +80,11 @@ export default function App() {
   const errors: Record<string, string> = {};
   if (!upc.ok) errors.upc = upc.error!;
   if (!cfg.beerName.trim()) errors.name = "Beer name is required.";
-  // Mask is optional — but a loaded, invalid mask still blocks.
-  const blocked = !texture || !!mask?.error || !upc.ok || !cfg.beerName.trim();
-  const blockedWhy = [
-    !texture && "drop a texture image",
-    mask?.error, errors.upc, errors.name,
-  ].filter(Boolean).join(" · ");
+  // Texture and mask are both optional — the label renders on bare stock
+  // until they are dropped, so the text is previewable straight away. Only
+  // a loaded-but-invalid mask or bad label data blocks.
+  const blocked = !!mask?.error || !upc.ok || !cfg.beerName.trim();
+  const blockedWhy = [mask?.error, errors.upc, errors.name].filter(Boolean).join(" · ");
 
   async function onTexture(f: File) {
     const bytes = new Uint8Array(await f.arrayBuffer());
@@ -147,7 +146,7 @@ export default function App() {
           const fonts = await fontsPromise;
           const assets: Assets = {
             fonts, logoSvg,
-            texture: { bytes: texture!.previewBytes, kind: "png" },
+            texture: texture ? { bytes: texture.previewBytes, kind: "png" } : undefined,
             maskPng: mask?.previewBytes,
           };
           // Sequential, not Promise.all — halves the transient memory peak.
@@ -178,13 +177,12 @@ export default function App() {
   /** Downloads rebuild from the full-resolution assets on demand — the
    *  preview PDFs on screen are deliberately low-res (see Loaded). */
   async function buildFull(which: "art" | "mask" | "both") {
-    if (!texture) return;
     setBuilding(true);
     try {
       const fonts = await fontsPromise;
       const assets: Assets = {
         fonts, logoSvg,
-        texture: { bytes: texture.bytes, kind: texture.kind },
+        texture: texture ? { bytes: texture.bytes, kind: texture.kind } : undefined,
         maskPng: mask?.bytes,
       };
       if (which !== "mask") saveBytes(await buildArtPdf(cfg, assets), `${cfg.beerName}.pdf`);
@@ -236,13 +234,17 @@ export default function App() {
           <LabelForm cfg={cfg} errors={errors} update={update} />
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <Tooltip>
-              <TooltipTrigger asChild>
-                <span>
-                  <Button size="sm" disabled={blocked || !pdfs} onClick={exportPdfs}>
-                    Export PDFs
-                  </Button>
-                </span>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={
+                  // span wrapper: a disabled button swallows the hover events
+                  // the tooltip needs.
+                  <span>
+                    <Button size="sm" disabled={blocked || !pdfs} onClick={exportPdfs}>
+                      Export PDFs
+                    </Button>
+                  </span>
+                }
+              />
               {blocked && <TooltipContent>{blockedWhy}</TooltipContent>}
             </Tooltip>
             <Button variant="ghost" size="sm" onClick={saveConfig}>Save config</Button>
@@ -259,9 +261,9 @@ export default function App() {
               <span className="animate-pulse text-xs text-muted-foreground">building…</span>
             )}
             {buildError && <span className="text-xs text-destructive">{buildError}</span>}
-            {!pdfs && !building && (
+            {!texture && !building && (
               <span className="text-xs text-muted-foreground">
-                drop a texture to see the label
+                drop a texture to fill the background
               </span>
             )}
           </div>

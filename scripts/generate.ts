@@ -15,7 +15,9 @@ const asset = (p: string) => join(here, "..", "src", "assets", p);
 
 const [texturePath, maskPath, outDir, configPath] = process.argv.slice(2);
 if (!texturePath || !maskPath || !outDir) {
-  console.error("usage: npm run generate -- <texture> <mask.png|none> <outDir> [config.json]");
+  console.error(
+    "usage: npm run generate -- <texture|none> <mask.png|none> <outDir> [config.json]",
+  );
   process.exit(1);
 }
 
@@ -49,10 +51,15 @@ const assets: Assets = {
     bold: readFileSync(asset("fonts/Poppins-Bold.ttf")),
   },
   logoSvg: readFileSync(asset("logo2025.svg"), "utf8"),
-  texture: {
-    bytes: readFileSync(texturePath),
-    kind: /\.jpe?g$/i.test(texturePath) ? "jpg" : "png",
-  },
+  // "none" skips the texture: the art PDF is then just the elements on
+  // bare stock (matches the app's pre-drop preview).
+  texture:
+    texturePath === "none"
+      ? undefined
+      : {
+          bytes: readFileSync(texturePath),
+          kind: /\.jpe?g$/i.test(texturePath) ? "jpg" : "png",
+        },
   maskPng,
 };
 

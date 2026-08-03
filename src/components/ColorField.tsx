@@ -42,17 +42,19 @@ export function ColorField(props: {
         />
       )}
       <Popover>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label="Pick color"
-            disabled={none}
-            className="size-6 rounded-sm"
-            style={none ? undefined : { background: hex }}
-          />
-        </PopoverTrigger>
+        <PopoverTrigger
+          render={
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label="Pick color"
+              disabled={none}
+              className="size-6 rounded-sm"
+              style={none ? undefined : { background: hex }}
+            />
+          }
+        />
         <PopoverContent align="start" className="w-auto p-2">
           <HexColorPicker
             color={hex}

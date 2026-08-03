@@ -1,6 +1,13 @@
 /* index.css — Tailwind v4 entry + Linear-neutral dark theme tokens.
-   The app is dark-only (print studio). Headings use the bundled Poppins. */
+   The app is dark-only (print studio): the custom hex tokens below live in
+   :root directly (no .dark class). tw-animate-css + shadcn/tailwind.css are
+   required by the base-nova (Base UI) component style. Headings use the
+   bundled Poppins. */
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
 
 @font-face {
   font-family: "Poppins";
@@ -26,6 +33,8 @@
   --popover-foreground: #e2e3e5;
   --secondary: #23252a;
   --secondary-foreground: #e2e3e5;
+  --card: #16171a;
+  --card-foreground: #e2e3e5;
 }
 
 @theme inline {
@@ -45,7 +54,16 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
   --font-heading: "Poppins", sans-serif;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
 html { font-size: 13px; }

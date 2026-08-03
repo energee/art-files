@@ -146,9 +146,9 @@ export function LabelForm(props: {
       <Heading>
         Description
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Info className="size-3 cursor-help" aria-label="Description syntax" />
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={<Info className="size-3 cursor-help" aria-label="Description syntax" />}
+          />
           <TooltipContent># header · **bold** · _white ink_ · plain = the swatch's style</TooltipContent>
         </Tooltip>
         <StylePopover

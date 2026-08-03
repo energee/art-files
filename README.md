@@ -16,9 +16,12 @@ a **layer** (`metallic` knocks out of the white layer; `white` gets a
 white-ink underlay). The description block is authored as a markdown
 subset, one label line per line: `# text` = header, `**text**` = bold,
 `_text_` = white ink, combinable; plain lines are gold metallic (parsed by
-`src/description.ts`). The barcode draws directly on the texture as
-white-stroked black bars and digits (no background block); its footprint is
-still white-inked in the mask for scan contrast. The QR code's payload is
+`src/description.ts`). The barcode follows JsBarcode's UPC-A rendering
+(matching the `barcode-qr` app): plain black bars with the digits column to
+their right, and the number-system/check digits printed outside the symbol
+with their bars run tall alongside the guards. Contrast comes from the
+white ink the mask lays under the whole footprint — per-bar white outlines
+distorted the module widths enough to stop it decoding. The QR code's payload is
 derived from the beer name (`https://lolev.beer/beer/<machine-name>`) with
 a pickable fill color and optional stroke — there is no separate QR data
 field. Design doc:
@@ -55,14 +58,15 @@ the divider to either end).
 
 ```bash
 npm install
-npm run dev        # open the app: drop texture (+ optional mask), fill the form,
+npm run dev        # open the app: the label previews immediately (text on bare
+                   # stock), drop a texture + optional mask to fill it in,
                    # previews update live, download both PDFs
 ```
 
 Headless (same renderer, used for iteration/batches):
 
 ```bash
-npm run generate -- <texture.png> <mask.png> <outDir> [config.json]
+npm run generate -- <texture.png|none> <mask.png|none> <outDir> [config.json]
 ```
 
 The Save/Load config buttons round-trip the whole form as JSON (`{version: 1,

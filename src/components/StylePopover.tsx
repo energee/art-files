@@ -34,21 +34,23 @@ export function StylePopover(props: {
   const fid = machineName(props.label); // per-row prefix for control ids
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          id={props.id}
-          aria-label={`${props.label} style`}
-          className="size-6 shrink-0 rounded-sm"
-          style={
-            props.fill === "none"
-              ? { background: CHECKER }
-              : { background: props.fill }
-          }
-        />
-      </PopoverTrigger>
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            id={props.id}
+            aria-label={`${props.label} style`}
+            className="size-6 shrink-0 rounded-sm"
+            style={
+              props.fill === "none"
+                ? { background: CHECKER }
+                : { background: props.fill }
+            }
+          />
+        }
+      />
       <PopoverContent align="start" className="w-64 space-y-3 p-3">
         <div className="space-y-1">
           <Label htmlFor={`${fid}-fill`} className="text-xs text-muted-foreground">Fill</Label>
