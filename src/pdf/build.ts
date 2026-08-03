@@ -4,11 +4,15 @@
 // and white-layer elements paint mask blue. Both modes share the exact same
 // geometry, so the pair stays registered.
 import {
+  LineCapStyle,
+  LineJoinStyle,
   PDFDocument,
   PDFFont,
   PDFPage,
   degrees,
   rgb,
+  setLineCap,
+  setLineJoin,
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import svgpath from "svgpath";
@@ -59,11 +63,14 @@ function strokeOf(style: Style, mode: Mode) {
 }
 
 /** pdf-lib can't stroke text, so an outer stroke is faked as a ring of
- *  offset copies drawn under the fill — the barcode-digit technique, at 16
- *  directions so wider strokes stay round. */
+ *  offset copies drawn under the fill. The sample count scales with the
+ *  radius — a fixed count leaves adjacent copies 2w*sin(pi/n) apart, which
+ *  at a wide stroke reads as stair-steps down the outer edge. One sample
+ *  per ~0.4pt of circumference keeps that step below a printer's dot. */
 function ring(w: number): [number, number][] {
-  return Array.from({ length: 16 }, (_, i) => {
-    const a = (i * Math.PI) / 8;
+  const n = Math.max(16, Math.ceil((2 * Math.PI * w) / 0.4));
+  return Array.from({ length: n }, (_, i) => {
+    const a = (i * 2 * Math.PI) / n;
     return [w * Math.cos(a), w * Math.sin(a)];
   });
 }
@@ -340,6 +347,11 @@ async function newDoc(assets: Assets): Promise<{ doc: PDFDocument; page: PDFPage
     bold: await doc.embedFont(assets.fonts.bold, { subset: true }),
   };
   const page = doc.addPage([L.PAGE.w, L.PAGE.h]);
+  // Round every stroke join and cap for the whole page. pdf-lib has no
+  // per-draw option for this, so it goes in as a graphics-state operator up
+  // front; PDF's default is a MITER join, which shoots long spikes off any
+  // acute corner — very visible on the laurel's leaf tips.
+  page.pushOperators(setLineJoin(LineJoinStyle.Round), setLineCap(LineCapStyle.Round));
   return { doc, page, fonts };
 }
 
