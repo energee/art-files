@@ -24,8 +24,10 @@ export interface Assets {
   /** Raw contents of logo2025.svg. */
   logoSvg: string;
   texture: { bytes: Uint8Array; kind: "png" | "jpg" };
-  /** Mask recolored to blue/transparent (see maskimage.ts), re-encoded as PNG. */
-  maskPng: Uint8Array;
+  /** Mask recolored to blue/transparent (see maskimage.ts), re-encoded as
+   *  PNG. Optional: without it the white-ink layer is just the per-element
+   *  assignments on a knockout page. */
+  maskPng?: Uint8Array;
 }
 
 interface Fonts {
@@ -348,8 +350,10 @@ export async function buildMaskPdf(cfg: LabelConfig, assets: Assets): Promise<Ui
   // White page = knockout by default; the recolored mask paints the blue
   // (white ink) regions, then elements knock out or add ink on top.
   page.drawRectangle({ x: 0, y: 0, width: L.PAGE.w, height: L.PAGE.h, color: rgb(1, 1, 1) });
-  const img = await doc.embedPng(assets.maskPng);
-  page.drawImage(img, coverPage(page, img));
+  if (assets.maskPng) {
+    const img = await doc.embedPng(assets.maskPng);
+    page.drawImage(img, coverPage(page, img));
+  }
   drawElements(page, fonts, cfg, assets, "mask");
   doc.setTitle(`${cfg.beerName} white-ink layer`);
   return doc.save();

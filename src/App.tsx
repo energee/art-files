@@ -62,10 +62,10 @@ export default function App() {
   const errors: Record<string, string> = {};
   if (!upc.ok) errors.upc = upc.error!;
   if (!cfg.beerName.trim()) errors.name = "Beer name is required.";
-  const blocked = !texture || !mask || !!mask.error || !upc.ok || !cfg.beerName.trim();
+  // Mask is optional — but a loaded, invalid mask still blocks.
+  const blocked = !texture || !!mask?.error || !upc.ok || !cfg.beerName.trim();
   const blockedWhy = [
     !texture && "drop a texture image",
-    !mask && "drop a metallic mask PNG",
     mask?.error, errors.upc, errors.name,
   ].filter(Boolean).join(" · ");
 
@@ -117,7 +117,7 @@ export default function App() {
         const assets: Assets = {
           fonts, logoSvg,
           texture: { bytes: texture!.bytes, kind: texture!.kind },
-          maskPng: mask!.bytes,
+          maskPng: mask?.bytes,
         };
         const [art, maskPdf] = await Promise.all([
           buildArtPdf(cfg, assets), buildMaskPdf(cfg, assets),
@@ -182,7 +182,7 @@ export default function App() {
               accept={{ "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] }}
               fileName={texture?.name} previewUrl={texture?.previewUrl}
               onFile={(f) => void onTexture(f)} />
-            <FileDrop label="Metallic mask PNG" accept={{ "image/png": [".png"] }}
+            <FileDrop label="Metallic mask PNG (optional)" accept={{ "image/png": [".png"] }}
               fileName={mask?.name} previewUrl={mask?.previewUrl} error={mask?.error}
               onFile={(f) => void onMask(f)} />
           </div>
@@ -215,7 +215,7 @@ export default function App() {
             {buildError && <span className="text-xs text-destructive">{buildError}</span>}
             {!pdfs && !building && (
               <span className="text-xs text-muted-foreground">
-                drop a texture and mask to see the label
+                drop a texture to see the label
               </span>
             )}
           </div>

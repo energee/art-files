@@ -75,6 +75,13 @@ is derived from the beer name (see "Derived QR payload").
   `qrStrokeWidth` joins `qrStroke`. The barcode's fixed white stroke is
   unchanged (scannability, not styling).
 
+## Optional mask (addendum)
+
+The metallic mask PNG is optional: generation runs with texture alone, and
+the white-ink PDF then carries only the per-element layer assignments on a
+knockout (white) page. A loaded-but-invalid mask still blocks. The headless
+script accepts `none` in place of the mask path.
+
 ## Mature-component pass (addendum)
 
 Every interactive element uses shadcn, or an equally mature library where

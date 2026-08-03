@@ -15,7 +15,7 @@ const asset = (p: string) => join(here, "..", "src", "assets", p);
 
 const [texturePath, maskPath, outDir, configPath] = process.argv.slice(2);
 if (!texturePath || !maskPath || !outDir) {
-  console.error("usage: npm run generate -- <texture> <mask.png> <outDir> [config.json]");
+  console.error("usage: npm run generate -- <texture> <mask.png|none> <outDir> [config.json]");
   process.exit(1);
 }
 
@@ -29,12 +29,18 @@ if (!upc.ok) {
   process.exit(1);
 }
 
-const mask = PNG.sync.read(readFileSync(maskPath));
-const rgba = new Uint8Array(mask.data.buffer, mask.data.byteOffset, mask.data.length);
-const check = validateMask(rgba);
-if (!check.ok) console.warn(`warning: ${check.error}`);
-recolorMaskForPdf(rgba);
-const maskPng = PNG.sync.write(mask);
+// "none" skips the mask: the white-ink PDF then carries only the
+// per-element layer assignments.
+let maskPng: Uint8Array | undefined;
+if (maskPath !== "none") {
+  const mask = PNG.sync.read(readFileSync(maskPath));
+  const rgba = new Uint8Array(mask.data.buffer, mask.data.byteOffset, mask.data.length);
+  const check = validateMask(rgba);
+  if (!check.ok) console.warn(`warning: ${check.error}`);
+  recolorMaskForPdf(rgba);
+  const buf = PNG.sync.write(mask);
+  maskPng = new Uint8Array(buf.buffer, buf.byteOffset, buf.length);
+}
 
 const assets: Assets = {
   fonts: {
@@ -47,7 +53,7 @@ const assets: Assets = {
     bytes: readFileSync(texturePath),
     kind: /\.jpe?g$/i.test(texturePath) ? "jpg" : "png",
   },
-  maskPng: new Uint8Array(maskPng.buffer, maskPng.byteOffset, maskPng.length),
+  maskPng,
 };
 
 mkdirSync(resolve(outDir), { recursive: true });

@@ -1,6 +1,6 @@
 # Lolev Label Generator
 
-Local web app that turns a rock texture + metallic mask (from the `label-gen`
+Local web app that turns a rock texture + optional metallic mask (from the `label-gen`
 repo) plus beer info into the two print-ready 600-DPI PDFs sent to the label
 printer:
 
@@ -49,7 +49,7 @@ the divider to either end).
 
 ```bash
 npm install
-npm run dev        # open the app: drop texture + mask, fill the form,
+npm run dev        # open the app: drop texture (+ optional mask), fill the form,
                    # previews update live, download both PDFs
 ```
 
