@@ -11,17 +11,27 @@ printer:
   `0,156,215` = everything else)
 
 Every text element — and each description line individually — has a **fill**
-(gold / white / black, drawn in the art PDF) and a **layer** (`metallic`
-knocks out of the white layer; `white` gets a white-ink underlay). The
-description block is authored as a markdown subset, one label line per line:
-`# text` = header, `**text**` = bold, `_text_` = white ink, combinable;
-plain lines are gold metallic (parsed by `src/description.ts`). The
-barcode draws directly on the texture as white-stroked black bars and digits
-(no background block); its footprint is still white-inked in the mask for
-scan contrast. Design doc:
-`docs/superpowers/specs/2026-08-02-label-pdf-generator-design.md`.
+(a hex color like `#D0B070`, or `none` for no ink, drawn in the art PDF) and
+a **layer** (`metallic` knocks out of the white layer; `white` gets a
+white-ink underlay). The description block is authored as a markdown
+subset, one label line per line: `# text` = header, `**text**` = bold,
+`_text_` = white ink, combinable; plain lines are gold metallic (parsed by
+`src/description.ts`). The barcode draws directly on the texture as
+white-stroked black bars and digits (no background block); its footprint is
+still white-inked in the mask for scan contrast. The QR code's payload is
+derived from the beer name (`https://lolev.beer/beer/<machine-name>`) with
+a pickable fill color and optional stroke — there is no separate QR data
+field. Design doc:
+`docs/superpowers/specs/2026-08-02-label-pdf-generator-design.md`; the UI
+rewrite to React + Tailwind + shadcn/ui is documented in
+`docs/superpowers/specs/2026-08-02-shadcn-ui-rewrite-design.md`.
 
 ## Usage
+
+The UI is built with React 19, Tailwind v4, and shadcn/ui (Linear-style
+neutral dark theme). Press <kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd> to open a
+command palette for save/load config, downloads, and preview-mode
+switching.
 
 ```bash
 npm install
@@ -36,7 +46,12 @@ npm run generate -- <texture.png> <mask.png> <outDir> [config.json]
 ```
 
 The Save/Load config buttons round-trip the whole form as JSON (`{version: 1,
-...LabelConfig}`, see `src/types.ts`).
+...LabelConfig}`, see `src/types.ts`). Config files saved by the pre-rewrite
+vanilla-TS UI (named fills like `"gold"`/`"white"`/`"black"`, a `qrData`
+field) are auto-migrated on load: `gold` → `#D0B070`, `black` → `#000000`,
+`white` → `none`, and `qrData` is dropped in favor of the derived QR
+payload. The app entry point is `src/main.tsx` (the old `src/main.ts` /
+`src/style.css` vanilla-TS UI is gone).
 
 ## CMYK for the printer
 
