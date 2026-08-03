@@ -53,7 +53,11 @@ export const QR = { x: 23, yTop: 289, size: 59 };
 export const HANDLE_ADDR = { x: 505, yStart: 346.28, size: 13.87 };
 // maxLen 330 wraps the warning to the reference's exact 3 columns.
 export const WARNING = { x: 516.62, yStart: 344.56, size: 6.06, leading: 7, maxLen: 330 };
-export const STORE_COLD = { x: 559.2, yStart: 149, size: 17.83 };
+// Measured off the reference PDF via `pdftotext -bbox`: the glyph band runs
+// x 539.56-569.87 and pdftotext reports the full font box (ascender 1.05em +
+// descender 0.35em = 1.40em), so size = 30.31/1.40 and the baseline sits
+// 1.05em in from xMin. yStart matches the reference's 149.00 already.
+export const STORE_COLD = { x: 562.3, yStart: 149, size: 21.65 };
 
 // Barcode (right edge, rotated 90deg CCW: bars run horizontally) ---------
 // Proportions are JsBarcode's UPC-A rendering, so this matches the
@@ -73,19 +77,27 @@ const UPC_UNITS = {
   /** Gap between the bar ends and the digit baseline. */
   textMargin: 4,
 };
-/** Points per module: the run holds quiet + symbol + quiet. */
-const UPC_MOD = 128 / (UPC_UNITS.modules + 2 * UPC_UNITS.quiet);
+/** Depth of the whole symbol (bars + gap + digits) in modules. */
+const UPC_DEPTH_MODULES = UPC_UNITS.barH + UPC_UNITS.textMargin + UPC_UNITS.fontSize; // 29
+/** Points per module, set so the symbol is exactly as deep as the reference
+ *  label's barcode plate (measured 29.88pt at 600dpi = 29 modules). That
+ *  also lands the run at 111 * mod = 114.4pt, matching its 114pt height. */
+const UPC_MOD = 29.88 / UPC_DEPTH_MODULES;
 /** Bar-start to digit baseline — JsBarcode's text y for a bottom value row. */
-const UPC_DEPTH = (UPC_UNITS.barH + UPC_UNITS.textMargin + UPC_UNITS.fontSize) * UPC_MOD;
+const UPC_DEPTH = UPC_DEPTH_MODULES * UPC_MOD;
 
 // Bars and digits print plain black — contrast comes from the white ink the
 // mask PDF lays under the whole footprint (x/yTop/w/h), not from per-bar
 // outlines, which distorted module widths badly enough to stop it scanning.
-// x clears the warning's third column (glyphs end ~535.2).
+// x/yTop are the reference plate's top-left, measured at 600dpi; x still
+// clears the warning's third column (glyphs end ~532.7).
 export const BARCODE = {
-  x: 536, yTop: 234, h: 128,
-  /** White-ink margin around the symbol. */
-  pad: 1.5,
+  x: 533.88,
+  yTop: 240.48,
+  h: (UPC_UNITS.modules + 2 * UPC_UNITS.quiet) * UPC_MOD,
+  /** White-ink margin around the symbol; the reference plate is exactly the
+   *  symbol's depth, so there is none. */
+  pad: 0,
   /** Quiet zone along the run, in points. */
   padRun: UPC_UNITS.quiet * UPC_MOD,
   /** Plain bar length. */
@@ -95,5 +107,5 @@ export const BARCODE = {
   textSize: UPC_UNITS.fontSize * UPC_MOD,
   /** Bar start to the digit baseline (glyphs grow back toward the bars). */
   textOffset: UPC_DEPTH,
-  w: UPC_DEPTH + 2 * 1.5,
+  w: UPC_DEPTH,
 };
