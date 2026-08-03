@@ -178,10 +178,11 @@ export default function App() {
         <aside className="w-[430px] min-w-[380px] overflow-y-auto border-r border-border p-4">
           <h1 className="mb-3 text-base font-semibold">Lolev Label Generator</h1>
           <div className="flex gap-2">
-            <FileDrop label="Texture PNG/JPG" accept="image/png,image/jpeg"
+            <FileDrop label="Texture PNG/JPG"
+              accept={{ "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] }}
               fileName={texture?.name} previewUrl={texture?.previewUrl}
               onFile={(f) => void onTexture(f)} />
-            <FileDrop label="Metallic mask PNG" accept="image/png"
+            <FileDrop label="Metallic mask PNG" accept={{ "image/png": [".png"] }}
               fileName={mask?.name} previewUrl={mask?.previewUrl} error={mask?.error}
               onFile={(f) => void onMask(f)} />
           </div>

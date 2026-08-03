@@ -3,8 +3,10 @@
 // the popover; template rows live in a collapsed section.
 import { ChevronRight, Info } from "lucide-react";
 import type { LabelConfig, Style, StyledLine } from "@/types";
+import { machineName } from "@/qr";
 import { StylePopover } from "./StylePopover";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
@@ -13,11 +15,18 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 
 type Update = (fn: (c: LabelConfig) => void) => void;
 
-function Row(props: { label: string; error?: string; children: React.ReactNode }) {
+function Row(props: {
+  label: string; htmlFor?: string; error?: string; children: React.ReactNode;
+}) {
   return (
     <div className="mb-1.5">
       <div className="flex items-center gap-1.5">
-        <span className="w-24 shrink-0 text-muted-foreground">{props.label}</span>
+        <Label
+          htmlFor={props.htmlFor}
+          className="w-24 shrink-0 text-[13px] font-normal text-muted-foreground"
+        >
+          {props.label}
+        </Label>
         {props.children}
       </div>
       {props.error && <p className="ml-[6.375rem] text-xs text-destructive">{props.error}</p>}
@@ -30,9 +39,11 @@ function TextRow(props: {
   get: (c: LabelConfig) => StyledLine;
 }) {
   const { line, update, get } = props;
+  const id = machineName(props.label);
   return (
-    <Row label={props.label}>
+    <Row label={props.label} htmlFor={id}>
       <Input
+        id={id}
         className="h-6 min-w-0 flex-1 text-xs"
         value={line.text}
         onChange={(e) => update((c) => { get(c).text = e.target.value; })}
@@ -66,8 +77,9 @@ export function LabelForm(props: {
 }) {
   const { cfg, errors, update } = props;
   const styleOnly = (label: string, get: (c: LabelConfig) => Style) => (
-    <Row label={label}>
+    <Row label={label} htmlFor={`${machineName(label)}-style`}>
       <StylePopover
+        id={`${machineName(label)}-style`}
         label={label}
         fill={get(cfg).fill} layer={get(cfg).layer}
         stroke={get(cfg).stroke} strokeWidth={get(cfg).strokeWidth}
@@ -81,8 +93,8 @@ export function LabelForm(props: {
   return (
     <div>
       <Heading>Beer</Heading>
-      <Row label="Name" error={errors.name}>
-        <Input className="h-6 flex-1 text-xs" value={cfg.beerName}
+      <Row label="Name" htmlFor="beer-name" error={errors.name}>
+        <Input id="beer-name" className="h-6 flex-1 text-xs" value={cfg.beerName}
           onChange={(e) => update((c) => { c.beerName = e.target.value; })} />
         <StylePopover
           label="Name"
@@ -95,8 +107,8 @@ export function LabelForm(props: {
         />
       </Row>
       <TextRow label="Subtitle" line={cfg.styleLine} update={update} get={(c) => c.styleLine} />
-      <Row label="ABV %">
-        <Input className="h-6 flex-1 text-xs" value={cfg.abv}
+      <Row label="ABV %" htmlFor="abv">
+        <Input id="abv" className="h-6 flex-1 text-xs" value={cfg.abv}
           onChange={(e) => update((c) => { c.abv = e.target.value; })} />
         <StylePopover
           label="ABV"
@@ -108,12 +120,13 @@ export function LabelForm(props: {
           onStrokeWidth={(v) => update((c) => { c.abvStyle.strokeWidth = v; })}
         />
       </Row>
-      <Row label="UPC-A" error={errors.upc}>
-        <Input className="h-6 flex-1 font-mono text-xs" value={cfg.upc}
+      <Row label="UPC-A" htmlFor="upc-a" error={errors.upc}>
+        <Input id="upc-a" className="h-6 flex-1 font-mono text-xs" value={cfg.upc}
           onChange={(e) => update((c) => { c.upc = e.target.value.trim(); })} />
       </Row>
-      <Row label="QR">
+      <Row label="QR" htmlFor="qr-style">
         <StylePopover
+          id="qr-style"
           label="QR"
           fill={cfg.qrFill} layer={cfg.qrLayer} allowNone={false}
           onFill={(v) => update((c) => { c.qrFill = v; })}
@@ -134,7 +147,7 @@ export function LabelForm(props: {
         </Tooltip>
       </Heading>
       <Textarea
-        rows={7} className="font-mono text-xs" value={cfg.description}
+        rows={7} aria-label="Description" className="font-mono text-xs" value={cfg.description}
         onChange={(e) => update((c) => { c.description = e.target.value; })}
       />
 

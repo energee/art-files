@@ -28,8 +28,10 @@ is derived from the beer name (see "Derived QR payload").
 - `Fill` changes from `"gold" | "white" | "black"` to a hex string
   (`#rrggbb`) or the literal `"none"` meaning no ink (replaces the old magic
   meaning of `"white"`).
-- UI per row: native `<input type="color">` swatch + hex text field, plus a
-  "no ink" toggle. No color-picker library.
+- UI per row: a swatch button opening a react-colorful picker (nested
+  popover) + hex text field, plus a "no ink" toggle. (Originally native
+  `<input type="color">`; upgraded in the mature-component pass — see
+  addendum.)
 - `layout.ts` keeps `GOLD = #D0B070` (the exact hex of the current gold RGB
   0.815/0.69/0.44) as the default; `pdf/build.ts` `fillColor()` parses hex.
 - Description markdown syntax is unchanged: plain text renders in default
@@ -72,6 +74,17 @@ is derived from the beer name (see "Derived QR payload").
   (`#1A1A1A`, on by default); pre-stroke configs migrate to keep it.
   `qrStrokeWidth` joins `qrStroke`. The barcode's fixed white stroke is
   unchanged (scannability, not styling).
+
+## Mature-component pass (addendum)
+
+Every interactive element uses shadcn, or an equally mature library where
+shadcn has no primitive — nothing hand-invented: swatch chips are shadcn
+`Button`s; the hex and stroke-width fields are shadcn `Input`s; row and
+popover labels are shadcn `Label`s with `htmlFor`/id association; the color
+picker is react-colorful (nested popover); the file drop targets are
+react-dropzone (library-managed drag/keyboard/aria). Still deliberately
+raw: the two pdf.js `<canvas>` targets and hidden file inputs (the
+standard pattern, also what react-dropzone renders).
 
 ## UI improvements (included in the rewrite)
 

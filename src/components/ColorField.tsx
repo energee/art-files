@@ -1,9 +1,15 @@
-// ColorField.tsx — Fill editor: native color swatch + hex text + optional
-// "no ink" toggle rendered as a checkerboard chip ("none").
+// ColorField.tsx — Fill editor: a swatch Button opening a react-colorful
+// picker in a nested popover, a hex Input, and an optional "no ink"
+// checkerboard toggle. All controls are shadcn; the picker is react-colorful
+// (no shadcn color-picker primitive exists).
 import { useState } from "react";
+import { HexColorPicker } from "react-colorful";
 import type { Fill } from "@/types";
 import { cn } from "@/lib/utils";
 import { GOLD } from "@/layout";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 /** "No ink" checkerboard chip background (shared with StylePopover). */
 export const CHECKER =
@@ -14,6 +20,8 @@ export function ColorField(props: {
   value: Fill;
   onChange: (v: Fill) => void;
   allowNone?: boolean;
+  /** id for the hex Input, so an external Label can point at this field. */
+  id?: string;
 }) {
   const none = props.value === "none";
   // Local text state so a half-typed hex doesn't clobber the config.
@@ -22,27 +30,38 @@ export function ColorField(props: {
   return (
     <div className="flex items-center gap-1">
       {props.allowNone !== false && (
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="icon"
           title='No ink ("none")'
           aria-pressed={none}
-          onClick={() => props.onChange(none ? GOLD : "none")}
-          className={cn(
-            "size-6 shrink-0 rounded-sm border border-border",
-            none && "ring-2 ring-ring",
-          )}
+          onClick={() => { setText(null); props.onChange(none ? GOLD : "none"); }}
+          className={cn("size-6 rounded-sm", none && "ring-2 ring-ring")}
           style={{ background: CHECKER }}
         />
       )}
-      <input
-        type="color"
-        value={hex}
-        disabled={none}
-        onChange={(e) => { setText(null); props.onChange(e.target.value as Fill); }}
-        className="size-6 shrink-0 cursor-pointer rounded-sm border border-border bg-input p-0 disabled:opacity-30"
-      />
-      <input
-        type="text"
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="Pick color"
+            disabled={none}
+            className="size-6 rounded-sm"
+            style={none ? undefined : { background: hex }}
+          />
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-auto p-2">
+          <HexColorPicker
+            color={hex}
+            onChange={(v) => { setText(null); props.onChange(v as Fill); }}
+          />
+        </PopoverContent>
+      </Popover>
+      <Input
+        id={props.id}
         value={none ? "none" : (text ?? props.value)}
         disabled={none}
         onChange={(e) => {
@@ -50,7 +69,7 @@ export function ColorField(props: {
           if (HEX.test(e.target.value)) props.onChange(e.target.value as Fill);
         }}
         onBlur={() => setText(null)}
-        className="h-6 w-[4.6rem] rounded-sm border border-border bg-input px-1 font-mono text-xs disabled:opacity-50"
+        className="h-6 w-[4.6rem] px-1 font-mono text-xs"
       />
     </div>
   );
