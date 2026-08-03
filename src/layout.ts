@@ -104,6 +104,11 @@ export const BARCODE = {
   barLen: UPC_UNITS.barH * UPC_MOD,
   /** Guard runs: JsBarcode's guardHeight = barH + fontSize/2 + textMargin. */
   guardLen: (UPC_UNITS.barH + UPC_UNITS.fontSize / 2 + UPC_UNITS.textMargin) * UPC_MOD,
+  /** Outer stroke around the artwork, measured off the finished labels
+   *  (~1.8 modules of white beyond the bars). Between the dense bars it
+   *  closes up into a solid field, and around the digits it reads as a
+   *  pill — which is exactly how the reference's white shape behaves. */
+  stroke: 1.8 * UPC_MOD,
   textSize: UPC_UNITS.fontSize * UPC_MOD,
   /** Bar start to the digit baseline (glyphs grow back toward the bars). */
   textOffset: UPC_DEPTH,

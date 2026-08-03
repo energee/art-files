@@ -161,30 +161,19 @@ export function wrapWarning(font: PDFFont, size: number, maxLen: number): string
 
 export function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode: Mode) {
   const B = L.BARCODE;
+  const S = B.stroke;
   if (mode === "mask") {
-    // The barcode footprint still gets white ink so the code scans over the
-    // texture; bars themselves are not part of the mask.
+    // The footprint gets white ink so the code scans over the texture; it
+    // covers the stroke too, so the mask matches the art's ink extent.
     page.drawRectangle({
-      x: B.x,
-      y: y(B.yTop + B.h),
-      width: B.w,
-      height: B.h,
+      x: B.x - S,
+      y: y(B.yTop + B.h + S),
+      width: B.w + 2 * S,
+      height: B.h + 2 * S,
       color: toRgb(L.COLORS.maskBlue),
     });
     return;
   }
-  // White backing plate, the same footprint the mask paints. Both the
-  // reference label and the finished labels put the code on a solid white
-  // block; without it the bars sit straight on the texture and lose
-  // contrast. Per-bar outlines are NOT the way to get this — at half a
-  // module wide they distorted the widths until the code stopped decoding.
-  page.drawRectangle({
-    x: B.x,
-    y: y(B.yTop + B.h),
-    width: B.w,
-    height: B.h,
-    color: toRgb(L.COLORS.white),
-  });
   const { modules, guards } = encodeUpc(upcValue);
   const inGuard = (i: number) => guards.some(([a, b]) => i >= a && i < b);
   // Rotated layout: bars run horizontally, code advances bottom-to-top, and
@@ -200,49 +189,66 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode:
   // Merge consecutive modules into one rect so a run draws as a single bar.
   // Runs never merge across a guard boundary, which keeps the tall guard
   // groups square-ended.
+  const bars: { x: number; y: number; width: number; height: number }[] = [];
   let i = 0;
   while (i < modules.length) {
     if (modules[i] !== "1") { i++; continue; }
     let j = i;
     while (j < modules.length && modules[j] === "1" && inGuard(j) === inGuard(i)) j++;
-    // Guard groups run long, into the digits column (JsBarcode's guardHeight).
-    const rect = {
+    bars.push({
       x: barX,
       // y() of the run's lowest module IS the rect's bottom edge in PDF space
       // (y grows upward past it) — subtracting the run height here again is
       // what used to smear runs below their slots.
       y: y(bottom - i * mod),
+      // Guard groups run long, into the digits column (JsBarcode's guardHeight).
       width: inGuard(i) ? B.guardLen : B.barLen,
       height: (j - i) * mod,
-    };
-    page.drawRectangle({ ...rect, color: toRgb(L.COLORS.black) });
+    });
     i = j;
   }
-  // Digits: first and last outside the guards, two groups of five centered
-  // under their 35-module halves. Plain black, no halo — the white ink
-  // behind the whole barcode footprint (mask mode above) is the contrast.
-  // `anchor` is a module position; "start"/"end" align the text's near/far
-  // edge to it (JsBarcode's textAlign left/right for the outer digits),
-  // "center" centres it (the two five-digit groups).
-  const put = (txt: string, anchor: number, align: "center" | "start" | "end" = "center") => {
+
+  // Digits: the two five-digit groups centre under their 35-module halves;
+  // `anchor` is a module position and "start"/"end" align the text's near or
+  // far edge to it, which is JsBarcode's textAlign left/right for the outer
+  // number-system and check digits.
+  const place = (txt: string, anchor: number, align: "center" | "start" | "end" = "center") => {
     const w = fonts.regular.widthOfTextAtSize(txt, B.textSize);
     const half = w / 2 / mod;
     const center =
       align === "start" ? anchor + half : align === "end" ? anchor - half : anchor;
-    page.drawText(txt, {
-      size: B.textSize,
-      font: fonts.regular,
-      rotate: degrees(90),
-      x: textX,
-      y: y(bottom - center * mod) - w / 2,
-      color: toRgb(L.COLORS.black),
-    });
+    return { txt, x: textX, y: y(bottom - center * mod) - w / 2 };
   };
   const quiet = B.padRun / mod; // the 8-module zone at each end
-  put(upcValue[0], -quiet, "start"); // number-system digit, before the symbol
-  put(upcValue.slice(1, 6), 27.5); // centered on modules 10-45
-  put(upcValue.slice(6, 11), 67.5); // centered on modules 50-85
-  put(upcValue[11], modules.length + quiet, "end"); // check digit, after it
+  const digits = [
+    place(upcValue[0], -quiet, "start"), // number-system digit, before the symbol
+    place(upcValue.slice(1, 6), 27.5), // centered on modules 10-45
+    place(upcValue.slice(6, 11), 67.5), // centered on modules 50-85
+    place(upcValue[11], modules.length + quiet, "end"), // check digit, after it
+  ];
+  const glyph = { size: B.textSize, font: fonts.regular, rotate: degrees(90) };
+
+  // Outer stroke. EVERY white shape draws before ANY black one — that
+  // ordering is what makes this safe. Interleaving the two (a white underlay
+  // per bar, then its bar) lets a later stroke bite into an already-drawn
+  // neighbour, which distorted the module widths until the code stopped
+  // decoding. Between the dense bars the stroke closes into a solid field
+  // and around the digits it reads as a pill, matching the reference's
+  // white shape without a backing box.
+  for (const r of bars)
+    page.drawRectangle({
+      x: r.x - S, y: r.y - S,
+      width: r.width + 2 * S, height: r.height + 2 * S,
+      color: toRgb(L.COLORS.white),
+    });
+  for (const d of digits)
+    for (const [dx, dy] of ring(S))
+      page.drawText(d.txt, { ...glyph, x: d.x + dx, y: d.y + dy, color: toRgb(L.COLORS.white) });
+
+  // The artwork itself, at its exact geometry.
+  for (const r of bars) page.drawRectangle({ ...r, color: toRgb(L.COLORS.black) });
+  for (const d of digits)
+    page.drawText(d.txt, { ...glyph, x: d.x, y: d.y, color: toRgb(L.COLORS.black) });
 }
 
 function drawElements(
