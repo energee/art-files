@@ -1,9 +1,10 @@
 // description.ts — parses the description block's markdown subset into styled
 // lines: `# text` = header, `**text**` = bold, `_text_` = white ink (white
-// fill + white layer), combinable; plain lines are gold metallic.
+// fill + white layer), combinable; plain lines are default gold (#D0B070).
 // ponytail: per-line styling only, no inline spans or black fill — add if a
 // label ever needs them.
 import type { StyledLine } from "./types";
+import { GOLD } from "./layout";
 
 export interface ParsedDescription {
   header: StyledLine | null;
@@ -23,7 +24,7 @@ function styleLine(raw: string, bold = false): StyledLine {
   return {
     text: s,
     bold,
-    fill: white ? "white" : "gold",
+    fill: white ? "none" : GOLD,
     layer: white ? "white" : "metallic",
   };
 }

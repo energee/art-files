@@ -7,14 +7,24 @@ export const PAGE = { w: 585.12, h: 369.12 };
 export const ART = { x: 4.56, y: 4.56, w: 576, h: 360 };
 export const CENTER_X = PAGE.w / 2;
 
-/** Fill colors (RGB 0-1; the to-cmyk.sh step converts the whole PDF). Gold
- *  sampled from the Labradorite reference render. */
+/** Default metallic gold, sampled from the Labradorite reference render.
+ *  (Hex of the old rgb 0.815/0.69/0.44.) */
+export const GOLD = "#D0B070" as const;
+
+/** Fixed drawing colors (RGB 0-1). Element fills are free hex now — these
+ *  remain for the barcode, mask, and "none" handling. */
 export const COLORS = {
-  gold: { r: 0.815, g: 0.69, b: 0.44 },
   white: { r: 1, g: 1, b: 1 },
   black: { r: 0.1, g: 0.1, b: 0.1 },
   maskBlue: { r: 0, g: 156 / 255, b: 215 / 255 },
 };
+
+/** Parse a Fill to rgb 0-1. "none" = no ink = white in the art PDF. */
+export function parseHexFill(fill: `#${string}` | "none"): { r: number; g: number; b: number } {
+  if (fill === "none") return COLORS.white;
+  const n = parseInt(fill.slice(1), 16);
+  return { r: ((n >> 16) & 255) / 255, g: ((n >> 8) & 255) / 255, b: (n & 255) / 255 };
+}
 
 // Left column ------------------------------------------------------------
 export const LEFT_X = 24.9;

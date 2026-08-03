@@ -3,6 +3,7 @@
 import "./style.css";
 import type { Fill, Layer, LabelConfig, StyledLine } from "./types";
 import { defaultConfig, parseConfigFile, toConfigFile } from "./defaults";
+import { GOLD } from "./layout";
 import { validateUpc } from "./upc";
 import { validateMask, recolorMaskForPdf } from "./maskimage";
 import { buildArtPdf, buildMaskPdf, type Assets } from "./pdf/build";
@@ -34,8 +35,9 @@ function styleSelects(s: { fill: Fill; layer: Layer }, onChange: () => void, fil
   const out: HTMLElement[] = [];
   if (!fillless) {
     const fill = document.createElement("select");
-    for (const f of ["gold", "white", "black"] as Fill[])
-      fill.add(new Option(f, f, false, s.fill === f));
+    const fillOptions: Array<[Fill, string]> = [[GOLD, "Gold"], ["#000000", "Black"], ["none", "None (white)"]];
+    for (const [f, label] of fillOptions)
+      fill.add(new Option(label, f, false, s.fill === f));
     fill.onchange = () => { s.fill = fill.value as Fill; onChange(); };
     out.push(fill);
   }
@@ -109,7 +111,7 @@ function renderForm() {
   root.replaceChildren();
   // Writes through to cfg.qrLayer (a bare copy would be lost on change).
   const qrStyle = {
-    fill: "gold" as Fill,
+    fill: GOLD,
     get layer() { return cfg.qrLayer; },
     set layer(v: Layer) { cfg.qrLayer = v; },
   };

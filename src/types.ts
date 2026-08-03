@@ -1,8 +1,9 @@
 // types.ts — the label config data model. This is also the schema of the
 // Save/Load JSON: a LabelConfig serializes as-is (plus {version: 1}).
 
-/** Fill color drawn in the art PDF. "white" means no ink (stock/white ink shows). */
-export type Fill = "gold" | "white" | "black";
+/** Fill color drawn in the art PDF: a "#rrggbb" hex string, or "none"
+ *  meaning no ink (draws white; stock/white ink shows through). */
+export type Fill = `#${string}` | "none";
 
 /** White-ink layer assignment: "metallic" knocks the glyphs out of the white
  *  layer (silver stock shows through); "white" paints white ink under them. */
@@ -30,11 +31,11 @@ export interface LabelConfig {
   abvStyle: Style;
   /** Description block as a markdown subset — one line per label line:
    *  `# text` = header, `**text**` = bold, `_text_` = white ink; plain lines
-   *  are gold metallic. Parsed by src/description.ts. */
+   *  are default gold (#D0B070). Parsed by src/description.ts. */
   description: string;
   /** 12-digit UPC-A. The barcode block is always white-ink with black bars. */
   upc: string;
-  /** QR code payload (URL). QR modules are gold; layer assignable. */
+  /** QR code payload (URL). QR modules are default gold (#D0B070); layer assignable. */
   qrData: string;
   qrLayer: Layer;
   // Static template elements (text fixed, style assignable):

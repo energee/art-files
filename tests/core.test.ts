@@ -6,6 +6,7 @@ import { qrPath, qrShapes } from "../src/qr";
 import { recolorMaskForPdf, validateMask } from "../src/maskimage";
 import { defaultConfig, parseConfigFile, toConfigFile } from "../src/defaults";
 import { parseDescription } from "../src/description";
+import { GOLD, parseHexFill } from "../src/layout";
 
 describe("upc", () => {
   it("computes the Labradorite check digit", () => {
@@ -68,18 +69,37 @@ describe("description markdown", () => {
     const d = parseDescription(
       "# HOPS\nFreestyle Motueka\n**_Roy Farms_**\n_Silvery_\n**Bold Gold**\n\n",
     );
-    expect(d.header).toMatchObject({ text: "HOPS", bold: true, fill: "gold", layer: "metallic" });
+    expect(d.header).toMatchObject({ text: "HOPS", bold: true, fill: "#D0B070", layer: "metallic" });
     expect(d.lines).toEqual([
-      { text: "Freestyle Motueka", bold: false, fill: "gold", layer: "metallic" },
-      { text: "Roy Farms", bold: true, fill: "white", layer: "white" },
-      { text: "Silvery", bold: false, fill: "white", layer: "white" },
-      { text: "Bold Gold", bold: true, fill: "gold", layer: "metallic" },
+      { text: "Freestyle Motueka", bold: false, fill: "#D0B070", layer: "metallic" },
+      { text: "Roy Farms", bold: true, fill: "none", layer: "white" },
+      { text: "Silvery", bold: false, fill: "none", layer: "white" },
+      { text: "Bold Gold", bold: true, fill: "#D0B070", layer: "metallic" },
     ]);
   });
   it("handles a headerless block", () => {
     const d = parseDescription("just a line");
     expect(d.header).toBeNull();
     expect(d.lines).toHaveLength(1);
+  });
+});
+
+describe("hex fills", () => {
+  it("parses hex fills to rgb 0-1", () => {
+    expect(parseHexFill("#D0B070")).toEqual({ r: 208 / 255, g: 176 / 255, b: 112 / 255 });
+    expect(parseHexFill("#000000")).toEqual({ r: 0, g: 0, b: 0 });
+    expect(parseHexFill("none")).toEqual({ r: 1, g: 1, b: 1 }); // no ink = white in art
+  });
+
+  it("migrates legacy named fills in config files", () => {
+    const legacy = toConfigFile(defaultConfig());
+    (legacy.nameStyle as unknown as Record<string, unknown>).fill = "gold";
+    (legacy.warning as unknown as Record<string, unknown>).fill = "black";
+    (legacy.styleLine as unknown as Record<string, unknown>).fill = "white";
+    const cfg = parseConfigFile(JSON.stringify(legacy));
+    expect(cfg.nameStyle.fill).toBe(GOLD);
+    expect(cfg.warning.fill).toBe("#000000");
+    expect(cfg.styleLine.fill).toBe("none");
   });
 });
 

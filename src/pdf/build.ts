@@ -39,7 +39,7 @@ type Mode = "art" | "mask";
 const toRgb = (c: { r: number; g: number; b: number }) => rgb(c.r, c.g, c.b);
 
 function fillColor(fill: Fill) {
-  return toRgb(L.COLORS[fill]);
+  return toRgb(L.parseHexFill(fill));
 }
 
 /** Mask-mode paint for an element: knockout (white) or white-ink (blue). */
@@ -260,7 +260,7 @@ function drawElements(
   });
 
   // QR
-  const qrColor = mode === "art" ? fillColor("gold") : maskColor(cfg.qrLayer);
+  const qrColor = mode === "art" ? fillColor(L.GOLD) : maskColor(cfg.qrLayer);
   page.drawSvgPath(qrPath(qrShapes(cfg.qrData), L.QR.size), {
     x: L.QR.x,
     y: y(L.QR.yTop),
