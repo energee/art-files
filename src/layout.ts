@@ -26,18 +26,18 @@ export function parseHexFill(fill: `#${string}` | "none"): { r: number; g: numbe
   return { r: ((n >> 16) & 255) / 255, g: ((n >> 8) & 255) / 255, b: (n & 255) / 255 };
 }
 
-// Left column ------------------------------------------------------------
+// Left column (values measured from the Labradorite reference PDF) -------
 export const LEFT_X = 24.9;
-export const VOLUME = { x: LEFT_X, baseline: 25, size: 8 };
-export const ABV = { x: LEFT_X, baseline: 34, size: 8 };
-export const DESC_HEADER = { x: LEFT_X, baseline: 58.5, size: 10 };
-export const DESC = { x: LEFT_X, firstBaseline: 68.4, leading: 10, size: 10 };
+export const VOLUME = { x: LEFT_X, baseline: 29.37, size: 9 };
+export const ABV = { x: LEFT_X, baseline: 40.17, size: 9 };
+export const DESC_HEADER = { x: LEFT_X, baseline: 60.56, size: 9 };
+export const DESC = { x: LEFT_X, firstBaseline: 71.36, leading: 10.8, size: 9 };
 
 // Center column ----------------------------------------------------------
-export const WORDMARK = { cx: CENTER_X, baseline: 38.5, size: 22, text: "Lolev Beer" };
-export const LOGO = { cx: CENTER_X, cy: 177, w: 40 }; // h follows the SVG aspect
-export const NAME = { cx: CENTER_X, baseline: 318, size: 16 };
-export const STYLE_LINE = { cx: CENTER_X, baseline: 338.5, size: 11 };
+export const WORDMARK = { cx: CENTER_X, baseline: 38.23, size: 22, text: "Lolev Beer" };
+export const LOGO = { cx: CENTER_X, cy: 183, w: 33.5 }; // h follows the SVG aspect
+export const NAME = { cx: CENTER_X, baseline: 323.28, size: 15.83 };
+export const STYLE_LINE = { cx: CENTER_X, baseline: 344.6, size: 12.18 };
 
 /** One px at the 600dpi deliverable, in PDF points (72/600). */
 export const PX = 72 / 600;
@@ -54,15 +54,18 @@ export const QR = { x: 23, yTop: 289, size: 59 };
 // Right rotated column (text rotated 90deg CCW, reads bottom-to-top) -----
 // x is the baseline's vertical line (glyphs extend to its RIGHT);
 // yStart is where the text begins (toward the label bottom).
-export const HANDLE_ADDR = { x: 502, yStart: 256, size: 10 };
-export const WARNING = { x: 511.5, yStart: 256, size: 3.2, leading: 3.6 };
-export const STORE_COLD = { x: 541, yStart: 152, size: 18 };
+export const HANDLE_ADDR = { x: 505, yStart: 346.28, size: 13.87 };
+// maxLen 330 wraps the warning to the reference's exact 3 columns.
+export const WARNING = { x: 516.62, yStart: 344.56, size: 6.06, leading: 7, maxLen: 330 };
+export const STORE_COLD = { x: 559.2, yStart: 149, size: 17.83 };
 
 // Barcode (right edge, rotated 90deg CCW: bars run horizontally) ---------
 // No background block: bars/digits are stroked white for contrast. The block
 // footprint (x/yTop/w/h) still defines the white-ink area in the mask PDF.
 // padRun insets the code along its run so the first/last digits fit inside.
+// x clears the warning's third column (glyphs end ~535.2): with no white
+// block behind the bars, the digits column must not interleave with it.
 export const BARCODE = {
-  x: 526.7, yTop: 234, w: 36.5, h: 128,
+  x: 536, yTop: 234, w: 36.5, h: 128,
   pad: 3, padRun: 13, textSize: 6, stroke: INK_STROKE,
 };

@@ -106,9 +106,9 @@ function drawLine(
   fonts: Fonts,
   line: StyledLine,
   mode: Mode,
-  opts: { x?: number; cx?: number; baseline: number; size: number },
+  opts: { x?: number; cx?: number; baseline: number; size: number; font?: PDFFont },
 ) {
-  const font = line.bold ? fonts.semibold : fonts.regular;
+  const font = opts.font ?? (line.bold ? fonts.semibold : fonts.regular);
   const color = mode === "art" ? fillColor(line.fill) : maskColor(line.layer);
   const x =
     opts.cx !== undefined
@@ -257,9 +257,10 @@ function drawElements(
     }),
   );
 
-  // Center column
+  // Center column. Wordmark and beer name use the Bold face — the reference
+  // label sets both in the same heavy weight.
   drawLine(page, fonts, { text: L.WORDMARK.text, ...cfg.wordmark, bold: true }, mode, {
-    cx: L.WORDMARK.cx, baseline: L.WORDMARK.baseline, size: L.WORDMARK.size,
+    cx: L.WORDMARK.cx, baseline: L.WORDMARK.baseline, size: L.WORDMARK.size, font: fonts.bold,
   });
   const logo = parseLogo(assets.logoSvg, L.LOGO.w);
   const logoColor = mode === "art" ? fillColor(cfg.logo.fill) : maskColor(cfg.logo.layer);
@@ -278,7 +279,7 @@ function drawElements(
       });
   for (const d of logo.paths) page.drawSvgPath(d, { ...logoAt, color: logoColor });
   drawLine(page, fonts, { text: cfg.beerName.toUpperCase(), ...cfg.nameStyle, bold: true }, mode, {
-    cx: L.NAME.cx, baseline: L.NAME.baseline, size: L.NAME.size,
+    cx: L.NAME.cx, baseline: L.NAME.baseline, size: L.NAME.size, font: fonts.bold,
   });
   drawLine(page, fonts, cfg.styleLine, mode, {
     cx: L.STYLE_LINE.cx, baseline: L.STYLE_LINE.baseline, size: L.STYLE_LINE.size,
@@ -299,7 +300,7 @@ function drawElements(
   drawRotated(page, fonts.semibold, cfg.handleAddress.text, mode, cfg.handleAddress, {
     x: L.HANDLE_ADDR.x, yStart: L.HANDLE_ADDR.yStart, size: L.HANDLE_ADDR.size,
   });
-  const warnLines = wrapWarning(fonts.regular, L.WARNING.size, L.WARNING.yStart - 20);
+  const warnLines = wrapWarning(fonts.regular, L.WARNING.size, L.WARNING.maxLen);
   warnLines.forEach((line, i) =>
     drawRotated(page, fonts.regular, line, mode, cfg.warning, {
       x: L.WARNING.x + i * L.WARNING.leading, yStart: L.WARNING.yStart, size: L.WARNING.size,
