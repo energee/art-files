@@ -83,24 +83,33 @@ same box data already drives both renderers.
 
 This is where direct manipulation earns its cost — colour is a judgement
 about how an element reads against a particular texture, so it should be
-adjustable on the thing you are looking at.
+adjustable on the thing you are looking at. It is in scope for this change,
+not deferred: without it the contextual panel is only reachable by hunting
+for the right field, which is the problem being solved.
 
-### Hops input
+### Description input
 
 The description's markdown subset (`# header`, `**bold**`, `_white ink_`)
-is a language that has to be relearned every session. Replace the textarea
-with a line list:
+is a language that has to be relearned every session. It stays a **single
+multiline field**, but becomes WYSIWYG: the syntax disappears and the
+styling becomes visible.
 
-- A header field, separate.
-- One row per line, each a text input.
-- Per-line bold and white-ink toggles, surfaced on focus under the same
-  contextual rule as everything else.
-- Add and remove line actions.
+- A `contenteditable` region, one block element per label line — so it still
+  reads and behaves as one multiline field, not a stack of separate inputs.
+- Each line renders in its actual appearance: Poppins, gold `#D0B070` for
+  metallic lines, white for white-ink lines, semibold when bold, larger for
+  the header. The dark sidebar means both gold and white lines are legible
+  as themselves, so the field previews the label rather than describing it.
+- Bold and white-ink are **toggles acting on the caret's line** (or every
+  line in the selection), following the same contextual rule as the rest of
+  the redesign — they appear when the field has focus.
+- Paste is coerced to plain text, so pasting a hop list from elsewhere
+  cannot import foreign markup.
+- An "edit as text" escape hatch exposes the raw markdown for power use.
 
 **Storage is unchanged.** `LabelConfig.description` stays the markdown
 string, so saved configs round-trip and both renderers keep working.
-`parseDescription` already reads it; this adds the serialiser. A raw-text
-escape hatch stays available for paste-in.
+`parseDescription` already reads it; this adds the serialiser.
 
 ### Export
 
@@ -124,5 +133,6 @@ management, not the main act.
   removed — every element remains fully stylable.
 - Styling an arbitrary element takes at most two actions from a cold start
   (select it, adjust), reachable either from its field or from the preview.
-- No syntax has to be remembered to author the hops list.
+- No syntax has to be remembered to author the description; its styling is
+  visible in the field as you type.
 - Existing saved config JSON loads unchanged.
