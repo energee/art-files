@@ -111,6 +111,35 @@ describe("description markdown", () => {
     const src = "A\n\nB";
     expect(serializeDescription(parseDescription(src))).toBe("A\nB");
   });
+
+  it("a second # line does not overwrite the header: first # wins, second survives as a body line", () => {
+    const d = parseDescription("# HOPS\n#Freestyle Motueka");
+    expect(d.header).toMatchObject({ text: "HOPS" });
+    expect(d.lines).toEqual([
+      { text: "#Freestyle Motueka", bold: false, fill: GOLD, layer: "metallic" },
+    ]);
+  });
+
+  it("round-trips a block with a second # line: the header survives, the literal # is preserved", () => {
+    const src = "# HOPS\n#Freestyle Motueka";
+    expect(serializeDescription(parseDescription(src))).toBe(src);
+  });
+
+  // Locks in deliberate behaviour (not a bug, see task-6-report.md Finding
+  // 2): a line whose typed text happens to be symmetrically wrapped in
+  // `**...**` or `_..._` is interpreted as that marker, same as the old
+  // plain textarea always stored and the renderers always drew — the
+  // WYSIWYG editor didn't create this, it just makes it visible instead of
+  // a silent field/render divergence.
+  it("interprets a body line wrapped in ** as bold, markers stripped — mirrors the renderer", () => {
+    const d = parseDescription("**Galaxy**");
+    expect(d.lines).toEqual([{ text: "Galaxy", bold: true, fill: GOLD, layer: "metallic" }]);
+  });
+
+  it("interprets a body line wrapped in _ as white ink, markers stripped — mirrors the renderer", () => {
+    const d = parseDescription("_Galaxy_");
+    expect(d.lines).toEqual([{ text: "Galaxy", bold: false, fill: "none", layer: "white" }]);
+  });
 });
 
 describe("hex fills", () => {

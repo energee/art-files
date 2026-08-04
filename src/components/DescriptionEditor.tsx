@@ -12,6 +12,17 @@
 // bold-outside marker order, header's redundant `**` dropped) and cannot
 // represent blank lines (parseDescription skips them on the way back in);
 // both are deliberate constraints of that module, not bugs here.
+//
+// Markers in typed text are INTERPRETED, not escaped: a line whose text
+// happens to be symmetrically wrapped in `**...**` or `_..._` reseeds as
+// bold / white ink, asterisks or underscores gone, same as any other line
+// that carries that marker. This is not new behaviour — the old plain
+// textarea stored those characters and both renderers (PDF/PSD) already
+// drew the styled result with no asterisks, silently. This editor just
+// makes that same interpretation visible instead of hiding it behind a
+// field/render divergence. There is no escape syntax for a literal `**` or
+// `_` pair; adding one would change the markdown format both renderers
+// parse, which is a bigger, riskier change than this task took on.
 import { useEffect, useRef, useState } from "react";
 import type { Style } from "@/types";
 import { parseDescription, serializeDescription } from "@/description";

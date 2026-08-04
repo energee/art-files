@@ -2,7 +2,10 @@
 // lines: `# text` = header, `**text**` = bold, `_text_` = white ink (white
 // fill + white layer), combinable. Plain lines and the header take the
 // caller's base style (cfg.descStyle: fill, layer, outer stroke); the white
-// marker overrides fill/layer but keeps the base stroke.
+// marker overrides fill/layer but keeps the base stroke. Only the FIRST
+// `#`-prefixed line becomes the header — a later line starting with `#` is
+// literal body text (the `#` stays in it verbatim), never a second header;
+// there is only ever one header slot, so it can't silently overwrite it.
 // ponytail: per-line styling only, no inline spans — add if a label ever
 // needs them.
 import type { Style, StyledLine } from "./types";
@@ -40,7 +43,12 @@ export function parseDescription(src: string, base: Style = DEFAULT_BASE): Parse
   for (const raw of src.split("\n")) {
     const t = raw.trim();
     if (!t) continue;
-    if (t.startsWith("#")) out.header = styleLine(t.replace(/^#+\s*/, ""), base, true);
+    // `!out.header` gates this to the first `#` line only — without it, a
+    // second `#`-prefixed line would silently overwrite out.header (there's
+    // only one slot for it) and never reach out.lines, erasing the real
+    // header with no warning. A later `#` line instead falls through to the
+    // else branch below and is kept as an ordinary body line, `#` and all.
+    if (t.startsWith("#") && !out.header) out.header = styleLine(t.replace(/^#+\s*/, ""), base, true);
     else out.lines.push(styleLine(t, base));
   }
   return out;
