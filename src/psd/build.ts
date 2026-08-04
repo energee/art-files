@@ -19,9 +19,9 @@ import fontkit from "@pdf-lib/fontkit";
 import { writePsdUint8Array, type BezierPath, type Layer, type Psd } from "ag-psd";
 import type { Fill, LabelConfig } from "../types";
 import * as L from "../layout";
+import { barcodeGeometry } from "../barcode";
 import { parseDescription } from "../description";
 import { parseLogo } from "../logo";
-import { encodeUpc } from "../upc";
 import { qrShapes, qrUrl } from "../qr";
 import { wrapWarning } from "../pdf/build";
 
@@ -29,20 +29,20 @@ export interface PsdAssets {
   fonts: { regular: Uint8Array; semibold: Uint8Array; bold: Uint8Array };
   /** Raw contents of logo2025.svg. */
   logoSvg: string;
-  /** Decoded RGBA texture ALREADY sized to cover the full document
-   *  (PSD layers hold pixels at 1:1 — there is no layer-level scaling), so
-   *  the caller resizes: canvas ImageData in the browser, pngjs in Node.
+  /** Decoded RGBA texture, placed centred. PSD layers hold pixels 1:1, so
+   *  nothing here rescales — a caller wanting full coverage pre-scales to
+   *  PSD_DOC (the browser does, via canvas; the Node CLI has no resampler
+   *  and passes native pixels, which then sit centred).
    *  Omitted leaves the background empty, like a PDF built without one. */
   texture?: { data: Uint8Array; width: number; height: number };
 }
 
-/** Points -> pixels at the 600dpi deliverable. */
-const PX = 600 / 72;
-const px = (n: number) => n * PX;
+/** Points -> pixels at the 600dpi deliverable. (layout.PX is the inverse —
+ *  points per pixel — so deriving from it keeps one definition of the DPI.) */
+const px = (n: number) => n / L.PX;
 /** Document size in pixels. Exported so a caller can cover-fit the texture
  *  to it before handing the pixels over — PSD layers hold pixels 1:1. */
 export const PSD_DOC = { w: Math.round(px(L.PAGE.w)), h: Math.round(px(L.PAGE.h)) };
-const DOC = PSD_DOC;
 
 const color255 = (fill: Fill) => {
   const c = L.parseHexFill(fill);
@@ -123,7 +123,7 @@ function svgToPaths(d: string, dx: number, dy: number): BezierPath[] {
 function shapeLayer(name: string, paths: BezierPath[], fill: Fill): Layer {
   return {
     name,
-    left: 0, top: 0, right: DOC.w, bottom: DOC.h,
+    left: 0, top: 0, right: PSD_DOC.w, bottom: PSD_DOC.h,
     vectorFill: { type: "color", color: color255(fill) },
     vectorMask: { paths },
   };
@@ -175,17 +175,23 @@ const faceOf = (line: { bold?: boolean }): Face => (line.bold ? "semibold" : "re
 function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces): Layer[] {
   const groups: Layer[] = [];
 
-  if (assets.texture)
+  if (assets.texture) {
+    // Centred, so a native-size texture straddles the page rather than
+    // hanging off the top-left corner. A pre-scaled one lands at 0,0.
+    const left = Math.round((PSD_DOC.w - assets.texture.width) / 2);
+    const top = Math.round((PSD_DOC.h - assets.texture.height) / 2);
     groups.push({
       name: "Texture",
-      left: 0, top: 0,
-      right: assets.texture.width, bottom: assets.texture.height,
+      left, top,
+      right: left + assets.texture.width,
+      bottom: top + assets.texture.height,
       imageData: {
         data: assets.texture.data,
         width: assets.texture.width,
         height: assets.texture.height,
       },
     });
+  }
 
   // Left column ------------------------------------------------------------
   const desc = parseDescription(cfg.description, cfg.descStyle);
@@ -219,8 +225,10 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces): Layer[] {
   groups.push({ name: "Left column", opened: false, children: left });
 
   // Center column ----------------------------------------------------------
-  const centered = (text: string, cx: number, size: number, font: PDFFont) =>
-    cx - font.widthOfTextAtSize(text, size) / 2;
+  // Measure with the SAME face the layer renders in, or a bold style line
+  // centres against regular metrics and sits off-centre.
+  const centered = (text: string, cx: number, size: number, face: Face) =>
+    cx - f[face].widthOfTextAtSize(text, size) / 2;
   const logo = parseLogo(assets.logoSvg, L.LOGO.w);
   const logoPaths = logo.paths.flatMap((d) =>
     svgToPaths(d, L.LOGO.cx - logo.w / 2, L.LOGO.cy - logo.h / 2),
@@ -230,18 +238,18 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces): Layer[] {
     opened: false,
     children: [
       textLayer("Wordmark", L.WORDMARK.text, {
-        x: centered(L.WORDMARK.text, L.WORDMARK.cx, L.WORDMARK.size, f.bold),
+        x: centered(L.WORDMARK.text, L.WORDMARK.cx, L.WORDMARK.size, "bold"),
         baseline: L.WORDMARK.baseline, size: L.WORDMARK.size,
         fill: cfg.wordmark.fill, face: "bold",
       }),
       shapeLayer("Logo", logoPaths, cfg.logo.fill),
       textLayer("Beer name", cfg.beerName.toUpperCase(), {
-        x: centered(cfg.beerName.toUpperCase(), L.NAME.cx, L.NAME.size, f.bold),
+        x: centered(cfg.beerName.toUpperCase(), L.NAME.cx, L.NAME.size, "bold"),
         baseline: L.NAME.baseline, size: L.NAME.size,
         fill: cfg.nameStyle.fill, face: "bold",
       }),
       textLayer("Style line", cfg.styleLine.text, {
-        x: centered(cfg.styleLine.text, L.STYLE_LINE.cx, L.STYLE_LINE.size, f.regular),
+        x: centered(cfg.styleLine.text, L.STYLE_LINE.cx, L.STYLE_LINE.size, faceOf(cfg.styleLine)),
         baseline: L.STYLE_LINE.baseline, size: L.STYLE_LINE.size,
         fill: cfg.styleLine.fill, face: faceOf(cfg.styleLine),
       }),
@@ -294,45 +302,27 @@ function codeLayers(cfg: LabelConfig, f: Faces): Layer[] {
     ),
   ];
 
+  // Geometry is shared with the PDF builder (see ../barcode) so the two
+  // deliverables cannot drift on the one element where drift stops it
+  // scanning.
   const B = L.BARCODE;
-  const { modules, guards } = encodeUpc(cfg.upc);
-  const inGuard = (i: number) => guards.some(([a, b]) => i >= a && i < b);
-  const mod = (B.h - 2 * B.padRun) / modules.length;
-  const bottom = B.yTop + B.h - B.padRun;
-  const bars: BezierPath[] = [];
-  for (let i = 0; i < modules.length; ) {
-    if (modules[i] !== "1") { i++; continue; }
-    let j = i;
-    while (j < modules.length && modules[j] === "1" && inGuard(j) === inGuard(i)) j++;
-    bars.push(
-      rectPath(
-        B.x + B.pad,
-        bottom - j * mod,
-        inGuard(i) ? B.guardLen : B.barLen,
-        (j - i) * mod,
-      ),
-    );
-    i = j;
-  }
-
-  const quiet = B.padRun / mod;
-  const digit = (txt: string, anchor: number, align: "center" | "start" | "end") => {
-    const w = f.regular.widthOfTextAtSize(txt, B.textSize) / mod;
-    const c = align === "start" ? anchor + w / 2 : align === "end" ? anchor - w / 2 : anchor;
-    return textLayer(`UPC ${txt}`, txt, {
-      x: B.x + B.pad + B.textOffset,
-      baseline: bottom - c * mod + (w * mod) / 2,
-      size: B.textSize, fill: "#1A1A1A", face: "regular", rotated: true,
-    });
-  };
+  const measure = (t: string) => f.regular.widthOfTextAtSize(t, B.textSize);
+  const geo = barcodeGeometry(cfg.upc, measure);
 
   return [
     shapeLayer("QR", qrPaths, cfg.qrFill),
-    shapeLayer("Barcode bars", bars, "#1A1A1A"),
-    digit(cfg.upc[0], -quiet, "start"),
-    digit(cfg.upc.slice(1, 6), 27.5, "center"),
-    digit(cfg.upc.slice(6, 11), 67.5, "center"),
-    digit(cfg.upc[11], modules.length + quiet, "end"),
+    shapeLayer(
+      "Barcode bars",
+      geo.bars.map((b) => rectPath(b.x, b.yTop, b.w, b.h)),
+      "#1A1A1A",
+    ),
+    ...geo.digits.map((d) =>
+      textLayer(`UPC ${d.text}`, d.text, {
+        x: d.x,
+        baseline: geo.bottom - d.center * geo.mod + measure(d.text) / 2,
+        size: B.textSize, fill: "#1A1A1A", face: "regular", rotated: true,
+      }),
+    ),
   ];
 }
 
@@ -350,8 +340,8 @@ export async function buildPsd(cfg: LabelConfig, assets: PsdAssets): Promise<Uin
     bold: await doc.embedFont(assets.fonts.bold),
   };
   const psd: Psd = {
-    width: DOC.w,
-    height: DOC.h,
+    width: PSD_DOC.w,
+    height: PSD_DOC.h,
     children: buildLayers(cfg, assets, f),
   };
   return writePsdUint8Array(psd);

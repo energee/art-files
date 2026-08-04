@@ -45,6 +45,9 @@ if (maskPath !== "none") {
   maskPng = new Uint8Array(buf.buffer, buf.byteOffset, buf.length);
 }
 
+// Read once — both the PDF assets and the PSD's pixel decode use these bytes.
+const textureBytes = texturePath === "none" ? undefined : readFileSync(texturePath);
+
 const assets: Assets = {
   fonts: {
     regular: readFileSync(asset("fonts/Poppins-Regular.ttf")),
@@ -54,22 +57,20 @@ const assets: Assets = {
   logoSvg: readFileSync(asset("logo2025.svg"), "utf8"),
   // "none" skips the texture: the art PDF is then just the elements on
   // bare stock (matches the app's pre-drop preview).
-  texture:
-    texturePath === "none"
-      ? undefined
-      : {
-          bytes: readFileSync(texturePath),
-          kind: /\.jpe?g$/i.test(texturePath) ? "jpg" : "png",
-        },
+  texture: textureBytes && {
+    bytes: textureBytes,
+    kind: /\.jpe?g$/i.test(texturePath) ? "jpg" : "png",
+  },
   maskPng,
 };
 
-// The PSD's texture layer takes decoded pixels at their native size — PSD
-// layers hold pixels 1:1, so nothing here rescales. PNG only; a JPG texture
-// still reaches both PDFs, the PSD just ships without the background layer.
+// The PSD's texture layer takes decoded pixels; buildPsd centres them. PNG
+// only — a JPG texture still reaches both PDFs, the PSD just ships without
+// the background layer (Node has no JPEG decoder here; the browser gets one
+// free from canvas).
 let texturePixels: PsdAssets["texture"];
-if (assets.texture && assets.texture.kind === "png") {
-  const t = PNG.sync.read(readFileSync(texturePath));
+if (assets.texture?.kind === "png") {
+  const t = PNG.sync.read(textureBytes!);
   texturePixels = {
     data: new Uint8Array(t.data.buffer, t.data.byteOffset, t.data.length),
     width: t.width,

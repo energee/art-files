@@ -19,7 +19,7 @@ import type { Fill, LabelConfig, Style, StyledLine } from "../types";
 import { parseLogo } from "../logo";
 import { WARNING_TEXT } from "../defaults";
 import * as L from "../layout";
-import { encodeUpc } from "../upc";
+import { barcodeGeometry } from "../barcode";
 import { qrPath, qrShapes, qrUrl } from "../qr";
 import { parseDescription } from "../description";
 
@@ -68,7 +68,11 @@ function strokeOf(style: Style, mode: Mode) {
  *  at a wide stroke reads as stair-steps down the outer edge. One sample
  *  per ~0.4pt of circumference keeps that step below a printer's dot. */
 function ring(w: number): [number, number][] {
-  const n = Math.max(16, Math.ceil((2 * Math.PI * w) / 0.4));
+  // Capped: each sample is its own drawText, so an uncapped count turns the
+  // stroke-width field into a build-time amplifier (600px measured at ~18k
+  // calls / 700ms, outlasting the 600ms debounce). Past 64 the copies sit
+  // closer together than a printer's dot anyway.
+  const n = Math.min(64, Math.max(16, Math.ceil((2 * Math.PI * w) / 0.4)));
   return Array.from({ length: n }, (_, i) => {
     const a = (i * 2 * Math.PI) / n;
     return [w * Math.cos(a), w * Math.sin(a)];
@@ -148,59 +152,24 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode:
     });
     return;
   }
-  const { modules, guards } = encodeUpc(upcValue);
-  const inGuard = (i: number) => guards.some(([a, b]) => i >= a && i < b);
-  // Rotated layout: bars run horizontally, code advances bottom-to-top, and
-  // the digits column sits to the RIGHT of the bars — the same arrangement
-  // JsBarcode renders (bars, then the value row) turned a quarter turn.
-  const runLen = B.h - 2 * B.padRun; // along the code
-  const mod = runLen / modules.length;
-  const barX = B.x + B.pad;
-  // rotate(90) turns the glyph body toward -x, so this is the digit
-  // baseline and the digits grow back toward the bars from it.
-  const textX = barX + B.textOffset;
-  const bottom = B.yTop + B.h - B.padRun;
-  // Merge consecutive modules into one rect so a run draws as a single bar.
-  // Runs never merge across a guard boundary, which keeps the tall guard
-  // groups square-ended.
-  const bars: { x: number; y: number; width: number; height: number }[] = [];
-  let i = 0;
-  while (i < modules.length) {
-    if (modules[i] !== "1") { i++; continue; }
-    let j = i;
-    while (j < modules.length && modules[j] === "1" && inGuard(j) === inGuard(i)) j++;
-    bars.push({
-      x: barX,
-      // y() of the run's lowest module IS the rect's bottom edge in PDF space
-      // (y grows upward past it) — subtracting the run height here again is
-      // what used to smear runs below their slots.
-      y: y(bottom - i * mod),
-      // Guard groups run long, into the digits column (JsBarcode's guardHeight).
-      width: inGuard(i) ? B.guardLen : B.barLen,
-      height: (j - i) * mod,
-    });
-    i = j;
-  }
-
-  // Digits: the two five-digit groups centre under their 35-module halves;
-  // `anchor` is a module position and "start"/"end" align the text's near or
-  // far edge to it, which is JsBarcode's textAlign left/right for the outer
-  // number-system and check digits.
-  const place = (txt: string, anchor: number, align: "center" | "start" | "end" = "center") => {
-    const w = fonts.regular.widthOfTextAtSize(txt, B.textSize);
-    const half = w / 2 / mod;
-    const center =
-      align === "start" ? anchor + half : align === "end" ? anchor - half : anchor;
-    return { txt, x: textX, y: y(bottom - center * mod) - w / 2 };
-  };
-  const quiet = B.padRun / mod; // the 8-module zone at each end
-  const digits = [
-    place(upcValue[0], -quiet, "start"), // number-system digit, before the symbol
-    place(upcValue.slice(1, 6), 27.5), // centered on modules 10-45
-    place(upcValue.slice(6, 11), 67.5), // centered on modules 50-85
-    place(upcValue[11], modules.length + quiet, "end"), // check digit, after it
-  ];
+  // Rotated layout: bars run horizontally, the code advances bottom-to-top,
+  // and the digits column sits to the RIGHT of the bars — the same
+  // arrangement JsBarcode renders, turned a quarter turn. The geometry
+  // itself is shared with the PSD builder (see ../barcode).
+  const geo = barcodeGeometry(upcValue, (t) => fonts.regular.widthOfTextAtSize(t, B.textSize));
+  // y() of a run's lowest module IS the rect's bottom edge in PDF space, so
+  // the top-origin box converts by its far edge.
+  const bars = geo.bars.map((b) => ({
+    x: b.x, y: y(b.yTop + b.h), width: b.w, height: b.h,
+  }));
+  // rotate(90) turns the glyph body toward -x, so `x` is the baseline and the
+  // digits grow back toward the bars from it.
+  const digits = geo.digits.map((d) => {
+    const w = fonts.regular.widthOfTextAtSize(d.text, B.textSize);
+    return { txt: d.text, x: d.x, y: y(geo.bottom - d.center * geo.mod) - w / 2 };
+  });
   const glyph = { size: B.textSize, font: fonts.regular, rotate: degrees(90) };
+  const ringS = ring(S); // loop-invariant
 
   // Outer stroke. EVERY white shape draws before ANY black one — that
   // ordering is what makes this safe. Interleaving the two (a white underlay
@@ -216,7 +185,7 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode:
       color: toRgb(L.COLORS.white),
     });
   for (const d of digits)
-    for (const [dx, dy] of ring(S))
+    for (const [dx, dy] of ringS)
       page.drawText(d.txt, { ...glyph, x: d.x + dx, y: d.y + dy, color: toRgb(L.COLORS.white) });
 
   // The artwork itself, at its exact geometry.

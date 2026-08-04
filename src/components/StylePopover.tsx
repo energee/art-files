@@ -92,7 +92,11 @@ export function StylePopover(props: {
                   className="h-6 w-14 text-xs"
                   value={props.strokeWidth ?? DEFAULT_STROKE_PX}
                   onChange={(e) =>
-                    props.onStrokeWidth?.(Math.max(1, Number(e.target.value) || DEFAULT_STROKE_PX))}
+                    // Clamp BOTH ends: `max` on a number input does not stop a
+                    // typed value, and each extra px adds stroke draw calls.
+                    props.onStrokeWidth?.(
+                      Math.min(60, Math.max(1, Number(e.target.value) || DEFAULT_STROKE_PX)),
+                    )}
                 />
                 <span className="text-[10px] text-muted-foreground">px</span>
               </div>

@@ -167,12 +167,15 @@ export default function App() {
     return () => { stale = true; clearTimeout(timer); };
   }, [cfg, texture, mask, blocked]);
 
+  // Revoking immediately can abort a large download, so each URL lives until
+  // the next export replaces it — a timer would instead pin a full Blob copy
+  // of every export (tens of MB for the PSD) for its whole duration.
+  const lastSaved = useRef<string | null>(null);
   function saveBytes(bytes: Uint8Array, name: string, type = "application/pdf") {
+    if (lastSaved.current) URL.revokeObjectURL(lastSaved.current);
     const url = blobUrl(bytes, type);
+    lastSaved.current = url;
     download(url, name);
-    // Revoke once the download has had time to start — revoking immediately
-    // can abort a large download.
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
 
   /** Downloads rebuild from the full-resolution assets on demand — the
