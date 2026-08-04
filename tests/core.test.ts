@@ -100,6 +100,17 @@ describe("description markdown", () => {
   it("serializes an empty block to an empty string", () => {
     expect(serializeDescription({ header: null, lines: [] })).toBe("");
   });
+
+  it("canonicalizes marker order: reverse input normalizes to white-inside/bold-outside", () => {
+    const reversed = "_**Roy Farms**_"; // reverse order: white outside, bold inside
+    const canonical = "**_Roy Farms_**"; // canonical order: bold outside, white inside
+    expect(serializeDescription(parseDescription(reversed))).toBe(canonical);
+  });
+
+  it("drops blank lines: they are skipped during parsing and cannot be recovered", () => {
+    const src = "A\n\nB";
+    expect(serializeDescription(parseDescription(src))).toBe("A\nB");
+  });
 });
 
 describe("hex fills", () => {
