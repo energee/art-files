@@ -24,7 +24,10 @@ describe("element registry", () => {
     const cfg = defaultConfig();
     cfg.nameStyle.fill = "#123456";
     expect(elementById("name").style(cfg).fill).toBe("#123456");
-    expect(elementById("qr").style(cfg).fill).toBe(GOLD);
+    cfg.qrFill = "#654321";
+    cfg.qrLayer = "white";
+    expect(elementById("qr").style(cfg).fill).toBe("#654321");
+    expect(elementById("qr").style(cfg).layer).toBe("white");
   });
 
   it("writes back through applyStyle, including the flat QR fields", () => {
@@ -41,5 +44,6 @@ describe("element registry", () => {
     expect(isDefaultStyle({ fill: "#FF0000", layer: "metallic" })).toBe(false);
     expect(isDefaultStyle({ fill: GOLD, layer: "white" })).toBe(false);
     expect(isDefaultStyle({ fill: GOLD, layer: "metallic", stroke: "#FFFFFF" })).toBe(false);
+    expect(isDefaultStyle({ fill: GOLD, layer: "metallic", stroke: "none" })).toBe(true);
   });
 });
