@@ -12,9 +12,13 @@
 // bold-outside marker order, header's redundant `**` dropped) and cannot
 // represent blank lines (parseDescription skips them on the way back in);
 // both are deliberate constraints of that module, not bugs here.
+import { useEffect, useRef, useState } from "react";
 import type { Style } from "@/types";
 import { parseDescription, serializeDescription } from "@/description";
 import { GOLD } from "@/layout";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 export interface EditorLine { text: string; bold: boolean; white: boolean; header: boolean }
 
@@ -43,4 +47,293 @@ export function linesToMarkdown(lines: EditorLine[]): string {
     header: header ? asStyled(header) : null,
     lines: body.map(asStyled),
   });
+}
+
+// ---- DOM layer -------------------------------------------------------
+// Everything below operates on live nodes rather than React state. That
+// split is the whole caret-preservation strategy: a contenteditable bound
+// to React state (children re-rendered from `lines` on every keystroke)
+// moves the caret to the start on every input, because reconciliation
+// fights the browser's own DOM mutations mid-edit. So the JSX below never
+// declares this field's line-divs as children — they exist only because
+// these functions put them there — and React's re-renders never touch
+// them. The DOM is the source of truth while focused; props are the
+// source of truth while not.
+
+/** Tailwind can't see a class name built from a JS variable at build time
+ *  (arbitrary-value scanning is purely static), so this can't reference
+ *  GOLD directly — keep it matching layout.ts's GOLD ("#D0B070") by eye. */
+function lineClasses(l: Pick<EditorLine, "bold" | "white" | "header">): string {
+  return cn(
+    "font-heading leading-snug outline-none",
+    l.header ? "text-sm" : "text-xs",
+    l.bold && "font-semibold",
+    l.white ? "text-white" : "text-[#D0B070]",
+  );
+}
+
+/** Replaces the field's content with fresh line-divs built from `lines`.
+ *  Only ever called while NOT focused (mount, external value/base change,
+ *  the post-blur snap to serializeDescription's canonical form, or
+ *  switching back from "Edit as text") — see the effect below. */
+function seedDom(root: HTMLDivElement, lines: EditorLine[]) {
+  root.replaceChildren();
+  // An empty description still needs one focusable/clickable line to type
+  // into — parseDescription("", base) legitimately yields zero lines.
+  const list = lines.length ? lines : [{ text: "", bold: false, white: false, header: false }];
+  for (const line of list) {
+    const div = document.createElement("div");
+    div.className = lineClasses(line);
+    div.dataset.bold = String(line.bold);
+    div.dataset.white = String(line.white);
+    if (line.header) div.dataset.header = "true";
+    // A completely empty block-level div collapses to zero height in most
+    // engines, making it unclickable; <br> keeps it visible and focusable
+    // the same way a blank line in a textarea is, without adding a text
+    // node that would show up in readLines' textContent.
+    if (line.text) div.textContent = line.text;
+    else div.appendChild(document.createElement("br"));
+    root.appendChild(div);
+  }
+}
+
+/** Reads the field's current line-divs back into EditorLine[] — the other
+ *  half of the caret-preservation split: while focused, this (not props)
+ *  is where onChange's data comes from. Missing data-* (e.g. a brand new
+ *  div the browser inserted for a native Enter keypress, which carries no
+ *  attributes of ours) reads as a plain, non-bold, non-white, non-header
+ *  line — the Bold/White toggles remain available to restyle it. */
+function readLines(root: HTMLDivElement): EditorLine[] {
+  const kids = Array.from(root.children).filter(
+    (el): el is HTMLDivElement => el.tagName === "DIV",
+  );
+  if (kids.length === 0) {
+    // Fully cleared (select-all + delete): some engines leave a bare <br>
+    // or nothing at all rather than a div. Either way, one empty line.
+    return [{ text: root.textContent ?? "", bold: false, white: false, header: false }];
+  }
+  return kids.map((el) => ({
+    text: el.textContent ?? "",
+    bold: el.dataset.bold === "true",
+    white: el.dataset.white === "true",
+    header: el.dataset.header === "true",
+  }));
+}
+
+/** Walks up from a selection endpoint to the line-div that is a direct
+ *  child of `root` and contains it. Null if `node` isn't inside root at
+ *  all (e.g. the browser's selection currently lives in a different
+ *  field). */
+function closestLineEl(node: Node | null, root: HTMLElement): HTMLDivElement | null {
+  let n = node;
+  while (n) {
+    if (n.parentNode === root) return n as HTMLDivElement;
+    n = n.parentNode;
+  }
+  return null;
+}
+
+/** Every line-div the current selection touches, in document order — one
+ *  for a collapsed caret, several for a multi-line selection. Empty when
+ *  there's no selection, or it isn't inside `root`. */
+function linesInSelection(root: HTMLDivElement): HTMLDivElement[] {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return [];
+  const a = closestLineEl(sel.anchorNode, root);
+  const f = closestLineEl(sel.focusNode, root);
+  if (!a || !f) return [];
+  const kids = Array.from(root.children).filter(
+    (el): el is HTMLDivElement => el.tagName === "DIV",
+  );
+  const ia = kids.indexOf(a);
+  const ib = kids.indexOf(f);
+  if (ia === -1 || ib === -1) return [];
+  const [lo, hi] = ia <= ib ? [ia, ib] : [ib, ia];
+  return kids.slice(lo, hi + 1);
+}
+
+/** Manual Range-based plain-text insert, used only if execCommand is ever
+ *  unavailable. Doesn't split embedded newlines into separate line-divs
+ *  (execCommand does, matching what pressing Enter would have done) — an
+ *  acceptable narrower fallback for browsers modern enough to run this app
+ *  but hypothetically missing execCommand. */
+function insertTextAtCaretFallback(text: string) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  const range = sel.getRangeAt(0);
+  range.deleteContents();
+  const node = document.createTextNode(text);
+  range.insertNode(node);
+  range.setStartAfter(node);
+  range.setEndAfter(node);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+export function DescriptionEditor(props: {
+  value: string;
+  base: Style;
+  onChange: (markdown: string) => void;
+  /** Fired when the field gains focus. Not in the original task interface,
+   *  but required by LabelForm.tsx to keep calling onSelect("description")
+   *  on focus, exactly like the plain Textarea this replaces — see that
+   *  file's Description row. */
+  onFocus?: () => void;
+}) {
+  const { value, base, onChange, onFocus } = props;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [focused, setFocused] = useState(false);
+  const [asText, setAsText] = useState(false);
+  // Whether every line the caret/selection currently touches is bold/white
+  // — drives the toolbar buttons' pressed state. Purely a display cache:
+  // re-derived from the DOM on every selectionchange and after every
+  // toggle, never treated as the source of truth for an edit.
+  const [caret, setCaret] = useState({ bold: false, white: false });
+
+  useEffect(() => {
+    if (focused || asText) return;
+    const root = rootRef.current;
+    if (!root) return;
+    seedDom(root, markdownToLines(value, base));
+  }, [value, base, focused, asText]);
+
+  // Selection tracking is scoped to while the field is focused, via a
+  // document-level listener (not onKeyUp/onMouseUp on the div) so it also
+  // catches arrow-key and Home/End/Select-All selection changes.
+  useEffect(() => {
+    if (!focused) return;
+    const onSelectionChange = () => {
+      const root = rootRef.current;
+      if (!root) return;
+      const lines = linesInSelection(root);
+      if (!lines.length) return;
+      setCaret({
+        bold: lines.every((l) => l.dataset.bold === "true"),
+        white: lines.every((l) => l.dataset.white === "true"),
+      });
+    };
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => document.removeEventListener("selectionchange", onSelectionChange);
+  }, [focused]);
+
+  const emitChange = () => {
+    const root = rootRef.current;
+    if (!root) return;
+    onChange(linesToMarkdown(readLines(root)));
+  };
+
+  const toggle = (attr: "bold" | "white") => {
+    const root = rootRef.current;
+    if (!root) return;
+    const lines = linesInSelection(root);
+    if (!lines.length) return;
+    for (const el of lines) {
+      el.dataset[attr] = String(el.dataset[attr] !== "true");
+      el.className = lineClasses({
+        bold: el.dataset.bold === "true",
+        white: el.dataset.white === "true",
+        header: el.dataset.header === "true",
+      });
+    }
+    setCaret({
+      bold: lines.every((l) => l.dataset.bold === "true"),
+      white: lines.every((l) => l.dataset.white === "true"),
+    });
+    emitChange();
+  };
+
+  return (
+    <div className="space-y-1">
+      <div className="flex h-6 items-center justify-between gap-1">
+        <div className="flex gap-1">
+          {focused && !asText && (
+            <>
+              <Button
+                type="button"
+                variant={caret.bold ? "secondary" : "outline"}
+                size="xs"
+                aria-pressed={caret.bold}
+                // Keeps focus (and the selection) in the contenteditable
+                // field instead of moving it to the button, so the toggle
+                // still knows which line(s) to flip.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => toggle("bold")}
+              >
+                Bold
+              </Button>
+              <Button
+                type="button"
+                variant={caret.white ? "secondary" : "outline"}
+                size="xs"
+                aria-pressed={caret.white}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => toggle("white")}
+              >
+                White ink
+              </Button>
+            </>
+          )}
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          className="text-muted-foreground"
+          // Escape hatch, and the fallback if the rich field ever proves
+          // troublesome: forcing focused false here (rather than relying on
+          // the field's own onBlur) keeps the seed effect's guard correct
+          // regardless of mousedown/blur/click ordering across browsers.
+          onClick={() => { setFocused(false); setAsText((v) => !v); }}
+        >
+          {asText ? "Edit as WYSIWYG" : "Edit as text"}
+        </Button>
+      </div>
+
+      {asText ? (
+        <Textarea
+          rows={7}
+          aria-label="Description"
+          className="font-mono text-xs"
+          value={value}
+          onFocus={onFocus}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      ) : (
+        <div
+          ref={rootRef}
+          contentEditable
+          suppressContentEditableWarning
+          role="textbox"
+          aria-multiline="true"
+          aria-label="Description"
+          className={cn(
+            "min-h-[8.5rem] w-full space-y-0.5 rounded-lg border border-input bg-transparent px-2.5 py-2",
+            "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+          )}
+          onInput={emitChange}
+          onFocus={() => { setFocused(true); onFocus?.(); }}
+          onBlur={() => setFocused(false)}
+          onPaste={(e) => {
+            // Coerce to plain text so pasting, e.g., a hop list copied off
+            // a web page can't drag in that page's markup (which could
+            // otherwise be misread as our own bold/white-ink syntax).
+            e.preventDefault();
+            const text = e.clipboardData.getData("text/plain");
+            // execCommand is deprecated but still broadly supported, and
+            // it's the browser's own well-tested caret/undo-aware insert —
+            // including splitting embedded newlines into new line-divs the
+            // same way a native Enter keypress would. Reimplementing that
+            // split by hand would be exactly the kind of manual caret
+            // surgery this file otherwise avoids.
+            if (typeof document.execCommand === "function") {
+              document.execCommand("insertText", false, text);
+            } else {
+              insertTextAtCaretFallback(text);
+            }
+            emitChange();
+          }}
+        />
+      )}
+    </div>
+  );
 }

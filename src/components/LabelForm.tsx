@@ -19,8 +19,8 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { DescriptionEditor } from "./DescriptionEditor";
 
 type Update = (fn: (c: LabelConfig) => void) => void;
 
@@ -168,10 +168,11 @@ export function LabelForm(props: {
         </Tooltip>
         {!isDefaultStyle(cfg.descStyle) && <Dot />}
       </Heading>
-      <Textarea
-        rows={7} aria-label="Description" className="font-mono text-xs" value={cfg.description}
+      <DescriptionEditor
+        value={cfg.description}
+        base={cfg.descStyle}
         onFocus={() => onSelect("description")}
-        onChange={(e) => update((c) => { c.description = e.target.value; })}
+        onChange={(md) => update((c) => { c.description = md; })}
       />
 
       <Collapsible>
