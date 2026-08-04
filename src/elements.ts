@@ -1,7 +1,7 @@
 // elements.ts — the one registry of stylable label elements. The form and
 // the preview both read it, so they cannot disagree about what exists or
 // which config field backs it.
-import type { LabelConfig, Style } from "./types";
+import type { LabelConfig, Style, StyledLine } from "./types";
 import { GOLD } from "./layout";
 
 export type ElementId =
@@ -47,8 +47,12 @@ export function elementById(id: ElementId): LabelElement {
   return e;
 }
 
-/** Apply a Style patch to whichever config fields back `id`. */
-export function applyStyle(c: LabelConfig, id: ElementId, patch: Partial<Style>): void {
+/** Apply a style patch to whichever config fields back `id`. Widened to
+ *  Partial<StyledLine> (rather than Partial<Style>) so a single patch can
+ *  also carry `bold`, which lives on StyledLine, not Style; the qr branch
+ *  below ignores it since qr text/bold doesn't exist (ELEMENTS marks
+ *  hasBold: false for qr, so callers never send it). */
+export function applyStyle(c: LabelConfig, id: ElementId, patch: Partial<StyledLine>): void {
   if (id === "qr") {
     if (patch.fill !== undefined) c.qrFill = patch.fill;
     if (patch.layer !== undefined) c.qrLayer = patch.layer;
