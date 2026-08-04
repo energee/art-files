@@ -46,4 +46,39 @@ describe("element registry", () => {
     expect(isDefaultStyle({ fill: GOLD, layer: "metallic", stroke: "#FFFFFF" })).toBe(false);
     expect(isDefaultStyle({ fill: GOLD, layer: "metallic", stroke: "none" })).toBe(true);
   });
+
+  it("marks 'no ink' as illegal only for QR", () => {
+    for (const e of ELEMENTS) {
+      expect(e.allowNone).toBe(e.id !== "qr");
+    }
+  });
+
+  it("clears a stale qrStrokeWidth when a patch explicitly carries strokeWidth: undefined (Reset path)", () => {
+    const cfg = defaultConfig();
+    applyStyle(cfg, "qr", { stroke: "#000000", strokeWidth: 40 });
+    expect(cfg.qrStrokeWidth).toBe(40);
+    // This is exactly the shape StyleProperties' reset() sends: every field
+    // present, strokeWidth explicitly undefined because the shipped qr
+    // default has no width. The "key absent" case (a plain `{ fill }`
+    // patch from e.g. the Fill swatch) must NOT clear it — only a patch
+    // that actually carries the key should.
+    applyStyle(cfg, "qr", { fill: GOLD, layer: "metallic", stroke: "none", strokeWidth: undefined });
+    expect(cfg.qrStrokeWidth).toBeUndefined();
+    applyStyle(cfg, "qr", { fill: "#654321" });
+    expect(cfg.qrStrokeWidth).toBeUndefined();
+  });
+
+  it("drops a bold patch for elements without hasBold, even though the type allows it", () => {
+    const cfg = defaultConfig();
+    applyStyle(cfg, "logo", { fill: "#111111", bold: true });
+    expect(cfg.logo.fill).toBe("#111111");
+    expect("bold" in cfg.logo).toBe(false);
+  });
+
+  it("still writes bold for elements that have it", () => {
+    const cfg = defaultConfig();
+    expect(cfg.storeCold.bold).toBe(true);
+    applyStyle(cfg, "storeCold", { bold: false });
+    expect(cfg.storeCold.bold).toBe(false);
+  });
 });

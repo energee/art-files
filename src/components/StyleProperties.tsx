@@ -75,7 +75,10 @@ export function StyleProperties(props: {
 
       <div className="space-y-1">
         <Label htmlFor={`${fid}-fill`} className="text-xs text-muted-foreground">Fill</Label>
-        <ColorField id={`${fid}-fill`} value={s.fill} onChange={(v) => set({ fill: v })} />
+        <ColorField
+          id={`${fid}-fill`} value={s.fill} onChange={(v) => set({ fill: v })}
+          allowNone={el.allowNone}
+        />
       </div>
 
       <div className="flex items-center justify-between">
