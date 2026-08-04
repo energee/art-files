@@ -45,3 +45,18 @@ export function parseDescription(src: string, base: Style = DEFAULT_BASE): Parse
   }
   return out;
 }
+
+/** Inverse of parseDescription — the WYSIWYG editor edits styled lines and
+ *  writes back the markdown string LabelConfig still stores. Marker order
+ *  mirrors what styleLine strips: bold outside, white inside. The header is
+ *  always bold, so it takes no ** markers. */
+export function serializeDescription(d: ParsedDescription): string {
+  const line = (l: StyledLine, header = false) => {
+    let s = l.text;
+    if (l.layer === "white") s = `_${s}_`;
+    if (l.bold && !header) s = `**${s}**`;
+    return header ? `# ${s}` : s;
+  };
+  const head = d.header ? [line(d.header, true)] : [];
+  return [...head, ...d.lines.map((l) => line(l))].join("\n");
+}

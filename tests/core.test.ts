@@ -5,7 +5,7 @@ import { encodeUpc, upcCheckDigit, validateUpc } from "../src/upc";
 import { qrPath, qrShapes, machineName, qrUrl } from "../src/qr";
 import { recolorMaskForPdf, validateMask } from "../src/maskimage";
 import { defaultConfig, parseConfigFile, toConfigFile } from "../src/defaults";
-import { parseDescription } from "../src/description";
+import { parseDescription, serializeDescription } from "../src/description";
 import { DEFAULT_STROKE_PX, GOLD, parseHexFill } from "../src/layout";
 
 describe("upc", () => {
@@ -90,6 +90,15 @@ describe("description markdown", () => {
     expect(d.header).toMatchObject({ fill: "#123456", stroke: "#FFFFFF", strokeWidth: 20 });
     expect(d.lines[0]).toMatchObject({ fill: "#123456", layer: "metallic", stroke: "#FFFFFF" });
     expect(d.lines[1]).toMatchObject({ fill: "none", layer: "white", stroke: "#FFFFFF" });
+  });
+
+  it("round-trips through serialize", () => {
+    const src = "# HOPS\nFreestyle Motueka\n**_Roy Farms_**\n_Silvery_\n**Bold Gold**";
+    expect(serializeDescription(parseDescription(src))).toBe(src);
+  });
+
+  it("serializes an empty block to an empty string", () => {
+    expect(serializeDescription({ header: null, lines: [] })).toBe("");
   });
 });
 
