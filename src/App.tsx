@@ -4,12 +4,14 @@
 // the old main.ts wiring, componentized.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LabelConfig } from "@/types";
+import type { ElementId } from "@/elements";
 import { defaultConfig, parseConfigFile, toConfigFile } from "@/defaults";
 import { validateUpc } from "@/upc";
 import { validateMask, recolorMaskForPdf } from "@/maskimage";
 import { buildArtPdf, buildMaskPdf, type Assets } from "@/pdf/build";
 import { buildPsd, PSD_DOC, type PsdAssets } from "@/psd/build";
 import { LabelForm } from "@/components/LabelForm";
+import { StyleProperties } from "@/components/StyleProperties";
 import { FileDrop } from "@/components/FileDrop";
 import { CommandMenu } from "@/components/CommandMenu";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
@@ -63,6 +65,9 @@ function download(url: string, name: string) {
 
 export default function App() {
   const [cfg, setCfg] = useState<LabelConfig>(defaultConfig);
+  // Which element's contextual style panel is open — Photoshop's model, one
+  // at a time, driven by whichever row in LabelForm last got focus/click.
+  const [selected, setSelected] = useState<ElementId | null>(null);
   const [texture, setTexture] = useState<(Loaded & { kind: "png" | "jpg" }) | null>(null);
   const [mask, setMask] = useState<(Loaded & { error?: string }) | null>(null);
   // Preview-resolution PDFs for the on-screen compare only; downloads always
@@ -274,7 +279,12 @@ export default function App() {
               onFile={(f) => void onMask(f)} />
           </div>
           {loadError && <p className="mt-2 text-xs text-destructive">{loadError}</p>}
-          <LabelForm cfg={cfg} errors={errors} update={update} />
+          <LabelForm cfg={cfg} errors={errors} update={update} selected={selected} onSelect={setSelected} />
+          {selected && (
+            <div className="mt-3">
+              <StyleProperties id={selected} cfg={cfg} update={update} onClose={() => setSelected(null)} />
+            </div>
+          )}
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <Tooltip>
               <TooltipTrigger
