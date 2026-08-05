@@ -116,13 +116,19 @@ describe("drawBarcode back-compat", () => {
     });
   });
 
-  it("keeps that config's white-ink footprint at the mask blue it always used", () => {
-    const { rects } = draw(preStyleConfig(), "mask");
-    expect(rects).toHaveLength(1);
-    expect(sameColor(rects[0].color, COLORS.maskBlue)).toBe(true);
-    expect(rects[0].x).toBeCloseTo(B.x - B.stroke, 10);
-    expect(rects[0].width).toBeCloseTo(B.w + 2 * B.stroke, 10);
-    expect(rects[0].height).toBeCloseTo(B.h + 2 * B.stroke, 10);
+  it("keeps that config's white-ink footprint at the mask blue it always used, now shaped to the true bars+digits union rather than one bounding rect", () => {
+    const cfg = preStyleConfig();
+    const { bars, digits } = split(cfg);
+    const { rects } = draw(cfg, "mask");
+    expect(rects).toHaveLength(bars.length + digits.length);
+    for (const r of rects) expect(sameColor(r.color, COLORS.maskBlue)).toBe(true);
+    // First `bars.length` rects are the per-bar outsets, in bar order.
+    bars.forEach((bar, i) => {
+      expect(rects[i].x).toBeCloseTo(bar.x - B.stroke, 10);
+      expect(rects[i].y).toBeCloseTo(bar.y - B.stroke, 10);
+      expect(rects[i].width).toBeCloseTo(bar.width + 2 * B.stroke, 10);
+      expect(rects[i].height).toBeCloseTo(bar.height + 2 * B.stroke, 10);
+    });
   });
 });
 
@@ -147,11 +153,54 @@ describe("drawBarcode styling", () => {
     const cfg = { ...defaultConfig(), ...patch };
     const { bars, halo } = split(cfg);
     const artS = halo.length ? bars[0].x - halo[0].x : 0;
+    // Mask rects are pushed bar-first, so rects[0] is the first bar's
+    // outset rect — its size must track the same S as the art halo.
     const maskRect = draw(cfg, "mask").rects[0];
-    const maskS = (maskRect.width - B.w) / 2;
+    const maskS = (maskRect.width - bars[0].width) / 2;
     expect(artS).toBeCloseTo(expected, 10);
     expect(maskS).toBeCloseTo(expected, 10);
-    expect(maskRect.height).toBeCloseTo(B.h + 2 * expected, 10);
+    expect(maskRect.height).toBeCloseTo(bars[0].height + 2 * expected, 10);
+  });
+
+  // Regression: the mask used to draw ONE bounding rect over the whole
+  // symbol. That covers the ink but wildly over-covers the space between
+  // bars and around the quiet zones — this asserts the new footprint is the
+  // true union instead: every bar rect sized to its own bar, not the
+  // symbol's full width/height.
+  it.each(cases)("mask footprint shapes to each bar individually, not one bounding rect: %s", (_name, patch, expected) => {
+    const cfg = { ...defaultConfig(), ...patch };
+    const { bars, digits } = split(cfg);
+    const { rects } = draw(cfg, "mask");
+    expect(rects).toHaveLength(bars.length + digits.length);
+    bars.forEach((bar, i) => {
+      expect(rects[i].x).toBeCloseTo(bar.x - expected, 10);
+      expect(rects[i].y).toBeCloseTo(bar.y - expected, 10);
+      expect(rects[i].width).toBeCloseTo(bar.width + 2 * expected, 10);
+      expect(rects[i].height).toBeCloseTo(bar.height + 2 * expected, 10);
+    });
+  });
+
+  // Digit pills: a rect around each digit group's glyph box (measured font
+  // width x the same ASC/DESC font-box ratio hittest.ts uses) expanded by S
+  // — the shape the art's ring-of-copies halo approximates around text.
+  const DIGIT_ASC = 1.05;
+  const DIGIT_DESC = 0.35;
+  it.each(cases)("mask digit pills track the same S, sized to each digit's glyph box: %s", (_name, patch, expected) => {
+    const cfg = { ...defaultConfig(), ...patch };
+    const { bars, digits } = split(cfg);
+    const { rects } = draw(cfg, "mask");
+    const pills = rects.slice(bars.length); // digit pills follow the bar rects
+    expect(pills).toHaveLength(digits.length);
+    digits.forEach((d, i) => {
+      // Mock font: widthOfTextAtSize always returns 10, so every digit
+      // group's glyph run is 10pt regardless of text.
+      const w = 10;
+      const x0 = d.x - DIGIT_ASC * B.textSize - expected;
+      const x1 = d.x + DIGIT_DESC * B.textSize + expected;
+      expect(pills[i].x).toBeCloseTo(x0, 10);
+      expect(pills[i].width).toBeCloseTo(x1 - x0, 10);
+      expect(pills[i].height).toBeCloseTo(w + 2 * expected, 10);
+    });
   });
 
   it("emits no halo shapes at all when the stroke is off", () => {
@@ -194,11 +243,11 @@ describe("shared barcode stroke resolver", () => {
 
   it("is the width the PDF actually draws", () => {
     const cfg = { ...defaultConfig(), barcodeStrokeWidth: 31 };
-    const { halo } = split(cfg);
+    const { bars, halo } = split(cfg);
     const expected = barcodeStrokePt(cfg);
     // Every halo rect is its bar expanded by S on each side.
     expect(halo[0].height).toBeGreaterThan(2 * expected);
-    const maskRect = draw(cfg, "mask").rects[0];
-    expect(maskRect.width).toBeCloseTo(B.w + 2 * expected, 10);
+    const maskRect = draw(cfg, "mask").rects[0]; // first bar's outset rect
+    expect(maskRect.width).toBeCloseTo(bars[0].width + 2 * expected, 10);
   });
 });

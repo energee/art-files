@@ -147,6 +147,14 @@ export function wrapWarning(measure: (text: string) => number, maxLen: number): 
   return lines;
 }
 
+/** Approximate glyph box for the barcode digits' mask pills: ascender
+ *  1.05em above the baseline, descender 0.35em below — the same measured
+ *  Poppins font box hittest.ts uses. Duplicated rather than imported:
+ *  hittest.ts already imports wrapWarning from this module, so importing
+ *  the other way would make a cycle. */
+const DIGIT_ASC = 1.05;
+const DIGIT_DESC = 0.35;
+
 /** The barcode, in both modes. `cfg` (not just the UPC digits) because both
  *  branches below resolve their geometry from the same barcode* style fields
  *  — see S. */
@@ -157,22 +165,12 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode:
   // this one value: if the mask's footprint stopped matching the art's ink
   // extent, the white-ink plate would fringe against the printed artwork.
   const S = barcodeStrokePt(cfg);
-  if (mode === "mask") {
-    // The footprint gets white ink so the code scans over the texture; it
-    // covers the stroke too, so the mask matches the art's ink extent.
-    page.drawRectangle({
-      x: B.x - S,
-      y: y(B.yTop + B.h + S),
-      width: B.w + 2 * S,
-      height: B.h + 2 * S,
-      color: maskColor(cfg.barcodeLayer),
-    });
-    return;
-  }
   // Rotated layout: bars run horizontally, the code advances bottom-to-top,
   // and the digits column sits to the RIGHT of the bars — the same
   // arrangement JsBarcode renders, turned a quarter turn. The geometry
-  // itself is shared with the PSD builder (see ../barcode).
+  // itself is shared with the PSD builder (see ../barcode), and BOTH modes
+  // below read the same bars/digits so the mask's footprint can't drift
+  // from what the art pass actually inks.
   const geo = barcodeGeometry(cfg.upc, (t) => fonts.regular.widthOfTextAtSize(t, B.textSize));
   // y() of a run's lowest module IS the rect's bottom edge in PDF space, so
   // the top-origin box converts by its far edge.
@@ -180,12 +178,35 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode:
     x: b.x, y: y(b.yTop + b.h), width: b.w, height: b.h,
   }));
   // rotate(90) turns the glyph body toward -x, so `x` is the baseline and the
-  // digits grow back toward the bars from it.
+  // digits grow back toward the bars from it. `w` (the glyph run's length)
+  // is kept alongside for the mask's digit pills below.
   const digits = geo.digits.map((d) => {
     const w = fonts.regular.widthOfTextAtSize(d.text, B.textSize);
-    return { txt: d.text, x: d.x, y: y(geo.bottom - d.center * geo.mod) - w / 2 };
+    return { txt: d.text, x: d.x, y: y(geo.bottom - d.center * geo.mod) - w / 2, w };
   });
   const glyph = { size: B.textSize, font: fonts.regular, rotate: degrees(90) };
+
+  if (mode === "mask") {
+    // The true footprint the art pass inks: one outset rect per bar (the
+    // same ±S outset the art halo pass draws below) plus a pill per digit
+    // group — the rect the art's ring-of-copies halo approximates — around
+    // its glyph box expanded by S. At S=0 (stroke "none") this reduces to
+    // exactly the bars' and digits' own ink, still needed under the ink for
+    // scan contrast. A single bounding rect used to stand in for all of
+    // this; that under-covered the gaps between bars and the digit column,
+    // which can unprint the code on a textured stock.
+    const color = maskColor(cfg.barcodeLayer);
+    for (const r of bars)
+      page.drawRectangle({
+        x: r.x - S, y: r.y - S, width: r.width + 2 * S, height: r.height + 2 * S, color,
+      });
+    for (const d of digits) {
+      const x0 = d.x - DIGIT_ASC * B.textSize - S;
+      const x1 = d.x + DIGIT_DESC * B.textSize + S;
+      page.drawRectangle({ x: x0, y: d.y - S, width: x1 - x0, height: d.w + 2 * S, color });
+    }
+    return;
+  }
 
   // Outer stroke, skipped entirely at S = 0 — ring(0) would emit 16 identical
   // copies at zero offset. EVERY stroke shape draws before ANY fill one —

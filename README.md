@@ -28,9 +28,11 @@ of the bars, with the number-system and check digits printed outside the
 symbol in the quiet zones. It is a stylable element like everything else
 (fill, layer, outer stroke), shipping as near-black bars inside a white
 halo over white ink. Contrast comes from that halo plus the white ink the
-mask lays under the whole footprint, and the mask sizes its footprint from
-the same resolved stroke width the art draws, so the two plates stay
-registered at any setting. Its stroke ships at 20px (600dpi); configs from
+mask lays under the true printed shape — an outset rect per bar plus a pill
+per digit group, unioned rather than one bounding rect, so the white ink
+doesn't fall short between bars or around the digits — sized from the same
+resolved stroke width the art draws, so the two plates stay registered at
+any setting. Its stroke ships at 20px (600dpi); configs from
 before it was stylable keep their measured ~1.8-module halo. Every halo shape
 draws before any bar — interleaving the two distorted the module widths
 enough to stop it decoding. The QR code's payload is
