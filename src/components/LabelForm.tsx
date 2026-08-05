@@ -22,9 +22,31 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Switch } from "@/components/ui/switch";
 import { DescriptionEditor } from "./DescriptionEditor";
+import { FileDrop } from "./FileDrop";
 
 type Update = (fn: (c: LabelConfig) => void) => void;
+
+/** Collab art is whatever the partner brewery sends: vector preferred (it
+ *  takes the slot's fill/layer like the laurel), raster accepted. */
+const COLLAB_ACCEPT = {
+  "image/svg+xml": [".svg"],
+  "image/png": [".png"],
+  "image/jpeg": [".jpg", ".jpeg"],
+};
+
+/** The uploaded collab logos and their handlers. They live in App beside the
+ *  texture and mask — like those, the image is a build-time asset, not part of
+ *  the saved config, which holds only the slot's style and size. */
+export interface CollabFiles {
+  leftName?: string;
+  leftUrl?: string;
+  centerName?: string;
+  centerUrl?: string;
+  onLeft: (f: File) => void;
+  onCenter: (f: File) => void;
+}
 
 // The six template elements and their count both come from ELEMENTS' group
 // field, computed once — never a second hardcoded id list, so a future
@@ -111,6 +133,38 @@ function StyleOnlyElementRow(props: {
   );
 }
 
+/** A collab logo slot: the size knob plus the row's usual job of opening
+ *  StyleProperties for that element. Size is a plain multiplier on the slot's
+ *  fit-to-box scale (1 = fit) — collab marks differ too much in visual weight
+ *  for one fitted size to be right for all of them. */
+function CollabSlotRow(props: {
+  id: "collabLeft" | "collabCenter"; label: string; cfg: LabelConfig; update: Update;
+  selected: boolean; onSelect: (id: ElementId) => void;
+}) {
+  const slot = props.cfg[props.id];
+  const htmlId = machineName(props.label);
+  return (
+    <Row label={props.label} htmlFor={htmlId} marker={!isDefaultStyle(props.id, slot)}>
+      <Input
+        id={htmlId}
+        type="number"
+        step={0.05}
+        min={0.1}
+        max={2}
+        className={cn("h-6 w-20 text-xs", props.selected && "ring-1 ring-ring")}
+        value={slot.scale}
+        onFocus={() => props.onSelect(props.id)}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          // Ignore a cleared or nonsensical field rather than rendering a
+          // zero-size (invisible) or negative-scaled logo.
+          if (v > 0) props.update((c) => { c[props.id].scale = v; });
+        }}
+      />
+    </Row>
+  );
+}
+
 function Heading(props: { children?: React.ReactNode }) {
   return (
     <h2 className="mb-1.5 mt-4 flex items-center gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
@@ -125,8 +179,9 @@ export function LabelForm(props: {
   update: Update;
   selected: ElementId | null;
   onSelect: (id: ElementId | null) => void;
+  collab: CollabFiles;
 }) {
-  const { cfg, errors, update, selected, onSelect } = props;
+  const { cfg, errors, update, selected, onSelect, collab } = props;
   return (
     <div>
       <Heading>This beer</Heading>
@@ -186,6 +241,44 @@ export function LabelForm(props: {
         onFocus={() => onSelect("description")}
         onChange={(md) => update((c) => { c.description = md; })}
       />
+
+      {/* Collab block: everything below the switch is mounted only while it is
+          on, so a normal release never sees these fields. Turning it off does
+          not discard the uploaded art or the slot styles — the switch is the
+          one thing the renderer checks, so flipping it back restores the
+          label exactly as it was. */}
+      <Heading>
+        <label className="flex cursor-pointer items-center gap-1.5">
+          <Switch
+            checked={cfg.collabEnabled}
+            onCheckedChange={(on) => {
+              update((c) => { c.collabEnabled = on; });
+              // Leaving a collab element selected would strand the style panel
+              // on a row that just unmounted.
+              if (!on && selected?.startsWith("collab")) onSelect(null);
+            }}
+          />
+          Collab
+        </label>
+      </Heading>
+      {cfg.collabEnabled && (
+        <>
+          <div className="mb-1.5 flex gap-2">
+            <FileDrop label="Left logo (SVG/PNG)" accept={COLLAB_ACCEPT}
+              fileName={collab.leftName} previewUrl={collab.leftUrl}
+              onFile={collab.onLeft} />
+            <FileDrop label="Center logo (SVG/PNG)" accept={COLLAB_ACCEPT}
+              fileName={collab.centerName} previewUrl={collab.centerUrl}
+              onFile={collab.onCenter} />
+          </div>
+          <StyleOnlyElementRow id="collabLead" label="Lead-in" cfg={cfg}
+            selected={selected === "collabLead"} onSelect={onSelect} />
+          <CollabSlotRow id="collabLeft" label="Left size" cfg={cfg} update={update}
+            selected={selected === "collabLeft"} onSelect={onSelect} />
+          <CollabSlotRow id="collabCenter" label="Center size" cfg={cfg} update={update}
+            selected={selected === "collabCenter"} onSelect={onSelect} />
+        </>
+      )}
 
       <Collapsible>
         <Heading>

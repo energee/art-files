@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
-import { buildArtPdf, buildMaskPdf, type Assets } from "../src/pdf/build";
+import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "../src/pdf/build";
 import { buildPsd, type PsdAssets } from "../src/psd/build";
 import { defaultConfig, parseConfigFile } from "../src/defaults";
 import { validateMask, recolorMaskForPdf } from "../src/maskimage";
@@ -14,10 +14,23 @@ import { validateUpc } from "../src/upc";
 const here = dirname(fileURLToPath(import.meta.url));
 const asset = (p: string) => join(here, "..", "src", "assets", p);
 
-const [texturePath, maskPath, outDir, configPath] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const flag = (name: string) =>
+  argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
+const [texturePath, maskPath, outDir, configPath] = argv.filter((a) => !a.startsWith("--"));
+
+/** Load a collab logo by extension: .svg as source text (recolorable per its
+ *  slot's style), anything else as raster bytes. */
+const collabImage = (p: string | undefined): CollabImage | null =>
+  !p
+    ? null
+    : /\.svg$/i.test(p)
+      ? { kind: "svg", svg: readFileSync(p, "utf8") }
+      : { kind: /\.jpe?g$/i.test(p) ? "jpg" : "png", bytes: readFileSync(p) };
 if (!texturePath || !maskPath || !outDir) {
   console.error(
-    "usage: npm run generate -- <texture|none> <mask.png|none> <outDir> [config.json]",
+    "usage: npm run generate -- <texture|none> <mask.png|none> <outDir> [config.json] " +
+      "[--collab-left=<file>] [--collab-center=<file>]",
   );
   process.exit(1);
 }
@@ -55,6 +68,8 @@ const assets: Assets = {
     bold: readFileSync(asset("fonts/Poppins-Bold.ttf")),
   },
   logoSvg: readFileSync(asset("logo2025.svg"), "utf8"),
+  collabLeft: collabImage(flag("collab-left")),
+  collabCenter: collabImage(flag("collab-center")),
   // "none" skips the texture: the art PDF is then just the elements on
   // bare stock (matches the app's pre-drop preview).
   texture: textureBytes && {
