@@ -10,7 +10,7 @@ import type { CollabSlot } from "../src/types";
 import { buildPsd, type PsdAssets } from "../src/psd/build";
 import { defaultConfig, parseConfigFile } from "../src/defaults";
 import { validateMask, recolorMaskForPdf } from "../src/maskimage";
-import { tintRgba } from "../src/collab";
+import { rasterKind, tintRgba } from "../src/collab";
 import { validateUpc } from "../src/upc";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -33,7 +33,9 @@ const collabImage = (p: string | undefined, slot: CollabSlot): CollabImage | nul
     tintRgba(new Uint8Array(png.data.buffer, png.data.byteOffset, png.data.length), slot.fill);
     return { kind: "png", bytes: PNG.sync.write(png) };
   }
-  return { kind: /\.jpe?g$/i.test(p) ? "jpg" : "png", bytes: readFileSync(p) };
+  // Unlike the browser app, which tints any raster via canvas.
+  if (slot.tintRaster) console.warn(`warning: ${p} — tint is PNG-only here, embedding untinted`);
+  return { kind: rasterKind(p), bytes: readFileSync(p) };
 };
 if (!texturePath || !maskPath || !outDir) {
   console.error(
@@ -82,7 +84,7 @@ const assets: Assets = {
   // bare stock (matches the app's pre-drop preview).
   texture: textureBytes && {
     bytes: textureBytes,
-    kind: /\.jpe?g$/i.test(texturePath) ? "jpg" : "png",
+    kind: rasterKind(texturePath),
   },
   maskPng,
 };

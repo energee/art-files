@@ -62,22 +62,25 @@ function Dot() {
   return <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-primary" />;
 }
 
+/** The one label-column layout: w-24 label + the matching error indent. Used
+ *  by Row and by the hand-rolled ABV/UPC composite row, so a column resize is
+ *  a one-place change. */
+const ROW_LABEL_CLS = "flex w-24 shrink-0 items-center gap-1 text-[13px] font-normal text-muted-foreground";
+const ROW_ERROR_CLS = "ml-[6.375rem] text-xs text-destructive";
+
 function Row(props: {
   label: string; htmlFor?: string; error?: string; marker?: boolean; children: React.ReactNode;
 }) {
   return (
     <div className="mb-1.5">
       <div className="flex items-center gap-1.5">
-        <Label
-          htmlFor={props.htmlFor}
-          className="flex w-24 shrink-0 items-center gap-1 text-[13px] font-normal text-muted-foreground"
-        >
+        <Label htmlFor={props.htmlFor} className={ROW_LABEL_CLS}>
           {props.label}
           {props.marker && <Dot />}
         </Label>
         {props.children}
       </div>
-      {props.error && <p className="ml-[6.375rem] text-xs text-destructive">{props.error}</p>}
+      {props.error && <p className={ROW_ERROR_CLS}>{props.error}</p>}
     </div>
   );
 }
@@ -226,6 +229,27 @@ function CollabSlotRow(props: {
   );
 }
 
+/** The laurel's vertical nudge, editable from two places: the collab block
+ *  (with a caption) and the Brand template's Logo row. Both are controlled
+ *  off the one cfg.logo.offsetY, so they can never disagree; it moves the
+ *  whole centre stack — the collab mark hangs off the laurel's nudged bottom
+ *  (see drawElements), so the pair keeps its gap. */
+function StackNudgeRow(props: {
+  cfg: LabelConfig; update: Update; onSelect: (id: ElementId) => void; caption?: string;
+}) {
+  return (
+    <Row label="Stack nudge">
+      <OffsetInput
+        value={props.cfg.logo.offsetY}
+        title="Move the laurel and the centre collab mark together, points (+ = down)"
+        onFocus={() => props.onSelect("logo")}
+        onChange={(v) => props.update((c) => { c.logo.offsetY = v; })}
+      />
+      {props.caption && <span className="text-[11px] text-muted-foreground">{props.caption}</span>}
+    </Row>
+  );
+}
+
 function Heading(props: { children?: React.ReactNode }) {
   return (
     <h2 className="mb-1.5 mt-4 flex items-center gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
@@ -261,10 +285,7 @@ export function LabelForm(props: {
           default — like the logo's keyline — so no marker dot until someone
           restyles it. */}
       <div className="mb-1.5 flex items-center gap-1.5">
-        <Label
-          htmlFor="abv"
-          className="flex w-24 shrink-0 items-center gap-1 text-[13px] font-normal text-muted-foreground"
-        >
+        <Label htmlFor="abv" className={ROW_LABEL_CLS}>
           ABV %
           {!isDefaultStyle("abv", cfg.abvStyle) && <Dot />}
         </Label>
@@ -282,7 +303,7 @@ export function LabelForm(props: {
           onFocus={() => onSelect("barcode")}
           onChange={(e) => update((c) => { c.upc = e.target.value.trim(); })} />
       </div>
-      {errors.upc && <p className="ml-[6.375rem] text-xs text-destructive">{errors.upc}</p>}
+      {errors.upc && <p className={ROW_ERROR_CLS}>{errors.upc}</p>}
 
       {/* The QR payload is derived from the beer name and has no form field,
           so the row shows what will actually be encoded. */}
@@ -346,15 +367,7 @@ export function LabelForm(props: {
               inside the collapsed Brand template disclosure where nobody
               working on a collab would find it. Both inputs are controlled
               off the one field, so they can never disagree. */}
-          <Row label="Stack nudge">
-            <OffsetInput
-              value={cfg.logo.offsetY}
-              title="Move the laurel and the centre collab mark together, points (+ = down)"
-              onFocus={() => onSelect("logo")}
-              onChange={(v) => update((c) => { c.logo.offsetY = v; })}
-            />
-            <span className="text-[11px] text-muted-foreground">laurel + centre mark</span>
-          </Row>
+          <StackNudgeRow cfg={cfg} update={update} onSelect={onSelect} caption="laurel + centre mark" />
         </>
       )}
 
@@ -381,14 +394,7 @@ export function LabelForm(props: {
                     id={el.id} label={el.label} cfg={cfg}
                     selected={selected === el.id} onSelect={onSelect}
                   />
-                  <Row label="Stack nudge">
-                    <OffsetInput
-                      value={cfg.logo.offsetY}
-                      title="Move the laurel and the centre collab mark together, points (+ = down)"
-                      onFocus={() => onSelect("logo")}
-                      onChange={(v) => update((c) => { c.logo.offsetY = v; })}
-                    />
-                  </Row>
+                  <StackNudgeRow cfg={cfg} update={update} onSelect={onSelect} />
                 </div>
               );
             // Info authors in the same markdown subset as the description,

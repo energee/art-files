@@ -112,8 +112,8 @@ export function applyStyle(c: LabelConfig, id: ElementId, patch: Partial<StyledL
     const { bold: _bold, ...rest } = patch;
     patch = rest;
   }
-  if (id === "qr" || id === "barcode") {
-    const k = FLAT[id];
+  if (id in FLAT) {
+    const k = FLAT[id as keyof typeof FLAT];
     if (patch.fill !== undefined) c[k.fill] = patch.fill;
     if (patch.layer !== undefined) c[k.layer] = patch.layer;
     if (patch.stroke !== undefined) c[k.stroke] = patch.stroke;

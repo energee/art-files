@@ -4,6 +4,11 @@
 import type { Fill } from "./types";
 import { parseHexFill } from "./layout";
 
+/** Which raster kind a filename holds, by extension — the one classification
+ *  rule shared by the app's file drops and the Node harness's CLI paths. */
+export const rasterKind = (name: string): "jpg" | "png" =>
+  /\.jpe?g$/i.test(name) ? "jpg" : "png";
+
 /** Recolor every pixel to `fill`, keeping its alpha — the "color overlay" a
  *  partner's one-color PNG needs to sit on the label in label gold (or any
  *  other fill) instead of whatever color it was exported in.

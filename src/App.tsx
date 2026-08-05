@@ -3,6 +3,8 @@
 // overlay-compare preview, and on-demand full-resolution exports. Mirrors
 // the old main.ts wiring, componentized.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { PDFDocument } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 import type { CollabSlot, Fill, LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
@@ -10,7 +12,7 @@ import { defaultConfig, parseConfigFile, toConfigFile } from "@/defaults";
 import { useHistory } from "@/history";
 import { validateUpc } from "@/upc";
 import { validateMask, recolorMaskForPdf } from "@/maskimage";
-import { tintRgba } from "@/collab";
+import { rasterKind, tintRgba } from "@/collab";
 import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "@/pdf/build";
 import { buildPsd, PSD_DOC, type PsdAssets } from "@/psd/build";
 import { LabelForm, type CollabFiles } from "@/components/LabelForm";
@@ -37,6 +39,13 @@ type Loaded = { bytes: Uint8Array; previewBytes: Uint8Array; name: string; previ
  *  shows. previewUrl is the raw file, so an SVG thumbnails as itself. */
 type CollabFile = { image: CollabImage; name: string; previewUrl: string };
 
+/** Encode a canvas's pixels as PNG bytes — the shared tail of every
+ *  decode/recolor/re-encode pipeline in this file. */
+async function canvasToPng(canvas: HTMLCanvasElement): Promise<Uint8Array> {
+  const blob = await new Promise<Blob>((res) => canvas.toBlob((b) => res(b!), "image/png"));
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
 /** Repaint a raster collab logo in `fill`, keeping alpha, and re-encode it as
  *  PNG for embedding — the color-overlay path for PNG/JPG art, which pdf-lib
  *  can only draw as-is. Same decode/recolor/re-encode shape as onMask. */
@@ -51,8 +60,21 @@ async function tintedPng(bytes: Uint8Array, fill: Fill): Promise<Uint8Array> {
   const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
   tintRgba(img.data, fill);
   ctx.putImageData(img, 0, 0);
-  const blob = await new Promise<Blob>((res) => canvas.toBlob((b) => res(b!), "image/png"));
-  return new Uint8Array(await blob.arrayBuffer());
+  return canvasToPng(canvas);
+}
+
+/** tintedPng, memoized per source bytes: the debounced preview rebuilds on
+ *  every keystroke, and without this each rebuild re-decoded, re-tinted and
+ *  re-encoded both collab logos even when neither the file nor its fill had
+ *  changed. Keyed by the bytes' identity (a new upload is a new Uint8Array)
+ *  and fill; WeakMap lets a replaced upload's cache be collected. */
+const tintCache = new WeakMap<Uint8Array, Map<Fill, Promise<Uint8Array>>>();
+function tintedPngCached(bytes: Uint8Array, fill: Fill): Promise<Uint8Array> {
+  let byFill = tintCache.get(bytes);
+  if (!byFill) tintCache.set(bytes, (byFill = new Map()));
+  let p = byFill.get(fill);
+  if (!p) byFill.set(fill, (p = tintedPng(bytes, fill)));
+  return p;
 }
 
 /** Read a dropped collab logo: SVG as source text (so it can be recolored
@@ -60,7 +82,7 @@ async function tintedPng(bytes: Uint8Array, fill: Fill): Promise<Uint8Array> {
 async function readCollab(f: File): Promise<CollabFile> {
   const image: CollabImage = /\.svg$/i.test(f.name)
     ? { kind: "svg", svg: await f.text() }
-    : { kind: /\.jpe?g$/i.test(f.name) ? "jpg" : "png", bytes: new Uint8Array(await f.arrayBuffer()) };
+    : { kind: rasterKind(f.name), bytes: new Uint8Array(await f.arrayBuffer()) };
   return { image, name: f.name, previewUrl: URL.createObjectURL(f) };
 }
 
@@ -74,8 +96,7 @@ async function previewPng(src: ImageBitmap | HTMLCanvasElement): Promise<Uint8Ar
   c.width = Math.round(src.width * scale);
   c.height = Math.round(src.height * scale);
   c.getContext("2d")!.drawImage(src, 0, 0, c.width, c.height);
-  const blob = await new Promise<Blob>((res) => c.toBlob((b) => res(b!), "image/png"));
-  return new Uint8Array(await blob.arrayBuffer());
+  return canvasToPng(c);
 }
 
 const fontsPromise = (async () => {
@@ -160,8 +181,6 @@ export default function App() {
   // on one side only, which is the worse failure mode for a click target.
   useEffect(() => {
     void (async () => {
-      const { PDFDocument } = await import("pdf-lib");
-      const fontkit = (await import("@pdf-lib/fontkit")).default;
       const fonts = await fontsPromise;
       const doc = await PDFDocument.create();
       doc.registerFontkit(fontkit);
@@ -210,7 +229,7 @@ export default function App() {
       if (old) URL.revokeObjectURL(old.previewUrl);
       return {
         bytes, previewBytes, name: f.name,
-        kind: /\.jpe?g$/i.test(f.name) ? "jpg" : "png",
+        kind: rasterKind(f.name),
         previewUrl,
       };
     });
@@ -227,8 +246,7 @@ export default function App() {
     const check = validateMask(data.data);
     recolorMaskForPdf(data.data);
     ctx.putImageData(data, 0, 0);
-    const blob = await new Promise<Blob>((res) => canvas.toBlob((b) => res(b!), "image/png"));
-    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const bytes = await canvasToPng(canvas);
     const previewBytes = await previewPng(canvas); // recolored canvas, downscaled
     const previewUrl = URL.createObjectURL(f);
     setMask((old) => {
@@ -266,7 +284,7 @@ export default function App() {
     const resolve = async (f: CollabFile | null, slot: CollabSlot) => {
       if (!f) return null;
       if (f.image.kind === "svg" || !slot.tintRaster) return f.image;
-      return { kind: "png" as const, bytes: await tintedPng(f.image.bytes, slot.fill) };
+      return { kind: "png" as const, bytes: await tintedPngCached(f.image.bytes, slot.fill) };
     };
     return {
       collabLeft: await resolve(collabLeft, cfg.collabLeft),
@@ -312,13 +330,19 @@ export default function App() {
   }, [cfg, texture, mask, collabLeft, collabCenter, blocked]);
 
   // Revoking immediately can abort a large download, so each URL lives until
-  // the next export replaces it — a timer would instead pin a full Blob copy
-  // of every export (tens of MB for the PSD) for its whole duration.
-  const lastSaved = useRef<string | null>(null);
+  // the NEXT export batch — a timer would instead pin a full Blob copy of
+  // every export (tens of MB for the PSD) for its whole duration. Revocation
+  // happens per batch, not per save: "Export PDFs (art + mask)" saves twice
+  // back-to-back, and revoking inside saveBytes would kill the art PDF's URL
+  // the moment the mask save followed it.
+  const lastSaved = useRef<string[]>([]);
+  function startSaveBatch() {
+    lastSaved.current.forEach((u) => URL.revokeObjectURL(u));
+    lastSaved.current = [];
+  }
   function saveBytes(bytes: Uint8Array, name: string, type = "application/pdf") {
-    if (lastSaved.current) URL.revokeObjectURL(lastSaved.current);
     const url = blobUrl(bytes, type);
-    lastSaved.current = url;
+    lastSaved.current.push(url);
     download(url, name);
   }
 
@@ -326,6 +350,7 @@ export default function App() {
    *  preview PDFs on screen are deliberately low-res (see Loaded). */
   async function buildFull(which: "art" | "mask" | "both") {
     setBuilding(true);
+    startSaveBatch();
     try {
       const fonts = await fontsPromise;
       const assets: Assets = {
@@ -370,6 +395,7 @@ export default function App() {
    *  Built full-resolution on demand, like the PDF exports. */
   async function exportPsd() {
     setBuilding(true);
+    startSaveBatch();
     try {
       const fonts = await fontsPromise;
       const psd = await buildPsd(cfg, {

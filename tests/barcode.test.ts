@@ -11,7 +11,7 @@ import { drawBarcode } from "../src/pdf/build";
 import { barcodeStrokePt } from "../src/barcode";
 import { encodeUpc } from "../src/upc";
 import { defaultConfig, parseConfigFile, toConfigFile } from "../src/defaults";
-import { BARCODE as B, COLORS, PAGE, PX, parseHexFill } from "../src/layout";
+import { BARCODE as B, COLORS, FONT_ASC, FONT_DESC, PAGE, PX, parseHexFill } from "../src/layout";
 
 const UPC = "850051366224";
 
@@ -183,8 +183,8 @@ describe("drawBarcode styling", () => {
   // Digit pills: a rect around each digit group's glyph box (measured font
   // width x the same ASC/DESC font-box ratio hittest.ts uses) expanded by S
   // — the shape the art's ring-of-copies halo approximates around text.
-  const DIGIT_ASC = 1.05;
-  const DIGIT_DESC = 0.35;
+  const DIGIT_ASC = FONT_ASC;
+  const DIGIT_DESC = FONT_DESC;
   it.each(cases)("mask digit pills track the same S, sized to each digit's glyph box: %s", (_name, patch, expected) => {
     const cfg = { ...defaultConfig(), ...patch };
     const { bars, digits } = split(cfg);

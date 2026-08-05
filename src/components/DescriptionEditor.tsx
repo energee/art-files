@@ -121,6 +121,18 @@ function paintLine(el: HTMLDivElement, l: Pick<EditorLine, "bold" | "white" | "h
   el.style.color = l.white ? "" : GOLD;
 }
 
+/** Reads a line-div's data-* flags back into an EditorLine. Missing data-*
+ *  (e.g. a brand-new div the browser inserted for a native Enter keypress)
+ *  reads as plain/non-bold/non-white/non-header. */
+function readLineEl(el: HTMLDivElement): EditorLine {
+  return {
+    text: el.textContent ?? "",
+    bold: el.dataset.bold === "true",
+    white: el.dataset.white === "true",
+    header: el.dataset.header === "true",
+  };
+}
+
 /** Strips data-header from every line-div except the first.
  *
  *  Pressing Enter inside the header makes the browser split the block by
@@ -138,9 +150,7 @@ function demoteStrayHeaders(root: HTMLDivElement) {
   for (const el of kids.slice(1)) {
     if (el.dataset.header !== "true") continue;
     delete el.dataset.header;
-    paintLine(el, {
-      bold: el.dataset.bold === "true", white: el.dataset.white === "true", header: false,
-    });
+    paintLine(el, readLineEl(el));
   }
 }
 
@@ -184,12 +194,7 @@ function readLines(root: HTMLDivElement): EditorLine[] {
     // or nothing at all rather than a div. Either way, one empty line.
     return [{ text: root.textContent ?? "", bold: false, white: false, header: false }];
   }
-  return kids.map((el) => ({
-    text: el.textContent ?? "",
-    bold: el.dataset.bold === "true",
-    white: el.dataset.white === "true",
-    header: el.dataset.header === "true",
-  }));
+  return kids.map(readLineEl);
 }
 
 /** Walks up from a selection endpoint to the line-div that is a direct
@@ -359,11 +364,7 @@ export function DescriptionEditor(props: {
     if (!lines.length) return;
     for (const el of lines) {
       el.dataset[attr] = String(el.dataset[attr] !== "true");
-      paintLine(el, {
-        bold: el.dataset.bold === "true",
-        white: el.dataset.white === "true",
-        header: el.dataset.header === "true",
-      });
+      paintLine(el, readLineEl(el));
     }
     setCaret(computeCaret(root, lines));
     emitChange();
@@ -388,11 +389,7 @@ export function DescriptionEditor(props: {
     const nowHeader = !c.header;
     if (nowHeader) first.dataset.header = "true";
     else delete first.dataset.header;
-    paintLine(first, {
-      bold: first.dataset.bold === "true",
-      white: first.dataset.white === "true",
-      header: nowHeader,
-    });
+    paintLine(first, readLineEl(first));
     setCaret(computeCaret(root, lines));
     emitChange();
   };

@@ -14,13 +14,12 @@ import * as L from "./layout";
 export type Measure = (text: string, size: number, bold: boolean) => number;
 export interface Box { x0: number; y0: number; x1: number; y1: number; id: ElementId }
 
-const ASC = 1.05;
-const DESC = 0.35;
+const ASC = L.FONT_ASC;
+const DESC = L.FONT_DESC;
 
-/** Drawn logo height: LOGO.w scaled by logo2025.svg's viewBox aspect
- *  (0 0 480 525). Derived, not hardcoded, so a new logo file with a different
- *  aspect only needs these two numbers changed here alongside the asset. */
-const LOGO_H = (L.LOGO.w * 525) / 480;
+/** Drawn logo height: LOGO.w scaled by the SVG's aspect, which lives in
+ *  layout.ts next to LOGO itself (see LOGO_ASPECT). */
+const LOGO_H = L.LOGO.w * L.LOGO_ASPECT;
 
 // Every text box measures through `width` below, so an element's tracking
 // widens its hit box exactly as much as it widens the drawn line, and inline

@@ -335,13 +335,10 @@ export function wrapWarning(measure: (text: string) => number, maxLen: number): 
   return lines;
 }
 
-/** Approximate glyph box for the barcode digits' mask pills: ascender
- *  1.05em above the baseline, descender 0.35em below — the same measured
- *  Poppins font box hittest.ts uses. Duplicated rather than imported:
- *  hittest.ts already imports wrapWarning from this module, so importing
- *  the other way would make a cycle. */
-const DIGIT_ASC = 1.05;
-const DIGIT_DESC = 0.35;
+/** Glyph box for the barcode digits' mask pills — the measured Poppins font
+ *  box from layout.ts, the same one hittest.ts uses. */
+const DIGIT_ASC = L.FONT_ASC;
+const DIGIT_DESC = L.FONT_DESC;
 
 /** The barcode, in both modes. `cfg` (not just the UPC digits) because both
  *  branches below resolve their geometry from the same barcode* style fields

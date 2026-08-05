@@ -2,7 +2,7 @@
 // bitmaps via pdf.js and stacked; a resizable divider reveals the white-ink
 // layer (left side) over the art (right side). Replaces <embed> + tabs.
 import {
-  forwardRef, useEffect, useImperativeHandle, useRef, useState, type RefObject,
+  forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type RefObject,
 } from "react";
 import * as pdfjs from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -133,7 +133,13 @@ export const PreviewCompare = forwardRef<
 
   // Selection outline geometry, as a percentage box so it tracks the
   // container at any on-screen size without its own resize handling.
-  const selBox = selected && measure ? boxOf(selected, cfg, measure) : null;
+  // Memoized: boxOf rebuilds every element's box (including the warning's
+  // word-by-word wrap measurement), and dragging the divider re-renders this
+  // component per pointer-move frame without any of these inputs changing.
+  const selBox = useMemo(
+    () => (selected && measure ? boxOf(selected, cfg, measure) : null),
+    [selected, cfg, measure],
+  );
 
   return (
     <div

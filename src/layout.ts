@@ -26,6 +26,13 @@ export function parseHexFill(fill: `#${string}` | "none"): { r: number; g: numbe
   return { r: ((n >> 16) & 255) / 255, g: ((n >> 8) & 255) / 255, b: (n & 255) / 255 };
 }
 
+/** Poppins' font box, measured with `pdftotext -bbox` off the reference PDF:
+ *  ascender 1.05em above the baseline, descender 0.35em below. Shared by the
+ *  hit-tester's glyph boxes, the barcode digits' mask pills (pdf/build.ts)
+ *  and their tests, so one measured value can't drift into three. */
+export const FONT_ASC = 1.05;
+export const FONT_DESC = 0.35;
+
 /** On-page length of a text run drawn with letter-spacing: the font's own
  *  measured width plus one gap per ADJACENT GLYPH PAIR. PDF's Tc operator
  *  also emits a gap after the final glyph, but that is advance, not ink —
@@ -94,6 +101,11 @@ export function collabLeftFlow(descLineCount: number) {
 // Center column ----------------------------------------------------------
 export const WORDMARK = { cx: CENTER_X, baseline: 38.23, size: 22, text: "Lolev Beer" };
 export const LOGO = { cx: CENTER_X, cy: 183, w: 33.5 }; // h follows the SVG aspect
+/** logo2025.svg's viewBox aspect (0 0 480 525) — height per unit width. The
+ *  renderers derive this live via parseLogo; the hit-tester (no SVG in hand)
+ *  reads it from here, so a new logo asset means updating this one ratio
+ *  alongside the file. */
+export const LOGO_ASPECT = 525 / 480;
 export const NAME = { cx: CENTER_X, baseline: 323.28, size: 15.83 };
 export const STYLE_LINE = { cx: CENTER_X, baseline: 344.6, size: 12.18 };
 
