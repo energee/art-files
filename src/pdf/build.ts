@@ -128,10 +128,13 @@ async function drawCollab(
 ): Promise<void> {
   const maxW = box.maxW * slot.scale;
   const maxH = box.maxH * slot.scale;
+  // offsetY nudges the laid-out position (flowed, for the left slot) rather
+  // than replacing it — see Positioned.
+  const top = box.top + (slot.offsetY ?? 0);
   const place = (w: number) => (box.cx !== undefined ? box.cx - w / 2 : box.x!);
   if (img.kind === "svg") {
     const art = parseLogo(img.svg, maxW, maxH);
-    const at = { x: place(art.w), y: y(box.top) };
+    const at = { x: place(art.w), y: y(top) };
     const color = mode === "art" ? fillColor(slot.fill) : maskColor(slot.layer);
     // Same two-pass order as the laurel: every stroke path before any fill, so
     // overlapping strokes can't paint over a neighbour's fill.
@@ -149,7 +152,7 @@ async function drawCollab(
   const s = Math.min(maxW / emb.width, maxH / emb.height);
   const w = emb.width * s;
   const h = emb.height * s;
-  const rect = { x: place(w), y: y(box.top + h), width: w, height: h };
+  const rect = { x: place(w), y: y(top + h), width: w, height: h };
   if (mode === "art") page.drawImage(emb, rect);
   else page.drawRectangle({ ...rect, color: toRgb(L.COLORS.maskBlue) });
 }
@@ -411,7 +414,8 @@ async function drawElements(
   });
   const logo = parseLogo(assets.logoSvg, L.LOGO.w);
   const logoColor = mode === "art" ? fillColor(cfg.logo.fill) : maskColor(cfg.logo.layer);
-  const logoAt = { x: L.LOGO.cx - logo.w / 2, y: y(L.LOGO.cy - logo.h / 2) };
+  const logoCy = L.LOGO.cy + (cfg.logo.offsetY ?? 0);
+  const logoAt = { x: L.LOGO.cx - logo.w / 2, y: y(logoCy - logo.h / 2) };
   // Outer stroke: a centered border at 2w extends w beyond the shape; the
   // fill pass on top then covers the inner half. All stroke paths draw
   // before any fill so overlapping laurel branches keep clean edges.
@@ -429,7 +433,9 @@ async function drawElements(
   if (cfg.collabEnabled && assets.collabCenter)
     await drawCollab(doc, page, assets.collabCenter, cfg.collabCenter, mode, {
       cx: L.COLLAB_CENTER.cx,
-      top: L.LOGO.cy + logo.h / 2 + L.COLLAB_CENTER.gapAbove,
+      // Hangs off the laurel's nudged bottom, so moving the laurel carries
+      // the collab mark with it and the pair keeps its gap.
+      top: logoCy + logo.h / 2 + L.COLLAB_CENTER.gapAbove,
       maxW: L.COLLAB_CENTER.maxW, maxH: L.COLLAB_CENTER.maxH,
     });
   drawLine(page, fonts, { text: cfg.beerName.toUpperCase(), ...cfg.nameStyle, bold: true }, mode, {

@@ -44,8 +44,10 @@ export function defaultConfig(): LabelConfig {
     // switch off none of these three are reachable from the form.
     collabEnabled: false,
     collabLead: { fill: GOLD, layer: "metallic" },
-    collabLeft: { fill: GOLD, layer: "metallic", scale: 1 },
-    collabCenter: { fill: GOLD, layer: "metallic", scale: 1 },
+    // offsetY/tintRaster ship explicit rather than absent so the form's
+    // number inputs and checkbox are controlled from the first render.
+    collabLeft: { fill: GOLD, layer: "metallic", scale: 1, offsetY: 0, tintRaster: false },
+    collabCenter: { fill: GOLD, layer: "metallic", scale: 1, offsetY: 0, tintRaster: false },
     volume: { text: "1 PINT", fill: GOLD, layer: "metallic", bold: true },
     wordmark: { fill: GOLD, layer: "metallic" },
     // The laurel's classic dark keyline, now an ordinary editable stroke.

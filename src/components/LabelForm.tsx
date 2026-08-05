@@ -22,6 +22,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { DescriptionEditor } from "./DescriptionEditor";
 import { FileDrop } from "./FileDrop";
@@ -133,6 +134,27 @@ function StyleOnlyElementRow(props: {
   );
 }
 
+/** Vertical nudge in points for a logo-like element, positive = down. Text
+ *  elements have no equivalent: their baselines are layout.ts's job. */
+function OffsetInput(props: {
+  value?: number; title: string; onChange: (v: number) => void; onFocus: () => void;
+}) {
+  return (
+    <Input
+      type="number"
+      step={1}
+      title={props.title}
+      aria-label={props.title}
+      className="h-6 w-16 text-xs"
+      value={props.value ?? 0}
+      onFocus={props.onFocus}
+      // An empty or non-numeric field reads as "no nudge", not NaN — which
+      // would propagate into every y in the draw and blank the label.
+      onChange={(e) => props.onChange(Number(e.target.value) || 0)}
+    />
+  );
+}
+
 /** A collab logo slot: the size knob plus the row's usual job of opening
  *  StyleProperties for that element. Size is a plain multiplier on the slot's
  *  fit-to-box scale (1 = fit) — collab marks differ too much in visual weight
@@ -161,6 +183,23 @@ function CollabSlotRow(props: {
           if (v > 0) props.update((c) => { c[props.id].scale = v; });
         }}
       />
+      <OffsetInput
+        value={slot.offsetY}
+        title="Vertical nudge, points (+ = down)"
+        onFocus={() => props.onSelect(props.id)}
+        onChange={(v) => props.update((c) => { c[props.id].offsetY = v; })}
+      />
+      {/* Raster only: an SVG already takes the slot's fill. Shown always
+          rather than only for a loaded PNG so the setting is discoverable
+          before the art is dropped. */}
+      <label className="flex shrink-0 cursor-pointer items-center gap-1 text-[11px] text-muted-foreground">
+        <Checkbox
+          checked={!!slot.tintRaster}
+          onCheckedChange={(on) =>
+            props.update((c) => { c[props.id].tintRaster = on === true; })}
+        />
+        tint PNG
+      </label>
     </Row>
   );
 }
@@ -293,6 +332,26 @@ export function LabelForm(props: {
             // Only "Handle / address" needs shortening — the rest already
             // match ELEMENTS' label verbatim — to fit the row's w-24 column.
             const label = el.id === "handleAddress" ? "Handle/addr" : el.label;
+            // The laurel gets a vertical nudge alongside its style row — it
+            // is drawn as a box at a fixed cy, so unlike a text element there
+            // is no baseline field to move it with.
+            if (el.id === "logo")
+              return (
+                <div key={el.id}>
+                  <StyleOnlyElementRow
+                    id={el.id} label={label} cfg={cfg}
+                    selected={selected === el.id} onSelect={onSelect}
+                  />
+                  <Row label="Logo nudge">
+                    <OffsetInput
+                      value={cfg.logo.offsetY}
+                      title="Vertical nudge, points (+ = down)"
+                      onFocus={() => onSelect("logo")}
+                      onChange={(v) => update((c) => { c.logo.offsetY = v; })}
+                    />
+                  </Row>
+                </div>
+              );
             return el.hasBold ? (
               <TextElementRow key={el.id} id={el.id} label={label} cfg={cfg} update={update} onSelect={onSelect} />
             ) : (

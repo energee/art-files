@@ -145,12 +145,16 @@ export function isDefaultStyle(id: ElementId, s: Style): boolean {
   // tracking is editable and reset like the rest — leaving it out would let a
   // respaced element claim to be untouched.
   const trackOf = (x: Style) => x.letterSpacing ?? 0;
+  // Same reasoning as tracking: a nudged logo has been positioned by hand, so
+  // it must not report itself as shipped-default (and must keep its Reset).
+  const offsetOf = (x: Style) => (x as { offsetY?: number }).offsetY ?? 0;
   return (
     s.fill === d.fill &&
     s.layer === d.layer &&
     strokeOf(s) === strokeOf(d) &&
     widthOf(s) === widthOf(d) &&
     trackOf(s) === trackOf(d) &&
+    offsetOf(s) === offsetOf(d) &&
     boldOf(s) === boldOf(d)
   );
 }

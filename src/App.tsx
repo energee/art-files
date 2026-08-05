@@ -3,12 +3,13 @@
 // overlay-compare preview, and on-demand full-resolution exports. Mirrors
 // the old main.ts wiring, componentized.
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { LabelConfig } from "@/types";
+import type { CollabSlot, Fill, LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
 import { defaultConfig, parseConfigFile, toConfigFile } from "@/defaults";
 import { validateUpc } from "@/upc";
 import { validateMask, recolorMaskForPdf } from "@/maskimage";
+import { tintRgba } from "@/collab";
 import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "@/pdf/build";
 import { buildPsd, PSD_DOC, type PsdAssets } from "@/psd/build";
 import { LabelForm, type CollabFiles } from "@/components/LabelForm";
@@ -34,6 +35,24 @@ type Loaded = { bytes: Uint8Array; previewBytes: Uint8Array; name: string; previ
 /** A loaded collab logo: what the renderer needs, plus what the drop zone
  *  shows. previewUrl is the raw file, so an SVG thumbnails as itself. */
 type CollabFile = { image: CollabImage; name: string; previewUrl: string };
+
+/** Repaint a raster collab logo in `fill`, keeping alpha, and re-encode it as
+ *  PNG for embedding — the color-overlay path for PNG/JPG art, which pdf-lib
+ *  can only draw as-is. Same decode/recolor/re-encode shape as onMask. */
+async function tintedPng(bytes: Uint8Array, fill: Fill): Promise<Uint8Array> {
+  const bmp = await createImageBitmap(new Blob([bytes as unknown as BlobPart]));
+  const canvas = document.createElement("canvas");
+  canvas.width = bmp.width;
+  canvas.height = bmp.height;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(bmp, 0, 0);
+  bmp.close();
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  tintRgba(img.data, fill);
+  ctx.putImageData(img, 0, 0);
+  const blob = await new Promise<Blob>((res) => canvas.toBlob((b) => res(b!), "image/png"));
+  return new Uint8Array(await blob.arrayBuffer());
+}
 
 /** Read a dropped collab logo: SVG as source text (so it can be recolored
  *  per its slot's style), anything else as raster bytes. */
@@ -214,11 +233,20 @@ export default function App() {
     onLeft: (f) => onCollab("left", f),
     onCenter: (f) => onCollab("center", f),
   };
-  /** The collab half of Assets, shared by the preview and export builds. */
-  const collabAssets = {
-    collabLeft: collabLeft?.image ?? null,
-    collabCenter: collabCenter?.image ?? null,
-  };
+  /** The collab half of Assets, shared by the preview and export builds.
+   *  Async because a tinted raster has to be decoded and re-encoded; vector
+   *  art and untinted rasters pass straight through. */
+  async function collabAssets() {
+    const resolve = async (f: CollabFile | null, slot: CollabSlot) => {
+      if (!f) return null;
+      if (f.image.kind === "svg" || !slot.tintRaster) return f.image;
+      return { kind: "png" as const, bytes: await tintedPng(f.image.bytes, slot.fill) };
+    };
+    return {
+      collabLeft: await resolve(collabLeft, cfg.collabLeft),
+      collabCenter: await resolve(collabCenter, cfg.collabCenter),
+    };
+  }
 
   // Debounced preview regeneration on any input change, at preview resolution
   // (Loaded.previewBytes). Two guards keep keystroke bursts from OOMing the
@@ -236,7 +264,7 @@ export default function App() {
         try {
           const fonts = await fontsPromise;
           const assets: Assets = {
-            fonts, logoSvg, ...collabAssets,
+            fonts, logoSvg, ...(await collabAssets()),
             texture: texture ? { bytes: texture.previewBytes, kind: "png" } : undefined,
             maskPng: mask?.previewBytes,
           };
@@ -275,7 +303,7 @@ export default function App() {
     try {
       const fonts = await fontsPromise;
       const assets: Assets = {
-        fonts, logoSvg, ...collabAssets,
+        fonts, logoSvg, ...(await collabAssets()),
         texture: texture ? { bytes: texture.bytes, kind: texture.kind } : undefined,
         maskPng: mask?.bytes,
       };

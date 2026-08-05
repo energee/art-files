@@ -87,9 +87,12 @@ export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
     // x the width — see parseLogo, which both renderers scale by width alone),
     // NOT square: using w for both would leave the top and bottom of the
     // laurel unclickable and crop the selection ring.
+    // offsetY moves the drawn laurel (see drawElements), so the box has to
+    // move with it or the click target drifts off the artwork.
     { id: "logo",
       x0: L.LOGO.cx - L.LOGO.w / 2, x1: L.LOGO.cx + L.LOGO.w / 2,
-      y0: L.LOGO.cy - LOGO_H / 2, y1: L.LOGO.cy + LOGO_H / 2 },
+      y0: L.LOGO.cy + (cfg.logo.offsetY ?? 0) - LOGO_H / 2,
+      y1: L.LOGO.cy + (cfg.logo.offsetY ?? 0) + LOGO_H / 2 },
     centred("name", cfg.beerName.toUpperCase(), L.NAME.cx, L.NAME.baseline, L.NAME.size, m, true, cfg.nameStyle.letterSpacing),
     centred("styleLine", cfg.styleLine.text, L.STYLE_LINE.cx, L.STYLE_LINE.baseline, L.STYLE_LINE.size, m, !!cfg.styleLine.bold, cfg.styleLine.letterSpacing),
     // QR is a box, not text.
