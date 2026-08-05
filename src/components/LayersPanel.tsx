@@ -138,7 +138,7 @@ function StyleSummary({ id, cfg }: { id: ElementId; cfg: LabelConfig }) {
           )}
         </div>
       )}
-      {tracking !== 0 && <div className={line}>Tracking {tracking}pt</div>}
+      {tracking !== 0 && <div className={line}>Letter Spacing {tracking}pt</div>}
       {bold && <div className={line}>Bold</div>}
     </div>
   );

@@ -408,7 +408,7 @@ function ElementStyle(props: { id: ElementId; cfg: LabelConfig; update: Update }
               // overrun the label reads as a broken line, not a style.
               <div className="min-w-0 flex-1">
                 <ScrubField
-                  id={`${fid}-tracking`} label="Tracking" unit="pt"
+                  id={`${fid}-tracking`} label="Letter Spacing" unit="pt"
                   value={s.letterSpacing ?? 0} min={-2} max={20} step={0.01} dragStep={0.1}
                   onChange={(v) => set({ letterSpacing: v })}
                 />
