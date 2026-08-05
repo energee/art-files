@@ -4,39 +4,11 @@
 // disk like scripts/generate.ts does and inspects the actual PDF content
 // stream pdf-lib emits, rather than mocking PDFPage.
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { PDFFont, PDFPage } from "pdf-lib";
-import { PDFDocument, decodePDFRawStream } from "pdf-lib";
-import { buildMaskPdf, drawJustifiedRotated, warningColumnLen, wrapWarning, type Assets } from "../src/pdf/build";
+import { buildMaskPdf, drawJustifiedRotated, warningColumnLen, wrapWarning } from "../src/pdf/build";
 import { defaultConfig } from "../src/defaults";
 import * as L from "../src/layout";
-
-const asset = (p: string) => join(__dirname, "..", "src", "assets", p);
-const assets: Assets = {
-  fonts: {
-    regular: readFileSync(asset("fonts/Poppins-Regular.ttf")),
-    semibold: readFileSync(asset("fonts/Poppins-SemiBold.ttf")),
-    bold: readFileSync(asset("fonts/Poppins-Bold.ttf")),
-  },
-  logoSvg: readFileSync(asset("logo2025.svg"), "utf8"),
-};
-
-/** Decode a built PDF's page-1 content stream(s) back to their operator
- *  text, so tests can look for the exact fill operators buildMaskPdf emits
- *  without re-parsing geometry from pixels. */
-async function contentStreamText(bytes: Uint8Array): Promise<string> {
-  const doc = await PDFDocument.load(bytes);
-  const page = doc.getPage(0);
-  const contents = page.node.Contents();
-  const refs = (contents as { array?: unknown[] }).array ?? [contents];
-  let out = "";
-  for (const ref of refs) {
-    const stream = doc.context.lookup(ref as never);
-    out += new TextDecoder().decode(decodePDFRawStream(stream as never).decode());
-  }
-  return out;
-}
+import { assets, contentStreamText } from "./fixtures";
 
 // The exact operator sequence pdf-lib emits for a full-bleed rect filled
 // mask blue — what page.drawRectangle({x:0, y:0, width:PAGE.w, height:PAGE.h,

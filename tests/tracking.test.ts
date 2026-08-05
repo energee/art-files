@@ -5,17 +5,13 @@
 // the glyphs, and the deviation check that offers a Reset. One file, because
 // the whole point of the feature is that those four cannot disagree.
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { PDFDocument, decodePDFRawStream } from "pdf-lib";
-import { buildArtPdf, type Assets } from "../src/pdf/build";
+import { buildArtPdf } from "../src/pdf/build";
 import { boxOf } from "../src/hittest";
 import { parseDescription } from "../src/description";
 import { isDefaultStyle } from "../src/elements";
 import { defaultConfig } from "../src/defaults";
 import * as L from "../src/layout";
-
-const measure = (text: string, size: number) => text.length * size * 0.55;
+import { assets, contentStreamText, measure } from "./fixtures";
 
 describe("trackedWidth", () => {
   it("adds one gap per adjacent glyph pair, not one per glyph", () => {
@@ -60,30 +56,6 @@ describe("hit boxes follow the tracked width", () => {
     expect((tracked.x0 + tracked.x1) / 2).toBeCloseTo(L.NAME.cx, 5);
   });
 });
-
-const asset = (p: string) => join(__dirname, "..", "src", "assets", p);
-const assets: Assets = {
-  fonts: {
-    regular: readFileSync(asset("fonts/Poppins-Regular.ttf")),
-    semibold: readFileSync(asset("fonts/Poppins-SemiBold.ttf")),
-    bold: readFileSync(asset("fonts/Poppins-Bold.ttf")),
-  },
-  logoSvg: readFileSync(asset("logo2025.svg"), "utf8"),
-};
-
-/** Page-1 content stream as operator text (same helper as pdf-build.test.ts). */
-async function contentStreamText(bytes: Uint8Array): Promise<string> {
-  const doc = await PDFDocument.load(bytes);
-  const page = doc.getPage(0);
-  const contents = page.node.Contents();
-  const refs = (contents as { array?: unknown[] }).array ?? [contents];
-  let out = "";
-  for (const ref of refs) {
-    const stream = doc.context.lookup(ref as never);
-    out += new TextDecoder().decode(decodePDFRawStream(stream as never).decode());
-  }
-  return out;
-}
 
 describe("the art PDF's character-spacing operator", () => {
   it("emits Tc for a tracked element and clears it again", async () => {

@@ -3,13 +3,7 @@ import { boxesOf, boxOf, hitTest } from "../src/hittest";
 import { wrapWarning, warningColumnLen } from "../src/pdf/build";
 import { defaultConfig } from "../src/defaults";
 import * as L from "../src/layout";
-
-// Deterministic stand-in for real font metrics.
-const measure = (text: string, size: number) => text.length * size * 0.55;
-// Bold-sensitive stand-in, for asserting boxes measure with the same weight
-// the renderer actually paints with (drawLine/drawRotated pick semibold vs
-// regular by bold, which changes glyph widths in the real font).
-const measureBW = (text: string, size: number, bold: boolean) => text.length * size * (bold ? 0.7 : 0.55);
+import { measure, measureBW } from "./fixtures";
 
 describe("preview hit-testing", () => {
   const cfg = defaultConfig();
