@@ -92,11 +92,13 @@ const UPC_DEPTH = UPC_DEPTH_MODULES * UPC_MOD;
 // footprint (x/yTop/w/h) — per-bar outlines drawn interleaved with their bars
 // distorted module widths badly enough to stop it scanning, which is why
 // drawBarcode paints every stroke shape before any fill.
-// x/yTop are the reference plate's top-left, measured at 600dpi; x still
-// clears the warning's third column (glyphs end ~532.7).
+// x/yTop are the plate's top-left. They started as the reference's, measured
+// at 600dpi, and were then nudged 3.25pt up and right by hand; x still clears
+// the warning's third column (glyphs end ~532.7) — with room to spare now,
+// where at the reference position the halo just overlapped it.
 export const BARCODE = {
-  x: 533.88,
-  yTop: 240.48,
+  x: 537.13,
+  yTop: 237.23,
   h: (UPC_UNITS.modules + 2 * UPC_UNITS.quiet) * UPC_MOD,
   /** White-ink margin around the symbol; the reference plate is exactly the
    *  symbol's depth, so there is none. */
