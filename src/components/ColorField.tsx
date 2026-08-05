@@ -1,9 +1,11 @@
 // ColorField.tsx — Fill editor: a swatch Button opening a react-colorful
 // picker in a nested popover, a hex Input, and an optional "no ink"
 // checkerboard toggle. All controls are shadcn; the picker is react-colorful
-// (no shadcn color-picker primitive exists).
+// (no shadcn color-picker primitive exists). The popover also offers a
+// screen eyedropper where the browser supports the native EyeDropper API.
 import { useState } from "react";
 import { HexColorPicker } from "react-colorful";
+import { Pipette } from "lucide-react";
 import type { Fill } from "@/types";
 import { cn } from "@/lib/utils";
 import { GOLD } from "@/layout";
@@ -15,6 +17,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 export const CHECKER =
   "repeating-conic-gradient(#3a3d43 0% 25%, #1a1c1f 0% 50%) 0 0 / 8px 8px";
 const HEX = /^#[0-9a-fA-F]{6}$/;
+
+// ponytail: EyeDropper is Chromium-only and absent from lib.dom in TS 5.6.
+declare global {
+  interface Window {
+    EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> };
+  }
+}
 
 export function ColorField(props: {
   value: Fill;
@@ -60,6 +69,25 @@ export function ColorField(props: {
             color={hex}
             onChange={(v) => { setText(null); props.onChange(v as Fill); }}
           />
+          {/* Screen eyedropper: the OS takes over the cursor once opened, so
+              the user can sample any pixel outside the popover. */}
+          {typeof window !== "undefined" && window.EyeDropper && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-2 w-full"
+              onClick={() =>
+                new window.EyeDropper!()
+                  .open()
+                  .then((r) => { setText(null); props.onChange(r.sRGBHex as Fill); })
+                  // Esc / cancel rejects with AbortError; nothing to do.
+                  .catch(() => {})
+              }
+            >
+              <Pipette /> Pick from screen
+            </Button>
+          )}
         </PopoverContent>
       </Popover>
       <Input

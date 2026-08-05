@@ -32,6 +32,11 @@ is derived from the beer name (see "Derived QR payload").
   popover) + hex text field, plus a "no ink" toggle. (Originally native
   `<input type="color">`; upgraded in the mature-component pass — see
   addendum.)
+- The picker popover also carries a "Pick from screen" eyedropper button
+  using the native `EyeDropper` API (`new EyeDropper().open()` → `sRGBHex`),
+  which hands the OS a screen-wide dropper cursor so any pixel outside the
+  popover can be sampled. Rendered only when `window.EyeDropper` exists
+  (Chromium); no fallback in Safari/Firefox.
 - `layout.ts` keeps `GOLD = #D0B070` (the exact hex of the current gold RGB
   0.815/0.69/0.44) as the default; `pdf/build.ts` `fillColor()` parses hex.
 - Description markdown syntax is unchanged: plain text renders in default
