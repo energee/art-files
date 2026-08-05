@@ -161,7 +161,7 @@ function CollabSlotContent(props: {
   return (
     <div className="space-y-2">
       <FileDrop
-        label={left ? "Text logo (SVG/PNG)" : "Graphic logo (SVG/PNG)"}
+        label={left ? "Text Logo (SVG/PNG)" : "Graphic Logo (SVG/PNG)"}
         accept={COLLAB_ACCEPT}
         fileName={left ? c.leftName : c.centerName}
         previewUrl={left ? c.leftUrl : c.centerUrl}

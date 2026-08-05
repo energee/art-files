@@ -71,7 +71,7 @@ export const ELEMENTS: LabelElement[] = [
   // The two slots are named for what goes in them, not where they sit: the
   // left slot takes the partner's text/wordmark art, the centre one their
   // graphic mark (it hangs under the laurel in the centre stack).
-  { id: "collabLeft", label: "Text logo", group: "beer", hasBold: false, isText: false, allowNone: true, style: (c) => c.collabLeft },
+  { id: "collabLeft", label: "Text Logo", group: "beer", hasBold: false, isText: false, allowNone: true, style: (c) => c.collabLeft },
   { id: "collabCenter", label: "Graphic Logo", group: "beer", hasBold: false, isText: false, allowNone: true, style: (c) => c.collabCenter },
   { id: "volume", label: "Volume", group: "template", hasBold: true, isText: true, allowNone: true, style: (c) => c.volume },
   { id: "wordmark", label: "Wordmark", group: "template", hasBold: false, isText: true, allowNone: true, style: (c) => c.wordmark },

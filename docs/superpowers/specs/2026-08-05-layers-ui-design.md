@@ -36,7 +36,7 @@ support for tinting/stroking them exists.
   `SidebarMenuButton`; lucide type icons.
 - Groups, in order:
   - **This beer**: Beer Name, Style, ABV, Description, Barcode, QR
-  - **Collab**: Lead-In, Text logo (the left slot), Graphic Logo
+  - **Collab**: Lead-In, Text Logo (the left slot), Graphic Logo
     (the centre slot)
   - **Template**: Volume, Wordmark, Logo, Info, Warning, Store Cold
   - **Document**: Background, Mask
