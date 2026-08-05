@@ -6,7 +6,7 @@ import { qrPath, qrShapes, machineName, qrUrl } from "../src/qr";
 import { recolorMaskForPdf, validateMask } from "../src/maskimage";
 import { tintRgba } from "../src/collab";
 import { defaultConfig, parseConfigFile, toConfigFile } from "../src/defaults";
-import { parseDescription, serializeDescription } from "../src/description";
+import { parseDescription, parseInfoLine, parseRuns, serializeDescription } from "../src/description";
 import {
   COLLAB_LEAD, COLLAB_LEFT, DEFAULT_STROKE_PX, DESC, GOLD, QR,
   collabLeftFlow, parseHexFill,
@@ -83,6 +83,42 @@ describe("description markdown", () => {
       { text: "Silvery", bold: false, fill: GOLD, layer: "white" },
       { text: "Bold Gold", bold: true, fill: GOLD, layer: "metallic" },
     ]);
+  });
+  it("parses the Info line with the same markers, collapsed to one line", () => {
+    const base = { text: "", fill: "#C8A24A", layer: "metallic", letterSpacing: 0.25 } as const;
+    // Plain text is untouched — every pre-markdown config still renders as-is.
+    expect(parseInfoLine("@LOLEVBEER   5247 BUTLER ST", base))
+      .toMatchObject({ text: "@LOLEVBEER   5247 BUTLER ST", layer: "metallic", letterSpacing: 0.25 });
+    expect(parseInfoLine("**@LOLEVBEER**", base)).toMatchObject({ text: "@LOLEVBEER", bold: true });
+    expect(parseInfoLine("_@LOLEVBEER_", base)).toMatchObject({ text: "@LOLEVBEER", layer: "white" });
+    // Header markup collapses to bold; extra lines are dropped, matching the
+    // single rotated line the renderer draws.
+    expect(parseInfoLine("# TOP\nsecond", base)).toMatchObject({ text: "TOP", bold: true });
+    expect(parseInfoLine("first\nsecond", base)).toMatchObject({ text: "first" });
+    expect(parseInfoLine("", base)).toMatchObject({ text: "" });
+    // The style row's own Bold survives an unmarked line.
+    expect(parseInfoLine("plain", { ...base, bold: true })).toMatchObject({ bold: true });
+  });
+  it("splits inline runs, inheriting the line style and overriding per run", () => {
+    const line = { text: "", fill: "#C8A24A", layer: "metallic", letterSpacing: 0.25 } as const;
+    const runs = (t: string, extra = {}) => parseRuns({ ...line, ...extra, text: t });
+    // No markers: one run, identical to the line — the old single-draw path.
+    expect(runs("plain")).toEqual([{ ...line, text: "plain", bold: false }]);
+    expect(runs("**@LOLEV** 5247 BUTLER").map((r) => [r.text, r.bold])).toEqual([
+      ["@LOLEV", true], [" 5247 BUTLER", false],
+    ]);
+    expect(runs("a _b_ c").map((r) => [r.text, r.layer])).toEqual([
+      ["a ", "metallic"], ["b", "white"], [" c", "metallic"],
+    ]);
+    // Nesting, either order.
+    expect(runs("**_x_**")[0]).toMatchObject({ text: "x", bold: true, layer: "white" });
+    expect(runs("_**x**_")[0]).toMatchObject({ text: "x", bold: true, layer: "white" });
+    // An unmatched marker is literal, so a lone underscore survives.
+    expect(runs("A_B").map((r) => r.text)).toEqual(["A_B"]);
+    // The line's own style still applies to every run.
+    expect(runs("a **b**", { bold: true }).every((r) => r.bold)).toBe(true);
+    expect(runs("a **b**", { layer: "white" }).every((r) => r.layer === "white")).toBe(true);
+    expect(runs("")).toEqual([{ ...line, text: "" }]);
   });
   it("handles a headerless block", () => {
     const d = parseDescription("just a line");

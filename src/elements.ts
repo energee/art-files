@@ -74,7 +74,7 @@ export const ELEMENTS: LabelElement[] = [
   { id: "volume", label: "Volume", group: "template", hasBold: true, isText: true, allowNone: true, style: (c) => c.volume },
   { id: "wordmark", label: "Wordmark", group: "template", hasBold: false, isText: true, allowNone: true, style: (c) => c.wordmark },
   { id: "logo", label: "Logo", group: "template", hasBold: false, isText: false, allowNone: true, style: (c) => c.logo },
-  { id: "handleAddress", label: "Handle / address", group: "template", hasBold: true, isText: true, allowNone: true, style: (c) => c.handleAddress },
+  { id: "handleAddress", label: "Info", group: "template", hasBold: true, isText: true, allowNone: true, style: (c) => c.handleAddress },
   { id: "warning", label: "Warning", group: "template", hasBold: false, isText: true, allowNone: true, style: (c) => c.warning },
   { id: "storeCold", label: "Store cold", group: "template", hasBold: true, isText: true, allowNone: true, style: (c) => c.storeCold },
 ];

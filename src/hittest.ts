@@ -4,7 +4,7 @@
 // baseline and 0.35em below (measured with pdftotext -bbox).
 import type { LabelConfig } from "./types";
 import type { ElementId } from "./elements";
-import { parseDescription } from "./description";
+import { parseDescription, parseInfoLine, parseRuns } from "./description";
 // The renderer's own paragraph wrapper and justified-column length, so the
 // warning's hit columns can't disagree with the columns it draws or the
 // justified width it draws them at (see the warning boxes below).
@@ -22,14 +22,30 @@ const DESC = 0.35;
  *  aspect only needs these two numbers changed here alongside the asset. */
 const LOGO_H = (L.LOGO.w * 525) / 480;
 
-// Every text box measures through L.trackedWidth, so an element's tracking
-// widens its hit box exactly as much as it widens the drawn line. `tracking`
-// defaults to 0, which reduces each of these to the untracked measurement.
+// Every text box measures through `width` below, so an element's tracking
+// widens its hit box exactly as much as it widens the drawn line, and inline
+// `**bold**` / `_white_` markers never pad it by their own glyphs.
+// `tracking` defaults to 0, which reduces each of these to the untracked
+// measurement.
+
+/** Tracked width of a line, summed over its inline runs (see parseRuns) so
+ *  markers are measured as the text they produce, in the face they produce.
+ *  A marker-free line is one run — identical to the old single measurement.
+ *  Mirrors the renderer's per-run advance: each run pays one tracking unit
+ *  for the gap to the next, and the line drops the trailing one. */
+function width(text: string, size: number, m: Measure, bold: boolean, tracking: number): number {
+  // fill/layer are irrelevant here — only text and bold reach the measure.
+  const runs = parseRuns({ text, bold, fill: "none", layer: "metallic" });
+  return runs.reduce(
+    (w, r) => w + L.trackedWidth(m(r.text, size, !!r.bold), r.text, tracking) + tracking,
+    0,
+  ) - tracking;
+}
 const flat = (
   id: ElementId, text: string, x: number, baseline: number, size: number,
   m: Measure, bold = false, tracking = 0,
 ): Box => ({
-  id, x0: x, x1: x + L.trackedWidth(m(text, size, bold), text, tracking),
+  id, x0: x, x1: x + width(text, size, m, bold, tracking),
   y0: baseline - ASC * size, y1: baseline + DESC * size,
 });
 
@@ -37,7 +53,7 @@ const centred = (
   id: ElementId, text: string, cx: number, baseline: number, size: number,
   m: Measure, bold = false, tracking = 0,
 ): Box => {
-  const w = L.trackedWidth(m(text, size, bold), text, tracking);
+  const w = width(text, size, m, bold, tracking);
   return {
     id, x0: cx - w / 2, x1: cx + w / 2,
     y0: baseline - ASC * size, y1: baseline + DESC * size,
@@ -49,7 +65,7 @@ const rotated = (
   m: Measure, bold = false, tracking = 0,
 ): Box => ({
   id, x0: x - ASC * size, x1: x + DESC * size,
-  y0: yStart - L.trackedWidth(m(text, size, bold), text, tracking), y1: yStart,
+  y0: yStart - width(text, size, m, bold, tracking), y1: yStart,
 });
 
 /** Every element's box, in paint order (later entries sit on top): volume,
@@ -99,9 +115,12 @@ export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
     { id: "qr",
       x0: L.QR.x, x1: L.QR.x + L.QR.size,
       y0: L.QR.yTop, y1: L.QR.yTop + L.QR.size },
-    // Right rotated column. handleAddress always renders semibold (bold=true;
-    // see the function doc comment).
-    rotated("handleAddress", cfg.handleAddress.text, L.HANDLE_ADDR.x, L.HANDLE_ADDR.yStart, L.HANDLE_ADDR.size, m, true, cfg.handleAddress.letterSpacing),
+    // Right rotated column. Measured off the PARSED Info line, so the box
+    // tracks the drawn text rather than the raw markdown (markers would
+    // otherwise pad the column by their own width). bold=true either way:
+    // the unmarked line renders semibold, which is what this flag means (see
+    // the function doc comment).
+    rotated("handleAddress", parseInfoLine(cfg.handleAddress.text, cfg.handleAddress).text, L.HANDLE_ADDR.x, L.HANDLE_ADDR.yStart, L.HANDLE_ADDR.size, m, true, cfg.handleAddress.letterSpacing),
   ];
   // The warning is a wrapped paragraph in rotated, justified columns sharing
   // one style, painted after handleAddress and before storeCold. Column

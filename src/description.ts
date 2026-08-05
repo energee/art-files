@@ -12,8 +12,12 @@
 // being promoted to the header on the next parse. That escape is the format's
 // only one: `\` is literal everywhere else, including before a `#` that is
 // not at the start of a line.
-// ponytail: per-line styling only, no inline spans — add if a label ever
-// needs them.
+// Inline spans: `**bold**` and `_white ink_` also apply to a RUN inside a
+// line (parseRuns), not just to a whole line. The line-level pass runs first
+// and strips a marker pair wrapping the entire line; whatever is left is
+// tokenized into runs that inherit the line's style and override only bold
+// and layer. A marker with no closer later in the line stays literal text,
+// so an address containing a lone `_` is not silently swallowed.
 import type { Style, StyledLine } from "./types";
 import { GOLD } from "./layout";
 
@@ -74,6 +78,69 @@ export function parseDescription(src: string, base: Style = DEFAULT_BASE): Parse
     else out.lines.push(styleLine(unescapeHash(t), base));
   }
   return out;
+}
+
+/** Splits a styled line into inline runs. Each run carries the line's whole
+ *  style and overrides only what its markers set, so a caller can draw runs
+ *  with the same code path it used for the line. A marker-free line yields
+ *  exactly one run equal to the line — the no-inline-spans case stays a
+ *  single drawText, byte-identical to before.
+ *
+ *  Markers nest in either order (`**_x_**` == `_**x**_`). An unmatched
+ *  marker is literal: `A_B` has no closing `_`, so it renders as typed. */
+export function parseRuns(line: StyledLine): StyledLine[] {
+  const src = line.text;
+  const baseBold = !!line.bold;
+  const baseWhite = line.layer === "white";
+  const out: StyledLine[] = [];
+  let openBold = false;
+  let openWhite = false;
+  let buf = "";
+  const flush = () => {
+    if (!buf) return;
+    out.push({
+      ...line,
+      text: buf,
+      bold: baseBold || openBold,
+      // A `_` run moves to the white plate; without one the line's own layer
+      // stands, exactly as the line-level marker behaves.
+      layer: openWhite || baseWhite ? "white" : line.layer,
+    });
+    buf = "";
+  };
+  for (let i = 0; i < src.length; ) {
+    const mark = src.startsWith("**", i) ? "**" : src[i] === "_" ? "_" : null;
+    const open = mark === "**" ? openBold : openWhite;
+    // Opening costs a closer; closing never does.
+    if (mark && (open || src.indexOf(mark, i + mark.length) !== -1)) {
+      flush();
+      if (mark === "**") openBold = !openBold;
+      else openWhite = !openWhite;
+      i += mark.length;
+      continue;
+    }
+    buf += src[i];
+    i += 1;
+  }
+  flush();
+  return out.length ? out : [{ ...line, text: "" }];
+}
+
+/** The Info line (cfg.handleAddress) authored in the SAME markdown subset as
+ *  the description block, but rendered as one rotated line: `**bold**` and
+ *  `_white ink_` over the element's own style. Header markup collapses to
+ *  bold — the Info slot has one baseline, so there is nowhere for a header
+ *  to render differently — and anything past the first line is dropped,
+ *  matching what the renderer can draw. Plain text parses to itself, so
+ *  every config written before this existed is unaffected.
+ *
+ *  `bold` is OR'd with the base's: the style row's Bold checkbox still
+ *  applies to the whole line, and a marker can only add emphasis on top. */
+export function parseInfoLine(src: string, base: StyledLine): StyledLine {
+  const d = parseDescription(src, base);
+  const line = d.header ?? d.lines[0];
+  if (!line) return { ...base, text: "" };
+  return { ...line, bold: !!base.bold || !!line.bold };
 }
 
 /** Inverse of parseDescription — the WYSIWYG editor edits styled lines and

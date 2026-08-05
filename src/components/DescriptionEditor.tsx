@@ -318,9 +318,43 @@ export function DescriptionEditor(props: {
     onChange(linesToMarkdown(readLines(root), base));
   };
 
+  /** Bold / White ink over a PART of a line: writes the markers into the
+   *  text instead of setting the line's flag, since a line-div carries one
+   *  style for its whole content. Those markers stay visible as typed
+   *  characters here — the field paints per line, not per run — but both
+   *  renderers parse them into real inline runs (see parseRuns), and "Edit
+   *  as text" shows the same thing. Returns false when the selection is not
+   *  a partial one, so the caller falls through to the line-level toggle.
+   *
+   *  ponytail: markers-as-text, not styled spans in the DOM. Painting runs
+   *  inside a contenteditable line means owning caret/selection surgery
+   *  across span boundaries; do that only if authors find these visible. */
+  const wrapSelection = (attr: "bold" | "white") => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return false;
+    const selected = sel.toString();
+    if (!selected || selected.includes("\n")) return false;
+    const root = rootRef.current;
+    const lines = root ? linesInSelection(root) : [];
+    // Whole line (or several) selected: that is what the line flag is for.
+    if (lines.length !== 1 || selected === lines[0].textContent) return false;
+    const marker = attr === "bold" ? "**" : "_";
+    const already =
+      selected.startsWith(marker) && selected.endsWith(marker)
+      && selected.length > 2 * marker.length;
+    const next = already
+      ? selected.slice(marker.length, -marker.length)
+      : `${marker}${selected}${marker}`;
+    if (typeof document.execCommand === "function") document.execCommand("insertText", false, next);
+    else insertTextAtCaretFallback(next);
+    emitChange();
+    return true;
+  };
+
   const toggle = (attr: "bold" | "white") => {
     const root = rootRef.current;
     if (!root) return;
+    if (wrapSelection(attr)) return;
     const lines = linesInSelection(root);
     if (!lines.length) return;
     for (const el of lines) {

@@ -22,7 +22,7 @@ import { WARNING_TEXT } from "../defaults";
 import * as L from "../layout";
 import { barcodeGeometry, barcodeStrokePt } from "../barcode";
 import { qrPath, qrShapes, qrUrl } from "../qr";
-import { parseDescription } from "../description";
+import { parseDescription, parseInfoLine, parseRuns } from "../description";
 
 /** A collab brewery's logo: vector source (recolored by its slot's style, like
  *  the laurel) or raster bytes (drawn as-is, over white ink). */
@@ -80,6 +80,31 @@ function strokeOf(style: Style, mode: Mode) {
  *  radius — a fixed count leaves adjacent copies 2w*sin(pi/n) apart, which
  *  at a wide stroke reads as stair-steps down the outer edge. One sample
  *  per ~0.4pt of circumference keeps that step below a printer's dot. */
+/** Stroke ring for TEXT, on either plate. The art pass paints the stroke's
+ *  own colour; the mask pass ALWAYS knocks the ring out — a stroke never
+ *  takes the white-ink layer, even on an element set to white.
+ *
+ *  Two reasons it is knockout rather than the element's own layer. Without
+ *  any mask pass at all, the flood (white ink everywhere, see buildMaskPdf)
+ *  survived in the ring and printed white ink around every stroked line, so
+ *  a black keyline sat on a white halo instead of bare stock. And following
+ *  the element's layer instead would put white ink under the keyline of a
+ *  white-layer element — the same halo, just reached by a different route.
+ *  The stroke is an outline, not part of the plate choice the glyphs make.
+ *  Geometry is identical to strokeOf's on both plates, which is what keeps
+ *  the two registered.
+ *
+ *  strokeOf still serves the laurel and collab art unchanged: those draw as
+ *  real stroked paths, and their long-shipped white-ink halo is not this
+ *  bug. */
+function textRing(style: Style, mode: Mode) {
+  if (!style.stroke || style.stroke === "none") return null;
+  return {
+    color: mode === "art" ? fillColor(style.stroke) : maskColor("metallic"),
+    w: (style.strokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX,
+  };
+}
+
 function ring(w: number): [number, number][] {
   // Capped only as a backstop: each sample is its own drawText, so an
   // uncapped count would let a stroke width become a build-time amplifier
@@ -157,6 +182,16 @@ async function drawCollab(
   else page.drawRectangle({ ...rect, color: toRgb(L.COLORS.maskBlue) });
 }
 
+/** Per-run advance: the run's tracked width PLUS one tracking unit, since
+ *  trackedWidth only counts the gaps BETWEEN a run's own glyphs and the gap
+ *  to the next run belongs to somebody. Summing these over a line and
+ *  subtracting the trailing one reproduces trackedWidth of the whole string
+ *  exactly, so centring is unchanged for a line with no inline runs. */
+function advanceOf(run: StyledLine, font: PDFFont, size: number, tracking = 0): number {
+  return L.trackedWidth(font.widthOfTextAtSize(run.text, size), run.text, tracking)
+    + tracking;
+}
+
 function drawLine(
   page: PDFPage,
   fonts: Fonts,
@@ -164,23 +199,34 @@ function drawLine(
   mode: Mode,
   opts: { x?: number; cx?: number; baseline: number; size: number; font?: PDFFont },
 ) {
-  const font = opts.font ?? (line.bold ? fonts.semibold : fonts.regular);
-  const color = mode === "art" ? fillColor(line.fill) : maskColor(line.layer);
+  // Inline runs: a marker-free line yields one run identical to the line, so
+  // this is the old single drawText path with an extra loop around it.
+  // opts.font (the wordmark/name's forced Bold face) still wins outright —
+  // those slots are one face by design, markers or not.
+  const runs = parseRuns(line);
+  const faceOf = (r: StyledLine) => opts.font ?? (r.bold ? fonts.semibold : fonts.regular);
   const tracking = line.letterSpacing;
+  const total =
+    runs.reduce((w, r) => w + advanceOf(r, faceOf(r), opts.size, tracking), 0) - (tracking ?? 0);
   // Centring measures the TRACKED width, not the font's — at 0 tracking the
   // two are identical, so this is the same math as before for untracked text.
-  const x =
-    opts.cx !== undefined
-      ? opts.cx -
-        L.trackedWidth(font.widthOfTextAtSize(line.text, opts.size), line.text, tracking) / 2
-      : opts.x!;
-  const at = { y: y(opts.baseline), size: opts.size, font };
-  const stroke = strokeOf(line, mode);
+  let x = opts.cx !== undefined ? opts.cx - total / 2 : opts.x!;
+  const yBase = y(opts.baseline);
+  const stroke = textRing(line, mode);
   withTracking(page, tracking, () => {
-    if (stroke)
-      for (const [dx, dy] of ring(stroke.w))
-        page.drawText(line.text, { ...at, x: x + dx, y: at.y + dy, color: stroke.color });
-    page.drawText(line.text, { ...at, x, color });
+    for (const run of runs) {
+      const font = faceOf(run);
+      // Colour is per RUN: `_white ink_` moves that span to the mask plate,
+      // which in art mode means it must not paint at all (fillColor("none")
+      // handles a none-fill; the mask pass paints it instead).
+      const color = mode === "art" ? fillColor(run.fill) : maskColor(run.layer);
+      const at = { y: yBase, size: opts.size, font };
+      if (stroke)
+        for (const [dx, dy] of ring(stroke.w))
+          page.drawText(run.text, { ...at, x: x + dx, y: yBase + dy, color: stroke.color });
+      page.drawText(run.text, { ...at, x, color });
+      x += advanceOf(run, font, opts.size, tracking);
+    }
   });
 }
 
@@ -193,15 +239,29 @@ function drawRotated(
   mode: Mode,
   style: Style,
   opts: { x: number; yStart: number; size: number },
+  /** Face for `**bold**` runs. Omitted (the warning's justified words, which
+   *  carry no markers of their own) means inline bold just keeps `font`. */
+  boldFont?: PDFFont,
 ) {
-  const color = mode === "art" ? fillColor(style.fill) : maskColor(style.layer);
-  const base = { size: opts.size, font, rotate: degrees(90) };
-  const stroke = strokeOf(style, mode);
-  withTracking(page, style.letterSpacing, () => {
-    if (stroke)
-      for (const [dx, dy] of ring(stroke.w))
-        page.drawText(text, { ...base, x: opts.x + dx, y: y(opts.yStart) + dy, color: stroke.color });
-    page.drawText(text, { ...base, x: opts.x, y: y(opts.yStart), color });
+  // Same inline-run treatment as drawLine, advancing along the rotated
+  // baseline (+y, since the text reads bottom-to-top) instead of x. `font`
+  // is the caller's face for unmarked text; a `**bold**` run steps up to
+  // Bold, which is the only face above the semibold this column uses.
+  const runs = parseRuns({ ...style, text });
+  const tracking = style.letterSpacing;
+  const stroke = textRing(style, mode);
+  let yPos = y(opts.yStart);
+  withTracking(page, tracking, () => {
+    for (const run of runs) {
+      const face = run.bold ? boldFont ?? font : font;
+      const color = mode === "art" ? fillColor(run.fill) : maskColor(run.layer);
+      const base = { size: opts.size, font: face, rotate: degrees(90) };
+      if (stroke)
+        for (const [dx, dy] of ring(stroke.w))
+          page.drawText(run.text, { ...base, x: opts.x + dx, y: yPos + dy, color: stroke.color });
+      page.drawText(run.text, { ...base, x: opts.x, y: yPos, color });
+      yPos += advanceOf(run, face, opts.size, tracking);
+    }
   });
 }
 
@@ -457,9 +517,14 @@ async function drawElements(
   page.drawSvgPath(qrPath(shapes, L.QR.size), { ...qrAt, color: qrColor });
 
   // Right rotated column
-  drawRotated(page, fonts.semibold, cfg.handleAddress.text, mode, cfg.handleAddress, {
+  // Info carries the description block's markdown subset (see parseInfoLine):
+  // the markers set the face and the white-ink layer, the rest of the style
+  // stays the element's own. A plain, marker-free line renders exactly as it
+  // always did — semibold, on the element's layer.
+  const info = parseInfoLine(cfg.handleAddress.text, cfg.handleAddress);
+  drawRotated(page, info.bold ? fonts.bold : fonts.semibold, info.text, mode, info, {
     x: L.HANDLE_ADDR.x, yStart: L.HANDLE_ADDR.yStart, size: L.HANDLE_ADDR.size,
-  });
+  }, fonts.bold);
   // Wrapping measures with the warning's own tracking: tracked text needs
   // more columns, and hittest.ts derives its columns from the same measure.
   const warnLines = wrapWarning(
