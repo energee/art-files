@@ -24,12 +24,15 @@
 // `_` pair; adding one would change the markdown format both renderers
 // parse, which is a bigger, riskier change than this task took on.
 import { useEffect, useRef, useState } from "react";
+import { Bold, Droplet, Heading as HeaderIcon } from "lucide-react";
 import type { Style } from "@/types";
 import { parseDescription, serializeDescription } from "@/description";
 import { GOLD } from "@/layout";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export interface EditorLine { text: string; bold: boolean; white: boolean; header: boolean }
 
@@ -163,6 +166,31 @@ function linesInSelection(root: HTMLDivElement): HTMLDivElement[] {
   return kids.slice(lo, hi + 1);
 }
 
+/** Bold/white/header pressed-state (for the toolbar buttons) derived from
+ *  the line-divs the current selection touches. Callers must only invoke
+ *  this with a non-empty `lines` (mirrors linesInSelection's own "bail if
+ *  empty" contract at each call site) so the `.every()` calls below can't
+ *  vacuously read `true` off zero lines.
+ *
+ *  `header` needs its own eligibility flag rather than just "is this line
+ *  a header": description.ts's storage format has exactly one header slot
+ *  and always treats the first line as it (see that file's parseDescription/
+ *  serializeDescription) — so the toggle can only ever act on line index 0.
+ *  `headerEnabled` is true only when every touched line *is* that first
+ *  line-div, which the toolbar uses to disable the button everywhere else
+ *  instead of offering a "promote this line to header" action that would
+ *  silently reorder content on the next serialize. */
+function computeCaret(root: HTMLDivElement, lines: HTMLDivElement[]) {
+  const first = root.children[0] as HTMLDivElement | undefined;
+  const headerEnabled = first != null && lines.every((l) => l === first);
+  return {
+    bold: lines.every((l) => l.dataset.bold === "true"),
+    white: lines.every((l) => l.dataset.white === "true"),
+    header: headerEnabled && first?.dataset.header === "true",
+    headerEnabled,
+  };
+}
+
 /** Manual Range-based plain-text insert, used only if execCommand is ever
  *  unavailable. Doesn't split embedded newlines into separate line-divs
  *  (execCommand does, matching what pressing Enter would have done) — an
@@ -195,11 +223,12 @@ export function DescriptionEditor(props: {
   const rootRef = useRef<HTMLDivElement>(null);
   const [focused, setFocused] = useState(false);
   const [asText, setAsText] = useState(false);
-  // Whether every line the caret/selection currently touches is bold/white
-  // — drives the toolbar buttons' pressed state. Purely a display cache:
-  // re-derived from the DOM on every selectionchange and after every
-  // toggle, never treated as the source of truth for an edit.
-  const [caret, setCaret] = useState({ bold: false, white: false });
+  // Whether every line the caret/selection currently touches is bold/white/
+  // header (plus whether Header is even eligible right now) — drives the
+  // toolbar buttons' pressed/disabled state. Purely a display cache:
+  // re-derived from the DOM (via computeCaret) on every selectionchange and
+  // after every toggle, never treated as the source of truth for an edit.
+  const [caret, setCaret] = useState({ bold: false, white: false, header: false, headerEnabled: false });
 
   useEffect(() => {
     if (focused || asText) return;
@@ -218,10 +247,7 @@ export function DescriptionEditor(props: {
       if (!root) return;
       const lines = linesInSelection(root);
       if (!lines.length) return;
-      setCaret({
-        bold: lines.every((l) => l.dataset.bold === "true"),
-        white: lines.every((l) => l.dataset.white === "true"),
-      });
+      setCaret(computeCaret(root, lines));
     };
     document.addEventListener("selectionchange", onSelectionChange);
     return () => document.removeEventListener("selectionchange", onSelectionChange);
@@ -246,10 +272,35 @@ export function DescriptionEditor(props: {
         header: el.dataset.header === "true",
       });
     }
-    setCaret({
-      bold: lines.every((l) => l.dataset.bold === "true"),
-      white: lines.every((l) => l.dataset.white === "true"),
+    setCaret(computeCaret(root, lines));
+    emitChange();
+  };
+
+  /** Toggles whether the FIRST line-div is the header. Guarded by the same
+   *  "every touched line is line 0" check computeCaret uses for
+   *  `headerEnabled` — the toolbar button is already disabled outside that
+   *  case, but this re-checks against the live DOM rather than trusting
+   *  possibly-stale React state, matching `toggle`'s own bail-out-on-empty-
+   *  selection guard above. Only ever writes `data-header` on that one div,
+   *  so at most one line can carry it — the invariant serializeDescription/
+   *  parseDescription both assume (see description.ts). */
+  const toggleHeader = () => {
+    const root = rootRef.current;
+    if (!root) return;
+    const lines = linesInSelection(root);
+    if (!lines.length) return;
+    const c = computeCaret(root, lines);
+    if (!c.headerEnabled) return;
+    const first = root.children[0] as HTMLDivElement;
+    const nowHeader = !c.header;
+    if (nowHeader) first.dataset.header = "true";
+    else delete first.dataset.header;
+    first.className = lineClasses({
+      bold: first.dataset.bold === "true",
+      white: first.dataset.white === "true",
+      header: nowHeader,
     });
+    setCaret(computeCaret(root, lines));
     emitChange();
   };
 
@@ -259,29 +310,78 @@ export function DescriptionEditor(props: {
         <div className="flex gap-1">
           {focused && !asText && (
             <>
-              <Button
-                type="button"
-                variant={caret.bold ? "secondary" : "outline"}
-                size="xs"
-                aria-pressed={caret.bold}
-                // Keeps focus (and the selection) in the contenteditable
-                // field instead of moving it to the button, so the toggle
-                // still knows which line(s) to flip.
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => toggle("bold")}
-              >
-                Bold
-              </Button>
-              <Button
-                type="button"
-                variant={caret.white ? "secondary" : "outline"}
-                size="xs"
-                aria-pressed={caret.white}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => toggle("white")}
-              >
-                White ink
-              </Button>
+              {/* Header is wrapped in an extra <span> (rather than putting
+                  TooltipTrigger's render prop directly on the button) so the
+                  tooltip still opens on hover while the button is disabled:
+                  toggleVariants applies disabled:pointer-events-none to the
+                  <button> itself, which would otherwise swallow the hover
+                  that triggers the tooltip. The span isn't disabled, so it
+                  still receives the pointer events the button now ignores. */}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className="inline-flex">
+                      <ToggleGroupItem
+                        value="header"
+                        aria-label="Toggle header"
+                        size="sm"
+                        pressed={caret.header}
+                        disabled={!caret.headerEnabled}
+                        // Same focus-preservation trick as Bold/White ink
+                        // below — see that comment for why this matters.
+                        onMouseDown={(e) => e.preventDefault()}
+                        onPressedChange={toggleHeader}
+                      >
+                        <HeaderIcon />
+                      </ToggleGroupItem>
+                    </span>
+                  }
+                />
+                <TooltipContent>
+                  {caret.headerEnabled ? "Header" : "Header must be the first line"}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <ToggleGroupItem
+                      value="bold"
+                      aria-label="Toggle bold"
+                      size="sm"
+                      pressed={caret.bold}
+                      // Keeps focus (and the selection) in the
+                      // contenteditable field instead of moving it to the
+                      // button, so the toggle still knows which line(s) to
+                      // flip.
+                      onMouseDown={(e) => e.preventDefault()}
+                      onPressedChange={() => toggle("bold")}
+                    >
+                      <Bold />
+                    </ToggleGroupItem>
+                  }
+                />
+                <TooltipContent>Bold</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <ToggleGroupItem
+                      value="white"
+                      aria-label="Toggle white ink underlay"
+                      size="sm"
+                      pressed={caret.white}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onPressedChange={() => toggle("white")}
+                    >
+                      <Droplet />
+                    </ToggleGroupItem>
+                  }
+                />
+                {/* White ink is a print layer (a separate underlay plate),
+                    not a text colour, hence the explicit label — Droplet
+                    alone reads ambiguously next to a colour swatch. */}
+                <TooltipContent>White ink underlay</TooltipContent>
+              </Tooltip>
             </>
           )}
         </div>
