@@ -40,6 +40,12 @@ export function defaultConfig(): LabelConfig {
     qrFill: GOLD,
     qrStroke: "none",
     qrLayer: "metallic",
+    // Collab off by default: most releases are not collabs, and with the
+    // switch off none of these three are reachable from the form.
+    collabEnabled: false,
+    collabLead: { fill: GOLD, layer: "metallic" },
+    collabLeft: { fill: GOLD, layer: "metallic", scale: 1 },
+    collabCenter: { fill: GOLD, layer: "metallic", scale: 1 },
     volume: { text: "1 PINT", fill: GOLD, layer: "metallic", bold: true },
     wordmark: { fill: GOLD, layer: "metallic" },
     // The laurel's classic dark keyline, now an ordinary editable stroke.
@@ -104,6 +110,11 @@ export function parseConfigFile(json: string): LabelConfig {
     cfg.logo.stroke ??= "#1A1A1A";
     cfg.logo.strokeWidth ??= DEFAULT_STROKE_PX;
   }
+  // Configs saved before collab labels existed: not a collab, no collab art.
+  cfg.collabEnabled ??= false;
+  cfg.collabLead ??= base.collabLead;
+  cfg.collabLeft ??= base.collabLeft;
+  cfg.collabCenter ??= base.collabCenter;
   for (const key of Object.keys(base) as (keyof LabelConfig)[]) {
     // barcodeStrokeWidth is optional: pre-style configs omit it — that is
     // what preserves their measured halo — while defaultConfig ships 20.

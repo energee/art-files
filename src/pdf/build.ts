@@ -16,7 +16,7 @@ import {
   setLineJoin,
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
-import type { Fill, LabelConfig, Style, StyledLine } from "../types";
+import type { CollabSlot, Fill, LabelConfig, Style, StyledLine } from "../types";
 import { parseLogo } from "../logo";
 import { WARNING_TEXT } from "../defaults";
 import * as L from "../layout";
@@ -24,10 +24,21 @@ import { barcodeGeometry, barcodeStrokePt } from "../barcode";
 import { qrPath, qrShapes, qrUrl } from "../qr";
 import { parseDescription } from "../description";
 
+/** A collab brewery's logo: vector source (recolored by its slot's style, like
+ *  the laurel) or raster bytes (drawn as-is, over white ink). */
+export type CollabImage =
+  | { kind: "svg"; svg: string }
+  | { kind: "png" | "jpg"; bytes: Uint8Array };
+
 export interface Assets {
   fonts: { regular: Uint8Array; semibold: Uint8Array; bold: Uint8Array };
   /** Raw contents of logo2025.svg. */
   logoSvg: string;
+  /** Collab logos. Ignored entirely unless cfg.collabEnabled; with the switch
+   *  on, a slot with no image draws nothing (and an empty left slot also
+   *  suppresses the "A collaborative project with" lead-in). */
+  collabLeft?: CollabImage | null;
+  collabCenter?: CollabImage | null;
   /** Optional: without it the art PDF is just the elements on bare stock,
    *  which is what the preview shows before a texture is dropped. */
   texture?: { bytes: Uint8Array; kind: "png" | "jpg" };
@@ -99,6 +110,48 @@ function withTracking(page: PDFPage, tracking: number, draw: () => void) {
   page.pushOperators(setCharacterSpacing(tracking));
   draw();
   page.pushOperators(setCharacterSpacing(0));
+}
+
+/** Draw a collab logo fitted into `box` (scaled by the slot's `scale` knob),
+ *  anchored at `top` and either left-aligned at `x` or centered on `cx`.
+ *  Vector art is recolored and stroked per the slot's style, exactly like the
+ *  laurel. Raster art draws as-is in the art PDF; the mask paints its footprint
+ *  blue so a full-color logo prints on white ink rather than on the metallic
+ *  texture. Async only because embedding a raster needs the document. */
+async function drawCollab(
+  doc: PDFDocument,
+  page: PDFPage,
+  img: CollabImage,
+  slot: CollabSlot,
+  mode: Mode,
+  box: { x?: number; cx?: number; top: number; maxW: number; maxH: number },
+): Promise<void> {
+  const maxW = box.maxW * slot.scale;
+  const maxH = box.maxH * slot.scale;
+  const place = (w: number) => (box.cx !== undefined ? box.cx - w / 2 : box.x!);
+  if (img.kind === "svg") {
+    const art = parseLogo(img.svg, maxW, maxH);
+    const at = { x: place(art.w), y: y(box.top) };
+    const color = mode === "art" ? fillColor(slot.fill) : maskColor(slot.layer);
+    // Same two-pass order as the laurel: every stroke path before any fill, so
+    // overlapping strokes can't paint over a neighbour's fill.
+    const stroke = strokeOf(slot, mode);
+    if (stroke)
+      for (const d of art.paths)
+        page.drawSvgPath(d, {
+          ...at, color: stroke.color, borderColor: stroke.color, borderWidth: 2 * stroke.w,
+        });
+    for (const d of art.paths) page.drawSvgPath(d, { ...at, color });
+    return;
+  }
+  const emb =
+    img.kind === "png" ? await doc.embedPng(img.bytes) : await doc.embedJpg(img.bytes);
+  const s = Math.min(maxW / emb.width, maxH / emb.height);
+  const w = emb.width * s;
+  const h = emb.height * s;
+  const rect = { x: place(w), y: y(box.top + h), width: w, height: h };
+  if (mode === "art") page.drawImage(emb, rect);
+  else page.drawRectangle({ ...rect, color: toRgb(L.COLORS.maskBlue) });
 }
 
 function drawLine(
@@ -311,7 +364,8 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode:
   for (const d of digits) page.drawText(d.txt, { ...glyph, x: d.x, y: d.y, color: ink });
 }
 
-function drawElements(
+async function drawElements(
+  doc: PDFDocument,
   page: PDFPage,
   fonts: Fonts,
   cfg: LabelConfig,
@@ -334,6 +388,22 @@ function drawElements(
     }),
   );
 
+  // Left collab logo, flowed under the description with its lead-in. The
+  // lead-in is drawn in SemiBold like the reference label's, and only when
+  // there is actually a left logo for it to introduce.
+  if (cfg.collabEnabled && assets.collabLeft) {
+    const flow = L.collabLeftFlow(desc.lines.length);
+    L.COLLAB_LEAD.lines.forEach((text, i) =>
+      drawLine(page, fonts, { text, ...cfg.collabLead, bold: true }, mode, {
+        x: L.COLLAB_LEAD.x, baseline: flow.leadBaselines[i], size: L.COLLAB_LEAD.size,
+      }),
+    );
+    await drawCollab(doc, page, assets.collabLeft, cfg.collabLeft, mode, {
+      x: L.COLLAB_LEFT.x, top: flow.logoTop,
+      maxW: L.COLLAB_LEFT.maxW, maxH: L.COLLAB_LEFT.maxH,
+    });
+  }
+
   // Center column. Wordmark and beer name use the Bold face — the reference
   // label sets both in the same heavy weight.
   drawLine(page, fonts, { text: L.WORDMARK.text, ...cfg.wordmark, bold: true }, mode, {
@@ -355,6 +425,13 @@ function drawElements(
         borderWidth: 2 * logoStroke.w,
       });
   for (const d of logo.paths) page.drawSvgPath(d, { ...logoAt, color: logoColor });
+  // Center collab logo hangs under the laurel.
+  if (cfg.collabEnabled && assets.collabCenter)
+    await drawCollab(doc, page, assets.collabCenter, cfg.collabCenter, mode, {
+      cx: L.COLLAB_CENTER.cx,
+      top: L.LOGO.cy + logo.h / 2 + L.COLLAB_CENTER.gapAbove,
+      maxW: L.COLLAB_CENTER.maxW, maxH: L.COLLAB_CENTER.maxH,
+    });
   drawLine(page, fonts, { text: cfg.beerName.toUpperCase(), ...cfg.nameStyle, bold: true }, mode, {
     cx: L.NAME.cx, baseline: L.NAME.baseline, size: L.NAME.size, font: fonts.bold,
   });
@@ -433,7 +510,7 @@ export async function buildArtPdf(cfg: LabelConfig, assets: Assets): Promise<Uin
         : await doc.embedJpg(assets.texture.bytes);
     page.drawImage(img, coverPage(page, img));
   }
-  drawElements(page, fonts, cfg, assets, "art");
+  await drawElements(doc, page, fonts, cfg, assets, "art");
   doc.setTitle(`${cfg.beerName} label art`);
   return doc.save();
 }
@@ -454,7 +531,7 @@ export async function buildMaskPdf(cfg: LabelConfig, assets: Assets): Promise<Ui
     // drawElements so metallic knockouts still win on top of the flood.
     page.drawRectangle({ x: 0, y: 0, width: L.PAGE.w, height: L.PAGE.h, color: toRgb(L.COLORS.maskBlue) });
   }
-  drawElements(page, fonts, cfg, assets, "mask");
+  await drawElements(doc, page, fonts, cfg, assets, "mask");
   doc.setTitle(`${cfg.beerName} white-ink layer`);
   return doc.save();
 }

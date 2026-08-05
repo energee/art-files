@@ -43,6 +43,31 @@ export const ABV = { x: LEFT_X, baseline: 40.17, size: 9 };
 export const DESC_HEADER = { x: LEFT_X, baseline: 60.56, size: 9 };
 export const DESC = { x: LEFT_X, firstBaseline: 71.36, leading: 10.8, size: 9 };
 
+// Collab logos -----------------------------------------------------------
+// The left slot flows below the description, so its y depends on how many
+// description lines there are — see collabLeftFlow(). The center slot hangs a
+// fixed gap under the laurel. Both fit their art inside maxW x maxH.
+export const COLLAB_LEAD = {
+  x: LEFT_X, size: 9, leading: 10.8, gapAbove: 21.6,
+  lines: ["A collaborative", "project with"],
+};
+export const COLLAB_LEFT = { x: LEFT_X, gapAbove: 8, maxW: 70, maxH: 44 };
+export const COLLAB_CENTER = { cx: CENTER_X, gapAbove: 14, maxW: 36, maxH: 36 };
+
+/** Where the left collab block lands, given the description's line count.
+ *  Returns top-left-origin points: a baseline per lead-in line, plus the top
+ *  edge of the logo box below them. */
+export function collabLeftFlow(descLineCount: number) {
+  const descBottom = DESC.firstBaseline + Math.max(descLineCount - 1, 0) * DESC.leading;
+  const leadBaselines = COLLAB_LEAD.lines.map(
+    (_, i) => descBottom + COLLAB_LEAD.gapAbove + i * COLLAB_LEAD.leading,
+  );
+  return {
+    leadBaselines,
+    logoTop: leadBaselines[leadBaselines.length - 1] + COLLAB_LEFT.gapAbove,
+  };
+}
+
 // Center column ----------------------------------------------------------
 export const WORDMARK = { cx: CENTER_X, baseline: 38.23, size: 22, text: "Lolev Beer" };
 export const LOGO = { cx: CENTER_X, cy: 183, w: 33.5 }; // h follows the SVG aspect

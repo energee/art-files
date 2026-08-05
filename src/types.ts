@@ -30,6 +30,14 @@ export interface StyledLine extends Style {
   bold?: boolean;
 }
 
+/** Styling for one collab-logo slot. The uploaded image itself is *not* part
+ *  of the config (it is supplied at build time via Assets, like the texture and
+ *  mask) — only how it is drawn. */
+export interface CollabSlot extends Style {
+  /** Multiplier on the fit-to-box size: 1 = fill the slot box, 0.5 = half. */
+  scale: number;
+}
+
 export interface LabelConfig {
   /** Displayed uppercase, also names the output files. */
   beerName: string;
@@ -57,6 +65,16 @@ export interface LabelConfig {
    *  old finished labels (L.BARCODE.stroke ≈ 15.5px), which is how pre-style
    *  configs migrate. barcodeLayer "white" is the white ink the code needs
    *  to scan over the texture. */
+  /** Collab labels: the master switch for the whole collab block. Off, nothing
+   *  collab draws and the form hides its fields, whatever art is loaded. On,
+   *  each slot draws only once its image is supplied in Assets: `collabLeft`
+   *  flows under the description below an automatic bold "A collaborative
+   *  project with" lead-in (styled by `collabLead`); `collabCenter` hangs
+   *  under the laurel. */
+  collabEnabled: boolean;
+  collabLead: Style;
+  collabLeft: CollabSlot;
+  collabCenter: CollabSlot;
   barcodeFill: Fill;
   barcodeStroke: Fill;
   barcodeStrokeWidth?: number;

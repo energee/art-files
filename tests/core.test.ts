@@ -6,7 +6,10 @@ import { qrPath, qrShapes, machineName, qrUrl } from "../src/qr";
 import { recolorMaskForPdf, validateMask } from "../src/maskimage";
 import { defaultConfig, parseConfigFile, toConfigFile } from "../src/defaults";
 import { parseDescription, serializeDescription } from "../src/description";
-import { DEFAULT_STROKE_PX, GOLD, parseHexFill } from "../src/layout";
+import {
+  COLLAB_LEAD, COLLAB_LEFT, DEFAULT_STROKE_PX, DESC, GOLD, QR,
+  collabLeftFlow, parseHexFill,
+} from "../src/layout";
 
 describe("upc", () => {
   it("computes the Labradorite check digit", () => {
@@ -200,6 +203,23 @@ describe("hex fills", () => {
     expect(cfg.nameStyle.fill).toBe(GOLD);
     expect(cfg.warning.fill).toBe("#000000");
     expect(cfg.styleLine.fill).toBe("none");
+  });
+});
+
+describe("collab layout", () => {
+  it("flows the left block below the description and keeps it on the label", () => {
+    const six = collabLeftFlow(6);
+    const three = collabLeftFlow(3);
+    expect(six.leadBaselines).toHaveLength(COLLAB_LEAD.lines.length);
+    expect(six.leadBaselines[1]).toBeGreaterThan(six.leadBaselines[0]);
+    expect(six.logoTop).toBeGreaterThan(six.leadBaselines[1]);
+    // Fewer description lines pull the whole block up by exactly the leading.
+    expect(six.logoTop - three.logoTop).toBeCloseTo(3 * DESC.leading);
+    // Even the tallest realistic block clears the QR code at the bottom left.
+    expect(six.logoTop + COLLAB_LEFT.maxH).toBeLessThan(QR.yTop);
+  });
+  it("does not run off the top with an empty description", () => {
+    expect(collabLeftFlow(0).leadBaselines[0]).toBe(collabLeftFlow(1).leadBaselines[0]);
   });
 });
 

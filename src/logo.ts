@@ -9,10 +9,19 @@ import svgpath from "svgpath";
  *  handle relative/shorthand/arc/H/V commands or its own scale option's
  *  exponent-notation output, and the PSD builder needs plain cubics to turn
  *  into bezier knots. */
-export function parseLogo(svg: string, width: number): { paths: string[]; w: number; h: number } {
+export function parseLogo(
+  svg: string,
+  width: number,
+  /** Optional height cap: with it the art is fitted into width x maxH (the
+   *  larger scale that still fits both), which is what the collab slots need —
+   *  a collab wordmark and a collab roundel have nothing like the same aspect,
+   *  so scaling by width alone would let a tall mark run off its slot. */
+  maxH?: number,
+): { paths: string[]; w: number; h: number } {
   const vb = svg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/);
   if (!vb) throw new Error("Could not parse logo SVG viewBox");
-  const scale = width / +vb[1];
+  const scale =
+    maxH === undefined ? width / +vb[1] : Math.min(width / +vb[1], maxH / +vb[2]);
   const tags = [...svg.matchAll(/<path\b[^>]*>/g)].map((m) => m[0]);
   const paths = tags.map((tag) => {
     const d = tag.match(/ d="([^"]+)"/)?.[1];
