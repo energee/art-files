@@ -138,7 +138,13 @@ function StyleSummary({ id, cfg }: { id: ElementId; cfg: LabelConfig }) {
           )}
         </div>
       )}
-      {tracking !== 0 && <div className={line}>Letter Spacing {tracking}pt</div>}
+      {tracking !== 0 && (
+        <div className={line}>
+          <span>Letter Spacing</span>
+          <span className="text-sidebar-foreground/40">·</span>
+          <span>{tracking}pt</span>
+        </div>
+      )}
       {bold && <div className={line}>Bold</div>}
     </div>
   );
