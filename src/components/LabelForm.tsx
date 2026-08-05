@@ -286,7 +286,7 @@ export function LabelForm(props: {
           restyles it. */}
       <div className="mb-1.5 flex items-center gap-1.5">
         <Label htmlFor="abv" className={ROW_LABEL_CLS}>
-          ABV %
+          ABV
           {!isDefaultStyle("abv", cfg.abvStyle) && <Dot />}
         </Label>
         <Input id="abv" className="h-6 w-14 text-xs" value={cfg.abv}

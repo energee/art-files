@@ -426,7 +426,7 @@ async function drawElements(
 ) {
   // Left column
   drawLine(page, fonts, cfg.volume, mode, { x: L.VOLUME.x, baseline: L.VOLUME.baseline, size: L.VOLUME.size });
-  drawLine(page, fonts, { text: `${cfg.abv} alc by vol`, ...cfg.abvStyle }, mode, {
+  drawLine(page, fonts, { text: `${cfg.abv}% alc by vol`, ...cfg.abvStyle }, mode, {
     x: L.ABV.x, baseline: L.ABV.baseline, size: L.ABV.size,
   });
   const desc = parseDescription(cfg.description, cfg.descStyle);
