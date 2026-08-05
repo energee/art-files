@@ -372,7 +372,10 @@ export default function App() {
         <section className="flex min-w-0 flex-1 flex-col p-3">
           <div className="mb-2 flex h-5 items-center gap-2">
             {building && (
-              <span className="animate-pulse text-xs text-muted-foreground">building…</span>
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" />
+                rendering preview…
+              </span>
             )}
             {buildError && <span className="text-xs text-destructive">{buildError}</span>}
             {!texture && !building && (
@@ -381,10 +384,22 @@ export default function App() {
               </span>
             )}
           </div>
-          <div className="flex min-h-0 flex-1">
+          <div className="relative flex min-h-0 flex-1">
             <PreviewCompare ref={previewRef}
               artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
               cfg={cfg} measure={measure} selected={selected} onPick={setSelected} />
+            {/* First-load state: until the first debounced build lands there is
+                nothing on the canvases, so fill the empty frame with a spinner
+                instead of a bare box. Later rebuilds keep the previous render
+                visible and only show the small strip spinner above. */}
+            {!pdfs && !buildError && (
+              <div className="pointer-events-none absolute inset-0 grid place-items-center">
+                <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                  <span className="size-6 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-foreground" />
+                  <span className="text-xs">rendering label…</span>
+                </div>
+              </div>
+            )}
           </div>
         </section>
         <CommandMenu
