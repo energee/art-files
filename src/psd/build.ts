@@ -469,7 +469,7 @@ function buildLayers(
       fill: P(cfg.volume), face: faceOf(cfg.volume), tracking: cfg.volume.letterSpacing,
       stroke: cfg.volume.stroke, strokeWidth: cfg.volume.strokeWidth, mode,
     }),
-    textLayer("ABV", `${cfg.abv}% alc by vol`, {
+    textLayer("ABV", `${cfg.abv} alc by vol`, {
       x: L.ABV.x, baseline: L.ABV.baseline, size: L.ABV.size,
       fill: P(cfg.abvStyle), face: "regular", tracking: cfg.abvStyle.letterSpacing,
       stroke: cfg.abvStyle.stroke, strokeWidth: cfg.abvStyle.strokeWidth, mode,

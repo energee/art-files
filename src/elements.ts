@@ -53,8 +53,8 @@ const flatStyle = (k: FlatKeys) => (c: LabelConfig): Style => ({
 });
 
 export const ELEMENTS: LabelElement[] = [
-  { id: "name", label: "Beer name", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.nameStyle },
-  { id: "styleLine", label: "Subtitle", group: "beer", hasBold: true, isText: true, allowNone: true, style: (c) => c.styleLine },
+  { id: "name", label: "Beer Name", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.nameStyle },
+  { id: "styleLine", label: "Style", group: "beer", hasBold: true, isText: true, allowNone: true, style: (c) => c.styleLine },
   { id: "abv", label: "ABV", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.abvStyle },
   { id: "description", label: "Description", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.descStyle },
   // The two codes must always carry ink — see allowNone's doc. Both are

@@ -87,7 +87,7 @@ function Row(props: {
 
 /** A row for an ElementId whose text lives in a StyledLine alongside its
  *  style (bold sits there too) — true exactly when ELEMENTS marks hasBold,
- *  the same guarantee StyleProperties.tsx's cast relies on. Covers Subtitle,
+ *  the same guarantee StyleProperties.tsx's cast relies on. Covers Style,
  *  Volume, Info and Store cold. */
 function TextElementRow(props: {
   id: ElementId; label: string; cfg: LabelConfig; update: Update; onSelect: (id: ElementId) => void;
@@ -270,12 +270,12 @@ export function LabelForm(props: {
   return (
     <div>
       <Heading>This beer</Heading>
-      <Row label="Name" htmlFor="beer-name" error={errors.name} marker={!isDefaultStyle("name", cfg.nameStyle)}>
+      <Row label="Beer Name" htmlFor="beer-name" error={errors.name} marker={!isDefaultStyle("name", cfg.nameStyle)}>
         <Input id="beer-name" className="h-6 flex-1 text-xs" value={cfg.beerName}
           onFocus={() => onSelect("name")}
           onChange={(e) => update((c) => { c.beerName = e.target.value; })} />
       </Row>
-      <TextElementRow id="styleLine" label="Subtitle" cfg={cfg} update={update} onSelect={onSelect} />
+      <TextElementRow id="styleLine" label="Style" cfg={cfg} update={update} onSelect={onSelect} />
 
       {/* ABV and UPC share one row — both are short. Each input doubles as
           its element's row: focusing UPC selects the barcode the digits

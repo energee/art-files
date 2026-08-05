@@ -61,7 +61,7 @@ export interface LabelConfig {
   nameStyle: Style;
   /** Subtitle under the name, e.g. "Ultra Hopped Ale". */
   styleLine: StyledLine;
-  /** Numeric string, e.g. "8" -> "8% alc by vol". */
+  /** Numeric string, e.g. "8" -> "8 alc by vol". */
   abv: string;
   abvStyle: Style;
   /** Description block as a markdown subset — one line per label line:
