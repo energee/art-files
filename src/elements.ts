@@ -91,7 +91,11 @@ export function elementById(id: ElementId): LabelElement {
  *    measured off the finished labels" (see drawBarcode). fill/layer/stroke
  *    stay on `!== undefined`: unlike strokeWidth they're required fields on
  *    the flat configs, so an accidental explicit-undefined in a patch should
- *    stay a no-op, not null one out. */
+ *    stay a no-op, not null one out.
+ *  The flat branch also silently drops `letterSpacing`, having no config
+ *  field for it: qr and barcode are isText: false, so the panel never offers
+ *  tracking and Reset's unconditional `letterSpacing: undefined` is a no-op
+ *  for them. */
 export function applyStyle(c: LabelConfig, id: ElementId, patch: Partial<StyledLine>): void {
   const el = elementById(id);
   if (!el.hasBold && "bold" in patch) {

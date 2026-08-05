@@ -387,7 +387,7 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
   // warning into the same columns.
   const warnLines = wrapWarning(
     (t) => L.trackedWidth(
-      f.regular.widthOfTextAtSize(t, L.WARNING.size), t, cfg.warning.letterSpacing ?? 0,
+      f.regular.widthOfTextAtSize(t, L.WARNING.size), t, cfg.warning.letterSpacing,
     ),
     L.WARNING.maxLen,
   );

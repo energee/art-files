@@ -66,12 +66,12 @@ export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
   // if present, always precedes the body lines, matching drawElements.
   const descLines = [
     ...(desc.header
-      ? [{ text: desc.header.text, x: L.DESC_HEADER.x, baseline: L.DESC_HEADER.baseline, size: L.DESC_HEADER.size, bold: !!desc.header.bold, tracking: desc.header.letterSpacing ?? 0 }]
+      ? [{ text: desc.header.text, x: L.DESC_HEADER.x, baseline: L.DESC_HEADER.baseline, size: L.DESC_HEADER.size, bold: !!desc.header.bold, tracking: desc.header.letterSpacing }]
       : []),
     ...desc.lines.map((l, i) => ({
       text: l.text, x: L.DESC.x,
       baseline: L.DESC.firstBaseline + i * L.DESC.leading, size: L.DESC.size, bold: !!l.bold,
-      tracking: l.letterSpacing ?? 0,
+      tracking: l.letterSpacing,
     })),
   ];
 
@@ -114,7 +114,7 @@ export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
   // decides both how many columns the paragraph wraps into and how long each
   // justified one is.
   const warningMeasure = (t: string) =>
-    L.trackedWidth(m(t, L.WARNING.size, false), t, cfg.warning.letterSpacing ?? 0);
+    L.trackedWidth(m(t, L.WARNING.size, false), t, cfg.warning.letterSpacing);
   const warnLines = wrapWarning(warningMeasure, L.WARNING.maxLen);
   warnLines.forEach((line, i) =>
     boxes.push({

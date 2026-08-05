@@ -71,7 +71,9 @@ letter-spacing in points, default 0 — which the PDF applies as a `Tc`
 text-state operator, the PSD as Photoshop tracking (1/1000 em), and which
 widens centred lines, justified warning columns and click targets alike;
 the logo and the two codes omit it, having no glyphs of their own to
-space. A
+space. Tracking and stroke width are scrubby numbers — drag the field's
+label to change the value (shift for coarse, alt for fine), or click in
+and type. A
 Bold checkbox shows for the elements that have one, and a Reset button
 (back to that element's shipped default) once a style deviates from it.
 The description block's panel sets the base fill/layer for its plain

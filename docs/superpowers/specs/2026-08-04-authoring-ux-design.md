@@ -59,8 +59,10 @@ everywhere else.
 
 - Focusing a text field, or clicking an element in the preview, selects that
   element.
-- A properties panel then shows that element's fill, layer, bold and outer
-  stroke — the same controls `StylePopover` has today.
+- A properties panel then shows that element's fill, layer, bold, outer
+  stroke and tracking — the controls the old `StylePopover` carried, plus
+  the per-element letter-spacing added later (see the shadcn-rewrite spec's
+  tracking addendum). Tracking shows only for text elements.
 - Deselecting hides it. There is no permanent swatch column.
 
 Nothing is removed: every element remains fully stylable. The change is that

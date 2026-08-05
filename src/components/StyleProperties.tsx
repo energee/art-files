@@ -9,11 +9,11 @@ import type { LabelConfig, Layer, StyledLine } from "@/types";
 import { applyStyle, elementById, isDefaultStyle, type ElementId } from "@/elements";
 import { defaultConfig } from "@/defaults";
 import { ColorField } from "./ColorField";
+import { ScrubField } from "./ScrubField";
 import { machineName } from "@/qr";
 import { DEFAULT_STROKE_PX } from "@/layout";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -105,24 +105,13 @@ export function StyleProperties(props: {
       )}
 
       {el.isText && (
-        <div className="flex items-center justify-between">
-          <Label htmlFor={`${fid}-tracking`} className="text-xs text-muted-foreground">Tracking</Label>
-          <div className="flex items-center gap-1">
-            <Input
-              type="number" min={-2} max={20} step={0.1}
-              id={`${fid}-tracking`}
-              aria-label="Letter spacing (points)"
-              className="h-6 w-14 text-xs"
-              value={s.letterSpacing ?? 0}
-              onChange={(e) =>
-                // Clamped both ends like the stroke width: `max` on a number
-                // input does not stop a typed value, and tracking wide enough
-                // to overrun the label reads as a broken line, not a style.
-                set({ letterSpacing: Math.min(20, Math.max(-2, Number(e.target.value) || 0)) })}
-            />
-            <span className="text-[10px] text-muted-foreground">pt</span>
-          </div>
-        </div>
+        // Clamped both ends by ScrubField: tracking wide enough to overrun
+        // the label reads as a broken line, not a style.
+        <ScrubField
+          id={`${fid}-tracking`} label="Tracking" unit="pt"
+          value={s.letterSpacing ?? 0} min={-2} max={20} step={0.1}
+          onChange={(v) => set({ letterSpacing: v })}
+        />
       )}
 
       <div className="space-y-1">
@@ -135,21 +124,16 @@ export function StyleProperties(props: {
           />
         </div>
         {strokeOn && (
-          <div className="flex items-center gap-1">
+          <>
             <ColorField id={`${fid}-stroke-color`} value={s.stroke!} onChange={(v) => set({ stroke: v })} allowNone={false} />
-            <Input
-              type="number" min={1} max={60}
-              id={`${fid}-stroke-width`}
-              aria-label="Stroke width (px at 600dpi)"
-              className="h-6 w-14 text-xs"
-              value={s.strokeWidth ?? DEFAULT_STROKE_PX}
-              onChange={(e) =>
-                // Clamp BOTH ends: `max` on a number input does not stop a
-                // typed value, and each extra px adds stroke draw calls.
-                set({ strokeWidth: Math.min(60, Math.max(1, Number(e.target.value) || DEFAULT_STROKE_PX)) })}
+            {/* Clamped at 60px by ScrubField: each extra px adds stroke draw
+                calls, and ring()'s sample ceiling is sized for that limit. */}
+            <ScrubField
+              id={`${fid}-stroke-width`} label="Width" unit="px"
+              value={s.strokeWidth ?? DEFAULT_STROKE_PX} min={1} max={60} step={1}
+              onChange={(v) => set({ strokeWidth: v })}
             />
-            <span className="text-[10px] text-muted-foreground">px</span>
-          </div>
+          </>
         )}
       </div>
     </div>

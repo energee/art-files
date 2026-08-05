@@ -102,6 +102,13 @@ is derived from the beer name (see "Derived QR payload").
   the header and every line, and the `_white_` marker does not override it.
 - No config migration: absent means 0, so every old config still prints as it
   always did.
+- Both numeric style fields (tracking, stroke width) are scrubby numbers, not
+  plain number inputs: dragging the field's label changes the value (shift =
+  coarse, alt = fine), and it stays typeable with native arrow stepping. The
+  interface is shadcn throughout — a `Label` as the scrub handle and an
+  `InputGroup` (Input + unit addon) for the value — so only the pointer
+  gesture is hand-written, no shadcn primitive covering it. One
+  `ScrubField` component serves both.
 
 ## Optional mask (addendum)
 
@@ -119,9 +126,10 @@ popover labels are shadcn `Label`s with `htmlFor`/id association; the color
 picker is react-colorful (nested popover); the file drop targets are
 react-dropzone (library-managed drag/keyboard/aria). Still deliberately
 raw: the two pdf.js `<canvas>` targets, hidden file inputs (the
-standard pattern, also what react-dropzone renders), and the eyedropper's
+standard pattern, also what react-dropzone renders), the eyedropper's
 native `EyeDropper` call — the browser owns that UI, so there is no
-component to wrap.
+component to wrap — and ScrubField's drag gesture, which is behaviour
+layered onto a shadcn Label rather than a widget of its own.
 
 ## UI improvements (included in the rewrite)
 

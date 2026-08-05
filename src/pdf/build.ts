@@ -94,7 +94,7 @@ const y = (topY: number) => L.PAGE.h - topY; // top-left origin -> PDF space
  *  draw: drawText wraps itself in q/Q, so an outer Tc is inherited inside and
  *  survives the pop. Cleared after, because Tc otherwise stays in force for
  *  every later text draw on the page. */
-function withTracking(page: PDFPage, tracking: number, draw: () => void) {
+function withTracking(page: PDFPage, tracking: number | undefined, draw: () => void) {
   if (!tracking) return draw();
   page.pushOperators(setCharacterSpacing(tracking));
   draw();
@@ -110,7 +110,7 @@ function drawLine(
 ) {
   const font = opts.font ?? (line.bold ? fonts.semibold : fonts.regular);
   const color = mode === "art" ? fillColor(line.fill) : maskColor(line.layer);
-  const tracking = line.letterSpacing ?? 0;
+  const tracking = line.letterSpacing;
   // Centring measures the TRACKED width, not the font's — at 0 tracking the
   // two are identical, so this is the same math as before for untracked text.
   const x =
@@ -141,7 +141,7 @@ function drawRotated(
   const color = mode === "art" ? fillColor(style.fill) : maskColor(style.layer);
   const base = { size: opts.size, font, rotate: degrees(90) };
   const stroke = strokeOf(style, mode);
-  withTracking(page, style.letterSpacing ?? 0, () => {
+  withTracking(page, style.letterSpacing, () => {
     if (stroke)
       for (const [dx, dy] of ring(stroke.w))
         page.drawText(text, { ...base, x: opts.x + dx, y: y(opts.yStart) + dy, color: stroke.color });
@@ -186,9 +186,8 @@ export function drawJustifiedRotated(
   // Tracked widths: the gap that justifies the line has to be computed
   // against the length each word actually draws at, or a tracked warning
   // column overshoots maxLen by one gap per glyph.
-  const tracking = style.letterSpacing ?? 0;
   const widths = words.map((w) =>
-    L.trackedWidth(font.widthOfTextAtSize(w, opts.size), w, tracking));
+    L.trackedWidth(font.widthOfTextAtSize(w, opts.size), w, style.letterSpacing));
   const totalWordWidth = widths.reduce((a, b) => a + b, 0);
   // The gap that makes sum(widths) + (n-1)*gap land exactly on maxLen.
   const gap = (opts.maxLen - totalWordWidth) / (words.length - 1);
@@ -381,7 +380,7 @@ function drawElements(
   // more columns, and hittest.ts derives its columns from the same measure.
   const warnLines = wrapWarning(
     (t) => L.trackedWidth(
-      fonts.regular.widthOfTextAtSize(t, L.WARNING.size), t, cfg.warning.letterSpacing ?? 0,
+      fonts.regular.widthOfTextAtSize(t, L.WARNING.size), t, cfg.warning.letterSpacing,
     ),
     L.WARNING.maxLen,
   );
