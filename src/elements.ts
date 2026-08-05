@@ -68,8 +68,11 @@ export const ELEMENTS: LabelElement[] = [
   // get neither bold nor letter-spacing; the lead-in is text, but it is drawn
   // in one fixed SemiBold face like the handle/address, hence hasBold: false.
   { id: "collabLead", label: "Collab lead-in", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.collabLead },
-  { id: "collabLeft", label: "Collab logo (left)", group: "beer", hasBold: false, isText: false, allowNone: true, style: (c) => c.collabLeft },
-  { id: "collabCenter", label: "Collab logo (center)", group: "beer", hasBold: false, isText: false, allowNone: true, style: (c) => c.collabCenter },
+  // The two slots are named for what goes in them, not where they sit: the
+  // left slot takes the partner's text/wordmark art, the centre one their
+  // graphic mark (it hangs under the laurel in the centre stack).
+  { id: "collabLeft", label: "Text logo", group: "beer", hasBold: false, isText: false, allowNone: true, style: (c) => c.collabLeft },
+  { id: "collabCenter", label: "Graphic Logo", group: "beer", hasBold: false, isText: false, allowNone: true, style: (c) => c.collabCenter },
   { id: "volume", label: "Volume", group: "template", hasBold: true, isText: true, allowNone: true, style: (c) => c.volume },
   { id: "wordmark", label: "Wordmark", group: "template", hasBold: false, isText: true, allowNone: true, style: (c) => c.wordmark },
   { id: "logo", label: "Logo", group: "template", hasBold: false, isText: false, allowNone: true, style: (c) => c.logo },

@@ -1,7 +1,8 @@
 // LayersPanel.tsx — the Figma-style layer list that fills the left sidebar.
-// Three groups: "This beer" (per-release elements), "Template" (set-once
-// brand elements), and "Document" (the UI-level background/mask layers from
-// ./layers, which carry file drops rather than Styles). Rows select into the
+// Four groups: "This beer" (per-release elements), "Collab" (the lead-in and
+// two partner-logo slots), "Template" (set-once brand elements), and
+// "Document" (the UI-level background/mask layers from ./layers, which carry
+// file drops rather than Styles). Rows select into the
 // same LayerId state the preview's click-to-select uses; the eye toggle
 // hides an element by writing fill: "none" and restores the shipped default
 // fill on re-show. Per the layers-ui spec, rows appear in a curated order
@@ -47,8 +48,8 @@ import { DOC_LAYER_LABELS, isElementId, type LayerId } from "./layers";
  *  notably Barcode before QR in "This beer". */
 const BEER_ROWS: ElementId[] = [
   "name", "styleLine", "abv", "description", "barcode", "qr",
-  "collabLead", "collabLeft", "collabCenter",
 ];
+const COLLAB_ROWS: ElementId[] = ["collabLead", "collabLeft", "collabCenter"];
 const TEMPLATE_ROWS: ElementId[] = [
   "volume", "wordmark", "logo", "handleAddress", "warning", "storeCold",
 ];
@@ -134,6 +135,7 @@ export function LayersPanel(props: {
 }): React.JSX.Element {
   const groups: [string, LayerId[]][] = [
     ["This beer", BEER_ROWS],
+    ["Collab", COLLAB_ROWS],
     ["Template", TEMPLATE_ROWS],
     ["Document", DOC_ROWS],
   ];

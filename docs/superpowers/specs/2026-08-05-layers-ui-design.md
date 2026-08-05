@@ -33,8 +33,9 @@ render support arrives later, per layer.
 - shadcn `SidebarGroup` / `SidebarMenu` / `SidebarMenuItem` /
   `SidebarMenuButton`; lucide type icons.
 - Groups, in order:
-  - **This beer**: Beer Name, Style, ABV, Description, Barcode, QR,
-    Collab lead-in, Collab logo (left), Collab logo (center)
+  - **This beer**: Beer Name, Style, ABV, Description, Barcode, QR
+  - **Collab**: Collab lead-in, Text logo (the left slot), Graphic Logo
+    (the centre slot)
   - **Template**: Volume, Wordmark, Logo, Info, Warning, Store Cold
   - **Document**: Background, Mask
 - Row = icon + name + eye toggle. Eye truly hides the layer: the renderer
