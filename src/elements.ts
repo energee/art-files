@@ -2,7 +2,7 @@
 // the preview both read it, so they cannot disagree about what exists or
 // which config field backs it.
 import type { LabelConfig, Style, StyledLine } from "./types";
-import { GOLD } from "./layout";
+import { defaultConfig } from "./defaults";
 
 export type ElementId =
   | "name" | "styleLine" | "abv" | "description"
@@ -103,12 +103,33 @@ export function applyStyle(c: LabelConfig, id: ElementId, patch: Partial<StyledL
   Object.assign(el.style(c), patch);
 }
 
-/** True when nothing deviates from the silent gold/metallic default, so the
- *  UI knows whether to show a deviation marker and a reset. */
-export function isDefaultStyle(s: Style): boolean {
+/** True when `s` still matches THIS element's shipped appearance — i.e. what
+ *  StyleProperties' Reset would restore — so the UI knows whether to show a
+ *  deviation marker and offer that reset.
+ *
+ *  Compared against defaultConfig(), not a hardcoded gold/metallic/no-stroke
+ *  triple: several elements ship a deliberate deviation from gold (the logo's
+ *  dark keyline, the barcode's near-black bars in a white halo over white
+ *  ink). Against a hardcoded triple those read as permanently "dirty", and —
+ *  worse — restyling the barcode TO gold/metallic/no-stroke, which is exactly
+ *  the unscannable state, would read as "default" and unmount the Reset button
+ *  that undoes it. bold and strokeWidth count too: they are both editable in
+ *  the panel and both restored by Reset, so leaving them out would leave a
+ *  changed element claiming to be untouched. */
+export function isDefaultStyle(id: ElementId, s: Style): boolean {
+  const d = elementById(id).style(defaultConfig());
+  // An absent stroke and an explicit "none" are the same thing to every
+  // renderer (see strokeOf in pdf/build.ts), so normalize before comparing;
+  // strokeWidth only matters while a stroke is actually drawn.
+  const strokeOf = (x: Style) => (x.stroke === undefined ? "none" : x.stroke);
+  const widthOf = (x: Style) => (strokeOf(x) === "none" ? undefined : x.strokeWidth);
+  const boldOf = (x: Style) =>
+    elementById(id).hasBold ? ((x as StyledLine).bold ?? false) : false;
   return (
-    s.fill === GOLD &&
-    s.layer === "metallic" &&
-    (s.stroke === undefined || s.stroke === "none")
+    s.fill === d.fill &&
+    s.layer === d.layer &&
+    strokeOf(s) === strokeOf(d) &&
+    widthOf(s) === widthOf(d) &&
+    boldOf(s) === boldOf(d)
   );
 }

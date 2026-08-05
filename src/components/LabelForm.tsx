@@ -9,7 +9,9 @@
 // below this component — can show that element's fill/layer/bold/stroke
 // controls. No per-row swatch chips anymore; a small dot next to a row's
 // label is the only per-row style signal left, flagging a style that
-// deviates from the shipped gold/metallic default (see isDefaultStyle).
+// deviates from THAT element's shipped default (see isDefaultStyle) — so a
+// freshly loaded config shows no dots at all, including the elements that
+// ship deliberately off-gold.
 import { ChevronRight, Info } from "lucide-react";
 import type { LabelConfig, StyledLine } from "@/types";
 import { ELEMENTS, elementById, isDefaultStyle, type ElementId } from "@/elements";
@@ -31,9 +33,8 @@ type Update = (fn: (c: LabelConfig) => void) => void;
 const TEMPLATE_ELEMENTS = ELEMENTS.filter((e) => e.group === "template");
 
 /** Marker shown next to a row's label when its element's live style differs
- *  from the shipped gold/metallic default — replaces the old always-visible
- *  swatch chip as the signal that this row isn't just following the brand
- *  default. */
+ *  from that element's OWN shipped default — replaces the old always-visible
+ *  swatch chip as the signal that this row has been styled by hand. */
 function Dot() {
   return <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-primary" />;
 }
@@ -69,7 +70,7 @@ function TextElementRow(props: {
   const line = el.style(props.cfg) as StyledLine;
   const htmlId = machineName(props.label);
   return (
-    <Row label={props.label} htmlFor={htmlId} marker={!isDefaultStyle(line)}>
+    <Row label={props.label} htmlFor={htmlId} marker={!isDefaultStyle(props.id, line)}>
       <Input
         id={htmlId}
         className="h-6 min-w-0 flex-1 text-xs"
@@ -92,7 +93,7 @@ function StyleOnlyElementRow(props: {
   id: ElementId; label: string; cfg: LabelConfig; selected: boolean; onSelect: (id: ElementId) => void;
 }) {
   const el = elementById(props.id);
-  const dirty = !isDefaultStyle(el.style(props.cfg));
+  const dirty = !isDefaultStyle(props.id, el.style(props.cfg));
   return (
     <Button
       type="button"
@@ -129,7 +130,7 @@ export function LabelForm(props: {
   return (
     <div>
       <Heading>This beer</Heading>
-      <Row label="Name" htmlFor="beer-name" error={errors.name} marker={!isDefaultStyle(cfg.nameStyle)}>
+      <Row label="Name" htmlFor="beer-name" error={errors.name} marker={!isDefaultStyle("name", cfg.nameStyle)}>
         <Input id="beer-name" className="h-6 flex-1 text-xs" value={cfg.beerName}
           onFocus={() => onSelect("name")}
           onChange={(e) => update((c) => { c.beerName = e.target.value; })} />
@@ -140,15 +141,16 @@ export function LabelForm(props: {
           its element's row: focusing UPC selects the barcode the digits
           produce, the same way focusing Name selects the beer name. The
           barcode's shipped style (near-black bars, white halo, white ink) is
-          a deliberate deviation from the gold/metallic default, so — like the
-          logo's keyline — its marker dot shows from the start. */}
+          a deliberate deviation from gold/metallic, but it IS its shipped
+          default — like the logo's keyline — so no marker dot until someone
+          restyles it. */}
       <div className="mb-1.5 flex items-center gap-1.5">
         <Label
           htmlFor="abv"
           className="flex w-24 shrink-0 items-center gap-1 text-[13px] font-normal text-muted-foreground"
         >
           ABV %
-          {!isDefaultStyle(cfg.abvStyle) && <Dot />}
+          {!isDefaultStyle("abv", cfg.abvStyle) && <Dot />}
         </Label>
         <Input id="abv" className="h-6 w-14 text-xs" value={cfg.abv}
           onFocus={() => onSelect("abv")}
@@ -158,7 +160,7 @@ export function LabelForm(props: {
           className="flex shrink-0 items-center gap-1 text-[13px] font-normal text-muted-foreground"
         >
           UPC
-          {!isDefaultStyle(elementById("barcode").style(cfg)) && <Dot />}
+          {!isDefaultStyle("barcode", elementById("barcode").style(cfg)) && <Dot />}
         </Label>
         <Input id="upc" className="h-6 min-w-0 flex-1 font-mono text-xs" value={cfg.upc}
           onFocus={() => onSelect("barcode")}
@@ -176,7 +178,7 @@ export function LabelForm(props: {
           />
           <TooltipContent># header · **bold** · _white ink_ · plain = the panel's style</TooltipContent>
         </Tooltip>
-        {!isDefaultStyle(cfg.descStyle) && <Dot />}
+        {!isDefaultStyle("description", cfg.descStyle) && <Dot />}
       </Heading>
       <DescriptionEditor
         value={cfg.description}

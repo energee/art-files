@@ -1,9 +1,9 @@
 // StyleProperties.tsx — the contextual style panel. Photoshop's model: it
-// exists only while an element is selected, so the gold/metallic defaults
-// stay silent everywhere else. Controls mirror StylePopover's (fill, layer,
-// bold, outer stroke) in a persistent panel instead of a popover, since only
-// one element is ever selected at a time — no per-row id prefixing needed
-// beyond what's already here for label/control association.
+// exists only while an element is selected, so the shipped defaults stay
+// silent everywhere else. Fill, layer, bold and outer stroke live in this one
+// persistent panel rather than a per-row popover, since only one element is
+// ever selected at a time — no per-row id prefixing needed beyond what's
+// already here for label/control association.
 import { X } from "lucide-react";
 import type { LabelConfig, Layer, StyledLine } from "@/types";
 import { applyStyle, elementById, isDefaultStyle, type ElementId } from "@/elements";
@@ -56,7 +56,7 @@ export function StyleProperties(props: {
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium">{el.label}</span>
         <div className="flex items-center gap-1">
-          {!isDefaultStyle(s) && (
+          {!isDefaultStyle(props.id, s) && (
             <Button
               variant="ghost" size="sm" className="h-6 px-2 text-[11px]"
               onClick={reset}

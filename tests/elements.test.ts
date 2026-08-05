@@ -66,12 +66,39 @@ describe("element registry", () => {
     expect(elementById("qr").style(cfg)).toEqual(qrBefore);
   });
 
-  it("recognises the gold/metallic default so deviations can be marked", () => {
-    expect(isDefaultStyle({ fill: GOLD, layer: "metallic" })).toBe(true);
-    expect(isDefaultStyle({ fill: "#FF0000", layer: "metallic" })).toBe(false);
-    expect(isDefaultStyle({ fill: GOLD, layer: "white" })).toBe(false);
-    expect(isDefaultStyle({ fill: GOLD, layer: "metallic", stroke: "#FFFFFF" })).toBe(false);
-    expect(isDefaultStyle({ fill: GOLD, layer: "metallic", stroke: "none" })).toBe(true);
+  it("recognises a gold element's default so deviations can be marked", () => {
+    expect(isDefaultStyle("name", { fill: GOLD, layer: "metallic" })).toBe(true);
+    expect(isDefaultStyle("name", { fill: "#FF0000", layer: "metallic" })).toBe(false);
+    expect(isDefaultStyle("name", { fill: GOLD, layer: "white" })).toBe(false);
+    expect(isDefaultStyle("name", { fill: GOLD, layer: "metallic", stroke: "#FFFFFF" })).toBe(false);
+    // Absent stroke and explicit "none" mean the same thing to the renderers.
+    expect(isDefaultStyle("name", { fill: GOLD, layer: "metallic", stroke: "none" })).toBe(true);
+  });
+
+  // Regression: isDefaultStyle used to hardcode gold/metallic/no-stroke, so
+  // every element that SHIPS off-gold read as permanently deviating, and
+  // restyling the barcode to gold/metallic/no-stroke — the unscannable state
+  // — read as "default", hiding the Reset that undoes it.
+  it("treats every element's own shipped style as its default", () => {
+    const cfg = defaultConfig();
+    for (const e of ELEMENTS) {
+      expect([e.id, isDefaultStyle(e.id, e.style(cfg))]).toEqual([e.id, true]);
+    }
+  });
+
+  it("flags a gold/metallic barcode as a deviation, not as the default", () => {
+    const cfg = defaultConfig();
+    applyStyle(cfg, "barcode", { fill: GOLD, layer: "metallic", stroke: "none" });
+    expect(isDefaultStyle("barcode", elementById("barcode").style(cfg))).toBe(false);
+  });
+
+  it("counts strokeWidth and bold, which Reset also restores", () => {
+    const cfg = defaultConfig();
+    applyStyle(cfg, "barcode", { strokeWidth: 31 });
+    expect(isDefaultStyle("barcode", elementById("barcode").style(cfg))).toBe(false);
+    const cfg2 = defaultConfig();
+    applyStyle(cfg2, "storeCold", { bold: false }); // ships bold: true
+    expect(isDefaultStyle("storeCold", elementById("storeCold").style(cfg2))).toBe(false);
   });
 
   it("marks 'no ink' as illegal for both codes and nothing else", () => {
