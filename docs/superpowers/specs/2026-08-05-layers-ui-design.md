@@ -38,7 +38,11 @@ render support arrives later, per layer.
     (the centre slot)
   - **Template**: Volume, Wordmark, Logo, Info, Warning, Store Cold
   - **Document**: Background, Mask
-- Row = icon + name + eye toggle. Eye truly hides the layer: the renderer
+- Row = eye toggle (left) · icon + name (select target) · chevron (right)
+  that opens an accordion below the row: a read-only one-line-per-property
+  digest of the applied styles (fill+plate always; stroke, tracking, bold
+  only while in effect). Editing stays in the inspector. Eye truly hides
+  the layer: the renderer
   (`Assets.hidden`, `src/pdf/build.ts`) skips its ink, stroke and mask
   footprint in both plates, previews and PDF exports alike. Session state,
   never written into saved configs; PSD exports keep every layer. (An

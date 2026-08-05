@@ -13,6 +13,7 @@ import {
   AlignLeft,
   Barcode,
   CaseSensitive,
+  ChevronDown,
   Eye,
   EyeOff,
   Handshake,
@@ -30,15 +31,15 @@ import {
   Type,
   type LucideIcon,
 } from "lucide-react";
-import type { LabelConfig } from "@/types";
+import type { LabelConfig, StyledLine } from "@/types";
 import { elementById, type ElementId } from "@/elements";
 import { cn } from "@/lib/utils";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarMenu,
-  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
@@ -75,6 +76,50 @@ const ICONS: Record<LayerId, LucideIcon> = {
   mask: Scan,
 };
 
+/** Tiny color chip for the style summary; "none" renders as a hatch-free
+ *  outline so "no ink" is visibly different from black. */
+function Chip({ color }: { color: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-block size-2.5 shrink-0 rounded-[3px] border border-sidebar-border align-middle"
+      style={color === "none" ? undefined : { backgroundColor: color }}
+    />
+  );
+}
+
+/** One-line-per-property digest of what's applied to an element: fill+plate
+ *  always, stroke/tracking/bold only while they're actually in effect.
+ *  Read-only — editing lives in the inspector; this is the at-a-glance view
+ *  behind the row's chevron. */
+function StyleSummary({ id, cfg }: { id: ElementId; cfg: LabelConfig }) {
+  const el = elementById(id);
+  const s = el.style(cfg);
+  const bold = el.hasBold && ((s as StyledLine).bold ?? false);
+  const strokeOn = !!s.stroke && s.stroke !== "none";
+  const tracking = s.letterSpacing ?? 0;
+  const line = "flex items-center gap-1.5 text-[11px] text-sidebar-foreground/70";
+  return (
+    <div className="space-y-1">
+      <div className={line}>
+        <Chip color={s.fill} />
+        <span>{s.fill === "none" ? "No ink" : s.fill}</span>
+        <span className="text-sidebar-foreground/40">·</span>
+        <span>{s.layer}</span>
+      </div>
+      {strokeOn && (
+        <div className={line}>
+          <Chip color={s.stroke!} />
+          <span>Stroke {s.stroke}</span>
+          {s.strokeWidth !== undefined && <span>{s.strokeWidth}px</span>}
+        </div>
+      )}
+      {tracking !== 0 && <div className={line}>Tracking {tracking}pt</div>}
+      {bold && <div className={line}>Bold</div>}
+    </div>
+  );
+}
+
 function LayerRow({
   id, cfg, hidden: hiddenSet, onToggleHidden, selected, onSelect,
 }: {
@@ -98,30 +143,63 @@ function LayerRow({
     if (el) onToggleHidden(el.id);
   };
 
+  // Row anatomy, left to right: eye · icon+name (the select target) ·
+  // chevron. The eye and chevron are siblings of the menu button, not
+  // children, so neither can change the selection. Document rows get a
+  // spacer where the eye would sit, keeping the icon column aligned.
   return (
-    <SidebarMenuItem>
-      <SidebarMenuButton
-        size="sm"
-        isActive={selected === id}
-        onClick={() => onSelect(id)}
-        className={cn("text-xs", (hidden || collabOff) && "opacity-50")}
-      >
-        <Icon />
-        <span>{label}</span>
-      </SidebarMenuButton>
-      {/* Every element row gets an eye — including QR/Barcode, since hiding
-          is a session-level skip, not the ink-less styling allowNone forbids.
-          Only the document rows (background/mask) go without, for now. */}
-      {el !== null && (
-        <SidebarMenuAction
-          showOnHover={!hidden}
-          onClick={toggleEye}
-          aria-label={hidden ? `Show ${label}` : `Hide ${label}`}
-        >
-          {hidden ? <EyeOff /> : <Eye />}
-        </SidebarMenuAction>
-      )}
-    </SidebarMenuItem>
+    <Collapsible>
+      <SidebarMenuItem>
+        <div className="flex items-center">
+          {/* Every element row gets an eye — including QR/Barcode, since
+              hiding is a session-level skip, not the ink-less styling
+              allowNone forbids. Document rows go without, for now. */}
+          {el !== null ? (
+            <button
+              type="button"
+              onClick={toggleEye}
+              aria-label={hidden ? `Show ${label}` : `Hide ${label}`}
+              className={cn(
+                "grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70 hover:text-sidebar-foreground [&>svg]:size-3.5",
+                !hidden && "opacity-40 hover:opacity-100",
+              )}
+            >
+              {hidden ? <EyeOff /> : <Eye />}
+            </button>
+          ) : (
+            <span className="size-5 shrink-0" />
+          )}
+          <SidebarMenuButton
+            size="sm"
+            isActive={selected === id}
+            onClick={() => onSelect(id)}
+            className={cn("text-xs", (hidden || collabOff) && "opacity-50")}
+          >
+            <Icon />
+            <span>{label}</span>
+          </SidebarMenuButton>
+          {/* Applied-styles accordion, element rows only: the document
+              layers have no Style stack yet (disabled placeholders live in
+              the inspector). A read-only digest — editing stays in the
+              inspector. */}
+          {el !== null && (
+            <CollapsibleTrigger
+              aria-label={`${label} styles`}
+              className="group/styles grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70 hover:text-sidebar-foreground"
+            >
+              <ChevronDown className="size-3.5 transition-transform group-data-[panel-open]/styles:rotate-180" />
+            </CollapsibleTrigger>
+          )}
+        </div>
+        {el !== null && (
+          <CollapsibleContent>
+            <div className="ml-[1.4rem] border-l border-sidebar-border py-1.5 pl-3 pr-1">
+              <StyleSummary id={el.id} cfg={cfg} />
+            </div>
+          </CollapsibleContent>
+        )}
+      </SidebarMenuItem>
+    </Collapsible>
   );
 }
 
