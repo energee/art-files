@@ -24,6 +24,9 @@ import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator,
   MenubarShortcut, MenubarTrigger,
 } from "@/components/ui/menubar";
+import {
+  Sidebar, SidebarContent, SidebarInset, SidebarProvider, SidebarTrigger,
+} from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import poppinsRegular from "@/assets/fonts/Poppins-Regular.ttf?url";
 import poppinsSemiBold from "@/assets/fonts/Poppins-SemiBold.ttf?url";
@@ -438,12 +441,31 @@ export default function App() {
 
   return (
     <TooltipProvider>
-      {/* App chrome: one full-width bar above the split, so the menus read as
-          the window's own rather than as sidebar controls. The h-screen flex
-          column below it keeps the sidebar and preview scrolling independently
-          as before. */}
-      <div className="flex h-screen flex-col">
+      {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
+          preview center, fixed inspector column right. The old form rides
+          inside the Sidebar until LayersPanel/Inspector replace it.
+          --sidebar-width is temporarily the old 430px for that form. */}
+      <SidebarProvider style={{ "--sidebar-width": "430px" } as React.CSSProperties}>
+        <Sidebar collapsible="offcanvas">
+          <SidebarContent className="p-4">
+            <div className="flex gap-2">
+              <FileDrop label="Texture PNG/JPG"
+                accept={{ "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] }}
+                fileName={texture?.name} previewUrl={texture?.previewUrl}
+                onFile={(f) => void onTexture(f)} />
+              <FileDrop label="Metallic mask PNG (optional)" accept={{ "image/png": [".png"] }}
+                fileName={mask?.name} previewUrl={mask?.previewUrl} error={mask?.error}
+                onFile={(f) => void onMask(f)} />
+            </div>
+            {loadError && <p className="mt-2 text-xs text-destructive">{loadError}</p>}
+            <LabelForm cfg={cfg} errors={errors} update={update} selected={selected}
+              onSelect={setSelected} collab={collabFiles} />
+          </SidebarContent>
+        </Sidebar>
+        <SidebarInset className="flex h-svh flex-col overflow-hidden">
         <header className="flex items-center gap-3 border-b border-border px-3 py-1">
+          {/* Toggles the Layers sidebar; the component also binds ⌘B. */}
+          <SidebarTrigger className="size-6" />
           {/* Stripped to a real menu bar: no pill border or rounding of its
               own (the header's bottom border is the chrome), and small
               regular-weight labels rather than the default's badge-like
@@ -506,26 +528,7 @@ export default function App() {
           <input ref={configInput} type="file" accept="application/json" hidden
             onChange={(e) => e.target.files?.[0] && void loadConfig(e.target.files[0])} />
         </header>
-      <main className="flex min-h-0 flex-1">
-        <aside className="w-[430px] min-w-[380px] overflow-y-auto border-r border-border p-4">
-          <div className="flex gap-2">
-            <FileDrop label="Texture PNG/JPG"
-              accept={{ "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] }}
-              fileName={texture?.name} previewUrl={texture?.previewUrl}
-              onFile={(f) => void onTexture(f)} />
-            <FileDrop label="Metallic mask PNG (optional)" accept={{ "image/png": [".png"] }}
-              fileName={mask?.name} previewUrl={mask?.previewUrl} error={mask?.error}
-              onFile={(f) => void onMask(f)} />
-          </div>
-          {loadError && <p className="mt-2 text-xs text-destructive">{loadError}</p>}
-          <LabelForm cfg={cfg} errors={errors} update={update} selected={selected}
-            onSelect={setSelected} collab={collabFiles} />
-          {selected && (
-            <div className="mt-3">
-              <StyleProperties id={selected} cfg={cfg} update={update} onClose={() => setSelected(null)} />
-            </div>
-          )}
-        </aside>
+      <div className="flex min-h-0 flex-1">
         <section className="flex min-w-0 flex-1 flex-col p-3">
           <div className="mb-2 flex h-5 items-center gap-2">
             {building && (
@@ -560,6 +563,18 @@ export default function App() {
             )}
           </div>
         </section>
+        {/* Right inspector column: fixed width, plain bordered div — the
+            Sidebar component is reserved for the left Layers panel and the
+            inspector does not collapse. Placeholder content until the
+            Inspector rework of StyleProperties lands. */}
+        <aside className="w-[300px] shrink-0 overflow-y-auto border-l border-border p-3">
+          {selected ? (
+            <StyleProperties id={selected} cfg={cfg} update={update}
+              onClose={() => setSelected(null)} />
+          ) : (
+            <p className="text-xs text-muted-foreground">Select a layer</p>
+          )}
+        </aside>
         <CommandMenu
           actions={[
             { label: "Export PDF + Mask PDF", disabled: blocked || !pdfs, run: exportPdfs },
@@ -574,8 +589,9 @@ export default function App() {
             { label: "Preview: Mask", run: () => previewRef.current?.showMask() },
           ]}
         />
-      </main>
       </div>
+        </SidebarInset>
+      </SidebarProvider>
     </TooltipProvider>
   );
 }
