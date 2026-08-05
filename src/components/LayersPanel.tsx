@@ -92,12 +92,15 @@ function HandMetal(props: { className?: string }) {
 }
 
 /** Tiny color chip for the style summary; "none" renders as a hatch-free
- *  outline so "no ink" is visibly different from black. */
+ *  outline so "no ink" is visibly different from black. The border is a
+ *  translucent foreground, not the theme border: the chip is the only
+ *  signal of the color now (no hex text), and a near-black swatch on the
+ *  dark panel would otherwise vanish. */
 function Chip({ color }: { color: string }) {
   return (
     <span
       aria-hidden="true"
-      className="inline-block size-2.5 shrink-0 rounded-[3px] border border-sidebar-border align-middle"
+      className="inline-block size-2.5 shrink-0 rounded-[3px] border border-sidebar-foreground/40 align-middle"
       style={color === "none" ? undefined : { backgroundColor: color }}
     />
   );
@@ -118,14 +121,14 @@ function StyleSummary({ id, cfg }: { id: ElementId; cfg: LabelConfig }) {
     <div className="space-y-1">
       <div className={line}>
         <Chip color={s.fill} />
-        <span>{s.fill === "none" ? "No ink" : s.fill}</span>
+        <span>{s.fill === "none" ? "No ink" : "Fill"}</span>
         <span className="text-sidebar-foreground/40">·</span>
         <span>{s.layer}</span>
       </div>
       {strokeOn && (
         <div className={line}>
           <Chip color={s.stroke!} />
-          <span>Stroke {s.stroke}</span>
+          <span>Stroke</span>
           {s.strokeWidth !== undefined && <span>{s.strokeWidth}px</span>}
         </div>
       )}
