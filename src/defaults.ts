@@ -48,6 +48,9 @@ export function defaultConfig(): LabelConfig {
       text: "@LOLEVBEER   5247 BUTLER ST, PITTSBURGH, PA",
       fill: GOLD,
       layer: "metallic",
+      // Ships tracked (2026-08): the handle and address read as one long
+      // rotated run, and a quarter point of spacing opens it up.
+      letterSpacing: 0.25,
     },
     warning: { fill: GOLD, layer: "metallic" },
     storeCold: { text: "STORE COLD", fill: GOLD, layer: "metallic", bold: true },

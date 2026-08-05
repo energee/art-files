@@ -69,7 +69,17 @@ describe("the art PDF's character-spacing operator", () => {
   });
 
   it("emits no Tc at all when nothing is tracked", async () => {
-    const text = await contentStreamText(await buildArtPdf(defaultConfig(), assets));
+    // The shipped handle/address is tracked (0.25pt), so clear it to get a
+    // genuinely untracked label — the point of this test is that an element
+    // at 0 costs no operator, not that the defaults happen to be untracked.
+    const cfg = defaultConfig();
+    cfg.handleAddress.letterSpacing = 0;
+    const text = await contentStreamText(await buildArtPdf(cfg, assets));
     expect(text).not.toMatch(/\bTc\b/);
+  });
+
+  it("ships the handle/address tracked at a quarter point", async () => {
+    const text = await contentStreamText(await buildArtPdf(defaultConfig(), assets));
+    expect(text).toContain("0.25 Tc");
   });
 });
