@@ -67,7 +67,7 @@ export const ELEMENTS: LabelElement[] = [
   // switch is off. The two logo slots draw uploaded art, not glyphs, so they
   // get neither bold nor letter-spacing; the lead-in is text, but it is drawn
   // in one fixed SemiBold face like the handle/address, hence hasBold: false.
-  { id: "collabLead", label: "Collab lead-in", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.collabLead },
+  { id: "collabLead", label: "Lead-In", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.collabLead },
   // The two slots are named for what goes in them, not where they sit: the
   // left slot takes the partner's text/wordmark art, the centre one their
   // graphic mark (it hangs under the laurel in the centre stack).

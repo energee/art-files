@@ -34,7 +34,7 @@ render support arrives later, per layer.
   `SidebarMenuButton`; lucide type icons.
 - Groups, in order:
   - **This beer**: Beer Name, Style, ABV, Description, Barcode, QR
-  - **Collab**: Collab lead-in, Text logo (the left slot), Graphic Logo
+  - **Collab**: Lead-In, Text logo (the left slot), Graphic Logo
     (the centre slot)
   - **Template**: Volume, Wordmark, Logo, Info, Warning, Store Cold
   - **Document**: Background, Mask
