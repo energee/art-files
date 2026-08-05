@@ -70,13 +70,12 @@ reveals the white-ink layer over the art in place — no embedded PDF
 viewer, no tabs. Live previews build against a downscaled copy of the
 texture/mask (print-size images made every keystroke-triggered rebuild
 churn enough memory to crash the tab); downloads always rebuild at full
-resolution when clicked. One **Export
-PDFs** button downloads both files together, and **Export PSD** writes a
-layered Photoshop file (see below); Save/Load config are small
-ghost buttons. Press <kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd> for a command
-palette covering save config, load config, download art PDF, download mask
-PDF, and preview snap actions ("Preview: Art" / "Preview: White-ink" jump
-the divider to either end).
+resolution when clicked. A single **Export** button opens a menu with
+**Print PDFs (art + mask)** and **Photoshop PSD** (see below); Save/Load
+config remain small ghost buttons beside it. Press <kbd>⌘K</kbd> /
+<kbd>Ctrl+K</kbd> for a command palette covering save config, load config,
+download art PDF, download mask PDF, and preview snap actions ("Preview:
+Art" / "Preview: White-ink" jump the divider to either end).
 
 ```bash
 npm install

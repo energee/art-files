@@ -17,6 +17,7 @@ import { FileDrop } from "@/components/FileDrop";
 import { CommandMenu } from "@/components/CommandMenu";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip";
@@ -70,6 +71,10 @@ export default function App() {
   // at a time, driven by whichever row in LabelForm (or now, PreviewCompare
   // itself) last got focus/click.
   const [selected, setSelected] = useState<ElementId | null>(null);
+  // Open state for the sidebar's Export popover, closed explicitly by each
+  // menu item's onClick (Base UI Popover doesn't close on its own here since
+  // the items aren't Popover.Close — see the two exportOpen(false) below).
+  const [exportOpen, setExportOpen] = useState(false);
   // Real glyph widths for PreviewCompare's click-to-select hit-testing (see
   // hittest.ts's Measure type) — null until the one-time font embed below
   // resolves; PreviewCompare skips hit-testing rather than guess with it.
@@ -332,17 +337,30 @@ export default function App() {
                   // span wrapper: a disabled button swallows the hover events
                   // the tooltip needs.
                   <span>
-                    <Button size="sm" disabled={blocked || !pdfs} onClick={exportPdfs}>
-                      Export PDFs
-                    </Button>
+                    <Popover open={exportOpen} onOpenChange={setExportOpen}>
+                      {/* Trigger disabled exactly when neither menu item below
+                          could do anything (blocked); a mid-build !pdfs still
+                          leaves PSD export usable, so it doesn't gate the menu
+                          itself, only the PDF item. */}
+                      <PopoverTrigger render={<Button size="sm" disabled={blocked}>Export</Button>} />
+                      <PopoverContent align="start" className="w-56 gap-1 p-1">
+                        <Button variant="ghost" size="sm" className="w-full justify-start"
+                          disabled={blocked || !pdfs}
+                          onClick={() => { setExportOpen(false); exportPdfs(); }}>
+                          Print PDFs (art + mask)
+                        </Button>
+                        <Button variant="ghost" size="sm" className="w-full justify-start"
+                          disabled={blocked}
+                          onClick={() => { setExportOpen(false); void exportPsd(); }}>
+                          Photoshop PSD
+                        </Button>
+                      </PopoverContent>
+                    </Popover>
                   </span>
                 }
               />
               {blocked && <TooltipContent>{blockedWhy}</TooltipContent>}
             </Tooltip>
-            <Button size="sm" variant="secondary" disabled={blocked} onClick={() => void exportPsd()}>
-              Export PSD
-            </Button>
             <Button variant="ghost" size="sm" onClick={saveConfig}>Save config</Button>
             <Button variant="ghost" size="sm" onClick={() => configInput.current?.click()}>
               Load config
