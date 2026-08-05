@@ -34,6 +34,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
+/** `white` is how the line RENDERS (what the field paints), which is not the
+ *  same thing as the `_…_` marker: when the block's base layer is already
+ *  white every line renders white without carrying one. linesToMarkdown is
+ *  what turns rendering back into markers, and it needs `base` to tell the
+ *  two apart — see its comment. */
 export interface EditorLine { text: string; bold: boolean; white: boolean; header: boolean }
 
 export function markdownToLines(md: string, base: Style): EditorLine[] {
@@ -49,14 +54,37 @@ export function markdownToLines(md: string, base: Style): EditorLine[] {
   ];
 }
 
-export function linesToMarkdown(lines: EditorLine[]): string {
-  const header = lines.find((l) => l.header);
-  const body = lines.filter((l) => !l.header);
-  const asStyled = (l: EditorLine) => ({
-    text: l.text, bold: l.bold,
-    fill: l.white ? ("none" as const) : GOLD,
-    layer: l.white ? ("white" as const) : ("metallic" as const),
-  });
+/** Serializes the field's lines back to the stored markdown subset.
+ *
+ *  `base` (cfg.descStyle) is required because `_…_` is a PER-LINE OVERRIDE,
+ *  never a restatement of the block's base layer. markdownToLines resolves
+ *  every plain line's `white` from the base, so writing a marker whenever
+ *  `white` is true would bake a base of layer "white" into the text itself:
+ *  one keystroke with the Description Layer set to white rewrote every line
+ *  as `_line_`, and setting Layer back to metallic no longer undid it — the
+ *  art PDF printed the description with no gold ink and the mask put the
+ *  whole block on the white plate, recoverable only by hand-editing each
+ *  line. So a marker is emitted only where it actually differs from what the
+ *  base resolves to. (The format has no "not white" marker, so while the base
+ *  IS white an individual line cannot opt out; the toggle's effect on such a
+ *  line lasts until the next reseed. That is a limit of the stored format,
+ *  which both renderers parse — not something this adapter can fix.)
+ *
+ *  Extra header lines are DEMOTED to body lines rather than dropped: the
+ *  browser's native Enter inside a header clones the div, data-header and
+ *  all, and the storage format has exactly one header slot, so filtering
+ *  them out would silently delete everything after the split point. */
+export function linesToMarkdown(lines: EditorLine[], base: Style): string {
+  const header = lines[0]?.header ? lines[0] : null;
+  const body = header ? lines.slice(1) : lines;
+  const asStyled = (l: EditorLine) => {
+    const marked = l.white && base.layer !== "white";
+    return {
+      text: l.text, bold: l.bold,
+      fill: marked ? ("none" as const) : GOLD,
+      layer: marked ? ("white" as const) : ("metallic" as const),
+    };
+  };
   return serializeDescription({
     header: header ? asStyled(header) : null,
     lines: body.map(asStyled),
@@ -74,16 +102,46 @@ export function linesToMarkdown(lines: EditorLine[]): string {
 // them. The DOM is the source of truth while focused; props are the
 // source of truth while not.
 
-/** Tailwind can't see a class name built from a JS variable at build time
- *  (arbitrary-value scanning is purely static), so this can't reference
- *  GOLD directly — keep it matching layout.ts's GOLD ("#F3CD80") by eye. */
 function lineClasses(l: Pick<EditorLine, "bold" | "white" | "header">): string {
   return cn(
     "font-heading leading-snug outline-none",
     l.header ? "text-sm" : "text-xs",
     l.bold && "font-semibold",
-    l.white ? "text-white" : "text-[#F3CD80]",
+    l.white && "text-white",
   );
+}
+
+/** Writes a line-div's appearance: class for size/weight/white, and the gold
+ *  as an inline color straight from layout.ts's GOLD. Gold can't be a
+ *  Tailwind arbitrary value (`text-[…]` is scanned statically, so it could
+ *  never reference the constant) — inline style is what keeps the field's
+ *  gold and the renderers' gold the same one value. */
+function paintLine(el: HTMLDivElement, l: Pick<EditorLine, "bold" | "white" | "header">) {
+  el.className = lineClasses(l);
+  el.style.color = l.white ? "" : GOLD;
+}
+
+/** Strips data-header from every line-div except the first.
+ *
+ *  Pressing Enter inside the header makes the browser split the block by
+ *  CLONING its div — data-header and all — so the field ends up with two
+ *  header lines, which the storage format has no room for. Called before
+ *  every read, so the extra line becomes an ordinary body line in the DOM at
+ *  the same moment linesToMarkdown demotes it in the markdown: the two agree,
+ *  the text is kept, and the Header toggle's pressed/disabled state stops
+ *  claiming a second header exists. Only attributes and classes are touched,
+ *  never text nodes, so the caret does not move. */
+function demoteStrayHeaders(root: HTMLDivElement) {
+  const kids = Array.from(root.children).filter(
+    (el): el is HTMLDivElement => el.tagName === "DIV",
+  );
+  for (const el of kids.slice(1)) {
+    if (el.dataset.header !== "true") continue;
+    delete el.dataset.header;
+    paintLine(el, {
+      bold: el.dataset.bold === "true", white: el.dataset.white === "true", header: false,
+    });
+  }
 }
 
 /** Replaces the field's content with fresh line-divs built from `lines`.
@@ -97,7 +155,7 @@ function seedDom(root: HTMLDivElement, lines: EditorLine[]) {
   const list = lines.length ? lines : [{ text: "", bold: false, white: false, header: false }];
   for (const line of list) {
     const div = document.createElement("div");
-    div.className = lineClasses(line);
+    paintLine(div, line);
     div.dataset.bold = String(line.bold);
     div.dataset.white = String(line.white);
     if (line.header) div.dataset.header = "true";
@@ -256,7 +314,8 @@ export function DescriptionEditor(props: {
   const emitChange = () => {
     const root = rootRef.current;
     if (!root) return;
-    onChange(linesToMarkdown(readLines(root)));
+    demoteStrayHeaders(root);
+    onChange(linesToMarkdown(readLines(root), base));
   };
 
   const toggle = (attr: "bold" | "white") => {
@@ -266,7 +325,7 @@ export function DescriptionEditor(props: {
     if (!lines.length) return;
     for (const el of lines) {
       el.dataset[attr] = String(el.dataset[attr] !== "true");
-      el.className = lineClasses({
+      paintLine(el, {
         bold: el.dataset.bold === "true",
         white: el.dataset.white === "true",
         header: el.dataset.header === "true",
@@ -295,7 +354,7 @@ export function DescriptionEditor(props: {
     const nowHeader = !c.header;
     if (nowHeader) first.dataset.header = "true";
     else delete first.dataset.header;
-    first.className = lineClasses({
+    paintLine(first, {
       bold: first.dataset.bold === "true",
       white: first.dataset.white === "true",
       header: nowHeader,
