@@ -2,8 +2,25 @@
 // by both deliverable builders. Each renderer only paints; the geometry lives
 // here, so the two can't silently disagree about the one element where drift
 // means a code that no longer scans.
+import type { LabelConfig } from "./types";
 import * as L from "./layout";
 import { encodeUpc } from "./upc";
+
+/** The barcode's resolved outer-stroke ("halo") width, in points — the one
+ *  place both deliverable builders get it from, so the art PDF's ink extent
+ *  and the mask/PSD footprint cannot drift apart and fringe on press.
+ *  - stroke "none" -> 0, which both builders read as "draw no halo at all".
+ *  - an explicit barcodeStrokeWidth is px at the 600dpi deliverable.
+ *  - UNSET keeps BARCODE.stroke, the ~1.8-module halo measured off the
+ *    finished labels (NOT DEFAULT_STROKE_PX), so a config saved before the
+ *    barcode was stylable still prints exactly as it always has. */
+export function barcodeStrokePt(
+  cfg: Pick<LabelConfig, "barcodeStroke" | "barcodeStrokeWidth">,
+): number {
+  if (cfg.barcodeStroke === "none") return 0;
+  if (cfg.barcodeStrokeWidth !== undefined) return cfg.barcodeStrokeWidth * L.PX;
+  return L.BARCODE.stroke;
+}
 
 export interface BarcodeGeometry {
   /** Points per module along the run. */

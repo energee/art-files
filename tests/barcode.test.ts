@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import type { PDFFont, PDFPage } from "pdf-lib";
 import type { LabelConfig } from "../src/types";
 import { drawBarcode } from "../src/pdf/build";
+import { barcodeStrokePt } from "../src/barcode";
 import { encodeUpc } from "../src/upc";
 import { defaultConfig, parseConfigFile, toConfigFile } from "../src/defaults";
 import { BARCODE as B, COLORS, PAGE, PX, parseHexFill } from "../src/layout";
@@ -176,5 +177,28 @@ describe("drawBarcode styling", () => {
   it("knocks the footprint out of the white plate when the layer is metallic", () => {
     const { rects } = draw({ ...defaultConfig(), barcodeLayer: "metallic" }, "mask");
     expect(sameColor(rects[0].color, COLORS.white)).toBe(true);
+  });
+});
+
+// The halo width is resolved once, in src/barcode.ts, and read by BOTH
+// deliverable builders (pdf/build.ts drawBarcode, psd/build.ts) — the
+// expression used to be duplicated verbatim in the two, where any drift
+// would put the white-ink plate out of register with the printed artwork.
+describe("shared barcode stroke resolver", () => {
+  it("resolves none / explicit px / unset the way both builders need", () => {
+    expect(barcodeStrokePt({ barcodeStroke: "none", barcodeStrokeWidth: 20 })).toBe(0);
+    expect(barcodeStrokePt({ barcodeStroke: "#FFFFFF", barcodeStrokeWidth: 20 })).toBeCloseTo(20 * PX, 10);
+    // Unset keeps the halo measured off the finished labels, not DEFAULT_STROKE_PX.
+    expect(barcodeStrokePt({ barcodeStroke: "#FFFFFF", barcodeStrokeWidth: undefined })).toBe(B.stroke);
+  });
+
+  it("is the width the PDF actually draws", () => {
+    const cfg = { ...defaultConfig(), barcodeStrokeWidth: 31 };
+    const { halo } = split(cfg);
+    const expected = barcodeStrokePt(cfg);
+    // Every halo rect is its bar expanded by S on each side.
+    expect(halo[0].height).toBeGreaterThan(2 * expected);
+    const maskRect = draw(cfg, "mask").rects[0];
+    expect(maskRect.width).toBeCloseTo(B.w + 2 * expected, 10);
   });
 });

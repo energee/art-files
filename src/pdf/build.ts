@@ -19,7 +19,7 @@ import type { Fill, LabelConfig, Style, StyledLine } from "../types";
 import { parseLogo } from "../logo";
 import { WARNING_TEXT } from "../defaults";
 import * as L from "../layout";
-import { barcodeGeometry } from "../barcode";
+import { barcodeGeometry, barcodeStrokePt } from "../barcode";
 import { qrPath, qrShapes, qrUrl } from "../qr";
 import { parseDescription } from "../description";
 
@@ -68,11 +68,16 @@ function strokeOf(style: Style, mode: Mode) {
  *  at a wide stroke reads as stair-steps down the outer edge. One sample
  *  per ~0.4pt of circumference keeps that step below a printer's dot. */
 function ring(w: number): [number, number][] {
-  // Capped: each sample is its own drawText, so an uncapped count turns the
-  // stroke-width field into a build-time amplifier (600px measured at ~18k
-  // calls / 700ms, outlasting the 600ms debounce). Past 64 the copies sit
-  // closer together than a printer's dot anyway.
-  const n = Math.min(64, Math.max(16, Math.ceil((2 * Math.PI * w) / 0.4)));
+  // Capped only as a backstop: each sample is its own drawText, so an
+  // uncapped count would let a stroke width become a build-time amplifier
+  // (600px measured at ~18k calls / 700ms, outlasting the 600ms debounce).
+  // The UI now clamps width at 60px (StyleProperties' stroke-width input),
+  // i.e. 7.2pt, where the 0.4pt rule asks for n = 114 — so the ceiling sits
+  // at 128 and never binds in practice. The old cap of 64 DID bind above
+  // ~34px and broke the spacing guarantee: at 60px it left adjacent copies
+  // 2w*sin(pi/64) ~ 0.71pt apart, ~6 device dots at 600dpi, which prints as
+  // a visibly scalloped outer edge.
+  const n = Math.min(128, Math.max(16, Math.ceil((2 * Math.PI * w) / 0.4)));
   return Array.from({ length: n }, (_, i) => {
     const a = (i * 2 * Math.PI) / n;
     return [w * Math.cos(a), w * Math.sin(a)];
@@ -121,14 +126,18 @@ function drawRotated(
   page.drawText(text, { ...base, x: opts.x, y: y(opts.yStart), color });
 }
 
-/** Wrap the warning paragraph to fit the rotated column height. */
-export function wrapWarning(font: PDFFont, size: number, maxLen: number): string[] {
+/** Wrap the warning paragraph to fit the rotated column height. `measure`
+ *  returns a string's width at WARNING.size in points — passed in (rather
+ *  than a PDFFont) so the hit-tester can derive the SAME column count and
+ *  per-column length from its own measure without importing font machinery;
+ *  the number of columns is a wrap result, never a constant. */
+export function wrapWarning(measure: (text: string) => number, maxLen: number): string[] {
   const words = WARNING_TEXT.split(" ");
   const lines: string[] = [];
   let cur = "";
   for (const w of words) {
     const next = cur ? `${cur} ${w}` : w;
-    if (font.widthOfTextAtSize(next, size) > maxLen && cur) {
+    if (measure(next) > maxLen && cur) {
       lines.push(cur);
       cur = w;
     } else cur = next;
@@ -142,16 +151,11 @@ export function wrapWarning(font: PDFFont, size: number, maxLen: number): string
  *  — see S. */
 export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode: Mode) {
   const B = L.BARCODE;
-  // Resolved outer-stroke width, in points. An unset barcodeStrokeWidth keeps
-  // B.stroke — the ~1.8-module halo measured off the finished labels, which
-  // is NOT DEFAULT_STROKE_PX — so a config saved before the barcode was
-  // stylable prints exactly as it always has. BOTH branches read this one
-  // value: if the mask's footprint stopped matching the art's ink extent, the
-  // white-ink plate would fringe against the printed artwork on press.
-  const S =
-    cfg.barcodeStroke === "none" ? 0
-    : cfg.barcodeStrokeWidth !== undefined ? cfg.barcodeStrokeWidth * L.PX
-    : B.stroke;
+  // Resolved outer-stroke width, in points — from the shared resolver in
+  // ../barcode, which the PSD builder reads too. BOTH branches below read
+  // this one value: if the mask's footprint stopped matching the art's ink
+  // extent, the white-ink plate would fringe against the printed artwork.
+  const S = barcodeStrokePt(cfg);
   if (mode === "mask") {
     // The footprint gets white ink so the code scans over the texture; it
     // covers the stroke too, so the mask matches the art's ink extent.
@@ -276,7 +280,9 @@ function drawElements(
   drawRotated(page, fonts.semibold, cfg.handleAddress.text, mode, cfg.handleAddress, {
     x: L.HANDLE_ADDR.x, yStart: L.HANDLE_ADDR.yStart, size: L.HANDLE_ADDR.size,
   });
-  const warnLines = wrapWarning(fonts.regular, L.WARNING.size, L.WARNING.maxLen);
+  const warnLines = wrapWarning(
+    (t) => fonts.regular.widthOfTextAtSize(t, L.WARNING.size), L.WARNING.maxLen,
+  );
   warnLines.forEach((line, i) =>
     drawRotated(page, fonts.regular, line, mode, cfg.warning, {
       x: L.WARNING.x + i * L.WARNING.leading, yStart: L.WARNING.yStart, size: L.WARNING.size,

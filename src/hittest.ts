@@ -5,6 +5,9 @@
 import type { LabelConfig } from "./types";
 import type { ElementId } from "./elements";
 import { parseDescription } from "./description";
+// The renderer's own paragraph wrapper, so the warning's hit columns can't
+// disagree with the columns it draws (see the warning boxes below).
+import { wrapWarning } from "./pdf/build";
 import * as L from "./layout";
 
 export type Measure = (text: string, size: number, bold: boolean) => number;
@@ -12,6 +15,11 @@ export interface Box { x0: number; y0: number; x1: number; y1: number; id: Eleme
 
 const ASC = 1.05;
 const DESC = 0.35;
+
+/** Drawn logo height: LOGO.w scaled by logo2025.svg's viewBox aspect
+ *  (0 0 480 525). Derived, not hardcoded, so a new logo file with a different
+ *  aspect only needs these two numbers changed here alongside the asset. */
+const LOGO_H = (L.LOGO.w * 525) / 480;
 
 const flat = (
   id: ElementId, text: string, x: number, baseline: number, size: number,
@@ -69,10 +77,14 @@ export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
     ...descLines.map((d) => flat("description", d.text, d.x, d.baseline, d.size, m, d.bold)),
     // Center column. Wordmark and beer name always render with the Bold face.
     centred("wordmark", L.WORDMARK.text, L.WORDMARK.cx, L.WORDMARK.baseline, L.WORDMARK.size, m, true),
-    // Logo is a box, not text.
+    // Logo is a box, not text. It is drawn at LOGO.w wide and whatever height
+    // the SVG's aspect gives (logo2025.svg is viewBox "0 0 480 525", so ~1.09
+    // x the width — see parseLogo, which both renderers scale by width alone),
+    // NOT square: using w for both would leave the top and bottom of the
+    // laurel unclickable and crop the selection ring.
     { id: "logo",
       x0: L.LOGO.cx - L.LOGO.w / 2, x1: L.LOGO.cx + L.LOGO.w / 2,
-      y0: L.LOGO.cy - L.LOGO.w / 2, y1: L.LOGO.cy + L.LOGO.w / 2 },
+      y0: L.LOGO.cy - LOGO_H / 2, y1: L.LOGO.cy + LOGO_H / 2 },
     centred("name", cfg.beerName.toUpperCase(), L.NAME.cx, L.NAME.baseline, L.NAME.size, m, true),
     centred("styleLine", cfg.styleLine.text, L.STYLE_LINE.cx, L.STYLE_LINE.baseline, L.STYLE_LINE.size, m, !!cfg.styleLine.bold),
     // QR is a box, not text.
@@ -83,15 +95,20 @@ export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
     // see the function doc comment).
     rotated("handleAddress", cfg.handleAddress.text, L.HANDLE_ADDR.x, L.HANDLE_ADDR.yStart, L.HANDLE_ADDR.size, m, true),
   ];
-  // The warning is three rotated columns sharing one style, painted after
-  // handleAddress and before storeCold.
-  for (let i = 0; i < 3; i++)
+  // The warning is a wrapped paragraph in rotated columns sharing one style,
+  // painted after handleAddress and before storeCold. Column count and length
+  // come from wrapWarning with THIS caller's measure — the same function and
+  // the same metrics the renderers wrap with — so a font or maxLen change can
+  // never leave the boxes describing a column count the artwork doesn't have.
+  const warnLines = wrapWarning((t) => m(t, L.WARNING.size, false), L.WARNING.maxLen);
+  warnLines.forEach((line, i) =>
     boxes.push({
       id: "warning",
       x0: L.WARNING.x + i * L.WARNING.leading - ASC * L.WARNING.size,
       x1: L.WARNING.x + i * L.WARNING.leading + DESC * L.WARNING.size,
-      y0: L.WARNING.yStart - L.WARNING.maxLen, y1: L.WARNING.yStart,
-    });
+      y0: L.WARNING.yStart - m(line, L.WARNING.size, false), y1: L.WARNING.yStart,
+    }),
+  );
   // storeCold always renders semibold too (bold=true; see the doc comment).
   boxes.push(rotated("storeCold", cfg.storeCold.text, L.STORE_COLD.x, L.STORE_COLD.yStart, L.STORE_COLD.size, m, true));
   // The barcode is drawn last, so its box goes last too. No font measurement:

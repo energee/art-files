@@ -28,7 +28,7 @@ import fontkit from "@pdf-lib/fontkit";
 import { writePsdUint8Array, type BezierPath, type Layer, type Psd } from "ag-psd";
 import type { Fill, LabelConfig } from "../types";
 import * as L from "../layout";
-import { barcodeGeometry } from "../barcode";
+import { barcodeGeometry, barcodeStrokePt } from "../barcode";
 import { parseDescription } from "../description";
 import { parseLogo } from "../logo";
 import { qrShapes, qrUrl } from "../qr";
@@ -369,7 +369,9 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
   });
 
   // Right rotated column ---------------------------------------------------
-  const warnLines = wrapWarning(f.regular, L.WARNING.size, L.WARNING.maxLen);
+  const warnLines = wrapWarning(
+    (t) => f.regular.widthOfTextAtSize(t, L.WARNING.size), L.WARNING.maxLen,
+  );
   groups.push({
     name: "Right column",
     opened: false,
@@ -435,15 +437,13 @@ function codeLayers(cfg: LabelConfig, f: Faces, fk: FKFont): Layer[] {
     ...digitGroups.flatMap((g) => g.paths),
   ];
 
-  // Resolved outer-stroke width, exactly as the PDF's drawBarcode
-  // (pdf/build.ts:151-154): an unset barcodeStrokeWidth keeps B.stroke, and
-  // "none" or an explicit zero width both collapse to S = 0, which omits the
-  // layer entirely — matching the PDF's own `if (S > 0)` gate so the two
-  // deliverables can't disagree on whether a halo exists.
-  const S =
-    cfg.barcodeStroke === "none" ? 0
-    : cfg.barcodeStrokeWidth !== undefined ? cfg.barcodeStrokeWidth * L.PX
-    : B.stroke;
+  // Resolved outer-stroke width, from the SAME shared resolver the PDF's
+  // drawBarcode uses (barcodeStrokePt in ../barcode) rather than a second
+  // copy of the expression. "none" or an explicit zero width both collapse to
+  // S = 0, which omits the layer entirely — matching the PDF's own `if
+  // (S > 0)` gate so the two deliverables can't disagree on whether a halo
+  // exists, or on how wide it is.
+  const S = barcodeStrokePt(cfg);
 
   const layers: Layer[] = [shapeLayer("QR", qrPaths, cfg.qrFill)];
   if (S > 0) {

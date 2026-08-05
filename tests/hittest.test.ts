@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { boxesOf, boxOf, hitTest } from "../src/hittest";
+import { wrapWarning } from "../src/pdf/build";
 import { defaultConfig } from "../src/defaults";
 import * as L from "../src/layout";
 
@@ -62,6 +63,33 @@ describe("preview hit-testing", () => {
     const b = boxOf("logo", cfg, measure)!;
     expect(b.x0).toBeCloseTo(L.LOGO.cx - L.LOGO.w / 2, 5);
     expect(hitTest((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, measure, cfg)).toBe("logo");
+  });
+
+  // Regression: the logo box used LOGO.w for its height, but the renderers
+  // scale logo2025.svg (viewBox 0 0 480 525) by width alone, so the drawn
+  // artwork is ~3.1pt taller than that box — clicking the top or bottom of
+  // the laurel cleared the selection instead of picking the logo.
+  it("covers the logo's drawn height, not a square", () => {
+    const b = boxOf("logo", cfg, measure)!;
+    expect(b.y1 - b.y0).toBeCloseTo((L.LOGO.w * 525) / 480, 5);
+    const nearTop = b.y0 + 0.5;
+    expect(hitTest(L.LOGO.cx, nearTop, measure, cfg)).toBe("logo");
+    // Just outside the real artwork still misses.
+    expect(hitTest(L.LOGO.cx, b.y0 - 1, measure, cfg)).not.toBe("logo");
+  });
+
+  // Regression: the warning's hit boxes hardcoded 3 columns spanning the full
+  // wrap budget, with nothing tying either number to what wrapWarning
+  // actually produces.
+  it("derives the warning's columns from the same wrapper the renderers use", () => {
+    const cols = wrapWarning((t) => measure(t, L.WARNING.size), L.WARNING.maxLen);
+    const boxes = boxesOf(cfg, measure).filter((b) => b.id === "warning");
+    expect(boxes).toHaveLength(cols.length);
+    boxes.forEach((b, i) => {
+      expect(b.y1).toBeCloseTo(L.WARNING.yStart, 5);
+      expect(b.y1 - b.y0).toBeCloseTo(measure(cols[i], L.WARNING.size), 5);
+      expect(b.y1 - b.y0).toBeLessThanOrEqual(L.WARNING.maxLen);
+    });
   });
 
   it("measures storeCold at the bold width, matching drawRotated's hardcoded semibold face", () => {
