@@ -46,10 +46,11 @@ export interface LabelConfig {
   /** The UPC barcode's style. Flat fields like the QR's, for the same reason:
    *  it is drawn from geometry, not from a StyledLine. barcodeFill paints the
    *  bars and the digits; barcodeStroke "none" = no white halo, else both get
-   *  an outer stroke in that color, barcodeStrokeWidth px @600dpi wide — left
-   *  unset it keeps the halo measured off the finished labels
-   *  (L.BARCODE.stroke), which is wider than DEFAULT_STROKE_PX. barcodeLayer
-   *  "white" is the white ink the code needs to scan over the texture. */
+   *  an outer stroke in that color, barcodeStrokeWidth px @600dpi wide — the
+   *  shipped default sets 20; left unset it keeps the halo measured off the
+   *  old finished labels (L.BARCODE.stroke ≈ 15.5px), which is how pre-style
+   *  configs migrate. barcodeLayer "white" is the white ink the code needs
+   *  to scan over the texture. */
   barcodeFill: Fill;
   barcodeStroke: Fill;
   barcodeStrokeWidth?: number;

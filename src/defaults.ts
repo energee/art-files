@@ -26,13 +26,16 @@ export function defaultConfig(): LabelConfig {
     ].join("\n"),
     descStyle: { fill: GOLD, layer: "metallic" },
     upc: "850051366224",
-    // The barcode ships exactly as it was measured off the finished labels:
-    // near-black bars and digits inside a white halo, over white ink. The
+    // Near-black bars and digits inside a white halo, over white ink. The
     // fill matches the PSD's bars (psd/build.ts) so the two deliverables
-    // agree. barcodeStrokeWidth stays unset on purpose — see its doc in
-    // types.ts and the resolver in pdf/build.ts's drawBarcode.
+    // agree. The halo ships at 20px @600dpi by request (2026-08) — wider
+    // than the ~15.5px measured off the old finished labels, which is what
+    // an UNSET width still resolves to (see types.ts and drawBarcode's
+    // resolver); pre-style configs migrate without a width so their print
+    // output is preserved.
     barcodeFill: "#1A1A1A",
     barcodeStroke: "#FFFFFF",
+    barcodeStrokeWidth: 20,
     barcodeLayer: "white",
     qrFill: GOLD,
     qrStroke: "none",
@@ -102,6 +105,9 @@ export function parseConfigFile(json: string): LabelConfig {
     cfg.logo.strokeWidth ??= DEFAULT_STROKE_PX;
   }
   for (const key of Object.keys(base) as (keyof LabelConfig)[]) {
+    // barcodeStrokeWidth is optional: pre-style configs omit it — that is
+    // what preserves their measured halo — while defaultConfig ships 20.
+    if (key === "barcodeStrokeWidth") continue;
     if (!(key in cfg)) throw new Error(`Config missing field: ${key}`);
   }
   return cfg as LabelConfig;

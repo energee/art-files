@@ -95,13 +95,13 @@ describe("element registry", () => {
     expect(cfg.qrStrokeWidth).toBeUndefined();
   });
 
-  // The barcode's unset strokeWidth is not cosmetic: it is what keeps the
-  // halo at L.BARCODE.stroke, the width measured off the finished labels
-  // (drawBarcode). A Reset that failed to clear it would silently narrow the
-  // white footprint on every future print.
+  // An UNSET barcode strokeWidth is not cosmetic: it is what keeps a
+  // migrated pre-style config's halo at L.BARCODE.stroke, the width measured
+  // off the finished labels (drawBarcode). applyStyle must be able to both
+  // hold a real width and clear one on an explicit undefined.
   it("clears a stale barcodeStrokeWidth on an explicit strokeWidth: undefined, and keeps it otherwise", () => {
     const cfg = defaultConfig();
-    expect(cfg.barcodeStrokeWidth).toBeUndefined();
+    expect(cfg.barcodeStrokeWidth).toBe(20); // shipped default
     applyStyle(cfg, "barcode", { strokeWidth: 40 });
     expect(cfg.barcodeStrokeWidth).toBe(40);
     // Teeth: a patch with the key ABSENT must leave a real width alone. The
@@ -109,8 +109,8 @@ describe("element registry", () => {
     // width, so it cannot fail — assert survival of a set value instead.
     applyStyle(cfg, "barcode", { fill: "#654321" });
     expect(cfg.barcodeStrokeWidth).toBe(40);
-    // And the Reset shape — every field present, strokeWidth explicitly
-    // undefined because the shipped barcode default has no width — clears it.
+    // An explicit strokeWidth: undefined clears the key entirely (back to
+    // the migrated-config fallback), rather than being silently ignored.
     applyStyle(cfg, "barcode", {
       fill: "#1A1A1A", layer: "white", stroke: "#FFFFFF", strokeWidth: undefined,
     });

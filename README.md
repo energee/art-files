@@ -27,8 +27,8 @@ symbol in the quiet zones. It is a stylable element like everything else
 halo over white ink. Contrast comes from that halo plus the white ink the
 mask lays under the whole footprint, and the mask sizes its footprint from
 the same resolved stroke width the art draws, so the two plates stay
-registered at any setting. Its stroke defaults to the ~1.8-module width
-measured off the finished labels, not the global 15px, and every halo shape
+registered at any setting. Its stroke ships at 20px (600dpi); configs from
+before it was stylable keep their measured ~1.8-module halo. Every halo shape
 draws before any bar — interleaving the two distorted the module widths
 enough to stop it decoding. The QR code's payload is
 derived from the beer name (`https://lolev.beer/beer/<machine-name>`) with
@@ -59,8 +59,8 @@ ever open at a time). Its Fill (color picker/hex field/no-ink toggle),
 Layer select, and outer-stroke toggle (its own color + width, px at the
 600dpi deliverable, default 15px ≈ 1.8pt) are on every element's panel —
 except that the QR and the barcode omit the no-ink option, since neither
-scans without ink, and the barcode's unset width keeps its own measured
-halo instead of the 15px default; a
+scans without ink, and the barcode's stroke defaults to 20px rather than
+the global 15px; a
 Bold checkbox shows for the elements that have one, and a Reset button
 (back to that element's shipped default) once a style deviates from it.
 The description block's panel sets the base fill/layer for its plain

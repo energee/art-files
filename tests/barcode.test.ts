@@ -131,7 +131,10 @@ describe("drawBarcode styling", () => {
   // white-ink layer would no longer match the ink extent and the labels would
   // fringe on press — invisible on screen, expensive on paper.
   const cases: [string, Partial<LabelConfig>, number][] = [
-    ["unset width keeps the measured halo", {}, B.stroke],
+    ["the shipped default is 20px @600dpi", {}, 20 * PX],
+    // Explicit undefined (not just absent) — the shipped default sets 20, so
+    // exercising the unset fallback needs the key knocked back out.
+    ["unset width keeps the measured halo", { barcodeStrokeWidth: undefined }, B.stroke],
     ["an explicit width is px @600dpi", { barcodeStrokeWidth: 30 }, 30 * PX],
     ["stroke off means no halo at all", { barcodeStroke: "none" }, 0],
     // A width set while the stroke is off must still resolve to 0, or the
