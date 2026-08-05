@@ -8,7 +8,10 @@ printer:
 - `{Beer Name}-mask.pdf` — white-ink layer: **blue = white ink, white =
   knockout** (silver stock shows through), same convention as the
   `label-gen/Rocks` mask PNGs (white `255,255,255` = metallic, blue
-  `0,156,215` = everything else)
+  `0,156,215` = everything else). Without an uploaded mask, the plate floods
+  full blue (white ink everywhere) rather than knocking out — "no mask"
+  means "print as a white label" — and metallic elements still knock back
+  out to bare stock on top of the flood.
 
 Every text element — and each description line individually — has a **fill**
 (a hex color like `#F3CD80`, or `none` for no ink, drawn in the art PDF) and

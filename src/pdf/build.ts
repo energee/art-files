@@ -31,8 +31,9 @@ export interface Assets {
    *  which is what the preview shows before a texture is dropped. */
   texture?: { bytes: Uint8Array; kind: "png" | "jpg" };
   /** Mask recolored to blue/transparent (see maskimage.ts), re-encoded as
-   *  PNG. Optional: without it the white-ink layer is just the per-element
-   *  assignments on a knockout page. */
+   *  PNG. Optional: without it buildMaskPdf floods the whole page white-ink
+   *  blue instead ("no mask" = "print as a white label"), and the per-element
+   *  assignments (metallic knockouts, white-layer ink) draw on top of that. */
   maskPng?: Uint8Array;
 }
 
@@ -343,6 +344,13 @@ export async function buildMaskPdf(cfg: LabelConfig, assets: Assets): Promise<Ui
   if (assets.maskPng) {
     const img = await doc.embedPng(assets.maskPng);
     page.drawImage(img, coverPage(page, img));
+  } else {
+    // No mask uploaded yet: flood the whole plate with white ink rather than
+    // leaving it knocked out. "No mask" means "print as a white label" —
+    // white ink everywhere, with only the metallic elements (drawn next, in
+    // drawElements) knocking back out to bare stock. This MUST land before
+    // drawElements so metallic knockouts still win on top of the flood.
+    page.drawRectangle({ x: 0, y: 0, width: L.PAGE.w, height: L.PAGE.h, color: toRgb(L.COLORS.maskBlue) });
   }
   drawElements(page, fonts, cfg, assets, "mask");
   doc.setTitle(`${cfg.beerName} white-ink layer`);
