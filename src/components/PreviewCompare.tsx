@@ -11,6 +11,9 @@ import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { PAGE } from "@/layout";
+import type { LabelConfig } from "@/types";
+import type { ElementId } from "@/elements";
+import { boxOf, hitTest, type Measure } from "@/hittest";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -74,8 +77,22 @@ export interface PreviewCompareHandle {
 
 export const PreviewCompare = forwardRef<
   PreviewCompareHandle,
-  { artBytes: Uint8Array | null; maskBytes: Uint8Array | null }
->(function PreviewCompare({ artBytes, maskBytes }, ref) {
+  {
+    artBytes: Uint8Array | null;
+    maskBytes: Uint8Array | null;
+    /** Current label config — read-only here, needed to hit-test a click
+     *  against the same geometry the renderer just painted. */
+    cfg: LabelConfig;
+    /** Real glyph-width lookup (see hittest.ts); null until App's one-time
+     *  font embed resolves. Hit-testing is skipped, not guessed, until then. */
+    measure: Measure | null;
+    /** Which element the sidebar (or a previous click here) has selected —
+     *  drives the outline drawn over it. */
+    selected: ElementId | null;
+    /** Called with the clicked element's id, or null for empty background. */
+    onPick: (id: ElementId | null) => void;
+  }
+>(function PreviewCompare({ artBytes, maskBytes, cfg, measure, selected, onPick }, ref) {
   const artCanvas = useRef<HTMLCanvasElement>(null);
   const maskCanvas = useRef<HTMLCanvasElement>(null);
   const leftPanel = useRef<PanelImperativeHandle>(null);
@@ -90,10 +107,35 @@ export const PreviewCompare = forwardRef<
   useRenderPdf(artBytes, artCanvas);
   useRenderPdf(maskBytes, maskCanvas);
 
+  // Click-to-select: the canvases fill the wrapper exactly and the wrapper's
+  // aspect ratio is locked to PAGE.w/PAGE.h (see the style below), so a
+  // click maps to label-space points proportionally off the bounding rect —
+  // no separate art/mask coordinate math needed, both canvases share one box.
+  function onClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (!measure) return; // real metrics not in yet — skip rather than guess
+    // The handle tracks the pointer while dragging, so at drag-end the
+    // cursor (and the click the browser synthesizes right after mouseup) is
+    // still over it; that click bubbles up through the pointer-events-none
+    // ResizablePanelGroup to land here anyway. Ignore anything whose target
+    // is the handle (or its grip child) so finishing a drag can't also
+    // hit-test the divider's position and change or clear the selection.
+    if (e.target instanceof Element && e.target.closest('[data-slot="resizable-handle"]')) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    if (!r.width || !r.height) return; // not laid out yet (e.g. display:none)
+    const xPt = ((e.clientX - r.left) / r.width) * PAGE.w;
+    const yPt = ((e.clientY - r.top) / r.height) * PAGE.h;
+    onPick(hitTest(xPt, yPt, measure, cfg));
+  }
+
+  // Selection outline geometry, as a percentage box so it tracks the
+  // container at any on-screen size without its own resize handling.
+  const selBox = selected && measure ? boxOf(selected, cfg, measure) : null;
+
   return (
     <div
       className="relative m-auto w-full max-w-[900px] overflow-hidden rounded-md border border-border bg-input"
       style={{ aspectRatio: `${PAGE.w} / ${PAGE.h}` }}
+      onClick={onClick}
     >
       <canvas ref={artCanvas} className="absolute inset-0 h-full w-full" />
       <canvas
@@ -101,15 +143,33 @@ export const PreviewCompare = forwardRef<
         className="absolute inset-0 h-full w-full"
         style={{ clipPath: `inset(0 ${100 - split}% 0 0)` }}
       />
+      {/* ResizablePanelGroup is absolutely positioned over both canvases at
+          the same inset-0 box, so it would otherwise swallow every click
+          before it reaches this div's onClick. pointer-events-none here,
+          restored to pointer-events-auto on just the handle below, keeps the
+          divider draggable while letting clicks elsewhere fall through to
+          the wrapper (pointer-events is inherited, so the two ResizablePanel
+          placeholders stay non-interactive without their own override). */}
       <ResizablePanelGroup
         orientation="horizontal"
         onLayoutChange={(layout) => setSplit(layout[WHITE_INK_PANEL_ID] ?? 0)}
-        className="absolute inset-0"
+        className="absolute inset-0 pointer-events-none"
       >
         <ResizablePanel id={WHITE_INK_PANEL_ID} panelRef={leftPanel} defaultSize="0%" minSize="0%" />
-        <ResizableHandle withHandle className="bg-border/60" />
+        <ResizableHandle withHandle className="bg-border/60 pointer-events-auto" />
         <ResizablePanel minSize="0%" />
       </ResizablePanelGroup>
+      {selBox && (
+        <div
+          className="pointer-events-none absolute ring-1 ring-ring"
+          style={{
+            left: `${(selBox.x0 / PAGE.w) * 100}%`,
+            top: `${(selBox.y0 / PAGE.h) * 100}%`,
+            width: `${((selBox.x1 - selBox.x0) / PAGE.w) * 100}%`,
+            height: `${((selBox.y1 - selBox.y0) / PAGE.h) * 100}%`,
+          }}
+        />
+      )}
       <span className="pointer-events-none absolute bottom-1 left-1.5 text-[10px] text-muted-foreground">
         white-ink
       </span>

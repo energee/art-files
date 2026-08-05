@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
+import type { Measure } from "@/hittest";
 import { defaultConfig, parseConfigFile, toConfigFile } from "@/defaults";
 import { validateUpc } from "@/upc";
 import { validateMask, recolorMaskForPdf } from "@/maskimage";
@@ -66,8 +67,13 @@ function download(url: string, name: string) {
 export default function App() {
   const [cfg, setCfg] = useState<LabelConfig>(defaultConfig);
   // Which element's contextual style panel is open — Photoshop's model, one
-  // at a time, driven by whichever row in LabelForm last got focus/click.
+  // at a time, driven by whichever row in LabelForm (or now, PreviewCompare
+  // itself) last got focus/click.
   const [selected, setSelected] = useState<ElementId | null>(null);
+  // Real glyph widths for PreviewCompare's click-to-select hit-testing (see
+  // hittest.ts's Measure type) — null until the one-time font embed below
+  // resolves; PreviewCompare skips hit-testing rather than guess with it.
+  const [measure, setMeasure] = useState<Measure | null>(null);
   const [texture, setTexture] = useState<(Loaded & { kind: "png" | "jpg" }) | null>(null);
   const [mask, setMask] = useState<(Loaded & { error?: string }) | null>(null);
   // Preview-resolution PDFs for the on-screen compare only; downloads always
@@ -81,6 +87,40 @@ export default function App() {
 
   const update = (fn: (c: LabelConfig) => void) =>
     setCfg((c) => { const n = structuredClone(c); fn(n); return n; });
+
+  // Builds the real Measure hitTest needs, once: embed the faces into a
+  // throwaway pdf-lib doc purely to read widthOfTextAtSize (never saved/
+  // rendered). hitTest's `bold` flag can't tell one call site from another —
+  // it's a single boolean, not a per-element hint — so it has to pick one
+  // face to mean "true" for every caller. Reading src/pdf/build.ts's
+  // drawElements: the wordmark and beer name always draw in the real Bold
+  // face (font: fonts.bold, overriding line.bold entirely), but every other
+  // bold-flagged element resolves to SemiBold — drawLine picks
+  // fonts.semibold when line.bold (volume, a bold description line, the
+  // style line), and drawRotated's handleAddress/storeCold calls hardcode
+  // fonts.semibold outright, regardless of any style field. In the shipped
+  // default config that's 4 semibold calls (volume, the "# HOPS" header,
+  // handleAddress, storeCold) against 2 Bold calls (wordmark, name), and
+  // Poppins SemiBold vs Bold widths differ by under 2.5% at every size this
+  // label uses (measured with widthOfTextAtSize directly) — so `bold` here
+  // backs SemiBold. That undermeasures the wordmark/name by a percent or
+  // two, split evenly on both edges since both are centered; backing it
+  // with Bold instead would OVERmeasure every left- or baseline-anchored
+  // bold line (volume, handleAddress, storeCold, a bold description line)
+  // on one side only, which is the worse failure mode for a click target.
+  useEffect(() => {
+    void (async () => {
+      const { PDFDocument } = await import("pdf-lib");
+      const fontkit = (await import("@pdf-lib/fontkit")).default;
+      const fonts = await fontsPromise;
+      const doc = await PDFDocument.create();
+      doc.registerFontkit(fontkit);
+      const regular = await doc.embedFont(fonts.regular);
+      const semibold = await doc.embedFont(fonts.semibold);
+      setMeasure(() => (text: string, size: number, bold: boolean) =>
+        (bold ? semibold : regular).widthOfTextAtSize(text, size));
+    })();
+  }, []);
 
   const upc = useMemo(() => validateUpc(cfg.upc), [cfg.upc]);
   const errors: Record<string, string> = {};
@@ -325,7 +365,8 @@ export default function App() {
           </div>
           <div className="flex min-h-0 flex-1">
             <PreviewCompare ref={previewRef}
-              artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null} />
+              artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
+              cfg={cfg} measure={measure} selected={selected} onPick={setSelected} />
           </div>
         </section>
         <CommandMenu
