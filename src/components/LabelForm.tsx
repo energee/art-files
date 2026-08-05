@@ -105,16 +105,22 @@ function StyleOnlyElementRow(props: {
       onFocus={() => props.onSelect(props.id)}
       onClick={() => props.onSelect(props.id)}
       className={cn(
-        "mb-1.5 h-6 w-full justify-start gap-1 px-1.5 text-[13px] font-normal text-muted-foreground",
+        // Negative margin cancels the button's own padding, so the label
+        // starts on Row's label column rather than 6px right of it, while
+        // the selected highlight still bleeds a little past the text.
+        "mb-1.5 -mx-1.5 h-6 w-[calc(100%+0.75rem)] justify-start gap-1.5 px-1.5 text-[13px] font-normal text-muted-foreground",
         props.selected && "bg-muted text-foreground",
       )}
     >
-      {props.label}
-      {dirty && <Dot />}
+      {/* Same w-24 label column Row uses, so a hint lands where inputs do. */}
+      <span className="flex w-24 shrink-0 items-center gap-1">
+        {props.label}
+        {dirty && <Dot />}
+      </span>
       {props.hint && (
         // title carries the full string: the sidebar is too narrow to show a
         // whole URL, and truncating without one would hide the tail for good.
-        <span title={props.hint} className="ml-auto truncate font-mono text-[11px] opacity-70">
+        <span title={props.hint} className="min-w-0 flex-1 truncate text-left font-mono text-[11px] opacity-70">
           {props.hint}
         </span>
       )}
