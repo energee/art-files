@@ -22,8 +22,9 @@ render support arrives later, per layer.
 - Left: shadcn `Sidebar` (`collapsible="offcanvas"`), toggled by a
   `SidebarTrigger` in the menubar row and ⌘B, holding the Layers panel.
 - Center: existing `PreviewCompare`, unchanged.
-- Right: fixed-width inspector column (`Sidebar side="right"` or a plain
-  bordered column using the same primitives).
+- Right: fixed-width inspector column — a plain bordered column (the
+  `Sidebar` component is reserved for the left panel; the inspector does
+  not collapse).
 - Existing menubar stays as top chrome, gains the trigger. Save/load,
   undo/redo, exports, ⌘K palette untouched.
 
