@@ -63,9 +63,8 @@ export const ELEMENTS: LabelElement[] = [
   { id: "qr", label: "QR", group: "beer", hasBold: false, isText: false, allowNone: false, style: flatStyle(FLAT.qr) },
   { id: "barcode", label: "Barcode", group: "beer", hasBold: false, isText: false, allowNone: false, style: flatStyle(FLAT.barcode) },
   // Collab block. "beer" because a collab partner changes per release, not
-  // once per brand — and because LabelForm places the beer group's rows by
-  // hand, which is what keeps these three out of the form until the collab
-  // switch is on. The two logo slots draw uploaded art, not glyphs, so they
+  // once per brand. The layers panel dims these three rows while the collab
+  // switch is off. The two logo slots draw uploaded art, not glyphs, so they
   // get neither bold nor letter-spacing; the lead-in is text, but it is drawn
   // in one fixed SemiBold face like the handle/address, hence hasBold: false.
   { id: "collabLead", label: "Collab lead-in", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.collabLead },

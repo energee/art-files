@@ -15,9 +15,9 @@ import { validateMask, recolorMaskForPdf } from "@/maskimage";
 import { rasterKind, tintRgba } from "@/collab";
 import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "@/pdf/build";
 import { buildPsd, PSD_DOC, type PsdAssets } from "@/psd/build";
-import { LabelForm, type CollabFiles } from "@/components/LabelForm";
-import { StyleProperties } from "@/components/StyleProperties";
-import { FileDrop } from "@/components/FileDrop";
+import { Inspector, type CollabFiles, type InspectorFiles } from "@/components/StyleProperties";
+import { LayersPanel } from "@/components/LayersPanel";
+import { isElementId, type LayerId } from "@/components/layers";
 import { CommandMenu } from "@/components/CommandMenu";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
 import {
@@ -132,10 +132,11 @@ export default function App() {
   // goes through setCfg (i.e. all of them, see `update` below) is undoable.
   const { value: cfg, set: setCfg, undo, redo, canUndo, canRedo } =
     useHistory<LabelConfig>(defaultConfig);
-  // Which element's contextual style panel is open — Photoshop's model, one
-  // at a time, driven by whichever row in LabelForm (or now, PreviewCompare
-  // itself) last got focus/click.
-  const [selected, setSelected] = useState<ElementId | null>(null);
+  // Which layer the inspector shows — Figma's model, one at a time, driven
+  // by the layers panel or PreviewCompare's click-to-select. LayerId, not
+  // ElementId: the Background/Mask document layers are selectable in the UI
+  // but unknown to the renderer.
+  const [selected, setSelected] = useState<LayerId | null>(null);
   // Real glyph widths for PreviewCompare's click-to-select hit-testing (see
   // hittest.ts's Measure type) — null until the one-time font embed below
   // resolves; PreviewCompare skips hit-testing rather than guess with it.
@@ -279,6 +280,19 @@ export default function App() {
     centerName: collabCenter?.name, centerUrl: collabCenter?.previewUrl,
     onLeft: (f) => onCollab("left", f),
     onCenter: (f) => onCollab("center", f),
+  };
+  /** Everything file-shaped the inspector edits: the Document layers' drops
+   *  plus the collab logos. */
+  const files: InspectorFiles = {
+    texture: {
+      fileName: texture?.name, previewUrl: texture?.previewUrl,
+      onFile: (f) => void onTexture(f),
+    },
+    mask: {
+      fileName: mask?.name, previewUrl: mask?.previewUrl, error: mask?.error,
+      onFile: (f) => void onMask(f),
+    },
+    collab: collabFiles,
   };
   /** The collab half of Assets, shared by the preview and export builds.
    *  Async because a tinted raster has to be decoded and re-encoded; vector
@@ -442,24 +456,11 @@ export default function App() {
   return (
     <TooltipProvider>
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
-          preview center, fixed inspector column right. The old form rides
-          inside the Sidebar until LayersPanel/Inspector replace it.
-          --sidebar-width is temporarily the old 430px for that form. */}
-      <SidebarProvider style={{ "--sidebar-width": "430px" } as React.CSSProperties}>
+          preview center, fixed inspector column right. */}
+      <SidebarProvider>
         <Sidebar collapsible="offcanvas">
-          <SidebarContent className="p-4">
-            <div className="flex gap-2">
-              <FileDrop label="Texture PNG/JPG"
-                accept={{ "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] }}
-                fileName={texture?.name} previewUrl={texture?.previewUrl}
-                onFile={(f) => void onTexture(f)} />
-              <FileDrop label="Metallic mask PNG (optional)" accept={{ "image/png": [".png"] }}
-                fileName={mask?.name} previewUrl={mask?.previewUrl} error={mask?.error}
-                onFile={(f) => void onMask(f)} />
-            </div>
-            {loadError && <p className="mt-2 text-xs text-destructive">{loadError}</p>}
-            <LabelForm cfg={cfg} errors={errors} update={update} selected={selected}
-              onSelect={setSelected} collab={collabFiles} />
+          <SidebarContent>
+            <LayersPanel cfg={cfg} update={update} selected={selected} onSelect={setSelected} />
           </SidebarContent>
         </Sidebar>
         <SidebarInset className="flex h-svh flex-col overflow-hidden">
@@ -525,6 +526,9 @@ export default function App() {
               menu item can't explain its own disabled state, so the reason
               sits in the bar itself. */}
           {blocked && <span className="text-xs text-destructive">{blockedWhy}</span>}
+          {/* Config-load failures used to sit atop the old sidebar; the bar
+              is the one chrome that always shows regardless of selection. */}
+          {loadError && <span className="text-xs text-destructive">{loadError}</span>}
           <input ref={configInput} type="file" accept="application/json" hidden
             onChange={(e) => e.target.files?.[0] && void loadConfig(e.target.files[0])} />
         </header>
@@ -547,7 +551,11 @@ export default function App() {
           <div className="relative flex min-h-0 flex-1">
             <PreviewCompare ref={previewRef}
               artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
-              cfg={cfg} measure={measure} selected={selected} onPick={setSelected}
+              cfg={cfg} measure={measure}
+              // The preview knows only renderer elements; a selected document
+              // layer (background/mask) shows no selection box there.
+              selected={selected && isElementId(selected) ? selected : null}
+              onPick={setSelected}
               onSplit={setSplit} />
             {/* First-load state: until the first debounced build lands there is
                 nothing on the canvases, so fill the empty frame with a spinner
@@ -565,15 +573,9 @@ export default function App() {
         </section>
         {/* Right inspector column: fixed width, plain bordered div — the
             Sidebar component is reserved for the left Layers panel and the
-            inspector does not collapse. Placeholder content until the
-            Inspector rework of StyleProperties lands. */}
+            inspector does not collapse. */}
         <aside className="w-[300px] shrink-0 overflow-y-auto border-l border-border p-3">
-          {selected ? (
-            <StyleProperties id={selected} cfg={cfg} update={update}
-              onClose={() => setSelected(null)} />
-          ) : (
-            <p className="text-xs text-muted-foreground">Select a layer</p>
-          )}
+          <Inspector id={selected} cfg={cfg} errors={errors} update={update} files={files} />
         </aside>
         <CommandMenu
           actions={[
