@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { boxesOf, boxOf, hitTest } from "../src/hittest";
-import { wrapWarning } from "../src/pdf/build";
+import { wrapWarning, warningColumnLen } from "../src/pdf/build";
 import { defaultConfig } from "../src/defaults";
 import * as L from "../src/layout";
 
@@ -87,8 +87,23 @@ describe("preview hit-testing", () => {
     expect(boxes).toHaveLength(cols.length);
     boxes.forEach((b, i) => {
       expect(b.y1).toBeCloseTo(L.WARNING.yStart, 5);
-      expect(b.y1 - b.y0).toBeCloseTo(measure(cols[i], L.WARNING.size), 5);
+      const expectedLen = warningColumnLen(cols[i], L.WARNING.maxLen, (t) => measure(t, L.WARNING.size));
+      expect(b.y1 - b.y0).toBeCloseTo(expectedLen, 5);
       expect(b.y1 - b.y0).toBeLessThanOrEqual(L.WARNING.maxLen);
+    });
+  });
+
+  // Every wrapped warning column is drawn justified — its inter-word spacing
+  // stretched so the run reaches exactly maxLen — so a multi-word column's
+  // hit box (and, by the same math in drawJustifiedRotated, its printed
+  // extent) must measure exactly maxLen, not the ragged natural width.
+  it("boxes multi-word warning columns at exactly maxLen (justified, no ragged final column)", () => {
+    const cols = wrapWarning((t) => measure(t, L.WARNING.size), L.WARNING.maxLen);
+    const boxes = boxesOf(cfg, measure).filter((b) => b.id === "warning");
+    cols.forEach((line, i) => {
+      const len = boxes[i].y1 - boxes[i].y0;
+      if (line.includes(" ")) expect(len).toBeCloseTo(L.WARNING.maxLen, 5);
+      else expect(len).toBeCloseTo(measure(line, L.WARNING.size), 5);
     });
   });
 

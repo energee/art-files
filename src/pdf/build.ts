@@ -127,6 +127,54 @@ function drawRotated(
   page.drawText(text, { ...base, x: opts.x, y: y(opts.yStart), color });
 }
 
+/** The on-page length of a wrapped warning column after justification (see
+ *  drawJustifiedRotated): a multi-word line stretches its inter-word gaps
+ *  to exactly `maxLen`. A single-word line has no gap to stretch, so it
+ *  stays its natural measured length — letter-spacing one word to fill the
+ *  column would look broken, not justified. Shared by the renderer (to
+ *  decide whether to justify) and hittest.ts (so a column's hit box always
+ *  matches what actually got drawn). */
+export function warningColumnLen(
+  line: string, maxLen: number, measure: (text: string) => number,
+): number {
+  return line.includes(" ") ? maxLen : measure(line);
+}
+
+/** Like drawRotated, but for a warning column: stretches inter-word gaps so
+ *  the line's run reaches EXACTLY `opts.maxLen` (full justification — no
+ *  ragged final column). Draws word-by-word, reusing drawRotated's per-word
+ *  coordinate math rather than a second rotated-text scheme: each word is
+ *  its own drawRotated call, advanced along the run by that word's width
+ *  plus the stretched gap. A single-word line has no gap to stretch and
+ *  falls back to one plain drawRotated call at its natural length — see
+ *  warningColumnLen. */
+export function drawJustifiedRotated(
+  page: PDFPage,
+  font: PDFFont,
+  text: string,
+  mode: Mode,
+  style: Style,
+  opts: { x: number; yStart: number; size: number; maxLen: number },
+) {
+  const words = text.split(" ");
+  if (words.length < 2) {
+    drawRotated(page, font, text, mode, style, opts);
+    return;
+  }
+  const widths = words.map((w) => font.widthOfTextAtSize(w, opts.size));
+  const totalWordWidth = widths.reduce((a, b) => a + b, 0);
+  // The gap that makes sum(widths) + (n-1)*gap land exactly on maxLen.
+  const gap = (opts.maxLen - totalWordWidth) / (words.length - 1);
+  // The run advances from yStart toward SMALLER yStart (drawRotated's
+  // "reads bottom-to-top": later characters/words sit at a smaller top-
+  // origin y) — see drawRotated's doc comment.
+  let cursor = opts.yStart;
+  words.forEach((w, i) => {
+    drawRotated(page, font, w, mode, style, { x: opts.x, yStart: cursor, size: opts.size });
+    cursor -= widths[i] + gap;
+  });
+}
+
 /** Wrap the warning paragraph to fit the rotated column height. `measure`
  *  returns a string's width at WARNING.size in points — passed in (rather
  *  than a PDFFont) so the hit-tester can derive the SAME column count and
@@ -306,8 +354,9 @@ function drawElements(
     (t) => fonts.regular.widthOfTextAtSize(t, L.WARNING.size), L.WARNING.maxLen,
   );
   warnLines.forEach((line, i) =>
-    drawRotated(page, fonts.regular, line, mode, cfg.warning, {
+    drawJustifiedRotated(page, fonts.regular, line, mode, cfg.warning, {
       x: L.WARNING.x + i * L.WARNING.leading, yStart: L.WARNING.yStart, size: L.WARNING.size,
+      maxLen: L.WARNING.maxLen,
     }),
   );
   drawRotated(page, fonts.semibold, cfg.storeCold.text, mode, cfg.storeCold, {

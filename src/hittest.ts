@@ -5,9 +5,10 @@
 import type { LabelConfig } from "./types";
 import type { ElementId } from "./elements";
 import { parseDescription } from "./description";
-// The renderer's own paragraph wrapper, so the warning's hit columns can't
-// disagree with the columns it draws (see the warning boxes below).
-import { wrapWarning } from "./pdf/build";
+// The renderer's own paragraph wrapper and justified-column length, so the
+// warning's hit columns can't disagree with the columns it draws or the
+// justified width it draws them at (see the warning boxes below).
+import { wrapWarning, warningColumnLen } from "./pdf/build";
 import * as L from "./layout";
 
 export type Measure = (text: string, size: number, bold: boolean) => number;
@@ -95,18 +96,25 @@ export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
     // see the function doc comment).
     rotated("handleAddress", cfg.handleAddress.text, L.HANDLE_ADDR.x, L.HANDLE_ADDR.yStart, L.HANDLE_ADDR.size, m, true),
   ];
-  // The warning is a wrapped paragraph in rotated columns sharing one style,
-  // painted after handleAddress and before storeCold. Column count and length
-  // come from wrapWarning with THIS caller's measure — the same function and
-  // the same metrics the renderers wrap with — so a font or maxLen change can
-  // never leave the boxes describing a column count the artwork doesn't have.
-  const warnLines = wrapWarning((t) => m(t, L.WARNING.size, false), L.WARNING.maxLen);
+  // The warning is a wrapped paragraph in rotated, justified columns sharing
+  // one style, painted after handleAddress and before storeCold. Column
+  // count comes from wrapWarning with THIS caller's measure — the same
+  // function and the same metrics the renderers wrap with — so a font or
+  // maxLen change can never leave the boxes describing a column count the
+  // artwork doesn't have. Column LENGTH comes from warningColumnLen: every
+  // multi-word column is justified out to exactly maxLen (see
+  // drawJustifiedRotated), so the box uses maxLen too rather than the
+  // column's natural (pre-justification) measured width; a single-word
+  // column has no gaps to stretch and stays natural-length.
+  const warningMeasure = (t: string) => m(t, L.WARNING.size, false);
+  const warnLines = wrapWarning(warningMeasure, L.WARNING.maxLen);
   warnLines.forEach((line, i) =>
     boxes.push({
       id: "warning",
       x0: L.WARNING.x + i * L.WARNING.leading - ASC * L.WARNING.size,
       x1: L.WARNING.x + i * L.WARNING.leading + DESC * L.WARNING.size,
-      y0: L.WARNING.yStart - m(line, L.WARNING.size, false), y1: L.WARNING.yStart,
+      y0: L.WARNING.yStart - warningColumnLen(line, L.WARNING.maxLen, warningMeasure),
+      y1: L.WARNING.yStart,
     }),
   );
   // storeCold always renders semibold too (bold=true; see the doc comment).
