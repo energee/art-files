@@ -69,6 +69,26 @@ describe("psd build", () => {
     expect(stroke?.size?.value).toBeCloseTo(20);
   });
 
+  it("mask mode mirrors buildMaskPdf: floods, repaints by layer, drops strokes", async () => {
+    const psd = readPsd(
+      Buffer.from(await buildPsd(defaultConfig(), assets, "mask")).buffer as ArrayBuffer,
+      { skipCompositeImageData: true, skipLayerImageData: true, skipThumbnail: true },
+    );
+    const all = flat(psd.children as any[]);
+    // Base coats: white knockout page, then (no mask raster here) a solid
+    // white-ink flood.
+    expect(names(psd.children)).toContain("Knockout base");
+    expect(names(psd.children)).toContain("White ink flood");
+    // Metallic elements knock out (white)…
+    expect(layer(psd.children as any[], "Beer name").text.style.fillColor)
+      .toEqual({ r: 255, g: 255, b: 255 });
+    // …white-layer elements print ink (mask blue): the barcode ships white.
+    expect(layer(psd.children as any[], "Barcode").vectorFill.color)
+      .toEqual({ r: 0, g: 156, b: 215 });
+    // Strokes never touch the mask plate.
+    for (const l of all) expect([l.name, l.effects?.stroke]).toEqual([l.name, undefined]);
+  });
+
   it("gives every keylined text layer a real stroke effect in black", () => {
     const layers = flat(doc.children as any[]);
     // Logo and QR are vector layers, not type layers — they take the same

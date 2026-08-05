@@ -121,7 +121,7 @@ texture/mask (print-size images made every keystroke-triggered rebuild
 churn enough memory to crash the tab); downloads always rebuild at full
 resolution when clicked. Every action lives in a menubar across the top of
 the window, above the sidebar/preview split: **File** (save config, load
-config, then Export PDF, Export Mask PDF, Export PSD — see below; the
+config, then Export PDF, Export Mask PDF, Export PSDs — see below; the
 both-PDFs-at-once action lives in the palette as "Export PDF + Mask PDF"),
 **Edit** (undo, redo), and
 **View** (Standard / Mask, which jump the divider to either end — the
@@ -157,8 +157,8 @@ whole block: per-line faces and fills ride along as Photoshop style runs,
 and the PDF's line advance becomes the layer's leading. The warning is
 likewise one justified, rotated layer whose lines are the columns, wrapped
 by the same `wrapWarning` measure the PDF uses. The barcode is one merged shape
-layer instead — bars and digit glyph outlines together, bezier — plus a
-second "Barcode stroke" shape layer beneath it mirroring the PDF's halo
+layer instead — bars and digit glyph outlines together, bezier — with its
+white halo as the same stroke layer effect every other element uses
 (omitted when the stroke is `none`); the barcode's digits are not editable
 type, a deliberate tradeoff for a single print-ready shape. The texture is
 the one raster layer. Layers are grouped as Texture / Left column / Center /
@@ -167,12 +167,22 @@ because ag-psd writes the text data without a rendered bitmap — choose
 **Update**. The PDFs remain the printer deliverable; the PSD is the editable
 handoff.
 
+"Export PSDs" writes the pair: `{Name}.psd` (art) and `{Name}-mask.psd`, the
+white-ink plate. The mask PSD mirrors `buildMaskPdf` with the same layers and
+geometry (`buildPsd(cfg, assets, "mask")`): a white "Knockout base" flood,
+then the recolored mask raster (or, with no mask loaded, a solid white-ink
+blue flood — "no mask" means "print as a white label"), then every element
+repainted by its layer — metallic knocks out in white, white-layer prints
+mask blue, per-run for inline `_white ink_` spans. Strokes are omitted
+entirely: they never touch the mask plate. The barcode paints its true ink
+footprint (outset bar rects plus digit pills), exactly like the mask PDF.
+
 Headless (same renderer, used for iteration/batches):
 
 ```bash
 npm run generate -- <texture.png|none> <mask.png|none> <outDir> [config.json] \
   [--collab-left=<logo.svg|png|jpg>] [--collab-center=<...>]
-# writes {Name}.pdf, {Name}-mask.pdf and {Name}.psd
+# writes {Name}.pdf, {Name}-mask.pdf, {Name}.psd and {Name}-mask.psd
 ```
 
 The Save/Load config buttons round-trip the whole form as JSON (`{version: 1,

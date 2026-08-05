@@ -44,7 +44,17 @@ export interface PsdAssets {
    *  and passes native pixels, which then sit centred).
    *  Omitted leaves the background empty, like a PDF built without one. */
   texture?: { data: Uint8Array; width: number; height: number };
+  /** Decoded RGBA of the recolored mask (blue/transparent, see maskimage.ts),
+   *  for mask-mode builds. Same 1:1 pixel contract as `texture`. Omitted
+   *  floods the plate solid white-ink blue, matching buildMaskPdf. */
+  mask?: { data: Uint8Array; width: number; height: number };
 }
+
+/** Which deliverable to build: the art PSD, or the white-ink mask plate.
+ *  Mask mode mirrors buildMaskPdf: same layers and geometry, but metallic
+ *  elements paint knockout white, white-layer elements paint mask blue, and
+ *  strokes are omitted (they never touch the mask plate). */
+export type PsdMode = "art" | "mask";
 
 /** Points -> pixels at the 600dpi deliverable. (layout.PX is the inverse —
  *  points per pixel — so deriving from it keeps one definition of the DPI.) */
@@ -57,6 +67,15 @@ const color255 = (fill: Fill) => {
   const c = L.parseHexFill(fill);
   return { r: Math.round(c.r * 255), g: Math.round(c.g * 255), b: Math.round(c.b * 255) };
 };
+
+/** Mask-plate blue (layout.COLORS.maskBlue as hex): the white-ink underlay. */
+const MASK_BLUE = "#009CD7";
+
+/** Resolve an element's paint for the mode — the PDF's maskColor rule:
+ *  in mask mode metallic knocks out (white) and white-layer prints ink
+ *  (mask blue); art mode is just the fill. */
+const paint = (mode: PsdMode, fill: Fill, layer: "metallic" | "white"): Fill =>
+  mode === "art" ? fill : layer === "metallic" ? "#FFFFFF" : MASK_BLUE;
 
 // --- vector helpers -------------------------------------------------------
 
@@ -247,6 +266,10 @@ function shapeLayer(
   };
 }
 
+/** Full-page flood rect as a shape layer (the mask plate's base coats). */
+const floodLayer = (name: string, fill: Fill): Layer =>
+  shapeLayer(name, [rectPath(0, 0, L.PAGE.w, L.PAGE.h)], fill);
+
 /** The `effects.stroke` fragment for a layer, or nothing when the element
  *  carries no stroke. Widths are authored in px at the 600dpi deliverable,
  *  which is the PSD's own resolution — no px() conversion, unlike the
@@ -313,8 +336,12 @@ function textLayer(
      *  stroke text); Photoshop has the real thing, so the PSD uses it. */
     stroke?: Fill;
     strokeWidth?: number;
+    /** Mask mode repaints every run by its layer (see `paint`) and drops the
+     *  stroke effect — strokes never touch the mask plate. */
+    mode?: PsdMode;
   },
 ): Layer {
+  const mode = opts.mode ?? "art";
   const t = px(opts.x);
   const b = px(opts.baseline);
   // Inline runs become Photoshop STYLE RUNS: a text layer carries a base
@@ -347,8 +374,11 @@ function textLayer(
           font: { name: PS_NAME[r.bold ? boldFace : opts.face] },
           // A merged block's lines can differ in colour (a `_white ink_`
           // line keeps the block's fill, a re-filled one does not), so the
-          // run carries its own.
-          ...(opts.lines ? { fillColor: color255(r.fill) } : {}),
+          // run carries its own. Mask mode repaints per run: a white-ink
+          // span prints blue while the rest of the line knocks out.
+          ...(opts.lines || mode === "mask"
+            ? { fillColor: color255(paint(mode, r.fill, r.layer)) }
+            : {}),
         },
       }))
     : undefined;
@@ -375,7 +405,7 @@ function textLayer(
       ...(styleRuns ? { styleRuns } : {}),
       ...(opts.justify ? { paragraphStyle: { justification: "justify-all" as const } } : {}),
     },
-    ...strokeEffect(opts.stroke, opts.strokeWidth),
+    ...(mode === "art" ? strokeEffect(opts.stroke, opts.strokeWidth) : {}),
   };
 }
 
@@ -383,10 +413,37 @@ const faceOf = (line: { bold?: boolean }): Face => (line.bold ? "semibold" : "re
 
 // --- the label ------------------------------------------------------------
 
-function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont): Layer[] {
+function buildLayers(
+  cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont, mode: PsdMode,
+): Layer[] {
   const groups: Layer[] = [];
+  /** This mode's paint for a styled element. */
+  const P = (s: { fill: Fill; layer: "metallic" | "white" }) => paint(mode, s.fill, s.layer);
 
-  if (assets.texture) {
+  if (mode === "mask") {
+    // Same base coats as buildMaskPdf: white page (knockout by default),
+    // then the recolored mask raster — or, with none, a solid white-ink
+    // flood ("no mask" = "print as a white label"). Elements knock out or
+    // add ink on top.
+    groups.push(floodLayer("Knockout base", "#FFFFFF"));
+    if (assets.mask) {
+      const left = Math.round((PSD_DOC.w - assets.mask.width) / 2);
+      const top = Math.round((PSD_DOC.h - assets.mask.height) / 2);
+      groups.push({
+        name: "Mask",
+        left, top,
+        right: left + assets.mask.width,
+        bottom: top + assets.mask.height,
+        imageData: {
+          data: assets.mask.data,
+          width: assets.mask.width,
+          height: assets.mask.height,
+        },
+      });
+    } else {
+      groups.push(floodLayer("White ink flood", MASK_BLUE));
+    }
+  } else if (assets.texture) {
     // Centred, so a native-size texture straddles the page rather than
     // hanging off the top-left corner. A pre-scaled one lands at 0,0.
     const left = Math.round((PSD_DOC.w - assets.texture.width) / 2);
@@ -409,22 +466,22 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
   const left: Layer[] = [
     textLayer("Volume", cfg.volume.text, {
       x: L.VOLUME.x, baseline: L.VOLUME.baseline, size: L.VOLUME.size,
-      fill: cfg.volume.fill, face: faceOf(cfg.volume), tracking: cfg.volume.letterSpacing,
-      stroke: cfg.volume.stroke, strokeWidth: cfg.volume.strokeWidth,
+      fill: P(cfg.volume), face: faceOf(cfg.volume), tracking: cfg.volume.letterSpacing,
+      stroke: cfg.volume.stroke, strokeWidth: cfg.volume.strokeWidth, mode,
     }),
     textLayer("ABV", `${cfg.abv}% alc by vol`, {
       x: L.ABV.x, baseline: L.ABV.baseline, size: L.ABV.size,
-      fill: cfg.abvStyle.fill, face: "regular", tracking: cfg.abvStyle.letterSpacing,
-      stroke: cfg.abvStyle.stroke, strokeWidth: cfg.abvStyle.strokeWidth,
+      fill: P(cfg.abvStyle), face: "regular", tracking: cfg.abvStyle.letterSpacing,
+      stroke: cfg.abvStyle.stroke, strokeWidth: cfg.abvStyle.strokeWidth, mode,
     }),
   ];
   if (desc.header)
     left.push(
       textLayer("Description header", desc.header.text, {
         x: L.DESC_HEADER.x, baseline: L.DESC_HEADER.baseline, size: L.DESC_HEADER.size,
-        fill: desc.header.fill, face: faceOf(desc.header),
+        fill: P(desc.header), face: faceOf(desc.header),
         tracking: desc.header.letterSpacing,
-      stroke: desc.header.stroke, strokeWidth: desc.header.strokeWidth,
+        stroke: desc.header.stroke, strokeWidth: desc.header.strokeWidth, mode,
       }),
     );
   // ONE layer for the whole block: the markdown subset styles lines
@@ -436,10 +493,10 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
     left.push(
       textLayer("Description", desc.lines.map((l) => l.text).join("\n"), {
         x: L.DESC.x, baseline: L.DESC.firstBaseline, size: L.DESC.size,
-        fill: cfg.descStyle.fill, face: "regular",
+        fill: P(cfg.descStyle), face: "regular",
         tracking: cfg.descStyle.letterSpacing, leading: L.DESC.leading,
         lines: desc.lines,
-        stroke: cfg.descStyle.stroke, strokeWidth: cfg.descStyle.strokeWidth,
+        stroke: cfg.descStyle.stroke, strokeWidth: cfg.descStyle.strokeWidth, mode,
       }),
     );
   groups.push({ name: "Left column", opened: false, children: left });
@@ -473,21 +530,24 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
       textLayer("Wordmark", L.WORDMARK.text, {
         x: centered(L.WORDMARK.text, L.WORDMARK.cx, L.WORDMARK.size, "bold", cfg.wordmark.letterSpacing),
         baseline: L.WORDMARK.baseline, size: L.WORDMARK.size,
-        fill: cfg.wordmark.fill, face: "bold", tracking: cfg.wordmark.letterSpacing,
-      stroke: cfg.wordmark.stroke, strokeWidth: cfg.wordmark.strokeWidth,
+        fill: P(cfg.wordmark), face: "bold", tracking: cfg.wordmark.letterSpacing,
+        stroke: cfg.wordmark.stroke, strokeWidth: cfg.wordmark.strokeWidth, mode,
       }),
-      shapeLayer("Logo", logoPaths, cfg.logo.fill, cfg.logo.stroke, cfg.logo.strokeWidth),
+      shapeLayer(
+        "Logo", logoPaths, P(cfg.logo),
+        mode === "art" ? cfg.logo.stroke : undefined, cfg.logo.strokeWidth,
+      ),
       textLayer("Beer name", cfg.beerName.toUpperCase(), {
         x: centered(cfg.beerName.toUpperCase(), L.NAME.cx, L.NAME.size, "bold", cfg.nameStyle.letterSpacing),
         baseline: L.NAME.baseline, size: L.NAME.size,
-        fill: cfg.nameStyle.fill, face: "bold", tracking: cfg.nameStyle.letterSpacing,
-      stroke: cfg.nameStyle.stroke, strokeWidth: cfg.nameStyle.strokeWidth,
+        fill: P(cfg.nameStyle), face: "bold", tracking: cfg.nameStyle.letterSpacing,
+        stroke: cfg.nameStyle.stroke, strokeWidth: cfg.nameStyle.strokeWidth, mode,
       }),
       textLayer("Style line", cfg.styleLine.text, {
         x: centered(cfg.styleLine.text, L.STYLE_LINE.cx, L.STYLE_LINE.size, faceOf(cfg.styleLine), cfg.styleLine.letterSpacing),
         baseline: L.STYLE_LINE.baseline, size: L.STYLE_LINE.size,
-        fill: cfg.styleLine.fill, face: faceOf(cfg.styleLine), tracking: cfg.styleLine.letterSpacing,
-      stroke: cfg.styleLine.stroke, strokeWidth: cfg.styleLine.strokeWidth,
+        fill: P(cfg.styleLine), face: faceOf(cfg.styleLine), tracking: cfg.styleLine.letterSpacing,
+        stroke: cfg.styleLine.stroke, strokeWidth: cfg.styleLine.strokeWidth, mode,
       }),
     ],
   });
@@ -510,9 +570,9 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
     children: [
       textLayer("Info", info.text, {
         x: L.HANDLE_ADDR.x, baseline: L.HANDLE_ADDR.yStart, size: L.HANDLE_ADDR.size,
-        fill: info.fill, face: info.bold ? "bold" : "semibold", boldFace: "bold", rotated: true,
+        fill: P(info), face: info.bold ? "bold" : "semibold", boldFace: "bold", rotated: true,
         tracking: info.letterSpacing,
-      stroke: info.stroke, strokeWidth: info.strokeWidth,
+        stroke: info.stroke, strokeWidth: info.strokeWidth, mode,
       }),
       // ONE layer for the whole warning: its columns are the lines of a
       // wrapped paragraph, so leading (the PDF's own column advance) and
@@ -521,21 +581,21 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
       // PDF wraps with, so both deliverables break identically.
       textLayer("Warning", warnLines.join("\n"), {
         x: L.WARNING.x, baseline: L.WARNING.yStart,
-        size: L.WARNING.size, fill: cfg.warning.fill, face: "regular", rotated: true,
+        size: L.WARNING.size, fill: P(cfg.warning), face: "regular", rotated: true,
         tracking: cfg.warning.letterSpacing, leading: L.WARNING.leading, justify: true,
-        stroke: cfg.warning.stroke, strokeWidth: cfg.warning.strokeWidth,
+        stroke: cfg.warning.stroke, strokeWidth: cfg.warning.strokeWidth, mode,
       }),
       textLayer("Store cold", cfg.storeCold.text, {
         x: L.STORE_COLD.x, baseline: L.STORE_COLD.yStart, size: L.STORE_COLD.size,
-        fill: cfg.storeCold.fill, face: "semibold", rotated: true,
+        fill: P(cfg.storeCold), face: "semibold", rotated: true,
         tracking: cfg.storeCold.letterSpacing,
-      stroke: cfg.storeCold.stroke, strokeWidth: cfg.storeCold.strokeWidth,
+        stroke: cfg.storeCold.stroke, strokeWidth: cfg.storeCold.strokeWidth, mode,
       }),
     ],
   });
 
   // Codes ------------------------------------------------------------------
-  groups.push({ name: "Codes", opened: false, children: codeLayers(cfg, f, fk) });
+  groups.push({ name: "Codes", opened: false, children: codeLayers(cfg, f, fk, mode) });
   // PSD layer order is bottom-first, matching the PDF's draw order.
   return groups;
 }
@@ -543,7 +603,7 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
 /** QR (vector) + the barcode: one merged "Barcode" shape layer (bars and
  *  digit glyph outlines, both bezier, in cfg.barcodeFill) with an optional
  *  "Barcode stroke" layer directly beneath it, mirroring the PDF's halo. */
-function codeLayers(cfg: LabelConfig, f: Faces, fk: FKFont): Layer[] {
+function codeLayers(cfg: LabelConfig, f: Faces, fk: FKFont, mode: PsdMode): Layer[] {
   const q = qrShapes(qrUrl(cfg.beerName));
   const ms = q.moduleSize * L.QR.size;
   const at = (u: number, axis: "x" | "y") =>
@@ -586,12 +646,34 @@ function codeLayers(cfg: LabelConfig, f: Faces, fk: FKFont): Layer[] {
   // exists, or on how wide it is.
   const S = barcodeStrokePt(cfg);
 
+  const qr = shapeLayer(
+    "QR", qrPaths, paint(mode, cfg.qrFill, cfg.qrLayer),
+    mode === "art" ? cfg.qrStroke : undefined, cfg.qrStrokeWidth,
+  );
+
+  if (mode === "mask") {
+    // The barcode's true ink footprint, exactly as drawBarcode's mask branch:
+    // one ±S outset rect per bar plus a pill rect per digit group around its
+    // glyph box. Union, so overlapping outsets can't XOR into holes.
+    const footprint: BezierPath[] = [
+      ...geo.bars.map((b) => rectPath(b.x - S, b.yTop - S, b.w + 2 * S, b.h + 2 * S)),
+      ...geo.digits.map((d) => {
+        const w = measure(d.text);
+        const x0 = d.x - L.FONT_ASC * B.textSize - S;
+        const x1 = d.x + L.FONT_DESC * B.textSize + S;
+        const yc = geo.bottom - d.center * geo.mod;
+        return rectPath(x0, yc - w / 2 - S, x1 - x0, w + 2 * S);
+      }),
+    ].map((p) => ({ ...p, operation: "combine" as const }));
+    return [qr, shapeLayer("Barcode", footprint, paint(mode, cfg.barcodeFill, cfg.barcodeLayer))];
+  }
+
   // The halo is the same editable stroke effect every other element carries
   // (position outside, so Photoshop dilates bars and digit outlines alike and
   // unions the result) — replacing the old approximate "Barcode stroke" rect
   // layer. strokeEffect wants px @600dpi; S resolves in points, so convert.
   return [
-    shapeLayer("QR", qrPaths, cfg.qrFill, cfg.qrStroke, cfg.qrStrokeWidth),
+    qr,
     shapeLayer(
       "Barcode", barcodePaths, cfg.barcodeFill,
       S > 0 ? cfg.barcodeStroke : undefined, px(S),
@@ -601,8 +683,13 @@ function codeLayers(cfg: LabelConfig, f: Faces, fk: FKFont): Layer[] {
 
 /** Build the layered Photoshop file. Text layers carry no rendered bitmap, so
  *  Photoshop prompts to update them on open — that is expected; choosing
- *  "Update" redraws each from its text data. */
-export async function buildPsd(cfg: LabelConfig, assets: PsdAssets): Promise<Uint8Array> {
+ *  "Update" redraws each from its text data.
+ *
+ *  `mode` picks the deliverable: "art" (default) or "mask" — the white-ink
+ *  plate, mirroring buildMaskPdf (see PsdMode). */
+export async function buildPsd(
+  cfg: LabelConfig, assets: PsdAssets, mode: PsdMode = "art",
+): Promise<Uint8Array> {
   // pdf-lib is used only for font metrics, so the PSD's centering and the
   // warning's line wrap land identically to the PDF's.
   const doc = await PDFDocument.create();
@@ -623,7 +710,7 @@ export async function buildPsd(cfg: LabelConfig, assets: PsdAssets): Promise<Uin
   const psd: Psd = {
     width: PSD_DOC.w,
     height: PSD_DOC.h,
-    children: buildLayers(cfg, assets, f, digitFont),
+    children: buildLayers(cfg, assets, f, digitFont, mode),
   };
   return writePsdUint8Array(psd);
 }

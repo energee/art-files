@@ -58,12 +58,16 @@ if (!upc.ok) {
 // "none" skips the mask: the white-ink PDF then carries only the
 // per-element layer assignments.
 let maskPng: Uint8Array | undefined;
+let maskPixels: PsdAssets["mask"];
 if (maskPath !== "none") {
   const mask = PNG.sync.read(readFileSync(maskPath));
   const rgba = new Uint8Array(mask.data.buffer, mask.data.byteOffset, mask.data.length);
   const check = validateMask(rgba);
   if (!check.ok) console.warn(`warning: ${check.error}`);
   recolorMaskForPdf(rgba);
+  // The recolored pixels serve both deliverables: re-encoded as PNG for the
+  // mask PDF, and raw for the mask PSD's raster layer.
+  maskPixels = { data: rgba, width: mask.width, height: mask.height };
   const buf = PNG.sync.write(mask);
   maskPng = new Uint8Array(buf.buffer, buf.byteOffset, buf.length);
 }
@@ -108,17 +112,23 @@ if (assets.texture?.kind === "png") {
 mkdirSync(resolve(outDir), { recursive: true });
 const art = await buildArtPdf(cfg, assets);
 const maskPdf = await buildMaskPdf(cfg, assets);
-const psd = await buildPsd(cfg, {
+const psdAssets: PsdAssets = {
   fonts: assets.fonts,
   logoSvg: assets.logoSvg,
   texture: texturePixels,
-});
+  mask: maskPixels,
+};
+const psd = await buildPsd(cfg, psdAssets);
+const maskPsd = await buildPsd(cfg, psdAssets, "mask");
 const artOut = join(outDir, `${cfg.beerName}.pdf`);
 const maskOut = join(outDir, `${cfg.beerName}-mask.pdf`);
 const psdOut = join(outDir, `${cfg.beerName}.psd`);
+const maskPsdOut = join(outDir, `${cfg.beerName}-mask.psd`);
 writeFileSync(artOut, art);
 writeFileSync(maskOut, maskPdf);
 writeFileSync(psdOut, psd);
+writeFileSync(maskPsdOut, maskPsd);
 console.log(`wrote ${artOut} (${(art.length / 1e6).toFixed(1)}MB)`);
 console.log(`wrote ${maskOut} (${(maskPdf.length / 1e6).toFixed(1)}MB)`);
 console.log(`wrote ${psdOut} (${(psd.length / 1e6).toFixed(1)}MB)`);
+console.log(`wrote ${maskPsdOut} (${(maskPsd.length / 1e6).toFixed(1)}MB)`);

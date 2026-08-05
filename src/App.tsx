@@ -375,9 +375,9 @@ export default function App() {
    *  hold pixels 1:1, so the cover-fit happens here rather than in the
    *  builder. Only run on an explicit export, never in the preview loop:
    *  the full-size ImageData is ~60MB. */
-  async function texturePixels(): Promise<PsdAssets["texture"]> {
-    if (!texture) return undefined;
-    const bmp = await createImageBitmap(new Blob([texture.bytes as unknown as BlobPart]));
+  async function rasterPixels(bytes: Uint8Array | undefined): Promise<PsdAssets["texture"]> {
+    if (!bytes) return undefined;
+    const bmp = await createImageBitmap(new Blob([bytes as unknown as BlobPart]));
     const canvas = document.createElement("canvas");
     canvas.width = PSD_DOC.w;
     canvas.height = PSD_DOC.h;
@@ -391,18 +391,25 @@ export default function App() {
     return { data: new Uint8Array(img.data.buffer), width: img.width, height: img.height };
   }
 
-  /** Layered Photoshop file: editable type layers, vector logo/QR/barcode.
-   *  Built full-resolution on demand, like the PDF exports. */
+  /** Layered Photoshop files: editable type layers, vector logo/QR/barcode.
+   *  Built full-resolution on demand, like the PDF exports. Writes the pair —
+   *  `{name}.psd` (art) and `{name}-mask.psd` (white-ink plate), mirroring
+   *  the two PDF deliverables. */
   async function exportPsd() {
     setBuilding(true);
     startSaveBatch();
     try {
       const fonts = await fontsPromise;
-      const psd = await buildPsd(cfg, {
+      const assets: PsdAssets = {
         fonts, logoSvg,
-        texture: await texturePixels(),
-      });
-      saveBytes(psd, `${cfg.beerName}.psd`, "image/vnd.adobe.photoshop");
+        texture: await rasterPixels(texture?.bytes),
+        mask: await rasterPixels(mask?.bytes),
+      };
+      saveBytes(await buildPsd(cfg, assets), `${cfg.beerName}.psd`, "image/vnd.adobe.photoshop");
+      saveBytes(
+        await buildPsd(cfg, assets, "mask"),
+        `${cfg.beerName}-mask.psd`, "image/vnd.adobe.photoshop",
+      );
       setBuildError("");
     } catch (err) {
       setBuildError(String(err));
@@ -461,7 +468,7 @@ export default function App() {
                   Export Mask PDF
                 </MenubarItem>
                 <MenubarItem disabled={blocked} onClick={() => void exportPsd()}>
-                  Export PSD
+                  Export PSDs
                 </MenubarItem>
               </MenubarContent>
             </MenubarMenu>
@@ -558,7 +565,7 @@ export default function App() {
             { label: "Export PDF + Mask PDF", disabled: blocked || !pdfs, run: exportPdfs },
             { label: "Export PDF", disabled: blocked || !pdfs, run: downloadArt },
             { label: "Export Mask PDF", disabled: blocked || !pdfs, run: downloadMask },
-            { label: "Export PSD", disabled: blocked, run: () => void exportPsd() },
+            { label: "Export PSDs", disabled: blocked, run: () => void exportPsd() },
             { label: "Undo", disabled: !canUndo, run: undo },
             { label: "Redo", disabled: !canRedo, run: redo },
             { label: "Save config", run: saveConfig },
