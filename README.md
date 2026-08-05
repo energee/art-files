@@ -22,9 +22,15 @@ authored in modules (bars 15, digits 10, text gap 4, guards 24, quiet zone
 8 — the module counts that app's options produce) and scaled by one
 `UPC_MOD` in `src/layout.ts`. Digits are Poppins Regular in a column right
 of the bars, with the number-system and check digits printed outside the
-symbol in the quiet zones. Contrast comes from the
-white ink the mask lays under the whole footprint — per-bar white outlines
-distorted the module widths enough to stop it decoding. The QR code's payload is
+symbol in the quiet zones. It is a stylable element like everything else
+(fill, layer, outer stroke), shipping as near-black bars inside a white
+halo over white ink. Contrast comes from that halo plus the white ink the
+mask lays under the whole footprint, and the mask sizes its footprint from
+the same resolved stroke width the art draws, so the two plates stay
+registered at any setting. Its stroke defaults to the ~1.8-module width
+measured off the finished labels, not the global 15px, and every halo shape
+draws before any bar — interleaving the two distorted the module widths
+enough to stop it decoding. The QR code's payload is
 derived from the beer name (`https://lolev.beer/beer/<machine-name>`) with
 a pickable fill color and optional stroke — there is no separate QR data
 field. Design doc:
@@ -36,7 +42,9 @@ rewrite to React + Tailwind + shadcn/ui is documented in
 
 The UI is built with React 19, Tailwind v4, and shadcn/ui (Linear-style
 neutral dark theme). The sidebar splits fields by how often they change: **This beer** holds
-what's edited every release (name, subtitle, ABV, UPC, QR, description);
+what's edited every release (name, subtitle, ABV, UPC, QR, description) —
+each input doubles as its element's row, so focusing UPC opens the
+barcode's style panel the way focusing Name opens the beer name's;
 **Brand template** collects the six set-once elements (volume, wordmark,
 logo, handle/addr, warning, store cold) behind a collapsed disclosure
 with a count badge, since their gold/metallic defaults are correct
@@ -49,7 +57,10 @@ selection outline around whatever's picked — opens one contextual style
 panel below the form (Photoshop's model: only one element's panel is
 ever open at a time). Its Fill (color picker/hex field/no-ink toggle),
 Layer select, and outer-stroke toggle (its own color + width, px at the
-600dpi deliverable, default 15px ≈ 1.8pt) are on every element's panel; a
+600dpi deliverable, default 15px ≈ 1.8pt) are on every element's panel —
+except that the QR and the barcode omit the no-ink option, since neither
+scans without ink, and the barcode's unset width keeps its own measured
+halo instead of the 15px default; a
 Bold checkbox shows for the elements that have one, and a Reset button
 (back to that element's shipped default) once a style deviates from it.
 The description block's panel sets the base fill/layer for its plain
@@ -107,8 +118,11 @@ The Save/Load config buttons round-trip the whole form as JSON (`{version: 1,
 vanilla-TS UI (named fills like `"gold"`/`"white"`/`"black"`, a `qrData`
 field) are auto-migrated on load: `gold` → `#D0B070`, `black` → `#000000`,
 `white` → `none`, and `qrData` is dropped in favor of the derived QR
-payload. The app entry point is `src/main.tsx` (the old `src/main.ts` /
-`src/style.css` vanilla-TS UI is gone).
+payload. Configs saved before the barcode carried a style of its own pick
+up the colors the renderer used to hardcode, and leave its stroke width
+unset so the measured halo is preserved — those files print exactly as
+they always have. The app entry point is `src/main.tsx` (the old
+`src/main.ts` / `src/style.css` vanilla-TS UI is gone).
 
 ## CMYK for the printer
 

@@ -11,11 +11,11 @@ export const CENTER_X = PAGE.w / 2;
  *  (Hex of the old rgb 0.815/0.69/0.44.) */
 export const GOLD = "#D0B070" as const;
 
-/** Fixed drawing colors (RGB 0-1). Element fills are free hex now — these
- *  remain for the barcode, mask, and "none" handling. */
+/** Fixed drawing colors (RGB 0-1). Every element fill is free hex now,
+ *  including the barcode's — these remain for the mask's two paints
+ *  (knockout white / white-ink blue) and for "none" handling. */
 export const COLORS = {
   white: { r: 1, g: 1, b: 1 },
-  black: { r: 0.1, g: 0.1, b: 0.1 },
   maskBlue: { r: 0, g: 156 / 255, b: 215 / 255 },
 };
 
@@ -86,9 +86,12 @@ const UPC_MOD = 29.88 / UPC_DEPTH_MODULES;
 /** Bar-start to digit baseline — JsBarcode's text y for a bottom value row. */
 const UPC_DEPTH = UPC_DEPTH_MODULES * UPC_MOD;
 
-// Bars and digits print plain black — contrast comes from the white ink the
-// mask PDF lays under the whole footprint (x/yTop/w/h), not from per-bar
-// outlines, which distorted module widths badly enough to stop it scanning.
+// Colors are cfg.barcodeFill / barcodeStroke / barcodeLayer now (shipping as
+// near-black bars in a white halo over white ink); only the geometry lives
+// here. Contrast comes from the white ink the mask PDF lays under the whole
+// footprint (x/yTop/w/h) — per-bar outlines drawn interleaved with their bars
+// distorted module widths badly enough to stop it scanning, which is why
+// drawBarcode paints every stroke shape before any fill.
 // x/yTop are the reference plate's top-left, measured at 600dpi; x still
 // clears the warning's third column (glyphs end ~532.7).
 export const BARCODE = {
@@ -104,10 +107,12 @@ export const BARCODE = {
   barLen: UPC_UNITS.barH * UPC_MOD,
   /** Guard runs: JsBarcode's guardHeight = barH + fontSize/2 + textMargin. */
   guardLen: (UPC_UNITS.barH + UPC_UNITS.fontSize / 2 + UPC_UNITS.textMargin) * UPC_MOD,
-  /** Outer stroke around the artwork, measured off the finished labels
-   *  (~1.8 modules of white beyond the bars). Between the dense bars it
-   *  closes up into a solid field, and around the digits it reads as a
-   *  pill — which is exactly how the reference's white shape behaves. */
+  /** Outer stroke around the artwork, in points, measured off the finished
+   *  labels (~1.8 modules of white beyond the bars). Between the dense bars
+   *  it closes up into a solid field, and around the digits it reads as a
+   *  pill — which is exactly how the reference's white shape behaves.
+   *  This is what an unset cfg.barcodeStrokeWidth resolves to; note it is
+   *  wider than DEFAULT_STROKE_PX * PX (1.85pt vs 1.8pt). */
   stroke: 1.8 * UPC_MOD,
   textSize: UPC_UNITS.fontSize * UPC_MOD,
   /** Bar start to the digit baseline (glyphs grow back toward the bars). */

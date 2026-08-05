@@ -42,7 +42,8 @@ const rotated = (
 
 /** Every element's box, in paint order (later entries sit on top): volume,
  *  abv, description, wordmark, logo, name, styleLine, qr, handleAddress,
- *  warning, storeCold — exactly drawElements' order in src/pdf/build.ts.
+ *  warning, storeCold, barcode — exactly drawElements' order in
+ *  src/pdf/build.ts.
  *  handleAddress and storeCold pass bold=true because drawRotated always
  *  renders them with the semibold face (its font is a fixed argument, never
  *  read from style.bold); the description header passes its own bold since
@@ -93,6 +94,16 @@ export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
     });
   // storeCold always renders semibold too (bold=true; see the doc comment).
   boxes.push(rotated("storeCold", cfg.storeCold.text, L.STORE_COLD.x, L.STORE_COLD.yStart, L.STORE_COLD.size, m, true));
+  // The barcode is drawn last, so its box goes last too. No font measurement:
+  // the footprint is the whole symbol, bars AND the digits column (BARCODE.w
+  // is the full symbol depth), which is exactly the rectangle the mask lays
+  // white ink under. The outer stroke is deliberately not added — a click
+  // target should follow the artwork, not a width the user can change.
+  boxes.push({
+    id: "barcode",
+    x0: L.BARCODE.x, x1: L.BARCODE.x + L.BARCODE.w,
+    y0: L.BARCODE.yTop, y1: L.BARCODE.yTop + L.BARCODE.h,
+  });
   return boxes;
 }
 

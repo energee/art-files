@@ -137,9 +137,21 @@ export function wrapWarning(font: PDFFont, size: number, maxLen: number): string
   return lines;
 }
 
-export function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode: Mode) {
+/** The barcode, in both modes. `cfg` (not just the UPC digits) because both
+ *  branches below resolve their geometry from the same barcode* style fields
+ *  — see S. */
+export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode: Mode) {
   const B = L.BARCODE;
-  const S = B.stroke;
+  // Resolved outer-stroke width, in points. An unset barcodeStrokeWidth keeps
+  // B.stroke — the ~1.8-module halo measured off the finished labels, which
+  // is NOT DEFAULT_STROKE_PX — so a config saved before the barcode was
+  // stylable prints exactly as it always has. BOTH branches read this one
+  // value: if the mask's footprint stopped matching the art's ink extent, the
+  // white-ink plate would fringe against the printed artwork on press.
+  const S =
+    cfg.barcodeStroke === "none" ? 0
+    : cfg.barcodeStrokeWidth !== undefined ? cfg.barcodeStrokeWidth * L.PX
+    : B.stroke;
   if (mode === "mask") {
     // The footprint gets white ink so the code scans over the texture; it
     // covers the stroke too, so the mask matches the art's ink extent.
@@ -148,7 +160,7 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode:
       y: y(B.yTop + B.h + S),
       width: B.w + 2 * S,
       height: B.h + 2 * S,
-      color: toRgb(L.COLORS.maskBlue),
+      color: maskColor(cfg.barcodeLayer),
     });
     return;
   }
@@ -156,7 +168,7 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode:
   // and the digits column sits to the RIGHT of the bars — the same
   // arrangement JsBarcode renders, turned a quarter turn. The geometry
   // itself is shared with the PSD builder (see ../barcode).
-  const geo = barcodeGeometry(upcValue, (t) => fonts.regular.widthOfTextAtSize(t, B.textSize));
+  const geo = barcodeGeometry(cfg.upc, (t) => fonts.regular.widthOfTextAtSize(t, B.textSize));
   // y() of a run's lowest module IS the rect's bottom edge in PDF space, so
   // the top-origin box converts by its far edge.
   const bars = geo.bars.map((b) => ({
@@ -169,29 +181,33 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, upcValue: string, mode:
     return { txt: d.text, x: d.x, y: y(geo.bottom - d.center * geo.mod) - w / 2 };
   });
   const glyph = { size: B.textSize, font: fonts.regular, rotate: degrees(90) };
-  const ringS = ring(S); // loop-invariant
 
-  // Outer stroke. EVERY white shape draws before ANY black one — that
-  // ordering is what makes this safe. Interleaving the two (a white underlay
+  // Outer stroke, skipped entirely at S = 0 — ring(0) would emit 16 identical
+  // copies at zero offset. EVERY stroke shape draws before ANY fill one —
+  // that ordering is what makes this safe. Interleaving the two (an underlay
   // per bar, then its bar) lets a later stroke bite into an already-drawn
   // neighbour, which distorted the module widths until the code stopped
   // decoding. Between the dense bars the stroke closes into a solid field
   // and around the digits it reads as a pill, matching the reference's
   // white shape without a backing box.
-  for (const r of bars)
-    page.drawRectangle({
-      x: r.x - S, y: r.y - S,
-      width: r.width + 2 * S, height: r.height + 2 * S,
-      color: toRgb(L.COLORS.white),
-    });
-  for (const d of digits)
-    for (const [dx, dy] of ringS)
-      page.drawText(d.txt, { ...glyph, x: d.x + dx, y: d.y + dy, color: toRgb(L.COLORS.white) });
+  if (S > 0) {
+    const strokeColor = fillColor(cfg.barcodeStroke);
+    const ringS = ring(S); // loop-invariant
+    for (const r of bars)
+      page.drawRectangle({
+        x: r.x - S, y: r.y - S,
+        width: r.width + 2 * S, height: r.height + 2 * S,
+        color: strokeColor,
+      });
+    for (const d of digits)
+      for (const [dx, dy] of ringS)
+        page.drawText(d.txt, { ...glyph, x: d.x + dx, y: d.y + dy, color: strokeColor });
+  }
 
   // The artwork itself, at its exact geometry.
-  for (const r of bars) page.drawRectangle({ ...r, color: toRgb(L.COLORS.black) });
-  for (const d of digits)
-    page.drawText(d.txt, { ...glyph, x: d.x, y: d.y, color: toRgb(L.COLORS.black) });
+  const ink = fillColor(cfg.barcodeFill);
+  for (const r of bars) page.drawRectangle({ ...r, color: ink });
+  for (const d of digits) page.drawText(d.txt, { ...glyph, x: d.x, y: d.y, color: ink });
 }
 
 function drawElements(
@@ -271,7 +287,7 @@ function drawElements(
   });
 
   // Barcode
-  drawBarcode(page, fonts, cfg.upc, mode);
+  drawBarcode(page, fonts, cfg, mode);
 }
 
 async function newDoc(assets: Assets): Promise<{ doc: PDFDocument; page: PDFPage; fonts: Fonts }> {

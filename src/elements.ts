@@ -7,7 +7,7 @@ import { GOLD } from "./layout";
 export type ElementId =
   | "name" | "styleLine" | "abv" | "description"
   | "volume" | "wordmark" | "logo" | "handleAddress" | "warning" | "storeCold"
-  | "qr";
+  | "qr" | "barcode";
 
 export interface LabelElement {
   id: ElementId;
@@ -15,19 +15,34 @@ export interface LabelElement {
   label: string;
   /** "beer" changes every time; "template" is set once. */
   group: "beer" | "template";
-  /** Whether a bold toggle applies (logo and QR have no text). */
+  /** Whether a bold toggle applies. False for the logo (no text at all) and
+   *  for the two codes (the barcode's digits are drawn in one fixed face). */
   hasBold: boolean;
-  /** Whether "no ink" is a legal Fill. False only for QR: an ink-less QR
-   *  code isn't scannable, so its Fill control must never offer that option. */
+  /** Whether "no ink" is a legal Fill. False for the two codes: an ink-less
+   *  QR or barcode isn't scannable, so their Fill control must never offer
+   *  that option. */
   allowNone: boolean;
   /** Read accessor. Writes go through applyStyle. */
   style(c: LabelConfig): Style;
 }
 
-/** The QR's style lives in flat config fields rather than a Style object;
- *  this adapts it so the registry can treat every element uniformly. */
-const qrStyle = (c: LabelConfig): Style => ({
-  fill: c.qrFill, layer: c.qrLayer, stroke: c.qrStroke, strokeWidth: c.qrStrokeWidth,
+/** The two code elements keep their style in flat config fields rather than a
+ *  Style object, so both the read accessor below and applyStyle's writes need
+ *  to know which fields back which element. Naming them once here is what
+ *  keeps the two directions from disagreeing. */
+const FLAT = {
+  qr: { fill: "qrFill", layer: "qrLayer", stroke: "qrStroke", strokeWidth: "qrStrokeWidth" },
+  barcode: {
+    fill: "barcodeFill", layer: "barcodeLayer",
+    stroke: "barcodeStroke", strokeWidth: "barcodeStrokeWidth",
+  },
+} as const;
+type FlatKeys = (typeof FLAT)[keyof typeof FLAT];
+
+/** Adapts flat config fields to a Style, so the registry can treat every
+ *  element uniformly. */
+const flatStyle = (k: FlatKeys) => (c: LabelConfig): Style => ({
+  fill: c[k.fill], layer: c[k.layer], stroke: c[k.stroke], strokeWidth: c[k.strokeWidth],
 });
 
 export const ELEMENTS: LabelElement[] = [
@@ -35,8 +50,11 @@ export const ELEMENTS: LabelElement[] = [
   { id: "styleLine", label: "Subtitle", group: "beer", hasBold: true, allowNone: true, style: (c) => c.styleLine },
   { id: "abv", label: "ABV", group: "beer", hasBold: false, allowNone: true, style: (c) => c.abvStyle },
   { id: "description", label: "Description", group: "beer", hasBold: false, allowNone: true, style: (c) => c.descStyle },
-  // QR is the one element that must always carry ink — see allowNone's doc.
-  { id: "qr", label: "QR", group: "beer", hasBold: false, allowNone: false, style: qrStyle },
+  // The two codes must always carry ink — see allowNone's doc. Both are
+  // "beer": the QR payload follows the beer name and the UPC digits change
+  // per release, so neither is a set-once brand-template element.
+  { id: "qr", label: "QR", group: "beer", hasBold: false, allowNone: false, style: flatStyle(FLAT.qr) },
+  { id: "barcode", label: "Barcode", group: "beer", hasBold: false, allowNone: false, style: flatStyle(FLAT.barcode) },
   { id: "volume", label: "Volume", group: "template", hasBold: true, allowNone: true, style: (c) => c.volume },
   { id: "wordmark", label: "Wordmark", group: "template", hasBold: false, allowNone: true, style: (c) => c.wordmark },
   { id: "logo", label: "Logo", group: "template", hasBold: false, allowNone: true, style: (c) => c.logo },
@@ -59,24 +77,27 @@ export function elementById(id: ElementId): LabelElement {
  *  - `bold` is dropped for elements where ELEMENTS marks hasBold: false, so
  *    a stray `{ bold }` can never get Object.assign'd onto a plain Style
  *    object (e.g. the logo) even if some future caller sends one.
- *  - qr's strokeWidth write uses `"strokeWidth" in patch` rather than
- *    `!== undefined`, so a patch that explicitly carries `strokeWidth:
- *    undefined` (Reset, restoring the shipped default of "unset") actually
- *    clears qrStrokeWidth instead of being silently ignored. fill/layer/
- *    stroke stay on `!== undefined`: unlike strokeWidth they're required
- *    fields on qr's flat config (qrFill/qrLayer/qrStroke), so an accidental
- *    explicit-undefined in a patch should stay a no-op, not null one out. */
+ *  - the flat elements' strokeWidth write uses `"strokeWidth" in patch`
+ *    rather than `!== undefined`, so a patch that explicitly carries
+ *    `strokeWidth: undefined` (Reset, restoring a shipped default of
+ *    "unset") actually clears it instead of being silently ignored. That
+ *    matters most for the barcode, whose unset width means "keep the halo
+ *    measured off the finished labels" (see drawBarcode). fill/layer/stroke
+ *    stay on `!== undefined`: unlike strokeWidth they're required fields on
+ *    the flat configs, so an accidental explicit-undefined in a patch should
+ *    stay a no-op, not null one out. */
 export function applyStyle(c: LabelConfig, id: ElementId, patch: Partial<StyledLine>): void {
   const el = elementById(id);
   if (!el.hasBold && "bold" in patch) {
     const { bold: _bold, ...rest } = patch;
     patch = rest;
   }
-  if (id === "qr") {
-    if (patch.fill !== undefined) c.qrFill = patch.fill;
-    if (patch.layer !== undefined) c.qrLayer = patch.layer;
-    if (patch.stroke !== undefined) c.qrStroke = patch.stroke;
-    if ("strokeWidth" in patch) c.qrStrokeWidth = patch.strokeWidth;
+  if (id === "qr" || id === "barcode") {
+    const k = FLAT[id];
+    if (patch.fill !== undefined) c[k.fill] = patch.fill;
+    if (patch.layer !== undefined) c[k.layer] = patch.layer;
+    if (patch.stroke !== undefined) c[k.stroke] = patch.stroke;
+    if ("strokeWidth" in patch) c[k.strokeWidth] = patch.strokeWidth;
     return;
   }
   Object.assign(el.style(c), patch);

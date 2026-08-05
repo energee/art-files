@@ -41,8 +41,19 @@ export interface LabelConfig {
    *  the header (the `_white_` marker overrides those), outer stroke for
    *  every description line. */
   descStyle: Style;
-  /** 12-digit UPC-A. The barcode block is always white-ink with black bars. */
+  /** 12-digit UPC-A. */
   upc: string;
+  /** The UPC barcode's style. Flat fields like the QR's, for the same reason:
+   *  it is drawn from geometry, not from a StyledLine. barcodeFill paints the
+   *  bars and the digits; barcodeStroke "none" = no white halo, else both get
+   *  an outer stroke in that color, barcodeStrokeWidth px @600dpi wide — left
+   *  unset it keeps the halo measured off the finished labels
+   *  (L.BARCODE.stroke), which is wider than DEFAULT_STROKE_PX. barcodeLayer
+   *  "white" is the white ink the code needs to scan over the texture. */
+  barcodeFill: Fill;
+  barcodeStroke: Fill;
+  barcodeStrokeWidth?: number;
+  barcodeLayer: Layer;
   /** QR payload is derived: https://lolev.beer/beer/<machineName(beerName)>.
    *  Fill is free hex; qrStroke "none" = no stroke, else modules get an
    *  outer stroke in that color, qrStrokeWidth px @600dpi wide. */

@@ -25,6 +25,31 @@ describe("preview hit-testing", () => {
     expect(hitTest(L.QR.x + 5, L.QR.yTop + 5, measure, cfg)).toBe("qr");
   });
 
+  it("hits the barcode anywhere in its footprint, bars and digit column alike", () => {
+    const B = L.BARCODE;
+    // Near the bars end (x just inside the left edge) and near the digits end
+    // (x just inside the right edge) — BARCODE.w spans the whole symbol depth.
+    expect(hitTest(B.x + 1, B.yTop + B.h / 2, measure, cfg)).toBe("barcode");
+    expect(hitTest(B.x + B.w - 1, B.yTop + B.h / 2, measure, cfg)).toBe("barcode");
+    expect(hitTest(B.x + B.w / 2, B.yTop + 1, measure, cfg)).toBe("barcode");
+  });
+
+  it("misses just outside the barcode footprint", () => {
+    const B = L.BARCODE;
+    expect(hitTest(B.x - 2, B.yTop + B.h / 2, measure, cfg)).not.toBe("barcode");
+    expect(hitTest(B.x + B.w + 2, B.yTop + B.h / 2, measure, cfg)).not.toBe("barcode");
+    expect(hitTest(B.x + B.w / 2, B.yTop - 2, measure, cfg)).not.toBe("barcode");
+    expect(hitTest(B.x + B.w / 2, B.yTop + B.h + 2, measure, cfg)).not.toBe("barcode");
+  });
+
+  it("exposes the barcode's footprint as its selection outline", () => {
+    const B = L.BARCODE;
+    const b = boxOf("barcode", cfg, measure)!;
+    expect(b).toEqual({
+      id: "barcode", x0: B.x, x1: B.x + B.w, y0: B.yTop, y1: B.yTop + B.h,
+    });
+  });
+
   it("hits rotated store-cold text", () => {
     expect(hitTest(L.STORE_COLD.x - 5, L.STORE_COLD.yStart - 20, measure, cfg)).toBe("storeCold");
   });

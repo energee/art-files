@@ -26,6 +26,14 @@ export function defaultConfig(): LabelConfig {
     ].join("\n"),
     descStyle: { fill: GOLD, layer: "metallic" },
     upc: "850051366224",
+    // The barcode ships exactly as it was measured off the finished labels:
+    // near-black bars and digits inside a white halo, over white ink. The
+    // fill matches the PSD's bars (psd/build.ts) so the two deliverables
+    // agree. barcodeStrokeWidth stays unset on purpose — see its doc in
+    // types.ts and the resolver in pdf/build.ts's drawBarcode.
+    barcodeFill: "#1A1A1A",
+    barcodeStroke: "#FFFFFF",
+    barcodeLayer: "white",
     qrFill: GOLD,
     qrStroke: "none",
     qrLayer: "metallic",
@@ -79,6 +87,13 @@ export function parseConfigFile(json: string): LabelConfig {
   delete cfg.qrData; // payload is derived from beerName now
   cfg.qrFill ??= GOLD;
   cfg.qrStroke ??= "none";
+  // Configs saved before the barcode became a styled element, when the
+  // renderer hardcoded these three. Deliberately no barcodeStrokeWidth line:
+  // unset is what keeps the measured L.BARCODE.stroke halo, so these configs
+  // print byte-identically to how they always have.
+  cfg.barcodeFill ??= "#1A1A1A";
+  cfg.barcodeStroke ??= "#FFFFFF";
+  cfg.barcodeLayer ??= "white";
   // Configs saved before the description block was styleable.
   cfg.descStyle ??= { fill: GOLD, layer: "metallic" };
   // Configs saved before per-element strokes: keep the logo's classic keyline.

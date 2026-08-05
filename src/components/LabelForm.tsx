@@ -136,9 +136,12 @@ export function LabelForm(props: {
       </Row>
       <TextElementRow id="styleLine" label="Subtitle" cfg={cfg} update={update} onSelect={onSelect} />
 
-      {/* ABV and UPC share one row — both are short. UPC has no element (no
-          user-adjustable style: the barcode is always black bars on white
-          ink), so it gets no marker and never calls onSelect. */}
+      {/* ABV and UPC share one row — both are short. Each input doubles as
+          its element's row: focusing UPC selects the barcode the digits
+          produce, the same way focusing Name selects the beer name. The
+          barcode's shipped style (near-black bars, white halo, white ink) is
+          a deliberate deviation from the gold/metallic default, so — like the
+          logo's keyline — its marker dot shows from the start. */}
       <div className="mb-1.5 flex items-center gap-1.5">
         <Label
           htmlFor="abv"
@@ -150,8 +153,15 @@ export function LabelForm(props: {
         <Input id="abv" className="h-6 w-14 text-xs" value={cfg.abv}
           onFocus={() => onSelect("abv")}
           onChange={(e) => update((c) => { c.abv = e.target.value; })} />
-        <Label htmlFor="upc" className="shrink-0 text-[13px] font-normal text-muted-foreground">UPC</Label>
+        <Label
+          htmlFor="upc"
+          className="flex shrink-0 items-center gap-1 text-[13px] font-normal text-muted-foreground"
+        >
+          UPC
+          {!isDefaultStyle(elementById("barcode").style(cfg)) && <Dot />}
+        </Label>
         <Input id="upc" className="h-6 min-w-0 flex-1 font-mono text-xs" value={cfg.upc}
+          onFocus={() => onSelect("barcode")}
           onChange={(e) => update((c) => { c.upc = e.target.value.trim(); })} />
       </div>
       {errors.upc && <p className="ml-[6.375rem] text-xs text-destructive">{errors.upc}</p>}
