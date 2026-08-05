@@ -15,7 +15,7 @@
 import { ChevronRight, Info } from "lucide-react";
 import type { LabelConfig, StyledLine } from "@/types";
 import { ELEMENTS, elementById, isDefaultStyle, type ElementId } from "@/elements";
-import { machineName } from "@/qr";
+import { machineName, qrUrl } from "@/qr";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -91,6 +91,10 @@ function TextElementRow(props: {
  *  would silently miss mouse users there. */
 function StyleOnlyElementRow(props: {
   id: ElementId; label: string; cfg: LabelConfig; selected: boolean; onSelect: (id: ElementId) => void;
+  /** Derived value worth showing next to the label — the QR's payload, which
+   *  follows the beer name and has no field of its own to appear in. Sits
+   *  inside the row's Button so it can't steal the click target. */
+  hint?: string;
 }) {
   const el = elementById(props.id);
   const dirty = !isDefaultStyle(props.id, el.style(props.cfg));
@@ -107,6 +111,13 @@ function StyleOnlyElementRow(props: {
     >
       {props.label}
       {dirty && <Dot />}
+      {props.hint && (
+        // title carries the full string: the sidebar is too narrow to show a
+        // whole URL, and truncating without one would hide the tail for good.
+        <span title={props.hint} className="ml-auto truncate font-mono text-[11px] opacity-70">
+          {props.hint}
+        </span>
+      )}
     </Button>
   );
 }
@@ -168,7 +179,10 @@ export function LabelForm(props: {
       </div>
       {errors.upc && <p className="ml-[6.375rem] text-xs text-destructive">{errors.upc}</p>}
 
-      <StyleOnlyElementRow id="qr" label="QR" cfg={cfg} selected={selected === "qr"} onSelect={onSelect} />
+      {/* The QR payload is derived from the beer name and has no form field,
+          so the row shows what will actually be encoded. */}
+      <StyleOnlyElementRow id="qr" label="QR" cfg={cfg} selected={selected === "qr"} onSelect={onSelect}
+        hint={qrUrl(cfg.beerName)} />
 
       <Heading>
         Description

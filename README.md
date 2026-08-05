@@ -37,7 +37,9 @@ before it was stylable keep their measured ~1.8-module halo. Every halo shape
 draws before any bar — interleaving the two distorted the module widths
 enough to stop it decoding. The QR code's payload is
 derived from the beer name (`https://lolev.beer/beer/<machine-name>`) with
-a pickable fill color and optional stroke — there is no separate QR data
+a pickable fill color and optional stroke; the sidebar's QR row shows the
+derived URL next to its label, so what gets encoded is visible without
+scanning it — there is no separate QR data
 field. Design doc:
 `docs/superpowers/specs/2026-08-02-label-pdf-generator-design.md`; the UI
 rewrite to React + Tailwind + shadcn/ui is documented in
