@@ -476,7 +476,7 @@ export default function App() {
       <SidebarProvider>
         <Sidebar collapsible="offcanvas">
           <SidebarContent>
-            <LayersPanel cfg={cfg} hidden={hiddenLayers}
+            <LayersPanel cfg={cfg} update={update} hidden={hiddenLayers}
               onToggleHidden={toggleHidden} selected={selected} onSelect={setSelected} />
           </SidebarContent>
         </Sidebar>
