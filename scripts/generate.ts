@@ -5,19 +5,40 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
-import { buildArtPdf, buildMaskPdf, type Assets } from "../src/pdf/build";
+import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "../src/pdf/build";
+import type { CollabSlot } from "../src/types";
 import { buildPsd, type PsdAssets } from "../src/psd/build";
 import { defaultConfig, parseConfigFile } from "../src/defaults";
 import { validateMask, recolorMaskForPdf } from "../src/maskimage";
+import { tintRgba } from "../src/collab";
 import { validateUpc } from "../src/upc";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const asset = (p: string) => join(here, "..", "src", "assets", p);
 
-const [texturePath, maskPath, outDir, configPath] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const flag = (name: string) =>
+  argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
+const [texturePath, maskPath, outDir, configPath] = argv.filter((a) => !a.startsWith("--"));
+
+/** Load a collab logo by extension: .svg as source text (recolorable per its
+ *  slot's style), anything else as raster bytes. */
+const collabImage = (p: string | undefined, slot: CollabSlot): CollabImage | null => {
+  if (!p) return null;
+  if (/\.svg$/i.test(p)) return { kind: "svg", svg: readFileSync(p, "utf8") };
+  // Color overlay: repaint the pixels before embedding. PNG only — pngjs is
+  // the harness's only decoder, so a JPEG passes through untinted.
+  if (slot.tintRaster && /\.png$/i.test(p)) {
+    const png = PNG.sync.read(readFileSync(p));
+    tintRgba(new Uint8Array(png.data.buffer, png.data.byteOffset, png.data.length), slot.fill);
+    return { kind: "png", bytes: PNG.sync.write(png) };
+  }
+  return { kind: /\.jpe?g$/i.test(p) ? "jpg" : "png", bytes: readFileSync(p) };
+};
 if (!texturePath || !maskPath || !outDir) {
   console.error(
-    "usage: npm run generate -- <texture|none> <mask.png|none> <outDir> [config.json]",
+    "usage: npm run generate -- <texture|none> <mask.png|none> <outDir> [config.json] " +
+      "[--collab-left=<file>] [--collab-center=<file>]",
   );
   process.exit(1);
 }
@@ -55,6 +76,8 @@ const assets: Assets = {
     bold: readFileSync(asset("fonts/Poppins-Bold.ttf")),
   },
   logoSvg: readFileSync(asset("logo2025.svg"), "utf8"),
+  collabLeft: collabImage(flag("collab-left"), cfg.collabLeft),
+  collabCenter: collabImage(flag("collab-center"), cfg.collabCenter),
   // "none" skips the texture: the art PDF is then just the elements on
   // bare stock (matches the app's pre-drop preview).
   texture: textureBytes && {

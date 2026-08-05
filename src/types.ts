@@ -30,6 +30,31 @@ export interface StyledLine extends Style {
   bold?: boolean;
 }
 
+/** Mixed into the styles of elements whose vertical placement is adjustable.
+ *  Only the logo-like elements carry it: the text elements are positioned by
+ *  baselines in layout.ts, and the left collab block deliberately FLOWS under
+ *  the description (see collabLeftFlow) rather than sitting at a fixed y —
+ *  offsetY nudges that computed position, it does not replace it. */
+export interface Positioned {
+  /** Vertical nudge in PDF points, positive = down. Absent/0 = as laid out. */
+  offsetY?: number;
+}
+
+/** Styling for one collab-logo slot. The uploaded image itself is *not* part
+ *  of the config (it is supplied at build time via Assets, like the texture
+ *  and mask) — only how it is drawn. */
+export interface CollabSlot extends Style, Positioned {
+  /** Multiplier on the fit-to-box size: 1 = fill the slot box, 0.5 = half. */
+  scale: number;
+  /** Raster art only (PNG/JPG): repaint every non-transparent pixel in this
+   *  slot's `fill`, keeping alpha — the color overlay a one-color partner logo
+   *  needs. Off by default, because a full-color logo must keep its own
+   *  colors, and because a logo with an opaque background tints to a solid
+   *  block (see tintRgba). Vector art ignores it: an SVG always takes the
+   *  slot's fill, which is what its Fill control has always done. */
+  tintRaster?: boolean;
+}
+
 export interface LabelConfig {
   /** Displayed uppercase, also names the output files. */
   beerName: string;
@@ -49,6 +74,19 @@ export interface LabelConfig {
   descStyle: Style;
   /** 12-digit UPC-A. */
   upc: string;
+  /** Collab labels: the master switch for the whole collab block. Off, nothing
+   *  collab draws and the form hides its fields, whatever art is loaded. On,
+   *  each slot draws only once its image is supplied in Assets: `collabLeft`
+   *  flows under the description below an automatic bold "A collaborative
+   *  project with" lead-in (styled by `collabLead`); `collabCenter` hangs
+   *  under the laurel. */
+  collabEnabled: boolean;
+  collabLead: Style;
+  collabLeft: CollabSlot;
+  /** Its `offsetY` is deliberately unused: the centre mark hangs off the
+   *  laurel's nudged bottom, so `logo.offsetY` moves the pair as one stack
+   *  and they keep their gap. The form exposes no separate nudge for it. */
+  collabCenter: CollabSlot;
   /** The UPC barcode's style. Flat fields like the QR's, for the same reason:
    *  it is drawn from geometry, not from a StyledLine. barcodeFill paints the
    *  bars and the digits; barcodeStroke "none" = no white halo, else both get
@@ -71,7 +109,7 @@ export interface LabelConfig {
   // Static template elements (text fixed, style assignable):
   volume: StyledLine; // "1 PINT"
   wordmark: Style; // "Lolev Beer"
-  logo: Style; // laurel
+  logo: Style & Positioned; // laurel
   handleAddress: StyledLine; // "@LOLEVBEER  5247 BUTLER ST, PITTSBURGH, PA"
   warning: Style; // government warning paragraph
   storeCold: StyledLine; // "STORE COLD"

@@ -4,9 +4,13 @@ import { describe, expect, it } from "vitest";
 import { encodeUpc, upcCheckDigit, validateUpc } from "../src/upc";
 import { qrPath, qrShapes, machineName, qrUrl } from "../src/qr";
 import { recolorMaskForPdf, validateMask } from "../src/maskimage";
+import { tintRgba } from "../src/collab";
 import { defaultConfig, parseConfigFile, toConfigFile } from "../src/defaults";
 import { parseDescription, serializeDescription } from "../src/description";
-import { DEFAULT_STROKE_PX, GOLD, parseHexFill } from "../src/layout";
+import {
+  COLLAB_LEAD, COLLAB_LEFT, DEFAULT_STROKE_PX, DESC, GOLD, QR,
+  collabLeftFlow, parseHexFill,
+} from "../src/layout";
 
 describe("upc", () => {
   it("computes the Labradorite check digit", () => {
@@ -200,6 +204,37 @@ describe("hex fills", () => {
     expect(cfg.nameStyle.fill).toBe(GOLD);
     expect(cfg.warning.fill).toBe("#000000");
     expect(cfg.styleLine.fill).toBe("none");
+  });
+});
+
+describe("collab raster tint", () => {
+  it("repaints opaque pixels and leaves transparent ones alone", () => {
+    // opaque black, half-transparent white, fully transparent white
+    const rgba = new Uint8Array([0, 0, 0, 255, 255, 255, 255, 128, 255, 255, 255, 0]);
+    tintRgba(rgba, "#F3CD80");
+    expect([...rgba.slice(0, 4)]).toEqual([0xf3, 0xcd, 0x80, 255]);
+    // Alpha carries the artwork, so a partly transparent edge keeps its alpha
+    // and just changes hue — that is what keeps tinted edges anti-aliased.
+    expect([...rgba.slice(4, 8)]).toEqual([0xf3, 0xcd, 0x80, 128]);
+    // A fully transparent pixel is untouched: nothing there to recolor.
+    expect([...rgba.slice(8)]).toEqual([255, 255, 255, 0]);
+  });
+});
+
+describe("collab layout", () => {
+  it("flows the left block below the description and keeps it on the label", () => {
+    const six = collabLeftFlow(6);
+    const three = collabLeftFlow(3);
+    expect(six.leadBaselines).toHaveLength(COLLAB_LEAD.lines.length);
+    expect(six.leadBaselines[1]).toBeGreaterThan(six.leadBaselines[0]);
+    expect(six.logoTop).toBeGreaterThan(six.leadBaselines[1]);
+    // Fewer description lines pull the whole block up by exactly the leading.
+    expect(six.logoTop - three.logoTop).toBeCloseTo(3 * DESC.leading);
+    // Even the tallest realistic block clears the QR code at the bottom left.
+    expect(six.logoTop + COLLAB_LEFT.maxH).toBeLessThan(QR.yTop);
+  });
+  it("does not run off the top with an empty description", () => {
+    expect(collabLeftFlow(0).leadBaselines[0]).toBe(collabLeftFlow(1).leadBaselines[0]);
   });
 });
 

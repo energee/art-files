@@ -3,15 +3,16 @@
 // overlay-compare preview, and on-demand full-resolution exports. Mirrors
 // the old main.ts wiring, componentized.
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { LabelConfig } from "@/types";
+import type { CollabSlot, Fill, LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
 import { defaultConfig, parseConfigFile, toConfigFile } from "@/defaults";
 import { validateUpc } from "@/upc";
 import { validateMask, recolorMaskForPdf } from "@/maskimage";
-import { buildArtPdf, buildMaskPdf, type Assets } from "@/pdf/build";
+import { tintRgba } from "@/collab";
+import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "@/pdf/build";
 import { buildPsd, PSD_DOC, type PsdAssets } from "@/psd/build";
-import { LabelForm } from "@/components/LabelForm";
+import { LabelForm, type CollabFiles } from "@/components/LabelForm";
 import { StyleProperties } from "@/components/StyleProperties";
 import { FileDrop } from "@/components/FileDrop";
 import { CommandMenu } from "@/components/CommandMenu";
@@ -30,6 +31,37 @@ import logoSvg from "@/assets/logo2025.svg?raw";
  *  debounced preview builds use, so keystroke-driven rebuilds never churn the
  *  print-size image (a burst of those OOMs the tab). */
 type Loaded = { bytes: Uint8Array; previewBytes: Uint8Array; name: string; previewUrl: string };
+
+/** A loaded collab logo: what the renderer needs, plus what the drop zone
+ *  shows. previewUrl is the raw file, so an SVG thumbnails as itself. */
+type CollabFile = { image: CollabImage; name: string; previewUrl: string };
+
+/** Repaint a raster collab logo in `fill`, keeping alpha, and re-encode it as
+ *  PNG for embedding — the color-overlay path for PNG/JPG art, which pdf-lib
+ *  can only draw as-is. Same decode/recolor/re-encode shape as onMask. */
+async function tintedPng(bytes: Uint8Array, fill: Fill): Promise<Uint8Array> {
+  const bmp = await createImageBitmap(new Blob([bytes as unknown as BlobPart]));
+  const canvas = document.createElement("canvas");
+  canvas.width = bmp.width;
+  canvas.height = bmp.height;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(bmp, 0, 0);
+  bmp.close();
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  tintRgba(img.data, fill);
+  ctx.putImageData(img, 0, 0);
+  const blob = await new Promise<Blob>((res) => canvas.toBlob((b) => res(b!), "image/png"));
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+/** Read a dropped collab logo: SVG as source text (so it can be recolored
+ *  per its slot's style), anything else as raster bytes. */
+async function readCollab(f: File): Promise<CollabFile> {
+  const image: CollabImage = /\.svg$/i.test(f.name)
+    ? { kind: "svg", svg: await f.text() }
+    : { kind: /\.jpe?g$/i.test(f.name) ? "jpg" : "png", bytes: new Uint8Array(await f.arrayBuffer()) };
+  return { image, name: f.name, previewUrl: URL.createObjectURL(f) };
+}
 
 /** Longest preview-texture edge in px — covers PreviewCompare's canvas at its
  *  2.5x oversample while keeping each preview rebuild a few MB. */
@@ -81,6 +113,11 @@ export default function App() {
   const [measure, setMeasure] = useState<Measure | null>(null);
   const [texture, setTexture] = useState<(Loaded & { kind: "png" | "jpg" }) | null>(null);
   const [mask, setMask] = useState<(Loaded & { error?: string }) | null>(null);
+  // Collab logos. Unlike the texture and mask these need no preview-resolution
+  // twin: they are at most a 70pt mark, so the same bytes serve the preview
+  // build and the print export.
+  const [collabLeft, setCollabLeft] = useState<CollabFile | null>(null);
+  const [collabCenter, setCollabCenter] = useState<CollabFile | null>(null);
   // Preview-resolution PDFs for the on-screen compare only; downloads always
   // rebuild at full resolution (see buildFull).
   const [pdfs, setPdfs] = useState<{ artBytes: Uint8Array; maskBytes: Uint8Array } | null>(null);
@@ -180,6 +217,37 @@ export default function App() {
     });
   }
 
+  /** Load a collab logo into `slot`, revoking the previous thumbnail URL. */
+  function onCollab(slot: "left" | "center", f: File) {
+    void readCollab(f).then((next) => {
+      const set = slot === "left" ? setCollabLeft : setCollabCenter;
+      set((old) => {
+        if (old) URL.revokeObjectURL(old.previewUrl);
+        return next;
+      });
+    });
+  }
+  const collabFiles: CollabFiles = {
+    leftName: collabLeft?.name, leftUrl: collabLeft?.previewUrl,
+    centerName: collabCenter?.name, centerUrl: collabCenter?.previewUrl,
+    onLeft: (f) => onCollab("left", f),
+    onCenter: (f) => onCollab("center", f),
+  };
+  /** The collab half of Assets, shared by the preview and export builds.
+   *  Async because a tinted raster has to be decoded and re-encoded; vector
+   *  art and untinted rasters pass straight through. */
+  async function collabAssets() {
+    const resolve = async (f: CollabFile | null, slot: CollabSlot) => {
+      if (!f) return null;
+      if (f.image.kind === "svg" || !slot.tintRaster) return f.image;
+      return { kind: "png" as const, bytes: await tintedPng(f.image.bytes, slot.fill) };
+    };
+    return {
+      collabLeft: await resolve(collabLeft, cfg.collabLeft),
+      collabCenter: await resolve(collabCenter, cfg.collabCenter),
+    };
+  }
+
   // Debounced preview regeneration on any input change, at preview resolution
   // (Loaded.previewBytes). Two guards keep keystroke bursts from OOMing the
   // tab: builds are serialized through buildChain (the debounce alone can't
@@ -196,7 +264,7 @@ export default function App() {
         try {
           const fonts = await fontsPromise;
           const assets: Assets = {
-            fonts, logoSvg,
+            fonts, logoSvg, ...(await collabAssets()),
             texture: texture ? { bytes: texture.previewBytes, kind: "png" } : undefined,
             maskPng: mask?.previewBytes,
           };
@@ -215,7 +283,7 @@ export default function App() {
       });
     }, 600);
     return () => { stale = true; clearTimeout(timer); };
-  }, [cfg, texture, mask, blocked]);
+  }, [cfg, texture, mask, collabLeft, collabCenter, blocked]);
 
   // Revoking immediately can abort a large download, so each URL lives until
   // the next export replaces it — a timer would instead pin a full Blob copy
@@ -235,7 +303,7 @@ export default function App() {
     try {
       const fonts = await fontsPromise;
       const assets: Assets = {
-        fonts, logoSvg,
+        fonts, logoSvg, ...(await collabAssets()),
         texture: texture ? { bytes: texture.bytes, kind: texture.kind } : undefined,
         maskPng: mask?.bytes,
       };
@@ -324,7 +392,8 @@ export default function App() {
               onFile={(f) => void onMask(f)} />
           </div>
           {loadError && <p className="mt-2 text-xs text-destructive">{loadError}</p>}
-          <LabelForm cfg={cfg} errors={errors} update={update} selected={selected} onSelect={setSelected} />
+          <LabelForm cfg={cfg} errors={errors} update={update} selected={selected}
+            onSelect={setSelected} collab={collabFiles} />
           {selected && (
             <div className="mt-3">
               <StyleProperties id={selected} cfg={cfg} update={update} onClose={() => setSelected(null)} />

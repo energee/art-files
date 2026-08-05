@@ -356,8 +356,10 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
   const centered = (text: string, cx: number, size: number, face: Face, tracking = 0) =>
     cx - L.trackedWidth(f[face].widthOfTextAtSize(text, size), text, tracking) / 2;
   const logo = parseLogo(assets.logoSvg, L.LOGO.w);
+  // Same nudge the PDFs apply, so the PSD stays registered with them.
+  const logoCy = L.LOGO.cy + (cfg.logo.offsetY ?? 0);
   const logoPaths = logo.paths.flatMap((d) =>
-    svgToPaths(d, L.LOGO.cx - logo.w / 2, L.LOGO.cy - logo.h / 2),
+    svgToPaths(d, L.LOGO.cx - logo.w / 2, logoCy - logo.h / 2),
   );
   groups.push({
     name: "Center",

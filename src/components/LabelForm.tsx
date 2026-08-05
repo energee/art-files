@@ -22,9 +22,32 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { DescriptionEditor } from "./DescriptionEditor";
+import { FileDrop } from "./FileDrop";
 
 type Update = (fn: (c: LabelConfig) => void) => void;
+
+/** Collab art is whatever the partner brewery sends: vector preferred (it
+ *  takes the slot's fill/layer like the laurel), raster accepted. */
+const COLLAB_ACCEPT = {
+  "image/svg+xml": [".svg"],
+  "image/png": [".png"],
+  "image/jpeg": [".jpg", ".jpeg"],
+};
+
+/** The uploaded collab logos and their handlers. They live in App beside the
+ *  texture and mask — like those, the image is a build-time asset, not part of
+ *  the saved config, which holds only the slot's style and size. */
+export interface CollabFiles {
+  leftName?: string;
+  leftUrl?: string;
+  centerName?: string;
+  centerUrl?: string;
+  onLeft: (f: File) => void;
+  onCenter: (f: File) => void;
+}
 
 // The six template elements and their count both come from ELEMENTS' group
 // field, computed once — never a second hardcoded id list, so a future
@@ -128,6 +151,81 @@ function StyleOnlyElementRow(props: {
   );
 }
 
+/** Vertical nudge in points for a logo-like element, positive = down. Text
+ *  elements have no equivalent: their baselines are layout.ts's job. */
+function OffsetInput(props: {
+  value?: number; title: string; onChange: (v: number) => void; onFocus: () => void;
+}) {
+  return (
+    <Input
+      type="number"
+      step={1}
+      title={props.title}
+      aria-label={props.title}
+      className="h-6 w-16 text-xs"
+      value={props.value ?? 0}
+      onFocus={props.onFocus}
+      // An empty or non-numeric field reads as "no nudge", not NaN — which
+      // would propagate into every y in the draw and blank the label.
+      onChange={(e) => props.onChange(Number(e.target.value) || 0)}
+    />
+  );
+}
+
+/** A collab logo slot: the size knob plus the row's usual job of opening
+ *  StyleProperties for that element. Size is a plain multiplier on the slot's
+ *  fit-to-box scale (1 = fit) — collab marks differ too much in visual weight
+ *  for one fitted size to be right for all of them. */
+function CollabSlotRow(props: {
+  id: "collabLeft" | "collabCenter"; label: string; cfg: LabelConfig; update: Update;
+  selected: boolean; onSelect: (id: ElementId) => void;
+  /** Only the left slot gets a nudge of its own. The centre mark is part of
+   *  the centre stack and moves with the laurel — see the Logo row. */
+  offset?: boolean;
+}) {
+  const slot = props.cfg[props.id];
+  const htmlId = machineName(props.label);
+  return (
+    <Row label={props.label} htmlFor={htmlId} marker={!isDefaultStyle(props.id, slot)}>
+      <Input
+        id={htmlId}
+        type="number"
+        step={0.05}
+        min={0.1}
+        max={2}
+        className={cn("h-6 w-20 text-xs", props.selected && "ring-1 ring-ring")}
+        value={slot.scale}
+        onFocus={() => props.onSelect(props.id)}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          // Ignore a cleared or nonsensical field rather than rendering a
+          // zero-size (invisible) or negative-scaled logo.
+          if (v > 0) props.update((c) => { c[props.id].scale = v; });
+        }}
+      />
+      {props.offset && (
+        <OffsetInput
+          value={slot.offsetY}
+          title="Vertical nudge, points (+ = down)"
+          onFocus={() => props.onSelect(props.id)}
+          onChange={(v) => props.update((c) => { c[props.id].offsetY = v; })}
+        />
+      )}
+      {/* Raster only: an SVG already takes the slot's fill. Shown always
+          rather than only for a loaded PNG so the setting is discoverable
+          before the art is dropped. */}
+      <label className="flex shrink-0 cursor-pointer items-center gap-1 text-[11px] text-muted-foreground">
+        <Checkbox
+          checked={!!slot.tintRaster}
+          onCheckedChange={(on) =>
+            props.update((c) => { c[props.id].tintRaster = on === true; })}
+        />
+        tint PNG
+      </label>
+    </Row>
+  );
+}
+
 function Heading(props: { children?: React.ReactNode }) {
   return (
     <h2 className="mb-1.5 mt-4 flex items-center gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
@@ -142,8 +240,9 @@ export function LabelForm(props: {
   update: Update;
   selected: ElementId | null;
   onSelect: (id: ElementId | null) => void;
+  collab: CollabFiles;
 }) {
-  const { cfg, errors, update, selected, onSelect } = props;
+  const { cfg, errors, update, selected, onSelect, collab } = props;
   return (
     <div>
       <Heading>This beer</Heading>
@@ -207,6 +306,58 @@ export function LabelForm(props: {
         onChange={(md) => update((c) => { c.description = md; })}
       />
 
+      {/* Collab block: everything below the switch is mounted only while it is
+          on, so a normal release never sees these fields. Turning it off does
+          not discard the uploaded art or the slot styles — the switch is the
+          one thing the renderer checks, so flipping it back restores the
+          label exactly as it was. */}
+      <Heading>
+        <label className="flex cursor-pointer items-center gap-1.5">
+          <Switch
+            checked={cfg.collabEnabled}
+            onCheckedChange={(on) => {
+              update((c) => { c.collabEnabled = on; });
+              // Leaving a collab element selected would strand the style panel
+              // on a row that just unmounted.
+              if (!on && selected?.startsWith("collab")) onSelect(null);
+            }}
+          />
+          Collab
+        </label>
+      </Heading>
+      {cfg.collabEnabled && (
+        <>
+          <div className="mb-1.5 flex gap-2">
+            <FileDrop label="Left logo (SVG/PNG)" accept={COLLAB_ACCEPT}
+              fileName={collab.leftName} previewUrl={collab.leftUrl}
+              onFile={collab.onLeft} />
+            <FileDrop label="Center logo (SVG/PNG)" accept={COLLAB_ACCEPT}
+              fileName={collab.centerName} previewUrl={collab.centerUrl}
+              onFile={collab.onCenter} />
+          </div>
+          <StyleOnlyElementRow id="collabLead" label="Lead-in" cfg={cfg}
+            selected={selected === "collabLead"} onSelect={onSelect} />
+          <CollabSlotRow id="collabLeft" label="Left size" cfg={cfg} update={update}
+            selected={selected === "collabLeft"} onSelect={onSelect} offset />
+          <CollabSlotRow id="collabCenter" label="Center size" cfg={cfg} update={update}
+            selected={selected === "collabCenter"} onSelect={onSelect} />
+          {/* Same cfg.logo.offsetY the Logo row edits, surfaced here too: it
+              is what moves the centre collab mark, and the Logo row lives
+              inside the collapsed Brand template disclosure where nobody
+              working on a collab would find it. Both inputs are controlled
+              off the one field, so they can never disagree. */}
+          <Row label="Stack nudge">
+            <OffsetInput
+              value={cfg.logo.offsetY}
+              title="Move the laurel and the centre collab mark together, points (+ = down)"
+              onFocus={() => onSelect("logo")}
+              onChange={(v) => update((c) => { c.logo.offsetY = v; })}
+            />
+            <span className="text-[11px] text-muted-foreground">laurel + centre mark</span>
+          </Row>
+        </>
+      )}
+
       <Collapsible>
         <Heading>
           <CollapsibleTrigger className="group flex w-full cursor-pointer items-center gap-1 text-left">
@@ -220,6 +371,29 @@ export function LabelForm(props: {
             // Only "Handle / address" needs shortening — the rest already
             // match ELEMENTS' label verbatim — to fit the row's w-24 column.
             const label = el.id === "handleAddress" ? "Handle/addr" : el.label;
+            // The laurel gets a vertical nudge alongside its style row — it
+            // is drawn as a box at a fixed cy, so unlike a text element there
+            // is no baseline field to move it with. It moves the whole centre
+            // stack: the collab mark hangs off the laurel's nudged bottom
+            // (see drawElements), so the pair keeps its gap and cannot drift
+            // apart the way two independent knobs let it.
+            if (el.id === "logo")
+              return (
+                <div key={el.id}>
+                  <StyleOnlyElementRow
+                    id={el.id} label={label} cfg={cfg}
+                    selected={selected === el.id} onSelect={onSelect}
+                  />
+                  <Row label="Stack nudge">
+                    <OffsetInput
+                      value={cfg.logo.offsetY}
+                      title="Move the laurel and the centre collab mark together, points (+ = down)"
+                      onFocus={() => onSelect("logo")}
+                      onChange={(v) => update((c) => { c.logo.offsetY = v; })}
+                    />
+                  </Row>
+                </div>
+              );
             return el.hasBold ? (
               <TextElementRow key={el.id} id={el.id} label={label} cfg={cfg} update={update} onSelect={onSelect} />
             ) : (

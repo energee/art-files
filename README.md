@@ -45,6 +45,16 @@ field. Design doc:
 rewrite to React + Tailwind + shadcn/ui is documented in
 `docs/superpowers/specs/2026-08-02-shadcn-ui-rewrite-design.md`.
 
+Collab labels sit behind a **Collab** switch in the form — with it off nothing
+collab draws and its fields stay hidden, which is every non-collab release. On,
+it takes up to two logo uploads (SVG, PNG or JPG): the **left** one prints in
+the left column under the description, below an automatic bold "A collaborative
+project with"; the **center** one prints under the laurel. Each scales to fit
+its slot, with a size knob (1 = fit), and each is a stylable element like any
+other — an SVG logo takes its slot's fill/layer/stroke, while raster art prints
+as-is and gets a white-ink underlay in the mask so it doesn't sit on the
+metallic texture.
+
 ## Usage
 
 The UI is built with React 19, Tailwind v4, and shadcn/ui (Linear-style
@@ -129,7 +139,8 @@ handoff.
 Headless (same renderer, used for iteration/batches):
 
 ```bash
-npm run generate -- <texture.png|none> <mask.png|none> <outDir> [config.json]
+npm run generate -- <texture.png|none> <mask.png|none> <outDir> [config.json] \
+  [--collab-left=<logo.svg|png|jpg>] [--collab-center=<...>]
 # writes {Name}.pdf, {Name}-mask.pdf and {Name}.psd
 ```
 
