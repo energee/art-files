@@ -46,7 +46,7 @@ export function defaultConfig(): LabelConfig {
       fill: GOLD,
       layer: "metallic",
     },
-    warning: { fill: "#000000", layer: "metallic" },
+    warning: { fill: GOLD, layer: "metallic" },
     storeCold: { text: "STORE COLD", fill: GOLD, layer: "metallic", bold: true },
   };
 }

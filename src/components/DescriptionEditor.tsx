@@ -76,13 +76,13 @@ export function linesToMarkdown(lines: EditorLine[]): string {
 
 /** Tailwind can't see a class name built from a JS variable at build time
  *  (arbitrary-value scanning is purely static), so this can't reference
- *  GOLD directly — keep it matching layout.ts's GOLD ("#D0B070") by eye. */
+ *  GOLD directly — keep it matching layout.ts's GOLD ("#F3CD80") by eye. */
 function lineClasses(l: Pick<EditorLine, "bold" | "white" | "header">): string {
   return cn(
     "font-heading leading-snug outline-none",
     l.header ? "text-sm" : "text-xs",
     l.bold && "font-semibold",
-    l.white ? "text-white" : "text-[#D0B070]",
+    l.white ? "text-white" : "text-[#F3CD80]",
   );
 }
 

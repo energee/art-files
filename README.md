@@ -11,7 +11,7 @@ printer:
   `0,156,215` = everything else)
 
 Every text element — and each description line individually — has a **fill**
-(a hex color like `#D0B070`, or `none` for no ink, drawn in the art PDF) and
+(a hex color like `#F3CD80`, or `none` for no ink, drawn in the art PDF) and
 a **layer** (`metallic` knocks out of the white layer; `white` gets a
 white-ink underlay). The description block is authored as a markdown
 subset, one label line per line: `# text` = header, `**text**` = bold,
@@ -116,7 +116,7 @@ npm run generate -- <texture.png|none> <mask.png|none> <outDir> [config.json]
 The Save/Load config buttons round-trip the whole form as JSON (`{version: 1,
 ...LabelConfig}`, see `src/types.ts`). Config files saved by the pre-rewrite
 vanilla-TS UI (named fills like `"gold"`/`"white"`/`"black"`, a `qrData`
-field) are auto-migrated on load: `gold` → `#D0B070`, `black` → `#000000`,
+field) are auto-migrated on load: `gold` → the current default gold (`#F3CD80`), `black` → `#000000`,
 `white` → `none`, and `qrData` is dropped in favor of the derived QR
 payload. Configs saved before the barcode carried a style of its own pick
 up the colors the renderer used to hardcode, and leave its stroke width

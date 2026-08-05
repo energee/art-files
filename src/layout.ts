@@ -7,9 +7,9 @@ export const PAGE = { w: 585.12, h: 369.12 };
 export const ART = { x: 4.56, y: 4.56, w: 576, h: 360 };
 export const CENTER_X = PAGE.w / 2;
 
-/** Default metallic gold, sampled from the Labradorite reference render.
- *  (Hex of the old rgb 0.815/0.69/0.44.) */
-export const GOLD = "#D0B070" as const;
+/** Default metallic gold. Originally #D0B070 (sampled from the Labradorite
+ *  reference render); brightened to #F3CD80 by request 2026-08. */
+export const GOLD = "#F3CD80" as const;
 
 /** Fixed drawing colors (RGB 0-1). Every element fill is free hex now,
  *  including the barcode's — these remain for the mask's two paints
@@ -55,9 +55,10 @@ export const HANDLE_ADDR = { x: 505, yStart: 346.28, size: 13.87 };
 export const WARNING = { x: 516.62, yStart: 344.56, size: 6.06, leading: 7, maxLen: 330 };
 // Measured off the reference PDF via `pdftotext -bbox`: the glyph band runs
 // x 539.56-569.87 and pdftotext reports the full font box (ascender 1.05em +
-// descender 0.35em = 1.40em), so size = 30.31/1.40 and the baseline sits
-// 1.05em in from xMin. yStart matches the reference's 149.00 already.
-export const STORE_COLD = { x: 562.3, yStart: 149, size: 21.65 };
+// descender 0.35em = 1.40em), so size = 30.31/1.40 = 21.65 and the baseline
+// sits 1.05em in from xMin. yStart matches the reference's 149.00 already.
+// Size later reduced 1.5pt from the measured value by request (2026-08).
+export const STORE_COLD = { x: 562.3, yStart: 149, size: 20.15 };
 
 // Barcode (right edge, rotated 90deg CCW: bars run horizontally) ---------
 // Proportions are JsBarcode's UPC-A rendering, so this matches the
