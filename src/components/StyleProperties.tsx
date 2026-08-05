@@ -11,7 +11,7 @@ import {
   AlignLeft, Barcode, Beaker, Handshake, Image as ImageIcon, Info, Layers as LayersIcon,
   Percent, QrCode, Snowflake, Sparkles, Text, TriangleAlert, Type, X,
 } from "lucide-react";
-import type { LabelConfig, Layer, StyledLine } from "@/types";
+import type { LabelConfig, StyledLine } from "@/types";
 import { applyStyle, elementById, isDefaultStyle, type ElementId } from "@/elements";
 import { DOC_LAYER_LABELS, isElementId, type LayerId } from "@/components/layers";
 import { defaultConfig } from "@/defaults";
@@ -20,15 +20,14 @@ import { ScrubField } from "./ScrubField";
 import { DescriptionEditor } from "./DescriptionEditor";
 import { FileDrop } from "./FileDrop";
 import { machineName, qrUrl } from "@/qr";
+import { cn } from "@/lib/utils";
 import { DEFAULT_STROKE_PX } from "@/layout";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { HandMetal } from "./LayersPanel";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 
 type Update = (fn: (c: LabelConfig) => void) => void;
 
@@ -195,8 +194,8 @@ function CollabSlotContent(props: {
       {/* Raster only: an SVG already takes the slot's fill. Shown always
           rather than only for a loaded PNG so the setting is discoverable
           before the art is dropped. */}
-      <label className="flex cursor-pointer items-center gap-1 text-[11px] text-muted-foreground">
-        <Checkbox
+      <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
+        <Switch
           checked={!!slot.tintRaster}
           onCheckedChange={(on) =>
             props.update((cc) => { cc[props.id].tintRaster = on === true; })}
@@ -334,9 +333,10 @@ function Content(props: {
   }
 }
 
-/** The shared style stack for an element layer — unchanged in behavior from
- *  the old panel: fill, plate select, bold where applicable, tracking for
- *  glyph layers, and the outer stroke toggle with color/width. */
+/** The style stack for an element layer, Figma-style groups: Ink (fill +
+ *  metallic toggle in one row), Text (bold switch + tracking, glyph layers
+ *  only), and Stroke (switch header; color + width while on). Same
+ *  applyStyle writes as ever — only the arrangement changed. */
 function ElementStyle(props: { id: ElementId; cfg: LabelConfig; update: Update }) {
   const el = elementById(props.id);
   // The element's shipped stroke colour, for the toggle below. "none" would
@@ -351,56 +351,80 @@ function ElementStyle(props: { id: ElementId; cfg: LabelConfig; update: Update }
   const set = (patch: Partial<StyledLine>) =>
     props.update((c) => applyStyle(c, props.id, patch));
   const strokeOn = !!s.stroke && s.stroke !== "none";
+  const metallic = s.layer === "metallic";
   const fid = machineName(el.label); // prefixes this panel's control ids
 
   return (
     <div className="space-y-3">
       <div className="space-y-1">
-        <Label htmlFor={`${fid}-fill`} className="text-xs text-muted-foreground">Fill</Label>
-        <ColorField
-          id={`${fid}-fill`} value={s.fill} onChange={(v) => set({ fill: v })}
-          allowNone={el.allowNone}
-        />
-      </div>
-
-      <div className="flex items-center justify-between">
-        <Label htmlFor={`${fid}-layer`} className="text-xs text-muted-foreground">Layer</Label>
-        <Select value={s.layer} onValueChange={(v) => set({ layer: v as Layer })}>
-          <SelectTrigger id={`${fid}-layer`} className="h-6 w-28 text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="metallic">metallic</SelectItem>
-            <SelectItem value="white">white</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {el.hasBold && (
-        <div className="flex items-center justify-between">
-          <Label htmlFor={`${fid}-bold`} className="text-xs text-muted-foreground">Bold</Label>
-          <Checkbox
-            id={`${fid}-bold`}
-            checked={bold}
-            onCheckedChange={(v) => set({ bold: v === true })}
-          />
+        <Heading>Ink</Heading>
+        <div className="flex items-center gap-1.5">
+          <div className="min-w-0 flex-1">
+            <ColorField
+              id={`${fid}-fill`} value={s.fill} onChange={(v) => set({ fill: v })}
+              allowNone={el.allowNone}
+            />
+          </div>
+          {/* Same metallic toggle as the layer rows — plate choice is part
+              of the ink, so it sits beside the color. */}
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label="Metallic"
+                  aria-pressed={metallic}
+                  onClick={() => set({ layer: metallic ? "white" : "metallic" })}
+                  className={cn(
+                    "grid size-6 shrink-0 cursor-pointer place-items-center rounded-sm border border-input hover:text-foreground",
+                    metallic ? "bg-accent text-foreground" : "text-muted-foreground opacity-60 hover:opacity-100",
+                  )}
+                >
+                  <HandMetal className="size-3.5" />
+                </button>
+              }
+            />
+            <TooltipContent>Metallic</TooltipContent>
+          </Tooltip>
         </div>
-      )}
+      </div>
 
-      {el.isText && (
-        // Clamped both ends by ScrubField: tracking wide enough to overrun
-        // the label reads as a broken line, not a style.
-        <ScrubField
-          id={`${fid}-tracking`} label="Tracking" unit="pt"
-          value={s.letterSpacing ?? 0} min={-2} max={20} step={0.01} dragStep={0.1}
-          onChange={(v) => set({ letterSpacing: v })}
-        />
+      {(el.hasBold || el.isText) && (
+        <div className="space-y-1">
+          <Heading>Text</Heading>
+          <div className="flex items-center gap-3">
+            {el.hasBold && (
+              <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
+                <Switch
+                  id={`${fid}-bold`}
+                  checked={bold}
+                  onCheckedChange={(v) => set({ bold: v === true })}
+                />
+                Bold
+              </label>
+            )}
+            {el.isText && (
+              // Clamped both ends by ScrubField: tracking wide enough to
+              // overrun the label reads as a broken line, not a style.
+              <div className="min-w-0 flex-1">
+                <ScrubField
+                  id={`${fid}-tracking`} label="Tracking" unit="pt"
+                  value={s.letterSpacing ?? 0} min={-2} max={20} step={0.01} dragStep={0.1}
+                  onChange={(v) => set({ letterSpacing: v })}
+                />
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       <div className="space-y-1">
         <div className="flex items-center justify-between">
-          <Label htmlFor={`${fid}-stroke`} className="text-xs text-muted-foreground">Outer stroke</Label>
-          <Checkbox
+          <Heading>Stroke</Heading>
+          <Switch
             id={`${fid}-stroke`}
             checked={strokeOn}
+            aria-label="Outer stroke"
             // Switching a stroke on starts at whatever THIS element ships
             // with — black for everything keylined, the barcode's white halo
             // for the barcode — so defaults.ts stays the only place that
@@ -504,12 +528,7 @@ export function Inspector(props: {
       {/* Document layers (background/mask) carry no Style stack — they are
           file drops only, so the section is omitted rather than shown
           disabled. */}
-      {isEl && (
-        <>
-          <Heading>Style</Heading>
-          <ElementStyle id={id} cfg={props.cfg} update={props.update} />
-        </>
-      )}
+      {isEl && <ElementStyle id={id} cfg={props.cfg} update={props.update} />}
     </div>
   );
 }

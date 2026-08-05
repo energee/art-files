@@ -69,9 +69,10 @@ One panel shaped by the selection:
    - Collab logo layers: their `FileDrop`, scale/offset/tint controls, and
      the collab on/off `Switch`.
    - Background/Mask: their `FileDrop` (moved from the old sidebar top).
-3. **Style** section — the shared stack reused from today's
-   StyleProperties: fill hex + plate select, Outer stroke `Switch` with
-   color/width, letter spacing where applicable.
+3. **Style** — Figma-style groups, switches throughout (no checkboxes):
+   **Ink** (fill color field + the metal-horns metallic toggle in one row),
+   **Text** (Bold switch where applicable + tracking, glyph layers only),
+   **Stroke** (switch in the group header; color + width while on).
    - Background/Mask: no Style section at all — content (the file drop)
      only.
 4. No selection: the whole inspector column collapses (no empty state).

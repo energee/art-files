@@ -77,9 +77,10 @@ const ICONS: Record<LayerId, LucideIcon> = {
   mask: Scan,
 };
 
-/** The metal-horns icon for the per-row metallic toggle (Ted's pick,
- *  hand-metal-stroke-rounded) — inlined since it isn't in lucide. */
-function HandMetal(props: { className?: string }) {
+/** The metal-horns icon for the metallic toggles (Ted's pick,
+ *  hand-metal-stroke-rounded) — inlined since it isn't in lucide. Exported
+ *  for the inspector's Ink group, which uses the same toggle. */
+export function HandMetal(props: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
       strokeLinecap="round" strokeLinejoin="round" className={props.className} aria-hidden="true">
