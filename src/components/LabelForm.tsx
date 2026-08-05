@@ -321,6 +321,20 @@ export function LabelForm(props: {
             selected={selected === "collabLeft"} onSelect={onSelect} offset />
           <CollabSlotRow id="collabCenter" label="Center size" cfg={cfg} update={update}
             selected={selected === "collabCenter"} onSelect={onSelect} />
+          {/* Same cfg.logo.offsetY the Logo row edits, surfaced here too: it
+              is what moves the centre collab mark, and the Logo row lives
+              inside the collapsed Brand template disclosure where nobody
+              working on a collab would find it. Both inputs are controlled
+              off the one field, so they can never disagree. */}
+          <Row label="Stack nudge">
+            <OffsetInput
+              value={cfg.logo.offsetY}
+              title="Move the laurel and the centre collab mark together, points (+ = down)"
+              onFocus={() => onSelect("logo")}
+              onChange={(v) => update((c) => { c.logo.offsetY = v; })}
+            />
+            <span className="text-[11px] text-muted-foreground">laurel + centre mark</span>
+          </Row>
         </>
       )}
 
