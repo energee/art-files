@@ -124,7 +124,7 @@ function StyleSummary({ id, cfg }: { id: ElementId; cfg: LabelConfig }) {
         <Chip color={s.fill} />
         <span>{s.fill === "none" ? "No ink" : "Fill"}</span>
         <span className="text-sidebar-foreground/40">·</span>
-        <span>{s.layer}</span>
+        <span className="capitalize">{s.layer}</span>
       </div>
       {strokeOn && (
         <div className={line}>
