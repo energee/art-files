@@ -3,6 +3,11 @@
 import type { LabelConfig, ConfigFile } from "./types";
 import { DEFAULT_STROKE_PX, GOLD } from "./layout";
 
+/** The shipped outer stroke: pure black, at the standard width. The barcode
+ *  is the one element that does NOT take it — its stroke is a white halo the
+ *  scan contrast depends on (see barcodeStroke below). */
+export const KEYLINE = { stroke: "#000000", strokeWidth: DEFAULT_STROKE_PX } as const;
+
 export const WARNING_TEXT =
   "GOVERNMENT WARNING: (1) ACCORDING TO THE SURGEON GENERAL, WOMEN SHOULD " +
   "NOT DRINK ALCOHOLIC BEVERAGES DURING PREGNANCY BECAUSE OF THE RISK OF " +
@@ -12,10 +17,10 @@ export const WARNING_TEXT =
 export function defaultConfig(): LabelConfig {
   return {
     beerName: "LABRADORITE",
-    nameStyle: { fill: GOLD, layer: "metallic" },
-    styleLine: { text: "Ultra Hopped Ale", fill: GOLD, layer: "metallic" },
+    nameStyle: { fill: GOLD, layer: "metallic", ...KEYLINE },
+    styleLine: { text: "Ultra Hopped Ale", fill: GOLD, layer: "metallic", ...KEYLINE },
     abv: "8",
-    abvStyle: { fill: GOLD, layer: "metallic" },
+    abvStyle: { fill: GOLD, layer: "metallic", ...KEYLINE },
     description: [
       "# HOPS",
       "Freestyle Motueka",
@@ -24,7 +29,7 @@ export function defaultConfig(): LabelConfig {
       "Roy Farms Citra Liquid Lupulin",
       "Fresh Wai-iti Cold-Pressed Hop Juice",
     ].join("\n"),
-    descStyle: { fill: GOLD, layer: "metallic" },
+    descStyle: { fill: GOLD, layer: "metallic", ...KEYLINE },
     upc: "850051366224",
     // Near-black bars and digits inside a white halo, over white ink. The
     // fill matches the PSD's bars (psd/build.ts) so the two deliverables
@@ -38,7 +43,10 @@ export function defaultConfig(): LabelConfig {
     barcodeStrokeWidth: 20,
     barcodeLayer: "white",
     qrFill: GOLD,
-    qrStroke: "none",
+    // Same keyline as the text elements. The QR's stroke is a real stroked
+    // path under the dots (drawSvgPath), not the faked ring text uses.
+    qrStroke: KEYLINE.stroke,
+    qrStrokeWidth: KEYLINE.strokeWidth,
     qrLayer: "metallic",
     // Collab off by default: most releases are not collabs, and with the
     // switch off none of these three are reachable from the form.
@@ -50,17 +58,20 @@ export function defaultConfig(): LabelConfig {
     // types.ts), which is what keeps the centre stack together.
     collabLeft: { fill: GOLD, layer: "metallic", scale: 1, offsetY: 0, tintRaster: false },
     collabCenter: { fill: GOLD, layer: "metallic", scale: 1, tintRaster: false },
-    volume: { text: "1 PINT", fill: GOLD, layer: "metallic", bold: true },
-    wordmark: { fill: GOLD, layer: "metallic" },
+    volume: { text: "1 PINT", fill: GOLD, layer: "metallic", bold: true, ...KEYLINE },
+    wordmark: { fill: GOLD, layer: "metallic", ...KEYLINE },
     // The laurel's classic dark keyline, now an ordinary editable stroke.
-    logo: { fill: GOLD, layer: "metallic", stroke: "#1A1A1A", strokeWidth: DEFAULT_STROKE_PX },
+    logo: { fill: GOLD, layer: "metallic", ...KEYLINE },
     handleAddress: {
-      text: "@LOLEVBEER   5247 BUTLER ST, PITTSBURGH, PA",
+      // The handle is an inline bold run (see parseRuns); the address stays
+      // in the column's semibold face.
+      text: "**@LOLEVBEER** 5247 BUTLER ST, PITTSBURGH, PA",
       fill: GOLD,
       layer: "metallic",
+      ...KEYLINE,
       // Ships tracked (2026-08): the handle and address read as one long
-      // rotated run, and a quarter point of spacing opens it up.
-      letterSpacing: 0.25,
+      // rotated run, and better than a third of a point of spacing opens it up.
+      letterSpacing: 0.38,
     },
     warning: { fill: GOLD, layer: "metallic" },
     // Widely tracked (2026-08): two short uppercase words set large enough

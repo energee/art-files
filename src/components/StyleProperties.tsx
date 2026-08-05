@@ -7,7 +7,7 @@
 import { X } from "lucide-react";
 import type { LabelConfig, Layer, StyledLine } from "@/types";
 import { applyStyle, elementById, isDefaultStyle, type ElementId } from "@/elements";
-import { defaultConfig } from "@/defaults";
+import { KEYLINE, defaultConfig } from "@/defaults";
 import { ColorField } from "./ColorField";
 import { ScrubField } from "./ScrubField";
 import { machineName } from "@/qr";
@@ -120,7 +120,12 @@ export function StyleProperties(props: {
           <Checkbox
             id={`${fid}-stroke`}
             checked={strokeOn}
-            onCheckedChange={(v) => set({ stroke: v === true ? "#FFFFFF" : "none" })}
+            // Starts at the shipped keyline black, so switching a stroke on
+            // matches every other element without a trip to the colour field.
+            // The barcode is the exception: its stroke is the white halo that
+            // carries the scan contrast, so white is the useful start there.
+            onCheckedChange={(v) =>
+              set({ stroke: v === true ? (props.id === "barcode" ? "#FFFFFF" : KEYLINE.stroke) : "none" })}
           />
         </div>
         {strokeOn && (

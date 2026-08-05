@@ -67,12 +67,18 @@ describe("element registry", () => {
   });
 
   it("recognises a gold element's default so deviations can be marked", () => {
-    expect(isDefaultStyle("name", { fill: GOLD, layer: "metallic" })).toBe(true);
-    expect(isDefaultStyle("name", { fill: "#FF0000", layer: "metallic" })).toBe(false);
-    expect(isDefaultStyle("name", { fill: GOLD, layer: "white" })).toBe(false);
-    expect(isDefaultStyle("name", { fill: GOLD, layer: "metallic", stroke: "#FFFFFF" })).toBe(false);
-    // Absent stroke and explicit "none" mean the same thing to the renderers.
-    expect(isDefaultStyle("name", { fill: GOLD, layer: "metallic", stroke: "none" })).toBe(true);
+    // The beer name ships gold/metallic over the black keyline every text
+    // element in the left column now carries.
+    const shipped = { fill: GOLD, layer: "metallic", stroke: "#000000", strokeWidth: 15 } as const;
+    expect(isDefaultStyle("name", shipped)).toBe(true);
+    expect(isDefaultStyle("name", { ...shipped, fill: "#FF0000" })).toBe(false);
+    expect(isDefaultStyle("name", { ...shipped, layer: "white" })).toBe(false);
+    expect(isDefaultStyle("name", { ...shipped, stroke: "#FFFFFF" })).toBe(false);
+    // Dropping the shipped keyline is a deviation, whether spelled as an
+    // explicit "none" or by leaving the field out — the renderers read those
+    // two the same way.
+    expect(isDefaultStyle("name", { ...shipped, stroke: "none" })).toBe(false);
+    expect(isDefaultStyle("name", { fill: GOLD, layer: "metallic" })).toBe(false);
   });
 
   // Regression: isDefaultStyle used to hardcode gold/metallic/no-stroke, so
