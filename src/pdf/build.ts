@@ -434,7 +434,8 @@ async function drawElements(
     await drawCollab(doc, page, assets.collabCenter, cfg.collabCenter, mode, {
       cx: L.COLLAB_CENTER.cx,
       // Hangs off the laurel's nudged bottom, so moving the laurel carries
-      // the collab mark with it and the pair keeps its gap.
+      // the collab mark with it and the pair keeps its gap — the centre stack
+      // moves as one. This slot has no nudge of its own (see types.ts).
       top: logoCy + logo.h / 2 + L.COLLAB_CENTER.gapAbove,
       maxW: L.COLLAB_CENTER.maxW, maxH: L.COLLAB_CENTER.maxH,
     });

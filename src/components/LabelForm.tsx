@@ -162,6 +162,9 @@ function OffsetInput(props: {
 function CollabSlotRow(props: {
   id: "collabLeft" | "collabCenter"; label: string; cfg: LabelConfig; update: Update;
   selected: boolean; onSelect: (id: ElementId) => void;
+  /** Only the left slot gets a nudge of its own. The centre mark is part of
+   *  the centre stack and moves with the laurel — see the Logo row. */
+  offset?: boolean;
 }) {
   const slot = props.cfg[props.id];
   const htmlId = machineName(props.label);
@@ -183,12 +186,14 @@ function CollabSlotRow(props: {
           if (v > 0) props.update((c) => { c[props.id].scale = v; });
         }}
       />
-      <OffsetInput
-        value={slot.offsetY}
-        title="Vertical nudge, points (+ = down)"
-        onFocus={() => props.onSelect(props.id)}
-        onChange={(v) => props.update((c) => { c[props.id].offsetY = v; })}
-      />
+      {props.offset && (
+        <OffsetInput
+          value={slot.offsetY}
+          title="Vertical nudge, points (+ = down)"
+          onFocus={() => props.onSelect(props.id)}
+          onChange={(v) => props.update((c) => { c[props.id].offsetY = v; })}
+        />
+      )}
       {/* Raster only: an SVG already takes the slot's fill. Shown always
           rather than only for a loaded PNG so the setting is discoverable
           before the art is dropped. */}
@@ -313,7 +318,7 @@ export function LabelForm(props: {
           <StyleOnlyElementRow id="collabLead" label="Lead-in" cfg={cfg}
             selected={selected === "collabLead"} onSelect={onSelect} />
           <CollabSlotRow id="collabLeft" label="Left size" cfg={cfg} update={update}
-            selected={selected === "collabLeft"} onSelect={onSelect} />
+            selected={selected === "collabLeft"} onSelect={onSelect} offset />
           <CollabSlotRow id="collabCenter" label="Center size" cfg={cfg} update={update}
             selected={selected === "collabCenter"} onSelect={onSelect} />
         </>
@@ -334,7 +339,10 @@ export function LabelForm(props: {
             const label = el.id === "handleAddress" ? "Handle/addr" : el.label;
             // The laurel gets a vertical nudge alongside its style row — it
             // is drawn as a box at a fixed cy, so unlike a text element there
-            // is no baseline field to move it with.
+            // is no baseline field to move it with. It moves the whole centre
+            // stack: the collab mark hangs off the laurel's nudged bottom
+            // (see drawElements), so the pair keeps its gap and cannot drift
+            // apart the way two independent knobs let it.
             if (el.id === "logo")
               return (
                 <div key={el.id}>
@@ -342,10 +350,10 @@ export function LabelForm(props: {
                     id={el.id} label={label} cfg={cfg}
                     selected={selected === el.id} onSelect={onSelect}
                   />
-                  <Row label="Logo nudge">
+                  <Row label="Stack nudge">
                     <OffsetInput
                       value={cfg.logo.offsetY}
-                      title="Vertical nudge, points (+ = down)"
+                      title="Move the laurel and the centre collab mark together, points (+ = down)"
                       onFocus={() => onSelect("logo")}
                       onChange={(v) => update((c) => { c.logo.offsetY = v; })}
                     />

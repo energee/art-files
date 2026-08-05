@@ -83,6 +83,9 @@ export interface LabelConfig {
   collabEnabled: boolean;
   collabLead: Style;
   collabLeft: CollabSlot;
+  /** Its `offsetY` is deliberately unused: the centre mark hangs off the
+   *  laurel's nudged bottom, so `logo.offsetY` moves the pair as one stack
+   *  and they keep their gap. The form exposes no separate nudge for it. */
   collabCenter: CollabSlot;
   /** The UPC barcode's style. Flat fields like the QR's, for the same reason:
    *  it is drawn from geometry, not from a StyledLine. barcodeFill paints the

@@ -45,9 +45,11 @@ export function defaultConfig(): LabelConfig {
     collabEnabled: false,
     collabLead: { fill: GOLD, layer: "metallic" },
     // offsetY/tintRaster ship explicit rather than absent so the form's
-    // number inputs and checkbox are controlled from the first render.
+    // number inputs and checkbox are controlled from the first render. The
+    // centre slot has no offsetY of its own: it rides the laurel's (see
+    // types.ts), which is what keeps the centre stack together.
     collabLeft: { fill: GOLD, layer: "metallic", scale: 1, offsetY: 0, tintRaster: false },
-    collabCenter: { fill: GOLD, layer: "metallic", scale: 1, offsetY: 0, tintRaster: false },
+    collabCenter: { fill: GOLD, layer: "metallic", scale: 1, tintRaster: false },
     volume: { text: "1 PINT", fill: GOLD, layer: "metallic", bold: true },
     wordmark: { fill: GOLD, layer: "metallic" },
     // The laurel's classic dark keyline, now an ordinary editable stroke.
