@@ -519,15 +519,17 @@ async function drawElements(
     });
 
   // QR — payload derived from the beer name; optional stroked underlay.
-  const shapes = qrShapes(qrUrl(cfg.beerName));
-  const qrAt = { x: L.QR.x, y: y(L.QR.yTop) };
-  if (mode === "art" && cfg.qrStroke !== "none")
-    page.drawSvgPath(
-      qrPath(shapes, L.QR.size, (cfg.qrStrokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX),
-      { ...qrAt, color: fillColor(cfg.qrStroke) },
-    );
-  const qrColor = mode === "art" ? fillColor(cfg.qrFill) : maskColor(cfg.qrLayer);
-  page.drawSvgPath(qrPath(shapes, L.QR.size), { ...qrAt, color: qrColor });
+  if (!hide("qr")) {
+    const shapes = qrShapes(qrUrl(cfg.beerName));
+    const qrAt = { x: L.QR.x, y: y(L.QR.yTop) };
+    if (mode === "art" && cfg.qrStroke !== "none")
+      page.drawSvgPath(
+        qrPath(shapes, L.QR.size, (cfg.qrStrokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX),
+        { ...qrAt, color: fillColor(cfg.qrStroke) },
+      );
+    const qrColor = mode === "art" ? fillColor(cfg.qrFill) : maskColor(cfg.qrLayer);
+    page.drawSvgPath(qrPath(shapes, L.QR.size), { ...qrAt, color: qrColor });
+  }
 
   // Right rotated column
   // Info carries the description block's markdown subset (see parseInfoLine):
@@ -560,7 +562,7 @@ async function drawElements(
     });
 
   // Barcode
-  drawBarcode(page, fonts, cfg, mode);
+  if (!hide("barcode")) drawBarcode(page, fonts, cfg, mode);
 }
 
 async function newDoc(assets: Assets): Promise<{ doc: PDFDocument; page: PDFPage; fonts: Fonts }> {

@@ -5,9 +5,9 @@
 // same LayerId state the preview's click-to-select uses; the eye toggle
 // hides an element by writing fill: "none" and restores the shipped default
 // fill on re-show. Per the layers-ui spec, rows appear in a curated order
-// (Barcode before QR — unlike ELEMENTS order), the codes get no eye at all
-// (they must always carry ink, see allowNone in elements.ts), and neither do
-// the document layers for now.
+// (Barcode before QR — unlike ELEMENTS order); every element row has an eye
+// (hiding is a temporary skip, unlike the ink-less styling allowNone
+// forbids), the document layers go without for now.
 import {
   AlignLeft,
   Barcode,
@@ -108,7 +108,10 @@ function LayerRow({
         <Icon />
         <span>{label}</span>
       </SidebarMenuButton>
-      {el?.allowNone && (
+      {/* Every element row gets an eye — including QR/Barcode, since hiding
+          is a session-level skip, not the ink-less styling allowNone forbids.
+          Only the document rows (background/mask) go without, for now. */}
+      {el !== null && (
         <SidebarMenuAction
           showOnHover={!hidden}
           onClick={toggleEye}
