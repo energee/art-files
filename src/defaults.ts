@@ -73,7 +73,7 @@ export function defaultConfig(): LabelConfig {
       // rotated run, and better than a third of a point of spacing opens it up.
       letterSpacing: 0.38,
     },
-    warning: { fill: GOLD, layer: "metallic" },
+    warning: { fill: GOLD, layer: "metallic", ...KEYLINE },
     // Widely tracked (2026-08): two short uppercase words set large enough
     // that tight spacing reads as one word.
     storeCold: {
