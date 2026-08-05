@@ -17,6 +17,7 @@ import {
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import type { CollabSlot, Fill, LabelConfig, Style, StyledLine } from "../types";
+import type { ElementId } from "../elements";
 import { parseLogo } from "../logo";
 import { WARNING_TEXT } from "../defaults";
 import * as L from "../layout";
@@ -47,6 +48,11 @@ export interface Assets {
    *  blue instead ("no mask" = "print as a white label"), and the per-element
    *  assignments (metallic knockouts, white-layer ink) draw on top of that. */
   maskPng?: Uint8Array;
+  /** Elements the UI's layers-panel eye has hidden: skipped entirely — ink,
+   *  stroke AND mask footprint. Distinct from fill "none", which is a live
+   *  style meaning "no ink / knockout white". Session state, not config: a
+   *  saved label file never records a hidden layer. */
+  hidden?: ReadonlySet<ElementId>;
 }
 
 interface Fonts {
@@ -424,43 +430,57 @@ async function drawElements(
   assets: Assets,
   mode: Mode,
 ) {
+  // Hidden layers skip BOTH modes — no ink, no stroke, no mask footprint.
+  // Layout is untouched: everything else stays exactly where it was, so
+  // toggling a layer's eye never reflows its neighbours.
+  const hide = (id: ElementId) => !!assets.hidden?.has(id);
+
   // Left column
-  drawLine(page, fonts, cfg.volume, mode, { x: L.VOLUME.x, baseline: L.VOLUME.baseline, size: L.VOLUME.size });
-  drawLine(page, fonts, { text: `${cfg.abv}% alc by vol`, ...cfg.abvStyle }, mode, {
-    x: L.ABV.x, baseline: L.ABV.baseline, size: L.ABV.size,
-  });
-  const desc = parseDescription(cfg.description, cfg.descStyle);
-  if (desc.header)
-    drawLine(page, fonts, desc.header, mode, {
-      x: L.DESC_HEADER.x, baseline: L.DESC_HEADER.baseline, size: L.DESC_HEADER.size,
+  if (!hide("volume"))
+    drawLine(page, fonts, cfg.volume, mode, { x: L.VOLUME.x, baseline: L.VOLUME.baseline, size: L.VOLUME.size });
+  if (!hide("abv"))
+    drawLine(page, fonts, { text: `${cfg.abv}% alc by vol`, ...cfg.abvStyle }, mode, {
+      x: L.ABV.x, baseline: L.ABV.baseline, size: L.ABV.size,
     });
-  desc.lines.forEach((line, i) =>
-    drawLine(page, fonts, line, mode, {
-      x: L.DESC.x, baseline: L.DESC.firstBaseline + i * L.DESC.leading, size: L.DESC.size,
-    }),
-  );
+  const desc = parseDescription(cfg.description, cfg.descStyle);
+  if (!hide("description")) {
+    if (desc.header)
+      drawLine(page, fonts, desc.header, mode, {
+        x: L.DESC_HEADER.x, baseline: L.DESC_HEADER.baseline, size: L.DESC_HEADER.size,
+      });
+    desc.lines.forEach((line, i) =>
+      drawLine(page, fonts, line, mode, {
+        x: L.DESC.x, baseline: L.DESC.firstBaseline + i * L.DESC.leading, size: L.DESC.size,
+      }),
+    );
+  }
 
   // Left collab logo, flowed under the description with its lead-in. The
   // lead-in is drawn in SemiBold like the reference label's, and only when
   // there is actually a left logo for it to introduce.
   if (cfg.collabEnabled && assets.collabLeft) {
     const flow = L.collabLeftFlow(desc.lines.length);
-    L.COLLAB_LEAD.lines.forEach((text, i) =>
-      drawLine(page, fonts, { text, ...cfg.collabLead, bold: true }, mode, {
-        x: L.COLLAB_LEAD.x, baseline: flow.leadBaselines[i], size: L.COLLAB_LEAD.size,
-      }),
-    );
-    await drawCollab(doc, page, assets.collabLeft, cfg.collabLeft, mode, {
-      x: L.COLLAB_LEFT.x, top: flow.logoTop,
-      maxW: L.COLLAB_LEFT.maxW, maxH: L.COLLAB_LEFT.maxH,
-    });
+    if (!hide("collabLead"))
+      L.COLLAB_LEAD.lines.forEach((text, i) =>
+        drawLine(page, fonts, { text, ...cfg.collabLead, bold: true }, mode, {
+          x: L.COLLAB_LEAD.x, baseline: flow.leadBaselines[i], size: L.COLLAB_LEAD.size,
+        }),
+      );
+    if (!hide("collabLeft"))
+      await drawCollab(doc, page, assets.collabLeft, cfg.collabLeft, mode, {
+        x: L.COLLAB_LEFT.x, top: flow.logoTop,
+        maxW: L.COLLAB_LEFT.maxW, maxH: L.COLLAB_LEFT.maxH,
+      });
   }
 
   // Center column. Wordmark and beer name use the Bold face — the reference
   // label sets both in the same heavy weight.
-  drawLine(page, fonts, { text: L.WORDMARK.text, ...cfg.wordmark, bold: true }, mode, {
-    cx: L.WORDMARK.cx, baseline: L.WORDMARK.baseline, size: L.WORDMARK.size, font: fonts.bold,
-  });
+  if (!hide("wordmark"))
+    drawLine(page, fonts, { text: L.WORDMARK.text, ...cfg.wordmark, bold: true }, mode, {
+      cx: L.WORDMARK.cx, baseline: L.WORDMARK.baseline, size: L.WORDMARK.size, font: fonts.bold,
+    });
+  // The laurel's geometry is computed even when hidden: the centre collab
+  // mark hangs off logoCy below, and hiding the laurel must not move it.
   const logo = parseLogo(assets.logoSvg, L.LOGO.w);
   const logoColor = mode === "art" ? fillColor(cfg.logo.fill) : maskColor(cfg.logo.layer);
   const logoCy = L.LOGO.cy + (cfg.logo.offsetY ?? 0);
@@ -468,7 +488,7 @@ async function drawElements(
   // Outer stroke: a centered border at 2w extends w beyond the shape; the
   // fill pass on top then covers the inner half. All stroke paths draw
   // before any fill so overlapping laurel branches keep clean edges.
-  const logoStroke = strokeOf(cfg.logo, mode);
+  const logoStroke = hide("logo") ? null : strokeOf(cfg.logo, mode);
   if (logoStroke)
     for (const d of logo.paths)
       page.drawSvgPath(d, {
@@ -477,9 +497,10 @@ async function drawElements(
         borderColor: logoStroke.color,
         borderWidth: 2 * logoStroke.w,
       });
-  for (const d of logo.paths) page.drawSvgPath(d, { ...logoAt, color: logoColor });
+  if (!hide("logo"))
+    for (const d of logo.paths) page.drawSvgPath(d, { ...logoAt, color: logoColor });
   // Center collab logo hangs under the laurel.
-  if (cfg.collabEnabled && assets.collabCenter)
+  if (cfg.collabEnabled && assets.collabCenter && !hide("collabCenter"))
     await drawCollab(doc, page, assets.collabCenter, cfg.collabCenter, mode, {
       cx: L.COLLAB_CENTER.cx,
       // Hangs off the laurel's nudged bottom, so moving the laurel carries
@@ -488,12 +509,14 @@ async function drawElements(
       top: logoCy + logo.h / 2 + L.COLLAB_CENTER.gapAbove,
       maxW: L.COLLAB_CENTER.maxW, maxH: L.COLLAB_CENTER.maxH,
     });
-  drawLine(page, fonts, { text: cfg.beerName.toUpperCase(), ...cfg.nameStyle, bold: true }, mode, {
-    cx: L.NAME.cx, baseline: L.NAME.baseline, size: L.NAME.size, font: fonts.bold,
-  });
-  drawLine(page, fonts, cfg.styleLine, mode, {
-    cx: L.STYLE_LINE.cx, baseline: L.STYLE_LINE.baseline, size: L.STYLE_LINE.size,
-  });
+  if (!hide("name"))
+    drawLine(page, fonts, { text: cfg.beerName.toUpperCase(), ...cfg.nameStyle, bold: true }, mode, {
+      cx: L.NAME.cx, baseline: L.NAME.baseline, size: L.NAME.size, font: fonts.bold,
+    });
+  if (!hide("styleLine"))
+    drawLine(page, fonts, cfg.styleLine, mode, {
+      cx: L.STYLE_LINE.cx, baseline: L.STYLE_LINE.baseline, size: L.STYLE_LINE.size,
+    });
 
   // QR — payload derived from the beer name; optional stroked underlay.
   const shapes = qrShapes(qrUrl(cfg.beerName));
@@ -512,9 +535,10 @@ async function drawElements(
   // stays the element's own. A plain, marker-free line renders exactly as it
   // always did — semibold, on the element's layer.
   const info = parseInfoLine(cfg.handleAddress.text, cfg.handleAddress);
-  drawRotated(page, info.bold ? fonts.bold : fonts.semibold, info.text, mode, info, {
-    x: L.HANDLE_ADDR.x, yStart: L.HANDLE_ADDR.yStart, size: L.HANDLE_ADDR.size,
-  }, fonts.bold);
+  if (!hide("handleAddress"))
+    drawRotated(page, info.bold ? fonts.bold : fonts.semibold, info.text, mode, info, {
+      x: L.HANDLE_ADDR.x, yStart: L.HANDLE_ADDR.yStart, size: L.HANDLE_ADDR.size,
+    }, fonts.bold);
   // Wrapping measures with the warning's own tracking: tracked text needs
   // more columns, and hittest.ts derives its columns from the same measure.
   const warnLines = wrapWarning(
@@ -523,15 +547,17 @@ async function drawElements(
     ),
     L.WARNING.maxLen,
   );
-  warnLines.forEach((line, i) =>
-    drawJustifiedRotated(page, fonts.regular, line, mode, cfg.warning, {
-      x: L.WARNING.x + i * L.WARNING.leading, yStart: L.WARNING.yStart, size: L.WARNING.size,
-      maxLen: L.WARNING.maxLen,
-    }),
-  );
-  drawRotated(page, fonts.semibold, cfg.storeCold.text, mode, cfg.storeCold, {
-    x: L.STORE_COLD.x, yStart: L.STORE_COLD.yStart, size: L.STORE_COLD.size,
-  });
+  if (!hide("warning"))
+    warnLines.forEach((line, i) =>
+      drawJustifiedRotated(page, fonts.regular, line, mode, cfg.warning, {
+        x: L.WARNING.x + i * L.WARNING.leading, yStart: L.WARNING.yStart, size: L.WARNING.size,
+        maxLen: L.WARNING.maxLen,
+      }),
+    );
+  if (!hide("storeCold"))
+    drawRotated(page, fonts.semibold, cfg.storeCold.text, mode, cfg.storeCold, {
+      x: L.STORE_COLD.x, yStart: L.STORE_COLD.yStart, size: L.STORE_COLD.size,
+    });
 
   // Barcode
   drawBarcode(page, fonts, cfg, mode);

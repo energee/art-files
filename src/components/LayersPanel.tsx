@@ -30,8 +30,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { LabelConfig } from "@/types";
-import { applyStyle, elementById, type ElementId } from "@/elements";
-import { defaultConfig } from "@/defaults";
+import { elementById, type ElementId } from "@/elements";
 import { cn } from "@/lib/utils";
 import {
   SidebarGroup,
@@ -43,8 +42,6 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { DOC_LAYER_LABELS, isElementId, type LayerId } from "./layers";
-
-type Update = (fn: (c: LabelConfig) => void) => void;
 
 /** Row order is the spec's curated stacking order, not ELEMENTS order —
  *  notably Barcode before QR in "This beer". */
@@ -78,29 +75,26 @@ const ICONS: Record<LayerId, LucideIcon> = {
 };
 
 function LayerRow({
-  id, cfg, update, selected, onSelect,
+  id, cfg, hidden: hiddenSet, onToggleHidden, selected, onSelect,
 }: {
   id: LayerId;
   cfg: LabelConfig;
-  update: Update;
+  hidden: ReadonlySet<ElementId>;
+  onToggleHidden: (id: ElementId) => void;
   selected: LayerId | null;
   onSelect: (id: LayerId) => void;
 }) {
   const Icon = ICONS[id];
   const el = isElementId(id) ? elementById(id) : null;
   const label = el ? el.label : DOC_LAYER_LABELS[id as "background" | "mask"];
-  const hidden = el !== null && el.style(cfg).fill === "none";
+  const hidden = el !== null && hiddenSet.has(el.id);
   // Collab rows are inert on the label while the collab switch is off; they
   // stay selectable so their inspector (which holds the switch) is reachable.
   const collabOff = !cfg.collabEnabled && id.startsWith("collab");
 
   const toggleEye = (e: React.MouseEvent) => {
     e.stopPropagation(); // the eye must never change the selection
-    if (!el) return;
-    const fill = hidden
-      ? elementById(el.id).style(defaultConfig()).fill // restore shipped default
-      : "none";
-    update((c) => applyStyle(c, el.id, { fill }));
+    if (el) onToggleHidden(el.id);
   };
 
   return (
@@ -129,7 +123,9 @@ function LayerRow({
 
 export function LayersPanel(props: {
   cfg: LabelConfig;
-  update: Update;
+  /** Session-level hidden set — lives in App and flows into Assets.hidden. */
+  hidden: ReadonlySet<ElementId>;
+  onToggleHidden: (id: ElementId) => void;
   selected: LayerId | null;
   onSelect: (id: LayerId) => void;
 }): React.JSX.Element {

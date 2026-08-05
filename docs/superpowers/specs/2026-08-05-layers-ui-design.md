@@ -37,9 +37,13 @@ render support arrives later, per layer.
     Collab lead-in, Collab logo (left), Collab logo (center)
   - **Template**: Volume, Wordmark, Logo, Info, Warning, Store Cold
   - **Document**: Background, Mask
-- Row = icon + name + eye toggle. Eye sets the layer's fill to `"none"`
-  and back (restoring the shipped default fill); text/vector layers only —
-  Background/Mask rows have no eye for now.
+- Row = icon + name + eye toggle. Eye truly hides the layer: the renderer
+  (`Assets.hidden`, `src/pdf/build.ts`) skips its ink, stroke and mask
+  footprint in both plates, previews and PDF exports alike. Session state,
+  never written into saved configs; PSD exports keep every layer. (An
+  earlier draft used fill `"none"`, but in this renderer that means "white
+  ink", not hidden.) Text/vector layers only — QR/Barcode must carry ink,
+  and Background/Mask rows have no eye for now.
 - Selecting a row sets the same `selected: ElementId` state the preview's
   click-to-select uses; the two stay in sync. Background/Mask get new
   selectable ids (UI-level only, not `ElementId`s in the renderer sense).

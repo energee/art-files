@@ -137,6 +137,17 @@ export default function App() {
   // ElementId: the Background/Mask document layers are selectable in the UI
   // but unknown to the renderer.
   const [selected, setSelected] = useState<LayerId | null>(null);
+  // Layers the panel's eye has hidden — session state, deliberately outside
+  // the config/history: a saved label never records a hidden layer, and
+  // toggling an eye is not an undoable document edit. Flows into
+  // Assets.hidden, where the renderer skips the element in both plates.
+  const [hiddenLayers, setHiddenLayers] = useState<ReadonlySet<ElementId>>(new Set());
+  const toggleHidden = (id: ElementId) =>
+    setHiddenLayers((old) => {
+      const next = new Set(old);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   // Real glyph widths for PreviewCompare's click-to-select hit-testing (see
   // hittest.ts's Measure type) — null until the one-time font embed below
   // resolves; PreviewCompare skips hit-testing rather than guess with it.
@@ -328,6 +339,7 @@ export default function App() {
             fonts, logoSvg, ...(await collabAssets()),
             texture: texture ? { bytes: texture.previewBytes, kind: "png" } : undefined,
             maskPng: mask?.previewBytes,
+            hidden: hiddenLayers,
           };
           // Sequential, not Promise.all — halves the transient memory peak.
           const art = await buildArtPdf(cfg, assets);
@@ -344,7 +356,7 @@ export default function App() {
       });
     }, 600);
     return () => { stale = true; clearTimeout(timer); };
-  }, [cfg, texture, mask, collabLeft, collabCenter, blocked]);
+  }, [cfg, texture, mask, collabLeft, collabCenter, blocked, hiddenLayers]);
 
   // Revoking immediately can abort a large download, so each URL lives until
   // the NEXT export batch — a timer would instead pin a full Blob copy of
@@ -370,10 +382,14 @@ export default function App() {
     startSaveBatch();
     try {
       const fonts = await fontsPromise;
+      // Exports honor the eye too: a hidden layer is "not on this label",
+      // preview and deliverable alike. (PSDs still carry every layer — a
+      // layered handoff is the place to keep them all.)
       const assets: Assets = {
         fonts, logoSvg, ...(await collabAssets()),
         texture: texture ? { bytes: texture.bytes, kind: texture.kind } : undefined,
         maskPng: mask?.bytes,
+        hidden: hiddenLayers,
       };
       if (which !== "mask") saveBytes(await buildArtPdf(cfg, assets), `${cfg.beerName}.pdf`);
       if (which !== "art") saveBytes(await buildMaskPdf(cfg, assets), `${cfg.beerName}-mask.pdf`);
@@ -460,7 +476,8 @@ export default function App() {
       <SidebarProvider>
         <Sidebar collapsible="offcanvas">
           <SidebarContent>
-            <LayersPanel cfg={cfg} update={update} selected={selected} onSelect={setSelected} />
+            <LayersPanel cfg={cfg} hidden={hiddenLayers} onToggleHidden={toggleHidden}
+              selected={selected} onSelect={setSelected} />
           </SidebarContent>
         </Sidebar>
         <SidebarInset className="flex h-svh flex-col overflow-hidden">
