@@ -35,18 +35,36 @@ rewrite to React + Tailwind + shadcn/ui is documented in
 ## Usage
 
 The UI is built with React 19, Tailwind v4, and shadcn/ui (Linear-style
-neutral dark theme). Each styled row shows a swatch chip; most rows also
-show a text input next to it, but style-only rows (QR, Wordmark, Logo,
-Warning) show just the chip. Click the chip to open a popover with the
-color picker/hex field/no-ink toggle, layer select, bold toggle, and an
-outer-stroke toggle with its own color + width (px at the 600dpi
-deliverable, default 15px ≈ 1.8pt) — available on every element, the
-description block included (its swatch sets the base fill/layer for plain
-lines and the header plus an outer stroke for all its lines; the `_white_`
-marker still overrides fill/layer per line); the logo's
-classic dark keyline is just this stroke, on by default. All rows — the six
-template ones (volume, wordmark, logo, handle/addr, warning, store cold)
-included — sit in one flat list, no collapsed section. The preview is a single frame: both PDFs
+neutral dark theme). The sidebar splits fields by how often they change: **This beer** holds
+what's edited every release (name, subtitle, ABV, UPC, QR, description);
+**Brand template** collects the six set-once elements (volume, wordmark,
+logo, handle/addr, warning, store cold) behind a collapsed disclosure
+with a count badge, since their gold/metallic defaults are correct
+almost every time. There are no more per-row swatch chips — a small dot
+next to a row's label is the only per-row style signal, flagging a style
+that deviates from the shipped gold/metallic default. Selecting an
+element — by focusing or clicking its row in the form, or clicking it
+directly in the preview, which doubles as a click target and draws a
+selection outline around whatever's picked — opens one contextual style
+panel below the form (Photoshop's model: only one element's panel is
+ever open at a time). Its Fill (color picker/hex field/no-ink toggle),
+Layer select, and outer-stroke toggle (its own color + width, px at the
+600dpi deliverable, default 15px ≈ 1.8pt) are on every element's panel; a
+Bold checkbox shows for the elements that have one, and a Reset button
+(back to that element's shipped default) once a style deviates from it.
+The description block's panel sets the base fill/layer for its plain
+lines and the header plus an outer stroke for all its lines; the
+`_white_` marker still overrides fill/layer per line; the logo's classic
+dark keyline is just this stroke, on by default. Clicking empty
+background in the preview clears the selection.
+
+The description itself is a WYSIWYG multiline field now, not a
+raw-markdown textarea: each line renders in its real appearance
+(gold/white ink, bold, larger header) instead of `#`/`**`/`_`
+punctuation, a toolbar toggles Header/Bold/White ink for whichever
+line(s) the caret or selection touches, and "Edit as text" is an escape
+hatch back to the raw markdown — storage is unchanged, still the same
+markdown-subset string parsed by `src/description.ts`. The preview is a single frame: both PDFs
 render to bitmaps via pdf.js and stack there, and a draggable divider
 reveals the white-ink layer over the art in place — no embedded PDF
 viewer, no tabs. Live previews build against a downscaled copy of the
