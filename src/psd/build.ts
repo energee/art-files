@@ -591,6 +591,9 @@ function codeLayers(cfg: LabelConfig, f: Faces, fk: FKFont): Layer[] {
     // result "reads as a pill"). Approximated here as a plain axis-aligned
     // rect around each digit group's outline bbox, expanded by S — a
     // deliberate simplification, not a rounded pill; see the task report.
+    // `combine` (union): the expanded rects OVERLAP (S is wider than the
+    // gaps between dense bars), and without an explicit operation Photoshop
+    // XORs overlapping even-odd subpaths — the halo rendered full of holes.
     const strokePaths: BezierPath[] = [
       ...geo.bars.map((b) => rectPath(b.x - S, b.yTop - S, b.w + 2 * S, b.h + 2 * S)),
       ...digitGroups.map((g) =>
@@ -601,7 +604,7 @@ function codeLayers(cfg: LabelConfig, f: Faces, fk: FKFont): Layer[] {
           g.bbox.maxY - g.bbox.minY + 2 * S,
         ),
       ),
-    ];
+    ].map((p) => ({ ...p, operation: "combine" as const }));
     layers.push(shapeLayer("Barcode stroke", strokePaths, cfg.barcodeStroke));
   }
   layers.push(shapeLayer("Barcode", barcodePaths, cfg.barcodeFill));

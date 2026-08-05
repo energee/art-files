@@ -60,6 +60,11 @@ describe("psd build", () => {
     expect(desc.text.styleRuns?.length ?? 1).toBeGreaterThan(1);
   });
 
+  it("unions the barcode stroke's overlapping rects (no even-odd holes)", () => {
+    const stroke = layer(doc.children as any[], "Barcode stroke");
+    for (const p of stroke.vectorMask.paths) expect(p.operation).toBe("combine");
+  });
+
   it("gives every keylined text layer a real stroke effect in black", () => {
     const layers = flat(doc.children as any[]);
     // Logo and QR are vector layers, not type layers — they take the same
