@@ -23,8 +23,8 @@ render support arrives later, per layer.
   `SidebarTrigger` in the menubar row and ⌘B, holding the Layers panel.
 - Center: existing `PreviewCompare`, unchanged.
 - Right: fixed-width inspector column — a plain bordered column (the
-  `Sidebar` component is reserved for the left panel; the inspector does
-  not collapse).
+  `Sidebar` component is reserved for the left panel). Collapsed while no
+  layer is selected; its header X clears the selection to collapse it.
 - Existing menubar stays as top chrome, gains the trigger. Save/load,
   undo/redo, exports, ⌘K palette untouched.
 
@@ -42,8 +42,9 @@ render support arrives later, per layer.
   footprint in both plates, previews and PDF exports alike. Session state,
   never written into saved configs; PSD exports keep every layer. (An
   earlier draft used fill `"none"`, but in this renderer that means "white
-  ink", not hidden.) Text/vector layers only — QR/Barcode must carry ink,
-  and Background/Mask rows have no eye for now.
+  ink", not hidden.) Every element row has an eye, QR/Barcode included —
+  hiding is a temporary skip, unlike the ink-less styling their allowNone
+  forbids. Background/Mask rows have no eye for now.
 - Selecting a row sets the same `selected: ElementId` state the preview's
   click-to-select uses; the two stay in sync. Background/Mask get new
   selectable ids (UI-level only, not `ElementId`s in the renderer sense).
@@ -66,7 +67,7 @@ One panel shaped by the selection:
    color/width, letter spacing where applicable.
    - Background/Mask: disabled "Color overlay" and "Outer stroke"
      switches as placeholders.
-4. No selection: slim empty state ("Select a layer").
+4. No selection: the whole inspector column collapses (no empty state).
 
 ## Removals
 

@@ -10,7 +10,7 @@
 // preview; this component only receives the chosen LayerId.
 import {
   AlignLeft, Barcode, Beaker, Handshake, Image as ImageIcon, Info, Layers as LayersIcon,
-  Percent, QrCode, Snowflake, Sparkles, Text, TriangleAlert, Type,
+  Percent, QrCode, Snowflake, Sparkles, Text, TriangleAlert, Type, X,
 } from "lucide-react";
 import type { LabelConfig, Layer, StyledLine } from "@/types";
 import { applyStyle, elementById, isDefaultStyle, type ElementId } from "@/elements";
@@ -445,20 +445,17 @@ function DocStylePlaceholders() {
 }
 
 export function Inspector(props: {
-  id: LayerId | null;
+  /** Never null: App collapses the whole inspector column instead of
+   *  rendering an empty state when nothing is selected. */
+  id: LayerId;
   cfg: LabelConfig;
   /** Validation messages, already composed by App. Keys: "name", "upc". */
   errors: Record<string, string>;
   update: Update;
   files: InspectorFiles;
+  /** Clears the selection, which collapses the inspector column. */
+  onClose: () => void;
 }): React.JSX.Element {
-  if (props.id === null) {
-    return (
-      <div className="flex h-full items-center justify-center p-3">
-        <p className="text-xs text-muted-foreground">Select a layer</p>
-      </div>
-    );
-  }
   const id = props.id;
   const isEl = isElementId(id);
   const label = isEl ? elementById(id).label : DOC_LAYER_LABELS[id];
@@ -498,14 +495,22 @@ export function Inspector(props: {
           <Icon className="size-3.5" />
           {label}
         </span>
-        {dirty && (
+        <span className="flex items-center gap-1">
+          {dirty && (
+            <Button
+              variant="ghost" size="sm" className="h-6 px-2 text-[11px]"
+              onClick={reset}
+            >
+              Reset
+            </Button>
+          )}
           <Button
-            variant="ghost" size="sm" className="h-6 px-2 text-[11px]"
-            onClick={reset}
+            variant="ghost" size="icon" className="size-6"
+            aria-label="Close inspector" onClick={props.onClose}
           >
-            Reset
+            <X className="size-3" />
           </Button>
-        )}
+        </span>
       </div>
 
       <Heading>Content</Heading>

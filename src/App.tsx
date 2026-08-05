@@ -589,11 +589,15 @@ export default function App() {
           </div>
         </section>
         {/* Right inspector column: fixed width, plain bordered div — the
-            Sidebar component is reserved for the left Layers panel and the
-            inspector does not collapse. */}
-        <aside className="w-[300px] shrink-0 overflow-y-auto border-l border-border p-3">
-          <Inspector id={selected} cfg={cfg} errors={errors} update={update} files={files} />
-        </aside>
+            Sidebar component is reserved for the left Layers panel.
+            Collapsed (unmounted) while nothing is selected; the header's X
+            clears the selection to collapse it by hand. */}
+        {selected && (
+          <aside className="w-[300px] shrink-0 overflow-y-auto border-l border-border p-3">
+            <Inspector id={selected} cfg={cfg} errors={errors} update={update} files={files}
+              onClose={() => setSelected(null)} />
+          </aside>
+        )}
         <CommandMenu
           actions={[
             { label: "Export PDF + Mask PDF", disabled: blocked || !pdfs, run: exportPdfs },
