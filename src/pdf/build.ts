@@ -68,22 +68,17 @@ function maskColor(layer: "metallic" | "white") {
   return layer === "metallic" ? toRgb(L.COLORS.white) : toRgb(L.COLORS.maskBlue);
 }
 
-/** Outer-stroke params for an element, or null when off. Widths are authored
- *  in px at the 600dpi deliverable.
+/** Outer-stroke params for an element (art mode only), or null when off.
+ *  Widths are authored in px at the 600dpi deliverable.
  *
- *  `knockout` decides what the MASK pass does with the ring. Vector art (the
- *  laurel, collab logos) passes it off: those strokes have always sat on the
- *  white-ink flood, and that is not this function's business to change.
- *  TEXT passes it on, so the ring knocks out on the mask plate — a stroke is
- *  an outline, not part of the plate choice its glyphs make, and following
- *  the element's layer would print white ink under a black keyline (which is
- *  what the flood did before the mask drew any ring at all). Both plates
- *  share this one geometry, which is what keeps them registered. */
-function strokeOf(style: Style, mode: Mode, knockout = false) {
-  if (!style.stroke || style.stroke === "none") return null;
-  if (mode !== "art" && !knockout) return null;
+ *  Strokes never draw on the MASK plate (Ted's ask, 2026-08-05), on any
+ *  layer: the mask keeps whatever its flood and the element's own
+ *  glyphs/paths put there, so a keyline neither knocks out white ink nor
+ *  adds any. */
+function strokeOf(style: Style, mode: Mode) {
+  if (mode !== "art" || !style.stroke || style.stroke === "none") return null;
   return {
-    color: mode === "art" ? fillColor(style.stroke) : maskColor("metallic"),
+    color: fillColor(style.stroke),
     w: (style.strokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX,
   };
 }
@@ -207,7 +202,7 @@ function drawLine(
   const total = advances.reduce((a, b) => a + b, 0) - (tracking ?? 0);
   let x = opts.cx !== undefined ? opts.cx - total / 2 : opts.x!;
   const yBase = y(opts.baseline);
-  const stroke = strokeOf(line, mode, true);
+  const stroke = strokeOf(line, mode);
   withTracking(page, tracking, () => {
     runs.forEach((run, i) => {
       const font = faceOf(run);
@@ -247,7 +242,7 @@ function drawRotated(
   const advances = L.runAdvances(
     runs, (r) => (r.bold ? boldFont ?? font : font).widthOfTextAtSize(r.text, opts.size), tracking,
   );
-  const stroke = strokeOf(style, mode, true);
+  const stroke = strokeOf(style, mode);
   let yPos = y(opts.yStart);
   withTracking(page, tracking, () => {
     runs.forEach((run, i) => {

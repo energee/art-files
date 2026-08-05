@@ -108,20 +108,6 @@ describe("the Info line's shipped keyline", () => {
   });
 });
 
-// Regression: a stroked metallic line used to print a WHITE-INK halo. The
-// mask knocked out the glyphs only, so the plate's flood survived in the
-// stroke ring and the black keyline landed on white ink instead of bare
-// stock. The mask must now knock the ring out too.
-describe("a stroked line's mask plate", () => {
-  it("knocks out the stroke ring, not just the glyphs", async () => {
-    const bare = defaultConfig();
-    bare.handleAddress.stroke = "none";
-    const stroked = await contentStreamText(await buildMaskPdf(defaultConfig(), assets));
-    const plain = await contentStreamText(await buildMaskPdf(bare, assets));
-    expect(showOps(stroked)).toBeGreaterThan(showOps(plain));
-  });
-});
-
 // The shipped keyline is pure black. The barcode is the deliberate exception
 // — its stroke is the white halo the scan contrast depends on.
 describe("the shipped keyline colour", () => {
@@ -149,20 +135,19 @@ describe("the shipped keyline colour", () => {
   });
 });
 
-// A stroke is an outline, not part of the plate choice its glyphs make: even
-// on a white-layer element the ring knocks out, so white ink never prints
-// under a keyline.
-describe("a white-layer line's stroke", () => {
-  const knockouts = (s: string) => (s.match(/\b1 1 1 rg\b/g) ?? []).length;
-
-  it("knocks out rather than taking the white-ink layer", async () => {
-    const white = defaultConfig();
-    white.handleAddress.layer = "white";
-    const bare = defaultConfig();
-    bare.handleAddress.layer = "white";
-    bare.handleAddress.stroke = "none";
-    const withRing = await contentStreamText(await buildMaskPdf(white, assets));
-    const without = await contentStreamText(await buildMaskPdf(bare, assets));
-    expect(knockouts(withRing)).toBeGreaterThan(knockouts(without));
+// Strokes never draw on the mask plate, on any layer (2026-08-05): the mask
+// keeps whatever its flood and the element's own glyphs put there.
+describe("a stroke on the mask plate", () => {
+  it("draws nothing, regardless of the element's layer", async () => {
+    for (const layer of ["metallic", "white"] as const) {
+      const stroked = defaultConfig();
+      stroked.handleAddress.layer = layer;
+      const bare = defaultConfig();
+      bare.handleAddress.layer = layer;
+      bare.handleAddress.stroke = "none";
+      const withRing = await contentStreamText(await buildMaskPdf(stroked, assets));
+      const without = await contentStreamText(await buildMaskPdf(bare, assets));
+      expect(withRing).toBe(without);
+    }
   });
 });
