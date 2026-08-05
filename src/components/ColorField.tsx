@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
-/** "No ink" checkerboard chip background (shared with StylePopover). */
+/** "No ink" checkerboard chip background. */
 export const CHECKER =
   "repeating-conic-gradient(#3a3d43 0% 25%, #1a1c1f 0% 50%) 0 0 / 8px 8px";
 const HEX = /^#[0-9a-fA-F]{6}$/;
