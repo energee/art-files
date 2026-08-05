@@ -26,6 +26,16 @@ export function parseHexFill(fill: `#${string}` | "none"): { r: number; g: numbe
   return { r: ((n >> 16) & 255) / 255, g: ((n >> 8) & 255) / 255, b: (n & 255) / 255 };
 }
 
+/** On-page length of a text run drawn with letter-spacing: the font's own
+ *  measured width plus one gap per ADJACENT GLYPH PAIR. PDF's Tc operator
+ *  also emits a gap after the final glyph, but that is advance, not ink —
+ *  counting it would push every centred line half a gap left of centre and
+ *  leave hit boxes overhanging their text. Shared by all three renderers and
+ *  the hit-tester so they can't disagree about how wide a tracked line is. */
+export function trackedWidth(base: number, text: string, tracking = 0): number {
+  return base + tracking * Math.max(0, text.length - 1);
+}
+
 // Left column (values measured from the Labradorite reference PDF) -------
 export const LEFT_X = 24.9;
 export const VOLUME = { x: LEFT_X, baseline: 29.37, size: 9 };

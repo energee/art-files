@@ -80,6 +80,29 @@ is derived from the beer name (see "Derived QR payload").
   `qrStrokeWidth` joins `qrStroke`. The barcode's fixed white stroke is
   unchanged (scannability, not styling).
 
+## Per-element letter-spacing (addendum)
+
+- `Style` gains optional `letterSpacing` (tracking, in PDF points; absent =
+  0), edited as a "Tracking" number field in the style panel. Points, not
+  px@600dpi like `strokeWidth`, since tracking is judged against the type
+  size, which layout.ts also authors in points. Clamped to -2..20pt.
+- Only text elements offer it: `LabelElement` gains `isText`, false for the
+  logo (a vector shape) and the two codes (the QR has no text; the barcode's
+  digit spacing is part of the symbol).
+- `layout.ts` `trackedWidth(base, text, tracking)` is the one width formula —
+  base measurement plus one gap per ADJACENT glyph pair, deliberately not the
+  trailing gap PDF's `Tc` also emits, which is advance rather than ink.
+  Shared by the PDF renderer, the PSD builder and hittest.ts so centring,
+  warning wrap/justification and click targets can't disagree.
+- Applied in the art/mask PDFs as the `Tc` text-state operator around each
+  draw (pdf-lib has no per-draw option), cleared to 0 afterwards since `Tc`
+  is page-wide state; in the PSD as Photoshop's type-layer `tracking`,
+  which is 1/1000 em, i.e. `letterSpacing / size * 1000`.
+- The description block's spacing is block-level like its stroke: it flows to
+  the header and every line, and the `_white_` marker does not override it.
+- No config migration: absent means 0, so every old config still prints as it
+  always did.
+
 ## Optional mask (addendum)
 
 The metallic mask PNG is optional: generation runs with texture alone, and
@@ -95,8 +118,10 @@ shadcn has no primitive — nothing hand-invented: swatch chips are shadcn
 popover labels are shadcn `Label`s with `htmlFor`/id association; the color
 picker is react-colorful (nested popover); the file drop targets are
 react-dropzone (library-managed drag/keyboard/aria). Still deliberately
-raw: the two pdf.js `<canvas>` targets and hidden file inputs (the
-standard pattern, also what react-dropzone renders).
+raw: the two pdf.js `<canvas>` targets, hidden file inputs (the
+standard pattern, also what react-dropzone renders), and the eyedropper's
+native `EyeDropper` call — the browser owns that UI, so there is no
+component to wrap.
 
 ## UI improvements (included in the rewrite)
 

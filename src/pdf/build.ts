@@ -11,6 +11,7 @@ import {
   PDFPage,
   degrees,
   rgb,
+  setCharacterSpacing,
   setLineCap,
   setLineJoin,
 } from "pdf-lib";
@@ -87,6 +88,19 @@ function ring(w: number): [number, number][] {
 
 const y = (topY: number) => L.PAGE.h - topY; // top-left origin -> PDF space
 
+/** Run `draw` with the element's letter-spacing in effect. pdf-lib has no
+ *  per-draw option for tracking, so it goes in as PDF's text-state operator
+ *  Tc — the same escape hatch newDoc uses for line joins. Set BEFORE the
+ *  draw: drawText wraps itself in q/Q, so an outer Tc is inherited inside and
+ *  survives the pop. Cleared after, because Tc otherwise stays in force for
+ *  every later text draw on the page. */
+function withTracking(page: PDFPage, tracking: number, draw: () => void) {
+  if (!tracking) return draw();
+  page.pushOperators(setCharacterSpacing(tracking));
+  draw();
+  page.pushOperators(setCharacterSpacing(0));
+}
+
 function drawLine(
   page: PDFPage,
   fonts: Fonts,
@@ -96,16 +110,22 @@ function drawLine(
 ) {
   const font = opts.font ?? (line.bold ? fonts.semibold : fonts.regular);
   const color = mode === "art" ? fillColor(line.fill) : maskColor(line.layer);
+  const tracking = line.letterSpacing ?? 0;
+  // Centring measures the TRACKED width, not the font's — at 0 tracking the
+  // two are identical, so this is the same math as before for untracked text.
   const x =
     opts.cx !== undefined
-      ? opts.cx - font.widthOfTextAtSize(line.text, opts.size) / 2
+      ? opts.cx -
+        L.trackedWidth(font.widthOfTextAtSize(line.text, opts.size), line.text, tracking) / 2
       : opts.x!;
   const at = { y: y(opts.baseline), size: opts.size, font };
   const stroke = strokeOf(line, mode);
-  if (stroke)
-    for (const [dx, dy] of ring(stroke.w))
-      page.drawText(line.text, { ...at, x: x + dx, y: at.y + dy, color: stroke.color });
-  page.drawText(line.text, { ...at, x, color });
+  withTracking(page, tracking, () => {
+    if (stroke)
+      for (const [dx, dy] of ring(stroke.w))
+        page.drawText(line.text, { ...at, x: x + dx, y: at.y + dy, color: stroke.color });
+    page.drawText(line.text, { ...at, x, color });
+  });
 }
 
 /** Rotated 90deg CCW text (reads bottom-to-top). x = baseline vertical line,
@@ -121,10 +141,12 @@ function drawRotated(
   const color = mode === "art" ? fillColor(style.fill) : maskColor(style.layer);
   const base = { size: opts.size, font, rotate: degrees(90) };
   const stroke = strokeOf(style, mode);
-  if (stroke)
-    for (const [dx, dy] of ring(stroke.w))
-      page.drawText(text, { ...base, x: opts.x + dx, y: y(opts.yStart) + dy, color: stroke.color });
-  page.drawText(text, { ...base, x: opts.x, y: y(opts.yStart), color });
+  withTracking(page, style.letterSpacing ?? 0, () => {
+    if (stroke)
+      for (const [dx, dy] of ring(stroke.w))
+        page.drawText(text, { ...base, x: opts.x + dx, y: y(opts.yStart) + dy, color: stroke.color });
+    page.drawText(text, { ...base, x: opts.x, y: y(opts.yStart), color });
+  });
 }
 
 /** The on-page length of a wrapped warning column after justification (see
@@ -161,7 +183,12 @@ export function drawJustifiedRotated(
     drawRotated(page, font, text, mode, style, opts);
     return;
   }
-  const widths = words.map((w) => font.widthOfTextAtSize(w, opts.size));
+  // Tracked widths: the gap that justifies the line has to be computed
+  // against the length each word actually draws at, or a tracked warning
+  // column overshoots maxLen by one gap per glyph.
+  const tracking = style.letterSpacing ?? 0;
+  const widths = words.map((w) =>
+    L.trackedWidth(font.widthOfTextAtSize(w, opts.size), w, tracking));
   const totalWordWidth = widths.reduce((a, b) => a + b, 0);
   // The gap that makes sum(widths) + (n-1)*gap land exactly on maxLen.
   const gap = (opts.maxLen - totalWordWidth) / (words.length - 1);
@@ -350,8 +377,13 @@ function drawElements(
   drawRotated(page, fonts.semibold, cfg.handleAddress.text, mode, cfg.handleAddress, {
     x: L.HANDLE_ADDR.x, yStart: L.HANDLE_ADDR.yStart, size: L.HANDLE_ADDR.size,
   });
+  // Wrapping measures with the warning's own tracking: tracked text needs
+  // more columns, and hittest.ts derives its columns from the same measure.
   const warnLines = wrapWarning(
-    (t) => fonts.regular.widthOfTextAtSize(t, L.WARNING.size), L.WARNING.maxLen,
+    (t) => L.trackedWidth(
+      fonts.regular.widthOfTextAtSize(t, L.WARNING.size), t, cfg.warning.letterSpacing ?? 0,
+    ),
+    L.WARNING.maxLen,
   );
   warnLines.forEach((line, i) =>
     drawJustifiedRotated(page, fonts.regular, line, mode, cfg.warning, {

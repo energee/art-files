@@ -47,6 +47,7 @@ export function StyleProperties(props: {
       layer: d.layer,
       stroke: d.stroke ?? "none",
       strokeWidth: d.strokeWidth,
+      letterSpacing: d.letterSpacing,
       ...(el.hasBold ? { bold: (d as StyledLine).bold ?? false } : {}),
     });
   };
@@ -100,6 +101,27 @@ export function StyleProperties(props: {
             checked={bold}
             onCheckedChange={(v) => set({ bold: v === true })}
           />
+        </div>
+      )}
+
+      {el.isText && (
+        <div className="flex items-center justify-between">
+          <Label htmlFor={`${fid}-tracking`} className="text-xs text-muted-foreground">Tracking</Label>
+          <div className="flex items-center gap-1">
+            <Input
+              type="number" min={-2} max={20} step={0.1}
+              id={`${fid}-tracking`}
+              aria-label="Letter spacing (points)"
+              className="h-6 w-14 text-xs"
+              value={s.letterSpacing ?? 0}
+              onChange={(e) =>
+                // Clamped both ends like the stroke width: `max` on a number
+                // input does not stop a typed value, and tracking wide enough
+                // to overrun the label reads as a broken line, not a style.
+                set({ letterSpacing: Math.min(20, Math.max(-2, Number(e.target.value) || 0)) })}
+            />
+            <span className="text-[10px] text-muted-foreground">pt</span>
+          </div>
         </div>
       )}
 

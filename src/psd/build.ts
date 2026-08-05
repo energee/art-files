@@ -262,7 +262,12 @@ type Face = keyof typeof PS_NAME;
 function textLayer(
   name: string,
   text: string,
-  opts: { x: number; baseline: number; size: number; fill: Fill; face: Face; rotated?: boolean },
+  opts: {
+    x: number; baseline: number; size: number; fill: Fill; face: Face;
+    rotated?: boolean;
+    /** Letter-spacing in label points (Style.letterSpacing). */
+    tracking?: number;
+  },
 ): Layer {
   const t = px(opts.x);
   const b = px(opts.baseline);
@@ -275,6 +280,11 @@ function textLayer(
         font: { name: PS_NAME[opts.face] },
         fontSize: px(opts.size),
         fillColor: color255(opts.fill),
+        // Photoshop authors tracking in 1/1000 em, so the points-per-glyph
+        // value converts against the type size — and needs no px() scaling,
+        // being a ratio. Omitted at 0 so untracked layers stay exactly as
+        // this builder has always written them.
+        ...(opts.tracking ? { tracking: (opts.tracking / opts.size) * 1000 } : {}),
       },
     },
   };
@@ -310,11 +320,11 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
   const left: Layer[] = [
     textLayer("Volume", cfg.volume.text, {
       x: L.VOLUME.x, baseline: L.VOLUME.baseline, size: L.VOLUME.size,
-      fill: cfg.volume.fill, face: faceOf(cfg.volume),
+      fill: cfg.volume.fill, face: faceOf(cfg.volume), tracking: cfg.volume.letterSpacing,
     }),
     textLayer("ABV", `${cfg.abv}% alc by vol`, {
       x: L.ABV.x, baseline: L.ABV.baseline, size: L.ABV.size,
-      fill: cfg.abvStyle.fill, face: "regular",
+      fill: cfg.abvStyle.fill, face: "regular", tracking: cfg.abvStyle.letterSpacing,
     }),
   ];
   if (desc.header)
@@ -322,6 +332,7 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
       textLayer("Description header", desc.header.text, {
         x: L.DESC_HEADER.x, baseline: L.DESC_HEADER.baseline, size: L.DESC_HEADER.size,
         fill: desc.header.fill, face: faceOf(desc.header),
+        tracking: desc.header.letterSpacing,
       }),
     );
   // One layer per line: the markdown subset styles lines individually, and a
@@ -330,7 +341,7 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
     left.push(
       textLayer(`Description ${i + 1}`, line.text, {
         x: L.DESC.x, baseline: L.DESC.firstBaseline + i * L.DESC.leading, size: L.DESC.size,
-        fill: line.fill, face: faceOf(line),
+        fill: line.fill, face: faceOf(line), tracking: line.letterSpacing,
       }),
     ),
   );
@@ -339,8 +350,11 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
   // Center column ----------------------------------------------------------
   // Measure with the SAME face the layer renders in, or a bold style line
   // centres against regular metrics and sits off-centre.
-  const centered = (text: string, cx: number, size: number, face: Face) =>
-    cx - f[face].widthOfTextAtSize(text, size) / 2;
+  // Tracked, like the PDF's drawLine: a tracked line is wider than the font
+  // measures it, and centring on the untracked width would leave it sitting
+  // half a run's worth of spacing left of the centre line.
+  const centered = (text: string, cx: number, size: number, face: Face, tracking = 0) =>
+    cx - L.trackedWidth(f[face].widthOfTextAtSize(text, size), text, tracking) / 2;
   const logo = parseLogo(assets.logoSvg, L.LOGO.w);
   const logoPaths = logo.paths.flatMap((d) =>
     svgToPaths(d, L.LOGO.cx - logo.w / 2, L.LOGO.cy - logo.h / 2),
@@ -350,27 +364,32 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
     opened: false,
     children: [
       textLayer("Wordmark", L.WORDMARK.text, {
-        x: centered(L.WORDMARK.text, L.WORDMARK.cx, L.WORDMARK.size, "bold"),
+        x: centered(L.WORDMARK.text, L.WORDMARK.cx, L.WORDMARK.size, "bold", cfg.wordmark.letterSpacing),
         baseline: L.WORDMARK.baseline, size: L.WORDMARK.size,
-        fill: cfg.wordmark.fill, face: "bold",
+        fill: cfg.wordmark.fill, face: "bold", tracking: cfg.wordmark.letterSpacing,
       }),
       shapeLayer("Logo", logoPaths, cfg.logo.fill),
       textLayer("Beer name", cfg.beerName.toUpperCase(), {
-        x: centered(cfg.beerName.toUpperCase(), L.NAME.cx, L.NAME.size, "bold"),
+        x: centered(cfg.beerName.toUpperCase(), L.NAME.cx, L.NAME.size, "bold", cfg.nameStyle.letterSpacing),
         baseline: L.NAME.baseline, size: L.NAME.size,
-        fill: cfg.nameStyle.fill, face: "bold",
+        fill: cfg.nameStyle.fill, face: "bold", tracking: cfg.nameStyle.letterSpacing,
       }),
       textLayer("Style line", cfg.styleLine.text, {
-        x: centered(cfg.styleLine.text, L.STYLE_LINE.cx, L.STYLE_LINE.size, faceOf(cfg.styleLine)),
+        x: centered(cfg.styleLine.text, L.STYLE_LINE.cx, L.STYLE_LINE.size, faceOf(cfg.styleLine), cfg.styleLine.letterSpacing),
         baseline: L.STYLE_LINE.baseline, size: L.STYLE_LINE.size,
-        fill: cfg.styleLine.fill, face: faceOf(cfg.styleLine),
+        fill: cfg.styleLine.fill, face: faceOf(cfg.styleLine), tracking: cfg.styleLine.letterSpacing,
       }),
     ],
   });
 
   // Right rotated column ---------------------------------------------------
+  // Same tracked measure the PDF wraps with, so both deliverables break the
+  // warning into the same columns.
   const warnLines = wrapWarning(
-    (t) => f.regular.widthOfTextAtSize(t, L.WARNING.size), L.WARNING.maxLen,
+    (t) => L.trackedWidth(
+      f.regular.widthOfTextAtSize(t, L.WARNING.size), t, cfg.warning.letterSpacing ?? 0,
+    ),
+    L.WARNING.maxLen,
   );
   groups.push({
     name: "Right column",
@@ -379,16 +398,19 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
       textLayer("Handle / address", cfg.handleAddress.text, {
         x: L.HANDLE_ADDR.x, baseline: L.HANDLE_ADDR.yStart, size: L.HANDLE_ADDR.size,
         fill: cfg.handleAddress.fill, face: "semibold", rotated: true,
+        tracking: cfg.handleAddress.letterSpacing,
       }),
       ...warnLines.map((line, i) =>
         textLayer(`Warning ${i + 1}`, line, {
           x: L.WARNING.x + i * L.WARNING.leading, baseline: L.WARNING.yStart,
           size: L.WARNING.size, fill: cfg.warning.fill, face: "regular", rotated: true,
+          tracking: cfg.warning.letterSpacing,
         }),
       ),
       textLayer("Store cold", cfg.storeCold.text, {
         x: L.STORE_COLD.x, baseline: L.STORE_COLD.yStart, size: L.STORE_COLD.size,
         fill: cfg.storeCold.fill, face: "semibold", rotated: true,
+        tracking: cfg.storeCold.letterSpacing,
       }),
     ],
   });

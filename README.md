@@ -60,12 +60,18 @@ element — by focusing or clicking its row in the form, or clicking it
 directly in the preview, which doubles as a click target and draws a
 selection outline around whatever's picked — opens one contextual style
 panel below the form (Photoshop's model: only one element's panel is
-ever open at a time). Its Fill (color picker/hex field/no-ink toggle),
+ever open at a time). Its Fill (color picker with a screen eyedropper on
+Chromium/hex field/no-ink toggle),
 Layer select, and outer-stroke toggle (its own color + width, px at the
 600dpi deliverable, default 15px ≈ 1.8pt) are on every element's panel —
 except that the QR and the barcode omit the no-ink option, since neither
 scans without ink, and the barcode's stroke defaults to 20px rather than
-the global 15px; a
+the global 15px. Every text element also gets a Tracking field —
+letter-spacing in points, default 0 — which the PDF applies as a `Tc`
+text-state operator, the PSD as Photoshop tracking (1/1000 em), and which
+widens centred lines, justified warning columns and click targets alike;
+the logo and the two codes omit it, having no glyphs of their own to
+space. A
 Bold checkbox shows for the elements that have one, and a Reset button
 (back to that element's shipped default) once a style deviates from it.
 The description block's panel sets the base fill/layer for its plain

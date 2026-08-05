@@ -18,12 +18,11 @@ export const CHECKER =
   "repeating-conic-gradient(#3a3d43 0% 25%, #1a1c1f 0% 50%) 0 0 / 8px 8px";
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
-// ponytail: EyeDropper is Chromium-only and absent from lib.dom in TS 5.6.
-declare global {
-  interface Window {
-    EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> };
-  }
-}
+// ponytail: EyeDropper is Chromium-only and still absent from lib.dom, so it
+// gets a local type instead of a global Window augmentation. Read once here:
+// narrowing a const survives into the click handler, a window property doesn't.
+const EyeDropper = (window as { EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> } })
+  .EyeDropper;
 
 export function ColorField(props: {
   value: Fill;
@@ -36,6 +35,8 @@ export function ColorField(props: {
   // Local text state so a half-typed hex doesn't clobber the config.
   const [text, setText] = useState<string | null>(null);
   const hex = none ? "#ffffff" : props.value;
+  // Commit a picked color and drop any half-typed hex sitting in the Input.
+  const apply = (v: string) => { setText(null); props.onChange(v as Fill); };
   return (
     <div className="flex items-center gap-1">
       {props.allowNone !== false && (
@@ -65,24 +66,18 @@ export function ColorField(props: {
           }
         />
         <PopoverContent align="start" className="w-auto p-2">
-          <HexColorPicker
-            color={hex}
-            onChange={(v) => { setText(null); props.onChange(v as Fill); }}
-          />
+          <HexColorPicker color={hex} onChange={apply} />
           {/* Screen eyedropper: the OS takes over the cursor once opened, so
               the user can sample any pixel outside the popover. */}
-          {typeof window !== "undefined" && window.EyeDropper && (
+          {EyeDropper && (
             <Button
               type="button"
               variant="outline"
               size="sm"
               className="mt-2 w-full"
               onClick={() =>
-                new window.EyeDropper!()
-                  .open()
-                  .then((r) => { setText(null); props.onChange(r.sRGBHex as Fill); })
-                  // Esc / cancel rejects with AbortError; nothing to do.
-                  .catch(() => {})
+                // Esc / cancel rejects with AbortError; nothing to do.
+                new EyeDropper().open().then((r) => apply(r.sRGBHex), () => {})
               }
             >
               <Pipette /> Pick from screen

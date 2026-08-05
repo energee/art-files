@@ -22,19 +22,22 @@ const DESC = 0.35;
  *  aspect only needs these two numbers changed here alongside the asset. */
 const LOGO_H = (L.LOGO.w * 525) / 480;
 
+// Every text box measures through L.trackedWidth, so an element's tracking
+// widens its hit box exactly as much as it widens the drawn line. `tracking`
+// defaults to 0, which reduces each of these to the untracked measurement.
 const flat = (
   id: ElementId, text: string, x: number, baseline: number, size: number,
-  m: Measure, bold = false,
+  m: Measure, bold = false, tracking = 0,
 ): Box => ({
-  id, x0: x, x1: x + m(text, size, bold),
+  id, x0: x, x1: x + L.trackedWidth(m(text, size, bold), text, tracking),
   y0: baseline - ASC * size, y1: baseline + DESC * size,
 });
 
 const centred = (
   id: ElementId, text: string, cx: number, baseline: number, size: number,
-  m: Measure, bold = false,
+  m: Measure, bold = false, tracking = 0,
 ): Box => {
-  const w = m(text, size, bold);
+  const w = L.trackedWidth(m(text, size, bold), text, tracking);
   return {
     id, x0: cx - w / 2, x1: cx + w / 2,
     y0: baseline - ASC * size, y1: baseline + DESC * size,
@@ -43,10 +46,10 @@ const centred = (
 
 const rotated = (
   id: ElementId, text: string, x: number, yStart: number, size: number,
-  m: Measure, bold = false,
+  m: Measure, bold = false, tracking = 0,
 ): Box => ({
   id, x0: x - ASC * size, x1: x + DESC * size,
-  y0: yStart - m(text, size, bold), y1: yStart,
+  y0: yStart - L.trackedWidth(m(text, size, bold), text, tracking), y1: yStart,
 });
 
 /** Every element's box, in paint order (later entries sit on top): volume,
@@ -63,21 +66,22 @@ export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
   // if present, always precedes the body lines, matching drawElements.
   const descLines = [
     ...(desc.header
-      ? [{ text: desc.header.text, x: L.DESC_HEADER.x, baseline: L.DESC_HEADER.baseline, size: L.DESC_HEADER.size, bold: !!desc.header.bold }]
+      ? [{ text: desc.header.text, x: L.DESC_HEADER.x, baseline: L.DESC_HEADER.baseline, size: L.DESC_HEADER.size, bold: !!desc.header.bold, tracking: desc.header.letterSpacing ?? 0 }]
       : []),
     ...desc.lines.map((l, i) => ({
       text: l.text, x: L.DESC.x,
       baseline: L.DESC.firstBaseline + i * L.DESC.leading, size: L.DESC.size, bold: !!l.bold,
+      tracking: l.letterSpacing ?? 0,
     })),
   ];
 
   const boxes: Box[] = [
     // Left column
-    flat("volume", cfg.volume.text, L.VOLUME.x, L.VOLUME.baseline, L.VOLUME.size, m, !!cfg.volume.bold),
-    flat("abv", `${cfg.abv}% alc by vol`, L.ABV.x, L.ABV.baseline, L.ABV.size, m),
-    ...descLines.map((d) => flat("description", d.text, d.x, d.baseline, d.size, m, d.bold)),
+    flat("volume", cfg.volume.text, L.VOLUME.x, L.VOLUME.baseline, L.VOLUME.size, m, !!cfg.volume.bold, cfg.volume.letterSpacing),
+    flat("abv", `${cfg.abv}% alc by vol`, L.ABV.x, L.ABV.baseline, L.ABV.size, m, false, cfg.abvStyle.letterSpacing),
+    ...descLines.map((d) => flat("description", d.text, d.x, d.baseline, d.size, m, d.bold, d.tracking)),
     // Center column. Wordmark and beer name always render with the Bold face.
-    centred("wordmark", L.WORDMARK.text, L.WORDMARK.cx, L.WORDMARK.baseline, L.WORDMARK.size, m, true),
+    centred("wordmark", L.WORDMARK.text, L.WORDMARK.cx, L.WORDMARK.baseline, L.WORDMARK.size, m, true, cfg.wordmark.letterSpacing),
     // Logo is a box, not text. It is drawn at LOGO.w wide and whatever height
     // the SVG's aspect gives (logo2025.svg is viewBox "0 0 480 525", so ~1.09
     // x the width — see parseLogo, which both renderers scale by width alone),
@@ -86,15 +90,15 @@ export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
     { id: "logo",
       x0: L.LOGO.cx - L.LOGO.w / 2, x1: L.LOGO.cx + L.LOGO.w / 2,
       y0: L.LOGO.cy - LOGO_H / 2, y1: L.LOGO.cy + LOGO_H / 2 },
-    centred("name", cfg.beerName.toUpperCase(), L.NAME.cx, L.NAME.baseline, L.NAME.size, m, true),
-    centred("styleLine", cfg.styleLine.text, L.STYLE_LINE.cx, L.STYLE_LINE.baseline, L.STYLE_LINE.size, m, !!cfg.styleLine.bold),
+    centred("name", cfg.beerName.toUpperCase(), L.NAME.cx, L.NAME.baseline, L.NAME.size, m, true, cfg.nameStyle.letterSpacing),
+    centred("styleLine", cfg.styleLine.text, L.STYLE_LINE.cx, L.STYLE_LINE.baseline, L.STYLE_LINE.size, m, !!cfg.styleLine.bold, cfg.styleLine.letterSpacing),
     // QR is a box, not text.
     { id: "qr",
       x0: L.QR.x, x1: L.QR.x + L.QR.size,
       y0: L.QR.yTop, y1: L.QR.yTop + L.QR.size },
     // Right rotated column. handleAddress always renders semibold (bold=true;
     // see the function doc comment).
-    rotated("handleAddress", cfg.handleAddress.text, L.HANDLE_ADDR.x, L.HANDLE_ADDR.yStart, L.HANDLE_ADDR.size, m, true),
+    rotated("handleAddress", cfg.handleAddress.text, L.HANDLE_ADDR.x, L.HANDLE_ADDR.yStart, L.HANDLE_ADDR.size, m, true, cfg.handleAddress.letterSpacing),
   ];
   // The warning is a wrapped paragraph in rotated, justified columns sharing
   // one style, painted after handleAddress and before storeCold. Column
@@ -106,7 +110,11 @@ export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
   // drawJustifiedRotated), so the box uses maxLen too rather than the
   // column's natural (pre-justification) measured width; a single-word
   // column has no gaps to stretch and stays natural-length.
-  const warningMeasure = (t: string) => m(t, L.WARNING.size, false);
+  // Tracked, matching drawElements' wrap measure: the warning's own spacing
+  // decides both how many columns the paragraph wraps into and how long each
+  // justified one is.
+  const warningMeasure = (t: string) =>
+    L.trackedWidth(m(t, L.WARNING.size, false), t, cfg.warning.letterSpacing ?? 0);
   const warnLines = wrapWarning(warningMeasure, L.WARNING.maxLen);
   warnLines.forEach((line, i) =>
     boxes.push({
@@ -118,7 +126,7 @@ export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
     }),
   );
   // storeCold always renders semibold too (bold=true; see the doc comment).
-  boxes.push(rotated("storeCold", cfg.storeCold.text, L.STORE_COLD.x, L.STORE_COLD.yStart, L.STORE_COLD.size, m, true));
+  boxes.push(rotated("storeCold", cfg.storeCold.text, L.STORE_COLD.x, L.STORE_COLD.yStart, L.STORE_COLD.size, m, true, cfg.storeCold.letterSpacing));
   // The barcode is drawn last, so its box goes last too. No font measurement:
   // the footprint is the whole symbol, bars AND the digits column (BARCODE.w
   // is the full symbol depth), which is exactly the rectangle the mask lays

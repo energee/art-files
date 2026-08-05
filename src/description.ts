@@ -41,6 +41,9 @@ function styleLine(raw: string, base: Style, bold = false): StyledLine {
     layer: white ? "white" : base.layer,
     stroke: base.stroke,
     strokeWidth: base.strokeWidth,
+    // Tracking is a block-level setting like the stroke: the white marker
+    // overrides fill/layer only, never the base's spacing.
+    letterSpacing: base.letterSpacing,
   };
 }
 

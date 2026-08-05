@@ -16,6 +16,12 @@ export interface Style {
   stroke?: Fill;
   /** Stroke width in px at the 600dpi deliverable (default 15 ≈ 1.8pt). */
   strokeWidth?: number;
+  /** Extra space between glyphs (tracking), in PDF points; absent = 0.
+   *  Points, not px@600dpi like strokeWidth, because tracking is judged
+   *  against the type size — which layout.ts also authors in points. Applies
+   *  to every text element; the logo and the two codes have no glyphs of
+   *  their own to space (the barcode's digits are fixed geometry). */
+  letterSpacing?: number;
 }
 
 export interface StyledLine extends Style {

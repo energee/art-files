@@ -18,6 +18,12 @@ export interface LabelElement {
   /** Whether a bold toggle applies. False for the logo (no text at all) and
    *  for the two codes (the barcode's digits are drawn in one fixed face). */
   hasBold: boolean;
+  /** Whether this element draws glyphs, i.e. whether letter-spacing means
+   *  anything for it. False for the logo (a vector shape) and the two codes —
+   *  the QR has no text at all, and the barcode's digits are fixed geometry
+   *  whose spacing is part of the symbol, not a style choice. Distinct from
+   *  hasBold, which is also false for text set in one fixed face. */
+  isText: boolean;
   /** Whether "no ink" is a legal Fill. False for the two codes: an ink-less
    *  QR or barcode isn't scannable, so their Fill control must never offer
    *  that option. */
@@ -46,21 +52,21 @@ const flatStyle = (k: FlatKeys) => (c: LabelConfig): Style => ({
 });
 
 export const ELEMENTS: LabelElement[] = [
-  { id: "name", label: "Beer name", group: "beer", hasBold: false, allowNone: true, style: (c) => c.nameStyle },
-  { id: "styleLine", label: "Subtitle", group: "beer", hasBold: true, allowNone: true, style: (c) => c.styleLine },
-  { id: "abv", label: "ABV", group: "beer", hasBold: false, allowNone: true, style: (c) => c.abvStyle },
-  { id: "description", label: "Description", group: "beer", hasBold: false, allowNone: true, style: (c) => c.descStyle },
+  { id: "name", label: "Beer name", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.nameStyle },
+  { id: "styleLine", label: "Subtitle", group: "beer", hasBold: true, isText: true, allowNone: true, style: (c) => c.styleLine },
+  { id: "abv", label: "ABV", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.abvStyle },
+  { id: "description", label: "Description", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.descStyle },
   // The two codes must always carry ink — see allowNone's doc. Both are
   // "beer": the QR payload follows the beer name and the UPC digits change
   // per release, so neither is a set-once brand-template element.
-  { id: "qr", label: "QR", group: "beer", hasBold: false, allowNone: false, style: flatStyle(FLAT.qr) },
-  { id: "barcode", label: "Barcode", group: "beer", hasBold: false, allowNone: false, style: flatStyle(FLAT.barcode) },
-  { id: "volume", label: "Volume", group: "template", hasBold: true, allowNone: true, style: (c) => c.volume },
-  { id: "wordmark", label: "Wordmark", group: "template", hasBold: false, allowNone: true, style: (c) => c.wordmark },
-  { id: "logo", label: "Logo", group: "template", hasBold: false, allowNone: true, style: (c) => c.logo },
-  { id: "handleAddress", label: "Handle / address", group: "template", hasBold: true, allowNone: true, style: (c) => c.handleAddress },
-  { id: "warning", label: "Warning", group: "template", hasBold: false, allowNone: true, style: (c) => c.warning },
-  { id: "storeCold", label: "Store cold", group: "template", hasBold: true, allowNone: true, style: (c) => c.storeCold },
+  { id: "qr", label: "QR", group: "beer", hasBold: false, isText: false, allowNone: false, style: flatStyle(FLAT.qr) },
+  { id: "barcode", label: "Barcode", group: "beer", hasBold: false, isText: false, allowNone: false, style: flatStyle(FLAT.barcode) },
+  { id: "volume", label: "Volume", group: "template", hasBold: true, isText: true, allowNone: true, style: (c) => c.volume },
+  { id: "wordmark", label: "Wordmark", group: "template", hasBold: false, isText: true, allowNone: true, style: (c) => c.wordmark },
+  { id: "logo", label: "Logo", group: "template", hasBold: false, isText: false, allowNone: true, style: (c) => c.logo },
+  { id: "handleAddress", label: "Handle / address", group: "template", hasBold: true, isText: true, allowNone: true, style: (c) => c.handleAddress },
+  { id: "warning", label: "Warning", group: "template", hasBold: false, isText: true, allowNone: true, style: (c) => c.warning },
+  { id: "storeCold", label: "Store cold", group: "template", hasBold: true, isText: true, allowNone: true, style: (c) => c.storeCold },
 ];
 
 export function elementById(id: ElementId): LabelElement {
@@ -125,11 +131,16 @@ export function isDefaultStyle(id: ElementId, s: Style): boolean {
   const widthOf = (x: Style) => (strokeOf(x) === "none" ? undefined : x.strokeWidth);
   const boldOf = (x: Style) =>
     elementById(id).hasBold ? ((x as StyledLine).bold ?? false) : false;
+  // Absent tracking and an explicit 0 are the same to every renderer, and
+  // tracking is editable and reset like the rest — leaving it out would let a
+  // respaced element claim to be untouched.
+  const trackOf = (x: Style) => x.letterSpacing ?? 0;
   return (
     s.fill === d.fill &&
     s.layer === d.layer &&
     strokeOf(s) === strokeOf(d) &&
     widthOf(s) === widthOf(d) &&
+    trackOf(s) === trackOf(d) &&
     boldOf(s) === boldOf(d)
   );
 }
