@@ -85,7 +85,7 @@ function Row(props: {
 /** A row for an ElementId whose text lives in a StyledLine alongside its
  *  style (bold sits there too) — true exactly when ELEMENTS marks hasBold,
  *  the same guarantee StyleProperties.tsx's cast relies on. Covers Subtitle,
- *  Volume, Handle/addr and Store cold. */
+ *  Volume, Info and Store cold. */
 function TextElementRow(props: {
   id: ElementId; label: string; cfg: LabelConfig; update: Update; onSelect: (id: ElementId) => void;
 }) {
@@ -295,7 +295,7 @@ export function LabelForm(props: {
           <TooltipTrigger
             render={<Info className="size-3 cursor-help" aria-label="Description syntax" />}
           />
-          <TooltipContent># header · **bold** · _white ink_ · plain = the panel's style</TooltipContent>
+          <TooltipContent># header · **bold** · _white ink_ · plain = the panel's style · select part of a line to mark a span</TooltipContent>
         </Tooltip>
         {!isDefaultStyle("description", cfg.descStyle) && <Dot />}
       </Heading>
@@ -368,9 +368,6 @@ export function LabelForm(props: {
         </Heading>
         <CollapsibleContent className="pt-1.5">
           {TEMPLATE_ELEMENTS.map((el) => {
-            // Only "Handle / address" needs shortening — the rest already
-            // match ELEMENTS' label verbatim — to fit the row's w-24 column.
-            const label = el.id === "handleAddress" ? "Handle/addr" : el.label;
             // The laurel gets a vertical nudge alongside its style row — it
             // is drawn as a box at a fixed cy, so unlike a text element there
             // is no baseline field to move it with. It moves the whole centre
@@ -381,7 +378,7 @@ export function LabelForm(props: {
               return (
                 <div key={el.id}>
                   <StyleOnlyElementRow
-                    id={el.id} label={label} cfg={cfg}
+                    id={el.id} label={el.label} cfg={cfg}
                     selected={selected === el.id} onSelect={onSelect}
                   />
                   <Row label="Stack nudge">
@@ -394,11 +391,30 @@ export function LabelForm(props: {
                   </Row>
                 </div>
               );
+            // Info authors in the same markdown subset as the description,
+            // through the same WYSIWYG editor — `**bold**` and `_white ink_`
+            // over the row's own style (see parseInfoLine). The slot draws
+            // ONE rotated line, so only the first line is kept: a stored
+            // second line would silently never appear on the label.
+            if (el.id === "handleAddress")
+              return (
+                <Row key={el.id} label={el.label} marker={!isDefaultStyle(el.id, cfg.handleAddress)}>
+                  <div className="min-w-0 flex-1">
+                    <DescriptionEditor
+                      value={cfg.handleAddress.text}
+                      base={cfg.handleAddress}
+                      onFocus={() => onSelect(el.id)}
+                      onChange={(md) =>
+                        update((c) => { c.handleAddress.text = md.split("\n")[0]; })}
+                    />
+                  </div>
+                </Row>
+              );
             return el.hasBold ? (
-              <TextElementRow key={el.id} id={el.id} label={label} cfg={cfg} update={update} onSelect={onSelect} />
+              <TextElementRow key={el.id} id={el.id} label={el.label} cfg={cfg} update={update} onSelect={onSelect} />
             ) : (
               <StyleOnlyElementRow
-                key={el.id} id={el.id} label={label} cfg={cfg}
+                key={el.id} id={el.id} label={el.label} cfg={cfg}
                 selected={selected === el.id} onSelect={onSelect}
               />
             );

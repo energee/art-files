@@ -91,8 +91,12 @@ export const PreviewCompare = forwardRef<
     selected: ElementId | null;
     /** Called with the clicked element's id, or null for empty background. */
     onPick: (id: ElementId | null) => void;
+    /** Divider position as % of width showing white-ink, on every change —
+     *  including a manual drag, so the View menu's checkmarks track the real
+     *  divider rather than whichever menu item was picked last. */
+    onSplit?: (pct: number) => void;
   }
->(function PreviewCompare({ artBytes, maskBytes, cfg, measure, selected, onPick }, ref) {
+>(function PreviewCompare({ artBytes, maskBytes, cfg, measure, selected, onPick, onSplit }, ref) {
   const artCanvas = useRef<HTMLCanvasElement>(null);
   const maskCanvas = useRef<HTMLCanvasElement>(null);
   const leftPanel = useRef<PanelImperativeHandle>(null);
@@ -152,7 +156,11 @@ export const PreviewCompare = forwardRef<
           placeholders stay non-interactive without their own override). */}
       <ResizablePanelGroup
         orientation="horizontal"
-        onLayoutChange={(layout) => setSplit(layout[WHITE_INK_PANEL_ID] ?? 0)}
+        onLayoutChange={(layout) => {
+          const pct = layout[WHITE_INK_PANEL_ID] ?? 0;
+          setSplit(pct);
+          onSplit?.(pct);
+        }}
         className="absolute inset-0 pointer-events-none"
       >
         <ResizablePanel id={WHITE_INK_PANEL_ID} panelRef={leftPanel} defaultSize="0%" minSize="0%" />

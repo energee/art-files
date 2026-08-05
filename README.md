@@ -101,18 +101,41 @@ raw-markdown textarea: each line renders in its real appearance
 punctuation, a toolbar toggles Header/Bold/White ink for whichever
 line(s) the caret or selection touches, and "Edit as text" is an escape
 hatch back to the raw markdown — storage is unchanged, still the same
-markdown-subset string parsed by `src/description.ts`. The preview is a single frame: both PDFs
+markdown-subset string parsed by `src/description.ts`. Markers also apply
+INLINE: selecting part of a line and hitting Bold or White ink wraps just
+that span, and both renderers split the line into runs (`parseRuns`) and
+draw each in its own face and plate. The PSD export carries them as
+Photoshop style runs (`{length, style}` overrides on the text layer), so a
+mixed line stays ONE editable layer with its faces intact. Inline markers
+stay visible as typed characters in the field, which paints per line, not
+per run. The **Info** row
+(the rotated handle/address line, stored as `handleAddress`) uses that same
+editor and the same markers, via `parseInfoLine`: `**bold**` and `_white
+ink_` apply over the row's own style. It draws one rotated line, so a
+header collapses to bold and only the first line is kept. Plain text
+parses to itself, so configs written before this render unchanged. The preview is a single frame: both PDFs
 render to bitmaps via pdf.js and stack there, and a draggable divider
 reveals the white-ink layer over the art in place — no embedded PDF
 viewer, no tabs. Live previews build against a downscaled copy of the
 texture/mask (print-size images made every keystroke-triggered rebuild
 churn enough memory to crash the tab); downloads always rebuild at full
-resolution when clicked. A single **Export** button opens a menu with
-**Print PDFs (art + mask)** and **Photoshop PSD** (see below); Save/Load
-config remain small ghost buttons beside it. Press <kbd>⌘K</kbd> /
-<kbd>Ctrl+K</kbd> for a command palette covering save config, load config,
-download art PDF, download mask PDF, and preview snap actions ("Preview:
-Art" / "Preview: White-ink" jump the divider to either end).
+resolution when clicked. Every action lives in a menubar across the top of
+the window, above the sidebar/preview split: **File** (save config, load
+config, then Export PDF, Export Mask PDF, Export PSD — see below; the
+both-PDFs-at-once action lives in the palette as "Export PDF + Mask PDF"),
+**Edit** (undo, redo), and
+**View** (Standard / Mask, which jump the divider to either end — the
+palette lists them as "Preview: Standard" / "Preview: Mask"). Export items disable while the label is invalid, and the
+reason sits in the bar next to the menus. Press <kbd>⌘K</kbd> /
+<kbd>Ctrl+K</kbd> for a command palette covering the same actions.
+
+Undo (<kbd>⌘Z</kbd>) and redo (<kbd>⇧⌘Z</kbd> or <kbd>⌘Y</kbd>) cover the
+label config only — every field, style tweak, and scrub, but not the loaded
+texture/mask files, so stepping back never re-decodes an image. Edits made
+within half a second of each other collapse into one step, so a scrub drag
+undoes as a single move. The shortcuts stay out of the way while a text
+field has focus: there the browser's own per-field undo applies. See
+`src/history.ts`.
 
 ```bash
 npm install
@@ -126,7 +149,14 @@ npm run dev        # open the app: the label previews immediately (text on bare
 `src/psd/build.ts` is a second renderer over the same `LabelConfig` and the
 same `src/layout.ts` geometry, for handing artwork to a designer. Text
 elements become editable Photoshop type layers; the logo and QR become
-vector shape layers with real bezier knots. The barcode is one merged shape
+vector shape layers with real bezier knots. Every element carrying an outer
+stroke gets it as an editable **layer effect** (outside, in the stroke's own
+colour) — the PDF has to fake a text stroke as a ring of offset copies,
+Photoshop has the real thing. The description is ONE type layer holding the
+whole block: per-line faces and fills ride along as Photoshop style runs,
+and the PDF's line advance becomes the layer's leading. The warning is
+likewise one justified, rotated layer whose lines are the columns, wrapped
+by the same `wrapWarning` measure the PDF uses. The barcode is one merged shape
 layer instead — bars and digit glyph outlines together, bezier — plus a
 second "Barcode stroke" shape layer beneath it mirroring the PDF's halo
 (omitted when the stroke is `none`); the barcode's digits are not editable

@@ -7,6 +7,7 @@ import type { CollabSlot, Fill, LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
 import { defaultConfig, parseConfigFile, toConfigFile } from "@/defaults";
+import { useHistory } from "@/history";
 import { validateUpc } from "@/upc";
 import { validateMask, recolorMaskForPdf } from "@/maskimage";
 import { tintRgba } from "@/collab";
@@ -17,11 +18,11 @@ import { StyleProperties } from "@/components/StyleProperties";
 import { FileDrop } from "@/components/FileDrop";
 import { CommandMenu } from "@/components/CommandMenu";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
-import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
-} from "@/components/ui/tooltip";
+  Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator,
+  MenubarShortcut, MenubarTrigger,
+} from "@/components/ui/menubar";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import poppinsRegular from "@/assets/fonts/Poppins-Regular.ttf?url";
 import poppinsSemiBold from "@/assets/fonts/Poppins-SemiBold.ttf?url";
 import poppinsBold from "@/assets/fonts/Poppins-Bold.ttf?url";
@@ -90,6 +91,11 @@ const fontsPromise = (async () => {
 const blobUrl = (bytes: Uint8Array, type: string) =>
   URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type }));
 
+// Menu chrome, shared by all three menus so they can't drift apart: small
+// regular-weight triggers, and items sized to match.
+const MENU_TRIGGER = "px-2 py-1 text-xs font-normal";
+const MENU_ITEMS = "[&_[data-slot=menubar-item]]:text-xs";
+
 function download(url: string, name: string) {
   const a = document.createElement("a");
   a.href = url;
@@ -98,15 +104,14 @@ function download(url: string, name: string) {
 }
 
 export default function App() {
-  const [cfg, setCfg] = useState<LabelConfig>(defaultConfig);
+  // Config lives in a history stack, not plain useState — every edit that
+  // goes through setCfg (i.e. all of them, see `update` below) is undoable.
+  const { value: cfg, set: setCfg, undo, redo, canUndo, canRedo } =
+    useHistory<LabelConfig>(defaultConfig);
   // Which element's contextual style panel is open — Photoshop's model, one
   // at a time, driven by whichever row in LabelForm (or now, PreviewCompare
   // itself) last got focus/click.
   const [selected, setSelected] = useState<ElementId | null>(null);
-  // Open state for the sidebar's Export popover, closed explicitly by each
-  // menu item's onClick (Base UI Popover doesn't close on its own here since
-  // the items aren't Popover.Close — see the two exportOpen(false) below).
-  const [exportOpen, setExportOpen] = useState(false);
   // Real glyph widths for PreviewCompare's click-to-select hit-testing (see
   // hittest.ts's Measure type) — null until the one-time font embed below
   // resolves; PreviewCompare skips hit-testing rather than guess with it.
@@ -124,6 +129,9 @@ export default function App() {
   const [building, setBuilding] = useState(false);
   const [buildError, setBuildError] = useState("");
   const [loadError, setLoadError] = useState("");
+  // Divider position reported by PreviewCompare (% of width showing
+  // white-ink), so the View menu can check off whichever end it sits at.
+  const [split, setSplit] = useState(0);
   const configInput = useRef<HTMLInputElement>(null);
   const previewRef = useRef<PreviewCompareHandle>(null);
 
@@ -163,6 +171,24 @@ export default function App() {
         (bold ? semibold : regular).widthOfTextAtSize(text, size));
     })();
   }, []);
+
+  // ⌘Z / ⇧⌘Z (and ⌘Y) for the config history. Deliberately inert while a
+  // text field has focus: there the browser's own per-field undo is the one
+  // the user means, and stealing it would blow away a whole typed line.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      if (key !== "z" && key !== "y") return;
+      if (!e.metaKey && !e.ctrlKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "")) return;
+      e.preventDefault();
+      if (key === "y" || e.shiftKey) redo();
+      else undo();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
 
   const upc = useMemo(() => validateUpc(cfg.upc), [cfg.upc]);
   const errors: Record<string, string> = {};
@@ -379,9 +405,76 @@ export default function App() {
 
   return (
     <TooltipProvider>
-      <main className="flex h-screen">
+      {/* App chrome: one full-width bar above the split, so the menus read as
+          the window's own rather than as sidebar controls. The h-screen flex
+          column below it keeps the sidebar and preview scrolling independently
+          as before. */}
+      <div className="flex h-screen flex-col">
+        <header className="flex items-center gap-3 border-b border-border px-3 py-1">
+          {/* Stripped to a real menu bar: no pill border or rounding of its
+              own (the header's bottom border is the chrome), and small
+              regular-weight labels rather than the default's badge-like
+              medium ones. */}
+          <Menubar className="h-auto gap-0 rounded-none border-0 p-0">
+            <MenubarMenu>
+              <MenubarTrigger className={MENU_TRIGGER}>File</MenubarTrigger>
+              <MenubarContent align="start" className={MENU_ITEMS}>
+                <MenubarItem onClick={saveConfig}>Save config</MenubarItem>
+                <MenubarItem onClick={() => configInput.current?.click()}>
+                  Load config
+                </MenubarItem>
+                <MenubarSeparator />
+                {/* !pdfs is the mid-build state: the PSD path rebuilds from
+                    the config alone, so only the PDF items wait on it.
+                    Exporting both PDFs at once lives in the ⌘K palette only —
+                    here the two layers are separate items. */}
+                <MenubarItem disabled={blocked || !pdfs} onClick={downloadArt}>
+                  Export PDF
+                </MenubarItem>
+                <MenubarItem disabled={blocked || !pdfs} onClick={downloadMask}>
+                  Export Mask PDF
+                </MenubarItem>
+                <MenubarItem disabled={blocked} onClick={() => void exportPsd()}>
+                  Export PSD
+                </MenubarItem>
+              </MenubarContent>
+            </MenubarMenu>
+            <MenubarMenu>
+              <MenubarTrigger className={MENU_TRIGGER}>Edit</MenubarTrigger>
+              <MenubarContent align="start" className={MENU_ITEMS}>
+                <MenubarItem disabled={!canUndo} onClick={undo}>
+                  Undo <MenubarShortcut>⌘Z</MenubarShortcut>
+                </MenubarItem>
+                <MenubarItem disabled={!canRedo} onClick={redo}>
+                  Redo <MenubarShortcut>⇧⌘Z</MenubarShortcut>
+                </MenubarItem>
+              </MenubarContent>
+            </MenubarMenu>
+            <MenubarMenu>
+              <MenubarTrigger className={MENU_TRIGGER}>View</MenubarTrigger>
+              <MenubarContent align="start" className={MENU_ITEMS}>
+                {/* Checked only at the extremes: anywhere in between is a
+                    manual compare position, which is neither view. */}
+                <MenubarCheckboxItem checked={split === 0}
+                  onClick={() => previewRef.current?.showArt()}>
+                  Standard
+                </MenubarCheckboxItem>
+                <MenubarCheckboxItem checked={split === 100}
+                  onClick={() => previewRef.current?.showMask()}>
+                  Mask
+                </MenubarCheckboxItem>
+              </MenubarContent>
+            </MenubarMenu>
+          </Menubar>
+          {/* Replaces the tooltip the old disabled Export button carried: a
+              menu item can't explain its own disabled state, so the reason
+              sits in the bar itself. */}
+          {blocked && <span className="text-xs text-destructive">{blockedWhy}</span>}
+          <input ref={configInput} type="file" accept="application/json" hidden
+            onChange={(e) => e.target.files?.[0] && void loadConfig(e.target.files[0])} />
+        </header>
+      <main className="flex min-h-0 flex-1">
         <aside className="w-[430px] min-w-[380px] overflow-y-auto border-r border-border p-4">
-          <h1 className="mb-3 text-base font-semibold">Lolev Label Generator</h1>
           <div className="flex gap-2">
             <FileDrop label="Texture PNG/JPG"
               accept={{ "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] }}
@@ -399,44 +492,6 @@ export default function App() {
               <StyleProperties id={selected} cfg={cfg} update={update} onClose={() => setSelected(null)} />
             </div>
           )}
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  // span wrapper: a disabled button swallows the hover events
-                  // the tooltip needs.
-                  <span>
-                    <Popover open={exportOpen} onOpenChange={setExportOpen}>
-                      {/* Trigger disabled exactly when neither menu item below
-                          could do anything (blocked); a mid-build !pdfs still
-                          leaves PSD export usable, so it doesn't gate the menu
-                          itself, only the PDF item. */}
-                      <PopoverTrigger render={<Button size="sm" disabled={blocked}>Export</Button>} />
-                      <PopoverContent align="start" className="w-56 gap-1 p-1">
-                        <Button variant="ghost" size="sm" className="w-full justify-start"
-                          disabled={blocked || !pdfs}
-                          onClick={() => { setExportOpen(false); exportPdfs(); }}>
-                          Print PDFs (art + mask)
-                        </Button>
-                        <Button variant="ghost" size="sm" className="w-full justify-start"
-                          disabled={blocked}
-                          onClick={() => { setExportOpen(false); void exportPsd(); }}>
-                          Photoshop PSD
-                        </Button>
-                      </PopoverContent>
-                    </Popover>
-                  </span>
-                }
-              />
-              {blocked && <TooltipContent>{blockedWhy}</TooltipContent>}
-            </Tooltip>
-            <Button variant="ghost" size="sm" onClick={saveConfig}>Save config</Button>
-            <Button variant="ghost" size="sm" onClick={() => configInput.current?.click()}>
-              Load config
-            </Button>
-            <input ref={configInput} type="file" accept="application/json" hidden
-              onChange={(e) => e.target.files?.[0] && void loadConfig(e.target.files[0])} />
-          </div>
         </aside>
         <section className="flex min-w-0 flex-1 flex-col p-3">
           <div className="mb-2 flex h-5 items-center gap-2">
@@ -456,7 +511,8 @@ export default function App() {
           <div className="relative flex min-h-0 flex-1">
             <PreviewCompare ref={previewRef}
               artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
-              cfg={cfg} measure={measure} selected={selected} onPick={setSelected} />
+              cfg={cfg} measure={measure} selected={selected} onPick={setSelected}
+              onSplit={setSplit} />
             {/* First-load state: until the first debounced build lands there is
                 nothing on the canvases, so fill the empty frame with a spinner
                 instead of a bare box. Later rebuilds keep the previous render
@@ -473,17 +529,20 @@ export default function App() {
         </section>
         <CommandMenu
           actions={[
-            { label: "Export PDFs (art + mask)", disabled: blocked || !pdfs, run: exportPdfs },
-            { label: "Download art PDF", disabled: blocked || !pdfs, run: downloadArt },
-            { label: "Download mask PDF", disabled: blocked || !pdfs, run: downloadMask },
-            { label: "Export layered PSD", disabled: blocked, run: () => void exportPsd() },
+            { label: "Export PDF + Mask PDF", disabled: blocked || !pdfs, run: exportPdfs },
+            { label: "Export PDF", disabled: blocked || !pdfs, run: downloadArt },
+            { label: "Export Mask PDF", disabled: blocked || !pdfs, run: downloadMask },
+            { label: "Export PSD", disabled: blocked, run: () => void exportPsd() },
+            { label: "Undo", disabled: !canUndo, run: undo },
+            { label: "Redo", disabled: !canRedo, run: redo },
             { label: "Save config", run: saveConfig },
             { label: "Load config", run: () => configInput.current?.click() },
-            { label: "Preview: Art", run: () => previewRef.current?.showArt() },
-            { label: "Preview: White-ink", run: () => previewRef.current?.showMask() },
+            { label: "Preview: Standard", run: () => previewRef.current?.showArt() },
+            { label: "Preview: Mask", run: () => previewRef.current?.showMask() },
           ]}
         />
       </main>
+      </div>
     </TooltipProvider>
   );
 }

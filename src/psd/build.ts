@@ -26,10 +26,10 @@ import fontkit from "@pdf-lib/fontkit";
 // writePsdUint8Array, not writePsdBuffer — the latter returns a Node Buffer
 // and throws "Buffer not supported on this platform" in the browser.
 import { writePsdUint8Array, type BezierPath, type Layer, type Psd } from "ag-psd";
-import type { Fill, LabelConfig } from "../types";
+import type { Fill, LabelConfig, StyledLine } from "../types";
 import * as L from "../layout";
 import { barcodeGeometry, barcodeStrokePt } from "../barcode";
-import { parseDescription } from "../description";
+import { parseDescription, parseInfoLine, parseRuns } from "../description";
 import { parseLogo } from "../logo";
 import { qrShapes, qrUrl } from "../qr";
 import { wrapWarning } from "../pdf/build";
@@ -232,12 +232,38 @@ function digitGroupPaths(
   return { paths: out, bbox };
 }
 
-function shapeLayer(name: string, paths: BezierPath[], fill: Fill): Layer {
+/** One vector layer. `stroke`/`strokeWidth` become the same editable
+ *  Photoshop stroke effect textLayer uses — the PDF strokes these paths for
+ *  real (drawSvgPath's borderColor), and the effect is the PSD parallel. */
+function shapeLayer(
+  name: string, paths: BezierPath[], fill: Fill, stroke?: Fill, strokeWidth?: number,
+): Layer {
   return {
     name,
     left: 0, top: 0, right: PSD_DOC.w, bottom: PSD_DOC.h,
     vectorFill: { type: "color", color: color255(fill) },
     vectorMask: { paths },
+    ...strokeEffect(stroke, strokeWidth),
+  };
+}
+
+/** The `effects.stroke` fragment for a layer, or nothing when the element
+ *  carries no stroke. Widths are authored in px at the 600dpi deliverable,
+ *  which is the PSD's own resolution — no px() conversion, unlike the
+ *  point-based geometry everywhere else. */
+function strokeEffect(stroke: Fill | undefined, strokeWidth: number | undefined) {
+  if (!stroke || stroke === "none") return {};
+  return {
+    effects: {
+      stroke: [{
+        enabled: true,
+        position: "outside" as const,
+        size: { units: "Pixels" as const, value: strokeWidth ?? L.DEFAULT_STROKE_PX },
+        fillType: "color" as const,
+        color: color255(stroke),
+        opacity: 1,
+      }],
+    },
   };
 }
 
@@ -264,29 +290,88 @@ function textLayer(
   text: string,
   opts: {
     x: number; baseline: number; size: number; fill: Fill; face: Face;
+    /** Face an inline `**bold**` run steps up to. Defaults to semibold,
+     *  matching drawLine; the rotated Info column passes bold, since its
+     *  unmarked text is already semibold. */
+    boldFace?: Face;
     rotated?: boolean;
     /** Letter-spacing in label points (Style.letterSpacing). */
     tracking?: number;
+    /** Line spacing in label points, for a layer holding several lines.
+     *  Omitted leaves Photoshop's auto leading, which is what every
+     *  single-line layer here wants. */
+    leading?: number;
+    /** Per-line styles for a merged multi-line layer, in line order. Each
+     *  entry styles one line of `text` (its newline included), so the block
+     *  keeps its per-line faces and fills in ONE editable layer. */
+    lines?: StyledLine[];
+    /** Justify every line to the full measure, the way drawJustifiedRotated
+     *  spaces the warning's columns. */
+    justify?: boolean;
+    /** Outer stroke, as an editable Photoshop layer EFFECT. The PDF fakes
+     *  the same stroke as a ring of offset text copies (pdf-lib cannot
+     *  stroke text); Photoshop has the real thing, so the PSD uses it. */
+    stroke?: Fill;
+    strokeWidth?: number;
   },
 ): Layer {
   const t = px(opts.x);
   const b = px(opts.baseline);
+  // Inline runs become Photoshop STYLE RUNS: a text layer carries a base
+  // style plus a list of {length, style} overrides measured in characters,
+  // so Photoshop lays the mixed faces out itself — no per-run x advance to
+  // compute here, and the line stays one editable layer. Lengths index the
+  // marker-stripped string, which is what the layer actually holds.
+  // A merged block styles per LINE (each line's own face and fill); a single
+  // line styles per inline RUN. Either way the layer ends up with one style
+  // run per styled span, which is what Photoshop edits.
+  const runs = opts.lines
+    ? opts.lines.flatMap((l, i) =>
+        // The newline belongs to the line before it, so run lengths cover
+        // the whole string.
+        parseRuns(l).map((r, j, all) => ({
+          ...r,
+          text: j === all.length - 1 && i < opts.lines!.length - 1 ? `${r.text}\n` : r.text,
+        })))
+    : parseRuns({ text, fill: opts.fill, layer: "metallic" });
+  const drawn = runs.map((r) => r.text).join("");
+  const boldFace = opts.boldFace ?? "semibold";
+  // A line with no markers is one run in the base face: emitting no runs at
+  // all there keeps those layers byte-identical to what this builder has
+  // always written.
+  const mixed = runs.length > 1 || runs.some((r) => r.bold);
+  const styleRuns = mixed
+    ? runs.map((r) => ({
+        length: r.text.length,
+        style: {
+          font: { name: PS_NAME[r.bold ? boldFace : opts.face] },
+          // A merged block's lines can differ in colour (a `_white ink_`
+          // line keeps the block's fill, a re-filled one does not), so the
+          // run carries its own.
+          ...(opts.lines ? { fillColor: color255(r.fill) } : {}),
+        },
+      }))
+    : undefined;
   return {
     name,
     text: {
-      text,
+      text: drawn,
       transform: opts.rotated ? [0, -1, 1, 0, t, b] : [1, 0, 0, 1, t, b],
       style: {
         font: { name: PS_NAME[opts.face] },
         fontSize: px(opts.size),
         fillColor: color255(opts.fill),
+        ...(opts.leading ? { leading: px(opts.leading), autoLeading: false } : {}),
         // Photoshop authors tracking in 1/1000 em, so the points-per-glyph
         // value converts against the type size — and needs no px() scaling,
         // being a ratio. Omitted at 0 so untracked layers stay exactly as
         // this builder has always written them.
         ...(opts.tracking ? { tracking: (opts.tracking / opts.size) * 1000 } : {}),
       },
+      ...(styleRuns ? { styleRuns } : {}),
+      ...(opts.justify ? { paragraphStyle: { justification: "justify-all" as const } } : {}),
     },
+    ...strokeEffect(opts.stroke, opts.strokeWidth),
   };
 }
 
@@ -321,10 +406,12 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
     textLayer("Volume", cfg.volume.text, {
       x: L.VOLUME.x, baseline: L.VOLUME.baseline, size: L.VOLUME.size,
       fill: cfg.volume.fill, face: faceOf(cfg.volume), tracking: cfg.volume.letterSpacing,
+      stroke: cfg.volume.stroke, strokeWidth: cfg.volume.strokeWidth,
     }),
     textLayer("ABV", `${cfg.abv}% alc by vol`, {
       x: L.ABV.x, baseline: L.ABV.baseline, size: L.ABV.size,
       fill: cfg.abvStyle.fill, face: "regular", tracking: cfg.abvStyle.letterSpacing,
+      stroke: cfg.abvStyle.stroke, strokeWidth: cfg.abvStyle.strokeWidth,
     }),
   ];
   if (desc.header)
@@ -333,18 +420,24 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
         x: L.DESC_HEADER.x, baseline: L.DESC_HEADER.baseline, size: L.DESC_HEADER.size,
         fill: desc.header.fill, face: faceOf(desc.header),
         tracking: desc.header.letterSpacing,
+      stroke: desc.header.stroke, strokeWidth: desc.header.strokeWidth,
       }),
     );
-  // One layer per line: the markdown subset styles lines individually, and a
-  // single type layer would need style runs to express that.
-  desc.lines.forEach((line, i) =>
+  // ONE layer for the whole block: the markdown subset styles lines
+  // individually, and style runs express that inside a single editable type
+  // layer (one run per line, or per inline span within a line). Leading is
+  // the PDF's own line advance, so the merged layer's lines land on the
+  // baselines the per-line layers used to occupy.
+  if (desc.lines.length)
     left.push(
-      textLayer(`Description ${i + 1}`, line.text, {
-        x: L.DESC.x, baseline: L.DESC.firstBaseline + i * L.DESC.leading, size: L.DESC.size,
-        fill: line.fill, face: faceOf(line), tracking: line.letterSpacing,
+      textLayer("Description", desc.lines.map((l) => l.text).join("\n"), {
+        x: L.DESC.x, baseline: L.DESC.firstBaseline, size: L.DESC.size,
+        fill: cfg.descStyle.fill, face: "regular",
+        tracking: cfg.descStyle.letterSpacing, leading: L.DESC.leading,
+        lines: desc.lines,
+        stroke: cfg.descStyle.stroke, strokeWidth: cfg.descStyle.strokeWidth,
       }),
-    ),
-  );
+    );
   groups.push({ name: "Left column", opened: false, children: left });
 
   // Center column ----------------------------------------------------------
@@ -353,8 +446,16 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
   // Tracked, like the PDF's drawLine: a tracked line is wider than the font
   // measures it, and centring on the untracked width would leave it sitting
   // half a run's worth of spacing left of the centre line.
+  // Measured over inline runs, like both PDF passes: the layer holds the
+  // marker-STRIPPED text (see textLayer), so centring the raw markdown would
+  // shove a marked-up line right by the markers' own width. A bold run also
+  // measures in the bold face, which is what it draws in.
   const centered = (text: string, cx: number, size: number, face: Face, tracking = 0) =>
-    cx - L.trackedWidth(f[face].widthOfTextAtSize(text, size), text, tracking) / 2;
+    cx - L.runsWidth(
+      parseRuns({ text, fill: "none", layer: "metallic" }),
+      (r) => f[r.bold ? "bold" : face].widthOfTextAtSize(r.text, size),
+      tracking,
+    ) / 2;
   const logo = parseLogo(assets.logoSvg, L.LOGO.w);
   // Same nudge the PDFs apply, so the PSD stays registered with them.
   const logoCy = L.LOGO.cy + (cfg.logo.offsetY ?? 0);
@@ -369,17 +470,20 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
         x: centered(L.WORDMARK.text, L.WORDMARK.cx, L.WORDMARK.size, "bold", cfg.wordmark.letterSpacing),
         baseline: L.WORDMARK.baseline, size: L.WORDMARK.size,
         fill: cfg.wordmark.fill, face: "bold", tracking: cfg.wordmark.letterSpacing,
+      stroke: cfg.wordmark.stroke, strokeWidth: cfg.wordmark.strokeWidth,
       }),
-      shapeLayer("Logo", logoPaths, cfg.logo.fill),
+      shapeLayer("Logo", logoPaths, cfg.logo.fill, cfg.logo.stroke, cfg.logo.strokeWidth),
       textLayer("Beer name", cfg.beerName.toUpperCase(), {
         x: centered(cfg.beerName.toUpperCase(), L.NAME.cx, L.NAME.size, "bold", cfg.nameStyle.letterSpacing),
         baseline: L.NAME.baseline, size: L.NAME.size,
         fill: cfg.nameStyle.fill, face: "bold", tracking: cfg.nameStyle.letterSpacing,
+      stroke: cfg.nameStyle.stroke, strokeWidth: cfg.nameStyle.strokeWidth,
       }),
       textLayer("Style line", cfg.styleLine.text, {
         x: centered(cfg.styleLine.text, L.STYLE_LINE.cx, L.STYLE_LINE.size, faceOf(cfg.styleLine), cfg.styleLine.letterSpacing),
         baseline: L.STYLE_LINE.baseline, size: L.STYLE_LINE.size,
         fill: cfg.styleLine.fill, face: faceOf(cfg.styleLine), tracking: cfg.styleLine.letterSpacing,
+      stroke: cfg.styleLine.stroke, strokeWidth: cfg.styleLine.strokeWidth,
       }),
     ],
   });
@@ -393,26 +497,35 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
     ),
     L.WARNING.maxLen,
   );
+  // Same markdown parse as the PDF path, so the layer carries the rendered
+  // text (markers stripped) and the face they asked for.
+  const info = parseInfoLine(cfg.handleAddress.text, cfg.handleAddress);
   groups.push({
     name: "Right column",
     opened: false,
     children: [
-      textLayer("Handle / address", cfg.handleAddress.text, {
+      textLayer("Info", info.text, {
         x: L.HANDLE_ADDR.x, baseline: L.HANDLE_ADDR.yStart, size: L.HANDLE_ADDR.size,
-        fill: cfg.handleAddress.fill, face: "semibold", rotated: true,
-        tracking: cfg.handleAddress.letterSpacing,
+        fill: info.fill, face: info.bold ? "bold" : "semibold", boldFace: "bold", rotated: true,
+        tracking: info.letterSpacing,
+      stroke: info.stroke, strokeWidth: info.strokeWidth,
       }),
-      ...warnLines.map((line, i) =>
-        textLayer(`Warning ${i + 1}`, line, {
-          x: L.WARNING.x + i * L.WARNING.leading, baseline: L.WARNING.yStart,
-          size: L.WARNING.size, fill: cfg.warning.fill, face: "regular", rotated: true,
-          tracking: cfg.warning.letterSpacing,
-        }),
-      ),
+      // ONE layer for the whole warning: its columns are the lines of a
+      // wrapped paragraph, so leading (the PDF's own column advance) and
+      // justification carry what used to be one layer per column. The wrap
+      // still comes from wrapWarning above, measured with the metrics the
+      // PDF wraps with, so both deliverables break identically.
+      textLayer("Warning", warnLines.join("\n"), {
+        x: L.WARNING.x, baseline: L.WARNING.yStart,
+        size: L.WARNING.size, fill: cfg.warning.fill, face: "regular", rotated: true,
+        tracking: cfg.warning.letterSpacing, leading: L.WARNING.leading, justify: true,
+        stroke: cfg.warning.stroke, strokeWidth: cfg.warning.strokeWidth,
+      }),
       textLayer("Store cold", cfg.storeCold.text, {
         x: L.STORE_COLD.x, baseline: L.STORE_COLD.yStart, size: L.STORE_COLD.size,
         fill: cfg.storeCold.fill, face: "semibold", rotated: true,
         tracking: cfg.storeCold.letterSpacing,
+      stroke: cfg.storeCold.stroke, strokeWidth: cfg.storeCold.strokeWidth,
       }),
     ],
   });
@@ -469,7 +582,7 @@ function codeLayers(cfg: LabelConfig, f: Faces, fk: FKFont): Layer[] {
   // exists, or on how wide it is.
   const S = barcodeStrokePt(cfg);
 
-  const layers: Layer[] = [shapeLayer("QR", qrPaths, cfg.qrFill)];
+  const layers: Layer[] = [shapeLayer("QR", qrPaths, cfg.qrFill, cfg.qrStroke, cfg.qrStrokeWidth)];
   if (S > 0) {
     // Bars: the same rect, expanded S on every side, matching the PDF's
     // stroke rectangles exactly. Digits: the PDF fakes glyph dilation with
