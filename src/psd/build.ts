@@ -8,10 +8,10 @@
 // The barcode is ONE merged shape layer (Task 9b): bars and digit glyph
 // outlines in a single vectorMask, fill from cfg.barcodeFill. The digits are
 // bezier outlines, not editable type — an explicit, user-approved tradeoff
-// for a print-ready single-shape barcode. A "Barcode stroke" layer sits
-// directly beneath it, mirroring the PDF's stroke halo; omitted when the
-// resolved stroke width is 0 (cfg.barcodeStroke === "none" or an explicit
-// zero width).
+// for a print-ready single-shape barcode. Its halo is the same editable
+// stroke EFFECT every other element uses (strokeEffect, position outside);
+// omitted when the resolved stroke width is 0 (cfg.barcodeStroke === "none"
+// or an explicit zero width).
 //
 // Coordinates: layout.ts is already top-left origin with y down, which is
 // exactly PSD's convention, so conversion is a plain 600dpi scale with no
@@ -364,9 +364,13 @@ function textLayer(
         ...(opts.leading ? { leading: px(opts.leading), autoLeading: false } : {}),
         // Photoshop authors tracking in 1/1000 em, so the points-per-glyph
         // value converts against the type size — and needs no px() scaling,
-        // being a ratio. Omitted at 0 so untracked layers stay exactly as
-        // this builder has always written them.
-        ...(opts.tracking ? { tracking: (opts.tracking / opts.size) * 1000 } : {}),
+        // being a ratio. ROUNDED: Photoshop's engine wants an integer here,
+        // and a fractional value renders the whole layer empty. Omitted at 0
+        // so untracked layers stay exactly as this builder has always
+        // written them.
+        ...(opts.tracking
+          ? { tracking: Math.round((opts.tracking / opts.size) * 1000) }
+          : {}),
       },
       ...(styleRuns ? { styleRuns } : {}),
       ...(opts.justify ? { paragraphStyle: { justification: "justify-all" as const } } : {}),
@@ -582,33 +586,17 @@ function codeLayers(cfg: LabelConfig, f: Faces, fk: FKFont): Layer[] {
   // exists, or on how wide it is.
   const S = barcodeStrokePt(cfg);
 
-  const layers: Layer[] = [shapeLayer("QR", qrPaths, cfg.qrFill, cfg.qrStroke, cfg.qrStrokeWidth)];
-  if (S > 0) {
-    // Bars: the same rect, expanded S on every side, matching the PDF's
-    // stroke rectangles exactly. Digits: the PDF fakes glyph dilation with
-    // 16-64 offset copies of the whole glyph under the fill (not
-    // representable as clean vector geometry — its own comment says the
-    // result "reads as a pill"). Approximated here as a plain axis-aligned
-    // rect around each digit group's outline bbox, expanded by S — a
-    // deliberate simplification, not a rounded pill; see the task report.
-    // `combine` (union): the expanded rects OVERLAP (S is wider than the
-    // gaps between dense bars), and without an explicit operation Photoshop
-    // XORs overlapping even-odd subpaths — the halo rendered full of holes.
-    const strokePaths: BezierPath[] = [
-      ...geo.bars.map((b) => rectPath(b.x - S, b.yTop - S, b.w + 2 * S, b.h + 2 * S)),
-      ...digitGroups.map((g) =>
-        rectPath(
-          g.bbox.minX - S,
-          g.bbox.minY - S,
-          g.bbox.maxX - g.bbox.minX + 2 * S,
-          g.bbox.maxY - g.bbox.minY + 2 * S,
-        ),
-      ),
-    ].map((p) => ({ ...p, operation: "combine" as const }));
-    layers.push(shapeLayer("Barcode stroke", strokePaths, cfg.barcodeStroke));
-  }
-  layers.push(shapeLayer("Barcode", barcodePaths, cfg.barcodeFill));
-  return layers;
+  // The halo is the same editable stroke effect every other element carries
+  // (position outside, so Photoshop dilates bars and digit outlines alike and
+  // unions the result) — replacing the old approximate "Barcode stroke" rect
+  // layer. strokeEffect wants px @600dpi; S resolves in points, so convert.
+  return [
+    shapeLayer("QR", qrPaths, cfg.qrFill, cfg.qrStroke, cfg.qrStrokeWidth),
+    shapeLayer(
+      "Barcode", barcodePaths, cfg.barcodeFill,
+      S > 0 ? cfg.barcodeStroke : undefined, px(S),
+    ),
+  ];
 }
 
 /** Build the layered Photoshop file. Text layers carry no rendered bitmap, so

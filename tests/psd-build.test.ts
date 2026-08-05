@@ -60,9 +60,13 @@ describe("psd build", () => {
     expect(desc.text.styleRuns?.length ?? 1).toBeGreaterThan(1);
   });
 
-  it("unions the barcode stroke's overlapping rects (no even-odd holes)", () => {
-    const stroke = layer(doc.children as any[], "Barcode stroke");
-    for (const p of stroke.vectorMask.paths) expect(p.operation).toBe("combine");
+  it("gives the barcode the same stroke effect as other elements (white halo)", () => {
+    expect(layer(doc.children as any[], "Barcode stroke")).toBeUndefined();
+    const stroke = layer(doc.children as any[], "Barcode").effects?.stroke?.[0];
+    // Default halo: 20px @600dpi, white (defaults.ts barcodeStrokeWidth).
+    expect(stroke?.enabled).toBe(true);
+    expect(stroke?.color).toEqual({ r: 255, g: 255, b: 255 });
+    expect(stroke?.size?.value).toBeCloseTo(20);
   });
 
   it("gives every keylined text layer a real stroke effect in black", () => {
