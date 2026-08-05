@@ -1,8 +1,17 @@
 // build.ts — builds the layered Photoshop deliverable with ag-psd. Same
 // LabelConfig and same layout.ts geometry as the PDF builder, re-expressed as
-// PSD layers: every text element becomes an editable type layer, the logo /
-// QR / barcode become vector shape layers (bezier paths, node-editable), and
-// the texture is the one honest raster layer.
+// PSD layers: every text element becomes an editable type layer except the
+// barcode, the logo / QR / barcode bars+digits become vector shape layers
+// (bezier paths, node-editable), and the texture is the one honest raster
+// layer.
+//
+// The barcode is ONE merged shape layer (Task 9b): bars and digit glyph
+// outlines in a single vectorMask, fill from cfg.barcodeFill. The digits are
+// bezier outlines, not editable type — an explicit, user-approved tradeoff
+// for a print-ready single-shape barcode. A "Barcode stroke" layer sits
+// directly beneath it, mirroring the PDF's stroke halo; omitted when the
+// resolved stroke width is 0 (cfg.barcodeStroke === "none" or an explicit
+// zero width).
 //
 // Coordinates: layout.ts is already top-left origin with y down, which is
 // exactly PSD's convention, so conversion is a plain 600dpi scale with no
@@ -120,6 +129,109 @@ function svgToPaths(d: string, dx: number, dy: number): BezierPath[] {
   return out;
 }
 
+/** One glyph-outline command as fontkit's Path emits it at runtime — the
+ *  public `Path` interface only exposes builder methods, but every glyph's
+ *  outline is really this recorded command list (`path.commands`). */
+type GlyphCmd = { command: string; args: number[] };
+type FKFont = { unitsPerEm: number; layout(text: string): FKGlyphRun };
+interface FKGlyphRun {
+  glyphs: { path: { commands: GlyphCmd[] } }[];
+  positions: { xAdvance: number; xOffset: number; yOffset: number }[];
+}
+
+/** One digit group's glyph outlines as closed bezier subpaths in label
+ *  points, reproducing the PDF's `rotate(90)` placement (see
+ *  `pdf/build.ts:177-182`) algebraically instead of via an affine layer
+ *  transform (ag-psd shape layers have none — only type layers do).
+ *
+ *  A font-local point is (u, v): u runs along the baseline from the string's
+ *  start (font's normal +x advance direction, in points, already scaled by
+ *  size/unitsPerEm), v is height above the baseline (font's +y, ascenders
+ *  positive). Composing pdf-lib's CCW 90 degree rotation about the PDF-space
+ *  anchor with the PDF page's y-flip back into layout.ts's top-left/y-down
+ *  space reduces to: label = (dx - v, yStart - u). `dx` is the digit
+ *  column's fixed baseline x (all four groups share one, see barcodeGeometry
+ *  `place`); `yStart` is the label-space Y the string's start lands at,
+ *  already the value the old text layer used as `baseline`
+ *  (`geo.bottom - d.center * geo.mod + measure(d.text) / 2`).
+ *
+ *  TrueType glyphs are quadratic (fontkit emits `quadraticCurveTo`, never
+ *  cubic) — svgToPaths cannot be reused here, its regex only understands
+ *  M/L/C/Z and would silently swallow a Q's numbers into the previous
+ *  command. Elevation to cubic is exact: C1 = P0 + 2/3(Q-P0),
+ *  C2 = P2 + 2/3(Q-P2); this still holds after the (u,v)->label map above
+ *  because that map is affine, and affine maps preserve the barycentric
+ *  combination the elevation formula is built from. */
+function digitGroupPaths(
+  font: FKFont,
+  text: string,
+  size: number,
+  dx: number,
+  yStart: number,
+): { paths: BezierPath[]; bbox: { minX: number; maxX: number; minY: number; maxY: number } } {
+  const run = font.layout(text);
+  const scale = size / font.unitsPerEm;
+  const out: BezierPath[] = [];
+  const bbox = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
+  const track = (p: Pt) => {
+    bbox.minX = Math.min(bbox.minX, p[0]);
+    bbox.maxX = Math.max(bbox.maxX, p[0]);
+    bbox.minY = Math.min(bbox.minY, p[1]);
+    bbox.maxY = Math.max(bbox.maxY, p[1]);
+  };
+  let uCum = 0;
+  for (let i = 0; i < run.glyphs.length; i++) {
+    const glyph = run.glyphs[i];
+    const pos = run.positions[i];
+    const u0 = uCum + pos.xOffset * scale;
+    const v0 = pos.yOffset * scale;
+    const toLabel = (fx: number, fy: number): Pt => [dx - (v0 + fy * scale), yStart - (u0 + fx * scale)];
+    let pts: { a: Pt; in?: Pt; out?: Pt }[] = [];
+    let last: Pt = [0, 0];
+    const flush = () => {
+      if (pts.length >= 2) out.push(closed(pts.map((p) => knot(p.in ?? p.a, p.a, p.out ?? p.a))));
+      pts = [];
+    };
+    for (const c of glyph.path.commands) {
+      if (c.command === "moveTo") {
+        flush();
+        last = toLabel(c.args[0], c.args[1]);
+        pts.push({ a: last });
+        track(last);
+      } else if (c.command === "lineTo") {
+        last = toLabel(c.args[0], c.args[1]);
+        pts.push({ a: last });
+        track(last);
+      } else if (c.command === "quadraticCurveTo") {
+        const q = toLabel(c.args[0], c.args[1]);
+        const end = toLabel(c.args[2], c.args[3]);
+        const c1: Pt = [last[0] + (2 / 3) * (q[0] - last[0]), last[1] + (2 / 3) * (q[1] - last[1])];
+        const c2: Pt = [end[0] + (2 / 3) * (q[0] - end[0]), end[1] + (2 / 3) * (q[1] - end[1])];
+        pts[pts.length - 1].out = c1;
+        pts.push({ a: end, in: c2 });
+        track(q);
+        track(end);
+        last = end;
+      } else if (c.command === "bezierCurveTo") {
+        const c1 = toLabel(c.args[0], c.args[1]);
+        const c2 = toLabel(c.args[2], c.args[3]);
+        const end = toLabel(c.args[4], c.args[5]);
+        pts[pts.length - 1].out = c1;
+        pts.push({ a: end, in: c2 });
+        track(c1);
+        track(c2);
+        track(end);
+        last = end;
+      } else if (c.command === "closePath") {
+        flush();
+      }
+    }
+    flush();
+    uCum += pos.xAdvance * scale;
+  }
+  return { paths: out, bbox };
+}
+
 function shapeLayer(name: string, paths: BezierPath[], fill: Fill): Layer {
   return {
     name,
@@ -172,7 +284,7 @@ const faceOf = (line: { bold?: boolean }): Face => (line.bold ? "semibold" : "re
 
 // --- the label ------------------------------------------------------------
 
-function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces): Layer[] {
+function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont): Layer[] {
   const groups: Layer[] = [];
 
   if (assets.texture) {
@@ -280,13 +392,15 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces): Layer[] {
   });
 
   // Codes ------------------------------------------------------------------
-  groups.push({ name: "Codes", opened: false, children: codeLayers(cfg, f) });
+  groups.push({ name: "Codes", opened: false, children: codeLayers(cfg, f, fk) });
   // PSD layer order is bottom-first, matching the PDF's draw order.
   return groups;
 }
 
-/** QR + barcode: all vector, plus the barcode's digits as type layers. */
-function codeLayers(cfg: LabelConfig, f: Faces): Layer[] {
+/** QR (vector) + the barcode: one merged "Barcode" shape layer (bars and
+ *  digit glyph outlines, both bezier, in cfg.barcodeFill) with an optional
+ *  "Barcode stroke" layer directly beneath it, mirroring the PDF's halo. */
+function codeLayers(cfg: LabelConfig, f: Faces, fk: FKFont): Layer[] {
   const q = qrShapes(qrUrl(cfg.beerName));
   const ms = q.moduleSize * L.QR.size;
   const at = (u: number, axis: "x" | "y") =>
@@ -309,21 +423,52 @@ function codeLayers(cfg: LabelConfig, f: Faces): Layer[] {
   const measure = (t: string) => f.regular.widthOfTextAtSize(t, B.textSize);
   const geo = barcodeGeometry(cfg.upc, measure);
 
-  return [
-    shapeLayer("QR", qrPaths, cfg.qrFill),
-    shapeLayer(
-      "Barcode bars",
-      geo.bars.map((b) => rectPath(b.x, b.yTop, b.w, b.h)),
-      "#1A1A1A",
-    ),
-    ...geo.digits.map((d) =>
-      textLayer(`UPC ${d.text}`, d.text, {
-        x: d.x,
-        baseline: geo.bottom - d.center * geo.mod + measure(d.text) / 2,
-        size: B.textSize, fill: "#1A1A1A", face: "regular", rotated: true,
-      }),
-    ),
+  // yStart is exactly what the old digit TYPE layers used as `baseline` —
+  // the string-start Y a `rotate(90)` PDF drawText lands at (see
+  // digitGroupPaths for the derivation); keeping this identical is what
+  // makes the outlines land where the type layers used to.
+  const digitGroups = geo.digits.map((d) =>
+    digitGroupPaths(fk, d.text, B.textSize, d.x, geo.bottom - d.center * geo.mod + measure(d.text) / 2),
+  );
+  const barcodePaths: BezierPath[] = [
+    ...geo.bars.map((b) => rectPath(b.x, b.yTop, b.w, b.h)),
+    ...digitGroups.flatMap((g) => g.paths),
   ];
+
+  // Resolved outer-stroke width, exactly as the PDF's drawBarcode
+  // (pdf/build.ts:151-154): an unset barcodeStrokeWidth keeps B.stroke, and
+  // "none" or an explicit zero width both collapse to S = 0, which omits the
+  // layer entirely — matching the PDF's own `if (S > 0)` gate so the two
+  // deliverables can't disagree on whether a halo exists.
+  const S =
+    cfg.barcodeStroke === "none" ? 0
+    : cfg.barcodeStrokeWidth !== undefined ? cfg.barcodeStrokeWidth * L.PX
+    : B.stroke;
+
+  const layers: Layer[] = [shapeLayer("QR", qrPaths, cfg.qrFill)];
+  if (S > 0) {
+    // Bars: the same rect, expanded S on every side, matching the PDF's
+    // stroke rectangles exactly. Digits: the PDF fakes glyph dilation with
+    // 16-64 offset copies of the whole glyph under the fill (not
+    // representable as clean vector geometry — its own comment says the
+    // result "reads as a pill"). Approximated here as a plain axis-aligned
+    // rect around each digit group's outline bbox, expanded by S — a
+    // deliberate simplification, not a rounded pill; see the task report.
+    const strokePaths: BezierPath[] = [
+      ...geo.bars.map((b) => rectPath(b.x - S, b.yTop - S, b.w + 2 * S, b.h + 2 * S)),
+      ...digitGroups.map((g) =>
+        rectPath(
+          g.bbox.minX - S,
+          g.bbox.minY - S,
+          g.bbox.maxX - g.bbox.minX + 2 * S,
+          g.bbox.maxY - g.bbox.minY + 2 * S,
+        ),
+      ),
+    ];
+    layers.push(shapeLayer("Barcode stroke", strokePaths, cfg.barcodeStroke));
+  }
+  layers.push(shapeLayer("Barcode", barcodePaths, cfg.barcodeFill));
+  return layers;
 }
 
 /** Build the layered Photoshop file. Text layers carry no rendered bitmap, so
@@ -339,10 +484,18 @@ export async function buildPsd(cfg: LabelConfig, assets: PsdAssets): Promise<Uin
     semibold: await doc.embedFont(assets.fonts.semibold),
     bold: await doc.embedFont(assets.fonts.bold),
   };
+  // The merged barcode layer needs fontkit's raw glyph outlines for the
+  // digits, which pdf-lib's PDFFont wrapper doesn't expose — @pdf-lib/
+  // fontkit's own `create` gives back the underlying Font directly. Its
+  // public `.d.ts` types `Glyph.path` as the builder-method-only `Path`
+  // interface and omits the `commands` array those methods actually record
+  // to (see digitGroupPaths); the cast bridges that gap in the type
+  // declarations, not the runtime shape, which fontkit has always recorded.
+  const digitFont = fontkit.create(assets.fonts.regular) as unknown as FKFont;
   const psd: Psd = {
     width: PSD_DOC.w,
     height: PSD_DOC.h,
-    children: buildLayers(cfg, assets, f),
+    children: buildLayers(cfg, assets, f, digitFont),
   };
   return writePsdUint8Array(psd);
 }

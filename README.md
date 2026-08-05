@@ -99,12 +99,17 @@ npm run dev        # open the app: the label previews immediately (text on bare
 
 `src/psd/build.ts` is a second renderer over the same `LabelConfig` and the
 same `src/layout.ts` geometry, for handing artwork to a designer. Text
-elements become editable Photoshop type layers; the logo, QR and barcode
-become vector shape layers with real bezier knots; the texture is the one
-raster layer. Layers are grouped as Texture / Left column / Center / Right
-column / Codes. Photoshop prompts to update text layers on open because
-ag-psd writes the text data without a rendered bitmap — choose **Update**.
-The PDFs remain the printer deliverable; the PSD is the editable handoff.
+elements become editable Photoshop type layers; the logo and QR become
+vector shape layers with real bezier knots. The barcode is one merged shape
+layer instead — bars and digit glyph outlines together, bezier — plus a
+second "Barcode stroke" shape layer beneath it mirroring the PDF's halo
+(omitted when the stroke is `none`); the barcode's digits are not editable
+type, a deliberate tradeoff for a single print-ready shape. The texture is
+the one raster layer. Layers are grouped as Texture / Left column / Center /
+Right column / Codes. Photoshop prompts to update text layers on open
+because ag-psd writes the text data without a rendered bitmap — choose
+**Update**. The PDFs remain the printer deliverable; the PSD is the editable
+handoff.
 
 Headless (same renderer, used for iteration/batches):
 
