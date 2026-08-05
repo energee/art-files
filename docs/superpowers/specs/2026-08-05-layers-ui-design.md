@@ -13,8 +13,8 @@ including the texture (Background) and mask (Mask), whose file drops move
 onto their layers.
 
 **Scope: UI-only.** No renderer, config-schema, or type changes.
-Background/Mask expose Color overlay / Outer stroke switches *disabled*;
-render support arrives later, per layer.
+Background/Mask are file drops only — no style controls until render
+support for tinting/stroking them exists.
 
 ## Layout (App.tsx)
 
@@ -70,8 +70,8 @@ One panel shaped by the selection:
 3. **Style** section — the shared stack reused from today's
    StyleProperties: fill hex + plate select, Outer stroke `Switch` with
    color/width, letter spacing where applicable.
-   - Background/Mask: disabled "Color overlay" and "Outer stroke"
-     switches as placeholders.
+   - Background/Mask: no Style section at all — content (the file drop)
+     only.
 4. No selection: the whole inspector column collapses (no empty state).
 
 ## Removals

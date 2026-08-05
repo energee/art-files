@@ -4,10 +4,9 @@
 // rows: the Content section carries whatever the layer is made of (text
 // input, markdown editor, file drop, scale/nudge knobs), the Style section
 // carries the shared fill/layer/bold/stroke stack. Document-level layers
-// (background, mask) have file drops for content and disabled Style
-// placeholders — render support for tinting/stroking them arrives later,
-// per the layers-ui spec. Selection itself lives in the layers panel and the
-// preview; this component only receives the chosen LayerId.
+// (background, mask) are file drops only — no Style section. Selection
+// itself lives in the layers panel and the preview; this component only
+// receives the chosen LayerId.
 import {
   AlignLeft, Barcode, Beaker, Handshake, Image as ImageIcon, Info, Layers as LayersIcon,
   Percent, QrCode, Snowflake, Sparkles, Text, TriangleAlert, Type, X,
@@ -426,24 +425,6 @@ function ElementStyle(props: { id: ElementId; cfg: LabelConfig; update: Update }
   );
 }
 
-/** Disabled Style placeholders for the two document layers — render support
- *  for tinting/stroking the texture and mask arrives later, per the spec, so
- *  the switches show what will be possible without pretending it works. */
-function DocStylePlaceholders() {
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <Label className="text-xs text-muted-foreground">Color overlay</Label>
-        <Switch checked={false} disabled />
-      </div>
-      <div className="flex items-center justify-between">
-        <Label className="text-xs text-muted-foreground">Outer stroke</Label>
-        <Switch checked={false} disabled />
-      </div>
-    </div>
-  );
-}
-
 export function Inspector(props: {
   /** Never null: App collapses the whole inspector column instead of
    *  rendering an empty state when nothing is selected. */
@@ -520,11 +501,14 @@ export function Inspector(props: {
         content
       )}
 
-      <Heading>Style</Heading>
-      {isEl ? (
-        <ElementStyle id={id} cfg={props.cfg} update={props.update} />
-      ) : (
-        <DocStylePlaceholders />
+      {/* Document layers (background/mask) carry no Style stack — they are
+          file drops only, so the section is omitted rather than shown
+          disabled. */}
+      {isEl && (
+        <>
+          <Heading>Style</Heading>
+          <ElementStyle id={id} cfg={props.cfg} update={props.update} />
+        </>
       )}
     </div>
   );
