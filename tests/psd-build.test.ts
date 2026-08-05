@@ -10,18 +10,18 @@ import { assets as pdfAssets } from "./fixtures";
 
 const assets: PsdAssets = { fonts: pdfAssets.fonts, logoSvg: pdfAssets.logoSvg };
 
-/** Every layer name in the document, groups flattened. */
-function names(children: { name?: string; children?: unknown[] }[] = []): string[] {
-  return children.flatMap((l) => [
-    l.name ?? "",
-    ...names((l.children ?? []) as { name?: string; children?: unknown[] }[]),
-  ]);
+/** Every layer in the document, groups flattened. */
+function flat(children: any[] = []): any[] {
+  return children.flatMap((l) => [l, ...flat(l.children ?? [])]);
 }
+
+const names = (children: any[] = []) => flat(children).map((l) => l.name ?? "");
+const layer = (children: any[] = [], name: string) =>
+  flat(children).find((l) => l.name === name);
 
 describe("psd build", () => {
   // Built once: buildPsd embeds fonts, which is the slow part.
   let doc: ReturnType<typeof readPsd>;
-  const psd = () => doc;
 
   it("includes the Info layer with its text, markers stripped", async () => {
     doc = readPsd(
@@ -40,9 +40,7 @@ describe("psd build", () => {
     // The old per-line / per-column layers are gone.
     expect(all.filter((n) => /^Description \d/.test(n))).toEqual([]);
     expect(all.filter((n) => /^Warning \d/.test(n))).toEqual([]);
-    const flat = (children: any[] = []): any[] =>
-      children.flatMap((l) => [l, ...flat(l.children ?? [])]);
-    const desc = flat(doc.children as any[]).find((l) => l.name === "Description");
+    const desc = layer(doc.children as any[], "Description");
     // Every body line is in that one layer.
     expect((desc.text.text as string).split(/\r|\n/).filter(Boolean).length)
       .toBe(defaultConfig().description.split("\n").length - 1); // less the header
@@ -55,9 +53,7 @@ describe("psd build", () => {
       Buffer.from(await buildPsd(cfg, assets)).buffer as ArrayBuffer,
       { skipCompositeImageData: true, skipLayerImageData: true, skipThumbnail: true },
     );
-    const flat = (children: any[] = []): any[] =>
-      children.flatMap((l) => [l, ...flat(l.children ?? [])]);
-    const desc = flat(psd.children as any[]).find((l) => l.name === "Description");
+    const desc = layer(psd.children as any[], "Description");
     // Two lines, two faces — so the merged layer must carry more than one
     // style run. (ag-psd collapses runs that are identical, which is why the
     // shipped all-regular block reads as a single run.)
@@ -65,9 +61,7 @@ describe("psd build", () => {
   });
 
   it("gives every keylined text layer a real stroke effect in black", () => {
-    const flat = (children: any[] = []): any[] =>
-      children.flatMap((l) => [l, ...flat(l.children ?? [])]);
-    const layers = flat(psd().children as any[]);
+    const layers = flat(doc.children as any[]);
     // Logo and QR are vector layers, not type layers — they take the same
     // effect through shapeLayer.
     for (const name of [

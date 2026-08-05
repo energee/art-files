@@ -325,7 +325,7 @@ function textLayer(
   // A merged block styles per LINE (each line's own face and fill); a single
   // line styles per inline RUN. Either way the layer ends up with one style
   // run per styled span, which is what Photoshop edits.
-  const spans = opts.lines
+  const runs = opts.lines
     ? opts.lines.flatMap((l, i) =>
         // The newline belongs to the line before it, so run lengths cover
         // the whole string.
@@ -334,7 +334,6 @@ function textLayer(
           text: j === all.length - 1 && i < opts.lines!.length - 1 ? `${r.text}\n` : r.text,
         })))
     : parseRuns({ text, fill: opts.fill, layer: "metallic" });
-  const runs = spans;
   const drawn = runs.map((r) => r.text).join("");
   const boldFace = opts.boldFace ?? "semibold";
   // A line with no markers is one run in the base face: emitting no runs at
@@ -447,8 +446,16 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
   // Tracked, like the PDF's drawLine: a tracked line is wider than the font
   // measures it, and centring on the untracked width would leave it sitting
   // half a run's worth of spacing left of the centre line.
+  // Measured over inline runs, like both PDF passes: the layer holds the
+  // marker-STRIPPED text (see textLayer), so centring the raw markdown would
+  // shove a marked-up line right by the markers' own width. A bold run also
+  // measures in the bold face, which is what it draws in.
   const centered = (text: string, cx: number, size: number, face: Face, tracking = 0) =>
-    cx - L.trackedWidth(f[face].widthOfTextAtSize(text, size), text, tracking) / 2;
+    cx - L.runsWidth(
+      parseRuns({ text, fill: "none", layer: "metallic" }),
+      (r) => f[r.bold ? "bold" : face].widthOfTextAtSize(r.text, size),
+      tracking,
+    ) / 2;
   const logo = parseLogo(assets.logoSvg, L.LOGO.w);
   // Same nudge the PDFs apply, so the PSD stays registered with them.
   const logoCy = L.LOGO.cy + (cfg.logo.offsetY ?? 0);
@@ -490,18 +497,19 @@ function buildLayers(cfg: LabelConfig, assets: PsdAssets, f: Faces, fk: FKFont):
     ),
     L.WARNING.maxLen,
   );
+  // Same markdown parse as the PDF path, so the layer carries the rendered
+  // text (markers stripped) and the face they asked for.
+  const info = parseInfoLine(cfg.handleAddress.text, cfg.handleAddress);
   groups.push({
     name: "Right column",
     opened: false,
     children: [
-      // Same markdown parse as the PDF path, so the PSD layer carries the
-      // rendered text (markers stripped) and the face they asked for.
-      ((info) => textLayer("Info", info.text, {
+      textLayer("Info", info.text, {
         x: L.HANDLE_ADDR.x, baseline: L.HANDLE_ADDR.yStart, size: L.HANDLE_ADDR.size,
         fill: info.fill, face: info.bold ? "bold" : "semibold", boldFace: "bold", rotated: true,
         tracking: info.letterSpacing,
       stroke: info.stroke, strokeWidth: info.strokeWidth,
-      }))(parseInfoLine(cfg.handleAddress.text, cfg.handleAddress)),
+      }),
       // ONE layer for the whole warning: its columns are the lines of a
       // wrapped paragraph, so leading (the PDF's own column advance) and
       // justification carry what used to be one layer per column. The wrap

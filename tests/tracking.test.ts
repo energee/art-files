@@ -13,6 +13,12 @@ import { defaultConfig } from "../src/defaults";
 import * as L from "../src/layout";
 import { assets, contentStreamText, measure } from "./fixtures";
 
+/** Show-text operators in a content stream. A faked stroke is a ring of
+ *  offset copies of the same text, so a stroked line emits many more of
+ *  these than a bare one — that ratio is the only stroke evidence a stream
+ *  carries, the ring copies having no operator of their own. */
+const showOps = (s: string) => (s.match(/\bTj\b/g) ?? []).length;
+
 describe("trackedWidth", () => {
   it("adds one gap per adjacent glyph pair, not one per glyph", () => {
     // "abcd" has 3 gaps; counting the trailing advance PDF's Tc also emits
@@ -93,8 +99,6 @@ describe("the art PDF's character-spacing operator", () => {
 // than a bare one — that ratio is the only stroke evidence in the stream,
 // since the ring copies carry no operator of their own.
 describe("the Info line's shipped keyline", () => {
-  const showOps = (s: string) => (s.match(/\bTj\b/g) ?? []).length;
-
   it("draws a stroke ring around Info in the art PDF", async () => {
     const stroked = await contentStreamText(await buildArtPdf(defaultConfig(), assets));
     const bare = defaultConfig();
@@ -109,8 +113,6 @@ describe("the Info line's shipped keyline", () => {
 // stroke ring and the black keyline landed on white ink instead of bare
 // stock. The mask must now knock the ring out too.
 describe("a stroked line's mask plate", () => {
-  const showOps = (s: string) => (s.match(/\bTj\b/g) ?? []).length;
-
   it("knocks out the stroke ring, not just the glyphs", async () => {
     const bare = defaultConfig();
     bare.handleAddress.stroke = "none";
@@ -143,7 +145,6 @@ describe("the shipped keyline colour", () => {
     const bare = defaultConfig();
     bare.volume.stroke = "none";
     const plain = await contentStreamText(await buildArtPdf(bare, assets));
-    const showOps = (s: string) => (s.match(/\bTj\b/g) ?? []).length;
     expect(showOps(text)).toBeGreaterThan(showOps(plain));
   });
 });

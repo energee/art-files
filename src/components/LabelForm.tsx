@@ -368,7 +368,6 @@ export function LabelForm(props: {
         </Heading>
         <CollapsibleContent className="pt-1.5">
           {TEMPLATE_ELEMENTS.map((el) => {
-            const label = el.label;
             // The laurel gets a vertical nudge alongside its style row — it
             // is drawn as a box at a fixed cy, so unlike a text element there
             // is no baseline field to move it with. It moves the whole centre
@@ -379,7 +378,7 @@ export function LabelForm(props: {
               return (
                 <div key={el.id}>
                   <StyleOnlyElementRow
-                    id={el.id} label={label} cfg={cfg}
+                    id={el.id} label={el.label} cfg={cfg}
                     selected={selected === el.id} onSelect={onSelect}
                   />
                   <Row label="Stack nudge">
@@ -399,7 +398,7 @@ export function LabelForm(props: {
             // second line would silently never appear on the label.
             if (el.id === "handleAddress")
               return (
-                <Row key={el.id} label={label} marker={!isDefaultStyle(el.id, cfg.handleAddress)}>
+                <Row key={el.id} label={el.label} marker={!isDefaultStyle(el.id, cfg.handleAddress)}>
                   <div className="min-w-0 flex-1">
                     <DescriptionEditor
                       value={cfg.handleAddress.text}
@@ -412,10 +411,10 @@ export function LabelForm(props: {
                 </Row>
               );
             return el.hasBold ? (
-              <TextElementRow key={el.id} id={el.id} label={label} cfg={cfg} update={update} onSelect={onSelect} />
+              <TextElementRow key={el.id} id={el.id} label={el.label} cfg={cfg} update={update} onSelect={onSelect} />
             ) : (
               <StyleOnlyElementRow
-                key={el.id} id={el.id} label={label} cfg={cfg}
+                key={el.id} id={el.id} label={el.label} cfg={cfg}
                 selected={selected === el.id} onSelect={onSelect}
               />
             );

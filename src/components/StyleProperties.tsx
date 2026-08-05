@@ -7,7 +7,7 @@
 import { X } from "lucide-react";
 import type { LabelConfig, Layer, StyledLine } from "@/types";
 import { applyStyle, elementById, isDefaultStyle, type ElementId } from "@/elements";
-import { KEYLINE, defaultConfig } from "@/defaults";
+import { defaultConfig } from "@/defaults";
 import { ColorField } from "./ColorField";
 import { ScrubField } from "./ScrubField";
 import { machineName } from "@/qr";
@@ -26,6 +26,10 @@ export function StyleProperties(props: {
   onClose: () => void;
 }) {
   const el = elementById(props.id);
+  // The element's shipped stroke colour, for the toggle below. "none" would
+  // make switching it on a no-op, so fall back to the keyline black.
+  const shipped = el.style(defaultConfig()).stroke;
+  const shippedStroke = !shipped || shipped === "none" ? "#000000" : shipped;
   const s = el.style(props.cfg);
   // `s` is declared Style, but for hasBold elements the live object backing
   // it is actually a StyledLine (see elements.ts's ELEMENTS/applyStyle
@@ -120,12 +124,11 @@ export function StyleProperties(props: {
           <Checkbox
             id={`${fid}-stroke`}
             checked={strokeOn}
-            // Starts at the shipped keyline black, so switching a stroke on
-            // matches every other element without a trip to the colour field.
-            // The barcode is the exception: its stroke is the white halo that
-            // carries the scan contrast, so white is the useful start there.
-            onCheckedChange={(v) =>
-              set({ stroke: v === true ? (props.id === "barcode" ? "#FFFFFF" : KEYLINE.stroke) : "none" })}
+            // Switching a stroke on starts at whatever THIS element ships
+            // with — black for everything keylined, the barcode's white halo
+            // for the barcode — so defaults.ts stays the only place that
+            // decides, and a new element needs no case here.
+            onCheckedChange={(v) => set({ stroke: v === true ? shippedStroke : "none" })}
           />
         </div>
         {strokeOn && (

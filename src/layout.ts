@@ -36,6 +36,29 @@ export function trackedWidth(base: number, text: string, tracking = 0): number {
   return base + tracking * Math.max(0, text.length - 1);
 }
 
+/** Tracked width of a line split into inline runs (see parseRuns), given a
+ *  per-run measure. Each run pays one tracking unit for the gap to the next
+ *  and the line drops the trailing one, so a single-run line reduces to
+ *  trackedWidth of the whole string — which is why an unmarked line measures
+ *  exactly as it did before inline runs existed.
+ *
+ *  Every consumer of a line's width goes through here — the PDF's centring
+ *  and per-run advance, the PSD's centring, and the hit-tester's boxes — so
+ *  none of them can disagree about how wide a marked-up line draws. The
+ *  measure is injected because each speaks to different metrics: pdf-lib
+ *  fonts, or hittest's Measure. */
+export function runAdvances<T extends { text: string }>(
+  runs: T[], measure: (run: T) => number, tracking = 0,
+): number[] {
+  return runs.map((r) => trackedWidth(measure(r), r.text, tracking) + tracking);
+}
+
+export function runsWidth<T extends { text: string }>(
+  runs: T[], measure: (run: T) => number, tracking = 0,
+): number {
+  return runAdvances(runs, measure, tracking).reduce((a, b) => a + b, 0) - tracking;
+}
+
 // Left column (values measured from the Labradorite reference PDF) -------
 export const LEFT_X = 24.9;
 export const VOLUME = { x: LEFT_X, baseline: 29.37, size: 9 };

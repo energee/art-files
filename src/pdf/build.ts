@@ -68,11 +68,24 @@ function maskColor(layer: "metallic" | "white") {
   return layer === "metallic" ? toRgb(L.COLORS.white) : toRgb(L.COLORS.maskBlue);
 }
 
-/** Outer-stroke params for an element (art mode only), or null when off.
- *  Widths are authored in px at the 600dpi deliverable. */
-function strokeOf(style: Style, mode: Mode) {
-  if (mode !== "art" || !style.stroke || style.stroke === "none") return null;
-  return { color: fillColor(style.stroke), w: (style.strokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX };
+/** Outer-stroke params for an element, or null when off. Widths are authored
+ *  in px at the 600dpi deliverable.
+ *
+ *  `knockout` decides what the MASK pass does with the ring. Vector art (the
+ *  laurel, collab logos) passes it off: those strokes have always sat on the
+ *  white-ink flood, and that is not this function's business to change.
+ *  TEXT passes it on, so the ring knocks out on the mask plate — a stroke is
+ *  an outline, not part of the plate choice its glyphs make, and following
+ *  the element's layer would print white ink under a black keyline (which is
+ *  what the flood did before the mask drew any ring at all). Both plates
+ *  share this one geometry, which is what keeps them registered. */
+function strokeOf(style: Style, mode: Mode, knockout = false) {
+  if (!style.stroke || style.stroke === "none") return null;
+  if (mode !== "art" && !knockout) return null;
+  return {
+    color: mode === "art" ? fillColor(style.stroke) : maskColor("metallic"),
+    w: (style.strokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX,
+  };
 }
 
 /** pdf-lib can't stroke text, so an outer stroke is faked as a ring of
@@ -80,32 +93,20 @@ function strokeOf(style: Style, mode: Mode) {
  *  radius — a fixed count leaves adjacent copies 2w*sin(pi/n) apart, which
  *  at a wide stroke reads as stair-steps down the outer edge. One sample
  *  per ~0.4pt of circumference keeps that step below a printer's dot. */
-/** Stroke ring for TEXT, on either plate. The art pass paints the stroke's
- *  own colour; the mask pass ALWAYS knocks the ring out — a stroke never
- *  takes the white-ink layer, even on an element set to white.
- *
- *  Two reasons it is knockout rather than the element's own layer. Without
- *  any mask pass at all, the flood (white ink everywhere, see buildMaskPdf)
- *  survived in the ring and printed white ink around every stroked line, so
- *  a black keyline sat on a white halo instead of bare stock. And following
- *  the element's layer instead would put white ink under the keyline of a
- *  white-layer element — the same halo, just reached by a different route.
- *  The stroke is an outline, not part of the plate choice the glyphs make.
- *  Geometry is identical to strokeOf's on both plates, which is what keeps
- *  the two registered.
- *
- *  strokeOf still serves the laurel and collab art unchanged: those draw as
- *  real stroked paths, and their long-shipped white-ink halo is not this
- *  bug. */
-function textRing(style: Style, mode: Mode) {
-  if (!style.stroke || style.stroke === "none") return null;
-  return {
-    color: mode === "art" ? fillColor(style.stroke) : maskColor("metallic"),
-    w: (style.strokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX,
-  };
-}
+// Memoized: every element in a config shares one stroke width, so this table
+// is built once per build instead of once per line. Keyed by width, which is
+// the only input.
+const RINGS = new Map<number, [number, number][]>();
 
 function ring(w: number): [number, number][] {
+  const hit = RINGS.get(w);
+  if (hit) return hit;
+  const built = buildRing(w);
+  RINGS.set(w, built);
+  return built;
+}
+
+function buildRing(w: number): [number, number][] {
   // Capped only as a backstop: each sample is its own drawText, so an
   // uncapped count would let a stroke width become a build-time amplifier
   // (600px measured at ~18k calls / 700ms, outlasting the 600ms debounce).
@@ -182,16 +183,6 @@ async function drawCollab(
   else page.drawRectangle({ ...rect, color: toRgb(L.COLORS.maskBlue) });
 }
 
-/** Per-run advance: the run's tracked width PLUS one tracking unit, since
- *  trackedWidth only counts the gaps BETWEEN a run's own glyphs and the gap
- *  to the next run belongs to somebody. Summing these over a line and
- *  subtracting the trailing one reproduces trackedWidth of the whole string
- *  exactly, so centring is unchanged for a line with no inline runs. */
-function advanceOf(run: StyledLine, font: PDFFont, size: number, tracking = 0): number {
-  return L.trackedWidth(font.widthOfTextAtSize(run.text, size), run.text, tracking)
-    + tracking;
-}
-
 function drawLine(
   page: PDFPage,
   fonts: Fonts,
@@ -206,15 +197,19 @@ function drawLine(
   const runs = parseRuns(line);
   const faceOf = (r: StyledLine) => opts.font ?? (r.bold ? fonts.semibold : fonts.regular);
   const tracking = line.letterSpacing;
-  const total =
-    runs.reduce((w, r) => w + advanceOf(r, faceOf(r), opts.size, tracking), 0) - (tracking ?? 0);
+  // Measured once and reused as the per-run advance below, rather than
+  // measuring each run again while walking it.
+  const advances = L.runAdvances(
+    runs, (r) => faceOf(r).widthOfTextAtSize(r.text, opts.size), tracking,
+  );
   // Centring measures the TRACKED width, not the font's — at 0 tracking the
   // two are identical, so this is the same math as before for untracked text.
+  const total = advances.reduce((a, b) => a + b, 0) - (tracking ?? 0);
   let x = opts.cx !== undefined ? opts.cx - total / 2 : opts.x!;
   const yBase = y(opts.baseline);
-  const stroke = textRing(line, mode);
+  const stroke = strokeOf(line, mode, true);
   withTracking(page, tracking, () => {
-    for (const run of runs) {
+    runs.forEach((run, i) => {
       const font = faceOf(run);
       // Colour is per RUN: `_white ink_` moves that span to the mask plate,
       // which in art mode means it must not paint at all (fillColor("none")
@@ -225,8 +220,8 @@ function drawLine(
         for (const [dx, dy] of ring(stroke.w))
           page.drawText(run.text, { ...at, x: x + dx, y: yBase + dy, color: stroke.color });
       page.drawText(run.text, { ...at, x, color });
-      x += advanceOf(run, font, opts.size, tracking);
-    }
+      x += advances[i];
+    });
   });
 }
 
@@ -249,10 +244,13 @@ function drawRotated(
   // Bold, which is the only face above the semibold this column uses.
   const runs = parseRuns({ ...style, text });
   const tracking = style.letterSpacing;
-  const stroke = textRing(style, mode);
+  const advances = L.runAdvances(
+    runs, (r) => (r.bold ? boldFont ?? font : font).widthOfTextAtSize(r.text, opts.size), tracking,
+  );
+  const stroke = strokeOf(style, mode, true);
   let yPos = y(opts.yStart);
   withTracking(page, tracking, () => {
-    for (const run of runs) {
+    runs.forEach((run, i) => {
       const face = run.bold ? boldFont ?? font : font;
       const color = mode === "art" ? fillColor(run.fill) : maskColor(run.layer);
       const base = { size: opts.size, font: face, rotate: degrees(90) };
@@ -260,8 +258,8 @@ function drawRotated(
         for (const [dx, dy] of ring(stroke.w))
           page.drawText(run.text, { ...base, x: opts.x + dx, y: yPos + dy, color: stroke.color });
       page.drawText(run.text, { ...base, x: opts.x, y: yPos, color });
-      yPos += advanceOf(run, face, opts.size, tracking);
-    }
+      yPos += advances[i];
+    });
   });
 }
 

@@ -30,17 +30,14 @@ const LOGO_H = (L.LOGO.w * 525) / 480;
 
 /** Tracked width of a line, summed over its inline runs (see parseRuns) so
  *  markers are measured as the text they produce, in the face they produce.
- *  A marker-free line is one run — identical to the old single measurement.
- *  Mirrors the renderer's per-run advance: each run pays one tracking unit
- *  for the gap to the next, and the line drops the trailing one. */
+ *  Shares layout.ts's runsWidth with both renderers, so a hit box can't
+ *  disagree with what got drawn. */
 function width(text: string, size: number, m: Measure, bold: boolean, tracking: number): number {
   // fill/layer are irrelevant here — only text and bold reach the measure.
   const runs = parseRuns({ text, bold, fill: "none", layer: "metallic" });
-  return runs.reduce(
-    (w, r) => w + L.trackedWidth(m(r.text, size, !!r.bold), r.text, tracking) + tracking,
-    0,
-  ) - tracking;
+  return L.runsWidth(runs, (r) => m(r.text, size, !!r.bold), tracking);
 }
+
 const flat = (
   id: ElementId, text: string, x: number, baseline: number, size: number,
   m: Measure, bold = false, tracking = 0,

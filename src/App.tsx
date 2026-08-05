@@ -91,6 +91,11 @@ const fontsPromise = (async () => {
 const blobUrl = (bytes: Uint8Array, type: string) =>
   URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type }));
 
+// Menu chrome, shared by all three menus so they can't drift apart: small
+// regular-weight triggers, and items sized to match.
+const MENU_TRIGGER = "px-2 py-1 text-xs font-normal";
+const MENU_ITEMS = "[&_[data-slot=menubar-item]]:text-xs";
+
 function download(url: string, name: string) {
   const a = document.createElement("a");
   a.href = url;
@@ -172,12 +177,13 @@ export default function App() {
   // the user means, and stealing it would blow away a whole typed line.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== "z" && e.key.toLowerCase() !== "y") return;
+      const key = e.key.toLowerCase();
+      if (key !== "z" && key !== "y") return;
       if (!e.metaKey && !e.ctrlKey) return;
       const el = e.target as HTMLElement | null;
       if (el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "")) return;
       e.preventDefault();
-      if (e.key.toLowerCase() === "y" || e.shiftKey) redo();
+      if (key === "y" || e.shiftKey) redo();
       else undo();
     };
     document.addEventListener("keydown", onKey);
@@ -411,8 +417,8 @@ export default function App() {
               medium ones. */}
           <Menubar className="h-auto gap-0 rounded-none border-0 p-0">
             <MenubarMenu>
-              <MenubarTrigger className="px-2 py-1 text-xs font-normal">File</MenubarTrigger>
-              <MenubarContent align="start" className="[&_[data-slot=menubar-item]]:text-xs">
+              <MenubarTrigger className={MENU_TRIGGER}>File</MenubarTrigger>
+              <MenubarContent align="start" className={MENU_ITEMS}>
                 <MenubarItem onClick={saveConfig}>Save config</MenubarItem>
                 <MenubarItem onClick={() => configInput.current?.click()}>
                   Load config
@@ -434,8 +440,8 @@ export default function App() {
               </MenubarContent>
             </MenubarMenu>
             <MenubarMenu>
-              <MenubarTrigger className="px-2 py-1 text-xs font-normal">Edit</MenubarTrigger>
-              <MenubarContent align="start" className="[&_[data-slot=menubar-item]]:text-xs">
+              <MenubarTrigger className={MENU_TRIGGER}>Edit</MenubarTrigger>
+              <MenubarContent align="start" className={MENU_ITEMS}>
                 <MenubarItem disabled={!canUndo} onClick={undo}>
                   Undo <MenubarShortcut>⌘Z</MenubarShortcut>
                 </MenubarItem>
@@ -445,8 +451,8 @@ export default function App() {
               </MenubarContent>
             </MenubarMenu>
             <MenubarMenu>
-              <MenubarTrigger className="px-2 py-1 text-xs font-normal">View</MenubarTrigger>
-              <MenubarContent align="start" className="[&_[data-slot=menubar-item]]:text-xs">
+              <MenubarTrigger className={MENU_TRIGGER}>View</MenubarTrigger>
+              <MenubarContent align="start" className={MENU_ITEMS}>
                 {/* Checked only at the extremes: anywhere in between is a
                     manual compare position, which is neither view. */}
                 <MenubarCheckboxItem checked={split === 0}
