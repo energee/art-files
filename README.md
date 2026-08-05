@@ -135,7 +135,8 @@ handoff.
 Headless (same renderer, used for iteration/batches):
 
 ```bash
-npm run generate -- <texture.png|none> <mask.png|none> <outDir> [config.json]
+npm run generate -- <texture.png|none> <mask.png|none> <outDir> [config.json] \
+  [--collab-left=<logo.svg|png|jpg>] [--collab-center=<...>]
 # writes {Name}.pdf, {Name}-mask.pdf and {Name}.psd
 ```
 
