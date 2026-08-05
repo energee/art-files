@@ -90,7 +90,8 @@ Bold checkbox shows for the elements that have one, and a Reset button
 (back to that element's shipped default) once a style deviates from it.
 The description block's panel sets the base fill/layer for its plain
 lines and the header plus an outer stroke for all its lines; the
-`_white_` marker still overrides fill/layer per line; the logo's classic
+`_white_` marker moves a line to the white-ink layer per line and leaves
+its fill alone; the logo's classic
 dark keyline is just this stroke, on by default. Clicking empty
 background in the preview clears the selection.
 

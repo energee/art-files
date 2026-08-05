@@ -40,7 +40,10 @@ is derived from the beer name (see "Derived QR payload").
 - `layout.ts` keeps `GOLD = #D0B070` (the exact hex of the current gold RGB
   0.815/0.69/0.44) as the default; `pdf/build.ts` `fillColor()` parses hex.
 - Description markdown syntax is unchanged: plain text renders in default
-  gold, `_underscored_` renders as no-ink/white layer.
+  gold, `_underscored_` moves the line to the white-ink layer. The marker
+  sets the LAYER only (corrected 2026-08): it used to force the line's fill
+  to `none` as well, which silently discarded the block's chosen color —
+  fill and layer are independent on every other element.
 - QR fill defaults to gold but is pickable (see "QR color and stroke").
 - Config JSON stores hex strings; `parseConfigFile` migrates legacy values
   (`gold` → `#D0B070`, `black` → `#000000`, `white` → `none`) so old config

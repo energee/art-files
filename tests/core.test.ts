@@ -78,8 +78,9 @@ describe("description markdown", () => {
     expect(d.header).toMatchObject({ text: "HOPS", bold: true, fill: GOLD, layer: "metallic" });
     expect(d.lines).toEqual([
       { text: "Freestyle Motueka", bold: false, fill: GOLD, layer: "metallic" },
-      { text: "Roy Farms", bold: true, fill: "none", layer: "white" },
-      { text: "Silvery", bold: false, fill: "none", layer: "white" },
+      // White ink moves the line to the white plate and leaves its color be.
+      { text: "Roy Farms", bold: true, fill: GOLD, layer: "white" },
+      { text: "Silvery", bold: false, fill: GOLD, layer: "white" },
       { text: "Bold Gold", bold: true, fill: GOLD, layer: "metallic" },
     ]);
   });
@@ -88,12 +89,13 @@ describe("description markdown", () => {
     expect(d.header).toBeNull();
     expect(d.lines).toHaveLength(1);
   });
-  it("applies the base style, stroke included, with white overriding fill/layer", () => {
+  it("applies the base style, stroke included, with white overriding the layer only", () => {
     const base = { fill: "#123456", layer: "metallic", stroke: "#FFFFFF", strokeWidth: 20 } as const;
     const d = parseDescription("# H\nplain\n_white_", base);
     expect(d.header).toMatchObject({ fill: "#123456", stroke: "#FFFFFF", strokeWidth: 20 });
     expect(d.lines[0]).toMatchObject({ fill: "#123456", layer: "metallic", stroke: "#FFFFFF" });
-    expect(d.lines[1]).toMatchObject({ fill: "none", layer: "white", stroke: "#FFFFFF" });
+    // The marker switches the plate; the block's fill survives it.
+    expect(d.lines[1]).toMatchObject({ fill: "#123456", layer: "white", stroke: "#FFFFFF" });
   });
 
   it("round-trips through serialize", () => {
@@ -175,7 +177,7 @@ describe("description markdown", () => {
 
   it("interprets a body line wrapped in _ as white ink, markers stripped — mirrors the renderer", () => {
     const d = parseDescription("_Galaxy_");
-    expect(d.lines).toEqual([{ text: "Galaxy", bold: false, fill: "none", layer: "white" }]);
+    expect(d.lines).toEqual([{ text: "Galaxy", bold: false, fill: GOLD, layer: "white" }]);
   });
 });
 

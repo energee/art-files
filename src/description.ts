@@ -1,8 +1,8 @@
 // description.ts — parses the description block's markdown subset into styled
-// lines: `# text` = header, `**text**` = bold, `_text_` = white ink (white
-// fill + white layer), combinable. Plain lines and the header take the
-// caller's base style (cfg.descStyle: fill, layer, outer stroke); the white
-// marker overrides fill/layer but keeps the base stroke. Only the FIRST
+// lines: `# text` = header, `**text**` = bold, `_text_` = white ink (the
+// white-ink LAYER), combinable. Plain lines and the header take the caller's
+// base style (cfg.descStyle: fill, layer, outer stroke); the white marker
+// overrides the layer only — fill, stroke and tracking all stay the block's. Only the FIRST
 // non-blank line can become the header — any later line starting with `#` is
 // literal body text (the `#` stays in it verbatim), never a second header;
 // there is only ever one header slot, so it can't silently overwrite it.
@@ -37,7 +37,12 @@ function styleLine(raw: string, base: Style, bold = false): StyledLine {
   return {
     text: s,
     bold,
-    fill: white ? "none" : base.fill,
+    // White ink is a LAYER choice, nothing to do with the fill: it decides
+    // which plate the line prints on, and the line keeps whatever color the
+    // block is set to — exactly how fill and layer behave for every other
+    // element's style panel. A line that should carry no color ink sets its
+    // fill to "none" itself; the marker no longer does that for it.
+    fill: base.fill,
     layer: white ? "white" : base.layer,
     stroke: base.stroke,
     strokeWidth: base.strokeWidth,

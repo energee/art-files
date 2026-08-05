@@ -69,8 +69,10 @@ export interface LabelConfig {
    *  and the header take descStyle. Parsed by src/description.ts. */
   description: string;
   /** Base style for the description block: fill/layer for plain lines and
-   *  the header (the `_white_` marker overrides those), outer stroke for
-   *  every description line. */
+   *  the header, outer stroke and tracking for every description line. The
+   *  `_white_` marker overrides the LAYER only — a white-ink line keeps the
+   *  block's fill, like fill and layer stay independent on every other
+   *  element's panel. */
   descStyle: Style;
   /** 12-digit UPC-A. */
   upc: string;
