@@ -22,9 +22,11 @@ support for tinting/stroking them exists.
 - Left: shadcn `Sidebar` (`collapsible="offcanvas"`), toggled by a
   `SidebarTrigger` in the menubar row and ⌘B, holding the Layers panel.
 - Center: existing `PreviewCompare`, unchanged.
-- Right: fixed-width inspector column — a plain bordered column (the
-  `Sidebar` component is reserved for the left panel). Collapsed while no
-  layer is selected; its header X clears the selection to collapse it.
+- Right: the inspector is a shadcn `Sheet` (side="right", non-modal, no
+  backdrop — locally-patched `showOverlay` prop) driven by the selection:
+  open while a layer is selected, closed by Esc or the header X (both clear
+  the selection). Non-modal so the preview and layers panel stay clickable
+  while inspecting.
 - Existing menubar stays as top chrome, gains the trigger. Save/load,
   undo/redo, exports, ⌘K palette untouched.
 

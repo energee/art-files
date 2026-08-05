@@ -39,14 +39,18 @@ function SheetContent({
   children,
   side = "right",
   showCloseButton = true,
+  // Local patch: lets a non-modal sheet (the label editor's inspector) skip
+  // the backdrop entirely, so the rest of the app stays clickable.
+  showOverlay = true,
   ...props
 }: SheetPrimitive.Popup.Props & {
   side?: "top" | "right" | "bottom" | "left"
   showCloseButton?: boolean
+  showOverlay?: boolean
 }) {
   return (
     <SheetPortal>
-      <SheetOverlay />
+      {showOverlay && <SheetOverlay />}
       <SheetPrimitive.Popup
         data-slot="sheet-content"
         data-side={side}

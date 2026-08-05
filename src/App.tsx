@@ -27,6 +27,7 @@ import {
 import {
   Sidebar, SidebarContent, SidebarInset, SidebarProvider, SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import poppinsRegular from "@/assets/fonts/Poppins-Regular.ttf?url";
 import poppinsSemiBold from "@/assets/fonts/Poppins-SemiBold.ttf?url";
@@ -588,16 +589,22 @@ export default function App() {
             )}
           </div>
         </section>
-        {/* Right inspector column: fixed width, plain bordered div — the
-            Sidebar component is reserved for the left Layers panel.
-            Collapsed (unmounted) while nothing is selected; the header's X
-            clears the selection to collapse it by hand. */}
-        {selected && (
-          <aside className="w-[300px] shrink-0 overflow-y-auto border-l border-border p-3">
-            <Inspector id={selected} cfg={cfg} errors={errors} update={update} files={files}
-              onClose={() => setSelected(null)} />
-          </aside>
-        )}
+        {/* Right inspector: a shadcn Sheet driven by the selection — open
+            while a layer is selected, closed (Esc or the header X) by
+            clearing it. Non-modal and overlay-free so the preview and the
+            layers panel stay clickable while inspecting; dismissible={false}
+            keeps an outside click (e.g. preview click-to-select) from
+            closing it mid-selection (no backdrop = no outside-press target). */}
+        <Sheet open={selected !== null} modal={false}
+          onOpenChange={(open) => { if (!open) setSelected(null); }}>
+          <SheetContent side="right" showOverlay={false} showCloseButton={false}
+            className="w-[300px] gap-0 overflow-y-auto p-3 sm:max-w-[300px]">
+            {selected && (
+              <Inspector id={selected} cfg={cfg} errors={errors} update={update} files={files}
+                onClose={() => setSelected(null)} />
+            )}
+          </SheetContent>
+        </Sheet>
         <CommandMenu
           actions={[
             { label: "Export PDF + Mask PDF", disabled: blocked || !pdfs, run: exportPdfs },
