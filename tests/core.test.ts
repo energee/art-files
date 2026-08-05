@@ -125,6 +125,39 @@ describe("description markdown", () => {
     expect(serializeDescription(parseDescription(src))).toBe(src);
   });
 
+  // Regression: a '#' body line used to be promoted to the header by the
+  // next parse — it jumped to the top of the block and rendered at the
+  // header baseline in both deliverables.
+  it("does not promote a later # line in a header-less block", () => {
+    const d = parseDescription("Citra, Mosaic\n#3 Citra");
+    expect(d.header).toBeNull();
+    expect(d.lines.map((l) => l.text)).toEqual(["Citra, Mosaic", "#3 Citra"]);
+    expect(serializeDescription(d)).toBe("Citra, Mosaic\n#3 Citra");
+  });
+
+  // A leading '#' on the first line of the SOURCE still means "header" —
+  // that is the format. What must round-trip is a block the editor hands
+  // back with no header and a body line that happens to start with '#':
+  // serializing it verbatim made the next parse promote that line to the
+  // header, jumping it to the top of the block at the header baseline.
+  it("round-trips a header-less block whose FIRST body line starts with #", () => {
+    const body = (text: string) =>
+      ({ text, bold: false, fill: GOLD, layer: "metallic" }) as const;
+    const md = serializeDescription({ header: null, lines: [body("#3 Citra"), body("Mosaic")] });
+    expect(md).toBe("\\#3 Citra\nMosaic");
+    const again = parseDescription(md);
+    expect(again.header).toBeNull();
+    expect(again.lines.map((l) => l.text)).toEqual(["#3 Citra", "Mosaic"]);
+    expect(serializeDescription(again)).toBe(md);
+  });
+
+  it("still parses and round-trips a real '# HOPS' header", () => {
+    const src = "# HOPS\nFreestyle Motueka";
+    const d = parseDescription(src);
+    expect(d.header).toMatchObject({ text: "HOPS", bold: true });
+    expect(serializeDescription(d)).toBe(src);
+  });
+
   // Locks in deliberate behaviour (not a bug, see task-6-report.md Finding
   // 2): a line whose typed text happens to be symmetrically wrapped in
   // `**...**` or `_..._` is interpreted as that marker, same as the old
