@@ -109,7 +109,7 @@ export function StyleProperties(props: {
         // the label reads as a broken line, not a style.
         <ScrubField
           id={`${fid}-tracking`} label="Tracking" unit="pt"
-          value={s.letterSpacing ?? 0} min={-2} max={20} step={0.1}
+          value={s.letterSpacing ?? 0} min={-2} max={20} step={0.01} dragStep={0.1}
           onChange={(v) => set({ letterSpacing: v })}
         />
       )}

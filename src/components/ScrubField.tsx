@@ -15,9 +15,9 @@ import {
  *  noise (0.4 + 0.1 = 0.5000000000000001) straight into the saved config. */
 const decimals = (step: number) => (String(step).split(".")[1] ?? "").length;
 
-/** Pixels of pointer travel per step. Two keeps a full-range drag
- *  comfortable (tracking's -2..20 at 0.1 is ~440px) while leaving a single
- *  step easy to land on. */
+/** Pixels of pointer travel per drag increment. Two keeps a full-range drag
+ *  comfortable (tracking's -2..20 in 0.1s is ~440px) while leaving a single
+ *  increment easy to land on. */
 const PX_PER_STEP = 2;
 
 export function ScrubField(props: {
@@ -29,7 +29,13 @@ export function ScrubField(props: {
   value: number;
   min: number;
   max: number;
+  /** Typing and arrow-key granularity, and the precision values snap to. */
   step: number;
+  /** Drag granularity, when a finger-friendly increment is coarser than the
+   *  typed precision — tracking types in hundredths but scrubs in tenths,
+   *  since 0.01 per drag increment would make its full range ~4400px of
+   *  travel. Defaults to `step`, i.e. drag and type at the same granularity. */
+  dragStep?: number;
   onChange: (v: number) => void;
 }) {
   // Half-typed text ("0.", "-") would round-trip through Number() as a
@@ -58,8 +64,9 @@ export function ScrubField(props: {
           if (!d) return;
           // Coarse/fine modifiers, as on Photoshop's scrubby sliders.
           const mult = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+          const inc = props.dragStep ?? props.step;
           setText(null);
-          props.onChange(snap(d.v + ((e.clientX - d.x) / PX_PER_STEP) * props.step * mult));
+          props.onChange(snap(d.v + ((e.clientX - d.x) / PX_PER_STEP) * inc * mult));
         }}
         onPointerUp={(e) => {
           drag.current = null;

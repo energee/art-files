@@ -85,7 +85,8 @@ is derived from the beer name (see "Derived QR payload").
 - `Style` gains optional `letterSpacing` (tracking, in PDF points; absent =
   0), edited as a "Tracking" number field in the style panel. Points, not
   px@600dpi like `strokeWidth`, since tracking is judged against the type
-  size, which layout.ts also authors in points. Clamped to -2..20pt.
+  size, which layout.ts also authors in points. Clamped to -2..20pt, authored
+  to hundredths of a point.
 - Only text elements offer it: `LabelElement` gains `isText`, false for the
   logo (a vector shape) and the two codes (the QR has no text; the barcode's
   digit spacing is part of the symbol).
@@ -104,7 +105,10 @@ is derived from the beer name (see "Derived QR payload").
   always did.
 - Both numeric style fields (tracking, stroke width) are scrubby numbers, not
   plain number inputs: dragging the field's label changes the value (shift =
-  coarse, alt = fine), and it stays typeable with native arrow stepping. The
+  coarse, alt = fine), and it stays typeable with native arrow stepping.
+  Drag granularity is its own prop where it differs from the typed precision:
+  tracking types in hundredths but scrubs in tenths, since 0.01 per drag
+  increment would make its full range ~4400px of travel. The
   interface is shadcn throughout — a `Label` as the scrub handle and an
   `InputGroup` (Input + unit addon) for the value — so only the pointer
   gesture is hand-written, no shadcn primitive covering it. One

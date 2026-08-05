@@ -67,7 +67,7 @@ Layer select, and outer-stroke toggle (its own color + width, px at the
 except that the QR and the barcode omit the no-ink option, since neither
 scans without ink, and the barcode's stroke defaults to 20px rather than
 the global 15px. Every text element also gets a Tracking field —
-letter-spacing in points, default 0 — which the PDF applies as a `Tc`
+letter-spacing in points to two decimals, default 0 — which the PDF applies as a `Tc`
 text-state operator, the PSD as Photoshop tracking (1/1000 em), and which
 widens centred lines, justified warning columns and click targets alike;
 the logo and the two codes omit it, having no glyphs of their own to
