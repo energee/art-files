@@ -103,7 +103,13 @@ describe("preview hit-testing", () => {
 
   it("measures storeCold at the bold width, matching drawRotated's hardcoded semibold face", () => {
     const b = boxOf("storeCold", cfg, measureBW)!;
-    const expected = measureBW(cfg.storeCold.text, L.STORE_COLD.size, true);
+    // Tracked: storeCold ships at 1.25pt, and the box has to follow the run
+    // the renderer actually draws, not the font's bare measurement.
+    const expected = L.trackedWidth(
+      measureBW(cfg.storeCold.text, L.STORE_COLD.size, true),
+      cfg.storeCold.text,
+      cfg.storeCold.letterSpacing,
+    );
     expect(b.y1 - b.y0).toBeCloseTo(expected, 5);
   });
 

@@ -53,7 +53,12 @@ export function defaultConfig(): LabelConfig {
       letterSpacing: 0.25,
     },
     warning: { fill: GOLD, layer: "metallic" },
-    storeCold: { text: "STORE COLD", fill: GOLD, layer: "metallic", bold: true },
+    // Widely tracked (2026-08): two short uppercase words set large enough
+    // that tight spacing reads as one word.
+    storeCold: {
+      text: "STORE COLD", fill: GOLD, layer: "metallic", bold: true,
+      letterSpacing: 1.25,
+    },
   };
 }
 
