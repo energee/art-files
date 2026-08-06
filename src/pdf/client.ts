@@ -8,7 +8,7 @@
 import type { LabelConfig } from "../types";
 import type { Assets, CollabImage } from "./build";
 
-export type PreviewAssets = Omit<Assets, "fonts" | "logoSvg">;
+type PreviewAssets = Omit<Assets, "fonts" | "logoSvg">;
 
 /** A byte payload by cache id; `bytes` rides along only the first time this
  *  array is sent to the current worker instance. */
@@ -105,7 +105,7 @@ export function buildPreviewPdfs(
       const attached: number[] = [];
       const request: WorkerRequest = {
         id,
-        cfg: structuredClone(cfg),
+        cfg,
         assets: {
           texture: assets.texture && {
             kind: assets.texture.kind, ref: ref(assets.texture.bytes, attached),

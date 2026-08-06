@@ -1,7 +1,6 @@
 // worker.ts — preview-resolution PDF builds off the browser's UI thread.
 // Byte payloads arrive at most once per upload and are cached here by id
 // (see client.ts's ByteRef); each request references them by id alone.
-import type { LabelConfig } from "../types";
 import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "./build";
 import type { ByteRef, WireAssets, WireImage, WorkerRequest, WorkerResponse } from "./client";
 import poppinsRegular from "../assets/fonts/Poppins-Regular.ttf?url";
