@@ -19,6 +19,7 @@ import {
   Inspector, type CollabFiles, type DocSettings, type InspectorFiles,
 } from "@/components/StyleProperties";
 import { LayersPanel } from "@/components/LayersPanel";
+import { AssetDropOverlay } from "@/components/AssetDropOverlay";
 import { isElementId, type LayerId } from "@/components/layers";
 import { CommandMenu } from "@/components/CommandMenu";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
@@ -535,13 +536,13 @@ export default function App() {
           </SidebarContent>
         </Sidebar>
         <SidebarInset className="flex h-svh flex-col overflow-hidden">
-        <header className="flex items-center gap-3 border-b border-border px-3 py-1">
+        <header className="flex items-center gap-3 px-3 py-1">
           {/* Toggles the Layers sidebar; the component also binds ⌘B. */}
           <SidebarTrigger className="size-6" />
           {/* Stripped to a real menu bar: no pill border or rounding of its
-              own (the header's bottom border is the chrome), and small
-              regular-weight labels rather than the default's badge-like
-              medium ones. */}
+              own — the header is borderless too, so the menu floats on the
+              canvas — and small regular-weight labels rather than the
+              default's badge-like medium ones. */}
           <Menubar className="h-auto gap-0 rounded-none border-0 p-0">
             <MenubarMenu>
               <MenubarTrigger className={MENU_TRIGGER}>File</MenubarTrigger>
@@ -628,7 +629,7 @@ export default function App() {
             {buildError && <span className="text-xs text-destructive">{buildError}</span>}
             {!texture && !building && (
               <span className="text-xs text-muted-foreground">
-                drop a texture to fill the background
+                drop a texture anywhere to fill the background
               </span>
             )}
           </div>
@@ -673,7 +674,9 @@ export default function App() {
         <Sheet open={selected !== null} modal={false}
           onOpenChange={(open) => { if (!open) setSelected(null); }}>
           <SheetContent side="right" showOverlay={false} showCloseButton={false}
-            className="w-[300px] gap-0 overflow-y-auto p-3 sm:max-w-[300px]">
+            // Same card shade as the left sidebar and, like it, no border —
+            // the two rails read as one surface flanking the canvas.
+            className="w-[300px] gap-0 overflow-y-auto border-l-0! bg-sidebar p-3 sm:max-w-[300px]">
             {selected && (
               <Inspector id={selected} cfg={cfg} errors={errors} update={update} files={files}
                 settings={docSettings}
@@ -681,6 +684,11 @@ export default function App() {
             )}
           </SheetContent>
         </Sheet>
+        {/* Drop a texture or mask anywhere in the window — no layer selection
+            or inspector trip required. Armed only during a PNG/JPEG drag. */}
+        <AssetDropOverlay
+          onTexture={(f) => void onTexture(f)}
+          onMask={(f) => void onMask(f)} />
         <CommandMenu
           actions={[
             { label: "Export PDF + Mask PDF", disabled: blocked || !pdfs, run: exportPdfs },

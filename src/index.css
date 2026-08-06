@@ -39,8 +39,10 @@
      the existing surfaces (not a second palette): without these the
      bg-sidebar/border-sidebar-border utilities don't resolve and the
      sidebar's border-r falls back to preflight's currentColor — a white
-     hairline against the dark theme. */
-  --sidebar: var(--background);
+     hairline against the dark theme.
+     The sidebar sits one shade above the canvas (card surface) so its edge
+     reads on its own — that is why the container carries no border. */
+  --sidebar: var(--card);
   --sidebar-foreground: var(--foreground);
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
