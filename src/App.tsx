@@ -242,6 +242,29 @@ export default function App() {
     return () => document.removeEventListener("keydown", onKey);
   }, [undo, redo]);
 
+  // 1–5 switch views (Figma-style bare digits), with the same
+  // inert-while-typing guard as undo: a digit in a text field is text.
+  // Registered once — the handler only touches stable setters/refs.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "")) return;
+      switch (e.key) {
+        case "1": show2d("art"); break;
+        case "2": show2d("mask"); break;
+        case "3": setViewMode("can"); break;
+        case "4": setViewMode("pack"); break;
+        case "5": setViewMode("flat"); break;
+        default: return;
+      }
+      e.preventDefault();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const upc = useMemo(() => validateUpc(cfg.upc), [cfg.upc]);
   const errors: Record<string, string> = {};
   if (!upc.ok) errors.upc = upc.error!;
@@ -548,24 +571,24 @@ export default function App() {
                     manual compare position, which is neither view. */}
                 <MenubarCheckboxItem checked={viewMode === "2d" && split === 0}
                   onClick={() => show2d("art")}>
-                  Standard
+                  Standard <MenubarShortcut>1</MenubarShortcut>
                 </MenubarCheckboxItem>
                 <MenubarCheckboxItem checked={viewMode === "2d" && split === 100}
                   onClick={() => show2d("mask")}>
-                  Mask
+                  Mask <MenubarShortcut>2</MenubarShortcut>
                 </MenubarCheckboxItem>
                 <MenubarSeparator />
                 <MenubarCheckboxItem checked={viewMode === "can"}
                   onClick={() => setViewMode("can")}>
-                  Single Can
+                  Single Can <MenubarShortcut>3</MenubarShortcut>
                 </MenubarCheckboxItem>
                 <MenubarCheckboxItem checked={viewMode === "pack"}
                   onClick={() => setViewMode("pack")}>
-                  Four-Pack
+                  Four-Pack <MenubarShortcut>4</MenubarShortcut>
                 </MenubarCheckboxItem>
                 <MenubarCheckboxItem checked={viewMode === "flat"}
                   onClick={() => setViewMode("flat")}>
-                  Flat Label
+                  Flat Label <MenubarShortcut>5</MenubarShortcut>
                 </MenubarCheckboxItem>
               </MenubarContent>
             </MenubarMenu>
