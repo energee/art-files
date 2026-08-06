@@ -29,7 +29,11 @@ export function validateUpc(value: string): { ok: boolean; error?: string } {
 export interface UpcModules {
   /** 95 chars of "0"/"1"; 1 = bar. */
   modules: string;
-  /** Module index ranges of the guards (left, center, right) — drawn full height. */
+  /** Module ranges drawn at full guard height. Per UPC-A (and JsBarcode's
+   *  reference rendering) that is not just the three guard patterns: the
+   *  number-system and check digits print *outside* the symbol, so their
+   *  bars run tall alongside the start/end guards. Hence [0,10), the center
+   *  guard [45,50), and [85,95). */
   guards: [number, number][];
 }
 
@@ -44,9 +48,9 @@ export function encodeUpc(value: string): UpcModules {
   return {
     modules: m,
     guards: [
-      [0, 3],
+      [0, 10],
       [45, 50],
-      [92, 95],
+      [85, 95],
     ],
   };
 }

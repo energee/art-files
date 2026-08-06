@@ -1,6 +1,12 @@
 // defaults.ts — default LabelConfig mirroring the Labradorite reference label,
 // plus the fixed template strings (warning text, address) used by the layout.
 import type { LabelConfig, ConfigFile } from "./types";
+import { DEFAULT_STROKE_PX, GOLD } from "./layout";
+
+/** The shipped outer stroke: pure black, at the standard width. The barcode
+ *  is the one element that does NOT take it — its stroke is a white halo the
+ *  scan contrast depends on (see barcodeStroke below). */
+export const KEYLINE = { stroke: "#000000", strokeWidth: DEFAULT_STROKE_PX } as const;
 
 export const WARNING_TEXT =
   "GOVERNMENT WARNING: (1) ACCORDING TO THE SURGEON GENERAL, WOMEN SHOULD " +
@@ -11,31 +17,69 @@ export const WARNING_TEXT =
 export function defaultConfig(): LabelConfig {
   return {
     beerName: "LABRADORITE",
-    nameStyle: { fill: "gold", layer: "metallic" },
-    styleLine: { text: "Ultra Hopped Ale", fill: "gold", layer: "metallic" },
+    nameStyle: { fill: GOLD, layer: "metallic", ...KEYLINE },
+    styleLine: { text: "Ultra Hopped Ale", fill: GOLD, layer: "metallic", ...KEYLINE },
     abv: "8",
-    abvStyle: { fill: "gold", layer: "metallic" },
+    abvStyle: { fill: GOLD, layer: "metallic", ...KEYLINE },
     description: [
       "# HOPS",
       "Freestyle Motueka",
       "Freestyle Waimea",
       "Freestyle Nelson Sauvin",
-      "**_Roy Farms Citra Liquid Lupulin_**",
+      "Roy Farms Citra Liquid Lupulin",
       "Fresh Wai-iti Cold-Pressed Hop Juice",
     ].join("\n"),
+    descStyle: { fill: GOLD, layer: "metallic", ...KEYLINE },
     upc: "850051366224",
-    qrData: "https://lolev.beer",
+    // Near-black bars and digits inside a white halo, over white ink. The
+    // fill matches the PSD's bars (psd/build.ts) so the two deliverables
+    // agree. The halo ships at 20px @600dpi by request (2026-08) — wider
+    // than the ~15.5px measured off the old finished labels, which is what
+    // an UNSET width still resolves to (see types.ts and drawBarcode's
+    // resolver); pre-style configs migrate without a width so their print
+    // output is preserved.
+    barcodeFill: "#1A1A1A",
+    barcodeStroke: "#FFFFFF",
+    barcodeStrokeWidth: 20,
+    barcodeLayer: "white",
+    qrFill: GOLD,
+    // Same keyline as the text elements. The QR's stroke is a real stroked
+    // path under the dots (drawSvgPath), not the faked ring text uses.
+    qrStroke: KEYLINE.stroke,
+    qrStrokeWidth: KEYLINE.strokeWidth,
     qrLayer: "metallic",
-    volume: { text: "1 PINT", fill: "gold", layer: "metallic", bold: true },
-    wordmark: { fill: "gold", layer: "metallic" },
-    logo: { fill: "gold", layer: "metallic" },
+    // Collab off by default: most releases are not collabs, and with the
+    // switch off none of these three are reachable from the form.
+    collabEnabled: false,
+    collabLead: { fill: GOLD, layer: "metallic" },
+    // offsetY/tintRaster ship explicit rather than absent so the form's
+    // number inputs and checkbox are controlled from the first render. The
+    // centre slot has no offsetY of its own: it rides the laurel's (see
+    // types.ts), which is what keeps the centre stack together.
+    collabLeft: { fill: GOLD, layer: "metallic", scale: 1, offsetY: 0, tintRaster: false },
+    collabCenter: { fill: GOLD, layer: "metallic", scale: 1, tintRaster: false },
+    volume: { text: "1 PINT", fill: GOLD, layer: "metallic", bold: true, ...KEYLINE },
+    wordmark: { fill: GOLD, layer: "metallic", ...KEYLINE },
+    // The laurel's classic dark keyline, now an ordinary editable stroke.
+    logo: { fill: GOLD, layer: "metallic", ...KEYLINE },
     handleAddress: {
-      text: "@LOLEVBEER   5247 BUTLER ST, PITTSBURGH, PA",
-      fill: "gold",
+      // The handle is an inline bold run (see parseRuns); the address stays
+      // in the column's semibold face.
+      text: "**@LOLEVBEER** 5247 BUTLER ST, PITTSBURGH, PA",
+      fill: GOLD,
       layer: "metallic",
+      ...KEYLINE,
+      // Ships tracked (2026-08): the handle and address read as one long
+      // rotated run, and better than a third of a point of spacing opens it up.
+      letterSpacing: 0.38,
     },
-    warning: { fill: "black", layer: "metallic" },
-    storeCold: { text: "STORE COLD", fill: "gold", layer: "metallic", bold: true },
+    warning: { fill: GOLD, layer: "metallic", ...KEYLINE },
+    // Widely tracked (2026-08): two short uppercase words set large enough
+    // that tight spacing reads as one word.
+    storeCold: {
+      text: "STORE COLD", fill: GOLD, layer: "metallic", bold: true,
+      letterSpacing: 1.25,
+    },
   };
 }
 
@@ -64,7 +108,40 @@ export function parseConfigFile(json: string): LabelConfig {
     delete cfg.descriptionLines;
   }
   const base = defaultConfig();
+  // Legacy fill migration: configs saved before free-hex fills. Every
+  // schema field shaped like a style ({ fill: string }) gets its named fill
+  // mapped, so new styled fields are covered without touching this loop.
+  const LEGACY_FILLS: Record<string, string> = { gold: GOLD, black: "#000000", white: "none" };
+  for (const k of Object.keys(base)) {
+    const s = cfg[k];
+    if (s && typeof s.fill === "string" && s.fill in LEGACY_FILLS) s.fill = LEGACY_FILLS[s.fill];
+  }
+  delete cfg.qrData; // payload is derived from beerName now
+  cfg.qrFill ??= GOLD;
+  cfg.qrStroke ??= "none";
+  // Configs saved before the barcode became a styled element, when the
+  // renderer hardcoded these three. Deliberately no barcodeStrokeWidth line:
+  // unset is what keeps the measured L.BARCODE.stroke halo, so these configs
+  // print byte-identically to how they always have.
+  cfg.barcodeFill ??= "#1A1A1A";
+  cfg.barcodeStroke ??= "#FFFFFF";
+  cfg.barcodeLayer ??= "white";
+  // Configs saved before the description block was styleable.
+  cfg.descStyle ??= { fill: GOLD, layer: "metallic" };
+  // Configs saved before per-element strokes: keep the logo's classic keyline.
+  if (cfg.logo) {
+    cfg.logo.stroke ??= "#1A1A1A";
+    cfg.logo.strokeWidth ??= DEFAULT_STROKE_PX;
+  }
+  // Configs saved before collab labels existed: not a collab, no collab art.
+  cfg.collabEnabled ??= false;
+  cfg.collabLead ??= base.collabLead;
+  cfg.collabLeft ??= base.collabLeft;
+  cfg.collabCenter ??= base.collabCenter;
   for (const key of Object.keys(base) as (keyof LabelConfig)[]) {
+    // barcodeStrokeWidth is optional: pre-style configs omit it — that is
+    // what preserves their measured halo — while defaultConfig ships 20.
+    if (key === "barcodeStrokeWidth") continue;
     if (!(key in cfg)) throw new Error(`Config missing field: ${key}`);
   }
   return cfg as LabelConfig;

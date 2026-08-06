@@ -20,18 +20,30 @@ is derived from the beer name (see "Derived QR payload").
   (`Button`, `Input`, `Select`, `Checkbox`, `Textarea`, `Label`)
 - shadcn runtime deps: `class-variance-authority`, `clsx`, `tailwind-merge`,
   Radix primitives, `lucide-react`
+- Preview rendering: `pdfjs-dist` (PDF → bitmap), `react-resizable-panels`
+  (via shadcn Resizable) for the overlay-compare divider
 
 ## Hex fill colors
 
 - `Fill` changes from `"gold" | "white" | "black"` to a hex string
   (`#rrggbb`) or the literal `"none"` meaning no ink (replaces the old magic
   meaning of `"white"`).
-- UI per row: native `<input type="color">` swatch + hex text field, plus a
-  "no ink" toggle. No color-picker library.
+- UI per row: a swatch button opening a react-colorful picker (nested
+  popover) + hex text field, plus a "no ink" toggle. (Originally native
+  `<input type="color">`; upgraded in the mature-component pass — see
+  addendum.)
+- The picker popover also carries a "Pick from screen" eyedropper button
+  using the native `EyeDropper` API (`new EyeDropper().open()` → `sRGBHex`),
+  which hands the OS a screen-wide dropper cursor so any pixel outside the
+  popover can be sampled. Rendered only when `window.EyeDropper` exists
+  (Chromium); no fallback in Safari/Firefox.
 - `layout.ts` keeps `GOLD = #D0B070` (the exact hex of the current gold RGB
   0.815/0.69/0.44) as the default; `pdf/build.ts` `fillColor()` parses hex.
 - Description markdown syntax is unchanged: plain text renders in default
-  gold, `_underscored_` renders as no-ink/white layer.
+  gold, `_underscored_` moves the line to the white-ink layer. The marker
+  sets the LAYER only (corrected 2026-08): it used to force the line's fill
+  to `none` as well, which silently discarded the block's chosen color —
+  fill and layer are independent on every other element.
 - QR fill defaults to gold but is pickable (see "QR color and stroke").
 - Config JSON stores hex strings; `parseConfigFile` migrates legacy values
   (`gold` → `#D0B070`, `black` → `#000000`, `white` → `none`) so old config
@@ -58,6 +70,74 @@ is derived from the beer name (see "Derived QR payload").
 - New config fields: `qrFill` (hex), `qrStroke` (hex or `"none"`); legacy
   configs without them get the defaults (`#D0B070`, `none`).
 
+## Per-element outer strokes (addendum, same day)
+
+- Every element style (`Style`) gains optional `stroke` (hex or `"none"`)
+  and `strokeWidth` (px at the 600dpi deliverable; default 15 ≈ 1.8pt),
+  editable in each row's swatch popover next to the existing controls.
+- Strokes are true OUTER strokes, art PDF only: QR/logo use grown/underlay
+  passes; text uses a 16-direction offset ring under the fill (pdf-lib
+  cannot stroke text — same technique as the barcode digits).
+- The logo's previously hard-coded dark keyline becomes this stroke
+  (`#1A1A1A`, on by default); pre-stroke configs migrate to keep it.
+  `qrStrokeWidth` joins `qrStroke`. The barcode's fixed white stroke is
+  unchanged (scannability, not styling).
+
+## Per-element letter-spacing (addendum)
+
+- `Style` gains optional `letterSpacing` (tracking, in PDF points; absent =
+  0), edited as a "Tracking" number field in the style panel. Points, not
+  px@600dpi like `strokeWidth`, since tracking is judged against the type
+  size, which layout.ts also authors in points. Clamped to -2..20pt, authored
+  to hundredths of a point.
+- Only text elements offer it: `LabelElement` gains `isText`, false for the
+  logo (a vector shape) and the two codes (the QR has no text; the barcode's
+  digit spacing is part of the symbol).
+- `layout.ts` `trackedWidth(base, text, tracking)` is the one width formula —
+  base measurement plus one gap per ADJACENT glyph pair, deliberately not the
+  trailing gap PDF's `Tc` also emits, which is advance rather than ink.
+  Shared by the PDF renderer, the PSD builder and hittest.ts so centring,
+  warning wrap/justification and click targets can't disagree.
+- Applied in the art/mask PDFs as the `Tc` text-state operator around each
+  draw (pdf-lib has no per-draw option), cleared to 0 afterwards since `Tc`
+  is page-wide state; in the PSD as Photoshop's type-layer `tracking`,
+  which is 1/1000 em, i.e. `letterSpacing / size * 1000`.
+- The description block's spacing is block-level like its stroke: it flows to
+  the header and every line, and the `_white_` marker does not override it.
+- No config migration: absent means 0, so every old config still prints as it
+  always did.
+- Both numeric style fields (tracking, stroke width) are scrubby numbers, not
+  plain number inputs: dragging the field's label changes the value (shift =
+  coarse, alt = fine), and it stays typeable with native arrow stepping.
+  Drag granularity is its own prop where it differs from the typed precision:
+  tracking types in hundredths but scrubs in tenths, since 0.01 per drag
+  increment would make its full range ~4400px of travel. The
+  interface is shadcn throughout — a `Label` as the scrub handle and an
+  `InputGroup` (Input + unit addon) for the value — so only the pointer
+  gesture is hand-written, no shadcn primitive covering it. One
+  `ScrubField` component serves both.
+
+## Optional mask (addendum)
+
+The metallic mask PNG is optional: generation runs with texture alone, and
+the white-ink PDF then carries only the per-element layer assignments on a
+knockout (white) page. A loaded-but-invalid mask still blocks. The headless
+script accepts `none` in place of the mask path.
+
+## Mature-component pass (addendum)
+
+Every interactive element uses shadcn, or an equally mature library where
+shadcn has no primitive — nothing hand-invented: swatch chips are shadcn
+`Button`s; the hex and stroke-width fields are shadcn `Input`s; row and
+popover labels are shadcn `Label`s with `htmlFor`/id association; the color
+picker is react-colorful (nested popover); the file drop targets are
+react-dropzone (library-managed drag/keyboard/aria). Still deliberately
+raw: the two pdf.js `<canvas>` targets, hidden file inputs (the
+standard pattern, also what react-dropzone renders), the eyedropper's
+native `EyeDropper` call — the browser owns that UI, so there is no
+component to wrap — and ScrubField's drag gesture, which is behaviour
+layered onto a shadcn Label rather than a widget of its own.
+
 ## UI improvements (included in the rewrite)
 
 1. **Generation status**: a small "building…" indicator on the preview while
@@ -65,8 +145,14 @@ is derived from the beer name (see "Derived QR payload").
 2. **Inline validation**: per-field errors (UPC under its input, mask error
    on the mask drop, name on the name input) instead of one error blob;
    disabled download buttons explain why via tooltip.
-3. **Preview segmented control**: one large preview with an Art / White-ink /
-   Split toggle (shadcn Tabs or segmented buttons); Split shows both.
+3. **Overlay compare preview (no embedded PDF viewer)**: the two generated
+   PDFs are rendered to bitmaps with pdf.js (`pdfjs-dist`) — previews stay
+   pixel-true to the print files but drop the browser PDF viewer chrome.
+   Both bitmaps are stacked in a single frame; a shadcn Resizable
+   (`react-resizable-panels`) divider overlays them — fully left shows pure
+   art, dragging right reveals the white-ink layer in place, so the two
+   registered layers are compared overlaid, not side by side. No tabs.
+   ⌘K keeps "Preview: Art" / "Preview: White-ink" as divider snap actions.
 4. **Asset thumbnails**: loaded texture/mask drops show a small image
    thumbnail (mask on a checkerboard) instead of filename only.
 5. **Poppins headings**: the already-bundled Poppins is used for the app
@@ -74,7 +160,21 @@ is derived from the beer name (see "Derived QR payload").
 6. **Checkerboard "no ink" swatch**: `none` fill renders as a mini
    checkerboard chip in the color control, not a labeled checkbox.
 7. **Command palette (⌘K)**: shadcn Command dialog with save config, load
-   config, download art, download mask, and preview-mode actions.
+   config, download art, download mask, export both, and preview snap
+   actions.
+8. **Progressive disclosure (swatch popovers)**: each styled row shows only
+   its text input plus ONE swatch chip (current fill color; checkerboard for
+   no-ink). Clicking the chip opens a popover holding the full style editor:
+   ColorField (picker + hex + no-ink), layer select, bold toggle (StyledLine
+   rows), and for the QR row the stroke toggle + stroke color. The separate
+   "Name style" / "ABV style" / "QR stroke" rows are merged away.
+9. **Collapsed template section**: the template-element rows (volume,
+   wordmark, logo, handle/addr, warning, store cold) live in a shadcn
+   Collapsible, closed by default — they rarely change.
+10. **Quiet actions**: one primary **Export PDFs** button downloads art +
+    mask together; Save/Load config become small ghost buttons; the
+    description markdown legend moves to an info tooltip on the Description
+    heading.
 
 (Deferred: localStorage recent-configs list — fast follow, not in this
 rewrite.)
@@ -119,8 +219,8 @@ micro-headings for form sections. No gold anywhere.
    buttons are disabled until generation is unblocked.
 5. Save config downloads `<name>-config.json` via `toConfigFile`; load config
    parses via `parseConfigFile`, re-renders the form, and regenerates.
-6. Both PDF previews (`art`, white-ink mask) live-update via embedded blob
-   URLs, with old URLs revoked.
+6. Both PDFs live-update as pdf.js-rendered bitmaps in the overlay compare
+   frame (no `<embed>`); download blob URLs are revoked when replaced.
 7. Downloads are named `<beerName>.pdf` and `<beerName>-mask.pdf`.
 8. Each styled row's color swatch, hex field, and no-ink toggle write the new
    `Fill` value into the config; loading a legacy config file with
@@ -130,9 +230,13 @@ micro-headings for form sections. No gold anywhere.
 10. The QR row's fill picker changes the QR color in the art PDF; enabling
     the stroke toggle strokes the modules in the chosen stroke color.
 11. Build indicator appears during generation; errors render inline at their
-    fields; preview mode toggles Art / White-ink / Split; loaded assets show
-    thumbnails; ⌘K opens a command palette exposing save/load/download and
-    preview-mode actions.
+    fields; the overlay divider drags to compare art vs white-ink in place;
+    loaded assets show thumbnails; ⌘K opens a command palette exposing
+    save/load/download/export and preview snap actions.
+12. Styled rows show only their input + one swatch chip; fill/hex/no-ink,
+    layer, bold, and (QR) stroke all edit inside the chip's popover.
+13. The Template section is collapsed by default and expands to reveal the
+    six template rows; **Export PDFs** downloads both files in one click.
 
 ## Validation
 

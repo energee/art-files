@@ -2,10 +2,15 @@
 // mask polarity rules, and config JSON round-trip.
 import { describe, expect, it } from "vitest";
 import { encodeUpc, upcCheckDigit, validateUpc } from "../src/upc";
-import { qrPath, qrShapes } from "../src/qr";
+import { qrPath, qrShapes, machineName, qrUrl } from "../src/qr";
 import { recolorMaskForPdf, validateMask } from "../src/maskimage";
+import { tintRgba } from "../src/collab";
 import { defaultConfig, parseConfigFile, toConfigFile } from "../src/defaults";
-import { parseDescription } from "../src/description";
+import { parseDescription, parseInfoLine, parseRuns, serializeDescription } from "../src/description";
+import {
+  COLLAB_LEAD, COLLAB_LEFT, DEFAULT_STROKE_PX, DESC, GOLD, QR,
+  collabLeftFlow, parseHexFill,
+} from "../src/layout";
 
 describe("upc", () => {
   it("computes the Labradorite check digit", () => {
@@ -22,7 +27,9 @@ describe("upc", () => {
     expect(modules.startsWith("101")).toBe(true);
     expect(modules.endsWith("101")).toBe(true);
     expect(modules.slice(45, 50)).toBe("01010");
-    expect(guards).toEqual([[0, 3], [45, 50], [92, 95]]);
+    // Tall runs: start guard + number-system digit, center guard, check
+    // digit + end guard (those two digits print outside the symbol).
+    expect(guards).toEqual([[0, 10], [45, 50], [85, 95]]);
   });
   it("encodes digit 0 as 0001101 in the left half", () => {
     expect(encodeUpc("000000000000").modules.slice(3, 10)).toBe("0001101");
@@ -68,18 +75,204 @@ describe("description markdown", () => {
     const d = parseDescription(
       "# HOPS\nFreestyle Motueka\n**_Roy Farms_**\n_Silvery_\n**Bold Gold**\n\n",
     );
-    expect(d.header).toMatchObject({ text: "HOPS", bold: true, fill: "gold", layer: "metallic" });
+    expect(d.header).toMatchObject({ text: "HOPS", bold: true, fill: GOLD, layer: "metallic" });
     expect(d.lines).toEqual([
-      { text: "Freestyle Motueka", bold: false, fill: "gold", layer: "metallic" },
-      { text: "Roy Farms", bold: true, fill: "white", layer: "white" },
-      { text: "Silvery", bold: false, fill: "white", layer: "white" },
-      { text: "Bold Gold", bold: true, fill: "gold", layer: "metallic" },
+      { text: "Freestyle Motueka", bold: false, fill: GOLD, layer: "metallic" },
+      // White ink moves the line to the white plate and leaves its color be.
+      { text: "Roy Farms", bold: true, fill: GOLD, layer: "white" },
+      { text: "Silvery", bold: false, fill: GOLD, layer: "white" },
+      { text: "Bold Gold", bold: true, fill: GOLD, layer: "metallic" },
     ]);
+  });
+  it("parses the Info line with the same markers, collapsed to one line", () => {
+    const base = { text: "", fill: "#C8A24A", layer: "metallic", letterSpacing: 0.25 } as const;
+    // Plain text is untouched — every pre-markdown config still renders as-is.
+    expect(parseInfoLine("@LOLEVBEER   5247 BUTLER ST", base))
+      .toMatchObject({ text: "@LOLEVBEER   5247 BUTLER ST", layer: "metallic", letterSpacing: 0.25 });
+    expect(parseInfoLine("**@LOLEVBEER**", base)).toMatchObject({ text: "@LOLEVBEER", bold: true });
+    expect(parseInfoLine("_@LOLEVBEER_", base)).toMatchObject({ text: "@LOLEVBEER", layer: "white" });
+    // Header markup collapses to bold; extra lines are dropped, matching the
+    // single rotated line the renderer draws.
+    expect(parseInfoLine("# TOP\nsecond", base)).toMatchObject({ text: "TOP", bold: true });
+    expect(parseInfoLine("first\nsecond", base)).toMatchObject({ text: "first" });
+    expect(parseInfoLine("", base)).toMatchObject({ text: "" });
+    // The style row's own Bold survives an unmarked line.
+    expect(parseInfoLine("plain", { ...base, bold: true })).toMatchObject({ bold: true });
+  });
+  it("splits inline runs, inheriting the line style and overriding per run", () => {
+    const line = { text: "", fill: "#C8A24A", layer: "metallic", letterSpacing: 0.25 } as const;
+    const runs = (t: string, extra = {}) => parseRuns({ ...line, ...extra, text: t });
+    // No markers: one run, identical to the line — the old single-draw path.
+    expect(runs("plain")).toEqual([{ ...line, text: "plain", bold: false }]);
+    expect(runs("**@LOLEV** 5247 BUTLER").map((r) => [r.text, r.bold])).toEqual([
+      ["@LOLEV", true], [" 5247 BUTLER", false],
+    ]);
+    expect(runs("a _b_ c").map((r) => [r.text, r.layer])).toEqual([
+      ["a ", "metallic"], ["b", "white"], [" c", "metallic"],
+    ]);
+    // Nesting, either order.
+    expect(runs("**_x_**")[0]).toMatchObject({ text: "x", bold: true, layer: "white" });
+    expect(runs("_**x**_")[0]).toMatchObject({ text: "x", bold: true, layer: "white" });
+    // An unmatched marker is literal, so a lone underscore survives.
+    expect(runs("A_B").map((r) => r.text)).toEqual(["A_B"]);
+    // The line's own style still applies to every run.
+    expect(runs("a **b**", { bold: true }).every((r) => r.bold)).toBe(true);
+    expect(runs("a **b**", { layer: "white" }).every((r) => r.layer === "white")).toBe(true);
+    expect(runs("")).toEqual([{ ...line, text: "" }]);
   });
   it("handles a headerless block", () => {
     const d = parseDescription("just a line");
     expect(d.header).toBeNull();
     expect(d.lines).toHaveLength(1);
+  });
+  it("applies the base style, stroke included, with white overriding the layer only", () => {
+    const base = { fill: "#123456", layer: "metallic", stroke: "#FFFFFF", strokeWidth: 20 } as const;
+    const d = parseDescription("# H\nplain\n_white_", base);
+    expect(d.header).toMatchObject({ fill: "#123456", stroke: "#FFFFFF", strokeWidth: 20 });
+    expect(d.lines[0]).toMatchObject({ fill: "#123456", layer: "metallic", stroke: "#FFFFFF" });
+    // The marker switches the plate; the block's fill survives it.
+    expect(d.lines[1]).toMatchObject({ fill: "#123456", layer: "white", stroke: "#FFFFFF" });
+  });
+
+  it("round-trips through serialize", () => {
+    const src = "# HOPS\nFreestyle Motueka\n**_Roy Farms_**\n_Silvery_\n**Bold Gold**";
+    expect(serializeDescription(parseDescription(src))).toBe(src);
+  });
+
+  it("serializes an empty block to an empty string", () => {
+    expect(serializeDescription({ header: null, lines: [] })).toBe("");
+  });
+
+  it("canonicalizes marker order: reverse input normalizes to white-inside/bold-outside", () => {
+    const reversed = "_**Roy Farms**_"; // reverse order: white outside, bold inside
+    const canonical = "**_Roy Farms_**"; // canonical order: bold outside, white inside
+    expect(serializeDescription(parseDescription(reversed))).toBe(canonical);
+  });
+
+  it("drops blank lines: they are skipped during parsing and cannot be recovered", () => {
+    const src = "A\n\nB";
+    expect(serializeDescription(parseDescription(src))).toBe("A\nB");
+  });
+
+  it("a second # line does not overwrite the header: first # wins, second survives as a body line", () => {
+    const d = parseDescription("# HOPS\n#Freestyle Motueka");
+    expect(d.header).toMatchObject({ text: "HOPS" });
+    expect(d.lines).toEqual([
+      { text: "#Freestyle Motueka", bold: false, fill: GOLD, layer: "metallic" },
+    ]);
+  });
+
+  it("round-trips a block with a second # line: the header survives, the literal # is preserved", () => {
+    const src = "# HOPS\n#Freestyle Motueka";
+    expect(serializeDescription(parseDescription(src))).toBe(src);
+  });
+
+  // Regression: a '#' body line used to be promoted to the header by the
+  // next parse — it jumped to the top of the block and rendered at the
+  // header baseline in both deliverables.
+  it("does not promote a later # line in a header-less block", () => {
+    const d = parseDescription("Citra, Mosaic\n#3 Citra");
+    expect(d.header).toBeNull();
+    expect(d.lines.map((l) => l.text)).toEqual(["Citra, Mosaic", "#3 Citra"]);
+    expect(serializeDescription(d)).toBe("Citra, Mosaic\n#3 Citra");
+  });
+
+  // A leading '#' on the first line of the SOURCE still means "header" —
+  // that is the format. What must round-trip is a block the editor hands
+  // back with no header and a body line that happens to start with '#':
+  // serializing it verbatim made the next parse promote that line to the
+  // header, jumping it to the top of the block at the header baseline.
+  it("round-trips a header-less block whose FIRST body line starts with #", () => {
+    const body = (text: string) =>
+      ({ text, bold: false, fill: GOLD, layer: "metallic" }) as const;
+    const md = serializeDescription({ header: null, lines: [body("#3 Citra"), body("Mosaic")] });
+    expect(md).toBe("\\#3 Citra\nMosaic");
+    const again = parseDescription(md);
+    expect(again.header).toBeNull();
+    expect(again.lines.map((l) => l.text)).toEqual(["#3 Citra", "Mosaic"]);
+    expect(serializeDescription(again)).toBe(md);
+  });
+
+  it("still parses and round-trips a real '# HOPS' header", () => {
+    const src = "# HOPS\nFreestyle Motueka";
+    const d = parseDescription(src);
+    expect(d.header).toMatchObject({ text: "HOPS", bold: true });
+    expect(serializeDescription(d)).toBe(src);
+  });
+
+  // Locks in deliberate behaviour (not a bug, see task-6-report.md Finding
+  // 2): a line whose typed text happens to be symmetrically wrapped in
+  // `**...**` or `_..._` is interpreted as that marker, same as the old
+  // plain textarea always stored and the renderers always drew — the
+  // WYSIWYG editor didn't create this, it just makes it visible instead of
+  // a silent field/render divergence.
+  it("interprets a body line wrapped in ** as bold, markers stripped — mirrors the renderer", () => {
+    const d = parseDescription("**Galaxy**");
+    expect(d.lines).toEqual([{ text: "Galaxy", bold: true, fill: GOLD, layer: "metallic" }]);
+  });
+
+  it("interprets a body line wrapped in _ as white ink, markers stripped — mirrors the renderer", () => {
+    const d = parseDescription("_Galaxy_");
+    expect(d.lines).toEqual([{ text: "Galaxy", bold: false, fill: GOLD, layer: "white" }]);
+  });
+});
+
+describe("hex fills", () => {
+  it("parses hex fills to rgb 0-1", () => {
+    expect(parseHexFill("#D0B070")).toEqual({ r: 208 / 255, g: 176 / 255, b: 112 / 255 });
+    expect(parseHexFill("#000000")).toEqual({ r: 0, g: 0, b: 0 });
+    expect(parseHexFill("none")).toEqual({ r: 1, g: 1, b: 1 }); // no ink = white in art
+  });
+
+  it("keeps the logo's classic keyline on pre-stroke configs", () => {
+    const legacy = toConfigFile(defaultConfig()) as unknown as Record<string, unknown>;
+    delete (legacy.logo as Record<string, unknown>).stroke;
+    delete (legacy.logo as Record<string, unknown>).strokeWidth;
+    const cfg = parseConfigFile(JSON.stringify(legacy));
+    expect(cfg.logo.stroke).toBe("#1A1A1A");
+    expect(cfg.logo.strokeWidth).toBe(DEFAULT_STROKE_PX);
+  });
+
+  it("migrates legacy named fills in config files", () => {
+    const legacy = toConfigFile(defaultConfig());
+    (legacy.nameStyle as unknown as Record<string, unknown>).fill = "gold";
+    (legacy.warning as unknown as Record<string, unknown>).fill = "black";
+    (legacy.styleLine as unknown as Record<string, unknown>).fill = "white";
+    const cfg = parseConfigFile(JSON.stringify(legacy));
+    expect(cfg.nameStyle.fill).toBe(GOLD);
+    expect(cfg.warning.fill).toBe("#000000");
+    expect(cfg.styleLine.fill).toBe("none");
+  });
+});
+
+describe("collab raster tint", () => {
+  it("repaints opaque pixels and leaves transparent ones alone", () => {
+    // opaque black, half-transparent white, fully transparent white
+    const rgba = new Uint8Array([0, 0, 0, 255, 255, 255, 255, 128, 255, 255, 255, 0]);
+    tintRgba(rgba, "#F3CD80");
+    expect([...rgba.slice(0, 4)]).toEqual([0xf3, 0xcd, 0x80, 255]);
+    // Alpha carries the artwork, so a partly transparent edge keeps its alpha
+    // and just changes hue — that is what keeps tinted edges anti-aliased.
+    expect([...rgba.slice(4, 8)]).toEqual([0xf3, 0xcd, 0x80, 128]);
+    // A fully transparent pixel is untouched: nothing there to recolor.
+    expect([...rgba.slice(8)]).toEqual([255, 255, 255, 0]);
+  });
+});
+
+describe("collab layout", () => {
+  it("flows the left block below the description and keeps it on the label", () => {
+    const six = collabLeftFlow(6);
+    const three = collabLeftFlow(3);
+    expect(six.leadBaselines).toHaveLength(COLLAB_LEAD.lines.length);
+    expect(six.leadBaselines[1]).toBeGreaterThan(six.leadBaselines[0]);
+    expect(six.logoTop).toBeGreaterThan(six.leadBaselines[1]);
+    // Fewer description lines pull the whole block up by exactly the leading.
+    expect(six.logoTop - three.logoTop).toBeCloseTo(3 * DESC.leading);
+    // Even the tallest realistic block clears the QR code at the bottom left.
+    expect(six.logoTop + COLLAB_LEFT.maxH).toBeLessThan(QR.yTop);
+  });
+  it("does not run off the top with an empty description", () => {
+    expect(collabLeftFlow(0).leadBaselines[0]).toBe(collabLeftFlow(1).leadBaselines[0]);
   });
 });
 
@@ -107,5 +300,31 @@ describe("config", () => {
   it("rejects unknown versions and missing fields", () => {
     expect(() => parseConfigFile('{"version":2}')).toThrow(/version/);
     expect(() => parseConfigFile('{"version":1,"beerName":"X"}')).toThrow(/missing/);
+  });
+});
+
+describe("derived QR payload", () => {
+  it("machine-names beer titles", () => {
+    expect(machineName("Ultra Juice")).toBe("ultra-juice");
+    expect(machineName("  Käse & Bier!  ")).toBe("k-se-bier");
+    expect(machineName("LABRADORITE")).toBe("labradorite");
+  });
+  it("builds the beer URL", () => {
+    expect(qrUrl("Ultra Juice")).toBe("https://lolev.beer/beer/ultra-juice");
+  });
+  it("defaults descStyle on pre-descStyle configs", () => {
+    const legacy = toConfigFile(defaultConfig()) as unknown as Record<string, unknown>;
+    delete legacy.descStyle;
+    const cfg = parseConfigFile(JSON.stringify(legacy));
+    expect(cfg.descStyle).toEqual({ fill: GOLD, layer: "metallic" });
+  });
+  it("config migration drops qrData and defaults qrFill/qrStroke", () => {
+    const legacy = { ...toConfigFile(defaultConfig()), qrData: "https://old.example" } as Record<string, unknown>;
+    delete legacy.qrFill;
+    delete legacy.qrStroke;
+    const cfg = parseConfigFile(JSON.stringify(legacy)) as unknown as Record<string, unknown>;
+    expect("qrData" in cfg).toBe(false);
+    expect(cfg.qrFill).toBe(GOLD);
+    expect(cfg.qrStroke).toBe("none");
   });
 });

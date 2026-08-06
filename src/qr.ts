@@ -3,6 +3,15 @@
 // round data dots + circular finder rings, as seen on the Labradorite label.
 import qrcode from "qrcode-generator";
 
+/** Beer title -> machine name: lowercase, non-alphanumeric runs -> "-". */
+export function machineName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+export function qrUrl(beerName: string): string {
+  return `https://lolev.beer/beer/${machineName(beerName)}`;
+}
+
 export interface QrShapes {
   count: number; // modules per side
   /** Data module centers in unit space (0..1), excluding finder patterns. */
@@ -51,15 +60,15 @@ function circle(cx: number, cy: number, r: number, ccw = false): string {
 
 /** One combined SVG path (nonzero fill) for the whole QR at a given size in
  *  points; suitable for pdf-lib drawSvgPath and for an <path> element. */
-export function qrPath(shapes: QrShapes, size: number): string {
+export function qrPath(shapes: QrShapes, size: number, grow = 0): string {
   const parts: string[] = [];
   const ms = shapes.moduleSize * size;
   for (const d of shapes.dots)
-    parts.push(circle(d.cx * size, d.cy * size, ms * 0.5 * 0.92));
+    parts.push(circle(d.cx * size, d.cy * size, ms * 0.5 * 0.92 + grow));
   for (const f of shapes.finders) {
-    parts.push(circle(f.cx * size, f.cy * size, 3.5 * ms * 0.95));
-    parts.push(circle(f.cx * size, f.cy * size, 2.3 * ms, true));
-    parts.push(circle(f.cx * size, f.cy * size, 1.4 * ms));
+    parts.push(circle(f.cx * size, f.cy * size, 3.5 * ms * 0.95 + grow));
+    parts.push(circle(f.cx * size, f.cy * size, 2.3 * ms - grow, true));
+    parts.push(circle(f.cx * size, f.cy * size, 1.4 * ms + grow));
   }
   return parts.join(" ");
 }
