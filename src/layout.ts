@@ -14,9 +14,13 @@ export const GOLD = "#F3CD80" as const;
 /** Fixed drawing colors (RGB 0-1). Every element fill is free hex now,
  *  including the barcode's — these remain for the mask's two paints
  *  (knockout white / white-ink blue) and for "none" handling. */
+/** The white-ink plate's ink colour. Hex is the form the PSD writes and the
+ *  press specifies; the 0-1 triple below is derived so the two can't drift. */
+export const MASK_BLUE_HEX = "#009CD7" as const;
+
 export const COLORS = {
   white: { r: 1, g: 1, b: 1 },
-  maskBlue: { r: 0, g: 156 / 255, b: 215 / 255 },
+  maskBlue: parseHexFill(MASK_BLUE_HEX),
 };
 
 /** Parse a Fill to rgb 0-1. "none" = no ink = white in the art PDF. */

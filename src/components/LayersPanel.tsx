@@ -5,8 +5,8 @@
 // file drops rather than Styles). Rows select into the
 // same LayerId state the preview's click-to-select uses; the eye toggles the
 // id in App's session-level hidden set (Assets.hidden — the renderer skips
-// the element outright). Per the layers-ui spec, rows appear in a curated
-// order (Barcode before QR — unlike ELEMENTS order); every element row has
+// the element outright). Rows appear in ELEMENTS order, which carries the
+// layers-ui spec's stacking (Barcode before QR); every element row has
 // an eye (hiding is a temporary skip, unlike the ink-less styling allowNone
 // forbids), the document layers go without for now.
 import { ChevronDown, Eye, EyeOff } from "lucide-react";
@@ -25,25 +25,15 @@ import {
 } from "@/components/ui/sidebar";
 import { DOC_LAYER_LABELS, LAYER_ICONS, isElementId, type LayerId } from "./layers";
 
-/** "Beer" keeps the spec's curated stacking order (Barcode before QR —
- *  unlike ELEMENTS order); Collab and Template derive their membership AND
- *  order from the registry, so a regrouped or added element can't silently
- *  vanish from the panel. */
-const BEER_ROWS: ElementId[] = [
-  "name", "styleLine", "abv", "description", "barcode", "qr",
-];
+/** Every group derives both its membership and its order from the registry,
+ *  so a regrouped, reordered or added element can't silently vanish from the
+ *  panel or drift out of the spec's stacking order. */
 const rowsOf = (group: "beer" | "template" | "collab") =>
   ELEMENTS.filter((e) => e.group === group).map((e) => e.id);
+const BEER_ROWS = rowsOf("beer");
 const COLLAB_ROWS = rowsOf("collab");
 const TEMPLATE_ROWS = rowsOf("template");
 const DOC_ROWS: LayerId[] = ["background", "mask", "settings"];
-// The one curated list is BEER_ROWS — assert it covers the beer group
-// exactly, so the registry and the panel cannot drift.
-if (import.meta.env.DEV) {
-  const beer = rowsOf("beer");
-  if (BEER_ROWS.length !== beer.length || !beer.every((id) => BEER_ROWS.includes(id)))
-    throw new Error("LayersPanel BEER_ROWS is out of sync with ELEMENTS' beer group");
-}
 
 const GROUPS: [string, LayerId[]][] = [
   ["Beer", BEER_ROWS],

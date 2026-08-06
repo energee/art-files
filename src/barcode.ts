@@ -14,6 +14,39 @@ import { encodeUpc } from "./upc";
  *  - UNSET keeps BARCODE.stroke, the ~1.8-module halo measured off the
  *    finished labels (NOT DEFAULT_STROKE_PX), so a config saved before the
  *    barcode was stylable still prints exactly as it always has. */
+/** The barcode's true white-ink footprint: one rect per bar plus one pill per
+ *  digit group, each outset by the halo `S`, in the same top-left coordinates
+ *  as BarcodeGeometry. Both plates paint exactly these rects — the PDF's mask
+ *  branch flipping them into PDF space, the PSD unioning them into a shape
+ *  layer — so the white-ink plate cannot drift from the ink it underlies. A
+ *  single bounding rect used to stand in for all of this; that under-covered
+ *  the gaps between bars and the digit column, which can unprint the code on
+ *  a textured stock. At S = 0 (stroke "none") it reduces to the bars' and
+ *  digits' own ink, still needed under the ink for scan contrast.
+ *
+ *  The bar outsets are square while the art's halo rounds those corners at
+ *  radius S, so this over-covers by a hair there — the safe direction:
+ *  under-coverage fringes, over-coverage hides. */
+export function barcodeFootprint(
+  geo: BarcodeGeometry, S: number, measure: (text: string) => number,
+): { x: number; yTop: number; w: number; h: number }[] {
+  const B = L.BARCODE;
+  return [
+    ...geo.bars.map((b) => ({
+      x: b.x - S, yTop: b.yTop - S, w: b.w + 2 * S, h: b.h + 2 * S,
+    })),
+    ...geo.digits.map((d) => {
+      // The glyph run is rotated, so its measured width is the pill's HEIGHT,
+      // centred on the group's centre module; the font box spans it crosswise.
+      const len = measure(d.text);
+      const x0 = d.x - L.FONT_ASC * B.textSize - S;
+      const x1 = d.x + L.FONT_DESC * B.textSize + S;
+      const yc = geo.bottom - d.center * geo.mod;
+      return { x: x0, yTop: yc - len / 2 - S, w: x1 - x0, h: len + 2 * S };
+    }),
+  ];
+}
+
 export function barcodeStrokePt(
   cfg: Pick<LabelConfig, "barcodeStroke" | "barcodeStrokeWidth">,
 ): number {

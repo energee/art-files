@@ -59,16 +59,6 @@ function filteredCopy(canvas: HTMLCanvasElement, filter: string): HTMLCanvasElem
   return copy;
 }
 
-/** True if the metalness plate has any foil on it (white = foil, see
- *  roughnessCanvas). Strided sample — a real foil area is thousands of pixels.
- *  // ponytail: stride 41, exact scan only if a hairline foil rule is missed. */
-function hasInk(metalness: HTMLCanvasElement): boolean {
-  const { width, height } = metalness;
-  const d = metalness.getContext("2d")!.getImageData(0, 0, width, height).data;
-  for (let i = 0; i < d.length; i += 4 * 41) if (d[i] > 8) return true;
-  return false;
-}
-
 /** Per-pixel lerp of the soft mask into a roughness map: matte 0.8 where the
  *  mask is black (white ink) down to 0.33 where it's white (foil). */
 function roughnessCanvas(softMask: HTMLCanvasElement): HTMLCanvasElement {
@@ -293,8 +283,9 @@ export class CanScene {
 
   private disposeFlatMesh() {
     if (this.flatBackMesh) {
+      // Geometry and alphaMap are shared with flatMesh / the label material,
+      // which own their disposal — only the backing's own material is ours.
       this.scene.remove(this.flatBackMesh);
-      this.flatBackMesh.geometry.dispose();
       (this.flatBackMesh.material as THREE.Material).dispose();
       this.flatBackMesh = null;
     }
@@ -304,53 +295,110 @@ export class CanScene {
     this.flatMesh = null;
   }
 
-  /**
-   * (Re)build the label from fresh art + metalness canvases. Creates the
-   * cylinder sized to the artwork aspect and one shared material carrying
-   * all per-pixel maps: art color map, blurred metalness mask, lerped
-   * roughness, and the soft mask as a bump so foil sits proud of the ink.
-   */
-  /** Adjust the die-cut corner radius (% of the label's short edge) and the
-   *  label height (% of can height). Cheap: rebuilds the label mesh and its
-   *  alphaMap from the cached canvases — no PDF re-rasterization. */
+  /** Blurred copy of the metalness plate — the source for the metalness,
+   *  roughness and bump maps (see EDGE_SOFTNESS for why the blur exists). */
+  private softMask(tex: LabelTextures): HTMLCanvasElement {
+    const blur = this.edgeSoftnessRatio * tex.metalness.width;
+    return filteredCopy(tex.metalness, blur > 0 ? `blur(${blur}px)` : "none");
+  }
+
+  /** The die-cut silhouette as an alphaMap source: a white rounded rect on
+   *  black, radius as a share of the artwork's short edge. */
+  private alphaCanvas(tex: LabelTextures): HTMLCanvasElement {
+    const alpha = document.createElement("canvas");
+    alpha.width = tex.art.width;
+    alpha.height = tex.art.height;
+    const ctx = alpha.getContext("2d")!;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, alpha.width, alpha.height);
+    const r = (this.cornerRadiusPct / 100) * Math.min(alpha.width, alpha.height);
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.roundRect(0, 0, alpha.width, alpha.height, r);
+    ctx.fill();
+    return alpha;
+  }
+
+  /** Adjust the die-cut corner radius (% of the label's short edge), the
+   *  label height (% of can height) and the foil-edge blur.
+   *
+   *  Each knob is a scrub field emitting a change per dragged pixel, so this
+   *  redoes only what that knob feeds: the radius is one canvas redraw, the
+   *  height is one cylinder, and only the blur touches the three mask-derived
+   *  maps. A full applyTextures would re-blur, re-lerp and re-upload five
+   *  full-resolution textures per pixel of drag. */
   setLabelOptions(opts: {
     cornerRadiusPct?: number; heightRatio?: number; edgeSoftnessRatio?: number;
   }) {
+    const radius = opts.cornerRadiusPct !== undefined
+      && opts.cornerRadiusPct !== this.cornerRadiusPct;
+    const height = opts.heightRatio !== undefined
+      && opts.heightRatio !== this.labelHeightRatio;
+    const softness = opts.edgeSoftnessRatio !== undefined
+      && opts.edgeSoftnessRatio !== this.edgeSoftnessRatio;
     if (opts.cornerRadiusPct !== undefined) this.cornerRadiusPct = opts.cornerRadiusPct;
     if (opts.heightRatio !== undefined) this.labelHeightRatio = opts.heightRatio;
     if (opts.edgeSoftnessRatio !== undefined) this.edgeSoftnessRatio = opts.edgeSoftnessRatio;
-    if (this.pendingTextures) this.applyTextures(this.pendingTextures);
+    if (!(radius || height || softness)) return;
+
+    const tex = this.pendingTextures;
+    if (!tex) return;
+    // No material yet (textures arrived before the can model): the full build
+    // is the only thing that can produce one.
+    if (!this.labelMaterial) { this.applyTextures(tex); return; }
+
+    if (softness) {
+      const soft = this.softMask(tex);
+      const m = this.labelMaterial;
+      m.metalnessMap?.dispose();
+      m.roughnessMap?.dispose();
+      m.bumpMap?.dispose();
+      m.metalnessMap = this.createTexture(soft);
+      m.roughnessMap = this.createTexture(roughnessCanvas(soft));
+      m.bumpMap = this.createTexture(soft);
+      m.needsUpdate = true;
+    }
+    if (radius) {
+      const map = this.createTexture(this.alphaCanvas(tex));
+      const back = this.flatBackMesh?.material as THREE.MeshStandardMaterial | undefined;
+      this.labelMaterial.alphaMap?.dispose();
+      this.labelMaterial.alphaMap = map;
+      this.labelMaterial.needsUpdate = true;
+      // The flat view's backing shares the front's die-cut silhouette.
+      if (back) { back.alphaMap = map; back.needsUpdate = true; }
+    }
+    if (height) { this.rebuildLabelMesh(tex); this.applyMode(); }
+    this.requestRender();
+  }
+
+  /** The wrapped cylinder, sized to the current label height and artwork
+   *  aspect. Separate from applyTextures so a height scrub rebuilds geometry
+   *  without touching a single texture. */
+  private rebuildLabelMesh(tex: LabelTextures) {
+    const labelHeight = this.canHeight * this.labelHeightRatio;
+    const labelRadius = this.canRadius * 1.005;
+    const wrapAngle = Math.min((labelHeight * tex.aspect) / labelRadius, Math.PI * 1.95);
+
+    this.disposeLabelMesh();
+    this.labelMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(labelRadius, labelRadius, labelHeight, 64, 1, true, 0, wrapAngle),
+      this.labelMaterial!,
+    );
+    this.labelMesh.position.y = this.canHeight * LABEL_OFFSET_RATIO;
+    // wrapAngle/2 positions the cylinder's center seam at the back; the
+    // camera's front azimuth uses the full wrapAngle to face the label center.
+    this.labelMesh.rotation.y = wrapAngle / 2 + LABEL_BASE_ROTATION - LABEL_SEAM_OFFSET;
+    this.frontAzimuth = wrapAngle + LABEL_BASE_ROTATION - LABEL_SEAM_OFFSET;
+    this.scene.add(this.labelMesh);
+    // Caller re-frames: applyTextures does it once after the flat meshes are
+    // up, so the 4-pack isn't cloned twice per build.
   }
 
   applyTextures(tex: LabelTextures) {
     this.pendingTextures = tex;
     if (!this.canModel) return; // replayed by loadCan on arrival
 
-    const labelHeight = this.canHeight * this.labelHeightRatio;
-    const labelRadius = this.canRadius * 1.005;
-    const wrapAngle = Math.min((labelHeight * tex.aspect) / labelRadius, Math.PI * 1.95);
-
-    // Soft mask -> derived maps (see EDGE_SOFTNESS for why the blur exists).
-    const blur = this.edgeSoftnessRatio * tex.metalness.width;
-    const soft = filteredCopy(tex.metalness, blur > 0 ? `blur(${blur}px)` : "none");
-
-    // Rounded label corners via alphaMap (the physical label is die-cut with
-    // a small radius): a white rounded rect on black, radius 2.5% of the
-    // artwork's short edge — the reference implementation's ratio.
-    const alpha = document.createElement("canvas");
-    alpha.width = tex.art.width;
-    alpha.height = tex.art.height;
-    {
-      const ctx = alpha.getContext("2d")!;
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, alpha.width, alpha.height);
-      const r = (this.cornerRadiusPct / 100) * Math.min(alpha.width, alpha.height);
-      ctx.fillStyle = "#fff";
-      ctx.beginPath();
-      ctx.roundRect(0, 0, alpha.width, alpha.height, r);
-      ctx.fill();
-    }
-
+    const soft = this.softMask(tex);
     const oldMaterial = this.labelMaterial;
     this.labelMaterial = new THREE.MeshStandardMaterial({
       transparent: true, side: THREE.DoubleSide, metalness: 1.0, roughness: 1.0,
@@ -359,44 +407,35 @@ export class CanScene {
       roughnessMap: this.createTexture(roughnessCanvas(soft)),
       bumpMap: this.createTexture(soft),
       bumpScale: LAYER_DEPTH,
-      alphaMap: this.createTexture(alpha),
+      alphaMap: this.createTexture(this.alphaCanvas(tex)),
       alphaTest: 0.5,
     });
     if (oldMaterial) { this.disposeMaterialMaps(oldMaterial); oldMaterial.dispose(); }
 
-    this.disposeLabelMesh();
-    this.labelMesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(labelRadius, labelRadius, labelHeight, 64, 1, true, 0, wrapAngle),
-      this.labelMaterial,
-    );
-    this.labelMesh.position.y = this.canHeight * LABEL_OFFSET_RATIO;
-    // wrapAngle/2 positions the cylinder's center seam at the back; the
-    // camera's front azimuth uses the full wrapAngle to face the label center.
-    this.labelMesh.rotation.y = wrapAngle / 2 + LABEL_BASE_ROTATION - LABEL_SEAM_OFFSET;
-    this.frontAzimuth = wrapAngle + LABEL_BASE_ROTATION - LABEL_SEAM_OFFSET;
-    this.scene.add(this.labelMesh);
+    this.rebuildLabelMesh(tex);
 
     // Flat plane shares the label material; its geometry tracks the aspect.
     this.disposeFlatMesh();
-    this.flatMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(FLAT_LABEL_HEIGHT * tex.aspect, FLAT_LABEL_HEIGHT),
-      this.labelMaterial,
+    const flatGeometry = new THREE.PlaneGeometry(
+      FLAT_LABEL_HEIGHT * tex.aspect, FLAT_LABEL_HEIGHT,
     );
+    this.flatMesh = new THREE.Mesh(flatGeometry, this.labelMaterial);
     this.scene.add(this.flatMesh);
 
     // Blank back of the stock, facing -z: metallic foil if the label uses any
     // white-ink/metallic mask, otherwise plain white matte. Opaque, so it hides
-    // the shared DoubleSide art when the user orbits behind the plane.
-    const foil = hasInk(tex.metalness);
+    // the shared DoubleSide art when the user orbits behind the plane. Shares
+    // the front's geometry and die-cut alphaMap; only the material differs.
+    const foil = tex.hasFoil;
     this.flatBackMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(FLAT_LABEL_HEIGHT * tex.aspect, FLAT_LABEL_HEIGHT),
+      flatGeometry,
       new THREE.MeshStandardMaterial({
         color: foil ? 0xf7f9fb : 0xffffff,
         metalness: foil ? 1.0 : 0.0,
         roughness: foil ? 0.03 : 0.9,
         envMapIntensity: foil ? 3.0 : 1.0,
         transparent: true, alphaTest: 0.5,
-        alphaMap: this.createTexture(alpha),
+        alphaMap: this.labelMaterial.alphaMap,
       }),
     );
     this.flatBackMesh.rotation.y = Math.PI;

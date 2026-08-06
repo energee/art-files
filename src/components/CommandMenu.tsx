@@ -4,9 +4,21 @@ import {
   CommandDialog, CommandEmpty, CommandInput, CommandItem, CommandList,
 } from "@/components/ui/command";
 
-export function CommandMenu(props: {
-  actions: { label: string; run: () => void; disabled?: boolean }[];
-}) {
+/** One entry in the app's command table (see App's `commands`). `key` is the
+ *  bare key that fires it, `shortcut` the glyphs shown to the user — separate
+ *  fields because ⌘Z is displayed here but handled by its own listener. */
+export interface Command {
+  /** Stable lookup key. A label can change with state (Show/Hide bleed
+   *  lines), so surfaces address a command by id, never by what it reads. */
+  id: string;
+  label: string;
+  run: () => void;
+  disabled?: boolean;
+  key?: string;
+  shortcut?: string;
+}
+
+export function CommandMenu(props: { actions: Command[] }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -24,9 +36,12 @@ export function CommandMenu(props: {
       <CommandList>
         <CommandEmpty>No results.</CommandEmpty>
         {props.actions.map((a) => (
-          <CommandItem key={a.label} disabled={a.disabled}
+          <CommandItem key={a.id} disabled={a.disabled}
             onSelect={() => { setOpen(false); a.run(); }}>
             {a.label}
+            {a.shortcut && (
+              <span className="ml-auto text-xs text-muted-foreground">{a.shortcut}</span>
+            )}
           </CommandItem>
         ))}
       </CommandList>

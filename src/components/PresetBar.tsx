@@ -8,28 +8,8 @@ import { Input } from "@/components/ui/input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger,
 } from "@/components/ui/select";
-import {
-  barcodeLabel, loadPresets, savePresets, upsertBy,
-  EMPTY_PRESETS, type BarcodePreset, type Presets,
-} from "@/presets";
+import { barcodeLabel, upsertBy, usePresets, type BarcodePreset } from "@/presets";
 
-/** Loads presets.json once and exposes a writer that persists the whole
- *  library. A failed write surfaces as a message: silently dropping it would
- *  look identical to a successful save. `reload` re-reads the file so a second
- *  copy of the hook (ColorField's swatches) picks up what another copy just
- *  saved, without a remount. */
-export function usePresets() {
-  const [presets, setPresets] = React.useState<Presets>(EMPTY_PRESETS);
-  const [error, setError] = React.useState("");
-  const reload = React.useCallback(() => { void loadPresets().then(setPresets); }, []);
-  React.useEffect(reload, [reload]);
-
-  const commit = (next: Presets) => {
-    setPresets(next);
-    savePresets(next).then(() => setError(""), (e: Error) => setError(e.message));
-  };
-  return { presets, commit, error, reload };
-}
 
 /** The pickers are action lists, not fields: they never display a selection
  *  (the element's own controls are the state), so the trigger carries fixed
@@ -69,7 +49,7 @@ export function BeerStylePresetBar(props: {
 
   const save = () => {
     if (!text || saved) return;
-    commit({ ...presets, styles: [...presets.styles, text] });
+    commit((p) => ({ ...p, styles: [...p.styles, text] }));
   };
 
   return (
@@ -107,7 +87,7 @@ export function BarcodePresetBar(props: {
     const item: BarcodePreset = trimmed
       ? { name: trimmed, upc: props.upc }
       : { upc: props.upc };
-    commit({ ...presets, barcodes: upsertBy(presets.barcodes, item, (b) => b.upc) });
+    commit((p) => ({ ...p, barcodes: upsertBy(p.barcodes, item, (b) => b.upc) }));
     setName("");
   };
 

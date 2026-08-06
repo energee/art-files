@@ -41,5 +41,10 @@
   "colors": [
     "#f3cd80",
     "#33ff00"
-  ]
+  ],
+  "render": {
+    "cornerRadius": 2.5,
+    "labelSize": 82,
+    "edgeSoftness": 0.1
+  }
 }

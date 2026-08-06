@@ -4,18 +4,15 @@
 import {
   forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type RefObject,
 } from "react";
-import * as pdfjs from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import type { PanelImperativeHandle } from "react-resizable-panels";
+import { renderPdfPage } from "@/pdf/render";
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { ART, PAGE } from "@/layout";
 import type { LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
-import { boxOf, hitTest, type Measure } from "@/hittest";
-
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+import { boxOf, hitTest, type CollabSlots, type Measure } from "@/hittest";
 
 // ponytail: fixed oversample, CSS downscales; add a ResizeObserver only if
 // crispness on very large screens ever matters.
@@ -31,26 +28,9 @@ const WHITE_INK_PANEL_ID = "white-ink";
 async function renderPdf(
   bytes: Uint8Array, canvas: HTMLCanvasElement | null, isCancelled: () => boolean,
 ) {
-  if (!canvas) return;
-  // pdf.js transfers the buffer to its worker — hand it a copy. destroy()
-  // lives on the loading task (not the resolved PDFDocumentProxy) in this
-  // pdfjs-dist major, so the task is kept around for cleanup.
-  const task = pdfjs.getDocument({ data: bytes.slice() });
-  try {
-    const doc = await task.promise;
-    const page = await doc.getPage(1);
-    // bytes can change while this render is in flight (each call spins up
-    // its own worker doc); bail before touching the shared canvas so a
-    // slower, superseded render can't overwrite a newer one.
-    if (isCancelled()) return;
-    const vp = page.getViewport({ scale: RENDER_SCALE });
-    canvas.width = vp.width;
-    canvas.height = vp.height;
-    // `canvas` (not the legacy `canvasContext`) is the required render target.
-    await page.render({ canvas, viewport: vp }).promise;
-  } finally {
-    void task.destroy().catch(() => {});
-  }
+  // isCancelled: bytes can change while a render is in flight, and a slower
+  // superseded render must not overwrite a newer one on the shared canvas.
+  if (canvas) await renderPdfPage(bytes, { canvas, scale: RENDER_SCALE, isCancelled });
 }
 
 /** Render `bytes` into `canvas` whenever they change. Renders are chained:
@@ -86,6 +66,9 @@ export const PreviewCompare = forwardRef<
     /** Real glyph-width lookup (see hittest.ts); null until App's one-time
      *  font embed resolves. Hit-testing is skipped, not guessed, until then. */
     measure: Measure | null;
+    /** Which collab logo slots hold art. The renderer skips an empty slot, so
+     *  its hit box must not exist either (see hittest.ts's CollabSlots). */
+    collab: CollabSlots;
     /** Which element the sidebar (or a previous click here) has selected —
      *  drives the outline drawn over it. */
     selected: ElementId | null;
@@ -100,7 +83,7 @@ export const PreviewCompare = forwardRef<
     bleed?: boolean;
   }
 >(function PreviewCompare(
-  { artBytes, maskBytes, cfg, measure, selected, onPick, onSplit, bleed },
+  { artBytes, maskBytes, cfg, measure, collab, selected, onPick, onSplit, bleed },
   ref,
 ) {
   const artCanvas = useRef<HTMLCanvasElement>(null);
@@ -134,7 +117,7 @@ export const PreviewCompare = forwardRef<
     if (!r.width || !r.height) return; // not laid out yet (e.g. display:none)
     const xPt = ((e.clientX - r.left) / r.width) * PAGE.w;
     const yPt = ((e.clientY - r.top) / r.height) * PAGE.h;
-    onPick(hitTest(xPt, yPt, measure, cfg));
+    onPick(hitTest(xPt, yPt, measure, cfg, collab));
   }
 
   // Selection outline geometry, as a percentage box so it tracks the
@@ -143,8 +126,8 @@ export const PreviewCompare = forwardRef<
   // word-by-word wrap measurement), and dragging the divider re-renders this
   // component per pointer-move frame without any of these inputs changing.
   const selBox = useMemo(
-    () => (selected && measure ? boxOf(selected, cfg, measure) : null),
-    [selected, cfg, measure],
+    () => (selected && measure ? boxOf(selected, cfg, measure, collab) : null),
+    [selected, cfg, measure, collab],
   );
 
   return (

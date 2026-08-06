@@ -29,7 +29,7 @@ import { writePsdUint8Array, type BezierPath, type Layer, type Psd } from "ag-ps
 import type { Fill, LabelConfig, StyledLine } from "../types";
 import { displayAbv, displayName, displayStyle } from "../defaults";
 import * as L from "../layout";
-import { barcodeGeometry, barcodeStrokePt } from "../barcode";
+import { barcodeFootprint, barcodeGeometry, barcodeStrokePt } from "../barcode";
 import { parseDescription, parseInfoLine, parseRuns } from "../description";
 import { parseLogo } from "../logo";
 import { qrShapes, qrUrl } from "../qr";
@@ -69,7 +69,7 @@ const color255 = (fill: Fill) => {
 };
 
 /** Mask-plate blue (layout.COLORS.maskBlue as hex): the white-ink underlay. */
-const MASK_BLUE = "#009CD7";
+const MASK_BLUE = L.MASK_BLUE_HEX;
 
 /** Resolve an element's paint for the mode — the PDF's maskColor rule:
  *  in mask mode metallic knocks out (white) and white-layer prints ink
@@ -653,19 +653,11 @@ function codeLayers(cfg: LabelConfig, f: Faces, fk: FKFont, mode: PsdMode): Laye
   );
 
   if (mode === "mask") {
-    // The barcode's true ink footprint, exactly as drawBarcode's mask branch:
-    // one ±S outset rect per bar plus a pill rect per digit group around its
-    // glyph box. Union, so overlapping outsets can't XOR into holes.
-    const footprint: BezierPath[] = [
-      ...geo.bars.map((b) => rectPath(b.x - S, b.yTop - S, b.w + 2 * S, b.h + 2 * S)),
-      ...geo.digits.map((d) => {
-        const w = measure(d.text);
-        const x0 = d.x - L.FONT_ASC * B.textSize - S;
-        const x1 = d.x + L.FONT_DESC * B.textSize + S;
-        const yc = geo.bottom - d.center * geo.mod;
-        return rectPath(x0, yc - w / 2 - S, x1 - x0, w + 2 * S);
-      }),
-    ].map((p) => ({ ...p, operation: "combine" as const }));
+    // The barcode's true ink footprint, from the same resolver drawBarcode's
+    // mask branch paints (see barcodeFootprint). Union, so overlapping outsets
+    // can't XOR into holes.
+    const footprint: BezierPath[] = barcodeFootprint(geo, S, measure)
+      .map((r) => ({ ...rectPath(r.x, r.yTop, r.w, r.h), operation: "combine" as const }));
     return [qr, shapeLayer("Barcode", footprint, paint(mode, cfg.barcodeFill, cfg.barcodeLayer))];
   }
 

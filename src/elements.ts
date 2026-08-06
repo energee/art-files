@@ -4,6 +4,12 @@
 import type { LabelConfig, Style, StyledLine } from "./types";
 import { defaultConfig } from "./defaults";
 
+/** The shipped config, for reading any element's factory style. Built once:
+ *  defaultConfig() allocates a whole config (description lines included), and
+ *  isDefaultStyle runs on every inspector render — i.e. per keystroke while a
+ *  layer is selected. Never mutated; the panel edits App's config, not this. */
+export const SHIPPED: LabelConfig = defaultConfig();
+
 export type ElementId =
   | "name" | "styleLine" | "abv" | "description"
   | "volume" | "wordmark" | "logo" | "handleAddress" | "warning" | "storeCold"
@@ -62,8 +68,10 @@ export const ELEMENTS: LabelElement[] = [
   // The two codes must always carry ink — see allowNone's doc. Both are
   // "beer": the QR payload follows the beer name and the UPC digits change
   // per release, so neither is a set-once brand-template element.
-  { id: "qr", label: "QR", group: "beer", hasBold: false, isText: false, allowNone: false, style: flatStyle(FLAT.qr) },
+  // Barcode precedes QR because the layers panel lists each group in registry
+  // order, and the spec's stacking puts the barcode first.
   { id: "barcode", label: "Barcode", group: "beer", hasBold: false, isText: false, allowNone: false, style: flatStyle(FLAT.barcode) },
+  { id: "qr", label: "QR", group: "beer", hasBold: false, isText: false, allowNone: false, style: flatStyle(FLAT.qr) },
   // Collab block — its own group: a collab partner changes per release like
   // "beer", but the block exists only while the collab switch is on, and the
   // layers panel shows it as its own section. The two logo slots draw
@@ -142,7 +150,7 @@ export function applyStyle(c: LabelConfig, id: ElementId, patch: Partial<StyledL
  *  the panel and both restored by Reset, so leaving them out would leave a
  *  changed element claiming to be untouched. */
 export function isDefaultStyle(id: ElementId, s: Style): boolean {
-  const d = elementById(id).style(defaultConfig());
+  const d = elementById(id).style(SHIPPED);
   // An absent stroke and an explicit "none" are the same thing to every
   // renderer (see strokeOf in pdf/build.ts), so normalize before comparing;
   // strokeWidth only matters while a stroke is actually drawn.

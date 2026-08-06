@@ -21,7 +21,7 @@ import type { ElementId } from "../elements";
 import { parseLogo } from "../logo";
 import { WARNING_TEXT, displayAbv, displayName, displayStyle } from "../defaults";
 import * as L from "../layout";
-import { barcodeGeometry, barcodeStrokePt } from "../barcode";
+import { barcodeFootprint, barcodeGeometry, barcodeStrokePt } from "../barcode";
 import { qrPath, qrShapes, qrUrl } from "../qr";
 import { parseDescription, parseInfoLine, parseRuns } from "../description";
 import { warningColumnLen, wrapWarning } from "../warning";
@@ -304,11 +304,6 @@ export function drawJustifiedRotated(
   });
 }
 
-/** Glyph box for the barcode digits' mask pills — the measured Poppins font
- *  box from layout.ts, the same one hittest.ts uses. */
-const DIGIT_ASC = L.FONT_ASC;
-const DIGIT_DESC = L.FONT_DESC;
-
 /** The barcode, in both modes. `cfg` (not just the UPC digits) because both
  *  branches below resolve their geometry from the same barcode* style fields
  *  — see S. */
@@ -341,26 +336,13 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode:
   const glyph = { size: B.textSize, font: fonts.regular, rotate: degrees(90) };
 
   if (mode === "mask") {
-    // The true footprint the art pass inks: one outset rect per bar (a square
-    // ±S outset — the art's halo rounds those corners at radius S, so this
-    // over-covers by a hair there, which is the safe direction for a white-ink
-    // plate: under-coverage fringes, over-coverage hides) plus a pill per digit
-    // group — the rect the art's ring-of-copies halo approximates — around
-    // its glyph box expanded by S. At S=0 (stroke "none") this reduces to
-    // exactly the bars' and digits' own ink, still needed under the ink for
-    // scan contrast. A single bounding rect used to stand in for all of
-    // this; that under-covered the gaps between bars and the digit column,
-    // which can unprint the code on a textured stock.
+    // The true footprint the art pass inks, from the shared resolver the PSD
+    // builder paints too (see barcodeFootprint). Top-origin rects convert to
+    // PDF space by their far edge, exactly like the bars above.
     const color = maskColor(cfg.barcodeLayer);
-    for (const r of bars)
-      page.drawRectangle({
-        x: r.x - S, y: r.y - S, width: r.width + 2 * S, height: r.height + 2 * S, color,
-      });
-    for (const d of digits) {
-      const x0 = d.x - DIGIT_ASC * B.textSize - S;
-      const x1 = d.x + DIGIT_DESC * B.textSize + S;
-      page.drawRectangle({ x: x0, y: d.y - S, width: x1 - x0, height: d.w + 2 * S, color });
-    }
+    const measure = (t: string) => fonts.regular.widthOfTextAtSize(t, B.textSize);
+    for (const r of barcodeFootprint(geo, S, measure))
+      page.drawRectangle({ x: r.x, y: y(r.yTop + r.h), width: r.w, height: r.h, color });
     return;
   }
 

@@ -11,7 +11,10 @@ import type { Plugin } from "vite";
  *  them history and review. Dev-server only — the app runs locally, so there
  *  is no deployed build that would need a real backend for this. */
 const PRESETS_FILE = fileURLToPath(new URL("./presets.json", import.meta.url));
-const EMPTY_PRESETS = '{"styles":[],"barcodes":[],"colors":[]}';
+/** Deliberately `{}` rather than a spelled-out empty library: the client's
+ *  normalizePresets (src/presets.ts) fills in every key with its default, so
+ *  restating the shape here would just be a second copy to keep in step. */
+const EMPTY_PRESETS = "{}";
 
 function presetsApi(): Plugin {
   return {

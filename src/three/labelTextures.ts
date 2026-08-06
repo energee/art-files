@@ -1,12 +1,8 @@
 // labelTextures.ts — turns the app's preview-resolution PDF pair (art plate +
 // white-ink mask plate) into the canvases the 3D label material consumes: the
-// art itself and a binary per-pixel metalness mask. Rendering goes through
-// pdfjs-dist exactly like PreviewCompare does (same worker, same "pdf.js
-// neuters the buffer it's handed" copy caveat).
-import * as pdfjs from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+// art itself and a binary per-pixel metalness mask. Rasterization is shared
+// with the 2D preview (see pdf/render.ts).
+import { renderPdfPage } from "@/pdf/render";
 
 /** Longest rendered edge in px. ~2x the PDF's preview scale is plenty for a
  *  wrapped texture; capping keeps each rebuild's canvases a few MB. */
@@ -24,37 +20,26 @@ export interface LabelTextures {
   /** Binary metalness mask: white = metallic foil, black = matte white ink.
    *  Same pixel dimensions as `art`. */
   metalness: HTMLCanvasElement;
+  /** True if any pixel of `metalness` is foil — i.e. the label uses a metallic
+   *  mask at all. Falls out of the pass that builds the mask. */
+  hasFoil: boolean;
   /** Artwork width / height — drives the cylinder wrap angle. */
   aspect: number;
 }
 
-/** Render page 1 of a PDF into a canvas, longest edge capped at MAX_EDGE.
- *  `size` forces exact output dimensions (the mask must match the art
- *  pixel-for-pixel so the maps sample in lockstep on the same UVs). */
-async function renderPdfPage(
+/** Render a plate, longest edge capped at MAX_EDGE. `size` forces exact
+ *  output dimensions (the mask must match the art pixel-for-pixel so the maps
+ *  sample in lockstep on the same UVs). Never cancelled, so never null. */
+async function renderPlate(
   bytes: Uint8Array, size?: { width: number; height: number },
 ): Promise<HTMLCanvasElement> {
-  // pdf.js transfers the buffer to its worker — hand it a copy. destroy()
-  // lives on the loading task in this pdfjs-dist major.
-  const task = pdfjs.getDocument({ data: bytes.slice() });
-  try {
-    const doc = await task.promise;
-    const page = await doc.getPage(1);
-    const base = page.getViewport({ scale: 1 });
-    const scale = size
+  const canvas = await renderPdfPage(bytes, {
+    size,
+    scale: (base) => (size
       ? size.width / base.width
-      : Math.min(2, MAX_EDGE / Math.max(base.width, base.height));
-    const vp = page.getViewport({ scale });
-    const canvas = document.createElement("canvas");
-    // Round like pdf.js does internally, then force the exact target size —
-    // a half-pixel viewport mismatch must not desync the two plates.
-    canvas.width = size?.width ?? Math.round(vp.width);
-    canvas.height = size?.height ?? Math.round(vp.height);
-    await page.render({ canvas, viewport: vp }).promise;
-    return canvas;
-  } finally {
-    void task.destroy().catch(() => {});
-  }
+      : Math.min(2, MAX_EDGE / Math.max(base.width, base.height))),
+  });
+  return canvas!;
 }
 
 /**
@@ -64,9 +49,12 @@ async function renderPdfPage(
  * pixels mean NO white ink (the bare metal foil shows through). So metalness
  * is white exactly where the plate render is near-white. With no metallic
  * mask dropped, the plate floods solid blue = all matte = all black here,
- * which is the correct "no foil" default.
+ * which is the correct "no foil" default. `hasFoil` reports whether any pixel
+ * came out white, so callers don't have to re-scan the finished mask.
  */
-function deriveMetalness(maskRender: HTMLCanvasElement): HTMLCanvasElement {
+function deriveMetalness(
+  maskRender: HTMLCanvasElement,
+): { canvas: HTMLCanvasElement; hasFoil: boolean } {
   const { width, height } = maskRender;
   const out = document.createElement("canvas");
   out.width = width;
@@ -75,13 +63,15 @@ function deriveMetalness(maskRender: HTMLCanvasElement): HTMLCanvasElement {
   const src = maskRender.getContext("2d")!.getImageData(0, 0, width, height);
   const dst = ctx.createImageData(width, height);
   const s = src.data, d = dst.data;
+  let hasFoil = false;
   for (let i = 0; i < s.length; i += 4) {
     const v = Math.min(s[i], s[i + 1], s[i + 2]) > WHITE_THRESHOLD ? 255 : 0;
+    if (v) hasFoil = true;
     d[i] = d[i + 1] = d[i + 2] = v;
     d[i + 3] = 255;
   }
   ctx.putImageData(dst, 0, 0);
-  return out;
+  return { canvas: out, hasFoil };
 }
 
 /**
@@ -92,11 +82,8 @@ function deriveMetalness(maskRender: HTMLCanvasElement): HTMLCanvasElement {
 export async function buildLabelTextures(
   { artBytes, maskBytes }: { artBytes: Uint8Array; maskBytes: Uint8Array },
 ): Promise<LabelTextures> {
-  const art = await renderPdfPage(artBytes);
-  const maskRender = await renderPdfPage(maskBytes, { width: art.width, height: art.height });
-  return {
-    art,
-    metalness: deriveMetalness(maskRender),
-    aspect: art.width / art.height,
-  };
+  const art = await renderPlate(artBytes);
+  const maskRender = await renderPlate(maskBytes, { width: art.width, height: art.height });
+  const { canvas: metalness, hasFoil } = deriveMetalness(maskRender);
+  return { art, metalness, hasFoil, aspect: art.width / art.height };
 }

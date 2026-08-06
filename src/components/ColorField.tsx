@@ -12,7 +12,7 @@ import { GOLD } from "@/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { usePresets } from "./PresetBar";
+import { usePresets } from "@/presets";
 import { addColor } from "@/presets";
 
 /** "No ink" checkerboard chip background. */
@@ -40,11 +40,14 @@ export function ColorField(props: {
   // Commit a picked color and drop any half-typed hex sitting in the Input.
   const apply = (v: string) => { setText(null); props.onChange(v as Fill); };
   // Saved swatches live in presets.json, not on the element, so a color saved
-  // here is offered by every other ColorField. Reloaded when the popover
-  // opens: the other field's copy of the hook may have saved since mount.
-  const { presets, commit, error, reload } = usePresets();
-  const saved = presets.colors.includes(hex.toLowerCase());
-  const setColors = (colors: string[]) => commit({ ...presets, colors });
+  // here is offered by every other ColorField the moment it lands — all the
+  // fields read one shared library (see presets.ts).
+  const { presets, commit, error } = usePresets();
+  // addColor owns the lowercase-canonicalization rule; "already saved" is just
+  // "adding it changes nothing", so the two can't drift apart.
+  const saved = addColor(presets.colors, hex) === presets.colors;
+  const setColors = (colors: (current: string[]) => string[]) =>
+    commit((p) => ({ ...p, colors: colors(p.colors) }));
   return (
     <div className="flex items-center gap-1">
       {props.allowNone !== false && (
@@ -59,7 +62,7 @@ export function ColorField(props: {
           style={{ background: CHECKER }}
         />
       )}
-      <Popover onOpenChange={(open) => { if (open) reload(); }}>
+      <Popover>
         <PopoverTrigger
           render={
             <Button
@@ -105,7 +108,7 @@ export function ColorField(props: {
                 style={{ background: c }}
                 onClick={(e) =>
                   e.shiftKey
-                    ? setColors(presets.colors.filter((x) => x !== c))
+                    ? setColors((cs) => cs.filter((x) => x !== c))
                     : apply(c)
                 }
               />
@@ -118,7 +121,7 @@ export function ColorField(props: {
               size="sm"
               className="h-5 px-1.5 text-[11px]"
               disabled={saved}
-              onClick={() => setColors(addColor(presets.colors, hex))}
+              onClick={() => setColors((cs) => addColor(cs, hex))}
             >
               {saved ? "Saved" : "Save"}
             </Button>

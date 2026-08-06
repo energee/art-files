@@ -16,6 +16,33 @@ describe("preview hit-testing", () => {
     expect(hitTest(L.LOGO.cx, L.LOGO.cy, measure, cfg)).toBe("logo");
   });
 
+  it("boxes a collab slot only when the switch is on AND its art is loaded", () => {
+    const both = { left: true, center: true };
+    const ids = (c: typeof cfg, slots = both) =>
+      new Set(boxesOf(c, measure, slots).map((b) => b.id));
+    const on = { ...cfg, collabEnabled: true };
+    // Switch off, or slot empty: the renderers draw nothing there, so a box
+    // would swallow clicks meant for whatever is behind it.
+    expect(ids(cfg).has("collabLeft")).toBe(false);
+    expect(ids(on, { left: false, center: false }).has("collabLeft")).toBe(false);
+    // The lead-in only introduces the LEFT logo, and goes with it.
+    expect(ids(on, { left: false, center: true }).has("collabLead")).toBe(false);
+    for (const id of ["collabLead", "collabLeft", "collabCenter"] as const)
+      expect(ids(on).has(id)).toBe(true);
+  });
+
+  it("hits the collab logo slots inside their fit envelopes", () => {
+    const on = { ...cfg, collabEnabled: true };
+    const both = { left: true, center: true };
+    const left = boxOf("collabLeft", on, measure, both)!;
+    expect(hitTest(left.x0 + 1, left.y0 + 1, measure, on, both)).toBe("collabLeft");
+    // The centre slot hangs off the laurel, so nudging the laurel carries it.
+    const nudged = { ...on, logo: { ...on.logo, offsetY: 10 } };
+    const before = boxOf("collabCenter", on, measure, both)!;
+    const after = boxOf("collabCenter", nudged, measure, both)!;
+    expect(after.y0 - before.y0).toBeCloseTo(10);
+  });
+
   it("hits the QR inside its box", () => {
     expect(hitTest(L.QR.x + 5, L.QR.yTop + 5, measure, cfg)).toBe("qr");
   });

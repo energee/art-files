@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CollabSlot, Fill, LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
-import { defaultConfig } from "@/defaults";
+import { defaultConfig, exportBaseName } from "@/defaults";
 import { useHistory } from "@/history";
 import { validateUpc } from "@/upc";
 import { prepareMaskForPdf } from "@/maskimage";
@@ -23,9 +23,12 @@ import {
 } from "@/components/StyleProperties";
 import { LayersPanel } from "@/components/LayersPanel";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
-import { loadPresets, savePresets, type Presets } from "@/presets";
+import {
+  DEFAULT_RENDER, loadPresets, mutatePresets, normalizePresets, usePresets,
+  type Presets,
+} from "@/presets";
 import { isElementId, type LayerId } from "@/components/layers";
-import { CommandMenu } from "@/components/CommandMenu";
+import { CommandMenu, type Command } from "@/components/CommandMenu";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
 import { CanView } from "@/components/CanView";
 import {
@@ -40,6 +43,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import poppinsRegular from "@/assets/fonts/Poppins-Regular.ttf?url";
 import poppinsSemiBold from "@/assets/fonts/Poppins-SemiBold.ttf?url";
 import poppinsBold from "@/assets/fonts/Poppins-Bold.ttf?url";
+import { loadFonts } from "@/pdf/fonts";
 import logoSvg from "@/assets/logo2025.svg?raw";
 
 /** bytes = full print resolution (exports); previewBytes = downscaled PNG the
@@ -58,17 +62,43 @@ async function canvasToPng(canvas: HTMLCanvasElement): Promise<Uint8Array> {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
+/** Decode an image into a fresh 2D canvas — the front half of every pixel
+ *  pipeline here (recolor a collab logo, prepare a mask, rasterize a texture).
+ *  `size` forces the canvas dimensions and cover-fits the image into them,
+ *  centred; without it the canvas takes the image's natural size. The bitmap
+ *  is always closed: it holds a decoded copy until it is. */
+async function decodeToCanvas(
+  src: Blob, size?: { width: number; height: number },
+): Promise<HTMLCanvasElement> {
+  const bmp = await createImageBitmap(src);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = size?.width ?? bmp.width;
+    canvas.height = size?.height ?? bmp.height;
+    const ctx = canvas.getContext("2d")!;
+    if (size) {
+      const s = Math.max(canvas.width / bmp.width, canvas.height / bmp.height);
+      const w = bmp.width * s;
+      const h = bmp.height * s;
+      ctx.drawImage(bmp, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+    } else {
+      ctx.drawImage(bmp, 0, 0);
+    }
+    return canvas;
+  } finally {
+    bmp.close();
+  }
+}
+
+/** The bytes as a Blob, for decodeToCanvas. */
+const blobOf = (bytes: Uint8Array) => new Blob([bytes as unknown as BlobPart]);
+
 /** Repaint a raster collab logo in `fill`, keeping alpha, and re-encode it as
  *  PNG for embedding — the color-overlay path for PNG/JPG art, which pdf-lib
  *  can only draw as-is. Same decode/recolor/re-encode shape as onMask. */
 async function tintedPng(bytes: Uint8Array, fill: Fill): Promise<Uint8Array> {
-  const bmp = await createImageBitmap(new Blob([bytes as unknown as BlobPart]));
-  const canvas = document.createElement("canvas");
-  canvas.width = bmp.width;
-  canvas.height = bmp.height;
+  const canvas = await decodeToCanvas(blobOf(bytes));
   const ctx = canvas.getContext("2d")!;
-  ctx.drawImage(bmp, 0, 0);
-  bmp.close();
   const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
   tintRgba(img.data, fill);
   ctx.putImageData(img, 0, 0);
@@ -109,19 +139,6 @@ async function previewPng(src: ImageBitmap | HTMLCanvasElement): Promise<Uint8Ar
   c.height = Math.round(src.height * scale);
   c.getContext("2d")!.drawImage(src, 0, 0, c.width, c.height);
   return canvasToPng(c);
-}
-
-let fontsPromise: Promise<Assets["fonts"]> | null = null;
-function loadFonts(): Promise<Assets["fonts"]> {
-  if (fontsPromise) return fontsPromise;
-  const get = async (u: string) => new Uint8Array(await (await fetch(u)).arrayBuffer());
-  fontsPromise = Promise.all([get(poppinsRegular), get(poppinsSemiBold), get(poppinsBold)])
-    .then(([regular, semibold, bold]) => ({ regular, semibold, bold }))
-    .catch((error) => {
-      fontsPromise = null;
-      throw error;
-    });
-  return fontsPromise;
 }
 
 let measurePromise: Promise<Measure> | null = null;
@@ -194,6 +211,13 @@ export default function App() {
   // build and the print export.
   const [collabLeft, setCollabLeft] = useState<CollabFile | null>(null);
   const [collabCenter, setCollabCenter] = useState<CollabFile | null>(null);
+  // Which collab slots hold art, for the preview's hit boxes. Memoized: it is
+  // a dependency of the selection-outline memo, and a fresh object every
+  // render would defeat it.
+  const collabSlots = useMemo(
+    () => ({ left: !!collabLeft, center: !!collabCenter }),
+    [collabLeft, collabCenter],
+  );
   // Preview-resolution PDFs for the on-screen compare only; downloads always
   // rebuild at full resolution (see buildFull).
   const [pdfs, setPdfs] = useState<{ artBytes: Uint8Array; maskBytes: Uint8Array } | null>(null);
@@ -208,11 +232,29 @@ export default function App() {
   // position survive a round-trip through the 3D views.
   const [viewMode, setViewMode] = useState<"2d" | "can" | "pack" | "flat">("2d");
   // Document Settings layer's knobs: 3D-view presentation only (die-cut
-  // corner radius, label height on the can). Session state — the print PDFs
-  // and saved configs never see them.
-  const [cornerRadius, setCornerRadius] = useState(2.5);
-  const [labelSize, setLabelSize] = useState(82);
-  const [edgeSoftness, setEdgeSoftness] = useState(0.1);
+  // corner radius, label height on the can, foil-edge blur). The print PDFs
+  // and saved configs never see them; they persist in presets.json, since
+  // they describe the press's die and stock rather than one label.
+  // Local while dragging (a scrub field emits a change per pixel), then
+  // debounced into the shared library.
+  const { presets, loaded: presetsLoaded, error: presetsError } = usePresets();
+  const [render, setRender] = useState(DEFAULT_RENDER);
+  // Adopt the saved settings once, when the library first arrives. Writing
+  // before that would stamp the defaults over the file.
+  const adopted = useRef(false);
+  useEffect(() => {
+    if (adopted.current || !presetsLoaded) return;
+    adopted.current = true;
+    setRender(presets.render);
+  }, [presetsLoaded, presets.render]);
+  useEffect(() => {
+    if (!adopted.current) return;
+    const t = setTimeout(() => void mutatePresets((p) => ({ ...p, render })), 500);
+    return () => clearTimeout(t);
+  }, [render]);
+  useEffect(() => {
+    if (presetsError) setLoadError(`presets save failed: ${presetsError}`);
+  }, [presetsError]);
   /** Return to the 2D compare at one end. The divider resize is deferred a
    *  frame: while a 3D mode is up the compare sits in a display:none wrapper
    *  with zero width, and react-resizable-panels misapplies a percentage
@@ -266,29 +308,23 @@ export default function App() {
     return () => document.removeEventListener("keydown", onKey);
   }, [undo, redo]);
 
-  // 1–5 switch views and B toggles the bleed guide (Figma-style bare
-  // keys), with the same
+  // Figma-style bare keys (see COMMANDS for which), with the same
   // inert-while-typing guard as undo: a digit in a text field is text.
-  // Registered once — the handler only touches stable setters/refs.
+  // Registered once — the handler reads the current table through a ref.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const el = e.target as HTMLElement | null;
       if (el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "")) return;
-      switch (e.key) {
-        case "1": show2d("art"); break;
-        case "2": show2d("mask"); break;
-        case "3": setViewMode("flat"); break;
-        case "4": setViewMode("can"); break;
-        case "5": setViewMode("pack"); break;
-        // Bare B, not ⌘B — that one belongs to the sidebar toggle.
-        case "b": case "B": setBleed((v) => !v); break;
-        default: return;
-      }
+      const cmd = commandsRef.current.find((c) => c.key === e.key.toLowerCase());
+      if (!cmd || cmd.disabled) return;
       e.preventDefault();
+      cmd.run();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
+    // The ref always holds this render's table, so the listener never needs
+    // re-registering.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -323,13 +359,8 @@ export default function App() {
   }
 
   async function onMask(f: File) {
-    const bmp = await createImageBitmap(f);
-    const canvas = document.createElement("canvas");
-    canvas.width = bmp.width;
-    canvas.height = bmp.height;
+    const canvas = await decodeToCanvas(f);
     const ctx = canvas.getContext("2d")!;
-    ctx.drawImage(bmp, 0, 0);
-    bmp.close();
     const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const check = prepareMaskForPdf(data.data);
     ctx.putImageData(data, 0, 0);
@@ -367,9 +398,12 @@ export default function App() {
   /** Everything file-shaped the inspector edits: the Document layers' drops
    *  plus the collab logos. */
   const docSettings: DocSettings = {
-    cornerRadius, onCornerRadius: setCornerRadius,
-    labelSize, onLabelSize: setLabelSize,
-    edgeSoftness, onEdgeSoftness: setEdgeSoftness,
+    cornerRadius: render.cornerRadius,
+    onCornerRadius: (v) => setRender((r) => ({ ...r, cornerRadius: v })),
+    labelSize: render.labelSize,
+    onLabelSize: (v) => setRender((r) => ({ ...r, labelSize: v })),
+    edgeSoftness: render.edgeSoftness,
+    onEdgeSoftness: (v) => setRender((r) => ({ ...r, edgeSoftness: v })),
   };
   const files: InspectorFiles = {
     texture: {
@@ -468,8 +502,8 @@ export default function App() {
         maskPng: mask?.bytes,
         hidden: hiddenLayers,
       };
-      if (which !== "mask") saveBytes(await buildArtPdf(cfg, assets), `${cfg.beerName.trim() || "label"}.pdf`);
-      if (which !== "art") saveBytes(await buildMaskPdf(cfg, assets), `${cfg.beerName.trim() || "label"}-mask.pdf`);
+      if (which !== "mask") saveBytes(await buildArtPdf(cfg, assets), `${exportBaseName(cfg)}.pdf`);
+      if (which !== "art") saveBytes(await buildMaskPdf(cfg, assets), `${exportBaseName(cfg)}-mask.pdf`);
     } catch (err) {
       setBuildError(String(err));
     } finally {
@@ -487,17 +521,9 @@ export default function App() {
    *  the full-size ImageData is ~60MB. */
   async function rasterPixels(bytes: Uint8Array | undefined): Promise<PsdAssets["texture"]> {
     if (!bytes) return undefined;
-    const bmp = await createImageBitmap(new Blob([bytes as unknown as BlobPart]));
-    const canvas = document.createElement("canvas");
-    canvas.width = PSD_DOC.w;
-    canvas.height = PSD_DOC.h;
-    const ctx = canvas.getContext("2d")!;
-    const s = Math.max(canvas.width / bmp.width, canvas.height / bmp.height);
-    const w = bmp.width * s;
-    const h = bmp.height * s;
-    ctx.drawImage(bmp, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
-    bmp.close();
-    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    // Cover-fit to the full 600dpi page, exactly like the PDF's coverPage.
+    const canvas = await decodeToCanvas(blobOf(bytes), { width: PSD_DOC.w, height: PSD_DOC.h });
+    const img = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
     return { data: new Uint8Array(img.data.buffer), width: img.width, height: img.height };
   }
 
@@ -519,10 +545,10 @@ export default function App() {
         texture: await rasterPixels(texture?.bytes),
         mask: await rasterPixels(mask?.bytes),
       };
-      saveBytes(await buildPsd(cfg, assets), `${cfg.beerName.trim() || "label"}.psd`, "image/vnd.adobe.photoshop");
+      saveBytes(await buildPsd(cfg, assets), `${exportBaseName(cfg)}.psd`, "image/vnd.adobe.photoshop");
       saveBytes(
         await buildPsd(cfg, assets, "mask"),
-        `${cfg.beerName.trim() || "label"}-mask.psd`, "image/vnd.adobe.photoshop",
+        `${exportBaseName(cfg)}-mask.psd`, "image/vnd.adobe.photoshop",
       );
       setBuildError("");
     } catch (err) {
@@ -551,14 +577,44 @@ export default function App() {
   async function importPresets(f: File) {
     try {
       const raw = JSON.parse(await f.text()) as Partial<Presets>;
-      await savePresets({
-        styles: raw.styles ?? [], barcodes: raw.barcodes ?? [], colors: raw.colors ?? [],
-      });
+      // Through the store, not savePresets: an import replaces the library,
+      // and every panel showing it has to follow.
+      await mutatePresets(() => normalizePresets(raw));
       setLoadError("");
     } catch (err) {
       setLoadError(`presets import failed: ${String(err)}`);
     }
   }
+
+  /** Every command the app exposes, once. The palette renders this list, the
+   *  bare-key listener dispatches off `key`, and the menubar's items pull
+   *  their `run`/`disabled` from it — so a shortcut can't drift from the key
+   *  that actually fires it, and a command can't be enabled in one surface
+   *  while disabled in another. The menubar keeps its own JSX: it groups,
+   *  separates and check-marks, which is layout, not command identity. */
+  const commands: Command[] = [
+    { id: "export-both", label: "Export PDF + Mask PDF", disabled: pdfExportBlocked, run: exportPdfs },
+    { id: "export-art", label: "Export PDF", disabled: pdfExportBlocked, run: downloadArt },
+    { id: "export-mask", label: "Export Mask PDF", disabled: pdfExportBlocked, run: downloadMask },
+    { id: "export-psd", label: "Export PSDs", disabled: exportBlocked, run: () => void exportPsd() },
+    { id: "undo", label: "Undo", shortcut: "⌘Z", disabled: !canUndo, run: undo },
+    { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: !canRedo, run: redo },
+    { id: "presets-export", label: "Export presets", run: () => void exportPresets() },
+    { id: "presets-import", label: "Import presets", run: () => presetsInput.current?.click() },
+    { id: "view-standard", label: "Preview: Standard", key: "1", shortcut: "1", run: () => show2d("art") },
+    { id: "view-mask", label: "Preview: Mask", key: "2", shortcut: "2", run: () => show2d("mask") },
+    { id: "view-rendered", label: "Preview: Rendered", key: "3", shortcut: "3", run: () => setViewMode("flat") },
+    { id: "view-can", label: "Preview: Single Can", key: "4", shortcut: "4", run: () => setViewMode("can") },
+    { id: "view-pack", label: "Preview: Four-Pack", key: "5", shortcut: "5", run: () => setViewMode("pack") },
+    // Bare B, not ⌘B — that one belongs to the sidebar toggle. Disabled
+    // outside the 2D view, where there is no trim guide to draw.
+    { id: "bleed", label: bleed ? "Hide bleed lines" : "Show bleed lines", key: "b", shortcut: "B",
+      disabled: viewMode !== "2d", run: () => setBleed((b) => !b) },
+  ];
+  const byId = (id: string) => commands.find((c) => c.id === id)!;
+  // The keydown listener is registered once and reads the live table here.
+  const commandsRef = useRef(commands);
+  commandsRef.current = commands;
 
   return (
     <TooltipProvider>
@@ -587,10 +643,10 @@ export default function App() {
               <MenubarContent align="start" className={MENU_ITEMS}>
                 {/* The preset library: beer styles and barcodes reused across
                     labels. */}
-                <MenubarItem onClick={() => void exportPresets()}>
+                <MenubarItem onClick={byId("presets-export").run}>
                   Export presets
                 </MenubarItem>
-                <MenubarItem onClick={() => presetsInput.current?.click()}>
+                <MenubarItem onClick={byId("presets-import").run}>
                   Import presets
                 </MenubarItem>
                 <MenubarSeparator />
@@ -598,13 +654,13 @@ export default function App() {
                     the config alone, so only the PDF items wait on it.
                     Exporting both PDFs at once lives in the ⌘K palette only —
                     here the two layers are separate items. */}
-                <MenubarItem disabled={pdfExportBlocked} onClick={downloadArt}>
+                <MenubarItem disabled={byId("export-art").disabled} onClick={byId("export-art").run}>
                   Export PDF
                 </MenubarItem>
-                <MenubarItem disabled={pdfExportBlocked} onClick={downloadMask}>
+                <MenubarItem disabled={byId("export-mask").disabled} onClick={byId("export-mask").run}>
                   Export Mask PDF
                 </MenubarItem>
-                <MenubarItem disabled={exportBlocked} onClick={() => void exportPsd()}>
+                <MenubarItem disabled={byId("export-psd").disabled} onClick={byId("export-psd").run}>
                   Export PSDs
                 </MenubarItem>
               </MenubarContent>
@@ -612,11 +668,11 @@ export default function App() {
             <MenubarMenu>
               <MenubarTrigger className={MENU_TRIGGER}>Edit</MenubarTrigger>
               <MenubarContent align="start" className={MENU_ITEMS}>
-                <MenubarItem disabled={!canUndo} onClick={undo}>
-                  Undo <MenubarShortcut>⌘Z</MenubarShortcut>
+                <MenubarItem disabled={byId("undo").disabled} onClick={byId("undo").run}>
+                  Undo <MenubarShortcut>{byId("undo").shortcut}</MenubarShortcut>
                 </MenubarItem>
-                <MenubarItem disabled={!canRedo} onClick={redo}>
-                  Redo <MenubarShortcut>⇧⌘Z</MenubarShortcut>
+                <MenubarItem disabled={byId("redo").disabled} onClick={byId("redo").run}>
+                  Redo <MenubarShortcut>{byId("redo").shortcut}</MenubarShortcut>
                 </MenubarItem>
               </MenubarContent>
             </MenubarMenu>
@@ -626,32 +682,32 @@ export default function App() {
                 {/* Checked only at the extremes: anywhere in between is a
                     manual compare position, which is neither view. */}
                 <MenubarCheckboxItem checked={viewMode === "2d" && split === 0}
-                  onClick={() => show2d("art")}>
-                  Standard <MenubarShortcut>1</MenubarShortcut>
+                  disabled={byId("view-standard").disabled} onClick={byId("view-standard").run}>
+                  Standard <MenubarShortcut>{byId("view-standard").shortcut}</MenubarShortcut>
                 </MenubarCheckboxItem>
                 <MenubarCheckboxItem checked={viewMode === "2d" && split === 100}
-                  onClick={() => show2d("mask")}>
-                  Mask <MenubarShortcut>2</MenubarShortcut>
+                  disabled={byId("view-mask").disabled} onClick={byId("view-mask").run}>
+                  Mask <MenubarShortcut>{byId("view-mask").shortcut}</MenubarShortcut>
                 </MenubarCheckboxItem>
                 <MenubarSeparator />
                 <MenubarCheckboxItem checked={viewMode === "flat"}
-                  onClick={() => setViewMode("flat")}>
-                  Rendered <MenubarShortcut>3</MenubarShortcut>
+                  disabled={byId("view-rendered").disabled} onClick={byId("view-rendered").run}>
+                  Rendered <MenubarShortcut>{byId("view-rendered").shortcut}</MenubarShortcut>
                 </MenubarCheckboxItem>
                 <MenubarCheckboxItem checked={viewMode === "can"}
-                  onClick={() => setViewMode("can")}>
-                  Single Can <MenubarShortcut>4</MenubarShortcut>
+                  disabled={byId("view-can").disabled} onClick={byId("view-can").run}>
+                  Single Can <MenubarShortcut>{byId("view-can").shortcut}</MenubarShortcut>
                 </MenubarCheckboxItem>
                 <MenubarCheckboxItem checked={viewMode === "pack"}
-                  onClick={() => setViewMode("pack")}>
-                  Four-Pack <MenubarShortcut>5</MenubarShortcut>
+                  disabled={byId("view-pack").disabled} onClick={byId("view-pack").run}>
+                  Four-Pack <MenubarShortcut>{byId("view-pack").shortcut}</MenubarShortcut>
                 </MenubarCheckboxItem>
                 <MenubarSeparator />
                 {/* 2D only: the trim guide is drawn in page space, which the
                     3D views don't present. */}
-                <MenubarCheckboxItem checked={bleed} disabled={viewMode !== "2d"}
-                  onClick={() => setBleed((b) => !b)}>
-                  Bleed Lines <MenubarShortcut>B</MenubarShortcut>
+                <MenubarCheckboxItem checked={bleed}
+                  disabled={byId("bleed").disabled} onClick={byId("bleed").run}>
+                  Bleed Lines <MenubarShortcut>{byId("bleed").shortcut}</MenubarShortcut>
                 </MenubarCheckboxItem>
               </MenubarContent>
             </MenubarMenu>
@@ -683,7 +739,7 @@ export default function App() {
             <div className={viewMode === "2d" ? "flex min-h-0 min-w-0 flex-1" : "hidden"}>
             <PreviewCompare ref={previewRef}
               artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
-              cfg={cfg} measure={measure}
+              cfg={cfg} measure={measure} collab={collabSlots}
               // The preview knows only renderer elements; a selected document
               // layer (background/mask) shows no selection box there.
               selected={selected && isElementId(selected) ? selected : null}
@@ -693,8 +749,9 @@ export default function App() {
             </div>
             {viewMode !== "2d" && (
               <CanView artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
-                mode={viewMode} cornerRadiusPct={cornerRadius} labelHeightPct={labelSize}
-                edgeSoftnessPct={edgeSoftness} />
+                mode={viewMode} cornerRadiusPct={render.cornerRadius}
+                labelHeightPct={render.labelSize}
+                edgeSoftnessPct={render.edgeSoftness} />
             )}
             {/* No-texture hint. It used to sit in the status strip above the
                 frame, where it read as chrome; low on the label it is the
@@ -745,25 +802,7 @@ export default function App() {
         <AssetDropOverlay
           onTexture={(f) => void onTexture(f)}
           onMask={(f) => void onMask(f)} />
-        <CommandMenu
-          actions={[
-            { label: "Export PDF + Mask PDF", disabled: pdfExportBlocked, run: exportPdfs },
-            { label: "Export PDF", disabled: pdfExportBlocked, run: downloadArt },
-            { label: "Export Mask PDF", disabled: pdfExportBlocked, run: downloadMask },
-            { label: "Export PSDs", disabled: exportBlocked, run: () => void exportPsd() },
-            { label: "Undo", disabled: !canUndo, run: undo },
-            { label: "Redo", disabled: !canRedo, run: redo },
-            { label: "Export presets", run: () => void exportPresets() },
-            { label: "Import presets", run: () => presetsInput.current?.click() },
-            { label: "Preview: Standard", run: () => show2d("art") },
-            { label: "Preview: Mask", run: () => show2d("mask") },
-            { label: "Preview: Rendered", run: () => setViewMode("flat") },
-            { label: "Preview: Single Can", run: () => setViewMode("can") },
-            { label: "Preview: Four-Pack", run: () => setViewMode("pack") },
-            { label: bleed ? "Hide bleed lines" : "Show bleed lines",
-              disabled: viewMode !== "2d", run: () => setBleed((b) => !b) },
-          ]}
-        />
+        <CommandMenu actions={commands} />
       </div>
         </SidebarInset>
       </SidebarProvider>

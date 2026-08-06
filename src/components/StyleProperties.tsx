@@ -9,9 +9,9 @@
 // receives the chosen LayerId.
 import { X } from "lucide-react";
 import type { LabelConfig, StyledLine } from "@/types";
-import { applyStyle, elementById, isDefaultStyle, type ElementId } from "@/elements";
+import { SHIPPED, applyStyle, elementById, isDefaultStyle, type ElementId } from "@/elements";
 import { DOC_LAYER_LABELS, LAYER_ICONS, isElementId, type LayerId } from "@/components/layers";
-import { defaultConfig, displayName } from "@/defaults";
+import { displayName } from "@/defaults";
 import { ColorField } from "./ColorField";
 import { ScrubField } from "./ScrubField";
 import { DescriptionEditor } from "./DescriptionEditor";
@@ -218,7 +218,6 @@ function Content(props: {
             id="beer-name" className="h-6 w-full text-xs" value={cfg.beerName}
             onChange={(e) => update((c) => { c.beerName = e.target.value; })}
           />
-          {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
         </div>
       );
     case "styleLine":
@@ -383,7 +382,7 @@ function ElementStyle(props: { id: ElementId; cfg: LabelConfig; update: Update }
   const el = elementById(props.id);
   // The element's shipped stroke colour, for the toggle below. "none" would
   // make switching it on a no-op, so fall back to the keyline black.
-  const shipped = el.style(defaultConfig()).stroke;
+  const shipped = el.style(SHIPPED).stroke;
   const shippedStroke = !shipped || shipped === "none" ? "#000000" : shipped;
   const s = el.style(props.cfg);
   // `s` is declared Style, but for hasBold elements the live object backing
@@ -504,7 +503,7 @@ export function Inspector(props: {
   const reset = isEl
     ? () => {
         const el = elementById(id);
-        const d = el.style(defaultConfig());
+        const d = el.style(SHIPPED);
         props.update((c) =>
           applyStyle(c, id, {
             fill: d.fill,
