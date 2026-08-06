@@ -106,6 +106,11 @@ export function elementById(id: ElementId): LabelElement {
  *  - `bold` is dropped for elements where ELEMENTS marks hasBold: false, so
  *    a stray `{ bold }` can never get Object.assign'd onto a plain Style
  *    object (e.g. the logo) even if some future caller sends one.
+ *  - `letterSpacing` is dropped the same way for isText: false, tracking
+ *    being meaningless for a vector mark. Both capability rules live here
+ *    rather than at the call sites: the inspector applies one patch to a
+ *    whole multi-element selection whose members disagree about what they
+ *    accept, and Reset sends every field unconditionally.
  *  - the flat elements' strokeWidth write uses `"strokeWidth" in patch`
  *    rather than `!== undefined`, so a patch that explicitly carries
  *    `strokeWidth: undefined` (Reset, restoring a shipped default of
@@ -123,6 +128,10 @@ export function applyStyle(c: LabelConfig, id: ElementId, patch: Partial<StyledL
   const el = elementById(id);
   if (!el.hasBold && "bold" in patch) {
     const { bold: _bold, ...rest } = patch;
+    patch = rest;
+  }
+  if (!el.isText && "letterSpacing" in patch) {
+    const { letterSpacing: _ls, ...rest } = patch;
     patch = rest;
   }
   if (id in FLAT) {

@@ -12,16 +12,35 @@ import {
 import { ART, PAGE } from "@/layout";
 import type { LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
-import { boxOf, hitTest, type CollabSlots, type Measure } from "@/hittest";
-import type { SelectMods } from "@/selection";
+import { boxesFor, hitTest, type CollabSlots, type Measure } from "@/hittest";
+import { modsOf, type SelectMods } from "@/selection";
 import { cn } from "@/lib/utils";
 
-/** The selection box's four corner ticks, as top/bottom + left/right. */
-const CORNERS = ["tl", "tr", "bl", "br"] as const;
+/** The selection box's four corner ticks, each already placed. */
+const CORNER_CLASS = {
+  tl: "-top-[3px] -left-[3px]",
+  tr: "-top-[3px] -right-[3px]",
+  bl: "-bottom-[3px] -left-[3px]",
+  br: "-bottom-[3px] -right-[3px]",
+};
 
 /** Breathing room between an element's measured box and its selection
  *  outline, in screen px. */
 const SEL_PAD = 4;
+
+/** An overlay box positioned in page space: label-space points in, CSS
+ *  percentages of the preview frame out, so it tracks the container at any
+ *  on-screen size without its own resize handling. `pad` grows the box by n
+ *  screen px on every side. Shared by the trim guide and the selection
+ *  outlines, which must agree about the coordinate basis. */
+const pageBox = (
+  x: number, y: number, w: number, h: number, pad = 0,
+): React.CSSProperties => ({
+  left: `calc(${(x / PAGE.w) * 100}% - ${pad}px)`,
+  top: `calc(${(y / PAGE.h) * 100}% - ${pad}px)`,
+  width: `calc(${(w / PAGE.w) * 100}% + ${pad * 2}px)`,
+  height: `calc(${(h / PAGE.h) * 100}% + ${pad * 2}px)`,
+});
 
 // ponytail: fixed oversample, CSS downscales; add a ResizeObserver only if
 // crispness on very large screens ever matters.
@@ -130,23 +149,19 @@ export const PreviewCompare = forwardRef<
     if (!r.width || !r.height) return; // not laid out yet (e.g. display:none)
     const xPt = ((e.clientX - r.left) / r.width) * PAGE.w;
     const yPt = ((e.clientY - r.top) / r.height) * PAGE.h;
-    onPick(hitTest(xPt, yPt, measure, cfg, collab),
-      { shift: e.shiftKey, toggle: e.metaKey || e.ctrlKey });
+    onPick(hitTest(xPt, yPt, measure, cfg, collab), modsOf(e));
   }
 
-  // Selection outline geometry, as a percentage box so it tracks the
-  // container at any on-screen size without its own resize handling.
-  // Memoized: boxOf rebuilds every element's box (including the warning's
-  // word-by-word wrap measurement), and dragging the divider re-renders this
-  // component per pointer-move frame without any of these inputs changing.
+  // Selection outline geometry, in label-space points (pageBox maps it to
+  // percentages at render). Memoized: boxesFor re-measures every element,
+  // the warning's word-by-word wrap included, and dragging the divider
+  // re-renders this component per pointer-move frame without any of these
+  // inputs changing — `selected` is memoized in App for exactly that reason.
   const selBoxes = useMemo(
-    // boxOf returns null for an element the renderer isn't drawing (an empty
-    // collab slot); those simply get no outline.
-    () => (measure
-      ? selected
-        .map((id) => [id, boxOf(id, cfg, measure, collab)] as const)
-        .filter((pair): pair is [ElementId, NonNullable<typeof pair[1]>] => pair[1] !== null)
-      : []),
+    // One measurement pass for the whole selection (see boxesFor); elements
+    // the renderer isn't drawing — an empty collab slot — come back absent
+    // and simply get no outline.
+    () => (measure ? boxesFor(selected, cfg, measure, collab) : []),
     [selected, cfg, measure, collab],
   );
 
@@ -188,15 +203,10 @@ export const PreviewCompare = forwardRef<
       {bleed && (
         <div
           className="pointer-events-none absolute border border-dashed border-destructive/70"
-          style={{
-            left: `${(ART.x / PAGE.w) * 100}%`,
-            top: `${(ART.y / PAGE.h) * 100}%`,
-            width: `${(ART.w / PAGE.w) * 100}%`,
-            height: `${(ART.h / PAGE.h) * 100}%`,
-          }}
+          style={pageBox(ART.x, ART.y, ART.w, ART.h)}
         />
       )}
-      {selBoxes.map(([id, selBox]) => (
+      {selBoxes.map((b) => (
         // Figma's selection read: a 1px accent stroke with a dark outer halo
         // so it stays visible over both the gold art and bare white stock (a
         // single-tone ring disappeared into one or the other), plus corner
@@ -204,29 +214,20 @@ export const PreviewCompare = forwardRef<
         // more label art. Outline, not border/ring: it draws OUTSIDE the box,
         // so the outline can't shave a pixel off the element it marks.
         <div
-          key={id}
+          key={b.id}
           className="pointer-events-none absolute outline-1 outline-sky-400 outline-solid [box-shadow:0_0_0_2px_rgba(0,0,0,0.45)]"
           // SEL_PAD of air between the glyphs and the stroke, so the outline
           // frames the element instead of crowding its ascenders. In px, not
           // a % of the box: the gap should look the same on a two-character
           // ABV and on the description block.
-          style={{
-            left: `calc(${(selBox.x0 / PAGE.w) * 100}% - ${SEL_PAD}px)`,
-            top: `calc(${(selBox.y0 / PAGE.h) * 100}% - ${SEL_PAD}px)`,
-            width: `calc(${((selBox.x1 - selBox.x0) / PAGE.w) * 100}% + ${SEL_PAD * 2}px)`,
-            height: `calc(${((selBox.y1 - selBox.y0) / PAGE.h) * 100}% + ${SEL_PAD * 2}px)`,
-          }}
+          style={pageBox(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0, SEL_PAD)}
         >
           {/* Four corner ticks, centred on the corners. Fixed px (not a % of
               the box) so a small element's handles don't shrink to nothing. */}
-          {CORNERS.map((c) => (
+          {Object.entries(CORNER_CLASS).map(([corner, at]) => (
             <span
-              key={c}
-              className={cn(
-                "absolute size-1.5 rounded-[1px] border border-sky-400 bg-background",
-                c.includes("t") ? "-top-[3px]" : "-bottom-[3px]",
-                c.includes("l") ? "-left-[3px]" : "-right-[3px]",
-              )}
+              key={corner}
+              className={`absolute size-1.5 rounded-[1px] border border-sky-400 bg-background ${at}`}
             />
           ))}
         </div>

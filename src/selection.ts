@@ -8,15 +8,21 @@
 import { isElementId, type LayerId } from "@/components/layers";
 
 /** Modifier keys as the panel/preview report them. `toggle` is ⌘ on macOS,
- *  Ctrl elsewhere — the caller decides which, this module only sees the flag. */
+ *  Ctrl elsewhere — see modsOf, which is where that platform rule lives. */
 export interface SelectMods {
   shift?: boolean;
   toggle?: boolean;
 }
 
+/** Read a click's modifiers. Every selection surface (the layers panel, the
+ *  preview canvas) reads them here, so the ⌘-or-Ctrl rule is stated once and
+ *  a new gesture can't mean one thing in the panel and another on canvas. */
+export const modsOf = (e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }): SelectMods =>
+  ({ shift: e.shiftKey, toggle: e.metaKey || e.ctrlKey });
+
 export interface Selection {
   /** Selected layers, in click/extension order. Empty = nothing selected. */
-  ids: LayerId[];
+  ids: readonly LayerId[];
   /** Where a shift-range extends from; null once the selection is cleared. */
   anchor: LayerId | null;
 }

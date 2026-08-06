@@ -62,7 +62,9 @@ export const PANEL_GROUPS: [string, LayerId[]][] = [
   ["Beer", rowsOf("beer")],
   ["Collab", rowsOf("collab")],
   ["Template", rowsOf("template")],
-  ["Document", ["background", "mask", "settings"]],
+  // Straight off DOC_LAYER_LABELS' keys: a fourth document layer added there
+  // then appears in the panel — and in PANEL_ORDER — without a second edit.
+  ["Document", Object.keys(DOC_LAYER_LABELS) as DocLayerId[]],
 ];
 
 /** Every row, flattened in panel order — the sequence a shift-range walks,

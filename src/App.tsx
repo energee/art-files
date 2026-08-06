@@ -197,9 +197,18 @@ export default function App() {
   const selected = selection.ids;
   /** A row or canvas click, resolved against the anchor and the panel's row
    *  order. A background click (null) clears everything, anchor included. */
-  const pick = (id: LayerId | null, mods: SelectMods) =>
-    setSelection((s) => (id === null ? EMPTY_SELECTION : resolveSelect(s, id, mods, PANEL_ORDER)));
   const clearSelection = () => setSelection(EMPTY_SELECTION);
+  const pick = (id: LayerId | null, mods: SelectMods) =>
+    id === null
+      ? clearSelection()
+      : setSelection((s) => resolveSelect(s, id, mods, PANEL_ORDER));
+  // The renderer elements of the selection, for the preview's outlines.
+  // Memoized like collabSlots below and for the same reason: it is a
+  // dependency of PreviewCompare's outline memo, and a fresh array every
+  // render would defeat it — dragging the compare divider re-renders App per
+  // pointer-move frame, which would re-measure every selected element's box
+  // on every one of those frames.
+  const elementSelection = useMemo(() => selected.filter(isElementId), [selected]);
   // Layers the panel's eye has hidden — session state, deliberately outside
   // the config/history: a saved label never records a hidden layer, and
   // toggling an eye is not an undoable document edit. Flows into
@@ -753,7 +762,7 @@ export default function App() {
               cfg={cfg} measure={measure} collab={collabSlots}
               // The preview knows only renderer elements; a selected document
               // layer (background/mask) shows no selection box there.
-              selected={selected.filter(isElementId)}
+              selected={elementSelection}
               onPick={pick}
               onSplit={setSplit}
               bleed={bleed} />
@@ -806,9 +815,10 @@ export default function App() {
           // than the canvas (a canvas click moves no focus). Honouring
           // either wiped the selection and its anchor between clicks and
           // made ⇧/⌘ behave like plain clicks.
+          // Untyped `reason` strings would let a base-ui rename slip through
+          // silently, so the union from the Sheet's own props is kept.
           onOpenChange={(open, details) => {
-            const reason = (details as { reason?: string })?.reason;
-            if (!open && (reason === "escape-key" || reason === "close-press"))
+            if (!open && (details.reason === "escape-key" || details.reason === "close-press"))
               clearSelection();
           }}>
           <SheetContent side="right" showOverlay={false} showCloseButton={false}

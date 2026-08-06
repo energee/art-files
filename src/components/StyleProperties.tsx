@@ -10,8 +10,11 @@
 // Selection itself lives in App (see selection.ts), driven by the layers
 // panel and the preview; this component only receives the chosen LayerIds.
 import { X } from "lucide-react";
-import type { LabelConfig, StyledLine } from "@/types";
-import { SHIPPED, applyStyle, elementById, isDefaultStyle, type ElementId } from "@/elements";
+import type { LabelConfig, Style, StyledLine } from "@/types";
+import {
+  SHIPPED, applyStyle, elementById, isDefaultStyle,
+  type ElementId, type LabelElement,
+} from "@/elements";
 import { DOC_LAYER_LABELS, LAYER_ICONS, isElementId, type LayerId } from "@/components/layers";
 import { sharedValue } from "@/selection";
 import { displayName } from "@/defaults";
@@ -386,40 +389,53 @@ function Content(props: {
  *  Where the selected elements disagree about a value the field renders blank
  *  (`mixed`) rather than showing the first element's value as if it were
  *  everyone's; editing it still writes to all of them. */
-function ElementStyle(props: { ids: readonly ElementId[]; cfg: LabelConfig; update: Update }) {
-  const els = props.ids.map(elementById);
+function ElementStyle(props: {
+  /** The selected elements, resolved by the caller (which already needed
+   *  them for its dirty check). */
+  els: readonly LabelElement[];
+  cfg: LabelConfig;
+  update: Update;
+}) {
+  const els = props.els;
   const el = els[0];
   const styles = els.map((e) => e.style(props.cfg));
   // Each element's own shipped stroke colour, for the toggle below. "none"
   // would make switching it on a no-op, so fall back to the keyline black.
-  const shippedStrokeOf = (e: typeof el) => {
+  const shippedStrokeOf = (e: LabelElement) => {
     const shipped = e.style(SHIPPED).stroke;
     return !shipped || shipped === "none" ? "#000000" : shipped;
   };
-  // Shared-or-blank readouts (see sharedValue). A single selection has
-  // nothing to disagree with, so each of these is just that element's value.
-  const fill = sharedValue(styles.map((x) => x.fill));
-  const layer = sharedValue(styles.map((x) => x.layer));
-  const tracking = sharedValue(styles.map((x) => x.letterSpacing ?? 0));
+  /** One field's readout across the selection: the shared value, or the
+   *  first element's with `mixed` set when they disagree (see sharedValue).
+   *  Spread straight into a ColorField/ScrubField — pairing `value` with its
+   *  own `mixed` here is what keeps a field from claiming one element's
+   *  value belongs to all of them, or from going uncontrolled when it has
+   *  no shared value to show. A single selection is never mixed. */
+  const field = <T,>(read: (s: Style) => T) => {
+    const shared = sharedValue(styles.map(read));
+    return { value: shared ?? read(styles[0]), mixed: shared === undefined };
+  };
+  const fill = field((s) => s.fill);
+  const tracking = field((s) => s.letterSpacing ?? 0);
+  const strokeColor = field((s) => s.stroke!);
+  const strokeWidth = field((s) => s.strokeWidth ?? DEFAULT_STROKE_PX);
+  const strokeOn = sharedValue(styles.map((s) => !!s.stroke && s.stroke !== "none"));
+  const metallic = sharedValue(styles.map((s) => s.layer)) === "metallic";
   // `style()` is declared Style, but for hasBold elements the live object
   // backing it is actually a StyledLine (see elements.ts's ELEMENTS/applyStyle
   // comments) — the cast only ever runs when hasBold confirms that shape.
   const boldEls = els.filter((e) => e.hasBold);
   const bold = sharedValue(
-    boldEls.map((e) => (e.style(props.cfg) as StyledLine).bold ?? false));
-  const strokeOn = sharedValue(styles.map((x) => !!x.stroke && x.stroke !== "none"));
-  const strokeColor = sharedValue(styles.map((x) => x.stroke!));
-  const strokeWidth = sharedValue(styles.map((x) => x.strokeWidth ?? DEFAULT_STROKE_PX));
-  const metallic = layer === "metallic";
-  // One update for the whole selection = one undo step. letterSpacing is
-  // withheld from non-text elements (applyStyle would otherwise Object.assign
-  // it onto e.g. the logo's Style); `bold` needs no guard here — applyStyle
-  // already drops it for hasBold: false, and that rule stays in one place.
-  const set = (patch: Partial<StyledLine>) =>
-    props.update((c) => {
-      const { letterSpacing: _ls, ...noTracking } = patch;
-      for (const e of els) applyStyle(c, e.id, e.isText ? patch : noTracking);
-    });
+    els.flatMap((e, i) => (e.hasBold ? [(styles[i] as StyledLine).bold ?? false] : [])));
+  const anyText = els.some((e) => e.isText);
+  /** One update for the whole selection = one undo step. `fn` reads each
+   *  element, so a patch that depends on the element (its shipped stroke)
+   *  goes through the same single write as a flat one. applyStyle drops the
+   *  fields an element can't take (bold, tracking), so nothing is filtered
+   *  here — that rule lives in the registry. */
+  const setEach = (fn: (e: LabelElement) => Partial<StyledLine>) =>
+    props.update((c) => { for (const e of els) applyStyle(c, e.id, fn(e)); });
+  const set = (patch: Partial<StyledLine>) => setEach(() => patch);
   // Control ids must be unique on the page; a selection of several is
   // prefixed "multi" rather than by one arbitrary member's label.
   const fid = els.length === 1 ? machineName(el.label) : "multi";
@@ -431,8 +447,7 @@ function ElementStyle(props: { ids: readonly ElementId[]; cfg: LabelConfig; upda
         <div className="flex items-center gap-1.5">
           <div className="min-w-0 flex-1">
             <ColorField
-              id={`${fid}-fill`} value={fill ?? styles[0].fill} mixed={fill === undefined}
-              onChange={(v) => set({ fill: v })}
+              id={`${fid}-fill`} {...fill} onChange={(v) => set({ fill: v })}
               // "No ink" is offered only when EVERY selected element allows
               // it: one unscannable code in the selection is enough to make
               // the option wrong for the whole edit.
@@ -450,7 +465,7 @@ function ElementStyle(props: { ids: readonly ElementId[]; cfg: LabelConfig; upda
         </div>
       </div>
 
-      {els.some((e) => e.hasBold || e.isText) && (
+      {(boldEls.length > 0 || anyText) && (
         <div className="space-y-1">
           {/* "Typography", not "Text": the content section above is now
               titled Text, and two same-named sections would read as one. */}
@@ -470,14 +485,13 @@ function ElementStyle(props: { ids: readonly ElementId[]; cfg: LabelConfig; upda
                 {bold === undefined ? "Bold (mixed)" : "Bold"}
               </label>
             )}
-            {els.some((e) => e.isText) && (
+            {anyText && (
               // Clamped both ends by ScrubField: tracking wide enough to
               // overrun the label reads as a broken line, not a style.
               <div className="min-w-0 flex-1">
                 <ScrubField
                   id={`${fid}-tracking`} label="Letter Spacing" unit="pt"
-                  value={tracking ?? styles[0].letterSpacing ?? 0} mixed={tracking === undefined}
-                  min={-2} max={20} step={0.01} dragStep={0.1}
+                  {...tracking} min={-2} max={20} step={0.01} dragStep={0.1}
                   onChange={(v) => set({ letterSpacing: v })}
                 />
               </div>
@@ -499,10 +513,7 @@ function ElementStyle(props: { ids: readonly ElementId[]; cfg: LabelConfig; upda
             // decides, and a new element needs no case here. Hence the loop
             // rather than one `set`: the on-colour is per element.
             onCheckedChange={(v) =>
-              props.update((c) => {
-                for (const e of els)
-                  applyStyle(c, e.id, { stroke: v === true ? shippedStrokeOf(e) : "none" });
-              })}
+              setEach((e) => ({ stroke: v === true ? shippedStrokeOf(e) : "none" }))}
           />
         </div>
         {/* Colour and width only while every selected element actually draws
@@ -511,17 +522,14 @@ function ElementStyle(props: { ids: readonly ElementId[]; cfg: LabelConfig; upda
         {strokeOn === true && (
           <>
             <ColorField
-              id={`${fid}-stroke-color`} value={strokeColor ?? styles[0].stroke!}
-              mixed={strokeColor === undefined}
+              id={`${fid}-stroke-color`} {...strokeColor}
               onChange={(v) => set({ stroke: v })} allowNone={false}
             />
             {/* Clamped at 60px by ScrubField: each extra px adds stroke draw
                 calls, and ring()'s sample ceiling is sized for that limit. */}
             <ScrubField
               id={`${fid}-stroke-width`} label="Width" unit="px"
-              value={strokeWidth ?? styles[0].strokeWidth ?? DEFAULT_STROKE_PX}
-              mixed={strokeWidth === undefined}
-              min={1} max={60} step={1}
+              {...strokeWidth} min={1} max={60} step={1}
               onChange={(v) => set({ strokeWidth: v })}
             />
           </>
@@ -552,7 +560,7 @@ export function Inspector(props: {
   // document layer in (their panels edit files and document knobs, not
   // Styles), so `isEl` describes the whole selection.
   const isEl = isElementId(id);
-  const elIds = ids.filter(isElementId);
+  const els = ids.filter(isElementId).map(elementById);
   const label = isEl ? elementById(id).label : DOC_LAYER_LABELS[id];
   const Icon = LAYER_ICONS[id];
 
@@ -561,24 +569,23 @@ export function Inspector(props: {
   // that ship with a deliberate deviation (the logo's dark keyline) reset to
   // THEIR default rather than losing it. One update for the whole selection,
   // so a multi-reset is a single undo step like every other edit here.
-  const reset = isEl
-    ? () =>
-        props.update((c) => {
-          for (const eid of elIds) {
-            const el = elementById(eid);
-            const d = el.style(SHIPPED);
-            applyStyle(c, eid, {
-              fill: d.fill,
-              layer: d.layer,
-              stroke: d.stroke ?? "none",
-              strokeWidth: d.strokeWidth,
-              letterSpacing: d.letterSpacing,
-              ...(el.hasBold ? { bold: (d as StyledLine).bold ?? false } : {}),
-            });
-          }
-        })
-    : undefined;
-  const dirty = elIds.some((eid) => !isDefaultStyle(eid, elementById(eid).style(props.cfg)));
+  // Unconditional: with no element selected the loop is a no-op, and the
+  // button that calls it only renders while something is dirty.
+  const reset = () =>
+    props.update((c) => {
+      for (const el of els) {
+        const d = el.style(SHIPPED);
+        applyStyle(c, el.id, {
+          fill: d.fill,
+          layer: d.layer,
+          stroke: d.stroke ?? "none",
+          strokeWidth: d.strokeWidth,
+          letterSpacing: d.letterSpacing,
+          ...(el.hasBold ? { bold: (d as StyledLine).bold ?? false } : {}),
+        });
+      }
+    });
+  const dirty = els.some((el) => !isDefaultStyle(el.id, el.style(props.cfg)));
 
   return (
     <div className="space-y-1 p-3">
@@ -621,7 +628,7 @@ export function Inspector(props: {
       {/* Document layers (background/mask) carry no Style stack — they are
           file drops only, so the section is omitted rather than shown
           disabled. */}
-      {isEl && <ElementStyle ids={elIds} cfg={props.cfg} update={props.update} />}
+      {isEl && <ElementStyle els={els} cfg={props.cfg} update={props.update} />}
     </div>
   );
 }

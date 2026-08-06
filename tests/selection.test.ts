@@ -3,14 +3,15 @@
 // anchor), document layers staying single-select, mixed-value detection, and
 // the promise that a multi-element style edit is ONE history entry.
 import { describe, expect, it } from "vitest";
-import { EMPTY_SELECTION, resolveSelect, sharedValue } from "../src/selection";
+import { EMPTY_SELECTION, resolveSelect, sharedValue, type Selection } from "../src/selection";
 import { PANEL_ORDER, type LayerId } from "../src/components/layers";
 import { applyStyle, elementById } from "../src/elements";
 import { defaultConfig } from "../src/defaults";
+import { pushed, undone, type Stacks } from "../src/history";
 import type { LabelConfig } from "../src/types";
 
-const sel = (ids: LayerId[], anchor: LayerId | null) => ({ ids, anchor });
-const click = (s: ReturnType<typeof sel>, id: LayerId, mods = {}) =>
+const sel = (ids: LayerId[], anchor: LayerId | null): Selection => ({ ids, anchor });
+const click = (s: Selection, id: LayerId, mods = {}) =>
   resolveSelect(s, id, mods, PANEL_ORDER);
 
 describe("resolveSelect", () => {
@@ -93,28 +94,30 @@ describe("sharedValue", () => {
 });
 
 describe("a multi-element edit", () => {
-  it("is one history entry, not one per element", () => {
-    // App's `update` clones the config once per call and pushes it as one
-    // history entry (see useHistory); the inspector's loop runs INSIDE that
-    // one call. Modelled here so the guarantee is checked without a DOM.
+  it("is one history entry, so one undo restores every element", () => {
+    // Driven through the real history transitions (src/history.ts), not a
+    // stand-in: App's `update` clones the config once per call and pushes it
+    // as ONE entry, with the inspector's per-element loop running inside that
+    // single call. Anything that split the loop into a push per element would
+    // leave two of the three still white after one undo.
     const ids = ["name", "styleLine", "abv"] as const;
-    const stack: LabelConfig[] = [defaultConfig()];
-    const update = (fn: (c: LabelConfig) => void) => {
-      const next = structuredClone(stack[stack.length - 1]);
-      fn(next);
-      stack.push(next);
-    };
     const layersOf = (cfg: LabelConfig) => ids.map((id) => elementById(id).style(cfg).layer);
+    let stacks: Stacks<LabelConfig> = { past: [], present: defaultConfig(), future: [] };
+    /** App's update, verbatim in shape: clone, mutate, push one entry. */
+    const update = (fn: (c: LabelConfig) => void) => {
+      const next = structuredClone(stacks.present);
+      fn(next);
+      stacks = pushed(stacks, next, false);
+    };
 
     // All three ship metallic (see defaults.ts), so "white" is a real change
     // for every one of them.
-    expect(layersOf(stack[0])).toEqual(["metallic", "metallic", "metallic"]);
+    expect(layersOf(stacks.present)).toEqual(["metallic", "metallic", "metallic"]);
 
     update((c) => { for (const id of ids) applyStyle(c, id, { layer: "white" }); });
 
-    expect(stack).toHaveLength(2);
-    expect(layersOf(stack[1])).toEqual(["white", "white", "white"]);
-    // The previous entry is untouched, so ONE undo restores all three.
-    expect(layersOf(stack[0])).toEqual(["metallic", "metallic", "metallic"]);
+    expect(layersOf(stacks.present)).toEqual(["white", "white", "white"]);
+    expect(stacks.past).toHaveLength(1);
+    expect(layersOf(undone(stacks).present)).toEqual(["metallic", "metallic", "metallic"]);
   });
 });
