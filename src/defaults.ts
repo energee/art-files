@@ -22,6 +22,12 @@ export const displayName = (c: LabelConfig) => c.beerName.trim() || "Name";
 export const displayStyle = (c: LabelConfig) => c.styleLine.text.trim() || "Style";
 export const displayAbv = (c: LabelConfig) => c.abv.trim() || "#";
 
+/** Base name for exported files. Deliberately NOT displayName's "Name": a
+ *  folder of untitled exports reads better as label.pdf than Name.pdf. Lives
+ *  here so the two blank-name conventions sit side by side and every export
+ *  path shares one of them. */
+export const fileBase = (c: LabelConfig) => c.beerName.trim() || "label";
+
 export function defaultConfig(): LabelConfig {
   return {
     beerName: "",

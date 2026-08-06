@@ -3,21 +3,24 @@
 // textures whenever the bytes change (App already debounces the byte churn),
 // switches view modes, and tears everything down on unmount.
 import { useEffect, useRef, useState } from "react";
-import { CanScene, type CanSceneMode } from "@/three/canScene";
+import { CanScene } from "@/three/canScene";
+import type { LabelViewSettings } from "@/three/labelSettings";
+import type { CanSceneMode } from "@/three/viewMode";
 import { buildLabelTextures } from "@/three/labelTextures";
 
 export function CanView({
-  artBytes, maskBytes, mode, cornerRadiusPct, labelHeightPct, edgeSoftnessPct,
+  artBytes, maskBytes, mode, settings, active,
 }: {
-  /** Die-cut corner radius, % of the label's short edge (Settings layer). */
-  cornerRadiusPct: number;
-  /** Label height as % of can height (Settings layer). */
-  labelHeightPct: number;
-  /** Foil-mask blur, % of label width (Settings layer). */
-  edgeSoftnessPct: number;
   artBytes: Uint8Array | null;
   maskBytes: Uint8Array | null;
   mode: CanSceneMode;
+  /** The Document > Settings knobs, passed whole. */
+  settings: LabelViewSettings;
+  /** False while a 2D view is showing. App keeps this component mounted so
+   *  the GLTF, the HDRI and the label textures survive a trip to 2D and
+   *  back; skipping the rebuild keeps that from costing anything while the
+   *  scene is hidden. The pending bytes are applied on reactivation. */
+  active: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<CanScene | null>(null);
@@ -43,7 +46,7 @@ export function CanView({
   // change, and a slow stale result must not overwrite a newer one.
   const chain = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
-    if (!artBytes || !maskBytes) return;
+    if (!artBytes || !maskBytes || !active) return;
     let cancelled = false;
     setLoading(true);
     chain.current = chain.current
@@ -55,19 +58,15 @@ export function CanView({
       .catch((err) => console.warn("3D label texture build failed:", err))
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [artBytes, maskBytes]);
+  }, [artBytes, maskBytes, active]);
 
   useEffect(() => {
     sceneRef.current?.setMode(mode);
   }, [mode]);
 
   useEffect(() => {
-    sceneRef.current?.setLabelOptions({
-      cornerRadiusPct,
-      heightRatio: labelHeightPct / 100,
-      edgeSoftnessRatio: edgeSoftnessPct / 100,
-    });
-  }, [cornerRadiusPct, labelHeightPct, edgeSoftnessPct]);
+    sceneRef.current?.setLabelOptions(settings);
+  }, [settings]);
 
   return (
     <div className="relative h-full w-full">

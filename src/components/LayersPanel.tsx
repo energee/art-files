@@ -23,7 +23,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { DOC_LAYER_LABELS, LAYER_ICONS, isElementId, type LayerId } from "./layers";
+import {
+  DOC_LAYER_LABELS, LAYER_ICONS, isElementId, type DocLayerId, type LayerId,
+} from "./layers";
 
 /** "This beer" keeps the spec's curated stacking order (Barcode before QR —
  *  unlike ELEMENTS order); Collab and Template derive their membership AND
@@ -36,7 +38,9 @@ const rowsOf = (group: "beer" | "template" | "collab") =>
   ELEMENTS.filter((e) => e.group === group).map((e) => e.id);
 const COLLAB_ROWS = rowsOf("collab");
 const TEMPLATE_ROWS = rowsOf("template");
-const DOC_ROWS: LayerId[] = ["background", "mask", "settings"];
+// Derived, not hand-listed: DOC_LAYER_LABELS is the doc-layer registry, so a
+// layer added there can't go missing from the panel.
+const DOC_ROWS: LayerId[] = Object.keys(DOC_LAYER_LABELS) as DocLayerId[];
 // The one curated list is BEER_ROWS — assert it covers the beer group
 // exactly, so the registry and the panel cannot drift.
 if (import.meta.env.DEV) {

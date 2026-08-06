@@ -12,7 +12,10 @@ export interface MaskValidation {
 const BLUE = [0, 156, 215];
 const TOL = 24; // per-channel tolerance for antialiased/compressed sources
 
-function isWhite(r: number, g: number, b: number): boolean {
+/** White = metallic (no white ink printed, so the foil shows). Exported
+ *  because the 3D views derive their per-pixel metalness map from a rendered
+ *  mask plate and must read the convention from here, not re-encode it. */
+export function isWhite(r: number, g: number, b: number): boolean {
   return r > 255 - TOL && g > 255 - TOL && b > 255 - TOL;
 }
 function isBlue(r: number, g: number, b: number): boolean {

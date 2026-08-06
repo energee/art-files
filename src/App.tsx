@@ -2,13 +2,13 @@
 // preview-res pairs), validation, debounced preview-resolution PDF builds,
 // overlay-compare preview, and on-demand full-resolution exports. Mirrors
 // the old main.ts wiring, componentized.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { PDFDocument } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import type { CollabSlot, Fill, LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
-import { defaultConfig, parseConfigFile, toConfigFile } from "@/defaults";
+import { defaultConfig, fileBase, parseConfigFile, toConfigFile } from "@/defaults";
 import { useHistory } from "@/history";
 import { validateUpc } from "@/upc";
 import { validateMask, recolorMaskForPdf } from "@/maskimage";
@@ -20,9 +20,13 @@ import {
 } from "@/components/StyleProperties";
 import { LayersPanel } from "@/components/LayersPanel";
 import { isElementId, type LayerId } from "@/components/layers";
+import { DEFAULT_LABEL_VIEW_SETTINGS } from "@/three/labelSettings";
+import type { ViewMode } from "@/three/viewMode";
 import { CommandMenu } from "@/components/CommandMenu";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
-import { CanView } from "@/components/CanView";
+// Lazy: three.js, its loaders and the GLTF/HDR decoding are a large chunk
+// that a user who never opens a 3D view should not download or parse.
+const CanView = lazy(() => import("@/components/CanView").then((m) => ({ default: m.CanView })));
 import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator,
   MenubarShortcut, MenubarTrigger,
@@ -175,13 +179,14 @@ export default function App() {
   // "2d" = the PDF compare view; the rest are CanView's three.js modes. The
   // 2D preview stays mounted (hidden) so its rendered canvases and divider
   // position survive a round-trip through the 3D views.
-  const [viewMode, setViewMode] = useState<"2d" | "can" | "pack" | "flat">("2d");
-  // Document Settings layer's knobs: 3D-view presentation only (die-cut
-  // corner radius, label height on the can). Session state — the print PDFs
-  // and saved configs never see them.
-  const [cornerRadius, setCornerRadius] = useState(2.5);
-  const [labelSize, setLabelSize] = useState(82);
-  const [edgeSoftness, setEdgeSoftness] = useState(0.1);
+  const [viewMode, setViewMode] = useState<ViewMode>("2d");
+  // Document Settings layer's knobs — see LabelViewSettings: 3D presentation
+  // only, never saved to the config or applied to the print PDFs.
+  const [viewSettings, setViewSettings] = useState(DEFAULT_LABEL_VIEW_SETTINGS);
+  // Once a 3D view has been opened the scene stays mounted (hidden in 2D) so
+  // the GLTF, HDRI and label textures survive a round trip; `active` below
+  // keeps a hidden scene from doing any work.
+  const [used3d, setUsed3d] = useState(false);
   /** Return to the 2D compare at one end. The divider resize is deferred a
    *  frame: while a 3D mode is up the compare sits in a display:none wrapper
    *  with zero width, and react-resizable-panels misapplies a percentage
@@ -193,6 +198,17 @@ export default function App() {
       else previewRef.current?.showMask();
     });
   };
+  const show3d = (mode: Exclude<ViewMode, "2d">) => { setUsed3d(true); setViewMode(mode); };
+  /** The five previews, in menu order: label, digit shortcut, how to enter,
+   *  and when the item reads as current. One table drives the View menu, the
+   *  1-5 keys and the command palette, so they cannot drift apart. */
+  const VIEWS: { label: string; key: string; go: () => void; checked: boolean }[] = [
+    { label: "Standard", key: "1", go: () => show2d("art"), checked: viewMode === "2d" && split === 0 },
+    { label: "Mask", key: "2", go: () => show2d("mask"), checked: viewMode === "2d" && split === 100 },
+    { label: "Rendered", key: "3", go: () => show3d("flat"), checked: viewMode === "flat" },
+    { label: "Single Can", key: "4", go: () => show3d("can"), checked: viewMode === "can" },
+    { label: "Four-Pack", key: "5", go: () => show3d("pack"), checked: viewMode === "pack" },
+  ];
   const configInput = useRef<HTMLInputElement>(null);
   const previewRef = useRef<PreviewCompareHandle>(null);
 
@@ -251,20 +267,18 @@ export default function App() {
 
   // 1–5 switch views (Figma-style bare digits), with the same
   // inert-while-typing guard as undo: a digit in a text field is text.
-  // Registered once — the handler only touches stable setters/refs.
+  // Registered once; the ref keeps the one listener reading this render's
+  // handlers rather than the ones captured at mount.
+  const viewsRef = useRef(VIEWS);
+  viewsRef.current = VIEWS;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const el = e.target as HTMLElement | null;
       if (el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "")) return;
-      switch (e.key) {
-        case "1": show2d("art"); break;
-        case "2": show2d("mask"); break;
-        case "3": setViewMode("flat"); break;
-        case "4": setViewMode("can"); break;
-        case "5": setViewMode("pack"); break;
-        default: return;
-      }
+      const view = viewsRef.current.find((v) => v.key === e.key);
+      if (!view) return;
+      view.go();
       e.preventDefault();
     };
     document.addEventListener("keydown", onKey);
@@ -344,9 +358,8 @@ export default function App() {
   /** Everything file-shaped the inspector edits: the Document layers' drops
    *  plus the collab logos. */
   const docSettings: DocSettings = {
-    cornerRadius, onCornerRadius: setCornerRadius,
-    labelSize, onLabelSize: setLabelSize,
-    edgeSoftness, onEdgeSoftness: setEdgeSoftness,
+    values: viewSettings,
+    onChange: (patch) => setViewSettings((s) => ({ ...s, ...patch })),
   };
   const files: InspectorFiles = {
     texture: {
@@ -445,8 +458,8 @@ export default function App() {
         maskPng: mask?.bytes,
         hidden: hiddenLayers,
       };
-      if (which !== "mask") saveBytes(await buildArtPdf(cfg, assets), `${cfg.beerName.trim() || "label"}.pdf`);
-      if (which !== "art") saveBytes(await buildMaskPdf(cfg, assets), `${cfg.beerName.trim() || "label"}-mask.pdf`);
+      if (which !== "mask") saveBytes(await buildArtPdf(cfg, assets), `${fileBase(cfg)}.pdf`);
+      if (which !== "art") saveBytes(await buildMaskPdf(cfg, assets), `${fileBase(cfg)}-mask.pdf`);
     } catch (err) {
       setBuildError(String(err));
     } finally {
@@ -492,10 +505,10 @@ export default function App() {
         texture: await rasterPixels(texture?.bytes),
         mask: await rasterPixels(mask?.bytes),
       };
-      saveBytes(await buildPsd(cfg, assets), `${cfg.beerName.trim() || "label"}.psd`, "image/vnd.adobe.photoshop");
+      saveBytes(await buildPsd(cfg, assets), `${fileBase(cfg)}.psd`, "image/vnd.adobe.photoshop");
       saveBytes(
         await buildPsd(cfg, assets, "mask"),
-        `${cfg.beerName.trim() || "label"}-mask.psd`, "image/vnd.adobe.photoshop",
+        `${fileBase(cfg)}-mask.psd`, "image/vnd.adobe.photoshop",
       );
       setBuildError("");
     } catch (err) {
@@ -580,29 +593,17 @@ export default function App() {
             <MenubarMenu>
               <MenubarTrigger className={MENU_TRIGGER}>View</MenubarTrigger>
               <MenubarContent align="start" className={MENU_ITEMS}>
-                {/* Checked only at the extremes: anywhere in between is a
-                    manual compare position, which is neither view. */}
-                <MenubarCheckboxItem checked={viewMode === "2d" && split === 0}
-                  onClick={() => show2d("art")}>
-                  Standard <MenubarShortcut>1</MenubarShortcut>
-                </MenubarCheckboxItem>
-                <MenubarCheckboxItem checked={viewMode === "2d" && split === 100}
-                  onClick={() => show2d("mask")}>
-                  Mask <MenubarShortcut>2</MenubarShortcut>
-                </MenubarCheckboxItem>
-                <MenubarSeparator />
-                <MenubarCheckboxItem checked={viewMode === "flat"}
-                  onClick={() => setViewMode("flat")}>
-                  Rendered <MenubarShortcut>3</MenubarShortcut>
-                </MenubarCheckboxItem>
-                <MenubarCheckboxItem checked={viewMode === "can"}
-                  onClick={() => setViewMode("can")}>
-                  Single Can <MenubarShortcut>4</MenubarShortcut>
-                </MenubarCheckboxItem>
-                <MenubarCheckboxItem checked={viewMode === "pack"}
-                  onClick={() => setViewMode("pack")}>
-                  Four-Pack <MenubarShortcut>5</MenubarShortcut>
-                </MenubarCheckboxItem>
+                {/* The 2D items are checked only at the divider's extremes:
+                    anywhere in between is a manual compare position, which
+                    is neither view. Separator after them splits flat from 3D. */}
+                {VIEWS.map((v, i) => (
+                  <Fragment key={v.label}>
+                    {i === 2 && <MenubarSeparator />}
+                    <MenubarCheckboxItem checked={v.checked} onClick={v.go}>
+                      {v.label} <MenubarShortcut>{v.key}</MenubarShortcut>
+                    </MenubarCheckboxItem>
+                  </Fragment>
+                ))}
               </MenubarContent>
             </MenubarMenu>
           </Menubar>
@@ -645,10 +646,18 @@ export default function App() {
               onPick={setSelected}
               onSplit={setSplit} />
             </div>
-            {viewMode !== "2d" && (
-              <CanView artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
-                mode={viewMode} cornerRadiusPct={cornerRadius} labelHeightPct={labelSize}
-                edgeSoftnessPct={edgeSoftness} />
+            {/* Mounted from the first 3D view onward and hidden in 2D, for
+                the same reason PreviewCompare is: re-entering a 3D view
+                would otherwise re-fetch the GLTF and HDRI and re-rasterize
+                both PDFs. `active` keeps the hidden scene from working. */}
+            {used3d && (
+              <div className={viewMode === "2d" ? "hidden" : "flex min-h-0 min-w-0 flex-1"}>
+                <Suspense fallback={null}>
+                  <CanView artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
+                    mode={viewMode === "2d" ? "can" : viewMode}
+                    settings={viewSettings} active={viewMode !== "2d"} />
+                </Suspense>
+              </div>
             )}
             {/* First-load state: until the first debounced build lands there is
                 nothing on the canvases, so fill the empty frame with a spinner
@@ -691,11 +700,7 @@ export default function App() {
             { label: "Redo", disabled: !canRedo, run: redo },
             { label: "Save config", run: saveConfig },
             { label: "Load config", run: () => configInput.current?.click() },
-            { label: "Preview: Standard", run: () => show2d("art") },
-            { label: "Preview: Mask", run: () => show2d("mask") },
-            { label: "Preview: Rendered", run: () => setViewMode("flat") },
-            { label: "Preview: Single Can", run: () => setViewMode("can") },
-            { label: "Preview: Four-Pack", run: () => setViewMode("pack") },
+            ...VIEWS.map((v) => ({ label: `Preview: ${v.label}`, run: v.go })),
           ]}
         />
       </div>

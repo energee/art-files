@@ -17,6 +17,7 @@ import { ScrubField } from "./ScrubField";
 import { DescriptionEditor } from "./DescriptionEditor";
 import { FileDrop } from "./FileDrop";
 import { MetallicToggle } from "./MetallicToggle";
+import type { LabelViewSettings } from "@/three/labelSettings";
 import { machineName, qrUrl } from "@/qr";
 import { DEFAULT_STROKE_PX } from "@/layout";
 import { Button } from "@/components/ui/button";
@@ -46,18 +47,23 @@ export interface CollabFiles {
   onCenter: (f: File) => void;
 }
 
-/** Document-presentation knobs the Settings layer edits — session-level 3D
- *  view options that live in App, not in the saved config. Percentages: the
- *  corner radius is % of the label's short edge, size is % of can height. */
+/** The Settings layer's editor: the 3D view knobs (see LabelViewSettings —
+ *  session state living in App, never part of the saved config) plus one
+ *  patch callback, so adding a knob is a change to that type and the field
+ *  table below, not to every layer of the prop chain. */
 export interface DocSettings {
-  cornerRadius: number;
-  onCornerRadius: (v: number) => void;
-  labelSize: number;
-  onLabelSize: (v: number) => void;
-  /** Foil-mask blur, % of label width — softens the metallic edges. */
-  edgeSoftness: number;
-  onEdgeSoftness: (v: number) => void;
+  values: LabelViewSettings;
+  onChange: (patch: Partial<LabelViewSettings>) => void;
 }
+
+/** The Settings layer's fields, in display order. */
+const SETTINGS_FIELDS: {
+  key: keyof LabelViewSettings; label: string; min: number; max: number; step: number;
+}[] = [
+  { key: "cornerRadiusPct", label: "Corner radius", min: 0, max: 5, step: 0.1 },
+  { key: "labelHeightPct", label: "Label size", min: 50, max: 95, step: 1 },
+  { key: "edgeSoftnessPct", label: "Edge softness", min: 0, max: 1, step: 0.01 },
+];
 
 /** All build-time file assets the inspector can edit, grouped so App passes
  *  one prop: the texture and mask (Document layers) plus the collab logos. */
@@ -319,23 +325,14 @@ function Content(props: {
       // physical label is cut and sized at the press, not rendered.
       return (
         <div className="space-y-2">
-          <ScrubField
-            id="doc-corner-radius" label="Corner radius" unit="%"
-            value={settings.cornerRadius} min={0} max={5} step={0.1} dragStep={0.1}
-            onChange={settings.onCornerRadius}
-          />
-          <ScrubField
-            id="doc-label-size" label="Label size" unit="%"
-            value={settings.labelSize} min={50} max={95} step={1}
-            onChange={settings.onLabelSize}
-          />
-          {/* Blur on the foil mask's edges: 0 = hard specular outlines
-              around every metallic element, higher = softer transitions. */}
-          <ScrubField
-            id="doc-edge-softness" label="Edge softness" unit="%"
-            value={settings.edgeSoftness} min={0} max={1} step={0.01} dragStep={0.01}
-            onChange={settings.onEdgeSoftness}
-          />
+          {SETTINGS_FIELDS.map((f) => (
+            <ScrubField
+              key={f.key} id={`doc-${f.key}`} label={f.label} unit="%"
+              value={settings.values[f.key]}
+              min={f.min} max={f.max} step={f.step} dragStep={f.step}
+              onChange={(v) => settings.onChange({ [f.key]: v })}
+            />
+          ))}
         </div>
       );
     case "wordmark":

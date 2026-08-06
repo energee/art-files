@@ -4,8 +4,6 @@
 import {
   forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type RefObject,
 } from "react";
-import * as pdfjs from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
@@ -14,8 +12,7 @@ import { PAGE } from "@/layout";
 import type { LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import { boxOf, hitTest, type Measure } from "@/hittest";
-
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+import { renderPdfPage } from "@/pdfRender";
 
 // ponytail: fixed oversample, CSS downscales; add a ResizeObserver only if
 // crispness on very large screens ever matters.
@@ -28,31 +25,6 @@ const RENDER_SCALE = 2.5;
 // id so its percentage can be read out of that map by key.
 const WHITE_INK_PANEL_ID = "white-ink";
 
-async function renderPdf(
-  bytes: Uint8Array, canvas: HTMLCanvasElement | null, isCancelled: () => boolean,
-) {
-  if (!canvas) return;
-  // pdf.js transfers the buffer to its worker — hand it a copy. destroy()
-  // lives on the loading task (not the resolved PDFDocumentProxy) in this
-  // pdfjs-dist major, so the task is kept around for cleanup.
-  const task = pdfjs.getDocument({ data: bytes.slice() });
-  try {
-    const doc = await task.promise;
-    const page = await doc.getPage(1);
-    // bytes can change while this render is in flight (each call spins up
-    // its own worker doc); bail before touching the shared canvas so a
-    // slower, superseded render can't overwrite a newer one.
-    if (isCancelled()) return;
-    const vp = page.getViewport({ scale: RENDER_SCALE });
-    canvas.width = vp.width;
-    canvas.height = vp.height;
-    // `canvas` (not the legacy `canvasContext`) is the required render target.
-    await page.render({ canvas, viewport: vp }).promise;
-  } finally {
-    void task.destroy().catch(() => {});
-  }
-}
-
 /** Render `bytes` into `canvas` whenever they change. Renders are chained:
  *  pdf.js hard-throws on two concurrent render() calls into one canvas, so a
  *  new render must wait out the one in flight; superseded queued renders skip
@@ -64,7 +36,10 @@ function useRenderPdf(bytes: Uint8Array | null, canvas: RefObject<HTMLCanvasElem
     let cancelled = false;
     if (bytes)
       chain.current = chain.current
-        .then(() => (cancelled ? undefined : renderPdf(bytes, canvas.current, () => cancelled)))
+        .then(() => (cancelled
+          ? undefined
+          : renderPdfPage(bytes, { scale: RENDER_SCALE }, canvas.current, () => cancelled)
+            .then(() => undefined)))
         .catch(() => {});
     return () => { cancelled = true; };
   }, [bytes, canvas]);
