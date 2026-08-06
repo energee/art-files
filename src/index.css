@@ -35,6 +35,19 @@
   --secondary-foreground: #e2e3e5;
   --card: #16171a;
   --card-foreground: #e2e3e5;
+  /* Sidebar tokens the shadcn sidebar component styles against. Aliased to
+     the existing surfaces (not a second palette): without these the
+     bg-sidebar/border-sidebar-border utilities don't resolve and the
+     sidebar's border-r falls back to preflight's currentColor — a white
+     hairline against the dark theme. */
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
 }
 
 @theme inline {
@@ -56,6 +69,14 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
   --font-heading: "Poppins", sans-serif;
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -64,6 +85,13 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* shadcn's standard Tailwind v4 base rule: v4 preflight defaults
+   border-color to currentColor, so any bare border utility (the sidebar's
+   border-r) would paint in the text color instead of the theme border. */
+@layer base {
+  * { @apply border-border; }
 }
 
 html { font-size: 13px; }

@@ -276,13 +276,8 @@ export function DescriptionEditor(props: {
   value: string;
   base: Style;
   onChange: (markdown: string) => void;
-  /** Fired when the field gains focus. Not in the original task interface,
-   *  but required by LabelForm.tsx to keep calling onSelect("description")
-   *  on focus, exactly like the plain Textarea this replaces — see that
-   *  file's Description row. */
-  onFocus?: () => void;
 }) {
-  const { value, base, onChange, onFocus } = props;
+  const { value, base, onChange } = props;
   const rootRef = useRef<HTMLDivElement>(null);
   const [focused, setFocused] = useState(false);
   const [asText, setAsText] = useState(false);
@@ -496,7 +491,6 @@ export function DescriptionEditor(props: {
           aria-label="Description"
           className="font-mono text-xs"
           value={value}
-          onFocus={onFocus}
           onChange={(e) => onChange(e.target.value)}
         />
       ) : (
@@ -512,7 +506,7 @@ export function DescriptionEditor(props: {
             "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
           )}
           onInput={emitChange}
-          onFocus={() => { setFocused(true); onFocus?.(); }}
+          onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           onPaste={(e) => {
             // Coerce to plain text so pasting, e.g., a hop list copied off

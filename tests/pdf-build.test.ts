@@ -95,3 +95,29 @@ describe("drawJustifiedRotated", () => {
     }
   });
 });
+
+// The layers-panel eye: Assets.hidden skips an element outright — every
+// show-text/paint op it would emit, in BOTH modes — without moving anything
+// else. Distinct from fill "none", which still paints (knockout white).
+describe("Assets.hidden — the layers-panel eye", () => {
+  const showOps = (s: string) => (s.match(/\bTj\b/g) ?? []).length;
+
+  it("drops a hidden text element's show-text ops from the art plate", async () => {
+    const { buildArtPdf } = await import("../src/pdf/build");
+    const cfg = defaultConfig();
+    const plain = showOps(await contentStreamText(await buildArtPdf(cfg, assets)));
+    const hidden = showOps(await contentStreamText(
+      await buildArtPdf(cfg, { ...assets, hidden: new Set(["name", "storeCold"]) }),
+    ));
+    expect(hidden).toBeLessThan(plain);
+  });
+
+  it("drops the hidden element from the mask plate too", async () => {
+    const cfg = defaultConfig();
+    const plain = showOps(await contentStreamText(await buildMaskPdf(cfg, assets)));
+    const hidden = showOps(await contentStreamText(
+      await buildMaskPdf(cfg, { ...assets, hidden: new Set(["name", "storeCold"]) }),
+    ));
+    expect(hidden).toBeLessThan(plain);
+  });
+});

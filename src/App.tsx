@@ -15,15 +15,19 @@ import { validateMask, recolorMaskForPdf } from "@/maskimage";
 import { rasterKind, tintRgba } from "@/collab";
 import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "@/pdf/build";
 import { buildPsd, PSD_DOC, type PsdAssets } from "@/psd/build";
-import { LabelForm, type CollabFiles } from "@/components/LabelForm";
-import { StyleProperties } from "@/components/StyleProperties";
-import { FileDrop } from "@/components/FileDrop";
+import { Inspector, type CollabFiles, type InspectorFiles } from "@/components/StyleProperties";
+import { LayersPanel } from "@/components/LayersPanel";
+import { isElementId, type LayerId } from "@/components/layers";
 import { CommandMenu } from "@/components/CommandMenu";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
 import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator,
   MenubarShortcut, MenubarTrigger,
 } from "@/components/ui/menubar";
+import {
+  Sidebar, SidebarContent, SidebarInset, SidebarProvider, SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import poppinsRegular from "@/assets/fonts/Poppins-Regular.ttf?url";
 import poppinsSemiBold from "@/assets/fonts/Poppins-SemiBold.ttf?url";
@@ -129,10 +133,22 @@ export default function App() {
   // goes through setCfg (i.e. all of them, see `update` below) is undoable.
   const { value: cfg, set: setCfg, undo, redo, canUndo, canRedo } =
     useHistory<LabelConfig>(defaultConfig);
-  // Which element's contextual style panel is open — Photoshop's model, one
-  // at a time, driven by whichever row in LabelForm (or now, PreviewCompare
-  // itself) last got focus/click.
-  const [selected, setSelected] = useState<ElementId | null>(null);
+  // Which layer the inspector shows — Figma's model, one at a time, driven
+  // by the layers panel or PreviewCompare's click-to-select. LayerId, not
+  // ElementId: the Background/Mask document layers are selectable in the UI
+  // but unknown to the renderer.
+  const [selected, setSelected] = useState<LayerId | null>(null);
+  // Layers the panel's eye has hidden — session state, deliberately outside
+  // the config/history: a saved label never records a hidden layer, and
+  // toggling an eye is not an undoable document edit. Flows into
+  // Assets.hidden, where the renderer skips the element in both plates.
+  const [hiddenLayers, setHiddenLayers] = useState<ReadonlySet<ElementId>>(new Set());
+  const toggleHidden = (id: ElementId) =>
+    setHiddenLayers((old) => {
+      const next = new Set(old);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   // Real glyph widths for PreviewCompare's click-to-select hit-testing (see
   // hittest.ts's Measure type) — null until the one-time font embed below
   // resolves; PreviewCompare skips hit-testing rather than guess with it.
@@ -277,6 +293,19 @@ export default function App() {
     onLeft: (f) => onCollab("left", f),
     onCenter: (f) => onCollab("center", f),
   };
+  /** Everything file-shaped the inspector edits: the Document layers' drops
+   *  plus the collab logos. */
+  const files: InspectorFiles = {
+    texture: {
+      fileName: texture?.name, previewUrl: texture?.previewUrl,
+      onFile: (f) => void onTexture(f),
+    },
+    mask: {
+      fileName: mask?.name, previewUrl: mask?.previewUrl, error: mask?.error,
+      onFile: (f) => void onMask(f),
+    },
+    collab: collabFiles,
+  };
   /** The collab half of Assets, shared by the preview and export builds.
    *  Async because a tinted raster has to be decoded and re-encoded; vector
    *  art and untinted rasters pass straight through. */
@@ -311,6 +340,7 @@ export default function App() {
             fonts, logoSvg, ...(await collabAssets()),
             texture: texture ? { bytes: texture.previewBytes, kind: "png" } : undefined,
             maskPng: mask?.previewBytes,
+            hidden: hiddenLayers,
           };
           // Sequential, not Promise.all — halves the transient memory peak.
           const art = await buildArtPdf(cfg, assets);
@@ -327,7 +357,7 @@ export default function App() {
       });
     }, 600);
     return () => { stale = true; clearTimeout(timer); };
-  }, [cfg, texture, mask, collabLeft, collabCenter, blocked]);
+  }, [cfg, texture, mask, collabLeft, collabCenter, blocked, hiddenLayers]);
 
   // Revoking immediately can abort a large download, so each URL lives until
   // the NEXT export batch — a timer would instead pin a full Blob copy of
@@ -353,10 +383,14 @@ export default function App() {
     startSaveBatch();
     try {
       const fonts = await fontsPromise;
+      // Exports honor the eye too: a hidden layer is "not on this label",
+      // preview and deliverable alike. (PSDs still carry every layer — a
+      // layered handoff is the place to keep them all.)
       const assets: Assets = {
         fonts, logoSvg, ...(await collabAssets()),
         texture: texture ? { bytes: texture.bytes, kind: texture.kind } : undefined,
         maskPng: mask?.bytes,
+        hidden: hiddenLayers,
       };
       if (which !== "mask") saveBytes(await buildArtPdf(cfg, assets), `${cfg.beerName}.pdf`);
       if (which !== "art") saveBytes(await buildMaskPdf(cfg, assets), `${cfg.beerName}-mask.pdf`);
@@ -438,12 +472,19 @@ export default function App() {
 
   return (
     <TooltipProvider>
-      {/* App chrome: one full-width bar above the split, so the menus read as
-          the window's own rather than as sidebar controls. The h-screen flex
-          column below it keeps the sidebar and preview scrolling independently
-          as before. */}
-      <div className="flex h-screen flex-col">
+      {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
+          preview center, fixed inspector column right. */}
+      <SidebarProvider>
+        <Sidebar collapsible="offcanvas">
+          <SidebarContent>
+            <LayersPanel cfg={cfg} update={update} hidden={hiddenLayers}
+              onToggleHidden={toggleHidden} selected={selected} onSelect={setSelected} />
+          </SidebarContent>
+        </Sidebar>
+        <SidebarInset className="flex h-svh flex-col overflow-hidden">
         <header className="flex items-center gap-3 border-b border-border px-3 py-1">
+          {/* Toggles the Layers sidebar; the component also binds ⌘B. */}
+          <SidebarTrigger className="size-6" />
           {/* Stripped to a real menu bar: no pill border or rounding of its
               own (the header's bottom border is the chrome), and small
               regular-weight labels rather than the default's badge-like
@@ -503,29 +544,13 @@ export default function App() {
               menu item can't explain its own disabled state, so the reason
               sits in the bar itself. */}
           {blocked && <span className="text-xs text-destructive">{blockedWhy}</span>}
+          {/* Config-load failures used to sit atop the old sidebar; the bar
+              is the one chrome that always shows regardless of selection. */}
+          {loadError && <span className="text-xs text-destructive">{loadError}</span>}
           <input ref={configInput} type="file" accept="application/json" hidden
             onChange={(e) => e.target.files?.[0] && void loadConfig(e.target.files[0])} />
         </header>
-      <main className="flex min-h-0 flex-1">
-        <aside className="w-[430px] min-w-[380px] overflow-y-auto border-r border-border p-4">
-          <div className="flex gap-2">
-            <FileDrop label="Texture PNG/JPG"
-              accept={{ "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] }}
-              fileName={texture?.name} previewUrl={texture?.previewUrl}
-              onFile={(f) => void onTexture(f)} />
-            <FileDrop label="Metallic mask PNG (optional)" accept={{ "image/png": [".png"] }}
-              fileName={mask?.name} previewUrl={mask?.previewUrl} error={mask?.error}
-              onFile={(f) => void onMask(f)} />
-          </div>
-          {loadError && <p className="mt-2 text-xs text-destructive">{loadError}</p>}
-          <LabelForm cfg={cfg} errors={errors} update={update} selected={selected}
-            onSelect={setSelected} collab={collabFiles} />
-          {selected && (
-            <div className="mt-3">
-              <StyleProperties id={selected} cfg={cfg} update={update} onClose={() => setSelected(null)} />
-            </div>
-          )}
-        </aside>
+      <div className="flex min-h-0 flex-1">
         <section className="flex min-w-0 flex-1 flex-col p-3">
           <div className="mb-2 flex h-5 items-center gap-2">
             {building && (
@@ -544,7 +569,11 @@ export default function App() {
           <div className="relative flex min-h-0 flex-1">
             <PreviewCompare ref={previewRef}
               artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
-              cfg={cfg} measure={measure} selected={selected} onPick={setSelected}
+              cfg={cfg} measure={measure}
+              // The preview knows only renderer elements; a selected document
+              // layer (background/mask) shows no selection box there.
+              selected={selected && isElementId(selected) ? selected : null}
+              onPick={setSelected}
               onSplit={setSplit} />
             {/* First-load state: until the first debounced build lands there is
                 nothing on the canvases, so fill the empty frame with a spinner
@@ -560,6 +589,22 @@ export default function App() {
             )}
           </div>
         </section>
+        {/* Right inspector: a shadcn Sheet driven by the selection — open
+            while a layer is selected, closed (Esc or the header X) by
+            clearing it. Non-modal and overlay-free so the preview and the
+            layers panel stay clickable while inspecting; dismissible={false}
+            keeps an outside click (e.g. preview click-to-select) from
+            closing it mid-selection (no backdrop = no outside-press target). */}
+        <Sheet open={selected !== null} modal={false}
+          onOpenChange={(open) => { if (!open) setSelected(null); }}>
+          <SheetContent side="right" showOverlay={false} showCloseButton={false}
+            className="w-[300px] gap-0 overflow-y-auto p-3 sm:max-w-[300px]">
+            {selected && (
+              <Inspector id={selected} cfg={cfg} errors={errors} update={update} files={files}
+                onClose={() => setSelected(null)} />
+            )}
+          </SheetContent>
+        </Sheet>
         <CommandMenu
           actions={[
             { label: "Export PDF + Mask PDF", disabled: blocked || !pdfs, run: exportPdfs },
@@ -574,8 +619,9 @@ export default function App() {
             { label: "Preview: Mask", run: () => previewRef.current?.showMask() },
           ]}
         />
-      </main>
       </div>
+        </SidebarInset>
+      </SidebarProvider>
     </TooltipProvider>
   );
 }

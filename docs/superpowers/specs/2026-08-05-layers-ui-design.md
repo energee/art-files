@@ -13,8 +13,8 @@ including the texture (Background) and mask (Mask), whose file drops move
 onto their layers.
 
 **Scope: UI-only.** No renderer, config-schema, or type changes.
-Background/Mask expose Color overlay / Outer stroke switches *disabled*;
-render support arrives later, per layer.
+Background/Mask are file drops only — no style controls until render
+support for tinting/stroking them exists.
 
 ## Layout (App.tsx)
 
@@ -22,9 +22,11 @@ render support arrives later, per layer.
 - Left: shadcn `Sidebar` (`collapsible="offcanvas"`), toggled by a
   `SidebarTrigger` in the menubar row and ⌘B, holding the Layers panel.
 - Center: existing `PreviewCompare`, unchanged.
-- Right: fixed-width inspector column — a plain bordered column (the
-  `Sidebar` component is reserved for the left panel; the inspector does
-  not collapse).
+- Right: the inspector is a shadcn `Sheet` (side="right", non-modal, no
+  backdrop — locally-patched `showOverlay` prop) driven by the selection:
+  open while a layer is selected, closed by Esc or the header X (both clear
+  the selection). Non-modal so the preview and layers panel stay clickable
+  while inspecting.
 - Existing menubar stays as top chrome, gains the trigger. Save/load,
   undo/redo, exports, ⌘K palette untouched.
 
@@ -33,13 +35,23 @@ render support arrives later, per layer.
 - shadcn `SidebarGroup` / `SidebarMenu` / `SidebarMenuItem` /
   `SidebarMenuButton`; lucide type icons.
 - Groups, in order:
-  - **This beer**: Beer Name, Style, ABV, Description, Barcode, QR,
-    Collab lead-in, Collab logo (left), Collab logo (center)
+  - **This beer**: Beer Name, Style, ABV, Description, Barcode, QR
+  - **Collab**: Lead-In, Text Logo (the left slot), Graphic Logo
+    (the centre slot)
   - **Template**: Volume, Wordmark, Logo, Info, Warning, Store Cold
   - **Document**: Background, Mask
-- Row = icon + name + eye toggle. Eye sets the layer's fill to `"none"`
-  and back (restoring the shipped default fill); text/vector layers only —
-  Background/Mask rows have no eye for now.
+- Row = eye toggle (left) · icon + name (select target) · chevron (right)
+  that opens an accordion below the row: a read-only one-line-per-property
+  digest of the applied styles (fill+plate always; stroke, tracking, bold
+  only while in effect). Editing stays in the inspector. Eye truly hides
+  the layer: the renderer
+  (`Assets.hidden`, `src/pdf/build.ts`) skips its ink, stroke and mask
+  footprint in both plates, previews and PDF exports alike. Session state,
+  never written into saved configs; PSD exports keep every layer. (An
+  earlier draft used fill `"none"`, but in this renderer that means "white
+  ink", not hidden.) Every element row has an eye, QR/Barcode included —
+  hiding is a temporary skip, unlike the ink-less styling their allowNone
+  forbids. Background/Mask rows have no eye for now.
 - Selecting a row sets the same `selected: ElementId` state the preview's
   click-to-select uses; the two stay in sync. Background/Mask get new
   selectable ids (UI-level only, not `ElementId`s in the renderer sense).
@@ -57,12 +69,13 @@ One panel shaped by the selection:
    - Collab logo layers: their `FileDrop`, scale/offset/tint controls, and
      the collab on/off `Switch`.
    - Background/Mask: their `FileDrop` (moved from the old sidebar top).
-3. **Style** section — the shared stack reused from today's
-   StyleProperties: fill hex + plate select, Outer stroke `Switch` with
-   color/width, letter spacing where applicable.
-   - Background/Mask: disabled "Color overlay" and "Outer stroke"
-     switches as placeholders.
-4. No selection: slim empty state ("Select a layer").
+3. **Style** — Figma-style groups, switches throughout (no checkboxes):
+   **Ink** (fill color field + the metal-horns metallic toggle in one row),
+   **Text** (Bold switch where applicable + tracking, glyph layers only),
+   **Stroke** (switch in the group header; color + width while on).
+   - Background/Mask: no Style section at all — content (the file drop)
+     only.
+4. No selection: the whole inspector column collapses (no empty state).
 
 ## Removals
 
