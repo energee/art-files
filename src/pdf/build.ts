@@ -264,13 +264,6 @@ function drawRotated(
   });
 }
 
-/** The on-page length of a wrapped warning column after justification (see
- *  drawJustifiedRotated): a multi-word line stretches its inter-word gaps
- *  to exactly `maxLen`. A single-word line has no gap to stretch, so it
- *  stays its natural measured length — letter-spacing one word to fill the
- *  column would look broken, not justified. Shared by the renderer (to
- *  decide whether to justify) and hittest.ts (so a column's hit box always
- *  matches what actually got drawn). */
 /** Like drawRotated, but for a warning column: stretches inter-word gaps so
  *  the line's run reaches EXACTLY `opts.maxLen` (full justification — no
  *  ragged final column). Draws word-by-word, reusing drawRotated's per-word
@@ -310,11 +303,6 @@ export function drawJustifiedRotated(
   });
 }
 
-/** Wrap the warning paragraph to fit the rotated column height. `measure`
- *  returns a string's width at WARNING.size in points — passed in (rather
- *  than a PDFFont) so the hit-tester can derive the SAME column count and
- *  per-column length from its own measure without importing font machinery;
- *  the number of columns is a wrap result, never a constant. */
 /** Glyph box for the barcode digits' mask pills — the measured Poppins font
  *  box from layout.ts, the same one hittest.ts uses. */
 const DIGIT_ASC = L.FONT_ASC;

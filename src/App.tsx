@@ -243,6 +243,8 @@ export default function App() {
   // a loaded-but-invalid mask or bad label data blocks.
   const blocked = !!mask?.error || !upc.ok || !cfg.beerName.trim();
   const blockedWhy = [mask?.error, errors.upc, errors.name].filter(Boolean).join(" · ");
+  const exportBlocked = blocked || building;
+  const pdfExportBlocked = exportBlocked || !pdfs;
 
   async function onTexture(f: File) {
     const bytes = new Uint8Array(await f.arrayBuffer());
@@ -515,13 +517,13 @@ export default function App() {
                     the config alone, so only the PDF items wait on it.
                     Exporting both PDFs at once lives in the ⌘K palette only —
                     here the two layers are separate items. */}
-                <MenubarItem disabled={blocked || building || !pdfs} onClick={downloadArt}>
+                <MenubarItem disabled={pdfExportBlocked} onClick={downloadArt}>
                   Export PDF
                 </MenubarItem>
-                <MenubarItem disabled={blocked || building || !pdfs} onClick={downloadMask}>
+                <MenubarItem disabled={pdfExportBlocked} onClick={downloadMask}>
                   Export Mask PDF
                 </MenubarItem>
-                <MenubarItem disabled={blocked || building} onClick={() => void exportPsd()}>
+                <MenubarItem disabled={exportBlocked} onClick={() => void exportPsd()}>
                   Export PSDs
                 </MenubarItem>
               </MenubarContent>
@@ -620,10 +622,10 @@ export default function App() {
         </Sheet>
         <CommandMenu
           actions={[
-            { label: "Export PDF + Mask PDF", disabled: blocked || building || !pdfs, run: exportPdfs },
-            { label: "Export PDF", disabled: blocked || building || !pdfs, run: downloadArt },
-            { label: "Export Mask PDF", disabled: blocked || building || !pdfs, run: downloadMask },
-            { label: "Export PSDs", disabled: blocked || building, run: () => void exportPsd() },
+            { label: "Export PDF + Mask PDF", disabled: pdfExportBlocked, run: exportPdfs },
+            { label: "Export PDF", disabled: pdfExportBlocked, run: downloadArt },
+            { label: "Export Mask PDF", disabled: pdfExportBlocked, run: downloadMask },
+            { label: "Export PSDs", disabled: exportBlocked, run: () => void exportPsd() },
             { label: "Undo", disabled: !canUndo, run: undo },
             { label: "Redo", disabled: !canRedo, run: redo },
             { label: "Save config", run: saveConfig },
