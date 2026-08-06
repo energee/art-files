@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { boxesOf, boxOf, hitTest } from "../src/hittest";
-import { wrapWarning, warningColumnLen } from "../src/pdf/build";
+import { wrapWarning, warningColumnLen } from "../src/warning";
 import { defaultConfig } from "../src/defaults";
 import * as L from "../src/layout";
 import { measure, measureBW } from "./fixtures";

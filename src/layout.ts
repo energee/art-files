@@ -111,6 +111,8 @@ export const STYLE_LINE = { cx: CENTER_X, baseline: 344.6, size: 12.18 };
 
 /** One px at the 600dpi deliverable, in PDF points (72/600). */
 export const PX = 72 / 600;
+/** Full 600-DPI document dimensions for PSD raster layers. */
+export const PSD_DOC = { w: Math.round(PAGE.w / PX), h: Math.round(PAGE.h / PX) };
 /** Default per-element outer-stroke width, in px at 600dpi (≈1.8pt). */
 export const DEFAULT_STROKE_PX = 15;
 

@@ -105,3 +105,33 @@ no status, no attempts, no delta.
   anything about capability.
 
 ---
+
+## 2026-08-05 lazy-react-renderers
+- finding: [KISS/med] src/App.tsx:14 — the initial React bundle eagerly included PDF, fontkit, and PSD renderers while live preview PDF builds still ran on the UI thread
+- status: done
+- attempts: 1/3
+- delta: entry JS 2,613.79 kB / 963.59 kB gzip → 1,128.57 kB / 353.86 kB gzip; preview builds moved to a lazy worker; full PDF and PSD renderers load on export
+
+## 2026-08-05 single-pass-react-mask
+- finding: [DRY/low] src/App.tsx:259 — mask upload classified every full-resolution pixel once for validation and again for recoloring
+- status: done
+- attempts: 1/3
+- delta: mask classification passes 2 → 1 and 14.4M-pixel synthetic pass 64 ms → 46 ms; decoded ImageBitmap now closes before ImageData processing; tests 127 → 128 and green
+
+## 2026-08-05 worker-byte-cache
+- finding: [KISS/med] src/pdf/client.ts:54 — every debounced preview build structured-cloned the texture/mask preview PNGs (and raster collab logos) into the worker, though they only change on upload
+- status: done
+- attempts: 1/3
+- delta: byte payloads now travel once per upload (ByteRef id protocol, worker-side cache with per-request eviction); per-build message drops from megabytes to the config alone
+
+## 2026-08-05 memo-logo-qr
+- finding: [DRY/low] src/pdf/build.ts:463,502 — parseLogo re-ran the svgpath pipeline and qrShapes re-encoded the QR matrix twice per preview build with identical inputs
+- status: done
+- attempts: 1/3
+- delta: parseLogo memoized by (svg, width, maxH); qrShapes last-call memoized by payload; both now run once per distinct input instead of 2×/build
+
+## 2026-08-05 font-subset-benchmark
+- finding: [KISS/low] src/pdf/build.ts:551 — hypothesis that subset:true embedding was avoidable preview cost
+- status: done
+- attempts: 1/3
+- delta: none — benchmark shows subset:true is ~3× faster than subset:false (≈8–10 ms vs ≈25 ms per doc save) and 25× smaller; current code already optimal, no change made

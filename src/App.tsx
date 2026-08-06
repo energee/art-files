@@ -3,18 +3,18 @@
 // overlay-compare preview, and on-demand full-resolution exports. Mirrors
 // the old main.ts wiring, componentized.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { PDFDocument } from "pdf-lib";
-import fontkit from "@pdf-lib/fontkit";
 import type { CollabSlot, Fill, LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
 import { defaultConfig, parseConfigFile, toConfigFile } from "@/defaults";
 import { useHistory } from "@/history";
 import { validateUpc } from "@/upc";
-import { validateMask, recolorMaskForPdf } from "@/maskimage";
+import { prepareMaskForPdf } from "@/maskimage";
 import { rasterKind, tintRgba } from "@/collab";
-import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "@/pdf/build";
-import { buildPsd, PSD_DOC, type PsdAssets } from "@/psd/build";
+import type { Assets, CollabImage } from "@/pdf/build";
+import { buildPreviewPdfs, disposePreviewWorker } from "@/pdf/client";
+import type { PsdAssets } from "@/psd/build";
+import { PSD_DOC } from "@/layout";
 import { Inspector, type CollabFiles, type InspectorFiles } from "@/components/StyleProperties";
 import { LayersPanel } from "@/components/LayersPanel";
 import { isElementId, type LayerId } from "@/components/layers";
@@ -103,13 +103,39 @@ async function previewPng(src: ImageBitmap | HTMLCanvasElement): Promise<Uint8Ar
   return canvasToPng(c);
 }
 
-const fontsPromise = (async () => {
+let fontsPromise: Promise<Assets["fonts"]> | null = null;
+function loadFonts(): Promise<Assets["fonts"]> {
+  if (fontsPromise) return fontsPromise;
   const get = async (u: string) => new Uint8Array(await (await fetch(u)).arrayBuffer());
-  const [regular, semibold, bold] = await Promise.all([
-    get(poppinsRegular), get(poppinsSemiBold), get(poppinsBold),
-  ]);
-  return { regular, semibold, bold };
-})();
+  fontsPromise = Promise.all([get(poppinsRegular), get(poppinsSemiBold), get(poppinsBold)])
+    .then(([regular, semibold, bold]) => ({ regular, semibold, bold }))
+    .catch((error) => {
+      fontsPromise = null;
+      throw error;
+    });
+  return fontsPromise;
+}
+
+let measurePromise: Promise<Measure> | null = null;
+function loadMeasure(): Promise<Measure> {
+  if (measurePromise) return measurePromise;
+  measurePromise = Promise.all([
+    new FontFace("PoppinsMeasure", `url(${poppinsRegular})`, { weight: "400" }).load(),
+    new FontFace("PoppinsMeasure", `url(${poppinsSemiBold})`, { weight: "600" }).load(),
+  ]).then((faces) => {
+    faces.forEach((face) => document.fonts.add(face));
+    const ctx = document.createElement("canvas").getContext("2d");
+    if (!ctx) throw new Error("Could not create the font measurement canvas.");
+    return (text: string, size: number, bold: boolean) => {
+      ctx.font = `${bold ? 600 : 400} ${size}px PoppinsMeasure`;
+      return ctx.measureText(text).width;
+    };
+  }).catch((error) => {
+    measurePromise = null;
+    throw error;
+  });
+  return measurePromise;
+}
 
 // Blob snapshots the bytes at construction (no transfer), so no copy needed —
 // unlike pdf.js, which neuters the buffer it's handed (see PreviewCompare).
@@ -175,37 +201,20 @@ export default function App() {
   const update = (fn: (c: LabelConfig) => void) =>
     setCfg((c) => { const n = structuredClone(c); fn(n); return n; });
 
-  // Builds the real Measure hitTest needs, once: embed the faces into a
-  // throwaway pdf-lib doc purely to read widthOfTextAtSize (never saved/
-  // rendered). hitTest's `bold` flag can't tell one call site from another —
-  // it's a single boolean, not a per-element hint — so it has to pick one
-  // face to mean "true" for every caller. Reading src/pdf/build.ts's
-  // drawElements: the wordmark and beer name always draw in the real Bold
-  // face (font: fonts.bold, overriding line.bold entirely), but every other
-  // bold-flagged element resolves to SemiBold — drawLine picks
-  // fonts.semibold when line.bold (volume, a bold description line, the
-  // style line), and drawRotated's handleAddress/storeCold calls hardcode
-  // fonts.semibold outright, regardless of any style field. In the shipped
-  // default config that's 4 semibold calls (volume, the "# HOPS" header,
-  // handleAddress, storeCold) against 2 Bold calls (wordmark, name), and
-  // Poppins SemiBold vs Bold widths differ by under 2.5% at every size this
-  // label uses (measured with widthOfTextAtSize directly) — so `bold` here
-  // backs SemiBold. That undermeasures the wordmark/name by a percent or
-  // two, split evenly on both edges since both are centered; backing it
-  // with Bold instead would OVERmeasure every left- or baseline-anchored
-  // bold line (volume, handleAddress, storeCold, a bold description line)
-  // on one side only, which is the worse failure mode for a click target.
+  // Canvas uses the same bundled Regular/SemiBold font files as the PDF, but
+  // avoids loading pdf-lib + fontkit on the UI thread just to measure hit
+  // boxes. `bold` intentionally means SemiBold here: most bold hit targets
+  // use that face, while the two true-Bold elements are centred and tolerate
+  // the small symmetric under-measurement (see hittest.ts).
   useEffect(() => {
-    void (async () => {
-      const fonts = await fontsPromise;
-      const doc = await PDFDocument.create();
-      doc.registerFontkit(fontkit);
-      const regular = await doc.embedFont(fonts.regular);
-      const semibold = await doc.embedFont(fonts.semibold);
-      setMeasure(() => (text: string, size: number, bold: boolean) =>
-        (bold ? semibold : regular).widthOfTextAtSize(text, size));
-    })();
+    let cancelled = false;
+    void loadMeasure()
+      .then((next) => { if (!cancelled) setMeasure(() => next); })
+      .catch((error) => { if (!cancelled) setBuildError(String(error)); });
+    return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => () => disposePreviewWorker(), []);
 
   // ⌘Z / ⇧⌘Z (and ⌘Y) for the config history. Deliberately inert while a
   // text field has focus: there the browser's own per-field undo is the one
@@ -234,6 +243,8 @@ export default function App() {
   // a loaded-but-invalid mask or bad label data blocks.
   const blocked = !!mask?.error || !upc.ok || !cfg.beerName.trim();
   const blockedWhy = [mask?.error, errors.upc, errors.name].filter(Boolean).join(" · ");
+  const exportBlocked = blocked || building;
+  const pdfExportBlocked = exportBlocked || !pdfs;
 
   async function onTexture(f: File) {
     const bytes = new Uint8Array(await f.arrayBuffer());
@@ -258,9 +269,9 @@ export default function App() {
     canvas.height = bmp.height;
     const ctx = canvas.getContext("2d")!;
     ctx.drawImage(bmp, 0, 0);
-    const data = ctx.getImageData(0, 0, bmp.width, bmp.height);
-    const check = validateMask(data.data);
-    recolorMaskForPdf(data.data);
+    bmp.close();
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const check = prepareMaskForPdf(data.data);
     ctx.putImageData(data, 0, 0);
     const bytes = await canvasToPng(canvas);
     const previewBytes = await previewPng(canvas); // recolored canvas, downscaled
@@ -335,17 +346,13 @@ export default function App() {
         if (stale) return; // a newer edit is queued behind us — skip entirely
         setBuilding(true);
         try {
-          const fonts = await fontsPromise;
-          const assets: Assets = {
-            fonts, logoSvg, ...(await collabAssets()),
-            texture: texture ? { bytes: texture.previewBytes, kind: "png" } : undefined,
+          const assets = {
+            ...(await collabAssets()),
+            texture: texture ? { bytes: texture.previewBytes, kind: "png" as const } : undefined,
             maskPng: mask?.previewBytes,
             hidden: hiddenLayers,
           };
-          // Sequential, not Promise.all — halves the transient memory peak.
-          const art = await buildArtPdf(cfg, assets);
-          if (stale) return;
-          const maskPdf = await buildMaskPdf(cfg, assets);
+          const { art, mask: maskPdf } = await buildPreviewPdfs(cfg, assets);
           if (stale) return;
           setPdfs({ artBytes: art, maskBytes: maskPdf });
           setBuildError("");
@@ -379,10 +386,14 @@ export default function App() {
   /** Downloads rebuild from the full-resolution assets on demand — the
    *  preview PDFs on screen are deliberately low-res (see Loaded). */
   async function buildFull(which: "art" | "mask" | "both") {
+    if (building) return;
     setBuilding(true);
     startSaveBatch();
     try {
-      const fonts = await fontsPromise;
+      const [{ buildArtPdf, buildMaskPdf }, fonts] = await Promise.all([
+        import("@/pdf/build"),
+        loadFonts(),
+      ]);
       // Exports honor the eye too: a hidden layer is "not on this label",
       // preview and deliverable alike. (PSDs still carry every layer — a
       // layered handoff is the place to keep them all.)
@@ -430,10 +441,14 @@ export default function App() {
    *  `{name}.psd` (art) and `{name}-mask.psd` (white-ink plate), mirroring
    *  the two PDF deliverables. */
   async function exportPsd() {
+    if (building) return;
     setBuilding(true);
     startSaveBatch();
     try {
-      const fonts = await fontsPromise;
+      const [{ buildPsd }, fonts] = await Promise.all([
+        import("@/psd/build"),
+        loadFonts(),
+      ]);
       const assets: PsdAssets = {
         fonts, logoSvg,
         texture: await rasterPixels(texture?.bytes),
@@ -502,13 +517,13 @@ export default function App() {
                     the config alone, so only the PDF items wait on it.
                     Exporting both PDFs at once lives in the ⌘K palette only —
                     here the two layers are separate items. */}
-                <MenubarItem disabled={blocked || !pdfs} onClick={downloadArt}>
+                <MenubarItem disabled={pdfExportBlocked} onClick={downloadArt}>
                   Export PDF
                 </MenubarItem>
-                <MenubarItem disabled={blocked || !pdfs} onClick={downloadMask}>
+                <MenubarItem disabled={pdfExportBlocked} onClick={downloadMask}>
                   Export Mask PDF
                 </MenubarItem>
-                <MenubarItem disabled={blocked} onClick={() => void exportPsd()}>
+                <MenubarItem disabled={exportBlocked} onClick={() => void exportPsd()}>
                   Export PSDs
                 </MenubarItem>
               </MenubarContent>
@@ -607,10 +622,10 @@ export default function App() {
         </Sheet>
         <CommandMenu
           actions={[
-            { label: "Export PDF + Mask PDF", disabled: blocked || !pdfs, run: exportPdfs },
-            { label: "Export PDF", disabled: blocked || !pdfs, run: downloadArt },
-            { label: "Export Mask PDF", disabled: blocked || !pdfs, run: downloadMask },
-            { label: "Export PSDs", disabled: blocked, run: () => void exportPsd() },
+            { label: "Export PDF + Mask PDF", disabled: pdfExportBlocked, run: exportPdfs },
+            { label: "Export PDF", disabled: pdfExportBlocked, run: downloadArt },
+            { label: "Export Mask PDF", disabled: pdfExportBlocked, run: downloadMask },
+            { label: "Export PSDs", disabled: exportBlocked, run: () => void exportPsd() },
             { label: "Undo", disabled: !canUndo, run: undo },
             { label: "Redo", disabled: !canRedo, run: redo },
             { label: "Save config", run: saveConfig },

@@ -32,7 +32,7 @@ import { barcodeGeometry, barcodeStrokePt } from "../barcode";
 import { parseDescription, parseInfoLine, parseRuns } from "../description";
 import { parseLogo } from "../logo";
 import { qrShapes, qrUrl } from "../qr";
-import { wrapWarning } from "../pdf/build";
+import { wrapWarning } from "../warning";
 
 export interface PsdAssets {
   fonts: { regular: Uint8Array; semibold: Uint8Array; bold: Uint8Array };
@@ -56,12 +56,11 @@ export interface PsdAssets {
  *  strokes are omitted (they never touch the mask plate). */
 export type PsdMode = "art" | "mask";
 
-/** Points -> pixels at the 600dpi deliverable. (layout.PX is the inverse —
- *  points per pixel — so deriving from it keeps one definition of the DPI.) */
+/** Points -> pixels at the 600dpi deliverable. */
 const px = (n: number) => n / L.PX;
 /** Document size in pixels. Exported so a caller can cover-fit the texture
  *  to it before handing the pixels over — PSD layers hold pixels 1:1. */
-export const PSD_DOC = { w: Math.round(px(L.PAGE.w)), h: Math.round(px(L.PAGE.h)) };
+export const PSD_DOC = L.PSD_DOC;
 
 const color255 = (fill: Fill) => {
   const c = L.parseHexFill(fill);

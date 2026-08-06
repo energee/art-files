@@ -9,7 +9,7 @@ import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "../src
 import type { CollabSlot } from "../src/types";
 import { buildPsd, type PsdAssets } from "../src/psd/build";
 import { defaultConfig, parseConfigFile } from "../src/defaults";
-import { validateMask, recolorMaskForPdf } from "../src/maskimage";
+import { prepareMaskForPdf } from "../src/maskimage";
 import { rasterKind, tintRgba } from "../src/collab";
 import { validateUpc } from "../src/upc";
 
@@ -62,9 +62,8 @@ let maskPixels: PsdAssets["mask"];
 if (maskPath !== "none") {
   const mask = PNG.sync.read(readFileSync(maskPath));
   const rgba = new Uint8Array(mask.data.buffer, mask.data.byteOffset, mask.data.length);
-  const check = validateMask(rgba);
+  const check = prepareMaskForPdf(rgba);
   if (!check.ok) console.warn(`warning: ${check.error}`);
-  recolorMaskForPdf(rgba);
   // The recolored pixels serve both deliverables: re-encoded as PNG for the
   // mask PDF, and raw for the mask PSD's raster layer.
   maskPixels = { data: rgba, width: mask.width, height: mask.height };
