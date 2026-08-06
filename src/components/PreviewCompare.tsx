@@ -13,6 +13,15 @@ import { ART, PAGE } from "@/layout";
 import type { LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import { boxOf, hitTest, type CollabSlots, type Measure } from "@/hittest";
+import type { SelectMods } from "@/selection";
+import { cn } from "@/lib/utils";
+
+/** The selection box's four corner ticks, as top/bottom + left/right. */
+const CORNERS = ["tl", "tr", "bl", "br"] as const;
+
+/** Breathing room between an element's measured box and its selection
+ *  outline, in screen px. */
+const SEL_PAD = 4;
 
 // ponytail: fixed oversample, CSS downscales; add a ResizeObserver only if
 // crispness on very large screens ever matters.
@@ -69,11 +78,15 @@ export const PreviewCompare = forwardRef<
     /** Which collab logo slots hold art. The renderer skips an empty slot, so
      *  its hit box must not exist either (see hittest.ts's CollabSlots). */
     collab: CollabSlots;
-    /** Which element the sidebar (or a previous click here) has selected —
-     *  drives the outline drawn over it. */
-    selected: ElementId | null;
-    /** Called with the clicked element's id, or null for empty background. */
-    onPick: (id: ElementId | null) => void;
+    /** Which elements the sidebar (or previous clicks here) have selected —
+     *  one outline is drawn per id, so canvas and panel agree about what a
+     *  multi-selection looks like. Document layers are filtered out by App:
+     *  the preview knows only renderer elements. */
+    selected: readonly ElementId[];
+    /** Called with the clicked element's id (null for empty background) and
+     *  the click's modifiers, so shift/⌘ on the canvas extend the selection
+     *  exactly as they do in the layers panel. */
+    onPick: (id: ElementId | null, mods: SelectMods) => void;
     /** Divider position as % of width showing white-ink, on every change —
      *  including a manual drag, so the View menu's checkmarks track the real
      *  divider rather than whichever menu item was picked last. */
@@ -117,7 +130,8 @@ export const PreviewCompare = forwardRef<
     if (!r.width || !r.height) return; // not laid out yet (e.g. display:none)
     const xPt = ((e.clientX - r.left) / r.width) * PAGE.w;
     const yPt = ((e.clientY - r.top) / r.height) * PAGE.h;
-    onPick(hitTest(xPt, yPt, measure, cfg, collab));
+    onPick(hitTest(xPt, yPt, measure, cfg, collab),
+      { shift: e.shiftKey, toggle: e.metaKey || e.ctrlKey });
   }
 
   // Selection outline geometry, as a percentage box so it tracks the
@@ -125,8 +139,14 @@ export const PreviewCompare = forwardRef<
   // Memoized: boxOf rebuilds every element's box (including the warning's
   // word-by-word wrap measurement), and dragging the divider re-renders this
   // component per pointer-move frame without any of these inputs changing.
-  const selBox = useMemo(
-    () => (selected && measure ? boxOf(selected, cfg, measure, collab) : null),
+  const selBoxes = useMemo(
+    // boxOf returns null for an element the renderer isn't drawing (an empty
+    // collab slot); those simply get no outline.
+    () => (measure
+      ? selected
+        .map((id) => [id, boxOf(id, cfg, measure, collab)] as const)
+        .filter((pair): pair is [ElementId, NonNullable<typeof pair[1]>] => pair[1] !== null)
+      : []),
     [selected, cfg, measure, collab],
   );
 
@@ -176,17 +196,41 @@ export const PreviewCompare = forwardRef<
           }}
         />
       )}
-      {selBox && (
+      {selBoxes.map(([id, selBox]) => (
+        // Figma's selection read: a 1px accent stroke with a dark outer halo
+        // so it stays visible over both the gold art and bare white stock (a
+        // single-tone ring disappeared into one or the other), plus corner
+        // ticks that make the box read as a selected object rather than as
+        // more label art. Outline, not border/ring: it draws OUTSIDE the box,
+        // so the outline can't shave a pixel off the element it marks.
         <div
-          className="pointer-events-none absolute ring-1 ring-ring"
+          key={id}
+          className="pointer-events-none absolute outline-1 outline-sky-400 outline-solid [box-shadow:0_0_0_2px_rgba(0,0,0,0.45)]"
+          // SEL_PAD of air between the glyphs and the stroke, so the outline
+          // frames the element instead of crowding its ascenders. In px, not
+          // a % of the box: the gap should look the same on a two-character
+          // ABV and on the description block.
           style={{
-            left: `${(selBox.x0 / PAGE.w) * 100}%`,
-            top: `${(selBox.y0 / PAGE.h) * 100}%`,
-            width: `${((selBox.x1 - selBox.x0) / PAGE.w) * 100}%`,
-            height: `${((selBox.y1 - selBox.y0) / PAGE.h) * 100}%`,
+            left: `calc(${(selBox.x0 / PAGE.w) * 100}% - ${SEL_PAD}px)`,
+            top: `calc(${(selBox.y0 / PAGE.h) * 100}% - ${SEL_PAD}px)`,
+            width: `calc(${((selBox.x1 - selBox.x0) / PAGE.w) * 100}% + ${SEL_PAD * 2}px)`,
+            height: `calc(${((selBox.y1 - selBox.y0) / PAGE.h) * 100}% + ${SEL_PAD * 2}px)`,
           }}
-        />
-      )}
+        >
+          {/* Four corner ticks, centred on the corners. Fixed px (not a % of
+              the box) so a small element's handles don't shrink to nothing. */}
+          {CORNERS.map((c) => (
+            <span
+              key={c}
+              className={cn(
+                "absolute size-1.5 rounded-[1px] border border-sky-400 bg-background",
+                c.includes("t") ? "-top-[3px]" : "-bottom-[3px]",
+                c.includes("l") ? "-left-[3px]" : "-right-[3px]",
+              )}
+            />
+          ))}
+        </div>
+      ))}
     </div>
   );
 });

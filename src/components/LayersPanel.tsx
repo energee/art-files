@@ -1,9 +1,11 @@
 // LayersPanel.tsx — the Figma-style layer list that fills the left sidebar.
-// Four groups: "Beer" (per-release elements), "Collab" (the lead-in and
+// Four groups (from ./layers' PANEL_GROUPS): "Beer" (per-release elements), "Collab" (the lead-in and
 // two partner-logo slots), "Template" (set-once brand elements), and
 // "Document" (the UI-level background/mask layers from ./layers, which carry
 // file drops rather than Styles). Rows select into the
-// same LayerId state the preview's click-to-select uses; the eye toggles the
+// same LayerId selection the preview's click-to-select uses — multi-select,
+// so a row reports the modifier keys and App resolves them (see
+// selection.ts); the eye toggles the
 // id in App's session-level hidden set (Assets.hidden — the renderer skips
 // the element outright). Rows appear in ELEMENTS order, which carries the
 // layers-ui spec's stacking (Barcode before QR); every element row has
@@ -11,7 +13,7 @@
 // forbids), the document layers go without for now.
 import { ChevronDown, Eye, EyeOff } from "lucide-react";
 import type { LabelConfig, StyledLine } from "@/types";
-import { ELEMENTS, applyStyle, elementById, type ElementId } from "@/elements";
+import { applyStyle, elementById, type ElementId } from "@/elements";
 import { cn } from "@/lib/utils";
 import { MetallicToggle } from "./MetallicToggle";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -23,24 +25,10 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { DOC_LAYER_LABELS, LAYER_ICONS, isElementId, type LayerId } from "./layers";
-
-/** Every group derives both its membership and its order from the registry,
- *  so a regrouped, reordered or added element can't silently vanish from the
- *  panel or drift out of the spec's stacking order. */
-const rowsOf = (group: "beer" | "template" | "collab") =>
-  ELEMENTS.filter((e) => e.group === group).map((e) => e.id);
-const BEER_ROWS = rowsOf("beer");
-const COLLAB_ROWS = rowsOf("collab");
-const TEMPLATE_ROWS = rowsOf("template");
-const DOC_ROWS: LayerId[] = ["background", "mask", "settings"];
-
-const GROUPS: [string, LayerId[]][] = [
-  ["Beer", BEER_ROWS],
-  ["Collab", COLLAB_ROWS],
-  ["Template", TEMPLATE_ROWS],
-  ["Document", DOC_ROWS],
-];
+import {
+  DOC_LAYER_LABELS, LAYER_ICONS, PANEL_GROUPS, isElementId, type LayerId,
+} from "./layers";
+import type { SelectMods } from "@/selection";
 
 /** Tiny color chip for the style summary; "none" renders as a hatch-free
  *  outline so "no ink" is visibly different from black. The border is a
@@ -108,8 +96,8 @@ function LayerRow({
   update: (fn: (c: LabelConfig) => void) => void;
   hidden: ReadonlySet<ElementId>;
   onToggleHidden: (id: ElementId) => void;
-  selected: LayerId | null;
-  onSelect: (id: LayerId) => void;
+  selected: readonly LayerId[];
+  onSelect: (id: LayerId, mods: SelectMods) => void;
 }) {
   const Icon = LAYER_ICONS[id];
   const el = isElementId(id) ? elementById(id) : null;
@@ -131,7 +119,20 @@ function LayerRow({
   return (
     <Collapsible>
       <SidebarMenuItem>
-        <div className="flex items-center">
+        {/* The highlight sits on the whole row, not just the name button, so
+            a selected layer reads as one bar across the eye, the metallic
+            toggle and the chevron rather than a lozenge floating between
+            them. The button keeps data-active (its own background matches,
+            so the two never show a seam). */}
+        <div
+          className={cn(
+            // group/row + the button's own hover:bg-transparent below: hover
+            // lights the whole bar too, so a row never shows a half-width
+            // highlight under the cursor.
+            "group/row flex items-center rounded-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            selected.includes(id) && "bg-sidebar-accent text-sidebar-accent-foreground",
+          )}
+        >
           {/* Every element row gets an eye — including QR/Barcode, since
               hiding is a session-level skip, not the ink-less styling
               allowNone forbids. Document rows go without, for now. */}
@@ -152,9 +153,15 @@ function LayerRow({
           )}
           <SidebarMenuButton
             size="sm"
-            isActive={selected === id}
-            onClick={() => onSelect(id)}
-            className={cn("text-xs", (hidden || collabOff) && "opacity-50")}
+            isActive={selected.includes(id)}
+            // The row owns no selection logic: it reports the click and its
+            // modifiers, and App resolves them against the anchor and the
+            // panel's row order (see selection.ts). metaKey OR ctrlKey so the
+            // same gesture works on macOS and elsewhere.
+            onClick={(e) => onSelect(id, { shift: e.shiftKey, toggle: e.metaKey || e.ctrlKey })}
+            // The row wrapper owns both the hover and the selected
+            // background; the button's own would only cover its own width.
+            className={cn("text-xs hover:bg-transparent", (hidden || collabOff) && "opacity-50")}
           >
             <Icon />
             <span>{label}</span>
@@ -200,12 +207,22 @@ export function LayersPanel(props: {
   /** Session-level hidden set — lives in App and flows into Assets.hidden. */
   hidden: ReadonlySet<ElementId>;
   onToggleHidden: (id: ElementId) => void;
-  selected: LayerId | null;
-  onSelect: (id: LayerId) => void;
+  /** Every selected layer, in click order — see selection.ts. */
+  selected: readonly LayerId[];
+  onSelect: (id: LayerId, mods: SelectMods) => void;
 }): React.JSX.Element {
   return (
     <>
-      {GROUPS.map(([title, rows]) => (
+      {/* The two modifier gestures, said once at the top of the list — but
+          only once something is selected: they are only actionable from an
+          existing selection (a range needs an anchor), and an empty panel's
+          first job is the layer names, not a shortcut legend. */}
+      {props.selected.length > 0 && (
+        <p className="px-2 pt-2 text-[11px] text-sidebar-foreground/50">
+          ⇧ click for a range · ⌘ click to add
+        </p>
+      )}
+      {PANEL_GROUPS.map(([title, rows]) => (
         <SidebarGroup key={title}>
           <SidebarGroupLabel>{title}</SidebarGroupLabel>
           <SidebarGroupContent>

@@ -8,7 +8,7 @@ import {
   Image, ImagePlus, MapPin, Percent, QrCode, Scan, Snowflake, TriangleAlert,
   Settings2, Type, type LucideIcon,
 } from "lucide-react";
-import type { ElementId } from "@/elements";
+import { ELEMENTS, type ElementId } from "@/elements";
 
 export type LayerId = ElementId | "background" | "mask" | "settings";
 
@@ -47,3 +47,24 @@ export const DOC_LAYER_LABELS: Record<DocLayerId, string> = {
 export function isElementId(id: LayerId): id is ElementId {
   return !(id in DOC_LAYER_LABELS);
 }
+
+/** Every group derives both its membership and its order from the registry,
+ *  so a regrouped, reordered or added element can't silently vanish from the
+ *  panel or drift out of the spec's stacking order. */
+const rowsOf = (group: "beer" | "template" | "collab"): LayerId[] =>
+  ELEMENTS.filter((e) => e.group === group).map((e) => e.id);
+
+/** The panel's groups, top to bottom. Lives here rather than in LayersPanel
+ *  because the row ORDER is also what a shift-click range is resolved
+ *  against (see PANEL_ORDER) — the panel and the selection rules have to read
+ *  one list, or a range would select rows the user didn't drag over. */
+export const PANEL_GROUPS: [string, LayerId[]][] = [
+  ["Beer", rowsOf("beer")],
+  ["Collab", rowsOf("collab")],
+  ["Template", rowsOf("template")],
+  ["Document", ["background", "mask", "settings"]],
+];
+
+/** Every row, flattened in panel order — the sequence a shift-range walks,
+ *  so a range crosses group boundaries exactly as the visible list does. */
+export const PANEL_ORDER: LayerId[] = PANEL_GROUPS.flatMap(([, rows]) => rows);
