@@ -15,6 +15,8 @@ export interface Command {
   run: () => void;
   disabled?: boolean;
   key?: string;
+  /** Modifiers `key` needs. Omitted = a bare key (Figma style). */
+  mods?: "⌘" | "⇧⌘";
   shortcut?: string;
 }
 

@@ -308,15 +308,19 @@ export default function App() {
     return () => document.removeEventListener("keydown", onKey);
   }, [undo, redo]);
 
-  // Figma-style bare keys (see COMMANDS for which), with the same
-  // inert-while-typing guard as undo: a digit in a text field is text.
-  // Registered once — the handler reads the current table through a ref.
+  // Figma-style bare keys plus the ⌘-modified exports (see `commands` for
+  // which), with the same inert-while-typing guard as undo: a digit in a text
+  // field is text. Registered once — the handler reads the table through a ref.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.altKey) return;
+      // The pressed combo, in the same notation the table declares: undefined
+      // for a bare key, so a command can't fire under the wrong modifiers.
+      const mods = e.metaKey || e.ctrlKey ? (e.shiftKey ? "⇧⌘" : "⌘") : undefined;
+      if (!mods && e.shiftKey) return;
       const el = e.target as HTMLElement | null;
       if (el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "")) return;
-      const cmd = commandsRef.current.find((c) => c.key === e.key.toLowerCase());
+      const cmd = commandsRef.current.find((c) => c.key === e.key.toLowerCase() && c.mods === mods);
       if (!cmd || cmd.disabled) return;
       e.preventDefault();
       cmd.run();
@@ -528,10 +532,10 @@ export default function App() {
   }
 
   /** Layered Photoshop files: editable type layers, vector logo/QR/barcode.
-   *  Built full-resolution on demand, like the PDF exports. Writes the pair —
-   *  `{name}.psd` (art) and `{name}-mask.psd` (white-ink plate), mirroring
-   *  the two PDF deliverables. */
-  async function exportPsd() {
+   *  Built full-resolution on demand, like the PDF exports. `which` picks a
+   *  single plate — `{name}.psd` (art) or `{name}-mask.psd` (white ink) — and
+   *  defaults to writing both, mirroring the two PDF deliverables. */
+  async function exportPsd(which: "both" | "art" | "mask" = "both") {
     if (building) return;
     setBuilding(true);
     startSaveBatch();
@@ -545,11 +549,15 @@ export default function App() {
         texture: await rasterPixels(texture?.bytes),
         mask: await rasterPixels(mask?.bytes),
       };
-      saveBytes(await buildPsd(cfg, assets), `${exportBaseName(cfg)}.psd`, "image/vnd.adobe.photoshop");
-      saveBytes(
-        await buildPsd(cfg, assets, "mask"),
-        `${exportBaseName(cfg)}-mask.psd`, "image/vnd.adobe.photoshop",
-      );
+      if (which !== "mask") {
+        saveBytes(await buildPsd(cfg, assets), `${exportBaseName(cfg)}.psd`, "image/vnd.adobe.photoshop");
+      }
+      if (which !== "art") {
+        saveBytes(
+          await buildPsd(cfg, assets, "mask"),
+          `${exportBaseName(cfg)}-mask.psd`, "image/vnd.adobe.photoshop",
+        );
+      }
       setBuildError("");
     } catch (err) {
       setBuildError(String(err));
@@ -593,10 +601,17 @@ export default function App() {
    *  while disabled in another. The menubar keeps its own JSX: it groups,
    *  separates and check-marks, which is layout, not command identity. */
   const commands: Command[] = [
-    { id: "export-both", label: "Export PDF + Mask PDF", disabled: pdfExportBlocked, run: exportPdfs },
-    { id: "export-art", label: "Export PDF", disabled: pdfExportBlocked, run: downloadArt },
+    // ⌘E exports the PDFs, ⇧⌘E the PSDs — the whole-deliverable runs. The
+    // single-plate variants stay menu-only: naming six distinct combos costs
+    // more than it saves.
+    { id: "export-both", label: "Export PDFs", key: "e", mods: "⌘", shortcut: "⌘E",
+      disabled: pdfExportBlocked, run: exportPdfs },
+    { id: "export-art", label: "Export Artwork PDF", disabled: pdfExportBlocked, run: downloadArt },
     { id: "export-mask", label: "Export Mask PDF", disabled: pdfExportBlocked, run: downloadMask },
-    { id: "export-psd", label: "Export PSDs", disabled: exportBlocked, run: () => void exportPsd() },
+    { id: "export-psd", label: "Export PSDs", key: "e", mods: "⇧⌘", shortcut: "⇧⌘E",
+      disabled: exportBlocked, run: () => void exportPsd() },
+    { id: "export-psd-art", label: "Export Artwork PSD", disabled: exportBlocked, run: () => void exportPsd("art") },
+    { id: "export-psd-mask", label: "Export Mask PSD", disabled: exportBlocked, run: () => void exportPsd("mask") },
     { id: "undo", label: "Undo", shortcut: "⌘Z", disabled: !canUndo, run: undo },
     { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: !canRedo, run: redo },
     { id: "presets-export", label: "Export presets", run: () => void exportPresets() },
@@ -641,27 +656,37 @@ export default function App() {
             <MenubarMenu>
               <MenubarTrigger className={MENU_TRIGGER}>File</MenubarTrigger>
               <MenubarContent align="start" className={MENU_ITEMS}>
-                {/* The preset library: beer styles and barcodes reused across
-                    labels. */}
-                <MenubarItem onClick={byId("presets-export").run}>
-                  Export presets
+                {/* Deliverables first, both-at-once first within each format:
+                    that is the common run. !pdfs is the mid-build state, so
+                    only the PDF items wait on it — the PSD path rebuilds from
+                    the config alone. */}
+                <MenubarItem disabled={byId("export-both").disabled} onClick={byId("export-both").run}>
+                  Export PDFs <MenubarShortcut>{byId("export-both").shortcut}</MenubarShortcut>
                 </MenubarItem>
-                <MenubarItem onClick={byId("presets-import").run}>
-                  Import presets
-                </MenubarItem>
-                <MenubarSeparator />
-                {/* !pdfs is the mid-build state: the PSD path rebuilds from
-                    the config alone, so only the PDF items wait on it.
-                    Exporting both PDFs at once lives in the ⌘K palette only —
-                    here the two layers are separate items. */}
                 <MenubarItem disabled={byId("export-art").disabled} onClick={byId("export-art").run}>
-                  Export PDF
+                  Export Artwork PDF
                 </MenubarItem>
                 <MenubarItem disabled={byId("export-mask").disabled} onClick={byId("export-mask").run}>
                   Export Mask PDF
                 </MenubarItem>
+                <MenubarSeparator />
                 <MenubarItem disabled={byId("export-psd").disabled} onClick={byId("export-psd").run}>
-                  Export PSDs
+                  Export PSDs <MenubarShortcut>{byId("export-psd").shortcut}</MenubarShortcut>
+                </MenubarItem>
+                <MenubarItem disabled={byId("export-psd-art").disabled} onClick={byId("export-psd-art").run}>
+                  Export Artwork PSD
+                </MenubarItem>
+                <MenubarItem disabled={byId("export-psd-mask").disabled} onClick={byId("export-psd-mask").run}>
+                  Export Mask PSD
+                </MenubarItem>
+                <MenubarSeparator />
+                {/* The preset library: beer styles and barcodes reused across
+                    labels. Ellipsis — import opens a file picker. */}
+                <MenubarItem onClick={byId("presets-import").run}>
+                  Import Presets…
+                </MenubarItem>
+                <MenubarItem onClick={byId("presets-export").run}>
+                  Export Presets
                 </MenubarItem>
               </MenubarContent>
             </MenubarMenu>

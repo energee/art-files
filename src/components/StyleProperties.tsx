@@ -534,10 +534,10 @@ export function Inspector(props: {
             </Button>
           )}
           <Button
-            variant="ghost" size="icon" className="size-11"
+            variant="ghost" size="icon" className="size-7"
             aria-label="Close inspector" onClick={props.onClose}
           >
-            <X className="size-6" />
+            <X className="size-4" />
           </Button>
         </span>
       </div>
