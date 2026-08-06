@@ -796,14 +796,19 @@ export default function App() {
             keeps an outside click (e.g. preview click-to-select) from
             closing it mid-selection (no backdrop = no outside-press target). */}
         <Sheet open={selected.length > 0} modal={false}
-          // "outside-press" is ignored: the sheet has no backdrop, so every
-          // click in the layers panel or on the canvas counts as one — and
-          // base-ui fires it on POINTERDOWN, i.e. before the click that is
-          // about to extend the selection. Clearing there wiped the selection
-          // and its anchor between every pair of clicks, which made ⇧/⌘ look
-          // like plain clicks. Escape and the header X still close.
+          // The selection is the source of truth for this sheet, so only a
+          // deliberate close clears it — a WHITELIST, not a blocklist. The
+          // sheet has no backdrop, so base-ui reports every click in the
+          // layers panel or on the canvas as "outside-press", and it fires
+          // that on the POINTERDOWN *preceding* the click that is about to
+          // extend the selection; "focus-out" arrives the same way when a
+          // row button takes focus, which is why the sidebar felt flakier
+          // than the canvas (a canvas click moves no focus). Honouring
+          // either wiped the selection and its anchor between clicks and
+          // made ⇧/⌘ behave like plain clicks.
           onOpenChange={(open, details) => {
-            if (!open && (details as { reason?: string })?.reason !== "outside-press")
+            const reason = (details as { reason?: string })?.reason;
+            if (!open && (reason === "escape-key" || reason === "close-press"))
               clearSelection();
           }}>
           <SheetContent side="right" showOverlay={false} showCloseButton={false}

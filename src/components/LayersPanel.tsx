@@ -112,10 +112,21 @@ function LayerRow({
     if (el) onToggleHidden(el.id);
   };
 
-  // Row anatomy, left to right: eye · icon+name (the select target) ·
-  // chevron. The eye and chevron are siblings of the menu button, not
-  // children, so neither can change the selection. Document rows get a
-  // spacer where the eye would sit, keeping the icon column aligned.
+  // Row anatomy, left to right: eye · icon+name · metallic · chevron. The
+  // whole row is the select target (see the wrapper's onClick): it is
+  // highlighted end to end, so every part of it has to behave as one thing —
+  // a click landing on the gap beside the name, or a ⇧-click that misses the
+  // name button by a few px, must still extend the selection rather than do
+  // nothing. The three controls are stopPropagation islands inside it, so
+  // hiding, restyling or expanding a row still never changes the selection.
+  // Document rows get a spacer where the eye would sit, keeping the icon
+  // column aligned.
+  const select = (e: React.MouseEvent) =>
+    onSelect(id, { shift: e.shiftKey, toggle: e.metaKey || e.ctrlKey });
+  /** Wraps a row control so its clicks stay its own. */
+  const island = (node: React.ReactNode) => (
+    <span className="contents" onClick={(e) => e.stopPropagation()}>{node}</span>
+  );
   return (
     <Collapsible>
       <SidebarMenuItem>
@@ -125,11 +136,12 @@ function LayerRow({
             them. The button keeps data-active (its own background matches,
             so the two never show a seam). */}
         <div
+          onClick={select}
           className={cn(
             // group/row + the button's own hover:bg-transparent below: hover
             // lights the whole bar too, so a row never shows a half-width
             // highlight under the cursor.
-            "group/row flex items-center rounded-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            "group/row flex cursor-pointer items-center rounded-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
             selected.includes(id) && "bg-sidebar-accent text-sidebar-accent-foreground",
           )}
         >
@@ -154,11 +166,10 @@ function LayerRow({
           <SidebarMenuButton
             size="sm"
             isActive={selected.includes(id)}
-            // The row owns no selection logic: it reports the click and its
-            // modifiers, and App resolves them against the anchor and the
-            // panel's row order (see selection.ts). metaKey OR ctrlKey so the
-            // same gesture works on macOS and elsewhere.
-            onClick={(e) => onSelect(id, { shift: e.shiftKey, toggle: e.metaKey || e.ctrlKey })}
+            // No onClick of its own: the click bubbles to the row wrapper,
+            // which is the one select target. Keyboard still works — Enter
+            // on this button fires a click that bubbles the same way — and
+            // the button stays the row's focusable, named control.
             // The row wrapper owns both the hover and the selected
             // background; the button's own would only cover its own width.
             className={cn("text-xs hover:bg-transparent", (hidden || collabOff) && "opacity-50")}
@@ -168,13 +179,13 @@ function LayerRow({
           </SidebarMenuButton>
           {/* Shared metallic toggle — the same write as the inspector's Ink
               group, so the two stay in lockstep. Lit while metallic. */}
-          {el !== null && (
+          {el !== null && island(
             <MetallicToggle
               label={label}
               pressed={el.style(cfg).layer === "metallic"}
               onPressedChange={(on) =>
                 update((c) => applyStyle(c, el.id, { layer: on ? "metallic" : "white" }))}
-            />
+            />,
           )}
           {/* Applied-styles accordion, element rows only — the document
               layers have no styles. A read-only digest; editing stays in
@@ -182,6 +193,7 @@ function LayerRow({
           {el !== null && (
             <CollapsibleTrigger
               aria-label={`${label} styles`}
+              onClick={(e) => e.stopPropagation()}
               className="group/styles grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70 hover:text-sidebar-foreground"
             >
               <ChevronDown className="size-3.5 transition-transform group-data-[panel-open]/styles:rotate-180" />
@@ -218,7 +230,7 @@ export function LayersPanel(props: {
           existing selection (a range needs an anchor), and an empty panel's
           first job is the layer names, not a shortcut legend. */}
       {props.selected.length > 0 && (
-        <p className="px-2 pt-2 text-[11px] text-sidebar-foreground/50">
+        <p className="px-2 pt-2 text-center text-[11px] text-sidebar-foreground/50">
           ⇧ click for a range · ⌘ click to add
         </p>
       )}
