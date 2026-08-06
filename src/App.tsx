@@ -253,9 +253,9 @@ export default function App() {
       switch (e.key) {
         case "1": show2d("art"); break;
         case "2": show2d("mask"); break;
-        case "3": setViewMode("can"); break;
-        case "4": setViewMode("pack"); break;
-        case "5": setViewMode("flat"); break;
+        case "3": setViewMode("flat"); break;
+        case "4": setViewMode("can"); break;
+        case "5": setViewMode("pack"); break;
         default: return;
       }
       e.preventDefault();
@@ -578,17 +578,17 @@ export default function App() {
                   Mask <MenubarShortcut>2</MenubarShortcut>
                 </MenubarCheckboxItem>
                 <MenubarSeparator />
+                <MenubarCheckboxItem checked={viewMode === "flat"}
+                  onClick={() => setViewMode("flat")}>
+                  Rendered <MenubarShortcut>3</MenubarShortcut>
+                </MenubarCheckboxItem>
                 <MenubarCheckboxItem checked={viewMode === "can"}
                   onClick={() => setViewMode("can")}>
-                  Single Can <MenubarShortcut>3</MenubarShortcut>
+                  Single Can <MenubarShortcut>4</MenubarShortcut>
                 </MenubarCheckboxItem>
                 <MenubarCheckboxItem checked={viewMode === "pack"}
                   onClick={() => setViewMode("pack")}>
-                  Four-Pack <MenubarShortcut>4</MenubarShortcut>
-                </MenubarCheckboxItem>
-                <MenubarCheckboxItem checked={viewMode === "flat"}
-                  onClick={() => setViewMode("flat")}>
-                  Flat Label <MenubarShortcut>5</MenubarShortcut>
+                  Four-Pack <MenubarShortcut>5</MenubarShortcut>
                 </MenubarCheckboxItem>
               </MenubarContent>
             </MenubarMenu>
@@ -652,8 +652,8 @@ export default function App() {
                 else setViewMode(next);
               }}
             >
-              {([["art", "Standard"], ["mask", "Mask"], ["can", "Can"],
-                ["pack", "4-Pack"], ["flat", "Flat"]] as const).map(([v, label]) => (
+              {([["art", "Standard"], ["mask", "Mask"], ["flat", "Rendered"],
+                ["can", "Can"], ["pack", "4-Pack"]] as const).map(([v, label]) => (
                 <ToggleGroupItem key={v} value={v} className="h-6 px-2 text-xs">
                   {label}
                 </ToggleGroupItem>
@@ -701,9 +701,9 @@ export default function App() {
             { label: "Load config", run: () => configInput.current?.click() },
             { label: "Preview: Standard", run: () => show2d("art") },
             { label: "Preview: Mask", run: () => show2d("mask") },
+            { label: "Preview: Rendered", run: () => setViewMode("flat") },
             { label: "Preview: Single Can", run: () => setViewMode("can") },
             { label: "Preview: Four-Pack", run: () => setViewMode("pack") },
-            { label: "Preview: Flat Label", run: () => setViewMode("flat") },
           ]}
         />
       </div>
