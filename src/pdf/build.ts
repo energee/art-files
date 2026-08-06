@@ -341,8 +341,10 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode:
   const glyph = { size: B.textSize, font: fonts.regular, rotate: degrees(90) };
 
   if (mode === "mask") {
-    // The true footprint the art pass inks: one outset rect per bar (the
-    // same ±S outset the art halo pass draws below) plus a pill per digit
+    // The true footprint the art pass inks: one outset rect per bar (a square
+    // ±S outset — the art's halo rounds those corners at radius S, so this
+    // over-covers by a hair there, which is the safe direction for a white-ink
+    // plate: under-coverage fringes, over-coverage hides) plus a pill per digit
     // group — the rect the art's ring-of-copies halo approximates — around
     // its glyph box expanded by S. At S=0 (stroke "none") this reduces to
     // exactly the bars' and digits' own ink, still needed under the ink for
@@ -373,11 +375,14 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode:
   if (S > 0) {
     const strokeColor = fillColor(cfg.barcodeStroke);
     const ringS = ring(S); // loop-invariant
+    // A centered border at 2S extends S beyond the bar and — because the page
+    // sets a ROUND line join (see newDoc) — rounds each corner at radius S,
+    // which is what Photoshop's outside stroke does and what the PSD's real
+    // stroke effect produces. The old outset rectangle was square-cornered,
+    // the one place the PDF's barcode halo visibly diverged from the PSD.
     for (const r of bars)
       page.drawRectangle({
-        x: r.x - S, y: r.y - S,
-        width: r.width + 2 * S, height: r.height + 2 * S,
-        color: strokeColor,
+        ...r, color: strokeColor, borderColor: strokeColor, borderWidth: 2 * S,
       });
     for (const d of digits)
       for (const [dx, dy] of ringS)
@@ -525,7 +530,9 @@ async function drawElements(
       }),
     );
   if (!hide("storeCold"))
-    drawRotated(page, fonts.semibold, cfg.storeCold.text, mode, cfg.storeCold, {
+    // Semibold is this line's plain face; the element's bold toggle steps it up
+    // to Bold, exactly as handleAddress above.
+    drawRotated(page, cfg.storeCold.bold ? fonts.bold : fonts.semibold, cfg.storeCold.text, mode, cfg.storeCold, {
       x: L.STORE_COLD.x, yStart: L.STORE_COLD.yStart, size: L.STORE_COLD.size,
     });
 

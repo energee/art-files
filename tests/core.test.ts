@@ -11,6 +11,16 @@ import {
   COLLAB_LEAD, COLLAB_LEFT, DEFAULT_STROKE_PX, DESC, GOLD, QR,
   collabLeftFlow, parseHexFill,
 } from "../src/layout";
+import { addColor } from "../src/presets";
+
+describe("color presets", () => {
+  it("appends a new hex, lowercased", () => {
+    expect(addColor(["#111111"], "#B58B3C")).toEqual(["#111111", "#b58b3c"]);
+  });
+  it("ignores a hex already saved, whatever its case", () => {
+    expect(addColor(["#b58b3c"], "#B58B3C")).toEqual(["#b58b3c"]);
+  });
+});
 
 describe("upc", () => {
   it("computes the Labradorite check digit", () => {

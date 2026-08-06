@@ -11,7 +11,7 @@ import type { Plugin } from "vite";
  *  them history and review. Dev-server only — the app runs locally, so there
  *  is no deployed build that would need a real backend for this. */
 const PRESETS_FILE = fileURLToPath(new URL("./presets.json", import.meta.url));
-const EMPTY_PRESETS = '{"styles":[],"barcodes":[]}';
+const EMPTY_PRESETS = '{"styles":[],"barcodes":[],"colors":[]}';
 
 function presetsApi(): Plugin {
   return {

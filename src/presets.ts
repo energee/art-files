@@ -15,9 +15,19 @@ export interface Presets {
    *  own label, so these are plain strings. */
   styles: string[];
   barcodes: BarcodePreset[];
+  /** Saved hex fills ("#b58b3c"), lowercased. Shared by every color element —
+   *  a swatch saved from the wordmark's fill shows up under the barcode's. */
+  colors: string[];
 }
 
-export const EMPTY_PRESETS: Presets = { styles: [], barcodes: [] };
+export const EMPTY_PRESETS: Presets = { styles: [], barcodes: [], colors: [] };
+
+/** Add a hex to the swatch library, lowercased so #B58B3C and #b58b3c are one
+ *  entry. Returns the list unchanged when the color is already saved. */
+export function addColor(list: string[], hex: string): string[] {
+  const h = hex.toLowerCase();
+  return list.includes(h) ? list : [...list, h];
+}
 
 /** Read the library. Returns empty rather than throwing when the endpoint is
  *  missing (a production build carries no dev middleware), so the pickers
@@ -27,7 +37,7 @@ export async function loadPresets(): Promise<Presets> {
     const res = await fetch("/api/presets");
     if (!res.ok) return EMPTY_PRESETS;
     const raw = (await res.json()) as Partial<Presets>;
-    return { styles: raw.styles ?? [], barcodes: raw.barcodes ?? [] };
+    return { styles: raw.styles ?? [], barcodes: raw.barcodes ?? [], colors: raw.colors ?? [] };
   } catch {
     return EMPTY_PRESETS;
   }

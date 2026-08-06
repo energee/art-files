@@ -69,9 +69,9 @@ const rotated = (
  *  abv, description, wordmark, logo, name, styleLine, qr, handleAddress,
  *  warning, storeCold, barcode — exactly drawElements' order in
  *  src/pdf/build.ts.
- *  handleAddress and storeCold pass bold=true because drawRotated always
- *  renders them with the semibold face (its font is a fixed argument, never
- *  read from style.bold); the description header passes its own bold since
+ *  handleAddress and storeCold pass bold=true because semibold is their plain
+ *  face (their bold toggle only steps them up to Bold, whose metrics are close
+ *  enough to reuse the semibold measure); the description header passes its own bold since
  *  parseDescription hardcodes header bold=true (e.g. the default "# HOPS"). */
 export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
   const desc = parseDescription(cfg.description, cfg.descStyle);
@@ -144,7 +144,8 @@ export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
       y1: L.WARNING.yStart,
     }),
   );
-  // storeCold always renders semibold too (bold=true; see the doc comment).
+  // storeCold measures semibold (bold=true; see the doc comment) even when its
+  // bold toggle picks the Bold face — close enough for a hit box.
   boxes.push(rotated("storeCold", cfg.storeCold.text, L.STORE_COLD.x, L.STORE_COLD.yStart, L.STORE_COLD.size, m, true, cfg.storeCold.letterSpacing));
   // The barcode is drawn last, so its box goes last too. No font measurement:
   // the footprint is the whole symbol, bars AND the digits column (BARCODE.w

@@ -1,5 +1,5 @@
 // LayersPanel.tsx — the Figma-style layer list that fills the left sidebar.
-// Four groups: "This beer" (per-release elements), "Collab" (the lead-in and
+// Four groups: "Beer" (per-release elements), "Collab" (the lead-in and
 // two partner-logo slots), "Template" (set-once brand elements), and
 // "Document" (the UI-level background/mask layers from ./layers, which carry
 // file drops rather than Styles). Rows select into the
@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/sidebar";
 import { DOC_LAYER_LABELS, LAYER_ICONS, isElementId, type LayerId } from "./layers";
 
-/** "This beer" keeps the spec's curated stacking order (Barcode before QR —
+/** "Beer" keeps the spec's curated stacking order (Barcode before QR —
  *  unlike ELEMENTS order); Collab and Template derive their membership AND
  *  order from the registry, so a regrouped or added element can't silently
  *  vanish from the panel. */
@@ -46,7 +46,7 @@ if (import.meta.env.DEV) {
 }
 
 const GROUPS: [string, LayerId[]][] = [
-  ["This beer", BEER_ROWS],
+  ["Beer", BEER_ROWS],
   ["Collab", COLLAB_ROWS],
   ["Template", TEMPLATE_ROWS],
   ["Document", DOC_ROWS],

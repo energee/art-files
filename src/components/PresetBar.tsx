@@ -15,17 +15,20 @@ import {
 
 /** Loads presets.json once and exposes a writer that persists the whole
  *  library. A failed write surfaces as a message: silently dropping it would
- *  look identical to a successful save. */
-function usePresets() {
+ *  look identical to a successful save. `reload` re-reads the file so a second
+ *  copy of the hook (ColorField's swatches) picks up what another copy just
+ *  saved, without a remount. */
+export function usePresets() {
   const [presets, setPresets] = React.useState<Presets>(EMPTY_PRESETS);
   const [error, setError] = React.useState("");
-  React.useEffect(() => { void loadPresets().then(setPresets); }, []);
+  const reload = React.useCallback(() => { void loadPresets().then(setPresets); }, []);
+  React.useEffect(reload, [reload]);
 
   const commit = (next: Presets) => {
     setPresets(next);
     savePresets(next).then(() => setError(""), (e: Error) => setError(e.message));
   };
-  return { presets, commit, error };
+  return { presets, commit, error, reload };
 }
 
 /** The pickers are action lists, not fields: they never display a selection

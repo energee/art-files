@@ -59,6 +59,16 @@ function filteredCopy(canvas: HTMLCanvasElement, filter: string): HTMLCanvasElem
   return copy;
 }
 
+/** True if the metalness plate has any foil on it (white = foil, see
+ *  roughnessCanvas). Strided sample — a real foil area is thousands of pixels.
+ *  // ponytail: stride 41, exact scan only if a hairline foil rule is missed. */
+function hasInk(metalness: HTMLCanvasElement): boolean {
+  const { width, height } = metalness;
+  const d = metalness.getContext("2d")!.getImageData(0, 0, width, height).data;
+  for (let i = 0; i < d.length; i += 4 * 41) if (d[i] > 8) return true;
+  return false;
+}
+
 /** Per-pixel lerp of the soft mask into a roughness map: matte 0.8 where the
  *  mask is black (white ink) down to 0.33 where it's white (foil). */
 function roughnessCanvas(softMask: HTMLCanvasElement): HTMLCanvasElement {
@@ -102,6 +112,9 @@ export class CanScene {
   private cornerRadiusPct = CORNER_RADIUS_PCT;
   private edgeSoftnessRatio = EDGE_SOFTNESS;
   private flatMesh: THREE.Mesh | null = null;
+  /** Opaque backing behind the flat plane so orbiting past 90° shows the
+   *  label's blank back (foil or matte stock) instead of mirrored art. */
+  private flatBackMesh: THREE.Mesh | null = null;
   private shadowMesh: THREE.Mesh | null = null;
   private packGroup: THREE.Group | null = null;
 
@@ -279,6 +292,12 @@ export class CanScene {
   }
 
   private disposeFlatMesh() {
+    if (this.flatBackMesh) {
+      this.scene.remove(this.flatBackMesh);
+      this.flatBackMesh.geometry.dispose();
+      (this.flatBackMesh.material as THREE.Material).dispose();
+      this.flatBackMesh = null;
+    }
     if (!this.flatMesh) return;
     this.scene.remove(this.flatMesh);
     this.flatMesh.geometry.dispose();
@@ -365,6 +384,25 @@ export class CanScene {
     );
     this.scene.add(this.flatMesh);
 
+    // Blank back of the stock, facing -z: metallic foil if the label uses any
+    // white-ink/metallic mask, otherwise plain white matte. Opaque, so it hides
+    // the shared DoubleSide art when the user orbits behind the plane.
+    const foil = hasInk(tex.metalness);
+    this.flatBackMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(FLAT_LABEL_HEIGHT * tex.aspect, FLAT_LABEL_HEIGHT),
+      new THREE.MeshStandardMaterial({
+        color: foil ? 0xf7f9fb : 0xffffff,
+        metalness: foil ? 1.0 : 0.0,
+        roughness: foil ? 0.03 : 0.9,
+        envMapIntensity: foil ? 3.0 : 1.0,
+        transparent: true, alphaTest: 0.5,
+        alphaMap: this.createTexture(alpha),
+      }),
+    );
+    this.flatBackMesh.rotation.y = Math.PI;
+    this.flatBackMesh.position.z = -0.0005;
+    this.scene.add(this.flatBackMesh);
+
     this.applyMode(); // re-frame + rebuild the pack against the new meshes
   }
 
@@ -386,6 +424,7 @@ export class CanScene {
     if (this.labelMesh) this.labelMesh.visible = canVisible;
     if (this.shadowMesh) this.shadowMesh.visible = canVisible;
     if (this.flatMesh) this.flatMesh.visible = mode === "flat";
+    if (this.flatBackMesh) this.flatBackMesh.visible = mode === "flat";
 
     this.controls.target.set(0, 0, 0);
     if (mode === "pack") {

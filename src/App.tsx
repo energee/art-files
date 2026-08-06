@@ -551,7 +551,9 @@ export default function App() {
   async function importPresets(f: File) {
     try {
       const raw = JSON.parse(await f.text()) as Partial<Presets>;
-      await savePresets({ styles: raw.styles ?? [], barcodes: raw.barcodes ?? [] });
+      await savePresets({
+        styles: raw.styles ?? [], barcodes: raw.barcodes ?? [], colors: raw.colors ?? [],
+      });
       setLoadError("");
     } catch (err) {
       setLoadError(`presets import failed: ${String(err)}`);

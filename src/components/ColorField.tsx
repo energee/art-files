@@ -12,6 +12,8 @@ import { GOLD } from "@/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { usePresets } from "./PresetBar";
+import { addColor } from "@/presets";
 
 /** "No ink" checkerboard chip background. */
 export const CHECKER =
@@ -37,6 +39,12 @@ export function ColorField(props: {
   const hex = none ? "#ffffff" : props.value;
   // Commit a picked color and drop any half-typed hex sitting in the Input.
   const apply = (v: string) => { setText(null); props.onChange(v as Fill); };
+  // Saved swatches live in presets.json, not on the element, so a color saved
+  // here is offered by every other ColorField. Reloaded when the popover
+  // opens: the other field's copy of the hook may have saved since mount.
+  const { presets, commit, error, reload } = usePresets();
+  const saved = presets.colors.includes(hex.toLowerCase());
+  const setColors = (colors: string[]) => commit({ ...presets, colors });
   return (
     <div className="flex items-center gap-1">
       {props.allowNone !== false && (
@@ -51,7 +59,7 @@ export function ColorField(props: {
           style={{ background: CHECKER }}
         />
       )}
-      <Popover>
+      <Popover onOpenChange={(open) => { if (open) reload(); }}>
         <PopoverTrigger
           render={
             <Button
@@ -83,6 +91,39 @@ export function ColorField(props: {
               <Pipette /> Pick from screen
             </Button>
           )}
+          {/* Saved swatches. Click applies, shift-click removes — a delete
+              affordance per chip would double the row's height for something
+              used once in a while. */}
+          <div className="mt-2 flex max-w-[200px] flex-wrap items-center gap-1">
+            {presets.colors.map((c) => (
+              <button
+                key={c}
+                type="button"
+                title={`${c} (shift-click to remove)`}
+                aria-label={c}
+                className="size-5 rounded-sm border border-border"
+                style={{ background: c }}
+                onClick={(e) =>
+                  e.shiftKey
+                    ? setColors(presets.colors.filter((x) => x !== c))
+                    : apply(c)
+                }
+              />
+            ))}
+            {/* Disabled once this exact hex is saved: a second save is a no-op,
+                and a dead button says so up front (same rule as PresetBar). */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-5 px-1.5 text-[11px]"
+              disabled={saved}
+              onClick={() => setColors(addColor(presets.colors, hex))}
+            >
+              {saved ? "Saved" : "Save"}
+            </Button>
+          </div>
+          {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
         </PopoverContent>
       </Popover>
       <Input

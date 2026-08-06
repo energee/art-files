@@ -587,7 +587,8 @@ function buildLayers(
       }),
       textLayer("Store cold", cfg.storeCold.text, {
         x: L.STORE_COLD.x, baseline: L.STORE_COLD.yStart, size: L.STORE_COLD.size,
-        fill: P(cfg.storeCold), face: "semibold", rotated: true,
+        // Bold toggle steps semibold up to Bold, matching the PDF path.
+        fill: P(cfg.storeCold), face: cfg.storeCold.bold ? "bold" : "semibold", rotated: true,
         tracking: cfg.storeCold.letterSpacing,
         stroke: cfg.storeCold.stroke, strokeWidth: cfg.storeCold.strokeWidth, mode,
       }),
