@@ -11,7 +11,7 @@ import { X } from "lucide-react";
 import type { LabelConfig, StyledLine } from "@/types";
 import { applyStyle, elementById, isDefaultStyle, type ElementId } from "@/elements";
 import { DOC_LAYER_LABELS, LAYER_ICONS, isElementId, type LayerId } from "@/components/layers";
-import { defaultConfig } from "@/defaults";
+import { defaultConfig, displayName } from "@/defaults";
 import { ColorField } from "./ColorField";
 import { ScrubField } from "./ScrubField";
 import { DescriptionEditor } from "./DescriptionEditor";
@@ -44,6 +44,19 @@ export interface CollabFiles {
   centerUrl?: string;
   onLeft: (f: File) => void;
   onCenter: (f: File) => void;
+}
+
+/** Document-presentation knobs the Settings layer edits — session-level 3D
+ *  view options that live in App, not in the saved config. Percentages: the
+ *  corner radius is % of the label's short edge, size is % of can height. */
+export interface DocSettings {
+  cornerRadius: number;
+  onCornerRadius: (v: number) => void;
+  labelSize: number;
+  onLabelSize: (v: number) => void;
+  /** Foil-mask blur, % of label width — softens the metallic edges. */
+  edgeSoftness: number;
+  onEdgeSoftness: (v: number) => void;
 }
 
 /** All build-time file assets the inspector can edit, grouped so App passes
@@ -186,9 +199,9 @@ function CollabSlotContent(props: {
  *  muted note instead. */
 function Content(props: {
   id: LayerId; cfg: LabelConfig; errors: Record<string, string>; update: Update;
-  files: InspectorFiles;
+  files: InspectorFiles; settings: DocSettings;
 }): React.JSX.Element | null {
-  const { id, cfg, errors, update, files } = props;
+  const { id, cfg, errors, update, files, settings } = props;
   switch (id) {
     case "name":
       return (
@@ -261,10 +274,10 @@ function Content(props: {
       // without one would hide the tail for good.
       return (
         <p
-          title={qrUrl(cfg.beerName)}
+          title={qrUrl(displayName(cfg))}
           className="truncate font-mono text-[11px] text-muted-foreground"
         >
-          {qrUrl(cfg.beerName)}
+          {qrUrl(displayName(cfg))}
         </p>
       );
     case "collabLead":
@@ -299,6 +312,32 @@ function Content(props: {
           onFile={files.mask.onFile}
         />
       );
+    case "settings":
+      // Document-wide presentation knobs for the 3D views: corner radius
+      // shapes the die-cut label (alphaMap in canScene), label size is its
+      // height as a share of the can's. The print PDFs are untouched — the
+      // physical label is cut and sized at the press, not rendered.
+      return (
+        <div className="space-y-2">
+          <ScrubField
+            id="doc-corner-radius" label="Corner radius" unit="%"
+            value={settings.cornerRadius} min={0} max={5} step={0.1} dragStep={0.1}
+            onChange={settings.onCornerRadius}
+          />
+          <ScrubField
+            id="doc-label-size" label="Label size" unit="%"
+            value={settings.labelSize} min={50} max={95} step={1}
+            onChange={settings.onLabelSize}
+          />
+          {/* Blur on the foil mask's edges: 0 = hard specular outlines
+              around every metallic element, higher = softer transitions. */}
+          <ScrubField
+            id="doc-edge-softness" label="Edge softness" unit="%"
+            value={settings.edgeSoftness} min={0} max={1} step={0.01} dragStep={0.01}
+            onChange={settings.onEdgeSoftness}
+          />
+        </div>
+      );
     case "wordmark":
     case "warning":
       // Fixed template art/text: nothing to edit beyond style — say so
@@ -331,7 +370,7 @@ function ElementStyle(props: { id: ElementId; cfg: LabelConfig; update: Update }
   return (
     <div className="space-y-3">
       <div className="space-y-1">
-        <Heading>Ink</Heading>
+        <Heading>Color</Heading>
         <div className="flex items-center gap-1.5">
           <div className="min-w-0 flex-1">
             <ColorField
@@ -351,7 +390,9 @@ function ElementStyle(props: { id: ElementId; cfg: LabelConfig; update: Update }
 
       {(el.hasBold || el.isText) && (
         <div className="space-y-1">
-          <Heading>Text</Heading>
+          {/* "Typography", not "Text": the content section above is now
+              titled Text, and two same-named sections would read as one. */}
+          <Heading>Typography</Heading>
           <div className="flex items-center gap-3">
             {el.hasBold && (
               <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -418,6 +459,7 @@ export function Inspector(props: {
   errors: Record<string, string>;
   update: Update;
   files: InspectorFiles;
+  settings: DocSettings;
   /** Clears the selection, which closes the inspector sheet. */
   onClose: () => void;
 }): React.JSX.Element {
@@ -472,8 +514,9 @@ export function Inspector(props: {
         </span>
       </div>
 
-      <Heading>Content</Heading>
-      <Content id={id} cfg={props.cfg} errors={props.errors} update={props.update} files={props.files} />
+      <Heading>Text</Heading>
+      <Content id={id} cfg={props.cfg} errors={props.errors} update={props.update}
+        files={props.files} settings={props.settings} />
 
       {/* Document layers (background/mask) carry no Style stack — they are
           file drops only, so the section is omitted rather than shown

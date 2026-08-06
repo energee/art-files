@@ -15,7 +15,9 @@ import { validateMask, recolorMaskForPdf } from "@/maskimage";
 import { rasterKind, tintRgba } from "@/collab";
 import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "@/pdf/build";
 import { buildPsd, PSD_DOC, type PsdAssets } from "@/psd/build";
-import { Inspector, type CollabFiles, type InspectorFiles } from "@/components/StyleProperties";
+import {
+  Inspector, type CollabFiles, type DocSettings, type InspectorFiles,
+} from "@/components/StyleProperties";
 import { LayersPanel } from "@/components/LayersPanel";
 import { isElementId, type LayerId } from "@/components/layers";
 import { CommandMenu } from "@/components/CommandMenu";
@@ -174,6 +176,12 @@ export default function App() {
   // 2D preview stays mounted (hidden) so its rendered canvases and divider
   // position survive a round-trip through the 3D views.
   const [viewMode, setViewMode] = useState<"2d" | "can" | "pack" | "flat">("2d");
+  // Document Settings layer's knobs: 3D-view presentation only (die-cut
+  // corner radius, label height on the can). Session state — the print PDFs
+  // and saved configs never see them.
+  const [cornerRadius, setCornerRadius] = useState(2.5);
+  const [labelSize, setLabelSize] = useState(82);
+  const [edgeSoftness, setEdgeSoftness] = useState(0.1);
   /** Return to the 2D compare at one end. The divider resize is deferred a
    *  frame: while a 3D mode is up the compare sits in a display:none wrapper
    *  with zero width, and react-resizable-panels misapplies a percentage
@@ -267,12 +275,13 @@ export default function App() {
   const upc = useMemo(() => validateUpc(cfg.upc), [cfg.upc]);
   const errors: Record<string, string> = {};
   if (!upc.ok) errors.upc = upc.error!;
-  if (!cfg.beerName.trim()) errors.name = "Beer name is required.";
+  // A blank name no longer blocks: the renderer draws the "Name" placeholder
+  // (see displayName in defaults.ts), which is a previewable, printable label.
   // Texture and mask are both optional — the label renders on bare stock
   // until they are dropped, so the text is previewable straight away. Only
   // a loaded-but-invalid mask or bad label data blocks.
-  const blocked = !!mask?.error || !upc.ok || !cfg.beerName.trim();
-  const blockedWhy = [mask?.error, errors.upc, errors.name].filter(Boolean).join(" · ");
+  const blocked = !!mask?.error || !upc.ok;
+  const blockedWhy = [mask?.error, errors.upc].filter(Boolean).join(" · ");
 
   async function onTexture(f: File) {
     const bytes = new Uint8Array(await f.arrayBuffer());
@@ -334,6 +343,11 @@ export default function App() {
   };
   /** Everything file-shaped the inspector edits: the Document layers' drops
    *  plus the collab logos. */
+  const docSettings: DocSettings = {
+    cornerRadius, onCornerRadius: setCornerRadius,
+    labelSize, onLabelSize: setLabelSize,
+    edgeSoftness, onEdgeSoftness: setEdgeSoftness,
+  };
   const files: InspectorFiles = {
     texture: {
       fileName: texture?.name, previewUrl: texture?.previewUrl,
@@ -431,8 +445,8 @@ export default function App() {
         maskPng: mask?.bytes,
         hidden: hiddenLayers,
       };
-      if (which !== "mask") saveBytes(await buildArtPdf(cfg, assets), `${cfg.beerName}.pdf`);
-      if (which !== "art") saveBytes(await buildMaskPdf(cfg, assets), `${cfg.beerName}-mask.pdf`);
+      if (which !== "mask") saveBytes(await buildArtPdf(cfg, assets), `${cfg.beerName.trim() || "label"}.pdf`);
+      if (which !== "art") saveBytes(await buildMaskPdf(cfg, assets), `${cfg.beerName.trim() || "label"}-mask.pdf`);
     } catch (err) {
       setBuildError(String(err));
     } finally {
@@ -478,10 +492,10 @@ export default function App() {
         texture: await rasterPixels(texture?.bytes),
         mask: await rasterPixels(mask?.bytes),
       };
-      saveBytes(await buildPsd(cfg, assets), `${cfg.beerName}.psd`, "image/vnd.adobe.photoshop");
+      saveBytes(await buildPsd(cfg, assets), `${cfg.beerName.trim() || "label"}.psd`, "image/vnd.adobe.photoshop");
       saveBytes(
         await buildPsd(cfg, assets, "mask"),
-        `${cfg.beerName}-mask.psd`, "image/vnd.adobe.photoshop",
+        `${cfg.beerName.trim() || "label"}-mask.psd`, "image/vnd.adobe.photoshop",
       );
       setBuildError("");
     } catch (err) {
@@ -633,7 +647,8 @@ export default function App() {
             </div>
             {viewMode !== "2d" && (
               <CanView artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
-                mode={viewMode} />
+                mode={viewMode} cornerRadiusPct={cornerRadius} labelHeightPct={labelSize}
+                edgeSoftnessPct={edgeSoftness} />
             )}
             {/* First-load state: until the first debounced build lands there is
                 nothing on the canvases, so fill the empty frame with a spinner
@@ -661,6 +676,7 @@ export default function App() {
             className="w-[300px] gap-0 overflow-y-auto p-3 sm:max-w-[300px]">
             {selected && (
               <Inspector id={selected} cfg={cfg} errors={errors} update={update} files={files}
+                settings={docSettings}
                 onClose={() => setSelected(null)} />
             )}
           </SheetContent>

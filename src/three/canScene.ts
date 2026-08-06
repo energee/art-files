@@ -24,7 +24,8 @@ const MIN_ZOOM = 0.132;
 const MAX_ZOOM = 0.66;
 /** Normalized can height in world units. */
 const SCENE_SCALE = 0.12;
-const LABEL_HEIGHT_RATIO = 0.82;
+const LABEL_HEIGHT_RATIO = 0.82; // default; adjustable via setLabelOptions
+const CORNER_RADIUS_PCT = 2.5; // default die-cut radius, % of the short edge
 const LABEL_OFFSET_RATIO = -0.020;
 /** Center-to-center 4-pack spacing as a multiple of can radius: 2x = touching,
  *  the extra 0.02 leaves a hairline gap so adjacent walls don't z-fight. */
@@ -37,7 +38,7 @@ const FLAT_LABEL_HEIGHT = 0.08;
 /** Blur radius for the soft mask, as a fraction of mask width — softens the
  *  0->1 metalness step so foil edges don't draw a hard specular outline the
  *  physical print doesn't have. */
-const EDGE_SOFTNESS = 0.0015;
+const EDGE_SOFTNESS = 0.001; // default; adjustable via setLabelOptions
 /** Per-pixel roughness endpoints: matte white-ink areas vs bare foil. */
 const MATTE_ROUGHNESS = 0.8;
 const METALLIC_ROUGHNESS = 0.33;
@@ -97,6 +98,9 @@ export class CanScene {
   private canMaterial: THREE.MeshPhysicalMaterial | null = null;
   private labelMesh: THREE.Mesh | null = null;
   private labelMaterial: THREE.MeshStandardMaterial | null = null;
+  private labelHeightRatio = LABEL_HEIGHT_RATIO;
+  private cornerRadiusPct = CORNER_RADIUS_PCT;
+  private edgeSoftnessRatio = EDGE_SOFTNESS;
   private flatMesh: THREE.Mesh | null = null;
   private shadowMesh: THREE.Mesh | null = null;
   private packGroup: THREE.Group | null = null;
@@ -264,6 +268,7 @@ export class CanScene {
     material.metalnessMap?.dispose();
     material.roughnessMap?.dispose();
     material.bumpMap?.dispose();
+    material.alphaMap?.dispose();
   }
 
   private disposeLabelMesh() {
@@ -286,17 +291,46 @@ export class CanScene {
    * all per-pixel maps: art color map, blurred metalness mask, lerped
    * roughness, and the soft mask as a bump so foil sits proud of the ink.
    */
+  /** Adjust the die-cut corner radius (% of the label's short edge) and the
+   *  label height (% of can height). Cheap: rebuilds the label mesh and its
+   *  alphaMap from the cached canvases — no PDF re-rasterization. */
+  setLabelOptions(opts: {
+    cornerRadiusPct?: number; heightRatio?: number; edgeSoftnessRatio?: number;
+  }) {
+    if (opts.cornerRadiusPct !== undefined) this.cornerRadiusPct = opts.cornerRadiusPct;
+    if (opts.heightRatio !== undefined) this.labelHeightRatio = opts.heightRatio;
+    if (opts.edgeSoftnessRatio !== undefined) this.edgeSoftnessRatio = opts.edgeSoftnessRatio;
+    if (this.pendingTextures) this.applyTextures(this.pendingTextures);
+  }
+
   applyTextures(tex: LabelTextures) {
     this.pendingTextures = tex;
     if (!this.canModel) return; // replayed by loadCan on arrival
 
-    const labelHeight = this.canHeight * LABEL_HEIGHT_RATIO;
+    const labelHeight = this.canHeight * this.labelHeightRatio;
     const labelRadius = this.canRadius * 1.005;
     const wrapAngle = Math.min((labelHeight * tex.aspect) / labelRadius, Math.PI * 1.95);
 
     // Soft mask -> derived maps (see EDGE_SOFTNESS for why the blur exists).
-    const blur = EDGE_SOFTNESS * tex.metalness.width;
+    const blur = this.edgeSoftnessRatio * tex.metalness.width;
     const soft = filteredCopy(tex.metalness, blur > 0 ? `blur(${blur}px)` : "none");
+
+    // Rounded label corners via alphaMap (the physical label is die-cut with
+    // a small radius): a white rounded rect on black, radius 2.5% of the
+    // artwork's short edge — the reference implementation's ratio.
+    const alpha = document.createElement("canvas");
+    alpha.width = tex.art.width;
+    alpha.height = tex.art.height;
+    {
+      const ctx = alpha.getContext("2d")!;
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, alpha.width, alpha.height);
+      const r = (this.cornerRadiusPct / 100) * Math.min(alpha.width, alpha.height);
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.roundRect(0, 0, alpha.width, alpha.height, r);
+      ctx.fill();
+    }
 
     const oldMaterial = this.labelMaterial;
     this.labelMaterial = new THREE.MeshStandardMaterial({
@@ -306,6 +340,8 @@ export class CanScene {
       roughnessMap: this.createTexture(roughnessCanvas(soft)),
       bumpMap: this.createTexture(soft),
       bumpScale: LAYER_DEPTH,
+      alphaMap: this.createTexture(alpha),
+      alphaTest: 0.5,
     });
     if (oldMaterial) { this.disposeMaterialMaps(oldMaterial); oldMaterial.dispose(); }
 

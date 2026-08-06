@@ -14,12 +14,20 @@ export const WARNING_TEXT =
   "BIRTH DEFECTS. (2) CONSUMPTION OF ALCOHOLIC BEVERAGES IMPAIRS YOUR " +
   "ABILITY TO DRIVE A CAR OR OPERATE MACHINERY, AND MAY CAUSE HEALTH PROBLEMS.";
 
+/** Blank per-release fields render as placeholders — the label previews
+ *  (and prints) "Name" / "Style" / "#" until something is typed. One home
+ *  for the fallbacks so both renderers, the hit-tester and the QR payload
+ *  can never disagree about what a blank field draws. */
+export const displayName = (c: LabelConfig) => c.beerName.trim() || "Name";
+export const displayStyle = (c: LabelConfig) => c.styleLine.text.trim() || "Style";
+export const displayAbv = (c: LabelConfig) => c.abv.trim() || "#";
+
 export function defaultConfig(): LabelConfig {
   return {
-    beerName: "LABRADORITE",
+    beerName: "",
     nameStyle: { fill: GOLD, layer: "metallic", ...KEYLINE },
-    styleLine: { text: "Ultra Hopped Ale", fill: GOLD, layer: "metallic", ...KEYLINE },
-    abv: "8",
+    styleLine: { text: "", fill: GOLD, layer: "metallic", ...KEYLINE },
+    abv: "",
     abvStyle: { fill: GOLD, layer: "metallic", ...KEYLINE },
     description: [
       "# HOPS",
@@ -27,7 +35,7 @@ export function defaultConfig(): LabelConfig {
       "Freestyle Waimea",
       "Freestyle Nelson Sauvin",
       "Roy Farms Citra Liquid Lupulin",
-      "Fresh Wai-iti Cold-Pressed Hop Juice",
+      "Wai-iti Cold-Pressed Hop Juice",
     ].join("\n"),
     descStyle: { fill: GOLD, layer: "metallic", ...KEYLINE },
     upc: "850051366224",

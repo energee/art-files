@@ -55,7 +55,7 @@ const flatStyle = (k: FlatKeys) => (c: LabelConfig): Style => ({
 });
 
 export const ELEMENTS: LabelElement[] = [
-  { id: "name", label: "Beer Name", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.nameStyle },
+  { id: "name", label: "Name", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.nameStyle },
   { id: "styleLine", label: "Style", group: "beer", hasBold: true, isText: true, allowNone: true, style: (c) => c.styleLine },
   { id: "abv", label: "ABV", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.abvStyle },
   { id: "description", label: "Description", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.descStyle },

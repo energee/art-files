@@ -27,6 +27,7 @@ import fontkit from "@pdf-lib/fontkit";
 // and throws "Buffer not supported on this platform" in the browser.
 import { writePsdUint8Array, type BezierPath, type Layer, type Psd } from "ag-psd";
 import type { Fill, LabelConfig, StyledLine } from "../types";
+import { displayAbv, displayName, displayStyle } from "../defaults";
 import * as L from "../layout";
 import { barcodeGeometry, barcodeStrokePt } from "../barcode";
 import { parseDescription, parseInfoLine, parseRuns } from "../description";
@@ -469,7 +470,7 @@ function buildLayers(
       fill: P(cfg.volume), face: faceOf(cfg.volume), tracking: cfg.volume.letterSpacing,
       stroke: cfg.volume.stroke, strokeWidth: cfg.volume.strokeWidth, mode,
     }),
-    textLayer("ABV", `${cfg.abv}% alc by vol`, {
+    textLayer("ABV", `${displayAbv(cfg)}% alc by vol`, {
       x: L.ABV.x, baseline: L.ABV.baseline, size: L.ABV.size,
       fill: P(cfg.abvStyle), face: "regular", tracking: cfg.abvStyle.letterSpacing,
       stroke: cfg.abvStyle.stroke, strokeWidth: cfg.abvStyle.strokeWidth, mode,
@@ -537,14 +538,14 @@ function buildLayers(
         "Logo", logoPaths, P(cfg.logo),
         mode === "art" ? cfg.logo.stroke : undefined, cfg.logo.strokeWidth,
       ),
-      textLayer("Beer name", cfg.beerName.toUpperCase(), {
-        x: centered(cfg.beerName.toUpperCase(), L.NAME.cx, L.NAME.size, "bold", cfg.nameStyle.letterSpacing),
+      textLayer("Beer name", displayName(cfg).toUpperCase(), {
+        x: centered(displayName(cfg).toUpperCase(), L.NAME.cx, L.NAME.size, "bold", cfg.nameStyle.letterSpacing),
         baseline: L.NAME.baseline, size: L.NAME.size,
         fill: P(cfg.nameStyle), face: "bold", tracking: cfg.nameStyle.letterSpacing,
         stroke: cfg.nameStyle.stroke, strokeWidth: cfg.nameStyle.strokeWidth, mode,
       }),
-      textLayer("Style line", cfg.styleLine.text, {
-        x: centered(cfg.styleLine.text, L.STYLE_LINE.cx, L.STYLE_LINE.size, faceOf(cfg.styleLine), cfg.styleLine.letterSpacing),
+      textLayer("Style line", displayStyle(cfg), {
+        x: centered(displayStyle(cfg), L.STYLE_LINE.cx, L.STYLE_LINE.size, faceOf(cfg.styleLine), cfg.styleLine.letterSpacing),
         baseline: L.STYLE_LINE.baseline, size: L.STYLE_LINE.size,
         fill: P(cfg.styleLine), face: faceOf(cfg.styleLine), tracking: cfg.styleLine.letterSpacing,
         stroke: cfg.styleLine.stroke, strokeWidth: cfg.styleLine.strokeWidth, mode,
@@ -604,7 +605,7 @@ function buildLayers(
  *  digit glyph outlines, both bezier, in cfg.barcodeFill) with an optional
  *  "Barcode stroke" layer directly beneath it, mirroring the PDF's halo. */
 function codeLayers(cfg: LabelConfig, f: Faces, fk: FKFont, mode: PsdMode): Layer[] {
-  const q = qrShapes(qrUrl(cfg.beerName));
+  const q = qrShapes(qrUrl(displayName(cfg)));
   const ms = q.moduleSize * L.QR.size;
   const at = (u: number, axis: "x" | "y") =>
     u * L.QR.size + (axis === "x" ? L.QR.x : L.QR.yTop);

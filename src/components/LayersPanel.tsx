@@ -36,7 +36,7 @@ const rowsOf = (group: "beer" | "template" | "collab") =>
   ELEMENTS.filter((e) => e.group === group).map((e) => e.id);
 const COLLAB_ROWS = rowsOf("collab");
 const TEMPLATE_ROWS = rowsOf("template");
-const DOC_ROWS: LayerId[] = ["background", "mask"];
+const DOC_ROWS: LayerId[] = ["background", "mask", "settings"];
 // The one curated list is BEER_ROWS — assert it covers the beer group
 // exactly, so the registry and the panel cannot drift.
 if (import.meta.env.DEV) {
@@ -123,7 +123,7 @@ function LayerRow({
 }) {
   const Icon = LAYER_ICONS[id];
   const el = isElementId(id) ? elementById(id) : null;
-  const label = el ? el.label : DOC_LAYER_LABELS[id as "background" | "mask"];
+  const label = el ? el.label : DOC_LAYER_LABELS[id as keyof typeof DOC_LAYER_LABELS];
   const hidden = el !== null && hiddenSet.has(el.id);
   // Collab rows are inert on the label while the collab switch is off; they
   // stay selectable so their inspector (which holds the switch) is reachable.

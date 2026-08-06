@@ -5,6 +5,7 @@
 import type { LabelConfig } from "./types";
 import type { ElementId } from "./elements";
 import { parseDescription, parseInfoLine, parseRuns } from "./description";
+import { displayAbv, displayName, displayStyle } from "./defaults";
 // The renderer's own paragraph wrapper and justified-column length, so the
 // warning's hit columns can't disagree with the columns it draws or the
 // justified width it draws them at (see the warning boxes below).
@@ -90,7 +91,7 @@ export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
   const boxes: Box[] = [
     // Left column
     flat("volume", cfg.volume.text, L.VOLUME.x, L.VOLUME.baseline, L.VOLUME.size, m, !!cfg.volume.bold, cfg.volume.letterSpacing),
-    flat("abv", `${cfg.abv}% alc by vol`, L.ABV.x, L.ABV.baseline, L.ABV.size, m, false, cfg.abvStyle.letterSpacing),
+    flat("abv", `${displayAbv(cfg)}% alc by vol`, L.ABV.x, L.ABV.baseline, L.ABV.size, m, false, cfg.abvStyle.letterSpacing),
     ...descLines.map((d) => flat("description", d.text, d.x, d.baseline, d.size, m, d.bold, d.tracking)),
     // Center column. Wordmark and beer name always render with the Bold face.
     centred("wordmark", L.WORDMARK.text, L.WORDMARK.cx, L.WORDMARK.baseline, L.WORDMARK.size, m, true, cfg.wordmark.letterSpacing),
@@ -105,8 +106,8 @@ export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
       x0: L.LOGO.cx - L.LOGO.w / 2, x1: L.LOGO.cx + L.LOGO.w / 2,
       y0: L.LOGO.cy + (cfg.logo.offsetY ?? 0) - LOGO_H / 2,
       y1: L.LOGO.cy + (cfg.logo.offsetY ?? 0) + LOGO_H / 2 },
-    centred("name", cfg.beerName.toUpperCase(), L.NAME.cx, L.NAME.baseline, L.NAME.size, m, true, cfg.nameStyle.letterSpacing),
-    centred("styleLine", cfg.styleLine.text, L.STYLE_LINE.cx, L.STYLE_LINE.baseline, L.STYLE_LINE.size, m, !!cfg.styleLine.bold, cfg.styleLine.letterSpacing),
+    centred("name", displayName(cfg).toUpperCase(), L.NAME.cx, L.NAME.baseline, L.NAME.size, m, true, cfg.nameStyle.letterSpacing),
+    centred("styleLine", displayStyle(cfg), L.STYLE_LINE.cx, L.STYLE_LINE.baseline, L.STYLE_LINE.size, m, !!cfg.styleLine.bold, cfg.styleLine.letterSpacing),
     // QR is a box, not text.
     { id: "qr",
       x0: L.QR.x, x1: L.QR.x + L.QR.size,

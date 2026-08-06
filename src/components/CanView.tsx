@@ -6,7 +6,15 @@ import { useEffect, useRef, useState } from "react";
 import { CanScene, type CanSceneMode } from "@/three/canScene";
 import { buildLabelTextures } from "@/three/labelTextures";
 
-export function CanView({ artBytes, maskBytes, mode }: {
+export function CanView({
+  artBytes, maskBytes, mode, cornerRadiusPct, labelHeightPct, edgeSoftnessPct,
+}: {
+  /** Die-cut corner radius, % of the label's short edge (Settings layer). */
+  cornerRadiusPct: number;
+  /** Label height as % of can height (Settings layer). */
+  labelHeightPct: number;
+  /** Foil-mask blur, % of label width (Settings layer). */
+  edgeSoftnessPct: number;
   artBytes: Uint8Array | null;
   maskBytes: Uint8Array | null;
   mode: CanSceneMode;
@@ -52,6 +60,14 @@ export function CanView({ artBytes, maskBytes, mode }: {
   useEffect(() => {
     sceneRef.current?.setMode(mode);
   }, [mode]);
+
+  useEffect(() => {
+    sceneRef.current?.setLabelOptions({
+      cornerRadiusPct,
+      heightRatio: labelHeightPct / 100,
+      edgeSoftnessRatio: edgeSoftnessPct / 100,
+    });
+  }, [cornerRadiusPct, labelHeightPct, edgeSoftnessPct]);
 
   return (
     <div className="relative h-full w-full">

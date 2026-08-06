@@ -19,7 +19,7 @@ import fontkit from "@pdf-lib/fontkit";
 import type { CollabSlot, Fill, LabelConfig, Style, StyledLine } from "../types";
 import type { ElementId } from "../elements";
 import { parseLogo } from "../logo";
-import { WARNING_TEXT } from "../defaults";
+import { WARNING_TEXT, displayAbv, displayName, displayStyle } from "../defaults";
 import * as L from "../layout";
 import { barcodeGeometry, barcodeStrokePt } from "../barcode";
 import { qrPath, qrShapes, qrUrl } from "../qr";
@@ -439,7 +439,7 @@ async function drawElements(
   if (!hide("volume"))
     drawLine(page, fonts, cfg.volume, mode, { x: L.VOLUME.x, baseline: L.VOLUME.baseline, size: L.VOLUME.size });
   if (!hide("abv"))
-    drawLine(page, fonts, { text: `${cfg.abv}% alc by vol`, ...cfg.abvStyle }, mode, {
+    drawLine(page, fonts, { text: `${displayAbv(cfg)}% alc by vol`, ...cfg.abvStyle }, mode, {
       x: L.ABV.x, baseline: L.ABV.baseline, size: L.ABV.size,
     });
   const desc = parseDescription(cfg.description, cfg.descStyle);
@@ -510,17 +510,17 @@ async function drawElements(
       maxW: L.COLLAB_CENTER.maxW, maxH: L.COLLAB_CENTER.maxH,
     });
   if (!hide("name"))
-    drawLine(page, fonts, { text: cfg.beerName.toUpperCase(), ...cfg.nameStyle, bold: true }, mode, {
+    drawLine(page, fonts, { text: displayName(cfg).toUpperCase(), ...cfg.nameStyle, bold: true }, mode, {
       cx: L.NAME.cx, baseline: L.NAME.baseline, size: L.NAME.size, font: fonts.bold,
     });
   if (!hide("styleLine"))
-    drawLine(page, fonts, cfg.styleLine, mode, {
+    drawLine(page, fonts, { ...cfg.styleLine, text: displayStyle(cfg) }, mode, {
       cx: L.STYLE_LINE.cx, baseline: L.STYLE_LINE.baseline, size: L.STYLE_LINE.size,
     });
 
   // QR — payload derived from the beer name; optional stroked underlay.
   if (!hide("qr")) {
-    const shapes = qrShapes(qrUrl(cfg.beerName));
+    const shapes = qrShapes(qrUrl(displayName(cfg)));
     const qrAt = { x: L.QR.x, y: y(L.QR.yTop) };
     if (mode === "art" && cfg.qrStroke !== "none")
       page.drawSvgPath(
@@ -600,7 +600,7 @@ export async function buildArtPdf(cfg: LabelConfig, assets: Assets): Promise<Uin
     page.drawImage(img, coverPage(page, img));
   }
   await drawElements(doc, page, fonts, cfg, assets, "art");
-  doc.setTitle(`${cfg.beerName} label art`);
+  doc.setTitle(`${displayName(cfg)} label art`);
   return doc.save();
 }
 
@@ -621,6 +621,6 @@ export async function buildMaskPdf(cfg: LabelConfig, assets: Assets): Promise<Ui
     page.drawRectangle({ x: 0, y: 0, width: L.PAGE.w, height: L.PAGE.h, color: toRgb(L.COLORS.maskBlue) });
   }
   await drawElements(doc, page, fonts, cfg, assets, "mask");
-  doc.setTitle(`${cfg.beerName} white-ink layer`);
+  doc.setTitle(`${displayName(cfg)} white-ink layer`);
   return doc.save();
 }
