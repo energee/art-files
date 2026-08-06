@@ -14,8 +14,10 @@ export interface LabelElement {
   id: ElementId;
   /** Shown in the form row and as the properties panel header. */
   label: string;
-  /** "beer" changes every time; "template" is set once. */
-  group: "beer" | "template";
+  /** "beer" changes every time; "template" is set once; "collab" appears
+   *  only on collab releases (the layers panel dims those rows while the
+   *  collab switch is off). */
+  group: "beer" | "template" | "collab";
   /** Whether a bold toggle applies. False for the logo (no text at all) and
    *  for the two codes (the barcode's digits are drawn in one fixed face). */
   hasBold: boolean;
@@ -62,17 +64,18 @@ export const ELEMENTS: LabelElement[] = [
   // per release, so neither is a set-once brand-template element.
   { id: "qr", label: "QR", group: "beer", hasBold: false, isText: false, allowNone: false, style: flatStyle(FLAT.qr) },
   { id: "barcode", label: "Barcode", group: "beer", hasBold: false, isText: false, allowNone: false, style: flatStyle(FLAT.barcode) },
-  // Collab block. "beer" because a collab partner changes per release, not
-  // once per brand. The layers panel dims these three rows while the collab
-  // switch is off. The two logo slots draw uploaded art, not glyphs, so they
+  // Collab block — its own group: a collab partner changes per release like
+  // "beer", but the block exists only while the collab switch is on, and the
+  // layers panel shows it as its own section. The two logo slots draw
+  // uploaded art, not glyphs, so they
   // get neither bold nor letter-spacing; the lead-in is text, but it is drawn
   // in one fixed SemiBold face like the handle/address, hence hasBold: false.
-  { id: "collabLead", label: "Lead-In", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.collabLead },
+  { id: "collabLead", label: "Lead-In", group: "collab", hasBold: false, isText: true, allowNone: true, style: (c) => c.collabLead },
   // The two slots are named for what goes in them, not where they sit: the
   // left slot takes the partner's text/wordmark art, the centre one their
   // graphic mark (it hangs under the laurel in the centre stack).
-  { id: "collabLeft", label: "Text Logo", group: "beer", hasBold: false, isText: false, allowNone: true, style: (c) => c.collabLeft },
-  { id: "collabCenter", label: "Graphic Logo", group: "beer", hasBold: false, isText: false, allowNone: true, style: (c) => c.collabCenter },
+  { id: "collabLeft", label: "Text Logo", group: "collab", hasBold: false, isText: false, allowNone: true, style: (c) => c.collabLeft },
+  { id: "collabCenter", label: "Graphic Logo", group: "collab", hasBold: false, isText: false, allowNone: true, style: (c) => c.collabCenter },
   { id: "volume", label: "Volume", group: "template", hasBold: true, isText: true, allowNone: true, style: (c) => c.volume },
   { id: "wordmark", label: "Wordmark", group: "template", hasBold: false, isText: true, allowNone: true, style: (c) => c.wordmark },
   { id: "logo", label: "Logo", group: "template", hasBold: false, isText: false, allowNone: true, style: (c) => c.logo },

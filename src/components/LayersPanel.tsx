@@ -3,38 +3,17 @@
 // two partner-logo slots), "Template" (set-once brand elements), and
 // "Document" (the UI-level background/mask layers from ./layers, which carry
 // file drops rather than Styles). Rows select into the
-// same LayerId state the preview's click-to-select uses; the eye toggle
-// hides an element by writing fill: "none" and restores the shipped default
-// fill on re-show. Per the layers-ui spec, rows appear in a curated order
-// (Barcode before QR — unlike ELEMENTS order); every element row has an eye
-// (hiding is a temporary skip, unlike the ink-less styling allowNone
+// same LayerId state the preview's click-to-select uses; the eye toggles the
+// id in App's session-level hidden set (Assets.hidden — the renderer skips
+// the element outright). Per the layers-ui spec, rows appear in a curated
+// order (Barcode before QR — unlike ELEMENTS order); every element row has
+// an eye (hiding is a temporary skip, unlike the ink-less styling allowNone
 // forbids), the document layers go without for now.
-import {
-  AlignLeft,
-  Barcode,
-  CaseSensitive,
-  ChevronDown,
-  Eye,
-  EyeOff,
-  Handshake,
-  Hexagon,
-  Image,
-  ImagePlus,
-  MapPin,
-  Percent,
-  QrCode,
-  Scan,
-  Snowflake,
-  Beaker,
-  CaseUpper,
-  TriangleAlert,
-  Type,
-  type LucideIcon,
-} from "lucide-react";
+import { ChevronDown, Eye, EyeOff } from "lucide-react";
 import type { LabelConfig, StyledLine } from "@/types";
-import { applyStyle, elementById, type ElementId } from "@/elements";
+import { ELEMENTS, applyStyle, elementById, type ElementId } from "@/elements";
 import { cn } from "@/lib/utils";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { MetallicToggle } from "./MetallicToggle";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   SidebarGroup,
@@ -44,53 +23,34 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { DOC_LAYER_LABELS, isElementId, type LayerId } from "./layers";
+import { DOC_LAYER_LABELS, LAYER_ICONS, isElementId, type LayerId } from "./layers";
 
-/** Row order is the spec's curated stacking order, not ELEMENTS order —
- *  notably Barcode before QR in "This beer". */
+/** "This beer" keeps the spec's curated stacking order (Barcode before QR —
+ *  unlike ELEMENTS order); Collab and Template derive their membership AND
+ *  order from the registry, so a regrouped or added element can't silently
+ *  vanish from the panel. */
 const BEER_ROWS: ElementId[] = [
   "name", "styleLine", "abv", "description", "barcode", "qr",
 ];
-const COLLAB_ROWS: ElementId[] = ["collabLead", "collabLeft", "collabCenter"];
-const TEMPLATE_ROWS: ElementId[] = [
-  "volume", "wordmark", "logo", "handleAddress", "warning", "storeCold",
-];
+const rowsOf = (group: "beer" | "template" | "collab") =>
+  ELEMENTS.filter((e) => e.group === group).map((e) => e.id);
+const COLLAB_ROWS = rowsOf("collab");
+const TEMPLATE_ROWS = rowsOf("template");
 const DOC_ROWS: LayerId[] = ["background", "mask"];
-
-const ICONS: Record<LayerId, LucideIcon> = {
-  name: Type,
-  styleLine: CaseSensitive,
-  abv: Percent,
-  description: AlignLeft,
-  barcode: Barcode,
-  qr: QrCode,
-  collabLead: Handshake,
-  collabLeft: ImagePlus,
-  collabCenter: ImagePlus,
-  volume: Beaker,
-  wordmark: CaseUpper,
-  logo: Hexagon,
-  handleAddress: MapPin,
-  warning: TriangleAlert,
-  storeCold: Snowflake,
-  background: Image,
-  mask: Scan,
-};
-
-/** The metal-horns icon for the metallic toggles (Ted's pick,
- *  hand-metal-stroke-rounded) — inlined since it isn't in lucide. Exported
- *  for the inspector's Ink group, which uses the same toggle. */
-export function HandMetal(props: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
-      strokeLinecap="round" strokeLinejoin="round" className={props.className} aria-hidden="true">
-      <path d="M18.5 11.5V5.75C18.5 4.7835 19.2835 4 20.25 4C21.2165 4 22 4.7835 22 5.75V12.8806C22 14.851 22 15.8362 21.803 16.649C21.1855 19.1965 19.1965 21.1855 16.649 21.803C15.8362 22 14.851 22 12.8806 22C11.7766 22 11.2246 22 10.7086 21.9227C9.11179 21.6833 7.64679 20.8993 6.56186 19.7034C6.21132 19.317 5.90513 18.8577 5.29275 17.9391L2.32229 13.4834C2.11214 13.1682 2 12.7978 2 12.419C2 11.3592 2.85916 10.5 3.91898 10.5H4.05489C4.65476 10.5 5.22468 10.7621 5.61507 11.2176L6.69842 12.4815C7.04487 12.8857 7.2181 13.0878 7.36248 13.1291C7.57238 13.1891 7.79697 13.1061 7.91726 12.9239C8 12.7985 8 12.5324 8 12" />
-      <path d="M18.5 10.5V9.75C18.5 8.7835 17.7165 8 16.75 8C15.7835 8 15 8.7835 15 9.75V10.5" />
-      <path d="M15 11.5V8.75C15 7.7835 14.2165 7 13.25 7C12.2835 7 11.5 7.7835 11.5 8.75V11" />
-      <path d="M11.5 10V3.75C11.5 2.7835 10.7165 2 9.75 2C8.7835 2 8 2.7835 8 3.75V12" />
-    </svg>
-  );
+// The one curated list is BEER_ROWS — assert it covers the beer group
+// exactly, so the registry and the panel cannot drift.
+if (import.meta.env.DEV) {
+  const beer = rowsOf("beer");
+  if (BEER_ROWS.length !== beer.length || !beer.every((id) => BEER_ROWS.includes(id)))
+    throw new Error("LayersPanel BEER_ROWS is out of sync with ELEMENTS' beer group");
 }
+
+const GROUPS: [string, LayerId[]][] = [
+  ["This beer", BEER_ROWS],
+  ["Collab", COLLAB_ROWS],
+  ["Template", TEMPLATE_ROWS],
+  ["Document", DOC_ROWS],
+];
 
 /** Tiny color chip for the style summary; "none" renders as a hatch-free
  *  outline so "no ink" is visibly different from black. The border is a
@@ -161,13 +121,13 @@ function LayerRow({
   selected: LayerId | null;
   onSelect: (id: LayerId) => void;
 }) {
-  const Icon = ICONS[id];
+  const Icon = LAYER_ICONS[id];
   const el = isElementId(id) ? elementById(id) : null;
   const label = el ? el.label : DOC_LAYER_LABELS[id as "background" | "mask"];
   const hidden = el !== null && hiddenSet.has(el.id);
   // Collab rows are inert on the label while the collab switch is off; they
   // stay selectable so their inspector (which holds the switch) is reachable.
-  const collabOff = !cfg.collabEnabled && id.startsWith("collab");
+  const collabOff = !cfg.collabEnabled && el?.group === "collab";
 
   const toggleEye = (e: React.MouseEvent) => {
     e.stopPropagation(); // the eye must never change the selection
@@ -209,41 +169,19 @@ function LayerRow({
             <Icon />
             <span>{label}</span>
           </SidebarMenuButton>
-          {/* Metallic toggle: flips the element between the metallic plate
-              and plain white ink — the same write as the inspector's Layer
-              select, so the two stay in lockstep. Lit while metallic. */}
+          {/* Shared metallic toggle — the same write as the inspector's Ink
+              group, so the two stay in lockstep. Lit while metallic. */}
           {el !== null && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      update((c) => applyStyle(c, el.id, {
-                        layer: el.style(cfg).layer === "metallic" ? "white" : "metallic",
-                      }));
-                    }}
-                    aria-label={`${label}: metallic`}
-                    aria-pressed={el.style(cfg).layer === "metallic"}
-                    className={cn(
-                      "grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm hover:text-sidebar-foreground",
-                      el.style(cfg).layer === "metallic"
-                        ? "text-sidebar-foreground"
-                        : "text-sidebar-foreground/70 opacity-40 hover:opacity-100",
-                    )}
-                  >
-                    <HandMetal className="size-3.5" />
-                  </button>
-                }
-              />
-              <TooltipContent>Metallic</TooltipContent>
-            </Tooltip>
+            <MetallicToggle
+              label={label}
+              pressed={el.style(cfg).layer === "metallic"}
+              onPressedChange={(on) =>
+                update((c) => applyStyle(c, el.id, { layer: on ? "metallic" : "white" }))}
+            />
           )}
-          {/* Applied-styles accordion, element rows only: the document
-              layers have no Style stack yet (disabled placeholders live in
-              the inspector). A read-only digest — editing stays in the
-              inspector. */}
+          {/* Applied-styles accordion, element rows only — the document
+              layers have no styles. A read-only digest; editing stays in
+              the inspector. */}
           {el !== null && (
             <CollapsibleTrigger
               aria-label={`${label} styles`}
@@ -275,15 +213,9 @@ export function LayersPanel(props: {
   selected: LayerId | null;
   onSelect: (id: LayerId) => void;
 }): React.JSX.Element {
-  const groups: [string, LayerId[]][] = [
-    ["This beer", BEER_ROWS],
-    ["Collab", COLLAB_ROWS],
-    ["Template", TEMPLATE_ROWS],
-    ["Document", DOC_ROWS],
-  ];
   return (
     <>
-      {groups.map(([title, rows]) => (
+      {GROUPS.map(([title, rows]) => (
         <SidebarGroup key={title}>
           <SidebarGroupLabel>{title}</SidebarGroupLabel>
           <SidebarGroupContent>

@@ -7,24 +7,19 @@
 // (background, mask) are file drops only — no Style section. Selection
 // itself lives in the layers panel and the preview; this component only
 // receives the chosen LayerId.
-import {
-  AlignLeft, Barcode, Beaker, Handshake, Image as ImageIcon, Info, Layers as LayersIcon,
-  Percent, QrCode, Snowflake, Sparkles, Text, TriangleAlert, Type, X,
-} from "lucide-react";
+import { X } from "lucide-react";
 import type { LabelConfig, StyledLine } from "@/types";
 import { applyStyle, elementById, isDefaultStyle, type ElementId } from "@/elements";
-import { DOC_LAYER_LABELS, isElementId, type LayerId } from "@/components/layers";
+import { DOC_LAYER_LABELS, LAYER_ICONS, isElementId, type LayerId } from "@/components/layers";
 import { defaultConfig } from "@/defaults";
 import { ColorField } from "./ColorField";
 import { ScrubField } from "./ScrubField";
 import { DescriptionEditor } from "./DescriptionEditor";
 import { FileDrop } from "./FileDrop";
+import { MetallicToggle } from "./MetallicToggle";
 import { machineName, qrUrl } from "@/qr";
-import { cn } from "@/lib/utils";
 import { DEFAULT_STROKE_PX } from "@/layout";
 import { Button } from "@/components/ui/button";
-import { HandMetal } from "./LayersPanel";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -58,28 +53,6 @@ export interface InspectorFiles {
   mask: { fileName?: string; previewUrl?: string; error?: string; onFile: (f: File) => void };
   collab: CollabFiles;
 }
-
-/** Per-layer lucide icon, mirroring the layers panel's row icons so the
- *  inspector header reads as "this row, expanded". */
-const LAYER_ICONS: Record<LayerId, React.ComponentType<{ className?: string }>> = {
-  name: Type,
-  styleLine: AlignLeft,
-  abv: Percent,
-  description: Text,
-  qr: QrCode,
-  barcode: Barcode,
-  collabLead: Handshake,
-  collabLeft: ImageIcon,
-  collabCenter: ImageIcon,
-  volume: Beaker,
-  wordmark: Type,
-  logo: Sparkles,
-  handleAddress: Info,
-  warning: TriangleAlert,
-  storeCold: Snowflake,
-  background: ImageIcon,
-  mask: LayersIcon,
-};
 
 /** Section heading — same idiom LabelForm used, so the inspector reads in
  *  the app's established voice. */
@@ -328,8 +301,9 @@ function Content(props: {
       );
     case "wordmark":
     case "warning":
-      // Fixed template art/text: nothing to edit beyond style.
-      return null;
+      // Fixed template art/text: nothing to edit beyond style — say so
+      // rather than rendering an empty section.
+      return <p className="text-[11px] text-muted-foreground">Fixed template art — nothing to edit.</p>;
   }
 }
 
@@ -367,25 +341,11 @@ function ElementStyle(props: { id: ElementId; cfg: LabelConfig; update: Update }
           </div>
           {/* Same metallic toggle as the layer rows — plate choice is part
               of the ink, so it sits beside the color. */}
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  aria-label="Metallic"
-                  aria-pressed={metallic}
-                  onClick={() => set({ layer: metallic ? "white" : "metallic" })}
-                  className={cn(
-                    "grid size-6 shrink-0 cursor-pointer place-items-center rounded-sm border border-input hover:text-foreground",
-                    metallic ? "bg-accent text-foreground" : "text-muted-foreground opacity-60 hover:opacity-100",
-                  )}
-                >
-                  <HandMetal className="size-3.5" />
-                </button>
-              }
-            />
-            <TooltipContent>Metallic</TooltipContent>
-          </Tooltip>
+          <MetallicToggle
+            pressed={metallic}
+            onPressedChange={(on) => set({ layer: on ? "metallic" : "white" })}
+            className="size-6 border border-input"
+          />
         </div>
       </div>
 
@@ -450,27 +410,21 @@ function ElementStyle(props: { id: ElementId; cfg: LabelConfig; update: Update }
 }
 
 export function Inspector(props: {
-  /** Never null: App collapses the whole inspector column instead of
-   *  rendering an empty state when nothing is selected. */
+  /** Never null: App closes the whole inspector sheet instead of rendering
+   *  an empty state when nothing is selected. */
   id: LayerId;
   cfg: LabelConfig;
   /** Validation messages, already composed by App. Keys: "name", "upc". */
   errors: Record<string, string>;
   update: Update;
   files: InspectorFiles;
-  /** Clears the selection, which collapses the inspector column. */
+  /** Clears the selection, which closes the inspector sheet. */
   onClose: () => void;
 }): React.JSX.Element {
   const id = props.id;
   const isEl = isElementId(id);
   const label = isEl ? elementById(id).label : DOC_LAYER_LABELS[id];
   const Icon = LAYER_ICONS[id];
-  const content = (
-    <Content id={id} cfg={props.cfg} errors={props.errors} update={props.update} files={props.files} />
-  );
-  // wordmark/warning render Content as null — show a muted note instead of
-  // an empty section, so the section's absence reads as intentional.
-  const noContent = id === "wordmark" || id === "warning";
 
   // Restores this element's shipped appearance — read from defaultConfig(),
   // not a hardcoded gold/metallic/none triple, so elements that ship with a
@@ -519,11 +473,7 @@ export function Inspector(props: {
       </div>
 
       <Heading>Content</Heading>
-      {noContent ? (
-        <p className="text-[11px] text-muted-foreground">Fixed template art — nothing to edit.</p>
-      ) : (
-        content
-      )}
+      <Content id={id} cfg={props.cfg} errors={props.errors} update={props.update} files={props.files} />
 
       {/* Document layers (background/mask) carry no Style stack — they are
           file drops only, so the section is omitted rather than shown
