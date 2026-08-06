@@ -20,6 +20,7 @@ import { LayersPanel } from "@/components/LayersPanel";
 import { isElementId, type LayerId } from "@/components/layers";
 import { CommandMenu } from "@/components/CommandMenu";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
+import { CanView } from "@/components/CanView";
 import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator,
   MenubarShortcut, MenubarTrigger,
@@ -169,6 +170,10 @@ export default function App() {
   // Divider position reported by PreviewCompare (% of width showing
   // white-ink), so the View menu can check off whichever end it sits at.
   const [split, setSplit] = useState(0);
+  // "2d" = the PDF compare view; the rest are CanView's three.js modes. The
+  // 2D preview stays mounted (hidden) so its rendered canvases and divider
+  // position survive a round-trip through the 3D views.
+  const [viewMode, setViewMode] = useState<"2d" | "can" | "pack" | "flat">("2d");
   const configInput = useRef<HTMLInputElement>(null);
   const previewRef = useRef<PreviewCompareHandle>(null);
 
@@ -529,13 +534,26 @@ export default function App() {
               <MenubarContent align="start" className={MENU_ITEMS}>
                 {/* Checked only at the extremes: anywhere in between is a
                     manual compare position, which is neither view. */}
-                <MenubarCheckboxItem checked={split === 0}
-                  onClick={() => previewRef.current?.showArt()}>
+                <MenubarCheckboxItem checked={viewMode === "2d" && split === 0}
+                  onClick={() => { setViewMode("2d"); previewRef.current?.showArt(); }}>
                   Standard
                 </MenubarCheckboxItem>
-                <MenubarCheckboxItem checked={split === 100}
-                  onClick={() => previewRef.current?.showMask()}>
+                <MenubarCheckboxItem checked={viewMode === "2d" && split === 100}
+                  onClick={() => { setViewMode("2d"); previewRef.current?.showMask(); }}>
                   Mask
+                </MenubarCheckboxItem>
+                <MenubarSeparator />
+                <MenubarCheckboxItem checked={viewMode === "can"}
+                  onClick={() => setViewMode("can")}>
+                  3D Can
+                </MenubarCheckboxItem>
+                <MenubarCheckboxItem checked={viewMode === "pack"}
+                  onClick={() => setViewMode("pack")}>
+                  3D 4-Pack
+                </MenubarCheckboxItem>
+                <MenubarCheckboxItem checked={viewMode === "flat"}
+                  onClick={() => setViewMode("flat")}>
+                  3D Flat Label
                 </MenubarCheckboxItem>
               </MenubarContent>
             </MenubarMenu>
@@ -567,6 +585,9 @@ export default function App() {
             )}
           </div>
           <div className="relative flex min-h-0 flex-1">
+            {/* PreviewCompare stays mounted but hidden in 3D modes (see
+                viewMode). Selection box + click-to-select apply to 2D only. */}
+            <div className={viewMode === "2d" ? "flex min-h-0 min-w-0 flex-1" : "hidden"}>
             <PreviewCompare ref={previewRef}
               artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
               cfg={cfg} measure={measure}
@@ -575,6 +596,11 @@ export default function App() {
               selected={selected && isElementId(selected) ? selected : null}
               onPick={setSelected}
               onSplit={setSplit} />
+            </div>
+            {viewMode !== "2d" && (
+              <CanView artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
+                mode={viewMode} />
+            )}
             {/* First-load state: until the first debounced build lands there is
                 nothing on the canvases, so fill the empty frame with a spinner
                 instead of a bare box. Later rebuilds keep the previous render
@@ -615,8 +641,11 @@ export default function App() {
             { label: "Redo", disabled: !canRedo, run: redo },
             { label: "Save config", run: saveConfig },
             { label: "Load config", run: () => configInput.current?.click() },
-            { label: "Preview: Standard", run: () => previewRef.current?.showArt() },
-            { label: "Preview: Mask", run: () => previewRef.current?.showMask() },
+            { label: "Preview: Standard", run: () => { setViewMode("2d"); previewRef.current?.showArt(); } },
+            { label: "Preview: Mask", run: () => { setViewMode("2d"); previewRef.current?.showMask(); } },
+            { label: "Preview: 3D Can", run: () => setViewMode("can") },
+            { label: "Preview: 3D 4-Pack", run: () => setViewMode("pack") },
+            { label: "Preview: 3D Flat Label", run: () => setViewMode("flat") },
           ]}
         />
       </div>
