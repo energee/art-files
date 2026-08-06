@@ -17,6 +17,14 @@ import { ScrubField } from "./ScrubField";
 import { DescriptionEditor } from "./DescriptionEditor";
 import { FileDrop } from "./FileDrop";
 import { MetallicToggle } from "./MetallicToggle";
+import { BarcodePresetBar, BeerStylePresetBar } from "./PresetBar";
+import { PAGE } from "@/layout";
+
+/** The label's short side in inches. canScene scales the corner radius off
+ *  min(width, height) of the label texture, i.e. the page height. */
+const LABEL_SHORT_IN = PAGE.h / 72;
+/** Corner radius display conversion: stored as % of the short side. */
+const pctToInches = (pct: number) => (pct / 100) * LABEL_SHORT_IN;
 import { machineName, qrUrl } from "@/qr";
 import { DEFAULT_STROKE_PX } from "@/layout";
 import { Button } from "@/components/ui/button";
@@ -220,13 +228,24 @@ function Content(props: {
       // when ELEMENTS marks hasBold, the same guarantee the Style section's
       // cast relies on.
       return (
-        <Input
-          id={machineName(elementById(id).label)}
-          className="h-6 w-full text-xs"
-          value={(elementById(id).style(cfg) as StyledLine).text}
-          onChange={(e) =>
-            update((c) => { (elementById(id).style(c) as StyledLine).text = e.target.value; })}
-        />
+        <div className="space-y-1">
+          <Input
+            id={machineName(elementById(id).label)}
+            className="h-6 w-full text-xs"
+            value={(elementById(id).style(cfg) as StyledLine).text}
+            onChange={(e) =>
+              update((c) => { (elementById(id).style(c) as StyledLine).text = e.target.value; })}
+          />
+          {/* Beer styles repeat across labels, so the Style line — and only
+              it — carries a preset library (see presets.json). */}
+          {id === "styleLine" && (
+            <BeerStylePresetBar
+              current={(elementById(id).style(cfg) as StyledLine).text}
+              onApply={(text) =>
+                update((c) => { (elementById(id).style(c) as StyledLine).text = text; })}
+            />
+          )}
+        </div>
       );
     case "abv":
       return (
@@ -265,6 +284,12 @@ function Content(props: {
             onChange={(e) => update((c) => { c.upc = e.target.value.trim(); })}
           />
           {errors.upc && <p className="text-xs text-destructive">{errors.upc}</p>}
+          {/* Barcodes get reused across beers, so they live in presets.json
+              rather than being retyped from a label proof each time. */}
+          <BarcodePresetBar
+            upc={cfg.upc}
+            onApply={(upc) => update((c) => { c.upc = upc; })}
+          />
         </div>
       );
     case "qr":
@@ -319,10 +344,14 @@ function Content(props: {
       // physical label is cut and sized at the press, not rendered.
       return (
         <div className="space-y-2">
+          {/* Shown in inches — the unit a die-cut is specified in — while the
+              stored value stays a percentage of the label's short side, which
+              is what canScene's alphaMap consumes. */}
           <ScrubField
-            id="doc-corner-radius" label="Corner radius" unit="%"
-            value={settings.cornerRadius} min={0} max={5} step={0.1} dragStep={0.1}
-            onChange={settings.onCornerRadius}
+            id="doc-corner-radius" label="Corner radius" unit={'"'}
+            value={pctToInches(settings.cornerRadius)}
+            min={0} max={pctToInches(5)} step={0.005} dragStep={0.005}
+            onChange={(inches) => settings.onCornerRadius((inches / LABEL_SHORT_IN) * 100)}
           />
           <ScrubField
             id="doc-label-size" label="Label size" unit="%"

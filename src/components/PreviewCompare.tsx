@@ -10,7 +10,7 @@ import type { PanelImperativeHandle } from "react-resizable-panels";
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import { PAGE } from "@/layout";
+import { ART, PAGE } from "@/layout";
 import type { LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import { boxOf, hitTest, type Measure } from "@/hittest";
@@ -95,8 +95,14 @@ export const PreviewCompare = forwardRef<
      *  including a manual drag, so the View menu's checkmarks track the real
      *  divider rather than whichever menu item was picked last. */
     onSplit?: (pct: number) => void;
+    /** Draw the trim guide at the edge of the art box — 38px of bleed at
+     *  600dpi on every side. Preview-only; never part of the PDFs. */
+    bleed?: boolean;
   }
->(function PreviewCompare({ artBytes, maskBytes, cfg, measure, selected, onPick, onSplit }, ref) {
+>(function PreviewCompare(
+  { artBytes, maskBytes, cfg, measure, selected, onPick, onSplit, bleed },
+  ref,
+) {
   const artCanvas = useRef<HTMLCanvasElement>(null);
   const maskCanvas = useRef<HTMLCanvasElement>(null);
   const leftPanel = useRef<PanelImperativeHandle>(null);
@@ -173,6 +179,20 @@ export const PreviewCompare = forwardRef<
         <ResizableHandle withHandle className="bg-border/60 pointer-events-auto" />
         <ResizablePanel minSize="0%" />
       </ResizablePanelGroup>
+      {/* Trim guide: the ART box, i.e. PAGE minus 38px of bleed per side at
+          600dpi. Percentages off PAGE so it tracks the wrapper at any size,
+          same trick as the selection box below. */}
+      {bleed && (
+        <div
+          className="pointer-events-none absolute border border-dashed border-destructive/70"
+          style={{
+            left: `${(ART.x / PAGE.w) * 100}%`,
+            top: `${(ART.y / PAGE.h) * 100}%`,
+            width: `${(ART.w / PAGE.w) * 100}%`,
+            height: `${(ART.h / PAGE.h) * 100}%`,
+          }}
+        />
+      )}
       {selBox && (
         <div
           className="pointer-events-none absolute ring-1 ring-ring"
@@ -184,12 +204,6 @@ export const PreviewCompare = forwardRef<
           }}
         />
       )}
-      <span className="pointer-events-none absolute bottom-1 left-1.5 text-[10px] text-muted-foreground">
-        white-ink
-      </span>
-      <span className="pointer-events-none absolute bottom-1 right-1.5 text-[10px] text-muted-foreground">
-        art
-      </span>
     </div>
   );
 });

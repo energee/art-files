@@ -8,7 +8,7 @@ import fontkit from "@pdf-lib/fontkit";
 import type { CollabSlot, Fill, LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
-import { defaultConfig, parseConfigFile, toConfigFile } from "@/defaults";
+import { defaultConfig } from "@/defaults";
 import { useHistory } from "@/history";
 import { validateUpc } from "@/upc";
 import { validateMask, recolorMaskForPdf } from "@/maskimage";
@@ -20,6 +20,7 @@ import {
 } from "@/components/StyleProperties";
 import { LayersPanel } from "@/components/LayersPanel";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
+import { loadPresets, savePresets, type Presets } from "@/presets";
 import { isElementId, type LayerId } from "@/components/layers";
 import { CommandMenu } from "@/components/CommandMenu";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
@@ -194,8 +195,11 @@ export default function App() {
       else previewRef.current?.showMask();
     });
   };
-  const configInput = useRef<HTMLInputElement>(null);
+  const presetsInput = useRef<HTMLInputElement>(null);
   const previewRef = useRef<PreviewCompareHandle>(null);
+  // Trim guide over the 2D preview at the art box (38px of bleed per side at
+  // 600dpi). View-only — the exported PDFs are unaffected.
+  const [bleed, setBleed] = useState(false);
 
   const update = (fn: (c: LabelConfig) => void) =>
     setCfg((c) => { const n = structuredClone(c); fn(n); return n; });
@@ -250,7 +254,8 @@ export default function App() {
     return () => document.removeEventListener("keydown", onKey);
   }, [undo, redo]);
 
-  // 1–5 switch views (Figma-style bare digits), with the same
+  // 1–5 switch views and B toggles the bleed guide (Figma-style bare
+  // keys), with the same
   // inert-while-typing guard as undo: a digit in a text field is text.
   // Registered once — the handler only touches stable setters/refs.
   useEffect(() => {
@@ -264,6 +269,8 @@ export default function App() {
         case "3": setViewMode("flat"); break;
         case "4": setViewMode("can"); break;
         case "5": setViewMode("pack"); break;
+        // Bare B, not ⌘B — that one belongs to the sidebar toggle.
+        case "b": case "B": setBleed((v) => !v); break;
         default: return;
       }
       e.preventDefault();
@@ -506,21 +513,29 @@ export default function App() {
     }
   }
 
-  function saveConfig() {
-    const url = blobUrl(
-      new TextEncoder().encode(JSON.stringify(toConfigFile(cfg), null, 2)),
-      "application/json",
-    );
-    download(url, `${cfg.beerName || "label"}-config.json`);
-    URL.revokeObjectURL(url);
-  }
-
-  async function loadConfig(f: File) {
+  /** Hand the whole preset library to someone who doesn't have the repo. The
+   *  file itself is the record (see presets.ts); this is a copy of it. */
+  async function exportPresets() {
     try {
-      setCfg(parseConfigFile(await f.text()));
+      const body = JSON.stringify(await loadPresets(), null, 2);
+      const url = blobUrl(new TextEncoder().encode(body), "application/json");
+      download(url, "presets.json");
+      URL.revokeObjectURL(url);
       setLoadError("");
     } catch (err) {
       setLoadError(String(err));
+    }
+  }
+
+  /** Replace the library wholesale from a file. Parsed before it is sent so a
+   *  wrong file can't overwrite good presets with junk. */
+  async function importPresets(f: File) {
+    try {
+      const raw = JSON.parse(await f.text()) as Partial<Presets>;
+      await savePresets({ styles: raw.styles ?? [], barcodes: raw.barcodes ?? [] });
+      setLoadError("");
+    } catch (err) {
+      setLoadError(`presets import failed: ${String(err)}`);
     }
   }
 
@@ -536,7 +551,9 @@ export default function App() {
           </SidebarContent>
         </Sidebar>
         <SidebarInset className="flex h-svh flex-col overflow-hidden">
-        <header className="flex items-center gap-3 px-3 py-1">
+        {/* py-2 rather than the trigger's own py-1: with no bottom border the
+            bar needs its own breathing room against the canvas. */}
+        <header className="flex items-center gap-3 px-3 py-2">
           {/* Toggles the Layers sidebar; the component also binds ⌘B. */}
           <SidebarTrigger className="size-6" />
           {/* Stripped to a real menu bar: no pill border or rounding of its
@@ -547,9 +564,13 @@ export default function App() {
             <MenubarMenu>
               <MenubarTrigger className={MENU_TRIGGER}>File</MenubarTrigger>
               <MenubarContent align="start" className={MENU_ITEMS}>
-                <MenubarItem onClick={saveConfig}>Save config</MenubarItem>
-                <MenubarItem onClick={() => configInput.current?.click()}>
-                  Load config
+                {/* The preset library: beer styles and barcodes reused across
+                    labels. */}
+                <MenubarItem onClick={() => void exportPresets()}>
+                  Export presets
+                </MenubarItem>
+                <MenubarItem onClick={() => presetsInput.current?.click()}>
+                  Import presets
                 </MenubarItem>
                 <MenubarSeparator />
                 {/* !pdfs is the mid-build state: the PSD path rebuilds from
@@ -604,6 +625,13 @@ export default function App() {
                   onClick={() => setViewMode("pack")}>
                   Four-Pack <MenubarShortcut>5</MenubarShortcut>
                 </MenubarCheckboxItem>
+                <MenubarSeparator />
+                {/* 2D only: the trim guide is drawn in page space, which the
+                    3D views don't present. */}
+                <MenubarCheckboxItem checked={bleed} disabled={viewMode !== "2d"}
+                  onClick={() => setBleed((b) => !b)}>
+                  Bleed Lines <MenubarShortcut>B</MenubarShortcut>
+                </MenubarCheckboxItem>
               </MenubarContent>
             </MenubarMenu>
           </Menubar>
@@ -611,11 +639,11 @@ export default function App() {
               menu item can't explain its own disabled state, so the reason
               sits in the bar itself. */}
           {blocked && <span className="text-xs text-destructive">{blockedWhy}</span>}
-          {/* Config-load failures used to sit atop the old sidebar; the bar
-              is the one chrome that always shows regardless of selection. */}
+          {/* Preset import/export failures: the bar is the one chrome that
+              always shows regardless of selection. */}
           {loadError && <span className="text-xs text-destructive">{loadError}</span>}
-          <input ref={configInput} type="file" accept="application/json" hidden
-            onChange={(e) => e.target.files?.[0] && void loadConfig(e.target.files[0])} />
+          <input ref={presetsInput} type="file" accept="application/json" hidden
+            onChange={(e) => e.target.files?.[0] && void importPresets(e.target.files[0])} />
         </header>
       <div className="flex min-h-0 flex-1">
         <section className="flex min-w-0 flex-1 flex-col p-3">
@@ -627,11 +655,6 @@ export default function App() {
               </span>
             )}
             {buildError && <span className="text-xs text-destructive">{buildError}</span>}
-            {!texture && !building && (
-              <span className="text-xs text-muted-foreground">
-                drop a texture anywhere to fill the background
-              </span>
-            )}
           </div>
           <div className="relative flex min-h-0 flex-1">
             {/* PreviewCompare stays mounted but hidden in 3D modes (see
@@ -644,12 +667,24 @@ export default function App() {
               // layer (background/mask) shows no selection box there.
               selected={selected && isElementId(selected) ? selected : null}
               onPick={setSelected}
-              onSplit={setSplit} />
+              onSplit={setSplit}
+              bleed={bleed} />
             </div>
             {viewMode !== "2d" && (
               <CanView artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
                 mode={viewMode} cornerRadiusPct={cornerRadius} labelHeightPct={labelSize}
                 edgeSoftnessPct={edgeSoftness} />
+            )}
+            {/* No-texture hint. It used to sit in the status strip above the
+                frame, where it read as chrome; low on the label it is the
+                one thing in an empty preview. Waits for the first build so it
+                can't share the frame with the loading spinner. */}
+            {!texture && !building && pdfs && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-16 flex justify-center">
+                <span className="rounded-full border border-dashed border-border bg-background/85 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-sm">
+                  drop a texture anywhere to fill the background
+                </span>
+              </div>
             )}
             {/* First-load state: until the first debounced build lands there is
                 nothing on the canvases, so fill the empty frame with a spinner
@@ -697,13 +732,15 @@ export default function App() {
             { label: "Export PSDs", disabled: blocked, run: () => void exportPsd() },
             { label: "Undo", disabled: !canUndo, run: undo },
             { label: "Redo", disabled: !canRedo, run: redo },
-            { label: "Save config", run: saveConfig },
-            { label: "Load config", run: () => configInput.current?.click() },
+            { label: "Export presets", run: () => void exportPresets() },
+            { label: "Import presets", run: () => presetsInput.current?.click() },
             { label: "Preview: Standard", run: () => show2d("art") },
             { label: "Preview: Mask", run: () => show2d("mask") },
             { label: "Preview: Rendered", run: () => setViewMode("flat") },
             { label: "Preview: Single Can", run: () => setViewMode("can") },
             { label: "Preview: Four-Pack", run: () => setViewMode("pack") },
+            { label: bleed ? "Hide bleed lines" : "Show bleed lines",
+              disabled: viewMode !== "2d", run: () => setBleed((b) => !b) },
           ]}
         />
       </div>
