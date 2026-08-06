@@ -29,6 +29,7 @@ import {
   Sidebar, SidebarContent, SidebarInset, SidebarProvider, SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import poppinsRegular from "@/assets/fonts/Poppins-Regular.ttf?url";
 import poppinsSemiBold from "@/assets/fonts/Poppins-SemiBold.ttf?url";
@@ -174,6 +175,17 @@ export default function App() {
   // 2D preview stays mounted (hidden) so its rendered canvases and divider
   // position survive a round-trip through the 3D views.
   const [viewMode, setViewMode] = useState<"2d" | "can" | "pack" | "flat">("2d");
+  /** Return to the 2D compare at one end. The divider resize is deferred a
+   *  frame: while a 3D mode is up the compare sits in a display:none wrapper
+   *  with zero width, and react-resizable-panels misapplies a percentage
+   *  resize against that hidden layout. */
+  const show2d = (which: "art" | "mask") => {
+    setViewMode("2d");
+    requestAnimationFrame(() => {
+      if (which === "art") previewRef.current?.showArt();
+      else previewRef.current?.showMask();
+    });
+  };
   const configInput = useRef<HTMLInputElement>(null);
   const previewRef = useRef<PreviewCompareHandle>(null);
 
@@ -535,25 +547,25 @@ export default function App() {
                 {/* Checked only at the extremes: anywhere in between is a
                     manual compare position, which is neither view. */}
                 <MenubarCheckboxItem checked={viewMode === "2d" && split === 0}
-                  onClick={() => { setViewMode("2d"); previewRef.current?.showArt(); }}>
+                  onClick={() => show2d("art")}>
                   Standard
                 </MenubarCheckboxItem>
                 <MenubarCheckboxItem checked={viewMode === "2d" && split === 100}
-                  onClick={() => { setViewMode("2d"); previewRef.current?.showMask(); }}>
+                  onClick={() => show2d("mask")}>
                   Mask
                 </MenubarCheckboxItem>
                 <MenubarSeparator />
                 <MenubarCheckboxItem checked={viewMode === "can"}
                   onClick={() => setViewMode("can")}>
-                  3D Can
+                  Single Can
                 </MenubarCheckboxItem>
                 <MenubarCheckboxItem checked={viewMode === "pack"}
                   onClick={() => setViewMode("pack")}>
-                  3D 4-Pack
+                  Four-Pack
                 </MenubarCheckboxItem>
                 <MenubarCheckboxItem checked={viewMode === "flat"}
                   onClick={() => setViewMode("flat")}>
-                  3D Flat Label
+                  Flat Label
                 </MenubarCheckboxItem>
               </MenubarContent>
             </MenubarMenu>
@@ -601,6 +613,29 @@ export default function App() {
               <CanView artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
                 mode={viewMode} />
             )}
+            {/* In-viewport view switcher — the same five modes as the View
+                menu, one click away. "Standard"/"Mask" are the 2D compare's
+                two extremes, so they both leave viewMode at "2d" and slide
+                the divider; the empty-array guard ignores re-clicking the
+                active mode (Base UI toggles it off). */}
+            <ToggleGroup
+              size="sm"
+              className="absolute right-2 top-2 z-10 rounded-lg border border-border bg-background/80 p-0.5 backdrop-blur-sm"
+              value={[viewMode !== "2d" ? viewMode : split === 100 ? "mask" : "art"]}
+              onValueChange={(v: unknown[]) => {
+                const next = v[0] as "art" | "mask" | "can" | "pack" | "flat" | undefined;
+                if (!next) return;
+                if (next === "art" || next === "mask") show2d(next);
+                else setViewMode(next);
+              }}
+            >
+              {([["art", "Standard"], ["mask", "Mask"], ["can", "Can"],
+                ["pack", "4-Pack"], ["flat", "Flat"]] as const).map(([v, label]) => (
+                <ToggleGroupItem key={v} value={v} className="h-6 px-2 text-xs">
+                  {label}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
             {/* First-load state: until the first debounced build lands there is
                 nothing on the canvases, so fill the empty frame with a spinner
                 instead of a bare box. Later rebuilds keep the previous render
@@ -641,11 +676,11 @@ export default function App() {
             { label: "Redo", disabled: !canRedo, run: redo },
             { label: "Save config", run: saveConfig },
             { label: "Load config", run: () => configInput.current?.click() },
-            { label: "Preview: Standard", run: () => { setViewMode("2d"); previewRef.current?.showArt(); } },
-            { label: "Preview: Mask", run: () => { setViewMode("2d"); previewRef.current?.showMask(); } },
-            { label: "Preview: 3D Can", run: () => setViewMode("can") },
-            { label: "Preview: 3D 4-Pack", run: () => setViewMode("pack") },
-            { label: "Preview: 3D Flat Label", run: () => setViewMode("flat") },
+            { label: "Preview: Standard", run: () => show2d("art") },
+            { label: "Preview: Mask", run: () => show2d("mask") },
+            { label: "Preview: Single Can", run: () => setViewMode("can") },
+            { label: "Preview: Four-Pack", run: () => setViewMode("pack") },
+            { label: "Preview: Flat Label", run: () => setViewMode("flat") },
           ]}
         />
       </div>
