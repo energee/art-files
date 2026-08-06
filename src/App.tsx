@@ -29,7 +29,6 @@ import {
   Sidebar, SidebarContent, SidebarInset, SidebarProvider, SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import poppinsRegular from "@/assets/fonts/Poppins-Regular.ttf?url";
 import poppinsSemiBold from "@/assets/fonts/Poppins-SemiBold.ttf?url";
@@ -636,29 +635,6 @@ export default function App() {
               <CanView artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
                 mode={viewMode} />
             )}
-            {/* In-viewport view switcher — the same five modes as the View
-                menu, one click away. "Standard"/"Mask" are the 2D compare's
-                two extremes, so they both leave viewMode at "2d" and slide
-                the divider; the empty-array guard ignores re-clicking the
-                active mode (Base UI toggles it off). */}
-            <ToggleGroup
-              size="sm"
-              className="absolute right-2 top-2 z-10 rounded-lg border border-border bg-background/80 p-0.5 backdrop-blur-sm"
-              value={[viewMode !== "2d" ? viewMode : split === 100 ? "mask" : "art"]}
-              onValueChange={(v: unknown[]) => {
-                const next = v[0] as "art" | "mask" | "can" | "pack" | "flat" | undefined;
-                if (!next) return;
-                if (next === "art" || next === "mask") show2d(next);
-                else setViewMode(next);
-              }}
-            >
-              {([["art", "Standard"], ["mask", "Mask"], ["flat", "Rendered"],
-                ["can", "Can"], ["pack", "4-Pack"]] as const).map(([v, label]) => (
-                <ToggleGroupItem key={v} value={v} className="h-6 px-2 text-xs">
-                  {label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
             {/* First-load state: until the first debounced build lands there is
                 nothing on the canvases, so fill the empty frame with a spinner
                 instead of a bare box. Later rebuilds keep the previous render
