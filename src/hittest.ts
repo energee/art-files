@@ -8,7 +8,7 @@ import { parseDescription, parseInfoLine, parseRuns } from "./description";
 // The renderer's own paragraph wrapper and justified-column length, so the
 // warning's hit columns can't disagree with the columns it draws or the
 // justified width it draws them at (see the warning boxes below).
-import { wrapWarning, warningColumnLen } from "./pdf/build";
+import { wrapWarning, warningColumnLen } from "./warning";
 import * as L from "./layout";
 
 export type Measure = (text: string, size: number, bold: boolean) => number;

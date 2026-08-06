@@ -105,3 +105,15 @@ no status, no attempts, no delta.
   anything about capability.
 
 ---
+
+## 2026-08-05 lazy-react-renderers
+- finding: [KISS/med] src/App.tsx:14 — the initial React bundle eagerly included PDF, fontkit, and PSD renderers while live preview PDF builds still ran on the UI thread
+- status: done
+- attempts: 1/3
+- delta: entry JS 2,613.79 kB / 963.59 kB gzip → 1,128.57 kB / 353.86 kB gzip; preview builds moved to a lazy worker; full PDF and PSD renderers load on export
+
+## 2026-08-05 single-pass-react-mask
+- finding: [DRY/low] src/App.tsx:259 — mask upload classified every full-resolution pixel once for validation and again for recoloring
+- status: done
+- attempts: 1/3
+- delta: mask classification passes 2 → 1 and 14.4M-pixel synthetic pass 64 ms → 46 ms; decoded ImageBitmap now closes before ImageData processing; tests 127 → 128 and green

@@ -30,7 +30,11 @@ export function validateMask(rgba: Uint8Array | Uint8ClampedArray): MaskValidati
     if (!isWhite(rgba[i], rgba[i + 1], rgba[i + 2]) && !isBlue(rgba[i], rgba[i + 1], rgba[i + 2]))
       off++;
   }
-  const offPalette = off / n;
+  return maskValidation(off, n);
+}
+
+function maskValidation(off: number, total: number): MaskValidation {
+  const offPalette = off / total;
   if (offPalette > 0.01)
     return {
       ok: false,
@@ -38,6 +42,25 @@ export function validateMask(rgba: Uint8Array | Uint8ClampedArray): MaskValidati
       error: `Mask has ${(offPalette * 100).toFixed(1)}% pixels that are neither white nor blue (0,156,215).`,
     };
   return { ok: true, offPalette };
+}
+
+/** Validate and recolor in one pixel walk for callers that need both. */
+export function prepareMaskForPdf(rgba: Uint8Array | Uint8ClampedArray): MaskValidation {
+  let off = 0;
+  const n = rgba.length / 4;
+  for (let i = 0; i < rgba.length; i += 4) {
+    const blue = isBlue(rgba[i], rgba[i + 1], rgba[i + 2]);
+    if (!blue && !isWhite(rgba[i], rgba[i + 1], rgba[i + 2])) off++;
+    if (blue) {
+      rgba[i] = BLUE[0];
+      rgba[i + 1] = BLUE[1];
+      rgba[i + 2] = BLUE[2];
+      rgba[i + 3] = 255;
+    } else {
+      rgba[i + 3] = 0;
+    }
+  }
+  return maskValidation(off, n);
 }
 
 /** Recolor in place for the mask PDF: blue stays blue (white ink there),

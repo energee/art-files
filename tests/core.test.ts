@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { encodeUpc, upcCheckDigit, validateUpc } from "../src/upc";
 import { qrPath, qrShapes, machineName, qrUrl } from "../src/qr";
-import { recolorMaskForPdf, validateMask } from "../src/maskimage";
+import { prepareMaskForPdf, recolorMaskForPdf, validateMask } from "../src/maskimage";
 import { tintRgba } from "../src/collab";
 import { defaultConfig, parseConfigFile, toConfigFile } from "../src/defaults";
 import { parseDescription, parseInfoLine, parseRuns, serializeDescription } from "../src/description";
@@ -67,6 +67,21 @@ describe("mask", () => {
     const v = validateMask(rgba);
     expect(v.ok).toBe(false);
     expect(v.offPalette).toBe(1);
+  });
+  it("validates and recolors a mask in one pass", () => {
+    const rgba = new Uint8Array([
+      ...px(255, 255, 255),
+      ...px(0, 156, 215),
+      ...px(255, 0, 0),
+    ]);
+    const v = prepareMaskForPdf(rgba);
+    expect(v.ok).toBe(false);
+    expect(v.offPalette).toBeCloseTo(1 / 3);
+    expect([...rgba]).toEqual([
+      255, 255, 255, 0,
+      0, 156, 215, 255,
+      255, 0, 0, 0,
+    ]);
   });
 });
 
