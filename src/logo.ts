@@ -18,6 +18,27 @@ export function parseLogo(
    *  so scaling by width alone would let a tall mark run off its slot. */
   maxH?: number,
 ): { paths: string[]; w: number; h: number } {
+  // Memoized: the preview builds re-parse the same laurel (and any dropped
+  // SVG collab logo) twice per rebuild with identical inputs, and the
+  // svgpath transform/unarc pipeline is the cost. The handful of live SVG
+  // strings makes a plain Map fine.
+  // ponytail: unbounded cache keyed by whole-SVG strings — add eviction only
+  // if a session ever cycles through many distinct logos.
+  const key = `${width}|${maxH ?? ""}`;
+  let bySize = logoCache.get(svg);
+  if (!bySize) logoCache.set(svg, (bySize = new Map()));
+  let hit = bySize.get(key);
+  if (!hit) bySize.set(key, (hit = parseLogoUncached(svg, width, maxH)));
+  return hit;
+}
+
+const logoCache = new Map<string, Map<string, { paths: string[]; w: number; h: number }>>();
+
+function parseLogoUncached(
+  svg: string,
+  width: number,
+  maxH?: number,
+): { paths: string[]; w: number; h: number } {
   const vb = svg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/);
   if (!vb) throw new Error("Could not parse logo SVG viewBox");
   const scale =

@@ -1,16 +1,13 @@
 // worker.ts — preview-resolution PDF builds off the browser's UI thread.
+// Byte payloads arrive at most once per upload and are cached here by id
+// (see client.ts's ByteRef); each request references them by id alone.
 import type { LabelConfig } from "../types";
-import { buildArtPdf, buildMaskPdf, type Assets } from "./build";
-import type { PreviewAssets } from "./client";
+import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "./build";
+import type { ByteRef, WireAssets, WireImage, WorkerRequest, WorkerResponse } from "./client";
 import poppinsRegular from "../assets/fonts/Poppins-Regular.ttf?url";
 import poppinsSemiBold from "../assets/fonts/Poppins-SemiBold.ttf?url";
 import poppinsBold from "../assets/fonts/Poppins-Bold.ttf?url";
 import logoSvg from "../assets/logo2025.svg?raw";
-
-type WorkerRequest = { id: number; cfg: LabelConfig; assets: PreviewAssets };
-type WorkerResponse =
-  | { id: number; art: ArrayBuffer; mask: ArrayBuffer }
-  | { id: number; error: string };
 
 const scope = self as unknown as {
   onmessage: ((event: MessageEvent<WorkerRequest>) => void) | null;
@@ -31,6 +28,43 @@ function loadFonts(): Promise<Assets["fonts"]> {
   return fontsPromise;
 }
 
+// Byte payloads by client-assigned id. Entries not referenced by the current
+// request are dropped after each build, so a replaced upload's preview PNG
+// doesn't linger for the whole session.
+const bytesById = new Map<number, Uint8Array>();
+
+function deref(r: ByteRef, used: Set<number>): Uint8Array {
+  if (r.bytes) bytesById.set(r.id, r.bytes);
+  const bytes = bytesById.get(r.id);
+  // Only reachable if the client's sent-tracking broke (it rolls back on a
+  // failed postMessage); failing loudly beats silently building without the
+  // texture the user dropped.
+  if (!bytes) throw new Error("Preview asset bytes were not sent to the worker.");
+  used.add(r.id);
+  return bytes;
+}
+
+function derefImage(img: WireImage | null | undefined, used: Set<number>): CollabImage | null {
+  if (!img) return null;
+  if (img.kind === "svg") return img;
+  return { kind: img.kind, bytes: deref(img.ref, used) };
+}
+
+function derefAssets(wire: WireAssets, fonts: Assets["fonts"]): Assets {
+  const used = new Set<number>();
+  const assets: Assets = {
+    fonts,
+    logoSvg,
+    texture: wire.texture && { kind: wire.texture.kind, bytes: deref(wire.texture.ref, used) },
+    maskPng: wire.maskPng && deref(wire.maskPng, used),
+    collabLeft: derefImage(wire.collabLeft, used),
+    collabCenter: derefImage(wire.collabCenter, used),
+    hidden: wire.hidden,
+  };
+  for (const id of bytesById.keys()) if (!used.has(id)) bytesById.delete(id);
+  return assets;
+}
+
 function ownBuffer(bytes: Uint8Array): ArrayBuffer {
   if (
     bytes.buffer instanceof ArrayBuffer &&
@@ -41,10 +75,10 @@ function ownBuffer(bytes: Uint8Array): ArrayBuffer {
 }
 
 scope.onmessage = (event) => {
-  const { id, cfg, assets: supplied } = event.data;
+  const { id, cfg, assets: wire } = event.data;
   void (async () => {
     try {
-      const assets: Assets = { ...supplied, fonts: await loadFonts(), logoSvg };
+      const assets = derefAssets(wire, await loadFonts());
       // Sequential builds keep the worker's transient image memory bounded.
       const art = await buildArtPdf(cfg, assets);
       const mask = await buildMaskPdf(cfg, assets);
