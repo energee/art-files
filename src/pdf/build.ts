@@ -24,6 +24,7 @@ import * as L from "../layout";
 import { barcodeGeometry, barcodeStrokePt } from "../barcode";
 import { qrPath, qrShapes, qrUrl } from "../qr";
 import { parseDescription, parseInfoLine, parseRuns } from "../description";
+import { warningColumnLen, wrapWarning } from "../warning";
 
 /** A collab brewery's logo: vector source (recolored by its slot's style, like
  *  the laurel) or raster bytes (drawn as-is, over white ink). */
@@ -264,19 +265,6 @@ function drawRotated(
   });
 }
 
-/** The on-page length of a wrapped warning column after justification (see
- *  drawJustifiedRotated): a multi-word line stretches its inter-word gaps
- *  to exactly `maxLen`. A single-word line has no gap to stretch, so it
- *  stays its natural measured length — letter-spacing one word to fill the
- *  column would look broken, not justified. Shared by the renderer (to
- *  decide whether to justify) and hittest.ts (so a column's hit box always
- *  matches what actually got drawn). */
-export function warningColumnLen(
-  line: string, maxLen: number, measure: (text: string) => number,
-): number {
-  return line.includes(" ") ? maxLen : measure(line);
-}
-
 /** Like drawRotated, but for a warning column: stretches inter-word gaps so
  *  the line's run reaches EXACTLY `opts.maxLen` (full justification — no
  *  ragged final column). Draws word-by-word, reusing drawRotated's per-word
@@ -314,26 +302,6 @@ export function drawJustifiedRotated(
     drawRotated(page, font, w, mode, style, { x: opts.x, yStart: cursor, size: opts.size });
     cursor -= widths[i] + gap;
   });
-}
-
-/** Wrap the warning paragraph to fit the rotated column height. `measure`
- *  returns a string's width at WARNING.size in points — passed in (rather
- *  than a PDFFont) so the hit-tester can derive the SAME column count and
- *  per-column length from its own measure without importing font machinery;
- *  the number of columns is a wrap result, never a constant. */
-export function wrapWarning(measure: (text: string) => number, maxLen: number): string[] {
-  const words = WARNING_TEXT.split(" ");
-  const lines: string[] = [];
-  let cur = "";
-  for (const w of words) {
-    const next = cur ? `${cur} ${w}` : w;
-    if (measure(next) > maxLen && cur) {
-      lines.push(cur);
-      cur = w;
-    } else cur = next;
-  }
-  if (cur) lines.push(cur);
-  return lines;
 }
 
 /** Glyph box for the barcode digits' mask pills — the measured Poppins font

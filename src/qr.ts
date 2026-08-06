@@ -21,7 +21,19 @@ export interface QrShapes {
   moduleSize: number; // unit-space module size (1/count)
 }
 
+// Last-call memo: each preview rebuild asks for the same payload twice (art
+// then mask mode), and repeats it across rebuilds whenever the edit didn't
+// touch the beer name — the matrix encode is the expensive step.
+let lastShapes: { data: string; shapes: QrShapes } | null = null;
+
 export function qrShapes(data: string): QrShapes {
+  if (lastShapes?.data === data) return lastShapes.shapes;
+  const shapes = buildShapes(data);
+  lastShapes = { data, shapes };
+  return shapes;
+}
+
+function buildShapes(data: string): QrShapes {
   const qr = qrcode(0, "L");
   qr.addData(data || " ");
   qr.make();

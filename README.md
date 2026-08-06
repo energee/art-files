@@ -119,7 +119,10 @@ reveals the white-ink layer over the art in place — no embedded PDF
 viewer, no tabs. Live previews build against a downscaled copy of the
 texture/mask (print-size images made every keystroke-triggered rebuild
 churn enough memory to crash the tab); downloads always rebuild at full
-resolution when clicked. Every action lives in a menubar across the top of
+resolution when clicked. Preview PDF generation runs in a lazy Web Worker,
+keeping pdf-lib/fontkit parsing and rendering off the UI thread; the
+full-resolution PDF and PSD renderers load only when their export actions are
+used. Every action lives in a menubar across the top of
 the window, above the sidebar/preview split: **File** (save config, load
 config, then Export PDF, Export Mask PDF, Export PSDs — see below; the
 both-PDFs-at-once action lives in the palette as "Export PDF + Mask PDF"),

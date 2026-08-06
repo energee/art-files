@@ -5,7 +5,8 @@
 // stream pdf-lib emits, rather than mocking PDFPage.
 import { describe, expect, it } from "vitest";
 import type { PDFFont, PDFPage } from "pdf-lib";
-import { buildMaskPdf, drawJustifiedRotated, warningColumnLen, wrapWarning } from "../src/pdf/build";
+import { buildMaskPdf, drawJustifiedRotated } from "../src/pdf/build";
+import { warningColumnLen, wrapWarning } from "../src/warning";
 import { defaultConfig } from "../src/defaults";
 import * as L from "../src/layout";
 import { assets, contentStreamText } from "./fixtures";
