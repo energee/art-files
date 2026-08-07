@@ -31,7 +31,7 @@ import { PANEL_ORDER, isElementId, type LayerId } from "@/components/layers";
 import {
   EMPTY_SELECTION, resolveSelect, type SelectMods, type Selection,
 } from "@/selection";
-import { CommandMenu, type Command } from "@/components/CommandMenu";
+import { CommandMenu, shortcutOf, type Command } from "@/components/CommandMenu";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
 import { CanView } from "@/components/CanView";
 import {
@@ -618,19 +618,20 @@ export default function App() {
 
   /** Every command the app exposes, once. The palette renders this list, the
    *  bare-key listener dispatches off `key`, and the menubar's items pull
-   *  their `run`/`disabled` from it — so a shortcut can't drift from the key
-   *  that actually fires it, and a command can't be enabled in one surface
-   *  while disabled in another. The menubar keeps its own JSX: it groups,
+   *  their `run`/`disabled`/`label` from it, and every surface renders its
+   *  glyphs through shortcutOf — so a shortcut can't drift from the key that
+   *  actually fires it, a label can't drift from the command it names, and a
+   *  command can't be enabled in one surface while disabled in another. The menubar keeps its own JSX: it groups,
    *  separates and check-marks, which is layout, not command identity. */
   const commands: Command[] = [
     // ⌘E exports the PDFs, ⇧⌘E the PSDs — the whole-deliverable runs. The
     // single-plate variants stay menu-only: naming six distinct combos costs
     // more than it saves.
-    { id: "export-both", label: "Export PDFs", key: "e", mods: "⌘", shortcut: "⌘E",
+    { id: "export-both", label: "Export PDFs", key: "e", mods: "⌘",
       disabled: pdfExportBlocked, run: exportPdfs },
     { id: "export-art", label: "Export Artwork PDF", disabled: pdfExportBlocked, run: downloadArt },
     { id: "export-mask", label: "Export Mask PDF", disabled: pdfExportBlocked, run: downloadMask },
-    { id: "export-psd", label: "Export PSDs", key: "e", mods: "⇧⌘", shortcut: "⇧⌘E",
+    { id: "export-psd", label: "Export PSDs", key: "e", mods: "⇧⌘",
       disabled: exportBlocked, run: () => void exportPsd() },
     { id: "export-psd-art", label: "Export Artwork PSD", disabled: exportBlocked, run: () => void exportPsd("art") },
     { id: "export-psd-mask", label: "Export Mask PSD", disabled: exportBlocked, run: () => void exportPsd("mask") },
@@ -638,17 +639,27 @@ export default function App() {
     { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: !canRedo, run: redo },
     { id: "presets-export", label: "Export presets", run: () => void exportPresets() },
     { id: "presets-import", label: "Import presets", run: () => presetsInput.current?.click() },
-    { id: "view-standard", label: "Preview: Standard", key: "1", shortcut: "1", run: () => show2d("art") },
-    { id: "view-mask", label: "Preview: Mask", key: "2", shortcut: "2", run: () => show2d("mask") },
-    { id: "view-rendered", label: "Preview: Rendered", key: "3", shortcut: "3", run: () => setViewMode("flat") },
-    { id: "view-can", label: "Preview: Single Can", key: "4", shortcut: "4", run: () => setViewMode("can") },
-    { id: "view-pack", label: "Preview: Four-Pack", key: "5", shortcut: "5", run: () => setViewMode("pack") },
+    { id: "view-standard", label: "Preview: Standard", key: "1", run: () => show2d("art") },
+    { id: "view-mask", label: "Preview: Mask", key: "2", run: () => show2d("mask") },
+    { id: "view-rendered", label: "Preview: Rendered", key: "3", run: () => setViewMode("flat") },
+    { id: "view-can", label: "Preview: Single Can", key: "4", run: () => setViewMode("can") },
+    { id: "view-pack", label: "Preview: Four-Pack", key: "5", run: () => setViewMode("pack") },
     // Bare B, not ⌘B — that one belongs to the sidebar toggle. Disabled
     // outside the 2D view, where there is no trim guide to draw.
-    { id: "bleed", label: bleed ? "Hide bleed lines" : "Show bleed lines", key: "b", shortcut: "B",
+    { id: "bleed", label: bleed ? "Hide bleed lines" : "Show bleed lines", key: "b",
       disabled: viewMode !== "2d", run: () => setBleed((b) => !b) },
   ];
-  const byId = (id: string) => commands.find((c) => c.id === id)!;
+  // Indexed once per render rather than a linear find per menu item: the
+  // menubar reads ~15 commands and App re-renders on every keystroke.
+  const index = Object.fromEntries(commands.map((c) => [c.id, c])) as Record<string, Command>;
+  // Throws at the lookup rather than at the .run/.disabled access downstream:
+  // every caller is a literal id in the menubar's JSX, so a miss means a typo
+  // or a deleted command, and the id is the only useful thing to report.
+  const byId = (id: string): Command => {
+    const c = index[id];
+    if (!c) throw new Error(`Unknown command: ${id}`);
+    return c;
+  };
   // The keydown listener is registered once and reads the live table here.
   const commandsRef = useRef(commands);
   commandsRef.current = commands;
@@ -683,23 +694,23 @@ export default function App() {
                     only the PDF items wait on it — the PSD path rebuilds from
                     the config alone. */}
                 <MenubarItem disabled={byId("export-both").disabled} onClick={byId("export-both").run}>
-                  Export PDFs <MenubarShortcut>{byId("export-both").shortcut}</MenubarShortcut>
+                  {byId("export-both").label} <MenubarShortcut>{shortcutOf(byId("export-both"))}</MenubarShortcut>
                 </MenubarItem>
                 <MenubarItem disabled={byId("export-art").disabled} onClick={byId("export-art").run}>
-                  Export Artwork PDF
+                  {byId("export-art").label}
                 </MenubarItem>
                 <MenubarItem disabled={byId("export-mask").disabled} onClick={byId("export-mask").run}>
-                  Export Mask PDF
+                  {byId("export-mask").label}
                 </MenubarItem>
                 <MenubarSeparator />
                 <MenubarItem disabled={byId("export-psd").disabled} onClick={byId("export-psd").run}>
-                  Export PSDs <MenubarShortcut>{byId("export-psd").shortcut}</MenubarShortcut>
+                  {byId("export-psd").label} <MenubarShortcut>{shortcutOf(byId("export-psd"))}</MenubarShortcut>
                 </MenubarItem>
                 <MenubarItem disabled={byId("export-psd-art").disabled} onClick={byId("export-psd-art").run}>
-                  Export Artwork PSD
+                  {byId("export-psd-art").label}
                 </MenubarItem>
                 <MenubarItem disabled={byId("export-psd-mask").disabled} onClick={byId("export-psd-mask").run}>
-                  Export Mask PSD
+                  {byId("export-psd-mask").label}
                 </MenubarItem>
                 <MenubarSeparator />
                 {/* The preset library: beer styles and barcodes reused across
@@ -716,10 +727,10 @@ export default function App() {
               <MenubarTrigger className={MENU_TRIGGER}>Edit</MenubarTrigger>
               <MenubarContent align="start" className={MENU_ITEMS}>
                 <MenubarItem disabled={byId("undo").disabled} onClick={byId("undo").run}>
-                  Undo <MenubarShortcut>{byId("undo").shortcut}</MenubarShortcut>
+                  Undo <MenubarShortcut>{shortcutOf(byId("undo"))}</MenubarShortcut>
                 </MenubarItem>
                 <MenubarItem disabled={byId("redo").disabled} onClick={byId("redo").run}>
-                  Redo <MenubarShortcut>{byId("redo").shortcut}</MenubarShortcut>
+                  Redo <MenubarShortcut>{shortcutOf(byId("redo"))}</MenubarShortcut>
                 </MenubarItem>
               </MenubarContent>
             </MenubarMenu>
@@ -729,32 +740,32 @@ export default function App() {
                 {/* Checked only at the extremes: anywhere in between is a
                     manual compare position, which is neither view. */}
                 <MenubarCheckboxItem checked={viewMode === "2d" && split === 0}
-                  disabled={byId("view-standard").disabled} onClick={byId("view-standard").run}>
-                  Standard <MenubarShortcut>{byId("view-standard").shortcut}</MenubarShortcut>
+                  onClick={byId("view-standard").run}>
+                  Standard <MenubarShortcut>{shortcutOf(byId("view-standard"))}</MenubarShortcut>
                 </MenubarCheckboxItem>
                 <MenubarCheckboxItem checked={viewMode === "2d" && split === 100}
-                  disabled={byId("view-mask").disabled} onClick={byId("view-mask").run}>
-                  Mask <MenubarShortcut>{byId("view-mask").shortcut}</MenubarShortcut>
+                  onClick={byId("view-mask").run}>
+                  Mask <MenubarShortcut>{shortcutOf(byId("view-mask"))}</MenubarShortcut>
                 </MenubarCheckboxItem>
                 <MenubarSeparator />
                 <MenubarCheckboxItem checked={viewMode === "flat"}
-                  disabled={byId("view-rendered").disabled} onClick={byId("view-rendered").run}>
-                  Rendered <MenubarShortcut>{byId("view-rendered").shortcut}</MenubarShortcut>
+                  onClick={byId("view-rendered").run}>
+                  Rendered <MenubarShortcut>{shortcutOf(byId("view-rendered"))}</MenubarShortcut>
                 </MenubarCheckboxItem>
                 <MenubarCheckboxItem checked={viewMode === "can"}
-                  disabled={byId("view-can").disabled} onClick={byId("view-can").run}>
-                  Single Can <MenubarShortcut>{byId("view-can").shortcut}</MenubarShortcut>
+                  onClick={byId("view-can").run}>
+                  Single Can <MenubarShortcut>{shortcutOf(byId("view-can"))}</MenubarShortcut>
                 </MenubarCheckboxItem>
                 <MenubarCheckboxItem checked={viewMode === "pack"}
-                  disabled={byId("view-pack").disabled} onClick={byId("view-pack").run}>
-                  Four-Pack <MenubarShortcut>{byId("view-pack").shortcut}</MenubarShortcut>
+                  onClick={byId("view-pack").run}>
+                  Four-Pack <MenubarShortcut>{shortcutOf(byId("view-pack"))}</MenubarShortcut>
                 </MenubarCheckboxItem>
                 <MenubarSeparator />
                 {/* 2D only: the trim guide is drawn in page space, which the
                     3D views don't present. */}
                 <MenubarCheckboxItem checked={bleed}
                   disabled={byId("bleed").disabled} onClick={byId("bleed").run}>
-                  Bleed Lines <MenubarShortcut>{byId("bleed").shortcut}</MenubarShortcut>
+                  Bleed Lines <MenubarShortcut>{shortcutOf(byId("bleed"))}</MenubarShortcut>
                 </MenubarCheckboxItem>
               </MenubarContent>
             </MenubarMenu>

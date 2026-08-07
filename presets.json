@@ -43,7 +43,7 @@
     "#33ff00"
   ],
   "render": {
-    "cornerRadius": 2.5,
+    "cornerRadius": 1.2191157174035747,
     "labelSize": 82,
     "labelWidth": 97.5,
     "edgeSoftness": 0.1

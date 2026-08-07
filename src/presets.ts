@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { MAX_WRAP_RATIO } from "@/layout";
+import { LABEL_SHORT_IN, MAX_WRAP_RATIO } from "@/layout";
 
 // presets.ts — the reusable style and barcode library, read from and written
 // back to presets.json at the repo root through the dev server's
@@ -36,7 +36,10 @@ export interface RenderSettings {
 // in). Stated as the cap rather than 98 so the knob's readout matches what is
 // actually drawn instead of promising a wrap the scene clamps away.
 export const DEFAULT_RENDER: RenderSettings = {
-  cornerRadius: 2.5, labelSize: 82, labelWidth: MAX_WRAP_RATIO * 100, edgeSoftness: 0.1,
+  // 1/16" of die-cut radius, the house die — stated in inches and converted,
+  // since the stored value is a percentage of the label's short side.
+  cornerRadius: (0.0625 / LABEL_SHORT_IN) * 100,
+  labelSize: 82, labelWidth: MAX_WRAP_RATIO * 100, edgeSoftness: 0.1,
 };
 
 export interface Presets {

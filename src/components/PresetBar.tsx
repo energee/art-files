@@ -21,8 +21,12 @@ function PresetSelect(props: {
 }) {
   return (
     <Select value={null} onValueChange={(v) => { if (v) props.onPick(String(v)); }}>
+      {/* rounded-lg overrides size="sm"'s tighter radius, px-2.5 matches the
+          Input default: every other field in the inspector is a ScrubField,
+          and a select with a different corner or inset reads as a different
+          class of control. */}
       <SelectTrigger size="sm" aria-label={props.prompt}
-        className="h-6 w-full justify-between text-xs">
+        className="h-6 w-full justify-between rounded-lg px-2.5 text-xs">
         <span className="text-muted-foreground">{props.prompt}</span>
       </SelectTrigger>
       <SelectContent>

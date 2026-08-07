@@ -17,8 +17,16 @@ export interface Command {
   key?: string;
   /** Modifiers `key` needs. Omitted = a bare key (Figma style). */
   mods?: "⌘" | "⇧⌘";
+  /** Display-only override, for a shortcut this table does not dispatch
+   *  (undo/redo have their own listener). Anything with a `key` derives its
+   *  glyphs from the binding instead — see shortcutOf. */
   shortcut?: string;
 }
+
+/** The glyphs to show for a command, derived from the key it actually fires
+ *  on so the two cannot drift. */
+export const shortcutOf = (c: Command) =>
+  c.shortcut ?? (c.key ? `${c.mods ?? ""}${c.key.toUpperCase()}` : undefined);
 
 export function CommandMenu(props: { actions: Command[] }) {
   const [open, setOpen] = useState(false);
@@ -37,15 +45,18 @@ export function CommandMenu(props: { actions: Command[] }) {
       <CommandInput placeholder="Type a command…" />
       <CommandList>
         <CommandEmpty>No results.</CommandEmpty>
-        {props.actions.map((a) => (
-          <CommandItem key={a.id} disabled={a.disabled}
-            onSelect={() => { setOpen(false); a.run(); }}>
-            {a.label}
-            {a.shortcut && (
-              <span className="ml-auto text-xs text-muted-foreground">{a.shortcut}</span>
-            )}
-          </CommandItem>
-        ))}
+        {props.actions.map((a) => {
+          const glyphs = shortcutOf(a);
+          return (
+            <CommandItem key={a.id} disabled={a.disabled}
+              onSelect={() => { setOpen(false); a.run(); }}>
+              {a.label}
+              {glyphs && (
+                <span className="ml-auto text-xs text-muted-foreground">{glyphs}</span>
+              )}
+            </CommandItem>
+          );
+        })}
       </CommandList>
     </CommandDialog>
   );

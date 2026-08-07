@@ -23,6 +23,7 @@ import { ScrubField } from "./ScrubField";
 import { DescriptionEditor } from "./DescriptionEditor";
 import { FileDrop } from "./FileDrop";
 import { MetallicToggle } from "./MetallicToggle";
+import { ThemeSwitch } from "./ThemeSwitch";
 import { BarcodePresetBar, BeerStylePresetBar } from "./PresetBar";
 import { machineName, qrUrl } from "@/qr";
 import {
@@ -290,11 +291,20 @@ function Content(props: {
         </div>
       );
     case "abv":
+      // Free text, not a number input: the stored value is the bare figure
+      // ("5.2") and build.ts prints "5.2% alc by vol", but ranges and "n/a"
+      // have to stay typeable. The suffix names the unit a bare 5rem box
+      // leaves to guess, and hides when the value already carries one.
       return (
-        <Input
-          id="abv" className="h-6 w-20 text-xs" value={cfg.abv}
-          onChange={(e) => update((c) => { c.abv = e.target.value; })}
-        />
+        <div className="flex items-center gap-1.5">
+          <Input
+            id="abv" className="h-6 w-20 text-xs" value={cfg.abv}
+            onChange={(e) => update((c) => { c.abv = e.target.value; })}
+          />
+          {!cfg.abv.includes("%") && (
+            <span className="text-xs text-muted-foreground">% alc by vol</span>
+          )}
+        </div>
       );
     case "description":
       return (
@@ -391,7 +401,10 @@ function Content(props: {
           {/* Die-cut corner radius, off the label's short side. */}
           <InchField
             id="doc-corner-radius" label="Corner radius" of={LABEL_SHORT_IN}
-            pct={settings.cornerRadius} minPct={0} maxPct={5} step={0.005}
+            // Sixteenths: a die is specified in them, and InchField's step is
+            // also its display precision — at 0.005 the house 1/16" die reads
+            // as 0.062.
+            pct={settings.cornerRadius} minPct={0} maxPct={5} step={0.0625}
             onPct={settings.onCornerRadius}
           />
           {/* How tall the label stands on the can — a share of CAN_HEIGHT_IN,
@@ -418,6 +431,13 @@ function Content(props: {
             pct={settings.edgeSoftness} minPct={0} maxPct={1} step={0.001}
             onPct={settings.onEdgeSoftness}
           />
+          {/* An app preference, not a document one — it lives here because
+              Settings is the only preferences surface the app has, and it is
+              deliberately not saved with the presets. */}
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-xs text-muted-foreground">Appearance</Label>
+            <ThemeSwitch />
+          </div>
         </div>
       );
     case "wordmark":

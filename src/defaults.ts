@@ -24,7 +24,13 @@ export const displayName = (c: LabelConfig) => c.beerName.trim() || "Name";
  *  fallback, so an unnamed label downloads as "label.*" everywhere. */
 export const exportBaseName = (c: LabelConfig) => c.beerName.trim() || "label";
 export const displayStyle = (c: LabelConfig) => c.styleLine.text.trim() || "Style";
-export const displayAbv = (c: LabelConfig) => c.abv.trim() || "#";
+/** The ABV figure alone. Every caller appends the unit ("% alc by vol" on the
+ *  label), so a trailing percent sign — typed, or inherited from a config
+ *  written when the field carried its own unit — is stripped rather than
+ *  printed twice. Text measurement runs on this same value, so the hitbox
+ *  follows. */
+export const displayAbv = (c: LabelConfig) =>
+  c.abv.trim().replace(/\s*%$/, "").trim() || "#";
 
 export function defaultConfig(): LabelConfig {
   return {

@@ -150,7 +150,9 @@ export function ColorField(props: {
           if (HEX.test(e.target.value)) props.onChange(e.target.value as Fill);
         }}
         onBlur={() => setText(null)}
-        className="h-6 w-[4.6rem] px-1 font-mono text-xs"
+        // w-24/px-2.5 = a ScrubField's value box, so the hex lands in the
+        // same right-hand column as every numeric field in the panel.
+        className="h-6 w-24 px-2.5 font-mono text-xs"
       />
     </div>
   );

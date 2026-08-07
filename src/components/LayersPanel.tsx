@@ -55,7 +55,9 @@ function StyleSummary({ id, cfg }: { id: ElementId; cfg: LabelConfig }) {
   const bold = el.hasBold && ((s as StyledLine).bold ?? false);
   const strokeOn = !!s.stroke && s.stroke !== "none";
   const tracking = s.letterSpacing ?? 0;
-  const line = "flex items-center gap-1.5 text-[11px] text-sidebar-foreground/70";
+  // /85, not /70: at 11px this is the densest text in the app, and dimming
+  // it further put it under the panel's own contrast floor.
+  const line = "flex items-center gap-1.5 text-[11px] text-sidebar-foreground/85";
   return (
     <div className="space-y-1">
       <div className={line}>

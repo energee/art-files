@@ -10,7 +10,6 @@ export const PAGE = { w: 585.12, h: 369.12 };
 /** Art box inside the bleed. */
 export const ART = { x: 4.56, y: 4.56, w: 576, h: 360 };
 export const CENTER_X = PAGE.w / 2;
-
 /** The label's own size in inches — the page (bleed included), which is what
  *  the renderer textures the can with and therefore what its percentage
  *  knobs are percentages of. */

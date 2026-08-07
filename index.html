@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Lolev Label Generator</title>
+    <!-- Stamp the saved theme before first paint — React mounts only after the
+         browser has painted, so doing this in src/theme.ts alone would flash
+         the OS scheme on every reload. No attribute = follow the OS. -->
+    <script>
+      const theme = localStorage.getItem("theme");
+      if (theme === "light" || theme === "dark")
+        document.documentElement.dataset.theme = theme;
+    </script>
   </head>
   <body>
     <div id="root"></div>
