@@ -822,6 +822,13 @@ export default function App() {
               clearSelection();
           }}>
           <SheetContent side="right" showOverlay={false} showCloseButton={false}
+            // Hand focus back to whatever opened the sheet only when the
+            // close came from the keyboard. Otherwise base-ui returns it to
+            // the last-clicked layer row AND marks it keyboard-focused, so
+            // dismissing the inspector with the mouse lit a focus ring on a
+            // row the user never navigated to — an outline that looked like
+            // it was highlighting something at random.
+            finalFocus={(closeType) => closeType === "keyboard"}
             // Same card shade as the left sidebar and, like it, no border —
             // the two rails read as one surface flanking the canvas.
             className="w-[300px] gap-0 overflow-y-auto border-l-0! bg-sidebar p-3 sm:max-w-[300px]">
