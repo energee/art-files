@@ -58,6 +58,14 @@ describe("resolveSelect", () => {
     expect(r.anchor).toBe("name");
   });
 
+  it("clears the anchor when a toggle empties the selection", () => {
+    const cleared = click(sel(["name"], "name"), "name", { toggle: true });
+    expect(cleared).toEqual(sel([], null));
+    // With no anchor left, the next shift-click is a plain select rather than
+    // a range grown from a row that is no longer highlighted.
+    expect(click(cleared, "abv", { shift: true })).toEqual(sel(["abv"], "abv"));
+  });
+
   it("keeps document layers single-select in both directions", () => {
     // ⌘-clicking a document layer replaces rather than mixing a Settings
     // panel into a style edit...

@@ -124,6 +124,11 @@ export class CanScene {
   private canHeight = SCENE_SCALE;
   /** Azimuth that faces the label front; recomputed per wrap angle. */
   private frontAzimuth = DEFAULT_FRONT_AZIMUTH;
+  /** The azimuth the camera was last framed at. The 4-pack lays itself out in
+   *  this frame rather than the live frontAzimuth: a width scrub rebuilds the
+   *  pack without re-framing, so the fresh angle spun the whole block around a
+   *  stationary camera. Only frameCamera moves this. */
+  private framedAzimuth = DEFAULT_FRONT_AZIMUTH;
   /** Whether the camera has been aimed at a real (built) label yet. After
    *  that the view belongs to the operator — see frameCamera. */
   private framed = false;
@@ -466,20 +471,23 @@ export class CanScene {
     this.flatBackMesh.position.z = -0.0005;
     this.scene.add(this.flatBackMesh);
 
-    this.applyMode(); // rebuild the pack against the new meshes
     // The opening view, once. frontAzimuth only becomes real after the first
     // cylinder exists, so the constructor's guess needs correcting — but only
     // that first time: later art changes must not yank a camera the operator
-    // has since moved.
+    // has since moved. Ahead of applyMode, which lays the 4-pack out against
+    // whatever azimuth the camera ends up framed at.
     if (!this.framed) { this.framed = true; this.frameCamera(); }
+    this.applyMode(); // rebuild the pack against the new meshes
   }
 
   /** Switch view. The one gesture that is allowed to move the camera: asking
    *  for a different view IS asking to be shown it from the front. */
   setMode(mode: CanSceneMode) {
     this.mode = mode;
-    this.applyMode();
+    // Frame first: applyMode may build the 4-pack, which lays out against the
+    // azimuth frameCamera settles on.
     this.frameCamera();
+    this.applyMode();
   }
 
   /** Show the meshes this mode uses, and rebuild the 4-pack (its clones hold
@@ -511,6 +519,7 @@ export class CanScene {
    *  every size change and every re-render of the art. */
   private frameCamera() {
     this.controls.target.set(0, 0, 0);
+    this.framedAzimuth = this.frontAzimuth;
     if (this.mode === "pack") {
       this.setCameraSpherical(DEFAULT_ZOOM * FOUR_PACK_ZOOM, FOUR_PACK_TILT, this.frontAzimuth);
     } else if (this.mode === "flat") {
@@ -523,14 +532,14 @@ export class CanScene {
   }
 
   /** 2x2 block of clones, laid out in the camera's frame (offsets rotated by
-   *  frontAzimuth) so one grid axis runs across the screen, one into depth. */
+   *  framedAzimuth) so one grid axis runs across the screen, one into depth. */
   private buildPackGroup() {
     if (!this.canModel) return;
     const sources = [this.canModel, this.labelMesh, this.shadowMesh]
       .filter((s): s is THREE.Object3D => !!s);
     this.packGroup = new THREE.Group();
     const half = (this.canRadius * FOUR_PACK_SPACING) / 2;
-    const a = this.frontAzimuth;
+    const a = this.framedAzimuth;
     const ca = Math.cos(a), sa = Math.sin(a);
     for (const [ix, iz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
       const unit = new THREE.Group();
