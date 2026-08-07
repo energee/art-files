@@ -133,12 +133,10 @@ function LayerRow({
         <div
           onClick={(e) => onSelect(id, modsOf(e))}
           className={cn(
-            // Paired with the name button's hover:bg-transparent and
-            // focus-visible:ring-0 below: hover AND the focus ring cover the
-            // whole bar, so a row never shows a half-width highlight, or an
-            // outline that stops short of its own eye and chevron.
+            // Paired with the name button's hover:bg-transparent below: hover
+            // lights the whole bar, so a row never shows a half-width
+            // highlight under the cursor.
             "flex cursor-pointer items-center rounded-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-            "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sidebar-ring",
             isSelected && "bg-sidebar-accent text-sidebar-accent-foreground",
           )}
         >
@@ -167,8 +165,12 @@ function LayerRow({
             // which is the one select target. Keyboard still works — Enter
             // on this button fires a click that bubbles the same way — and
             // the button stays the row's focusable, named control.
-            // The row wrapper owns the hover, the selected background and the
-            // focus ring; the button's own would each cover its width only.
+            // The row wrapper owns the hover and selected backgrounds; the
+            // button's own would cover its width only. No focus ring at all
+            // (ring-0): asked for deliberately — the selected background is
+            // the only state this panel shows, and the ring read as an
+            // outline appearing on rows the user hadn't picked. Trade-off:
+            // tabbing through the rows is now invisible.
             className={cn(
               "text-xs hover:bg-transparent focus-visible:ring-0",
               (hidden || collabOff) && "opacity-50",
