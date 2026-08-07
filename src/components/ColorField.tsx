@@ -37,10 +37,15 @@ export function ColorField(props: {
    *  them. Typing or picking still writes to the whole selection. */
   mixed?: boolean;
 }) {
-  const none = props.value === "none";
+  // Only "no ink" when the whole selection agrees. A mixed selection whose
+  // first element happens to have none would otherwise disable the hex Input
+  // and the picker for everyone, leaving no way to set a color without first
+  // toggling no-ink off — which stamps GOLD over the lot.
+  const none = !props.mixed && props.value === "none";
   // Local text state so a half-typed hex doesn't clobber the config.
   const [text, setText] = useState<string | null>(null);
-  const hex = none ? "#ffffff" : props.value;
+  // Picker and Save still need a real color when a mixed value reads "none".
+  const hex = props.value === "none" ? "#ffffff" : props.value;
   // Commit a picked color and drop any half-typed hex sitting in the Input.
   const apply = (v: string) => { setText(null); props.onChange(v as Fill); };
   // Saved swatches live in presets.json, not on the element, so a color saved

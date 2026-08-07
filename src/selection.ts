@@ -61,9 +61,11 @@ export function resolveSelect(
     // element next to it replaces rather than mixes.
     if (sel.ids.some((x) => !isElementId(x))) return only;
     const ids = sel.ids.includes(id) ? sel.ids.filter((x) => x !== id) : [...sel.ids, id];
-    // Deselecting the anchor leaves the range with nothing to extend from,
-    // so the click's row becomes the anchor either way.
-    return { ids, anchor: id };
+    // Deselecting the anchor leaves the range with nothing to extend from, so
+    // the click's row becomes the anchor either way — unless the toggle emptied
+    // the selection, which clears it (a shift-click after that would otherwise
+    // extend from an invisible row instead of selecting plainly).
+    return { ids, anchor: ids.length ? id : null };
   }
 
   return only;
