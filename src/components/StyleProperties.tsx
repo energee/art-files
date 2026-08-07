@@ -24,7 +24,7 @@ import { DescriptionEditor } from "./DescriptionEditor";
 import { FileDrop } from "./FileDrop";
 import { MetallicToggle } from "./MetallicToggle";
 import { BarcodePresetBar, BeerStylePresetBar } from "./PresetBar";
-import { CAN_HEIGHT_IN, PAGE } from "@/layout";
+import { CAN_CIRCUM_IN, CAN_HEIGHT_IN, PAGE } from "@/layout";
 
 /** The label in inches. canScene scales the corner radius off min(width,
  *  height) of the label texture — i.e. the page height — and the foil-edge
@@ -95,6 +95,9 @@ export interface DocSettings {
   onCornerRadius: (v: number) => void;
   labelSize: number;
   onLabelSize: (v: number) => void;
+  /** How far the label wraps, % of the can's circumference. */
+  labelWidth: number;
+  onLabelWidth: (v: number) => void;
   /** Foil-mask blur, % of label width — softens the metallic edges. */
   edgeSoftness: number;
   onEdgeSoftness: (v: number) => void;
@@ -390,6 +393,15 @@ function Content(props: {
             id="doc-label-size" label="Label height" of={CAN_HEIGHT_IN}
             pct={settings.labelSize} minPct={50} maxPct={95} step={0.01}
             onPct={settings.onLabelSize}
+          />
+          {/* How far it wraps, as an arc of the can's circumference. The
+              print is a fixed 8in wide, so narrowing this squeezes the art
+              around a shorter arc rather than trimming it — it answers "how
+              much of the can does this cover", not "what did we print". */}
+          <InchField
+            id="doc-label-width" label="Label width" of={CAN_CIRCUM_IN}
+            pct={settings.labelWidth} minPct={30} maxPct={100} step={0.01}
+            onPct={settings.onLabelWidth}
           />
           {/* Blur on the foil mask's edges: 0 = hard specular outlines
               around every metallic element, wider = softer transitions.

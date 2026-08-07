@@ -14,16 +14,25 @@ export interface BarcodePreset {
 
 /** The Document Settings layer's 3D-view knobs. One saved set, not a library:
  *  they describe how this shop's labels are die-cut and rendered, so there is
- *  nothing to pick between. Percentages, matching the inspector's stored
- *  values (corner radius is a % of the label's short side). */
+ *  nothing to pick between. Percentages, each of a different thing — the
+ *  inspector shows them all in inches (see InchField) and stores them in the
+ *  form canScene consumes:
+ *    cornerRadius — % of the label's short side
+ *    labelSize    — label height, % of the can's height
+ *    labelWidth   — how far it wraps, % of the can's circumference
+ *    edgeSoftness — foil-edge blur, % of the label's width */
 export interface RenderSettings {
   cornerRadius: number;
   labelSize: number;
+  labelWidth: number;
   edgeSoftness: number;
 }
 
+// labelWidth 98 ≈ the 8in art on a 8.17in circumference, which is also where
+// the aspect-derived wrap used to land — so a library saved before this knob
+// existed opens looking the same (normalizePresets' spread fills it in).
 export const DEFAULT_RENDER: RenderSettings = {
-  cornerRadius: 2.5, labelSize: 82, edgeSoftness: 0.1,
+  cornerRadius: 2.5, labelSize: 82, labelWidth: 98, edgeSoftness: 0.1,
 };
 
 export interface Presets {

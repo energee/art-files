@@ -17,6 +17,12 @@ export const CENTER_X = PAGE.w / 2;
  *  can changes and every reading follows. */
 export const CAN_HEIGHT_IN = 6.19;
 
+/** That can's circumference, in inches (2.6in diameter) — what the label
+ *  wraps, and so the basis for the Settings layer's label-width knob. The
+ *  8in-wide art covers very nearly all of it, which is why a full-width
+ *  label reads as ~8in here. */
+export const CAN_CIRCUM_IN = Math.PI * 2.6;
+
 /** Default metallic gold. Originally #D0B070 (sampled from the Labradorite
  *  reference render); brightened to #F3CD80 by request 2026-08. */
 export const GOLD = "#F3CD80" as const;

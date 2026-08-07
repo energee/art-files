@@ -99,6 +99,10 @@ export class CanScene {
   private labelMesh: THREE.Mesh | null = null;
   private labelMaterial: THREE.MeshStandardMaterial | null = null;
   private labelHeightRatio = LABEL_HEIGHT_RATIO;
+  /** How far the label wraps, as a share of the can's circumference. null =
+   *  derive it from the artwork's aspect, which is what this did before the
+   *  knob existed and what an unset Label width still means. */
+  private labelWidthRatio: number | null = null;
   private cornerRadiusPct = CORNER_RADIUS_PCT;
   private edgeSoftnessRatio = EDGE_SOFTNESS;
   private flatMesh: THREE.Mesh | null = null;
@@ -328,16 +332,20 @@ export class CanScene {
    *  maps. A full applyTextures would re-blur, re-lerp and re-upload five
    *  full-resolution textures per pixel of drag. */
   setLabelOptions(opts: {
-    cornerRadiusPct?: number; heightRatio?: number; edgeSoftnessRatio?: number;
+    cornerRadiusPct?: number; heightRatio?: number; widthRatio?: number | null;
+    edgeSoftnessRatio?: number;
   }) {
     const radius = opts.cornerRadiusPct !== undefined
       && opts.cornerRadiusPct !== this.cornerRadiusPct;
-    const height = opts.heightRatio !== undefined
-      && opts.heightRatio !== this.labelHeightRatio;
+    // Width feeds the same cylinder as height, so it takes the same path.
+    const height = (opts.heightRatio !== undefined
+      && opts.heightRatio !== this.labelHeightRatio)
+      || (opts.widthRatio !== undefined && opts.widthRatio !== this.labelWidthRatio);
     const softness = opts.edgeSoftnessRatio !== undefined
       && opts.edgeSoftnessRatio !== this.edgeSoftnessRatio;
     if (opts.cornerRadiusPct !== undefined) this.cornerRadiusPct = opts.cornerRadiusPct;
     if (opts.heightRatio !== undefined) this.labelHeightRatio = opts.heightRatio;
+    if (opts.widthRatio !== undefined) this.labelWidthRatio = opts.widthRatio;
     if (opts.edgeSoftnessRatio !== undefined) this.edgeSoftnessRatio = opts.edgeSoftnessRatio;
     if (!(radius || height || softness)) return;
 
@@ -377,7 +385,15 @@ export class CanScene {
   private rebuildLabelMesh(tex: LabelTextures) {
     const labelHeight = this.canHeight * this.labelHeightRatio;
     const labelRadius = this.canRadius * 1.005;
-    const wrapAngle = Math.min((labelHeight * tex.aspect) / labelRadius, Math.PI * 1.95);
+    // A set width is an arc of the circumference; unset, the wrap follows the
+    // artwork's aspect as it always did. Capped either way at 1.95π: a label
+    // that meets itself leaves no seam and z-fights with its own start edge.
+    const wrapAngle = Math.min(
+      this.labelWidthRatio !== null
+        ? this.labelWidthRatio * Math.PI * 2
+        : (labelHeight * tex.aspect) / labelRadius,
+      Math.PI * 1.95,
+    );
 
     this.disposeLabelMesh();
     this.labelMesh = new THREE.Mesh(

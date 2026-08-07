@@ -422,6 +422,8 @@ export default function App() {
     onCornerRadius: (v) => setRender((r) => ({ ...r, cornerRadius: v })),
     labelSize: render.labelSize,
     onLabelSize: (v) => setRender((r) => ({ ...r, labelSize: v })),
+    labelWidth: render.labelWidth,
+    onLabelWidth: (v) => setRender((r) => ({ ...r, labelWidth: v })),
     edgeSoftness: render.edgeSoftness,
     onEdgeSoftness: (v) => setRender((r) => ({ ...r, edgeSoftness: v })),
   };
@@ -771,6 +773,7 @@ export default function App() {
               <CanView artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
                 mode={viewMode} cornerRadiusPct={render.cornerRadius}
                 labelHeightPct={render.labelSize}
+                labelWidthPct={render.labelWidth}
                 edgeSoftnessPct={render.edgeSoftness} />
             )}
             {/* No-texture hint. It used to sit in the status strip above the

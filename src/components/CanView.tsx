@@ -7,12 +7,15 @@ import { CanScene, type CanSceneMode } from "@/three/canScene";
 import { buildLabelTextures } from "@/three/labelTextures";
 
 export function CanView({
-  artBytes, maskBytes, mode, cornerRadiusPct, labelHeightPct, edgeSoftnessPct,
+  artBytes, maskBytes, mode, cornerRadiusPct, labelHeightPct, labelWidthPct,
+  edgeSoftnessPct,
 }: {
   /** Die-cut corner radius, % of the label's short edge (Settings layer). */
   cornerRadiusPct: number;
   /** Label height as % of can height (Settings layer). */
   labelHeightPct: number;
+  /** How far the label wraps, % of the can's circumference (Settings layer). */
+  labelWidthPct: number;
   /** Foil-mask blur, % of label width (Settings layer). */
   edgeSoftnessPct: number;
   artBytes: Uint8Array | null;
@@ -65,9 +68,10 @@ export function CanView({
     sceneRef.current?.setLabelOptions({
       cornerRadiusPct,
       heightRatio: labelHeightPct / 100,
+      widthRatio: labelWidthPct / 100,
       edgeSoftnessRatio: edgeSoftnessPct / 100,
     });
-  }, [cornerRadiusPct, labelHeightPct, edgeSoftnessPct]);
+  }, [cornerRadiusPct, labelHeightPct, labelWidthPct, edgeSoftnessPct]);
 
   return (
     <div className="relative h-full w-full">
