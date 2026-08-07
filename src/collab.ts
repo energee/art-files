@@ -18,7 +18,7 @@ export const rasterKind = (name: string): "jpg" | "png" =>
  *  white background is opaque too, and nothing in the pixels says it was
  *  meant to be background. That is why this is opt-in per slot
  *  (CollabSlot.tintRaster) rather than applied to every raster automatically.
- *  Mutates in place, like recolorMaskForPdf. */
+ *  Mutates in place, like prepareMaskForPdf. */
 export function tintRgba(rgba: Uint8Array | Uint8ClampedArray, fill: Fill): void {
   const { r, g, b } = parseHexFill(fill);
   const R = Math.round(r * 255);
