@@ -24,20 +24,31 @@ import { DescriptionEditor } from "./DescriptionEditor";
 import { FileDrop } from "./FileDrop";
 import { MetallicToggle } from "./MetallicToggle";
 import { BarcodePresetBar, BeerStylePresetBar } from "./PresetBar";
-import { CAN_CIRCUM_IN, CAN_HEIGHT_IN, PAGE } from "@/layout";
+import { machineName, qrUrl } from "@/qr";
+import {
+  CAN_CIRCUM_IN, CAN_HEIGHT_IN, DEFAULT_STROKE_PX, LABEL_SHORT_IN, LABEL_WIDE_IN,
+  MAX_WRAP_RATIO,
+} from "@/layout";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 
-/** The label in inches. canScene scales the corner radius off min(width,
- *  height) of the label texture — i.e. the page height — and the foil-edge
- *  blur off its width. */
-const LABEL_SHORT_IN = PAGE.h / 72;
-const LABEL_WIDE_IN = PAGE.w / 72;
+type Update = (fn: (c: LabelConfig) => void) => void;
 
 /** A Settings knob STORED as a percentage (of `of` inches — the form
  *  canScene consumes) but SHOWN in inches, the unit a die-cut, a label and a
- *  press are specified in. One component for all three, so a knob can't
+ *  press are specified in. One component for every such knob, so none can
  *  quietly go back to reading in percent and the percentage stays an
  *  implementation detail of the renderer rather than a conversion the
- *  operator does in their head. */
+ *  operator does in their head.
+ *
+ *  Both directions round to the field's precision. The inches are rounded
+ *  because a percentage converted to inches is a long float
+ *  (0.12816666666666668) that says nothing at a 0.005 step; the percentage is
+ *  rounded because it is what lands in presets.json, a file kept in git
+ *  precisely so it can be read and diffed — one drag should not write
+ *  82.06785137318255 into it. */
 function InchField(props: {
   id: string; label: string;
   /** What the stored percentage is a percentage OF, in inches. */
@@ -48,24 +59,19 @@ function InchField(props: {
   onPct: (pct: number) => void;
 }) {
   const inches = (pct: number) => (pct / 100) * props.of;
+  const decimals = (String(props.step).split(".")[1] ?? "").length;
   return (
     <ScrubField
       id={props.id} label={props.label} unit={'"'}
-      value={inches(props.pct)}
+      value={Number(inches(props.pct).toFixed(decimals))}
       min={inches(props.minPct)} max={inches(props.maxPct)}
       step={props.step} dragStep={props.step}
-      onChange={(v) => props.onPct((v / props.of) * 100)}
+      // Back to a percentage at the same precision the inches were shown in:
+      // `of` inches per 100%, so one display step is 100/of percent.
+      onChange={(v) => props.onPct(Number(((v / props.of) * 100).toFixed(decimals + 2)))}
     />
   );
 }
-import { machineName, qrUrl } from "@/qr";
-import { DEFAULT_STROKE_PX } from "@/layout";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-
-type Update = (fn: (c: LabelConfig) => void) => void;
 
 /** Collab art is whatever the partner brewery sends: vector preferred (it
  *  takes the slot's fill/layer like the laurel), raster accepted. */
@@ -87,9 +93,10 @@ export interface CollabFiles {
   onCenter: (f: File) => void;
 }
 
-/** Document-presentation knobs the Settings layer edits — session-level 3D
- *  view options that live in App, not in the saved config. Percentages: the
- *  corner radius is % of the label's short edge, size is % of can height. */
+/** Document-presentation knobs the Settings layer edits — 3D view options
+ *  that live in App and persist to presets.json, not in the saved label
+ *  config. Each is a percentage of a different thing (see RenderSettings for
+ *  the list) and each is shown in inches by an InchField. */
 export interface DocSettings {
   cornerRadius: number;
   onCornerRadius: (v: number) => void;
@@ -374,8 +381,8 @@ function Content(props: {
       );
     case "settings":
       // Document-wide presentation knobs for the 3D views: corner radius
-      // shapes the die-cut label (alphaMap in canScene), label size is its
-      // height as a share of the can's. The print PDFs are untouched — the
+      // shapes the die-cut label (alphaMap in canScene), height and width say
+      // how much of the can it covers. The print PDFs are untouched — the
       // physical label is cut and sized at the press, not rendered.
       // Every knob reads in inches (see InchField); each stays a percentage
       // in presets.json and in canScene, which is what those consume.
@@ -400,7 +407,7 @@ function Content(props: {
               much of the can does this cover", not "what did we print". */}
           <InchField
             id="doc-label-width" label="Label width" of={CAN_CIRCUM_IN}
-            pct={settings.labelWidth} minPct={30} maxPct={100} step={0.01}
+            pct={settings.labelWidth} minPct={30} maxPct={MAX_WRAP_RATIO * 100} step={0.01}
             onPct={settings.onLabelWidth}
           />
           {/* Blur on the foil mask's edges: 0 = hard specular outlines

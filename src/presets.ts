@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { MAX_WRAP_RATIO } from "@/layout";
 
 // presets.ts — the reusable style and barcode library, read from and written
 // back to presets.json at the repo root through the dev server's
@@ -28,11 +29,14 @@ export interface RenderSettings {
   edgeSoftness: number;
 }
 
-// labelWidth 98 ≈ the 8in art on a 8.17in circumference, which is also where
-// the aspect-derived wrap used to land — so a library saved before this knob
-// existed opens looking the same (normalizePresets' spread fills it in).
+// labelWidth ships at the renderer's ceiling (MAX_WRAP_RATIO): the 8in art
+// almost exactly covers the can's 8.17in circumference, and that is also
+// where the aspect-derived wrap landed before the knob existed — so a library
+// saved without one opens looking the same (normalizePresets' spread fills it
+// in). Stated as the cap rather than 98 so the knob's readout matches what is
+// actually drawn instead of promising a wrap the scene clamps away.
 export const DEFAULT_RENDER: RenderSettings = {
-  cornerRadius: 2.5, labelSize: 82, labelWidth: 98, edgeSoftness: 0.1,
+  cornerRadius: 2.5, labelSize: 82, labelWidth: MAX_WRAP_RATIO * 100, edgeSoftness: 0.1,
 };
 
 export interface Presets {

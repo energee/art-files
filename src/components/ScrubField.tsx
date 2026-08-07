@@ -89,12 +89,11 @@ export function ScrubField(props: {
           max={props.max}
           step={props.step}
           className="h-6 text-xs"
-          // Shown at the step's precision: a value converted from another
-          // unit (stored as a percentage, displayed in inches) arrives as a
-          // long float, and 0.12816666666666668 in a 0.005-step field is
-          // noise, not information. Only the display rounds — the stored
-          // value keeps its full precision.
-          value={text ?? (props.mixed ? "" : Number(props.value.toFixed(decimals(props.step))))}
+          // Renders exactly what it was handed. A caller converting from
+          // another unit rounds before passing it in (see InchField), so the
+          // rounding lands on the value that gets STORED rather than only on
+          // the one displayed.
+          value={text ?? (props.mixed ? "" : props.value)}
           placeholder={props.mixed ? "Mixed" : undefined}
           onChange={(e) => {
             setText(e.target.value);

@@ -10,6 +10,8 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RGBELoader } from "three/addons/loaders/RGBELoader.js";
 import type { LabelTextures } from "./labelTextures";
+import { DEFAULT_RENDER } from "@/presets";
+import { MAX_WRAP_RATIO } from "@/layout";
 
 export type CanSceneMode = "can" | "pack" | "flat";
 
@@ -24,8 +26,6 @@ const MIN_ZOOM = 0.132;
 const MAX_ZOOM = 0.66;
 /** Normalized can height in world units. */
 const SCENE_SCALE = 0.12;
-const LABEL_HEIGHT_RATIO = 0.82; // default; adjustable via setLabelOptions
-const CORNER_RADIUS_PCT = 2.5; // default die-cut radius, % of the short edge
 const LABEL_OFFSET_RATIO = -0.020;
 /** Center-to-center 4-pack spacing as a multiple of can radius: 2x = touching,
  *  the extra 0.02 leaves a hairline gap so adjacent walls don't z-fight. */
@@ -35,10 +35,20 @@ const FOUR_PACK_ZOOM = 2.1;
 /** 4-pack polar tilt: elevated enough to see over the front row. */
 const FOUR_PACK_TILT = Math.PI * 0.34;
 const FLAT_LABEL_HEIGHT = 0.08;
-/** Blur radius for the soft mask, as a fraction of mask width — softens the
+/** The Settings knobs' starting values, until CanView pushes the saved ones
+ *  in. Read from DEFAULT_RENDER rather than restated here, so the scene, the
+ *  inspector and presets.json cannot ship three different "defaults"; the
+ *  /100 is the percent-to-ratio conversion this class works in.
+ *
+ *  The blur (edgeSoftnessRatio) is a fraction of mask width — it softens the
  *  0->1 metalness step so foil edges don't draw a hard specular outline the
  *  physical print doesn't have. */
-const EDGE_SOFTNESS = 0.001; // default; adjustable via setLabelOptions
+const DEFAULTS = {
+  heightRatio: DEFAULT_RENDER.labelSize / 100,
+  widthRatio: DEFAULT_RENDER.labelWidth / 100,
+  cornerRadiusPct: DEFAULT_RENDER.cornerRadius,
+  edgeSoftnessRatio: DEFAULT_RENDER.edgeSoftness / 100,
+};
 /** Per-pixel roughness endpoints: matte white-ink areas vs bare foil. */
 const MATTE_ROUGHNESS = 0.8;
 const METALLIC_ROUGHNESS = 0.33;
@@ -98,13 +108,11 @@ export class CanScene {
   private canMaterial: THREE.MeshPhysicalMaterial | null = null;
   private labelMesh: THREE.Mesh | null = null;
   private labelMaterial: THREE.MeshStandardMaterial | null = null;
-  private labelHeightRatio = LABEL_HEIGHT_RATIO;
-  /** How far the label wraps, as a share of the can's circumference. null =
-   *  derive it from the artwork's aspect, which is what this did before the
-   *  knob existed and what an unset Label width still means. */
-  private labelWidthRatio: number | null = null;
-  private cornerRadiusPct = CORNER_RADIUS_PCT;
-  private edgeSoftnessRatio = EDGE_SOFTNESS;
+  private labelHeightRatio = DEFAULTS.heightRatio;
+  /** How far the label wraps, as a share of the can's circumference. */
+  private labelWidthRatio = DEFAULTS.widthRatio;
+  private cornerRadiusPct = DEFAULTS.cornerRadiusPct;
+  private edgeSoftnessRatio = DEFAULTS.edgeSoftnessRatio;
   private flatMesh: THREE.Mesh | null = null;
   /** Opaque backing behind the flat plane so orbiting past 90° shows the
    *  label's blank back (foil or matte stock) instead of mirrored art. */
@@ -300,7 +308,7 @@ export class CanScene {
   }
 
   /** Blurred copy of the metalness plate — the source for the metalness,
-   *  roughness and bump maps (see EDGE_SOFTNESS for why the blur exists). */
+   *  roughness and bump maps (see DEFAULTS for why the blur exists). */
   private softMask(tex: LabelTextures): HTMLCanvasElement {
     const blur = this.edgeSoftnessRatio * tex.metalness.width;
     return filteredCopy(tex.metalness, blur > 0 ? `blur(${blur}px)` : "none");
@@ -332,13 +340,13 @@ export class CanScene {
    *  maps. A full applyTextures would re-blur, re-lerp and re-upload five
    *  full-resolution textures per pixel of drag. */
   setLabelOptions(opts: {
-    cornerRadiusPct?: number; heightRatio?: number; widthRatio?: number | null;
+    cornerRadiusPct?: number; heightRatio?: number; widthRatio?: number;
     edgeSoftnessRatio?: number;
   }) {
     const radius = opts.cornerRadiusPct !== undefined
       && opts.cornerRadiusPct !== this.cornerRadiusPct;
-    // Width feeds the same cylinder as height, so it takes the same path.
-    const height = (opts.heightRatio !== undefined
+    // Height and width are one flag: both size the same cylinder.
+    const geometry = (opts.heightRatio !== undefined
       && opts.heightRatio !== this.labelHeightRatio)
       || (opts.widthRatio !== undefined && opts.widthRatio !== this.labelWidthRatio);
     const softness = opts.edgeSoftnessRatio !== undefined
@@ -347,10 +355,12 @@ export class CanScene {
     if (opts.heightRatio !== undefined) this.labelHeightRatio = opts.heightRatio;
     if (opts.widthRatio !== undefined) this.labelWidthRatio = opts.widthRatio;
     if (opts.edgeSoftnessRatio !== undefined) this.edgeSoftnessRatio = opts.edgeSoftnessRatio;
-    if (!(radius || height || softness)) return;
+    if (!(radius || geometry || softness)) return;
 
     const tex = this.pendingTextures;
-    if (!tex) return;
+    // Only the two texture-derived knobs need artwork; the cylinder no longer
+    // does, so a size change before the first build still takes effect.
+    if (!tex) { if (geometry && this.labelMesh) { this.rebuildLabelMesh(); this.applyMode(); } return; }
     // No material yet (textures arrived before the can model): the full build
     // is the only thing that can produce one.
     if (!this.labelMaterial) { this.applyTextures(tex); return; }
@@ -375,25 +385,20 @@ export class CanScene {
       // The flat view's backing shares the front's die-cut silhouette.
       if (back) { back.alphaMap = map; back.needsUpdate = true; }
     }
-    if (height) { this.rebuildLabelMesh(tex); this.applyMode(); }
+    if (geometry) { this.rebuildLabelMesh(); this.applyMode(); }
     this.requestRender();
   }
 
-  /** The wrapped cylinder, sized to the current label height and artwork
-   *  aspect. Separate from applyTextures so a height scrub rebuilds geometry
-   *  without touching a single texture. */
-  private rebuildLabelMesh(tex: LabelTextures) {
+  /** The wrapped cylinder, sized to the current label height and width.
+   *  Separate from applyTextures so a size scrub rebuilds geometry without
+   *  touching a single texture — and it needs none, the wrap being an arc of
+   *  the circumference rather than something derived from the artwork. */
+  private rebuildLabelMesh() {
     const labelHeight = this.canHeight * this.labelHeightRatio;
     const labelRadius = this.canRadius * 1.005;
-    // A set width is an arc of the circumference; unset, the wrap follows the
-    // artwork's aspect as it always did. Capped either way at 1.95π: a label
-    // that meets itself leaves no seam and z-fights with its own start edge.
-    const wrapAngle = Math.min(
-      this.labelWidthRatio !== null
-        ? this.labelWidthRatio * Math.PI * 2
-        : (labelHeight * tex.aspect) / labelRadius,
-      Math.PI * 1.95,
-    );
+    // Clamped at MAX_WRAP_RATIO, which the width knob also uses as its
+    // maximum — so the field can't offer travel that changes nothing here.
+    const wrapAngle = Math.min(this.labelWidthRatio, MAX_WRAP_RATIO) * Math.PI * 2;
 
     this.disposeLabelMesh();
     this.labelMesh = new THREE.Mesh(
@@ -428,7 +433,7 @@ export class CanScene {
     });
     if (oldMaterial) { this.disposeMaterialMaps(oldMaterial); oldMaterial.dispose(); }
 
-    this.rebuildLabelMesh(tex);
+    this.rebuildLabelMesh();
 
     // Flat plane shares the label material; its geometry tracks the aspect.
     this.disposeFlatMesh();

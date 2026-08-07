@@ -45,7 +45,7 @@
   "render": {
     "cornerRadius": 2.5,
     "labelSize": 82,
-    "labelWidth": 98,
-    "edgeSoftness": 0
+    "labelWidth": 97.5,
+    "edgeSoftness": 0.1
   }
 }

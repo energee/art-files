@@ -1,27 +1,41 @@
 // layout.ts — single source of truth for label geometry, in PDF points with a
 // TOP-LEFT origin (y down). Draw helpers convert to PDF's bottom-left space.
 // Page matches the Photoshop-era deliverables: 8x5in art + 0.0633in bleed.
+// It also states the PHYSICAL objects the label is made for — the label's own
+// size in inches and the can it wraps (see CAN_DIAM_IN) — because those are
+// facts about the product, not about any one renderer, and the inspector, the
+// preset defaults and the 3D scene all have to agree on them.
 
 export const PAGE = { w: 585.12, h: 369.12 };
 /** Art box inside the bleed. */
 export const ART = { x: 4.56, y: 4.56, w: 576, h: 360 };
 export const CENTER_X = PAGE.w / 2;
 
-/** Height of the can the 3D views render, in inches — a 16 oz (473 ml)
- *  standard can, whose ~8.1in circumference is what the 8in-wide art wraps.
- *  Nothing in Can.gltf carries real-world units (the model is normalized to
- *  scene height), so this is the one place the physical can is stated. It
- *  exists so the Settings layer can show its label-height knob in inches
- *  rather than as a share of a can nobody measured; the stored value stays a
- *  percentage, which is what canScene consumes. Change this if the shop's
- *  can changes and every reading follows. */
-export const CAN_HEIGHT_IN = 6.19;
+/** The label's own size in inches — the page (bleed included), which is what
+ *  the renderer textures the can with and therefore what its percentage
+ *  knobs are percentages of. */
+export const LABEL_SHORT_IN = PAGE.h / 72;
+export const LABEL_WIDE_IN = PAGE.w / 72;
 
-/** That can's circumference, in inches (2.6in diameter) — what the label
- *  wraps, and so the basis for the Settings layer's label-width knob. The
- *  8in-wide art covers very nearly all of it, which is why a full-width
- *  label reads as ~8in here. */
-export const CAN_CIRCUM_IN = Math.PI * 2.6;
+/** The can the 3D views render: a 16 oz (473 ml) standard can, in inches.
+ *  Nothing in Can.gltf carries real-world units (the model is normalized to
+ *  scene height), so these two numbers are the one place the physical can is
+ *  stated — transcribed from the model's bounding box, and the thing to
+ *  change if the shop's can does. They exist so the Settings layer can read
+ *  in inches rather than as a share of a can nobody measured; the stored
+ *  values stay percentages, which is what canScene consumes. */
+export const CAN_HEIGHT_IN = 6.19;
+export const CAN_DIAM_IN = 2.6;
+/** What the label actually wraps, so the basis for its width knob. The 8in
+ *  art covers very nearly all of it. */
+export const CAN_CIRCUM_IN = Math.PI * CAN_DIAM_IN;
+
+/** The furthest the label may wrap, as a share of the circumference. A label
+ *  that meets itself leaves no seam and z-fights with its own start edge, so
+ *  canScene clamps the cylinder here — and the width knob's maximum and the
+ *  shipped default read the same number, instead of offering a last 2.5% of
+ *  travel that moves the readout and nothing on screen. */
+export const MAX_WRAP_RATIO = 0.975;
 
 /** Default metallic gold. Originally #D0B070 (sampled from the Labradorite
  *  reference render); brightened to #F3CD80 by request 2026-08. */
