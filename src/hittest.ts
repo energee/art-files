@@ -5,6 +5,7 @@
 import type { LabelConfig } from "./types";
 import type { ElementId } from "./elements";
 import { parseDescription, parseInfoLine, parseRuns } from "./description";
+import { displayAbv, displayName, displayStyle } from "./defaults";
 // The renderer's own paragraph wrapper and justified-column length, so the
 // warning's hit columns can't disagree with the columns it draws or the
 // justified width it draws them at (see the warning boxes below).
@@ -20,6 +21,13 @@ const DESC = L.FONT_DESC;
 /** Drawn logo height: LOGO.w scaled by the SVG's aspect, which lives in
  *  layout.ts next to LOGO itself (see LOGO_ASPECT). */
 const LOGO_H = L.LOGO.w * L.LOGO_ASPECT;
+
+/** Which collab logo slots currently hold art. The renderers skip a slot with
+ *  nothing in it, so its box has to disappear too. */
+export interface CollabSlots { left: boolean; center: boolean }
+/** Default: no collab art, hence no collab boxes — the safe answer for any
+ *  caller that doesn't track uploads. */
+const NO_SLOTS: CollabSlots = { left: false, center: false };
 
 // Every text box measures through `width` below, so an element's tracking
 // widens its hit box exactly as much as it widens the drawn line, and inline
@@ -68,11 +76,11 @@ const rotated = (
  *  abv, description, wordmark, logo, name, styleLine, qr, handleAddress,
  *  warning, storeCold, barcode — exactly drawElements' order in
  *  src/pdf/build.ts.
- *  handleAddress and storeCold pass bold=true because drawRotated always
- *  renders them with the semibold face (its font is a fixed argument, never
- *  read from style.bold); the description header passes its own bold since
+ *  handleAddress and storeCold pass bold=true because semibold is their plain
+ *  face (their bold toggle only steps them up to Bold, whose metrics are close
+ *  enough to reuse the semibold measure); the description header passes its own bold since
  *  parseDescription hardcodes header bold=true (e.g. the default "# HOPS"). */
-export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
+export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SLOTS): Box[] {
   const desc = parseDescription(cfg.description, cfg.descStyle);
   // Every description line maps to the one description element; the header,
   // if present, always precedes the body lines, matching drawElements.
@@ -90,7 +98,7 @@ export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
   const boxes: Box[] = [
     // Left column
     flat("volume", cfg.volume.text, L.VOLUME.x, L.VOLUME.baseline, L.VOLUME.size, m, !!cfg.volume.bold, cfg.volume.letterSpacing),
-    flat("abv", `${cfg.abv}% alc by vol`, L.ABV.x, L.ABV.baseline, L.ABV.size, m, false, cfg.abvStyle.letterSpacing),
+    flat("abv", `${displayAbv(cfg)}% alc by vol`, L.ABV.x, L.ABV.baseline, L.ABV.size, m, false, cfg.abvStyle.letterSpacing),
     ...descLines.map((d) => flat("description", d.text, d.x, d.baseline, d.size, m, d.bold, d.tracking)),
     // Center column. Wordmark and beer name always render with the Bold face.
     centred("wordmark", L.WORDMARK.text, L.WORDMARK.cx, L.WORDMARK.baseline, L.WORDMARK.size, m, true, cfg.wordmark.letterSpacing),
@@ -105,8 +113,8 @@ export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
       x0: L.LOGO.cx - L.LOGO.w / 2, x1: L.LOGO.cx + L.LOGO.w / 2,
       y0: L.LOGO.cy + (cfg.logo.offsetY ?? 0) - LOGO_H / 2,
       y1: L.LOGO.cy + (cfg.logo.offsetY ?? 0) + LOGO_H / 2 },
-    centred("name", cfg.beerName.toUpperCase(), L.NAME.cx, L.NAME.baseline, L.NAME.size, m, true, cfg.nameStyle.letterSpacing),
-    centred("styleLine", cfg.styleLine.text, L.STYLE_LINE.cx, L.STYLE_LINE.baseline, L.STYLE_LINE.size, m, !!cfg.styleLine.bold, cfg.styleLine.letterSpacing),
+    centred("name", displayName(cfg).toUpperCase(), L.NAME.cx, L.NAME.baseline, L.NAME.size, m, true, cfg.nameStyle.letterSpacing),
+    centred("styleLine", displayStyle(cfg), L.STYLE_LINE.cx, L.STYLE_LINE.baseline, L.STYLE_LINE.size, m, !!cfg.styleLine.bold, cfg.styleLine.letterSpacing),
     // QR is a box, not text.
     { id: "qr",
       x0: L.QR.x, x1: L.QR.x + L.QR.size,
@@ -143,7 +151,49 @@ export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
       y1: L.WARNING.yStart,
     }),
   );
-  // storeCold always renders semibold too (bold=true; see the doc comment).
+  // Collab block, drawn after the description and before the centre column.
+  // Only present when the switch is on: with it off the renderers skip the
+  // block entirely, and a box with nothing under it would swallow clicks
+  // meant for the artwork behind.
+  //
+  // The two logo slots use their fit ENVELOPE (the slot box scaled by the
+  // slot's own scale knob), not the art's drawn size: the renderers fit the
+  // uploaded art inside that envelope by its aspect, and the hit-tester has
+  // no image in hand to derive an aspect from. The target is therefore a
+  // superset of the art — every pixel of the logo, plus its letterboxing.
+  //
+  // `slots` says which logos are actually loaded. The switch alone is not
+  // enough: the renderers draw a slot only when its art exists, so a box
+  // keyed off the switch would swallow clicks over blank stock.
+  if (cfg.collabEnabled && slots.left) {
+    // The lead-in only exists to introduce a left logo, so it is gated on the
+    // same slot the renderers gate it on.
+    const flow = L.collabLeftFlow(desc.lines.length);
+    L.COLLAB_LEAD.lines.forEach((text, i) =>
+      boxes.push(flat("collabLead", text, L.COLLAB_LEAD.x, flow.leadBaselines[i], L.COLLAB_LEAD.size, m, true, cfg.collabLead.letterSpacing)),
+    );
+    const leftW = L.COLLAB_LEFT.maxW * cfg.collabLeft.scale;
+    const leftTop = flow.logoTop + (cfg.collabLeft.offsetY ?? 0);
+    boxes.push({
+      id: "collabLeft",
+      x0: L.COLLAB_LEFT.x, x1: L.COLLAB_LEFT.x + leftW,
+      y0: leftTop, y1: leftTop + L.COLLAB_LEFT.maxH * cfg.collabLeft.scale,
+    });
+  }
+  if (cfg.collabEnabled && slots.center) {
+    // Hangs off the laurel's nudged bottom, exactly like drawElements — the
+    // centre stack moves as one, so this box follows the logo's offsetY.
+    const centerW = L.COLLAB_CENTER.maxW * cfg.collabCenter.scale;
+    const centerTop = L.LOGO.cy + (cfg.logo.offsetY ?? 0) + LOGO_H / 2
+      + L.COLLAB_CENTER.gapAbove + (cfg.collabCenter.offsetY ?? 0);
+    boxes.push({
+      id: "collabCenter",
+      x0: L.COLLAB_CENTER.cx - centerW / 2, x1: L.COLLAB_CENTER.cx + centerW / 2,
+      y0: centerTop, y1: centerTop + L.COLLAB_CENTER.maxH * cfg.collabCenter.scale,
+    });
+  }
+  // storeCold measures semibold (bold=true; see the doc comment) even when its
+  // bold toggle picks the Bold face — close enough for a hit box.
   boxes.push(rotated("storeCold", cfg.storeCold.text, L.STORE_COLD.x, L.STORE_COLD.yStart, L.STORE_COLD.size, m, true, cfg.storeCold.letterSpacing));
   // The barcode is drawn last, so its box goes last too. No font measurement:
   // the footprint is the whole symbol, bars AND the digits column (BARCODE.w
@@ -159,9 +209,9 @@ export function boxesOf(cfg: LabelConfig, m: Measure): Box[] {
 }
 
 export function hitTest(
-  xPt: number, yPt: number, m: Measure, cfg: LabelConfig,
+  xPt: number, yPt: number, m: Measure, cfg: LabelConfig, slots: CollabSlots = NO_SLOTS,
 ): ElementId | null {
-  const boxes = boxesOf(cfg, m);
+  const boxes = boxesOf(cfg, m, slots);
   // Topmost first, matching paint order.
   for (let i = boxes.length - 1; i >= 0; i--) {
     const b = boxes[i];
@@ -170,12 +220,36 @@ export function hitTest(
   return null;
 }
 
-/** The union box for an element, for drawing the selection outline. */
-export function boxOf(id: ElementId, cfg: LabelConfig, m: Measure): Box | null {
-  const parts = boxesOf(cfg, m).filter((b) => b.id === id);
-  if (!parts.length) return null;
-  return parts.reduce((a, b) => ({
-    id, x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0),
-    x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1),
-  }));
+/** The union box per id, in the order asked for, for drawing selection
+ *  outlines. Ids the renderer isn't drawing (an empty collab slot) are simply
+ *  absent from the result.
+ *
+ *  One boxesOf pass covers the whole selection: boxesOf re-measures every
+ *  element — the description parse and the warning's word-by-word column wrap
+ *  included — so asking per element made an N-layer selection N full
+ *  measurement passes, on a path that re-runs per pointer-move frame while
+ *  the compare divider is dragged. */
+export function boxesFor(
+  ids: readonly ElementId[], cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SLOTS,
+): Box[] {
+  const want = new Set(ids);
+  const union = new Map<ElementId, Box>();
+  for (const b of boxesOf(cfg, m, slots)) {
+    if (!want.has(b.id)) continue;
+    const a = union.get(b.id);
+    union.set(b.id, a
+      ? {
+          id: b.id, x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0),
+          x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1),
+        }
+      : b);
+  }
+  return ids.map((id) => union.get(id)).filter((b): b is Box => b !== undefined);
+}
+
+/** The union box for one element. */
+export function boxOf(
+  id: ElementId, cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SLOTS,
+): Box | null {
+  return boxesFor([id], cfg, m, slots)[0] ?? null;
 }

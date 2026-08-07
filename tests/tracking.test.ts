@@ -54,6 +54,9 @@ describe("letter-spacing in the config model", () => {
 describe("hit boxes follow the tracked width", () => {
   it("widens a centred element by the gaps it gains, staying centred", () => {
     const cfg = defaultConfig();
+    // The default name is blank (the renderer draws a placeholder), so give
+    // the box real text to measure — gaps below count ITS glyphs.
+    cfg.beerName = "LABRADORITE";
     const plain = boxOf("name", cfg, measure)!;
     cfg.nameStyle.letterSpacing = 1.5;
     const tracked = boxOf("name", cfg, measure)!;

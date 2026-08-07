@@ -4,27 +4,75 @@
 // rows: the Content section carries whatever the layer is made of (text
 // input, markdown editor, file drop, scale/nudge knobs), the Style section
 // carries the shared fill/layer/bold/stroke stack. Document-level layers
-// (background, mask) are file drops only — no Style section. Selection
-// itself lives in the layers panel and the preview; this component only
-// receives the chosen LayerId.
+// (background, mask) are file drops only — no Style section. With two or
+// more layers selected the Content section is dropped and the Style stack
+// edits the whole selection at once, blanking any field they disagree about.
+// Selection itself lives in App (see selection.ts), driven by the layers
+// panel and the preview; this component only receives the chosen LayerIds.
 import { X } from "lucide-react";
-import type { LabelConfig, StyledLine } from "@/types";
-import { applyStyle, elementById, isDefaultStyle, type ElementId } from "@/elements";
+import type { LabelConfig, Style, StyledLine } from "@/types";
+import {
+  SHIPPED, applyStyle, elementById, isDefaultStyle,
+  type ElementId, type LabelElement,
+} from "@/elements";
 import { DOC_LAYER_LABELS, LAYER_ICONS, isElementId, type LayerId } from "@/components/layers";
-import { defaultConfig } from "@/defaults";
+import { sharedValue } from "@/selection";
+import { displayName } from "@/defaults";
 import { ColorField } from "./ColorField";
 import { ScrubField } from "./ScrubField";
 import { DescriptionEditor } from "./DescriptionEditor";
 import { FileDrop } from "./FileDrop";
 import { MetallicToggle } from "./MetallicToggle";
+import { ThemeSwitch } from "./ThemeSwitch";
+import { BarcodePresetBar, BeerStylePresetBar } from "./PresetBar";
 import { machineName, qrUrl } from "@/qr";
-import { DEFAULT_STROKE_PX } from "@/layout";
+import {
+  CAN_CIRCUM_IN, CAN_HEIGHT_IN, DEFAULT_STROKE_PX, LABEL_SHORT_IN, LABEL_WIDE_IN,
+  MAX_WRAP_RATIO,
+} from "@/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
 type Update = (fn: (c: LabelConfig) => void) => void;
+
+/** A Settings knob STORED as a percentage (of `of` inches — the form
+ *  canScene consumes) but SHOWN in inches, the unit a die-cut, a label and a
+ *  press are specified in. One component for every such knob, so none can
+ *  quietly go back to reading in percent and the percentage stays an
+ *  implementation detail of the renderer rather than a conversion the
+ *  operator does in their head.
+ *
+ *  Both directions round to the field's precision. The inches are rounded
+ *  because a percentage converted to inches is a long float
+ *  (0.12816666666666668) that says nothing at a 0.005 step; the percentage is
+ *  rounded because it is what lands in presets.json, a file kept in git
+ *  precisely so it can be read and diffed — one drag should not write
+ *  82.06785137318255 into it. */
+function InchField(props: {
+  id: string; label: string;
+  /** What the stored percentage is a percentage OF, in inches. */
+  of: number;
+  pct: number; minPct: number; maxPct: number;
+  /** Display and drag granularity, in inches. */
+  step: number;
+  onPct: (pct: number) => void;
+}) {
+  const inches = (pct: number) => (pct / 100) * props.of;
+  const decimals = (String(props.step).split(".")[1] ?? "").length;
+  return (
+    <ScrubField
+      id={props.id} label={props.label} unit={'"'}
+      value={Number(inches(props.pct).toFixed(decimals))}
+      min={inches(props.minPct)} max={inches(props.maxPct)}
+      step={props.step} dragStep={props.step}
+      // Back to a percentage at the same precision the inches were shown in:
+      // `of` inches per 100%, so one display step is 100/of percent.
+      onChange={(v) => props.onPct(Number(((v / props.of) * 100).toFixed(decimals + 2)))}
+    />
+  );
+}
 
 /** Collab art is whatever the partner brewery sends: vector preferred (it
  *  takes the slot's fill/layer like the laurel), raster accepted. */
@@ -44,6 +92,23 @@ export interface CollabFiles {
   centerUrl?: string;
   onLeft: (f: File) => void;
   onCenter: (f: File) => void;
+}
+
+/** Document-presentation knobs the Settings layer edits — 3D view options
+ *  that live in App and persist to presets.json, not in the saved label
+ *  config. Each is a percentage of a different thing (see RenderSettings for
+ *  the list) and each is shown in inches by an InchField. */
+export interface DocSettings {
+  cornerRadius: number;
+  onCornerRadius: (v: number) => void;
+  labelSize: number;
+  onLabelSize: (v: number) => void;
+  /** How far the label wraps, % of the can's circumference. */
+  labelWidth: number;
+  onLabelWidth: (v: number) => void;
+  /** Foil-mask blur, % of label width — softens the metallic edges. */
+  edgeSoftness: number;
+  onEdgeSoftness: (v: number) => void;
 }
 
 /** All build-time file assets the inspector can edit, grouped so App passes
@@ -186,9 +251,9 @@ function CollabSlotContent(props: {
  *  muted note instead. */
 function Content(props: {
   id: LayerId; cfg: LabelConfig; errors: Record<string, string>; update: Update;
-  files: InspectorFiles;
+  files: InspectorFiles; settings: DocSettings;
 }): React.JSX.Element | null {
-  const { id, cfg, errors, update, files } = props;
+  const { id, cfg, errors, update, files, settings } = props;
   switch (id) {
     case "name":
       return (
@@ -197,7 +262,6 @@ function Content(props: {
             id="beer-name" className="h-6 w-full text-xs" value={cfg.beerName}
             onChange={(e) => update((c) => { c.beerName = e.target.value; })}
           />
-          {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
         </div>
       );
     case "styleLine":
@@ -207,20 +271,40 @@ function Content(props: {
       // when ELEMENTS marks hasBold, the same guarantee the Style section's
       // cast relies on.
       return (
-        <Input
-          id={machineName(elementById(id).label)}
-          className="h-6 w-full text-xs"
-          value={(elementById(id).style(cfg) as StyledLine).text}
-          onChange={(e) =>
-            update((c) => { (elementById(id).style(c) as StyledLine).text = e.target.value; })}
-        />
+        <div className="space-y-1">
+          <Input
+            id={machineName(elementById(id).label)}
+            className="h-6 w-full text-xs"
+            value={(elementById(id).style(cfg) as StyledLine).text}
+            onChange={(e) =>
+              update((c) => { (elementById(id).style(c) as StyledLine).text = e.target.value; })}
+          />
+          {/* Beer styles repeat across labels, so the Style line — and only
+              it — carries a preset library (see presets.json). */}
+          {id === "styleLine" && (
+            <BeerStylePresetBar
+              current={(elementById(id).style(cfg) as StyledLine).text}
+              onApply={(text) =>
+                update((c) => { (elementById(id).style(c) as StyledLine).text = text; })}
+            />
+          )}
+        </div>
       );
     case "abv":
+      // Free text, not a number input: the stored value is the bare figure
+      // ("5.2") and build.ts prints "5.2% alc by vol", but ranges and "n/a"
+      // have to stay typeable. The suffix names the unit a bare 5rem box
+      // leaves to guess, and hides when the value already carries one.
       return (
-        <Input
-          id="abv" className="h-6 w-20 text-xs" value={cfg.abv}
-          onChange={(e) => update((c) => { c.abv = e.target.value; })}
-        />
+        <div className="flex items-center gap-1.5">
+          <Input
+            id="abv" className="h-6 w-20 text-xs" value={cfg.abv}
+            onChange={(e) => update((c) => { c.abv = e.target.value; })}
+          />
+          {!cfg.abv.includes("%") && (
+            <span className="text-xs text-muted-foreground">% alc by vol</span>
+          )}
+        </div>
       );
     case "description":
       return (
@@ -252,6 +336,12 @@ function Content(props: {
             onChange={(e) => update((c) => { c.upc = e.target.value.trim(); })}
           />
           {errors.upc && <p className="text-xs text-destructive">{errors.upc}</p>}
+          {/* Barcodes get reused across beers, so they live in presets.json
+              rather than being retyped from a label proof each time. */}
+          <BarcodePresetBar
+            upc={cfg.upc}
+            onApply={(upc) => update((c) => { c.upc = upc; })}
+          />
         </div>
       );
     case "qr":
@@ -261,10 +351,10 @@ function Content(props: {
       // without one would hide the tail for good.
       return (
         <p
-          title={qrUrl(cfg.beerName)}
+          title={qrUrl(displayName(cfg))}
           className="truncate font-mono text-[11px] text-muted-foreground"
         >
-          {qrUrl(cfg.beerName)}
+          {qrUrl(displayName(cfg))}
         </p>
       );
     case "collabLead":
@@ -299,6 +389,57 @@ function Content(props: {
           onFile={files.mask.onFile}
         />
       );
+    case "settings":
+      // Document-wide presentation knobs for the 3D views: corner radius
+      // shapes the die-cut label (alphaMap in canScene), height and width say
+      // how much of the can it covers. The print PDFs are untouched — the
+      // physical label is cut and sized at the press, not rendered.
+      // Every knob reads in inches (see InchField); each stays a percentage
+      // in presets.json and in canScene, which is what those consume.
+      return (
+        <div className="space-y-2">
+          {/* Die-cut corner radius, off the label's short side. */}
+          <InchField
+            id="doc-corner-radius" label="Corner radius" of={LABEL_SHORT_IN}
+            // Sixteenths: a die is specified in them, and InchField's step is
+            // also its display precision — at 0.005 the house 1/16" die reads
+            // as 0.062.
+            pct={settings.cornerRadius} minPct={0} maxPct={5} step={0.0625}
+            onPct={settings.onCornerRadius}
+          />
+          {/* How tall the label stands on the can — a share of CAN_HEIGHT_IN,
+              read out as the label height it produces. */}
+          <InchField
+            id="doc-label-size" label="Label height" of={CAN_HEIGHT_IN}
+            pct={settings.labelSize} minPct={50} maxPct={95} step={0.01}
+            onPct={settings.onLabelSize}
+          />
+          {/* How far it wraps, as an arc of the can's circumference. The
+              print is a fixed 8in wide, so narrowing this squeezes the art
+              around a shorter arc rather than trimming it — it answers "how
+              much of the can does this cover", not "what did we print". */}
+          <InchField
+            id="doc-label-width" label="Label width" of={CAN_CIRCUM_IN}
+            pct={settings.labelWidth} minPct={30} maxPct={MAX_WRAP_RATIO * 100} step={0.01}
+            onPct={settings.onLabelWidth}
+          />
+          {/* Blur on the foil mask's edges: 0 = hard specular outlines
+              around every metallic element, wider = softer transitions.
+              Measured across the label's width, like the renderer does. */}
+          <InchField
+            id="doc-edge-softness" label="Edge softness" of={LABEL_WIDE_IN}
+            pct={settings.edgeSoftness} minPct={0} maxPct={1} step={0.001}
+            onPct={settings.onEdgeSoftness}
+          />
+          {/* An app preference, not a document one — it lives here because
+              Settings is the only preferences surface the app has, and it is
+              deliberately not saved with the presets. */}
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-xs text-muted-foreground">Appearance</Label>
+            <ThemeSwitch />
+          </div>
+        </div>
+      );
     case "wordmark":
     case "warning":
       // Fixed template art/text: nothing to edit beyond style — say so
@@ -307,40 +448,83 @@ function Content(props: {
   }
 }
 
-/** The style stack for an element layer, Figma-style groups: Ink (fill +
- *  metallic toggle in one row), Text (bold switch + tracking, glyph layers
- *  only), and Stroke (switch header; color + width while on). Same
- *  applyStyle writes as ever — only the arrangement changed. */
-function ElementStyle(props: { id: ElementId; cfg: LabelConfig; update: Update }) {
-  const el = elementById(props.id);
-  // The element's shipped stroke colour, for the toggle below. "none" would
-  // make switching it on a no-op, so fall back to the keyline black.
-  const shipped = el.style(defaultConfig()).stroke;
-  const shippedStroke = !shipped || shipped === "none" ? "#000000" : shipped;
-  const s = el.style(props.cfg);
-  // `s` is declared Style, but for hasBold elements the live object backing
-  // it is actually a StyledLine (see elements.ts's ELEMENTS/applyStyle
+/** The style stack for one OR MANY element layers, Figma-style groups: Ink
+ *  (fill + metallic toggle in one row), Text (bold switch + tracking, glyph
+ *  layers only), and Stroke (switch header; color + width while on). Same
+ *  applyStyle writes as ever — with several selected, one `update` runs the
+ *  loop, so a multi-element edit is ONE history entry, not N.
+ *
+ *  Where the selected elements disagree about a value the field renders blank
+ *  (`mixed`) rather than showing the first element's value as if it were
+ *  everyone's; editing it still writes to all of them. */
+function ElementStyle(props: {
+  /** The selected elements, resolved by the caller (which already needed
+   *  them for its dirty check). */
+  els: readonly LabelElement[];
+  cfg: LabelConfig;
+  update: Update;
+}) {
+  const els = props.els;
+  const el = els[0];
+  const styles = els.map((e) => e.style(props.cfg));
+  // Each element's own shipped stroke colour, for the toggle below. "none"
+  // would make switching it on a no-op, so fall back to the keyline black.
+  const shippedStrokeOf = (e: LabelElement) => {
+    const shipped = e.style(SHIPPED).stroke;
+    return !shipped || shipped === "none" ? "#000000" : shipped;
+  };
+  /** One field's readout across the selection: the shared value, or the
+   *  first element's with `mixed` set when they disagree (see sharedValue).
+   *  Spread straight into a ColorField/ScrubField — pairing `value` with its
+   *  own `mixed` here is what keeps a field from claiming one element's
+   *  value belongs to all of them, or from going uncontrolled when it has
+   *  no shared value to show. A single selection is never mixed. */
+  const field = <T,>(read: (s: Style) => T) => {
+    const shared = sharedValue(styles.map(read));
+    return { value: shared ?? read(styles[0]), mixed: shared === undefined };
+  };
+  const fill = field((s) => s.fill);
+  const tracking = field((s) => s.letterSpacing ?? 0);
+  const strokeColor = field((s) => s.stroke!);
+  const strokeWidth = field((s) => s.strokeWidth ?? DEFAULT_STROKE_PX);
+  const strokeOn = sharedValue(styles.map((s) => !!s.stroke && s.stroke !== "none"));
+  const metallic = sharedValue(styles.map((s) => s.layer)) === "metallic";
+  // `style()` is declared Style, but for hasBold elements the live object
+  // backing it is actually a StyledLine (see elements.ts's ELEMENTS/applyStyle
   // comments) — the cast only ever runs when hasBold confirms that shape.
-  const bold = el.hasBold ? ((s as StyledLine).bold ?? false) : false;
-  const set = (patch: Partial<StyledLine>) =>
-    props.update((c) => applyStyle(c, props.id, patch));
-  const strokeOn = !!s.stroke && s.stroke !== "none";
-  const metallic = s.layer === "metallic";
-  const fid = machineName(el.label); // prefixes this panel's control ids
+  const boldEls = els.filter((e) => e.hasBold);
+  const bold = sharedValue(
+    els.flatMap((e, i) => (e.hasBold ? [(styles[i] as StyledLine).bold ?? false] : [])));
+  const anyText = els.some((e) => e.isText);
+  /** One update for the whole selection = one undo step. `fn` reads each
+   *  element, so a patch that depends on the element (its shipped stroke)
+   *  goes through the same single write as a flat one. applyStyle drops the
+   *  fields an element can't take (bold, tracking), so nothing is filtered
+   *  here — that rule lives in the registry. */
+  const setEach = (fn: (e: LabelElement) => Partial<StyledLine>) =>
+    props.update((c) => { for (const e of els) applyStyle(c, e.id, fn(e)); });
+  const set = (patch: Partial<StyledLine>) => setEach(() => patch);
+  // Control ids must be unique on the page; a selection of several is
+  // prefixed "multi" rather than by one arbitrary member's label.
+  const fid = els.length === 1 ? machineName(el.label) : "multi";
 
   return (
     <div className="space-y-3">
       <div className="space-y-1">
-        <Heading>Ink</Heading>
+        <Heading>Color</Heading>
         <div className="flex items-center gap-1.5">
           <div className="min-w-0 flex-1">
             <ColorField
-              id={`${fid}-fill`} value={s.fill} onChange={(v) => set({ fill: v })}
-              allowNone={el.allowNone}
+              id={`${fid}-fill`} {...fill} onChange={(v) => set({ fill: v })}
+              // "No ink" is offered only when EVERY selected element allows
+              // it: one unscannable code in the selection is enough to make
+              // the option wrong for the whole edit.
+              allowNone={els.every((e) => e.allowNone)}
             />
           </div>
           {/* Same metallic toggle as the layer rows — plate choice is part
-              of the ink, so it sits beside the color. */}
+              of the ink, so it sits beside the color. Mixed plates read as
+              off; pressing it puts the whole selection on one plate. */}
           <MetallicToggle
             pressed={metallic}
             onPressedChange={(on) => set({ layer: on ? "metallic" : "white" })}
@@ -349,27 +533,33 @@ function ElementStyle(props: { id: ElementId; cfg: LabelConfig; update: Update }
         </div>
       </div>
 
-      {(el.hasBold || el.isText) && (
+      {(boldEls.length > 0 || anyText) && (
         <div className="space-y-1">
-          <Heading>Text</Heading>
+          {/* "Typography", not "Text": the content section above is now
+              titled Text, and two same-named sections would read as one. */}
+          <Heading>Typography</Heading>
           <div className="flex items-center gap-3">
-            {el.hasBold && (
+            {/* Only the elements whose registry entry accepts bold are
+                counted — and only they are written (applyStyle drops it for
+                the rest). A switch has no indeterminate state, so a mixed
+                selection shows it off and says so. */}
+            {boldEls.length > 0 && (
               <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
                 <Switch
                   id={`${fid}-bold`}
-                  checked={bold}
+                  checked={bold ?? false}
                   onCheckedChange={(v) => set({ bold: v === true })}
                 />
-                Bold
+                {bold === undefined ? "Bold (mixed)" : "Bold"}
               </label>
             )}
-            {el.isText && (
+            {anyText && (
               // Clamped both ends by ScrubField: tracking wide enough to
               // overrun the label reads as a broken line, not a style.
               <div className="min-w-0 flex-1">
                 <ScrubField
                   id={`${fid}-tracking`} label="Letter Spacing" unit="pt"
-                  value={s.letterSpacing ?? 0} min={-2} max={20} step={0.01} dragStep={0.1}
+                  {...tracking} min={-2} max={20} step={0.01} dragStep={0.1}
                   onChange={(v) => set({ letterSpacing: v })}
                 />
               </div>
@@ -380,26 +570,34 @@ function ElementStyle(props: { id: ElementId; cfg: LabelConfig; update: Update }
 
       <div className="space-y-1">
         <div className="flex items-center justify-between">
-          <Heading>Stroke</Heading>
+          <Heading>{strokeOn === undefined ? "Stroke (mixed)" : "Stroke"}</Heading>
           <Switch
             id={`${fid}-stroke`}
-            checked={strokeOn}
+            checked={strokeOn ?? false}
             aria-label="Outer stroke"
-            // Switching a stroke on starts at whatever THIS element ships
+            // Switching a stroke on starts at whatever EACH element ships
             // with — black for everything keylined, the barcode's white halo
             // for the barcode — so defaults.ts stays the only place that
-            // decides, and a new element needs no case here.
-            onCheckedChange={(v) => set({ stroke: v === true ? shippedStroke : "none" })}
+            // decides, and a new element needs no case here. Hence the loop
+            // rather than one `set`: the on-colour is per element.
+            onCheckedChange={(v) =>
+              setEach((e) => ({ stroke: v === true ? shippedStrokeOf(e) : "none" }))}
           />
         </div>
-        {strokeOn && (
+        {/* Colour and width only while every selected element actually draws
+            a stroke: with the selection half-stroked there is no one stroke
+            for them to edit. */}
+        {strokeOn === true && (
           <>
-            <ColorField id={`${fid}-stroke-color`} value={s.stroke!} onChange={(v) => set({ stroke: v })} allowNone={false} />
+            <ColorField
+              id={`${fid}-stroke-color`} {...strokeColor}
+              onChange={(v) => set({ stroke: v })} allowNone={false}
+            />
             {/* Clamped at 60px by ScrubField: each extra px adds stroke draw
                 calls, and ring()'s sample ceiling is sized for that limit. */}
             <ScrubField
               id={`${fid}-stroke-width`} label="Width" unit="px"
-              value={s.strokeWidth ?? DEFAULT_STROKE_PX} min={1} max={60} step={1}
+              {...strokeWidth} min={1} max={60} step={1}
               onChange={(v) => set({ strokeWidth: v })}
             />
           </>
@@ -410,49 +608,61 @@ function ElementStyle(props: { id: ElementId; cfg: LabelConfig; update: Update }
 }
 
 export function Inspector(props: {
-  /** Never null: App closes the whole inspector sheet instead of rendering
-   *  an empty state when nothing is selected. */
-  id: LayerId;
+  /** The current selection, in click order. Never empty: App closes the
+   *  whole inspector sheet instead of rendering an empty state. With two or
+   *  more, only the Style section shows (see the Content note below). */
+  ids: readonly LayerId[];
   cfg: LabelConfig;
   /** Validation messages, already composed by App. Keys: "name", "upc". */
   errors: Record<string, string>;
   update: Update;
   files: InspectorFiles;
+  settings: DocSettings;
   /** Clears the selection, which closes the inspector sheet. */
   onClose: () => void;
 }): React.JSX.Element {
-  const id = props.id;
+  const ids = props.ids;
+  const id = ids[0];
+  const multi = ids.length > 1;
+  // A multi-selection is elements only — App's resolveSelect never mixes a
+  // document layer in (their panels edit files and document knobs, not
+  // Styles), so `isEl` describes the whole selection.
   const isEl = isElementId(id);
+  const els = ids.filter(isElementId).map(elementById);
   const label = isEl ? elementById(id).label : DOC_LAYER_LABELS[id];
   const Icon = LAYER_ICONS[id];
 
-  // Restores this element's shipped appearance — read from defaultConfig(),
-  // not a hardcoded gold/metallic/none triple, so elements that ship with a
-  // deliberate deviation (the logo's dark keyline) reset to THEIR default
-  // rather than losing it.
-  const reset = isEl
-    ? () => {
-        const el = elementById(id);
-        const d = el.style(defaultConfig());
-        props.update((c) =>
-          applyStyle(c, id, {
-            fill: d.fill,
-            layer: d.layer,
-            stroke: d.stroke ?? "none",
-            strokeWidth: d.strokeWidth,
-            letterSpacing: d.letterSpacing,
-            ...(el.hasBold ? { bold: (d as StyledLine).bold ?? false } : {}),
-          }));
+  // Restores each selected element's shipped appearance — read from
+  // defaultConfig(), not a hardcoded gold/metallic/none triple, so elements
+  // that ship with a deliberate deviation (the logo's dark keyline) reset to
+  // THEIR default rather than losing it. One update for the whole selection,
+  // so a multi-reset is a single undo step like every other edit here.
+  // Unconditional: with no element selected the loop is a no-op, and the
+  // button that calls it only renders while something is dirty.
+  const reset = () =>
+    props.update((c) => {
+      for (const el of els) {
+        const d = el.style(SHIPPED);
+        applyStyle(c, el.id, {
+          fill: d.fill,
+          layer: d.layer,
+          stroke: d.stroke ?? "none",
+          strokeWidth: d.strokeWidth,
+          letterSpacing: d.letterSpacing,
+          ...(el.hasBold ? { bold: (d as StyledLine).bold ?? false } : {}),
+        });
       }
-    : undefined;
-  const dirty = isEl && !isDefaultStyle(id, elementById(id).style(props.cfg));
+    });
+  const dirty = els.some((el) => !isDefaultStyle(el.id, el.style(props.cfg)));
 
   return (
     <div className="space-y-1 p-3">
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-xs font-medium">
-          <Icon className="size-3.5" />
-          {label}
+          {/* With several selected there is no one layer icon to show, and
+              the count is the thing that has to be unmistakable — an edit
+              here lands on all of them. */}
+          {multi ? `${ids.length} layers selected` : <><Icon className="size-3.5" />{label}</>}
         </span>
         <span className="flex items-center gap-1">
           {dirty && (
@@ -464,21 +674,29 @@ export function Inspector(props: {
             </Button>
           )}
           <Button
-            variant="ghost" size="icon" className="size-6"
+            variant="ghost" size="icon" className="size-7"
             aria-label="Close inspector" onClick={props.onClose}
           >
-            <X className="size-3" />
+            <X className="size-4" />
           </Button>
         </span>
       </div>
 
-      <Heading>Content</Heading>
-      <Content id={id} cfg={props.cfg} errors={props.errors} update={props.update} files={props.files} />
+      {/* Content is single-selection only: there is no honest merge of a
+          text field, a file drop and a UPC, so with several selected the
+          inspector is the Style stack alone. */}
+      {!multi && (
+        <>
+          <Heading>Text</Heading>
+          <Content id={id} cfg={props.cfg} errors={props.errors} update={props.update}
+            files={props.files} settings={props.settings} />
+        </>
+      )}
 
       {/* Document layers (background/mask) carry no Style stack — they are
           file drops only, so the section is omitted rather than shown
           disabled. */}
-      {isEl && <ElementStyle id={id} cfg={props.cfg} update={props.update} />}
+      {isEl && <ElementStyle els={els} cfg={props.cfg} update={props.update} />}
     </div>
   );
 }

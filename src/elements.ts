@@ -4,6 +4,12 @@
 import type { LabelConfig, Style, StyledLine } from "./types";
 import { defaultConfig } from "./defaults";
 
+/** The shipped config, for reading any element's factory style. Built once:
+ *  defaultConfig() allocates a whole config (description lines included), and
+ *  isDefaultStyle runs on every inspector render — i.e. per keystroke while a
+ *  layer is selected. Never mutated; the panel edits App's config, not this. */
+export const SHIPPED: LabelConfig = defaultConfig();
+
 export type ElementId =
   | "name" | "styleLine" | "abv" | "description"
   | "volume" | "wordmark" | "logo" | "handleAddress" | "warning" | "storeCold"
@@ -55,15 +61,17 @@ const flatStyle = (k: FlatKeys) => (c: LabelConfig): Style => ({
 });
 
 export const ELEMENTS: LabelElement[] = [
-  { id: "name", label: "Beer Name", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.nameStyle },
+  { id: "name", label: "Name", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.nameStyle },
   { id: "styleLine", label: "Style", group: "beer", hasBold: true, isText: true, allowNone: true, style: (c) => c.styleLine },
   { id: "abv", label: "ABV", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.abvStyle },
   { id: "description", label: "Description", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.descStyle },
   // The two codes must always carry ink — see allowNone's doc. Both are
   // "beer": the QR payload follows the beer name and the UPC digits change
   // per release, so neither is a set-once brand-template element.
-  { id: "qr", label: "QR", group: "beer", hasBold: false, isText: false, allowNone: false, style: flatStyle(FLAT.qr) },
+  // Barcode precedes QR because the layers panel lists each group in registry
+  // order, and the spec's stacking puts the barcode first.
   { id: "barcode", label: "Barcode", group: "beer", hasBold: false, isText: false, allowNone: false, style: flatStyle(FLAT.barcode) },
+  { id: "qr", label: "QR", group: "beer", hasBold: false, isText: false, allowNone: false, style: flatStyle(FLAT.qr) },
   // Collab block — its own group: a collab partner changes per release like
   // "beer", but the block exists only while the collab switch is on, and the
   // layers panel shows it as its own section. The two logo slots draw
@@ -98,6 +106,11 @@ export function elementById(id: ElementId): LabelElement {
  *  - `bold` is dropped for elements where ELEMENTS marks hasBold: false, so
  *    a stray `{ bold }` can never get Object.assign'd onto a plain Style
  *    object (e.g. the logo) even if some future caller sends one.
+ *  - `letterSpacing` is dropped the same way for isText: false, tracking
+ *    being meaningless for a vector mark. Both capability rules live here
+ *    rather than at the call sites: the inspector applies one patch to a
+ *    whole multi-element selection whose members disagree about what they
+ *    accept, and Reset sends every field unconditionally.
  *  - the flat elements' strokeWidth write uses `"strokeWidth" in patch`
  *    rather than `!== undefined`, so a patch that explicitly carries
  *    `strokeWidth: undefined` (Reset, restoring a shipped default of
@@ -115,6 +128,10 @@ export function applyStyle(c: LabelConfig, id: ElementId, patch: Partial<StyledL
   const el = elementById(id);
   if (!el.hasBold && "bold" in patch) {
     const { bold: _bold, ...rest } = patch;
+    patch = rest;
+  }
+  if (!el.isText && "letterSpacing" in patch) {
+    const { letterSpacing: _ls, ...rest } = patch;
     patch = rest;
   }
   if (id in FLAT) {
@@ -142,7 +159,7 @@ export function applyStyle(c: LabelConfig, id: ElementId, patch: Partial<StyledL
  *  the panel and both restored by Reset, so leaving them out would leave a
  *  changed element claiming to be untouched. */
 export function isDefaultStyle(id: ElementId, s: Style): boolean {
-  const d = elementById(id).style(defaultConfig());
+  const d = elementById(id).style(SHIPPED);
   // An absent stroke and an explicit "none" are the same thing to every
   // renderer (see strokeOf in pdf/build.ts), so normalize before comparing;
   // strokeWidth only matters while a stroke is actually drawn.

@@ -26,8 +26,14 @@ import {
 import { PanelLeftIcon } from "lucide-react"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
+/** localStorage key holding the dragged width as a plain pixel integer. */
+const SIDEBAR_WIDTH_STORAGE_KEY = "sidebar_width"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = "16rem"
+// Width is drag-adjustable, so it lives in state as a pixel number rather
+// than a CSS length string. Min/max keep the panel usable at both ends.
+const SIDEBAR_WIDTH = 256
+const SIDEBAR_MIN_WIDTH = 180
+const SIDEBAR_MAX_WIDTH = 520
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
@@ -40,6 +46,9 @@ type SidebarContextProps = {
   setOpenMobile: (open: boolean) => void
   isMobile: boolean
   toggleSidebar: () => void
+  /** Current desktop sidebar width in pixels (drag-adjustable). */
+  width: number
+  setWidth: (width: number) => void
 }
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null)
@@ -68,6 +77,12 @@ function SidebarProvider({
 }) {
   const isMobile = useIsMobile()
   const [openMobile, setOpenMobile] = React.useState(false)
+  const [width, setWidth] = React.useState(() => {
+    const stored = Number(localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY))
+    return stored >= SIDEBAR_MIN_WIDTH && stored <= SIDEBAR_MAX_WIDTH
+      ? stored
+      : SIDEBAR_WIDTH
+  })
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
@@ -122,8 +137,10 @@ function SidebarProvider({
       openMobile,
       setOpenMobile,
       toggleSidebar,
+      width,
+      setWidth,
     }),
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
+    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar, width]
   )
 
   return (
@@ -132,7 +149,7 @@ function SidebarProvider({
         data-slot="sidebar-wrapper"
         style={
           {
-            "--sidebar-width": SIDEBAR_WIDTH,
+            "--sidebar-width": `${width}px`,
             "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
             ...style,
           } as React.CSSProperties
@@ -218,7 +235,7 @@ function Sidebar({
       <div
         data-slot="sidebar-gap"
         className={cn(
-          "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
+          "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear in-data-resizing:transition-none",
           "group-data-[collapsible=offcanvas]:w-0",
           "group-data-[side=right]:rotate-180",
           variant === "floating" || variant === "inset"
@@ -230,11 +247,13 @@ function Sidebar({
         data-slot="sidebar-container"
         data-side={side}
         className={cn(
-          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
+          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear in-data-resizing:transition-none data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
           // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
             ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
-            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
+            // No border: the sidebar's own bg-sidebar shade separates it
+            // from the canvas.
+            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
           className
         )}
         {...props}
@@ -246,8 +265,82 @@ function Sidebar({
         >
           {children}
         </div>
+        <SidebarResizeHandle />
       </div>
     </div>
+  )
+}
+
+/**
+ * Drag strip on the sidebar's outer edge. Shows a col-resize cursor on hover
+ * and rewrites the provider's width while dragging. Pointer capture keeps the
+ * drag alive when the cursor outruns the 4px strip, so no window listeners.
+ */
+function SidebarResizeHandle({ className }: { className?: string }) {
+  const { setWidth } = useSidebar()
+  const latest = React.useRef(SIDEBAR_WIDTH)
+
+  // During a drag we write --sidebar-width straight onto the wrapper element
+  // and mark it data-resizing (which kills the 200ms width transition that
+  // would otherwise animate — and visibly lag — every pointer move). React
+  // state is updated once on pointer up, so a drag costs zero re-renders.
+  const wrapperOf = (el: HTMLElement) =>
+    el.closest<HTMLElement>("[data-slot=sidebar-wrapper]")
+
+  return (
+    <div
+      data-slot="sidebar-resize-handle"
+      onPointerDown={(event) => {
+        event.preventDefault()
+        event.currentTarget.setPointerCapture(event.pointerId)
+        const wrapper = wrapperOf(event.currentTarget)
+        if (wrapper) wrapper.dataset.resizing = "true"
+      }}
+      onPointerMove={(event) => {
+        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+        const offset = event.currentTarget.closest("[data-side=right]")
+          ? window.innerWidth - event.clientX
+          : event.clientX
+        latest.current = Math.min(
+          SIDEBAR_MAX_WIDTH,
+          Math.max(SIDEBAR_MIN_WIDTH, offset)
+        )
+        wrapperOf(event.currentTarget)?.style.setProperty(
+          "--sidebar-width",
+          `${latest.current}px`
+        )
+      }}
+      onPointerUp={(event) => {
+        event.currentTarget.releasePointerCapture(event.pointerId)
+        const wrapper = wrapperOf(event.currentTarget)
+        if (wrapper) delete wrapper.dataset.resizing
+        setWidth(latest.current)
+        localStorage.setItem(
+          SIDEBAR_WIDTH_STORAGE_KEY,
+          String(Math.round(latest.current))
+        )
+      }}
+      // Double-click resets to the default width, the convention in Figma
+      // and VS Code.
+      onDoubleClick={(event) => {
+        latest.current = SIDEBAR_WIDTH
+        // Written explicitly rather than removed: if state is already at the
+        // default, React re-renders nothing and a removed var would leave the
+        // width unresolved.
+        wrapperOf(event.currentTarget)?.style.setProperty(
+          "--sidebar-width",
+          `${SIDEBAR_WIDTH}px`
+        )
+        setWidth(SIDEBAR_WIDTH)
+        localStorage.removeItem(SIDEBAR_WIDTH_STORAGE_KEY)
+      }}
+      className={cn(
+        "absolute inset-y-0 z-20 w-1 cursor-col-resize touch-none",
+        "group-data-[side=left]:right-0 group-data-[side=right]:left-0",
+        "group-data-[collapsible=offcanvas]:hidden hover:bg-sidebar-border",
+        className
+      )}
+    />
   )
 }
 

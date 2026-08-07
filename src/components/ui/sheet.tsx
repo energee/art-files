@@ -72,8 +72,9 @@ function SheetContent({
               />
             }
           >
-            <XIcon
-            />
+            {/* Explicit size: the button's icon-sm default (16px) reads too
+                small against the sheet's own type scale. */}
+            <XIcon className="size-4.5" />
             <span className="sr-only">Close</span>
           </SheetPrimitive.Close>
         )}

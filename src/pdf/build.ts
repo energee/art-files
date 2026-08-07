@@ -19,8 +19,9 @@ import fontkit from "@pdf-lib/fontkit";
 import type { CollabSlot, Fill, LabelConfig, Style, StyledLine } from "../types";
 import type { ElementId } from "../elements";
 import { parseLogo } from "../logo";
+import { WARNING_TEXT, displayAbv, displayName, displayStyle } from "../defaults";
 import * as L from "../layout";
-import { barcodeGeometry, barcodeStrokePt } from "../barcode";
+import { barcodeFootprint, barcodeGeometry, barcodeStrokePt } from "../barcode";
 import { qrPath, qrShapes, qrUrl } from "../qr";
 import { parseDescription, parseInfoLine, parseRuns } from "../description";
 import { warningColumnLen, wrapWarning } from "../warning";
@@ -303,11 +304,6 @@ export function drawJustifiedRotated(
   });
 }
 
-/** Glyph box for the barcode digits' mask pills — the measured Poppins font
- *  box from layout.ts, the same one hittest.ts uses. */
-const DIGIT_ASC = L.FONT_ASC;
-const DIGIT_DESC = L.FONT_DESC;
-
 /** The barcode, in both modes. `cfg` (not just the UPC digits) because both
  *  branches below resolve their geometry from the same barcode* style fields
  *  — see S. */
@@ -340,24 +336,13 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode:
   const glyph = { size: B.textSize, font: fonts.regular, rotate: degrees(90) };
 
   if (mode === "mask") {
-    // The true footprint the art pass inks: one outset rect per bar (the
-    // same ±S outset the art halo pass draws below) plus a pill per digit
-    // group — the rect the art's ring-of-copies halo approximates — around
-    // its glyph box expanded by S. At S=0 (stroke "none") this reduces to
-    // exactly the bars' and digits' own ink, still needed under the ink for
-    // scan contrast. A single bounding rect used to stand in for all of
-    // this; that under-covered the gaps between bars and the digit column,
-    // which can unprint the code on a textured stock.
+    // The true footprint the art pass inks, from the shared resolver the PSD
+    // builder paints too (see barcodeFootprint). Top-origin rects convert to
+    // PDF space by their far edge, exactly like the bars above.
     const color = maskColor(cfg.barcodeLayer);
-    for (const r of bars)
-      page.drawRectangle({
-        x: r.x - S, y: r.y - S, width: r.width + 2 * S, height: r.height + 2 * S, color,
-      });
-    for (const d of digits) {
-      const x0 = d.x - DIGIT_ASC * B.textSize - S;
-      const x1 = d.x + DIGIT_DESC * B.textSize + S;
-      page.drawRectangle({ x: x0, y: d.y - S, width: x1 - x0, height: d.w + 2 * S, color });
-    }
+    const measure = (t: string) => fonts.regular.widthOfTextAtSize(t, B.textSize);
+    for (const r of barcodeFootprint(geo, S, measure))
+      page.drawRectangle({ x: r.x, y: y(r.yTop + r.h), width: r.w, height: r.h, color });
     return;
   }
 
@@ -372,11 +357,14 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode:
   if (S > 0) {
     const strokeColor = fillColor(cfg.barcodeStroke);
     const ringS = ring(S); // loop-invariant
+    // A centered border at 2S extends S beyond the bar and — because the page
+    // sets a ROUND line join (see newDoc) — rounds each corner at radius S,
+    // which is what Photoshop's outside stroke does and what the PSD's real
+    // stroke effect produces. The old outset rectangle was square-cornered,
+    // the one place the PDF's barcode halo visibly diverged from the PSD.
     for (const r of bars)
       page.drawRectangle({
-        x: r.x - S, y: r.y - S,
-        width: r.width + 2 * S, height: r.height + 2 * S,
-        color: strokeColor,
+        ...r, color: strokeColor, borderColor: strokeColor, borderWidth: 2 * S,
       });
     for (const d of digits)
       for (const [dx, dy] of ringS)
@@ -406,7 +394,7 @@ async function drawElements(
   if (!hide("volume"))
     drawLine(page, fonts, cfg.volume, mode, { x: L.VOLUME.x, baseline: L.VOLUME.baseline, size: L.VOLUME.size });
   if (!hide("abv"))
-    drawLine(page, fonts, { text: `${cfg.abv}% alc by vol`, ...cfg.abvStyle }, mode, {
+    drawLine(page, fonts, { text: `${displayAbv(cfg)}% alc by vol`, ...cfg.abvStyle }, mode, {
       x: L.ABV.x, baseline: L.ABV.baseline, size: L.ABV.size,
     });
   const desc = parseDescription(cfg.description, cfg.descStyle);
@@ -477,17 +465,17 @@ async function drawElements(
       maxW: L.COLLAB_CENTER.maxW, maxH: L.COLLAB_CENTER.maxH,
     });
   if (!hide("name"))
-    drawLine(page, fonts, { text: cfg.beerName.toUpperCase(), ...cfg.nameStyle, bold: true }, mode, {
+    drawLine(page, fonts, { text: displayName(cfg).toUpperCase(), ...cfg.nameStyle, bold: true }, mode, {
       cx: L.NAME.cx, baseline: L.NAME.baseline, size: L.NAME.size, font: fonts.bold,
     });
   if (!hide("styleLine"))
-    drawLine(page, fonts, cfg.styleLine, mode, {
+    drawLine(page, fonts, { ...cfg.styleLine, text: displayStyle(cfg) }, mode, {
       cx: L.STYLE_LINE.cx, baseline: L.STYLE_LINE.baseline, size: L.STYLE_LINE.size,
     });
 
   // QR — payload derived from the beer name; optional stroked underlay.
   if (!hide("qr")) {
-    const shapes = qrShapes(qrUrl(cfg.beerName));
+    const shapes = qrShapes(qrUrl(displayName(cfg)));
     const qrAt = { x: L.QR.x, y: y(L.QR.yTop) };
     if (mode === "art" && cfg.qrStroke !== "none")
       page.drawSvgPath(
@@ -524,7 +512,9 @@ async function drawElements(
       }),
     );
   if (!hide("storeCold"))
-    drawRotated(page, fonts.semibold, cfg.storeCold.text, mode, cfg.storeCold, {
+    // Semibold is this line's plain face; the element's bold toggle steps it up
+    // to Bold, exactly as handleAddress above.
+    drawRotated(page, cfg.storeCold.bold ? fonts.bold : fonts.semibold, cfg.storeCold.text, mode, cfg.storeCold, {
       x: L.STORE_COLD.x, yStart: L.STORE_COLD.yStart, size: L.STORE_COLD.size,
     });
 
@@ -567,7 +557,7 @@ export async function buildArtPdf(cfg: LabelConfig, assets: Assets): Promise<Uin
     page.drawImage(img, coverPage(page, img));
   }
   await drawElements(doc, page, fonts, cfg, assets, "art");
-  doc.setTitle(`${cfg.beerName} label art`);
+  doc.setTitle(`${displayName(cfg)} label art`);
   return doc.save();
 }
 
@@ -588,6 +578,6 @@ export async function buildMaskPdf(cfg: LabelConfig, assets: Assets): Promise<Ui
     page.drawRectangle({ x: 0, y: 0, width: L.PAGE.w, height: L.PAGE.h, color: toRgb(L.COLORS.maskBlue) });
   }
   await drawElements(doc, page, fonts, cfg, assets, "mask");
-  doc.setTitle(`${cfg.beerName} white-ink layer`);
+  doc.setTitle(`${displayName(cfg)} white-ink layer`);
   return doc.save();
 }

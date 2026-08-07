@@ -16,7 +16,13 @@ import { BARCODE as B, COLORS, FONT_ASC, FONT_DESC, PAGE, PX, parseHexFill } fro
 const UPC = "850051366224";
 
 type Color = { red: number; green: number; blue: number };
-type Rect = { x: number; y: number; width: number; height: number; color: Color };
+type Rect = {
+  x: number; y: number; width: number; height: number; color: Color;
+  // Set only on the art pass's bar halos: those are the bar's OWN rect drawn
+  // with a centered border of 2S, so their corners round at radius S the way
+  // Photoshop's outside stroke does. Read S back as borderWidth / 2.
+  borderWidth?: number;
+};
 type Text = { txt: string; x: number; y: number; color: Color };
 
 function draw(cfg: LabelConfig, mode: "art" | "mask") {
@@ -107,12 +113,15 @@ describe("drawBarcode back-compat", () => {
     expect(digits.length).toBeGreaterThan(0);
     expect(digitHalo.length).toBeGreaterThan(0);
     for (const h of halo) expect(sameColor(h.color, COLORS.white)).toBe(true);
-    // Halo rects are emitted in bar order, each its bar outset by B.stroke.
+    // Halo rects are emitted in bar order, each its bar's own rect carrying a
+    // centered 2*B.stroke border — S beyond the bar on every side, with the
+    // corners rounded at radius S by the page's round line join.
     halo.forEach((h, i) => {
-      expect(h.x).toBeCloseTo(bars[i].x - B.stroke, 10);
-      expect(h.y).toBeCloseTo(bars[i].y - B.stroke, 10);
-      expect(h.width).toBeCloseTo(bars[i].width + 2 * B.stroke, 10);
-      expect(h.height).toBeCloseTo(bars[i].height + 2 * B.stroke, 10);
+      expect(h.x).toBeCloseTo(bars[i].x, 10);
+      expect(h.y).toBeCloseTo(bars[i].y, 10);
+      expect(h.width).toBeCloseTo(bars[i].width, 10);
+      expect(h.height).toBeCloseTo(bars[i].height, 10);
+      expect(h.borderWidth).toBeCloseTo(2 * B.stroke, 10);
     });
   });
 
@@ -152,7 +161,8 @@ describe("drawBarcode styling", () => {
   it.each(cases)("art and mask resolve the same stroke: %s", (_name, patch, expected) => {
     const cfg = { ...defaultConfig(), ...patch };
     const { bars, halo } = split(cfg);
-    const artS = halo.length ? bars[0].x - halo[0].x : 0;
+    // The art halo is the bar's own rect with a centered 2S border.
+    const artS = halo.length ? halo[0].borderWidth! / 2 : 0;
     // Mask rects are pushed bar-first, so rects[0] is the first bar's
     // outset rect — its size must track the same S as the art halo.
     const maskRect = draw(cfg, "mask").rects[0];
@@ -245,8 +255,9 @@ describe("shared barcode stroke resolver", () => {
     const cfg = { ...defaultConfig(), barcodeStrokeWidth: 31 };
     const { bars, halo } = split(cfg);
     const expected = barcodeStrokePt(cfg);
-    // Every halo rect is its bar expanded by S on each side.
-    expect(halo[0].height).toBeGreaterThan(2 * expected);
+    // Every halo rect is its bar carrying a centered 2S border, which reaches
+    // S past the bar on each side.
+    expect(halo[0].borderWidth).toBeCloseTo(2 * expected, 10);
     const maskRect = draw(cfg, "mask").rects[0]; // first bar's outset rect
     expect(maskRect.width).toBeCloseTo(bars[0].width + 2 * expected, 10);
   });

@@ -4,18 +4,43 @@
 import {
   forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type RefObject,
 } from "react";
-import * as pdfjs from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import type { PanelImperativeHandle } from "react-resizable-panels";
+import { renderPdfPage } from "@/pdf/render";
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import { PAGE } from "@/layout";
+import { ART, PAGE } from "@/layout";
 import type { LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
-import { boxOf, hitTest, type Measure } from "@/hittest";
+import { boxesFor, hitTest, type CollabSlots, type Measure } from "@/hittest";
+import { modsOf, type SelectMods } from "@/selection";
+import { cn } from "@/lib/utils";
 
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+/** The selection box's four corner ticks, each already placed. */
+const CORNER_CLASS = {
+  tl: "-top-[3px] -left-[3px]",
+  tr: "-top-[3px] -right-[3px]",
+  bl: "-bottom-[3px] -left-[3px]",
+  br: "-bottom-[3px] -right-[3px]",
+};
+
+/** Breathing room between an element's measured box and its selection
+ *  outline, in screen px. */
+const SEL_PAD = 4;
+
+/** An overlay box positioned in page space: label-space points in, CSS
+ *  percentages of the preview frame out, so it tracks the container at any
+ *  on-screen size without its own resize handling. `pad` grows the box by n
+ *  screen px on every side. Shared by the trim guide and the selection
+ *  outlines, which must agree about the coordinate basis. */
+const pageBox = (
+  x: number, y: number, w: number, h: number, pad = 0,
+): React.CSSProperties => ({
+  left: `calc(${(x / PAGE.w) * 100}% - ${pad}px)`,
+  top: `calc(${(y / PAGE.h) * 100}% - ${pad}px)`,
+  width: `calc(${(w / PAGE.w) * 100}% + ${pad * 2}px)`,
+  height: `calc(${(h / PAGE.h) * 100}% + ${pad * 2}px)`,
+});
 
 // ponytail: fixed oversample, CSS downscales; add a ResizeObserver only if
 // crispness on very large screens ever matters.
@@ -31,26 +56,9 @@ const WHITE_INK_PANEL_ID = "white-ink";
 async function renderPdf(
   bytes: Uint8Array, canvas: HTMLCanvasElement | null, isCancelled: () => boolean,
 ) {
-  if (!canvas) return;
-  // pdf.js transfers the buffer to its worker — hand it a copy. destroy()
-  // lives on the loading task (not the resolved PDFDocumentProxy) in this
-  // pdfjs-dist major, so the task is kept around for cleanup.
-  const task = pdfjs.getDocument({ data: bytes.slice() });
-  try {
-    const doc = await task.promise;
-    const page = await doc.getPage(1);
-    // bytes can change while this render is in flight (each call spins up
-    // its own worker doc); bail before touching the shared canvas so a
-    // slower, superseded render can't overwrite a newer one.
-    if (isCancelled()) return;
-    const vp = page.getViewport({ scale: RENDER_SCALE });
-    canvas.width = vp.width;
-    canvas.height = vp.height;
-    // `canvas` (not the legacy `canvasContext`) is the required render target.
-    await page.render({ canvas, viewport: vp }).promise;
-  } finally {
-    void task.destroy().catch(() => {});
-  }
+  // isCancelled: bytes can change while a render is in flight, and a slower
+  // superseded render must not overwrite a newer one on the shared canvas.
+  if (canvas) await renderPdfPage(bytes, { canvas, scale: RENDER_SCALE, isCancelled });
 }
 
 /** Render `bytes` into `canvas` whenever they change. Renders are chained:
@@ -86,17 +94,30 @@ export const PreviewCompare = forwardRef<
     /** Real glyph-width lookup (see hittest.ts); null until App's one-time
      *  font embed resolves. Hit-testing is skipped, not guessed, until then. */
     measure: Measure | null;
-    /** Which element the sidebar (or a previous click here) has selected —
-     *  drives the outline drawn over it. */
-    selected: ElementId | null;
-    /** Called with the clicked element's id, or null for empty background. */
-    onPick: (id: ElementId | null) => void;
+    /** Which collab logo slots hold art. The renderer skips an empty slot, so
+     *  its hit box must not exist either (see hittest.ts's CollabSlots). */
+    collab: CollabSlots;
+    /** Which elements the sidebar (or previous clicks here) have selected —
+     *  one outline is drawn per id, so canvas and panel agree about what a
+     *  multi-selection looks like. Document layers are filtered out by App:
+     *  the preview knows only renderer elements. */
+    selected: readonly ElementId[];
+    /** Called with the clicked element's id (null for empty background) and
+     *  the click's modifiers, so shift/⌘ on the canvas extend the selection
+     *  exactly as they do in the layers panel. */
+    onPick: (id: ElementId | null, mods: SelectMods) => void;
     /** Divider position as % of width showing white-ink, on every change —
      *  including a manual drag, so the View menu's checkmarks track the real
      *  divider rather than whichever menu item was picked last. */
     onSplit?: (pct: number) => void;
+    /** Draw the trim guide at the edge of the art box — 38px of bleed at
+     *  600dpi on every side. Preview-only; never part of the PDFs. */
+    bleed?: boolean;
   }
->(function PreviewCompare({ artBytes, maskBytes, cfg, measure, selected, onPick, onSplit }, ref) {
+>(function PreviewCompare(
+  { artBytes, maskBytes, cfg, measure, collab, selected, onPick, onSplit, bleed },
+  ref,
+) {
   const artCanvas = useRef<HTMLCanvasElement>(null);
   const maskCanvas = useRef<HTMLCanvasElement>(null);
   const leftPanel = useRef<PanelImperativeHandle>(null);
@@ -128,17 +149,20 @@ export const PreviewCompare = forwardRef<
     if (!r.width || !r.height) return; // not laid out yet (e.g. display:none)
     const xPt = ((e.clientX - r.left) / r.width) * PAGE.w;
     const yPt = ((e.clientY - r.top) / r.height) * PAGE.h;
-    onPick(hitTest(xPt, yPt, measure, cfg));
+    onPick(hitTest(xPt, yPt, measure, cfg, collab), modsOf(e));
   }
 
-  // Selection outline geometry, as a percentage box so it tracks the
-  // container at any on-screen size without its own resize handling.
-  // Memoized: boxOf rebuilds every element's box (including the warning's
-  // word-by-word wrap measurement), and dragging the divider re-renders this
-  // component per pointer-move frame without any of these inputs changing.
-  const selBox = useMemo(
-    () => (selected && measure ? boxOf(selected, cfg, measure) : null),
-    [selected, cfg, measure],
+  // Selection outline geometry, in label-space points (pageBox maps it to
+  // percentages at render). Memoized: boxesFor re-measures every element,
+  // the warning's word-by-word wrap included, and dragging the divider
+  // re-renders this component per pointer-move frame without any of these
+  // inputs changing — `selected` is memoized in App for exactly that reason.
+  const selBoxes = useMemo(
+    // One measurement pass for the whole selection (see boxesFor); elements
+    // the renderer isn't drawing — an empty collab slot — come back absent
+    // and simply get no outline.
+    () => (measure ? boxesFor(selected, cfg, measure, collab) : []),
+    [selected, cfg, measure, collab],
   );
 
   return (
@@ -173,23 +197,41 @@ export const PreviewCompare = forwardRef<
         <ResizableHandle withHandle className="bg-border/60 pointer-events-auto" />
         <ResizablePanel minSize="0%" />
       </ResizablePanelGroup>
-      {selBox && (
+      {/* Trim guide: the ART box, i.e. PAGE minus 38px of bleed per side at
+          600dpi. Percentages off PAGE so it tracks the wrapper at any size,
+          same trick as the selection box below. */}
+      {bleed && (
         <div
-          className="pointer-events-none absolute ring-1 ring-ring"
-          style={{
-            left: `${(selBox.x0 / PAGE.w) * 100}%`,
-            top: `${(selBox.y0 / PAGE.h) * 100}%`,
-            width: `${((selBox.x1 - selBox.x0) / PAGE.w) * 100}%`,
-            height: `${((selBox.y1 - selBox.y0) / PAGE.h) * 100}%`,
-          }}
+          className="pointer-events-none absolute border border-dashed border-destructive/70"
+          style={pageBox(ART.x, ART.y, ART.w, ART.h)}
         />
       )}
-      <span className="pointer-events-none absolute bottom-1 left-1.5 text-[10px] text-muted-foreground">
-        white-ink
-      </span>
-      <span className="pointer-events-none absolute bottom-1 right-1.5 text-[10px] text-muted-foreground">
-        art
-      </span>
+      {selBoxes.map((b) => (
+        // Figma's selection read: a 1px accent stroke with a dark outer halo
+        // so it stays visible over both the gold art and bare white stock (a
+        // single-tone ring disappeared into one or the other), plus corner
+        // ticks that make the box read as a selected object rather than as
+        // more label art. Outline, not border/ring: it draws OUTSIDE the box,
+        // so the outline can't shave a pixel off the element it marks.
+        <div
+          key={b.id}
+          className="pointer-events-none absolute outline-1 outline-sky-400 outline-solid [box-shadow:0_0_0_2px_rgba(0,0,0,0.45)]"
+          // SEL_PAD of air between the glyphs and the stroke, so the outline
+          // frames the element instead of crowding its ascenders. In px, not
+          // a % of the box: the gap should look the same on a two-character
+          // ABV and on the description block.
+          style={pageBox(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0, SEL_PAD)}
+        >
+          {/* Four corner ticks, centred on the corners. Fixed px (not a % of
+              the box) so a small element's handles don't shrink to nothing. */}
+          {Object.entries(CORNER_CLASS).map(([corner, at]) => (
+            <span
+              key={corner}
+              className={`absolute size-1.5 rounded-[1px] border border-sky-400 bg-background ${at}`}
+            />
+          ))}
+        </div>
+      ))}
     </div>
   );
 });

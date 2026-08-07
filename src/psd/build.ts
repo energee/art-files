@@ -27,8 +27,9 @@ import fontkit from "@pdf-lib/fontkit";
 // and throws "Buffer not supported on this platform" in the browser.
 import { writePsdUint8Array, type BezierPath, type Layer, type Psd } from "ag-psd";
 import type { Fill, LabelConfig, StyledLine } from "../types";
+import { displayAbv, displayName, displayStyle } from "../defaults";
 import * as L from "../layout";
-import { barcodeGeometry, barcodeStrokePt } from "../barcode";
+import { barcodeFootprint, barcodeGeometry, barcodeStrokePt } from "../barcode";
 import { parseDescription, parseInfoLine, parseRuns } from "../description";
 import { parseLogo } from "../logo";
 import { qrShapes, qrUrl } from "../qr";
@@ -68,7 +69,7 @@ const color255 = (fill: Fill) => {
 };
 
 /** Mask-plate blue (layout.COLORS.maskBlue as hex): the white-ink underlay. */
-const MASK_BLUE = "#009CD7";
+const MASK_BLUE = L.MASK_BLUE_HEX;
 
 /** Resolve an element's paint for the mode — the PDF's maskColor rule:
  *  in mask mode metallic knocks out (white) and white-layer prints ink
@@ -468,7 +469,7 @@ function buildLayers(
       fill: P(cfg.volume), face: faceOf(cfg.volume), tracking: cfg.volume.letterSpacing,
       stroke: cfg.volume.stroke, strokeWidth: cfg.volume.strokeWidth, mode,
     }),
-    textLayer("ABV", `${cfg.abv}% alc by vol`, {
+    textLayer("ABV", `${displayAbv(cfg)}% alc by vol`, {
       x: L.ABV.x, baseline: L.ABV.baseline, size: L.ABV.size,
       fill: P(cfg.abvStyle), face: "regular", tracking: cfg.abvStyle.letterSpacing,
       stroke: cfg.abvStyle.stroke, strokeWidth: cfg.abvStyle.strokeWidth, mode,
@@ -536,14 +537,14 @@ function buildLayers(
         "Logo", logoPaths, P(cfg.logo),
         mode === "art" ? cfg.logo.stroke : undefined, cfg.logo.strokeWidth,
       ),
-      textLayer("Beer name", cfg.beerName.toUpperCase(), {
-        x: centered(cfg.beerName.toUpperCase(), L.NAME.cx, L.NAME.size, "bold", cfg.nameStyle.letterSpacing),
+      textLayer("Beer name", displayName(cfg).toUpperCase(), {
+        x: centered(displayName(cfg).toUpperCase(), L.NAME.cx, L.NAME.size, "bold", cfg.nameStyle.letterSpacing),
         baseline: L.NAME.baseline, size: L.NAME.size,
         fill: P(cfg.nameStyle), face: "bold", tracking: cfg.nameStyle.letterSpacing,
         stroke: cfg.nameStyle.stroke, strokeWidth: cfg.nameStyle.strokeWidth, mode,
       }),
-      textLayer("Style line", cfg.styleLine.text, {
-        x: centered(cfg.styleLine.text, L.STYLE_LINE.cx, L.STYLE_LINE.size, faceOf(cfg.styleLine), cfg.styleLine.letterSpacing),
+      textLayer("Style line", displayStyle(cfg), {
+        x: centered(displayStyle(cfg), L.STYLE_LINE.cx, L.STYLE_LINE.size, faceOf(cfg.styleLine), cfg.styleLine.letterSpacing),
         baseline: L.STYLE_LINE.baseline, size: L.STYLE_LINE.size,
         fill: P(cfg.styleLine), face: faceOf(cfg.styleLine), tracking: cfg.styleLine.letterSpacing,
         stroke: cfg.styleLine.stroke, strokeWidth: cfg.styleLine.strokeWidth, mode,
@@ -586,7 +587,8 @@ function buildLayers(
       }),
       textLayer("Store cold", cfg.storeCold.text, {
         x: L.STORE_COLD.x, baseline: L.STORE_COLD.yStart, size: L.STORE_COLD.size,
-        fill: P(cfg.storeCold), face: "semibold", rotated: true,
+        // Bold toggle steps semibold up to Bold, matching the PDF path.
+        fill: P(cfg.storeCold), face: cfg.storeCold.bold ? "bold" : "semibold", rotated: true,
         tracking: cfg.storeCold.letterSpacing,
         stroke: cfg.storeCold.stroke, strokeWidth: cfg.storeCold.strokeWidth, mode,
       }),
@@ -603,7 +605,7 @@ function buildLayers(
  *  digit glyph outlines, both bezier, in cfg.barcodeFill) with an optional
  *  "Barcode stroke" layer directly beneath it, mirroring the PDF's halo. */
 function codeLayers(cfg: LabelConfig, f: Faces, fk: FKFont, mode: PsdMode): Layer[] {
-  const q = qrShapes(qrUrl(cfg.beerName));
+  const q = qrShapes(qrUrl(displayName(cfg)));
   const ms = q.moduleSize * L.QR.size;
   const at = (u: number, axis: "x" | "y") =>
     u * L.QR.size + (axis === "x" ? L.QR.x : L.QR.yTop);
@@ -651,19 +653,11 @@ function codeLayers(cfg: LabelConfig, f: Faces, fk: FKFont, mode: PsdMode): Laye
   );
 
   if (mode === "mask") {
-    // The barcode's true ink footprint, exactly as drawBarcode's mask branch:
-    // one ±S outset rect per bar plus a pill rect per digit group around its
-    // glyph box. Union, so overlapping outsets can't XOR into holes.
-    const footprint: BezierPath[] = [
-      ...geo.bars.map((b) => rectPath(b.x - S, b.yTop - S, b.w + 2 * S, b.h + 2 * S)),
-      ...geo.digits.map((d) => {
-        const w = measure(d.text);
-        const x0 = d.x - L.FONT_ASC * B.textSize - S;
-        const x1 = d.x + L.FONT_DESC * B.textSize + S;
-        const yc = geo.bottom - d.center * geo.mod;
-        return rectPath(x0, yc - w / 2 - S, x1 - x0, w + 2 * S);
-      }),
-    ].map((p) => ({ ...p, operation: "combine" as const }));
+    // The barcode's true ink footprint, from the same resolver drawBarcode's
+    // mask branch paints (see barcodeFootprint). Union, so overlapping outsets
+    // can't XOR into holes.
+    const footprint: BezierPath[] = barcodeFootprint(geo, S, measure)
+      .map((r) => ({ ...rectPath(r.x, r.yTop, r.w, r.h), operation: "combine" as const }));
     return [qr, shapeLayer("Barcode", footprint, paint(mode, cfg.barcodeFill, cfg.barcodeLayer))];
   }
 

@@ -5,12 +5,22 @@ import { encodeUpc, upcCheckDigit, validateUpc } from "../src/upc";
 import { qrPath, qrShapes, machineName, qrUrl } from "../src/qr";
 import { prepareMaskForPdf, recolorMaskForPdf, validateMask } from "../src/maskimage";
 import { tintRgba } from "../src/collab";
-import { defaultConfig, parseConfigFile, toConfigFile } from "../src/defaults";
+import { defaultConfig, displayAbv, parseConfigFile, toConfigFile } from "../src/defaults";
 import { parseDescription, parseInfoLine, parseRuns, serializeDescription } from "../src/description";
 import {
   COLLAB_LEAD, COLLAB_LEFT, DEFAULT_STROKE_PX, DESC, GOLD, QR,
   collabLeftFlow, parseHexFill,
 } from "../src/layout";
+import { addColor } from "../src/presets";
+
+describe("color presets", () => {
+  it("appends a new hex, lowercased", () => {
+    expect(addColor(["#111111"], "#B58B3C")).toEqual(["#111111", "#b58b3c"]);
+  });
+  it("ignores a hex already saved, whatever its case", () => {
+    expect(addColor(["#b58b3c"], "#B58B3C")).toEqual(["#b58b3c"]);
+  });
+});
 
 describe("upc", () => {
   it("computes the Labradorite check digit", () => {
@@ -341,5 +351,25 @@ describe("derived QR payload", () => {
     expect("qrData" in cfg).toBe(false);
     expect(cfg.qrFill).toBe(GOLD);
     expect(cfg.qrStroke).toBe("none");
+  });
+});
+
+describe("displayAbv", () => {
+  // build.ts prints `${displayAbv(cfg)}% alc by vol`, so a value that already
+  // carries its unit ("5.2%", typed or inherited from an older config) would
+  // otherwise render "5.2%% alc by vol".
+  it("drops a unit the value already carries", () => {
+    const cfg = defaultConfig();
+    cfg.abv = "5.2%";
+    expect(displayAbv(cfg)).toBe("5.2");
+    cfg.abv = " 5.2 % ";
+    expect(displayAbv(cfg)).toBe("5.2");
+  });
+  it("leaves a bare figure and the blank placeholder alone", () => {
+    const cfg = defaultConfig();
+    cfg.abv = "5.2";
+    expect(displayAbv(cfg)).toBe("5.2");
+    cfg.abv = "  ";
+    expect(displayAbv(cfg)).toBe("#");
   });
 });
