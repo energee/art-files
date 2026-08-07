@@ -7,6 +7,16 @@ export const PAGE = { w: 585.12, h: 369.12 };
 export const ART = { x: 4.56, y: 4.56, w: 576, h: 360 };
 export const CENTER_X = PAGE.w / 2;
 
+/** Height of the can the 3D views render, in inches — a 16 oz (473 ml)
+ *  standard can, whose ~8.1in circumference is what the 8in-wide art wraps.
+ *  Nothing in Can.gltf carries real-world units (the model is normalized to
+ *  scene height), so this is the one place the physical can is stated. It
+ *  exists so the Settings layer can show its label-height knob in inches
+ *  rather than as a share of a can nobody measured; the stored value stays a
+ *  percentage, which is what canScene consumes. Change this if the shop's
+ *  can changes and every reading follows. */
+export const CAN_HEIGHT_IN = 6.19;
+
 /** Default metallic gold. Originally #D0B070 (sampled from the Labradorite
  *  reference render); brightened to #F3CD80 by request 2026-08. */
 export const GOLD = "#F3CD80" as const;

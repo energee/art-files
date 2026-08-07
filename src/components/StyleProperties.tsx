@@ -24,13 +24,40 @@ import { DescriptionEditor } from "./DescriptionEditor";
 import { FileDrop } from "./FileDrop";
 import { MetallicToggle } from "./MetallicToggle";
 import { BarcodePresetBar, BeerStylePresetBar } from "./PresetBar";
-import { PAGE } from "@/layout";
+import { CAN_HEIGHT_IN, PAGE } from "@/layout";
 
-/** The label's short side in inches. canScene scales the corner radius off
- *  min(width, height) of the label texture, i.e. the page height. */
+/** The label in inches. canScene scales the corner radius off min(width,
+ *  height) of the label texture — i.e. the page height — and the foil-edge
+ *  blur off its width. */
 const LABEL_SHORT_IN = PAGE.h / 72;
-/** Corner radius display conversion: stored as % of the short side. */
-const pctToInches = (pct: number) => (pct / 100) * LABEL_SHORT_IN;
+const LABEL_WIDE_IN = PAGE.w / 72;
+
+/** A Settings knob STORED as a percentage (of `of` inches — the form
+ *  canScene consumes) but SHOWN in inches, the unit a die-cut, a label and a
+ *  press are specified in. One component for all three, so a knob can't
+ *  quietly go back to reading in percent and the percentage stays an
+ *  implementation detail of the renderer rather than a conversion the
+ *  operator does in their head. */
+function InchField(props: {
+  id: string; label: string;
+  /** What the stored percentage is a percentage OF, in inches. */
+  of: number;
+  pct: number; minPct: number; maxPct: number;
+  /** Display and drag granularity, in inches. */
+  step: number;
+  onPct: (pct: number) => void;
+}) {
+  const inches = (pct: number) => (pct / 100) * props.of;
+  return (
+    <ScrubField
+      id={props.id} label={props.label} unit={'"'}
+      value={inches(props.pct)}
+      min={inches(props.minPct)} max={inches(props.maxPct)}
+      step={props.step} dragStep={props.step}
+      onChange={(v) => props.onPct((v / props.of) * 100)}
+    />
+  );
+}
 import { machineName, qrUrl } from "@/qr";
 import { DEFAULT_STROKE_PX } from "@/layout";
 import { Button } from "@/components/ui/button";
@@ -347,28 +374,30 @@ function Content(props: {
       // shapes the die-cut label (alphaMap in canScene), label size is its
       // height as a share of the can's. The print PDFs are untouched — the
       // physical label is cut and sized at the press, not rendered.
+      // Every knob reads in inches (see InchField); each stays a percentage
+      // in presets.json and in canScene, which is what those consume.
       return (
         <div className="space-y-2">
-          {/* Shown in inches — the unit a die-cut is specified in — while the
-              stored value stays a percentage of the label's short side, which
-              is what canScene's alphaMap consumes. */}
-          <ScrubField
-            id="doc-corner-radius" label="Corner radius" unit={'"'}
-            value={pctToInches(settings.cornerRadius)}
-            min={0} max={pctToInches(5)} step={0.005} dragStep={0.005}
-            onChange={(inches) => settings.onCornerRadius((inches / LABEL_SHORT_IN) * 100)}
+          {/* Die-cut corner radius, off the label's short side. */}
+          <InchField
+            id="doc-corner-radius" label="Corner radius" of={LABEL_SHORT_IN}
+            pct={settings.cornerRadius} minPct={0} maxPct={5} step={0.005}
+            onPct={settings.onCornerRadius}
           />
-          <ScrubField
-            id="doc-label-size" label="Label size" unit="%"
-            value={settings.labelSize} min={50} max={95} step={1}
-            onChange={settings.onLabelSize}
+          {/* How tall the label stands on the can — a share of CAN_HEIGHT_IN,
+              read out as the label height it produces. */}
+          <InchField
+            id="doc-label-size" label="Label height" of={CAN_HEIGHT_IN}
+            pct={settings.labelSize} minPct={50} maxPct={95} step={0.01}
+            onPct={settings.onLabelSize}
           />
           {/* Blur on the foil mask's edges: 0 = hard specular outlines
-              around every metallic element, higher = softer transitions. */}
-          <ScrubField
-            id="doc-edge-softness" label="Edge softness" unit="%"
-            value={settings.edgeSoftness} min={0} max={1} step={0.01} dragStep={0.01}
-            onChange={settings.onEdgeSoftness}
+              around every metallic element, wider = softer transitions.
+              Measured across the label's width, like the renderer does. */}
+          <InchField
+            id="doc-edge-softness" label="Edge softness" of={LABEL_WIDE_IN}
+            pct={settings.edgeSoftness} minPct={0} maxPct={1} step={0.001}
+            onPct={settings.onEdgeSoftness}
           />
         </div>
       );
