@@ -36,6 +36,11 @@ export function ScrubField(props: {
    *  since 0.01 per drag increment would make its full range ~4400px of
    *  travel. Defaults to `step`, i.e. drag and type at the same granularity. */
   dragStep?: number;
+  /** The selection's elements disagree about this number (multi-select):
+   *  show an empty field instead of one element's value. Typing or dragging
+   *  still writes the new value to every selected element — a drag starts
+   *  from `value`, which the caller sets to the first element's. */
+  mixed?: boolean;
   onChange: (v: number) => void;
 }) {
   // Half-typed text ("0.", "-") would round-trip through Number() as a
@@ -84,7 +89,12 @@ export function ScrubField(props: {
           max={props.max}
           step={props.step}
           className="h-6 text-xs"
-          value={text ?? props.value}
+          // Renders exactly what it was handed. A caller converting from
+          // another unit rounds before passing it in (see InchField), so the
+          // rounding lands on the value that gets STORED rather than only on
+          // the one displayed.
+          value={text ?? (props.mixed ? "" : props.value)}
+          placeholder={props.mixed ? "Mixed" : undefined}
           onChange={(e) => {
             setText(e.target.value);
             // Clamp on commit: `min`/`max` on a number input do not stop a

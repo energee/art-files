@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { MAX_WRAP_RATIO } from "@/layout";
 
 // presets.ts — the reusable style and barcode library, read from and written
 // back to presets.json at the repo root through the dev server's
@@ -14,16 +15,28 @@ export interface BarcodePreset {
 
 /** The Document Settings layer's 3D-view knobs. One saved set, not a library:
  *  they describe how this shop's labels are die-cut and rendered, so there is
- *  nothing to pick between. Percentages, matching the inspector's stored
- *  values (corner radius is a % of the label's short side). */
+ *  nothing to pick between. Percentages, each of a different thing — the
+ *  inspector shows them all in inches (see InchField) and stores them in the
+ *  form canScene consumes:
+ *    cornerRadius — % of the label's short side
+ *    labelSize    — label height, % of the can's height
+ *    labelWidth   — how far it wraps, % of the can's circumference
+ *    edgeSoftness — foil-edge blur, % of the label's width */
 export interface RenderSettings {
   cornerRadius: number;
   labelSize: number;
+  labelWidth: number;
   edgeSoftness: number;
 }
 
+// labelWidth ships at the renderer's ceiling (MAX_WRAP_RATIO): the 8in art
+// almost exactly covers the can's 8.17in circumference, and that is also
+// where the aspect-derived wrap landed before the knob existed — so a library
+// saved without one opens looking the same (normalizePresets' spread fills it
+// in). Stated as the cap rather than 98 so the knob's readout matches what is
+// actually drawn instead of promising a wrap the scene clamps away.
 export const DEFAULT_RENDER: RenderSettings = {
-  cornerRadius: 2.5, labelSize: 82, edgeSoftness: 0.1,
+  cornerRadius: 2.5, labelSize: 82, labelWidth: MAX_WRAP_RATIO * 100, edgeSoftness: 0.1,
 };
 
 export interface Presets {

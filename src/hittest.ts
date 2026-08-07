@@ -220,14 +220,36 @@ export function hitTest(
   return null;
 }
 
-/** The union box for an element, for drawing the selection outline. */
+/** The union box per id, in the order asked for, for drawing selection
+ *  outlines. Ids the renderer isn't drawing (an empty collab slot) are simply
+ *  absent from the result.
+ *
+ *  One boxesOf pass covers the whole selection: boxesOf re-measures every
+ *  element — the description parse and the warning's word-by-word column wrap
+ *  included — so asking per element made an N-layer selection N full
+ *  measurement passes, on a path that re-runs per pointer-move frame while
+ *  the compare divider is dragged. */
+export function boxesFor(
+  ids: readonly ElementId[], cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SLOTS,
+): Box[] {
+  const want = new Set(ids);
+  const union = new Map<ElementId, Box>();
+  for (const b of boxesOf(cfg, m, slots)) {
+    if (!want.has(b.id)) continue;
+    const a = union.get(b.id);
+    union.set(b.id, a
+      ? {
+          id: b.id, x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0),
+          x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1),
+        }
+      : b);
+  }
+  return ids.map((id) => union.get(id)).filter((b): b is Box => b !== undefined);
+}
+
+/** The union box for one element. */
 export function boxOf(
   id: ElementId, cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SLOTS,
 ): Box | null {
-  const parts = boxesOf(cfg, m, slots).filter((b) => b.id === id);
-  if (!parts.length) return null;
-  return parts.reduce((a, b) => ({
-    id, x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0),
-    x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1),
-  }));
+  return boxesFor([id], cfg, m, slots)[0] ?? null;
 }

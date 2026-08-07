@@ -27,7 +27,10 @@ import {
   DEFAULT_RENDER, loadPresets, mutatePresets, normalizePresets, usePresets,
   type Presets,
 } from "@/presets";
-import { isElementId, type LayerId } from "@/components/layers";
+import { PANEL_ORDER, isElementId, type LayerId } from "@/components/layers";
+import {
+  EMPTY_SELECTION, resolveSelect, type SelectMods, type Selection,
+} from "@/selection";
 import { CommandMenu, type Command } from "@/components/CommandMenu";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
 import { CanView } from "@/components/CanView";
@@ -184,11 +187,28 @@ export default function App() {
   // goes through setCfg (i.e. all of them, see `update` below) is undoable.
   const { value: cfg, set: setCfg, undo, redo, canUndo, canRedo } =
     useHistory<LabelConfig>(defaultConfig);
-  // Which layer the inspector shows — Figma's model, one at a time, driven
-  // by the layers panel or PreviewCompare's click-to-select. LayerId, not
-  // ElementId: the Background/Mask document layers are selectable in the UI
-  // but unknown to the renderer.
-  const [selected, setSelected] = useState<LayerId | null>(null);
+  // Which layers the inspector shows — Figma's model: an ordered selection
+  // plus an anchor a shift-range extends from, driven by the layers panel or
+  // PreviewCompare's click-to-select. LayerId, not ElementId: the
+  // Background/Mask/Settings document layers are selectable in the UI but
+  // unknown to the renderer. The resolution rules (replace / toggle / range,
+  // and document layers being single-select) live in selection.ts.
+  const [selection, setSelection] = useState<Selection>(EMPTY_SELECTION);
+  const selected = selection.ids;
+  /** A row or canvas click, resolved against the anchor and the panel's row
+   *  order. A background click (null) clears everything, anchor included. */
+  const clearSelection = () => setSelection(EMPTY_SELECTION);
+  const pick = (id: LayerId | null, mods: SelectMods) =>
+    id === null
+      ? clearSelection()
+      : setSelection((s) => resolveSelect(s, id, mods, PANEL_ORDER));
+  // The renderer elements of the selection, for the preview's outlines.
+  // Memoized like collabSlots below and for the same reason: it is a
+  // dependency of PreviewCompare's outline memo, and a fresh array every
+  // render would defeat it — dragging the compare divider re-renders App per
+  // pointer-move frame, which would re-measure every selected element's box
+  // on every one of those frames.
+  const elementSelection = useMemo(() => selected.filter(isElementId), [selected]);
   // Layers the panel's eye has hidden — session state, deliberately outside
   // the config/history: a saved label never records a hidden layer, and
   // toggling an eye is not an undoable document edit. Flows into
@@ -406,6 +426,8 @@ export default function App() {
     onCornerRadius: (v) => setRender((r) => ({ ...r, cornerRadius: v })),
     labelSize: render.labelSize,
     onLabelSize: (v) => setRender((r) => ({ ...r, labelSize: v })),
+    labelWidth: render.labelWidth,
+    onLabelWidth: (v) => setRender((r) => ({ ...r, labelWidth: v })),
     edgeSoftness: render.edgeSoftness,
     onEdgeSoftness: (v) => setRender((r) => ({ ...r, edgeSoftness: v })),
   };
@@ -639,7 +661,7 @@ export default function App() {
         <Sidebar collapsible="offcanvas">
           <SidebarContent>
             <LayersPanel cfg={cfg} update={update} hidden={hiddenLayers}
-              onToggleHidden={toggleHidden} selected={selected} onSelect={setSelected} />
+              onToggleHidden={toggleHidden} selected={selected} onSelect={pick} />
           </SidebarContent>
         </Sidebar>
         <SidebarInset className="flex h-svh flex-col overflow-hidden">
@@ -767,8 +789,8 @@ export default function App() {
               cfg={cfg} measure={measure} collab={collabSlots}
               // The preview knows only renderer elements; a selected document
               // layer (background/mask) shows no selection box there.
-              selected={selected && isElementId(selected) ? selected : null}
-              onPick={setSelected}
+              selected={elementSelection}
+              onPick={pick}
               onSplit={setSplit}
               bleed={bleed} />
             </div>
@@ -776,6 +798,7 @@ export default function App() {
               <CanView artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
                 mode={viewMode} cornerRadiusPct={render.cornerRadius}
                 labelHeightPct={render.labelSize}
+                labelWidthPct={render.labelWidth}
                 edgeSoftnessPct={render.edgeSoftness} />
             )}
             {/* No-texture hint. It used to sit in the status strip above the
@@ -809,16 +832,38 @@ export default function App() {
             layers panel stay clickable while inspecting; dismissible={false}
             keeps an outside click (e.g. preview click-to-select) from
             closing it mid-selection (no backdrop = no outside-press target). */}
-        <Sheet open={selected !== null} modal={false}
-          onOpenChange={(open) => { if (!open) setSelected(null); }}>
+        <Sheet open={selected.length > 0} modal={false}
+          // The selection is the source of truth for this sheet, so only a
+          // deliberate close clears it — a WHITELIST, not a blocklist. The
+          // sheet has no backdrop, so base-ui reports every click in the
+          // layers panel or on the canvas as "outside-press", and it fires
+          // that on the POINTERDOWN *preceding* the click that is about to
+          // extend the selection; "focus-out" arrives the same way when a
+          // row button takes focus, which is why the sidebar felt flakier
+          // than the canvas (a canvas click moves no focus). Honouring
+          // either wiped the selection and its anchor between clicks and
+          // made ⇧/⌘ behave like plain clicks.
+          // Untyped `reason` strings would let a base-ui rename slip through
+          // silently, so the union from the Sheet's own props is kept.
+          onOpenChange={(open, details) => {
+            if (!open && (details.reason === "escape-key" || details.reason === "close-press"))
+              clearSelection();
+          }}>
           <SheetContent side="right" showOverlay={false} showCloseButton={false}
+            // Hand focus back to whatever opened the sheet only when the
+            // close came from the keyboard. Otherwise base-ui returns it to
+            // the last-clicked layer row AND marks it keyboard-focused, so
+            // dismissing the inspector with the mouse lit a focus ring on a
+            // row the user never navigated to — an outline that looked like
+            // it was highlighting something at random.
+            finalFocus={(closeType) => closeType === "keyboard"}
             // Same card shade as the left sidebar and, like it, no border —
             // the two rails read as one surface flanking the canvas.
             className="w-[300px] gap-0 overflow-y-auto border-l-0! bg-sidebar p-3 sm:max-w-[300px]">
-            {selected && (
-              <Inspector id={selected} cfg={cfg} errors={errors} update={update} files={files}
+            {selected.length > 0 && (
+              <Inspector ids={selected} cfg={cfg} errors={errors} update={update} files={files}
                 settings={docSettings}
-                onClose={() => setSelected(null)} />
+                onClose={clearSelection} />
             )}
           </SheetContent>
         </Sheet>

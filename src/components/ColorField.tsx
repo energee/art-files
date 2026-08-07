@@ -32,6 +32,10 @@ export function ColorField(props: {
   allowNone?: boolean;
   /** id for the hex Input, so an external Label can point at this field. */
   id?: string;
+  /** The selection's elements disagree about this color (multi-select): show
+   *  an empty field rather than one element's value standing in for all of
+   *  them. Typing or picking still writes to the whole selection. */
+  mixed?: boolean;
 }) {
   const none = props.value === "none";
   // Local text state so a half-typed hex doesn't clobber the config.
@@ -72,7 +76,9 @@ export function ColorField(props: {
               aria-label="Pick color"
               disabled={none}
               className="size-6 rounded-sm"
-              style={none ? undefined : { background: hex }}
+              // A mixed selection has no one swatch color to show; the empty
+              // button reads as "not one value" the way the blank hex does.
+              style={none || props.mixed ? undefined : { background: hex }}
             />
           }
         />
@@ -131,7 +137,8 @@ export function ColorField(props: {
       </Popover>
       <Input
         id={props.id}
-        value={none ? "none" : (text ?? props.value)}
+        value={none ? "none" : (text ?? (props.mixed ? "" : props.value))}
+        placeholder={props.mixed ? "Mixed" : undefined}
         disabled={none}
         onChange={(e) => {
           setText(e.target.value);

@@ -12,7 +12,35 @@ import {
 import { ART, PAGE } from "@/layout";
 import type { LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
-import { boxOf, hitTest, type CollabSlots, type Measure } from "@/hittest";
+import { boxesFor, hitTest, type CollabSlots, type Measure } from "@/hittest";
+import { modsOf, type SelectMods } from "@/selection";
+import { cn } from "@/lib/utils";
+
+/** The selection box's four corner ticks, each already placed. */
+const CORNER_CLASS = {
+  tl: "-top-[3px] -left-[3px]",
+  tr: "-top-[3px] -right-[3px]",
+  bl: "-bottom-[3px] -left-[3px]",
+  br: "-bottom-[3px] -right-[3px]",
+};
+
+/** Breathing room between an element's measured box and its selection
+ *  outline, in screen px. */
+const SEL_PAD = 4;
+
+/** An overlay box positioned in page space: label-space points in, CSS
+ *  percentages of the preview frame out, so it tracks the container at any
+ *  on-screen size without its own resize handling. `pad` grows the box by n
+ *  screen px on every side. Shared by the trim guide and the selection
+ *  outlines, which must agree about the coordinate basis. */
+const pageBox = (
+  x: number, y: number, w: number, h: number, pad = 0,
+): React.CSSProperties => ({
+  left: `calc(${(x / PAGE.w) * 100}% - ${pad}px)`,
+  top: `calc(${(y / PAGE.h) * 100}% - ${pad}px)`,
+  width: `calc(${(w / PAGE.w) * 100}% + ${pad * 2}px)`,
+  height: `calc(${(h / PAGE.h) * 100}% + ${pad * 2}px)`,
+});
 
 // ponytail: fixed oversample, CSS downscales; add a ResizeObserver only if
 // crispness on very large screens ever matters.
@@ -69,11 +97,15 @@ export const PreviewCompare = forwardRef<
     /** Which collab logo slots hold art. The renderer skips an empty slot, so
      *  its hit box must not exist either (see hittest.ts's CollabSlots). */
     collab: CollabSlots;
-    /** Which element the sidebar (or a previous click here) has selected —
-     *  drives the outline drawn over it. */
-    selected: ElementId | null;
-    /** Called with the clicked element's id, or null for empty background. */
-    onPick: (id: ElementId | null) => void;
+    /** Which elements the sidebar (or previous clicks here) have selected —
+     *  one outline is drawn per id, so canvas and panel agree about what a
+     *  multi-selection looks like. Document layers are filtered out by App:
+     *  the preview knows only renderer elements. */
+    selected: readonly ElementId[];
+    /** Called with the clicked element's id (null for empty background) and
+     *  the click's modifiers, so shift/⌘ on the canvas extend the selection
+     *  exactly as they do in the layers panel. */
+    onPick: (id: ElementId | null, mods: SelectMods) => void;
     /** Divider position as % of width showing white-ink, on every change —
      *  including a manual drag, so the View menu's checkmarks track the real
      *  divider rather than whichever menu item was picked last. */
@@ -117,16 +149,19 @@ export const PreviewCompare = forwardRef<
     if (!r.width || !r.height) return; // not laid out yet (e.g. display:none)
     const xPt = ((e.clientX - r.left) / r.width) * PAGE.w;
     const yPt = ((e.clientY - r.top) / r.height) * PAGE.h;
-    onPick(hitTest(xPt, yPt, measure, cfg, collab));
+    onPick(hitTest(xPt, yPt, measure, cfg, collab), modsOf(e));
   }
 
-  // Selection outline geometry, as a percentage box so it tracks the
-  // container at any on-screen size without its own resize handling.
-  // Memoized: boxOf rebuilds every element's box (including the warning's
-  // word-by-word wrap measurement), and dragging the divider re-renders this
-  // component per pointer-move frame without any of these inputs changing.
-  const selBox = useMemo(
-    () => (selected && measure ? boxOf(selected, cfg, measure, collab) : null),
+  // Selection outline geometry, in label-space points (pageBox maps it to
+  // percentages at render). Memoized: boxesFor re-measures every element,
+  // the warning's word-by-word wrap included, and dragging the divider
+  // re-renders this component per pointer-move frame without any of these
+  // inputs changing — `selected` is memoized in App for exactly that reason.
+  const selBoxes = useMemo(
+    // One measurement pass for the whole selection (see boxesFor); elements
+    // the renderer isn't drawing — an empty collab slot — come back absent
+    // and simply get no outline.
+    () => (measure ? boxesFor(selected, cfg, measure, collab) : []),
     [selected, cfg, measure, collab],
   );
 
@@ -168,25 +203,35 @@ export const PreviewCompare = forwardRef<
       {bleed && (
         <div
           className="pointer-events-none absolute border border-dashed border-destructive/70"
-          style={{
-            left: `${(ART.x / PAGE.w) * 100}%`,
-            top: `${(ART.y / PAGE.h) * 100}%`,
-            width: `${(ART.w / PAGE.w) * 100}%`,
-            height: `${(ART.h / PAGE.h) * 100}%`,
-          }}
+          style={pageBox(ART.x, ART.y, ART.w, ART.h)}
         />
       )}
-      {selBox && (
+      {selBoxes.map((b) => (
+        // Figma's selection read: a 1px accent stroke with a dark outer halo
+        // so it stays visible over both the gold art and bare white stock (a
+        // single-tone ring disappeared into one or the other), plus corner
+        // ticks that make the box read as a selected object rather than as
+        // more label art. Outline, not border/ring: it draws OUTSIDE the box,
+        // so the outline can't shave a pixel off the element it marks.
         <div
-          className="pointer-events-none absolute ring-1 ring-ring"
-          style={{
-            left: `${(selBox.x0 / PAGE.w) * 100}%`,
-            top: `${(selBox.y0 / PAGE.h) * 100}%`,
-            width: `${((selBox.x1 - selBox.x0) / PAGE.w) * 100}%`,
-            height: `${((selBox.y1 - selBox.y0) / PAGE.h) * 100}%`,
-          }}
-        />
-      )}
+          key={b.id}
+          className="pointer-events-none absolute outline-1 outline-sky-400 outline-solid [box-shadow:0_0_0_2px_rgba(0,0,0,0.45)]"
+          // SEL_PAD of air between the glyphs and the stroke, so the outline
+          // frames the element instead of crowding its ascenders. In px, not
+          // a % of the box: the gap should look the same on a two-character
+          // ABV and on the description block.
+          style={pageBox(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0, SEL_PAD)}
+        >
+          {/* Four corner ticks, centred on the corners. Fixed px (not a % of
+              the box) so a small element's handles don't shrink to nothing. */}
+          {Object.entries(CORNER_CLASS).map(([corner, at]) => (
+            <span
+              key={corner}
+              className={`absolute size-1.5 rounded-[1px] border border-sky-400 bg-background ${at}`}
+            />
+          ))}
+        </div>
+      ))}
     </div>
   );
 });
