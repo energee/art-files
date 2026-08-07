@@ -124,6 +124,9 @@ export class CanScene {
   private canHeight = SCENE_SCALE;
   /** Azimuth that faces the label front; recomputed per wrap angle. */
   private frontAzimuth = DEFAULT_FRONT_AZIMUTH;
+  /** Whether the camera has been aimed at a real (built) label yet. After
+   *  that the view belongs to the operator — see frameCamera. */
+  private framed = false;
 
   private mode: CanSceneMode = "can";
   /** Textures applied before the async GLTF load finished — replayed after. */
@@ -463,16 +466,29 @@ export class CanScene {
     this.flatBackMesh.position.z = -0.0005;
     this.scene.add(this.flatBackMesh);
 
-    this.applyMode(); // re-frame + rebuild the pack against the new meshes
+    this.applyMode(); // rebuild the pack against the new meshes
+    // The opening view, once. frontAzimuth only becomes real after the first
+    // cylinder exists, so the constructor's guess needs correcting — but only
+    // that first time: later art changes must not yank a camera the operator
+    // has since moved.
+    if (!this.framed) { this.framed = true; this.frameCamera(); }
   }
 
-  /** Switch view. Also called internally to re-apply visibility/camera after
-   *  a texture or model change. */
+  /** Switch view. The one gesture that is allowed to move the camera: asking
+   *  for a different view IS asking to be shown it from the front. */
   setMode(mode: CanSceneMode) {
     this.mode = mode;
     this.applyMode();
+    this.frameCamera();
   }
 
+  /** Show the meshes this mode uses, and rebuild the 4-pack (its clones hold
+   *  the label mesh by reference, so a rebuilt cylinder needs new ones).
+   *
+   *  Deliberately does NOT move the camera. This runs on every geometry
+   *  rebuild — each pixel of a size scrub, and every debounced preview
+   *  render — and re-aiming there dragged the view back to front-on while
+   *  the operator was mid-orbit. Framing is frameCamera's job. */
   private applyMode() {
     const mode = this.mode;
     // Tear down the previous pack; clones share geometry/materials with the
@@ -486,11 +502,18 @@ export class CanScene {
     if (this.flatMesh) this.flatMesh.visible = mode === "flat";
     if (this.flatBackMesh) this.flatBackMesh.visible = mode === "flat";
 
+    if (mode === "pack") this.buildPackGroup();
+    this.requestRender();
+  }
+
+  /** Aim the camera at the current mode's subject. Called when the operator
+   *  asks for a different view — never on a rebuild, so an orbit survives
+   *  every size change and every re-render of the art. */
+  private frameCamera() {
     this.controls.target.set(0, 0, 0);
-    if (mode === "pack") {
-      this.buildPackGroup();
+    if (this.mode === "pack") {
       this.setCameraSpherical(DEFAULT_ZOOM * FOUR_PACK_ZOOM, FOUR_PACK_TILT, this.frontAzimuth);
-    } else if (mode === "flat") {
+    } else if (this.mode === "flat") {
       // Front-on: straight down +z at the plane, orbit still available.
       this.setCameraSpherical(0.2, Math.PI / 2, 0);
     } else {
