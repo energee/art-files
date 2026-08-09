@@ -8,6 +8,7 @@ import type { CollabSlot, Fill, LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
 import { defaultConfig, exportBaseName, parseConfigFile } from "@/defaults";
+import { strToU8 } from "fflate";
 import { packLabel, unpackLabel } from "@/labelfile";
 import { useHistory } from "@/history";
 import { validateUpc } from "@/upc";
@@ -74,6 +75,11 @@ type Loaded = { bytes: Uint8Array; previewBytes: Uint8Array; name: string; previ
 /** A loaded collab logo: what the renderer needs, plus what the drop zone
  *  shows. previewUrl is the raw file, so an SVG thumbnails as itself. */
 type CollabFile = { image: CollabImage; name: string; previewUrl: string };
+
+/** The .label file picker option, shared by open and save dialogs. */
+const LABEL_TYPES = [
+  { description: "Label project", accept: { "application/zip": [".label"] } },
+];
 
 /** Encode a canvas's pixels as PNG bytes — the shared tail of every
  *  decode/recolor/re-encode pipeline in this file. */
@@ -445,11 +451,8 @@ export default function App() {
     setShowRulers(presets.view.showRulers);
     setShowGuides(presets.view.showGuides);
   }, [presetsLoaded, presets.render, presets.view]);
-  useEffect(() => {
-    if (!adopted.current) return;
-    const t = setTimeout(() => void mutatePresets((p) => ({ ...p, render })), 500);
-    return () => clearTimeout(t);
-  }, [render]);
+  // Persisted below, in one debounced write with the view toggles — see the
+  // effect beside the guide state.
   useEffect(() => {
     if (presetsError) setLoadError(`presets save failed: ${presetsError}`);
   }, [presetsError]);
@@ -597,15 +600,15 @@ export default function App() {
     setManualGuides((guides) => guides.map((guide) => guide.id === id ? { ...guide, point } : guide));
   const removeManualGuide = (id: number) =>
     setManualGuides((guides) => guides.filter((guide) => guide.id !== id));
-  // Persist the three view toggles the same way as the render knobs: only
-  // after the saved set has been adopted, debounced so rapid toggling lands
-  // as one write.
+  // One debounced write for everything App persists to presets.json — the
+  // render knobs and the view toggles share the adopt-guard and the 500ms
+  // debounce; two effects would interleave writes to the same file.
   useEffect(() => {
     if (!adopted.current) return;
     const view = { showRulers, showGuides, showBleed: bleed };
-    const t = setTimeout(() => void mutatePresets((p) => ({ ...p, view })), 500);
+    const t = setTimeout(() => void mutatePresets((p) => ({ ...p, render, view })), 500);
     return () => clearTimeout(t);
-  }, [showRulers, showGuides, bleed]);
+  }, [render, showRulers, showGuides, bleed]);
 
   const update = (fn: (c: LabelConfig) => void) =>
     setCfg((c) => { const n = structuredClone(c); fn(n); return n; });
@@ -701,8 +704,10 @@ export default function App() {
   }
 
   async function onMask(f: File) {
-    const srcBytes = new Uint8Array(await f.arrayBuffer());
-    const canvas = await decodeToCanvas(f);
+    // Independent reads of the same file — decode and raw bytes in parallel.
+    const [srcBytes, canvas] = await Promise.all([
+      f.arrayBuffer().then((b) => new Uint8Array(b)), decodeToCanvas(f),
+    ]);
     const ctx = canvas.getContext("2d")!;
     const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const check = prepareMaskForPdf(data.data);
@@ -926,10 +931,6 @@ export default function App() {
   // Shared by the sidebar "Export PDFs" button and the ⌘K palette action.
   const exportPdfs = () => void buildFull("both");
 
-  /** The .label file picker option, shared by open and save dialogs. */
-  const LABEL_TYPES = [
-    { description: "Label project", accept: { "application/zip": [".label"] } },
-  ];
   /** The file Save rewrites in place: set by Save As and picker-based Open.
    *  Null until then, so plain Save falls through to the Save As dialog —
    *  the classic editor contract. A ref, not state: nothing renders it. */
@@ -940,9 +941,8 @@ export default function App() {
    *  rewrites that same file silently; Safari/Firefox lack
    *  showSaveFilePicker, so every save is a plain download there. */
   async function saveProject(as = false) {
-    const enc = (s: string) => new TextEncoder().encode(s);
     const collabAsset = (c: CollabFile | null) =>
-      c ? { name: c.name, bytes: c.image.kind === "svg" ? enc(c.image.svg) : c.image.bytes } : undefined;
+      c ? { name: c.name, bytes: c.image.kind === "svg" ? strToU8(c.image.svg) : c.image.bytes } : undefined;
     const zip = packLabel(cfg, {
       texture: texture ? { name: texture.name, bytes: texture.bytes } : undefined,
       mask: mask ? { name: mask.name, bytes: mask.srcBytes } : undefined,
@@ -989,7 +989,7 @@ export default function App() {
       projectHandle.current = handle;
     } catch (err) {
       if (!(err instanceof DOMException && err.name === "AbortError"))
-        window.alert(`Could not open project: ${err instanceof Error ? err.message : err}`);
+        setLoadError(`Could not open project: ${err instanceof Error ? err.message : err}`);
     }
   }
 
@@ -999,27 +999,24 @@ export default function App() {
    *  polarity, and object-URL lifecycle behave identically. Slots absent from
    *  the file are cleared: opening a project is a full restore, not a merge. */
   async function openProject(f: File) {
-    let unpacked: ReturnType<typeof unpackLabel>;
-    let config: LabelConfig;
     try {
-      unpacked = unpackLabel(new Uint8Array(await f.arrayBuffer()));
-      config = parseConfigFile(unpacked.json);
+      const unpacked = unpackLabel(new Uint8Array(await f.arrayBuffer()));
+      const config = parseConfigFile(unpacked.json);
+      setCfg(() => config);
+      swapLoaded(setTexture, null);
+      swapLoaded(setMask, null);
+      swapLoaded(setCollabLeft, null);
+      swapLoaded(setCollabCenter, null);
+      const toFile = (a: { name: string; bytes: Uint8Array }) =>
+        new File([a.bytes as unknown as BlobPart], a.name);
+      const { texture: t, mask: m, collabLeft: l, collabCenter: c } = unpacked.assets;
+      if (t) void onTexture(toFile(t));
+      if (m) void onMask(toFile(m));
+      if (l) onCollab("left", toFile(l));
+      if (c) onCollab("center", toFile(c));
     } catch (err) {
-      window.alert(`Could not open ${f.name}: ${err instanceof Error ? err.message : err}`);
-      return;
+      setLoadError(`Could not open ${f.name}: ${err instanceof Error ? err.message : err}`);
     }
-    setCfg(() => config);
-    swapLoaded(setTexture, null);
-    swapLoaded(setMask, null);
-    swapLoaded(setCollabLeft, null);
-    swapLoaded(setCollabCenter, null);
-    const toFile = (a: { name: string; bytes: Uint8Array }) =>
-      new File([a.bytes as unknown as BlobPart], a.name);
-    const { texture: t, mask: m, collabLeft: l, collabCenter: c } = unpacked.assets;
-    if (t) void onTexture(toFile(t));
-    if (m) void onMask(toFile(m));
-    if (l) onCollab("left", toFile(l));
-    if (c) onCollab("center", toFile(c));
   }
 
   /** The PSD's texture layer needs raw RGBA at document size — PSD layers
@@ -1074,7 +1071,7 @@ export default function App() {
   async function exportPresets() {
     try {
       const body = JSON.stringify(await loadPresets(), null, 2);
-      const url = blobUrl(new TextEncoder().encode(body), "application/json");
+      const url = blobUrl(strToU8(body), "application/json");
       download(url, "presets.json");
       URL.revokeObjectURL(url);
       setLoadError("");
@@ -1200,15 +1197,11 @@ export default function App() {
               <MenubarContent align="start" className={MENU_ITEMS}>
                 {/* Project save/load first — the whole label, not just a
                     deliverable. */}
-                <MenubarItem onClick={byId("project-open").run}>
-                  {byId("project-open").label} <MenubarShortcut>{shortcutOf(byId("project-open"))}</MenubarShortcut>
-                </MenubarItem>
-                <MenubarItem onClick={byId("project-save").run}>
-                  {byId("project-save").label} <MenubarShortcut>{shortcutOf(byId("project-save"))}</MenubarShortcut>
-                </MenubarItem>
-                <MenubarItem onClick={byId("project-save-as").run}>
-                  {byId("project-save-as").label} <MenubarShortcut>{shortcutOf(byId("project-save-as"))}</MenubarShortcut>
-                </MenubarItem>
+                {["project-open", "project-save", "project-save-as"].map((id) => (
+                  <MenubarItem key={id} onClick={byId(id).run}>
+                    {byId(id).label} <MenubarShortcut>{shortcutOf(byId(id))}</MenubarShortcut>
+                  </MenubarItem>
+                ))}
                 <MenubarSeparator />
                 {/* Deliverables first, both-at-once first within each format:
                     that is the common run. !pdfs is the mid-build state, so

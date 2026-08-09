@@ -58,7 +58,7 @@ export function FileDrop(props: {
             title="Remove"
             // stopPropagation: the whole drop target is a click-to-browse
             // zone; the X must clear, not open the file picker.
-            onClick={(e) => { e.stopPropagation(); props.onClear!(); }}
+            onClick={(e) => { e.stopPropagation(); props.onClear?.(); }}
             className="ml-auto size-5 shrink-0 text-muted-foreground hover:text-foreground"
           >
             <X className="size-3.5" />

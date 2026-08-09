@@ -50,6 +50,23 @@ let BLEED = MEASURED_BLEED;
  *  hittest.ts — and never folded back into the constants below. */
 export let BLEED_SHIFT = 0;
 
+/** Safe margin, in points (24.12 = 0.335in) — the guides the preview draws
+ *  and the edges the margin-anchored constants below derive from. Lives here
+ *  (not rulers.ts, which re-exports it) so one number moves the guides AND
+ *  the elements squared to them. */
+export const DEFAULT_MARGIN_PT = 24.12; // 0.335in
+
+/** The safe-area edges at MEASURED_BLEED — the frame every margin-squared
+ *  position below is an expression of. Frozen at the measured bleed like
+ *  CENTER_X, deliberately not ART.x/y: positions are page-absolute at
+ *  MEASURED_BLEED and BLEED_SHIFT re-bases them at the output boundaries. */
+const SAFE = {
+  left: MEASURED_BLEED + DEFAULT_MARGIN_PT,
+  right: MEASURED_BLEED + TRIM.w - DEFAULT_MARGIN_PT,
+  top: MEASURED_BLEED + DEFAULT_MARGIN_PT,
+  bottom: MEASURED_BLEED + TRIM.h - DEFAULT_MARGIN_PT,
+};
+
 export const PAGE = { w: TRIM.w + 2 * BLEED, h: TRIM.h + 2 * BLEED };
 /** Widest the 2D preview sheet is drawn on screen, in CSS px. It lives here
  *  rather than in PreviewCompare's class list because the 3D scene has to
@@ -191,7 +208,7 @@ export function runsWidth<T extends { text: string }>(
  *  hair right of this by each glyph's own side bearing; the origin is what's
  *  aligned, because the description is user text and its first glyph can be
  *  anything. */
-export const LEFT_X = 28.68;
+export const LEFT_X = SAFE.left; // 28.68
 // Baselines carry the +6.12pt the margin grew when it moved from 0.25in to
 // 0.335in (2026-08), so the column hangs from the new top guide at the same
 // distances the reference hung from the old one. The collab block flows from
@@ -320,7 +337,7 @@ export const DEFAULT_STROKE_PX = 15;
  *  so the plate's bottom (yTop + size) lands exactly on the bottom margin
  *  (ART.y + ART.h - 24.12 = 340.44). The reference had 23/289, which hung the
  *  plate past that margin. */
-export const QR = { x: LEFT_X, yTop: 281.44, size: 59 };
+export const QR = { x: LEFT_X, yTop: SAFE.bottom - 59, size: 59 }; // yTop 281.44
 
 // Right rotated column (text rotated 90deg CCW, reads bottom-to-top) -----
 // x is the baseline's vertical line (glyphs extend to its RIGHT);
@@ -355,8 +372,14 @@ export const WARNING = {
   // leading 10 keeps the columns at the same spacing-to-size ratio the 5.7pt
   // setting had (7/5.7): stroke boxes kiss between columns, ink does not.
   x: 488.18, yStart: 338.64, size: 8.2, leading: 10,
-  maxLen: ART.h - 48.24 - 2 * DEFAULT_STROKE_PX * PX,
+  maxLen: TRIM.h - 2 * DEFAULT_MARGIN_PT - 2 * DEFAULT_STROKE_PX * PX,
 };
+
+/** The warning's shipped tracking — named because it is geometry, not taste:
+ *  defaultConfig ships it and parseConfigFile stamps it onto legacy configs,
+ *  and without it the 8.2pt paragraph wraps into a 5th column under the
+ *  barcode. One constant so a retune can't miss the migration. */
+export const WARNING_TRACKING = -0.05;
 // Measured off the reference PDF via `pdftotext -bbox`: the glyph band runs
 // x 539.56-569.87 and pdftotext reports the full font box (ascender 1.05em +
 // descender 0.35em = 1.40em), so size = 30.31/1.40 = 21.65 and the baseline
@@ -371,7 +394,7 @@ export const WARNING = {
 // that the size alone doesn't show. Moved down so its top lands on the
 // guide, level with Info's and the warning's. Unstroked, unlike its neighbours,
 // so nothing reaches past the ink here.
-export const STORE_COLD = { x: 556.30, yStart: 163.15, size: 20.15 };
+export const STORE_COLD = { x: SAFE.right - 0.14, yStart: 163.15, size: 20.15 }; // x 556.30
 
 // Barcode (right edge, rotated 90deg CCW: bars run horizontally) ---------
 // Proportions are JsBarcode's UPC-A rendering, so this matches the
@@ -419,7 +442,7 @@ export const BARCODE = {
   // barcode in meant moving the whole rotated info block left with it —
   // HANDLE_ADDR.x and WARNING.x carry the same 12.42pt shift, keeping the
   // warning's last column the same 0.75pt clear of the halo.
-  x: 524.71,
+  x: SAFE.right - UPC_DEPTH - 1.8 * UPC_MOD, // 524.71
   yTop: 226.07,
   h: (UPC_UNITS.modules + 2 * UPC_UNITS.quiet) * UPC_MOD,
   /** White-ink margin around the symbol; the reference plate is exactly the

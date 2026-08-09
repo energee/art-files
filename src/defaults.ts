@@ -1,7 +1,7 @@
 // defaults.ts — default LabelConfig mirroring the Labradorite reference label,
 // plus the fixed template strings (warning text, address) used by the layout.
 import type { LabelConfig, ConfigFile } from "./types";
-import { DEFAULT_STROKE_PX, GOLD } from "./layout";
+import { DEFAULT_STROKE_PX, GOLD, WARNING_TRACKING } from "./layout";
 
 /** The shipped outer stroke: pure black, at the standard width. The barcode
  *  is the one element that does NOT take it — its stroke is a white halo the
@@ -95,7 +95,7 @@ export function defaultConfig(): LabelConfig {
     },
     // Slightly negative tracking (2026-08): buys the last fraction of a point
     // of type size that keeps the paragraph on 4 columns at a 2mm cap height.
-    warning: { fill: GOLD, layer: "metallic", ...KEYLINE, letterSpacing: -0.05 },
+    warning: { fill: GOLD, layer: "metallic", ...KEYLINE, letterSpacing: WARNING_TRACKING },
     // Widely tracked (2026-08): two short uppercase words set large enough
     // that tight spacing reads as one word.
     storeCold: {
@@ -151,7 +151,7 @@ export function parseConfigFile(json: string): LabelConfig {
   // Configs saved before the warning shipped tracked at -0.05 (2026-08).
   // Not cosmetic: at 8.2pt the untracked paragraph wraps into a 5th column
   // that lands under the barcode — the tracking is part of the geometry.
-  if (cfg.warning) cfg.warning.letterSpacing ??= -0.05;
+  if (cfg.warning) cfg.warning.letterSpacing ??= WARNING_TRACKING;
   // Configs saved before the description block was styleable.
   cfg.descStyle ??= { fill: GOLD, layer: "metallic" };
   // Configs saved before per-element strokes: keep the logo's classic keyline.
