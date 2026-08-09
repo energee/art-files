@@ -159,9 +159,11 @@ resolution when clicked. Preview PDF generation runs in a lazy Web Worker,
 keeping pdf-lib/fontkit parsing and rendering off the UI thread; the
 full-resolution PDF and PSD renderers load only when their export actions are
 used. Every action lives in a menubar across the top of
-the window, above the sidebar/preview split: **File** (save config, load
-config, then Export PDF, Export Mask PDF, Export PSDs — see below; the
-both-PDFs-at-once action lives in the palette as "Export PDF + Mask PDF"),
+the window, above the sidebar/preview split: **File** (Save Project…/Open
+Project… — the whole label, including its texture, mask, and collab logos,
+zipped as a `<beerName>.label` file, see `src/labelfile.ts`; then Export PDF,
+Export Mask PDF, Export PSDs — see below; the both-PDFs-at-once action lives
+in the palette as "Export PDF + Mask PDF"),
 **Edit** (undo, redo), and
 **View** (Standard / Mask, which jump the divider to either end — the
 palette lists them as "Preview: Standard" / "Preview: Mask"). Export items disable while the label is invalid, and the
