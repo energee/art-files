@@ -5,7 +5,8 @@ import {
 } from "react";
 import { ART, PAGE } from "@/layout";
 import {
-  clampMargin, layoutGuides, pointToScreen, rulerTicks, screenToPoint,
+  clampMargin, layoutGuides, pointToScreen, pointToUnit, rulerTicks, screenToPoint,
+  unitToPoint,
   type GuideAxis, type ManualGuide, type RulerUnit,
 } from "@/rulers";
 import type { PreviewCompareHandle } from "@/components/PreviewCompare";
@@ -177,7 +178,9 @@ export function Rulers(props: {
   const layoutHorizontal = showMargins ? locked.horizontalMargins : [];
   const shownManual = showManual ? manual : [];
   const paintedManual = shownManual.filter((guide) => guide.id !== drag?.id);
-  const marginValue = unit === "in" ? marginPt / 72 : marginPt;
+  const marginValue = pointToUnit(marginPt, 0, unit);
+  const marginMax = pointToUnit(Math.min(ART.w, ART.h) / 2, 0, unit);
+  const marginStep = unit === "in" ? 0.125 : unit === "px" ? 25 : 1;
 
   return (
     <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
@@ -301,15 +304,17 @@ export function Rulers(props: {
                   onClick={() => onUnitChange("in")}>Inches</Button>
                 <Button size="xs" variant={unit === "pt" ? "default" : "outline"}
                   onClick={() => onUnitChange("pt")}>Points</Button>
+                <Button size="xs" variant={unit === "px" ? "default" : "outline"}
+                  onClick={() => onUnitChange("px")}>Pixels</Button>
               </div>
               <Label htmlFor="guide-margin" className="mt-1 text-xs">Margin inset ({unit})</Label>
               <Input id="guide-margin" type="number" min={0}
-                max={unit === "in" ? 2.5 : 180} step={unit === "in" ? 0.125 : 1}
+                max={marginMax} step={marginStep}
                 value={Number(marginValue.toFixed(unit === "in" ? 3 : 1))}
                 onChange={(event) => {
                   const value = Number(event.target.value);
                   if (Number.isFinite(value))
-                    onMarginChange(clampMargin(unit === "in" ? value * 72 : value));
+                    onMarginChange(clampMargin(unitToPoint(value, 0, unit)));
                 }} />
             </PopoverContent>
           </Popover>

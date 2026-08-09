@@ -1,8 +1,8 @@
 // rulers.ts — pure screen/page conversion and tick/layout-guide geometry for
 // the 2D preview rulers. PDF points remain the authoritative coordinate unit.
-import { ART } from "@/layout";
+import { ART, PX } from "@/layout";
 
-export type RulerUnit = "in" | "pt";
+export type RulerUnit = "in" | "pt" | "px";
 export type GuideAxis = "x" | "y";
 
 export interface ManualGuide {
@@ -30,10 +30,13 @@ export interface LayoutGuides {
 export const DEFAULT_MARGIN_PT = 18; // 0.25in
 const MIN_MAJOR_PX = 56;
 const SUBDIVISIONS = 4;
-const UNIT_PT: Record<RulerUnit, number> = { in: 72, pt: 1 };
+// Pixels mean deliverable pixels at the document's canonical 600 DPI, not CSS
+// screen pixels. PX is 72/600pt and is already shared by the PSD renderer.
+const UNIT_PT: Record<RulerUnit, number> = { in: 72, pt: 1, px: PX };
 const MAJOR_STEPS: Record<RulerUnit, readonly number[]> = {
   in: [0.125, 0.25, 0.5, 1, 2, 4, 8, 16],
   pt: [6, 12, 18, 36, 72, 144, 288, 576],
+  px: [10, 25, 50, 100, 250, 500, 1000, 2000, 5000],
 };
 
 /** Map a PDF point on one page axis into the ruler overlay's CSS pixels. */
@@ -67,7 +70,7 @@ export function majorStep(frameSize: number, pageSize: number, unit: RulerUnit):
 
 function labelOf(value: number, unit: RulerUnit): string {
   if (Math.abs(value) < 1e-9) return "0";
-  if (unit === "pt") return String(Math.round(value));
+  if (unit !== "in") return String(Math.round(value));
   return String(Number(value.toFixed(3)));
 }
 

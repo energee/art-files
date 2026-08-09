@@ -18,9 +18,17 @@ describe("preview rulers", () => {
     expect(unitToPoint(8, ART.x, "in")).toBeCloseTo(ART.x + ART.w);
   });
 
+  it("uses 600-DPI deliverable pixels rather than CSS screen pixels", () => {
+    expect(pointToUnit(ART.x + ART.w, ART.x, "px")).toBe(4800);
+    expect(pointToUnit(ART.y + ART.h, ART.y, "px")).toBe(3000);
+    expect(unitToPoint(150, ART.x, "px")).toBeCloseTo(ART.x + 18);
+  });
+
   it("chooses denser major ticks as the page zooms", () => {
     expect(majorStep(585.12, PAGE.w, "in")).toBe(1);
     expect(majorStep(1462.8, PAGE.w, "in")).toBe(0.5);
+    expect(majorStep(585.12, PAGE.w, "px")).toBe(500);
+    expect(majorStep(1462.8, PAGE.w, "px")).toBe(250);
   });
 
   it("anchors tick zero to the trim edge through pan", () => {
@@ -44,5 +52,9 @@ describe("preview rulers", () => {
       .toEqual([0.25, 4.75]);
     expect(pointToUnit(guides.center, ART.x, "in")).toBe(4);
     expect(pointToUnit(guides.middle, ART.y, "in")).toBe(2.5);
+    expect(guides.verticalMargins.map((p) => pointToUnit(p, ART.x, "px")))
+      .toEqual([150, 4650]);
+    expect(guides.horizontalMargins.map((p) => pointToUnit(p, ART.y, "px")))
+      .toEqual([150, 2850]);
   });
 });
