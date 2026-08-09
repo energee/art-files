@@ -1192,7 +1192,11 @@ export default function App() {
               onSplit={setSplit}
               bleed={bleed}
               // Same Settings knob the 3D die uses, so both previews cut alike.
-              cornerRadiusPct={render.cornerRadius} />
+              cornerRadiusPct={render.cornerRadius}
+              // setBuildError itself, not a wrapper: useState setters are
+              // identity-stable, and an inline arrow here would be a new
+              // function every render (see useRenderPdf's note on that).
+              onRenderError={setBuildError} />
             </div>
             {viewMode !== "2d" && (
               <CanView ref={canView}

@@ -92,27 +92,42 @@ const pageBox = (
 const WHITE_INK_PANEL_ID = "white-ink";
 
 async function renderPdf(
-  bytes: Uint8Array, canvas: HTMLCanvasElement | null, isCancelled: () => boolean,
+  bytes: Uint8Array, canvas: HTMLCanvasElement | null, signal: AbortSignal,
 ) {
-  // isCancelled: bytes can change while a render is in flight, and a slower
-  // superseded render must not overwrite a newer one on the shared canvas.
-  if (canvas) await renderPdfPage(bytes, { canvas, scale: PREVIEW_OVERSAMPLE, isCancelled });
+  if (canvas) await renderPdfPage(bytes, { canvas, scale: PREVIEW_OVERSAMPLE, signal });
 }
 
-/** Render `bytes` into `canvas` whenever they change. Renders are chained:
- *  pdf.js hard-throws on two concurrent render() calls into one canvas, so a
- *  new render must wait out the one in flight; superseded queued renders skip
- *  before copying bytes or opening a worker doc. The catch keeps a
- *  superseded/failed render from surfacing as an unhandled rejection. */
-function useRenderPdf(bytes: Uint8Array | null, canvas: RefObject<HTMLCanvasElement | null>) {
+/** Render `bytes` into `canvas` whenever they change.
+ *
+ *  Renders are chained because pdf.js hard-throws on two concurrent render()
+ *  calls into one canvas, so a new render has to wait out the one in flight.
+ *  That queue is only tolerable because superseding a render ABORTS it (see
+ *  RenderPageOptions.signal): without that, every stale frame in the queue
+ *  rasterizes to completion first and the newest one — the one the user is
+ *  waiting on — lands last. Dragging a Settings knob makes that tens of seconds.
+ *
+ *  Errors are reported rather than swallowed. A cancelled render is not an
+ *  error (renderPdfPage resolves it as null), so anything reaching the catch is
+ *  a real failure, and discarding it silently leaves the preview frozen with
+ *  nothing on screen to say why. */
+function useRenderPdf(
+  bytes: Uint8Array | null,
+  canvas: RefObject<HTMLCanvasElement | null>,
+  onError?: (message: string) => void,
+) {
   const chain = useRef<Promise<void>>(Promise.resolve());
+  // Held in a ref, not a dependency: an inline callback from the parent would
+  // change identity on every render and re-run this effect, aborting the render
+  // it just started, forever.
+  const report = useRef(onError);
+  report.current = onError;
   useEffect(() => {
-    let cancelled = false;
-    if (bytes)
-      chain.current = chain.current
-        .then(() => (cancelled ? undefined : renderPdf(bytes, canvas.current, () => cancelled)))
-        .catch(() => {});
-    return () => { cancelled = true; };
+    if (!bytes) return;
+    const abort = new AbortController();
+    chain.current = chain.current
+      .then(() => (abort.signal.aborted ? undefined : renderPdf(bytes, canvas.current, abort.signal)))
+      .catch((error: unknown) => { report.current?.(String(error)); });
+    return () => abort.abort();
   }, [bytes, canvas]);
 }
 
@@ -157,9 +172,17 @@ export const PreviewCompare = forwardRef<
      *  layer's knob, shared with the 3D views). Rounds the sheet and the trim
      *  guide so the 2D preview shows the shape that actually gets cut. */
     cornerRadiusPct: number;
+    /** A rasterization that failed outright, for App's error strip. Cancelled
+     *  renders are routine and never reported here — only real failures, which
+     *  would otherwise leave the preview stuck on its last good frame with no
+     *  explanation. */
+    onRenderError?: (message: string) => void;
   }
 >(function PreviewCompare(
-  { artBytes, maskBytes, cfg, measure, collab, selected, onPick, onSplit, bleed, cornerRadiusPct },
+  {
+    artBytes, maskBytes, cfg, measure, collab, selected, onPick, onSplit, bleed,
+    cornerRadiusPct, onRenderError,
+  },
   ref,
 ) {
   // The die at the trim line, and the sheet's own corners as that die offset
@@ -179,8 +202,8 @@ export const PreviewCompare = forwardRef<
     getPageElement: () => pageElement.current,
   }));
 
-  useRenderPdf(artBytes, artCanvas);
-  useRenderPdf(maskBytes, maskCanvas);
+  useRenderPdf(artBytes, artCanvas, onRenderError);
+  useRenderPdf(maskBytes, maskCanvas, onRenderError);
 
   // Click-to-select: the canvases fill the wrapper exactly and the wrapper's
   // aspect ratio is locked to PAGE.w/PAGE.h (see the style below), so a
