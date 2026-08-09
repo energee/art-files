@@ -23,16 +23,6 @@ function isBlue(r: number, g: number, b: number): boolean {
   );
 }
 
-export function validateMask(rgba: Uint8Array | Uint8ClampedArray): MaskValidation {
-  let off = 0;
-  const n = rgba.length / 4;
-  for (let i = 0; i < rgba.length; i += 4) {
-    if (!isWhite(rgba[i], rgba[i + 1], rgba[i + 2]) && !isBlue(rgba[i], rgba[i + 1], rgba[i + 2]))
-      off++;
-  }
-  return maskValidation(off, n);
-}
-
 function maskValidation(off: number, total: number): MaskValidation {
   const offPalette = off / total;
   if (offPalette > 0.01)
@@ -44,7 +34,12 @@ function maskValidation(off: number, total: number): MaskValidation {
   return { ok: true, offPalette };
 }
 
-/** Validate and recolor in one pixel walk for callers that need both. */
+/** Validate and recolor in place in one pixel walk: blue stays blue (white ink
+ *  there), everything else (metallic) becomes transparent so the page shows
+ *  white. Returns how far off-palette the source was.
+ *
+ *  One walk, not two: every caller needs both answers, and the mask is a
+ *  full-page 600dpi image — a second pass over it is ~14M pixel reads. */
 export function prepareMaskForPdf(rgba: Uint8Array | Uint8ClampedArray): MaskValidation {
   let off = 0;
   const n = rgba.length / 4;
@@ -61,19 +56,4 @@ export function prepareMaskForPdf(rgba: Uint8Array | Uint8ClampedArray): MaskVal
     }
   }
   return maskValidation(off, n);
-}
-
-/** Recolor in place for the mask PDF: blue stays blue (white ink there),
- *  everything else (metallic) becomes transparent so the page shows white. */
-export function recolorMaskForPdf(rgba: Uint8Array | Uint8ClampedArray): void {
-  for (let i = 0; i < rgba.length; i += 4) {
-    if (isBlue(rgba[i], rgba[i + 1], rgba[i + 2])) {
-      rgba[i] = BLUE[0];
-      rgba[i + 1] = BLUE[1];
-      rgba[i + 2] = BLUE[2];
-      rgba[i + 3] = 255;
-    } else {
-      rgba[i + 3] = 0;
-    }
-  }
 }
