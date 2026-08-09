@@ -50,12 +50,15 @@ export function isElementId(id: LayerId): id is ElementId {
 
 /** Layers the panel's eye can hide: every renderer element plus the texture
  *  and mask (hiding those drops the asset from the build). Settings is the
- *  one row with nothing on the label to hide. */
-export type HideableLayerId = ElementId | "background" | "mask";
+ *  one row with nothing on the label to hide — Exclude, so the type and the
+ *  guard below say the same thing by construction. */
+export type HideableLayerId = Exclude<LayerId, "settings">;
 
 export function isHideable(id: LayerId): id is HideableLayerId {
   return id !== "settings";
 }
+
+const DOC_LAYERS = Object.keys(DOC_LAYER_LABELS) as DocLayerId[];
 
 /** Every group derives both its membership and its order from the registry,
  *  so a regrouped, reordered or added element can't silently vanish from the
@@ -67,14 +70,20 @@ const rowsOf = (group: "beer" | "template" | "collab"): LayerId[] =>
  *  because the row ORDER is also what a shift-click range is resolved
  *  against (see PANEL_ORDER) — the panel and the selection rules have to read
  *  one list, or a range would select rows the user didn't drag over. */
+/** The Collab group's display title — a named constant because behavior
+ *  hangs off it (LayersPanel puts the collab on/off switch on this group's
+ *  header): renaming the group is one edit, not a silently broken match. */
+export const COLLAB_GROUP_TITLE = "Collab";
+
 export const PANEL_GROUPS: [string, LayerId[]][] = [
-  // The texture and mask ride along in "Beer": they change per release like
-  // the beer elements do, and they carry eyes now — only Settings stays
-  // under "Document".
-  ["Beer", [...rowsOf("beer"), "background", "mask"]],
-  ["Collab", rowsOf("collab")],
+  // The hideable doc layers (texture, mask) ride along in "Beer": they
+  // change per release like the beer elements do, and they carry eyes now —
+  // only the unhideable Settings stays under "Document". Still derived from
+  // DOC_LAYER_LABELS, so a new doc layer appears without a second edit.
+  ["Beer", [...rowsOf("beer"), ...DOC_LAYERS.filter(isHideable)]],
+  [COLLAB_GROUP_TITLE, rowsOf("collab")],
   ["Template", rowsOf("template")],
-  ["Document", ["settings"]],
+  ["Document", DOC_LAYERS.filter((d) => !isHideable(d))],
 ];
 
 /** Every row, flattened in panel order — the sequence a shift-range walks,

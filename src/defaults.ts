@@ -39,14 +39,9 @@ export function defaultConfig(): LabelConfig {
     styleLine: { text: "", fill: GOLD, layer: "metallic", ...KEYLINE },
     abv: "",
     abvStyle: { fill: GOLD, layer: "metallic", ...KEYLINE },
-    description: [
-      "# HOPS",
-      "Freestyle Motueka",
-      "Freestyle Waimea",
-      "Freestyle Nelson Sauvin",
-      "Roy Farms Citra Liquid Lupulin",
-      "Wai-iti Cold-Pressed Hop Juice",
-    ].join("\n"),
+    // A placeholder, not a real hop bill: the list changes per beer, so the
+    // default just shows where it goes.
+    description: "# HOPS\n...",
     descStyle: { fill: GOLD, layer: "metallic", ...KEYLINE },
     upc: "850051366224",
     // Near-black bars and digits inside a white halo, over white ink. The

@@ -223,6 +223,14 @@ const zoomAbout = (
 const MENU_TRIGGER = "px-2 py-1 text-xs font-normal";
 const MENU_ITEMS = "[&_[data-slot=menubar-item]]:text-xs";
 
+/** The five preview views in keys-1–5 order: status-bar label + the command
+ *  id that shows it. One list, so the readout, the click-to-cycle, and the
+ *  commands can't disagree about what the views are. */
+const VIEW_CYCLE = [
+  ["Standard", "view-standard"], ["Mask", "view-mask"], ["Rendered", "view-rendered"],
+  ["Single Can", "view-can"], ["Four-Pack", "view-pack"],
+] as const;
+
 function download(url: string, name: string) {
   const a = document.createElement("a");
   a.href = url;
@@ -319,6 +327,11 @@ export default function App() {
   // an orbit. The precise value still reaches `carried` below, which is a ref.
   const [camZoomPct, setCamZoomPct] = useState(100);
   const shownZoomPct = viewMode === "2d" ? Math.round(zoom.z * 100) : camZoomPct;
+  // Where the current view sits in VIEW_CYCLE — a mid-split 2D compare
+  // counts as Standard (index 0), so cycling from it lands on Mask.
+  const viewIndex = viewMode === "2d"
+    ? (split === 100 ? 1 : 0)
+    : { flat: 2, can: 3, pack: 4 }[viewMode];
   // Zoom level follows you across views: both sides express it as a multiple
   // of how the view frames itself, so handing the number over is enough. Pan
   // travels with it as a fraction of the visible frame — the 2D pane's px
@@ -624,19 +637,22 @@ export default function App() {
   const exportBlocked = blocked || building;
   const pdfExportBlocked = exportBlocked || !pdfs;
 
+  /** Replaces (or, with null, removes) a loaded asset, revoking the old
+   *  thumbnail URL — the one shape every drop and every FileDrop X share. */
+  const swapLoaded = <T extends { previewUrl: string }>(
+    set: (fn: (old: T | null) => T | null) => void, next: T | null,
+  ) => set((old) => { if (old) URL.revokeObjectURL(old.previewUrl); return next; });
+
   async function onTexture(f: File) {
     const bytes = new Uint8Array(await f.arrayBuffer());
     const bmp = await createImageBitmap(f);
     const previewBytes = await previewPng(bmp);
     bmp.close();
     const previewUrl = URL.createObjectURL(f);
-    setTexture((old) => {
-      if (old) URL.revokeObjectURL(old.previewUrl);
-      return {
-        bytes, previewBytes, name: f.name,
-        kind: rasterKind(f.name),
-        previewUrl,
-      };
+    swapLoaded(setTexture, {
+      bytes, previewBytes, name: f.name,
+      kind: rasterKind(f.name),
+      previewUrl,
     });
   }
 
@@ -649,40 +665,27 @@ export default function App() {
     const bytes = await canvasToPng(canvas);
     const previewBytes = await previewPng(canvas); // recolored canvas, downscaled
     const previewUrl = URL.createObjectURL(f);
-    setMask((old) => {
-      if (old) URL.revokeObjectURL(old.previewUrl);
-      return {
-        bytes,
-        previewBytes,
-        name: f.name,
-        previewUrl,
-        error: check.ok ? undefined : check.error,
-      };
+    swapLoaded(setMask, {
+      bytes,
+      previewBytes,
+      name: f.name,
+      previewUrl,
+      error: check.ok ? undefined : check.error,
     });
   }
 
   /** Load a collab logo into `slot`, revoking the previous thumbnail URL. */
   function onCollab(slot: "left" | "center", f: File) {
-    void readCollab(f).then((next) => {
-      const set = slot === "left" ? setCollabLeft : setCollabCenter;
-      set((old) => {
-        if (old) URL.revokeObjectURL(old.previewUrl);
-        return next;
-      });
-    });
+    void readCollab(f).then((next) =>
+      swapLoaded(slot === "left" ? setCollabLeft : setCollabCenter, next));
   }
-  /** Drops a loaded asset, revoking its thumbnail URL — the shared shape of
-   *  every FileDrop X. */
-  const clearLoaded = <T extends { previewUrl: string }>(
-    set: (fn: (old: T | null) => T | null) => void,
-  ) => set((old) => { if (old) URL.revokeObjectURL(old.previewUrl); return null; });
   const collabFiles: CollabFiles = {
     leftName: collabLeft?.name, leftUrl: collabLeft?.previewUrl,
     centerName: collabCenter?.name, centerUrl: collabCenter?.previewUrl,
     onLeft: (f) => onCollab("left", f),
     onCenter: (f) => onCollab("center", f),
-    onClearLeft: () => clearLoaded(setCollabLeft),
-    onClearCenter: () => clearLoaded(setCollabCenter),
+    onClearLeft: () => swapLoaded(setCollabLeft, null),
+    onClearCenter: () => swapLoaded(setCollabCenter, null),
   };
   /** Everything file-shaped the inspector edits: the Document layers' drops
    *  plus the collab logos. */
@@ -708,12 +711,12 @@ export default function App() {
     texture: {
       fileName: texture?.name, previewUrl: texture?.previewUrl,
       onFile: (f) => void onTexture(f),
-      onClear: () => clearLoaded(setTexture),
+      onClear: () => swapLoaded(setTexture, null),
     },
     mask: {
       fileName: mask?.name, previewUrl: mask?.previewUrl, error: mask?.error,
       onFile: (f) => void onMask(f),
-      onClear: () => clearLoaded(setMask),
+      onClear: () => swapLoaded(setMask, null),
     },
     collab: collabFiles,
   };
@@ -758,6 +761,16 @@ export default function App() {
   // plates are drawn on, so it is an input to the build exactly like the config
   // is, and the identity check has to see it or a bleed change would be
   // dismissed as "same inputs" and never rebuild.
+  /** The texture/mask eyes work by omission: a hidden asset simply isn't
+   *  handed to the build, same as never dropped. The ONE place the rule
+   *  lives — both the preview and export builds spread this. */
+  const eyedAssets = (
+    tex: { bytes: Uint8Array; kind: "png" | "jpg" } | undefined,
+    maskPng: Uint8Array | undefined,
+  ) => ({
+    texture: hiddenLayers.has("background") ? undefined : tex,
+    maskPng: hiddenLayers.has("mask") ? undefined : maskPng,
+  });
   const inputs = [cfg, texture, mask, collabLeft, collabCenter, hiddenLayers, render.bleedIn] as const;
   // What the last COMPLETED build was made from, so a re-run of this effect
   // that changes none of it doesn't rebuild. needMask is a dependency (the
@@ -781,11 +794,9 @@ export default function App() {
         try {
           const assets = {
             ...(await collabAssets()),
-            // The texture and mask eyes work by omission: a hidden asset
-            // simply isn't handed to the build, same as never dropped.
-            texture: texture && !hiddenLayers.has("background")
-              ? { bytes: texture.previewBytes, kind: "png" as const } : undefined,
-            maskPng: hiddenLayers.has("mask") ? undefined : mask?.previewBytes,
+            ...eyedAssets(
+              texture ? { bytes: texture.previewBytes, kind: "png" as const } : undefined,
+              mask?.previewBytes),
             hidden: hiddenLayers,
           };
           // Only the plates that aren't already current. sameInputs means the
@@ -852,9 +863,9 @@ export default function App() {
       // layered handoff is the place to keep them all.)
       const assets: Assets = {
         fonts, logoSvg, ...(await collabAssets()),
-        texture: texture && !hiddenLayers.has("background")
-          ? { bytes: texture.bytes, kind: texture.kind } : undefined,
-        maskPng: hiddenLayers.has("mask") ? undefined : mask?.bytes,
+        ...eyedAssets(
+          texture ? { bytes: texture.bytes, kind: texture.kind } : undefined,
+          mask?.bytes),
         hidden: hiddenLayers,
       };
       if (which !== "mask") saveBytes(await buildArtPdf(cfg, assets), `${exportBaseName(cfg)}.pdf`);
@@ -1341,22 +1352,15 @@ export default function App() {
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
             {/* Which preview is on screen — the menubar's View names. In 2D
                 the split decides: all-mask, all-art, or a live compare.
-                Clicking advances to the next view, same cycle as keys 1–5
-                (a mid-split Compare counts as Standard, so it advances to
-                Mask). */}
+                Clicking advances to the next view through the SAME commands
+                keys 1–5 run, so this can't drift from the menu (a mid-split
+                Compare counts as Standard, so it advances to Mask). */}
             <button
-              onClick={() => {
-                const next = viewMode === "2d"
-                  ? (split > 0 && split < 100 ? 1 : split === 100 ? 2 : 1)
-                  : { flat: 3, can: 4, pack: 0 }[viewMode];
-                [() => show2d("art"), () => show2d("mask"), () => setViewMode("flat"),
-                  () => setViewMode("can"), () => setViewMode("pack")][next]();
-              }}
+              onClick={() => byId(VIEW_CYCLE[(viewIndex + 1) % VIEW_CYCLE.length][1]).run()}
               title="Current preview view — click for the next (View menu, keys 1–5)"
               className="shrink-0 rounded px-1 py-0.5 text-xs whitespace-nowrap text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
-              View Mode: {viewMode === "2d"
-                ? (split === 100 ? "Mask" : split > 0 ? "Compare" : "Standard")
-                : { flat: "Rendered", can: "Single Can", pack: "Four-Pack" }[viewMode]}
+              View Mode: {split > 0 && split < 100 && viewMode === "2d"
+                ? "Compare" : VIEW_CYCLE[viewIndex][0]}
             </button>
           </div>
         </section>

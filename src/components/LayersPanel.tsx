@@ -27,8 +27,8 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import {
-  DOC_LAYER_LABELS, LAYER_ICONS, PANEL_GROUPS, isElementId, isHideable,
-  type HideableLayerId, type LayerId,
+  COLLAB_GROUP_TITLE, DOC_LAYER_LABELS, LAYER_ICONS, PANEL_GROUPS,
+  isElementId, isHideable, type HideableLayerId, type LayerId,
 } from "./layers";
 import { modsOf, type SelectMods } from "@/selection";
 
@@ -251,7 +251,7 @@ export function LayersPanel(props: {
                 header, not repeated per layer. Turning it off keeps the
                 uploaded art and slot styles; flipping it back restores the
                 label exactly as it was. */}
-            {title === "Collab" && (
+            {title === COLLAB_GROUP_TITLE && (
               <Switch
                 aria-label="Collab enabled"
                 checked={props.cfg.collabEnabled}

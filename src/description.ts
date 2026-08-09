@@ -64,7 +64,16 @@ export function parseDescription(src: string, base: Style = DEFAULT_BASE): Parse
   const out: ParsedDescription = { header: null, lines: [] };
   for (const raw of src.split("\n")) {
     const t = raw.trim();
-    if (!t) continue;
+    // Blank lines are KEPT as empty body lines — they render as vertical
+    // gaps (each line draws at firstBaseline + i * leading, and an empty
+    // drawText is a no-op), and dropping them made the editor silently eat
+    // an author's returns on every reseed. Only LEADING blanks are skipped:
+    // nothing renders above the first line, and the header rule below stays
+    // "first non-blank line", as it always was.
+    if (!t) {
+      if (out.header || out.lines.length) out.lines.push(styleLine("", base));
+      continue;
+    }
     // Header eligibility is "nothing emitted yet": only the first non-blank
     // line can be one. `!out.header` alone would let a `#` line ANYWHERE in a
     // header-less block become the header — which then jumps to the top of
@@ -150,6 +159,10 @@ export function parseInfoLine(src: string, base: StyledLine): StyledLine {
 export function serializeDescription(d: ParsedDescription): string {
   const line = (l: StyledLine, header = false) => {
     let s = l.text;
+    // An empty line stays empty: wrapping "" in markers would write `__` or
+    // `****`, which parse back as marked empty lines — style on a blank
+    // line has nothing to apply to anyway.
+    if (!s && !header) return "";
     if (l.layer === "white") s = `_${s}_`;
     if (l.bold && !header) s = `**${s}**`;
     return header ? `# ${s}` : s;

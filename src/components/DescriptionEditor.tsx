@@ -9,9 +9,9 @@
 // markdownToLines/linesToMarkdown are thin adapters over description.ts's
 // parseDescription/serializeDescription — they do NOT re-implement the
 // markdown grammar. serializeDescription canonicalizes (white-inside/
-// bold-outside marker order, header's redundant `**` dropped) and cannot
-// represent blank lines (parseDescription skips them on the way back in);
-// both are deliberate constraints of that module, not bugs here.
+// bold-outside marker order, header's redundant `**` dropped). Blank lines
+// round-trip as empty body lines and render as vertical gaps; only LEADING
+// blanks are dropped (see parseDescription).
 //
 // Markers in typed text are INTERPRETED, not escaped: a line whose text
 // happens to be symmetrically wrapped in `**...**` or `_..._` reseeds as
@@ -31,7 +31,7 @@ import { GOLD } from "@/layout";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Toggle } from "@/components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 /** `white` is how the line RENDERS (what the field paints), which is not the
@@ -226,7 +226,17 @@ function linesInSelection(root: HTMLDivElement): HTMLDivElement[] {
   const ib = kids.indexOf(f);
   if (ia === -1 || ib === -1) return [];
   const [lo, hi] = ia <= ib ? [ia, ib] : [ib, ia];
-  return kids.slice(lo, hi + 1);
+  const lines = kids.slice(lo, hi + 1);
+  // A line the selection merely GRAZES at offset 0 is excluded: triple-click
+  // and shift-↓ both park the range's end at the very start of the following
+  // line, and counting it made Bold/White ink restyle a line the user never
+  // meant to select.
+  if (lines.length > 1 && !sel.isCollapsed) {
+    const range = sel.getRangeAt(0);
+    const last = closestLineEl(range.endContainer, root);
+    if (last === lines[lines.length - 1] && range.endOffset === 0) lines.pop();
+  }
+  return lines;
 }
 
 /** Bold/white/header pressed-state (for the toolbar buttons) derived from
@@ -391,7 +401,9 @@ export function DescriptionEditor(props: {
 
   return (
     <div className="space-y-1">
-      <div className="flex h-6 items-center justify-between gap-1">
+      {/* h-7, matching the size-sm toggles inside: a shorter row let them
+          overflow onto the field's outline below. */}
+      <div className="flex h-7 items-center justify-between gap-1">
         <div className="flex gap-1">
           {focused && !asText && (
             <>
@@ -406,8 +418,11 @@ export function DescriptionEditor(props: {
                 <TooltipTrigger
                   render={
                     <span className="inline-flex">
-                      <ToggleGroupItem
-                        value="header"
+                      {/* Standalone Toggles, not ToggleGroupItems: the group
+                          items' styles assume adjacent siblings inside a
+                          ToggleGroup (collapsed rounding/margins) and
+                          overlapped when rendered bare. */}
+                      <Toggle
                         aria-label="Toggle header"
                         size="sm"
                         pressed={caret.header}
@@ -418,7 +433,7 @@ export function DescriptionEditor(props: {
                         onPressedChange={toggleHeader}
                       >
                         <HeaderIcon />
-                      </ToggleGroupItem>
+                      </Toggle>
                     </span>
                   }
                 />
@@ -429,8 +444,7 @@ export function DescriptionEditor(props: {
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <ToggleGroupItem
-                      value="bold"
+                    <Toggle
                       aria-label="Toggle bold"
                       size="sm"
                       pressed={caret.bold}
@@ -442,7 +456,7 @@ export function DescriptionEditor(props: {
                       onPressedChange={() => toggle("bold")}
                     >
                       <Bold />
-                    </ToggleGroupItem>
+                    </Toggle>
                   }
                 />
                 <TooltipContent>Bold</TooltipContent>
@@ -450,8 +464,7 @@ export function DescriptionEditor(props: {
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <ToggleGroupItem
-                      value="white"
+                    <Toggle
                       aria-label="Toggle white ink underlay"
                       size="sm"
                       pressed={caret.white}
@@ -459,7 +472,7 @@ export function DescriptionEditor(props: {
                       onPressedChange={() => toggle("white")}
                     >
                       <Droplet />
-                    </ToggleGroupItem>
+                    </Toggle>
                   }
                 />
                 {/* White ink is a print layer (a separate underlay plate),
@@ -481,18 +494,28 @@ export function DescriptionEditor(props: {
           // regardless of mousedown/blur/click ordering across browsers.
           onClick={() => { setFocused(false); setAsText((v) => !v); }}
         >
-          {asText ? "Edit as WYSIWYG" : "Edit as text"}
+          {asText ? "Edit as WYSIWYG" : "Edit as Markdown"}
         </Button>
       </div>
 
       {asText ? (
-        <Textarea
-          rows={7}
-          aria-label="Description"
-          className="font-mono text-xs"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-        />
+        <>
+          <Textarea
+            rows={7}
+            aria-label="Description"
+            className="font-mono text-xs"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+          />
+          {/* The subset, spelled out — this mode exists precisely because
+              the syntax isn't muscle memory (see the header comment). */}
+          <ul className="space-y-0.5 text-[11px] leading-relaxed text-muted-foreground">
+            <li><code className="font-mono"># </code>header (first line only)</li>
+            <li><code className="font-mono">**bold**</code></li>
+            <li><code className="font-mono">_white ink_</code></li>
+            <li>markers also work mid-line</li>
+          </ul>
+        </>
       ) : (
         <div
           ref={rootRef}

@@ -3,6 +3,7 @@
 // thumbnail on a checkerboard and inline error text.
 import { useDropzone, type Accept } from "react-dropzone";
 import { X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const CHECKER =
@@ -51,17 +52,17 @@ export function FileDrop(props: {
           </div>
         </div>
         {props.fileName && props.onClear && (
-          <button
-            type="button"
+          <Button
+            type="button" variant="ghost" size="icon"
             aria-label={`Remove ${props.label}`}
             title="Remove"
             // stopPropagation: the whole drop target is a click-to-browse
             // zone; the X must clear, not open the file picker.
             onClick={(e) => { e.stopPropagation(); props.onClear!(); }}
-            className="ml-auto grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm text-muted-foreground hover:text-foreground"
+            className="ml-auto size-5 shrink-0 text-muted-foreground hover:text-foreground"
           >
             <X className="size-3.5" />
-          </button>
+          </Button>
         )}
         <input {...getInputProps()} />
       </div>
