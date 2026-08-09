@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { LABEL_SHORT_IN, MAX_WRAP_RATIO } from "@/layout";
+import { DESIGN_DPI, LABEL_SHORT_IN, MAX_WRAP_RATIO } from "@/layout";
 
 // presets.ts — the reusable style and barcode library, read from and written
 // back to presets.json at the repo root through the dev server's
@@ -27,6 +27,12 @@ export interface RenderSettings {
   labelSize: number;
   labelWidth: number;
   edgeSoftness: number;
+  /** Resolution the PSD is rastered at, in real DPI — not a percentage like
+   *  the four above, because a press specifies resolution in DPI and there is
+   *  nothing useful for it to be a percentage OF. Design values saved in px
+   *  (stroke widths) go on converting at DESIGN_DPI, so changing this resizes
+   *  the exported file without altering a single label's ink. */
+  dpi: number;
 }
 
 // labelWidth ships at the renderer's ceiling (MAX_WRAP_RATIO): the 8in art
@@ -40,6 +46,9 @@ export const DEFAULT_RENDER: RenderSettings = {
   // since the stored value is a percentage of the label's short side.
   cornerRadius: (0.0625 / LABEL_SHORT_IN) * 100,
   labelSize: 82, labelWidth: MAX_WRAP_RATIO * 100, edgeSoftness: 0.1,
+  // Ships at DESIGN_DPI, so the shipped default rasters exactly as it always
+  // has and the knob is a no-op until someone moves it.
+  dpi: DESIGN_DPI,
 };
 
 export interface Presets {

@@ -1,6 +1,8 @@
 // rulers.test.ts — ruler conversion, tick-density, and locked-guide geometry.
 import { describe, expect, it } from "vitest";
-import { ART, PAGE, PSD_DOC } from "../src/layout";
+import {
+  ART, DEFAULT_STROKE_PX, DESIGN_DPI, PAGE, PSD_DOC, PX, setOutputDpi,
+} from "../src/layout";
 import {
   DEFAULT_MARGIN_PT, layoutGuides, majorStep, nextRulerUnit, pointToScreen,
   pointToUnit, rulerTicks, screenToPoint, sizeLabel, unitToPoint,
@@ -69,6 +71,24 @@ describe("preview rulers", () => {
   it("states the trim as the round size the label is ordered at", () => {
     expect(sizeLabel(ART.w, ART.h, "in")).toBe("8 × 5 in");
     expect(sizeLabel(ART.w, ART.h, "px")).toBe("4800 × 3000 px");
+  });
+
+  it("follows the output DPI in px, and leaves saved ink weights alone", () => {
+    try {
+      setOutputDpi(300);
+      // Half the pixels for the same physical label...
+      expect(sizeLabel(PAGE.w, PAGE.h, "px")).toBe(`${PSD_DOC.w} × ${PSD_DOC.h} px`);
+      expect(PSD_DOC.w).toBe(2438);
+      // ...while inches and points, being physical, do not move.
+      expect(sizeLabel(PAGE.w, PAGE.h, "in")).toBe("8.127 × 5.127 in");
+      // The whole reason DESIGN_DPI is separate: a keyline saved as 15px is
+      // 1.8pt of ink at any export resolution. If this ever tracks the knob,
+      // every label ever saved silently changes stroke weight.
+      expect(DEFAULT_STROKE_PX * PX).toBeCloseTo(1.8);
+    } finally {
+      setOutputDpi(DESIGN_DPI);
+    }
+    expect(PSD_DOC.w).toBe(4876);
   });
 
   it("cycles the toolbar's units back to where it started", () => {

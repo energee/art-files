@@ -109,6 +109,10 @@ export interface DocSettings {
   /** Foil-mask blur, % of label width — softens the metallic edges. */
   edgeSoftness: number;
   onEdgeSoftness: (v: number) => void;
+  /** Export resolution in real DPI, NOT a percentage like the four above —
+   *  the one knob here a press specifies directly. */
+  dpi: number;
+  onDpi: (v: number) => void;
 }
 
 /** All build-time file assets the inspector can edit, grouped so App passes
@@ -430,6 +434,17 @@ function Content(props: {
             id="doc-edge-softness" label="Edge softness" of={LABEL_WIDE_IN}
             pct={settings.edgeSoftness} minPct={0} maxPct={1} step={0.001}
             onPct={settings.onEdgeSoftness}
+          />
+          {/* Real DPI, so a plain ScrubField rather than an InchField: the
+              four knobs above are percentages shown in inches, but resolution
+              is already in the unit the press asks for. Only the rastered
+              PSD and the ruler's px readout follow it — stroke widths saved
+              in px keep converting at DESIGN_DPI, so changing this resizes
+              the file without reweighting any ink. */}
+          <ScrubField
+            id="doc-dpi" label="Resolution" unit="dpi"
+            value={settings.dpi} min={72} max={1200} step={50} dragStep={10}
+            onChange={settings.onDpi}
           />
           {/* An app preference, not a document one — it lives here because
               Settings is the only preferences surface the app has, and it is

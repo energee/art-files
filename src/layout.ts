@@ -156,15 +156,35 @@ export const LOGO_ASPECT = 525 / 480;
 export const NAME = { cx: CENTER_X, baseline: 323.28, size: 15.83 };
 export const STYLE_LINE = { cx: CENTER_X, baseline: 344.6, size: 12.18 };
 
-/** The deliverable's raster resolution. Stated once here because it is a fact
- *  about what the press receives, not about any one exporter: PX derives from
- *  it, the PSD's document size follows from PX, and the preview toolbar
- *  reports it to the operator. */
-export const DPI = 600;
-/** One px at the 600dpi deliverable, in PDF points (72/600). */
-export const PX = 72 / DPI;
-/** Full 600-DPI document dimensions for PSD raster layers. */
-export const PSD_DOC = { w: Math.round(PAGE.w / PX), h: Math.round(PAGE.h / PX) };
+/** The resolution the px-denominated DESIGN values were authored against.
+ *  Pinned forever, and deliberately NOT the Settings knob below: a stroke
+ *  saved as 15px is 1.8pt of ink on the press, and it has to stay 1.8pt
+ *  whatever resolution the file is rastered at. Wire a variable DPI into this
+ *  and every label ever saved silently changes stroke weight. */
+export const DESIGN_DPI = 600;
+/** One design px, in PDF points (72/600). Converts SAVED px values — stroke
+ *  widths in the label config — into ink. Never varies. */
+export const PX = 72 / DESIGN_DPI;
+
+/** The resolution the deliverables are RASTERED at — the Settings knob. Only
+ *  output size depends on it: the PSD's pixel grid and the ruler's px
+ *  readout. Live-bound, so importers see the current value.
+ *
+ *  ponytail: one module-level output resolution, because the app edits one
+ *  document at a time on the main thread. If a worker ever rasters, or two
+ *  documents open at once, pass it as a parameter instead. */
+export let OUTPUT_DPI = DESIGN_DPI;
+/** Document dimensions for PSD raster layers, at OUTPUT_DPI. Mutated in place
+ *  rather than replaced so the modules that read `PSD_DOC.w` keep working
+ *  without re-importing. */
+export const PSD_DOC = { w: 0, h: 0 };
+
+export function setOutputDpi(dpi: number) {
+  OUTPUT_DPI = dpi;
+  PSD_DOC.w = Math.round((PAGE.w / 72) * dpi);
+  PSD_DOC.h = Math.round((PAGE.h / 72) * dpi);
+}
+setOutputDpi(DESIGN_DPI);
 /** Default per-element outer-stroke width, in px at 600dpi (≈1.8pt). */
 export const DEFAULT_STROKE_PX = 15;
 

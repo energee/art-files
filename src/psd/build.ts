@@ -57,8 +57,18 @@ export interface PsdAssets {
  *  strokes are omitted (they never touch the mask plate). */
 export type PsdMode = "art" | "mask";
 
-/** Points -> pixels at the 600dpi deliverable. */
-const px = (n: number) => n / L.PX;
+/** Points -> pixels of THIS document, at the export resolution.
+ *
+ *  Deliberately OUTPUT_DPI and not L.PX: PSD_DOC scales with the resolution
+ *  knob, so laying elements out on the design grid instead would place a
+ *  600dpi layout inside a 300dpi canvas and pack the whole label into the
+ *  top-left quarter. The two agree at the shipped 600, which is exactly why
+ *  the psd-build suite cannot catch this — see the DPI test in rulers.test.
+ *
+ *  Ink weights are unaffected: a stroke saved in px becomes points via L.PX
+ *  (pinned at DESIGN_DPI) and only then arrives here, so it keeps its
+ *  physical width and simply lands on more or fewer pixels. */
+const px = (n: number) => (n / 72) * L.OUTPUT_DPI;
 /** Document size in pixels. Exported so a caller can cover-fit the texture
  *  to it before handing the pixels over — PSD layers hold pixels 1:1. */
 export const PSD_DOC = L.PSD_DOC;

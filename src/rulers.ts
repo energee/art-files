@@ -1,6 +1,6 @@
 // rulers.ts — pure screen/page conversion and tick/layout-guide geometry for
 // the 2D preview rulers. PDF points remain the authoritative coordinate unit.
-import { ART, PX } from "@/layout";
+import { ART, OUTPUT_DPI } from "@/layout";
 
 export type RulerUnit = "in" | "pt" | "px";
 export type GuideAxis = "x" | "y";
@@ -30,9 +30,12 @@ export interface LayoutGuides {
 export const DEFAULT_MARGIN_PT = 18; // 0.25in
 const MIN_MAJOR_PX = 56;
 const SUBDIVISIONS = 4;
-// Pixels mean deliverable pixels at the document's canonical 600 DPI, not CSS
-// screen pixels. PX is 72/600pt and is already shared by the PSD renderer.
-const UNIT_PT: Record<RulerUnit, number> = { in: 72, pt: 1, px: PX };
+// Pixels mean deliverable pixels at the document's OUTPUT resolution, not CSS
+// screen pixels — so the ruler and the size readout count the same pixels the
+// exported PSD has. A function rather than a table because OUTPUT_DPI is a
+// Settings knob: a table built at import time would freeze it at 600 and the
+// px readout would quietly disagree with the file on disk.
+const unitPt = (unit: RulerUnit) => unit === "in" ? 72 : unit === "pt" ? 1 : 72 / OUTPUT_DPI;
 const MAJOR_STEPS: Record<RulerUnit, readonly number[]> = {
   in: [0.125, 0.25, 0.5, 1, 2, 4, 8, 16],
   pt: [6, 12, 18, 36, 72, 144, 288, 576],
@@ -54,11 +57,11 @@ export function screenToPoint(
 }
 
 export function pointToUnit(point: number, origin: number, unit: RulerUnit): number {
-  return (point - origin) / UNIT_PT[unit];
+  return (point - origin) / unitPt(unit);
 }
 
 export function unitToPoint(value: number, origin: number, unit: RulerUnit): number {
-  return origin + value * UNIT_PT[unit];
+  return origin + value * unitPt(unit);
 }
 
 /** Coarse to fine, and back round — the order the ruler popover lists them in,
@@ -88,7 +91,7 @@ export function sizeLabel(widthPt: number, heightPt: number, unit: RulerUnit): s
 
 /** A readable major interval for the current screen scale. */
 export function majorStep(frameSize: number, pageSize: number, unit: RulerUnit): number {
-  const pxPerUnit = (frameSize / pageSize) * UNIT_PT[unit];
+  const pxPerUnit = (frameSize / pageSize) * unitPt(unit);
   return MAJOR_STEPS[unit].find((step) => step * pxPerUnit >= MIN_MAJOR_PX)
     ?? MAJOR_STEPS[unit][MAJOR_STEPS[unit].length - 1];
 }

@@ -17,7 +17,7 @@ import { rasterKind, tintRgba } from "@/collab";
 import type { Assets, CollabImage } from "@/pdf/build";
 import { buildPreviewPdfs, disposePreviewWorker } from "@/pdf/client";
 import type { PsdAssets } from "@/psd/build";
-import { ART, DPI, PAGE, PREVIEW_OVERSAMPLE, PSD_DOC } from "@/layout";
+import { ART, PAGE, PREVIEW_OVERSAMPLE, PSD_DOC, setOutputDpi } from "@/layout";
 import {
   Inspector, type CollabFiles, type DocSettings, type InspectorFiles,
 } from "@/components/StyleProperties";
@@ -386,6 +386,11 @@ export default function App() {
   // debounced into the shared library.
   const { presets, loaded: presetsLoaded, error: presetsError } = usePresets();
   const [render, setRender] = useState(DEFAULT_RENDER);
+  // Published to layout.ts during render rather than from an effect: the
+  // toolbar's px readout and the rulers read OUTPUT_DPI while rendering, so an
+  // effect would leave them a frame behind the knob. Idempotent — it writes
+  // three numbers and reads nothing.
+  setOutputDpi(render.dpi);
   // Adopt the saved settings once, when the library first arrives. Writing
   // before that would stamp the defaults over the file.
   const adopted = useRef(false);
@@ -666,6 +671,8 @@ export default function App() {
     onLabelWidth: (v) => setRender((r) => ({ ...r, labelWidth: v })),
     edgeSoftness: render.edgeSoftness,
     onEdgeSoftness: (v) => setRender((r) => ({ ...r, edgeSoftness: v })),
+    dpi: render.dpi,
+    onDpi: (v) => setRender((r) => ({ ...r, dpi: Math.round(v) })),
   };
   const files: InspectorFiles = {
     texture: {
@@ -1276,7 +1283,7 @@ export default function App() {
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
             <span className="shrink-0 px-1 text-xs tabular-nums whitespace-nowrap text-muted-foreground"
               title="Resolution the PDFs and PSDs are built at">
-              {DPI} DPI
+              {render.dpi} DPI
             </span>
           </div>
         </section>
