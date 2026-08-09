@@ -17,14 +17,19 @@ import { rasterKind, tintRgba } from "@/collab";
 import type { Assets, CollabImage } from "@/pdf/build";
 import { buildPreviewPdfs, disposePreviewWorker } from "@/pdf/client";
 import type { PsdAssets } from "@/psd/build";
-import { ART, PAGE, PREVIEW_OVERSAMPLE, PSD_DOC, setOutputDpi } from "@/layout";
+// setBleed is aliased: `bleed` is already taken here by the show-bleed-lines
+// toggle, and the two are unrelated — one is a view option, the other the
+// document's actual geometry.
+import {
+  ART, PAGE, PREVIEW_OVERSAMPLE, PSD_DOC, setBleed as setLayoutBleed, setOutputDpi,
+} from "@/layout";
 import {
   Inspector, type CollabFiles, type DocSettings, type InspectorFiles,
 } from "@/components/StyleProperties";
 import { LayersPanel } from "@/components/LayersPanel";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
 import {
-  DEFAULT_RENDER, loadPresets, mutatePresets, normalizePresets, usePresets,
+  DEFAULT_RENDER, commitBleedIn, loadPresets, mutatePresets, normalizePresets, usePresets,
   type Presets,
 } from "@/presets";
 import { PANEL_ORDER, isElementId, type LayerId } from "@/components/layers";
@@ -390,6 +395,13 @@ export default function App() {
   // toolbar's px readout and the rulers read OUTPUT_DPI while rendering, so an
   // effect would leave them a frame behind the knob. Idempotent — it writes
   // three numbers and reads nothing.
+  // Published during render, not from an effect: the rulers and the toolbar's
+  // size readout read PAGE and OUTPUT_DPI while rendering, so an effect would
+  // leave them a frame behind the knob. Both are idempotent scalar writes.
+  //
+  // THIS thread only — the preview worker holds its own layout module and is
+  // told separately, per build (see buildPreviewPdfs).
+  setLayoutBleed(render.bleedIn);
   setOutputDpi(render.dpi);
   // Adopt the saved settings once, when the library first arrives. Writing
   // before that would stamp the defaults over the file.
@@ -512,8 +524,10 @@ export default function App() {
   };
   const presetsInput = useRef<HTMLInputElement>(null);
   const previewRef = useRef<PreviewCompareHandle>(null);
-  // Trim guide over the 2D preview at the art box (38px of bleed per side at
-  // 600dpi). View-only — the exported PDFs are unaffected.
+  // Trim guide over the 2D preview at the art box, wherever the bleed knob
+  // currently puts it (ART.x/ART.y follow it). View-only — this toggle draws
+  // the line, it does not decide where the trim is; the exported PDFs are
+  // unaffected either way.
   const [bleed, setBleed] = useState(false);
   // Rulers and guides are view state, like hidden layer eyes: they assist the
   // operator but are not label content, so none enters config history/exports.
@@ -669,6 +683,16 @@ export default function App() {
     onEdgeSoftness: (v) => setRender((r) => ({ ...r, edgeSoftness: v })),
     dpi: render.dpi,
     onDpi: (v) => setRender((r) => ({ ...r, dpi: Math.round(v) })),
+    bleedIn: render.bleedIn,
+    // commitBleedIn, not a plain write: the field can only show 0.063 for the
+    // shipped 0.063333..., so a commit that just echoes the display must leave
+    // the stored value alone. Returning `r` itself (not a copy) is load-bearing
+    // — React bails out on an unchanged reference, so an echo costs no re-render,
+    // no preview rebuild, and no write to presets.json.
+    onBleedIn: (v) => setRender((r) => {
+      const bleedIn = commitBleedIn(r.bleedIn, v);
+      return bleedIn === r.bleedIn ? r : { ...r, bleedIn };
+    }),
   };
   const files: InspectorFiles = {
     texture: {
@@ -718,7 +742,11 @@ export default function App() {
   // this is the ONE list — a future input added here can't be forgotten in the
   // dep array (which would stop rebuilds) or in the identity check (which
   // would silently freeze the preview for that input).
-  const inputs = [cfg, texture, mask, collabLeft, collabCenter, hiddenLayers] as const;
+  // bleedIn belongs here and not just in the dep array: it changes the PAGE the
+  // plates are drawn on, so it is an input to the build exactly like the config
+  // is, and the identity check has to see it or a bleed change would be
+  // dismissed as "same inputs" and never rebuild.
+  const inputs = [cfg, texture, mask, collabLeft, collabCenter, hiddenLayers, render.bleedIn] as const;
   // What the last COMPLETED build was made from, so a re-run of this effect
   // that changes none of it doesn't rebuild. needMask is a dependency (the
   // plate has to appear when it's first needed), which without this made every
@@ -751,7 +779,9 @@ export default function App() {
           // mask alone — and leaving artBytes' identity untouched is what
           // keeps that trip from re-rasterizing the art through pdf.js too.
           const { art, mask: maskPdf } =
-            await buildPreviewPdfs(cfg, assets, { art: !sameInputs, mask: needMask });
+            await buildPreviewPdfs(
+              cfg, assets, { art: !sameInputs, mask: needMask }, render.bleedIn,
+            );
           if (stale) return;
           // A skipped plate keeps the last one it built rather than blanking
           // the canvas: nothing is showing it, and if something starts to,

@@ -32,6 +32,21 @@ export type WorkerRequest = {
   assets: WireAssets;
   /** Which plates to build; an unrequested one comes back null. */
   plates: Plates;
+  /** Bleed per side in inches, shipped with EVERY request rather than set once
+   *  at worker startup. The worker is a separate module registry: it has its
+   *  own copy of layout.ts, so the main thread's setBleed never reaches it, and
+   *  a worker left at the default would build a differently-sized page than the
+   *  UI is showing — a wrong file with no error anywhere. Per-request also
+   *  survives the worker being torn down and respawned mid-session (see
+   *  ensureWorker's onerror path), which a one-time init message would not.
+   *
+   *  Bleed alone, and not layout's mutable state in general, deliberately: the
+   *  other knob, OUTPUT_DPI, is read only by psd/build.ts, which runs on the
+   *  main thread — it never crosses into this worker, so there is nothing to
+   *  ship. Generalising this into "send all document geometry" would be building
+   *  a mechanism for a second case that does not exist. Add a field here if one
+   *  ever does. */
+  bleedIn: number;
 };
 
 /** The two plates a build can produce, each independently skippable. */
@@ -108,6 +123,7 @@ export function buildPreviewPdfs(
   cfg: LabelConfig,
   assets: PreviewAssets,
   plates: Plates,
+  bleedIn: number,
 ): Promise<{ art: Uint8Array | null; mask: Uint8Array | null }> {
   const id = ++nextId;
   return new Promise((resolve, reject) => {
@@ -119,6 +135,7 @@ export function buildPreviewPdfs(
         id,
         cfg,
         plates,
+        bleedIn,
         assets: {
           texture: assets.texture && {
             kind: assets.texture.kind, ref: ref(assets.texture.bytes, attached),

@@ -1,12 +1,56 @@
 // layout.ts — single source of truth for label geometry, in PDF points with a
 // TOP-LEFT origin (y down). Draw helpers convert to PDF's bottom-left space.
-// Page matches the Photoshop-era deliverables: 8x5in art + 0.0633in bleed.
+// Page matches the Photoshop-era deliverables: an 8x5in die (TRIM) plus a
+// per-side bleed that ships at the Photoshop value and is now a Settings knob
+// (see BLEED / setBleed).
 // It also states the PHYSICAL objects the label is made for — the label's own
 // size in inches and the can it wraps (see CAN_DIAM_IN) — because those are
 // facts about the product, not about any one renderer, and the inspector, the
 // preset defaults and the 3D scene all have to agree on them.
 
-export const PAGE = { w: 585.12, h: 369.12 };
+/** The die cut — the label that comes off the press, fixed at 8 x 5in. The
+ *  PAGE around it grows and shrinks with the bleed knob; this never does. */
+export const TRIM = { w: 576, h: 360 };
+
+/** Bleed the position constants in this file were measured at, in points
+ *  (4.56pt = exactly 38px at DESIGN_DPI). Every position below is measured
+ *  from the PAGE edge, bleed included, so a different bleed moves that edge
+ *  out from under them and BLEED_SHIFT puts them back. Not a magic number to
+ *  be "cleaned up" — it is the provenance of every measured value in this
+ *  file, and re-deriving twenty of them by hand is where a misprinted label
+ *  comes from. */
+const MEASURED_BLEED = 4.56;
+
+/** The bleed the Photoshop-era page was actually built at, in inches: 4.56/72,
+ *  i.e. 0.063333...in. This is the provenance of every position constant below
+ *  and the value BLEED_SHIFT is measured against — not necessarily the value
+ *  the app ships with.
+ *
+ *  It is NOT 0.0635. That figure is (8.127 - 8) / 2, half the toolbar's ROUNDED
+ *  readout; the page is 585.12pt = 8.126666...in. The preset does ship at the
+ *  round 0.0635 by decision (see DEFAULT_RENDER.bleedIn), which grows the page
+ *  0.024pt and leaves BLEED_SHIFT at 0.012 — harmless, because the shift keeps
+ *  every element the same distance from the TRIM. Keep the two apart: this
+ *  constant must track what the positions were MEASURED at, or the shift is
+ *  computed from the wrong origin and the whole design slides. */
+export const SHIPPED_BLEED_IN = MEASURED_BLEED / 72;
+
+/** Bleed per side, in points — the Settings knob (render.bleedIn), via setBleed.
+ *  Deliberately module-private: PAGE and ART already state it in the form every
+ *  consumer wants, and BLEED_SHIFT is the only thing the output boundaries need.
+ *  Exporting the raw bleed as well would invite a fourth boundary to re-derive
+ *  its own shift from it, which is exactly the drift this design avoids. */
+let BLEED = MEASURED_BLEED;
+
+/** How far a measured position has to move to keep its distance from the TRIM
+ *  once the page grows or shrinks around it. Zero at the shipped bleed, which
+ *  is what makes this knob a no-op until someone turns it.
+ *
+ *  Applied ONCE per output boundary — pdf/build.ts, psd/build.ts and
+ *  hittest.ts — and never folded back into the constants below. */
+export let BLEED_SHIFT = 0;
+
+export const PAGE = { w: TRIM.w + 2 * BLEED, h: TRIM.h + 2 * BLEED };
 /** Widest the 2D preview sheet is drawn on screen, in CSS px. It lives here
  *  rather than in PreviewCompare's class list because the 3D scene has to
  *  predict that sheet's on-screen height to frame its own label to match
@@ -21,9 +65,16 @@ export const PREVIEW_MAX_W = 900;
  *  ponytail: fixed oversample, CSS downscales; to zoom deeper, re-render the
  *  PDFs at this x zoom while zoomed rather than raising the number. */
 export const PREVIEW_OVERSAMPLE = 2.5;
-/** Art box inside the bleed. */
-export const ART = { x: 4.56, y: 4.56, w: 576, h: 360 };
-export const CENTER_X = PAGE.w / 2;
+/** Art box inside the bleed — the TRIM, offset by the bleed. Only x/y move
+ *  with the knob; the die does not change size. */
+export const ART = { x: BLEED, y: BLEED, w: TRIM.w, h: TRIM.h };
+/** The page's horizontal centre AT MEASURED_BLEED — a position measured off
+ *  the reference PDF like LEFT_X or BARCODE.x, and frozen like them. It is
+ *  deliberately not PAGE.w / 2: BLEED_SHIFT is applied uniformly to every
+ *  position at the output boundary, so this shifted centre IS the new page's
+ *  centre by construction. Recomputing it live would move the centre column
+ *  twice — once here and once at the boundary. */
+export const CENTER_X = (TRIM.w + 2 * MEASURED_BLEED) / 2;
 /** The label's own size in inches — the page (bleed included), which is what
  *  the renderer textures the can with and therefore what its percentage
  *  knobs are percentages of. */
@@ -58,7 +109,10 @@ export const LABEL_HEIGHT_RATIO = ART.h / 72 / CAN_HEIGHT_IN;
 /** The trim's box inside the printed page, as 0..1 texture coordinates. The
  *  3D views crop every map to it so the can shows the label that comes off
  *  the die, not the bleed that gets cut away. Inset equally on all four
- *  sides, so it survives a flipped V without a separate top/bottom case. */
+ *  sides, so it survives a flipped V without a separate top/bottom case.
+ *
+ *  Derived from both PAGE and ART, so setBleed has to recompute it; mutated in
+ *  place, like PSD_DOC, so canScene's importers keep their reference. */
 export const TRIM_UV = {
   x: ART.x / PAGE.w, y: ART.y / PAGE.h,
   w: ART.w / PAGE.w, h: ART.h / PAGE.h,
@@ -205,12 +259,51 @@ export let OUTPUT_DPI = DESIGN_DPI;
  *  without re-importing. */
 export const PSD_DOC = { w: 0, h: 0 };
 
+/** PSD_DOC is just the PAGE measured at OUTPUT_DPI, so it goes stale when
+ *  EITHER of them moves and both mutators below have to republish it. Order
+ *  between them doesn't matter — this reads whatever the current page and DPI
+ *  are — so a caller setting both simply pays one throwaway recompute. */
+function publishPsdDoc() {
+  PSD_DOC.w = Math.round((PAGE.w / 72) * OUTPUT_DPI);
+  PSD_DOC.h = Math.round((PAGE.h / 72) * OUTPUT_DPI);
+}
+
 export function setOutputDpi(dpi: number) {
   OUTPUT_DPI = dpi;
-  PSD_DOC.w = Math.round((PAGE.w / 72) * dpi);
-  PSD_DOC.h = Math.round((PAGE.h / 72) * dpi);
+  publishPsdDoc();
 }
 setOutputDpi(DESIGN_DPI);
+
+/** Set the bleed, in inches per side, and republish every geometry that
+ *  depends on it. Same shape as setOutputDpi: mutates the exported records in
+ *  place so the fourteen modules holding a reference to PAGE/ART/TRIM_UV/
+ *  PSD_DOC keep working without re-importing.
+ *
+ *  The position constants above are NOT rebased — they stay exactly as
+ *  measured, and the three output boundaries add BLEED_SHIFT once each.
+ *
+ *  ponytail: one module-level document geometry, because the app edits exactly
+ *  one label at a time. If it ever opens two, thread a Geometry through the
+ *  renderers instead of reading module state.
+ *
+ *  NOTE for callers: the PDF preview worker runs its own copy of this module
+ *  (separate registry), so calling this on the main thread alone leaves the
+ *  worker building at the default. pdf/client.ts ships the value with every
+ *  request for exactly that reason. */
+export function setBleed(inches: number) {
+  BLEED = inches * 72;
+  BLEED_SHIFT = BLEED - MEASURED_BLEED;
+  PAGE.w = TRIM.w + 2 * BLEED;
+  PAGE.h = TRIM.h + 2 * BLEED;
+  ART.x = BLEED;
+  ART.y = BLEED;
+  TRIM_UV.x = ART.x / PAGE.w;
+  TRIM_UV.y = ART.y / PAGE.h;
+  TRIM_UV.w = ART.w / PAGE.w;
+  TRIM_UV.h = ART.h / PAGE.h;
+  publishPsdDoc();
+}
+
 /** Default per-element outer-stroke width, in px at 600dpi (≈1.8pt). */
 export const DEFAULT_STROKE_PX = 15;
 

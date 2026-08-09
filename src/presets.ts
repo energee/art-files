@@ -29,6 +29,12 @@ export interface RenderSettings {
    *  (stroke widths) go on converting at DESIGN_DPI, so changing this resizes
    *  the exported file without altering a single label's ink. */
   dpi: number;
+  /** Bleed per side, in inches — a real length like the DPI above, not a
+   *  percentage: a press specifies bleed in inches (or millimetres) and there
+   *  is nothing useful for it to be a percentage OF. It grows the PAGE around
+   *  a fixed 8x5in die, so it changes the exported page size without moving a
+   *  single element relative to the trim. */
+  bleedIn: number;
 }
 
 // There is no labelSize/labelWidth here any more: how big the label sits on
@@ -46,7 +52,60 @@ export const DEFAULT_RENDER: RenderSettings = {
   // Ships at DESIGN_DPI, so the shipped default rasters exactly as it always
   // has and the knob is a no-op until someone moves it.
   dpi: DESIGN_DPI,
+  // A round 0.0635in per side, by decision — the number the artboard has always
+  // been quoted at, since the toolbar reads the page as 8.127 x 5.127in and
+  // (8.127 - 8) / 2 is 0.0635.
+  //
+  // The Photoshop-era page was actually built at 4.56pt = 0.063333...in (see
+  // layout.SHIPPED_BLEED_IN, which is still what the position constants are
+  // measured against). Shipping the rounded figure grows the page by 0.024pt
+  // in total and leaves BLEED_SHIFT at 0.012 rather than 0.
+  //
+  // That is safe, and it is the whole reason the shift mechanism exists: the
+  // shift is applied uniformly at every output boundary, so every element holds
+  // its exact distance from the TRIM — the edge the label is actually cut on.
+  // Only the page around it changes size. Nothing on the die moves.
+  bleedIn: 0.0635,
 };
+
+/** Typing and arrow-key granularity of the bleed field, in inches — and so the
+ *  precision a committed value snaps to, and the precision it is displayed at.
+ *  Four decimals, because a bleed is quoted in ten-thousandths of an inch
+ *  (0.0625 is the house 1/16" die, 0.0635 the shipped page) and three would
+ *  collapse those onto 0.063 and 0.064. */
+export const BLEED_STEP_IN = 0.0005;
+/** Drag granularity — a finger-friendly increment, coarser than the typed one.
+ *  ScrubField takes the two separately for exactly this case: dragging in
+ *  ten-thousandths would make the field's full range about 1000px of travel. */
+export const BLEED_DRAG_STEP_IN = 0.005;
+const BLEED_DECIMALS = (String(BLEED_STEP_IN).split(".")[1] ?? "").length;
+
+/** What the bleed field SHOWS for a stored value. Same precision the field
+ *  COMMITS at, so every value it can display it can also be typed back —
+ *  which is what keeps commitBleedIn below a narrow guard rather than a
+ *  routine correction. */
+export const displayBleedIn = (bleedIn: number): number =>
+  Number(bleedIn.toFixed(BLEED_DECIMALS));
+
+/** Resolve a bleed edit coming back OUT of that field.
+ *
+ *  At BLEED_STEP_IN the field can express every value it displays, so this only
+ *  bites for a stored value finer than four decimals — the measured
+ *  0.063333...in, or anything hand-edited into presets.json. Such a value shows
+ *  as 0.0633 and would commit as 0.0633, and letting that land changes the
+ *  document for nothing: the page moves and every element shifts, because a
+ *  field was focused rather than because anyone asked for a different bleed.
+ *
+ *  So a commit that merely echoes what is already on screen keeps the stored
+ *  value; anything else passes through untouched.
+ *
+ *  The trade is confined to that case: typing 0.0633 over a stored
+ *  0.063333... does nothing, which is honest — they are the same number at this
+ *  field's precision, and 0.00003in of bleed is not a distinction any press can
+ *  hold. Every value the field can actually express echoes back unchanged, so
+ *  no reachable setting is ever stuck. */
+export const commitBleedIn = (current: number, typed: number): number =>
+  typed === displayBleedIn(current) ? current : typed;
 
 export interface Presets {
   /** Beer styles ("Hazy IPA", "Pilsner") for the Style line. The text is its

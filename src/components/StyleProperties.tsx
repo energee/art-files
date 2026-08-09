@@ -29,6 +29,7 @@ import { machineName, qrUrl } from "@/qr";
 import {
   DEFAULT_STROKE_PX, LABEL_SHORT_IN, LABEL_WIDE_IN,
 } from "@/layout";
+import { BLEED_DRAG_STEP_IN, BLEED_STEP_IN, displayBleedIn } from "@/presets";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -107,6 +108,11 @@ export interface DocSettings {
    *  the one knob here a press specifies directly. */
   dpi: number;
   onDpi: (v: number) => void;
+  /** Bleed per side in inches — an absolute length, so it is NOT an InchField:
+   *  that one converts a stored percentage, and there is nothing here for a
+   *  percentage to be OF. */
+  bleedIn: number;
+  onBleedIn: (v: number) => void;
 }
 
 /** All build-time file assets the inspector can edit, grouped so App passes
@@ -425,6 +431,29 @@ function Content(props: {
             id="doc-dpi" label="Resolution" unit="dpi"
             value={settings.dpi} min={72} max={1200} step={50} dragStep={10}
             onChange={settings.onDpi}
+          />
+          {/* Bleed per side, in inches. A plain ScrubField like the DPI above,
+              and for the same reason: it is already the unit a press specifies
+              it in. It grows the PAGE around a fixed 8x5in die, so the trim
+              never changes — the toolbar's readout moves, its trim tooltip
+              does not, and no element shifts relative to the cut.
+              Displayed at the step's own precision (0.063 for the shipped
+              0.063333...), the way InchField shows the house 1/16" die as
+              0.062. That rounding is display-only, which is the one thing
+              ScrubField does NOT do by default — it renders exactly what it is
+              handed, on the assumption that a caller rounding for display also
+              means to store the rounded value. Here that assumption does not
+              hold, so commitBleedIn guards the way back.
+              step is the TYPED precision and dragStep the coarser drag one:
+              at a single 0.005 step ScrubField snapped every commit to three
+              decimals, which turned the shipped 0.0635 into 0.064 the moment
+              the field was touched. Ten-thousandths is the unit a bleed is
+              quoted in, so it has to be the one the field commits at. */}
+          <ScrubField
+            id="doc-bleed" label="Bleed" unit={'"'}
+            value={displayBleedIn(settings.bleedIn)}
+            min={0} max={0.5} step={BLEED_STEP_IN} dragStep={BLEED_DRAG_STEP_IN}
+            onChange={settings.onBleedIn}
           />
           {/* An app preference, not a document one — it lives here because
               Settings is the only preferences surface the app has, and it is

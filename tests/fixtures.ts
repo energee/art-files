@@ -7,7 +7,9 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PDFDocument, decodePDFRawStream } from "pdf-lib";
+import type { Layer } from "ag-psd";
 import type { Assets } from "../src/pdf/build";
+import type { PsdAssets } from "../src/psd/build";
 
 const asset = (p: string) => join(__dirname, "..", "src", "assets", p);
 
@@ -20,6 +22,15 @@ export const assets: Assets = {
   },
   logoSvg: readFileSync(asset("logo2025.svg"), "utf8"),
 };
+
+/** The same assets, narrowed to what the PSD builder takes (it embeds the
+ *  fonts and the logo itself, and has no use for the PDF-only fields). */
+export const psdAssets: PsdAssets = { fonts: assets.fonts, logoSvg: assets.logoSvg };
+
+/** Every layer in a read PSD, groups flattened, so a test can look one up by
+ *  name without walking the group tree itself. */
+export const flatLayers = (children: Layer[] = []): Layer[] =>
+  children.flatMap((l) => [l, ...flatLayers(l.children)]);
 
 /** Decode a built PDF's page-1 content stream(s) back to their operator
  *  text, so tests can look for the exact operators a builder emits without

@@ -14,6 +14,7 @@ import {
   setCharacterSpacing,
   setLineCap,
   setLineJoin,
+  translate,
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import type { CollabSlot, Fill, LabelConfig, Style, StyledLine } from "../types";
@@ -539,6 +540,23 @@ async function newDoc(assets: Assets): Promise<{ doc: PDFDocument; page: PDFPage
   return { doc, page, fonts };
 }
 
+/** Move the DESIGN by the bleed shift, once, for the whole page.
+ *
+ *  layout.ts's positions are page-absolute at MEASURED_BLEED (see BLEED_SHIFT),
+ *  so a changed bleed slides the page edge out from under them. One `cm` on the
+ *  content stream puts them back — the alternative is adding the shift to the
+ *  `y()` helper and to the x of every draw call in this file, forty-odd chances
+ *  to miss one.
+ *
+ *  PDF space is y-up, so a downward shift is negative. It goes in AFTER the
+ *  page-covering paints (the texture, the mask's flood coats) and BEFORE
+ *  drawElements: those cover the page and must not move with the design.
+ *
+ *  Emits nothing at the shipped bleed, so the built bytes are unchanged. */
+function shiftForBleed(page: PDFPage) {
+  if (L.BLEED_SHIFT) page.pushOperators(translate(L.BLEED_SHIFT, -L.BLEED_SHIFT));
+}
+
 /** Cover-fit an embedded image over the full bleed page, centered. */
 function coverPage(page: PDFPage, img: { width: number; height: number }) {
   const s = Math.max(L.PAGE.w / img.width, L.PAGE.h / img.height);
@@ -556,6 +574,7 @@ export async function buildArtPdf(cfg: LabelConfig, assets: Assets): Promise<Uin
         : await doc.embedJpg(assets.texture.bytes);
     page.drawImage(img, coverPage(page, img));
   }
+  shiftForBleed(page);
   await drawElements(doc, page, fonts, cfg, assets, "art");
   doc.setTitle(`${displayName(cfg)} label art`);
   return doc.save();
@@ -577,6 +596,7 @@ export async function buildMaskPdf(cfg: LabelConfig, assets: Assets): Promise<Ui
     // drawElements so metallic knockouts still win on top of the flood.
     page.drawRectangle({ x: 0, y: 0, width: L.PAGE.w, height: L.PAGE.h, color: toRgb(L.COLORS.maskBlue) });
   }
+  shiftForBleed(page);
   await drawElements(doc, page, fonts, cfg, assets, "mask");
   doc.setTitle(`${displayName(cfg)} white-ink layer`);
   return doc.save();

@@ -4,13 +4,13 @@
 // text copies, which has no PSD equivalent — a layer effect is the parallel).
 import { describe, expect, it } from "vitest";
 import { readPsd } from "ag-psd";
-import { buildPsd, type PsdAssets } from "../src/psd/build";
+import { buildPsd } from "../src/psd/build";
 import { defaultConfig } from "../src/defaults";
-import { assets as pdfAssets } from "./fixtures";
+import { psdAssets as assets } from "./fixtures";
 
-const assets: PsdAssets = { fonts: pdfAssets.fonts, logoSvg: pdfAssets.logoSvg };
-
-/** Every layer in the document, groups flattened. */
+/** Every layer in the document, groups flattened. Deliberately `any`: this
+ *  file's assertions reach deep into ag-psd's layer shape (text runs, vector
+ *  fills, effects) where the published types are stricter than the data. */
 function flat(children: any[] = []): any[] {
   return children.flatMap((l) => [l, ...flat(l.children ?? [])]);
 }

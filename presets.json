@@ -45,6 +45,7 @@
   "render": {
     "cornerRadius": 1.2191157174035747,
     "edgeSoftness": 0.1,
-    "dpi": 600
+    "dpi": 600,
+    "bleedIn": 0.0635
   }
 }

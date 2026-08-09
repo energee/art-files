@@ -5,6 +5,7 @@ import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "./buil
 import type { ByteRef, WireAssets, WireImage, WorkerRequest, WorkerResponse } from "./client";
 import logoSvg from "../assets/logo2025.svg?raw";
 import { loadFonts } from "./fonts";
+import { setBleed } from "../layout";
 
 const scope = self as unknown as {
   onmessage: ((event: MessageEvent<WorkerRequest>) => void) | null;
@@ -58,9 +59,16 @@ function ownBuffer(bytes: Uint8Array): ArrayBuffer {
 }
 
 scope.onmessage = (event) => {
-  const { id, cfg, assets: wire, plates } = event.data;
+  const { id, cfg, assets: wire, plates, bleedIn } = event.data;
   void (async () => {
     try {
+      // This worker holds its OWN copy of layout.ts — a module registry per
+      // thread — so the main thread's setBleed never reached it. Without this
+      // line the preview would be built at the shipped bleed no matter what
+      // the Settings knob says: a silently wrong page size, with the UI's own
+      // readout showing the value the user asked for. Set per build, because
+      // the request is the only thing that carries the value across.
+      setBleed(bleedIn);
       const assets = derefAssets(wire, await loadFonts());
       // Sequential builds keep the worker's transient image memory bounded.
       // A plate the client didn't ask for is skipped and returned null.
