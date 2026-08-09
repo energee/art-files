@@ -228,13 +228,20 @@ const zoomAbout = (
 const MENU_TRIGGER = "px-2 py-1 text-xs font-normal";
 const MENU_ITEMS = "[&_[data-slot=menubar-item]]:text-xs";
 
-/** The five preview views in keys-1–5 order: status-bar label + the command
- *  id that shows it. One list, so the readout, the click-to-cycle, and the
- *  commands can't disagree about what the views are. */
-const VIEW_CYCLE = [
-  ["Standard", "view-standard"], ["Mask", "view-mask"], ["Rendered", "view-rendered"],
-  ["Single Can", "view-can"], ["Four-Pack", "view-pack"],
-] as const;
+/** The five preview views in keys-1–5 order: status-bar label, the command
+ *  id that shows it, and the state that means "this one is current". One
+ *  list, so the readout, the click-to-cycle, and the commands can't disagree
+ *  about what the views are or where each sits in the cycle. Standard's
+ *  predicate absorbs a mid-split compare (split < 100), so cycling from a
+ *  compare lands on Mask. */
+type ViewMode = "2d" | "can" | "pack" | "flat";
+const VIEW_CYCLE: { label: string; id: string; at: (m: ViewMode, split: number) => boolean }[] = [
+  { label: "Standard", id: "view-standard", at: (m, s) => m === "2d" && s < 100 },
+  { label: "Mask", id: "view-mask", at: (m, s) => m === "2d" && s === 100 },
+  { label: "Rendered", id: "view-rendered", at: (m) => m === "flat" },
+  { label: "Single Can", id: "view-can", at: (m) => m === "can" },
+  { label: "Four-Pack", id: "view-pack", at: (m) => m === "pack" },
+];
 
 function download(url: string, name: string) {
   const a = document.createElement("a");
@@ -335,11 +342,12 @@ export default function App() {
   // an orbit. The precise value still reaches `carried` below, which is a ref.
   const [camZoomPct, setCamZoomPct] = useState(100);
   const shownZoomPct = viewMode === "2d" ? Math.round(zoom.z * 100) : camZoomPct;
-  // Where the current view sits in VIEW_CYCLE — a mid-split 2D compare
-  // counts as Standard (index 0), so cycling from it lands on Mask.
-  const viewIndex = viewMode === "2d"
-    ? (split === 100 ? 1 : 0)
-    : { flat: 2, can: 3, pack: 4 }[viewMode];
+  // Where the current view sits in VIEW_CYCLE, and what the status bar calls
+  // it — the one place the "a mid-split compare counts as Standard for
+  // cycling but reads as Compare" rule lives.
+  const viewIndex = VIEW_CYCLE.findIndex((v) => v.at(viewMode, split));
+  const viewLabel = viewMode === "2d" && split > 0 && split < 100
+    ? "Compare" : VIEW_CYCLE[viewIndex].label;
   // Zoom level follows you across views: both sides express it as a multiple
   // of how the view frames itself, so handing the number over is enough. Pan
   // travels with it as a fraction of the visible frame — the 2D pane's px
@@ -765,6 +773,19 @@ export default function App() {
   // the typing gap), and superseded builds bail before allocating anything. So
   // the delay only has to outlast a fast typist's inter-key gap.
   const buildChain = useRef<Promise<void>>(Promise.resolve());
+  /** The texture/mask half of Assets, with the eyes applied by omission: a
+   *  hidden asset simply isn't handed to the build, same as never dropped.
+   *  The ONE place both the eye rule and the byte choice live — the preview
+   *  build spreads eyedAssets(true) (downscaled preview bytes), the export
+   *  build eyedAssets(false) (full-resolution). */
+  const eyedAssets = (preview: boolean) => ({
+    texture: !texture || hiddenLayers.has("background") ? undefined
+      : preview
+        ? { bytes: texture.previewBytes, kind: "png" as const }
+        : { bytes: texture.bytes, kind: texture.kind },
+    maskPng: hiddenLayers.has("mask") ? undefined
+      : preview ? mask?.previewBytes : mask?.bytes,
+  });
   // Everything a plate is built from. Spread into the effect's deps below, so
   // this is the ONE list — a future input added here can't be forgotten in the
   // dep array (which would stop rebuilds) or in the identity check (which
@@ -773,16 +794,6 @@ export default function App() {
   // plates are drawn on, so it is an input to the build exactly like the config
   // is, and the identity check has to see it or a bleed change would be
   // dismissed as "same inputs" and never rebuild.
-  /** The texture/mask eyes work by omission: a hidden asset simply isn't
-   *  handed to the build, same as never dropped. The ONE place the rule
-   *  lives — both the preview and export builds spread this. */
-  const eyedAssets = (
-    tex: { bytes: Uint8Array; kind: "png" | "jpg" } | undefined,
-    maskPng: Uint8Array | undefined,
-  ) => ({
-    texture: hiddenLayers.has("background") ? undefined : tex,
-    maskPng: hiddenLayers.has("mask") ? undefined : maskPng,
-  });
   const inputs = [cfg, texture, mask, collabLeft, collabCenter, hiddenLayers, render.bleedIn] as const;
   // What the last COMPLETED build was made from, so a re-run of this effect
   // that changes none of it doesn't rebuild. needMask is a dependency (the
@@ -806,9 +817,7 @@ export default function App() {
         try {
           const assets = {
             ...(await collabAssets()),
-            ...eyedAssets(
-              texture ? { bytes: texture.previewBytes, kind: "png" as const } : undefined,
-              mask?.previewBytes),
+            ...eyedAssets(true),
             hidden: hiddenLayers,
           };
           // Only the plates that aren't already current. sameInputs means the
@@ -875,9 +884,7 @@ export default function App() {
       // layered handoff is the place to keep them all.)
       const assets: Assets = {
         fonts, logoSvg, ...(await collabAssets()),
-        ...eyedAssets(
-          texture ? { bytes: texture.bytes, kind: texture.kind } : undefined,
-          mask?.bytes),
+        ...eyedAssets(false),
         hidden: hiddenLayers,
       };
       if (which !== "mask") saveBytes(await buildArtPdf(cfg, assets), `${exportBaseName(cfg)}.pdf`);
@@ -1430,11 +1437,10 @@ export default function App() {
                 keys 1–5 run, so this can't drift from the menu (a mid-split
                 Compare counts as Standard, so it advances to Mask). */}
             <button
-              onClick={() => byId(VIEW_CYCLE[(viewIndex + 1) % VIEW_CYCLE.length][1]).run()}
+              onClick={() => byId(VIEW_CYCLE[(viewIndex + 1) % VIEW_CYCLE.length].id).run()}
               title="Current preview view — click for the next (View menu, keys 1–5)"
               className="shrink-0 rounded px-1 py-0.5 text-xs whitespace-nowrap text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
-              View Mode: {split > 0 && split < 100 && viewMode === "2d"
-                ? "Compare" : VIEW_CYCLE[viewIndex][0]}
+              View Mode: {viewLabel}
             </button>
           </div>
         </section>

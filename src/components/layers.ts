@@ -71,32 +71,39 @@ const rowsOf = (group: "beer" | "template" | "collab"): LayerId[] =>
  *  because the row ORDER is also what a shift-click range is resolved
  *  against (see PANEL_ORDER) — the panel and the selection rules have to read
  *  one list, or a range would select rows the user didn't drag over. */
-/** The Collab group's display title — a named constant because behavior
- *  hangs off it (LayersPanel puts the collab on/off switch on this group's
- *  header): renaming the group is one edit, not a silently broken match. */
-export const COLLAB_GROUP_TITLE = "Collab";
+export interface PanelGroup {
+  title: string;
+  rows: LayerId[];
+  /** One-line purpose, shown behind the header's info icon; none = no icon. */
+  info?: string;
+  /** This group's header carries the collab on/off switch. */
+  collab?: true;
+}
 
-/** One-line purpose per group, shown behind the header's info icon. Keyed by
- *  the display title PANEL_GROUPS uses; a group without an entry (Document)
- *  gets no icon. */
-export const GROUP_INFO: Record<string, string> = {
-  Beer: "Changes with every release: the beer's name, style, numbers and copy.",
-  [COLLAB_GROUP_TITLE]:
-    "Partner-brewery block, shown only while the switch is on. Art and styles are kept when it's off.",
-  Template: "Set-once brand elements shared by every label.",
-};
-
-export const PANEL_GROUPS: [string, LayerId[]][] = [
+export const PANEL_GROUPS: PanelGroup[] = [
   // The hideable doc layers (texture, mask) ride along in "Beer": they
   // change per release like the beer elements do, and they carry eyes now —
   // only the unhideable Settings stays under "Document". Still derived from
   // DOC_LAYER_LABELS, so a new doc layer appears without a second edit.
-  ["Beer", [...rowsOf("beer"), ...DOC_LAYERS.filter(isHideable)]],
-  [COLLAB_GROUP_TITLE, rowsOf("collab")],
-  ["Template", rowsOf("template")],
-  ["Document", DOC_LAYERS.filter((d) => !isHideable(d))],
+  {
+    title: "Beer",
+    rows: [...rowsOf("beer"), ...DOC_LAYERS.filter(isHideable)],
+    info: "Changes with every release: the beer's name, style, numbers and copy.",
+  },
+  {
+    title: "Collab",
+    rows: rowsOf("collab"),
+    info: "Partner-brewery block, shown only while the switch is on. Art and styles are kept when it's off.",
+    collab: true,
+  },
+  {
+    title: "Template",
+    rows: rowsOf("template"),
+    info: "Set-once brand elements shared by every label.",
+  },
+  { title: "Document", rows: DOC_LAYERS.filter((d) => !isHideable(d)) },
 ];
 
 /** Every row, flattened in panel order — the sequence a shift-range walks,
  *  so a range crosses group boundaries exactly as the visible list does. */
-export const PANEL_ORDER: LayerId[] = PANEL_GROUPS.flatMap(([, rows]) => rows);
+export const PANEL_ORDER: LayerId[] = PANEL_GROUPS.flatMap((g) => g.rows);

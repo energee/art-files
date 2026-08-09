@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  COLLAB_GROUP_TITLE, DOC_LAYER_LABELS, GROUP_INFO, LAYER_ICONS, PANEL_GROUPS,
+  DOC_LAYER_LABELS, LAYER_ICONS, PANEL_GROUPS,
   isElementId, isHideable, type HideableLayerId, type LayerId,
 } from "./layers";
 import { modsOf, type SelectMods } from "@/selection";
@@ -244,7 +244,7 @@ export function LayersPanel(props: {
           ⇧ click for a range · ⌘ click to add
         </p>
       )}
-      {PANEL_GROUPS.map(([title, rows]) => (
+      {PANEL_GROUPS.map(({ title, rows, info, collab }) => (
         <SidebarGroup key={title}>
           <SidebarGroupLabel className="justify-between">
             <span className="flex items-center gap-1.5">
@@ -253,7 +253,7 @@ export function LayersPanel(props: {
                   header beside its name, not repeated per layer. Turning it
                   off keeps the uploaded art and slot styles; flipping it
                   back restores the label exactly as it was. */}
-              {title === COLLAB_GROUP_TITLE && (
+              {collab && (
                 <Switch
                   aria-label="Collab enabled"
                   checked={props.cfg.collabEnabled}
@@ -264,7 +264,7 @@ export function LayersPanel(props: {
             </span>
             {/* What the group is FOR, one line behind an info icon — the
                 registry comments in elements.ts, surfaced. */}
-            {GROUP_INFO[title] && (
+            {info && (
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -274,7 +274,7 @@ export function LayersPanel(props: {
                     />
                   }
                 />
-                <TooltipContent className="max-w-56">{GROUP_INFO[title]}</TooltipContent>
+                <TooltipContent className="max-w-56">{info}</TooltipContent>
               </Tooltip>
             )}
           </SidebarGroupLabel>

@@ -31,7 +31,7 @@ export interface RenderPageOptions {
 }
 
 type WorkerReply =
-  | { id: number; bitmap: ImageBitmap; width: number; height: number }
+  | { id: number; bitmap: ImageBitmap }
   | { id: number; cancelled: true }
   | { id: number; error: string };
 
@@ -53,6 +53,8 @@ function ensureWorker(): Worker {
     worker.onerror = (e) => {
       for (const [id, resolve] of pending) resolve({ id, error: String(e.message ?? e) });
       pending.clear();
+      // Terminate before dropping, matching client.ts's worker lifecycle.
+      worker?.terminate();
       worker = null;
     };
   }
@@ -93,8 +95,8 @@ export async function renderPdfPage(
   // Painting a mounted canvas blanks it only for this one drawImage — the
   // scratch-canvas swap the main-thread version needed is now free.
   const target = opts.canvas ?? document.createElement("canvas");
-  target.width = r.width;
-  target.height = r.height;
+  target.width = r.bitmap.width;
+  target.height = r.bitmap.height;
   target.getContext("2d")!.drawImage(r.bitmap, 0, 0);
   r.bitmap.close();
   return target;
