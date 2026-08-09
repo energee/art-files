@@ -1,6 +1,6 @@
 # Rulers and guides design
 
-Date: 2026-08-09  
+Date: 2026-08-09
 Status: approved in conversation
 
 ## Goal

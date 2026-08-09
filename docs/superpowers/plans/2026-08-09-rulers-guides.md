@@ -1,6 +1,6 @@
 # Rulers and guides implementation plan
 
-Date: 2026-08-09  
+Date: 2026-08-09
 Spec: `docs/superpowers/specs/2026-08-09-rulers-guides-design.md`
 
 1. Add DOM-free ruler geometry in `src/rulers.ts`: PDF-point/screen conversion,
