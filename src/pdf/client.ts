@@ -30,14 +30,19 @@ export type WorkerRequest = {
   id: number;
   cfg: LabelConfig;
   assets: WireAssets;
+  /** Which plates to build; an unrequested one comes back null. */
+  plates: Plates;
 };
 
+/** The two plates a build can produce, each independently skippable. */
+export type Plates = { art: boolean; mask: boolean };
+
 export type WorkerResponse =
-  | { id: number; art: ArrayBuffer; mask: ArrayBuffer }
+  | { id: number; art: ArrayBuffer | null; mask: ArrayBuffer | null }
   | { id: number; error: string };
 
 type Pending = {
-  resolve: (value: { art: Uint8Array; mask: Uint8Array }) => void;
+  resolve: (value: { art: Uint8Array | null; mask: Uint8Array | null }) => void;
   reject: (reason: Error) => void;
 };
 
@@ -63,7 +68,10 @@ function ensureWorker(): Worker {
     if (!request) return;
     pending.delete(message.id);
     if ("error" in message) request.reject(new Error(message.error));
-    else request.resolve({ art: new Uint8Array(message.art), mask: new Uint8Array(message.mask) });
+    else request.resolve({
+      art: message.art && new Uint8Array(message.art),
+      mask: message.mask && new Uint8Array(message.mask),
+    });
   };
   worker.onerror = (event) => {
     const error = new Error(event.message || "The PDF preview worker stopped unexpectedly.");
@@ -93,10 +101,14 @@ function wireImage(img: CollabImage | null | undefined, attached: number[]): Wir
   return { kind: img.kind, ref: ref(img.bytes, attached) };
 }
 
+/** Build the requested preview plates; a plate left out of `plates` is not
+ *  built and resolves as null. Pass false for one the caller already holds a
+ *  current copy of, or won't display — each is roughly half a rebuild. */
 export function buildPreviewPdfs(
   cfg: LabelConfig,
   assets: PreviewAssets,
-): Promise<{ art: Uint8Array; mask: Uint8Array }> {
+  plates: Plates,
+): Promise<{ art: Uint8Array | null; mask: Uint8Array | null }> {
   const id = ++nextId;
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject });
@@ -106,6 +118,7 @@ export function buildPreviewPdfs(
       const request: WorkerRequest = {
         id,
         cfg,
+        plates,
         assets: {
           texture: assets.texture && {
             kind: assets.texture.kind, ref: ref(assets.texture.bytes, attached),

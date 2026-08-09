@@ -240,7 +240,10 @@ export default function App() {
   );
   // Preview-resolution PDFs for the on-screen compare only; downloads always
   // rebuild at full resolution (see buildFull).
-  const [pdfs, setPdfs] = useState<{ artBytes: Uint8Array; maskBytes: Uint8Array } | null>(null);
+  // maskBytes is null until a build that included the white-ink plate lands
+  // (see needMask): the art plate alone is enough for the default view.
+  const [pdfs, setPdfs] =
+    useState<{ artBytes: Uint8Array; maskBytes: Uint8Array | null } | null>(null);
   const [building, setBuilding] = useState(false);
   const [buildError, setBuildError] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -457,14 +460,43 @@ export default function App() {
     };
   }
 
+  // Is the white-ink plate visible anywhere right now? In the 2D compare it is
+  // clipped away entirely at split 0 (PreviewCompare's clipPath), which is
+  // where a typing session lives; the 3D views always texture with it. False
+  // skips ~40% of every rebuild — the mask build in the worker plus its pdf.js
+  // raster here. A boolean, not `split` itself, so dragging the divider
+  // doesn't re-run the effect once per pointer frame; flipping it to true is
+  // itself a dependency, so the plate is rebuilt the moment it's needed (it
+  // lags one build behind at that instant, the same lag the whole preview
+  // already has).
+  const needMask = viewMode !== "2d" || split > 0;
+
   // Debounced preview regeneration on any input change, at preview resolution
-  // (Loaded.previewBytes). Two guards keep keystroke bursts from OOMing the
-  // tab: builds are serialized through buildChain (the debounce alone can't
-  // stop overlap once a build outlasts the typing gap), and superseded builds
-  // bail before allocating anything.
+  // (Loaded.previewBytes). Short: the two guards below, not the wait, are what
+  // keep keystroke bursts from OOMing the tab — builds are serialized through
+  // buildChain (the debounce alone can't stop overlap once a build outlasts
+  // the typing gap), and superseded builds bail before allocating anything. So
+  // the delay only has to outlast a fast typist's inter-key gap.
   const buildChain = useRef<Promise<void>>(Promise.resolve());
+  // Everything a plate is built from. Spread into the effect's deps below, so
+  // this is the ONE list — a future input added here can't be forgotten in the
+  // dep array (which would stop rebuilds) or in the identity check (which
+  // would silently freeze the preview for that input).
+  const inputs = [cfg, texture, mask, collabLeft, collabCenter, hiddenLayers] as const;
+  // What the last COMPLETED build was made from, so a re-run of this effect
+  // that changes none of it doesn't rebuild. needMask is a dependency (the
+  // plate has to appear when it's first needed), which without this made every
+  // trip between the standard and mask views rebuild both plates from
+  // unchanged inputs. Identity comparison is enough: `update` structuredClones
+  // cfg, and each asset/hidden-set edit replaces its object.
+  const built = useRef<{ inputs: typeof inputs; withMask: boolean } | null>(null);
   useEffect(() => {
     if (blocked) return;
+    const done = built.current;
+    const sameInputs = !!done && done.inputs.every((v, i) => v === inputs[i]);
+    // Already on screen and still current: the mask half only forces a rebuild
+    // when it's newly needed and the last build skipped it.
+    if (sameInputs && (!needMask || done.withMask)) return;
     let stale = false;
     const timer = setTimeout(() => {
       buildChain.current = buildChain.current.then(async () => {
@@ -477,9 +509,24 @@ export default function App() {
             maskPng: mask?.previewBytes,
             hidden: hiddenLayers,
           };
-          const { art, mask: maskPdf } = await buildPreviewPdfs(cfg, assets);
+          // Only the plates that aren't already current. sameInputs means the
+          // art on screen was built from exactly these inputs, so the mask
+          // top-up that a first trip to the mask view triggers rebuilds the
+          // mask alone — and leaving artBytes' identity untouched is what
+          // keeps that trip from re-rasterizing the art through pdf.js too.
+          const { art, mask: maskPdf } =
+            await buildPreviewPdfs(cfg, assets, { art: !sameInputs, mask: needMask });
           if (stale) return;
-          setPdfs({ artBytes: art, maskBytes: maskPdf });
+          // A skipped plate keeps the last one it built rather than blanking
+          // the canvas: nothing is showing it, and if something starts to,
+          // stale-by-one-build beats an empty frame while the rebuild runs.
+          // (art is only ever skipped when a previous build already landed one,
+          // so the `?? old` can't leave us without an art plate.)
+          setPdfs((old) => {
+            const artBytes = art ?? old?.artBytes;
+            return artBytes ? { artBytes, maskBytes: maskPdf ?? old?.maskBytes ?? null } : old;
+          });
+          built.current = { inputs, withMask: needMask };
           setBuildError("");
         } catch (err) {
           if (!stale) setBuildError(String(err));
@@ -487,9 +534,9 @@ export default function App() {
           if (!stale) setBuilding(false);
         }
       });
-    }, 600);
+    }, 150);
     return () => { stale = true; clearTimeout(timer); };
-  }, [cfg, texture, mask, collabLeft, collabCenter, blocked, hiddenLayers]);
+  }, [...inputs, blocked, needMask]);
 
   // Revoking immediately can abort a large download, so each URL lives until
   // the NEXT export batch — a timer would instead pin a full Blob copy of
@@ -796,7 +843,14 @@ export default function App() {
                 viewMode). Selection box + click-to-select apply to 2D only. */}
             <div className={viewMode === "2d" ? "flex min-h-0 min-w-0 flex-1" : "hidden"}>
             <PreviewCompare ref={previewRef}
-              artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
+              // Nulled while a 3D view is up: this component stays mounted but
+              // display:none, and a hidden canvas rasterizes just as expensively
+              // as a visible one — that was two wasted pdf.js passes per rebuild
+              // on top of CanView's own. useRenderPdf no-ops on null, so the
+              // canvases keep their last painting and coming back to 2D flips
+              // the identity and repaints once.
+              artBytes={viewMode === "2d" ? pdfs?.artBytes ?? null : null}
+              maskBytes={viewMode === "2d" ? pdfs?.maskBytes ?? null : null}
               cfg={cfg} measure={measure} collab={collabSlots}
               // The preview knows only renderer elements; a selected document
               // layer (background/mask) shows no selection box there.
