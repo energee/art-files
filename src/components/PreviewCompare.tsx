@@ -28,6 +28,50 @@ const CORNER_CLASS = {
  *  outline, in screen px. */
 const SEL_PAD = 4;
 
+/** The trim guide's stroke: alternating black and white dashes, one 1px line
+ *  per edge — the marquee convention, for the reason the convention exists.
+ *
+ *  Contrast against arbitrary label art is the whole problem here: the guide
+ *  crosses whatever the texture happens to be. A single tone always has a
+ *  ground it vanishes into (the old red at 70% fell to 1.06:1, invisible), and
+ *  so does pure inversion, which maps mid-grey back onto itself (1.53:1 over
+ *  grey 112 — and rock textures live right there). Black and white are the one
+ *  pair with no shared blind spot: a ground can sit near one or the other,
+ *  never both, so the better of the two always clears 4.58:1 — the floor, at
+ *  the crossover around L=0.18. Measured 4.60:1 worst case over a real
+ *  texture, which is that floor. */
+/** Bleed per side, in label-space points: the gap between the trimmed art box
+ *  and the printed page. The die cuts at ART, so the sheet's own corners are
+ *  the die's, offset outward by this much. */
+const BLEED = ART.x;
+
+/** A circular corner of `r` points, expressed against a box of `w` x `h`
+ *  points. Percentages rather than px so the corner tracks the preview at any
+ *  on-screen size (same reason pageBox works in percentages); the two-value
+ *  `x / y` form keeps it circular in page space instead of letting each axis
+ *  scale to its own edge, which is what a single percentage would do. */
+const cornerRadius = (r: number, w: number, h: number): React.CSSProperties => ({
+  borderRadius: `${(r / w) * 100}% / ${(r / h) * 100}%`,
+});
+
+/** The die-cut radius in label-space points. The knob is a share of the
+ *  label's short side (see presets.ts), and the label is the trimmed piece —
+ *  so it measures against ART, not the bleed-inclusive page, and matches the
+ *  same computation the 3D die uses in canScene. */
+const dieRadius = (pct: number) => (pct / 100) * Math.min(ART.w, ART.h);
+
+const DASH = 6; // px per tone, so the cycle repeats every 2 * DASH
+const bleedStroke = (): React.CSSProperties => {
+  const cycle = (dir: string) =>
+    `repeating-linear-gradient(${dir}, #000 0 ${DASH}px, #fff ${DASH}px ${DASH * 2}px)`;
+  return {
+    backgroundImage: [cycle("90deg"), cycle("90deg"), cycle("180deg"), cycle("180deg")].join(","),
+    backgroundSize: "100% 1px, 100% 1px, 1px 100%, 1px 100%",
+    backgroundPosition: "0 0, 0 100%, 0 0, 100% 0",
+    backgroundRepeat: "no-repeat",
+  };
+};
+
 /** An overlay box positioned in page space: label-space points in, CSS
  *  percentages of the preview frame out, so it tracks the container at any
  *  on-screen size without its own resize handling. `pad` grows the box by n
@@ -113,11 +157,19 @@ export const PreviewCompare = forwardRef<
     /** Draw the trim guide at the edge of the art box — 38px of bleed at
      *  600dpi on every side. Preview-only; never part of the PDFs. */
     bleed?: boolean;
+    /** Die-cut corner radius, % of the label's short side (the Settings
+     *  layer's knob, shared with the 3D views). Rounds the sheet and the trim
+     *  guide so the 2D preview shows the shape that actually gets cut. */
+    cornerRadiusPct: number;
   }
 >(function PreviewCompare(
-  { artBytes, maskBytes, cfg, measure, collab, selected, onPick, onSplit, bleed },
+  { artBytes, maskBytes, cfg, measure, collab, selected, onPick, onSplit, bleed, cornerRadiusPct },
   ref,
 ) {
+  // The die at the trim line, and the sheet's own corners as that die offset
+  // out by the bleed — an outward offset of a rounded rect grows its radius by
+  // the offset, so the two edges stay concentric.
+  const dieR = dieRadius(cornerRadiusPct);
   const artCanvas = useRef<HTMLCanvasElement>(null);
   const maskCanvas = useRef<HTMLCanvasElement>(null);
   const leftPanel = useRef<PanelImperativeHandle>(null);
@@ -167,8 +219,11 @@ export const PreviewCompare = forwardRef<
 
   return (
     <div
-      className="relative m-auto w-full max-w-[900px] overflow-hidden rounded-md border border-border bg-input"
-      style={{ aspectRatio: `${PAGE.w} / ${PAGE.h}` }}
+      className="relative m-auto w-full max-w-[900px] overflow-hidden border border-border bg-input"
+      style={{
+        aspectRatio: `${PAGE.w} / ${PAGE.h}`,
+        ...cornerRadius(dieR + BLEED, PAGE.w, PAGE.h),
+      }}
       onClick={onClick}
     >
       <canvas ref={artCanvas} className="absolute inset-0 h-full w-full" />
@@ -201,9 +256,15 @@ export const PreviewCompare = forwardRef<
           600dpi. Percentages off PAGE so it tracks the wrapper at any size,
           same trick as the selection box below. */}
       {bleed && (
+        // Drawn as four gradient edges rather than a border: the stroke has to
+        // cycle three tones to stay legible over any art (see bleedStroke).
         <div
-          className="pointer-events-none absolute border border-dashed border-destructive/70"
-          style={pageBox(ART.x, ART.y, ART.w, ART.h)}
+          className="pointer-events-none absolute"
+          style={{
+            ...pageBox(ART.x, ART.y, ART.w, ART.h),
+            ...bleedStroke(),
+            ...cornerRadius(dieR, ART.w, ART.h),
+          }}
         />
       )}
       {selBoxes.map((b) => (

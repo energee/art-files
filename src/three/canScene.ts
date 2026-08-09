@@ -54,9 +54,18 @@ const MATTE_ROUGHNESS = 0.8;
 const METALLIC_ROUGHNESS = 0.33;
 /** Bump height of the foil layer (soft mask as bumpMap). */
 const LAYER_DEPTH = 0.02;
-/** App's dark theme background — scene background stays this flat color;
- *  the HDRI is lighting-only. */
-const BACKGROUND = 0x0e0f11;
+// The stage has no scene.background of its own: the renderer clears
+// transparent (alpha: true below) and CanView's container paints the flat
+// backdrop with the app's own --background token. One definition of the colour
+// instead of a copy of the dark hex here, and light/dark/system all follow for
+// free — index.css resolves the token with light-dark(), so an OS theme change
+// repaints live with no listener and nothing to tell three.js about.
+// The HDRI stays lighting-only either way.
+
+/** Ambient intensity per view. The flat label is a single plane angled away
+ *  from the key, so it needs the extra fill to read at true tone; the cans
+ *  would only flatten under it. */
+const AMBIENT = { can: 0.4, flat: 1.5 };
 
 /** Same-size copy of a canvas with one CSS filter applied during the blit. */
 function filteredCopy(canvas: HTMLCanvasElement, filter: string): HTMLCanvasElement {
@@ -137,12 +146,12 @@ export class CanScene {
   /** Textures applied before the async GLTF load finished — replayed after. */
   private pendingTextures: LabelTextures | null = null;
   private disposed = false;
+  private ambient!: THREE.AmbientLight;
   private renderRequested = false;
   private raf: number | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
-    this.scene.background = new THREE.Color(BACKGROUND);
 
     const w = container.clientWidth || 1;
     const h = container.clientHeight || 1;
@@ -177,7 +186,14 @@ export class CanScene {
 
   // Ambient + warm key + cool fill + white rim, captiva's positions/tints.
   private setupLights() {
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.15));
+    // Flat fill over the HDRI's image-based light, held as a field because the
+    // flat view needs more of it than the cans do (see AMBIENT / setMode): a
+    // cylinder always turns a band square into the key, while the flat label
+    // is one plane tilted away from it, so the same rig leaves the plane lit
+    // only at a grazing angle and it reads grey. Ambient has no direction, so
+    // it is the one lever that lifts the plane without re-lighting the can.
+    this.ambient = new THREE.AmbientLight(0xffffff, AMBIENT.can);
+    this.scene.add(this.ambient);
     const key = new THREE.DirectionalLight(0xfff8f0, 3.5);
     key.position.set(1.9, 1.8, 1.5);
     const fill = new THREE.DirectionalLight(0xf0f4ff, 0.8);
@@ -484,6 +500,7 @@ export class CanScene {
    *  for a different view IS asking to be shown it from the front. */
   setMode(mode: CanSceneMode) {
     this.mode = mode;
+    this.ambient.intensity = mode === "flat" ? AMBIENT.flat : AMBIENT.can;
     // Frame first: applyMode may build the 4-pack, which lays out against the
     // azimuth frameCamera settles on.
     this.frameCamera();

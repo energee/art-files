@@ -857,7 +857,9 @@ export default function App() {
               selected={elementSelection}
               onPick={pick}
               onSplit={setSplit}
-              bleed={bleed} />
+              bleed={bleed}
+              // Same Settings knob the 3D die uses, so both previews cut alike.
+              cornerRadiusPct={render.cornerRadius} />
             </div>
             {viewMode !== "2d" && (
               <CanView artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
