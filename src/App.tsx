@@ -1,12 +1,14 @@
 // App.tsx — owns all state: LabelConfig, texture/mask assets (full-res +
 // preview-res pairs), validation, debounced preview-resolution PDF builds,
-// overlay-compare preview, and on-demand full-resolution exports. Mirrors
-// the old main.ts wiring, componentized.
+// overlay-compare preview, and on-demand full-resolution exports, plus
+// whole-project save/open (.label — see labelfile.ts). Mirrors the old
+// main.ts wiring, componentized.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CollabSlot, Fill, LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
-import { defaultConfig, exportBaseName } from "@/defaults";
+import { defaultConfig, exportBaseName, parseConfigFile } from "@/defaults";
+import { packLabel, unpackLabel } from "@/labelfile";
 import { useHistory } from "@/history";
 import { validateUpc } from "@/upc";
 import { prepareMaskForPdf } from "@/maskimage";
@@ -63,7 +65,10 @@ import logoSvg from "@/assets/logo2025.svg?raw";
 
 /** bytes = full print resolution (exports); previewBytes = downscaled PNG the
  *  debounced preview builds use, so keystroke-driven rebuilds never churn the
- *  print-size image (a burst of those OOMs the tab). */
+ *  print-size image (a burst of those OOMs the tab). Neither is necessarily
+ *  the original file bytes: the mask's `bytes` is recolored (see onMask), so
+ *  it carries an extra `srcBytes` — the untouched upload — for Save Project
+ *  to round-trip without double-processing on reload. */
 type Loaded = { bytes: Uint8Array; previewBytes: Uint8Array; name: string; previewUrl: string };
 
 /** A loaded collab logo: what the renderer needs, plus what the drop zone
@@ -281,7 +286,10 @@ export default function App() {
   // resolves; PreviewCompare skips hit-testing rather than guess with it.
   const [measure, setMeasure] = useState<Measure | null>(null);
   const [texture, setTexture] = useState<(Loaded & { kind: "png" | "jpg" }) | null>(null);
-  const [mask, setMask] = useState<(Loaded & { error?: string }) | null>(null);
+  // srcBytes: the original upload, before prepareMaskForPdf recolors it — the
+  // bytes Save Project writes, so Open Project doesn't recolor an
+  // already-recolored mask.
+  const [mask, setMask] = useState<(Loaded & { error?: string; srcBytes: Uint8Array }) | null>(null);
   // Collab logos. Unlike the texture and mask these need no preview-resolution
   // twin: they are at most a 70pt mark, so the same bytes serve the preview
   // build and the print export.
@@ -537,6 +545,8 @@ export default function App() {
     });
   };
   const presetsInput = useRef<HTMLInputElement>(null);
+  // File → Open Project…'s hidden picker, mirroring presetsInput's pattern.
+  const openRef = useRef<HTMLInputElement>(null);
   // The read-only "View presets" dialog (File menu / ⌘K).
   const [presetsOpen, setPresetsOpen] = useState(false);
   const previewRef = useRef<PreviewCompareHandle>(null);
@@ -657,6 +667,7 @@ export default function App() {
   }
 
   async function onMask(f: File) {
+    const srcBytes = new Uint8Array(await f.arrayBuffer());
     const canvas = await decodeToCanvas(f);
     const ctx = canvas.getContext("2d")!;
     const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -671,6 +682,7 @@ export default function App() {
       name: f.name,
       previewUrl,
       error: check.ok ? undefined : check.error,
+      srcBytes,
     });
   }
 
@@ -881,6 +893,51 @@ export default function App() {
   // Shared by the sidebar "Export PDFs" button and the ⌘K palette action.
   const exportPdfs = () => void buildFull("both");
 
+  /** File → Save Project…: everything needed to reopen this label — config
+   *  plus original image bytes — zipped as <beerName>.label (see labelfile.ts). */
+  function saveProject() {
+    const enc = (s: string) => new TextEncoder().encode(s);
+    const collabAsset = (c: CollabFile | null) =>
+      c ? { name: c.name, bytes: c.image.kind === "svg" ? enc(c.image.svg) : c.image.bytes } : undefined;
+    const zip = packLabel(cfg, {
+      texture: texture ? { name: texture.name, bytes: texture.bytes } : undefined,
+      mask: mask ? { name: mask.name, bytes: mask.srcBytes } : undefined,
+      collabLeft: collabAsset(collabLeft),
+      collabCenter: collabAsset(collabCenter),
+    });
+    startSaveBatch();
+    saveBytes(zip, `${exportBaseName(cfg)}.label`, "application/zip");
+  }
+
+  /** File → Open Project…: unzip a .label, run its config through the same
+   *  forgiving parseConfigFile path saved configs use, then feed each embedded
+   *  image through the exact handler a manual drop uses so previews, mask
+   *  polarity, and object-URL lifecycle behave identically. Slots absent from
+   *  the file are cleared: opening a project is a full restore, not a merge. */
+  async function openProject(f: File) {
+    let unpacked: ReturnType<typeof unpackLabel>;
+    let config: LabelConfig;
+    try {
+      unpacked = unpackLabel(new Uint8Array(await f.arrayBuffer()));
+      config = parseConfigFile(unpacked.json);
+    } catch (err) {
+      window.alert(`Could not open ${f.name}: ${err instanceof Error ? err.message : err}`);
+      return;
+    }
+    setCfg(() => config);
+    clearLoaded(setTexture);
+    clearLoaded(setMask);
+    clearLoaded(setCollabLeft);
+    clearLoaded(setCollabCenter);
+    const toFile = (a: { name: string; bytes: Uint8Array }) =>
+      new File([a.bytes as unknown as BlobPart], a.name);
+    const { texture: t, mask: m, collabLeft: l, collabCenter: c } = unpacked.assets;
+    if (t) void onTexture(toFile(t));
+    if (m) void onMask(toFile(m));
+    if (l) onCollab("left", toFile(l));
+    if (c) onCollab("center", toFile(c));
+  }
+
   /** The PSD's texture layer needs raw RGBA at document size — PSD layers
    *  hold pixels 1:1, so the cover-fit happens here rather than in the
    *  builder. Only run on an explicit export, never in the preview loop:
@@ -970,6 +1027,8 @@ export default function App() {
   const twoD = viewMode === "2d";
   const guideEdit = twoD && showGuides;
   const commands: Command[] = [
+    { id: "project-open", label: "Open Project…", run: () => openRef.current?.click() },
+    { id: "project-save", label: "Save Project…", run: saveProject },
     // ⌘E exports the PDFs, ⇧⌘E the PSDs — the whole-deliverable runs. The
     // single-plate variants stay menu-only: naming six distinct combos costs
     // more than it saves.
@@ -1051,6 +1110,15 @@ export default function App() {
             <MenubarMenu>
               <MenubarTrigger className={MENU_TRIGGER}>File</MenubarTrigger>
               <MenubarContent align="start" className={MENU_ITEMS}>
+                {/* Project save/load first — the whole label, not just a
+                    deliverable. */}
+                <MenubarItem onClick={byId("project-open").run}>
+                  {byId("project-open").label}
+                </MenubarItem>
+                <MenubarItem onClick={byId("project-save").run}>
+                  {byId("project-save").label}
+                </MenubarItem>
+                <MenubarSeparator />
                 {/* Deliverables first, both-at-once first within each format:
                     that is the common run. !pdfs is the mid-build state, so
                     only the PDF items wait on it — the PSD path rebuilds from
@@ -1173,6 +1241,12 @@ export default function App() {
           {buildError && <span className="text-xs text-destructive">{buildError}</span>}
           <input ref={presetsInput} type="file" accept="application/json" hidden
             onChange={(e) => e.target.files?.[0] && void importPresets(e.target.files[0])} />
+          <input ref={openRef} type="file" accept=".label" className="hidden"
+            onChange={(e) => {
+              const f = e.currentTarget.files?.[0];
+              e.currentTarget.value = "";
+              if (f) void openProject(f);
+            }} />
         </header>
       <div className="flex min-h-0 flex-1">
         <section className="flex min-w-0 flex-1 flex-col">
