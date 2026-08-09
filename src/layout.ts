@@ -128,7 +128,15 @@ export function runsWidth<T extends { text: string }>(
 }
 
 // Left column (values measured from the Labradorite reference PDF) -------
-export const LEFT_X = 24.9;
+/** Text origin for every left-column element — volume, abv, the description
+ *  and its header, and the collab lead-in and logo slot. Sits ON the 0.25in
+ *  safe margin (ART.x + 18), so the column is square with the guide the
+ *  preview draws. The reference PDF had it at 24.9, which left the column
+ *  2.65pt inside the margin while the QR plate below it sat 0.44pt inside —
+ *  two different left edges in one column. Ink starts a hair right of this by
+ *  each glyph's own side bearing; the origin is what's aligned, because the
+ *  description is user text and its first glyph can be anything. */
+export const LEFT_X = 22.56;
 export const VOLUME = { x: LEFT_X, baseline: 29.37, size: 9 };
 export const ABV = { x: LEFT_X, baseline: 40.17, size: 9 };
 export const DESC_HEADER = { x: LEFT_X, baseline: 60.56, size: 9 };
@@ -160,7 +168,9 @@ export function collabLeftFlow(descLineCount: number) {
 }
 
 // Center column ----------------------------------------------------------
-export const WORDMARK = { cx: CENTER_X, baseline: 38.23, size: 22, text: "Lolev Beer" };
+// baseline 38.84, not the reference's 38.23: the cap tops of "Lolev Beer" then
+// sit on the 0.25in top margin instead of 0.61pt above it.
+export const WORDMARK = { cx: CENTER_X, baseline: 38.84, size: 22, text: "Lolev Beer" };
 export const LOGO = { cx: CENTER_X, cy: 183, w: 33.5 }; // h follows the SVG aspect
 /** logo2025.svg's viewBox aspect (0 0 480 525) — height per unit width. The
  *  renderers derive this live via parseLogo; the hit-tester (no SVG in hand)
@@ -168,7 +178,9 @@ export const LOGO = { cx: CENTER_X, cy: 183, w: 33.5 }; // h follows the SVG asp
  *  alongside the file. */
 export const LOGO_ASPECT = 525 / 480;
 export const NAME = { cx: CENTER_X, baseline: 323.28, size: 15.83 };
-export const STYLE_LINE = { cx: CENTER_X, baseline: 344.6, size: 12.18 };
+// baseline 343.42, not the reference's 344.6: the deepest descender then rests
+// on the 0.25in bottom margin instead of 1.18pt below it.
+export const STYLE_LINE = { cx: CENTER_X, baseline: 343.42, size: 12.18 };
 
 /** The resolution the px-denominated DESIGN values were authored against.
  *  Pinned forever, and deliberately NOT the Settings knob below: a stroke
@@ -203,20 +215,53 @@ setOutputDpi(DESIGN_DPI);
 export const DEFAULT_STROKE_PX = 15;
 
 // QR (bottom left; stroke width comes from cfg.qrStrokeWidth) ------------
-export const QR = { x: 23, yTop: 289, size: 59 };
+/** Squared to the safe margins: x shares LEFT_X's left edge, and yTop is set
+ *  so the plate's bottom (yTop + size) lands exactly on the bottom margin
+ *  (ART.y + ART.h - 18 = 346.56). The reference had 23/289, which hung the
+ *  plate 1.44pt past that margin. */
+export const QR = { x: LEFT_X, yTop: 287.56, size: 59 };
 
 // Right rotated column (text rotated 90deg CCW, reads bottom-to-top) -----
 // x is the baseline's vertical line (glyphs extend to its RIGHT);
 // yStart is where the text begins (toward the label bottom).
-export const HANDLE_ADDR = { x: 505, yStart: 346.28, size: 13.87 };
-// maxLen 330 wraps the warning to the reference's exact 3 columns.
-export const WARNING = { x: 516.62, yStart: 344.56, size: 6.06, leading: 7, maxLen: 330 };
+// Size 13.45, down from the reference's 13.87, so the run spans the safe area
+// exactly instead of overshooting it by 9.44pt. Three things make its drawn
+// length longer than the glyphs alone: the inline **handle** run sets in Bold,
+// the element ships tracked at 0.38, and the outer stroke paints 1.8pt beyond
+// the ink at each end. yStart (the run's bottom) is one stroke width inside the
+// bottom margin for the same reason. Re-solve with scripts/check-margins.mts if
+// the text, the tracking or the default stroke changes.
+export const HANDLE_ADDR = { x: 505, yStart: 345.74, size: 13.45 };
+// Size 5.95, down from the reference's 6.06, so the paragraph still falls into
+// the reference's 3 columns at the narrower maxLen below. This is a threshold,
+// not a preference: at 6.0 the same text needs a 4th column, and that column
+// would land at x 537.62, inside the barcode plate at 537.13.
+// yStart is the run's BOTTOM (the text reads bottom-to-top). drawJustifiedRotated
+// stretches every column to exactly maxLen, so all three share a top and a
+// bottom edge by construction rather than by measurement — the only question is
+// where those edges land. maxLen is the safe span less the outer stroke at each
+// end, and yStart is one stroke inside the bottom margin, which puts the drawn
+// ink (stroke included) exactly on both guides. Aiming the GLYPHS at the guides
+// instead leaves the stroke hanging 1.8pt over each one.
+export const WARNING = {
+  x: 516.62, yStart: 344.76, size: 5.95, leading: 7,
+  maxLen: ART.h - 36 - 2 * DEFAULT_STROKE_PX * PX,
+};
 // Measured off the reference PDF via `pdftotext -bbox`: the glyph band runs
 // x 539.56-569.87 and pdftotext reports the full font box (ascender 1.05em +
 // descender 0.35em = 1.40em), so size = 30.31/1.40 = 21.65 and the baseline
 // sits 1.05em in from xMin. yStart matches the reference's 149.00 already.
 // Size later reduced 1.5pt from the measured value by request (2026-08).
-export const STORE_COLD = { x: 562.3, yStart: 149, size: 20.15 };
+// x 562.42, not the measured 562.3: squared to the right margin like the rest
+// of the layout. All caps, so the only ink past the rotated baseline is the
+// 0.14pt by which O and C overshoot it — hence 0.14 short of the margin's
+// 562.56, which lands that overshoot exactly on the guide.
+// yStart 157.03, not the reference's 149: at the reference value the run's top
+// sat 8.03pt past the top margin, because its 1.25 tracking adds 11.25pt of
+// length that the size alone doesn't show. Moved down so its top lands on the
+// guide, level with Info's and the warning's. Unstroked, unlike its neighbours,
+// so nothing reaches past the ink here.
+export const STORE_COLD = { x: 562.42, yStart: 157.03, size: 20.15 };
 
 // Barcode (right edge, rotated 90deg CCW: bars run horizontally) ---------
 // Proportions are JsBarcode's UPC-A rendering, so this matches the
@@ -255,9 +300,18 @@ const UPC_DEPTH = UPC_DEPTH_MODULES * UPC_MOD;
 // at 600dpi, and were then nudged 3.25pt up and right by hand; x still clears
 // the warning's third column (glyphs end ~532.7) — with room to spare now,
 // where at the reference position the halo just overlapped it.
+// yTop 232.19, not the reference's 237.23: the plate's bottom (yTop + h) then
+// lands on the 0.25in bottom margin rather than 5.04pt past it. x is NOT
+// squared to the right margin — see the note above it.
 export const BARCODE = {
+  // Squaring this to the right margin would mean x = 530.83 (the halo, not the
+  // plate, is the ink edge). That puts the halo's left at 528.98, overlapping
+  // the warning's third column, whose ink ends at 531.49. Pulling the barcode
+  // in therefore requires moving the whole rotated info column left with it,
+  // which is a composition change rather than a squaring — left alone
+  // deliberately, at 6.30pt past the right margin measured to the halo.
   x: 537.13,
-  yTop: 237.23,
+  yTop: 232.19,
   h: (UPC_UNITS.modules + 2 * UPC_UNITS.quiet) * UPC_MOD,
   /** White-ink margin around the symbol; the reference plate is exactly the
    *  symbol's depth, so there is none. */

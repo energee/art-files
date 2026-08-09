@@ -1,7 +1,8 @@
 // rulers.test.ts — ruler conversion, tick-density, and locked-guide geometry.
 import { describe, expect, it } from "vitest";
 import {
-  ART, DEFAULT_STROKE_PX, DESIGN_DPI, PAGE, PSD_DOC, PX, setOutputDpi,
+  ART, BARCODE, DEFAULT_STROKE_PX, DESIGN_DPI, LEFT_X, PAGE, PSD_DOC, PX, QR,
+  setOutputDpi, WARNING,
 } from "../src/layout";
 import {
   DEFAULT_MARGIN_PT, layoutGuides, majorStep, nextRulerUnit, pointToScreen,
@@ -95,5 +96,35 @@ describe("preview rulers", () => {
     expect(nextRulerUnit("in")).toBe("pt");
     expect(nextRulerUnit("pt")).toBe("px");
     expect(nextRulerUnit("px")).toBe("in");
+  });
+
+  // The left column and the two code plates were squared to these guides (see
+  // LEFT_X, QR and BARCODE in layout.ts). Only edges that are pure geometry are
+  // asserted — a text element's ink edge needs real font metrics, so the
+  // wordmark's and style line's baselines were set by measurement instead.
+  // Deliberately NOT asserted: BARCODE.x, which stays 6.30pt past the right
+  // margin because pulling its halo in would overlap the warning's third
+  // column.
+  it("squares the left column and the code plates to the margins", () => {
+    const { verticalMargins: [left], horizontalMargins: [, bottom] } =
+      layoutGuides(DEFAULT_MARGIN_PT);
+    expect(LEFT_X).toBeCloseTo(left, 2);
+    expect(QR.x).toBeCloseTo(left, 2);
+    expect(QR.yTop + QR.size).toBeCloseTo(bottom, 2);
+    expect(BARCODE.yTop + BARCODE.h).toBeCloseTo(bottom, 2);
+  });
+
+  // The warning's columns are justified to exactly maxLen, so their DRAWN
+  // extent is maxLen plus the outer stroke, which pdf/build.ts paints beyond
+  // the ink at both ends. Aiming maxLen at the full span therefore hangs the
+  // stroke over both guides — the run has to be the span less one stroke width
+  // at each end, starting one stroke inside the bottom margin. layout.ts
+  // spells the margin as the literal 36 because importing DEFAULT_MARGIN_PT
+  // would be circular; this is what stops the two spellings drifting.
+  it("fits the warning's drawn ink, stroke included, between the margins", () => {
+    const [top, bottom] = layoutGuides(DEFAULT_MARGIN_PT).horizontalMargins;
+    const stroke = DEFAULT_STROKE_PX * PX;
+    expect(WARNING.maxLen + 2 * stroke).toBeCloseTo(bottom - top, 6);
+    expect(WARNING.yStart + stroke).toBeCloseTo(bottom, 6);
   });
 });

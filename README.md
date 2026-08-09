@@ -142,7 +142,12 @@ current. The 2D View menu also controls trim-relative rulers and preview-only
 guides. Ruler zero sits at the trimmed art's top-left (so bleed reads
 negative). The full ruler-corner button displays the current unit and opens a
 popover that switches inches/points/600-DPI pixels and edits the safe margin
-inset. Locked margin and center guides derive
+inset. `npx tsx scripts/check-margins.mts` reports every rotated element's
+drawn extent against those guides and solves for the constants that make a run
+span them exactly — it counts what `hittest.ts` does not (real glyph ink rather
+than the em box, the per-run face, letter-spacing, and the outer stroke, which
+paints beyond the ink at both ends), which is what the layout was squared to.
+Locked margin and center guides derive
 from the 8x5in trim box; drag from either ruler to add a manual guide, drag one
 back into a ruler to remove it, press Delete while it is focused, or clear them
 from View. The Guides toggle hides or restores all guide types together without
