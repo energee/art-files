@@ -33,7 +33,7 @@ import {
 } from "@/selection";
 import { CommandMenu, shortcutOf, type Command } from "@/components/CommandMenu";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
-import { Rulers } from "@/components/Rulers";
+import { Rulers, RulerSettings } from "@/components/Rulers";
 import { CanView, type CanViewHandle } from "@/components/CanView";
 import {
   DEFAULT_MARGIN_PT, type GuideAxis, type ManualGuide, type RulerUnit,
@@ -1102,7 +1102,7 @@ export default function App() {
             onChange={(e) => e.target.files?.[0] && void importPresets(e.target.files[0])} />
         </header>
       <div className="flex min-h-0 flex-1">
-        <section className="flex min-w-0 flex-1 flex-col p-3">
+        <section className="flex min-w-0 flex-1 flex-col">
           {/* overflow-hidden is what makes the pane the window the zoomed
               preview is seen through; without it the scaled label would spill
               over the layers panel and the inspector. */}
@@ -1179,10 +1179,10 @@ export default function App() {
             </div>
             {viewMode === "2d" && (
               <Rulers paneRef={previewPane} previewRef={previewRef} transform={zoom}
-                showRulers={showRulers} unit={rulerUnit} onUnitChange={setRulerUnit}
+                showRulers={showRulers} unit={rulerUnit}
                 guidesEnabled={showGuides} showMargins={showMargins} showCenter={showCenter}
                 showManual={showManualGuides} marginPt={marginPt}
-                onMarginChange={setMarginPt} manual={manualGuides}
+                manual={manualGuides}
                 onAddManual={addManualGuide} onMoveManual={moveManualGuide}
                 onRemoveManual={removeManualGuide} />
             )}
@@ -1226,10 +1226,7 @@ export default function App() {
               3D views read their camera dolly, both expressed against how the
               view frames itself, so one number means the same thing in all
               four. Left-aligned, under the preview frame's left edge. */}
-          {/* Same card shade as the left sidebar, and bled past the section's
-              p-3 so it reaches the pane edges — a floating rounded pill left a
-              gap of app background on all three sides. */}
-          <div className="-mx-3 -mb-3 mt-3 flex h-8 shrink-0 items-center bg-sidebar px-2">
+          <div className="flex h-8 shrink-0 items-center overflow-x-auto border-t border-border bg-sidebar px-2">
             {/* Readout and control in one: it tracks the gesture while idle,
                 and typing a percentage over it jumps there — 100 is the way
                 back, so no separate reset button. In 3D that moves the dolly
@@ -1249,6 +1246,10 @@ export default function App() {
               aria-label="Zoom percentage"
               className="w-10 rounded bg-transparent py-0.5 text-right text-xs tabular-nums text-muted-foreground outline-none hover:text-foreground focus:text-foreground" />
             <span className="text-xs text-muted-foreground">%</span>
+            {viewMode === "2d" && (
+              <RulerSettings unit={rulerUnit} onUnitChange={setRulerUnit}
+                marginPt={marginPt} onMarginChange={setMarginPt} />
+            )}
           </div>
         </section>
         {/* Right inspector: a shadcn Sheet driven by the selection — open

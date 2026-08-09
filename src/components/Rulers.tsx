@@ -12,7 +12,6 @@ import {
 import type { PreviewCompareHandle } from "@/components/PreviewCompare";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 const RULER_SIZE = 20;
@@ -30,27 +29,63 @@ interface Geometry {
 
 type Drag = { axis: GuideAxis; id?: number; point: number };
 
+/** Measurement controls shown beside zoom in the fixed preview toolbar. */
+export function RulerSettings(props: {
+  unit: RulerUnit;
+  onUnitChange: (unit: RulerUnit) => void;
+  marginPt: number;
+  onMarginChange: (points: number) => void;
+}) {
+  const { unit, onUnitChange, marginPt, onMarginChange } = props;
+  const marginValue = pointToUnit(marginPt, 0, unit);
+  const marginMax = pointToUnit(Math.min(ART.w, ART.h) / 2, 0, unit);
+  const marginStep = unit === "in" ? 0.125 : unit === "px" ? 25 : 1;
+
+  return (
+    <div className="ml-3 flex items-center gap-2 border-l border-border pl-3">
+      <span className="text-xs text-muted-foreground">Units</span>
+      <ToggleGroup value={[unit]} spacing={0} variant="outline"
+        aria-label="Ruler measurement units"
+        onValueChange={(value) => {
+          if (value[0]) onUnitChange(value[0] as RulerUnit);
+        }}>
+        <ToggleGroupItem value="in" size="sm" className="h-6 min-w-0 px-2">Inches</ToggleGroupItem>
+        <ToggleGroupItem value="pt" size="sm" className="h-6 min-w-0 px-2">Points</ToggleGroupItem>
+        <ToggleGroupItem value="px" size="sm" className="h-6 min-w-0 px-2">Pixels</ToggleGroupItem>
+      </ToggleGroup>
+      <Label htmlFor="guide-margin" className="text-xs text-muted-foreground">Margin</Label>
+      <Input id="guide-margin" type="number" min={0} max={marginMax} step={marginStep}
+        value={Number(marginValue.toFixed(unit === "in" ? 3 : 1))}
+        onChange={(event) => {
+          const value = Number(event.target.value);
+          if (Number.isFinite(value))
+            onMarginChange(clampMargin(unitToPoint(value, 0, unit)));
+        }}
+        className="h-6 w-16 rounded-md px-1.5 py-0 text-xs tabular-nums" />
+      <span className="text-xs text-muted-foreground">{unit}</span>
+    </div>
+  );
+}
+
 export function Rulers(props: {
   paneRef: RefObject<HTMLDivElement | null>;
   previewRef: RefObject<PreviewCompareHandle | null>;
   transform: { z: number; x: number; y: number };
   showRulers: boolean;
   unit: RulerUnit;
-  onUnitChange: (unit: RulerUnit) => void;
   guidesEnabled: boolean;
   showMargins: boolean;
   showCenter: boolean;
   showManual: boolean;
   marginPt: number;
-  onMarginChange: (points: number) => void;
   manual: readonly ManualGuide[];
   onAddManual: (axis: GuideAxis, point: number) => void;
   onMoveManual: (id: number, point: number) => void;
   onRemoveManual: (id: number) => void;
 }) {
   const {
-    paneRef, previewRef, transform, showRulers, unit, onUnitChange, guidesEnabled,
-    showMargins, showCenter, showManual, marginPt, onMarginChange,
+    paneRef, previewRef, transform, showRulers, unit, guidesEnabled,
+    showMargins, showCenter, showManual, marginPt,
     manual, onAddManual, onMoveManual, onRemoveManual,
   } = props;
   const [geometry, setGeometry] = useState<Geometry | null>(null);
@@ -179,9 +214,6 @@ export function Rulers(props: {
   const layoutHorizontal = guidesEnabled && showMargins ? locked.horizontalMargins : [];
   const shownManual = guidesEnabled && showManual ? manual : [];
   const paintedManual = shownManual.filter((guide) => guide.id !== drag?.id);
-  const marginValue = pointToUnit(marginPt, 0, unit);
-  const marginMax = pointToUnit(Math.min(ART.w, ART.h) / 2, 0, unit);
-  const marginStep = unit === "in" ? 0.125 : unit === "px" ? 25 : 1;
 
   return (
     <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
@@ -221,6 +253,8 @@ export function Rulers(props: {
 
         {showRulers && (
           <>
+            <rect width={RULER_SIZE} height={RULER_SIZE}
+              className="fill-sidebar stroke-border" />
             <rect x={RULER_SIZE} width={geometry.width - RULER_SIZE} height={RULER_SIZE}
               className="fill-sidebar stroke-border" />
             <rect y={RULER_SIZE} width={RULER_SIZE} height={geometry.height - RULER_SIZE}
@@ -294,40 +328,6 @@ export function Rulers(props: {
             title={guidesEnabled ? "Drag right to create a vertical guide" : "Turn on Guides to add guides"}
             onPointerDown={(event) => startNew("x", event)}
             onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag} />
-          <Popover>
-            <PopoverTrigger
-              className="pointer-events-auto absolute top-0 left-0 grid size-5 place-items-center border-r border-b border-border bg-sidebar text-[8px] text-muted-foreground hover:text-foreground"
-              title="Ruler units and margin settings" aria-label="Ruler settings">
-              {unit}
-            </PopoverTrigger>
-            <PopoverContent align="start" side="bottom" className="w-52">
-              <div className="text-xs font-medium">Ruler units</div>
-              <ToggleGroup value={[unit]} spacing={0} variant="outline"
-                className="w-full" aria-label="Ruler measurement units"
-                onValueChange={(value) => {
-                  if (value[0]) onUnitChange(value[0] as RulerUnit);
-                }}>
-                <ToggleGroupItem value="in" size="sm" className="min-w-0 flex-1">
-                  Inches
-                </ToggleGroupItem>
-                <ToggleGroupItem value="pt" size="sm" className="min-w-0 flex-1">
-                  Points
-                </ToggleGroupItem>
-                <ToggleGroupItem value="px" size="sm" className="min-w-0 flex-1">
-                  Pixels
-                </ToggleGroupItem>
-              </ToggleGroup>
-              <Label htmlFor="guide-margin" className="mt-1 text-xs">Margin inset ({unit})</Label>
-              <Input id="guide-margin" type="number" min={0}
-                max={marginMax} step={marginStep}
-                value={Number(marginValue.toFixed(unit === "in" ? 3 : 1))}
-                onChange={(event) => {
-                  const value = Number(event.target.value);
-                  if (Number.isFinite(value))
-                    onMarginChange(clampMargin(unitToPoint(value, 0, unit)));
-                }} />
-            </PopoverContent>
-          </Popover>
         </>
       )}
     </div>

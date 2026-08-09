@@ -140,8 +140,8 @@ knob moves all four views together. While a rebuild is in flight the stale
 render blurs, so what is on screen reads as being replaced rather than
 current. The 2D View menu also controls trim-relative rulers and preview-only
 guides. Ruler zero sits at the trimmed art's top-left (so bleed reads
-negative), and the corner control switches inches/points/600-DPI pixels and
-edits the safe margin inset. Locked margin and center guides derive
+negative). The bottom preview toolbar switches inches/points/600-DPI pixels
+and edits the safe margin inset. Locked margin and center guides derive
 from the 8x5in trim box; drag from either ruler to add a manual guide, drag one
 back into a ruler to remove it, press Delete while it is focused, or clear them
 from View. The Guides toggle hides or restores all guide types together without

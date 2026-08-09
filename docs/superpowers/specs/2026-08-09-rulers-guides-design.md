@@ -19,10 +19,10 @@ changing the generated PDFs, PSDs, saved label configuration, or 3D views.
 - Measurements use the existing PDF-point page geometry. The trim box's
   top-left (`ART.x`, `ART.y`) is `0, 0`; the page bleed therefore has negative
   ruler values.
-- Inches are the default. A single-select segmented tab group in the ruler
-  corner switches among inches, points, and 600-DPI deliverable pixels (not
-  CSS screen pixels). Tick density adapts to the current page scale so labels
-  never pile up.
+- Inches are the default. A single-select segmented tab group in the bottom
+  preview toolbar switches among inches, points, and 600-DPI deliverable pixels
+  (not CSS screen pixels). Tick density adapts to the current page scale so
+  labels never pile up.
 - Moving the pointer through the 2D pane draws a marker in each ruler at the
   pointer's current position.
 
@@ -32,7 +32,7 @@ Layout guides are derived from the trimmed 8 x 5 inch `ART` box and cannot be
 dragged or deleted individually:
 
 - Four **margin guides**, inset from the trim box. The default inset is 0.25in
-  (18pt), adjustable from the ruler corner control.
+  (18pt), adjustable beside the measurement tabs in the preview toolbar.
 - A vertical **center** guide at `ART.x + ART.w / 2`.
 - A horizontal **middle** guide at `ART.y + ART.h / 2`.
 
@@ -59,8 +59,9 @@ ruler is disabled while Guides is off.
 
 ## Interaction and appearance
 
-- Ruler strips are 20 CSS pixels and use the existing sidebar/background,
-  border, foreground, muted-foreground, and primary theme tokens.
+- Ruler strips are 20 CSS pixels, sit flush with the preview workspace edges,
+  and use the existing sidebar/background, border, foreground,
+  muted-foreground, and primary theme tokens.
 - Guide lines are one screen pixel at every zoom. Layout guides use a muted
   cyan; manual guides use the primary accent. They span the visible preview
   pane and are clipped by it.
