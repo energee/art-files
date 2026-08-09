@@ -925,10 +925,10 @@ export default function App() {
       return;
     }
     setCfg(() => config);
-    clearLoaded(setTexture);
-    clearLoaded(setMask);
-    clearLoaded(setCollabLeft);
-    clearLoaded(setCollabCenter);
+    swapLoaded(setTexture, null);
+    swapLoaded(setMask, null);
+    swapLoaded(setCollabLeft, null);
+    swapLoaded(setCollabCenter, null);
     const toFile = (a: { name: string; bytes: Uint8Array }) =>
       new File([a.bytes as unknown as BlobPart], a.name);
     const { texture: t, mask: m, collabLeft: l, collabCenter: c } = unpacked.assets;
