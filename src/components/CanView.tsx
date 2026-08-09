@@ -20,10 +20,6 @@ export interface CanViewHandle {
 export const CanView = forwardRef<CanViewHandle, {
   /** Die-cut corner radius, % of the label's short edge (Settings layer). */
   cornerRadiusPct: number;
-  /** Label height as % of can height (Settings layer). */
-  labelHeightPct: number;
-  /** How far the label wraps, % of the can's circumference (Settings layer). */
-  labelWidthPct: number;
   /** Foil-mask blur, % of label width (Settings layer). */
   edgeSoftnessPct: number;
   artBytes: Uint8Array | null;
@@ -39,7 +35,7 @@ export const CanView = forwardRef<CanViewHandle, {
    *  outside landed on the instance that was about to be thrown away. */
   initialView?: { zoom: number; pan: { x: number; y: number } };
 }>(function CanView({
-  artBytes, maskBytes, mode, cornerRadiusPct, labelHeightPct, labelWidthPct,
+  artBytes, maskBytes, mode, cornerRadiusPct,
   edgeSoftnessPct, onZoom, initialView,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -114,11 +110,9 @@ export const CanView = forwardRef<CanViewHandle, {
   useEffect(() => {
     sceneRef.current?.setLabelOptions({
       cornerRadiusPct,
-      heightRatio: labelHeightPct / 100,
-      widthRatio: labelWidthPct / 100,
       edgeSoftnessRatio: edgeSoftnessPct / 100,
     });
-  }, [cornerRadiusPct, labelHeightPct, labelWidthPct, edgeSoftnessPct]);
+  }, [cornerRadiusPct, edgeSoftnessPct]);
 
   return (
     <div

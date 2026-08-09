@@ -43,12 +43,26 @@ export const CAN_DIAM_IN = 2.6;
  *  art covers very nearly all of it. */
 export const CAN_CIRCUM_IN = Math.PI * CAN_DIAM_IN;
 
-/** The furthest the label may wrap, as a share of the circumference. A label
- *  that meets itself leaves no seam and z-fights with its own start edge, so
- *  canScene clamps the cylinder here — and the width knob's maximum and the
- *  shipped default read the same number, instead of offering a last 2.5% of
- *  travel that moves the readout and nothing on screen. */
-export const MAX_WRAP_RATIO = 0.975;
+/** How the trimmed label sits on the can, derived from the artboard rather
+ *  than tuned by eye. These were knobs (labelSize / labelWidth, percentages
+ *  of the can) that drifted from the label they were meant to depict: the
+ *  shipped values drew it 5.076in tall and 7.964in around, against a real
+ *  8 x 5in die. The label is a measured object and the can is a measured
+ *  object, so their ratio is arithmetic, not a preference.
+ *
+ *  The wrap lands at 97.9%, comfortably short of meeting itself, so the
+ *  cylinder needs no seam clamp — which is why MAX_WRAP_RATIO is gone. */
+export const LABEL_WRAP_RATIO = ART.w / 72 / CAN_CIRCUM_IN;
+export const LABEL_HEIGHT_RATIO = ART.h / 72 / CAN_HEIGHT_IN;
+
+/** The trim's box inside the printed page, as 0..1 texture coordinates. The
+ *  3D views crop every map to it so the can shows the label that comes off
+ *  the die, not the bleed that gets cut away. Inset equally on all four
+ *  sides, so it survives a flipped V without a separate top/bottom case. */
+export const TRIM_UV = {
+  x: ART.x / PAGE.w, y: ART.y / PAGE.h,
+  w: ART.w / PAGE.w, h: ART.h / PAGE.h,
+};
 
 /** Default metallic gold. Originally #D0B070 (sampled from the Labradorite
  *  reference render); brightened to #F3CD80 by request 2026-08. */

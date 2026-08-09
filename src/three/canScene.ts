@@ -11,7 +11,9 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RGBELoader } from "three/addons/loaders/RGBELoader.js";
 import type { LabelTextures } from "./labelTextures";
 import { DEFAULT_RENDER } from "@/presets";
-import { MAX_WRAP_RATIO, PAGE, PREVIEW_MAX_W, PREVIEW_OVERSAMPLE } from "@/layout";
+import {
+  ART, LABEL_HEIGHT_RATIO, LABEL_WRAP_RATIO, PAGE, PREVIEW_MAX_W, PREVIEW_OVERSAMPLE, TRIM_UV,
+} from "@/layout";
 
 export type CanSceneMode = "can" | "pack" | "flat";
 
@@ -46,8 +48,6 @@ const FOUR_PACK_TILT = Math.PI * 0.34;
  *  0->1 metalness step so foil edges don't draw a hard specular outline the
  *  physical print doesn't have. */
 const DEFAULTS = {
-  heightRatio: DEFAULT_RENDER.labelSize / 100,
-  widthRatio: DEFAULT_RENDER.labelWidth / 100,
   cornerRadiusPct: DEFAULT_RENDER.cornerRadius,
   edgeSoftnessRatio: DEFAULT_RENDER.edgeSoftness / 100,
 };
@@ -119,9 +119,6 @@ export class CanScene {
   private canMaterial: THREE.MeshPhysicalMaterial | null = null;
   private labelMesh: THREE.Mesh | null = null;
   private labelMaterial: THREE.MeshStandardMaterial | null = null;
-  private labelHeightRatio = DEFAULTS.heightRatio;
-  /** How far the label wraps, as a share of the can's circumference. */
-  private labelWidthRatio = DEFAULTS.widthRatio;
   private cornerRadiusPct = DEFAULTS.cornerRadiusPct;
   private edgeSoftnessRatio = DEFAULTS.edgeSoftnessRatio;
   private flatMesh: THREE.Mesh | null = null;
@@ -331,6 +328,13 @@ export class CanScene {
   private createTexture(canvas: HTMLCanvasElement, srgb = false): THREE.CanvasTexture {
     const t = new THREE.CanvasTexture(canvas);
     t.flipY = true;
+    // Crop to the trim. The plates are rendered at full page size because
+    // that is what goes to the press, but the can wears the label AFTER the
+    // die has cut the bleed off — drawing the whole page here wraps 0.127in
+    // of artwork around the can that nobody will ever see in their hand.
+    // Safe against flipY because the trim is inset equally on all four sides.
+    t.offset.set(TRIM_UV.x, TRIM_UV.y);
+    t.repeat.set(TRIM_UV.w, TRIM_UV.h);
     t.anisotropy = this.maxAnisotropy;
     t.minFilter = THREE.LinearMipmapLinearFilter;
     t.magFilter = THREE.LinearFilter;
@@ -384,10 +388,19 @@ export class CanScene {
     const ctx = alpha.getContext("2d")!;
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, alpha.width, alpha.height);
-    const r = (this.cornerRadiusPct / 100) * Math.min(alpha.width, alpha.height);
+    // Drawn at the TRIM, not the page: the die cuts the trim, and the corners
+    // have to land inside the crop createTexture applies or they would be the
+    // first thing sliced off, leaving a hard-cornered rectangle. This is also
+    // what makes the radius agree with the 2D preview's, which has always
+    // measured the knob against the art box.
+    const box = {
+      x: TRIM_UV.x * alpha.width, y: TRIM_UV.y * alpha.height,
+      w: TRIM_UV.w * alpha.width, h: TRIM_UV.h * alpha.height,
+    };
+    const r = (this.cornerRadiusPct / 100) * Math.min(box.w, box.h);
     ctx.fillStyle = "#fff";
     ctx.beginPath();
-    ctx.roundRect(0, 0, alpha.width, alpha.height, r);
+    ctx.roundRect(box.x, box.y, box.w, box.h, r);
     ctx.fill();
     return alpha;
   }
@@ -401,27 +414,21 @@ export class CanScene {
    *  maps. A full applyTextures would re-blur, re-lerp and re-upload five
    *  full-resolution textures per pixel of drag. */
   setLabelOptions(opts: {
-    cornerRadiusPct?: number; heightRatio?: number; widthRatio?: number;
+    cornerRadiusPct?: number;
     edgeSoftnessRatio?: number;
   }) {
     const radius = opts.cornerRadiusPct !== undefined
       && opts.cornerRadiusPct !== this.cornerRadiusPct;
-    // Height and width are one flag: both size the same cylinder.
-    const geometry = (opts.heightRatio !== undefined
-      && opts.heightRatio !== this.labelHeightRatio)
-      || (opts.widthRatio !== undefined && opts.widthRatio !== this.labelWidthRatio);
     const softness = opts.edgeSoftnessRatio !== undefined
       && opts.edgeSoftnessRatio !== this.edgeSoftnessRatio;
     if (opts.cornerRadiusPct !== undefined) this.cornerRadiusPct = opts.cornerRadiusPct;
-    if (opts.heightRatio !== undefined) this.labelHeightRatio = opts.heightRatio;
-    if (opts.widthRatio !== undefined) this.labelWidthRatio = opts.widthRatio;
     if (opts.edgeSoftnessRatio !== undefined) this.edgeSoftnessRatio = opts.edgeSoftnessRatio;
-    if (!(radius || geometry || softness)) return;
+    if (!(radius || softness)) return;
 
     const tex = this.pendingTextures;
-    // Only the two texture-derived knobs need artwork; the cylinder no longer
-    // does, so a size change before the first build still takes effect.
-    if (!tex) { if (geometry && this.labelMesh) { this.rebuildLabelMesh(); this.applyMode(); } return; }
+    // Both remaining knobs are texture-derived, so there is nothing to redo
+    // before the first build — the cylinder's size is no longer a knob.
+    if (!tex) return;
     // No material yet (textures arrived before the can model): the full build
     // is the only thing that can produce one.
     if (!this.labelMaterial) { this.applyTextures(tex); return; }
@@ -446,7 +453,6 @@ export class CanScene {
       // The flat view's backing shares the front's die-cut silhouette.
       if (back) { back.alphaMap = map; back.needsUpdate = true; }
     }
-    if (geometry) { this.rebuildLabelMesh(); this.applyMode(); }
     this.requestRender();
   }
 
@@ -455,7 +461,7 @@ export class CanScene {
    *  plane and the framing distance all have to agree on it — that agreement
    *  is what makes switching views unwrap the label instead of resizing it. */
   private labelHeight() {
-    return this.canHeight * this.labelHeightRatio;
+    return this.canHeight * LABEL_HEIGHT_RATIO;
   }
 
   /** The wrapped cylinder, sized to the current label height and width.
@@ -464,9 +470,10 @@ export class CanScene {
    *  the circumference rather than something derived from the artwork. */
   private rebuildLabelMesh() {
     const labelRadius = this.canRadius * 1.005;
-    // Clamped at MAX_WRAP_RATIO, which the width knob also uses as its
-    // maximum — so the field can't offer travel that changes nothing here.
-    const wrapAngle = Math.min(this.labelWidthRatio, MAX_WRAP_RATIO) * Math.PI * 2;
+    // No clamp: the wrap is the trim's width over the can's circumference,
+    // which is 97.9% — short of meeting itself by construction, so there is
+    // no seam to protect against and nothing for an operator to overshoot.
+    const wrapAngle = LABEL_WRAP_RATIO * Math.PI * 2;
 
     this.disposeLabelMesh();
     this.labelMesh = new THREE.Mesh(
@@ -512,7 +519,10 @@ export class CanScene {
     // should unwrap it, not resize it. (It was 0.08, hand-tuned to match the
     // default knob — which then stopped matching the moment the knob moved.)
     const flatHeight = this.labelHeight();
-    const flatGeometry = new THREE.PlaneGeometry(flatHeight * tex.aspect, flatHeight);
+    // The TRIM's aspect, not the plate's (tex.aspect is the full page): the
+    // maps are cropped to the trim, so a plane cut to the page's proportions
+    // would stretch the label to fill it.
+    const flatGeometry = new THREE.PlaneGeometry(flatHeight * (ART.w / ART.h), flatHeight);
     this.flatMesh = new THREE.Mesh(flatGeometry, this.labelMaterial);
     this.scene.add(this.flatMesh);
 

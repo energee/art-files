@@ -665,10 +665,6 @@ export default function App() {
   const docSettings: DocSettings = {
     cornerRadius: render.cornerRadius,
     onCornerRadius: (v) => setRender((r) => ({ ...r, cornerRadius: v })),
-    labelSize: render.labelSize,
-    onLabelSize: (v) => setRender((r) => ({ ...r, labelSize: v })),
-    labelWidth: render.labelWidth,
-    onLabelWidth: (v) => setRender((r) => ({ ...r, labelWidth: v })),
     edgeSoftness: render.edgeSoftness,
     onEdgeSoftness: (v) => setRender((r) => ({ ...r, edgeSoftness: v })),
     dpi: render.dpi,
@@ -1183,8 +1179,6 @@ export default function App() {
                 }}
                 artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
                 mode={viewMode} cornerRadiusPct={render.cornerRadius}
-                labelHeightPct={render.labelSize}
-                labelWidthPct={render.labelWidth}
                 edgeSoftnessPct={render.edgeSoftness} />
             )}
             </div>

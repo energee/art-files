@@ -27,8 +27,7 @@ import { ThemeSwitch } from "./ThemeSwitch";
 import { BarcodePresetBar, BeerStylePresetBar } from "./PresetBar";
 import { machineName, qrUrl } from "@/qr";
 import {
-  CAN_CIRCUM_IN, CAN_HEIGHT_IN, DEFAULT_STROKE_PX, LABEL_SHORT_IN, LABEL_WIDE_IN,
-  MAX_WRAP_RATIO,
+  DEFAULT_STROKE_PX, LABEL_SHORT_IN, LABEL_WIDE_IN,
 } from "@/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,11 +100,6 @@ export interface CollabFiles {
 export interface DocSettings {
   cornerRadius: number;
   onCornerRadius: (v: number) => void;
-  labelSize: number;
-  onLabelSize: (v: number) => void;
-  /** How far the label wraps, % of the can's circumference. */
-  labelWidth: number;
-  onLabelWidth: (v: number) => void;
   /** Foil-mask blur, % of label width — softens the metallic edges. */
   edgeSoftness: number;
   onEdgeSoftness: (v: number) => void;
@@ -411,22 +405,8 @@ function Content(props: {
             pct={settings.cornerRadius} minPct={0} maxPct={5} step={0.0625}
             onPct={settings.onCornerRadius}
           />
-          {/* How tall the label stands on the can — a share of CAN_HEIGHT_IN,
-              read out as the label height it produces. */}
-          <InchField
-            id="doc-label-size" label="Label height" of={CAN_HEIGHT_IN}
-            pct={settings.labelSize} minPct={50} maxPct={95} step={0.01}
-            onPct={settings.onLabelSize}
-          />
-          {/* How far it wraps, as an arc of the can's circumference. The
-              print is a fixed 8in wide, so narrowing this squeezes the art
-              around a shorter arc rather than trimming it — it answers "how
-              much of the can does this cover", not "what did we print". */}
-          <InchField
-            id="doc-label-width" label="Label width" of={CAN_CIRCUM_IN}
-            pct={settings.labelWidth} minPct={30} maxPct={MAX_WRAP_RATIO * 100} step={0.01}
-            onPct={settings.onLabelWidth}
-          />
+          {/* No label height/width knobs: the label wraps the can at the size
+              the artboard says it is (see LABEL_HEIGHT_RATIO). */}
           {/* Blur on the foil mask's edges: 0 = hard specular outlines
               around every metallic element, wider = softer transitions.
               Measured across the label's width, like the renderer does. */}

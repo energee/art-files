@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { DESIGN_DPI, LABEL_SHORT_IN, MAX_WRAP_RATIO } from "@/layout";
+import { DESIGN_DPI, LABEL_SHORT_IN } from "@/layout";
 
 // presets.ts — the reusable style and barcode library, read from and written
 // back to presets.json at the repo root through the dev server's
@@ -19,13 +19,9 @@ export interface BarcodePreset {
  *  inspector shows them all in inches (see InchField) and stores them in the
  *  form canScene consumes:
  *    cornerRadius — % of the label's short side
- *    labelSize    — label height, % of the can's height
- *    labelWidth   — how far it wraps, % of the can's circumference
  *    edgeSoftness — foil-edge blur, % of the label's width */
 export interface RenderSettings {
   cornerRadius: number;
-  labelSize: number;
-  labelWidth: number;
   edgeSoftness: number;
   /** Resolution the PSD is rastered at, in real DPI — not a percentage like
    *  the four above, because a press specifies resolution in DPI and there is
@@ -35,17 +31,18 @@ export interface RenderSettings {
   dpi: number;
 }
 
-// labelWidth ships at the renderer's ceiling (MAX_WRAP_RATIO): the 8in art
-// almost exactly covers the can's 8.17in circumference, and that is also
-// where the aspect-derived wrap landed before the knob existed — so a library
-// saved without one opens looking the same (normalizePresets' spread fills it
-// in). Stated as the cap rather than 98 so the knob's readout matches what is
-// actually drawn instead of promising a wrap the scene clamps away.
+// There is no labelSize/labelWidth here any more: how big the label sits on
+// the can is the trim's size over the can's, which layout.ts now derives
+// (LABEL_HEIGHT_RATIO / LABEL_WRAP_RATIO). They were knobs that had drifted
+// from the label they depicted — shipping 5.076in tall and 7.964in around
+// against a real 8 x 5in die. A library saved with the old keys still loads:
+// normalizePresets spreads over this object, so the extra keys are simply
+// dropped on the next write.
 export const DEFAULT_RENDER: RenderSettings = {
   // 1/16" of die-cut radius, the house die — stated in inches and converted,
   // since the stored value is a percentage of the label's short side.
   cornerRadius: (0.0625 / LABEL_SHORT_IN) * 100,
-  labelSize: 82, labelWidth: MAX_WRAP_RATIO * 100, edgeSoftness: 0.1,
+  edgeSoftness: 0.1,
   // Ships at DESIGN_DPI, so the shipped default rasters exactly as it always
   // has and the knob is a no-op until someone moves it.
   dpi: DESIGN_DPI,
