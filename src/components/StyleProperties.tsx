@@ -30,6 +30,7 @@ import {
   DEFAULT_STROKE_PX, LABEL_SHORT_IN, LABEL_WIDE_IN,
 } from "@/layout";
 import { BLEED_DRAG_STEP_IN, BLEED_STEP_IN, displayBleedIn } from "@/presets";
+import { decimalsOf } from "@/numeric";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,7 +61,7 @@ function InchField(props: {
   onPct: (pct: number) => void;
 }) {
   const inches = (pct: number) => (pct / 100) * props.of;
-  const decimals = (String(props.step).split(".")[1] ?? "").length;
+  const decimals = decimalsOf(props.step);
   return (
     <ScrubField
       id={props.id} label={props.label} unit={'"'}

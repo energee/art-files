@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { DESIGN_DPI, LABEL_SHORT_IN } from "@/layout";
+import { decimalsOf } from "@/numeric";
 
 // presets.ts — the reusable style and barcode library, read from and written
 // back to presets.json at the repo root through the dev server's
@@ -78,7 +79,7 @@ export const BLEED_STEP_IN = 0.0005;
  *  ScrubField takes the two separately for exactly this case: dragging in
  *  ten-thousandths would make the field's full range about 1000px of travel. */
 export const BLEED_DRAG_STEP_IN = 0.005;
-const BLEED_DECIMALS = (String(BLEED_STEP_IN).split(".")[1] ?? "").length;
+const BLEED_DECIMALS = decimalsOf(BLEED_STEP_IN);
 
 /** What the bleed field SHOWS for a stored value. Same precision the field
  *  COMMITS at, so every value it can display it can also be typed back —
