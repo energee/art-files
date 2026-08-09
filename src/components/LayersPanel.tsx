@@ -17,6 +17,7 @@ import { applyStyle, elementById, type ElementId } from "@/elements";
 import { cn } from "@/lib/utils";
 import { MetallicToggle } from "./MetallicToggle";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Switch } from "@/components/ui/switch";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -26,7 +27,8 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import {
-  DOC_LAYER_LABELS, LAYER_ICONS, PANEL_GROUPS, isElementId, type LayerId,
+  DOC_LAYER_LABELS, LAYER_ICONS, PANEL_GROUPS, isElementId, isHideable,
+  type HideableLayerId, type LayerId,
 } from "./layers";
 import { modsOf, type SelectMods } from "@/selection";
 
@@ -96,22 +98,23 @@ function LayerRow({
   id: LayerId;
   cfg: LabelConfig;
   update: (fn: (c: LabelConfig) => void) => void;
-  hidden: ReadonlySet<ElementId>;
-  onToggleHidden: (id: ElementId) => void;
+  hidden: ReadonlySet<HideableLayerId>;
+  onToggleHidden: (id: HideableLayerId) => void;
   selected: readonly LayerId[];
   onSelect: (id: LayerId, mods: SelectMods) => void;
 }) {
   const Icon = LAYER_ICONS[id];
   const el = isElementId(id) ? elementById(id) : null;
   const label = el ? el.label : DOC_LAYER_LABELS[id as keyof typeof DOC_LAYER_LABELS];
-  const hidden = el !== null && hiddenSet.has(el.id);
-  // Collab rows are inert on the label while the collab switch is off; they
-  // stay selectable so their inspector (which holds the switch) is reachable.
+  const hideable = isHideable(id);
+  const hidden = hideable && hiddenSet.has(id);
+  // Collab rows are inert on the label while the collab switch (on the
+  // group header above) is off; they stay selectable and editable.
   const collabOff = !cfg.collabEnabled && el?.group === "collab";
 
   const toggleEye = (e: React.MouseEvent) => {
     stop(e); // the eye must never change the selection
-    if (el) onToggleHidden(el.id);
+    if (isHideable(id)) onToggleHidden(id);
   };
 
   // Row anatomy, left to right: eye · icon+name · metallic · chevron. The
@@ -120,8 +123,9 @@ function LayerRow({
   // a click landing on the gap beside the name, or a ⇧-click that misses the
   // name button by a few px, must still extend the selection rather than do
   // nothing. The three controls each stop propagation, so hiding, restyling
-  // or expanding a row still never changes the selection. Document rows get
-  // a spacer where the eye would sit, keeping the icon column aligned.
+  // or expanding a row still never changes the selection. Document rows have
+  // no eye and no spacer — their icons sit flush left, which reads better
+  // than a phantom column under controls they don't have.
   const stop = (e: React.MouseEvent) => e.stopPropagation();
   const isSelected = selected.includes(id);
   return (
@@ -142,10 +146,11 @@ function LayerRow({
             isSelected && "bg-sidebar-accent text-sidebar-accent-foreground",
           )}
         >
-          {/* Every element row gets an eye — including QR/Barcode, since
-              hiding is a session-level skip, not the ink-less styling
-              allowNone forbids. Document rows go without, for now. */}
-          {el !== null ? (
+          {/* Every hideable row gets an eye — including QR/Barcode (hiding
+              is a session-level skip, not the ink-less styling allowNone
+              forbids) and the texture/mask rows (hiding drops the asset
+              from the build). Only Settings goes without. */}
+          {hideable ? (
             <button
               type="button"
               onClick={toggleEye}
@@ -157,9 +162,7 @@ function LayerRow({
             >
               {hidden ? <EyeOff /> : <Eye />}
             </button>
-          ) : (
-            <span className="size-5 shrink-0" />
-          )}
+          ) : null}
           <SidebarMenuButton
             size="sm"
             isActive={isSelected}
@@ -223,8 +226,8 @@ export function LayersPanel(props: {
   /** Config writes for the per-row metallic toggle. */
   update: (fn: (c: LabelConfig) => void) => void;
   /** Session-level hidden set — lives in App and flows into Assets.hidden. */
-  hidden: ReadonlySet<ElementId>;
-  onToggleHidden: (id: ElementId) => void;
+  hidden: ReadonlySet<HideableLayerId>;
+  onToggleHidden: (id: HideableLayerId) => void;
   /** Every selected layer, in click order — see selection.ts. */
   selected: readonly LayerId[];
   onSelect: (id: LayerId, mods: SelectMods) => void;
@@ -242,7 +245,21 @@ export function LayersPanel(props: {
       )}
       {PANEL_GROUPS.map(([title, rows]) => (
         <SidebarGroup key={title}>
-          <SidebarGroupLabel>{title}</SidebarGroupLabel>
+          <SidebarGroupLabel className="justify-between">
+            {title}
+            {/* The one place the collab block turns on/off — on the group
+                header, not repeated per layer. Turning it off keeps the
+                uploaded art and slot styles; flipping it back restores the
+                label exactly as it was. */}
+            {title === "Collab" && (
+              <Switch
+                aria-label="Collab enabled"
+                checked={props.cfg.collabEnabled}
+                onCheckedChange={(on) =>
+                  props.update((c) => { c.collabEnabled = on; })}
+              />
+            )}
+          </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {rows.map((id) => (

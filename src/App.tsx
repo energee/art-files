@@ -32,11 +32,12 @@ import {
   DEFAULT_RENDER, commitBleedIn, loadPresets, mutatePresets, normalizePresets, usePresets,
   type Presets,
 } from "@/presets";
-import { PANEL_ORDER, isElementId, type LayerId } from "@/components/layers";
+import { PANEL_ORDER, isElementId, type HideableLayerId, type LayerId } from "@/components/layers";
 import {
   EMPTY_SELECTION, resolveSelect, type SelectMods, type Selection,
 } from "@/selection";
 import { CommandMenu, shortcutOf, type Command } from "@/components/CommandMenu";
+import { PresetsDialog } from "@/components/PresetsDialog";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
 import { Rulers } from "@/components/Rulers";
 import { CanView, type CanViewHandle } from "@/components/CanView";
@@ -260,8 +261,8 @@ export default function App() {
   // the config/history: a saved label never records a hidden layer, and
   // toggling an eye is not an undoable document edit. Flows into
   // Assets.hidden, where the renderer skips the element in both plates.
-  const [hiddenLayers, setHiddenLayers] = useState<ReadonlySet<ElementId>>(new Set());
-  const toggleHidden = (id: ElementId) =>
+  const [hiddenLayers, setHiddenLayers] = useState<ReadonlySet<HideableLayerId>>(new Set());
+  const toggleHidden = (id: HideableLayerId) =>
     setHiddenLayers((old) => {
       const next = new Set(old);
       if (!next.delete(id)) next.add(id);
@@ -523,6 +524,8 @@ export default function App() {
     });
   };
   const presetsInput = useRef<HTMLInputElement>(null);
+  // The read-only "View presets" dialog (File menu / ⌘K).
+  const [presetsOpen, setPresetsOpen] = useState(false);
   const previewRef = useRef<PreviewCompareHandle>(null);
   // Trim guide over the 2D preview at the art box, wherever the bleed knob
   // currently puts it (ART.x/ART.y follow it). View-only — this toggle draws
@@ -668,11 +671,18 @@ export default function App() {
       });
     });
   }
+  /** Drops a loaded asset, revoking its thumbnail URL — the shared shape of
+   *  every FileDrop X. */
+  const clearLoaded = <T extends { previewUrl: string }>(
+    set: (fn: (old: T | null) => T | null) => void,
+  ) => set((old) => { if (old) URL.revokeObjectURL(old.previewUrl); return null; });
   const collabFiles: CollabFiles = {
     leftName: collabLeft?.name, leftUrl: collabLeft?.previewUrl,
     centerName: collabCenter?.name, centerUrl: collabCenter?.previewUrl,
     onLeft: (f) => onCollab("left", f),
     onCenter: (f) => onCollab("center", f),
+    onClearLeft: () => clearLoaded(setCollabLeft),
+    onClearCenter: () => clearLoaded(setCollabCenter),
   };
   /** Everything file-shaped the inspector edits: the Document layers' drops
    *  plus the collab logos. */
@@ -698,10 +708,12 @@ export default function App() {
     texture: {
       fileName: texture?.name, previewUrl: texture?.previewUrl,
       onFile: (f) => void onTexture(f),
+      onClear: () => clearLoaded(setTexture),
     },
     mask: {
       fileName: mask?.name, previewUrl: mask?.previewUrl, error: mask?.error,
       onFile: (f) => void onMask(f),
+      onClear: () => clearLoaded(setMask),
     },
     collab: collabFiles,
   };
@@ -769,8 +781,11 @@ export default function App() {
         try {
           const assets = {
             ...(await collabAssets()),
-            texture: texture ? { bytes: texture.previewBytes, kind: "png" as const } : undefined,
-            maskPng: mask?.previewBytes,
+            // The texture and mask eyes work by omission: a hidden asset
+            // simply isn't handed to the build, same as never dropped.
+            texture: texture && !hiddenLayers.has("background")
+              ? { bytes: texture.previewBytes, kind: "png" as const } : undefined,
+            maskPng: hiddenLayers.has("mask") ? undefined : mask?.previewBytes,
             hidden: hiddenLayers,
           };
           // Only the plates that aren't already current. sameInputs means the
@@ -837,8 +852,9 @@ export default function App() {
       // layered handoff is the place to keep them all.)
       const assets: Assets = {
         fonts, logoSvg, ...(await collabAssets()),
-        texture: texture ? { bytes: texture.bytes, kind: texture.kind } : undefined,
-        maskPng: mask?.bytes,
+        texture: texture && !hiddenLayers.has("background")
+          ? { bytes: texture.bytes, kind: texture.kind } : undefined,
+        maskPng: hiddenLayers.has("mask") ? undefined : mask?.bytes,
         hidden: hiddenLayers,
       };
       if (which !== "mask") saveBytes(await buildArtPdf(cfg, assets), `${exportBaseName(cfg)}.pdf`);
@@ -956,6 +972,7 @@ export default function App() {
     { id: "export-psd-mask", label: "Export Mask PSD", disabled: exportBlocked, run: () => void exportPsd("mask") },
     { id: "undo", label: "Undo", shortcut: "⌘Z", disabled: !canUndo, run: undo },
     { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: !canRedo, run: redo },
+    { id: "presets-view", label: "View presets", run: () => setPresetsOpen(true) },
     { id: "presets-export", label: "Export presets", run: () => void exportPresets() },
     { id: "presets-import", label: "Import presets", run: () => presetsInput.current?.click() },
     { id: "view-standard", label: "Preview: Standard", key: "1", run: () => show2d("art") },
@@ -1000,15 +1017,20 @@ export default function App() {
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
           preview center, fixed inspector column right. */}
       <SidebarProvider>
-        <Sidebar collapsible="offcanvas" className="border-r border-sidebar-border">
+        {/* No border of its own: the menubar and status bar share the
+            sidebar's paint, so a full-height rule would slice one band of
+            chrome in two. The canvas pane below draws the separating edge
+            for just the rows where the two differ. */}
+        <Sidebar collapsible="offcanvas">
           <SidebarContent>
             <LayersPanel cfg={cfg} update={update} hidden={hiddenLayers}
               onToggleHidden={toggleHidden} selected={selected} onSelect={pick} />
           </SidebarContent>
         </Sidebar>
         <SidebarInset className="flex h-svh flex-col overflow-hidden">
-        {/* A quiet bottom rule separates application chrome from the canvas. */}
-        <header className="flex items-center gap-3 border-b border-border px-3 py-2">
+        {/* A quiet bottom rule separates application chrome from the canvas.
+            Painted like the sidebar so the two read as one band of chrome. */}
+        <header className="flex items-center gap-3 border-b border-border bg-sidebar text-sidebar-foreground px-3 py-2">
           {/* Toggles the Layers sidebar; the component also binds ⌘B. */}
           <SidebarTrigger className="size-6" />
           {/* Stripped to a real menu bar: no pill border or rounding of its
@@ -1044,6 +1066,9 @@ export default function App() {
                 <MenubarSeparator />
                 {/* The preset library: beer styles and barcodes reused across
                     labels. Ellipsis — import opens a file picker. */}
+                <MenubarItem onClick={byId("presets-view").run}>
+                  View Presets…
+                </MenubarItem>
                 <MenubarItem onClick={byId("presets-import").run}>
                   Import Presets…
                 </MenubarItem>
@@ -1145,7 +1170,7 @@ export default function App() {
               over the layers panel and the inspector. */}
           <div
             ref={previewPane}
-            className={cn("relative flex min-h-0 flex-1 overflow-hidden",
+            className={cn("relative flex min-h-0 flex-1 overflow-hidden border-l border-sidebar-border",
               panning && "cursor-grabbing")}
             // Suppressed unconditionally in 2D, not just while zoomed: a
             // gesture that opens a menu at 100% and pans at 150% would be a
@@ -1294,25 +1319,45 @@ export default function App() {
                 view, so they read the same in all four modes — unlike the
                 zoom to their left. */}
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
-            {/* The PAGE, not the trim: this is the artboard that goes to the
-                press, and it is what the DPI beside it describes — PSD_DOC is
-                derived from the same number. The die-cut size the label is
-                actually ordered at is a keystroke away in the tooltip.
+            {/* The TRIM, not the page: this is the die-cut size the label is
+                ordered at (8x5in) — what "artboard size" means to the
+                operator. The full page with bleed — what the press file
+                measures — is a keystroke away in the tooltip.
                 Clicking cycles the SAME unit the rulers and the margin field
                 use, so the app has one measurement setting rather than a
                 toolbar that disagrees with the ruler beside it. */}
             <button
               onClick={() => setRulerUnit(nextRulerUnit(rulerUnit))}
-              title={`Artboard including bleed — trim is ${sizeLabel(ART.w, ART.h, rulerUnit)}. Click for ${nextRulerUnit(rulerUnit)}`}
-              aria-label={`Artboard size ${sizeLabel(PAGE.w, PAGE.h, rulerUnit)}; click to change units`}
+              title={`Trim size — with bleed the page is ${sizeLabel(PAGE.w, PAGE.h, rulerUnit)}. Click for ${nextRulerUnit(rulerUnit)}`}
+              aria-label={`Artboard size ${sizeLabel(ART.w, ART.h, rulerUnit)}; click to change units`}
               className="shrink-0 rounded px-1 py-0.5 text-xs tabular-nums whitespace-nowrap text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
-              {sizeLabel(PAGE.w, PAGE.h, rulerUnit)}
+              {sizeLabel(ART.w, ART.h, rulerUnit)}
             </button>
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
             <span className="shrink-0 px-1 text-xs tabular-nums whitespace-nowrap text-muted-foreground"
               title="Resolution the PDFs and PSDs are built at">
               {render.dpi} DPI
             </span>
+            <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
+            {/* Which preview is on screen — the menubar's View names. In 2D
+                the split decides: all-mask, all-art, or a live compare.
+                Clicking advances to the next view, same cycle as keys 1–5
+                (a mid-split Compare counts as Standard, so it advances to
+                Mask). */}
+            <button
+              onClick={() => {
+                const next = viewMode === "2d"
+                  ? (split > 0 && split < 100 ? 1 : split === 100 ? 2 : 1)
+                  : { flat: 3, can: 4, pack: 0 }[viewMode];
+                [() => show2d("art"), () => show2d("mask"), () => setViewMode("flat"),
+                  () => setViewMode("can"), () => setViewMode("pack")][next]();
+              }}
+              title="Current preview view — click for the next (View menu, keys 1–5)"
+              className="shrink-0 rounded px-1 py-0.5 text-xs whitespace-nowrap text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+              View Mode: {viewMode === "2d"
+                ? (split === 100 ? "Mask" : split > 0 ? "Compare" : "Standard")
+                : { flat: "Rendered", can: "Single Can", pack: "Four-Pack" }[viewMode]}
+            </button>
           </div>
         </section>
         {/* Right inspector: a shadcn Sheet driven by the selection — open
@@ -1362,6 +1407,7 @@ export default function App() {
           onTexture={(f) => void onTexture(f)}
           onMask={(f) => void onMask(f)} />
         <CommandMenu actions={commands} />
+        <PresetsDialog open={presetsOpen} onOpenChange={setPresetsOpen} presets={presets} />
       </div>
         </SidebarInset>
       </SidebarProvider>

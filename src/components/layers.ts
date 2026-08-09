@@ -48,6 +48,15 @@ export function isElementId(id: LayerId): id is ElementId {
   return !(id in DOC_LAYER_LABELS);
 }
 
+/** Layers the panel's eye can hide: every renderer element plus the texture
+ *  and mask (hiding those drops the asset from the build). Settings is the
+ *  one row with nothing on the label to hide. */
+export type HideableLayerId = ElementId | "background" | "mask";
+
+export function isHideable(id: LayerId): id is HideableLayerId {
+  return id !== "settings";
+}
+
 /** Every group derives both its membership and its order from the registry,
  *  so a regrouped, reordered or added element can't silently vanish from the
  *  panel or drift out of the spec's stacking order. */
@@ -59,12 +68,13 @@ const rowsOf = (group: "beer" | "template" | "collab"): LayerId[] =>
  *  against (see PANEL_ORDER) — the panel and the selection rules have to read
  *  one list, or a range would select rows the user didn't drag over. */
 export const PANEL_GROUPS: [string, LayerId[]][] = [
-  ["Beer", rowsOf("beer")],
+  // The texture and mask ride along in "Beer": they change per release like
+  // the beer elements do, and they carry eyes now — only Settings stays
+  // under "Document".
+  ["Beer", [...rowsOf("beer"), "background", "mask"]],
   ["Collab", rowsOf("collab")],
   ["Template", rowsOf("template")],
-  // Straight off DOC_LAYER_LABELS' keys: a fourth document layer added there
-  // then appears in the panel — and in PANEL_ORDER — without a second edit.
-  ["Document", Object.keys(DOC_LAYER_LABELS) as DocLayerId[]],
+  ["Document", ["settings"]],
 ];
 
 /** Every row, flattened in panel order — the sequence a shift-range walks,

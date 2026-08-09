@@ -54,7 +54,10 @@ export interface Assets {
    *  stroke AND mask footprint. Distinct from fill "none", which is a live
    *  style meaning "no ink / knockout white". Session state, not config: a
    *  saved label file never records a hidden layer. */
-  hidden?: ReadonlySet<ElementId>;
+  // Structural (`has` only), not ReadonlySet<ElementId>: the UI's hidden set
+  // also carries the texture/mask layer ids, which this build never asks
+  // about — App handles those by omitting the asset itself.
+  hidden?: { has(id: ElementId): boolean };
 }
 
 interface Fonts {

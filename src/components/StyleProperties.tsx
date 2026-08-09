@@ -9,7 +9,7 @@
 // edits the whole selection at once, blanking any field they disagree about.
 // Selection itself lives in App (see selection.ts), driven by the layers
 // panel and the preview; this component only receives the chosen LayerIds.
-import { X } from "lucide-react";
+import { Bold, X } from "lucide-react";
 import type { LabelConfig, Style, StyledLine } from "@/types";
 import {
   SHIPPED, applyStyle, elementById, isDefaultStyle,
@@ -35,6 +35,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Toggle } from "@/components/ui/toggle";
 
 type Update = (fn: (c: LabelConfig) => void) => void;
 
@@ -93,6 +94,8 @@ export interface CollabFiles {
   centerUrl?: string;
   onLeft: (f: File) => void;
   onCenter: (f: File) => void;
+  onClearLeft: () => void;
+  onClearCenter: () => void;
 }
 
 /** Document-presentation knobs the Settings layer edits — 3D view options
@@ -119,8 +122,8 @@ export interface DocSettings {
 /** All build-time file assets the inspector can edit, grouped so App passes
  *  one prop: the texture and mask (Document layers) plus the collab logos. */
 export interface InspectorFiles {
-  texture: { fileName?: string; previewUrl?: string; onFile: (f: File) => void };
-  mask: { fileName?: string; previewUrl?: string; error?: string; onFile: (f: File) => void };
+  texture: { fileName?: string; previewUrl?: string; onFile: (f: File) => void; onClear: () => void };
+  mask: { fileName?: string; previewUrl?: string; error?: string; onFile: (f: File) => void; onClear: () => void };
   collab: CollabFiles;
 }
 
@@ -174,22 +177,6 @@ function StackNudge(props: { cfg: LabelConfig; update: Update }) {
   );
 }
 
-/** The collab on/off switch, shown on all three collab layers. Everything
- *  else about a collab is per-layer, but whether the block renders at all is
- *  one flag — turning it off does not discard the uploaded art or the slot
- *  styles, so flipping it back restores the label exactly as it was. */
-function CollabSwitch(props: { cfg: LabelConfig; update: Update }) {
-  return (
-    <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
-      <Switch
-        checked={props.cfg.collabEnabled}
-        onCheckedChange={(on) => props.update((c) => { c.collabEnabled = on; })}
-      />
-      Collab enabled
-    </label>
-  );
-}
-
 /** A collab logo slot's knobs: file drop, size, optional nudge, raster tint.
  *  Size is a plain multiplier on the slot's fit-to-box scale (1 = fit) —
  *  collab marks differ too much in visual weight for one fitted size to be
@@ -208,6 +195,7 @@ function CollabSlotContent(props: {
         fileName={left ? c.leftName : c.centerName}
         previewUrl={left ? c.leftUrl : c.centerUrl}
         onFile={left ? c.onLeft : c.onCenter}
+        onClear={left ? c.onClearLeft : c.onClearCenter}
       />
       <div className="flex items-center gap-1.5">
         <Label htmlFor={`${props.id}-scale`} className="text-xs text-muted-foreground">Size</Label>
@@ -246,7 +234,6 @@ function CollabSlotContent(props: {
         tint PNG
       </label>
       {!left && <StackNudge cfg={props.cfg} update={props.update} />}
-      <CollabSwitch cfg={props.cfg} update={props.update} />
     </div>
   );
 }
@@ -363,9 +350,9 @@ function Content(props: {
         </p>
       );
     case "collabLead":
-      // The lead-in's text is fixed; only whether the collab block renders
-      // at all is editable here.
-      return <CollabSwitch cfg={cfg} update={update} />;
+      // The lead-in's text is fixed, and the collab on/off switch lives on
+      // the layers panel's Collab group header — nothing to edit here.
+      return <p className="text-[11px] text-muted-foreground">Fixed template art — nothing to edit.</p>;
     case "collabLeft":
     case "collabCenter":
       return <CollabSlotContent id={id} cfg={cfg} update={update} files={files} />;
@@ -381,6 +368,7 @@ function Content(props: {
           fileName={files.texture.fileName}
           previewUrl={files.texture.previewUrl}
           onFile={files.texture.onFile}
+          onClear={files.texture.onClear}
         />
       );
     case "mask":
@@ -392,6 +380,7 @@ function Content(props: {
           previewUrl={files.mask.previewUrl}
           error={files.mask.error}
           onFile={files.mask.onFile}
+          onClear={files.mask.onClear}
         />
       );
     case "settings":
@@ -566,17 +555,22 @@ function ElementStyle(props: {
           <div className="flex items-center gap-3">
             {/* Only the elements whose registry entry accepts bold are
                 counted — and only they are written (applyStyle drops it for
-                the rest). A switch has no indeterminate state, so a mixed
-                selection shows it off and says so. */}
+                the rest). A toggle button like the description toolbar's
+                Bold and the Ink row's metallic, not a switch — same action,
+                same control. It has no indeterminate state, so a mixed
+                selection shows it off and says so in the tooltip. */}
             {boldEls.length > 0 && (
-              <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
-                <Switch
-                  id={`${fid}-bold`}
-                  checked={bold ?? false}
-                  onCheckedChange={(v) => set({ bold: v === true })}
-                />
-                {bold === undefined ? "Bold (mixed)" : "Bold"}
-              </label>
+              <Toggle
+                id={`${fid}-bold`}
+                size="sm"
+                pressed={bold ?? false}
+                onPressedChange={(v) => set({ bold: v === true })}
+                aria-label={bold === undefined ? "Bold (mixed)" : "Bold"}
+                title={bold === undefined ? "Bold (mixed)" : "Bold"}
+                className="size-6 border border-input"
+              >
+                <Bold className="size-3.5" />
+              </Toggle>
             )}
             {anyText && (
               // Clamped both ends by ScrubField: tracking wide enough to

@@ -2,6 +2,7 @@
 // (keyboard, focus, and aria handled by the library), with an image
 // thumbnail on a checkerboard and inline error text.
 import { useDropzone, type Accept } from "react-dropzone";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const CHECKER =
@@ -14,6 +15,9 @@ export function FileDrop(props: {
   previewUrl?: string;
   error?: string;
   onFile: (f: File) => void;
+  /** Removes the loaded file. The X only renders while a file is loaded
+   *  AND a handler is given, so drops without one look as before. */
+  onClear?: () => void;
 }) {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: props.accept,
@@ -46,6 +50,19 @@ export function FileDrop(props: {
             {props.fileName ?? "drop or click"}
           </div>
         </div>
+        {props.fileName && props.onClear && (
+          <button
+            type="button"
+            aria-label={`Remove ${props.label}`}
+            title="Remove"
+            // stopPropagation: the whole drop target is a click-to-browse
+            // zone; the X must clear, not open the file picker.
+            onClick={(e) => { e.stopPropagation(); props.onClear!(); }}
+            className="ml-auto grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm text-muted-foreground hover:text-foreground"
+          >
+            <X className="size-3.5" />
+          </button>
+        )}
         <input {...getInputProps()} />
       </div>
       {props.error && <p className="mt-1 text-xs text-destructive">{props.error}</p>}
