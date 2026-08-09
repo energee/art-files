@@ -88,7 +88,7 @@ const pageBox = (
 
 // ponytail: fixed oversample, CSS downscales; add a ResizeObserver only if
 // crispness on very large screens ever matters.
-const RENDER_SCALE = 2.5;
+export const RENDER_SCALE = 2.5;
 
 // The installed react-resizable-panels major (Group/Panel/Separator, with
 // panelRef instead of a forwarded ref, and onLayoutChange reporting a
@@ -199,6 +199,8 @@ export const PreviewCompare = forwardRef<
     if (e.target instanceof Element && e.target.closest('[data-slot="resizable-handle"]')) return;
     const r = e.currentTarget.getBoundingClientRect();
     if (!r.width || !r.height) return; // not laid out yet (e.g. display:none)
+    // getBoundingClientRect already reflects any CSS zoom App applies to the
+    // preview pane, so the proportion holds at any scale without extra math.
     const xPt = ((e.clientX - r.left) / r.width) * PAGE.w;
     const yPt = ((e.clientY - r.top) / r.height) * PAGE.h;
     onPick(hitTest(xPt, yPt, measure, cfg, collab), modsOf(e));

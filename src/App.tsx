@@ -32,7 +32,7 @@ import {
   EMPTY_SELECTION, resolveSelect, type SelectMods, type Selection,
 } from "@/selection";
 import { CommandMenu, shortcutOf, type Command } from "@/components/CommandMenu";
-import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
+import { PreviewCompare, RENDER_SCALE, type PreviewCompareHandle } from "@/components/PreviewCompare";
 import { CanView } from "@/components/CanView";
 import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator,
@@ -170,6 +170,31 @@ function loadMeasure(): Promise<Measure> {
 const blobUrl = (bytes: Uint8Array, type: string) =>
   URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type }));
 
+/** Pinch-zoom ceiling for the preview pane. Capped at the preview's own
+ *  oversample, because that is where the bitmap runs out of real pixels — past
+ *  it a zoom magnifies blur, not detail. ponytail: to go deeper, re-render the
+ *  PDFs at RENDER_SCALE × zoom while zoomed rather than raising this. */
+const MAX_ZOOM = RENDER_SCALE;
+
+/** Largest wheel delta any single event is allowed to contribute, before the
+ *  exponential below turns it into a scale factor. A trackpad pinch reports
+ *  deltas of a few px many times a second, but one mouse notch reports 100 at
+ *  once — unclamped that is e^(2/3) ≈ 2x from a single click of the wheel,
+ *  which overshoots the whole zoom range in two notches. Clamped, a notch is
+ *  at most 1.4x and a pinch still resolves smoothly. */
+const ZOOM_STEP_CAP = 50;
+
+/** Keep the scaled content covering the pane `r`, so neither a pan nor a
+ *  zoom-out can strand the label against a band of empty background. At z === 1
+ *  the two bounds collapse to 0 and the content is pinned. Shared by the two
+ *  things that move the view — the wheel and the right-drag — so they cannot
+ *  disagree about where the edges are. */
+const clampView = (r: DOMRect, z: number, x: number, y: number) => ({
+  z,
+  x: Math.min(0, Math.max(r.width * (1 - z), x)),
+  y: Math.min(0, Math.max(r.height * (1 - z), y)),
+});
+
 // Menu chrome, shared by all three menus so they can't drift apart: small
 // regular-weight triggers, and items sized to match.
 const MENU_TRIGGER = "px-2 py-1 text-xs font-normal";
@@ -254,6 +279,15 @@ export default function App() {
   // 2D preview stays mounted (hidden) so its rendered canvases and divider
   // position survive a round-trip through the 3D views.
   const [viewMode, setViewMode] = useState<"2d" | "can" | "pack" | "flat">("2d");
+  // Preview pane zoom: scale `z` about the pane's top-left, then offset by
+  // (x, y) screen px. z === 1 is the fitted view, and the clamp in the wheel
+  // handler pins the offset to 0 there, so unzoomed is exactly as before.
+  const previewPane = useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState({ z: 1, x: 0, y: 0 });
+  // Only whether we are zoomed gates the wheel handler, so depending on the
+  // boolean rather than the whole transform keeps the listener attached
+  // through a pinch instead of re-binding on every frame of it.
+  const zoomed = zoom.z > 1;
   // Document Settings layer's knobs: 3D-view presentation only (die-cut
   // corner radius, label height on the can, foil-edge blur). The print PDFs
   // and saved configs never see them; they persist in presets.json, since
@@ -278,6 +312,95 @@ export default function App() {
   useEffect(() => {
     if (presetsError) setLoadError(`presets save failed: ${presetsError}`);
   }, [presetsError]);
+
+  // Wheel-to-zoom, scoped to the preview pane, matching what OrbitControls
+  // gives the 3D views so one set of habits works in all four: wheel (or a
+  // two-finger scroll) dollies, right-drag pans, and the context menu is out of
+  // the way. Every wheel event zooms, ctrlKey or not — a trackpad pinch reports
+  // ctrlKey and a scroll doesn't, but OrbitControls dollies on both, so
+  // splitting them here is exactly the inconsistency to avoid.
+  //
+  // preventDefault on the ctrlKey ones doubles as the fix for the original
+  // complaint: without it a pinch is browser page zoom, rescaling the whole UI
+  // — menubar, layers, inspector — just to look closely at the label. Scoped to
+  // this element, so pinching anywhere else still zooms the app.
+  //
+  // 2D only: the 3D views run this gesture through OrbitControls against a real
+  // camera, and CSS-scaling their canvas would only magnify a fixed-resolution
+  // render.
+  //
+  // The listener is attached by hand rather than through onWheel because
+  // React's synthetic wheel handler is registered passive at the root, where
+  // preventDefault does nothing.
+  //
+  // setZoom's functional form is load-bearing, not style: a pinch delivers
+  // wheel events faster than React re-renders, so a handler closing over `zoom`
+  // would apply several events on top of the same stale value and drop all but
+  // the last. Measured: twelve zoom-out events in one tick left the pane at
+  // 1.37x instead of 1. Composing on the previous state makes every event
+  // count, and lets the listener stay attached across zoom changes.
+  //
+  // ponytail: no touchscreen pinch (touch events) and no Safari `gesture*`
+  // fallback — add either if this ever runs somewhere that matters.
+  useEffect(() => {
+    const el = previewPane.current;
+    if (!el || viewMode !== "2d") return;
+    function onWheel(e: WheelEvent) {
+      const r = el!.getBoundingClientRect();
+      if (!r.width || !r.height) return; // not laid out yet
+      e.preventDefault();
+      setZoom((v) => {
+        // Zoom about the pointer, which is where this deliberately departs from
+        // OrbitControls: it dollies toward the camera target, but a flat
+        // document has no target worth keeping centred, and anchoring on the
+        // cursor is what lets you drive straight at a detail. Exponential in
+        // deltaY so an increment feels the same at 1x as at 2x, instead of
+        // crawling once zoomed in.
+        const step = Math.max(-ZOOM_STEP_CAP, Math.min(ZOOM_STEP_CAP, e.deltaY));
+        const z = Math.min(MAX_ZOOM, Math.max(1, v.z * Math.exp(-step / 150)));
+        const k = z / v.z;
+        const sx = e.clientX - r.left, sy = e.clientY - r.top;
+        return clampView(r, z, sx - k * (sx - v.x), sy - k * (sy - v.y));
+      });
+    }
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [viewMode]);
+
+  // Drag-to-pan on the right button, which on a trackpad is the two-finger
+  // click — the same button OrbitControls pans with in the 3D views. That
+  // gesture otherwise opens the browser context menu over the preview, a menu
+  // of things ("Reload", "Inspect") with nothing to do with the label, so
+  // onContextMenu below suppresses it exactly as OrbitControls does on its own
+  // canvas. With the wheel given over to zoom, this is the only way to pan.
+  const panFrom = useRef<{ x: number; y: number } | null>(null);
+  const [panning, setPanning] = useState(false);
+  function onPanStart(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.button !== 2 || viewMode !== "2d") return;
+    // Capture, so a drag that leaves the pane (or the window) keeps panning
+    // and still gets its pointerup instead of sticking in a dragging state.
+    e.currentTarget.setPointerCapture(e.pointerId);
+    panFrom.current = { x: e.clientX, y: e.clientY };
+    setPanning(true);
+  }
+  function onPanMove(e: React.PointerEvent<HTMLDivElement>) {
+    const from = panFrom.current;
+    if (!from) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    // Deltas against the previous move, not the drag origin, so the clamp
+    // biting at an edge can't build up an offset the label has to "catch up"
+    // through when the drag turns back the other way.
+    const dx = e.clientX - from.x, dy = e.clientY - from.y;
+    panFrom.current = { x: e.clientX, y: e.clientY };
+    setZoom((v) => clampView(r, v.z, v.x + dx, v.y + dy));
+  }
+  function onPanEnd(e: React.PointerEvent<HTMLDivElement>) {
+    if (!panFrom.current) return;
+    panFrom.current = null;
+    setPanning(false);
+    if (e.currentTarget.hasPointerCapture(e.pointerId))
+      e.currentTarget.releasePointerCapture(e.pointerId);
+  }
   /** Return to the 2D compare at one end. The divider resize is deferred a
    *  frame: while a 3D mode is up the compare sits in a display:none wrapper
    *  with zero width, and react-resizable-panels misapplies a percentage
@@ -824,21 +947,44 @@ export default function App() {
           {/* Preset import/export failures: the bar is the one chrome that
               always shows regardless of selection. */}
           {loadError && <span className="text-xs text-destructive">{loadError}</span>}
+          {/* Build failures sit here too rather than in their own strip above
+              the preview — one place for chrome-level errors, and the strip
+              was 20px reserved for a row that is empty almost always. */}
+          {buildError && <span className="text-xs text-destructive">{buildError}</span>}
           <input ref={presetsInput} type="file" accept="application/json" hidden
             onChange={(e) => e.target.files?.[0] && void importPresets(e.target.files[0])} />
         </header>
       <div className="flex min-h-0 flex-1">
         <section className="flex min-w-0 flex-1 flex-col p-3">
-          <div className="mb-2 flex h-5 items-center gap-2">
-            {building && (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" />
-                rendering preview…
-              </span>
-            )}
-            {buildError && <span className="text-xs text-destructive">{buildError}</span>}
-          </div>
-          <div className="relative flex min-h-0 flex-1">
+          {/* overflow-hidden is what makes the pane the window the zoomed
+              preview is seen through; without it the scaled label would spill
+              over the layers panel and the inspector. */}
+          <div
+            ref={previewPane}
+            className={`relative flex min-h-0 flex-1 overflow-hidden${
+              panning ? " cursor-grabbing" : ""}`}
+            // Suppressed unconditionally in 2D, not just while zoomed: a
+            // gesture that opens a menu at 100% and pans at 150% would be a
+            // coin toss. The 3D views keep the normal menu.
+            onContextMenu={(e) => viewMode === "2d" && e.preventDefault()}
+            onPointerDown={onPanStart}
+            onPointerMove={onPanMove}
+            onPointerUp={onPanEnd}
+            onPointerCancel={onPanEnd}>
+            {/* One wrapper, two jobs: blurs the stale render while a rebuild is
+                in flight, so what's on screen reads as "being replaced" rather
+                than current, and carries the pinch-zoom transform. Only the two
+                views are inside it — the overlays below stay sharp and unzoomed,
+                which is what keeps them readable as chrome. transform is
+                deliberately absent from the transition list: it has to track
+                the pinch frame for frame, not ease toward it. */}
+            <div
+              className={`flex min-h-0 min-w-0 flex-1 transition-[filter,opacity] duration-200${
+                building ? " blur-sm opacity-70" : ""}`}
+              style={{
+                transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`,
+                transformOrigin: "0 0",
+              }}>
             {/* PreviewCompare stays mounted but hidden in 3D modes (see
                 viewMode). Selection box + click-to-select apply to 2D only. */}
             <div className={viewMode === "2d" ? "flex min-h-0 min-w-0 flex-1" : "hidden"}>
@@ -868,6 +1014,19 @@ export default function App() {
                 labelWidthPct={render.labelWidth}
                 edgeSoftnessPct={render.edgeSoftness} />
             )}
+            </div>
+            {/* Rebuild indicator, in the frame's bottom-left rather than a
+                strip above it: it belongs to the thing that is changing. Same
+                corner CanView uses for its texture build, which runs right
+                after this one, so the two read as one continuous indicator.
+                Outside the blur wrapper, so it stays sharp; gated on pdfs so
+                it can't double up with the first-load spinner below. */}
+            {building && pdfs && (
+              <span className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" />
+                rendering preview…
+              </span>
+            )}
             {/* No-texture hint. It used to sit in the status strip above the
                 frame, where it read as chrome; low on the label it is the
                 one thing in an empty preview. Waits for the first build so it
@@ -882,7 +1041,7 @@ export default function App() {
             {/* First-load state: until the first debounced build lands there is
                 nothing on the canvases, so fill the empty frame with a spinner
                 instead of a bare box. Later rebuilds keep the previous render
-                visible and only show the small strip spinner above. */}
+                visible, blur it, and show the corner spinner instead. */}
             {!pdfs && !buildError && (
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
@@ -892,6 +1051,26 @@ export default function App() {
               </div>
             )}
           </div>
+          {/* Preview toolbar. 2D only: zoom is a 2D affordance — the 3D views
+              dolly their own camera, so a percentage there would be a number
+              that never moves. Right-aligned to stay clear of the rebuild
+              spinner in the frame's opposite corner. */}
+          {viewMode === "2d" && (
+            <div className="mt-2 flex h-6 shrink-0 items-center justify-end">
+              {/* Doubles as the way back: pinching out returns to 100% too, but
+                  a readout that is already the reset control costs no extra
+                  chrome. tabular-nums so the width doesn't jitter digit by
+                  digit while a pinch runs. */}
+              <button
+                type="button"
+                onClick={() => setZoom({ z: 1, x: 0, y: 0 })}
+                disabled={!zoomed}
+                title={zoomed ? "Reset zoom to 100%" : "Pinch over the preview to zoom"}
+                className="rounded px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground hover:text-foreground disabled:pointer-events-none">
+                {Math.round(zoom.z * 100)}%
+              </button>
+            </div>
+          )}
         </section>
         {/* Right inspector: a shadcn Sheet driven by the selection — open
             while a layer is selected, closed (Esc or the header X) by

@@ -116,7 +116,16 @@ header collapses to bold and only the first line is kept. Plain text
 parses to itself, so configs written before this render unchanged. The preview is a single frame: both PDFs
 render to bitmaps via pdf.js and stack there, and a draggable divider
 reveals the white-ink layer over the art in place — no embedded PDF
-viewer, no tabs. Live previews build against a downscaled copy of the
+viewer, no tabs. Scrolling or pinching over the 2D preview zooms it about
+the pointer, up to 2.5x (the oversample the bitmaps are rendered at, past
+which zooming would magnify blur rather than detail), and a two-finger —
+i.e. right-button — drag pans; the percentage at the bottom right of the
+pane reads the zoom and clicking it returns to 100%. That mapping is
+deliberately the one OrbitControls gives the 3D views, so the same habits
+work in all four, and it is why the browser's own pinch-zoom and context
+menu are suppressed over the pane. While a rebuild is in flight the stale
+render blurs, so what is on screen reads as being replaced rather than
+current. Live previews build against a downscaled copy of the
 texture/mask (print-size images made every keystroke-triggered rebuild
 churn enough memory to crash the tab); downloads always rebuild at full
 resolution when clicked. Preview PDF generation runs in a lazy Web Worker,
