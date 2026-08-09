@@ -3,7 +3,6 @@
 import {
   useEffect, useLayoutEffect, useMemo, useState, type PointerEvent, type RefObject,
 } from "react";
-import { Settings2 } from "lucide-react";
 import { ART, PAGE } from "@/layout";
 import {
   clampMargin, layoutGuides, pointToScreen, pointToUnit, rulerTicks, screenToPoint,
@@ -338,9 +337,9 @@ export function Rulers(props: {
             onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag} />
           <Popover>
             <PopoverTrigger
-              className="group pointer-events-auto absolute top-0 left-0 grid size-5 place-items-center border-r border-b border-border bg-sidebar text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-              title="Ruler settings" aria-label="Ruler settings">
-              <Settings2 className="size-3" />
+              className="pointer-events-auto absolute top-0 left-0 z-10 grid h-[20px] w-[20px] place-items-center rounded-none border-r border-b border-border bg-sidebar p-0 text-[9px] leading-none font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              title={`Ruler settings — ${unit}`} aria-label={`Ruler settings, current unit ${unit}`}>
+              {unit}
             </PopoverTrigger>
             <PopoverContent align="start" side="bottom" className="w-56 gap-3">
               <PopoverHeader>

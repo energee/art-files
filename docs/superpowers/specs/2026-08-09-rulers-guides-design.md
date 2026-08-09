@@ -19,8 +19,9 @@ changing the generated PDFs, PSDs, saved label configuration, or 3D views.
 - Measurements use the existing PDF-point page geometry. The trim box's
   top-left (`ART.x`, `ART.y`) is `0, 0`; the page bleed therefore has negative
   ruler values.
-- Inches are the default. A compact settings-icon button in the ruler corner
-  opens a labeled popover whose single-select segmented tab group switches
+- Inches are the default. The full 20px ruler-corner cell is a button labeled
+  with the current unit (`in`, `pt`, or `px`); it opens a popover whose
+  single-select segmented tab group switches
   among inches, points, and 600-DPI deliverable pixels (not CSS screen pixels).
   Tick density adapts to the current page scale so labels never pile up.
 - Moving the pointer through the 2D pane draws a marker in each ruler at the
