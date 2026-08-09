@@ -260,12 +260,15 @@ export function Rulers(props: {
 
         {showRulers && (
           <>
-            <rect width={RULER_SIZE} height={RULER_SIZE}
-              className="fill-sidebar stroke-border" />
-            <rect x={RULER_SIZE} width={geometry.width - RULER_SIZE} height={RULER_SIZE}
-              className="fill-sidebar stroke-border" />
-            <rect y={RULER_SIZE} width={RULER_SIZE} height={geometry.height - RULER_SIZE}
-              className="fill-sidebar stroke-border" />
+            {/* One continuous L-shaped surface. Separate stroked rectangles
+                doubled the seams around the corner and made its trigger look
+                like a small input pasted over the rulers. */}
+            <rect width={geometry.width} height={RULER_SIZE} className="fill-sidebar" />
+            <rect width={RULER_SIZE} height={geometry.height} className="fill-sidebar" />
+            <line x1={0} x2={geometry.width} y1={RULER_SIZE} y2={RULER_SIZE}
+              className="stroke-border" />
+            <line x1={RULER_SIZE} x2={RULER_SIZE} y1={0} y2={geometry.height}
+              className="stroke-border" />
             {horizontalTicks.map((tick) => (
               <g key={`x-${tick.value}`}>
                 <line x1={tick.screen} x2={tick.screen} y1={tick.major ? 10 : 14}
@@ -337,7 +340,7 @@ export function Rulers(props: {
             onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag} />
           <Popover>
             <PopoverTrigger
-              className="pointer-events-auto absolute top-0 left-0 z-10 grid h-[20px] w-[20px] place-items-center rounded-none border-r border-b border-border bg-sidebar p-0 text-[9px] leading-none font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              className="pointer-events-auto absolute top-0 left-0 z-10 grid h-[20px] w-[20px] place-items-center rounded-none bg-transparent p-0 text-[8px] leading-none font-normal text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               title={`Ruler settings — ${unit}`} aria-label={`Ruler settings, current unit ${unit}`}>
               {unit}
             </PopoverTrigger>
