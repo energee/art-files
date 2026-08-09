@@ -3,6 +3,7 @@
 import {
   useEffect, useLayoutEffect, useMemo, useState, type PointerEvent, type RefObject,
 } from "react";
+import { Settings2 } from "lucide-react";
 import { ART, PAGE } from "@/layout";
 import {
   clampMargin, layoutGuides, pointToScreen, pointToUnit, rulerTicks, screenToPoint,
@@ -12,6 +13,9 @@ import {
 import type { PreviewCompareHandle } from "@/components/PreviewCompare";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger,
+} from "@/components/ui/popover";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 const RULER_SIZE = 20;
@@ -29,8 +33,8 @@ interface Geometry {
 
 type Drag = { axis: GuideAxis; id?: number; point: number };
 
-/** Measurement controls shown beside zoom in the fixed preview toolbar. */
-export function RulerSettings(props: {
+/** The compact form inside the ruler-corner settings popover. */
+function RulerSettings(props: {
   unit: RulerUnit;
   onUnitChange: (unit: RulerUnit) => void;
   marginPt: number;
@@ -42,27 +46,29 @@ export function RulerSettings(props: {
   const marginStep = unit === "in" ? 0.125 : unit === "px" ? 25 : 1;
 
   return (
-    <div className="ml-3 flex items-center gap-2 border-l border-border pl-3">
-      <span className="text-xs text-muted-foreground">Units</span>
+    <div className="flex flex-col gap-2.5">
+      <Label className="text-xs text-muted-foreground">Measurement</Label>
       <ToggleGroup value={[unit]} spacing={0} variant="outline"
-        aria-label="Ruler measurement units"
+        className="w-full" aria-label="Ruler measurement units"
         onValueChange={(value) => {
           if (value[0]) onUnitChange(value[0] as RulerUnit);
         }}>
-        <ToggleGroupItem value="in" size="sm" className="h-6 min-w-0 px-2">Inches</ToggleGroupItem>
-        <ToggleGroupItem value="pt" size="sm" className="h-6 min-w-0 px-2">Points</ToggleGroupItem>
-        <ToggleGroupItem value="px" size="sm" className="h-6 min-w-0 px-2">Pixels</ToggleGroupItem>
+        <ToggleGroupItem value="in" size="sm" className="min-w-0 flex-1">Inches</ToggleGroupItem>
+        <ToggleGroupItem value="pt" size="sm" className="min-w-0 flex-1">Points</ToggleGroupItem>
+        <ToggleGroupItem value="px" size="sm" className="min-w-0 flex-1">Pixels</ToggleGroupItem>
       </ToggleGroup>
-      <Label htmlFor="guide-margin" className="text-xs text-muted-foreground">Margin</Label>
-      <Input id="guide-margin" type="number" min={0} max={marginMax} step={marginStep}
-        value={Number(marginValue.toFixed(unit === "in" ? 3 : 1))}
-        onChange={(event) => {
-          const value = Number(event.target.value);
-          if (Number.isFinite(value))
-            onMarginChange(clampMargin(unitToPoint(value, 0, unit)));
-        }}
-        className="h-6 w-16 rounded-md px-1.5 py-0 text-xs tabular-nums" />
-      <span className="text-xs text-muted-foreground">{unit}</span>
+      <Label htmlFor="guide-margin" className="text-xs text-muted-foreground">Margin inset</Label>
+      <div className="flex items-center gap-2">
+        <Input id="guide-margin" type="number" min={0} max={marginMax} step={marginStep}
+          value={Number(marginValue.toFixed(unit === "in" ? 3 : 1))}
+          onChange={(event) => {
+            const value = Number(event.target.value);
+            if (Number.isFinite(value))
+              onMarginChange(clampMargin(unitToPoint(value, 0, unit)));
+          }}
+          className="h-7 flex-1 rounded-md px-2 py-0 text-xs tabular-nums" />
+        <span className="w-5 text-xs text-muted-foreground">{unit}</span>
+      </div>
     </div>
   );
 }
@@ -73,19 +79,21 @@ export function Rulers(props: {
   transform: { z: number; x: number; y: number };
   showRulers: boolean;
   unit: RulerUnit;
+  onUnitChange: (unit: RulerUnit) => void;
   guidesEnabled: boolean;
   showMargins: boolean;
   showCenter: boolean;
   showManual: boolean;
   marginPt: number;
+  onMarginChange: (points: number) => void;
   manual: readonly ManualGuide[];
   onAddManual: (axis: GuideAxis, point: number) => void;
   onMoveManual: (id: number, point: number) => void;
   onRemoveManual: (id: number) => void;
 }) {
   const {
-    paneRef, previewRef, transform, showRulers, unit, guidesEnabled,
-    showMargins, showCenter, showManual, marginPt,
+    paneRef, previewRef, transform, showRulers, unit, onUnitChange, guidesEnabled,
+    showMargins, showCenter, showManual, marginPt, onMarginChange,
     manual, onAddManual, onMoveManual, onRemoveManual,
   } = props;
   const [geometry, setGeometry] = useState<Geometry | null>(null);
@@ -328,6 +336,20 @@ export function Rulers(props: {
             title={guidesEnabled ? "Drag right to create a vertical guide" : "Turn on Guides to add guides"}
             onPointerDown={(event) => startNew("x", event)}
             onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag} />
+          <Popover>
+            <PopoverTrigger
+              className="group pointer-events-auto absolute top-0 left-0 grid size-5 place-items-center border-r border-b border-border bg-sidebar text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              title="Ruler settings" aria-label="Ruler settings">
+              <Settings2 className="size-3" />
+            </PopoverTrigger>
+            <PopoverContent align="start" side="bottom" className="w-56 gap-3">
+              <PopoverHeader>
+                <PopoverTitle>Ruler settings</PopoverTitle>
+              </PopoverHeader>
+              <RulerSettings unit={unit} onUnitChange={onUnitChange}
+                marginPt={marginPt} onMarginChange={onMarginChange} />
+            </PopoverContent>
+          </Popover>
         </>
       )}
     </div>

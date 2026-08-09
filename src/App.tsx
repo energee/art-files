@@ -33,7 +33,7 @@ import {
 } from "@/selection";
 import { CommandMenu, shortcutOf, type Command } from "@/components/CommandMenu";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
-import { Rulers, RulerSettings } from "@/components/Rulers";
+import { Rulers } from "@/components/Rulers";
 import { CanView, type CanViewHandle } from "@/components/CanView";
 import {
   DEFAULT_MARGIN_PT, type GuideAxis, type ManualGuide, type RulerUnit,
@@ -1179,10 +1179,10 @@ export default function App() {
             </div>
             {viewMode === "2d" && (
               <Rulers paneRef={previewPane} previewRef={previewRef} transform={zoom}
-                showRulers={showRulers} unit={rulerUnit}
+                showRulers={showRulers} unit={rulerUnit} onUnitChange={setRulerUnit}
                 guidesEnabled={showGuides} showMargins={showMargins} showCenter={showCenter}
                 showManual={showManualGuides} marginPt={marginPt}
-                manual={manualGuides}
+                onMarginChange={setMarginPt} manual={manualGuides}
                 onAddManual={addManualGuide} onMoveManual={moveManualGuide}
                 onRemoveManual={removeManualGuide} />
             )}
@@ -1246,10 +1246,6 @@ export default function App() {
               aria-label="Zoom percentage"
               className="w-10 rounded bg-transparent py-0.5 text-right text-xs tabular-nums text-muted-foreground outline-none hover:text-foreground focus:text-foreground" />
             <span className="text-xs text-muted-foreground">%</span>
-            {viewMode === "2d" && (
-              <RulerSettings unit={rulerUnit} onUnitChange={setRulerUnit}
-                marginPt={marginPt} onMarginChange={setMarginPt} />
-            )}
           </div>
         </section>
         {/* Right inspector: a shadcn Sheet driven by the selection — open

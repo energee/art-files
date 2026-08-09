@@ -19,10 +19,10 @@ changing the generated PDFs, PSDs, saved label configuration, or 3D views.
 - Measurements use the existing PDF-point page geometry. The trim box's
   top-left (`ART.x`, `ART.y`) is `0, 0`; the page bleed therefore has negative
   ruler values.
-- Inches are the default. A single-select segmented tab group in the bottom
-  preview toolbar switches among inches, points, and 600-DPI deliverable pixels
-  (not CSS screen pixels). Tick density adapts to the current page scale so
-  labels never pile up.
+- Inches are the default. A compact settings-icon button in the ruler corner
+  opens a labeled popover whose single-select segmented tab group switches
+  among inches, points, and 600-DPI deliverable pixels (not CSS screen pixels).
+  Tick density adapts to the current page scale so labels never pile up.
 - Moving the pointer through the 2D pane draws a marker in each ruler at the
   pointer's current position.
 
@@ -32,7 +32,7 @@ Layout guides are derived from the trimmed 8 x 5 inch `ART` box and cannot be
 dragged or deleted individually:
 
 - Four **margin guides**, inset from the trim box. The default inset is 0.25in
-  (18pt), adjustable beside the measurement tabs in the preview toolbar.
+  (18pt), adjustable below the measurement tabs in the settings popover.
 - A vertical **center** guide at `ART.x + ART.w / 2`.
 - A horizontal **middle** guide at `ART.y + ART.h / 2`.
 
