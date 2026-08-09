@@ -17,7 +17,7 @@ import { rasterKind, tintRgba } from "@/collab";
 import type { Assets, CollabImage } from "@/pdf/build";
 import { buildPreviewPdfs, disposePreviewWorker } from "@/pdf/client";
 import type { PsdAssets } from "@/psd/build";
-import { PSD_DOC } from "@/layout";
+import { PREVIEW_OVERSAMPLE, PSD_DOC } from "@/layout";
 import {
   Inspector, type CollabFiles, type DocSettings, type InspectorFiles,
 } from "@/components/StyleProperties";
@@ -32,8 +32,8 @@ import {
   EMPTY_SELECTION, resolveSelect, type SelectMods, type Selection,
 } from "@/selection";
 import { CommandMenu, shortcutOf, type Command } from "@/components/CommandMenu";
-import { PreviewCompare, RENDER_SCALE, type PreviewCompareHandle } from "@/components/PreviewCompare";
-import { CanView } from "@/components/CanView";
+import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
+import { CanView, type CanViewHandle } from "@/components/CanView";
 import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator,
   MenubarShortcut, MenubarTrigger,
@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import poppinsRegular from "@/assets/fonts/Poppins-Regular.ttf?url";
 import poppinsSemiBold from "@/assets/fonts/Poppins-SemiBold.ttf?url";
 import poppinsBold from "@/assets/fonts/Poppins-Bold.ttf?url";
@@ -170,12 +171,6 @@ function loadMeasure(): Promise<Measure> {
 const blobUrl = (bytes: Uint8Array, type: string) =>
   URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type }));
 
-/** Pinch-zoom ceiling for the preview pane. Capped at the preview's own
- *  oversample, because that is where the bitmap runs out of real pixels — past
- *  it a zoom magnifies blur, not detail. ponytail: to go deeper, re-render the
- *  PDFs at RENDER_SCALE × zoom while zoomed rather than raising this. */
-const MAX_ZOOM = RENDER_SCALE;
-
 /** Largest wheel delta any single event is allowed to contribute, before the
  *  exponential below turns it into a scale factor. A trackpad pinch reports
  *  deltas of a few px many times a second, but one mouse notch reports 100 at
@@ -194,6 +189,23 @@ const clampView = (r: DOMRect, z: number, x: number, y: number) => ({
   x: Math.min(0, Math.max(r.width * (1 - z), x)),
   y: Math.min(0, Math.max(r.height * (1 - z), y)),
 });
+
+/** The pane's zoom range: 1 (fitted) up to the preview's own oversample, which
+ *  is where the bitmap runs out of real pixels. The 3D views clamp their dolly
+ *  to the same ceiling, so a zoom carried across is never silently clipped. */
+const clampZoom = (z: number) => Math.min(PREVIEW_OVERSAMPLE, Math.max(1, z));
+
+/** Zoom to `z` about the pane point (ax, ay), keeping whatever is under that
+ *  point where it is. Shared by the wheel (anchored on the pointer) and the
+ *  typed field (anchored on the pane centre, having no pointer to work from):
+ *  the anchoring is the half of the view maths clampView doesn't cover, and
+ *  the two callers must not disagree about it either. */
+const zoomAbout = (
+  r: DOMRect, v: { z: number; x: number; y: number }, z: number, ax: number, ay: number,
+) => {
+  const k = z / v.z;
+  return clampView(r, z, ax - k * (ax - v.x), ay - k * (ay - v.y));
+};
 
 // Menu chrome, shared by all three menus so they can't drift apart: small
 // regular-weight triggers, and items sized to match.
@@ -284,10 +296,83 @@ export default function App() {
   // handler pins the offset to 0 there, so unzoomed is exactly as before.
   const previewPane = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState({ z: 1, x: 0, y: 0 });
-  // Only whether we are zoomed gates the wheel handler, so depending on the
-  // boolean rather than the whole transform keeps the listener attached
-  // through a pinch instead of re-binding on every frame of it.
-  const zoomed = zoom.z > 1;
+  // The 3D dolly, reported by CanView as a multiple of the mode's framing
+  // distance so it shares the 2D pane's units. Held here, not in CanView,
+  // because the one toolbar below reads whichever view is up.
+  const canView = useRef<CanViewHandle>(null);
+  // Stored as the whole percent the field shows, not the raw float: the camera
+  // emits a 'change' per damped frame of every gesture, and a float would
+  // re-render this whole component — command table, menubar, hidden compare —
+  // for every one of them. Rounding lets React's bail-out absorb the frames
+  // the readout wouldn't have moved on, which is most of a settle and all of
+  // an orbit. The precise value still reaches `carried` below, which is a ref.
+  const [camZoomPct, setCamZoomPct] = useState(100);
+  const shownZoomPct = viewMode === "2d" ? Math.round(zoom.z * 100) : camZoomPct;
+  // Zoom level follows you across views: both sides express it as a multiple
+  // of how the view frames itself, so handing the number over is enough. Pan
+  // travels with it as a fraction of the visible frame — the 2D pane's px
+  // offset and the 3D target displacement are different quantities, but "a
+  // third of a frame left of centre" means the same thing in both.
+  //
+  // A ref, not state: only a view change hands it over, and re-rendering on
+  // every camera frame to store a number nothing displays is pure waste. Held
+  // in CanView's own {zoom, pan} shape so the handover is a prop rather than a
+  // pack/unpack at each of the three boundaries it crosses.
+  const carried = useRef({ zoom: 1, pan: { x: 0, y: 0 } });
+  // The view this ref's contents belong to, so a freshly mounted scene's reset
+  // emissions can't be mistaken for the operator's position (see onZoom).
+  const carriedMode = useRef(viewMode);
+  // Captured on the single render that leaves 2D — `zoom` still holds the 2D
+  // value there and the pane still has its rect, so this is the same number
+  // the last 2D render would have produced, measured once per switch instead
+  // of on every keystroke, divider drag and pan frame. It has to happen in
+  // render rather than an effect: CanView reads it as a prop while mounting,
+  // and child effects run before this component's own. The 3D side has no
+  // state to read back here (a right-drag pan changes none), so it records
+  // straight from the camera in CanView's onZoom, its single writer.
+  if (viewMode !== "2d" && carriedMode.current === "2d") {
+    const r = previewPane.current?.getBoundingClientRect();
+    if (r?.width) carried.current = {
+      zoom: zoom.z,
+      // How far the transformed sheet's centre sits from the pane's centre,
+      // as a fraction of the VISIBLE frame. Do not divide this by zoom: the
+      // 3D camera's pan uses its current projected frame too, so doing that
+      // made a 2D pan arrive 1/z as far away in Rendered.
+      pan: {
+        x: (r.width * (1 - zoom.z) / 2 - zoom.x) / r.width,
+        y: (r.height * (1 - zoom.z) / 2 - zoom.y) / r.height,
+      },
+    };
+  }
+  useEffect(() => {
+    carriedMode.current = viewMode;
+    if (viewMode !== "2d") return; // CanView takes it as a prop — see initialView
+    const { zoom: z, pan } = carried.current;
+    const r = previewPane.current?.getBoundingClientRect();
+    if (!r?.width) return setZoom({ z, x: 0, y: 0 });
+    setZoom(clampView(r, z,
+      r.width * (1 - z) / 2 - pan.x * r.width,
+      r.height * (1 - z) / 2 - pan.y * r.height));
+  }, [viewMode]);
+  // What the toolbar field holds while it is being edited; null means it just
+  // mirrors shownZoomPct, so a gesture keeps updating the number until you type.
+  const [zoomDraft, setZoomDraft] = useState<string | null>(null);
+  // Commits the typed percentage (on Enter or blur). Garbage input is simply
+  // dropped back to the live value — the field is a readout first.
+  const applyTypedZoom = () => {
+    const pct = parseFloat(zoomDraft ?? "");
+    setZoomDraft(null);
+    if (!isFinite(pct)) return;
+    const z = clampZoom(pct / 100);
+    if (viewMode === "2d") {
+      const r = previewPane.current?.getBoundingClientRect();
+      // Anchor on the pane centre: with no pointer to zoom about, growing from
+      // the top-left would walk the label off the corner.
+      setZoom((v) => r?.width
+        ? zoomAbout(r, v, z, r.width / 2, r.height / 2)
+        : { z, x: 0, y: 0 });
+    } else canView.current?.setZoom(z);
+  };
   // Document Settings layer's knobs: 3D-view presentation only (die-cut
   // corner radius, label height on the can, foil-edge blur). The print PDFs
   // and saved configs never see them; they persist in presets.json, since
@@ -357,10 +442,8 @@ export default function App() {
         // deltaY so an increment feels the same at 1x as at 2x, instead of
         // crawling once zoomed in.
         const step = Math.max(-ZOOM_STEP_CAP, Math.min(ZOOM_STEP_CAP, e.deltaY));
-        const z = Math.min(MAX_ZOOM, Math.max(1, v.z * Math.exp(-step / 150)));
-        const k = z / v.z;
-        const sx = e.clientX - r.left, sy = e.clientY - r.top;
-        return clampView(r, z, sx - k * (sx - v.x), sy - k * (sy - v.y));
+        const z = clampZoom(v.z * Math.exp(-step / 150));
+        return zoomAbout(r, v, z, e.clientX - r.left, e.clientY - r.top);
       });
     }
     el.addEventListener("wheel", onWheel, { passive: false });
@@ -373,33 +456,38 @@ export default function App() {
   // of things ("Reload", "Inspect") with nothing to do with the label, so
   // onContextMenu below suppresses it exactly as OrbitControls does on its own
   // canvas. With the wheel given over to zoom, this is the only way to pan.
-  const panFrom = useRef<{ x: number; y: number } | null>(null);
+  // The drag origin, plus the pane's rect measured once at pointerdown: the
+  // pane cannot be resized by a pan, and re-measuring per move was a forced
+  // layout flush up to 120 times a second.
+  const panFrom = useRef<{ x: number; y: number; r: DOMRect } | null>(null);
   const [panning, setPanning] = useState(false);
   function onPanStart(e: React.PointerEvent<HTMLDivElement>) {
     if (e.button !== 2 || viewMode !== "2d") return;
     // Capture, so a drag that leaves the pane (or the window) keeps panning
     // and still gets its pointerup instead of sticking in a dragging state.
     e.currentTarget.setPointerCapture(e.pointerId);
-    panFrom.current = { x: e.clientX, y: e.clientY };
+    panFrom.current = {
+      x: e.clientX, y: e.clientY, r: e.currentTarget.getBoundingClientRect(),
+    };
     setPanning(true);
   }
   function onPanMove(e: React.PointerEvent<HTMLDivElement>) {
     const from = panFrom.current;
     if (!from) return;
-    const r = e.currentTarget.getBoundingClientRect();
     // Deltas against the previous move, not the drag origin, so the clamp
     // biting at an edge can't build up an offset the label has to "catch up"
     // through when the drag turns back the other way.
     const dx = e.clientX - from.x, dy = e.clientY - from.y;
-    panFrom.current = { x: e.clientX, y: e.clientY };
-    setZoom((v) => clampView(r, v.z, v.x + dx, v.y + dy));
+    from.x = e.clientX;
+    from.y = e.clientY;
+    setZoom((v) => clampView(from.r, v.z, v.x + dx, v.y + dy));
   }
   function onPanEnd(e: React.PointerEvent<HTMLDivElement>) {
     if (!panFrom.current) return;
     panFrom.current = null;
     setPanning(false);
-    if (e.currentTarget.hasPointerCapture(e.pointerId))
-      e.currentTarget.releasePointerCapture(e.pointerId);
+    // No explicit release: this runs on pointerup and pointercancel, which are
+    // exactly the two events that release capture implicitly.
   }
   /** Return to the 2D compare at one end. The divider resize is deferred a
    *  frame: while a 3D mode is up the compare sits in a display:none wrapper
@@ -961,8 +1049,8 @@ export default function App() {
               over the layers panel and the inspector. */}
           <div
             ref={previewPane}
-            className={`relative flex min-h-0 flex-1 overflow-hidden${
-              panning ? " cursor-grabbing" : ""}`}
+            className={cn("relative flex min-h-0 flex-1 overflow-hidden",
+              panning && "cursor-grabbing")}
             // Suppressed unconditionally in 2D, not just while zoomed: a
             // gesture that opens a menu at 100% and pans at 150% would be a
             // coin toss. The 3D views keep the normal menu.
@@ -971,23 +1059,26 @@ export default function App() {
             onPointerMove={onPanMove}
             onPointerUp={onPanEnd}
             onPointerCancel={onPanEnd}>
-            {/* One wrapper, two jobs: blurs the stale render while a rebuild is
-                in flight, so what's on screen reads as "being replaced" rather
-                than current, and carries the pinch-zoom transform. Only the two
-                views are inside it — the overlays below stay sharp and unzoomed,
-                which is what keeps them readable as chrome. transform is
-                deliberately absent from the transition list: it has to track
-                the pinch frame for frame, not ease toward it. */}
+            {/* Blurs the stale render while a rebuild is in flight, so what's
+                on screen reads as "being replaced" rather than current. Only
+                the two views are inside it — the overlays below stay sharp,
+                which is what keeps them readable as chrome. */}
             <div
-              className={`flex min-h-0 min-w-0 flex-1 transition-[filter,opacity] duration-200${
-                building ? " blur-sm opacity-70" : ""}`}
+              className={cn("flex min-h-0 min-w-0 flex-1 transition-[filter,opacity] duration-200",
+                building && "blur-sm opacity-70")}>
+            {/* PreviewCompare stays mounted but hidden in 3D modes (see
+                viewMode). Selection box + click-to-select apply to 2D only.
+                The pinch-zoom transform belongs to THIS div, not the wrapper
+                above: the 3D views zoom their own camera, so scaling a shared
+                ancestor multiplied the two and showed a 200% dolly at 400%.
+                transform is deliberately absent from the transition list — it
+                has to track the pinch frame for frame, not ease toward it. */}
+            <div
+              className={viewMode === "2d" ? "flex min-h-0 min-w-0 flex-1" : "hidden"}
               style={{
                 transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`,
                 transformOrigin: "0 0",
               }}>
-            {/* PreviewCompare stays mounted but hidden in 3D modes (see
-                viewMode). Selection box + click-to-select apply to 2D only. */}
-            <div className={viewMode === "2d" ? "flex min-h-0 min-w-0 flex-1" : "hidden"}>
             <PreviewCompare ref={previewRef}
               // Nulled while a 3D view is up: this component stays mounted but
               // display:none, and a hidden canvas rasterizes just as expensively
@@ -1008,7 +1099,19 @@ export default function App() {
               cornerRadiusPct={render.cornerRadius} />
             </div>
             {viewMode !== "2d" && (
-              <CanView artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
+              <CanView ref={canView}
+                initialView={carried.current}
+                onZoom={(z, pan) => {
+                  // Record straight from the camera rather than waiting for a
+                  // render: a right-drag pan changes no state, so the render
+                  // that would have captured it never happens and leaving the
+                  // view handed the 2D pane a stale position. Same guard as
+                  // the render-time capture — ignore the resets a freshly
+                  // mounted scene emits before the handover has been applied.
+                  if (carriedMode.current !== "2d") carried.current = { zoom: z, pan };
+                  setCamZoomPct(Math.round(z * 100));
+                }}
+                artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
                 mode={viewMode} cornerRadiusPct={render.cornerRadius}
                 labelHeightPct={render.labelSize}
                 labelWidthPct={render.labelWidth}
@@ -1051,26 +1154,34 @@ export default function App() {
               </div>
             )}
           </div>
-          {/* Preview toolbar. 2D only: zoom is a 2D affordance — the 3D views
-              dolly their own camera, so a percentage there would be a number
-              that never moves. Right-aligned to stay clear of the rebuild
-              spinner in the frame's opposite corner. */}
-          {viewMode === "2d" && (
-            <div className="mt-2 flex h-6 shrink-0 items-center justify-end">
-              {/* Doubles as the way back: pinching out returns to 100% too, but
-                  a readout that is already the reset control costs no extra
-                  chrome. tabular-nums so the width doesn't jitter digit by
-                  digit while a pinch runs. */}
-              <button
-                type="button"
-                onClick={() => setZoom({ z: 1, x: 0, y: 0 })}
-                disabled={!zoomed}
-                title={zoomed ? "Reset zoom to 100%" : "Pinch over the preview to zoom"}
-                className="rounded px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground hover:text-foreground disabled:pointer-events-none">
-                {Math.round(zoom.z * 100)}%
-              </button>
-            </div>
-          )}
+          {/* Preview toolbar, in every view: 2D reads its CSS transform and the
+              3D views read their camera dolly, both expressed against how the
+              view frames itself, so one number means the same thing in all
+              four. Left-aligned, under the preview frame's left edge. */}
+          {/* Same card shade as the left sidebar, and bled past the section's
+              p-3 so it reaches the pane edges — a floating rounded pill left a
+              gap of app background on all three sides. */}
+          <div className="-mx-3 -mb-3 mt-3 flex h-8 shrink-0 items-center bg-sidebar px-2">
+            {/* Readout and control in one: it tracks the gesture while idle,
+                and typing a percentage over it jumps there — 100 is the way
+                back, so no separate reset button. In 3D that moves the dolly
+                and leaves the orbit alone; the angle is the operator's work.
+                Commits on Enter or blur, Esc abandons the edit. tabular-nums
+                so the width doesn't jitter digit by digit as the number runs. */}
+            <input
+              value={zoomDraft ?? String(shownZoomPct)}
+              onChange={(e) => setZoomDraft(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
+              onBlur={() => applyTypedZoom()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                else if (e.key === "Escape") { setZoomDraft(null); e.currentTarget.blur(); }
+              }}
+              title="Zoom — type a percentage, 100 fits the view"
+              aria-label="Zoom percentage"
+              className="w-10 rounded bg-transparent py-0.5 text-right text-xs tabular-nums text-muted-foreground outline-none hover:text-foreground focus:text-foreground" />
+            <span className="text-xs text-muted-foreground">%</span>
+          </div>
         </section>
         {/* Right inspector: a shadcn Sheet driven by the selection — open
             while a layer is selected, closed (Esc or the header X) by

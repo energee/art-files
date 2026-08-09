@@ -7,6 +7,20 @@
 // preset defaults and the 3D scene all have to agree on them.
 
 export const PAGE = { w: 585.12, h: 369.12 };
+/** Widest the 2D preview sheet is drawn on screen, in CSS px. It lives here
+ *  rather than in PreviewCompare's class list because the 3D scene has to
+ *  predict that sheet's on-screen height to frame its own label to match
+ *  (see canScene's framingDistance) — two readers, one number. */
+export const PREVIEW_MAX_W = 900;
+/** How far past 1:1 the 2D preview rasterizes its PDFs — and therefore the
+ *  zoom ceiling every view shares, because that is where the bitmap runs out
+ *  of real pixels and a further zoom magnifies blur, not detail. It lives here
+ *  because all three readers have to agree on it: PreviewCompare rasterizes at
+ *  it, App clamps the 2D pane to it, and canScene clamps its dolly to it, so a
+ *  zoom carried between the views is never silently clipped on the way in.
+ *  ponytail: fixed oversample, CSS downscales; to zoom deeper, re-render the
+ *  PDFs at this x zoom while zoomed rather than raising the number. */
+export const PREVIEW_OVERSAMPLE = 2.5;
 /** Art box inside the bleed. */
 export const ART = { x: 4.56, y: 4.56, w: 576, h: 360 };
 export const CENTER_X = PAGE.w / 2;

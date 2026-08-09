@@ -9,7 +9,7 @@ import { renderPdfPage } from "@/pdf/render";
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import { ART, PAGE } from "@/layout";
+import { ART, PAGE, PREVIEW_MAX_W, PREVIEW_OVERSAMPLE } from "@/layout";
 import type { LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import { boxesFor, hitTest, type CollabSlots, type Measure } from "@/hittest";
@@ -28,18 +28,6 @@ const CORNER_CLASS = {
  *  outline, in screen px. */
 const SEL_PAD = 4;
 
-/** The trim guide's stroke: alternating black and white dashes, one 1px line
- *  per edge — the marquee convention, for the reason the convention exists.
- *
- *  Contrast against arbitrary label art is the whole problem here: the guide
- *  crosses whatever the texture happens to be. A single tone always has a
- *  ground it vanishes into (the old red at 70% fell to 1.06:1, invisible), and
- *  so does pure inversion, which maps mid-grey back onto itself (1.53:1 over
- *  grey 112 — and rock textures live right there). Black and white are the one
- *  pair with no shared blind spot: a ground can sit near one or the other,
- *  never both, so the better of the two always clears 4.58:1 — the floor, at
- *  the crossover around L=0.18. Measured 4.60:1 worst case over a real
- *  texture, which is that floor. */
 /** Bleed per side, in label-space points: the gap between the trimmed art box
  *  and the printed page. The die cuts at ART, so the sheet's own corners are
  *  the die's, offset outward by this much. */
@@ -61,15 +49,25 @@ const cornerRadius = (r: number, w: number, h: number): React.CSSProperties => (
 const dieRadius = (pct: number) => (pct / 100) * Math.min(ART.w, ART.h);
 
 const DASH = 6; // px per tone, so the cycle repeats every 2 * DASH
-const bleedStroke = (): React.CSSProperties => {
-  const cycle = (dir: string) =>
-    `repeating-linear-gradient(${dir}, #000 0 ${DASH}px, #fff ${DASH}px ${DASH * 2}px)`;
-  return {
-    backgroundImage: [cycle("90deg"), cycle("90deg"), cycle("180deg"), cycle("180deg")].join(","),
-    backgroundSize: "100% 1px, 100% 1px, 1px 100%, 1px 100%",
-    backgroundPosition: "0 0, 0 100%, 0 0, 100% 0",
-    backgroundRepeat: "no-repeat",
-  };
+const dashes = (dir: string) =>
+  `repeating-linear-gradient(${dir}, #000 0 ${DASH}px, #fff ${DASH}px ${DASH * 2}px)`;
+/** The trim guide's stroke: alternating black and white dashes, one 1px line
+ *  per edge — the marquee convention, for the reason the convention exists.
+ *
+ *  Contrast against arbitrary label art is the whole problem here: the guide
+ *  crosses whatever the texture happens to be. A single tone always has a
+ *  ground it vanishes into (the old red at 70% fell to 1.06:1, invisible), and
+ *  so does pure inversion, which maps mid-grey back onto itself (1.53:1 over
+ *  grey 112 — and rock textures live right there). Black and white are the one
+ *  pair with no shared blind spot: a ground can sit near one or the other,
+ *  never both, so the better of the two always clears 4.58:1 — the floor, at
+ *  the crossover around L=0.18. Measured 4.60:1 worst case over a real
+ *  texture, which is that floor. */
+const BLEED_STROKE: React.CSSProperties = {
+  backgroundImage: [dashes("90deg"), dashes("90deg"), dashes("180deg"), dashes("180deg")].join(","),
+  backgroundSize: "100% 1px, 100% 1px, 1px 100%, 1px 100%",
+  backgroundPosition: "0 0, 0 100%, 0 0, 100% 0",
+  backgroundRepeat: "no-repeat",
 };
 
 /** An overlay box positioned in page space: label-space points in, CSS
@@ -86,10 +84,6 @@ const pageBox = (
   height: `calc(${(h / PAGE.h) * 100}% + ${pad * 2}px)`,
 });
 
-// ponytail: fixed oversample, CSS downscales; add a ResizeObserver only if
-// crispness on very large screens ever matters.
-export const RENDER_SCALE = 2.5;
-
 // The installed react-resizable-panels major (Group/Panel/Separator, with
 // panelRef instead of a forwarded ref, and onLayoutChange reporting a
 // {[panelId]: percent} map instead of a sizes array) postdates the classic
@@ -102,7 +96,7 @@ async function renderPdf(
 ) {
   // isCancelled: bytes can change while a render is in flight, and a slower
   // superseded render must not overwrite a newer one on the shared canvas.
-  if (canvas) await renderPdfPage(bytes, { canvas, scale: RENDER_SCALE, isCancelled });
+  if (canvas) await renderPdfPage(bytes, { canvas, scale: PREVIEW_OVERSAMPLE, isCancelled });
 }
 
 /** Render `bytes` into `canvas` whenever they change. Renders are chained:
@@ -221,8 +215,11 @@ export const PreviewCompare = forwardRef<
 
   return (
     <div
-      className="relative m-auto w-full max-w-[900px] overflow-hidden border border-border bg-input"
+      className="relative m-auto w-full overflow-hidden border border-border bg-input"
       style={{
+        // Width cap in the style object, not the class list, so the 3D scene
+        // can import the same number and frame its label to this sheet.
+        maxWidth: PREVIEW_MAX_W,
         aspectRatio: `${PAGE.w} / ${PAGE.h}`,
         ...cornerRadius(dieR + BLEED, PAGE.w, PAGE.h),
       }}
@@ -259,12 +256,12 @@ export const PreviewCompare = forwardRef<
           same trick as the selection box below. */}
       {bleed && (
         // Drawn as four gradient edges rather than a border: the stroke has to
-        // cycle three tones to stay legible over any art (see bleedStroke).
+        // alternate two tones to stay legible over any art (see BLEED_STROKE).
         <div
           className="pointer-events-none absolute"
           style={{
             ...pageBox(ART.x, ART.y, ART.w, ART.h),
-            ...bleedStroke(),
+            ...BLEED_STROKE,
             ...cornerRadius(dieR, ART.w, ART.h),
           }}
         />
