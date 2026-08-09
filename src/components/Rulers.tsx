@@ -265,10 +265,6 @@ export function Rulers(props: {
                 like a small input pasted over the rulers. */}
             <rect width={geometry.width} height={RULER_SIZE} className="fill-sidebar" />
             <rect width={RULER_SIZE} height={geometry.height} className="fill-sidebar" />
-            <line x1={0} x2={geometry.width} y1={0.5} y2={0.5}
-              className="stroke-border" />
-            <line x1={0.5} x2={0.5} y1={0} y2={geometry.height}
-              className="stroke-border" />
             <line x1={0} x2={geometry.width} y1={RULER_SIZE} y2={RULER_SIZE}
               className="stroke-border" />
             <line x1={RULER_SIZE} x2={RULER_SIZE} y1={0} y2={geometry.height}
