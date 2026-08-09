@@ -27,9 +27,10 @@ import { ThemeSwitch } from "./ThemeSwitch";
 import { BarcodePresetBar, BeerStylePresetBar } from "./PresetBar";
 import { machineName, qrUrl } from "@/qr";
 import {
-  CAN_CIRCUM_IN, CAN_HEIGHT_IN, DEFAULT_STROKE_PX, LABEL_SHORT_IN, LABEL_WIDE_IN,
-  MAX_WRAP_RATIO,
+  DEFAULT_STROKE_PX, LABEL_SHORT_IN, LABEL_WIDE_IN,
 } from "@/layout";
+import { BLEED_DRAG_STEP_IN, BLEED_STEP_IN, displayBleedIn } from "@/presets";
+import { decimalsOf } from "@/numeric";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,7 +61,7 @@ function InchField(props: {
   onPct: (pct: number) => void;
 }) {
   const inches = (pct: number) => (pct / 100) * props.of;
-  const decimals = (String(props.step).split(".")[1] ?? "").length;
+  const decimals = decimalsOf(props.step);
   return (
     <ScrubField
       id={props.id} label={props.label} unit={'"'}
@@ -101,14 +102,18 @@ export interface CollabFiles {
 export interface DocSettings {
   cornerRadius: number;
   onCornerRadius: (v: number) => void;
-  labelSize: number;
-  onLabelSize: (v: number) => void;
-  /** How far the label wraps, % of the can's circumference. */
-  labelWidth: number;
-  onLabelWidth: (v: number) => void;
   /** Foil-mask blur, % of label width — softens the metallic edges. */
   edgeSoftness: number;
   onEdgeSoftness: (v: number) => void;
+  /** Export resolution in real DPI, NOT a percentage like the four above —
+   *  the one knob here a press specifies directly. */
+  dpi: number;
+  onDpi: (v: number) => void;
+  /** Bleed per side in inches — an absolute length, so it is NOT an InchField:
+   *  that one converts a stored percentage, and there is nothing here for a
+   *  percentage to be OF. */
+  bleedIn: number;
+  onBleedIn: (v: number) => void;
 }
 
 /** All build-time file assets the inspector can edit, grouped so App passes
@@ -407,22 +412,8 @@ function Content(props: {
             pct={settings.cornerRadius} minPct={0} maxPct={5} step={0.0625}
             onPct={settings.onCornerRadius}
           />
-          {/* How tall the label stands on the can — a share of CAN_HEIGHT_IN,
-              read out as the label height it produces. */}
-          <InchField
-            id="doc-label-size" label="Label height" of={CAN_HEIGHT_IN}
-            pct={settings.labelSize} minPct={50} maxPct={95} step={0.01}
-            onPct={settings.onLabelSize}
-          />
-          {/* How far it wraps, as an arc of the can's circumference. The
-              print is a fixed 8in wide, so narrowing this squeezes the art
-              around a shorter arc rather than trimming it — it answers "how
-              much of the can does this cover", not "what did we print". */}
-          <InchField
-            id="doc-label-width" label="Label width" of={CAN_CIRCUM_IN}
-            pct={settings.labelWidth} minPct={30} maxPct={MAX_WRAP_RATIO * 100} step={0.01}
-            onPct={settings.onLabelWidth}
-          />
+          {/* No label height/width knobs: the label wraps the can at the size
+              the artboard says it is (see LABEL_HEIGHT_RATIO). */}
           {/* Blur on the foil mask's edges: 0 = hard specular outlines
               around every metallic element, wider = softer transitions.
               Measured across the label's width, like the renderer does. */}
@@ -430,6 +421,40 @@ function Content(props: {
             id="doc-edge-softness" label="Edge softness" of={LABEL_WIDE_IN}
             pct={settings.edgeSoftness} minPct={0} maxPct={1} step={0.001}
             onPct={settings.onEdgeSoftness}
+          />
+          {/* Real DPI, so a plain ScrubField rather than an InchField: the
+              four knobs above are percentages shown in inches, but resolution
+              is already in the unit the press asks for. Only the rastered
+              PSD and the ruler's px readout follow it — stroke widths saved
+              in px keep converting at DESIGN_DPI, so changing this resizes
+              the file without reweighting any ink. */}
+          <ScrubField
+            id="doc-dpi" label="Resolution" unit="dpi"
+            value={settings.dpi} min={72} max={1200} step={50} dragStep={10}
+            onChange={settings.onDpi}
+          />
+          {/* Bleed per side, in inches. A plain ScrubField like the DPI above,
+              and for the same reason: it is already the unit a press specifies
+              it in. It grows the PAGE around a fixed 8x5in die, so the trim
+              never changes — the toolbar's readout moves, its trim tooltip
+              does not, and no element shifts relative to the cut.
+              Displayed at the step's own precision (0.063 for the shipped
+              0.063333...), the way InchField shows the house 1/16" die as
+              0.062. That rounding is display-only, which is the one thing
+              ScrubField does NOT do by default — it renders exactly what it is
+              handed, on the assumption that a caller rounding for display also
+              means to store the rounded value. Here that assumption does not
+              hold, so commitBleedIn guards the way back.
+              step is the TYPED precision and dragStep the coarser drag one:
+              at a single 0.005 step ScrubField snapped every commit to three
+              decimals, which turned the shipped 0.0635 into 0.064 the moment
+              the field was touched. Ten-thousandths is the unit a bleed is
+              quoted in, so it has to be the one the field commits at. */}
+          <ScrubField
+            id="doc-bleed" label="Bleed" unit={'"'}
+            value={displayBleedIn(settings.bleedIn)}
+            min={0} max={0.5} step={BLEED_STEP_IN} dragStep={BLEED_DRAG_STEP_IN}
+            onChange={settings.onBleedIn}
           />
           {/* An app preference, not a document one — it lives here because
               Settings is the only preferences surface the app has, and it is

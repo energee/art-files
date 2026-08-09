@@ -205,7 +205,20 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
     x0: L.BARCODE.x, x1: L.BARCODE.x + L.BARCODE.w,
     y0: L.BARCODE.yTop, y1: L.BARCODE.yTop + L.BARCODE.h,
   });
-  return boxes;
+  // Every box above is built from layout.ts's page-absolute constants, which
+  // are measured at MEASURED_BLEED; the preview that clicks into here and
+  // draws these outlines is at the CURRENT bleed. One shift at the end is this
+  // file's whole share of that (see layout.BLEED_SHIFT) — the two renderers do
+  // the same thing once each, so a box can't drift off the art it describes.
+  //
+  // Deliberately here rather than on hitTest's incoming point: boxesFor/boxOf
+  // hand these straight to the selection-outline renderer, so shifting the
+  // point alone would fix clicking and leave the outlines behind.
+  return boxes.map((b) => ({
+    ...b,
+    x0: b.x0 + L.BLEED_SHIFT, x1: b.x1 + L.BLEED_SHIFT,
+    y0: b.y0 + L.BLEED_SHIFT, y1: b.y1 + L.BLEED_SHIFT,
+  }));
 }
 
 export function hitTest(

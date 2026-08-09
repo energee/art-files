@@ -58,8 +58,8 @@
      bg-sidebar/border-sidebar-border utilities don't resolve and the
      sidebar's border-r falls back to preflight's currentColor — a white
      hairline against the dark theme.
-     The sidebar sits one shade above the canvas (card surface) so its edge
-     reads on its own — that is why the container carries no border. */
+     The sidebar sits one shade above the canvas (card surface); the border
+     token supplies its quiet structural separator from the workspace. */
   --sidebar: var(--card);
   --sidebar-foreground: var(--foreground);
   --sidebar-primary: var(--primary);

@@ -17,14 +17,19 @@ import { rasterKind, tintRgba } from "@/collab";
 import type { Assets, CollabImage } from "@/pdf/build";
 import { buildPreviewPdfs, disposePreviewWorker } from "@/pdf/client";
 import type { PsdAssets } from "@/psd/build";
-import { PREVIEW_OVERSAMPLE, PSD_DOC } from "@/layout";
+// setBleed is aliased: `bleed` is already taken here by the show-bleed-lines
+// toggle, and the two are unrelated — one is a view option, the other the
+// document's actual geometry.
+import {
+  ART, PAGE, PREVIEW_OVERSAMPLE, PSD_DOC, setBleed as setLayoutBleed, setOutputDpi,
+} from "@/layout";
 import {
   Inspector, type CollabFiles, type DocSettings, type InspectorFiles,
 } from "@/components/StyleProperties";
 import { LayersPanel } from "@/components/LayersPanel";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
 import {
-  DEFAULT_RENDER, loadPresets, mutatePresets, normalizePresets, usePresets,
+  DEFAULT_RENDER, commitBleedIn, loadPresets, mutatePresets, normalizePresets, usePresets,
   type Presets,
 } from "@/presets";
 import { PANEL_ORDER, isElementId, type LayerId } from "@/components/layers";
@@ -33,7 +38,12 @@ import {
 } from "@/selection";
 import { CommandMenu, shortcutOf, type Command } from "@/components/CommandMenu";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
+import { Rulers } from "@/components/Rulers";
 import { CanView, type CanViewHandle } from "@/components/CanView";
+import {
+  DEFAULT_MARGIN_PT, nextRulerUnit, sizeLabel,
+  type GuideAxis, type ManualGuide, type RulerUnit,
+} from "@/rulers";
 import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator,
   MenubarShortcut, MenubarTrigger,
@@ -381,6 +391,18 @@ export default function App() {
   // debounced into the shared library.
   const { presets, loaded: presetsLoaded, error: presetsError } = usePresets();
   const [render, setRender] = useState(DEFAULT_RENDER);
+  // Published to layout.ts during render rather than from an effect: the
+  // toolbar's px readout and the rulers read OUTPUT_DPI while rendering, so an
+  // effect would leave them a frame behind the knob. Idempotent — it writes
+  // three numbers and reads nothing.
+  // Published during render, not from an effect: the rulers and the toolbar's
+  // size readout read PAGE and OUTPUT_DPI while rendering, so an effect would
+  // leave them a frame behind the knob. Both are idempotent scalar writes.
+  //
+  // THIS thread only — the preview worker holds its own layout module and is
+  // told separately, per build (see buildPreviewPdfs).
+  setLayoutBleed(render.bleedIn);
+  setOutputDpi(render.dpi);
   // Adopt the saved settings once, when the library first arrives. Writing
   // before that would stamp the defaults over the file.
   const adopted = useRef(false);
@@ -482,7 +504,7 @@ export default function App() {
     from.y = e.clientY;
     setZoom((v) => clampView(from.r, v.z, v.x + dx, v.y + dy));
   }
-  function onPanEnd(e: React.PointerEvent<HTMLDivElement>) {
+  function onPanEnd() {
     if (!panFrom.current) return;
     panFrom.current = null;
     setPanning(false);
@@ -502,9 +524,28 @@ export default function App() {
   };
   const presetsInput = useRef<HTMLInputElement>(null);
   const previewRef = useRef<PreviewCompareHandle>(null);
-  // Trim guide over the 2D preview at the art box (38px of bleed per side at
-  // 600dpi). View-only — the exported PDFs are unaffected.
+  // Trim guide over the 2D preview at the art box, wherever the bleed knob
+  // currently puts it (ART.x/ART.y follow it). View-only — this toggle draws
+  // the line, it does not decide where the trim is; the exported PDFs are
+  // unaffected either way.
   const [bleed, setBleed] = useState(false);
+  // Rulers and guides are view state, like hidden layer eyes: they assist the
+  // operator but are not label content, so none enters config history/exports.
+  const [showRulers, setShowRulers] = useState(true);
+  const [rulerUnit, setRulerUnit] = useState<RulerUnit>("in");
+  const [showGuides, setShowGuides] = useState(true);
+  const [showMargins, setShowMargins] = useState(true);
+  const [showCenter, setShowCenter] = useState(true);
+  const [showManualGuides, setShowManualGuides] = useState(true);
+  const [marginPt, setMarginPt] = useState(DEFAULT_MARGIN_PT);
+  const [manualGuides, setManualGuides] = useState<ManualGuide[]>([]);
+  const nextGuideId = useRef(1);
+  const addManualGuide = (axis: GuideAxis, point: number) =>
+    setManualGuides((guides) => [...guides, { id: nextGuideId.current++, axis, point }]);
+  const moveManualGuide = (id: number, point: number) =>
+    setManualGuides((guides) => guides.map((guide) => guide.id === id ? { ...guide, point } : guide));
+  const removeManualGuide = (id: number) =>
+    setManualGuides((guides) => guides.filter((guide) => guide.id !== id));
 
   const update = (fn: (c: LabelConfig) => void) =>
     setCfg((c) => { const n = structuredClone(c); fn(n); return n; });
@@ -638,12 +679,20 @@ export default function App() {
   const docSettings: DocSettings = {
     cornerRadius: render.cornerRadius,
     onCornerRadius: (v) => setRender((r) => ({ ...r, cornerRadius: v })),
-    labelSize: render.labelSize,
-    onLabelSize: (v) => setRender((r) => ({ ...r, labelSize: v })),
-    labelWidth: render.labelWidth,
-    onLabelWidth: (v) => setRender((r) => ({ ...r, labelWidth: v })),
     edgeSoftness: render.edgeSoftness,
     onEdgeSoftness: (v) => setRender((r) => ({ ...r, edgeSoftness: v })),
+    dpi: render.dpi,
+    onDpi: (v) => setRender((r) => ({ ...r, dpi: Math.round(v) })),
+    bleedIn: render.bleedIn,
+    // commitBleedIn, not a plain write: the field can only show 0.063 for the
+    // shipped 0.063333..., so a commit that just echoes the display must leave
+    // the stored value alone. Returning `r` itself (not a copy) is load-bearing
+    // — React bails out on an unchanged reference, so an echo costs no re-render,
+    // no preview rebuild, and no write to presets.json.
+    onBleedIn: (v) => setRender((r) => {
+      const bleedIn = commitBleedIn(r.bleedIn, v);
+      return bleedIn === r.bleedIn ? r : { ...r, bleedIn };
+    }),
   };
   const files: InspectorFiles = {
     texture: {
@@ -693,7 +742,11 @@ export default function App() {
   // this is the ONE list — a future input added here can't be forgotten in the
   // dep array (which would stop rebuilds) or in the identity check (which
   // would silently freeze the preview for that input).
-  const inputs = [cfg, texture, mask, collabLeft, collabCenter, hiddenLayers] as const;
+  // bleedIn belongs here and not just in the dep array: it changes the PAGE the
+  // plates are drawn on, so it is an input to the build exactly like the config
+  // is, and the identity check has to see it or a bleed change would be
+  // dismissed as "same inputs" and never rebuild.
+  const inputs = [cfg, texture, mask, collabLeft, collabCenter, hiddenLayers, render.bleedIn] as const;
   // What the last COMPLETED build was made from, so a re-run of this effect
   // that changes none of it doesn't rebuild. needMask is a dependency (the
   // plate has to appear when it's first needed), which without this made every
@@ -726,7 +779,9 @@ export default function App() {
           // mask alone — and leaving artBytes' identity untouched is what
           // keeps that trip from re-rasterizing the art through pdf.js too.
           const { art, mask: maskPdf } =
-            await buildPreviewPdfs(cfg, assets, { art: !sameInputs, mask: needMask });
+            await buildPreviewPdfs(
+              cfg, assets, { art: !sameInputs, mask: needMask }, render.bleedIn,
+            );
           if (stale) return;
           // A skipped plate keeps the last one it built rather than blanking
           // the canvas: nothing is showing it, and if something starts to,
@@ -881,6 +936,12 @@ export default function App() {
    *  actually fires it, a label can't drift from the command it names, and a
    *  command can't be enabled in one surface while disabled in another. The menubar keeps its own JSX: it groups,
    *  separates and check-marks, which is layout, not command identity. */
+  // The two conditions the view commands share, stated once: rulers and guides
+  // are 2D-only chrome, and the per-kind guide toggles are meaningless while
+  // the umbrella is off. Restated per entry, an eighth 2D command silently
+  // works in the 3D views the day someone forgets the clause.
+  const twoD = viewMode === "2d";
+  const guideEdit = twoD && showGuides;
   const commands: Command[] = [
     // ⌘E exports the PDFs, ⇧⌘E the PSDs — the whole-deliverable runs. The
     // single-plate variants stay menu-only: naming six distinct combos costs
@@ -905,7 +966,19 @@ export default function App() {
     // Bare B, not ⌘B — that one belongs to the sidebar toggle. Disabled
     // outside the 2D view, where there is no trim guide to draw.
     { id: "bleed", label: bleed ? "Hide bleed lines" : "Show bleed lines", key: "b",
-      disabled: viewMode !== "2d", run: () => setBleed((b) => !b) },
+      disabled: !twoD, run: () => setBleed((b) => !b) },
+    { id: "rulers", label: showRulers ? "Hide rulers" : "Show rulers", key: "r",
+      disabled: !twoD, run: () => setShowRulers((shown) => !shown) },
+    { id: "guides", label: showGuides ? "Hide guides" : "Show guides",
+      disabled: !twoD, run: () => setShowGuides((shown) => !shown) },
+    { id: "margin-guides", label: showMargins ? "Hide margin guides" : "Show margin guides",
+      disabled: !guideEdit, run: () => setShowMargins((shown) => !shown) },
+    { id: "center-guides", label: showCenter ? "Hide center guides" : "Show center guides",
+      disabled: !guideEdit, run: () => setShowCenter((shown) => !shown) },
+    { id: "manual-guides", label: showManualGuides ? "Hide manual guides" : "Show manual guides",
+      disabled: !guideEdit, run: () => setShowManualGuides((shown) => !shown) },
+    { id: "clear-guides", label: "Clear manual guides",
+      disabled: !guideEdit || manualGuides.length === 0, run: () => setManualGuides([]) },
   ];
   // Indexed once per render rather than a linear find per menu item: the
   // menubar reads ~15 commands and App re-renders on every keystroke.
@@ -927,22 +1000,20 @@ export default function App() {
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
           preview center, fixed inspector column right. */}
       <SidebarProvider>
-        <Sidebar collapsible="offcanvas">
+        <Sidebar collapsible="offcanvas" className="border-r border-sidebar-border">
           <SidebarContent>
             <LayersPanel cfg={cfg} update={update} hidden={hiddenLayers}
               onToggleHidden={toggleHidden} selected={selected} onSelect={pick} />
           </SidebarContent>
         </Sidebar>
         <SidebarInset className="flex h-svh flex-col overflow-hidden">
-        {/* py-2 rather than the trigger's own py-1: with no bottom border the
-            bar needs its own breathing room against the canvas. */}
-        <header className="flex items-center gap-3 px-3 py-2">
+        {/* A quiet bottom rule separates application chrome from the canvas. */}
+        <header className="flex items-center gap-3 border-b border-border px-3 py-2">
           {/* Toggles the Layers sidebar; the component also binds ⌘B. */}
           <SidebarTrigger className="size-6" />
           {/* Stripped to a real menu bar: no pill border or rounding of its
-              own — the header is borderless too, so the menu floats on the
-              canvas — and small regular-weight labels rather than the
-              default's badge-like medium ones. */}
+              own, and small regular-weight labels rather than the default's
+              badge-like medium ones. The header owns the structural rule. */}
           <Menubar className="h-auto gap-0 rounded-none border-0 p-0">
             <MenubarMenu>
               <MenubarTrigger className={MENU_TRIGGER}>File</MenubarTrigger>
@@ -1025,6 +1096,31 @@ export default function App() {
                   disabled={byId("bleed").disabled} onClick={byId("bleed").run}>
                   Bleed Lines <MenubarShortcut>{shortcutOf(byId("bleed"))}</MenubarShortcut>
                 </MenubarCheckboxItem>
+                <MenubarCheckboxItem checked={showRulers}
+                  disabled={byId("rulers").disabled} onClick={byId("rulers").run}>
+                  Rulers <MenubarShortcut>{shortcutOf(byId("rulers"))}</MenubarShortcut>
+                </MenubarCheckboxItem>
+                <MenubarSeparator />
+                <MenubarCheckboxItem checked={showGuides}
+                  disabled={byId("guides").disabled} onClick={byId("guides").run}>
+                  Guides
+                </MenubarCheckboxItem>
+                <MenubarCheckboxItem checked={showMargins}
+                  disabled={byId("margin-guides").disabled} onClick={byId("margin-guides").run}>
+                  Margin Guides
+                </MenubarCheckboxItem>
+                <MenubarCheckboxItem checked={showCenter}
+                  disabled={byId("center-guides").disabled} onClick={byId("center-guides").run}>
+                  Center Guides
+                </MenubarCheckboxItem>
+                <MenubarCheckboxItem checked={showManualGuides}
+                  disabled={byId("manual-guides").disabled} onClick={byId("manual-guides").run}>
+                  Manual Guides
+                </MenubarCheckboxItem>
+                <MenubarItem disabled={byId("clear-guides").disabled}
+                  onClick={byId("clear-guides").run}>
+                  Clear Manual Guides
+                </MenubarItem>
               </MenubarContent>
             </MenubarMenu>
           </Menubar>
@@ -1043,7 +1139,7 @@ export default function App() {
             onChange={(e) => e.target.files?.[0] && void importPresets(e.target.files[0])} />
         </header>
       <div className="flex min-h-0 flex-1">
-        <section className="flex min-w-0 flex-1 flex-col p-3">
+        <section className="flex min-w-0 flex-1 flex-col">
           {/* overflow-hidden is what makes the pane the window the zoomed
               preview is seen through; without it the scaled label would spill
               over the layers panel and the inspector. */}
@@ -1096,7 +1192,11 @@ export default function App() {
               onSplit={setSplit}
               bleed={bleed}
               // Same Settings knob the 3D die uses, so both previews cut alike.
-              cornerRadiusPct={render.cornerRadius} />
+              cornerRadiusPct={render.cornerRadius}
+              // setBuildError itself, not a wrapper: useState setters are
+              // identity-stable, and an inline arrow here would be a new
+              // function every render (see useRenderPdf's note on that).
+              onRenderError={setBuildError} />
             </div>
             {viewMode !== "2d" && (
               <CanView ref={canView}
@@ -1113,11 +1213,22 @@ export default function App() {
                 }}
                 artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
                 mode={viewMode} cornerRadiusPct={render.cornerRadius}
-                labelHeightPct={render.labelSize}
-                labelWidthPct={render.labelWidth}
                 edgeSoftnessPct={render.edgeSoftness} />
             )}
             </div>
+            {viewMode === "2d" && (
+              <Rulers paneRef={previewPane} previewRef={previewRef} transform={zoom}
+                showRulers={showRulers} unit={rulerUnit} onUnitChange={setRulerUnit}
+                // ANDed here, not inside Rulers: the umbrella toggle is one
+                // rule over every guide kind, and it already decides the
+                // menu's disabled states through guideEdit above.
+                guidesEnabled={showGuides} showMargins={showGuides && showMargins}
+                showCenter={showGuides && showCenter}
+                showManual={showGuides && showManualGuides} marginPt={marginPt}
+                onMarginChange={setMarginPt} manual={manualGuides}
+                onAddManual={addManualGuide} onMoveManual={moveManualGuide}
+                onRemoveManual={removeManualGuide} />
+            )}
             {/* Rebuild indicator, in the frame's bottom-left rather than a
                 strip above it: it belongs to the thing that is changing. Same
                 corner CanView uses for its texture build, which runs right
@@ -1158,10 +1269,7 @@ export default function App() {
               3D views read their camera dolly, both expressed against how the
               view frames itself, so one number means the same thing in all
               four. Left-aligned, under the preview frame's left edge. */}
-          {/* Same card shade as the left sidebar, and bled past the section's
-              p-3 so it reaches the pane edges — a floating rounded pill left a
-              gap of app background on all three sides. */}
-          <div className="-mx-3 -mb-3 mt-3 flex h-8 shrink-0 items-center bg-sidebar px-2">
+          <div className="flex h-8 shrink-0 items-center overflow-x-auto border-t border-border bg-sidebar px-2">
             {/* Readout and control in one: it tracks the gesture while idle,
                 and typing a percentage over it jumps there — 100 is the way
                 back, so no separate reset button. In 3D that moves the dolly
@@ -1181,6 +1289,30 @@ export default function App() {
               aria-label="Zoom percentage"
               className="w-10 rounded bg-transparent py-0.5 text-right text-xs tabular-nums text-muted-foreground outline-none hover:text-foreground focus:text-foreground" />
             <span className="text-xs text-muted-foreground">%</span>
+            {/* What the press receives, next to how magnified you are looking
+                at it. Both are facts about the deliverable rather than the
+                view, so they read the same in all four modes — unlike the
+                zoom to their left. */}
+            <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
+            {/* The PAGE, not the trim: this is the artboard that goes to the
+                press, and it is what the DPI beside it describes — PSD_DOC is
+                derived from the same number. The die-cut size the label is
+                actually ordered at is a keystroke away in the tooltip.
+                Clicking cycles the SAME unit the rulers and the margin field
+                use, so the app has one measurement setting rather than a
+                toolbar that disagrees with the ruler beside it. */}
+            <button
+              onClick={() => setRulerUnit(nextRulerUnit(rulerUnit))}
+              title={`Artboard including bleed — trim is ${sizeLabel(ART.w, ART.h, rulerUnit)}. Click for ${nextRulerUnit(rulerUnit)}`}
+              aria-label={`Artboard size ${sizeLabel(PAGE.w, PAGE.h, rulerUnit)}; click to change units`}
+              className="shrink-0 rounded px-1 py-0.5 text-xs tabular-nums whitespace-nowrap text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+              {sizeLabel(PAGE.w, PAGE.h, rulerUnit)}
+            </button>
+            <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
+            <span className="shrink-0 px-1 text-xs tabular-nums whitespace-nowrap text-muted-foreground"
+              title="Resolution the PDFs and PSDs are built at">
+              {render.dpi} DPI
+            </span>
           </div>
         </section>
         {/* Right inspector: a shadcn Sheet driven by the selection — open

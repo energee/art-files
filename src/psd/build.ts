@@ -57,8 +57,31 @@ export interface PsdAssets {
  *  strokes are omitted (they never touch the mask plate). */
 export type PsdMode = "art" | "mask";
 
-/** Points -> pixels at the 600dpi deliverable. */
-const px = (n: number) => n / L.PX;
+/** Points -> pixels of THIS document, at the export resolution.
+ *
+ *  Deliberately OUTPUT_DPI and not L.PX: PSD_DOC scales with the resolution
+ *  knob, so laying elements out on the design grid instead would place a
+ *  600dpi layout inside a 300dpi canvas and pack the whole label into the
+ *  top-left quarter. The two agree at the shipped 600, which is exactly why
+ *  the psd-build suite cannot catch this — see the DPI test in rulers.test.
+ *
+ *  Ink weights are unaffected: a stroke saved in px becomes points via L.PX
+ *  (pinned at DESIGN_DPI) and only then arrives here, so it keeps its
+ *  physical width and simply lands on more or fewer pixels. */
+const px = (n: number) => (n / 72) * L.OUTPUT_DPI;
+
+/** Points -> pixels for a POSITION, which px() alone is not enough for: the
+ *  layout's coordinates are page-absolute at MEASURED_BLEED, so a changed
+ *  bleed has moved the page edge out from under them and they need
+ *  BLEED_SHIFT added back before converting (see layout.BLEED_SHIFT).
+ *
+ *  Sizes — type size, leading, stroke width — must keep using px(): they are
+ *  lengths, and a length does not move when the page grows. That is the one
+ *  distinction to keep straight in this file; getting it backwards would
+ *  scale the label instead of sliding it.
+ *
+ *  Identity at the shipped bleed, where BLEED_SHIFT is 0. */
+const pos = (n: number) => px(n + L.BLEED_SHIFT);
 /** Document size in pixels. Exported so a caller can cover-fit the texture
  *  to it before handing the pixels over — PSD layers hold pixels 1:1. */
 export const PSD_DOC = L.PSD_DOC;
@@ -80,9 +103,12 @@ const paint = (mode: PsdMode, fill: Fill, layer: "metallic" | "white"): Fill =>
 // --- vector helpers -------------------------------------------------------
 
 type Pt = [number, number];
+// Every number here is a coordinate — the anchor and both handles — and the
+// bleed shift is the same in x and y, so the whole flat array goes through
+// pos() without having to tell the two apart.
 const knot = (cIn: Pt, a: Pt, cOut: Pt) => ({
   linked: false,
-  points: [...cIn, ...a, ...cOut].map(px),
+  points: [...cIn, ...a, ...cOut].map(pos),
 });
 /** A hard corner: both handles collapse onto the anchor. */
 const corner = (x: number, y: number) => knot([x, y], [x, y], [x, y]);
@@ -92,6 +118,19 @@ const closed = (knots: ReturnType<typeof knot>[]): BezierPath => ({
   fillRule: "even-odd",
   knots,
 });
+
+/** Axis-aligned rectangle in PAGE coordinates rather than design ones.
+ *
+ *  PAGE already grew with the bleed, so its corners are where they should be
+ *  and must NOT be shifted again — they are not measured design positions.
+ *  Hence px() and not pos(). Kept as its own helper so a page-covering rect can
+ *  read as the (0, 0)-to-PAGE.w it obviously is: the alternative is passing
+ *  rectPath a -BLEED_SHIFT origin chosen purely to cancel pos() back out, which
+ *  invites the next reader to "simplify" it to 0 and silently crop the flood. */
+const pageRectPath = (x: number, y: number, w: number, h: number): BezierPath => {
+  const at = (px1: number, py: number) => ({ linked: false, points: [px1, py, px1, py, px1, py].map(px) });
+  return closed([at(x, y), at(x + w, y), at(x + w, y + h), at(x, y + h)]);
+};
 
 /** Axis-aligned rectangle (barcode bars), in points. */
 function rectPath(x: number, y: number, w: number, h: number): BezierPath {
@@ -267,8 +306,10 @@ function shapeLayer(
 }
 
 /** Full-page flood rect as a shape layer (the mask plate's base coats). */
+// pageRectPath, not rectPath: this covers the whole PAGE, which already
+// includes the current bleed, so it takes no shift (see pageRectPath).
 const floodLayer = (name: string, fill: Fill): Layer =>
-  shapeLayer(name, [rectPath(0, 0, L.PAGE.w, L.PAGE.h)], fill);
+  shapeLayer(name, [pageRectPath(0, 0, L.PAGE.w, L.PAGE.h)], fill);
 
 /** The `effects.stroke` fragment for a layer, or nothing when the element
  *  carries no stroke. Widths are authored in px at the 600dpi deliverable,
@@ -342,8 +383,10 @@ function textLayer(
   },
 ): Layer {
   const mode = opts.mode ?? "art";
-  const t = px(opts.x);
-  const b = px(opts.baseline);
+  // Positions, so pos() rather than px() — see the note on pos. The type size
+  // and leading below stay on px(): they are lengths, not places.
+  const t = pos(opts.x);
+  const b = pos(opts.baseline);
   // Inline runs become Photoshop STYLE RUNS: a text layer carries a base
   // style plus a list of {length, style} overrides measured in characters,
   // so Photoshop lays the mixed faces out itself — no per-run x advance to

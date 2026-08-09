@@ -1,12 +1,56 @@
 // layout.ts — single source of truth for label geometry, in PDF points with a
 // TOP-LEFT origin (y down). Draw helpers convert to PDF's bottom-left space.
-// Page matches the Photoshop-era deliverables: 8x5in art + 0.0633in bleed.
+// Page matches the Photoshop-era deliverables: an 8x5in die (TRIM) plus a
+// per-side bleed that ships at the Photoshop value and is now a Settings knob
+// (see BLEED / setBleed).
 // It also states the PHYSICAL objects the label is made for — the label's own
 // size in inches and the can it wraps (see CAN_DIAM_IN) — because those are
 // facts about the product, not about any one renderer, and the inspector, the
 // preset defaults and the 3D scene all have to agree on them.
 
-export const PAGE = { w: 585.12, h: 369.12 };
+/** The die cut — the label that comes off the press, fixed at 8 x 5in. The
+ *  PAGE around it grows and shrinks with the bleed knob; this never does. */
+export const TRIM = { w: 576, h: 360 };
+
+/** Bleed the position constants in this file were measured at, in points
+ *  (4.56pt = exactly 38px at DESIGN_DPI). Every position below is measured
+ *  from the PAGE edge, bleed included, so a different bleed moves that edge
+ *  out from under them and BLEED_SHIFT puts them back. Not a magic number to
+ *  be "cleaned up" — it is the provenance of every measured value in this
+ *  file, and re-deriving twenty of them by hand is where a misprinted label
+ *  comes from. */
+const MEASURED_BLEED = 4.56;
+
+/** The bleed the Photoshop-era page was actually built at, in inches: 4.56/72,
+ *  i.e. 0.063333...in. This is the provenance of every position constant below
+ *  and the value BLEED_SHIFT is measured against — not necessarily the value
+ *  the app ships with.
+ *
+ *  It is NOT 0.0635. That figure is (8.127 - 8) / 2, half the toolbar's ROUNDED
+ *  readout; the page is 585.12pt = 8.126666...in. The preset does ship at the
+ *  round 0.0635 by decision (see DEFAULT_RENDER.bleedIn), which grows the page
+ *  0.024pt and leaves BLEED_SHIFT at 0.012 — harmless, because the shift keeps
+ *  every element the same distance from the TRIM. Keep the two apart: this
+ *  constant must track what the positions were MEASURED at, or the shift is
+ *  computed from the wrong origin and the whole design slides. */
+export const SHIPPED_BLEED_IN = MEASURED_BLEED / 72;
+
+/** Bleed per side, in points — the Settings knob (render.bleedIn), via setBleed.
+ *  Deliberately module-private: PAGE and ART already state it in the form every
+ *  consumer wants, and BLEED_SHIFT is the only thing the output boundaries need.
+ *  Exporting the raw bleed as well would invite a fourth boundary to re-derive
+ *  its own shift from it, which is exactly the drift this design avoids. */
+let BLEED = MEASURED_BLEED;
+
+/** How far a measured position has to move to keep its distance from the TRIM
+ *  once the page grows or shrinks around it. Zero at the shipped bleed, which
+ *  is what makes this knob a no-op until someone turns it.
+ *
+ *  Applied ONCE per output boundary — pdf/build.ts, psd/build.ts and
+ *  hittest.ts — and never folded back into the constants below. */
+export let BLEED_SHIFT = 0;
+
+export const PAGE = { w: TRIM.w + 2 * BLEED, h: TRIM.h + 2 * BLEED };
 /** Widest the 2D preview sheet is drawn on screen, in CSS px. It lives here
  *  rather than in PreviewCompare's class list because the 3D scene has to
  *  predict that sheet's on-screen height to frame its own label to match
@@ -21,9 +65,16 @@ export const PREVIEW_MAX_W = 900;
  *  ponytail: fixed oversample, CSS downscales; to zoom deeper, re-render the
  *  PDFs at this x zoom while zoomed rather than raising the number. */
 export const PREVIEW_OVERSAMPLE = 2.5;
-/** Art box inside the bleed. */
-export const ART = { x: 4.56, y: 4.56, w: 576, h: 360 };
-export const CENTER_X = PAGE.w / 2;
+/** Art box inside the bleed — the TRIM, offset by the bleed. Only x/y move
+ *  with the knob; the die does not change size. */
+export const ART = { x: BLEED, y: BLEED, w: TRIM.w, h: TRIM.h };
+/** The page's horizontal centre AT MEASURED_BLEED — a position measured off
+ *  the reference PDF like LEFT_X or BARCODE.x, and frozen like them. It is
+ *  deliberately not PAGE.w / 2: BLEED_SHIFT is applied uniformly to every
+ *  position at the output boundary, so this shifted centre IS the new page's
+ *  centre by construction. Recomputing it live would move the centre column
+ *  twice — once here and once at the boundary. */
+export const CENTER_X = (TRIM.w + 2 * MEASURED_BLEED) / 2;
 /** The label's own size in inches — the page (bleed included), which is what
  *  the renderer textures the can with and therefore what its percentage
  *  knobs are percentages of. */
@@ -43,12 +94,29 @@ export const CAN_DIAM_IN = 2.6;
  *  art covers very nearly all of it. */
 export const CAN_CIRCUM_IN = Math.PI * CAN_DIAM_IN;
 
-/** The furthest the label may wrap, as a share of the circumference. A label
- *  that meets itself leaves no seam and z-fights with its own start edge, so
- *  canScene clamps the cylinder here — and the width knob's maximum and the
- *  shipped default read the same number, instead of offering a last 2.5% of
- *  travel that moves the readout and nothing on screen. */
-export const MAX_WRAP_RATIO = 0.975;
+/** How the trimmed label sits on the can, derived from the artboard rather
+ *  than tuned by eye. These were knobs (labelSize / labelWidth, percentages
+ *  of the can) that drifted from the label they were meant to depict: the
+ *  shipped values drew it 5.076in tall and 7.964in around, against a real
+ *  8 x 5in die. The label is a measured object and the can is a measured
+ *  object, so their ratio is arithmetic, not a preference.
+ *
+ *  The wrap lands at 97.9%, comfortably short of meeting itself, so the
+ *  cylinder needs no seam clamp — which is why MAX_WRAP_RATIO is gone. */
+export const LABEL_WRAP_RATIO = ART.w / 72 / CAN_CIRCUM_IN;
+export const LABEL_HEIGHT_RATIO = ART.h / 72 / CAN_HEIGHT_IN;
+
+/** The trim's box inside the printed page, as 0..1 texture coordinates. The
+ *  3D views crop every map to it so the can shows the label that comes off
+ *  the die, not the bleed that gets cut away. Inset equally on all four
+ *  sides, so it survives a flipped V without a separate top/bottom case.
+ *
+ *  Derived from both PAGE and ART, so setBleed has to recompute it; mutated in
+ *  place, like PSD_DOC, so canScene's importers keep their reference. */
+export const TRIM_UV = {
+  x: ART.x / PAGE.w, y: ART.y / PAGE.h,
+  w: ART.w / PAGE.w, h: ART.h / PAGE.h,
+};
 
 /** Default metallic gold. Originally #D0B070 (sampled from the Labradorite
  *  reference render); brightened to #F3CD80 by request 2026-08. */
@@ -114,7 +182,15 @@ export function runsWidth<T extends { text: string }>(
 }
 
 // Left column (values measured from the Labradorite reference PDF) -------
-export const LEFT_X = 24.9;
+/** Text origin for every left-column element — volume, abv, the description
+ *  and its header, and the collab lead-in and logo slot. Sits ON the 0.25in
+ *  safe margin (ART.x + 18), so the column is square with the guide the
+ *  preview draws. The reference PDF had it at 24.9, which left the column
+ *  2.65pt inside the margin while the QR plate below it sat 0.44pt inside —
+ *  two different left edges in one column. Ink starts a hair right of this by
+ *  each glyph's own side bearing; the origin is what's aligned, because the
+ *  description is user text and its first glyph can be anything. */
+export const LEFT_X = 22.56;
 export const VOLUME = { x: LEFT_X, baseline: 29.37, size: 9 };
 export const ABV = { x: LEFT_X, baseline: 40.17, size: 9 };
 export const DESC_HEADER = { x: LEFT_X, baseline: 60.56, size: 9 };
@@ -146,7 +222,9 @@ export function collabLeftFlow(descLineCount: number) {
 }
 
 // Center column ----------------------------------------------------------
-export const WORDMARK = { cx: CENTER_X, baseline: 38.23, size: 22, text: "Lolev Beer" };
+// baseline 38.84, not the reference's 38.23: the cap tops of "Lolev Beer" then
+// sit on the 0.25in top margin instead of 0.61pt above it.
+export const WORDMARK = { cx: CENTER_X, baseline: 38.84, size: 22, text: "Lolev Beer" };
 export const LOGO = { cx: CENTER_X, cy: 183, w: 33.5 }; // h follows the SVG aspect
 /** logo2025.svg's viewBox aspect (0 0 480 525) — height per unit width. The
  *  renderers derive this live via parseLogo; the hit-tester (no SVG in hand)
@@ -154,30 +232,129 @@ export const LOGO = { cx: CENTER_X, cy: 183, w: 33.5 }; // h follows the SVG asp
  *  alongside the file. */
 export const LOGO_ASPECT = 525 / 480;
 export const NAME = { cx: CENTER_X, baseline: 323.28, size: 15.83 };
-export const STYLE_LINE = { cx: CENTER_X, baseline: 344.6, size: 12.18 };
+// baseline 343.42, not the reference's 344.6: the deepest descender then rests
+// on the 0.25in bottom margin instead of 1.18pt below it.
+export const STYLE_LINE = { cx: CENTER_X, baseline: 343.42, size: 12.18 };
 
-/** One px at the 600dpi deliverable, in PDF points (72/600). */
-export const PX = 72 / 600;
-/** Full 600-DPI document dimensions for PSD raster layers. */
-export const PSD_DOC = { w: Math.round(PAGE.w / PX), h: Math.round(PAGE.h / PX) };
+/** The resolution the px-denominated DESIGN values were authored against.
+ *  Pinned forever, and deliberately NOT the Settings knob below: a stroke
+ *  saved as 15px is 1.8pt of ink on the press, and it has to stay 1.8pt
+ *  whatever resolution the file is rastered at. Wire a variable DPI into this
+ *  and every label ever saved silently changes stroke weight. */
+export const DESIGN_DPI = 600;
+/** One design px, in PDF points (72/600). Converts SAVED px values — stroke
+ *  widths in the label config — into ink. Never varies. */
+export const PX = 72 / DESIGN_DPI;
+
+/** The resolution the deliverables are RASTERED at — the Settings knob. Only
+ *  output size depends on it: the PSD's pixel grid and the ruler's px
+ *  readout. Live-bound, so importers see the current value.
+ *
+ *  ponytail: one module-level output resolution, because the app edits one
+ *  document at a time on the main thread. If a worker ever rasters, or two
+ *  documents open at once, pass it as a parameter instead. */
+export let OUTPUT_DPI = DESIGN_DPI;
+/** Document dimensions for PSD raster layers, at OUTPUT_DPI. Mutated in place
+ *  rather than replaced so the modules that read `PSD_DOC.w` keep working
+ *  without re-importing. */
+export const PSD_DOC = { w: 0, h: 0 };
+
+/** PSD_DOC is just the PAGE measured at OUTPUT_DPI, so it goes stale when
+ *  EITHER of them moves and both mutators below have to republish it. Order
+ *  between them doesn't matter — this reads whatever the current page and DPI
+ *  are — so a caller setting both simply pays one throwaway recompute. */
+function publishPsdDoc() {
+  PSD_DOC.w = Math.round((PAGE.w / 72) * OUTPUT_DPI);
+  PSD_DOC.h = Math.round((PAGE.h / 72) * OUTPUT_DPI);
+}
+
+export function setOutputDpi(dpi: number) {
+  OUTPUT_DPI = dpi;
+  publishPsdDoc();
+}
+setOutputDpi(DESIGN_DPI);
+
+/** Set the bleed, in inches per side, and republish every geometry that
+ *  depends on it. Same shape as setOutputDpi: mutates the exported records in
+ *  place so the fourteen modules holding a reference to PAGE/ART/TRIM_UV/
+ *  PSD_DOC keep working without re-importing.
+ *
+ *  The position constants above are NOT rebased — they stay exactly as
+ *  measured, and the three output boundaries add BLEED_SHIFT once each.
+ *
+ *  ponytail: one module-level document geometry, because the app edits exactly
+ *  one label at a time. If it ever opens two, thread a Geometry through the
+ *  renderers instead of reading module state.
+ *
+ *  NOTE for callers: the PDF preview worker runs its own copy of this module
+ *  (separate registry), so calling this on the main thread alone leaves the
+ *  worker building at the default. pdf/client.ts ships the value with every
+ *  request for exactly that reason. */
+export function setBleed(inches: number) {
+  BLEED = inches * 72;
+  BLEED_SHIFT = BLEED - MEASURED_BLEED;
+  PAGE.w = TRIM.w + 2 * BLEED;
+  PAGE.h = TRIM.h + 2 * BLEED;
+  ART.x = BLEED;
+  ART.y = BLEED;
+  TRIM_UV.x = ART.x / PAGE.w;
+  TRIM_UV.y = ART.y / PAGE.h;
+  TRIM_UV.w = ART.w / PAGE.w;
+  TRIM_UV.h = ART.h / PAGE.h;
+  publishPsdDoc();
+}
+
 /** Default per-element outer-stroke width, in px at 600dpi (≈1.8pt). */
 export const DEFAULT_STROKE_PX = 15;
 
 // QR (bottom left; stroke width comes from cfg.qrStrokeWidth) ------------
-export const QR = { x: 23, yTop: 289, size: 59 };
+/** Squared to the safe margins: x shares LEFT_X's left edge, and yTop is set
+ *  so the plate's bottom (yTop + size) lands exactly on the bottom margin
+ *  (ART.y + ART.h - 18 = 346.56). The reference had 23/289, which hung the
+ *  plate 1.44pt past that margin. */
+export const QR = { x: LEFT_X, yTop: 287.56, size: 59 };
 
 // Right rotated column (text rotated 90deg CCW, reads bottom-to-top) -----
 // x is the baseline's vertical line (glyphs extend to its RIGHT);
 // yStart is where the text begins (toward the label bottom).
-export const HANDLE_ADDR = { x: 505, yStart: 346.28, size: 13.87 };
-// maxLen 330 wraps the warning to the reference's exact 3 columns.
-export const WARNING = { x: 516.62, yStart: 344.56, size: 6.06, leading: 7, maxLen: 330 };
+// Size 13.45, down from the reference's 13.87, so the run spans the safe area
+// exactly instead of overshooting it by 9.44pt. Three things make its drawn
+// length longer than the glyphs alone: the inline **handle** run sets in Bold,
+// the element ships tracked at 0.38, and the outer stroke paints 1.8pt beyond
+// the ink at each end. yStart (the run's bottom) is one stroke width inside the
+// bottom margin for the same reason. Re-solve with scripts/check-margins.mts if
+// the text, the tracking or the default stroke changes.
+export const HANDLE_ADDR = { x: 505, yStart: 345.74, size: 13.45 };
+// Size 5.95, down from the reference's 6.06, so the paragraph still falls into
+// the reference's 3 columns at the narrower maxLen below. This is a threshold,
+// not a preference: at 6.0 the same text needs a 4th column, and that column
+// would land at x 537.62, inside the barcode plate at 537.13.
+// yStart is the run's BOTTOM (the text reads bottom-to-top). drawJustifiedRotated
+// stretches every column to exactly maxLen, so all three share a top and a
+// bottom edge by construction rather than by measurement — the only question is
+// where those edges land. maxLen is the safe span less the outer stroke at each
+// end, and yStart is one stroke inside the bottom margin, which puts the drawn
+// ink (stroke included) exactly on both guides. Aiming the GLYPHS at the guides
+// instead leaves the stroke hanging 1.8pt over each one.
+export const WARNING = {
+  x: 516.62, yStart: 344.76, size: 5.95, leading: 7,
+  maxLen: ART.h - 36 - 2 * DEFAULT_STROKE_PX * PX,
+};
 // Measured off the reference PDF via `pdftotext -bbox`: the glyph band runs
 // x 539.56-569.87 and pdftotext reports the full font box (ascender 1.05em +
 // descender 0.35em = 1.40em), so size = 30.31/1.40 = 21.65 and the baseline
 // sits 1.05em in from xMin. yStart matches the reference's 149.00 already.
 // Size later reduced 1.5pt from the measured value by request (2026-08).
-export const STORE_COLD = { x: 562.3, yStart: 149, size: 20.15 };
+// x 562.42, not the measured 562.3: squared to the right margin like the rest
+// of the layout. All caps, so the only ink past the rotated baseline is the
+// 0.14pt by which O and C overshoot it — hence 0.14 short of the margin's
+// 562.56, which lands that overshoot exactly on the guide.
+// yStart 157.03, not the reference's 149: at the reference value the run's top
+// sat 8.03pt past the top margin, because its 1.25 tracking adds 11.25pt of
+// length that the size alone doesn't show. Moved down so its top lands on the
+// guide, level with Info's and the warning's. Unstroked, unlike its neighbours,
+// so nothing reaches past the ink here.
+export const STORE_COLD = { x: 562.42, yStart: 157.03, size: 20.15 };
 
 // Barcode (right edge, rotated 90deg CCW: bars run horizontally) ---------
 // Proportions are JsBarcode's UPC-A rendering, so this matches the
@@ -216,9 +393,18 @@ const UPC_DEPTH = UPC_DEPTH_MODULES * UPC_MOD;
 // at 600dpi, and were then nudged 3.25pt up and right by hand; x still clears
 // the warning's third column (glyphs end ~532.7) — with room to spare now,
 // where at the reference position the halo just overlapped it.
+// yTop 232.19, not the reference's 237.23: the plate's bottom (yTop + h) then
+// lands on the 0.25in bottom margin rather than 5.04pt past it. x is NOT
+// squared to the right margin — see the note above it.
 export const BARCODE = {
+  // Squaring this to the right margin would mean x = 530.83 (the halo, not the
+  // plate, is the ink edge). That puts the halo's left at 528.98, overlapping
+  // the warning's third column, whose ink ends at 531.49. Pulling the barcode
+  // in therefore requires moving the whole rotated info column left with it,
+  // which is a composition change rather than a squaring — left alone
+  // deliberately, at 6.30pt past the right margin measured to the halo.
   x: 537.13,
-  yTop: 237.23,
+  yTop: 232.19,
   h: (UPC_UNITS.modules + 2 * UPC_UNITS.quiet) * UPC_MOD,
   /** White-ink margin around the symbol; the reference plate is exactly the
    *  symbol's depth, so there is none. */
