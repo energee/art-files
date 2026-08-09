@@ -11,9 +11,9 @@ import {
 } from "@/rulers";
 import type { PreviewCompareHandle } from "@/components/PreviewCompare";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 const RULER_SIZE = 20;
 
@@ -299,14 +299,21 @@ export function Rulers(props: {
             </PopoverTrigger>
             <PopoverContent align="start" side="bottom" className="w-52">
               <div className="text-xs font-medium">Ruler units</div>
-              <div className="flex gap-1">
-                <Button size="xs" variant={unit === "in" ? "default" : "outline"}
-                  onClick={() => onUnitChange("in")}>Inches</Button>
-                <Button size="xs" variant={unit === "pt" ? "default" : "outline"}
-                  onClick={() => onUnitChange("pt")}>Points</Button>
-                <Button size="xs" variant={unit === "px" ? "default" : "outline"}
-                  onClick={() => onUnitChange("px")}>Pixels</Button>
-              </div>
+              <ToggleGroup value={[unit]} spacing={0} variant="outline"
+                className="w-full" aria-label="Ruler measurement units"
+                onValueChange={(value) => {
+                  if (value[0]) onUnitChange(value[0] as RulerUnit);
+                }}>
+                <ToggleGroupItem value="in" size="sm" className="min-w-0 flex-1">
+                  Inches
+                </ToggleGroupItem>
+                <ToggleGroupItem value="pt" size="sm" className="min-w-0 flex-1">
+                  Points
+                </ToggleGroupItem>
+                <ToggleGroupItem value="px" size="sm" className="min-w-0 flex-1">
+                  Pixels
+                </ToggleGroupItem>
+              </ToggleGroup>
               <Label htmlFor="guide-margin" className="mt-1 text-xs">Margin inset ({unit})</Label>
               <Input id="guide-margin" type="number" min={0}
                 max={marginMax} step={marginStep}
