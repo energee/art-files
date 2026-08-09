@@ -17,7 +17,7 @@ import { rasterKind, tintRgba } from "@/collab";
 import type { Assets, CollabImage } from "@/pdf/build";
 import { buildPreviewPdfs, disposePreviewWorker } from "@/pdf/client";
 import type { PsdAssets } from "@/psd/build";
-import { PSD_DOC } from "@/layout";
+import { PREVIEW_OVERSAMPLE, PSD_DOC } from "@/layout";
 import {
   Inspector, type CollabFiles, type DocSettings, type InspectorFiles,
 } from "@/components/StyleProperties";
@@ -33,7 +33,7 @@ import {
 } from "@/selection";
 import { CommandMenu, shortcutOf, type Command } from "@/components/CommandMenu";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
-import { CanView } from "@/components/CanView";
+import { CanView, type CanViewHandle } from "@/components/CanView";
 import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator,
   MenubarShortcut, MenubarTrigger,
@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import poppinsRegular from "@/assets/fonts/Poppins-Regular.ttf?url";
 import poppinsSemiBold from "@/assets/fonts/Poppins-SemiBold.ttf?url";
 import poppinsBold from "@/assets/fonts/Poppins-Bold.ttf?url";
@@ -170,6 +171,42 @@ function loadMeasure(): Promise<Measure> {
 const blobUrl = (bytes: Uint8Array, type: string) =>
   URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type }));
 
+/** Largest wheel delta any single event is allowed to contribute, before the
+ *  exponential below turns it into a scale factor. A trackpad pinch reports
+ *  deltas of a few px many times a second, but one mouse notch reports 100 at
+ *  once — unclamped that is e^(2/3) ≈ 2x from a single click of the wheel,
+ *  which overshoots the whole zoom range in two notches. Clamped, a notch is
+ *  at most 1.4x and a pinch still resolves smoothly. */
+const ZOOM_STEP_CAP = 50;
+
+/** Keep the scaled content covering the pane `r`, so neither a pan nor a
+ *  zoom-out can strand the label against a band of empty background. At z === 1
+ *  the two bounds collapse to 0 and the content is pinned. Shared by the two
+ *  things that move the view — the wheel and the right-drag — so they cannot
+ *  disagree about where the edges are. */
+const clampView = (r: DOMRect, z: number, x: number, y: number) => ({
+  z,
+  x: Math.min(0, Math.max(r.width * (1 - z), x)),
+  y: Math.min(0, Math.max(r.height * (1 - z), y)),
+});
+
+/** The pane's zoom range: 1 (fitted) up to the preview's own oversample, which
+ *  is where the bitmap runs out of real pixels. The 3D views clamp their dolly
+ *  to the same ceiling, so a zoom carried across is never silently clipped. */
+const clampZoom = (z: number) => Math.min(PREVIEW_OVERSAMPLE, Math.max(1, z));
+
+/** Zoom to `z` about the pane point (ax, ay), keeping whatever is under that
+ *  point where it is. Shared by the wheel (anchored on the pointer) and the
+ *  typed field (anchored on the pane centre, having no pointer to work from):
+ *  the anchoring is the half of the view maths clampView doesn't cover, and
+ *  the two callers must not disagree about it either. */
+const zoomAbout = (
+  r: DOMRect, v: { z: number; x: number; y: number }, z: number, ax: number, ay: number,
+) => {
+  const k = z / v.z;
+  return clampView(r, z, ax - k * (ax - v.x), ay - k * (ay - v.y));
+};
+
 // Menu chrome, shared by all three menus so they can't drift apart: small
 // regular-weight triggers, and items sized to match.
 const MENU_TRIGGER = "px-2 py-1 text-xs font-normal";
@@ -240,7 +277,10 @@ export default function App() {
   );
   // Preview-resolution PDFs for the on-screen compare only; downloads always
   // rebuild at full resolution (see buildFull).
-  const [pdfs, setPdfs] = useState<{ artBytes: Uint8Array; maskBytes: Uint8Array } | null>(null);
+  // maskBytes is null until a build that included the white-ink plate lands
+  // (see needMask): the art plate alone is enough for the default view.
+  const [pdfs, setPdfs] =
+    useState<{ artBytes: Uint8Array; maskBytes: Uint8Array | null } | null>(null);
   const [building, setBuilding] = useState(false);
   const [buildError, setBuildError] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -251,6 +291,88 @@ export default function App() {
   // 2D preview stays mounted (hidden) so its rendered canvases and divider
   // position survive a round-trip through the 3D views.
   const [viewMode, setViewMode] = useState<"2d" | "can" | "pack" | "flat">("2d");
+  // Preview pane zoom: scale `z` about the pane's top-left, then offset by
+  // (x, y) screen px. z === 1 is the fitted view, and the clamp in the wheel
+  // handler pins the offset to 0 there, so unzoomed is exactly as before.
+  const previewPane = useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState({ z: 1, x: 0, y: 0 });
+  // The 3D dolly, reported by CanView as a multiple of the mode's framing
+  // distance so it shares the 2D pane's units. Held here, not in CanView,
+  // because the one toolbar below reads whichever view is up.
+  const canView = useRef<CanViewHandle>(null);
+  // Stored as the whole percent the field shows, not the raw float: the camera
+  // emits a 'change' per damped frame of every gesture, and a float would
+  // re-render this whole component — command table, menubar, hidden compare —
+  // for every one of them. Rounding lets React's bail-out absorb the frames
+  // the readout wouldn't have moved on, which is most of a settle and all of
+  // an orbit. The precise value still reaches `carried` below, which is a ref.
+  const [camZoomPct, setCamZoomPct] = useState(100);
+  const shownZoomPct = viewMode === "2d" ? Math.round(zoom.z * 100) : camZoomPct;
+  // Zoom level follows you across views: both sides express it as a multiple
+  // of how the view frames itself, so handing the number over is enough. Pan
+  // travels with it as a fraction of the visible frame — the 2D pane's px
+  // offset and the 3D target displacement are different quantities, but "a
+  // third of a frame left of centre" means the same thing in both.
+  //
+  // A ref, not state: only a view change hands it over, and re-rendering on
+  // every camera frame to store a number nothing displays is pure waste. Held
+  // in CanView's own {zoom, pan} shape so the handover is a prop rather than a
+  // pack/unpack at each of the three boundaries it crosses.
+  const carried = useRef({ zoom: 1, pan: { x: 0, y: 0 } });
+  // The view this ref's contents belong to, so a freshly mounted scene's reset
+  // emissions can't be mistaken for the operator's position (see onZoom).
+  const carriedMode = useRef(viewMode);
+  // Captured on the single render that leaves 2D — `zoom` still holds the 2D
+  // value there and the pane still has its rect, so this is the same number
+  // the last 2D render would have produced, measured once per switch instead
+  // of on every keystroke, divider drag and pan frame. It has to happen in
+  // render rather than an effect: CanView reads it as a prop while mounting,
+  // and child effects run before this component's own. The 3D side has no
+  // state to read back here (a right-drag pan changes none), so it records
+  // straight from the camera in CanView's onZoom, its single writer.
+  if (viewMode !== "2d" && carriedMode.current === "2d") {
+    const r = previewPane.current?.getBoundingClientRect();
+    if (r?.width) carried.current = {
+      zoom: zoom.z,
+      // How far the transformed sheet's centre sits from the pane's centre,
+      // as a fraction of the VISIBLE frame. Do not divide this by zoom: the
+      // 3D camera's pan uses its current projected frame too, so doing that
+      // made a 2D pan arrive 1/z as far away in Rendered.
+      pan: {
+        x: (r.width * (1 - zoom.z) / 2 - zoom.x) / r.width,
+        y: (r.height * (1 - zoom.z) / 2 - zoom.y) / r.height,
+      },
+    };
+  }
+  useEffect(() => {
+    carriedMode.current = viewMode;
+    if (viewMode !== "2d") return; // CanView takes it as a prop — see initialView
+    const { zoom: z, pan } = carried.current;
+    const r = previewPane.current?.getBoundingClientRect();
+    if (!r?.width) return setZoom({ z, x: 0, y: 0 });
+    setZoom(clampView(r, z,
+      r.width * (1 - z) / 2 - pan.x * r.width,
+      r.height * (1 - z) / 2 - pan.y * r.height));
+  }, [viewMode]);
+  // What the toolbar field holds while it is being edited; null means it just
+  // mirrors shownZoomPct, so a gesture keeps updating the number until you type.
+  const [zoomDraft, setZoomDraft] = useState<string | null>(null);
+  // Commits the typed percentage (on Enter or blur). Garbage input is simply
+  // dropped back to the live value — the field is a readout first.
+  const applyTypedZoom = () => {
+    const pct = parseFloat(zoomDraft ?? "");
+    setZoomDraft(null);
+    if (!isFinite(pct)) return;
+    const z = clampZoom(pct / 100);
+    if (viewMode === "2d") {
+      const r = previewPane.current?.getBoundingClientRect();
+      // Anchor on the pane centre: with no pointer to zoom about, growing from
+      // the top-left would walk the label off the corner.
+      setZoom((v) => r?.width
+        ? zoomAbout(r, v, z, r.width / 2, r.height / 2)
+        : { z, x: 0, y: 0 });
+    } else canView.current?.setZoom(z);
+  };
   // Document Settings layer's knobs: 3D-view presentation only (die-cut
   // corner radius, label height on the can, foil-edge blur). The print PDFs
   // and saved configs never see them; they persist in presets.json, since
@@ -275,6 +397,98 @@ export default function App() {
   useEffect(() => {
     if (presetsError) setLoadError(`presets save failed: ${presetsError}`);
   }, [presetsError]);
+
+  // Wheel-to-zoom, scoped to the preview pane, matching what OrbitControls
+  // gives the 3D views so one set of habits works in all four: wheel (or a
+  // two-finger scroll) dollies, right-drag pans, and the context menu is out of
+  // the way. Every wheel event zooms, ctrlKey or not — a trackpad pinch reports
+  // ctrlKey and a scroll doesn't, but OrbitControls dollies on both, so
+  // splitting them here is exactly the inconsistency to avoid.
+  //
+  // preventDefault on the ctrlKey ones doubles as the fix for the original
+  // complaint: without it a pinch is browser page zoom, rescaling the whole UI
+  // — menubar, layers, inspector — just to look closely at the label. Scoped to
+  // this element, so pinching anywhere else still zooms the app.
+  //
+  // 2D only: the 3D views run this gesture through OrbitControls against a real
+  // camera, and CSS-scaling their canvas would only magnify a fixed-resolution
+  // render.
+  //
+  // The listener is attached by hand rather than through onWheel because
+  // React's synthetic wheel handler is registered passive at the root, where
+  // preventDefault does nothing.
+  //
+  // setZoom's functional form is load-bearing, not style: a pinch delivers
+  // wheel events faster than React re-renders, so a handler closing over `zoom`
+  // would apply several events on top of the same stale value and drop all but
+  // the last. Measured: twelve zoom-out events in one tick left the pane at
+  // 1.37x instead of 1. Composing on the previous state makes every event
+  // count, and lets the listener stay attached across zoom changes.
+  //
+  // ponytail: no touchscreen pinch (touch events) and no Safari `gesture*`
+  // fallback — add either if this ever runs somewhere that matters.
+  useEffect(() => {
+    const el = previewPane.current;
+    if (!el || viewMode !== "2d") return;
+    function onWheel(e: WheelEvent) {
+      const r = el!.getBoundingClientRect();
+      if (!r.width || !r.height) return; // not laid out yet
+      e.preventDefault();
+      setZoom((v) => {
+        // Zoom about the pointer, which is where this deliberately departs from
+        // OrbitControls: it dollies toward the camera target, but a flat
+        // document has no target worth keeping centred, and anchoring on the
+        // cursor is what lets you drive straight at a detail. Exponential in
+        // deltaY so an increment feels the same at 1x as at 2x, instead of
+        // crawling once zoomed in.
+        const step = Math.max(-ZOOM_STEP_CAP, Math.min(ZOOM_STEP_CAP, e.deltaY));
+        const z = clampZoom(v.z * Math.exp(-step / 150));
+        return zoomAbout(r, v, z, e.clientX - r.left, e.clientY - r.top);
+      });
+    }
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [viewMode]);
+
+  // Drag-to-pan on the right button, which on a trackpad is the two-finger
+  // click — the same button OrbitControls pans with in the 3D views. That
+  // gesture otherwise opens the browser context menu over the preview, a menu
+  // of things ("Reload", "Inspect") with nothing to do with the label, so
+  // onContextMenu below suppresses it exactly as OrbitControls does on its own
+  // canvas. With the wheel given over to zoom, this is the only way to pan.
+  // The drag origin, plus the pane's rect measured once at pointerdown: the
+  // pane cannot be resized by a pan, and re-measuring per move was a forced
+  // layout flush up to 120 times a second.
+  const panFrom = useRef<{ x: number; y: number; r: DOMRect } | null>(null);
+  const [panning, setPanning] = useState(false);
+  function onPanStart(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.button !== 2 || viewMode !== "2d") return;
+    // Capture, so a drag that leaves the pane (or the window) keeps panning
+    // and still gets its pointerup instead of sticking in a dragging state.
+    e.currentTarget.setPointerCapture(e.pointerId);
+    panFrom.current = {
+      x: e.clientX, y: e.clientY, r: e.currentTarget.getBoundingClientRect(),
+    };
+    setPanning(true);
+  }
+  function onPanMove(e: React.PointerEvent<HTMLDivElement>) {
+    const from = panFrom.current;
+    if (!from) return;
+    // Deltas against the previous move, not the drag origin, so the clamp
+    // biting at an edge can't build up an offset the label has to "catch up"
+    // through when the drag turns back the other way.
+    const dx = e.clientX - from.x, dy = e.clientY - from.y;
+    from.x = e.clientX;
+    from.y = e.clientY;
+    setZoom((v) => clampView(from.r, v.z, v.x + dx, v.y + dy));
+  }
+  function onPanEnd(e: React.PointerEvent<HTMLDivElement>) {
+    if (!panFrom.current) return;
+    panFrom.current = null;
+    setPanning(false);
+    // No explicit release: this runs on pointerup and pointercancel, which are
+    // exactly the two events that release capture implicitly.
+  }
   /** Return to the 2D compare at one end. The divider resize is deferred a
    *  frame: while a 3D mode is up the compare sits in a display:none wrapper
    *  with zero width, and react-resizable-panels misapplies a percentage
@@ -457,14 +671,43 @@ export default function App() {
     };
   }
 
+  // Is the white-ink plate visible anywhere right now? In the 2D compare it is
+  // clipped away entirely at split 0 (PreviewCompare's clipPath), which is
+  // where a typing session lives; the 3D views always texture with it. False
+  // skips ~40% of every rebuild — the mask build in the worker plus its pdf.js
+  // raster here. A boolean, not `split` itself, so dragging the divider
+  // doesn't re-run the effect once per pointer frame; flipping it to true is
+  // itself a dependency, so the plate is rebuilt the moment it's needed (it
+  // lags one build behind at that instant, the same lag the whole preview
+  // already has).
+  const needMask = viewMode !== "2d" || split > 0;
+
   // Debounced preview regeneration on any input change, at preview resolution
-  // (Loaded.previewBytes). Two guards keep keystroke bursts from OOMing the
-  // tab: builds are serialized through buildChain (the debounce alone can't
-  // stop overlap once a build outlasts the typing gap), and superseded builds
-  // bail before allocating anything.
+  // (Loaded.previewBytes). Short: the two guards below, not the wait, are what
+  // keep keystroke bursts from OOMing the tab — builds are serialized through
+  // buildChain (the debounce alone can't stop overlap once a build outlasts
+  // the typing gap), and superseded builds bail before allocating anything. So
+  // the delay only has to outlast a fast typist's inter-key gap.
   const buildChain = useRef<Promise<void>>(Promise.resolve());
+  // Everything a plate is built from. Spread into the effect's deps below, so
+  // this is the ONE list — a future input added here can't be forgotten in the
+  // dep array (which would stop rebuilds) or in the identity check (which
+  // would silently freeze the preview for that input).
+  const inputs = [cfg, texture, mask, collabLeft, collabCenter, hiddenLayers] as const;
+  // What the last COMPLETED build was made from, so a re-run of this effect
+  // that changes none of it doesn't rebuild. needMask is a dependency (the
+  // plate has to appear when it's first needed), which without this made every
+  // trip between the standard and mask views rebuild both plates from
+  // unchanged inputs. Identity comparison is enough: `update` structuredClones
+  // cfg, and each asset/hidden-set edit replaces its object.
+  const built = useRef<{ inputs: typeof inputs; withMask: boolean } | null>(null);
   useEffect(() => {
     if (blocked) return;
+    const done = built.current;
+    const sameInputs = !!done && done.inputs.every((v, i) => v === inputs[i]);
+    // Already on screen and still current: the mask half only forces a rebuild
+    // when it's newly needed and the last build skipped it.
+    if (sameInputs && (!needMask || done.withMask)) return;
     let stale = false;
     const timer = setTimeout(() => {
       buildChain.current = buildChain.current.then(async () => {
@@ -477,9 +720,24 @@ export default function App() {
             maskPng: mask?.previewBytes,
             hidden: hiddenLayers,
           };
-          const { art, mask: maskPdf } = await buildPreviewPdfs(cfg, assets);
+          // Only the plates that aren't already current. sameInputs means the
+          // art on screen was built from exactly these inputs, so the mask
+          // top-up that a first trip to the mask view triggers rebuilds the
+          // mask alone — and leaving artBytes' identity untouched is what
+          // keeps that trip from re-rasterizing the art through pdf.js too.
+          const { art, mask: maskPdf } =
+            await buildPreviewPdfs(cfg, assets, { art: !sameInputs, mask: needMask });
           if (stale) return;
-          setPdfs({ artBytes: art, maskBytes: maskPdf });
+          // A skipped plate keeps the last one it built rather than blanking
+          // the canvas: nothing is showing it, and if something starts to,
+          // stale-by-one-build beats an empty frame while the rebuild runs.
+          // (art is only ever skipped when a previous build already landed one,
+          // so the `?? old` can't leave us without an art plate.)
+          setPdfs((old) => {
+            const artBytes = art ?? old?.artBytes;
+            return artBytes ? { artBytes, maskBytes: maskPdf ?? old?.maskBytes ?? null } : old;
+          });
+          built.current = { inputs, withMask: needMask };
           setBuildError("");
         } catch (err) {
           if (!stale) setBuildError(String(err));
@@ -487,9 +745,9 @@ export default function App() {
           if (!stale) setBuilding(false);
         }
       });
-    }, 600);
+    }, 150);
     return () => { stale = true; clearTimeout(timer); };
-  }, [cfg, texture, mask, collabLeft, collabCenter, blocked, hiddenLayers]);
+  }, [...inputs, blocked, needMask]);
 
   // Revoking immediately can abort a large download, so each URL lives until
   // the NEXT export batch — a timer would instead pin a full Blob copy of
@@ -777,40 +1035,100 @@ export default function App() {
           {/* Preset import/export failures: the bar is the one chrome that
               always shows regardless of selection. */}
           {loadError && <span className="text-xs text-destructive">{loadError}</span>}
+          {/* Build failures sit here too rather than in their own strip above
+              the preview — one place for chrome-level errors, and the strip
+              was 20px reserved for a row that is empty almost always. */}
+          {buildError && <span className="text-xs text-destructive">{buildError}</span>}
           <input ref={presetsInput} type="file" accept="application/json" hidden
             onChange={(e) => e.target.files?.[0] && void importPresets(e.target.files[0])} />
         </header>
       <div className="flex min-h-0 flex-1">
         <section className="flex min-w-0 flex-1 flex-col p-3">
-          <div className="mb-2 flex h-5 items-center gap-2">
-            {building && (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" />
-                rendering preview…
-              </span>
-            )}
-            {buildError && <span className="text-xs text-destructive">{buildError}</span>}
-          </div>
-          <div className="relative flex min-h-0 flex-1">
+          {/* overflow-hidden is what makes the pane the window the zoomed
+              preview is seen through; without it the scaled label would spill
+              over the layers panel and the inspector. */}
+          <div
+            ref={previewPane}
+            className={cn("relative flex min-h-0 flex-1 overflow-hidden",
+              panning && "cursor-grabbing")}
+            // Suppressed unconditionally in 2D, not just while zoomed: a
+            // gesture that opens a menu at 100% and pans at 150% would be a
+            // coin toss. The 3D views keep the normal menu.
+            onContextMenu={(e) => viewMode === "2d" && e.preventDefault()}
+            onPointerDown={onPanStart}
+            onPointerMove={onPanMove}
+            onPointerUp={onPanEnd}
+            onPointerCancel={onPanEnd}>
+            {/* Blurs the stale render while a rebuild is in flight, so what's
+                on screen reads as "being replaced" rather than current. Only
+                the two views are inside it — the overlays below stay sharp,
+                which is what keeps them readable as chrome. */}
+            <div
+              className={cn("flex min-h-0 min-w-0 flex-1 transition-[filter,opacity] duration-200",
+                building && "blur-sm opacity-70")}>
             {/* PreviewCompare stays mounted but hidden in 3D modes (see
-                viewMode). Selection box + click-to-select apply to 2D only. */}
-            <div className={viewMode === "2d" ? "flex min-h-0 min-w-0 flex-1" : "hidden"}>
+                viewMode). Selection box + click-to-select apply to 2D only.
+                The pinch-zoom transform belongs to THIS div, not the wrapper
+                above: the 3D views zoom their own camera, so scaling a shared
+                ancestor multiplied the two and showed a 200% dolly at 400%.
+                transform is deliberately absent from the transition list — it
+                has to track the pinch frame for frame, not ease toward it. */}
+            <div
+              className={viewMode === "2d" ? "flex min-h-0 min-w-0 flex-1" : "hidden"}
+              style={{
+                transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`,
+                transformOrigin: "0 0",
+              }}>
             <PreviewCompare ref={previewRef}
-              artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
+              // Nulled while a 3D view is up: this component stays mounted but
+              // display:none, and a hidden canvas rasterizes just as expensively
+              // as a visible one — that was two wasted pdf.js passes per rebuild
+              // on top of CanView's own. useRenderPdf no-ops on null, so the
+              // canvases keep their last painting and coming back to 2D flips
+              // the identity and repaints once.
+              artBytes={viewMode === "2d" ? pdfs?.artBytes ?? null : null}
+              maskBytes={viewMode === "2d" ? pdfs?.maskBytes ?? null : null}
               cfg={cfg} measure={measure} collab={collabSlots}
               // The preview knows only renderer elements; a selected document
               // layer (background/mask) shows no selection box there.
               selected={elementSelection}
               onPick={pick}
               onSplit={setSplit}
-              bleed={bleed} />
+              bleed={bleed}
+              // Same Settings knob the 3D die uses, so both previews cut alike.
+              cornerRadiusPct={render.cornerRadius} />
             </div>
             {viewMode !== "2d" && (
-              <CanView artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
+              <CanView ref={canView}
+                initialView={carried.current}
+                onZoom={(z, pan) => {
+                  // Record straight from the camera rather than waiting for a
+                  // render: a right-drag pan changes no state, so the render
+                  // that would have captured it never happens and leaving the
+                  // view handed the 2D pane a stale position. Same guard as
+                  // the render-time capture — ignore the resets a freshly
+                  // mounted scene emits before the handover has been applied.
+                  if (carriedMode.current !== "2d") carried.current = { zoom: z, pan };
+                  setCamZoomPct(Math.round(z * 100));
+                }}
+                artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
                 mode={viewMode} cornerRadiusPct={render.cornerRadius}
                 labelHeightPct={render.labelSize}
                 labelWidthPct={render.labelWidth}
                 edgeSoftnessPct={render.edgeSoftness} />
+            )}
+            </div>
+            {/* Rebuild indicator, in the frame's bottom-left rather than a
+                strip above it: it belongs to the thing that is changing. Same
+                corner CanView uses for its texture build, which runs right
+                after this one, so the two read as one continuous indicator.
+                Outside the blur wrapper, so it stays sharp; gated on pdfs so
+                it can't double up with the first-load spinner below. */}
+            {building && pdfs && (
+              <span className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" />
+                rendering preview…
+              </span>
             )}
             {/* No-texture hint. It used to sit in the status strip above the
                 frame, where it read as chrome; low on the label it is the
@@ -826,7 +1144,7 @@ export default function App() {
             {/* First-load state: until the first debounced build lands there is
                 nothing on the canvases, so fill the empty frame with a spinner
                 instead of a bare box. Later rebuilds keep the previous render
-                visible and only show the small strip spinner above. */}
+                visible, blur it, and show the corner spinner instead. */}
             {!pdfs && !buildError && (
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
@@ -835,6 +1153,34 @@ export default function App() {
                 </div>
               </div>
             )}
+          </div>
+          {/* Preview toolbar, in every view: 2D reads its CSS transform and the
+              3D views read their camera dolly, both expressed against how the
+              view frames itself, so one number means the same thing in all
+              four. Left-aligned, under the preview frame's left edge. */}
+          {/* Same card shade as the left sidebar, and bled past the section's
+              p-3 so it reaches the pane edges — a floating rounded pill left a
+              gap of app background on all three sides. */}
+          <div className="-mx-3 -mb-3 mt-3 flex h-8 shrink-0 items-center bg-sidebar px-2">
+            {/* Readout and control in one: it tracks the gesture while idle,
+                and typing a percentage over it jumps there — 100 is the way
+                back, so no separate reset button. In 3D that moves the dolly
+                and leaves the orbit alone; the angle is the operator's work.
+                Commits on Enter or blur, Esc abandons the edit. tabular-nums
+                so the width doesn't jitter digit by digit as the number runs. */}
+            <input
+              value={zoomDraft ?? String(shownZoomPct)}
+              onChange={(e) => setZoomDraft(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
+              onBlur={() => applyTypedZoom()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                else if (e.key === "Escape") { setZoomDraft(null); e.currentTarget.blur(); }
+              }}
+              title="Zoom — type a percentage, 100 fits the view"
+              aria-label="Zoom percentage"
+              className="w-10 rounded bg-transparent py-0.5 text-right text-xs tabular-nums text-muted-foreground outline-none hover:text-foreground focus:text-foreground" />
+            <span className="text-xs text-muted-foreground">%</span>
           </div>
         </section>
         {/* Right inspector: a shadcn Sheet driven by the selection — open

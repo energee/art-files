@@ -116,7 +116,29 @@ header collapses to bold and only the first line is kept. Plain text
 parses to itself, so configs written before this render unchanged. The preview is a single frame: both PDFs
 render to bitmaps via pdf.js and stack there, and a draggable divider
 reveals the white-ink layer over the art in place — no embedded PDF
-viewer, no tabs. Live previews build against a downscaled copy of the
+viewer, no tabs. Scrolling or pinching over the 2D preview zooms it about
+the pointer, up to 2.5x (the oversample the bitmaps are rendered at, past
+which zooming would magnify blur rather than detail), and a two-finger —
+i.e. right-button — drag pans, under a grabbing cursor. That mapping is
+deliberately the one OrbitControls gives the 3D views, so the same habits
+work in all four, and it is why the browser's own pinch-zoom and context
+menu are suppressed over the pane. The percentage in the toolbar under
+the pane reads the zoom in every view and is also how you set it — type a
+figure over it, 100 being the way back, so there is no separate reset
+button. In 2D it drives the CSS transform, in the 3D views the camera
+dolly measured against how that mode frames itself, so 100% means "as
+framed" and 200% means twice as close whichever view is up. Typing 100
+into a 3D view restores the framing distance but leaves the orbit alone —
+the angle is the operator's work, the dolly isn't. 100% is one size, not one number: each 3D view frames so
+its label reads the same on-screen height as the 2D sheet, measured to
+the label's near face rather than the can's axis, so switching views
+changes the subject and not the scale. The can then runs off the top and
+bottom of the frame, which is intended — the label is what is being
+looked at. The flat view takes its height from the can's own label height
+too, rather than the constant it used to carry, so the Settings height
+knob moves all four views together. While a rebuild is in flight the stale
+render blurs, so what is on screen reads as being replaced rather than
+current. Live previews build against a downscaled copy of the
 texture/mask (print-size images made every keystroke-triggered rebuild
 churn enough memory to crash the tab); downloads always rebuild at full
 resolution when clicked. Preview PDF generation runs in a lazy Web Worker,

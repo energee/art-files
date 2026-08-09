@@ -9,7 +9,7 @@ import { renderPdfPage } from "@/pdf/render";
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import { ART, PAGE } from "@/layout";
+import { ART, PAGE, PREVIEW_MAX_W, PREVIEW_OVERSAMPLE } from "@/layout";
 import type { LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import { boxesFor, hitTest, type CollabSlots, type Measure } from "@/hittest";
@@ -28,6 +28,48 @@ const CORNER_CLASS = {
  *  outline, in screen px. */
 const SEL_PAD = 4;
 
+/** Bleed per side, in label-space points: the gap between the trimmed art box
+ *  and the printed page. The die cuts at ART, so the sheet's own corners are
+ *  the die's, offset outward by this much. */
+const BLEED = ART.x;
+
+/** A circular corner of `r` points, expressed against a box of `w` x `h`
+ *  points. Percentages rather than px so the corner tracks the preview at any
+ *  on-screen size (same reason pageBox works in percentages); the two-value
+ *  `x / y` form keeps it circular in page space instead of letting each axis
+ *  scale to its own edge, which is what a single percentage would do. */
+const cornerRadius = (r: number, w: number, h: number): React.CSSProperties => ({
+  borderRadius: `${(r / w) * 100}% / ${(r / h) * 100}%`,
+});
+
+/** The die-cut radius in label-space points. The knob is a share of the
+ *  label's short side (see presets.ts), and the label is the trimmed piece —
+ *  so it measures against ART, not the bleed-inclusive page, and matches the
+ *  same computation the 3D die uses in canScene. */
+const dieRadius = (pct: number) => (pct / 100) * Math.min(ART.w, ART.h);
+
+const DASH = 6; // px per tone, so the cycle repeats every 2 * DASH
+const dashes = (dir: string) =>
+  `repeating-linear-gradient(${dir}, #000 0 ${DASH}px, #fff ${DASH}px ${DASH * 2}px)`;
+/** The trim guide's stroke: alternating black and white dashes, one 1px line
+ *  per edge — the marquee convention, for the reason the convention exists.
+ *
+ *  Contrast against arbitrary label art is the whole problem here: the guide
+ *  crosses whatever the texture happens to be. A single tone always has a
+ *  ground it vanishes into (the old red at 70% fell to 1.06:1, invisible), and
+ *  so does pure inversion, which maps mid-grey back onto itself (1.53:1 over
+ *  grey 112 — and rock textures live right there). Black and white are the one
+ *  pair with no shared blind spot: a ground can sit near one or the other,
+ *  never both, so the better of the two always clears 4.58:1 — the floor, at
+ *  the crossover around L=0.18. Measured 4.60:1 worst case over a real
+ *  texture, which is that floor. */
+const BLEED_STROKE: React.CSSProperties = {
+  backgroundImage: [dashes("90deg"), dashes("90deg"), dashes("180deg"), dashes("180deg")].join(","),
+  backgroundSize: "100% 1px, 100% 1px, 1px 100%, 1px 100%",
+  backgroundPosition: "0 0, 0 100%, 0 0, 100% 0",
+  backgroundRepeat: "no-repeat",
+};
+
 /** An overlay box positioned in page space: label-space points in, CSS
  *  percentages of the preview frame out, so it tracks the container at any
  *  on-screen size without its own resize handling. `pad` grows the box by n
@@ -42,10 +84,6 @@ const pageBox = (
   height: `calc(${(h / PAGE.h) * 100}% + ${pad * 2}px)`,
 });
 
-// ponytail: fixed oversample, CSS downscales; add a ResizeObserver only if
-// crispness on very large screens ever matters.
-const RENDER_SCALE = 2.5;
-
 // The installed react-resizable-panels major (Group/Panel/Separator, with
 // panelRef instead of a forwarded ref, and onLayoutChange reporting a
 // {[panelId]: percent} map instead of a sizes array) postdates the classic
@@ -58,7 +96,7 @@ async function renderPdf(
 ) {
   // isCancelled: bytes can change while a render is in flight, and a slower
   // superseded render must not overwrite a newer one on the shared canvas.
-  if (canvas) await renderPdfPage(bytes, { canvas, scale: RENDER_SCALE, isCancelled });
+  if (canvas) await renderPdfPage(bytes, { canvas, scale: PREVIEW_OVERSAMPLE, isCancelled });
 }
 
 /** Render `bytes` into `canvas` whenever they change. Renders are chained:
@@ -113,11 +151,19 @@ export const PreviewCompare = forwardRef<
     /** Draw the trim guide at the edge of the art box — 38px of bleed at
      *  600dpi on every side. Preview-only; never part of the PDFs. */
     bleed?: boolean;
+    /** Die-cut corner radius, % of the label's short side (the Settings
+     *  layer's knob, shared with the 3D views). Rounds the sheet and the trim
+     *  guide so the 2D preview shows the shape that actually gets cut. */
+    cornerRadiusPct: number;
   }
 >(function PreviewCompare(
-  { artBytes, maskBytes, cfg, measure, collab, selected, onPick, onSplit, bleed },
+  { artBytes, maskBytes, cfg, measure, collab, selected, onPick, onSplit, bleed, cornerRadiusPct },
   ref,
 ) {
+  // The die at the trim line, and the sheet's own corners as that die offset
+  // out by the bleed — an outward offset of a rounded rect grows its radius by
+  // the offset, so the two edges stay concentric.
+  const dieR = dieRadius(cornerRadiusPct);
   const artCanvas = useRef<HTMLCanvasElement>(null);
   const maskCanvas = useRef<HTMLCanvasElement>(null);
   const leftPanel = useRef<PanelImperativeHandle>(null);
@@ -147,6 +193,8 @@ export const PreviewCompare = forwardRef<
     if (e.target instanceof Element && e.target.closest('[data-slot="resizable-handle"]')) return;
     const r = e.currentTarget.getBoundingClientRect();
     if (!r.width || !r.height) return; // not laid out yet (e.g. display:none)
+    // getBoundingClientRect already reflects any CSS zoom App applies to the
+    // preview pane, so the proportion holds at any scale without extra math.
     const xPt = ((e.clientX - r.left) / r.width) * PAGE.w;
     const yPt = ((e.clientY - r.top) / r.height) * PAGE.h;
     onPick(hitTest(xPt, yPt, measure, cfg, collab), modsOf(e));
@@ -167,8 +215,14 @@ export const PreviewCompare = forwardRef<
 
   return (
     <div
-      className="relative m-auto w-full max-w-[900px] overflow-hidden rounded-md border border-border bg-input"
-      style={{ aspectRatio: `${PAGE.w} / ${PAGE.h}` }}
+      className="relative m-auto w-full overflow-hidden border border-border bg-input"
+      style={{
+        // Width cap in the style object, not the class list, so the 3D scene
+        // can import the same number and frame its label to this sheet.
+        maxWidth: PREVIEW_MAX_W,
+        aspectRatio: `${PAGE.w} / ${PAGE.h}`,
+        ...cornerRadius(dieR + BLEED, PAGE.w, PAGE.h),
+      }}
       onClick={onClick}
     >
       <canvas ref={artCanvas} className="absolute inset-0 h-full w-full" />
@@ -201,9 +255,15 @@ export const PreviewCompare = forwardRef<
           600dpi. Percentages off PAGE so it tracks the wrapper at any size,
           same trick as the selection box below. */}
       {bleed && (
+        // Drawn as four gradient edges rather than a border: the stroke has to
+        // alternate two tones to stay legible over any art (see BLEED_STROKE).
         <div
-          className="pointer-events-none absolute border border-dashed border-destructive/70"
-          style={pageBox(ART.x, ART.y, ART.w, ART.h)}
+          className="pointer-events-none absolute"
+          style={{
+            ...pageBox(ART.x, ART.y, ART.w, ART.h),
+            ...BLEED_STROKE,
+            ...cornerRadius(dieR, ART.w, ART.h),
+          }}
         />
       )}
       {selBoxes.map((b) => (

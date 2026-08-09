@@ -58,16 +58,18 @@ function ownBuffer(bytes: Uint8Array): ArrayBuffer {
 }
 
 scope.onmessage = (event) => {
-  const { id, cfg, assets: wire } = event.data;
+  const { id, cfg, assets: wire, plates } = event.data;
   void (async () => {
     try {
       const assets = derefAssets(wire, await loadFonts());
       // Sequential builds keep the worker's transient image memory bounded.
-      const art = await buildArtPdf(cfg, assets);
-      const mask = await buildMaskPdf(cfg, assets);
-      const artBuffer = ownBuffer(art);
-      const maskBuffer = ownBuffer(mask);
-      scope.postMessage({ id, art: artBuffer, mask: maskBuffer }, [artBuffer, maskBuffer]);
+      // A plate the client didn't ask for is skipped and returned null.
+      const art = plates.art ? ownBuffer(await buildArtPdf(cfg, assets)) : null;
+      const mask = plates.mask ? ownBuffer(await buildMaskPdf(cfg, assets)) : null;
+      scope.postMessage(
+        { id, art, mask },
+        [art, mask].filter((b): b is ArrayBuffer => b !== null),
+      );
     } catch (error) {
       scope.postMessage({ id, error: error instanceof Error ? error.message : String(error) });
     }

@@ -4,3 +4,7 @@ out/
 *.tsbuildinfo
 .DS_Store
 .agents/worktrees/
+# Agent scratch space: session state and git worktrees checked out inside the
+# repo. Same reason as the line above — a worktree here is a second copy of
+# the tree, which git would otherwise offer to commit into this one.
+.claude/
