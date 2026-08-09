@@ -159,9 +159,12 @@ resolution when clicked. Preview PDF generation runs in a lazy Web Worker,
 keeping pdf-lib/fontkit parsing and rendering off the UI thread; the
 full-resolution PDF and PSD renderers load only when their export actions are
 used. Every action lives in a menubar across the top of
-the window, above the sidebar/preview split: **File** (Save Project…/Open
-Project… — the whole label, including its texture, mask, and collab logos,
-zipped as a `<beerName>.label` file, see `src/labelfile.ts`; then Export PDF,
+the window, above the sidebar/preview split: **File** (Open Project… ⌘O,
+Save Project ⌘S, Save Project As… ⇧⌘S — the whole label, including its
+texture, mask, and collab logos, zipped as a `<beerName>.label` file, see
+`src/labelfile.ts`; in Chromium these use real open/save dialogs and Save
+rewrites the last-saved/opened file in place, elsewhere saving falls back
+to a download; then Export PDF,
 Export Mask PDF, Export PSDs — see below; the both-PDFs-at-once action lives
 in the palette as "Export PDF + Mask PDF"),
 **Edit** (undo, redo), and

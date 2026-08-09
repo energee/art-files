@@ -226,7 +226,8 @@ const zoomAbout = (
 // Menu chrome, shared by all three menus so they can't drift apart: small
 // regular-weight triggers, and items sized to match.
 const MENU_TRIGGER = "px-2 py-1 text-xs font-normal";
-const MENU_ITEMS = "[&_[data-slot=menubar-item]]:text-xs";
+// min-w keeps the longest item ("Save Project As… ⇧⌘S") on one line.
+const MENU_ITEMS = "min-w-52 [&_[data-slot=menubar-item]]:text-xs";
 
 /** The five preview views in keys-1–5 order: status-bar label, the command
  *  id that shows it, and the state that means "this one is current". One
@@ -900,9 +901,20 @@ export default function App() {
   // Shared by the sidebar "Export PDFs" button and the ⌘K palette action.
   const exportPdfs = () => void buildFull("both");
 
-  /** File → Save Project…: everything needed to reopen this label — config
-   *  plus original image bytes — zipped as <beerName>.label (see labelfile.ts). */
-  function saveProject() {
+  /** The .label file picker option, shared by open and save dialogs. */
+  const LABEL_TYPES = [
+    { description: "Label project", accept: { "application/zip": [".label"] } },
+  ];
+  /** The file Save rewrites in place: set by Save As and picker-based Open.
+   *  Null until then, so plain Save falls through to the Save As dialog —
+   *  the classic editor contract. A ref, not state: nothing renders it. */
+  const projectHandle = useRef<FileSystemFileHandle | null>(null);
+  /** File → Save / Save As…: everything needed to reopen this label — config
+   *  plus original image bytes — zipped as <beerName>.label (see labelfile.ts).
+   *  Chromium shows a real save dialog (name/place the file) and Save then
+   *  rewrites that same file silently; Safari/Firefox lack
+   *  showSaveFilePicker, so every save is a plain download there. */
+  async function saveProject(as = false) {
     const enc = (s: string) => new TextEncoder().encode(s);
     const collabAsset = (c: CollabFile | null) =>
       c ? { name: c.name, bytes: c.image.kind === "svg" ? enc(c.image.svg) : c.image.bytes } : undefined;
@@ -912,8 +924,48 @@ export default function App() {
       collabLeft: collabAsset(collabLeft),
       collabCenter: collabAsset(collabCenter),
     });
+    const pick = (window as {
+      showSaveFilePicker?: (opts: object) => Promise<FileSystemFileHandle>;
+    }).showSaveFilePicker;
+    if (pick) {
+      try {
+        if (as || !projectHandle.current) {
+          projectHandle.current = await pick({
+            suggestedName: `${exportBaseName(cfg)}.label`,
+            types: LABEL_TYPES,
+          });
+        }
+        const writable = await projectHandle.current.createWritable();
+        await writable.write(zip as unknown as ArrayBuffer);
+        await writable.close();
+        return;
+      } catch (err) {
+        // Cancelled dialog = no save wanted; anything else falls back to
+        // the download path rather than losing the file. A handle that
+        // failed to write is not trusted again.
+        projectHandle.current = null;
+        if (err instanceof DOMException && err.name === "AbortError") return;
+      }
+    }
     startSaveBatch();
     saveBytes(zip, `${exportBaseName(cfg)}.label`, "application/zip");
+  }
+  /** File → Open Project…: the native picker where available, so Save can
+   *  rewrite the opened file; elsewhere the hidden-input fallback (which
+   *  yields no writable handle — Save then behaves as Save As). */
+  async function openProjectPicker() {
+    const pick = (window as {
+      showOpenFilePicker?: (opts: object) => Promise<FileSystemFileHandle[]>;
+    }).showOpenFilePicker;
+    if (!pick) { openRef.current?.click(); return; }
+    try {
+      const [handle] = await pick({ types: LABEL_TYPES });
+      await openProject(await handle.getFile());
+      projectHandle.current = handle;
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === "AbortError"))
+        window.alert(`Could not open project: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   /** File → Open Project…: unzip a .label, run its config through the same
@@ -1034,8 +1086,12 @@ export default function App() {
   const twoD = viewMode === "2d";
   const guideEdit = twoD && showGuides;
   const commands: Command[] = [
-    { id: "project-open", label: "Open Project…", run: () => openRef.current?.click() },
-    { id: "project-save", label: "Save Project…", run: saveProject },
+    { id: "project-open", label: "Open Project…", key: "o", mods: "⌘",
+      run: () => void openProjectPicker() },
+    { id: "project-save", label: "Save Project", key: "s", mods: "⌘",
+      run: () => void saveProject() },
+    { id: "project-save-as", label: "Save Project As…", key: "s", mods: "⇧⌘",
+      run: () => void saveProject(true) },
     // ⌘E exports the PDFs, ⇧⌘E the PSDs — the whole-deliverable runs. The
     // single-plate variants stay menu-only: naming six distinct combos costs
     // more than it saves.
@@ -1120,10 +1176,13 @@ export default function App() {
                 {/* Project save/load first — the whole label, not just a
                     deliverable. */}
                 <MenubarItem onClick={byId("project-open").run}>
-                  {byId("project-open").label}
+                  {byId("project-open").label} <MenubarShortcut>{shortcutOf(byId("project-open"))}</MenubarShortcut>
                 </MenubarItem>
                 <MenubarItem onClick={byId("project-save").run}>
-                  {byId("project-save").label}
+                  {byId("project-save").label} <MenubarShortcut>{shortcutOf(byId("project-save"))}</MenubarShortcut>
+                </MenubarItem>
+                <MenubarItem onClick={byId("project-save-as").run}>
+                  {byId("project-save-as").label} <MenubarShortcut>{shortcutOf(byId("project-save-as"))}</MenubarShortcut>
                 </MenubarItem>
                 <MenubarSeparator />
                 {/* Deliverables first, both-at-once first within each format:
