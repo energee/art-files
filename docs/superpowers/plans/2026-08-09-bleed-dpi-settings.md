@@ -1,6 +1,12 @@
 # Bleed and DPI as Settings knobs
 
-**Status:** §0 resolved 2026-08-09 — bleed is **0.0635" per side**. Ready to execute.
+**Status:** §0 resolved — bleed is **0.0635" per side**. §3 (DPI) shipped in
+`e2dff75`. §1/§2/§4/§5 (bleed itself) not started; §2 has since been shown to
+be much smaller than first written. Ready to execute.
+
+Also already shipped, and it removes a step this plan assumed: `TRIM_UV` and
+the trim crop exist (`5351f4d`), so the 3D views already distinguish the trim
+from the page. Whatever `setBleed` updates must include `TRIM_UV`.
 
 ## Goal
 
@@ -85,10 +91,36 @@ expectation changes.
 | `hittest.ts` | incoming point before testing |
 | `three/labelTextures.ts` / `maskimage.ts` | raster origin |
 
-## 2. The threading problem
+## 2. The threading problem — smaller than it looks
 
 `PAGE`/`ART` are module-level `const`s that 14 modules read at import time.
-Bleed is now runtime state, so they cannot stay constants.
+Bleed is runtime state, so they cannot stay frozen.
+
+**But almost nothing else has to move.** The first instinct is that
+`CENTER_X = PAGE.w / 2` and its five dependents (`WORDMARK`, `LOGO`, `NAME`,
+`STYLE_LINE`, `COLLAB_CENTER`) all need to become live too, which is what
+makes this look like a rewrite. They don't. `CENTER_X` is a *position
+measured at MEASURED_BLEED*, exactly like `LEFT_X` and `BARCODE.x` — and
+`BLEED_SHIFT` is applied uniformly to every position at the output boundary,
+so the shifted centre is the new page's centre by construction. Every
+position constant in the file, `CENTER_X` included, stays exactly as written.
+
+Only four things are genuinely live:
+
+| live | why |
+|---|---|
+| `PAGE` | PDF page size, the `y()` flip, `PSD_DOC`, `TRIM_UV` |
+| `ART` | `x`/`y` move with the bleed; `w`/`h` never change |
+| `TRIM_UV` | the 3D crop, derived from both |
+| `PSD_DOC` | already mutable via `setOutputDpi`; make `setBleed` update it too |
+
+`LABEL_WRAP_RATIO` / `LABEL_HEIGHT_RATIO` are `ART.w`/`ART.h` over fixed can
+dimensions, so they stay constant — the trim does not change size, only its
+offset within the page does.
+
+That turns §2 from "make fourteen modules take a parameter" into "mutate two
+records in place and let ES live bindings do the rest", which is what makes
+the `ponytail:` global below defensible rather than lazy.
 
 **Recommendation — a single module-level document geometry, set once per
 build.** `layout.ts` exposes `setBleed(inches)`, App calls it before each
