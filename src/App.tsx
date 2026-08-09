@@ -961,22 +961,20 @@ export default function App() {
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
           preview center, fixed inspector column right. */}
       <SidebarProvider>
-        <Sidebar collapsible="offcanvas">
+        <Sidebar collapsible="offcanvas" className="border-r border-sidebar-border">
           <SidebarContent>
             <LayersPanel cfg={cfg} update={update} hidden={hiddenLayers}
               onToggleHidden={toggleHidden} selected={selected} onSelect={pick} />
           </SidebarContent>
         </Sidebar>
         <SidebarInset className="flex h-svh flex-col overflow-hidden">
-        {/* py-2 rather than the trigger's own py-1: with no bottom border the
-            bar needs its own breathing room against the canvas. */}
-        <header className="flex items-center gap-3 px-3 py-2">
+        {/* A quiet bottom rule separates application chrome from the canvas. */}
+        <header className="flex items-center gap-3 border-b border-border px-3 py-2">
           {/* Toggles the Layers sidebar; the component also binds ⌘B. */}
           <SidebarTrigger className="size-6" />
           {/* Stripped to a real menu bar: no pill border or rounding of its
-              own — the header is borderless too, so the menu floats on the
-              canvas — and small regular-weight labels rather than the
-              default's badge-like medium ones. */}
+              own, and small regular-weight labels rather than the default's
+              badge-like medium ones. The header owns the structural rule. */}
           <Menubar className="h-auto gap-0 rounded-none border-0 p-0">
             <MenubarMenu>
               <MenubarTrigger className={MENU_TRIGGER}>File</MenubarTrigger>
