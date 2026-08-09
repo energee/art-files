@@ -11,7 +11,7 @@
 // layers-ui spec's stacking (Barcode before QR); every element row has
 // an eye (hiding is a temporary skip, unlike the ink-less styling allowNone
 // forbids), the document layers go without for now.
-import { ChevronDown, Eye, EyeOff } from "lucide-react";
+import { ChevronDown, Eye, EyeOff, Info } from "lucide-react";
 import type { LabelConfig, StyledLine } from "@/types";
 import { applyStyle, elementById, type ElementId } from "@/elements";
 import { cn } from "@/lib/utils";
@@ -26,8 +26,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  COLLAB_GROUP_TITLE, DOC_LAYER_LABELS, LAYER_ICONS, PANEL_GROUPS,
+  COLLAB_GROUP_TITLE, DOC_LAYER_LABELS, GROUP_INFO, LAYER_ICONS, PANEL_GROUPS,
   isElementId, isHideable, type HideableLayerId, type LayerId,
 } from "./layers";
 import { modsOf, type SelectMods } from "@/selection";
@@ -246,18 +247,35 @@ export function LayersPanel(props: {
       {PANEL_GROUPS.map(([title, rows]) => (
         <SidebarGroup key={title}>
           <SidebarGroupLabel className="justify-between">
-            {title}
-            {/* The one place the collab block turns on/off — on the group
-                header, not repeated per layer. Turning it off keeps the
-                uploaded art and slot styles; flipping it back restores the
-                label exactly as it was. */}
-            {title === COLLAB_GROUP_TITLE && (
-              <Switch
-                aria-label="Collab enabled"
-                checked={props.cfg.collabEnabled}
-                onCheckedChange={(on) =>
-                  props.update((c) => { c.collabEnabled = on; })}
-              />
+            <span className="flex items-center gap-1.5">
+              {title}
+              {/* The one place the collab block turns on/off — on the group
+                  header beside its name, not repeated per layer. Turning it
+                  off keeps the uploaded art and slot styles; flipping it
+                  back restores the label exactly as it was. */}
+              {title === COLLAB_GROUP_TITLE && (
+                <Switch
+                  aria-label="Collab enabled"
+                  checked={props.cfg.collabEnabled}
+                  onCheckedChange={(on) =>
+                    props.update((c) => { c.collabEnabled = on; })}
+                />
+              )}
+            </span>
+            {/* What the group is FOR, one line behind an info icon — the
+                registry comments in elements.ts, surfaced. */}
+            {GROUP_INFO[title] && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Info
+                      className="size-3 text-sidebar-foreground/50"
+                      aria-label={`About ${title}`}
+                    />
+                  }
+                />
+                <TooltipContent className="max-w-56">{GROUP_INFO[title]}</TooltipContent>
+              </Tooltip>
             )}
           </SidebarGroupLabel>
           <SidebarGroupContent>

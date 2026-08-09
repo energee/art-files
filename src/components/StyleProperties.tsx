@@ -9,7 +9,7 @@
 // edits the whole selection at once, blanking any field they disagree about.
 // Selection itself lives in App (see selection.ts), driven by the layers
 // panel and the preview; this component only receives the chosen LayerIds.
-import { Bold, X } from "lucide-react";
+import { Bold, WholeWord, X } from "lucide-react";
 import type { LabelConfig, Style, StyledLine } from "@/types";
 import {
   SHIPPED, applyStyle, elementById, isDefaultStyle,
@@ -552,7 +552,7 @@ function ElementStyle(props: {
           {/* "Typography", not "Text": the content section above is now
               titled Text, and two same-named sections would read as one. */}
           <Heading>Typography</Heading>
-          <div className="flex items-center gap-3">
+          <div className="space-y-1.5">
             {/* Only the elements whose registry entry accepts bold are
                 counted — and only they are written (applyStyle drops it for
                 the rest). A toggle button like the description toolbar's
@@ -577,7 +577,7 @@ function ElementStyle(props: {
               // overrun the label reads as a broken line, not a style.
               <div className="min-w-0 flex-1">
                 <ScrubField
-                  id={`${fid}-tracking`} label="Letter Spacing" unit="pt"
+                  id={`${fid}-tracking`} label="Letter Spacing" icon={WholeWord} unit="pt"
                   {...tracking} min={-2} max={20} step={0.01} dragStep={0.1}
                   onChange={(v) => set({ letterSpacing: v })}
                 />
