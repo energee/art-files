@@ -33,7 +33,7 @@ import { barcodeFootprint, barcodeGeometry, barcodeStrokePt } from "../barcode";
 import { parseDescription, parseInfoLine, parseRuns } from "../description";
 import { parseLogo } from "../logo";
 import { qrShapes, qrUrl } from "../qr";
-import { wrapWarning } from "../warning";
+import { warningMeasure, wrapWarning } from "../warning";
 
 export interface PsdAssets {
   fonts: { regular: Uint8Array; semibold: Uint8Array; bold: Uint8Array };
@@ -599,8 +599,9 @@ function buildLayers(
   // Same tracked measure the PDF wraps with, so both deliverables break the
   // warning into the same columns.
   const warnLines = wrapWarning(
-    (t) => L.trackedWidth(
-      f.regular.widthOfTextAtSize(t, L.WARNING.size), t, cfg.warning.letterSpacing,
+    warningMeasure(
+      (t, bold) => (bold ? f.bold : f.regular).widthOfTextAtSize(t, L.WARNING.size),
+      cfg.warning.letterSpacing,
     ),
     L.WARNING.maxLen,
   );
@@ -624,7 +625,9 @@ function buildLayers(
       // PDF wraps with, so both deliverables break identically.
       textLayer("Warning", warnLines.join("\n"), {
         x: L.WARNING.x, baseline: L.WARNING.yStart,
-        size: L.WARNING.size, fill: P(cfg.warning), face: "regular", rotated: true,
+        // boldFace "bold", not the semibold default: the **GOVERNMENT
+        // WARNING:** prefix must step up to true Bold, matching the PDF.
+        size: L.WARNING.size, fill: P(cfg.warning), face: "regular", boldFace: "bold", rotated: true,
         tracking: cfg.warning.letterSpacing, leading: L.WARNING.leading, justify: true,
         stroke: cfg.warning.stroke, strokeWidth: cfg.warning.strokeWidth, mode,
       }),

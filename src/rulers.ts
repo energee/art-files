@@ -27,7 +27,7 @@ export interface LayoutGuides {
   middle: number;
 }
 
-export const DEFAULT_MARGIN_PT = 18; // 0.25in
+export const DEFAULT_MARGIN_PT = 24.12; // 0.335in
 const MIN_MAJOR_PX = 56;
 const SUBDIVISIONS = 4;
 // Pixels mean deliverable pixels at the document's OUTPUT resolution, not CSS

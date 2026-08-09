@@ -25,7 +25,7 @@ import * as L from "../layout";
 import { barcodeFootprint, barcodeGeometry, barcodeStrokePt } from "../barcode";
 import { qrPath, qrShapes, qrUrl } from "../qr";
 import { parseDescription, parseInfoLine, parseRuns } from "../description";
-import { warningColumnLen, wrapWarning } from "../warning";
+import { warningColumnLen, warningMeasure, wrapWarning } from "../warning";
 
 /** A collab brewery's logo: vector source (recolored by its slot's style, like
  *  the laurel) or raster bytes (drawn as-is, over white ink). */
@@ -284,17 +284,23 @@ export function drawJustifiedRotated(
   mode: Mode,
   style: Style,
   opts: { x: number; yStart: number; size: number; maxLen: number },
+  boldFont?: PDFFont,
 ) {
   const words = text.split(" ");
   if (words.length < 2) {
-    drawRotated(page, font, text, mode, style, opts);
+    drawRotated(page, font, text, mode, style, opts, boldFont);
     return;
   }
-  // Tracked widths: the gap that justifies the line has to be computed
-  // against the length each word actually draws at, or a tracked warning
-  // column overshoots maxLen by one gap per glyph.
+  // Run-aware tracked widths: the gap that justifies the line has to be
+  // computed against the length each word actually draws at — the stripped
+  // text of its inline runs, each in its own face — or a tracked or
+  // **bold**-marked warning column overshoots maxLen.
   const widths = words.map((w) =>
-    L.trackedWidth(font.widthOfTextAtSize(w, opts.size), w, style.letterSpacing));
+    L.runsWidth(
+      parseRuns({ ...style, text: w }),
+      (r) => (r.bold ? boldFont ?? font : font).widthOfTextAtSize(r.text, opts.size),
+      style.letterSpacing ?? 0,
+    ));
   const totalWordWidth = widths.reduce((a, b) => a + b, 0);
   // The gap that makes sum(widths) + (n-1)*gap land exactly on maxLen.
   const gap = (opts.maxLen - totalWordWidth) / (words.length - 1);
@@ -303,7 +309,7 @@ export function drawJustifiedRotated(
   // origin y) — see drawRotated's doc comment.
   let cursor = opts.yStart;
   words.forEach((w, i) => {
-    drawRotated(page, font, w, mode, style, { x: opts.x, yStart: cursor, size: opts.size });
+    drawRotated(page, font, w, mode, style, { x: opts.x, yStart: cursor, size: opts.size }, boldFont);
     cursor -= widths[i] + gap;
   });
 }
@@ -500,11 +506,13 @@ async function drawElements(
     drawRotated(page, info.bold ? fonts.bold : fonts.semibold, info.text, mode, info, {
       x: L.HANDLE_ADDR.x, yStart: L.HANDLE_ADDR.yStart, size: L.HANDLE_ADDR.size,
     }, fonts.bold);
-  // Wrapping measures with the warning's own tracking: tracked text needs
+  // Wrapping measures with the warning's own tracking and inline runs (the
+  // "GOVERNMENT WARNING:" prefix draws in Bold): tracked or bold text needs
   // more columns, and hittest.ts derives its columns from the same measure.
   const warnLines = wrapWarning(
-    (t) => L.trackedWidth(
-      fonts.regular.widthOfTextAtSize(t, L.WARNING.size), t, cfg.warning.letterSpacing,
+    warningMeasure(
+      (t, bold) => (bold ? fonts.bold : fonts.regular).widthOfTextAtSize(t, L.WARNING.size),
+      cfg.warning.letterSpacing,
     ),
     L.WARNING.maxLen,
   );
@@ -513,7 +521,7 @@ async function drawElements(
       drawJustifiedRotated(page, fonts.regular, line, mode, cfg.warning, {
         x: L.WARNING.x + i * L.WARNING.leading, yStart: L.WARNING.yStart, size: L.WARNING.size,
         maxLen: L.WARNING.maxLen,
-      }),
+      }, fonts.bold),
     );
   if (!hide("storeCold"))
     // Semibold is this line's plain face; the element's bold toggle steps it up

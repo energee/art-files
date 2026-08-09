@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import type { PDFFont, PDFPage } from "pdf-lib";
 import { buildMaskPdf, drawJustifiedRotated } from "../src/pdf/build";
-import { warningColumnLen, wrapWarning } from "../src/warning";
+import { warningColumnLen, warningMeasure, wrapWarning } from "../src/warning";
 import { defaultConfig } from "../src/defaults";
 import * as L from "../src/layout";
 import { assets, contentStreamText } from "./fixtures";
@@ -87,7 +87,10 @@ describe("drawJustifiedRotated", () => {
   // test's font — every resulting column here is multi-word, so every one
   // must justify out to exactly maxLen.
   it("every real wrapped warning column measures exactly maxLen after justification", () => {
-    const measure = (t: string) => font.widthOfTextAtSize(t, L.WARNING.size);
+    // Marker-aware, as every renderer measures now: WARNING_TEXT carries
+    // **bold** runs whose asterisks must not be counted as glyphs. This
+    // test's single embedded font stands in for both faces.
+    const measure = warningMeasure((t) => font.widthOfTextAtSize(t, L.WARNING.size));
     const cols = wrapWarning(measure, L.WARNING.maxLen);
     expect(cols.length).toBeGreaterThan(1);
     for (const line of cols) {

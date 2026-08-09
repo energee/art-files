@@ -8,11 +8,18 @@ import { DEFAULT_STROKE_PX, GOLD } from "./layout";
  *  scan contrast depends on (see barcodeStroke below). */
 export const KEYLINE = { stroke: "#000000", strokeWidth: DEFAULT_STROKE_PX } as const;
 
+// "GOVERNMENT WARNING:" carries inline **bold** markers — the TTB requires
+// the phrase in bold caps. Marked PER WORD, not across the phrase, because
+// wrapWarning splits on spaces and every word must stay a balanced run on
+// its own (an unmatched marker renders literally — see parseRuns).
+// Sentence case body (2026-08): the TTB requires caps + bold only for the
+// "GOVERNMENT WARNING:" phrase itself; lowercase body text is narrower, which
+// is what lets the type size come up toward the 2mm minimum.
 export const WARNING_TEXT =
-  "GOVERNMENT WARNING: (1) ACCORDING TO THE SURGEON GENERAL, WOMEN SHOULD " +
-  "NOT DRINK ALCOHOLIC BEVERAGES DURING PREGNANCY BECAUSE OF THE RISK OF " +
-  "BIRTH DEFECTS. (2) CONSUMPTION OF ALCOHOLIC BEVERAGES IMPAIRS YOUR " +
-  "ABILITY TO DRIVE A CAR OR OPERATE MACHINERY, AND MAY CAUSE HEALTH PROBLEMS.";
+  "**GOVERNMENT** **WARNING:** (1) According to the Surgeon General, women should " +
+  "not drink alcoholic beverages during pregnancy because of the risk of " +
+  "birth defects. (2) Consumption of alcoholic beverages impairs your " +
+  "ability to drive a car or operate machinery, and may cause health problems.";
 
 /** Blank per-release fields render as placeholders — the label previews
  *  (and prints) "Name" / "Style" / "#" until something is typed. One home
@@ -86,7 +93,9 @@ export function defaultConfig(): LabelConfig {
       // rotated run, and better than a third of a point of spacing opens it up.
       letterSpacing: 0.38,
     },
-    warning: { fill: GOLD, layer: "metallic", ...KEYLINE },
+    // Slightly negative tracking (2026-08): buys the last fraction of a point
+    // of type size that keeps the paragraph on 4 columns at a 2mm cap height.
+    warning: { fill: GOLD, layer: "metallic", ...KEYLINE, letterSpacing: -0.05 },
     // Widely tracked (2026-08): two short uppercase words set large enough
     // that tight spacing reads as one word.
     storeCold: {
@@ -139,6 +148,10 @@ export function parseConfigFile(json: string): LabelConfig {
   cfg.barcodeFill ??= "#1A1A1A";
   cfg.barcodeStroke ??= "#FFFFFF";
   cfg.barcodeLayer ??= "white";
+  // Configs saved before the warning shipped tracked at -0.05 (2026-08).
+  // Not cosmetic: at 8.2pt the untracked paragraph wraps into a 5th column
+  // that lands under the barcode — the tracking is part of the geometry.
+  if (cfg.warning) cfg.warning.letterSpacing ??= -0.05;
   // Configs saved before the description block was styleable.
   cfg.descStyle ??= { fill: GOLD, layer: "metallic" };
   // Configs saved before per-element strokes: keep the logo's classic keyline.

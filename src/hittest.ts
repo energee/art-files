@@ -9,7 +9,7 @@ import { displayAbv, displayName, displayStyle } from "./defaults";
 // The renderer's own paragraph wrapper and justified-column length, so the
 // warning's hit columns can't disagree with the columns it draws or the
 // justified width it draws them at (see the warning boxes below).
-import { wrapWarning, warningColumnLen } from "./warning";
+import { wrapWarning, warningColumnLen, warningMeasure } from "./warning";
 import * as L from "./layout";
 
 export type Measure = (text: string, size: number, bold: boolean) => number;
@@ -139,15 +139,16 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
   // Tracked, matching drawElements' wrap measure: the warning's own spacing
   // decides both how many columns the paragraph wraps into and how long each
   // justified one is.
-  const warningMeasure = (t: string) =>
-    L.trackedWidth(m(t, L.WARNING.size, false), t, cfg.warning.letterSpacing);
-  const warnLines = wrapWarning(warningMeasure, L.WARNING.maxLen);
+  const warnMeasure = warningMeasure(
+    (t, bold) => m(t, L.WARNING.size, bold), cfg.warning.letterSpacing,
+  );
+  const warnLines = wrapWarning(warnMeasure, L.WARNING.maxLen);
   warnLines.forEach((line, i) =>
     boxes.push({
       id: "warning",
       x0: L.WARNING.x + i * L.WARNING.leading - ASC * L.WARNING.size,
       x1: L.WARNING.x + i * L.WARNING.leading + DESC * L.WARNING.size,
-      y0: L.WARNING.yStart - warningColumnLen(line, L.WARNING.maxLen, warningMeasure),
+      y0: L.WARNING.yStart - warningColumnLen(line, L.WARNING.maxLen, warnMeasure),
       y1: L.WARNING.yStart,
     }),
   );

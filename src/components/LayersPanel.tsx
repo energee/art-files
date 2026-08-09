@@ -267,11 +267,11 @@ export function LayersPanel(props: {
             {info && (
               <Tooltip>
                 <TooltipTrigger
+                  aria-label={`About ${title}`}
                   render={
-                    <Info
-                      className="size-3 text-sidebar-foreground/50"
-                      aria-label={`About ${title}`}
-                    />
+                    <span className="grid size-5 shrink-0 place-items-center">
+                      <Info className="size-3 text-sidebar-foreground/50" />
+                    </span>
                   }
                 />
                 <TooltipContent className="max-w-56">{info}</TooltipContent>

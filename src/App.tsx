@@ -441,7 +441,10 @@ export default function App() {
     if (adopted.current || !presetsLoaded) return;
     adopted.current = true;
     setRender(presets.render);
-  }, [presetsLoaded, presets.render]);
+    setBleed(presets.view.showBleed);
+    setShowRulers(presets.view.showRulers);
+    setShowGuides(presets.view.showGuides);
+  }, [presetsLoaded, presets.render, presets.view]);
   useEffect(() => {
     if (!adopted.current) return;
     const t = setTimeout(() => void mutatePresets((p) => ({ ...p, render })), 500);
@@ -450,6 +453,16 @@ export default function App() {
   useEffect(() => {
     if (presetsError) setLoadError(`presets save failed: ${presetsError}`);
   }, [presetsError]);
+
+  // Block the browser context menu app-wide (2026-08, by request): right-click
+  // already means "pan" over the preview, nothing in this tool uses the menu,
+  // and its Inspect item was being opened by accident. DevTools stay reachable
+  // from the browser menu / ⌘⌥I — a page can only suppress its own triggers.
+  useEffect(() => {
+    const block = (e: MouseEvent) => e.preventDefault();
+    window.addEventListener("contextmenu", block);
+    return () => window.removeEventListener("contextmenu", block);
+  }, []);
 
   // Wheel-to-zoom, scoped to the preview pane, matching what OrbitControls
   // gives the 3D views so one set of habits works in all four: wheel (or a
@@ -566,6 +579,9 @@ export default function App() {
   const [bleed, setBleed] = useState(false);
   // Rulers and guides are view state, like hidden layer eyes: they assist the
   // operator but are not label content, so none enters config history/exports.
+  // Rulers, guides, and bleed lines DO persist across sessions — workspace
+  // preferences, saved to presets.json alongside the render knobs (adopted
+  // and written back by the effects near the render settings above).
   const [showRulers, setShowRulers] = useState(true);
   const [rulerUnit, setRulerUnit] = useState<RulerUnit>("in");
   const [showGuides, setShowGuides] = useState(true);
@@ -581,6 +597,15 @@ export default function App() {
     setManualGuides((guides) => guides.map((guide) => guide.id === id ? { ...guide, point } : guide));
   const removeManualGuide = (id: number) =>
     setManualGuides((guides) => guides.filter((guide) => guide.id !== id));
+  // Persist the three view toggles the same way as the render knobs: only
+  // after the saved set has been adopted, debounced so rapid toggling lands
+  // as one write.
+  useEffect(() => {
+    if (!adopted.current) return;
+    const view = { showRulers, showGuides, showBleed: bleed };
+    const t = setTimeout(() => void mutatePresets((p) => ({ ...p, view })), 500);
+    return () => clearTimeout(t);
+  }, [showRulers, showGuides, bleed]);
 
   const update = (fn: (c: LabelConfig) => void) =>
     setCfg((c) => { const n = structuredClone(c); fn(n); return n; });

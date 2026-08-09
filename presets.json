@@ -38,14 +38,16 @@
       "upc": "860009737600"
     }
   ],
-  "colors": [
-    "#f3cd80",
-    "#33ff00"
-  ],
+  "colors": [],
   "render": {
-    "cornerRadius": 1.2191157174035747,
+    "cornerRadius": 1.219115734720416,
     "edgeSoftness": 0.1,
     "dpi": 600,
     "bleedIn": 0.0635
+  },
+  "view": {
+    "showRulers": false,
+    "showGuides": false,
+    "showBleed": false
   }
 }
