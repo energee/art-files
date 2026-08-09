@@ -930,7 +930,7 @@ export default function App() {
       disabled: viewMode !== "2d", run: () => setShowRulers((shown) => !shown) },
     { id: "margin-guides", label: showMargins ? "Hide margin guides" : "Show margin guides",
       disabled: viewMode !== "2d", run: () => setShowMargins((shown) => !shown) },
-    { id: "center-guides", label: showCenter ? "Hide center & middle" : "Show center & middle",
+    { id: "center-guides", label: showCenter ? "Hide center guides" : "Show center guides",
       disabled: viewMode !== "2d", run: () => setShowCenter((shown) => !shown) },
     { id: "manual-guides", label: showManualGuides ? "Hide manual guides" : "Show manual guides",
       disabled: viewMode !== "2d", run: () => setShowManualGuides((shown) => !shown) },
@@ -1066,7 +1066,7 @@ export default function App() {
                 </MenubarCheckboxItem>
                 <MenubarCheckboxItem checked={showCenter}
                   disabled={byId("center-guides").disabled} onClick={byId("center-guides").run}>
-                  Center &amp; Middle
+                  Center Guides
                 </MenubarCheckboxItem>
                 <MenubarCheckboxItem checked={showManualGuides}
                   disabled={byId("manual-guides").disabled} onClick={byId("manual-guides").run}>

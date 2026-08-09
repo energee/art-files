@@ -36,7 +36,7 @@ dragged or deleted individually:
 - A vertical **center** guide at `ART.x + ART.w / 2`.
 - A horizontal **middle** guide at `ART.y + ART.h / 2`.
 
-The View menu independently toggles Margin Guides and Center & Middle. Layout
+The View menu independently toggles Margin Guides and Center Guides. Layout
 guides remain meaningful with rulers hidden, so their toggles do not depend on
 the Rulers toggle.
 
@@ -87,7 +87,7 @@ At 100%, 150%, and 250% zoom, including after panning and resizing sidebars:
 - 0in tracks the trim top/left, 8in tracks the trim right, and 5in tracks the
   trim bottom.
 - Default margins read 0.25in, 7.75in, 0.25in, and 4.75in.
-- Center and middle read 4in and 2.5in.
+- Center guides read 4in horizontally and 2.5in vertically.
 - Ruler labels and guide strokes do not scale.
 - Preview selection, divider dragging, bleed lines, and 3D navigation retain
   their current behavior.
