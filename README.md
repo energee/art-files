@@ -144,8 +144,9 @@ negative), and the corner control switches inches/points/600-DPI pixels and
 edits the safe margin inset. Locked margin and center guides derive
 from the 8x5in trim box; drag from either ruler to add a manual guide, drag one
 back into a ruler to remove it, press Delete while it is focused, or clear them
-from View. These are session-only overlays: they never enter a config or
-export. Live previews build against a downscaled copy of the
+from View. The Guides toggle hides or restores all guide types together without
+forgetting their individual settings. These are session-only overlays: they
+never enter a config or export. Live previews build against a downscaled copy of the
 texture/mask (print-size images made every keystroke-triggered rebuild
 churn enough memory to crash the tab); downloads always rebuild at full
 resolution when clicked. Preview PDF generation runs in a lazy Web Worker,

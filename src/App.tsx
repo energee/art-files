@@ -513,6 +513,7 @@ export default function App() {
   // operator but are not label content, so none enters config history/exports.
   const [showRulers, setShowRulers] = useState(true);
   const [rulerUnit, setRulerUnit] = useState<RulerUnit>("in");
+  const [showGuides, setShowGuides] = useState(true);
   const [showMargins, setShowMargins] = useState(true);
   const [showCenter, setShowCenter] = useState(true);
   const [showManualGuides, setShowManualGuides] = useState(true);
@@ -928,14 +929,17 @@ export default function App() {
       disabled: viewMode !== "2d", run: () => setBleed((b) => !b) },
     { id: "rulers", label: showRulers ? "Hide rulers" : "Show rulers", key: "r",
       disabled: viewMode !== "2d", run: () => setShowRulers((shown) => !shown) },
+    { id: "guides", label: showGuides ? "Hide guides" : "Show guides",
+      disabled: viewMode !== "2d", run: () => setShowGuides((shown) => !shown) },
     { id: "margin-guides", label: showMargins ? "Hide margin guides" : "Show margin guides",
-      disabled: viewMode !== "2d", run: () => setShowMargins((shown) => !shown) },
+      disabled: viewMode !== "2d" || !showGuides, run: () => setShowMargins((shown) => !shown) },
     { id: "center-guides", label: showCenter ? "Hide center guides" : "Show center guides",
-      disabled: viewMode !== "2d", run: () => setShowCenter((shown) => !shown) },
+      disabled: viewMode !== "2d" || !showGuides, run: () => setShowCenter((shown) => !shown) },
     { id: "manual-guides", label: showManualGuides ? "Hide manual guides" : "Show manual guides",
-      disabled: viewMode !== "2d", run: () => setShowManualGuides((shown) => !shown) },
+      disabled: viewMode !== "2d" || !showGuides, run: () => setShowManualGuides((shown) => !shown) },
     { id: "clear-guides", label: "Clear manual guides",
-      disabled: viewMode !== "2d" || manualGuides.length === 0, run: () => setManualGuides([]) },
+      disabled: viewMode !== "2d" || !showGuides || manualGuides.length === 0,
+      run: () => setManualGuides([]) },
   ];
   // Indexed once per render rather than a linear find per menu item: the
   // menubar reads ~15 commands and App re-renders on every keystroke.
@@ -1060,6 +1064,10 @@ export default function App() {
                   Rulers <MenubarShortcut>{shortcutOf(byId("rulers"))}</MenubarShortcut>
                 </MenubarCheckboxItem>
                 <MenubarSeparator />
+                <MenubarCheckboxItem checked={showGuides}
+                  disabled={byId("guides").disabled} onClick={byId("guides").run}>
+                  Guides
+                </MenubarCheckboxItem>
                 <MenubarCheckboxItem checked={showMargins}
                   disabled={byId("margin-guides").disabled} onClick={byId("margin-guides").run}>
                   Margin Guides
@@ -1172,7 +1180,7 @@ export default function App() {
             {viewMode === "2d" && (
               <Rulers paneRef={previewPane} previewRef={previewRef} transform={zoom}
                 showRulers={showRulers} unit={rulerUnit} onUnitChange={setRulerUnit}
-                showMargins={showMargins} showCenter={showCenter}
+                guidesEnabled={showGuides} showMargins={showMargins} showCenter={showCenter}
                 showManual={showManualGuides} marginPt={marginPt}
                 onMarginChange={setMarginPt} manual={manualGuides}
                 onAddManual={addManualGuide} onMoveManual={moveManualGuide}

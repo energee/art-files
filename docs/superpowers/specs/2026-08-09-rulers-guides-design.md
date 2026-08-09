@@ -36,9 +36,12 @@ dragged or deleted individually:
 - A vertical **center** guide at `ART.x + ART.w / 2`.
 - A horizontal **middle** guide at `ART.y + ART.h / 2`.
 
-The View menu independently toggles Margin Guides and Center Guides. Layout
-guides remain meaningful with rulers hidden, so their toggles do not depend on
-the Rulers toggle.
+The View menu has a top-level Guides toggle that shows or hides margin, center,
+and manual guides together while preserving their individual settings. Margin
+Guides, Center Guides, and Manual Guides remain independently selectable while
+Guides is on. Guides remain meaningful with rulers hidden, so the umbrella
+toggle does not depend on the Rulers toggle. Creating manual guides from a
+ruler is disabled while Guides is off.
 
 ## Manual guides
 

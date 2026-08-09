@@ -37,6 +37,7 @@ export function Rulers(props: {
   showRulers: boolean;
   unit: RulerUnit;
   onUnitChange: (unit: RulerUnit) => void;
+  guidesEnabled: boolean;
   showMargins: boolean;
   showCenter: boolean;
   showManual: boolean;
@@ -48,7 +49,7 @@ export function Rulers(props: {
   onRemoveManual: (id: number) => void;
 }) {
   const {
-    paneRef, previewRef, transform, showRulers, unit, onUnitChange,
+    paneRef, previewRef, transform, showRulers, unit, onUnitChange, guidesEnabled,
     showMargins, showCenter, showManual, marginPt, onMarginChange,
     manual, onAddManual, onMoveManual, onRemoveManual,
   } = props;
@@ -143,7 +144,7 @@ export function Rulers(props: {
   );
 
   function startNew(axis: GuideAxis, event: PointerEvent<HTMLDivElement>) {
-    if (event.button !== 0) return;
+    if (!guidesEnabled || event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     setDrag({ axis, point: pointAt(axis, event) });
   }
@@ -174,9 +175,9 @@ export function Rulers(props: {
     setDrag(null);
   }
 
-  const layoutVertical = showMargins ? locked.verticalMargins : [];
-  const layoutHorizontal = showMargins ? locked.horizontalMargins : [];
-  const shownManual = showManual ? manual : [];
+  const layoutVertical = guidesEnabled && showMargins ? locked.verticalMargins : [];
+  const layoutHorizontal = guidesEnabled && showMargins ? locked.horizontalMargins : [];
+  const shownManual = guidesEnabled && showManual ? manual : [];
   const paintedManual = shownManual.filter((guide) => guide.id !== drag?.id);
   const marginValue = pointToUnit(marginPt, 0, unit);
   const marginMax = pointToUnit(Math.min(ART.w, ART.h) / 2, 0, unit);
@@ -195,7 +196,7 @@ export function Rulers(props: {
           <line key={`margin-y-${index}`} x1={contentStart} x2={geometry.width}
             y1={yOf(point)} y2={yOf(point)} className="stroke-cyan-500/70" />
         ))}
-        {showCenter && (
+        {guidesEnabled && showCenter && (
           <>
             <line x1={xOf(locked.center)} x2={xOf(locked.center)} y1={contentStart}
               y2={geometry.height} className="stroke-cyan-400/80 [stroke-dasharray:4_3]" />
@@ -210,7 +211,7 @@ export function Rulers(props: {
           <line key={guide.id} x1={contentStart} x2={geometry.width}
             y1={yOf(guide.point)} y2={yOf(guide.point)} className="stroke-primary" />
         ))}
-        {drag && (drag.axis === "x" ? (
+        {guidesEnabled && drag && (drag.axis === "x" ? (
           <line x1={xOf(drag.point)} x2={xOf(drag.point)} y1={contentStart}
             y2={geometry.height} className="stroke-primary" />
         ) : (
@@ -283,12 +284,14 @@ export function Rulers(props: {
 
       {showRulers && (
         <>
-          <div className="pointer-events-auto absolute top-0 right-0 left-5 h-5 cursor-row-resize"
-            title="Drag down to create a horizontal guide"
+          <div className={`pointer-events-auto absolute top-0 right-0 left-5 h-5${
+              guidesEnabled ? " cursor-row-resize" : " cursor-default"}`}
+            title={guidesEnabled ? "Drag down to create a horizontal guide" : "Turn on Guides to add guides"}
             onPointerDown={(event) => startNew("y", event)}
             onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag} />
-          <div className="pointer-events-auto absolute top-5 bottom-0 left-0 w-5 cursor-col-resize"
-            title="Drag right to create a vertical guide"
+          <div className={`pointer-events-auto absolute top-5 bottom-0 left-0 w-5${
+              guidesEnabled ? " cursor-col-resize" : " cursor-default"}`}
+            title={guidesEnabled ? "Drag right to create a vertical guide" : "Turn on Guides to add guides"}
             onPointerDown={(event) => startNew("x", event)}
             onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag} />
           <Popover>
