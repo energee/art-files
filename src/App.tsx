@@ -33,7 +33,11 @@ import {
 } from "@/selection";
 import { CommandMenu, shortcutOf, type Command } from "@/components/CommandMenu";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
+import { Rulers } from "@/components/Rulers";
 import { CanView, type CanViewHandle } from "@/components/CanView";
+import {
+  DEFAULT_MARGIN_PT, type GuideAxis, type ManualGuide, type RulerUnit,
+} from "@/rulers";
 import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator,
   MenubarShortcut, MenubarTrigger,
@@ -505,6 +509,22 @@ export default function App() {
   // Trim guide over the 2D preview at the art box (38px of bleed per side at
   // 600dpi). View-only — the exported PDFs are unaffected.
   const [bleed, setBleed] = useState(false);
+  // Rulers and guides are view state, like hidden layer eyes: they assist the
+  // operator but are not label content, so none enters config history/exports.
+  const [showRulers, setShowRulers] = useState(true);
+  const [rulerUnit, setRulerUnit] = useState<RulerUnit>("in");
+  const [showMargins, setShowMargins] = useState(true);
+  const [showCenter, setShowCenter] = useState(true);
+  const [showManualGuides, setShowManualGuides] = useState(true);
+  const [marginPt, setMarginPt] = useState(DEFAULT_MARGIN_PT);
+  const [manualGuides, setManualGuides] = useState<ManualGuide[]>([]);
+  const nextGuideId = useRef(1);
+  const addManualGuide = (axis: GuideAxis, point: number) =>
+    setManualGuides((guides) => [...guides, { id: nextGuideId.current++, axis, point }]);
+  const moveManualGuide = (id: number, point: number) =>
+    setManualGuides((guides) => guides.map((guide) => guide.id === id ? { ...guide, point } : guide));
+  const removeManualGuide = (id: number) =>
+    setManualGuides((guides) => guides.filter((guide) => guide.id !== id));
 
   const update = (fn: (c: LabelConfig) => void) =>
     setCfg((c) => { const n = structuredClone(c); fn(n); return n; });
@@ -906,6 +926,16 @@ export default function App() {
     // outside the 2D view, where there is no trim guide to draw.
     { id: "bleed", label: bleed ? "Hide bleed lines" : "Show bleed lines", key: "b",
       disabled: viewMode !== "2d", run: () => setBleed((b) => !b) },
+    { id: "rulers", label: showRulers ? "Hide rulers" : "Show rulers", key: "r",
+      disabled: viewMode !== "2d", run: () => setShowRulers((shown) => !shown) },
+    { id: "margin-guides", label: showMargins ? "Hide margin guides" : "Show margin guides",
+      disabled: viewMode !== "2d", run: () => setShowMargins((shown) => !shown) },
+    { id: "center-guides", label: showCenter ? "Hide center & middle" : "Show center & middle",
+      disabled: viewMode !== "2d", run: () => setShowCenter((shown) => !shown) },
+    { id: "manual-guides", label: showManualGuides ? "Hide manual guides" : "Show manual guides",
+      disabled: viewMode !== "2d", run: () => setShowManualGuides((shown) => !shown) },
+    { id: "clear-guides", label: "Clear manual guides",
+      disabled: viewMode !== "2d" || manualGuides.length === 0, run: () => setManualGuides([]) },
   ];
   // Indexed once per render rather than a linear find per menu item: the
   // menubar reads ~15 commands and App re-renders on every keystroke.
@@ -1025,6 +1055,27 @@ export default function App() {
                   disabled={byId("bleed").disabled} onClick={byId("bleed").run}>
                   Bleed Lines <MenubarShortcut>{shortcutOf(byId("bleed"))}</MenubarShortcut>
                 </MenubarCheckboxItem>
+                <MenubarCheckboxItem checked={showRulers}
+                  disabled={byId("rulers").disabled} onClick={byId("rulers").run}>
+                  Rulers <MenubarShortcut>{shortcutOf(byId("rulers"))}</MenubarShortcut>
+                </MenubarCheckboxItem>
+                <MenubarSeparator />
+                <MenubarCheckboxItem checked={showMargins}
+                  disabled={byId("margin-guides").disabled} onClick={byId("margin-guides").run}>
+                  Margin Guides
+                </MenubarCheckboxItem>
+                <MenubarCheckboxItem checked={showCenter}
+                  disabled={byId("center-guides").disabled} onClick={byId("center-guides").run}>
+                  Center &amp; Middle
+                </MenubarCheckboxItem>
+                <MenubarCheckboxItem checked={showManualGuides}
+                  disabled={byId("manual-guides").disabled} onClick={byId("manual-guides").run}>
+                  Manual Guides
+                </MenubarCheckboxItem>
+                <MenubarItem disabled={byId("clear-guides").disabled}
+                  onClick={byId("clear-guides").run}>
+                  Clear Manual Guides
+                </MenubarItem>
               </MenubarContent>
             </MenubarMenu>
           </Menubar>
@@ -1118,6 +1169,15 @@ export default function App() {
                 edgeSoftnessPct={render.edgeSoftness} />
             )}
             </div>
+            {viewMode === "2d" && (
+              <Rulers paneRef={previewPane} previewRef={previewRef} transform={zoom}
+                showRulers={showRulers} unit={rulerUnit} onUnitChange={setRulerUnit}
+                showMargins={showMargins} showCenter={showCenter}
+                showManual={showManualGuides} marginPt={marginPt}
+                onMarginChange={setMarginPt} manual={manualGuides}
+                onAddManual={addManualGuide} onMoveManual={moveManualGuide}
+                onRemoveManual={removeManualGuide} />
+            )}
             {/* Rebuild indicator, in the frame's bottom-left rather than a
                 strip above it: it belongs to the thing that is changing. Same
                 corner CanView uses for its texture build, which runs right

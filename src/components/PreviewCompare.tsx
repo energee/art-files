@@ -119,6 +119,8 @@ function useRenderPdf(bytes: Uint8Array | null, canvas: RefObject<HTMLCanvasElem
 export interface PreviewCompareHandle {
   showArt: () => void;
   showMask: () => void;
+  /** The exact page box rulers measure; its client rect includes App's CSS transform. */
+  getPageElement: () => HTMLDivElement | null;
 }
 
 export const PreviewCompare = forwardRef<
@@ -166,6 +168,7 @@ export const PreviewCompare = forwardRef<
   const dieR = dieRadius(cornerRadiusPct);
   const artCanvas = useRef<HTMLCanvasElement>(null);
   const maskCanvas = useRef<HTMLCanvasElement>(null);
+  const pageElement = useRef<HTMLDivElement>(null);
   const leftPanel = useRef<PanelImperativeHandle>(null);
   const [split, setSplit] = useState(0); // % width showing white-ink
 
@@ -173,6 +176,7 @@ export const PreviewCompare = forwardRef<
     // Numbers in resize() are pixels, not percent — units must be explicit.
     showArt: () => leftPanel.current?.resize("0%"),
     showMask: () => leftPanel.current?.resize("100%"),
+    getPageElement: () => pageElement.current,
   }));
 
   useRenderPdf(artBytes, artCanvas);
@@ -215,6 +219,7 @@ export const PreviewCompare = forwardRef<
 
   return (
     <div
+      ref={pageElement}
       className="relative m-auto w-full overflow-hidden border border-border bg-input"
       style={{
         // Width cap in the style object, not the class list, so the 3D scene
