@@ -61,6 +61,31 @@ export function unitToPoint(value: number, origin: number, unit: RulerUnit): num
   return origin + value * UNIT_PT[unit];
 }
 
+/** Coarse to fine, and back round — the order the ruler popover lists them in,
+ *  so clicking the toolbar's size readout and picking from the popover walk
+ *  the same three units. */
+const UNIT_ORDER: readonly RulerUnit[] = ["in", "pt", "px"];
+
+export function nextRulerUnit(unit: RulerUnit): RulerUnit {
+  return UNIT_ORDER[(UNIT_ORDER.indexOf(unit) + 1) % UNIT_ORDER.length];
+}
+
+/**
+ * A width x height in the chosen display unit, e.g. `8.127 × 5.127 in`.
+ * Trailing zeros are dropped so the trim reads `8 × 5` rather than
+ * `8.000 × 5.000`.
+ *
+ * Callers pass PAGE or ART deliberately, because the label has two honest
+ * sizes: the PAGE is the artboard that goes to the press and the one the DPI
+ * beside it describes (PSD_DOC is derived from it), while ART is the die cut,
+ * the size the finished label is ordered and specified at. The toolbar shows
+ * the page and names the trim in its tooltip.
+ */
+export function sizeLabel(widthPt: number, heightPt: number, unit: RulerUnit): string {
+  const size = (points: number) => Number(pointToUnit(points, 0, unit).toFixed(3));
+  return `${size(widthPt)} × ${size(heightPt)} ${unit}`;
+}
+
 /** A readable major interval for the current screen scale. */
 export function majorStep(frameSize: number, pageSize: number, unit: RulerUnit): number {
   const pxPerUnit = (frameSize / pageSize) * UNIT_PT[unit];

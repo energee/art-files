@@ -9,8 +9,9 @@ import {
   unitToPoint,
   type GuideAxis, type ManualGuide, type RulerUnit,
 } from "@/rulers";
+import { cn } from "@/lib/utils";
 import type { PreviewCompareHandle } from "@/components/PreviewCompare";
-import { Input } from "@/components/ui/input";
+import { ScrubField } from "@/components/ScrubField";
 import { Label } from "@/components/ui/label";
 import {
   Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger,
@@ -18,6 +19,8 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 const RULER_SIZE = 20;
+const MARGIN_STROKE = "stroke-cyan-500/70";
+const CENTER_STROKE = "stroke-cyan-400/80 [stroke-dasharray:4_3]";
 
 interface Geometry {
   width: number;
@@ -56,18 +59,12 @@ function RulerSettings(props: {
         <ToggleGroupItem value="pt" size="sm" className="min-w-0 flex-1">Points</ToggleGroupItem>
         <ToggleGroupItem value="px" size="sm" className="min-w-0 flex-1">Pixels</ToggleGroupItem>
       </ToggleGroup>
-      <Label htmlFor="guide-margin" className="text-xs text-muted-foreground">Margin inset</Label>
-      <div className="flex items-center gap-2">
-        <Input id="guide-margin" type="number" min={0} max={marginMax} step={marginStep}
-          value={Number(marginValue.toFixed(unit === "in" ? 3 : 1))}
-          onChange={(event) => {
-            const value = Number(event.target.value);
-            if (Number.isFinite(value))
-              onMarginChange(clampMargin(unitToPoint(value, 0, unit)));
-          }}
-          className="h-7 flex-1 rounded-md px-2 py-0 text-xs tabular-nums" />
-        <span className="w-5 text-xs text-muted-foreground">{unit}</span>
-      </div>
+      {/* The inspector's numeric field, so the inset scrubs like every other
+          number in the app and clamps/rounds through the same snap(). */}
+      <ScrubField id="guide-margin" label="Margin inset" unit={unit}
+        value={Number(marginValue.toFixed(unit === "in" ? 3 : 0))}
+        min={0} max={marginMax} step={marginStep}
+        onChange={(value) => onMarginChange(clampMargin(unitToPoint(value, 0, unit)))} />
     </div>
   );
 }
@@ -79,6 +76,9 @@ export function Rulers(props: {
   showRulers: boolean;
   unit: RulerUnit;
   onUnitChange: (unit: RulerUnit) => void;
+  /** Whether dragging off a ruler creates a guide. The three `show*` flags
+   *  below arrive already ANDed with the umbrella toggle, so "guides are on"
+   *  is decided once in App rather than re-derived per guide kind here. */
   guidesEnabled: boolean;
   showMargins: boolean;
   showCenter: boolean;
@@ -125,22 +125,21 @@ export function Rulers(props: {
     const observer = new ResizeObserver(measure);
     observer.observe(pane);
     observer.observe(page);
-    window.addEventListener("resize", measure);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", measure);
-    };
+    return () => observer.disconnect();
   }, [paneRef, previewRef]);
 
   // Pointer readout lives here rather than in App, so moving across the page
-  // re-renders only this small overlay instead of the complete editor.
+  // re-renders only this small overlay instead of the complete editor. Not
+  // attached at all when the rulers are hidden — the markers it feeds only
+  // exist inside the ruler strips. The pane offset comes from the measured
+  // geometry rather than a fresh rect: re-measuring per move is a forced
+  // layout flush up to 120 times a second, and nothing can move the pane
+  // without the measure above running anyway.
   useEffect(() => {
     const pane = paneRef.current;
-    if (!pane) return;
-    const move = (event: globalThis.PointerEvent) => {
-      const r = pane.getBoundingClientRect();
-      setCursor({ x: event.clientX - r.left, y: event.clientY - r.top });
-    };
+    if (!pane || !geometry || !showRulers) return;
+    const move = (event: globalThis.PointerEvent) =>
+      setCursor({ x: event.clientX - geometry.paneLeft, y: event.clientY - geometry.paneTop });
     const leave = () => setCursor(null);
     pane.addEventListener("pointermove", move);
     pane.addEventListener("pointerleave", leave);
@@ -148,7 +147,7 @@ export function Rulers(props: {
       pane.removeEventListener("pointermove", move);
       pane.removeEventListener("pointerleave", leave);
     };
-  }, [paneRef]);
+  }, [paneRef, geometry, showRulers]);
 
   const horizontalTicks = useMemo(() => geometry && showRulers ? rulerTicks({
     visibleStart: RULER_SIZE,
@@ -217,46 +216,38 @@ export function Rulers(props: {
     setDrag(null);
   }
 
-  const layoutVertical = guidesEnabled && showMargins ? locked.verticalMargins : [];
-  const layoutHorizontal = guidesEnabled && showMargins ? locked.horizontalMargins : [];
-  const shownManual = guidesEnabled && showManual ? manual : [];
-  const paintedManual = shownManual.filter((guide) => guide.id !== drag?.id);
+  const shownManual = showManual ? manual : [];
+  /** A guide line runs the full content box across its axis, stopping at the
+   *  rulers. One shape for all four kinds — margin, center, manual, and the
+   *  one being dragged — so a stroke or clipping change lands once. */
+  const guideLine = (axis: GuideAxis, point: number, key: string, className: string) =>
+    axis === "x" ? (
+      <line key={key} x1={xOf(point)} x2={xOf(point)}
+        y1={contentStart} y2={geometry.height} className={className} />
+    ) : (
+      <line key={key} x1={contentStart} x2={geometry.width}
+        y1={yOf(point)} y2={yOf(point)} className={className} />
+    );
+  // The dragged guide is painted at its live point instead of its stored one;
+  // a brand-new one (no id yet) is simply appended.
+  const paintedManual = drag
+    ? [...shownManual.filter((guide) => guide.id !== drag.id),
+      { id: -1, axis: drag.axis, point: drag.point }]
+    : shownManual;
 
   return (
     <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
       <svg width={geometry.width} height={geometry.height} className="absolute inset-0" aria-hidden="true">
         {/* Guides are painted before the opaque rulers so lines stop cleanly
             at their edges even when the transformed page sits underneath. */}
-        {layoutVertical.map((point, index) => (
-          <line key={`margin-x-${index}`} x1={xOf(point)} x2={xOf(point)}
-            y1={contentStart} y2={geometry.height} className="stroke-cyan-500/70" />
-        ))}
-        {layoutHorizontal.map((point, index) => (
-          <line key={`margin-y-${index}`} x1={contentStart} x2={geometry.width}
-            y1={yOf(point)} y2={yOf(point)} className="stroke-cyan-500/70" />
-        ))}
-        {guidesEnabled && showCenter && (
-          <>
-            <line x1={xOf(locked.center)} x2={xOf(locked.center)} y1={contentStart}
-              y2={geometry.height} className="stroke-cyan-400/80 [stroke-dasharray:4_3]" />
-            <line x1={contentStart} x2={geometry.width} y1={yOf(locked.middle)}
-              y2={yOf(locked.middle)} className="stroke-cyan-400/80 [stroke-dasharray:4_3]" />
-          </>
-        )}
-        {paintedManual.map((guide) => guide.axis === "x" ? (
-          <line key={guide.id} x1={xOf(guide.point)} x2={xOf(guide.point)}
-            y1={contentStart} y2={geometry.height} className="stroke-primary" />
-        ) : (
-          <line key={guide.id} x1={contentStart} x2={geometry.width}
-            y1={yOf(guide.point)} y2={yOf(guide.point)} className="stroke-primary" />
-        ))}
-        {guidesEnabled && drag && (drag.axis === "x" ? (
-          <line x1={xOf(drag.point)} x2={xOf(drag.point)} y1={contentStart}
-            y2={geometry.height} className="stroke-primary" />
-        ) : (
-          <line x1={contentStart} x2={geometry.width} y1={yOf(drag.point)}
-            y2={yOf(drag.point)} className="stroke-primary" />
-        ))}
+        {showMargins && locked.verticalMargins.map((point, index) =>
+          guideLine("x", point, `margin-x-${index}`, MARGIN_STROKE))}
+        {showMargins && locked.horizontalMargins.map((point, index) =>
+          guideLine("y", point, `margin-y-${index}`, MARGIN_STROKE))}
+        {showCenter && guideLine("x", locked.center, "center-x", CENTER_STROKE)}
+        {showCenter && guideLine("y", locked.middle, "center-y", CENTER_STROKE)}
+        {paintedManual.map((guide) =>
+          guideLine(guide.axis, guide.point, `manual-${guide.id}`, "stroke-primary"))}
 
         {showRulers && (
           <>
@@ -304,43 +295,48 @@ export function Rulers(props: {
 
       {/* Eight-pixel invisible handles make a one-pixel guide practical to
           grab without turning the whole overlay into a selection blocker. */}
-      {shownManual.map((guide) => guide.axis === "x" ? (
-        <div key={`hit-${guide.id}`}
-          className="pointer-events-auto absolute bottom-0 w-2 -translate-x-1 cursor-col-resize outline-none focus-visible:bg-primary/15"
-          style={{ left: xOf(guide.point), top: contentStart }}
-          role="button" tabIndex={0} aria-label="Vertical manual guide; press Delete to remove"
-          onPointerDown={(event) => startExisting(guide, event)}
-          onKeyDown={(event) => {
-            if (event.key === "Delete" || event.key === "Backspace") onRemoveManual(guide.id);
-          }}
-          onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag} />
-      ) : (
-        <div key={`hit-${guide.id}`}
-          className="pointer-events-auto absolute right-0 h-2 -translate-y-1 cursor-row-resize outline-none focus-visible:bg-primary/15"
-          style={{ top: yOf(guide.point), left: contentStart }}
-          role="button" tabIndex={0} aria-label="Horizontal manual guide; press Delete to remove"
-          onPointerDown={(event) => startExisting(guide, event)}
-          onKeyDown={(event) => {
-            if (event.key === "Delete" || event.key === "Backspace") onRemoveManual(guide.id);
-          }}
-          onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag} />
-      ))}
+      {shownManual.map((guide) => {
+        const vertical = guide.axis === "x";
+        return (
+          <div key={`hit-${guide.id}`}
+            className={cn("pointer-events-auto absolute outline-none focus-visible:bg-primary/15",
+              vertical
+                ? "bottom-0 w-2 -translate-x-1 cursor-col-resize"
+                : "right-0 h-2 -translate-y-1 cursor-row-resize")}
+            style={vertical
+              ? { left: xOf(guide.point), top: contentStart }
+              : { top: yOf(guide.point), left: contentStart }}
+            role="button" tabIndex={0}
+            aria-label={`${vertical ? "Vertical" : "Horizontal"} manual guide; press Delete to remove`}
+            onPointerDown={(event) => startExisting(guide, event)}
+            onKeyDown={(event) => {
+              if (event.key === "Delete" || event.key === "Backspace") onRemoveManual(guide.id);
+            }}
+            onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag} />
+        );
+      })}
 
       {showRulers && (
         <>
-          <div className={`pointer-events-auto absolute top-0 right-0 left-5 h-5${
-              guidesEnabled ? " cursor-row-resize" : " cursor-default"}`}
+          {/* Sized from RULER_SIZE, not Tailwind literals that happen to
+              match it: these strips have to stay flush with the painted
+              rulers above, which read the constant. */}
+          <div className={cn("pointer-events-auto absolute top-0 right-0",
+              guidesEnabled ? "cursor-row-resize" : "cursor-default")}
+            style={{ left: RULER_SIZE, height: RULER_SIZE }}
             title={guidesEnabled ? "Drag down to create a horizontal guide" : "Turn on Guides to add guides"}
             onPointerDown={(event) => startNew("y", event)}
             onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag} />
-          <div className={`pointer-events-auto absolute top-5 bottom-0 left-0 w-5${
-              guidesEnabled ? " cursor-col-resize" : " cursor-default"}`}
+          <div className={cn("pointer-events-auto absolute bottom-0 left-0",
+              guidesEnabled ? "cursor-col-resize" : "cursor-default")}
+            style={{ top: RULER_SIZE, width: RULER_SIZE }}
             title={guidesEnabled ? "Drag right to create a vertical guide" : "Turn on Guides to add guides"}
             onPointerDown={(event) => startNew("x", event)}
             onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag} />
           <Popover>
             <PopoverTrigger
-              className="pointer-events-auto absolute top-0 left-0 z-10 grid h-[20px] w-[20px] place-items-center rounded-none bg-transparent p-0 text-[8px] leading-none font-normal text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              style={{ height: RULER_SIZE, width: RULER_SIZE }}
+              className="pointer-events-auto absolute top-0 left-0 z-10 grid place-items-center rounded-none bg-transparent p-0 text-[8px] leading-none font-normal text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               title={`Ruler settings — ${unit}`} aria-label={`Ruler settings, current unit ${unit}`}>
               {unit}
             </PopoverTrigger>

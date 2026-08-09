@@ -1,9 +1,9 @@
 // rulers.test.ts — ruler conversion, tick-density, and locked-guide geometry.
 import { describe, expect, it } from "vitest";
-import { ART, PAGE } from "../src/layout";
+import { ART, PAGE, PSD_DOC } from "../src/layout";
 import {
-  DEFAULT_MARGIN_PT, layoutGuides, majorStep, pointToScreen, pointToUnit,
-  rulerTicks, screenToPoint, unitToPoint,
+  DEFAULT_MARGIN_PT, layoutGuides, majorStep, nextRulerUnit, pointToScreen,
+  pointToUnit, rulerTicks, screenToPoint, sizeLabel, unitToPoint,
 } from "../src/rulers";
 
 describe("preview rulers", () => {
@@ -56,5 +56,24 @@ describe("preview rulers", () => {
       .toEqual([150, 4650]);
     expect(guides.horizontalMargins.map((p) => pointToUnit(p, ART.y, "px")))
       .toEqual([150, 2850]);
+  });
+
+  it("states the artboard size in each unit without trailing zeros", () => {
+    expect(sizeLabel(PAGE.w, PAGE.h, "in")).toBe("8.127 × 5.127 in");
+    expect(sizeLabel(PAGE.w, PAGE.h, "pt")).toBe("585.12 × 369.12 pt");
+    // The toolbar's px figure IS the exported PSD's pixel size, because
+    // PSD_DOC is this same page measured at the same DPI.
+    expect(sizeLabel(PAGE.w, PAGE.h, "px")).toBe(`${PSD_DOC.w} × ${PSD_DOC.h} px`);
+  });
+
+  it("states the trim as the round size the label is ordered at", () => {
+    expect(sizeLabel(ART.w, ART.h, "in")).toBe("8 × 5 in");
+    expect(sizeLabel(ART.w, ART.h, "px")).toBe("4800 × 3000 px");
+  });
+
+  it("cycles the toolbar's units back to where it started", () => {
+    expect(nextRulerUnit("in")).toBe("pt");
+    expect(nextRulerUnit("pt")).toBe("px");
+    expect(nextRulerUnit("px")).toBe("in");
   });
 });

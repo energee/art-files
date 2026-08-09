@@ -156,8 +156,13 @@ export const LOGO_ASPECT = 525 / 480;
 export const NAME = { cx: CENTER_X, baseline: 323.28, size: 15.83 };
 export const STYLE_LINE = { cx: CENTER_X, baseline: 344.6, size: 12.18 };
 
+/** The deliverable's raster resolution. Stated once here because it is a fact
+ *  about what the press receives, not about any one exporter: PX derives from
+ *  it, the PSD's document size follows from PX, and the preview toolbar
+ *  reports it to the operator. */
+export const DPI = 600;
 /** One px at the 600dpi deliverable, in PDF points (72/600). */
-export const PX = 72 / 600;
+export const PX = 72 / DPI;
 /** Full 600-DPI document dimensions for PSD raster layers. */
 export const PSD_DOC = { w: Math.round(PAGE.w / PX), h: Math.round(PAGE.h / PX) };
 /** Default per-element outer-stroke width, in px at 600dpi (≈1.8pt). */

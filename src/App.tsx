@@ -17,7 +17,7 @@ import { rasterKind, tintRgba } from "@/collab";
 import type { Assets, CollabImage } from "@/pdf/build";
 import { buildPreviewPdfs, disposePreviewWorker } from "@/pdf/client";
 import type { PsdAssets } from "@/psd/build";
-import { PREVIEW_OVERSAMPLE, PSD_DOC } from "@/layout";
+import { ART, DPI, PAGE, PREVIEW_OVERSAMPLE, PSD_DOC } from "@/layout";
 import {
   Inspector, type CollabFiles, type DocSettings, type InspectorFiles,
 } from "@/components/StyleProperties";
@@ -36,7 +36,8 @@ import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewC
 import { Rulers } from "@/components/Rulers";
 import { CanView, type CanViewHandle } from "@/components/CanView";
 import {
-  DEFAULT_MARGIN_PT, type GuideAxis, type ManualGuide, type RulerUnit,
+  DEFAULT_MARGIN_PT, nextRulerUnit, sizeLabel,
+  type GuideAxis, type ManualGuide, type RulerUnit,
 } from "@/rulers";
 import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator,
@@ -486,7 +487,7 @@ export default function App() {
     from.y = e.clientY;
     setZoom((v) => clampView(from.r, v.z, v.x + dx, v.y + dy));
   }
-  function onPanEnd(e: React.PointerEvent<HTMLDivElement>) {
+  function onPanEnd() {
     if (!panFrom.current) return;
     panFrom.current = null;
     setPanning(false);
@@ -902,6 +903,12 @@ export default function App() {
    *  actually fires it, a label can't drift from the command it names, and a
    *  command can't be enabled in one surface while disabled in another. The menubar keeps its own JSX: it groups,
    *  separates and check-marks, which is layout, not command identity. */
+  // The two conditions the view commands share, stated once: rulers and guides
+  // are 2D-only chrome, and the per-kind guide toggles are meaningless while
+  // the umbrella is off. Restated per entry, an eighth 2D command silently
+  // works in the 3D views the day someone forgets the clause.
+  const twoD = viewMode === "2d";
+  const guideEdit = twoD && showGuides;
   const commands: Command[] = [
     // ⌘E exports the PDFs, ⇧⌘E the PSDs — the whole-deliverable runs. The
     // single-plate variants stay menu-only: naming six distinct combos costs
@@ -926,20 +933,19 @@ export default function App() {
     // Bare B, not ⌘B — that one belongs to the sidebar toggle. Disabled
     // outside the 2D view, where there is no trim guide to draw.
     { id: "bleed", label: bleed ? "Hide bleed lines" : "Show bleed lines", key: "b",
-      disabled: viewMode !== "2d", run: () => setBleed((b) => !b) },
+      disabled: !twoD, run: () => setBleed((b) => !b) },
     { id: "rulers", label: showRulers ? "Hide rulers" : "Show rulers", key: "r",
-      disabled: viewMode !== "2d", run: () => setShowRulers((shown) => !shown) },
+      disabled: !twoD, run: () => setShowRulers((shown) => !shown) },
     { id: "guides", label: showGuides ? "Hide guides" : "Show guides",
-      disabled: viewMode !== "2d", run: () => setShowGuides((shown) => !shown) },
+      disabled: !twoD, run: () => setShowGuides((shown) => !shown) },
     { id: "margin-guides", label: showMargins ? "Hide margin guides" : "Show margin guides",
-      disabled: viewMode !== "2d" || !showGuides, run: () => setShowMargins((shown) => !shown) },
+      disabled: !guideEdit, run: () => setShowMargins((shown) => !shown) },
     { id: "center-guides", label: showCenter ? "Hide center guides" : "Show center guides",
-      disabled: viewMode !== "2d" || !showGuides, run: () => setShowCenter((shown) => !shown) },
+      disabled: !guideEdit, run: () => setShowCenter((shown) => !shown) },
     { id: "manual-guides", label: showManualGuides ? "Hide manual guides" : "Show manual guides",
-      disabled: viewMode !== "2d" || !showGuides, run: () => setShowManualGuides((shown) => !shown) },
+      disabled: !guideEdit, run: () => setShowManualGuides((shown) => !shown) },
     { id: "clear-guides", label: "Clear manual guides",
-      disabled: viewMode !== "2d" || !showGuides || manualGuides.length === 0,
-      run: () => setManualGuides([]) },
+      disabled: !guideEdit || manualGuides.length === 0, run: () => setManualGuides([]) },
   ];
   // Indexed once per render rather than a linear find per menu item: the
   // menubar reads ~15 commands and App re-renders on every keystroke.
@@ -1178,8 +1184,12 @@ export default function App() {
             {viewMode === "2d" && (
               <Rulers paneRef={previewPane} previewRef={previewRef} transform={zoom}
                 showRulers={showRulers} unit={rulerUnit} onUnitChange={setRulerUnit}
-                guidesEnabled={showGuides} showMargins={showMargins} showCenter={showCenter}
-                showManual={showManualGuides} marginPt={marginPt}
+                // ANDed here, not inside Rulers: the umbrella toggle is one
+                // rule over every guide kind, and it already decides the
+                // menu's disabled states through guideEdit above.
+                guidesEnabled={showGuides} showMargins={showGuides && showMargins}
+                showCenter={showGuides && showCenter}
+                showManual={showGuides && showManualGuides} marginPt={marginPt}
                 onMarginChange={setMarginPt} manual={manualGuides}
                 onAddManual={addManualGuide} onMoveManual={moveManualGuide}
                 onRemoveManual={removeManualGuide} />
@@ -1244,6 +1254,30 @@ export default function App() {
               aria-label="Zoom percentage"
               className="w-10 rounded bg-transparent py-0.5 text-right text-xs tabular-nums text-muted-foreground outline-none hover:text-foreground focus:text-foreground" />
             <span className="text-xs text-muted-foreground">%</span>
+            {/* What the press receives, next to how magnified you are looking
+                at it. Both are facts about the deliverable rather than the
+                view, so they read the same in all four modes — unlike the
+                zoom to their left. */}
+            <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
+            {/* The PAGE, not the trim: this is the artboard that goes to the
+                press, and it is what the DPI beside it describes — PSD_DOC is
+                derived from the same number. The die-cut size the label is
+                actually ordered at is a keystroke away in the tooltip.
+                Clicking cycles the SAME unit the rulers and the margin field
+                use, so the app has one measurement setting rather than a
+                toolbar that disagrees with the ruler beside it. */}
+            <button
+              onClick={() => setRulerUnit(nextRulerUnit(rulerUnit))}
+              title={`Artboard including bleed — trim is ${sizeLabel(ART.w, ART.h, rulerUnit)}. Click for ${nextRulerUnit(rulerUnit)}`}
+              aria-label={`Artboard size ${sizeLabel(PAGE.w, PAGE.h, rulerUnit)}; click to change units`}
+              className="shrink-0 rounded px-1 py-0.5 text-xs tabular-nums whitespace-nowrap text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+              {sizeLabel(PAGE.w, PAGE.h, rulerUnit)}
+            </button>
+            <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
+            <span className="shrink-0 px-1 text-xs tabular-nums whitespace-nowrap text-muted-foreground"
+              title="Resolution the PDFs and PSDs are built at">
+              {DPI} DPI
+            </span>
           </div>
         </section>
         {/* Right inspector: a shadcn Sheet driven by the selection — open
