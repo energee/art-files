@@ -3,8 +3,10 @@
 // use it without importing the PDF renderer.
 import svgpath from "svgpath";
 
-/** Extract the logo's paths pre-scaled to `width` points. Per-path transforms
- *  (the mirrored branch) are applied, and the output is normalized to absolute
+/** Extract the logo's paths pre-scaled to `width` points. Transforms are
+ *  applied — each path's own composed with its ancestor <g> transforms
+ *  (text-outline exports carry their y-flip there) — and the output is
+ *  normalized to absolute
  *  M/L/C/Z commands with rounded coordinates — pdf-lib's drawSvgPath cannot
  *  handle relative/shorthand/arc/H/V commands or its own scale option's
  *  exponent-notation output, and the PSD builder needs plain cubics to turn
@@ -56,16 +58,20 @@ function parseLogoUncached(
   // font units are y-up — so reading only the path's own transform mirrors
   // and flips the art. Transforms compose in document order, which is
   // exactly what svgpath's space-separated transform string applies.
+  const transformOf = (tag: string) => tag.match(/ transform="([^"]+)"/)?.[1] ?? "";
   const stack: string[] = [];
   const parsed: ReturnType<typeof svgpath>[] = [];
   for (const m of svg.matchAll(/<g\b[^>]*>|<\/g>|<path\b[^>]*>/g)) {
     const tag = m[0];
     if (tag === "</g>") stack.pop();
-    else if (tag.startsWith("<g")) stack.push(tag.match(/ transform="([^"]+)"/)?.[1] ?? "");
-    else {
+    else if (tag.startsWith("<g")) {
+      // A self-closing <g/> opens nothing: pushing it would leak its
+      // transform onto every following sibling, with no </g> to pop it.
+      if (!tag.endsWith("/>")) stack.push(transformOf(tag));
+    } else {
       const d = tag.match(/ d="([^"]+)"/)?.[1];
       if (!d) throw new Error("Logo path is missing d attribute");
-      const tf = [...stack, tag.match(/ transform="([^"]+)"/)?.[1] ?? ""].join(" ").trim();
+      const tf = [...stack, transformOf(tag)].join(" ").trim();
       parsed.push(svgpath(d).transform(tf).abs().unshort().unarc());
     }
   }

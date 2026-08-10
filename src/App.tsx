@@ -13,7 +13,7 @@ import { LABEL_EXT, packLabel, unpackLabel } from "@/labelfile";
 import { useHistory } from "@/history";
 import { validateUpc } from "@/upc";
 import { prepareMaskForPdf } from "@/maskimage";
-import { rasterKind, tintRgba } from "@/collab";
+import { mimeFor, rasterKind, tintRgba } from "@/collab";
 // The builders are imported dynamically at export time (see downloadPdfs /
 // exportPsd) so they stay out of the initial bundle; only their types are
 // needed up front.
@@ -152,7 +152,7 @@ function tintedPngCached(bytes: Uint8Array, fill: Fill): Promise<Uint8Array> {
 /** Read a dropped collab logo: SVG as source text (so it can be recolored
  *  per its slot's style), anything else as raster bytes. */
 async function readCollab(f: File): Promise<CollabFile> {
-  const image: CollabImage = /\.svg$/i.test(f.name)
+  const image: CollabImage = mimeFor(f.name) === "image/svg+xml"
     ? { kind: "svg", svg: await f.text() }
     : { kind: rasterKind(f.name), bytes: new Uint8Array(await f.arrayBuffer()) };
   return { image, name: f.name, previewUrl: URL.createObjectURL(f) };
@@ -1016,11 +1016,8 @@ export default function App() {
       // an <img> won't render a typeless blob as SVG — logos restored from a
       // project showed as broken images while fresh drops (whose File the
       // browser types) worked.
-      const mime = (name: string) =>
-        /\.svg$/i.test(name) ? "image/svg+xml"
-          : rasterKind(name) === "png" ? "image/png" : "image/jpeg";
       const toFile = (a: { name: string; bytes: Uint8Array }) =>
-        new File([a.bytes as unknown as BlobPart], a.name, { type: mime(a.name) });
+        new File([a.bytes as unknown as BlobPart], a.name, { type: mimeFor(a.name) });
       const { texture: t, mask: m, collabLeft: l, collabCenter: c } = unpacked.assets;
       if (t) void onTexture(toFile(t));
       if (m) void onMask(toFile(m));
