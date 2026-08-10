@@ -236,8 +236,11 @@ const zoomAbout = (
 // Menu chrome, shared by all three menus so they can't drift apart: small
 // regular-weight triggers, and items sized to match.
 const MENU_TRIGGER = "px-2 py-1 text-xs font-normal";
-// min-w keeps the longest item ("Save Project As… ⇧⌘S") on one line.
-const MENU_ITEMS = "min-w-52 [&_[data-slot=menubar-item]]:text-xs";
+// min-w keeps the longest item ("Save Project As… ⇧⌘S") on one line. Both
+// slots sized: plain items AND submenu triggers (data-slot=menubar-sub-trigger),
+// or an "Export ▸" row renders larger than its neighbours.
+const MENU_ITEMS =
+  "min-w-52 [&_[data-slot=menubar-item]]:text-xs [&_[data-slot=menubar-sub-trigger]]:text-xs";
 
 /** The five preview views in keys-1–5 order: status-bar label, the command
  *  id that shows it, and the state that means "this one is current". One
