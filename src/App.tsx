@@ -81,6 +81,25 @@ const LABEL_TYPES = [
   { description: "Label project", accept: { "application/zip": [LABEL_EXT] } },
 ];
 
+// The File System Access surface, typed once — absent on Safari/Firefox, so
+// every caller branches on these and keeps a download/input fallback. The
+// fiddly parts (the window casts, the ArrayBuffer cast, abort detection)
+// live here so save/export/open can't drift apart.
+const savePicker = () => (window as {
+  showSaveFilePicker?: (opts: object) => Promise<FileSystemFileHandle>;
+}).showSaveFilePicker;
+const openPicker = () => (window as {
+  showOpenFilePicker?: (opts: object) => Promise<FileSystemFileHandle[]>;
+}).showOpenFilePicker;
+/** A dismissed picker dialog — "no thanks", never an error. */
+const isAbort = (err: unknown) =>
+  err instanceof DOMException && err.name === "AbortError";
+async function writeHandle(handle: FileSystemFileHandle, bytes: Uint8Array) {
+  const writable = await handle.createWritable();
+  await writable.write(bytes as unknown as ArrayBuffer);
+  await writable.close();
+}
+
 /** One spelling for the "which error do I show?" expression the open paths
  *  share. */
 const errMsg = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -919,9 +938,7 @@ export default function App() {
    *  has no multi-save dialog, and a directory picker would change the flow
    *  for the single-file case too. */
   async function saveVia(bytes: Uint8Array, name: string, type: string) {
-    const pick = (window as {
-      showSaveFilePicker?: (opts: object) => Promise<FileSystemFileHandle>;
-    }).showSaveFilePicker;
+    const pick = savePicker();
     if (pick) {
       const ext = name.slice(name.lastIndexOf("."));
       try {
@@ -929,12 +946,10 @@ export default function App() {
           suggestedName: name,
           types: [{ description: `${ext.slice(1).toUpperCase()} file`, accept: { [type]: [ext] } }],
         });
-        const writable = await handle.createWritable();
-        await writable.write(bytes as unknown as ArrayBuffer);
-        await writable.close();
+        await writeHandle(handle, bytes);
         return;
       } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (isAbort(err)) return;
         // Any other failure falls through to the download path below.
       }
     }
@@ -960,10 +975,16 @@ export default function App() {
         ...eyedAssets(false),
         hidden: hiddenLayers,
       };
-      if (which !== "mask")
-        await saveVia(await buildArtPdf(cfg, assets), `${exportBaseName(cfg)}.pdf`, "application/pdf");
-      if (which !== "art")
-        await saveVia(await buildMaskPdf(cfg, assets), `${exportBaseName(cfg)}-mask.pdf`, "application/pdf");
+      // Both files build BEFORE the first dialog opens: the user shouldn't
+      // sit in dialog #2 waiting on a build that could have run during
+      // dialog #1 — and back-to-back dialogs stay inside the user-activation
+      // window a long build could outlive.
+      const [artPdf, maskPdf] = await Promise.all([
+        which !== "mask" ? buildArtPdf(cfg, assets) : null,
+        which !== "art" ? buildMaskPdf(cfg, assets) : null,
+      ]);
+      if (artPdf) await saveVia(artPdf, `${exportBaseName(cfg)}.pdf`, "application/pdf");
+      if (maskPdf) await saveVia(maskPdf, `${exportBaseName(cfg)}-mask.pdf`, "application/pdf");
     } catch (err) {
       setBuildError(String(err));
     } finally {
@@ -980,10 +1001,10 @@ export default function App() {
    *  the classic editor contract. A ref, not state: nothing renders it. */
   const projectHandle = useRef<FileSystemFileHandle | null>(null);
   /** Whether the document differs from the last saved/opened project —
-   *  File → Save disables while clean. Marked at the two mutation choke
-   *  points every change already funnels through (`update` for the config
-   *  plus undo/redo, `swapLoaded` for all assets — a new asset can't dodge
-   *  the flag), cleared by a completed save or open. Undoing back to the
+   *  File → Save disables while clean. Marked at three sites: `update` (all
+   *  config edits), `swapLoaded` (all assets — a new asset can't dodge the
+   *  flag), and the undo/redo commands, which mutate the config around
+   *  `update`. Cleared by a completed save or open. Undoing back to the
    *  exact saved state still counts as dirty: the flag tracks mutations,
    *  not content equality. */
   const [dirty, setDirty] = useState(true);
@@ -1001,9 +1022,7 @@ export default function App() {
       collabLeft: collabAsset(collabLeft),
       collabCenter: collabAsset(collabCenter),
     });
-    const pick = (window as {
-      showSaveFilePicker?: (opts: object) => Promise<FileSystemFileHandle>;
-    }).showSaveFilePicker;
+    const pick = savePicker();
     if (pick) {
       try {
         if (as || !projectHandle.current) {
@@ -1012,9 +1031,7 @@ export default function App() {
             types: LABEL_TYPES,
           });
         }
-        const writable = await projectHandle.current.createWritable();
-        await writable.write(zip as unknown as ArrayBuffer);
-        await writable.close();
+        await writeHandle(projectHandle.current, zip);
         setDirty(false);
         return;
       } catch (err) {
@@ -1022,7 +1039,7 @@ export default function App() {
         // the download path rather than losing the file. A handle that
         // failed to write is not trusted again.
         projectHandle.current = null;
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (isAbort(err)) return;
       }
     }
     startSaveBatch();
@@ -1033,9 +1050,7 @@ export default function App() {
    *  rewrite the opened file; elsewhere the hidden-input fallback (which
    *  yields no writable handle — Save then behaves as Save As). */
   async function openProjectPicker() {
-    const pick = (window as {
-      showOpenFilePicker?: (opts: object) => Promise<FileSystemFileHandle[]>;
-    }).showOpenFilePicker;
+    const pick = openPicker();
     if (!pick) { openRef.current?.click(); return; }
     try {
       const [handle] = await pick({ types: LABEL_TYPES });
@@ -1051,8 +1066,7 @@ export default function App() {
       }
       if (ok) projectHandle.current = handle;
     } catch (err) {
-      if (!(err instanceof DOMException && err.name === "AbortError"))
-        setLoadError(`Could not open project: ${errMsg(err)}`);
+      if (!isAbort(err)) setLoadError(`Could not open project: ${errMsg(err)}`);
     }
   }
 
@@ -1125,15 +1139,15 @@ export default function App() {
         texture: await rasterPixels(texture?.bytes),
         mask: await rasterPixels(mask?.bytes),
       };
-      if (which !== "mask") {
-        await saveVia(await buildPsd(cfg, assets), `${exportBaseName(cfg)}.psd`, "image/vnd.adobe.photoshop");
-      }
-      if (which !== "art") {
-        await saveVia(
-          await buildPsd(cfg, assets, "mask"),
-          `${exportBaseName(cfg)}-mask.psd`, "image/vnd.adobe.photoshop",
-        );
-      }
+      // Built before any dialog, same reasoning as the PDF exports above.
+      const [artPsd, maskPsd] = await Promise.all([
+        which !== "mask" ? buildPsd(cfg, assets) : null,
+        which !== "art" ? buildPsd(cfg, assets, "mask") : null,
+      ]);
+      if (artPsd)
+        await saveVia(artPsd, `${exportBaseName(cfg)}.psd`, "image/vnd.adobe.photoshop");
+      if (maskPsd)
+        await saveVia(maskPsd, `${exportBaseName(cfg)}-mask.psd`, "image/vnd.adobe.photoshop");
       setBuildError("");
     } catch (err) {
       setBuildError(String(err));
@@ -1297,13 +1311,17 @@ export default function App() {
                   <MenubarSubTrigger>Export</MenubarSubTrigger>
                   <MenubarSubContent className={MENU_ITEMS}>
                     {(["export-both", "export-art", "export-mask", null,
-                      "export-psd", "export-psd-art", "export-psd-mask"] as const).map((id, i) =>
-                      id === null ? <MenubarSeparator key={i} /> : (
-                        <MenubarItem key={id} disabled={byId(id).disabled} onClick={byId(id).run}>
-                          {byId(id).label}
-                          {shortcutOf(byId(id)) && <MenubarShortcut>{shortcutOf(byId(id))}</MenubarShortcut>}
+                      "export-psd", "export-psd-art", "export-psd-mask"] as const).map((id, i) => {
+                      if (id === null) return <MenubarSeparator key={i} />;
+                      const cmd = byId(id);
+                      const keys = shortcutOf(cmd);
+                      return (
+                        <MenubarItem key={id} disabled={cmd.disabled} onClick={cmd.run}>
+                          {cmd.label}
+                          {keys && <MenubarShortcut>{keys}</MenubarShortcut>}
                         </MenubarItem>
-                      ))}
+                      );
+                    })}
                   </MenubarSubContent>
                 </MenubarSub>
                 <MenubarSeparator />
