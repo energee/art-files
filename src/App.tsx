@@ -55,6 +55,7 @@ import {
 import {
   Sidebar, SidebarContent, SidebarInset, SidebarProvider, SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -75,6 +76,17 @@ type Loaded = { bytes: Uint8Array; previewBytes: Uint8Array; name: string; previ
 /** A loaded collab logo: what the renderer needs, plus what the drop zone
  *  shows. previewUrl is the raw file, so an SVG thumbnails as itself. */
 type CollabFile = { image: CollabImage; name: string; previewUrl: string };
+
+/** Chrome-level error, sized for the menu bar: the shadcn Alert (the app's
+ *  one notification surface — see ui/alert.tsx) compacted to fit inline
+ *  beside the menus rather than as a full-width block. */
+function HeaderAlert({ children }: { children: React.ReactNode }) {
+  return (
+    <Alert variant="destructive" className="w-auto border-destructive/50 px-2 py-0.5">
+      <AlertDescription className="text-xs">{children}</AlertDescription>
+    </Alert>
+  );
+}
 
 /** The .label file picker option, shared by open and save dialogs. */
 const LABEL_TYPES = [
@@ -1413,14 +1425,14 @@ export default function App() {
           {/* Replaces the tooltip the old disabled Export button carried: a
               menu item can't explain its own disabled state, so the reason
               sits in the bar itself. */}
-          {blocked && <span className="text-xs text-destructive">{blockedWhy}</span>}
+          {blocked && <HeaderAlert>{blockedWhy}</HeaderAlert>}
           {/* Preset import/export failures: the bar is the one chrome that
               always shows regardless of selection. */}
-          {loadError && <span className="text-xs text-destructive">{loadError}</span>}
+          {loadError && <HeaderAlert>{loadError}</HeaderAlert>}
           {/* Build failures sit here too rather than in their own strip above
               the preview — one place for chrome-level errors, and the strip
               was 20px reserved for a row that is empty almost always. */}
-          {buildError && <span className="text-xs text-destructive">{buildError}</span>}
+          {buildError && <HeaderAlert>{buildError}</HeaderAlert>}
           <input ref={presetsInput} type="file" accept="application/json" hidden
             onChange={(e) => e.target.files?.[0] && void importPresets(e.target.files[0])} />
           <input ref={openRef} type="file" accept={LABEL_EXT} className="hidden"

@@ -59,6 +59,13 @@ recorded-at: d10cddf
 
 ## Error handling
 
+- NEVER use browser-native dialogs — `window.alert`, `window.confirm`,
+  `window.prompt`. They block the main thread, escape the app's theme, and
+  can't be driven by state. User-facing errors surface through app state
+  rendered as the shadcn `Alert` (`src/components/ui/alert.tsx`): chrome-level
+  failures go through `setLoadError`/`setBuildError` into the header's
+  `HeaderAlert` (`src/App.tsx`). Anything needing confirmation gets a shadcn
+  `Dialog`, not `confirm()`.
 - Two-tier convention. User-input validation returns result objects
   `{ ok, error? }` instead of throwing (`validateUpc` in `src/upc.ts:21-27`,
   `validateMask` in `src/maskimage.ts:26-40`); `src/main.ts:201-208` collects these
