@@ -50,7 +50,7 @@ import {
 } from "@/rulers";
 import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator,
-  MenubarShortcut, MenubarTrigger,
+  MenubarShortcut, MenubarSub, MenubarSubContent, MenubarSubTrigger, MenubarTrigger,
 } from "@/components/ui/menubar";
 import {
   Sidebar, SidebarContent, SidebarInset, SidebarProvider, SidebarTrigger,
@@ -615,8 +615,10 @@ export default function App() {
     return () => clearTimeout(t);
   }, [render, showRulers, showGuides, bleed]);
 
-  const update = (fn: (c: LabelConfig) => void) =>
+  const update = (fn: (c: LabelConfig) => void) => {
+    setDirty(true); // every config edit passes through here — see `dirty`
     setCfg((c) => { const n = structuredClone(c); fn(n); return n; });
+  };
 
   // Canvas uses the same bundled Regular/SemiBold font files as the PDF, but
   // avoids loading pdf-lib + fontkit on the UI thread just to measure hit
@@ -693,7 +695,10 @@ export default function App() {
    *  thumbnail URL — the one shape every drop and every FileDrop X share. */
   const swapLoaded = <T extends { previewUrl: string }>(
     set: (fn: (old: T | null) => T | null) => void, next: T | null,
-  ) => set((old) => { if (old) URL.revokeObjectURL(old.previewUrl); return next; });
+  ) => {
+    setDirty(true); // every asset change passes through here — see `dirty`
+    set((old) => { if (old) URL.revokeObjectURL(old.previewUrl); return next; });
+  };
 
   async function onTexture(f: File) {
     const bytes = new Uint8Array(await f.arrayBuffer());
@@ -903,6 +908,35 @@ export default function App() {
     lastSaved.current.push(url);
     download(url, name);
   }
+  /** Save one exported file through the browser's save dialog (name/place it,
+   *  like Save Project), falling back to the plain download where
+   *  showSaveFilePicker doesn't exist (Safari/Firefox). A cancelled dialog
+   *  means "don't save this file" — no fallback download. Multi-file exports
+   *  (both PDFs, both PSDs) prompt once per file: the File System Access API
+   *  has no multi-save dialog, and a directory picker would change the flow
+   *  for the single-file case too. */
+  async function saveVia(bytes: Uint8Array, name: string, type: string) {
+    const pick = (window as {
+      showSaveFilePicker?: (opts: object) => Promise<FileSystemFileHandle>;
+    }).showSaveFilePicker;
+    if (pick) {
+      const ext = name.slice(name.lastIndexOf("."));
+      try {
+        const handle = await pick({
+          suggestedName: name,
+          types: [{ description: `${ext.slice(1).toUpperCase()} file`, accept: { [type]: [ext] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(bytes as unknown as ArrayBuffer);
+        await writable.close();
+        return;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        // Any other failure falls through to the download path below.
+      }
+    }
+    saveBytes(bytes, name, type);
+  }
 
   /** Downloads rebuild from the full-resolution assets on demand — the
    *  preview PDFs on screen are deliberately low-res (see Loaded). */
@@ -923,8 +957,10 @@ export default function App() {
         ...eyedAssets(false),
         hidden: hiddenLayers,
       };
-      if (which !== "mask") saveBytes(await buildArtPdf(cfg, assets), `${exportBaseName(cfg)}.pdf`);
-      if (which !== "art") saveBytes(await buildMaskPdf(cfg, assets), `${exportBaseName(cfg)}-mask.pdf`);
+      if (which !== "mask")
+        await saveVia(await buildArtPdf(cfg, assets), `${exportBaseName(cfg)}.pdf`, "application/pdf");
+      if (which !== "art")
+        await saveVia(await buildMaskPdf(cfg, assets), `${exportBaseName(cfg)}-mask.pdf`, "application/pdf");
     } catch (err) {
       setBuildError(String(err));
     } finally {
@@ -940,14 +976,14 @@ export default function App() {
    *  Null until then, so plain Save falls through to the Save As dialog —
    *  the classic editor contract. A ref, not state: nothing renders it. */
   const projectHandle = useRef<FileSystemFileHandle | null>(null);
-  /** Whether the document differs from the last saved/opened project. Marked
-   *  by the effect below on any config or asset change, cleared by a
-   *  completed save or open — so File → Save disables when there is nothing
-   *  new to write. Starts true: a fresh document has never been saved.
-   *  Undoing back to the exact saved state still counts as dirty — the flag
-   *  tracks mutations, not content equality. */
+  /** Whether the document differs from the last saved/opened project —
+   *  File → Save disables while clean. Marked at the two mutation choke
+   *  points every change already funnels through (`update` for the config
+   *  plus undo/redo, `swapLoaded` for all assets — a new asset can't dodge
+   *  the flag), cleared by a completed save or open. Undoing back to the
+   *  exact saved state still counts as dirty: the flag tracks mutations,
+   *  not content equality. */
   const [dirty, setDirty] = useState(true);
-  useEffect(() => { setDirty(true); }, [cfg, texture, mask, collabLeft, collabCenter]);
   /** File → Save / Save As…: everything needed to reopen this label — config
    *  plus original image bytes — zipped as <beerName>.label (see labelfile.ts).
    *  Chromium shows a real save dialog (name/place the file) and Save then
@@ -1073,10 +1109,10 @@ export default function App() {
         mask: await rasterPixels(mask?.bytes),
       };
       if (which !== "mask") {
-        saveBytes(await buildPsd(cfg, assets), `${exportBaseName(cfg)}.psd`, "image/vnd.adobe.photoshop");
+        await saveVia(await buildPsd(cfg, assets), `${exportBaseName(cfg)}.psd`, "image/vnd.adobe.photoshop");
       }
       if (which !== "art") {
-        saveBytes(
+        await saveVia(
           await buildPsd(cfg, assets, "mask"),
           `${exportBaseName(cfg)}-mask.psd`, "image/vnd.adobe.photoshop",
         );
@@ -1151,8 +1187,12 @@ export default function App() {
       disabled: exportBlocked, run: () => void exportPsd() },
     { id: "export-psd-art", label: "Export Artwork PSD", disabled: exportBlocked, run: () => void exportPsd("art") },
     { id: "export-psd-mask", label: "Export Mask PSD", disabled: exportBlocked, run: () => void exportPsd("mask") },
-    { id: "undo", label: "Undo", shortcut: "⌘Z", disabled: !canUndo, run: undo },
-    { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: !canRedo, run: redo },
+    // Undo/redo are config mutations that bypass `update`, so they mark the
+    // document dirty themselves (mutations-not-equality, see `dirty`).
+    { id: "undo", label: "Undo", shortcut: "⌘Z", disabled: !canUndo,
+      run: () => { setDirty(true); undo(); } },
+    { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: !canRedo,
+      run: () => { setDirty(true); redo(); } },
     { id: "presets-view", label: "View presets", run: () => setPresetsOpen(true) },
     { id: "presets-export", label: "Export presets", run: () => void exportPresets() },
     { id: "presets-import", label: "Import presets", run: () => presetsInput.current?.click() },
@@ -1233,25 +1273,22 @@ export default function App() {
                     that is the common run. !pdfs is the mid-build state, so
                     only the PDF items wait on it — the PSD path rebuilds from
                     the config alone. */}
-                <MenubarItem disabled={byId("export-both").disabled} onClick={byId("export-both").run}>
-                  {byId("export-both").label} <MenubarShortcut>{shortcutOf(byId("export-both"))}</MenubarShortcut>
-                </MenubarItem>
-                <MenubarItem disabled={byId("export-art").disabled} onClick={byId("export-art").run}>
-                  {byId("export-art").label}
-                </MenubarItem>
-                <MenubarItem disabled={byId("export-mask").disabled} onClick={byId("export-mask").run}>
-                  {byId("export-mask").label}
-                </MenubarItem>
-                <MenubarSeparator />
-                <MenubarItem disabled={byId("export-psd").disabled} onClick={byId("export-psd").run}>
-                  {byId("export-psd").label} <MenubarShortcut>{shortcutOf(byId("export-psd"))}</MenubarShortcut>
-                </MenubarItem>
-                <MenubarItem disabled={byId("export-psd-art").disabled} onClick={byId("export-psd-art").run}>
-                  {byId("export-psd-art").label}
-                </MenubarItem>
-                <MenubarItem disabled={byId("export-psd-mask").disabled} onClick={byId("export-psd-mask").run}>
-                  {byId("export-psd-mask").label}
-                </MenubarItem>
+                {/* All six deliverable runs under one Export submenu — PDFs
+                    above the separator, PSDs below, both-at-once first within
+                    each format (the common run). */}
+                <MenubarSub>
+                  <MenubarSubTrigger>Export</MenubarSubTrigger>
+                  <MenubarSubContent className={MENU_ITEMS}>
+                    {(["export-both", "export-art", "export-mask", null,
+                      "export-psd", "export-psd-art", "export-psd-mask"] as const).map((id, i) =>
+                      id === null ? <MenubarSeparator key={i} /> : (
+                        <MenubarItem key={id} disabled={byId(id).disabled} onClick={byId(id).run}>
+                          {byId(id).label}
+                          {shortcutOf(byId(id)) && <MenubarShortcut>{shortcutOf(byId(id))}</MenubarShortcut>}
+                        </MenubarItem>
+                      ))}
+                  </MenubarSubContent>
+                </MenubarSub>
                 <MenubarSeparator />
                 {/* The preset library: beer styles and barcodes reused across
                     labels. Ellipsis — import opens a file picker. */}
