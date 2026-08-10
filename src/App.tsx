@@ -1039,8 +1039,17 @@ export default function App() {
     if (!pick) { openRef.current?.click(); return; }
     try {
       const [handle] = await pick({ types: LABEL_TYPES });
-      await openProject(await handle.getFile());
-      projectHandle.current = handle;
+      // One quiet retry with a fresh getFile(): the first read of a freshly
+      // saved or cloud-synced .label (iCloud/Drive placeholder) can fail
+      // while the OS materializes the bytes — users saw "cancel and reopen
+      // fixes it", which is this race resolving itself. Only the retry's
+      // failure is worth reporting.
+      let ok = await openProject(await handle.getFile(), { quiet: true });
+      if (!ok) {
+        await new Promise((r) => setTimeout(r, 300));
+        ok = await openProject(await handle.getFile());
+      }
+      if (ok) projectHandle.current = handle;
     } catch (err) {
       if (!(err instanceof DOMException && err.name === "AbortError"))
         setLoadError(`Could not open project: ${errMsg(err)}`);
@@ -1052,7 +1061,7 @@ export default function App() {
    *  image through the exact handler a manual drop uses so previews, mask
    *  polarity, and object-URL lifecycle behave identically. Slots absent from
    *  the file are cleared: opening a project is a full restore, not a merge. */
-  async function openProject(f: File) {
+  async function openProject(f: File, opts?: { quiet?: boolean }): Promise<boolean> {
     try {
       const unpacked = unpackLabel(new Uint8Array(await f.arrayBuffer()));
       const config = parseConfigFile(unpacked.json);
@@ -1076,8 +1085,13 @@ export default function App() {
         l && onCollab("left", toFile(l)), c && onCollab("center", toFile(c)),
       ]);
       setDirty(false);
+      setLoadError("");
+      return true;
     } catch (err) {
-      setLoadError(`Could not open ${f.name}: ${errMsg(err)}`);
+      // quiet: the picker path retries once before reporting — a first-read
+      // failure that the retry recovers from should never flash an error.
+      if (!opts?.quiet) setLoadError(`Could not open ${f.name}: ${errMsg(err)}`);
+      return false;
     }
   }
 
