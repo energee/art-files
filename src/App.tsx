@@ -9,7 +9,7 @@ import type { ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
 import { defaultConfig, exportBaseName, parseConfigFile } from "@/defaults";
 import { strToU8 } from "fflate";
-import { packLabel, unpackLabel } from "@/labelfile";
+import { LABEL_EXT, packLabel, unpackLabel } from "@/labelfile";
 import { useHistory } from "@/history";
 import { validateUpc } from "@/upc";
 import { prepareMaskForPdf } from "@/maskimage";
@@ -78,8 +78,12 @@ type CollabFile = { image: CollabImage; name: string; previewUrl: string };
 
 /** The .label file picker option, shared by open and save dialogs. */
 const LABEL_TYPES = [
-  { description: "Label project", accept: { "application/zip": [".label"] } },
+  { description: "Label project", accept: { "application/zip": [LABEL_EXT] } },
 ];
+
+/** One spelling for the "which error do I show?" expression the open paths
+ *  share. */
+const errMsg = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** Encode a canvas's pixels as PNG bytes — the shared tail of every
  *  decode/recolor/re-encode pipeline in this file. */
@@ -583,8 +587,9 @@ export default function App() {
   // Rulers and guides are view state, like hidden layer eyes: they assist the
   // operator but are not label content, so none enters config history/exports.
   // Rulers, guides, and bleed lines DO persist across sessions — workspace
-  // preferences, saved to presets.json alongside the render knobs (adopted
-  // and written back by the effects near the render settings above).
+  // preferences, saved to presets.json alongside the render knobs: adopted by
+  // the effect near the render settings above, written back by the single
+  // debounced effect below.
   const [showRulers, setShowRulers] = useState(true);
   const [rulerUnit, setRulerUnit] = useState<RulerUnit>("in");
   const [showGuides, setShowGuides] = useState(true);
@@ -956,7 +961,7 @@ export default function App() {
       try {
         if (as || !projectHandle.current) {
           projectHandle.current = await pick({
-            suggestedName: `${exportBaseName(cfg)}.label`,
+            suggestedName: exportBaseName(cfg) + LABEL_EXT,
             types: LABEL_TYPES,
           });
         }
@@ -973,7 +978,7 @@ export default function App() {
       }
     }
     startSaveBatch();
-    saveBytes(zip, `${exportBaseName(cfg)}.label`, "application/zip");
+    saveBytes(zip, exportBaseName(cfg) + LABEL_EXT, "application/zip");
   }
   /** File → Open Project…: the native picker where available, so Save can
    *  rewrite the opened file; elsewhere the hidden-input fallback (which
@@ -989,7 +994,7 @@ export default function App() {
       projectHandle.current = handle;
     } catch (err) {
       if (!(err instanceof DOMException && err.name === "AbortError"))
-        setLoadError(`Could not open project: ${err instanceof Error ? err.message : err}`);
+        setLoadError(`Could not open project: ${errMsg(err)}`);
     }
   }
 
@@ -1015,7 +1020,7 @@ export default function App() {
       if (l) onCollab("left", toFile(l));
       if (c) onCollab("center", toFile(c));
     } catch (err) {
-      setLoadError(`Could not open ${f.name}: ${err instanceof Error ? err.message : err}`);
+      setLoadError(`Could not open ${f.name}: ${errMsg(err)}`);
     }
   }
 
@@ -1325,7 +1330,7 @@ export default function App() {
           {buildError && <span className="text-xs text-destructive">{buildError}</span>}
           <input ref={presetsInput} type="file" accept="application/json" hidden
             onChange={(e) => e.target.files?.[0] && void importPresets(e.target.files[0])} />
-          <input ref={openRef} type="file" accept=".label" className="hidden"
+          <input ref={openRef} type="file" accept={LABEL_EXT} className="hidden"
             onChange={(e) => {
               const f = e.currentTarget.files?.[0];
               e.currentTarget.value = "";

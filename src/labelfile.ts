@@ -8,6 +8,10 @@ import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from "fflate";
 import type { LabelConfig } from "@/types";
 import { toConfigFile } from "@/defaults";
 
+/** The project file's suffix — owned here with the format itself, so the
+ *  pickers, the hidden input, and the download names can't drift apart. */
+export const LABEL_EXT = ".label";
+
 export type LabelAsset = { name: string; bytes: Uint8Array };
 export type LabelAssets = {
   texture?: LabelAsset;

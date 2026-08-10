@@ -25,6 +25,12 @@ self.onmessage = async (e: MessageEvent) => {
     return;
   }
   const { id, bytes, scale, scaleCap, size } = msg;
+  // Cancelled before the render was dequeued — skip the parse, not just the
+  // paint (same reply shape as the post-parse check below).
+  if (cancelled.has(id)) {
+    postMessage({ id, cancelled: true });
+    return;
+  }
   // disableFontFace: embedded fonts normally load through the DOM FontFace
   // API, which isn't available to canvas text here in the worker — glyphs
   // came out as .notdef boxes. With it off, pdf.js draws the embedded glyph
