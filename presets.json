@@ -46,8 +46,8 @@
     "bleedIn": 0.0635
   },
   "view": {
-    "showRulers": false,
-    "showGuides": false,
+    "showRulers": true,
+    "showGuides": true,
     "showBleed": false
   }
 }
