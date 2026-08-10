@@ -26,8 +26,9 @@ self.onmessage = async (e: MessageEvent) => {
   }
   const { id, bytes, scale, scaleCap, size } = msg;
   // Cancelled before the render was dequeued — skip the parse, not just the
-  // paint (same reply shape as the post-parse check below).
-  if (cancelled.has(id)) {
+  // paint (same reply shape as the post-parse check below). Deleted here
+  // because this return never reaches the finally that normally clears it.
+  if (cancelled.delete(id)) {
     postMessage({ id, cancelled: true });
     return;
   }
