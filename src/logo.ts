@@ -3,8 +3,10 @@
 // use it without importing the PDF renderer.
 import svgpath from "svgpath";
 
-/** Extract the logo's paths pre-scaled to `width` points. Per-path transforms
- *  (the mirrored branch) are applied, and the output is normalized to absolute
+/** Extract the logo's paths pre-scaled to `width` points. Transforms are
+ *  applied — each path's own composed with its ancestor <g> transforms
+ *  (text-outline exports carry their y-flip there) — and the output is
+ *  normalized to absolute
  *  M/L/C/Z commands with rounded coordinates — pdf-lib's drawSvgPath cannot
  *  handle relative/shorthand/arc/H/V commands or its own scale option's
  *  exponent-notation output, and the PSD builder needs plain cubics to turn
@@ -34,35 +36,83 @@ export function parseLogo(
 
 const logoCache = new Map<string, Map<string, { paths: string[]; w: number; h: number }>>();
 
+/** Emit a normalized path string, converting H/V to L for the consumers. */
+function emit(p: ReturnType<typeof svgpath>): string {
+  const out: string[] = [];
+  p.round(4).iterate((seg, _i, x, y) => {
+    if (seg[0] === "H") out.push(`L ${seg[1]} ${y}`);
+    else if (seg[0] === "V") out.push(`L ${x} ${seg[1]}`);
+    else out.push(seg.join(" "));
+  });
+  return out.join(" ");
+}
+
 function parseLogoUncached(
   svg: string,
   width: number,
   maxH?: number,
 ): { paths: string[]; w: number; h: number } {
-  const vb = svg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/);
-  if (!vb) throw new Error("Could not parse logo SVG viewBox");
-  const scale =
-    maxH === undefined ? width / +vb[1] : Math.min(width / +vb[1], maxH / +vb[2]);
-  const tags = [...svg.matchAll(/<path\b[^>]*>/g)].map((m) => m[0]);
-  const paths = tags.map((tag) => {
-    const d = tag.match(/ d="([^"]+)"/)?.[1];
-    if (!d) throw new Error("Logo path is missing d attribute");
-    const tf = tag.match(/ transform="([^"]+)"/)?.[1] ?? "";
-    const out: string[] = [];
-    svgpath(d)
-      .transform(tf)
-      .scale(scale)
-      .abs()
-      .unshort()
-      .unarc()
-      .round(4)
-      .iterate((seg, _i, x, y) => {
-        if (seg[0] === "H") out.push(`L ${seg[1]} ${y}`);
-        else if (seg[0] === "V") out.push(`L ${x} ${seg[1]}`);
-        else out.push(seg.join(" "));
-      });
-    return out.join(" ");
-  });
-  if (paths.length === 0) throw new Error("Could not parse logo SVG paths");
-  return { paths, w: +vb[1] * scale, h: +vb[2] * scale };
+  // Walk <g>/<path> tags in document order, carrying the ancestor <g>
+  // transforms down to each path. Text-to-outline exports (Illustrator,
+  // fontforge) wrap their paths in a group with a scale(1,-1)-style matrix —
+  // font units are y-up — so reading only the path's own transform mirrors
+  // and flips the art. Transforms compose in document order, which is
+  // exactly what svgpath's space-separated transform string applies.
+  const transformOf = (tag: string) => tag.match(/ transform="([^"]+)"/)?.[1] ?? "";
+  const stack: string[] = [];
+  const parsed: ReturnType<typeof svgpath>[] = [];
+  for (const m of svg.matchAll(/<g\b[^>]*>|<\/g>|<path\b[^>]*>/g)) {
+    const tag = m[0];
+    if (tag === "</g>") stack.pop();
+    else if (tag.startsWith("<g")) {
+      // A self-closing <g/> opens nothing: pushing it would leak its
+      // transform onto every following sibling, with no </g> to pop it.
+      if (!tag.endsWith("/>")) stack.push(transformOf(tag));
+    } else {
+      const d = tag.match(/ d="([^"]+)"/)?.[1];
+      if (!d) throw new Error("Logo path is missing d attribute");
+      const tf = [...stack, transformOf(tag)].join(" ").trim();
+      parsed.push(svgpath(d).transform(tf).abs().unshort().unarc());
+    }
+  }
+  if (parsed.length === 0) throw new Error("Could not parse logo SVG paths");
+
+  // The laurel path (no height cap): scale by the viewBox, exactly as ever —
+  // LOGO_ASPECT and the shipped laurel geometry are measured against it.
+  if (maxH === undefined) {
+    const vb = svg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/);
+    if (!vb) throw new Error("Could not parse logo SVG viewBox");
+    const scale = width / +vb[1];
+    return {
+      paths: parsed.map((p) => emit(p.scale(scale))),
+      w: +vb[1] * scale, h: +vb[2] * scale,
+    };
+  }
+
+  // Collab slots: fit and center the INK, not the viewBox. An uploaded icon
+  // whose drawing sits in a corner of an oversized viewBox (or a viewBox
+  // with a non-zero origin, which the laurel regex above would reject)
+  // would otherwise render tiny and off-center in its slot. The box comes
+  // from every coordinate the segments carry — control points included, so
+  // it can overestimate a curve's extent by a hair (a curve never leaves
+  // its control polygon), which errs toward fitting INSIDE the slot.
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of parsed)
+    p.iterate((seg) => {
+      const [cmd, ...nums] = seg;
+      if (cmd === "H") { minX = Math.min(minX, nums[0]!); maxX = Math.max(maxX, nums[0]!); }
+      else if (cmd === "V") { minY = Math.min(minY, nums[0]!); maxY = Math.max(maxY, nums[0]!); }
+      else for (let i = 0; i + 1 < nums.length; i += 2) {
+        const px = nums[i]!, py = nums[i + 1]!;
+        minX = Math.min(minX, px); maxX = Math.max(maxX, px);
+        minY = Math.min(minY, py); maxY = Math.max(maxY, py);
+      }
+    });
+  const bw = maxX - minX, bh = maxY - minY;
+  if (!(bw > 0 && bh > 0)) throw new Error("Logo SVG has no drawable extent");
+  const scale = Math.min(width / bw, maxH / bh);
+  return {
+    paths: parsed.map((p) => emit(p.translate(-minX, -minY).scale(scale))),
+    w: bw * scale, h: bh * scale,
+  };
 }

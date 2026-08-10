@@ -9,6 +9,13 @@ import { parseHexFill } from "./layout";
 export const rasterKind = (name: string): "jpg" | "png" =>
   /\.jpe?g$/i.test(name) ? "jpg" : "png";
 
+/** Filename → browser MIME, for the same three kinds. Lives beside
+ *  rasterKind so there is one home for "what image is this name" — the
+ *  svg test had already started forking into call sites. */
+export const mimeFor = (name: string): string =>
+  /\.svg$/i.test(name) ? "image/svg+xml"
+    : rasterKind(name) === "png" ? "image/png" : "image/jpeg";
+
 /** Recolor every pixel to `fill`, keeping its alpha — the "color overlay" a
  *  partner's one-color PNG needs to sit on the label in label gold (or any
  *  other fill) instead of whatever color it was exported in.

@@ -6,8 +6,11 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+// The classic light transparency checker, deliberately NOT theme-tinted: a
+// dark checker made black art invisible in the dark UI. Light grey + white
+// squares keep both black and white artwork visible, whatever the theme.
 const CHECKER =
-  "repeating-conic-gradient(#2a2c31 0% 25%, #1a1c1f 0% 50%) 0 0 / 12px 12px";
+  "repeating-conic-gradient(#c9c9c9 0% 25%, #f2f2f2 0% 50%) 0 0 / 12px 12px";
 
 export function FileDrop(props: {
   label: string;
