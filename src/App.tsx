@@ -1,12 +1,15 @@
 // App.tsx — owns all state: LabelConfig, texture/mask assets (full-res +
 // preview-res pairs), validation, debounced preview-resolution PDF builds,
-// overlay-compare preview, and on-demand full-resolution exports. Mirrors
-// the old main.ts wiring, componentized.
+// overlay-compare preview, and on-demand full-resolution exports, plus
+// whole-project save/open (.label — see labelfile.ts). Mirrors the old
+// main.ts wiring, componentized.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CollabSlot, Fill, LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
-import { defaultConfig, exportBaseName } from "@/defaults";
+import { defaultConfig, exportBaseName, parseConfigFile } from "@/defaults";
+import { strToU8 } from "fflate";
+import { LABEL_EXT, packLabel, unpackLabel } from "@/labelfile";
 import { useHistory } from "@/history";
 import { validateUpc } from "@/upc";
 import { prepareMaskForPdf } from "@/maskimage";
@@ -32,11 +35,12 @@ import {
   DEFAULT_RENDER, commitBleedIn, loadPresets, mutatePresets, normalizePresets, usePresets,
   type Presets,
 } from "@/presets";
-import { PANEL_ORDER, isElementId, type LayerId } from "@/components/layers";
+import { PANEL_ORDER, isElementId, type HideableLayerId, type LayerId } from "@/components/layers";
 import {
   EMPTY_SELECTION, resolveSelect, type SelectMods, type Selection,
 } from "@/selection";
 import { CommandMenu, shortcutOf, type Command } from "@/components/CommandMenu";
+import { PresetsDialog } from "@/components/PresetsDialog";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
 import { Rulers } from "@/components/Rulers";
 import { CanView, type CanViewHandle } from "@/components/CanView";
@@ -62,12 +66,24 @@ import logoSvg from "@/assets/logo2025.svg?raw";
 
 /** bytes = full print resolution (exports); previewBytes = downscaled PNG the
  *  debounced preview builds use, so keystroke-driven rebuilds never churn the
- *  print-size image (a burst of those OOMs the tab). */
+ *  print-size image (a burst of those OOMs the tab). Neither is necessarily
+ *  the original file bytes: the mask's `bytes` is recolored (see onMask), so
+ *  it carries an extra `srcBytes` — the untouched upload — for Save Project
+ *  to round-trip without double-processing on reload. */
 type Loaded = { bytes: Uint8Array; previewBytes: Uint8Array; name: string; previewUrl: string };
 
 /** A loaded collab logo: what the renderer needs, plus what the drop zone
  *  shows. previewUrl is the raw file, so an SVG thumbnails as itself. */
 type CollabFile = { image: CollabImage; name: string; previewUrl: string };
+
+/** The .label file picker option, shared by open and save dialogs. */
+const LABEL_TYPES = [
+  { description: "Label project", accept: { "application/zip": [LABEL_EXT] } },
+];
+
+/** One spelling for the "which error do I show?" expression the open paths
+ *  share. */
+const errMsg = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** Encode a canvas's pixels as PNG bytes — the shared tail of every
  *  decode/recolor/re-encode pipeline in this file. */
@@ -220,7 +236,23 @@ const zoomAbout = (
 // Menu chrome, shared by all three menus so they can't drift apart: small
 // regular-weight triggers, and items sized to match.
 const MENU_TRIGGER = "px-2 py-1 text-xs font-normal";
-const MENU_ITEMS = "[&_[data-slot=menubar-item]]:text-xs";
+// min-w keeps the longest item ("Save Project As… ⇧⌘S") on one line.
+const MENU_ITEMS = "min-w-52 [&_[data-slot=menubar-item]]:text-xs";
+
+/** The five preview views in keys-1–5 order: status-bar label, the command
+ *  id that shows it, and the state that means "this one is current". One
+ *  list, so the readout, the click-to-cycle, and the commands can't disagree
+ *  about what the views are or where each sits in the cycle. Standard's
+ *  predicate absorbs a mid-split compare (split < 100), so cycling from a
+ *  compare lands on Mask. */
+type ViewMode = "2d" | "can" | "pack" | "flat";
+const VIEW_CYCLE: { label: string; id: string; at: (m: ViewMode, split: number) => boolean }[] = [
+  { label: "Standard", id: "view-standard", at: (m, s) => m === "2d" && s < 100 },
+  { label: "Mask", id: "view-mask", at: (m, s) => m === "2d" && s === 100 },
+  { label: "Rendered", id: "view-rendered", at: (m) => m === "flat" },
+  { label: "Single Can", id: "view-can", at: (m) => m === "can" },
+  { label: "Four-Pack", id: "view-pack", at: (m) => m === "pack" },
+];
 
 function download(url: string, name: string) {
   const a = document.createElement("a");
@@ -260,8 +292,8 @@ export default function App() {
   // the config/history: a saved label never records a hidden layer, and
   // toggling an eye is not an undoable document edit. Flows into
   // Assets.hidden, where the renderer skips the element in both plates.
-  const [hiddenLayers, setHiddenLayers] = useState<ReadonlySet<ElementId>>(new Set());
-  const toggleHidden = (id: ElementId) =>
+  const [hiddenLayers, setHiddenLayers] = useState<ReadonlySet<HideableLayerId>>(new Set());
+  const toggleHidden = (id: HideableLayerId) =>
     setHiddenLayers((old) => {
       const next = new Set(old);
       if (!next.delete(id)) next.add(id);
@@ -272,7 +304,10 @@ export default function App() {
   // resolves; PreviewCompare skips hit-testing rather than guess with it.
   const [measure, setMeasure] = useState<Measure | null>(null);
   const [texture, setTexture] = useState<(Loaded & { kind: "png" | "jpg" }) | null>(null);
-  const [mask, setMask] = useState<(Loaded & { error?: string }) | null>(null);
+  // srcBytes: the original upload, before prepareMaskForPdf recolors it — the
+  // bytes Save Project writes, so Open Project doesn't recolor an
+  // already-recolored mask.
+  const [mask, setMask] = useState<(Loaded & { error?: string; srcBytes: Uint8Array }) | null>(null);
   // Collab logos. Unlike the texture and mask these need no preview-resolution
   // twin: they are at most a 70pt mark, so the same bytes serve the preview
   // build and the print export.
@@ -318,6 +353,12 @@ export default function App() {
   // an orbit. The precise value still reaches `carried` below, which is a ref.
   const [camZoomPct, setCamZoomPct] = useState(100);
   const shownZoomPct = viewMode === "2d" ? Math.round(zoom.z * 100) : camZoomPct;
+  // Where the current view sits in VIEW_CYCLE, and what the status bar calls
+  // it — the one place the "a mid-split compare counts as Standard for
+  // cycling but reads as Compare" rule lives.
+  const viewIndex = VIEW_CYCLE.findIndex((v) => v.at(viewMode, split));
+  const viewLabel = viewMode === "2d" && split > 0 && split < 100
+    ? "Compare" : VIEW_CYCLE[viewIndex].label;
   // Zoom level follows you across views: both sides express it as a multiple
   // of how the view frames itself, so handing the number over is enough. Pan
   // travels with it as a fraction of the visible frame — the 2D pane's px
@@ -410,15 +451,25 @@ export default function App() {
     if (adopted.current || !presetsLoaded) return;
     adopted.current = true;
     setRender(presets.render);
-  }, [presetsLoaded, presets.render]);
-  useEffect(() => {
-    if (!adopted.current) return;
-    const t = setTimeout(() => void mutatePresets((p) => ({ ...p, render })), 500);
-    return () => clearTimeout(t);
-  }, [render]);
+    setBleed(presets.view.showBleed);
+    setShowRulers(presets.view.showRulers);
+    setShowGuides(presets.view.showGuides);
+  }, [presetsLoaded, presets.render, presets.view]);
+  // Persisted below, in one debounced write with the view toggles — see the
+  // effect beside the guide state.
   useEffect(() => {
     if (presetsError) setLoadError(`presets save failed: ${presetsError}`);
   }, [presetsError]);
+
+  // Block the browser context menu app-wide (2026-08, by request): right-click
+  // already means "pan" over the preview, nothing in this tool uses the menu,
+  // and its Inspect item was being opened by accident. DevTools stay reachable
+  // from the browser menu / ⌘⌥I — a page can only suppress its own triggers.
+  useEffect(() => {
+    const block = (e: MouseEvent) => e.preventDefault();
+    window.addEventListener("contextmenu", block);
+    return () => window.removeEventListener("contextmenu", block);
+  }, []);
 
   // Wheel-to-zoom, scoped to the preview pane, matching what OrbitControls
   // gives the 3D views so one set of habits works in all four: wheel (or a
@@ -523,6 +574,10 @@ export default function App() {
     });
   };
   const presetsInput = useRef<HTMLInputElement>(null);
+  // File → Open Project…'s hidden picker, mirroring presetsInput's pattern.
+  const openRef = useRef<HTMLInputElement>(null);
+  // The read-only "View presets" dialog (File menu / ⌘K).
+  const [presetsOpen, setPresetsOpen] = useState(false);
   const previewRef = useRef<PreviewCompareHandle>(null);
   // Trim guide over the 2D preview at the art box, wherever the bleed knob
   // currently puts it (ART.x/ART.y follow it). View-only — this toggle draws
@@ -531,6 +586,10 @@ export default function App() {
   const [bleed, setBleed] = useState(false);
   // Rulers and guides are view state, like hidden layer eyes: they assist the
   // operator but are not label content, so none enters config history/exports.
+  // Rulers, guides, and bleed lines DO persist across sessions — workspace
+  // preferences, saved to presets.json alongside the render knobs: adopted by
+  // the effect near the render settings above, written back by the single
+  // debounced effect below.
   const [showRulers, setShowRulers] = useState(true);
   const [rulerUnit, setRulerUnit] = useState<RulerUnit>("in");
   const [showGuides, setShowGuides] = useState(true);
@@ -546,6 +605,15 @@ export default function App() {
     setManualGuides((guides) => guides.map((guide) => guide.id === id ? { ...guide, point } : guide));
   const removeManualGuide = (id: number) =>
     setManualGuides((guides) => guides.filter((guide) => guide.id !== id));
+  // One debounced write for everything App persists to presets.json — the
+  // render knobs and the view toggles share the adopt-guard and the 500ms
+  // debounce; two effects would interleave writes to the same file.
+  useEffect(() => {
+    if (!adopted.current) return;
+    const view = { showRulers, showGuides, showBleed: bleed };
+    const t = setTimeout(() => void mutatePresets((p) => ({ ...p, render, view })), 500);
+    return () => clearTimeout(t);
+  }, [render, showRulers, showGuides, bleed]);
 
   const update = (fn: (c: LabelConfig) => void) =>
     setCfg((c) => { const n = structuredClone(c); fn(n); return n; });
@@ -621,24 +689,30 @@ export default function App() {
   const exportBlocked = blocked || building;
   const pdfExportBlocked = exportBlocked || !pdfs;
 
+  /** Replaces (or, with null, removes) a loaded asset, revoking the old
+   *  thumbnail URL — the one shape every drop and every FileDrop X share. */
+  const swapLoaded = <T extends { previewUrl: string }>(
+    set: (fn: (old: T | null) => T | null) => void, next: T | null,
+  ) => set((old) => { if (old) URL.revokeObjectURL(old.previewUrl); return next; });
+
   async function onTexture(f: File) {
     const bytes = new Uint8Array(await f.arrayBuffer());
     const bmp = await createImageBitmap(f);
     const previewBytes = await previewPng(bmp);
     bmp.close();
     const previewUrl = URL.createObjectURL(f);
-    setTexture((old) => {
-      if (old) URL.revokeObjectURL(old.previewUrl);
-      return {
-        bytes, previewBytes, name: f.name,
-        kind: rasterKind(f.name),
-        previewUrl,
-      };
+    swapLoaded(setTexture, {
+      bytes, previewBytes, name: f.name,
+      kind: rasterKind(f.name),
+      previewUrl,
     });
   }
 
   async function onMask(f: File) {
-    const canvas = await decodeToCanvas(f);
+    // Independent reads of the same file — decode and raw bytes in parallel.
+    const [srcBytes, canvas] = await Promise.all([
+      f.arrayBuffer().then((b) => new Uint8Array(b)), decodeToCanvas(f),
+    ]);
     const ctx = canvas.getContext("2d")!;
     const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const check = prepareMaskForPdf(data.data);
@@ -646,33 +720,28 @@ export default function App() {
     const bytes = await canvasToPng(canvas);
     const previewBytes = await previewPng(canvas); // recolored canvas, downscaled
     const previewUrl = URL.createObjectURL(f);
-    setMask((old) => {
-      if (old) URL.revokeObjectURL(old.previewUrl);
-      return {
-        bytes,
-        previewBytes,
-        name: f.name,
-        previewUrl,
-        error: check.ok ? undefined : check.error,
-      };
+    swapLoaded(setMask, {
+      bytes,
+      previewBytes,
+      name: f.name,
+      previewUrl,
+      error: check.ok ? undefined : check.error,
+      srcBytes,
     });
   }
 
   /** Load a collab logo into `slot`, revoking the previous thumbnail URL. */
   function onCollab(slot: "left" | "center", f: File) {
-    void readCollab(f).then((next) => {
-      const set = slot === "left" ? setCollabLeft : setCollabCenter;
-      set((old) => {
-        if (old) URL.revokeObjectURL(old.previewUrl);
-        return next;
-      });
-    });
+    void readCollab(f).then((next) =>
+      swapLoaded(slot === "left" ? setCollabLeft : setCollabCenter, next));
   }
   const collabFiles: CollabFiles = {
     leftName: collabLeft?.name, leftUrl: collabLeft?.previewUrl,
     centerName: collabCenter?.name, centerUrl: collabCenter?.previewUrl,
     onLeft: (f) => onCollab("left", f),
     onCenter: (f) => onCollab("center", f),
+    onClearLeft: () => swapLoaded(setCollabLeft, null),
+    onClearCenter: () => swapLoaded(setCollabCenter, null),
   };
   /** Everything file-shaped the inspector edits: the Document layers' drops
    *  plus the collab logos. */
@@ -698,10 +767,12 @@ export default function App() {
     texture: {
       fileName: texture?.name, previewUrl: texture?.previewUrl,
       onFile: (f) => void onTexture(f),
+      onClear: () => swapLoaded(setTexture, null),
     },
     mask: {
       fileName: mask?.name, previewUrl: mask?.previewUrl, error: mask?.error,
       onFile: (f) => void onMask(f),
+      onClear: () => swapLoaded(setMask, null),
     },
     collab: collabFiles,
   };
@@ -738,6 +809,19 @@ export default function App() {
   // the typing gap), and superseded builds bail before allocating anything. So
   // the delay only has to outlast a fast typist's inter-key gap.
   const buildChain = useRef<Promise<void>>(Promise.resolve());
+  /** The texture/mask half of Assets, with the eyes applied by omission: a
+   *  hidden asset simply isn't handed to the build, same as never dropped.
+   *  The ONE place both the eye rule and the byte choice live — the preview
+   *  build spreads eyedAssets(true) (downscaled preview bytes), the export
+   *  build eyedAssets(false) (full-resolution). */
+  const eyedAssets = (preview: boolean) => ({
+    texture: !texture || hiddenLayers.has("background") ? undefined
+      : preview
+        ? { bytes: texture.previewBytes, kind: "png" as const }
+        : { bytes: texture.bytes, kind: texture.kind },
+    maskPng: hiddenLayers.has("mask") ? undefined
+      : preview ? mask?.previewBytes : mask?.bytes,
+  });
   // Everything a plate is built from. Spread into the effect's deps below, so
   // this is the ONE list — a future input added here can't be forgotten in the
   // dep array (which would stop rebuilds) or in the identity check (which
@@ -769,8 +853,7 @@ export default function App() {
         try {
           const assets = {
             ...(await collabAssets()),
-            texture: texture ? { bytes: texture.previewBytes, kind: "png" as const } : undefined,
-            maskPng: mask?.previewBytes,
+            ...eyedAssets(true),
             hidden: hiddenLayers,
           };
           // Only the plates that aren't already current. sameInputs means the
@@ -837,8 +920,7 @@ export default function App() {
       // layered handoff is the place to keep them all.)
       const assets: Assets = {
         fonts, logoSvg, ...(await collabAssets()),
-        texture: texture ? { bytes: texture.bytes, kind: texture.kind } : undefined,
-        maskPng: mask?.bytes,
+        ...eyedAssets(false),
         hidden: hiddenLayers,
       };
       if (which !== "mask") saveBytes(await buildArtPdf(cfg, assets), `${exportBaseName(cfg)}.pdf`);
@@ -853,6 +935,94 @@ export default function App() {
   const downloadMask = () => void buildFull("mask");
   // Shared by the sidebar "Export PDFs" button and the ⌘K palette action.
   const exportPdfs = () => void buildFull("both");
+
+  /** The file Save rewrites in place: set by Save As and picker-based Open.
+   *  Null until then, so plain Save falls through to the Save As dialog —
+   *  the classic editor contract. A ref, not state: nothing renders it. */
+  const projectHandle = useRef<FileSystemFileHandle | null>(null);
+  /** File → Save / Save As…: everything needed to reopen this label — config
+   *  plus original image bytes — zipped as <beerName>.label (see labelfile.ts).
+   *  Chromium shows a real save dialog (name/place the file) and Save then
+   *  rewrites that same file silently; Safari/Firefox lack
+   *  showSaveFilePicker, so every save is a plain download there. */
+  async function saveProject(as = false) {
+    const collabAsset = (c: CollabFile | null) =>
+      c ? { name: c.name, bytes: c.image.kind === "svg" ? strToU8(c.image.svg) : c.image.bytes } : undefined;
+    const zip = packLabel(cfg, {
+      texture: texture ? { name: texture.name, bytes: texture.bytes } : undefined,
+      mask: mask ? { name: mask.name, bytes: mask.srcBytes } : undefined,
+      collabLeft: collabAsset(collabLeft),
+      collabCenter: collabAsset(collabCenter),
+    });
+    const pick = (window as {
+      showSaveFilePicker?: (opts: object) => Promise<FileSystemFileHandle>;
+    }).showSaveFilePicker;
+    if (pick) {
+      try {
+        if (as || !projectHandle.current) {
+          projectHandle.current = await pick({
+            suggestedName: exportBaseName(cfg) + LABEL_EXT,
+            types: LABEL_TYPES,
+          });
+        }
+        const writable = await projectHandle.current.createWritable();
+        await writable.write(zip as unknown as ArrayBuffer);
+        await writable.close();
+        return;
+      } catch (err) {
+        // Cancelled dialog = no save wanted; anything else falls back to
+        // the download path rather than losing the file. A handle that
+        // failed to write is not trusted again.
+        projectHandle.current = null;
+        if (err instanceof DOMException && err.name === "AbortError") return;
+      }
+    }
+    startSaveBatch();
+    saveBytes(zip, exportBaseName(cfg) + LABEL_EXT, "application/zip");
+  }
+  /** File → Open Project…: the native picker where available, so Save can
+   *  rewrite the opened file; elsewhere the hidden-input fallback (which
+   *  yields no writable handle — Save then behaves as Save As). */
+  async function openProjectPicker() {
+    const pick = (window as {
+      showOpenFilePicker?: (opts: object) => Promise<FileSystemFileHandle[]>;
+    }).showOpenFilePicker;
+    if (!pick) { openRef.current?.click(); return; }
+    try {
+      const [handle] = await pick({ types: LABEL_TYPES });
+      await openProject(await handle.getFile());
+      projectHandle.current = handle;
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === "AbortError"))
+        setLoadError(`Could not open project: ${errMsg(err)}`);
+    }
+  }
+
+  /** File → Open Project…: unzip a .label, run its config through the same
+   *  forgiving parseConfigFile path saved configs use, then feed each embedded
+   *  image through the exact handler a manual drop uses so previews, mask
+   *  polarity, and object-URL lifecycle behave identically. Slots absent from
+   *  the file are cleared: opening a project is a full restore, not a merge. */
+  async function openProject(f: File) {
+    try {
+      const unpacked = unpackLabel(new Uint8Array(await f.arrayBuffer()));
+      const config = parseConfigFile(unpacked.json);
+      setCfg(() => config);
+      swapLoaded(setTexture, null);
+      swapLoaded(setMask, null);
+      swapLoaded(setCollabLeft, null);
+      swapLoaded(setCollabCenter, null);
+      const toFile = (a: { name: string; bytes: Uint8Array }) =>
+        new File([a.bytes as unknown as BlobPart], a.name);
+      const { texture: t, mask: m, collabLeft: l, collabCenter: c } = unpacked.assets;
+      if (t) void onTexture(toFile(t));
+      if (m) void onMask(toFile(m));
+      if (l) onCollab("left", toFile(l));
+      if (c) onCollab("center", toFile(c));
+    } catch (err) {
+      setLoadError(`Could not open ${f.name}: ${errMsg(err)}`);
+    }
+  }
 
   /** The PSD's texture layer needs raw RGBA at document size — PSD layers
    *  hold pixels 1:1, so the cover-fit happens here rather than in the
@@ -906,7 +1076,7 @@ export default function App() {
   async function exportPresets() {
     try {
       const body = JSON.stringify(await loadPresets(), null, 2);
-      const url = blobUrl(new TextEncoder().encode(body), "application/json");
+      const url = blobUrl(strToU8(body), "application/json");
       download(url, "presets.json");
       URL.revokeObjectURL(url);
       setLoadError("");
@@ -943,6 +1113,12 @@ export default function App() {
   const twoD = viewMode === "2d";
   const guideEdit = twoD && showGuides;
   const commands: Command[] = [
+    { id: "project-open", label: "Open Project…", key: "o", mods: "⌘",
+      run: () => void openProjectPicker() },
+    { id: "project-save", label: "Save Project", key: "s", mods: "⌘",
+      run: () => void saveProject() },
+    { id: "project-save-as", label: "Save Project As…", key: "s", mods: "⇧⌘",
+      run: () => void saveProject(true) },
     // ⌘E exports the PDFs, ⇧⌘E the PSDs — the whole-deliverable runs. The
     // single-plate variants stay menu-only: naming six distinct combos costs
     // more than it saves.
@@ -956,6 +1132,7 @@ export default function App() {
     { id: "export-psd-mask", label: "Export Mask PSD", disabled: exportBlocked, run: () => void exportPsd("mask") },
     { id: "undo", label: "Undo", shortcut: "⌘Z", disabled: !canUndo, run: undo },
     { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: !canRedo, run: redo },
+    { id: "presets-view", label: "View presets", run: () => setPresetsOpen(true) },
     { id: "presets-export", label: "Export presets", run: () => void exportPresets() },
     { id: "presets-import", label: "Import presets", run: () => presetsInput.current?.click() },
     { id: "view-standard", label: "Preview: Standard", key: "1", run: () => show2d("art") },
@@ -1000,15 +1177,20 @@ export default function App() {
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
           preview center, fixed inspector column right. */}
       <SidebarProvider>
-        <Sidebar collapsible="offcanvas" className="border-r border-sidebar-border">
+        {/* No border of its own: the menubar and status bar share the
+            sidebar's paint, so a full-height rule would slice one band of
+            chrome in two. The canvas pane below draws the separating edge
+            for just the rows where the two differ. */}
+        <Sidebar collapsible="offcanvas">
           <SidebarContent>
             <LayersPanel cfg={cfg} update={update} hidden={hiddenLayers}
               onToggleHidden={toggleHidden} selected={selected} onSelect={pick} />
           </SidebarContent>
         </Sidebar>
         <SidebarInset className="flex h-svh flex-col overflow-hidden">
-        {/* A quiet bottom rule separates application chrome from the canvas. */}
-        <header className="flex items-center gap-3 border-b border-border px-3 py-2">
+        {/* A quiet bottom rule separates application chrome from the canvas.
+            Painted like the sidebar so the two read as one band of chrome. */}
+        <header className="flex items-center gap-3 border-b border-border bg-sidebar text-sidebar-foreground px-3 py-2">
           {/* Toggles the Layers sidebar; the component also binds ⌘B. */}
           <SidebarTrigger className="size-6" />
           {/* Stripped to a real menu bar: no pill border or rounding of its
@@ -1018,6 +1200,14 @@ export default function App() {
             <MenubarMenu>
               <MenubarTrigger className={MENU_TRIGGER}>File</MenubarTrigger>
               <MenubarContent align="start" className={MENU_ITEMS}>
+                {/* Project save/load first — the whole label, not just a
+                    deliverable. */}
+                {["project-open", "project-save", "project-save-as"].map((id) => (
+                  <MenubarItem key={id} onClick={byId(id).run}>
+                    {byId(id).label} <MenubarShortcut>{shortcutOf(byId(id))}</MenubarShortcut>
+                  </MenubarItem>
+                ))}
+                <MenubarSeparator />
                 {/* Deliverables first, both-at-once first within each format:
                     that is the common run. !pdfs is the mid-build state, so
                     only the PDF items wait on it — the PSD path rebuilds from
@@ -1044,6 +1234,9 @@ export default function App() {
                 <MenubarSeparator />
                 {/* The preset library: beer styles and barcodes reused across
                     labels. Ellipsis — import opens a file picker. */}
+                <MenubarItem onClick={byId("presets-view").run}>
+                  View Presets…
+                </MenubarItem>
                 <MenubarItem onClick={byId("presets-import").run}>
                   Import Presets…
                 </MenubarItem>
@@ -1137,6 +1330,12 @@ export default function App() {
           {buildError && <span className="text-xs text-destructive">{buildError}</span>}
           <input ref={presetsInput} type="file" accept="application/json" hidden
             onChange={(e) => e.target.files?.[0] && void importPresets(e.target.files[0])} />
+          <input ref={openRef} type="file" accept={LABEL_EXT} className="hidden"
+            onChange={(e) => {
+              const f = e.currentTarget.files?.[0];
+              e.currentTarget.value = "";
+              if (f) void openProject(f);
+            }} />
         </header>
       <div className="flex min-h-0 flex-1">
         <section className="flex min-w-0 flex-1 flex-col">
@@ -1145,7 +1344,7 @@ export default function App() {
               over the layers panel and the inspector. */}
           <div
             ref={previewPane}
-            className={cn("relative flex min-h-0 flex-1 overflow-hidden",
+            className={cn("relative flex min-h-0 flex-1 overflow-hidden border-l border-sidebar-border",
               panning && "cursor-grabbing")}
             // Suppressed unconditionally in 2D, not just while zoomed: a
             // gesture that opens a menu at 100% and pans at 150% would be a
@@ -1294,25 +1493,37 @@ export default function App() {
                 view, so they read the same in all four modes — unlike the
                 zoom to their left. */}
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
-            {/* The PAGE, not the trim: this is the artboard that goes to the
-                press, and it is what the DPI beside it describes — PSD_DOC is
-                derived from the same number. The die-cut size the label is
-                actually ordered at is a keystroke away in the tooltip.
+            {/* The TRIM, not the page: this is the die-cut size the label is
+                ordered at (8x5in) — what "artboard size" means to the
+                operator. The full page with bleed — what the press file
+                measures — is a keystroke away in the tooltip.
                 Clicking cycles the SAME unit the rulers and the margin field
                 use, so the app has one measurement setting rather than a
                 toolbar that disagrees with the ruler beside it. */}
             <button
               onClick={() => setRulerUnit(nextRulerUnit(rulerUnit))}
-              title={`Artboard including bleed — trim is ${sizeLabel(ART.w, ART.h, rulerUnit)}. Click for ${nextRulerUnit(rulerUnit)}`}
-              aria-label={`Artboard size ${sizeLabel(PAGE.w, PAGE.h, rulerUnit)}; click to change units`}
+              title={`Trim size — with bleed the page is ${sizeLabel(PAGE.w, PAGE.h, rulerUnit)}. Click for ${nextRulerUnit(rulerUnit)}`}
+              aria-label={`Artboard size ${sizeLabel(ART.w, ART.h, rulerUnit)}; click to change units`}
               className="shrink-0 rounded px-1 py-0.5 text-xs tabular-nums whitespace-nowrap text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
-              {sizeLabel(PAGE.w, PAGE.h, rulerUnit)}
+              {sizeLabel(ART.w, ART.h, rulerUnit)}
             </button>
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
             <span className="shrink-0 px-1 text-xs tabular-nums whitespace-nowrap text-muted-foreground"
               title="Resolution the PDFs and PSDs are built at">
               {render.dpi} DPI
             </span>
+            <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
+            {/* Which preview is on screen — the menubar's View names. In 2D
+                the split decides: all-mask, all-art, or a live compare.
+                Clicking advances to the next view through the SAME commands
+                keys 1–5 run, so this can't drift from the menu (a mid-split
+                Compare counts as Standard, so it advances to Mask). */}
+            <button
+              onClick={() => byId(VIEW_CYCLE[(viewIndex + 1) % VIEW_CYCLE.length].id).run()}
+              title="Current preview view — click for the next (View menu, keys 1–5)"
+              className="shrink-0 rounded px-1 py-0.5 text-xs whitespace-nowrap text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+              View Mode: {viewLabel}
+            </button>
           </div>
         </section>
         {/* Right inspector: a shadcn Sheet driven by the selection — open
@@ -1362,6 +1573,7 @@ export default function App() {
           onTexture={(f) => void onTexture(f)}
           onMask={(f) => void onMask(f)} />
         <CommandMenu actions={commands} />
+        <PresetsDialog open={presetsOpen} onOpenChange={setPresetsOpen} presets={presets} />
       </div>
         </SidebarInset>
       </SidebarProvider>

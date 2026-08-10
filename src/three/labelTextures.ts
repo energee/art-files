@@ -33,11 +33,11 @@ export interface LabelTextures {
 async function renderPlate(
   bytes: Uint8Array, size?: { width: number; height: number },
 ): Promise<HTMLCanvasElement> {
+  // scaleCap, not a scale function: the page's natural size is only known in
+  // the raster worker, which resolves the cap there (size, when set, wins).
   const canvas = await renderPdfPage(bytes, {
     size,
-    scale: (base) => (size
-      ? size.width / base.width
-      : Math.min(2, MAX_EDGE / Math.max(base.width, base.height))),
+    scaleCap: { maxEdge: MAX_EDGE, maxScale: 2 },
   });
   return canvas!;
 }

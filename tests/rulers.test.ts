@@ -47,18 +47,20 @@ describe("preview rulers", () => {
     expect(zero?.label).toBe("0");
   });
 
-  it("derives quarter-inch margins plus center and middle from the trim box", () => {
+  it("derives 0.335in margins plus center and middle from the trim box", () => {
     const guides = layoutGuides(DEFAULT_MARGIN_PT);
     expect(guides.verticalMargins.map((p) => pointToUnit(p, ART.x, "in")))
-      .toEqual([0.25, 7.75]);
+      .toEqual([0.335, 7.665]);
     expect(guides.horizontalMargins.map((p) => pointToUnit(p, ART.y, "in")))
-      .toEqual([0.25, 4.75]);
+      .toEqual([0.335, 4.665]);
     expect(pointToUnit(guides.center, ART.x, "in")).toBe(4);
     expect(pointToUnit(guides.middle, ART.y, "in")).toBe(2.5);
+    // 0.335in at the 600dpi output resolution. closeTo: 24.12pt is not exact
+    // in binary, so the conversion carries ~1e-14 of float noise.
     expect(guides.verticalMargins.map((p) => pointToUnit(p, ART.x, "px")))
-      .toEqual([150, 4650]);
+      .toEqual([expect.closeTo(201, 8), 4599]);
     expect(guides.horizontalMargins.map((p) => pointToUnit(p, ART.y, "px")))
-      .toEqual([150, 2850]);
+      .toEqual([expect.closeTo(201, 8), 2799]);
   });
 
   it("states the artboard size in each unit without trailing zeros", () => {

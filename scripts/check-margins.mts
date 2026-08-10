@@ -13,7 +13,7 @@ import fontkit from "@pdf-lib/fontkit";
 import { layoutGuides, DEFAULT_MARGIN_PT } from "../src/rulers";
 import { defaultConfig } from "../src/defaults";
 import { parseRuns } from "../src/description";
-import { wrapWarning } from "../src/warning";
+import { warningMeasure, wrapWarning } from "../src/warning";
 import type { Style } from "../src/types";
 import * as L from "../src/layout";
 
@@ -79,9 +79,11 @@ rotated("Info", cfg.handleAddress, L.HANDLE_ADDR, SEMIBOLD);
 rotated("storeCold", cfg.storeCold, L.STORE_COLD, SEMIBOLD);
 // Every warning column is stretched to exactly maxLen by drawJustifiedRotated,
 // so its drawn length is maxLen regardless of what the words measure.
-const measure = (t: string) =>
-  L.trackedWidth((REGULAR.layout(t).advanceWidth / REGULAR.unitsPerEm) * L.WARNING.size, t,
-    cfg.warning.letterSpacing);
+const faceWidth = (face: Face, t: string, size: number) =>
+  (face.layout(t).advanceWidth / face.unitsPerEm) * size;
+const measure = warningMeasure(
+  (t, bold) => faceWidth(bold ? BOLD : REGULAR, t, L.WARNING.size),
+  cfg.warning.letterSpacing);
 wrapWarning(measure, L.WARNING.maxLen).forEach((line, n) =>
   rotated(`warning c${n + 1}`, { ...cfg.warning, text: line },
     { x: L.WARNING.x + n * L.WARNING.leading, yStart: L.WARNING.yStart, size: L.WARNING.size },
@@ -113,8 +115,8 @@ console.log(`STORE_COLD.yStart ${(MT + (scInk.right - scInk.left) + strokeOf(cfg
 
 console.log("\n--- warning size vs column count at maxLen = span - 2*stroke ---");
 const wMax = SPAN - 2 * strokeOf(cfg.warning);
-for (const size of [6.0, 5.95, 5.9, 5.85, 5.8, 5.75, 5.7]) {
-  const m = (t: string) => L.trackedWidth(
-    (REGULAR.layout(t).advanceWidth / REGULAR.unitsPerEm) * size, t, cfg.warning.letterSpacing);
+for (const size of [6.0, 5.95, 5.9, 5.85, 5.8, 5.75, 5.7, 5.65, 5.6, 5.55, 5.5]) {
+  const m = warningMeasure(
+    (t, bold) => faceWidth(bold ? BOLD : REGULAR, t, size), cfg.warning.letterSpacing);
   console.log(`  size ${size}: ${wrapWarning(m, wMax).length} cols`);
 }

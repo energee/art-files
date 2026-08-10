@@ -6,6 +6,7 @@
 // only the pointer gesture is ours, since no shadcn primitive scrubs. Typing
 // still works, and the Input keeps its native arrow-key stepping.
 import { useRef, useState } from "react";
+import type { LucideIcon } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import {
   InputGroup, InputGroupAddon, InputGroupInput, InputGroupText,
@@ -24,6 +25,8 @@ export function ScrubField(props: {
   /** Ties the Label to the Input; callers prefix it per element. */
   id: string;
   label: string;
+  /** Optional icon shown before the label text; part of the scrub handle. */
+  icon?: LucideIcon;
   /** Shown as the InputGroup's trailing addon, e.g. "pt" or "px". */
   unit: string;
   value: number;
@@ -57,7 +60,7 @@ export function ScrubField(props: {
       <Label
         htmlFor={props.id}
         title="Drag to change"
-        className="cursor-ew-resize select-none text-xs text-muted-foreground"
+        className="cursor-ew-resize select-none gap-1 text-xs text-muted-foreground"
         onPointerDown={(e) => {
           // Left button only: a right-click on the label shouldn't scrub.
           if (e.button !== 0) return;
@@ -79,6 +82,7 @@ export function ScrubField(props: {
             e.currentTarget.releasePointerCapture(e.pointerId);
         }}
       >
+        {props.icon && <props.icon className="size-3.5" aria-hidden="true" />}
         {props.label}
       </Label>
       <InputGroup className="h-6 w-24">

@@ -27,7 +27,9 @@ export interface LayoutGuides {
   middle: number;
 }
 
-export const DEFAULT_MARGIN_PT = 18; // 0.25in
+// The margin itself lives in layout.ts now (the safe-area edges derive from
+// it there); re-exported here so ruler consumers keep their import.
+export { DEFAULT_MARGIN_PT } from "@/layout";
 const MIN_MAJOR_PX = 56;
 const SUBDIVISIONS = 4;
 // Pixels mean deliverable pixels at the document's OUTPUT resolution, not CSS
