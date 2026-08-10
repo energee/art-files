@@ -732,7 +732,7 @@ export default function App() {
 
   /** Load a collab logo into `slot`, revoking the previous thumbnail URL. */
   function onCollab(slot: "left" | "center", f: File) {
-    void readCollab(f).then((next) =>
+    return readCollab(f).then((next) =>
       swapLoaded(slot === "left" ? setCollabLeft : setCollabCenter, next));
   }
   const collabFiles: CollabFiles = {
@@ -940,6 +940,14 @@ export default function App() {
    *  Null until then, so plain Save falls through to the Save As dialog —
    *  the classic editor contract. A ref, not state: nothing renders it. */
   const projectHandle = useRef<FileSystemFileHandle | null>(null);
+  /** Whether the document differs from the last saved/opened project. Marked
+   *  by the effect below on any config or asset change, cleared by a
+   *  completed save or open — so File → Save disables when there is nothing
+   *  new to write. Starts true: a fresh document has never been saved.
+   *  Undoing back to the exact saved state still counts as dirty — the flag
+   *  tracks mutations, not content equality. */
+  const [dirty, setDirty] = useState(true);
+  useEffect(() => { setDirty(true); }, [cfg, texture, mask, collabLeft, collabCenter]);
   /** File → Save / Save As…: everything needed to reopen this label — config
    *  plus original image bytes — zipped as <beerName>.label (see labelfile.ts).
    *  Chromium shows a real save dialog (name/place the file) and Save then
@@ -968,6 +976,7 @@ export default function App() {
         const writable = await projectHandle.current.createWritable();
         await writable.write(zip as unknown as ArrayBuffer);
         await writable.close();
+        setDirty(false);
         return;
       } catch (err) {
         // Cancelled dialog = no save wanted; anything else falls back to
@@ -979,6 +988,7 @@ export default function App() {
     }
     startSaveBatch();
     saveBytes(zip, exportBaseName(cfg) + LABEL_EXT, "application/zip");
+    setDirty(false);
   }
   /** File → Open Project…: the native picker where available, so Save can
    *  rewrite the opened file; elsewhere the hidden-input fallback (which
@@ -1019,10 +1029,14 @@ export default function App() {
       const toFile = (a: { name: string; bytes: Uint8Array }) =>
         new File([a.bytes as unknown as BlobPart], a.name, { type: mimeFor(a.name) });
       const { texture: t, mask: m, collabLeft: l, collabCenter: c } = unpacked.assets;
-      if (t) void onTexture(toFile(t));
-      if (m) void onMask(toFile(m));
-      if (l) onCollab("left", toFile(l));
-      if (c) onCollab("center", toFile(c));
+      // Awaited so the freshly opened document can be marked clean AFTER the
+      // asset handlers' state writes — each of those marks it dirty again,
+      // and the last write has to be this clean one.
+      await Promise.all([
+        t && onTexture(toFile(t)), m && onMask(toFile(m)),
+        l && onCollab("left", toFile(l)), c && onCollab("center", toFile(c)),
+      ]);
+      setDirty(false);
     } catch (err) {
       setLoadError(`Could not open ${f.name}: ${errMsg(err)}`);
     }
@@ -1119,8 +1133,11 @@ export default function App() {
   const commands: Command[] = [
     { id: "project-open", label: "Open Project…", key: "o", mods: "⌘",
       run: () => void openProjectPicker() },
+    // Disabled while clean: with nothing changed since the last save/open
+    // there is nothing to write. Save As stays live — a copy under a new
+    // name is always meaningful.
     { id: "project-save", label: "Save Project", key: "s", mods: "⌘",
-      run: () => void saveProject() },
+      disabled: !dirty, run: () => void saveProject() },
     { id: "project-save-as", label: "Save Project As…", key: "s", mods: "⇧⌘",
       run: () => void saveProject(true) },
     // ⌘E exports the PDFs, ⇧⌘E the PSDs — the whole-deliverable runs. The
@@ -1207,7 +1224,7 @@ export default function App() {
                 {/* Project save/load first — the whole label, not just a
                     deliverable. */}
                 {["project-open", "project-save", "project-save-as"].map((id) => (
-                  <MenubarItem key={id} onClick={byId(id).run}>
+                  <MenubarItem key={id} disabled={byId(id).disabled} onClick={byId(id).run}>
                     {byId(id).label} <MenubarShortcut>{shortcutOf(byId(id))}</MenubarShortcut>
                   </MenubarItem>
                 ))}
