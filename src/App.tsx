@@ -653,6 +653,9 @@ export default function App() {
     setDirty(true); // every config edit passes through here — see `dirty`
     setCfg((c) => { const n = structuredClone(c); fn(n); return n; });
   };
+  /** Wrap a config mutation that bypasses `update` (undo/redo) so it still
+   *  marks the document dirty. */
+  const mutating = (fn: () => void) => () => { setDirty(true); fn(); };
 
   // Canvas uses the same bundled Regular/SemiBold font files as the PDF, but
   // avoids loading pdf-lib + fontkit on the UI thread just to measure hit
@@ -1066,22 +1069,26 @@ export default function App() {
     if (!pick) { openRef.current?.click(); return; }
     try {
       const [handle] = await pick({ types: LABEL_TYPES });
-      // Quiet retries with a fresh getFile() each time: the first read of a
-      // freshly saved, cloud-synced, or large just-downloaded .label can
-      // fail while the OS materializes or scans the bytes — users saw
-      // "cancel and reopen fixes it", which is this race resolving itself.
-      // Backoff up to ~1.5s total because a 38MB file scans measurably
-      // slower than a small one; only the last attempt's failure reports.
-      const delays = [0, 300, 1200];
-      let ok = false;
-      for (let i = 0; i < delays.length && !ok; i++) {
-        if (delays[i]) await new Promise((r) => setTimeout(r, delays[i]));
-        ok = await openProject(await handle.getFile(), { quiet: i < delays.length - 1 });
-      }
-      if (ok) projectHandle.current = handle;
+      if (await openWithRetry(() => handle.getFile())) projectHandle.current = handle;
     } catch (err) {
       if (!isAbort(err)) setLoadError(`Could not open project: ${errMsg(err)}`);
     }
+  }
+
+  /** Open a .label with quiet retries — shared by BOTH entry points (the
+   *  FS-Access picker and the hidden-input fallback), so neither can drift.
+   *  The first read of a freshly saved, cloud-synced, or large
+   *  just-downloaded file can fail while the OS materializes or scans the
+   *  bytes — users saw "cancel and reopen fixes it", which is this race
+   *  resolving itself. Backoff to ~1.5s total because a 38MB file scans
+   *  measurably slower than a small one; only the last attempt reports. */
+  async function openWithRetry(getFile: () => Promise<File>): Promise<boolean> {
+    const delays = [0, 300, 1200];
+    for (let i = 0; i < delays.length; i++) {
+      if (delays[i]) await new Promise((r) => setTimeout(r, delays[i]));
+      if (await openProject(await getFile(), { quiet: i < delays.length - 1 })) return true;
+    }
+    return false;
   }
 
   /** File → Open Project…: unzip a .label, run its config through the same
@@ -1232,12 +1239,11 @@ export default function App() {
       disabled: exportBlocked, run: () => void exportPsd() },
     { id: "export-psd-art", label: "Export Artwork PSD", disabled: exportBlocked, run: () => void exportPsd("art") },
     { id: "export-psd-mask", label: "Export Mask PSD", disabled: exportBlocked, run: () => void exportPsd("mask") },
-    // Undo/redo are config mutations that bypass `update`, so they mark the
-    // document dirty themselves (mutations-not-equality, see `dirty`).
-    { id: "undo", label: "Undo", shortcut: "⌘Z", disabled: !canUndo,
-      run: () => { setDirty(true); undo(); } },
-    { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: !canRedo,
-      run: () => { setDirty(true); redo(); } },
+    // Undo/redo are config mutations that bypass `update`, so they run
+    // through `mutating` to mark the document dirty (see `dirty`) — as must
+    // any future command that changes the config outside `update`.
+    { id: "undo", label: "Undo", shortcut: "⌘Z", disabled: !canUndo, run: mutating(undo) },
+    { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: !canRedo, run: mutating(redo) },
     { id: "presets-view", label: "View presets", run: () => setPresetsOpen(true) },
     { id: "presets-export", label: "Export presets", run: () => void exportPresets() },
     { id: "presets-import", label: "Import presets", run: () => presetsInput.current?.click() },
@@ -1308,11 +1314,14 @@ export default function App() {
               <MenubarContent align="start" className={MENU_ITEMS}>
                 {/* Project save/load first — the whole label, not just a
                     deliverable. */}
-                {["project-open", "project-save", "project-save-as"].map((id) => (
-                  <MenubarItem key={id} disabled={byId(id).disabled} onClick={byId(id).run}>
-                    {byId(id).label} <MenubarShortcut>{shortcutOf(byId(id))}</MenubarShortcut>
-                  </MenubarItem>
-                ))}
+                {["project-open", "project-save", "project-save-as"].map((id) => {
+                  const cmd = byId(id);
+                  return (
+                    <MenubarItem key={id} disabled={cmd.disabled} onClick={cmd.run}>
+                      {cmd.label} <MenubarShortcut>{shortcutOf(cmd)}</MenubarShortcut>
+                    </MenubarItem>
+                  );
+                })}
                 <MenubarSeparator />
                 {/* Deliverables first, both-at-once first within each format:
                     that is the common run. !pdfs is the mid-build state, so
@@ -1441,7 +1450,7 @@ export default function App() {
             onChange={(e) => {
               const f = e.currentTarget.files?.[0];
               e.currentTarget.value = "";
-              if (f) void openProject(f);
+              if (f) void openWithRetry(async () => f);
             }} />
         </header>
       <div className="flex min-h-0 flex-1">
