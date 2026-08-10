@@ -422,6 +422,11 @@ const UPC_DEPTH_MODULES = UPC_UNITS.barH + UPC_UNITS.textMargin + UPC_UNITS.font
 const UPC_MOD = 29.88 / UPC_DEPTH_MODULES;
 /** Bar-start to digit baseline — JsBarcode's text y for a bottom value row. */
 const UPC_DEPTH = UPC_DEPTH_MODULES * UPC_MOD;
+/** The white halo around the symbol, in points (~1.8 modules — see the note
+ *  on BARCODE.stroke). Named so BARCODE.x's right-margin squaring and the
+ *  stroke it clears derive from the same value: retune the halo and the
+ *  plate moves with it. */
+const UPC_STROKE = 1.8 * UPC_MOD;
 
 // Colors are cfg.barcodeFill / barcodeStroke / barcodeLayer now (shipping as
 // near-black bars in a white halo over white ink); only the geometry lives
@@ -442,7 +447,7 @@ export const BARCODE = {
   // barcode in meant moving the whole rotated info block left with it —
   // HANDLE_ADDR.x and WARNING.x carry the same 12.42pt shift, keeping the
   // warning's last column the same 0.75pt clear of the halo.
-  x: SAFE.right - UPC_DEPTH - 1.8 * UPC_MOD, // 524.71
+  x: SAFE.right - UPC_DEPTH - UPC_STROKE, // 524.71
   yTop: 226.07,
   h: (UPC_UNITS.modules + 2 * UPC_UNITS.quiet) * UPC_MOD,
   /** White-ink margin around the symbol; the reference plate is exactly the
@@ -460,7 +465,7 @@ export const BARCODE = {
    *  pill — which is exactly how the reference's white shape behaves.
    *  This is what an unset cfg.barcodeStrokeWidth resolves to; note it is
    *  wider than DEFAULT_STROKE_PX * PX (1.85pt vs 1.8pt). */
-  stroke: 1.8 * UPC_MOD,
+  stroke: UPC_STROKE,
   textSize: UPC_UNITS.fontSize * UPC_MOD,
   /** Bar start to the digit baseline (glyphs grow back toward the bars). */
   textOffset: UPC_DEPTH,
