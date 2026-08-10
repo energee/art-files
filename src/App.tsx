@@ -1066,15 +1066,17 @@ export default function App() {
     if (!pick) { openRef.current?.click(); return; }
     try {
       const [handle] = await pick({ types: LABEL_TYPES });
-      // One quiet retry with a fresh getFile(): the first read of a freshly
-      // saved or cloud-synced .label (iCloud/Drive placeholder) can fail
-      // while the OS materializes the bytes — users saw "cancel and reopen
-      // fixes it", which is this race resolving itself. Only the retry's
-      // failure is worth reporting.
-      let ok = await openProject(await handle.getFile(), { quiet: true });
-      if (!ok) {
-        await new Promise((r) => setTimeout(r, 300));
-        ok = await openProject(await handle.getFile());
+      // Quiet retries with a fresh getFile() each time: the first read of a
+      // freshly saved, cloud-synced, or large just-downloaded .label can
+      // fail while the OS materializes or scans the bytes — users saw
+      // "cancel and reopen fixes it", which is this race resolving itself.
+      // Backoff up to ~1.5s total because a 38MB file scans measurably
+      // slower than a small one; only the last attempt's failure reports.
+      const delays = [0, 300, 1200];
+      let ok = false;
+      for (let i = 0; i < delays.length && !ok; i++) {
+        if (delays[i]) await new Promise((r) => setTimeout(r, delays[i]));
+        ok = await openProject(await handle.getFile(), { quiet: i < delays.length - 1 });
       }
       if (ok) projectHandle.current = handle;
     } catch (err) {
