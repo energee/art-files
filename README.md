@@ -95,6 +95,11 @@ its fill alone; the logo's classic
 dark keyline is just this stroke, on by default. Clicking empty
 background in the preview clears the selection.
 
+PNG/JPEG files can be dropped anywhere in the browser or packaged Tauri
+window to open the background/mask chooser. Dropping directly on an inspector
+image field takes precedence and loads that field instead; clicking a field
+still opens its file picker.
+
 The description itself is a WYSIWYG multiline field now, not a
 raw-markdown textarea: each line renders in its real appearance
 (gold/white ink, bold, larger header) instead of `#`/`**`/`_`
@@ -159,7 +164,8 @@ resolution when clicked. Preview PDF generation runs in a lazy Web Worker,
 keeping pdf-lib/fontkit parsing and rendering off the UI thread; the
 full-resolution PDF and PSD renderers load only when their export actions are
 used. Every action lives in a menubar across the top of
-the window, above the sidebar/preview split: **File** (Open Project… ⌘O,
+the window, above the sidebar/preview split: **File** (New Project ⌘N — with
+an unsaved-changes confirmation before replacing the current label; Open Project… ⌘O,
 Save Project ⌘S, Save Project As… ⇧⌘S — the whole label, including its
 texture, mask, and collab logos, zipped as a `<beerName>.label` file, see
 `src/labelfile.ts`; in Chromium these use real open/save dialogs and Save

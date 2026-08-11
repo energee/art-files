@@ -54,6 +54,10 @@ import {
   Sidebar, SidebarContent, SidebarInset, SidebarProvider, SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -301,7 +305,7 @@ function download(url: string, name: string) {
 export default function App() {
   // Config lives in a history stack, not plain useState — every edit that
   // goes through setCfg (i.e. all of them, see `update` below) is undoable.
-  const { value: cfg, set: setCfg, undo, redo, canUndo, canRedo } =
+  const { value: cfg, set: setCfg, reset: resetCfg, undo, redo, canUndo, canRedo } =
     useHistory<LabelConfig>(defaultConfig);
   // Which layers the inspector shows — Figma's model: an ordered selection
   // plus an anchor a shift-range extends from, driven by the layers panel or
@@ -619,6 +623,9 @@ export default function App() {
   const openRef = useRef<HTMLInputElement>(null);
   // The read-only "View presets" dialog (File menu / ⌘K).
   const [presetsOpen, setPresetsOpen] = useState(false);
+  // Dirty-project confirmation for File → New Project. An in-app dialog keeps
+  // the destructive choice themed, accessible, and keyboard-drivable.
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
   const previewRef = useRef<PreviewCompareHandle>(null);
   // Trim guide over the 2D preview at the art box, wherever the bleed knob
   // currently puts it (ART.x/ART.y follow it). View-only — this toggle draws
@@ -1029,6 +1036,39 @@ export default function App() {
   // Incremented by the native application menu. DesktopUpdater also performs
   // its own silent launch check; this signal requests a user-visible check.
   const [updateCheckRequest, setUpdateCheckRequest] = useState(0);
+
+  /** Full-document replacement shared by New and Open: swap the config in
+   *  (resetting history) and clear every asset slot. A slot added later must
+   *  be cleared here so neither path can leak the previous project's asset. */
+  function resetDocument(config: LabelConfig) {
+    resetCfg(config);
+    swapLoaded(setTexture, null);
+    swapLoaded(setMask, null);
+    swapLoaded(setCollabLeft, null);
+    swapLoaded(setCollabCenter, null);
+  }
+
+  /** Start an unsaved project from the shipped defaults. View and shop state
+   *  deliberately survive; project content, history, file identity, selection,
+   *  and any stale rendered result do not. */
+  function createNewProject() {
+    resetDocument(defaultConfig());
+    projectHandle.current = null;
+    clearSelection();
+    setPdfs(null);
+    setLoadError("");
+    setBuildError("");
+    setDirty(true);
+    setNewProjectOpen(false);
+  }
+
+  /** Clean documents can be replaced immediately; dirty ones require an
+   *  explicit destructive choice in the dialog rendered below. */
+  function requestNewProject() {
+    if (dirty) setNewProjectOpen(true);
+    else createNewProject();
+  }
+
   /** File → Save / Save As…: everything needed to reopen this label — config
    *  plus original image bytes — zipped as <beerName>.label (see labelfile.ts).
    *  Chromium shows a real save dialog (name/place the file) and Save then
@@ -1105,12 +1145,7 @@ export default function App() {
   async function openProject(f: File, opts?: { quiet?: boolean }): Promise<boolean> {
     try {
       const unpacked = unpackLabel(new Uint8Array(await f.arrayBuffer()));
-      const config = parseConfigFile(unpacked.json);
-      setCfg(() => config);
-      swapLoaded(setTexture, null);
-      swapLoaded(setMask, null);
-      swapLoaded(setCollabLeft, null);
-      swapLoaded(setCollabCenter, null);
+      resetDocument(parseConfigFile(unpacked.json));
       // The type matters: FileDrop thumbnails are createObjectURL(file), and
       // an <img> won't render a typeless blob as SVG — logos restored from a
       // project showed as broken images while fresh drops (whose File the
@@ -1222,6 +1257,8 @@ export default function App() {
   const twoD = viewMode === "2d";
   const guideEdit = twoD && showGuides;
   const commands: Command[] = [
+    { id: "project-new", label: "New Project", key: "n", mods: "⌘",
+      run: requestNewProject },
     { id: "project-open", label: "Open Project…", key: "o", mods: "⌘",
       run: () => void openProjectPicker() },
     // Disabled while clean: with nothing changed since the last save/open
@@ -1577,6 +1614,20 @@ export default function App() {
           onMask={(f) => void onMask(f)} />
         <CommandMenu actions={commands} />
         <PresetsDialog open={presetsOpen} onOpenChange={setPresetsOpen} presets={presets} />
+        <Dialog open={newProjectOpen} onOpenChange={setNewProjectOpen}>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>Start a new project?</DialogTitle>
+              <DialogDescription>
+                This will discard unsaved changes in the current project. This cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setNewProjectOpen(false)}>Cancel</Button>
+              <Button variant="destructive" onClick={createNewProject}>Discard and Create</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <DesktopUpdater dirty={dirty} checkRequest={updateCheckRequest} />
       </div>
         </SidebarInset>
