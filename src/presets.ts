@@ -1,12 +1,12 @@
+// presets.ts — the reusable style and barcode library, read from and written
+// back to presets.json through the Vite dev server in a browser or through the
+// native Tauri backend in Label Lab. Deliberately NOT localStorage: presets
+// have to survive a cleared browser profile, and browser development keeps a
+// file in git that can be reviewed, diffed, and restored.
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useSyncExternalStore } from "react";
 import { DESIGN_DPI, LABEL_SHORT_IN } from "@/layout";
 import { decimalsOf } from "@/numeric";
-
-// presets.ts — the reusable style and barcode library, read from and written
-// back to presets.json at the repo root through the dev server's
-// /api/presets endpoint (see vite.config.ts). Deliberately NOT localStorage:
-// presets have to survive a cleared browser profile, and a file in git can be
-// reviewed, diffed, and restored.
 export interface BarcodePreset {
   /** Optional human label ("House IPA"). Absent = show the digits, which are
    *  the only thing that identifies an unnamed barcode. */
@@ -149,11 +149,14 @@ export function normalizePresets(raw: Partial<Presets>): Presets {
   };
 }
 
-/** Read the library. Returns empty rather than throwing when the endpoint is
- *  missing (a production build carries no dev middleware), so the pickers
- *  show nothing instead of breaking the inspector. */
+/** Read the library. Label Lab uses its writable application-config copy;
+ *  browser development uses Vite's repo-backed endpoint. Returns empty rather
+ *  than breaking the inspector when neither storage boundary is available. */
 export async function loadPresets(): Promise<Presets> {
   try {
+    if (isTauri()) {
+      return normalizePresets(await invoke<Partial<Presets>>("load_presets"));
+    }
     const res = await fetch("/api/presets");
     if (!res.ok) return EMPTY_PRESETS;
     return normalizePresets((await res.json()) as Partial<Presets>);
@@ -165,6 +168,10 @@ export async function loadPresets(): Promise<Presets> {
 /** Write the whole library back. Throws with a message the caller can show:
  *  a silently dropped save looks identical to a successful one. */
 export async function savePresets(presets: Presets): Promise<void> {
+  if (isTauri()) {
+    await invoke("save_presets", { presets });
+    return;
+  }
   const res = await fetch("/api/presets", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -232,7 +239,7 @@ export async function mutatePresets(patch: (current: Presets) => Presets): Promi
   try {
     await savePresets(next);
   } catch (e) {
-    publish({ error: (e as Error).message });
+    publish({ error: e instanceof Error ? e.message : String(e) });
   }
 }
 

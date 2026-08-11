@@ -8,3 +8,4 @@ out/
 # repo. Same reason as the line above — a worktree here is a second copy of
 # the tree, which git would otherwise offer to commit into this one.
 .claude/
+src-tauri/tauri.release.generated.conf.json
