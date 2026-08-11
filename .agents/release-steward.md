@@ -29,7 +29,9 @@ handoff.
    user-facing bullets about behavior, fixes, and any upgrade caveats; do not use a
    list of filenames or internal implementation details as release notes.
 4. Run `node scripts/check-release.mjs <base-ref>` along with the task's normal tests
-   and build. For a pull request, `<base-ref>` is the target branch or its merge-base.
+   and build. A pre-push git hook (`.githooks/pre-push`, activated by `npm install`
+   via the `prepare` script) runs the same check automatically, but do not rely on
+   it alone — run the checker before handoff. For a pull request, `<base-ref>` is the target branch or its merge-base.
 5. Report the classification, selected version, release-note heading, and validation
    result in the handoff.
 

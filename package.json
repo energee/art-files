@@ -10,6 +10,7 @@
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
     "desktop:release-config": "node scripts/configure-updater.mjs",
+    "prepare": "git config core.hooksPath .githooks || true",
     "preview": "vite preview",
     "test": "vitest run",
     "generate": "tsx scripts/generate.ts",
