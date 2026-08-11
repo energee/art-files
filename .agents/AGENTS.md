@@ -57,8 +57,9 @@ Before an agent finishes a task, it must classify whether the diff changes the
 installed Label Lab application or its packaged runtime. In a multi-agent run,
 assign one agent the release-steward role; in a single-agent run, the active agent
 owns it. Binary-impacting changes require a new synchronized version and a matching
-`CHANGELOG.md` entry in the same change. Release tooling, tags, and workflow dispatches
-remain opt-in operations and are never performed merely because metadata was prepared.
+`CHANGELOG.md` entry in the same change. Merging a version change to `main` publishes
+that release automatically, so agents must not merge, manually dispatch the release
+workflow, or manipulate release tags and artifacts without explicit user authorization.
 
 ## Worktrees
 

@@ -3,6 +3,8 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
+import { releaseNotes } from "./release-notes.mjs";
+
 const VERSION_FILES = [
   "package.json",
   "package-lock.json",
@@ -107,21 +109,6 @@ function isBinaryImpacting(path) {
   return BINARY_FILES.has(path) || BINARY_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
-function releaseNotes(version) {
-  const changelog = readFileSync("CHANGELOG.md", "utf8");
-  const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const heading = new RegExp(`^## \\[${escapedVersion}\\] - (\\d{4}-\\d{2}-\\d{2})\\s*$`, "m");
-  const match = heading.exec(changelog);
-  if (!match) abort(`CHANGELOG.md has no dated ## [${version}] release-note section`);
-
-  const bodyStart = match.index + match[0].length;
-  const remaining = changelog.slice(bodyStart);
-  const nextHeading = remaining.search(/^## /m);
-  const body = (nextHeading === -1 ? remaining : remaining.slice(0, nextHeading)).trim();
-  if (!/^-\s+\S/m.test(body)) abort(`CHANGELOG.md section ${version} has no release-note bullets`);
-  return `## [${version}] - ${match[1]}`;
-}
-
 const args = process.argv.slice(2);
 const releaseMode = args[0] === "--release";
 const baseRef = releaseMode ? args[1] : args[0];
@@ -171,7 +158,12 @@ if (binaryFiles.length > 0 && !changedFiles.includes("CHANGELOG.md")) {
   abort("binary-impacting files changed, but CHANGELOG.md was not updated");
 }
 
-const notesHeading = releaseNotes(version);
+let notesHeading;
+try {
+  notesHeading = releaseNotes(version).heading;
+} catch (error) {
+  abort(error.message);
+}
 console.log(`Release metadata check passed for ${version}.`);
 console.log(
   binaryFiles.length > 0

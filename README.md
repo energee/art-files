@@ -243,12 +243,14 @@ The key generator prompts for the password used by the second secret. To ship
 a release, follow the release-steward checklist in `.agents/release-steward.md`:
 bump the synchronized application version, add that version's user-facing notes
 to `CHANGELOG.md`, and run the metadata check against the latest release tag.
-Then run the **Release Label Lab** workflow from GitHub Actions. It validates
-the version and notes again, builds Intel and Apple Silicon apps, and creates a
-`label-lab-v<version>` release on this (private) repo with the DMGs for manual
-install. Because installed apps cannot read a private repo, the workflow then
-copies only the update feed — `latest.json`, the updater archives, and their
-signatures — to the repo's public GitHub Pages site
+Once that change passes the required metadata check and merges to `main`, the
+**Release Label Lab** workflow starts automatically. It validates the version
+and notes again, uses that changelog section as the GitHub Release body, builds
+Intel and Apple Silicon apps, and creates a `label-lab-v<version>` release on
+this (private) repo with the DMGs for manual install. A manual workflow dispatch
+remains available for release recovery. Because installed apps cannot read a
+private repo, the workflow then copies only the update feed — `latest.json`, the
+updater archives, and their signatures — to the repo's public GitHub Pages site
 (`https://energ.ee/art-files/`, via the account's custom domain), which is what
 the in-app updater
 polls. The source and release page stay private; only those update artifacts

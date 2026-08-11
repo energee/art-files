@@ -3,6 +3,11 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.2] - 2026-08-11
+
+- Matched barcode white-ink stroke corners to the rounded artwork and PSD
+  strokes, removing small mask overhangs at bar and digit corners.
+
 ## [0.1.1] - 2026-08-11
 
 - Added New Project with an unsaved-changes confirmation, a standard keyboard
