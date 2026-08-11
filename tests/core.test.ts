@@ -3,7 +3,6 @@
 import { describe, expect, it } from "vitest";
 import { encodeUpc, upcCheckDigit, validateUpc } from "../src/upc";
 import { qrPath, qrShapes, machineName, qrUrl } from "../src/qr";
-import { prepareMaskForPdf } from "../src/maskimage";
 import { tintRgba } from "../src/collab";
 import { defaultConfig, displayAbv, parseConfigFile, toConfigFile } from "../src/defaults";
 import { parseDescription, parseInfoLine, parseRuns, serializeDescription } from "../src/description";
@@ -63,36 +62,6 @@ describe("qr", () => {
   });
 });
 
-describe("mask", () => {
-  const px = (r: number, g: number, b: number) => [r, g, b, 255];
-  it("accepts a pure white/blue mask and recolors it", () => {
-    const rgba = new Uint8Array([...px(255, 255, 255), ...px(0, 156, 215)]);
-    expect(prepareMaskForPdf(rgba).ok).toBe(true);
-    expect(rgba[3]).toBe(0); // metallic white -> transparent (knockout)
-    expect([...rgba.slice(4)]).toEqual([0, 156, 215, 255]); // blue stays
-  });
-  it("rejects off-palette masks", () => {
-    const rgba = new Uint8Array([...px(255, 0, 0), ...px(0, 255, 0)]);
-    const v = prepareMaskForPdf(rgba);
-    expect(v.ok).toBe(false);
-    expect(v.offPalette).toBe(1);
-  });
-  it("validates and recolors a mask in one pass", () => {
-    const rgba = new Uint8Array([
-      ...px(255, 255, 255),
-      ...px(0, 156, 215),
-      ...px(255, 0, 0),
-    ]);
-    const v = prepareMaskForPdf(rgba);
-    expect(v.ok).toBe(false);
-    expect(v.offPalette).toBeCloseTo(1 / 3);
-    expect([...rgba]).toEqual([
-      255, 255, 255, 0,
-      0, 156, 215, 255,
-      255, 0, 0, 0,
-    ]);
-  });
-});
 
 describe("description markdown", () => {
   it("parses header, bold, white-ink, and combined styles", () => {
@@ -106,6 +75,9 @@ describe("description markdown", () => {
       { text: "Roy Farms", bold: true, fill: GOLD, layer: "white" },
       { text: "Silvery", bold: false, fill: GOLD, layer: "white" },
       { text: "Bold Gold", bold: true, fill: GOLD, layer: "metallic" },
+      // Trailing blank lines are kept as empty body lines (vertical gaps).
+      { text: "", bold: false, fill: GOLD, layer: "metallic" },
+      { text: "", bold: false, fill: GOLD, layer: "metallic" },
     ]);
   });
   it("parses the Info line with the same markers, collapsed to one line", () => {
@@ -173,9 +145,12 @@ describe("description markdown", () => {
     expect(serializeDescription(parseDescription(reversed))).toBe(canonical);
   });
 
-  it("drops blank lines: they are skipped during parsing and cannot be recovered", () => {
-    const src = "A\n\nB";
-    expect(serializeDescription(parseDescription(src))).toBe("A\nB");
+  it("keeps interior blank lines and skips leading ones", () => {
+    // A blank line between body lines is an author's vertical gap: it
+    // survives the round-trip. Blanks before the first line render nothing,
+    // so they are still dropped.
+    expect(serializeDescription(parseDescription("A\n\nB"))).toBe("A\n\nB");
+    expect(serializeDescription(parseDescription("\n\nA\nB"))).toBe("A\nB");
   });
 
   it("a second # line does not overwrite the header: first # wins, second survives as a body line", () => {
@@ -321,6 +296,23 @@ describe("config", () => {
     const parsed = parseConfigFile(JSON.stringify(toConfigFile(cfg)));
     expect(parsed).toEqual(cfg);
   });
+  it("migrates every missing stroke layer to white without changing config version", () => {
+    const legacy = toConfigFile(defaultConfig()) as unknown as Record<string, any>;
+    delete legacy.qrStrokeLayer;
+    delete legacy.barcodeStrokeLayer;
+    for (const value of Object.values(legacy)) {
+      if (value && typeof value === "object" && typeof value.fill === "string")
+        delete value.strokeLayer;
+    }
+    const cfg = parseConfigFile(JSON.stringify(legacy));
+    expect(cfg.qrStrokeLayer).toBe("white");
+    expect(cfg.barcodeStrokeLayer).toBe("white");
+    for (const value of Object.values(cfg)) {
+      if (value && typeof value === "object" && "fill" in value)
+        expect(value.strokeLayer).toBe("white");
+    }
+    expect(toConfigFile(cfg).version).toBe(1);
+  });
   it("rejects unknown versions and missing fields", () => {
     expect(() => parseConfigFile('{"version":2}')).toThrow(/version/);
     expect(() => parseConfigFile('{"version":1,"beerName":"X"}')).toThrow(/missing/);
@@ -340,7 +332,9 @@ describe("derived QR payload", () => {
     const legacy = toConfigFile(defaultConfig()) as unknown as Record<string, unknown>;
     delete legacy.descStyle;
     const cfg = parseConfigFile(JSON.stringify(legacy));
-    expect(cfg.descStyle).toEqual({ fill: GOLD, layer: "metallic" });
+    expect(cfg.descStyle).toEqual({
+      fill: GOLD, layer: "metallic", strokeLayer: "white",
+    });
   });
   it("config migration drops qrData and defaults qrFill/qrStroke", () => {
     const legacy = { ...toConfigFile(defaultConfig()), qrData: "https://old.example" } as Record<string, unknown>;

@@ -16,6 +16,12 @@ const LIMIT = 100;
 
 export type Stacks<T> = { past: T[]; present: T; future: T[] };
 
+/** Establish a new document boundary: the value becomes current and neither
+ *  project can reach the other through undo or redo. */
+export function resetTo<T>(present: T): Stacks<T> {
+  return { past: [], present, future: [] };
+}
+
 // The three transitions, pure and exported so the stack behaviour is testable
 // without a DOM renderer. `coalesce` folds the new value into the current
 // step instead of opening a new one; the caller owns the timing decision.
@@ -43,11 +49,8 @@ export function redone<T>(s: Stacks<T>): Stacks<T> {
 
 // `initial` takes a value or a lazy initializer, same as useState.
 export function useHistory<T>(initial: T | (() => T)) {
-  const [h, setH] = useState<Stacks<T>>(() => ({
-    past: [],
-    present: typeof initial === "function" ? (initial as () => T)() : initial,
-    future: [],
-  }));
+  const [h, setH] = useState<Stacks<T>>(() =>
+    resetTo(typeof initial === "function" ? (initial as () => T)() : initial));
   // Timestamp of the last accepted edit, for the coalescing window above.
   const lastEdit = useRef(0);
 
@@ -75,11 +78,17 @@ export function useHistory<T>(initial: T | (() => T)) {
     setH(redone);
   }, []);
 
+  const reset = useCallback((value: T) => {
+    lastEdit.current = 0;
+    setH(resetTo(value));
+  }, []);
+
   return {
     value: h.present,
     set,
     undo,
     redo,
+    reset,
     canUndo: h.past.length > 0,
     canRedo: h.future.length > 0,
   };

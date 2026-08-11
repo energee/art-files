@@ -2,7 +2,8 @@
 // lines: `# text` = header, `**text**` = bold, `_text_` = white ink (the
 // white-ink LAYER), combinable. Plain lines and the header take the caller's
 // base style (cfg.descStyle: fill, layer, outer stroke); the white marker
-// overrides the layer only — fill, stroke and tracking all stay the block's. Only the FIRST
+// overrides the fill layer only — stroke, its own layer, and tracking all
+// stay the block's. Only the FIRST
 // non-blank line can become the header — any later line starting with `#` is
 // literal body text (the `#` stays in it verbatim), never a second header;
 // there is only ever one header slot, so it can't silently overwrite it.
@@ -49,9 +50,10 @@ function styleLine(raw: string, base: Style, bold = false): StyledLine {
     fill: base.fill,
     layer: white ? "white" : base.layer,
     stroke: base.stroke,
+    strokeLayer: base.strokeLayer,
     strokeWidth: base.strokeWidth,
     // Tracking is a block-level setting like the stroke: the white marker
-    // overrides fill/layer only, never the base's spacing.
+    // overrides the fill layer only, never the stroke plate or spacing.
     letterSpacing: base.letterSpacing,
   };
 }

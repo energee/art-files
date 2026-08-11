@@ -17,3 +17,5 @@ Rules:
   a lesson that turns out to be wrong earns a correcting line, not a deletion.
 
 ---
+
+- [seen:1] Tauri's default native drag/drop handler suppresses the DOM events used by both react-dropzone and the window asset overlay; keep `dragDropEnabled: false` while those frontend handlers own file drops. (evidence: `src-tauri/tauri.conf.json`, `tests/filedrop.test.ts`)

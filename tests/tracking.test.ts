@@ -139,10 +139,10 @@ describe("the shipped keyline colour", () => {
   });
 });
 
-// Strokes never draw on the mask plate, on any layer (2026-08-05): the mask
-// keeps whatever its flood and the element's own glyphs put there.
+// Mask strokes are independent of the fill layer and therefore add their own
+// ring of show-text operations whenever enabled.
 describe("a stroke on the mask plate", () => {
-  it("draws nothing, regardless of the element's layer", async () => {
+  it("draws its footprint regardless of the element's fill layer", async () => {
     for (const layer of ["metallic", "white"] as const) {
       const stroked = defaultConfig();
       stroked.handleAddress.layer = layer;
@@ -151,7 +151,7 @@ describe("a stroke on the mask plate", () => {
       bare.handleAddress.stroke = "none";
       const withRing = await contentStreamText(await buildMaskPdf(stroked, assets));
       const without = await contentStreamText(await buildMaskPdf(bare, assets));
-      expect(withRing).toBe(without);
+      expect(showOps(withRing)).toBeGreaterThan(showOps(without));
     }
   });
 });

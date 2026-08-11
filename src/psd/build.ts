@@ -9,9 +9,10 @@
 // outlines in a single vectorMask, fill from cfg.barcodeFill. The digits are
 // bezier outlines, not editable type — an explicit, user-approved tradeoff
 // for a print-ready single-shape barcode. Its halo is the same editable
-// stroke EFFECT every other element uses (strokeEffect, position outside);
-// omitted when the resolved stroke width is 0 (cfg.barcodeStroke === "none"
-// or an explicit zero width).
+// stroke EFFECT every other element uses (strokeEffect, position outside),
+// including the independently painted effect on the mask PSD; omitted when
+// the resolved stroke width is 0 (cfg.barcodeStroke === "none" or an explicit
+// zero width).
 //
 // Coordinates: layout.ts is already top-left origin with y down, which is
 // exactly PSD's convention, so conversion is a plain 600dpi scale with no
@@ -33,6 +34,7 @@ import { barcodeFootprint, barcodeGeometry, barcodeStrokePt } from "../barcode";
 import { parseDescription, parseInfoLine, parseRuns } from "../description";
 import { parseLogo } from "../logo";
 import { qrShapes, qrUrl } from "../qr";
+import { strokeLayerOf } from "../strokes";
 import { warningMeasure, wrapWarning } from "../warning";
 
 export interface PsdAssets {
@@ -45,16 +47,16 @@ export interface PsdAssets {
    *  and passes native pixels, which then sit centred).
    *  Omitted leaves the background empty, like a PDF built without one. */
   texture?: { data: Uint8Array; width: number; height: number };
-  /** Decoded RGBA of the recolored mask (blue/transparent, see maskimage.ts),
-   *  for mask-mode builds. Same 1:1 pixel contract as `texture`. Omitted
+  /** Decoded RGBA of the uploaded mask, passed through as-authored (the
+   *  printer accepts these plates unrecolored), for mask-mode builds.
+   *  Same 1:1 pixel contract as `texture`. Omitted
    *  floods the plate solid white-ink blue, matching buildMaskPdf. */
   mask?: { data: Uint8Array; width: number; height: number };
 }
 
 /** Which deliverable to build: the art PSD, or the white-ink mask plate.
- *  Mask mode mirrors buildMaskPdf: same layers and geometry, but metallic
- *  elements paint knockout white, white-layer elements paint mask blue, and
- *  strokes are omitted (they never touch the mask plate). */
+ *  Mask mode mirrors buildMaskPdf: fills and strokes each repaint from their
+ *  own layer assignment (metallic knockout white, white layer mask blue). */
 export type PsdMode = "art" | "mask";
 
 /** Points -> pixels of THIS document, at the export resolution.
@@ -99,6 +101,17 @@ const MASK_BLUE = L.MASK_BLUE_HEX;
  *  (mask blue); art mode is just the fill. */
 const paint = (mode: PsdMode, fill: Fill, layer: "metallic" | "white"): Fill =>
   mode === "art" ? fill : layer === "metallic" ? "#FFFFFF" : MASK_BLUE;
+
+/** Resolve an enabled stroke's art or mask color. Missing legacy plate data
+ *  is deliberately white/non-metallic through the shared resolver. */
+const strokePaint = (
+  mode: PsdMode,
+  stroke: Fill | undefined,
+  strokeLayer: "metallic" | "white" | undefined,
+): Fill | undefined =>
+  !stroke || stroke === "none"
+    ? undefined
+    : paint(mode, stroke, strokeLayerOf({ strokeLayer }));
 
 // --- vector helpers -------------------------------------------------------
 
@@ -376,9 +389,10 @@ function textLayer(
      *  the same stroke as a ring of offset text copies (pdf-lib cannot
      *  stroke text); Photoshop has the real thing, so the PSD uses it. */
     stroke?: Fill;
+    strokeLayer?: "metallic" | "white";
     strokeWidth?: number;
-    /** Mask mode repaints every run by its layer (see `paint`) and drops the
-     *  stroke effect — strokes never touch the mask plate. */
+    /** Mask mode repaints every run and the stroke effect by their respective
+     *  layer assignments (see `paint`). */
     mode?: PsdMode;
   },
 ): Layer {
@@ -448,7 +462,10 @@ function textLayer(
       ...(styleRuns ? { styleRuns } : {}),
       ...(opts.justify ? { paragraphStyle: { justification: "justify-all" as const } } : {}),
     },
-    ...(mode === "art" ? strokeEffect(opts.stroke, opts.strokeWidth) : {}),
+    ...strokeEffect(
+      strokePaint(mode, opts.stroke, opts.strokeLayer),
+      opts.strokeWidth,
+    ),
   };
 }
 
@@ -510,12 +527,14 @@ function buildLayers(
     textLayer("Volume", cfg.volume.text, {
       x: L.VOLUME.x, baseline: L.VOLUME.baseline, size: L.VOLUME.size,
       fill: P(cfg.volume), face: faceOf(cfg.volume), tracking: cfg.volume.letterSpacing,
-      stroke: cfg.volume.stroke, strokeWidth: cfg.volume.strokeWidth, mode,
+      stroke: cfg.volume.stroke, strokeLayer: cfg.volume.strokeLayer,
+      strokeWidth: cfg.volume.strokeWidth, mode,
     }),
     textLayer("ABV", `${displayAbv(cfg)}% alc by vol`, {
       x: L.ABV.x, baseline: L.ABV.baseline, size: L.ABV.size,
       fill: P(cfg.abvStyle), face: "regular", tracking: cfg.abvStyle.letterSpacing,
-      stroke: cfg.abvStyle.stroke, strokeWidth: cfg.abvStyle.strokeWidth, mode,
+      stroke: cfg.abvStyle.stroke, strokeLayer: cfg.abvStyle.strokeLayer,
+      strokeWidth: cfg.abvStyle.strokeWidth, mode,
     }),
   ];
   if (desc.header)
@@ -524,7 +543,8 @@ function buildLayers(
         x: L.DESC_HEADER.x, baseline: L.DESC_HEADER.baseline, size: L.DESC_HEADER.size,
         fill: P(desc.header), face: faceOf(desc.header),
         tracking: desc.header.letterSpacing,
-        stroke: desc.header.stroke, strokeWidth: desc.header.strokeWidth, mode,
+        stroke: desc.header.stroke, strokeLayer: desc.header.strokeLayer,
+        strokeWidth: desc.header.strokeWidth, mode,
       }),
     );
   // ONE layer for the whole block: the markdown subset styles lines
@@ -539,7 +559,8 @@ function buildLayers(
         fill: P(cfg.descStyle), face: "regular",
         tracking: cfg.descStyle.letterSpacing, leading: L.DESC.leading,
         lines: desc.lines,
-        stroke: cfg.descStyle.stroke, strokeWidth: cfg.descStyle.strokeWidth, mode,
+        stroke: cfg.descStyle.stroke, strokeLayer: cfg.descStyle.strokeLayer,
+        strokeWidth: cfg.descStyle.strokeWidth, mode,
       }),
     );
   groups.push({ name: "Left column", opened: false, children: left });
@@ -574,23 +595,26 @@ function buildLayers(
         x: centered(L.WORDMARK.text, L.WORDMARK.cx, L.WORDMARK.size, "bold", cfg.wordmark.letterSpacing),
         baseline: L.WORDMARK.baseline, size: L.WORDMARK.size,
         fill: P(cfg.wordmark), face: "bold", tracking: cfg.wordmark.letterSpacing,
-        stroke: cfg.wordmark.stroke, strokeWidth: cfg.wordmark.strokeWidth, mode,
+        stroke: cfg.wordmark.stroke, strokeLayer: cfg.wordmark.strokeLayer,
+        strokeWidth: cfg.wordmark.strokeWidth, mode,
       }),
       shapeLayer(
         "Logo", logoPaths, P(cfg.logo),
-        mode === "art" ? cfg.logo.stroke : undefined, cfg.logo.strokeWidth,
+        strokePaint(mode, cfg.logo.stroke, cfg.logo.strokeLayer), cfg.logo.strokeWidth,
       ),
       textLayer("Beer name", displayName(cfg).toUpperCase(), {
         x: centered(displayName(cfg).toUpperCase(), L.NAME.cx, L.NAME.size, "bold", cfg.nameStyle.letterSpacing),
         baseline: L.NAME.baseline, size: L.NAME.size,
         fill: P(cfg.nameStyle), face: "bold", tracking: cfg.nameStyle.letterSpacing,
-        stroke: cfg.nameStyle.stroke, strokeWidth: cfg.nameStyle.strokeWidth, mode,
+        stroke: cfg.nameStyle.stroke, strokeLayer: cfg.nameStyle.strokeLayer,
+        strokeWidth: cfg.nameStyle.strokeWidth, mode,
       }),
       textLayer("Style line", displayStyle(cfg), {
         x: centered(displayStyle(cfg), L.STYLE_LINE.cx, L.STYLE_LINE.size, faceOf(cfg.styleLine), cfg.styleLine.letterSpacing),
         baseline: L.STYLE_LINE.baseline, size: L.STYLE_LINE.size,
         fill: P(cfg.styleLine), face: faceOf(cfg.styleLine), tracking: cfg.styleLine.letterSpacing,
-        stroke: cfg.styleLine.stroke, strokeWidth: cfg.styleLine.strokeWidth, mode,
+        stroke: cfg.styleLine.stroke, strokeLayer: cfg.styleLine.strokeLayer,
+        strokeWidth: cfg.styleLine.strokeWidth, mode,
       }),
     ],
   });
@@ -616,7 +640,8 @@ function buildLayers(
         x: L.HANDLE_ADDR.x, baseline: L.HANDLE_ADDR.yStart, size: L.HANDLE_ADDR.size,
         fill: P(info), face: info.bold ? "bold" : "semibold", boldFace: "bold", rotated: true,
         tracking: info.letterSpacing,
-        stroke: info.stroke, strokeWidth: info.strokeWidth, mode,
+        stroke: info.stroke, strokeLayer: info.strokeLayer,
+        strokeWidth: info.strokeWidth, mode,
       }),
       // ONE layer for the whole warning: its columns are the lines of a
       // wrapped paragraph, so leading (the PDF's own column advance) and
@@ -629,14 +654,16 @@ function buildLayers(
         // WARNING:** prefix must step up to true Bold, matching the PDF.
         size: L.WARNING.size, fill: P(cfg.warning), face: "regular", boldFace: "bold", rotated: true,
         tracking: cfg.warning.letterSpacing, leading: L.WARNING.leading, justify: true,
-        stroke: cfg.warning.stroke, strokeWidth: cfg.warning.strokeWidth, mode,
+        stroke: cfg.warning.stroke, strokeLayer: cfg.warning.strokeLayer,
+        strokeWidth: cfg.warning.strokeWidth, mode,
       }),
       textLayer("Store cold", cfg.storeCold.text, {
         x: L.STORE_COLD.x, baseline: L.STORE_COLD.yStart, size: L.STORE_COLD.size,
         // Bold toggle steps semibold up to Bold, matching the PDF path.
         fill: P(cfg.storeCold), face: cfg.storeCold.bold ? "bold" : "semibold", rotated: true,
         tracking: cfg.storeCold.letterSpacing,
-        stroke: cfg.storeCold.stroke, strokeWidth: cfg.storeCold.strokeWidth, mode,
+        stroke: cfg.storeCold.stroke, strokeLayer: cfg.storeCold.strokeLayer,
+        strokeWidth: cfg.storeCold.strokeWidth, mode,
       }),
     ],
   });
@@ -688,23 +715,31 @@ function codeLayers(cfg: LabelConfig, f: Faces, fk: FKFont, mode: PsdMode): Laye
   // Resolved outer-stroke width, from the SAME shared resolver the PDF's
   // drawBarcode uses (barcodeStrokePt in ../barcode) rather than a second
   // copy of the expression. "none" or an explicit zero width both collapse to
-  // S = 0, which omits the layer entirely — matching the PDF's own `if
+  // S = 0, which omits the stroke effect entirely — matching the PDF's own `if
   // (S > 0)` gate so the two deliverables can't disagree on whether a halo
   // exists, or on how wide it is.
   const S = barcodeStrokePt(cfg);
 
   const qr = shapeLayer(
     "QR", qrPaths, paint(mode, cfg.qrFill, cfg.qrLayer),
-    mode === "art" ? cfg.qrStroke : undefined, cfg.qrStrokeWidth,
+    strokePaint(mode, cfg.qrStroke, cfg.qrStrokeLayer), cfg.qrStrokeWidth,
   );
 
   if (mode === "mask") {
-    // The barcode's true ink footprint, from the same resolver drawBarcode's
-    // mask branch paints (see barcodeFootprint). Union, so overlapping outsets
-    // can't XOR into holes.
-    const footprint: BezierPath[] = barcodeFootprint(geo, S, measure)
+    // Preserve the mask PDF's deliberate underprint geometry: exact bar
+    // rectangles plus one glyph-box pill per digit group. The editable
+    // outside effect expands that base footprint by the same S as the PDF's
+    // stroke pass while keeping its color independent from the fill.
+    const footprint: BezierPath[] = barcodeFootprint(geo, 0, measure)
       .map((r) => ({ ...rectPath(r.x, r.yTop, r.w, r.h), operation: "combine" as const }));
-    return [qr, shapeLayer("Barcode", footprint, paint(mode, cfg.barcodeFill, cfg.barcodeLayer))];
+    return [
+      qr,
+      shapeLayer(
+        "Barcode", footprint, paint(mode, cfg.barcodeFill, cfg.barcodeLayer),
+        S > 0 ? strokePaint(mode, cfg.barcodeStroke, cfg.barcodeStrokeLayer) : undefined,
+        px(S),
+      ),
+    ];
   }
 
   // The halo is the same editable stroke effect every other element carries
@@ -714,8 +749,9 @@ function codeLayers(cfg: LabelConfig, f: Faces, fk: FKFont, mode: PsdMode): Laye
   return [
     qr,
     shapeLayer(
-      "Barcode", barcodePaths, cfg.barcodeFill,
-      S > 0 ? cfg.barcodeStroke : undefined, px(S),
+      "Barcode", barcodePaths, paint(mode, cfg.barcodeFill, cfg.barcodeLayer),
+      S > 0 ? strokePaint(mode, cfg.barcodeStroke, cfg.barcodeStrokeLayer) : undefined,
+      px(S),
     ),
   ];
 }

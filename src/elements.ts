@@ -3,6 +3,7 @@
 // which config field backs it.
 import type { LabelConfig, Style, StyledLine } from "./types";
 import { defaultConfig } from "./defaults";
+import { strokeLayerOf } from "./strokes";
 
 /** The shipped config, for reading any element's factory style. Built once:
  *  defaultConfig() allocates a whole config (description lines included), and
@@ -46,10 +47,14 @@ export interface LabelElement {
  *  to know which fields back which element. Naming them once here is what
  *  keeps the two directions from disagreeing. */
 const FLAT = {
-  qr: { fill: "qrFill", layer: "qrLayer", stroke: "qrStroke", strokeWidth: "qrStrokeWidth" },
+  qr: {
+    fill: "qrFill", layer: "qrLayer", stroke: "qrStroke",
+    strokeLayer: "qrStrokeLayer", strokeWidth: "qrStrokeWidth",
+  },
   barcode: {
     fill: "barcodeFill", layer: "barcodeLayer",
-    stroke: "barcodeStroke", strokeWidth: "barcodeStrokeWidth",
+    stroke: "barcodeStroke", strokeLayer: "barcodeStrokeLayer",
+    strokeWidth: "barcodeStrokeWidth",
   },
 } as const;
 type FlatKeys = (typeof FLAT)[keyof typeof FLAT];
@@ -57,7 +62,8 @@ type FlatKeys = (typeof FLAT)[keyof typeof FLAT];
 /** Adapts flat config fields to a Style, so the registry can treat every
  *  element uniformly. */
 const flatStyle = (k: FlatKeys) => (c: LabelConfig): Style => ({
-  fill: c[k.fill], layer: c[k.layer], stroke: c[k.stroke], strokeWidth: c[k.strokeWidth],
+  fill: c[k.fill], layer: c[k.layer], stroke: c[k.stroke],
+  strokeLayer: c[k.strokeLayer], strokeWidth: c[k.strokeWidth],
 });
 
 export const ELEMENTS: LabelElement[] = [
@@ -139,6 +145,7 @@ export function applyStyle(c: LabelConfig, id: ElementId, patch: Partial<StyledL
     if (patch.fill !== undefined) c[k.fill] = patch.fill;
     if (patch.layer !== undefined) c[k.layer] = patch.layer;
     if (patch.stroke !== undefined) c[k.stroke] = patch.stroke;
+    if (patch.strokeLayer !== undefined) c[k.strokeLayer] = patch.strokeLayer;
     if ("strokeWidth" in patch) c[k.strokeWidth] = patch.strokeWidth;
     return;
   }
@@ -165,6 +172,8 @@ export function isDefaultStyle(id: ElementId, s: Style): boolean {
   // strokeWidth only matters while a stroke is actually drawn.
   const strokeOf = (x: Style) => (x.stroke === undefined ? "none" : x.stroke);
   const widthOf = (x: Style) => (strokeOf(x) === "none" ? undefined : x.strokeWidth);
+  const plateOf = (x: Style) =>
+    strokeOf(x) === "none" ? undefined : strokeLayerOf(x);
   const boldOf = (x: Style) =>
     elementById(id).hasBold ? ((x as StyledLine).bold ?? false) : false;
   // Absent tracking and an explicit 0 are the same to every renderer, and
@@ -178,6 +187,7 @@ export function isDefaultStyle(id: ElementId, s: Style): boolean {
     s.fill === d.fill &&
     s.layer === d.layer &&
     strokeOf(s) === strokeOf(d) &&
+    plateOf(s) === plateOf(d) &&
     widthOf(s) === widthOf(d) &&
     trackOf(s) === trackOf(d) &&
     offsetOf(s) === offsetOf(d) &&

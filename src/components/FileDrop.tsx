@@ -12,6 +12,10 @@ import { cn } from "@/lib/utils";
 const CHECKER =
   "repeating-conic-gradient(#c9c9c9 0% 25%, #f2f2f2 0% 50%) 0 0 / 12px 12px";
 
+/** Marks a field drop target. AssetDropOverlay's window listener yields to
+ *  any element carrying it — shared so a rename can't break the yield rule. */
+export const FILE_DROP_ATTR = "data-file-drop";
+
 export function FileDrop(props: {
   label: string;
   accept: Accept;
@@ -32,6 +36,9 @@ export function FileDrop(props: {
     <div className="flex-1">
       <div
         {...getRootProps({
+          // AssetDropOverlay's window listener yields to marked field targets,
+          // so a PNG aimed here is not diverted into its full-window chooser.
+          [FILE_DROP_ATTR]: "",
           className: cn(
             "flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border p-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             isDragActive && "border-primary bg-accent",

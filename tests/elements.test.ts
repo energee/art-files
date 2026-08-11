@@ -35,10 +35,12 @@ describe("element registry", () => {
     expect(elementById("qr").style(cfg).layer).toBe("white");
     cfg.barcodeFill = "#222222";
     cfg.barcodeStroke = "#EEEEEE";
+    cfg.barcodeStrokeLayer = "metallic";
     cfg.barcodeStrokeWidth = 22;
     const bc = elementById("barcode").style(cfg);
     expect(bc).toEqual({
-      fill: "#222222", layer: "white", stroke: "#EEEEEE", strokeWidth: 22,
+      fill: "#222222", layer: "white", stroke: "#EEEEEE",
+      strokeLayer: "metallic", strokeWidth: 22,
     });
   });
 
@@ -46,20 +48,25 @@ describe("element registry", () => {
     const cfg = defaultConfig();
     applyStyle(cfg, "name", { fill: "#ABCDEF" });
     expect(cfg.nameStyle.fill).toBe("#ABCDEF");
-    applyStyle(cfg, "qr", { fill: "#112233", layer: "white" });
+    applyStyle(cfg, "qr", {
+      fill: "#112233", layer: "white", strokeLayer: "metallic",
+    });
     expect(cfg.qrFill).toBe("#112233");
     expect(cfg.qrLayer).toBe("white");
+    expect(cfg.qrStrokeLayer).toBe("metallic");
   });
 
   it("routes every barcode field to its own flat config key, never the QR's", () => {
     const cfg = defaultConfig();
     const qrBefore = { ...elementById("qr").style(cfg) };
     applyStyle(cfg, "barcode", {
-      fill: "#445566", layer: "metallic", stroke: "#778899", strokeWidth: 31,
+      fill: "#445566", layer: "metallic", stroke: "#778899",
+      strokeLayer: "metallic", strokeWidth: 31,
     });
     expect(cfg.barcodeFill).toBe("#445566");
     expect(cfg.barcodeLayer).toBe("metallic");
     expect(cfg.barcodeStroke).toBe("#778899");
+    expect(cfg.barcodeStrokeLayer).toBe("metallic");
     expect(cfg.barcodeStrokeWidth).toBe(31);
     // The two flat elements share one write path; this is the check that it
     // never crosses the wires between them.
@@ -69,11 +76,15 @@ describe("element registry", () => {
   it("recognises a gold element's default so deviations can be marked", () => {
     // The beer name ships gold/metallic over the black keyline every text
     // element in the left column now carries.
-    const shipped = { fill: GOLD, layer: "metallic", stroke: "#000000", strokeWidth: 15 } as const;
+    const shipped = {
+      fill: GOLD, layer: "metallic", stroke: "#000000",
+      strokeLayer: "white", strokeWidth: 15,
+    } as const;
     expect(isDefaultStyle("name", shipped)).toBe(true);
     expect(isDefaultStyle("name", { ...shipped, fill: "#FF0000" })).toBe(false);
     expect(isDefaultStyle("name", { ...shipped, layer: "white" })).toBe(false);
     expect(isDefaultStyle("name", { ...shipped, stroke: "#FFFFFF" })).toBe(false);
+    expect(isDefaultStyle("name", { ...shipped, strokeLayer: "metallic" })).toBe(false);
     // Dropping the shipped keyline is a deviation, whether spelled as an
     // explicit "none" or by leaving the field out — the renderers read those
     // two the same way.
@@ -92,14 +103,23 @@ describe("element registry", () => {
     }
   });
 
+  it("ships every element stroke on white/non-metallic", () => {
+    const cfg = defaultConfig();
+    for (const e of ELEMENTS)
+      expect([e.id, e.style(cfg).strokeLayer]).toEqual([e.id, "white"]);
+  });
+
   it("flags a gold/metallic barcode as a deviation, not as the default", () => {
     const cfg = defaultConfig();
     applyStyle(cfg, "barcode", { fill: GOLD, layer: "metallic", stroke: "none" });
     expect(isDefaultStyle("barcode", elementById("barcode").style(cfg))).toBe(false);
   });
 
-  it("counts strokeWidth and bold, which Reset also restores", () => {
+  it("counts stroke layer, strokeWidth and bold, which Reset also restores", () => {
     const cfg = defaultConfig();
+    applyStyle(cfg, "barcode", { strokeLayer: "metallic" });
+    expect(isDefaultStyle("barcode", elementById("barcode").style(cfg))).toBe(false);
+    applyStyle(cfg, "barcode", { strokeLayer: "white" });
     applyStyle(cfg, "barcode", { strokeWidth: 31 });
     expect(isDefaultStyle("barcode", elementById("barcode").style(cfg))).toBe(false);
     const cfg2 = defaultConfig();

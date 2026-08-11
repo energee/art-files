@@ -9,7 +9,6 @@ import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "../src
 import type { CollabSlot } from "../src/types";
 import { buildPsd, type PsdAssets } from "../src/psd/build";
 import { defaultConfig, parseConfigFile } from "../src/defaults";
-import { prepareMaskForPdf } from "../src/maskimage";
 import { rasterKind, tintRgba } from "../src/collab";
 import { validateUpc } from "../src/upc";
 
@@ -60,15 +59,14 @@ if (!upc.ok) {
 let maskPng: Uint8Array | undefined;
 let maskPixels: PsdAssets["mask"];
 if (maskPath !== "none") {
-  const mask = PNG.sync.read(readFileSync(maskPath));
-  const rgba = new Uint8Array(mask.data.buffer, mask.data.byteOffset, mask.data.length);
-  const check = prepareMaskForPdf(rgba);
-  if (!check.ok) console.warn(`warning: ${check.error}`);
-  // The recolored pixels serve both deliverables: re-encoded as PNG for the
-  // mask PDF, and raw for the mask PSD's raster layer.
-  maskPixels = { data: rgba, width: mask.width, height: mask.height };
-  const buf = PNG.sync.write(mask);
-  maskPng = new Uint8Array(buf.buffer, buf.byteOffset, buf.length);
+  // Untouched, matching the app: the printer accepts these plates as-authored.
+  const bytes = readFileSync(maskPath);
+  const mask = PNG.sync.read(bytes);
+  maskPixels = {
+    data: new Uint8Array(mask.data.buffer, mask.data.byteOffset, mask.data.length),
+    width: mask.width, height: mask.height,
+  };
+  maskPng = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.length);
 }
 
 // Read once — both the PDF assets and the PSD's pixel decode use these bytes.

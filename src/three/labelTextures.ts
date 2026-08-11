@@ -14,11 +14,15 @@ const MAX_EDGE = 4096;
  *  small enough that this factor, not MAX_EDGE, is usually what binds. */
 const MAX_SCALE = 4;
 
-/** min(r,g,b) above this reads as "no white ink printed" = foil shows.
- *  The mask plate draws its ink in blue (min(r,g,b) = the blue channel's
- *  complement is irrelevant — blue pixels have low r), so near-white paper
- *  areas are the only ones that clear this bar. */
-const WHITE_THRESHOLD = 230;
+/** Brightness/saturation classifier (captiva's metalness rule): a pixel is
+ *  the bare page — foil shows — when it is bright and nearly grey. Any
+ *  colored or dark pixel is ink, whatever color it was authored in, so
+ *  uploaded masks work regardless of their exact ink color. */
+function isPage(r: number, g: number, b: number): boolean {
+  const max = Math.max(r, g, b);
+  const saturation = max > 0 ? (max - Math.min(r, g, b)) / max : 0;
+  return max > 180 && saturation < 0.15;
+}
 
 export interface LabelTextures {
   /** Art plate rendered to a canvas (used as the sRGB color map). */
@@ -49,12 +53,13 @@ async function renderPlate(
 }
 
 /**
- * Derive the binary metalness mask from the rendered white-ink plate.
- * Semantics (see maskimage.ts / memory notes): the mask PDF is the white-ink
- * plate — BLUE pixels mean white ink IS printed there (matte), near-white
- * pixels mean NO white ink (the bare metal foil shows through). So metalness
- * is white exactly where the plate render is near-white. With no metallic
- * mask dropped, the plate floods solid blue = all matte = all black here,
+ * Derive the binary metalness mask from the rendered white-ink plate: the
+ * plate's ink (any color — uploaded masks pass through unrecolored) means
+ * white ink IS printed there (matte), bare-page pixels mean NO white ink
+ * (the metal foil shows through). This is the ONE binarization in the
+ * pipeline — the upload is untouched — and canScene's edgeSoftness blur then
+ * softens the result, same shape as captiva's soft mask. With no metallic
+ * mask dropped, the plate floods solid ink = all matte = all black here,
  * which is the correct "no foil" default. `hasFoil` reports whether any pixel
  * came out white, so callers don't have to re-scan the finished mask.
  */
@@ -71,7 +76,7 @@ function deriveMetalness(
   const s = src.data, d = dst.data;
   let hasFoil = false;
   for (let i = 0; i < s.length; i += 4) {
-    const v = Math.min(s[i], s[i + 1], s[i + 2]) > WHITE_THRESHOLD ? 255 : 0;
+    const v = isPage(s[i], s[i + 1], s[i + 2]) ? 255 : 0;
     if (v) hasFoil = true;
     d[i] = d[i + 1] = d[i + 2] = v;
     d[i + 3] = 255;
