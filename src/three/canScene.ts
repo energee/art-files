@@ -184,8 +184,14 @@ export class CanScene {
     this.camera = new THREE.PerspectiveCamera(35, w / h, 0.001, 100);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    // Ratio before size: setPixelRatio re-applies the last setSize, so the
+    // other order allocates the framebuffer twice. The floor of 2 supersamples
+    // 1x displays (a laptop on an external monitor) where the label's fine type
+    // otherwise aliases; the ceiling of 3 keeps a 4x report from allocating a
+    // framebuffer well past the point the extra samples show. resize() only
+    // calls setSize — three.js keeps the ratio across it.
+    this.renderer.setPixelRatio(Math.min(Math.max(window.devicePixelRatio, 2), 3));
     this.renderer.setSize(w, h);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.55;
     container.appendChild(this.renderer.domElement);
