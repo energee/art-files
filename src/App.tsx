@@ -50,11 +50,12 @@ import {
 } from "@/rulers";
 import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator,
-  MenubarShortcut, MenubarTrigger,
+  MenubarShortcut, MenubarSub, MenubarSubContent, MenubarSubTrigger, MenubarTrigger,
 } from "@/components/ui/menubar";
 import {
   Sidebar, SidebarContent, SidebarInset, SidebarProvider, SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -76,10 +77,40 @@ type Loaded = { bytes: Uint8Array; previewBytes: Uint8Array; name: string; previ
  *  shows. previewUrl is the raw file, so an SVG thumbnails as itself. */
 type CollabFile = { image: CollabImage; name: string; previewUrl: string };
 
+/** Chrome-level error, sized for the menu bar: the shadcn Alert (the app's
+ *  one notification surface — see ui/alert.tsx) compacted to fit inline
+ *  beside the menus rather than as a full-width block. */
+function HeaderAlert({ children }: { children: React.ReactNode }) {
+  return (
+    <Alert variant="destructive" className="w-auto border-destructive/50 px-2 py-0.5">
+      <AlertDescription className="text-xs">{children}</AlertDescription>
+    </Alert>
+  );
+}
+
 /** The .label file picker option, shared by open and save dialogs. */
 const LABEL_TYPES = [
   { description: "Label project", accept: { "application/zip": [LABEL_EXT] } },
 ];
+
+// The File System Access surface, typed once — absent on Safari/Firefox, so
+// every caller branches on these and keeps a download/input fallback. The
+// fiddly parts (the window casts, the ArrayBuffer cast, abort detection)
+// live here so save/export/open can't drift apart.
+const savePicker = () => (window as {
+  showSaveFilePicker?: (opts: object) => Promise<FileSystemFileHandle>;
+}).showSaveFilePicker;
+const openPicker = () => (window as {
+  showOpenFilePicker?: (opts: object) => Promise<FileSystemFileHandle[]>;
+}).showOpenFilePicker;
+/** A dismissed picker dialog — "no thanks", never an error. */
+const isAbort = (err: unknown) =>
+  err instanceof DOMException && err.name === "AbortError";
+async function writeHandle(handle: FileSystemFileHandle, bytes: Uint8Array) {
+  const writable = await handle.createWritable();
+  await writable.write(bytes as unknown as ArrayBuffer);
+  await writable.close();
+}
 
 /** One spelling for the "which error do I show?" expression the open paths
  *  share. */
@@ -236,8 +267,11 @@ const zoomAbout = (
 // Menu chrome, shared by all three menus so they can't drift apart: small
 // regular-weight triggers, and items sized to match.
 const MENU_TRIGGER = "px-2 py-1 text-xs font-normal";
-// min-w keeps the longest item ("Save Project As… ⇧⌘S") on one line.
-const MENU_ITEMS = "min-w-52 [&_[data-slot=menubar-item]]:text-xs";
+// min-w keeps the longest item ("Save Project As… ⇧⌘S") on one line. Both
+// slots sized: plain items AND submenu triggers (data-slot=menubar-sub-trigger),
+// or an "Export ▸" row renders larger than its neighbours.
+const MENU_ITEMS =
+  "min-w-52 [&_[data-slot=menubar-item]]:text-xs [&_[data-slot=menubar-sub-trigger]]:text-xs";
 
 /** The five preview views in keys-1–5 order: status-bar label, the command
  *  id that shows it, and the state that means "this one is current". One
@@ -615,8 +649,13 @@ export default function App() {
     return () => clearTimeout(t);
   }, [render, showRulers, showGuides, bleed]);
 
-  const update = (fn: (c: LabelConfig) => void) =>
+  const update = (fn: (c: LabelConfig) => void) => {
+    setDirty(true); // every config edit passes through here — see `dirty`
     setCfg((c) => { const n = structuredClone(c); fn(n); return n; });
+  };
+  /** Wrap a config mutation that bypasses `update` (undo/redo) so it still
+   *  marks the document dirty. */
+  const mutating = (fn: () => void) => () => { setDirty(true); fn(); };
 
   // Canvas uses the same bundled Regular/SemiBold font files as the PDF, but
   // avoids loading pdf-lib + fontkit on the UI thread just to measure hit
@@ -693,7 +732,10 @@ export default function App() {
    *  thumbnail URL — the one shape every drop and every FileDrop X share. */
   const swapLoaded = <T extends { previewUrl: string }>(
     set: (fn: (old: T | null) => T | null) => void, next: T | null,
-  ) => set((old) => { if (old) URL.revokeObjectURL(old.previewUrl); return next; });
+  ) => {
+    setDirty(true); // every asset change passes through here — see `dirty`
+    set((old) => { if (old) URL.revokeObjectURL(old.previewUrl); return next; });
+  };
 
   async function onTexture(f: File) {
     const bytes = new Uint8Array(await f.arrayBuffer());
@@ -732,7 +774,7 @@ export default function App() {
 
   /** Load a collab logo into `slot`, revoking the previous thumbnail URL. */
   function onCollab(slot: "left" | "center", f: File) {
-    void readCollab(f).then((next) =>
+    return readCollab(f).then((next) =>
       swapLoaded(slot === "left" ? setCollabLeft : setCollabCenter, next));
   }
   const collabFiles: CollabFiles = {
@@ -903,6 +945,31 @@ export default function App() {
     lastSaved.current.push(url);
     download(url, name);
   }
+  /** Save one exported file through the browser's save dialog (name/place it,
+   *  like Save Project), falling back to the plain download where
+   *  showSaveFilePicker doesn't exist (Safari/Firefox). A cancelled dialog
+   *  means "don't save this file" — no fallback download. Multi-file exports
+   *  (both PDFs, both PSDs) prompt once per file: the File System Access API
+   *  has no multi-save dialog, and a directory picker would change the flow
+   *  for the single-file case too. */
+  async function saveVia(bytes: Uint8Array, name: string, type: string) {
+    const pick = savePicker();
+    if (pick) {
+      const ext = name.slice(name.lastIndexOf("."));
+      try {
+        const handle = await pick({
+          suggestedName: name,
+          types: [{ description: `${ext.slice(1).toUpperCase()} file`, accept: { [type]: [ext] } }],
+        });
+        await writeHandle(handle, bytes);
+        return;
+      } catch (err) {
+        if (isAbort(err)) return;
+        // Any other failure falls through to the download path below.
+      }
+    }
+    saveBytes(bytes, name, type);
+  }
 
   /** Downloads rebuild from the full-resolution assets on demand — the
    *  preview PDFs on screen are deliberately low-res (see Loaded). */
@@ -923,8 +990,16 @@ export default function App() {
         ...eyedAssets(false),
         hidden: hiddenLayers,
       };
-      if (which !== "mask") saveBytes(await buildArtPdf(cfg, assets), `${exportBaseName(cfg)}.pdf`);
-      if (which !== "art") saveBytes(await buildMaskPdf(cfg, assets), `${exportBaseName(cfg)}-mask.pdf`);
+      // Both files build BEFORE the first dialog opens: the user shouldn't
+      // sit in dialog #2 waiting on a build that could have run during
+      // dialog #1 — and back-to-back dialogs stay inside the user-activation
+      // window a long build could outlive.
+      const [artPdf, maskPdf] = await Promise.all([
+        which !== "mask" ? buildArtPdf(cfg, assets) : null,
+        which !== "art" ? buildMaskPdf(cfg, assets) : null,
+      ]);
+      if (artPdf) await saveVia(artPdf, `${exportBaseName(cfg)}.pdf`, "application/pdf");
+      if (maskPdf) await saveVia(maskPdf, `${exportBaseName(cfg)}-mask.pdf`, "application/pdf");
     } catch (err) {
       setBuildError(String(err));
     } finally {
@@ -940,6 +1015,14 @@ export default function App() {
    *  Null until then, so plain Save falls through to the Save As dialog —
    *  the classic editor contract. A ref, not state: nothing renders it. */
   const projectHandle = useRef<FileSystemFileHandle | null>(null);
+  /** Whether the document differs from the last saved/opened project —
+   *  File → Save disables while clean. Marked at three sites: `update` (all
+   *  config edits), `swapLoaded` (all assets — a new asset can't dodge the
+   *  flag), and the undo/redo commands, which mutate the config around
+   *  `update`. Cleared by a completed save or open. Undoing back to the
+   *  exact saved state still counts as dirty: the flag tracks mutations,
+   *  not content equality. */
+  const [dirty, setDirty] = useState(true);
   /** File → Save / Save As…: everything needed to reopen this label — config
    *  plus original image bytes — zipped as <beerName>.label (see labelfile.ts).
    *  Chromium shows a real save dialog (name/place the file) and Save then
@@ -954,9 +1037,7 @@ export default function App() {
       collabLeft: collabAsset(collabLeft),
       collabCenter: collabAsset(collabCenter),
     });
-    const pick = (window as {
-      showSaveFilePicker?: (opts: object) => Promise<FileSystemFileHandle>;
-    }).showSaveFilePicker;
+    const pick = savePicker();
     if (pick) {
       try {
         if (as || !projectHandle.current) {
@@ -965,37 +1046,49 @@ export default function App() {
             types: LABEL_TYPES,
           });
         }
-        const writable = await projectHandle.current.createWritable();
-        await writable.write(zip as unknown as ArrayBuffer);
-        await writable.close();
+        await writeHandle(projectHandle.current, zip);
+        setDirty(false);
         return;
       } catch (err) {
         // Cancelled dialog = no save wanted; anything else falls back to
         // the download path rather than losing the file. A handle that
         // failed to write is not trusted again.
         projectHandle.current = null;
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (isAbort(err)) return;
       }
     }
     startSaveBatch();
     saveBytes(zip, exportBaseName(cfg) + LABEL_EXT, "application/zip");
+    setDirty(false);
   }
   /** File → Open Project…: the native picker where available, so Save can
    *  rewrite the opened file; elsewhere the hidden-input fallback (which
    *  yields no writable handle — Save then behaves as Save As). */
   async function openProjectPicker() {
-    const pick = (window as {
-      showOpenFilePicker?: (opts: object) => Promise<FileSystemFileHandle[]>;
-    }).showOpenFilePicker;
+    const pick = openPicker();
     if (!pick) { openRef.current?.click(); return; }
     try {
       const [handle] = await pick({ types: LABEL_TYPES });
-      await openProject(await handle.getFile());
-      projectHandle.current = handle;
+      if (await openWithRetry(() => handle.getFile())) projectHandle.current = handle;
     } catch (err) {
-      if (!(err instanceof DOMException && err.name === "AbortError"))
-        setLoadError(`Could not open project: ${errMsg(err)}`);
+      if (!isAbort(err)) setLoadError(`Could not open project: ${errMsg(err)}`);
     }
+  }
+
+  /** Open a .label with quiet retries — shared by BOTH entry points (the
+   *  FS-Access picker and the hidden-input fallback), so neither can drift.
+   *  The first read of a freshly saved, cloud-synced, or large
+   *  just-downloaded file can fail while the OS materializes or scans the
+   *  bytes — users saw "cancel and reopen fixes it", which is this race
+   *  resolving itself. Backoff to ~1.5s total because a 38MB file scans
+   *  measurably slower than a small one; only the last attempt reports. */
+  async function openWithRetry(getFile: () => Promise<File>): Promise<boolean> {
+    const delays = [0, 300, 1200];
+    for (let i = 0; i < delays.length; i++) {
+      if (delays[i]) await new Promise((r) => setTimeout(r, delays[i]));
+      if (await openProject(await getFile(), { quiet: i < delays.length - 1 })) return true;
+    }
+    return false;
   }
 
   /** File → Open Project…: unzip a .label, run its config through the same
@@ -1003,7 +1096,7 @@ export default function App() {
    *  image through the exact handler a manual drop uses so previews, mask
    *  polarity, and object-URL lifecycle behave identically. Slots absent from
    *  the file are cleared: opening a project is a full restore, not a merge. */
-  async function openProject(f: File) {
+  async function openProject(f: File, opts?: { quiet?: boolean }): Promise<boolean> {
     try {
       const unpacked = unpackLabel(new Uint8Array(await f.arrayBuffer()));
       const config = parseConfigFile(unpacked.json);
@@ -1019,12 +1112,21 @@ export default function App() {
       const toFile = (a: { name: string; bytes: Uint8Array }) =>
         new File([a.bytes as unknown as BlobPart], a.name, { type: mimeFor(a.name) });
       const { texture: t, mask: m, collabLeft: l, collabCenter: c } = unpacked.assets;
-      if (t) void onTexture(toFile(t));
-      if (m) void onMask(toFile(m));
-      if (l) onCollab("left", toFile(l));
-      if (c) onCollab("center", toFile(c));
+      // Awaited so the freshly opened document can be marked clean AFTER the
+      // asset handlers' state writes — each of those marks it dirty again,
+      // and the last write has to be this clean one.
+      await Promise.all([
+        t && onTexture(toFile(t)), m && onMask(toFile(m)),
+        l && onCollab("left", toFile(l)), c && onCollab("center", toFile(c)),
+      ]);
+      setDirty(false);
+      setLoadError("");
+      return true;
     } catch (err) {
-      setLoadError(`Could not open ${f.name}: ${errMsg(err)}`);
+      // quiet: the picker path retries once before reporting — a first-read
+      // failure that the retry recovers from should never flash an error.
+      if (!opts?.quiet) setLoadError(`Could not open ${f.name}: ${errMsg(err)}`);
+      return false;
     }
   }
 
@@ -1058,15 +1160,15 @@ export default function App() {
         texture: await rasterPixels(texture?.bytes),
         mask: await rasterPixels(mask?.bytes),
       };
-      if (which !== "mask") {
-        saveBytes(await buildPsd(cfg, assets), `${exportBaseName(cfg)}.psd`, "image/vnd.adobe.photoshop");
-      }
-      if (which !== "art") {
-        saveBytes(
-          await buildPsd(cfg, assets, "mask"),
-          `${exportBaseName(cfg)}-mask.psd`, "image/vnd.adobe.photoshop",
-        );
-      }
+      // Built before any dialog, same reasoning as the PDF exports above.
+      const [artPsd, maskPsd] = await Promise.all([
+        which !== "mask" ? buildPsd(cfg, assets) : null,
+        which !== "art" ? buildPsd(cfg, assets, "mask") : null,
+      ]);
+      if (artPsd)
+        await saveVia(artPsd, `${exportBaseName(cfg)}.psd`, "image/vnd.adobe.photoshop");
+      if (maskPsd)
+        await saveVia(maskPsd, `${exportBaseName(cfg)}-mask.psd`, "image/vnd.adobe.photoshop");
       setBuildError("");
     } catch (err) {
       setBuildError(String(err));
@@ -1119,8 +1221,11 @@ export default function App() {
   const commands: Command[] = [
     { id: "project-open", label: "Open Project…", key: "o", mods: "⌘",
       run: () => void openProjectPicker() },
+    // Disabled while clean: with nothing changed since the last save/open
+    // there is nothing to write. Save As stays live — a copy under a new
+    // name is always meaningful.
     { id: "project-save", label: "Save Project", key: "s", mods: "⌘",
-      run: () => void saveProject() },
+      disabled: !dirty, run: () => void saveProject() },
     { id: "project-save-as", label: "Save Project As…", key: "s", mods: "⇧⌘",
       run: () => void saveProject(true) },
     // ⌘E exports the PDFs, ⇧⌘E the PSDs — the whole-deliverable runs. The
@@ -1134,8 +1239,11 @@ export default function App() {
       disabled: exportBlocked, run: () => void exportPsd() },
     { id: "export-psd-art", label: "Export Artwork PSD", disabled: exportBlocked, run: () => void exportPsd("art") },
     { id: "export-psd-mask", label: "Export Mask PSD", disabled: exportBlocked, run: () => void exportPsd("mask") },
-    { id: "undo", label: "Undo", shortcut: "⌘Z", disabled: !canUndo, run: undo },
-    { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: !canRedo, run: redo },
+    // Undo/redo are config mutations that bypass `update`, so they run
+    // through `mutating` to mark the document dirty (see `dirty`) — as must
+    // any future command that changes the config outside `update`.
+    { id: "undo", label: "Undo", shortcut: "⌘Z", disabled: !canUndo, run: mutating(undo) },
+    { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: !canRedo, run: mutating(redo) },
     { id: "presets-view", label: "View presets", run: () => setPresetsOpen(true) },
     { id: "presets-export", label: "Export presets", run: () => void exportPresets() },
     { id: "presets-import", label: "Import presets", run: () => presetsInput.current?.click() },
@@ -1206,35 +1314,39 @@ export default function App() {
               <MenubarContent align="start" className={MENU_ITEMS}>
                 {/* Project save/load first — the whole label, not just a
                     deliverable. */}
-                {["project-open", "project-save", "project-save-as"].map((id) => (
-                  <MenubarItem key={id} onClick={byId(id).run}>
-                    {byId(id).label} <MenubarShortcut>{shortcutOf(byId(id))}</MenubarShortcut>
-                  </MenubarItem>
-                ))}
+                {["project-open", "project-save", "project-save-as"].map((id) => {
+                  const cmd = byId(id);
+                  return (
+                    <MenubarItem key={id} disabled={cmd.disabled} onClick={cmd.run}>
+                      {cmd.label} <MenubarShortcut>{shortcutOf(cmd)}</MenubarShortcut>
+                    </MenubarItem>
+                  );
+                })}
                 <MenubarSeparator />
                 {/* Deliverables first, both-at-once first within each format:
                     that is the common run. !pdfs is the mid-build state, so
                     only the PDF items wait on it — the PSD path rebuilds from
                     the config alone. */}
-                <MenubarItem disabled={byId("export-both").disabled} onClick={byId("export-both").run}>
-                  {byId("export-both").label} <MenubarShortcut>{shortcutOf(byId("export-both"))}</MenubarShortcut>
-                </MenubarItem>
-                <MenubarItem disabled={byId("export-art").disabled} onClick={byId("export-art").run}>
-                  {byId("export-art").label}
-                </MenubarItem>
-                <MenubarItem disabled={byId("export-mask").disabled} onClick={byId("export-mask").run}>
-                  {byId("export-mask").label}
-                </MenubarItem>
-                <MenubarSeparator />
-                <MenubarItem disabled={byId("export-psd").disabled} onClick={byId("export-psd").run}>
-                  {byId("export-psd").label} <MenubarShortcut>{shortcutOf(byId("export-psd"))}</MenubarShortcut>
-                </MenubarItem>
-                <MenubarItem disabled={byId("export-psd-art").disabled} onClick={byId("export-psd-art").run}>
-                  {byId("export-psd-art").label}
-                </MenubarItem>
-                <MenubarItem disabled={byId("export-psd-mask").disabled} onClick={byId("export-psd-mask").run}>
-                  {byId("export-psd-mask").label}
-                </MenubarItem>
+                {/* All six deliverable runs under one Export submenu — PDFs
+                    above the separator, PSDs below, both-at-once first within
+                    each format (the common run). */}
+                <MenubarSub>
+                  <MenubarSubTrigger>Export</MenubarSubTrigger>
+                  <MenubarSubContent className={MENU_ITEMS}>
+                    {(["export-both", "export-art", "export-mask", null,
+                      "export-psd", "export-psd-art", "export-psd-mask"] as const).map((id, i) => {
+                      if (id === null) return <MenubarSeparator key={i} />;
+                      const cmd = byId(id);
+                      const keys = shortcutOf(cmd);
+                      return (
+                        <MenubarItem key={id} disabled={cmd.disabled} onClick={cmd.run}>
+                          {cmd.label}
+                          {keys && <MenubarShortcut>{keys}</MenubarShortcut>}
+                        </MenubarItem>
+                      );
+                    })}
+                  </MenubarSubContent>
+                </MenubarSub>
                 <MenubarSeparator />
                 {/* The preset library: beer styles and barcodes reused across
                     labels. Ellipsis — import opens a file picker. */}
@@ -1324,21 +1436,21 @@ export default function App() {
           {/* Replaces the tooltip the old disabled Export button carried: a
               menu item can't explain its own disabled state, so the reason
               sits in the bar itself. */}
-          {blocked && <span className="text-xs text-destructive">{blockedWhy}</span>}
+          {blocked && <HeaderAlert>{blockedWhy}</HeaderAlert>}
           {/* Preset import/export failures: the bar is the one chrome that
               always shows regardless of selection. */}
-          {loadError && <span className="text-xs text-destructive">{loadError}</span>}
+          {loadError && <HeaderAlert>{loadError}</HeaderAlert>}
           {/* Build failures sit here too rather than in their own strip above
               the preview — one place for chrome-level errors, and the strip
               was 20px reserved for a row that is empty almost always. */}
-          {buildError && <span className="text-xs text-destructive">{buildError}</span>}
+          {buildError && <HeaderAlert>{buildError}</HeaderAlert>}
           <input ref={presetsInput} type="file" accept="application/json" hidden
             onChange={(e) => e.target.files?.[0] && void importPresets(e.target.files[0])} />
           <input ref={openRef} type="file" accept={LABEL_EXT} className="hidden"
             onChange={(e) => {
               const f = e.currentTarget.files?.[0];
               e.currentTarget.value = "";
-              if (f) void openProject(f);
+              if (f) void openWithRetry(async () => f);
             }} />
         </header>
       <div className="flex min-h-0 flex-1">
