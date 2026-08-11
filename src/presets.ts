@@ -108,24 +108,11 @@ export const displayBleedIn = (bleedIn: number): number =>
 export const commitBleedIn = (current: number, typed: number): number =>
   typed === displayBleedIn(current) ? current : typed;
 
-/** View toggles that persist across sessions: rulers, guides, and the bleed
- *  (trim) lines over the 2D preview. Operator workspace preferences — like the
- *  render knobs they belong to the shop rather than one label, so they live
- *  in presets.json instead of config history or exports. */
-export interface ViewSettings {
-  showRulers: boolean;
-  showGuides: boolean;
-  showBleed: boolean;
-}
-
-/** Matches the toggles' historical boot state: rulers and guides on, bleed
- *  lines off. */
-export const DEFAULT_VIEW: ViewSettings = {
-  showRulers: true,
-  showGuides: true,
-  showBleed: false,
-};
-
+// View toggles (rulers/guides/bleed lines) briefly lived here (2026-08) and
+// moved to localStorage (see App's view-toggle state): per-operator UI state
+// churned this git-tracked file on every View-menu click. normalizePresets
+// spreads over the known shape, so a presets.json still carrying a `view`
+// block sheds it on the next write.
 export interface Presets {
   /** Beer styles ("Hazy IPA", "Pilsner") for the Style line. The text is its
    *  own label, so these are plain strings. */
@@ -136,12 +123,10 @@ export interface Presets {
   colors: string[];
   /** Die-cut / 3D-render knobs. Single set, see RenderSettings. */
   render: RenderSettings;
-  /** Persistent view toggles. Single set, see ViewSettings. */
-  view: ViewSettings;
 }
 
 export const EMPTY_PRESETS: Presets = {
-  styles: [], barcodes: [], colors: [], render: DEFAULT_RENDER, view: DEFAULT_VIEW,
+  styles: [], barcodes: [], colors: [], render: DEFAULT_RENDER,
 };
 
 /** Add a hex to the swatch library, lowercased so #B58B3C and #b58b3c are one
@@ -161,7 +146,6 @@ export function normalizePresets(raw: Partial<Presets>): Presets {
     // Per-key defaults: a presets.json written before a knob existed still
     // gets that knob's default instead of NaN.
     render: { ...DEFAULT_RENDER, ...raw.render },
-    view: { ...DEFAULT_VIEW, ...raw.view },
   };
 }
 
