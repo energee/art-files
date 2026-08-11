@@ -50,6 +50,16 @@ conflicts; a serial-fallback report keeps legacy entries in their existing
 one-at-a-time flow.
 `learnings.md` holds lessons from past sessions — check it for known traps.
 
+## Release steward
+
+`release-steward.md` is a mandatory handoff gate for every repository change.
+Before an agent finishes a task, it must classify whether the diff changes the
+installed Label Lab application or its packaged runtime. In a multi-agent run,
+assign one agent the release-steward role; in a single-agent run, the active agent
+owns it. Binary-impacting changes require a new synchronized version and a matching
+`CHANGELOG.md` entry in the same change. Release tooling, tags, and workflow dispatches
+remain opt-in operations and are never performed merely because metadata was prepared.
+
 ## Worktrees
 
 Create improvement worktrees under `.agents/worktrees/<slug>/`; they are gitignored.

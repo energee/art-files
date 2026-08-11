@@ -1,0 +1,23 @@
+name: Validate release metadata
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  release-metadata:
+    name: Version and release notes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+
+      - name: Check binary release metadata
+        run: node scripts/check-release.mjs "${{ github.event.pull_request.base.sha }}"
