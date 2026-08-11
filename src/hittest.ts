@@ -3,7 +3,7 @@
 // mirror what the PDF renderer draws; Poppins' font box is 1.05em above the
 // baseline and 0.35em below (measured with pdftotext -bbox).
 import type { LabelConfig } from "./types";
-import type { ElementId } from "./elements";
+import { logoNudge, type ElementId } from "./elements";
 import { parseDescription, parseInfoLine, parseRuns } from "./description";
 import { displayAbv, displayName, displayStyle } from "./defaults";
 // The renderer's own paragraph wrapper and justified-column length, so the
@@ -107,12 +107,13 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
     // x the width — see parseLogo, which both renderers scale by width alone),
     // NOT square: using w for both would leave the top and bottom of the
     // laurel unclickable and crop the selection ring.
-    // offsetY moves the drawn laurel (see drawElements), so the box has to
+    // The stack nudge moves the drawn laurel (see drawElements and
+    // logoNudge — it only applies while collab is on), so the box has to
     // move with it or the click target drifts off the artwork.
     { id: "logo",
       x0: L.LOGO.cx - L.LOGO.w / 2, x1: L.LOGO.cx + L.LOGO.w / 2,
-      y0: L.LOGO.cy + (cfg.logo.offsetY ?? 0) - LOGO_H / 2,
-      y1: L.LOGO.cy + (cfg.logo.offsetY ?? 0) + LOGO_H / 2 },
+      y0: L.LOGO.cy + logoNudge(cfg) - LOGO_H / 2,
+      y1: L.LOGO.cy + logoNudge(cfg) + LOGO_H / 2 },
     centred("name", displayName(cfg).toUpperCase(), L.NAME.cx, L.NAME.baseline, L.NAME.size, m, true, cfg.nameStyle.letterSpacing),
     centred("styleLine", displayStyle(cfg), L.STYLE_LINE.cx, L.STYLE_LINE.baseline, L.STYLE_LINE.size, m, !!cfg.styleLine.bold, cfg.styleLine.letterSpacing),
     // QR is a box, not text.
@@ -185,7 +186,7 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
     // Hangs off the laurel's nudged bottom, exactly like drawElements — the
     // centre stack moves as one, so this box follows the logo's offsetY.
     const centerW = L.COLLAB_CENTER.maxW * cfg.collabCenter.scale;
-    const centerTop = L.LOGO.cy + (cfg.logo.offsetY ?? 0) + LOGO_H / 2
+    const centerTop = L.LOGO.cy + logoNudge(cfg) + LOGO_H / 2
       + L.COLLAB_CENTER.gapAbove + (cfg.collabCenter.offsetY ?? 0);
     boxes.push({
       id: "collabCenter",

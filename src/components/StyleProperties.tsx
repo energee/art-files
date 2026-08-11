@@ -163,7 +163,9 @@ function OffsetInput(props: {
  *  can never disagree; it moves the whole centre stack — the collab mark
  *  hangs off the laurel's nudged bottom (see drawElements), so the pair
  *  keeps its gap and cannot drift apart the way two independent knobs
- *  let it. */
+ *  let it. Applied only while collab is on (see logoNudge): the nudge
+ *  exists to clear the centre mark, so disabling collab returns the
+ *  laurel to its laid-out spot while the value stays saved. */
 function StackNudge(props: { cfg: LabelConfig; update: Update }) {
   return (
     <div className="flex items-center gap-1.5">
@@ -173,7 +175,9 @@ function StackNudge(props: { cfg: LabelConfig; update: Update }) {
         title="Move the laurel and the centre collab mark together, points (+ = down)"
         onChange={(v) => props.update((c) => { c.logo.offsetY = v; })}
       />
-      <span className="text-[11px] text-muted-foreground">laurel + centre mark</span>
+      <span className="text-[11px] text-muted-foreground">
+        {props.cfg.collabEnabled ? "laurel + centre mark" : "applies while collab is on"}
+      </span>
     </div>
   );
 }

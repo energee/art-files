@@ -18,7 +18,7 @@ import {
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import type { CollabSlot, Fill, LabelConfig, Style, StyledLine } from "../types";
-import type { ElementId } from "../elements";
+import { logoNudge, type ElementId } from "../elements";
 import { parseLogo } from "../logo";
 import { WARNING_TEXT, displayAbv, displayName, displayStyle } from "../defaults";
 import * as L from "../layout";
@@ -461,7 +461,7 @@ async function drawElements(
   // mark hangs off logoCy below, and hiding the laurel must not move it.
   const logo = parseLogo(assets.logoSvg, L.LOGO.w);
   const logoColor = mode === "art" ? fillColor(cfg.logo.fill) : maskColor(cfg.logo.layer);
-  const logoCy = L.LOGO.cy + (cfg.logo.offsetY ?? 0);
+  const logoCy = L.LOGO.cy + logoNudge(cfg);
   const logoAt = { x: L.LOGO.cx - logo.w / 2, y: y(logoCy - logo.h / 2) };
   // Outer stroke: a centered border at 2w extends w beyond the shape; the
   // fill pass on top then covers the inner half. All stroke paths draw

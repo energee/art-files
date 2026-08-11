@@ -29,6 +29,7 @@ import fontkit from "@pdf-lib/fontkit";
 import { writePsdUint8Array, type BezierPath, type Layer, type Psd } from "ag-psd";
 import type { Fill, LabelConfig, StyledLine } from "../types";
 import { displayAbv, displayName, displayStyle } from "../defaults";
+import { logoNudge } from "../elements";
 import * as L from "../layout";
 import { barcodeFootprint, barcodeGeometry, barcodeStrokePt } from "../barcode";
 import { parseDescription, parseInfoLine, parseRuns } from "../description";
@@ -582,8 +583,9 @@ function buildLayers(
       tracking,
     ) / 2;
   const logo = parseLogo(assets.logoSvg, L.LOGO.w);
-  // Same nudge the PDFs apply, so the PSD stays registered with them.
-  const logoCy = L.LOGO.cy + (cfg.logo.offsetY ?? 0);
+  // Same nudge gate the PDFs and hit-testing apply (see logoNudge), so the
+  // PSD stays registered with them — collab off means no nudge everywhere.
+  const logoCy = L.LOGO.cy + logoNudge(cfg);
   const logoPaths = logo.paths.flatMap((d) =>
     svgToPaths(d, L.LOGO.cx - logo.w / 2, logoCy - logo.h / 2),
   );

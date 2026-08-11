@@ -141,3 +141,15 @@ no status, no attempts, no delta.
 - status: done
 - attempts: 1/3
 - delta: Tauri Save As dialog calls 0 → native dialog plus scoped file write and remembered Save path; 193 root tests, TypeScript/Vite build, Cargo check, and 0.1.3 release gate pass
+
+## 2026-08-11 label-file-associations
+- finding: [user request] src-tauri/tauri.conf.json — no fileAssociations, so Finder could not open .label files in the app; macOS delivers opens as Apple events the shell also ignored
+- status: done
+- attempts: 1/3
+- delta: bundle.fileAssociations registers .label; Rust stores the Opened-event path behind take_opened_file and emits project-file-opened; App.tsx opens it through the existing quiet-retry path and adopts it for Save; fs read scope added. 194 root tests, tsc, cargo check, 0.1.4 release gate pass
+
+## 2026-08-11 collab-off-stack-nudge
+- finding: [user request] src/pdf/build.ts:464 — the laurel kept its collab stack nudge after the collab switch was turned off
+- status: done
+- attempts: 1/3
+- delta: logoNudge(cfg) in elements.ts gates the nudge on collabEnabled for draw + hit-test; value stays saved in config; inspector hints "applies while collab is on"; new hittest test covers both states

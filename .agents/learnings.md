@@ -20,3 +20,4 @@ Rules:
 
 - [seen:1] Tauri's default native drag/drop handler suppresses the DOM events used by both react-dropzone and the window asset overlay; keep `dragDropEnabled: false` while those frontend handlers own file drops. (evidence: `src-tauri/tauri.conf.json`, `tests/filedrop.test.ts`)
 - [seen:1] Tauri's webview does not provide the browser File System Access API used by Save As; route desktop saves through the dialog/fs plugins and preserve the selected native path for later Save calls. (evidence: `src/files.ts`, `src/App.tsx`)
+- [seen:1] macOS delivers Finder file-opens as Apple events, not argv: fileAssociations alone launches the app but the file never arrives — handle RunEvent::Opened in Rust, hold the path for the webview (it can beat the frontend load), and scope fs read for non-dialog paths. (evidence: src-tauri/src/main.rs, src-tauri/capabilities/default.json)
