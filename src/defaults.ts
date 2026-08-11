@@ -2,11 +2,16 @@
 // plus the fixed template strings (warning text, address) used by the layout.
 import type { LabelConfig, ConfigFile } from "./types";
 import { DEFAULT_STROKE_PX, GOLD, WARNING_TRACKING } from "./layout";
+import { DEFAULT_STROKE_LAYER } from "./strokes";
 
 /** The shipped outer stroke: pure black, at the standard width. The barcode
  *  is the one element that does NOT take it — its stroke is a white halo the
  *  scan contrast depends on (see barcodeStroke below). */
-export const KEYLINE = { stroke: "#000000", strokeWidth: DEFAULT_STROKE_PX } as const;
+export const KEYLINE = {
+  stroke: "#000000",
+  strokeLayer: DEFAULT_STROKE_LAYER,
+  strokeWidth: DEFAULT_STROKE_PX,
+} as const;
 
 // "GOVERNMENT WARNING:" carries inline **bold** markers — the TTB requires
 // the phrase in bold caps. Marked PER WORD, not across the phrase, because
@@ -62,22 +67,30 @@ export function defaultConfig(): LabelConfig {
     barcodeStroke: "#FFFFFF",
     barcodeStrokeWidth: 20,
     barcodeLayer: "white",
+    barcodeStrokeLayer: DEFAULT_STROKE_LAYER,
     qrFill: GOLD,
     // Same keyline as the text elements. The QR's stroke is a real stroked
     // path under the dots (drawSvgPath), not the faked ring text uses.
     qrStroke: KEYLINE.stroke,
     qrStrokeWidth: KEYLINE.strokeWidth,
     qrLayer: "metallic",
+    qrStrokeLayer: DEFAULT_STROKE_LAYER,
     // Collab off by default: most releases are not collabs, and with the
     // switch off none of these three are reachable from the form.
     collabEnabled: false,
-    collabLead: { fill: GOLD, layer: "metallic" },
+    collabLead: { fill: GOLD, layer: "metallic", strokeLayer: DEFAULT_STROKE_LAYER },
     // offsetY/tintRaster ship explicit rather than absent so the form's
     // number inputs and checkbox are controlled from the first render. The
     // centre slot has no offsetY of its own: it rides the laurel's (see
     // types.ts), which is what keeps the centre stack together.
-    collabLeft: { fill: GOLD, layer: "metallic", scale: 1, offsetY: 0, tintRaster: false },
-    collabCenter: { fill: GOLD, layer: "metallic", scale: 1, tintRaster: false },
+    collabLeft: {
+      fill: GOLD, layer: "metallic", strokeLayer: DEFAULT_STROKE_LAYER,
+      scale: 1, offsetY: 0, tintRaster: false,
+    },
+    collabCenter: {
+      fill: GOLD, layer: "metallic", strokeLayer: DEFAULT_STROKE_LAYER,
+      scale: 1, tintRaster: false,
+    },
     volume: { text: "1 PINT", fill: GOLD, layer: "metallic", bold: true, ...KEYLINE },
     wordmark: { fill: GOLD, layer: "metallic", ...KEYLINE },
     // The laurel's classic dark keyline, now an ordinary editable stroke.
@@ -100,7 +113,7 @@ export function defaultConfig(): LabelConfig {
     // that tight spacing reads as one word.
     storeCold: {
       text: "STORE COLD", fill: GOLD, layer: "metallic", bold: true,
-      letterSpacing: 1.25,
+      strokeLayer: DEFAULT_STROKE_LAYER, letterSpacing: 1.25,
     },
   };
 }
@@ -141,6 +154,7 @@ export function parseConfigFile(json: string): LabelConfig {
   delete cfg.qrData; // payload is derived from beerName now
   cfg.qrFill ??= GOLD;
   cfg.qrStroke ??= "none";
+  cfg.qrStrokeLayer ??= DEFAULT_STROKE_LAYER;
   // Configs saved before the barcode became a styled element, when the
   // renderer hardcoded these three. Deliberately no barcodeStrokeWidth line:
   // unset is what keeps the measured L.BARCODE.stroke halo, so these configs
@@ -148,12 +162,13 @@ export function parseConfigFile(json: string): LabelConfig {
   cfg.barcodeFill ??= "#1A1A1A";
   cfg.barcodeStroke ??= "#FFFFFF";
   cfg.barcodeLayer ??= "white";
+  cfg.barcodeStrokeLayer ??= DEFAULT_STROKE_LAYER;
   // Configs saved before the warning shipped tracked at -0.05 (2026-08).
   // Not cosmetic: at 8.2pt the untracked paragraph wraps into a 5th column
   // that lands under the barcode — the tracking is part of the geometry.
   if (cfg.warning) cfg.warning.letterSpacing ??= WARNING_TRACKING;
   // Configs saved before the description block was styleable.
-  cfg.descStyle ??= { fill: GOLD, layer: "metallic" };
+  cfg.descStyle ??= { fill: GOLD, layer: "metallic", strokeLayer: DEFAULT_STROKE_LAYER };
   // Configs saved before per-element strokes: keep the logo's classic keyline.
   if (cfg.logo) {
     cfg.logo.stroke ??= "#1A1A1A";
@@ -164,6 +179,14 @@ export function parseConfigFile(json: string): LabelConfig {
   cfg.collabLead ??= base.collabLead;
   cfg.collabLeft ??= base.collabLeft;
   cfg.collabCenter ??= base.collabCenter;
+  // Every nested Style in a pre-feature version-1 project lacks a stroke
+  // plate. Stamp the safe non-metallic default after adding any missing
+  // styles above, so both old and newly synthesized fields are complete.
+  for (const key of Object.keys(base) as (keyof LabelConfig)[]) {
+    const style = cfg[key];
+    if (style && typeof style === "object" && typeof style.fill === "string")
+      style.strokeLayer ??= DEFAULT_STROKE_LAYER;
+  }
   for (const key of Object.keys(base) as (keyof LabelConfig)[]) {
     // barcodeStrokeWidth is optional: pre-style configs omit it — that is
     // what preserves their measured halo — while defaultConfig ships 20.

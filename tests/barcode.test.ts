@@ -63,6 +63,7 @@ function preStyleConfig(): LabelConfig {
   delete raw.barcodeFill;
   delete raw.barcodeStroke;
   delete raw.barcodeLayer;
+  delete raw.barcodeStrokeLayer;
   delete raw.barcodeStrokeWidth;
   return parseConfigFile(JSON.stringify(raw));
 }
@@ -102,6 +103,7 @@ describe("drawBarcode back-compat", () => {
     expect(cfg.barcodeFill).toBe("#1A1A1A");
     expect(cfg.barcodeStroke).toBe("#FFFFFF");
     expect(cfg.barcodeLayer).toBe("white");
+    expect(cfg.barcodeStrokeLayer).toBe("white");
     // Unset, NOT DEFAULT_STROKE_PX — this is what keeps the measured halo.
     expect(cfg.barcodeStrokeWidth).toBeUndefined();
   });
@@ -233,9 +235,30 @@ describe("drawBarcode styling", () => {
     for (const t of digitHalo) expect(sameColor(t.color, parseHexFill("#445566"))).toBe(true);
   });
 
-  it("knocks the footprint out of the white plate when the layer is metallic", () => {
-    const { rects } = draw({ ...defaultConfig(), barcodeLayer: "metallic" }, "mask");
-    expect(sameColor(rects[0].color, COLORS.white)).toBe(true);
+  it("paints a white stroke outside a metallic barcode fill", () => {
+    const cfg = { ...defaultConfig(), barcodeLayer: "metallic" as const };
+    const { bars, digits } = split(cfg);
+    const { rects } = draw(cfg, "mask");
+    const footprintCount = bars.length + digits.length;
+    expect(rects).toHaveLength(2 * footprintCount);
+    for (const r of rects.slice(0, footprintCount))
+      expect(sameColor(r.color, COLORS.maskBlue)).toBe(true);
+    for (const r of rects.slice(footprintCount))
+      expect(sameColor(r.color, COLORS.white)).toBe(true);
+  });
+
+  it("paints a metallic stroke outside a white barcode fill", () => {
+    const cfg = {
+      ...defaultConfig(), barcodeLayer: "white" as const,
+      barcodeStrokeLayer: "metallic" as const,
+    };
+    const { bars, digits } = split(cfg);
+    const { rects } = draw(cfg, "mask");
+    const footprintCount = bars.length + digits.length;
+    for (const r of rects.slice(0, footprintCount))
+      expect(sameColor(r.color, COLORS.white)).toBe(true);
+    for (const r of rects.slice(footprintCount))
+      expect(sameColor(r.color, COLORS.maskBlue)).toBe(true);
   });
 });
 

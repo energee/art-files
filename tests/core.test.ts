@@ -321,6 +321,23 @@ describe("config", () => {
     const parsed = parseConfigFile(JSON.stringify(toConfigFile(cfg)));
     expect(parsed).toEqual(cfg);
   });
+  it("migrates every missing stroke layer to white without changing config version", () => {
+    const legacy = toConfigFile(defaultConfig()) as unknown as Record<string, any>;
+    delete legacy.qrStrokeLayer;
+    delete legacy.barcodeStrokeLayer;
+    for (const value of Object.values(legacy)) {
+      if (value && typeof value === "object" && typeof value.fill === "string")
+        delete value.strokeLayer;
+    }
+    const cfg = parseConfigFile(JSON.stringify(legacy));
+    expect(cfg.qrStrokeLayer).toBe("white");
+    expect(cfg.barcodeStrokeLayer).toBe("white");
+    for (const value of Object.values(cfg)) {
+      if (value && typeof value === "object" && "fill" in value)
+        expect(value.strokeLayer).toBe("white");
+    }
+    expect(toConfigFile(cfg).version).toBe(1);
+  });
   it("rejects unknown versions and missing fields", () => {
     expect(() => parseConfigFile('{"version":2}')).toThrow(/version/);
     expect(() => parseConfigFile('{"version":1,"beerName":"X"}')).toThrow(/missing/);
@@ -340,7 +357,9 @@ describe("derived QR payload", () => {
     const legacy = toConfigFile(defaultConfig()) as unknown as Record<string, unknown>;
     delete legacy.descStyle;
     const cfg = parseConfigFile(JSON.stringify(legacy));
-    expect(cfg.descStyle).toEqual({ fill: GOLD, layer: "metallic" });
+    expect(cfg.descStyle).toEqual({
+      fill: GOLD, layer: "metallic", strokeLayer: "white",
+    });
   });
   it("config migration drops qrData and defaults qrFill/qrStroke", () => {
     const legacy = { ...toConfigFile(defaultConfig()), qrData: "https://old.example" } as Record<string, unknown>;

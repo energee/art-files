@@ -16,6 +16,7 @@ import type { LabelConfig, StyledLine } from "@/types";
 import { applyStyle, elementById, type ElementId } from "@/elements";
 import { cn } from "@/lib/utils";
 import { MetallicToggle } from "./MetallicToggle";
+import { strokeLayerOf } from "@/strokes";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -79,6 +80,8 @@ function StyleSummary({ id, cfg }: { id: ElementId; cfg: LabelConfig }) {
               <span>{s.strokeWidth}px</span>
             </>
           )}
+          <span className="text-sidebar-foreground/40">·</span>
+          <span className="capitalize">{strokeLayerOf(s)}</span>
         </div>
       )}
       {tracking !== 0 && (

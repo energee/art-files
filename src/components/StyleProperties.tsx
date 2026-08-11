@@ -18,6 +18,7 @@ import {
 import { DOC_LAYER_LABELS, LAYER_ICONS, isElementId, type LayerId } from "@/components/layers";
 import { sharedValue } from "@/selection";
 import { displayName } from "@/defaults";
+import { strokeLayerOf } from "@/strokes";
 import { ColorField } from "./ColorField";
 import { ScrubField } from "./ScrubField";
 import { DescriptionEditor } from "./DescriptionEditor";
@@ -503,6 +504,7 @@ function ElementStyle(props: {
   const strokeWidth = field((s) => s.strokeWidth ?? DEFAULT_STROKE_PX);
   const strokeOn = sharedValue(styles.map((s) => !!s.stroke && s.stroke !== "none"));
   const metallic = sharedValue(styles.map((s) => s.layer)) === "metallic";
+  const strokeMetallic = sharedValue(styles.map(strokeLayerOf)) === "metallic";
   // `style()` is declared Style, but for hasBold elements the live object
   // backing it is actually a StyledLine (see elements.ts's ELEMENTS/applyStyle
   // comments) — the cast only ever runs when hasBold confirms that shape.
@@ -608,10 +610,21 @@ function ElementStyle(props: {
             for them to edit. */}
         {strokeOn === true && (
           <>
-            <ColorField
-              id={`${fid}-stroke-color`} {...strokeColor}
-              onChange={(v) => set({ stroke: v })} allowNone={false}
-            />
+            <div className="flex items-center gap-1.5">
+              <div className="min-w-0 flex-1">
+                <ColorField
+                  id={`${fid}-stroke-color`} {...strokeColor}
+                  onChange={(v) => set({ stroke: v })} allowNone={false}
+                />
+              </div>
+              <MetallicToggle
+                label="Stroke"
+                pressed={strokeMetallic}
+                onPressedChange={(on) =>
+                  set({ strokeLayer: on ? "metallic" : "white" })}
+                className="size-6 border border-input"
+              />
+            </div>
             {/* Clamped at 60px by ScrubField: each extra px adds stroke draw
                 calls, and ring()'s sample ceiling is sized for that limit. */}
             <ScrubField
@@ -666,6 +679,7 @@ export function Inspector(props: {
           fill: d.fill,
           layer: d.layer,
           stroke: d.stroke ?? "none",
+          strokeLayer: d.strokeLayer ?? "white",
           strokeWidth: d.strokeWidth,
           letterSpacing: d.letterSpacing,
           ...(el.hasBold ? { bold: (d as StyledLine).bold ?? false } : {}),

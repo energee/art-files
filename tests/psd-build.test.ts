@@ -69,7 +69,7 @@ describe("psd build", () => {
     expect(stroke?.size?.value).toBeCloseTo(20);
   });
 
-  it("mask mode mirrors buildMaskPdf: floods, repaints by layer, drops strokes", async () => {
+  it("mask mode repaints fills and independently defaults strokes to white ink", async () => {
     const psd = readPsd(
       Buffer.from(await buildPsd(defaultConfig(), assets, "mask")).buffer as ArrayBuffer,
       { skipCompositeImageData: true, skipLayerImageData: true, skipThumbnail: true },
@@ -85,8 +85,30 @@ describe("psd build", () => {
     // …white-layer elements print ink (mask blue): the barcode ships white.
     expect(layer(psd.children as any[], "Barcode").vectorFill.color)
       .toEqual({ r: 0, g: 156, b: 215 });
-    // Strokes never touch the mask plate.
-    for (const l of all) expect([l.name, l.effects?.stroke]).toEqual([l.name, undefined]);
+    // Every shipped stroke layer is white/non-metallic, hence mask blue.
+    for (const name of ["Volume", "Beer name", "Logo", "QR", "Barcode"]) {
+      const stroke = layer(psd.children as any[], name).effects?.stroke?.[0];
+      expect([name, stroke?.enabled, stroke?.color]).toEqual([
+        name, true, { r: 0, g: 156, b: 215 },
+      ]);
+    }
+  });
+
+  it("keeps a metallic stroke independent from a white fill in the mask PSD", async () => {
+    const cfg = defaultConfig();
+    cfg.nameStyle.layer = "white";
+    cfg.nameStyle.strokeLayer = "metallic";
+    const psd = readPsd(
+      Buffer.from(await buildPsd(cfg, assets, "mask")).buffer as ArrayBuffer,
+      { skipCompositeImageData: true, skipLayerImageData: true, skipThumbnail: true },
+    );
+    const name = layer(psd.children as any[], "Beer name");
+    expect(name.text.style.fillColor.r).toBeCloseTo(0, 2);
+    expect(name.text.style.fillColor.g).toBeCloseTo(156, 2);
+    expect(name.text.style.fillColor.b).toBeCloseTo(215, 2);
+    expect(name.effects.stroke[0].color.r).toBeCloseTo(255, 2);
+    expect(name.effects.stroke[0].color.g).toBeCloseTo(255, 2);
+    expect(name.effects.stroke[0].color.b).toBeCloseTo(255, 2);
   });
 
   it("gives every keylined text layer a real stroke effect in black", () => {
