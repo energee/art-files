@@ -50,23 +50,55 @@ jobs:
       - name: Build and publish GitHub release
         uses: tauri-apps/tauri-action@v1
         env:
-          # Releases publish to the public energee/label-lab-releases repo (this
-          # repo is private, so its own release assets 404 for the installed
-          # app's updater). RELEASES_TOKEN is a fine-grained PAT with
-          # contents:write on that repo — the default GITHUB_TOKEN cannot write
-          # across repos.
-          GITHUB_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # Compiled into updater_enabled(); the value is public, but keeping
           # all three key settings together makes release setup less error-prone.
           TAURI_UPDATER_PUBLIC_KEY: ${{ secrets.TAURI_UPDATER_PUBLIC_KEY }}
         with:
-          owner: energee
-          repo: label-lab-releases
           tagName: label-lab-v__VERSION__
           releaseName: Label Lab v__VERSION__
           generateReleaseNotes: true
           releaseDraft: false
           prerelease: false
           args: --target ${{ matrix.target }} --config src-tauri/tauri.release.generated.conf.json
+
+  # The repo is private, so installed apps cannot read its release assets.
+  # Copy just the update feed (latest.json + updater archives + signatures) to
+  # the public GitHub Pages site; DMGs for manual install stay on the private
+  # release page.
+  publish-update-feed:
+    name: Publish update feed to Pages
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download updater assets from the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir site
+          gh release download --repo "$GITHUB_REPOSITORY" --dir site \
+            --pattern 'latest.json' \
+            --pattern '*.app.tar.gz' \
+            --pattern '*.app.tar.gz.sig'
+
+      - name: Point latest.json at the Pages copies
+        run: |
+          jq '.platforms |= with_entries(.value.url |= "https://energ.ee/art-files/" + (split("/") | last))' \
+            site/latest.json > site/latest.json.tmp
+          mv site/latest.json.tmp site/latest.json
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
