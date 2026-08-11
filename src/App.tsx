@@ -4,14 +4,14 @@
 // whole-project save/open (.label — see labelfile.ts). Mirrors the old
 // main.ts wiring, componentized.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { CollabSlot, Fill, LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
 import { defaultConfig, exportBaseName, parseConfigFile } from "@/defaults";
 import { strToU8 } from "fflate";
 import { LABEL_EXT, packLabel, unpackLabel } from "@/labelfile";
-import { saveNativeFile } from "@/files";
+import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import { validateUpc } from "@/upc";
 import { mimeFor, rasterKind, tintRgba } from "@/collab";
@@ -1155,14 +1155,20 @@ export default function App() {
     }
   }
 
-  /** Open a .label with quiet retries — shared by BOTH entry points (the
-   *  FS-Access picker and the hidden-input fallback), so neither can drift.
+  /** What the open paths hand to openProject: a picked File, or bytes the
+   *  desktop shell already read from disk (the Finder path) — the latter
+   *  skips the File/arrayBuffer round trip, which matters at ~40MB. */
+  type LabelSource = File | { name: string; bytes: Uint8Array };
+
+  /** Open a .label with quiet retries — shared by ALL entry points (the
+   *  FS-Access picker, the hidden-input fallback, and the desktop
+   *  Finder-open effect), so none can drift.
    *  The first read of a freshly saved, cloud-synced, or large
    *  just-downloaded file can fail while the OS materializes or scans the
    *  bytes — users saw "cancel and reopen fixes it", which is this race
    *  resolving itself. Backoff to ~1.5s total because a 38MB file scans
    *  measurably slower than a small one; only the last attempt reports. */
-  async function openWithRetry(getFile: () => Promise<File>): Promise<boolean> {
+  async function openWithRetry(getFile: () => Promise<LabelSource>): Promise<boolean> {
     const delays = [0, 300, 1200];
     for (let i = 0; i < delays.length; i++) {
       if (delays[i]) await new Promise((r) => setTimeout(r, delays[i]));
@@ -1176,9 +1182,10 @@ export default function App() {
    *  image through the exact handler a manual drop uses so previews, mask
    *  polarity, and object-URL lifecycle behave identically. Slots absent from
    *  the file are cleared: opening a project is a full restore, not a merge. */
-  async function openProject(f: File, opts?: { quiet?: boolean }): Promise<boolean> {
+  async function openProject(f: LabelSource, opts?: { quiet?: boolean }): Promise<boolean> {
     try {
-      const unpacked = unpackLabel(new Uint8Array(await f.arrayBuffer()));
+      const bytes = f instanceof File ? new Uint8Array(await f.arrayBuffer()) : f.bytes;
+      const unpacked = unpackLabel(bytes);
       resetDocument(parseConfigFile(unpacked.json));
       // The type matters: FileDrop thumbnails are createObjectURL(file), and
       // an <img> won't render a typeless blob as SVG — logos restored from a
@@ -1204,6 +1211,36 @@ export default function App() {
       return false;
     }
   }
+
+  /** Finder → Label Lab: a double-clicked .label arrives from Rust as a
+   *  stored path (macOS delivers open-document Apple events, not argv — see
+   *  take_opened_file in src-tauri/src/main.rs). Pulled once on mount, since
+   *  a launch-by-file beats the webview loading, and again on each
+   *  "project-file-opened" emit for opens while the app is running. The
+   *  same quiet-retry open as the pickers; success adopts the path so Save
+   *  rewrites the double-clicked file. (projectHandle needs no clearing:
+   *  WKWebView has no FS-Access picker, so it is never set under Tauri.) */
+  useEffect(() => {
+    if (!isTauri()) return;
+    async function openFromFinder() {
+      try {
+        const path = await invoke<string | null>("take_opened_file");
+        if (!path) return;
+        const name = path.slice(path.lastIndexOf("/") + 1);
+        if (await openWithRetry(async () => ({ name, bytes: await readNativeFile(path) })))
+          projectPath.current = path;
+      } catch (err) {
+        setLoadError(`Could not open project: ${errMsg(err)}`);
+      }
+    }
+    const stopping = import("@tauri-apps/api/event")
+      .then(({ listen }) => listen("project-file-opened", () => void openFromFinder()));
+    void openFromFinder();
+    return () => void stopping.then((stop) => stop());
+    // openWithRetry's closure chain ends in stable setters and useCallbacks,
+    // so the mount-render copy is never stale — same reasoning as onKey above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** The PSD's texture layer needs raw RGBA at document size — PSD layers
    *  hold pixels 1:1, so the cover-fit happens here rather than in the

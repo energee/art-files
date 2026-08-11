@@ -39,7 +39,10 @@ export interface StyledLine extends Style {
  *  the description (see collabLeftFlow) rather than sitting at a fixed y —
  *  offsetY nudges that computed position, it does not replace it. */
 export interface Positioned {
-  /** Vertical nudge in PDF points, positive = down. Absent/0 = as laid out. */
+  /** Vertical nudge in PDF points, positive = down. Absent/0 = as laid out.
+   *  For the laurel this is the "stack nudge", applied only while
+   *  collabEnabled (see logoNudge in elements.ts) — the saved value is kept
+   *  but ignored when the collab block is off. */
   offsetY?: number;
 }
 

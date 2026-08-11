@@ -2,7 +2,7 @@
 // Prevents an additional console window on Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::{fs, io::ErrorKind, path::PathBuf};
+use std::{fs, io::ErrorKind, path::PathBuf, sync::Mutex};
 use tauri::Manager;
 
 // Deliberately the repo library rather than `{}`: a fresh desktop install is
@@ -64,6 +64,19 @@ fn relaunch_app(app: tauri::AppHandle) {
     app.restart();
 }
 
+/** The .label path macOS handed us through its open-document Apple event
+ * (Finder double-click, Open With, Dock drop). Held in state rather than
+ * emitted directly: a launch-by-file delivers the event before the webview
+ * is listening, so the frontend pulls it once ready and again on each
+ * "project-file-opened" emit. */
+struct OpenedFile(Mutex<Option<PathBuf>>);
+
+#[tauri::command]
+fn take_opened_file(state: tauri::State<OpenedFile>) -> Option<String> {
+    let path = state.0.lock().unwrap().take()?;
+    Some(path.to_string_lossy().into_owned())
+}
+
 fn main() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -78,12 +91,28 @@ fn main() {
     };
 
     builder
+        .manage(OpenedFile(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             load_presets,
             save_presets,
             updater_enabled,
-            relaunch_app
+            relaunch_app,
+            take_opened_file
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // ponytail: macOS-only open handling — the bundle only targets
+            // app/dmg. Parse argv here if Windows/Linux bundles ever appear.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = event {
+                use tauri::Emitter;
+                if let Some(path) = urls.into_iter().find_map(|url| url.to_file_path().ok()) {
+                    *app.state::<OpenedFile>().0.lock().unwrap() = Some(path);
+                    let _ = app.emit("project-file-opened", ());
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
 }

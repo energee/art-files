@@ -43,6 +43,17 @@ describe("preview hit-testing", () => {
     expect(after.y0 - before.y0).toBeCloseTo(10);
   });
 
+  it("ignores the saved stack nudge while collab is off", () => {
+    // The nudge exists to clear the centre collab mark, so with the switch
+    // off the laurel sits at its laid-out spot; the value stays in the
+    // config for the next collab release (see logoNudge).
+    const nudgedOff = { ...cfg, collabEnabled: false, logo: { ...cfg.logo, offsetY: 40 } };
+    const plain = boxOf("logo", cfg, measure)!;
+    expect(boxOf("logo", nudgedOff, measure)!.y0).toBeCloseTo(plain.y0);
+    const nudgedOn = { ...nudgedOff, collabEnabled: true };
+    expect(boxOf("logo", nudgedOn, measure)!.y0 - plain.y0).toBeCloseTo(40);
+  });
+
   it("hits the QR inside its box", () => {
     expect(hitTest(L.QR.x + 5, L.QR.yTop + 5, measure, cfg)).toBe("qr");
   });

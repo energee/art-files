@@ -3,6 +3,16 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.4] - 2026-08-11
+
+- Registered the .label file type with macOS: double-clicking a project in
+  Finder (or Open With / dropping it on the Dock icon) now opens it in Label
+  Lab, including while the app is already running, and Save rewrites the
+  opened file.
+- Made the stack nudge apply only while Collab is enabled: turning Collab off
+  returns the laurel to its default position, while the saved nudge value is
+  kept for the next collab release.
+
 ## [0.1.3] - 2026-08-11
 
 - Fixed Save Project As and file exports in the desktop app so they open the

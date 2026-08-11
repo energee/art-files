@@ -11,6 +11,15 @@ import { strokeLayerOf } from "./strokes";
  *  layer is selected. Never mutated; the panel edits App's config, not this. */
 export const SHIPPED: LabelConfig = defaultConfig();
 
+/** The laurel's effective stack nudge. The nudge exists to make room for the
+ *  centre collab mark, so while the collab switch is off the laurel draws at
+ *  its laid-out position — the saved offsetY survives in the config for the
+ *  next collab release. Renderers and hit-testing read the nudge through
+ *  this one gate so they cannot disagree. */
+export function logoNudge(cfg: LabelConfig): number {
+  return cfg.collabEnabled ? cfg.logo.offsetY ?? 0 : 0;
+}
+
 export type ElementId =
   | "name" | "styleLine" | "abv" | "description"
   | "volume" | "wordmark" | "logo" | "handleAddress" | "warning" | "storeCold"
