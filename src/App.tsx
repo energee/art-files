@@ -88,6 +88,20 @@ function HeaderAlert({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Where the view toggles (rulers/guides/bleed lines) persist — localStorage,
+ *  deliberately NOT presets.json: per-operator UI state in the git-tracked
+ *  library dirtied the repo on every View-menu click. Defaults match the
+ *  historical boot state (rulers/guides on, bleed lines off). */
+const VIEW_KEY = "lolev-view";
+function loadViewToggles(): { showRulers: boolean; showGuides: boolean; showBleed: boolean } {
+  const defaults = { showRulers: true, showGuides: true, showBleed: false };
+  try {
+    return { ...defaults, ...JSON.parse(localStorage.getItem(VIEW_KEY) ?? "{}") };
+  } catch {
+    return defaults; // a hand-mangled entry falls back rather than crashing boot
+  }
+}
+
 /** The .label file picker option, shared by open and save dialogs. */
 const LABEL_TYPES = [
   { description: "Label project", accept: { "application/zip": [LABEL_EXT] } },
@@ -485,12 +499,16 @@ export default function App() {
     if (adopted.current || !presetsLoaded) return;
     adopted.current = true;
     setRender(presets.render);
-    setBleed(presets.view.showBleed);
-    setShowRulers(presets.view.showRulers);
-    setShowGuides(presets.view.showGuides);
-  }, [presetsLoaded, presets.render, presets.view]);
-  // Persisted below, in one debounced write with the view toggles — see the
-  // effect beside the guide state.
+  }, [presetsLoaded, presets.render]);
+  // Debounced back into the library once adopted. View toggles are NOT here
+  // any more: they live in localStorage (see the view state below) — writing
+  // per-operator UI state into git-tracked presets.json dirtied the repo on
+  // every View-menu click.
+  useEffect(() => {
+    if (!adopted.current) return;
+    const t = setTimeout(() => void mutatePresets((p) => ({ ...p, render })), 500);
+    return () => clearTimeout(t);
+  }, [render]);
   useEffect(() => {
     if (presetsError) setLoadError(`presets save failed: ${presetsError}`);
   }, [presetsError]);
@@ -617,16 +635,15 @@ export default function App() {
   // currently puts it (ART.x/ART.y follow it). View-only — this toggle draws
   // the line, it does not decide where the trim is; the exported PDFs are
   // unaffected either way.
-  const [bleed, setBleed] = useState(false);
+  const [bleed, setBleed] = useState(() => loadViewToggles().showBleed);
   // Rulers and guides are view state, like hidden layer eyes: they assist the
   // operator but are not label content, so none enters config history/exports.
-  // Rulers, guides, and bleed lines DO persist across sessions — workspace
-  // preferences, saved to presets.json alongside the render knobs: adopted by
-  // the effect near the render settings above, written back by the single
-  // debounced effect below.
-  const [showRulers, setShowRulers] = useState(true);
+  // Rulers, guides, and bleed lines DO persist across sessions — in
+  // localStorage (per-operator UI state), NOT presets.json: writing them to
+  // the git-tracked library dirtied the repo on every View-menu click.
+  const [showRulers, setShowRulers] = useState(() => loadViewToggles().showRulers);
   const [rulerUnit, setRulerUnit] = useState<RulerUnit>("in");
-  const [showGuides, setShowGuides] = useState(true);
+  const [showGuides, setShowGuides] = useState(() => loadViewToggles().showGuides);
   const [showMargins, setShowMargins] = useState(true);
   const [showCenter, setShowCenter] = useState(true);
   const [showManualGuides, setShowManualGuides] = useState(true);
@@ -639,15 +656,12 @@ export default function App() {
     setManualGuides((guides) => guides.map((guide) => guide.id === id ? { ...guide, point } : guide));
   const removeManualGuide = (id: number) =>
     setManualGuides((guides) => guides.filter((guide) => guide.id !== id));
-  // One debounced write for everything App persists to presets.json — the
-  // render knobs and the view toggles share the adopt-guard and the 500ms
-  // debounce; two effects would interleave writes to the same file.
+  // Persist the toggles on change. Synchronous and unguarded — localStorage
+  // is cheap, there is no shared file to interleave with, and the states
+  // initialize FROM storage so the first run writes back what it read.
   useEffect(() => {
-    if (!adopted.current) return;
-    const view = { showRulers, showGuides, showBleed: bleed };
-    const t = setTimeout(() => void mutatePresets((p) => ({ ...p, render, view })), 500);
-    return () => clearTimeout(t);
-  }, [render, showRulers, showGuides, bleed]);
+    localStorage.setItem(VIEW_KEY, JSON.stringify({ showRulers, showGuides, showBleed: bleed }));
+  }, [showRulers, showGuides, bleed]);
 
   const update = (fn: (c: LabelConfig) => void) => {
     setDirty(true); // every config edit passes through here — see `dirty`

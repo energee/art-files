@@ -44,10 +44,5 @@
     "edgeSoftness": 0.1,
     "dpi": 600,
     "bleedIn": 0.0635
-  },
-  "view": {
-    "showRulers": true,
-    "showGuides": true,
-    "showBleed": false
   }
 }

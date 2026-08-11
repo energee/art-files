@@ -1,7 +1,6 @@
 // PresetsDialog.tsx — a read-only window onto the loaded presets.json:
-// beer styles, barcodes, saved color swatches, the one render-settings set,
-// and the persisted view toggles.
-// Editing stays where it always was (preset bars, the Settings layer);
+// beer styles, barcodes, saved color swatches, and the one render-settings
+// set. Editing stays where it always was (preset bars, the Settings layer);
 // this exists so the library can be reviewed without exporting the file.
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { Presets } from "@/presets";
@@ -79,19 +78,8 @@ export function PresetsDialog(props: {
               <dd className="tabular-nums">{p.render.bleedIn}&quot; per side</dd>
             </dl>
           </Section>
-          <Section title="View settings">
-            {/* The persisted toggles (View menu / shortcuts) — shown here for
-                the same reason as the render block: presets.json review
-                without exporting the file. */}
-            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
-              <dt className="text-muted-foreground">Rulers</dt>
-              <dd>{p.view.showRulers ? "shown" : "hidden"}</dd>
-              <dt className="text-muted-foreground">Guides</dt>
-              <dd>{p.view.showGuides ? "shown" : "hidden"}</dd>
-              <dt className="text-muted-foreground">Bleed lines</dt>
-              <dd>{p.view.showBleed ? "shown" : "hidden"}</dd>
-            </dl>
-          </Section>
+          {/* No view-toggles section: those moved to localStorage (see App)
+              — they are per-operator UI state, not library content. */}
         </div>
       </DialogContent>
     </Dialog>
