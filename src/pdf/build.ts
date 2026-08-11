@@ -351,9 +351,18 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode:
     const measure = (t: string) => fonts.regular.widthOfTextAtSize(t, B.textSize);
     const fillLayer = cfg.barcodeLayer;
     const strokeLayer = cfg.barcodeStrokeLayer;
+    // A non-zero outset draws as a centered border of 2*outset on the BASE
+    // footprint instead of a pre-outset rectangle: with the page's round line
+    // join (see newDoc) that rounds each corner at radius `outset`, matching
+    // the art pass's halo and the PSD's outside-stroke effect. The old outset
+    // rectangles were square-cornered, leaving the white-ink plate overhanging
+    // the art ink by a corner nib at every bar and digit-pill corner.
     const drawFootprint = (outset: number, color: ReturnType<typeof maskColor>) => {
-      for (const r of barcodeFootprint(geo, outset, measure))
-        page.drawRectangle({ x: r.x, y: y(r.yTop + r.h), width: r.w, height: r.h, color });
+      for (const r of barcodeFootprint(geo, 0, measure))
+        page.drawRectangle({
+          x: r.x, y: y(r.yTop + r.h), width: r.w, height: r.h, color,
+          ...(outset > 0 ? { borderColor: color, borderWidth: 2 * outset } : {}),
+        });
     };
     if (S > 0) drawFootprint(S, maskColor(strokeLayer));
     if (S === 0 || strokeLayer !== fillLayer) drawFootprint(0, maskColor(fillLayer));

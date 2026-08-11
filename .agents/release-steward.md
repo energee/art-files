@@ -39,6 +39,8 @@ base now carries that version.
 
 ## 3. Preserve the release boundary
 
-Preparing metadata does not authorize publishing. Do not create or push a tag,
-dispatch `.github/workflows/release.yml`, upload artifacts, or edit an existing
-GitHub Release unless the user explicitly requests that release operation.
+Preparing metadata does not authorize publishing. A version change merged to `main`
+automatically dispatches `.github/workflows/release.yml`, which creates the tag,
+GitHub Release, signed artifacts, and public update feed. Do not merge that change,
+manually dispatch the workflow, create or push a tag, upload artifacts, or edit an
+existing GitHub Release unless the user explicitly requests that release operation.

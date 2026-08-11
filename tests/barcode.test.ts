@@ -18,9 +18,10 @@ const UPC = "850051366224";
 type Color = { red: number; green: number; blue: number };
 type Rect = {
   x: number; y: number; width: number; height: number; color: Color;
-  // Set only on the art pass's bar halos: those are the bar's OWN rect drawn
-  // with a centered border of 2S, so their corners round at radius S the way
-  // Photoshop's outside stroke does. Read S back as borderWidth / 2.
+  // Set on the art pass's bar halos AND the mask's stroke footprint: both are
+  // the base shape's OWN rect drawn with a centered border of 2S, so their
+  // corners round at radius S the way Photoshop's outside stroke does. Read S
+  // back as borderWidth / 2.
   borderWidth?: number;
 };
 type Text = { txt: string; x: number; y: number; color: Color };
@@ -133,12 +134,15 @@ describe("drawBarcode back-compat", () => {
     const { rects } = draw(cfg, "mask");
     expect(rects).toHaveLength(bars.length + digits.length);
     for (const r of rects) expect(sameColor(r.color, COLORS.maskBlue)).toBe(true);
-    // First `bars.length` rects are the per-bar outsets, in bar order.
+    // First `bars.length` rects are the per-bar footprints, in bar order:
+    // each the bar's own rect carrying a centered 2S border, exactly like the
+    // art halo, so the mask's corners round at the same radius S.
     bars.forEach((bar, i) => {
-      expect(rects[i].x).toBeCloseTo(bar.x - B.stroke, 10);
-      expect(rects[i].y).toBeCloseTo(bar.y - B.stroke, 10);
-      expect(rects[i].width).toBeCloseTo(bar.width + 2 * B.stroke, 10);
-      expect(rects[i].height).toBeCloseTo(bar.height + 2 * B.stroke, 10);
+      expect(rects[i].x).toBeCloseTo(bar.x, 10);
+      expect(rects[i].y).toBeCloseTo(bar.y, 10);
+      expect(rects[i].width).toBeCloseTo(bar.width, 10);
+      expect(rects[i].height).toBeCloseTo(bar.height, 10);
+      expect(rects[i].borderWidth).toBeCloseTo(2 * B.stroke, 10);
     });
   });
 });
@@ -166,12 +170,12 @@ describe("drawBarcode styling", () => {
     // The art halo is the bar's own rect with a centered 2S border.
     const artS = halo.length ? halo[0].borderWidth! / 2 : 0;
     // Mask rects are pushed bar-first, so rects[0] is the first bar's
-    // outset rect — its size must track the same S as the art halo.
+    // footprint — its centered border must track the same S as the art halo.
     const maskRect = draw(cfg, "mask").rects[0];
-    const maskS = (maskRect.width - bars[0].width) / 2;
+    const maskS = (maskRect.borderWidth ?? 0) / 2;
     expect(artS).toBeCloseTo(expected, 10);
     expect(maskS).toBeCloseTo(expected, 10);
-    expect(maskRect.height).toBeCloseTo(bars[0].height + 2 * expected, 10);
+    expect(maskRect.height).toBeCloseTo(bars[0].height, 10);
   });
 
   // Regression: the mask used to draw ONE bounding rect over the whole
@@ -185,10 +189,11 @@ describe("drawBarcode styling", () => {
     const { rects } = draw(cfg, "mask");
     expect(rects).toHaveLength(bars.length + digits.length);
     bars.forEach((bar, i) => {
-      expect(rects[i].x).toBeCloseTo(bar.x - expected, 10);
-      expect(rects[i].y).toBeCloseTo(bar.y - expected, 10);
-      expect(rects[i].width).toBeCloseTo(bar.width + 2 * expected, 10);
-      expect(rects[i].height).toBeCloseTo(bar.height + 2 * expected, 10);
+      expect(rects[i].x).toBeCloseTo(bar.x, 10);
+      expect(rects[i].y).toBeCloseTo(bar.y, 10);
+      expect(rects[i].width).toBeCloseTo(bar.width, 10);
+      expect(rects[i].height).toBeCloseTo(bar.height, 10);
+      expect((rects[i].borderWidth ?? 0) / 2).toBeCloseTo(expected, 10);
     });
   });
 
@@ -207,11 +212,12 @@ describe("drawBarcode styling", () => {
       // Mock font: widthOfTextAtSize always returns 10, so every digit
       // group's glyph run is 10pt regardless of text.
       const w = 10;
-      const x0 = d.x - DIGIT_ASC * B.textSize - expected;
-      const x1 = d.x + DIGIT_DESC * B.textSize + expected;
+      const x0 = d.x - DIGIT_ASC * B.textSize;
+      const x1 = d.x + DIGIT_DESC * B.textSize;
       expect(pills[i].x).toBeCloseTo(x0, 10);
       expect(pills[i].width).toBeCloseTo(x1 - x0, 10);
-      expect(pills[i].height).toBeCloseTo(w + 2 * expected, 10);
+      expect(pills[i].height).toBeCloseTo(w, 10);
+      expect((pills[i].borderWidth ?? 0) / 2).toBeCloseTo(expected, 10);
     });
   });
 
@@ -281,7 +287,8 @@ describe("shared barcode stroke resolver", () => {
     // Every halo rect is its bar carrying a centered 2S border, which reaches
     // S past the bar on each side.
     expect(halo[0].borderWidth).toBeCloseTo(2 * expected, 10);
-    const maskRect = draw(cfg, "mask").rects[0]; // first bar's outset rect
-    expect(maskRect.width).toBeCloseTo(bars[0].width + 2 * expected, 10);
+    const maskRect = draw(cfg, "mask").rects[0]; // first bar's footprint rect
+    expect(maskRect.width).toBeCloseTo(bars[0].width, 10);
+    expect(maskRect.borderWidth).toBeCloseTo(2 * expected, 10);
   });
 });
