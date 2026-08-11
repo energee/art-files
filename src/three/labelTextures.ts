@@ -4,9 +4,15 @@
 // with the 2D preview (see pdf/render.ts).
 import { renderPdfPage } from "@/pdf/render";
 
-/** Longest rendered edge in px. ~2x the PDF's preview scale is plenty for a
- *  wrapped texture; capping keeps each rebuild's canvases a few MB. */
-const MAX_EDGE = 2048;
+/** Longest rendered edge in px. The label wraps most of the way around the
+ *  can, so at typical zoom the texture — not the framebuffer — is what limits
+ *  sharpness; the cap still bounds each rebuild's canvases. */
+const MAX_EDGE = 4096;
+
+/** Oversample factor over the PDF's natural (72dpi) page size. Together with
+ *  MAX_EDGE this is what sets the label's texel density: preview pages are
+ *  small enough that this factor, not MAX_EDGE, is usually what binds. */
+const MAX_SCALE = 4;
 
 /** min(r,g,b) above this reads as "no white ink printed" = foil shows.
  *  The mask plate draws its ink in blue (min(r,g,b) = the blue channel's
@@ -37,7 +43,7 @@ async function renderPlate(
   // the raster worker, which resolves the cap there (size, when set, wins).
   const canvas = await renderPdfPage(bytes, {
     size,
-    scaleCap: { maxEdge: MAX_EDGE, maxScale: 2 },
+    scaleCap: { maxEdge: MAX_EDGE, maxScale: MAX_SCALE },
   });
   return canvas!;
 }
