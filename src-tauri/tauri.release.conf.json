@@ -7,7 +7,7 @@
     "updater": {
       "pubkey": "__TAURI_UPDATER_PUBLIC_KEY__",
       "endpoints": [
-        "https://github.com/energee/art-files/releases/latest/download/latest.json"
+        "https://energ.ee/art-files/latest.json"
       ]
     }
   }

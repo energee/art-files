@@ -230,9 +230,17 @@ gh secret set TAURI_UPDATER_PUBLIC_KEY < ~/.tauri/label-lab.key.pub
 The key generator prompts for the password used by the second secret. To ship
 a release, bump the version in `package.json`, `src-tauri/Cargo.toml`, and
 `src-tauri/tauri.conf.json`, then run the **Release Label Lab** workflow from
-GitHub Actions. It builds Intel and Apple Silicon apps, creates a public
-`label-lab-v<version>` release, and uploads updater archives, signatures, and
-`latest.json`. The normal `npm run desktop:build` remains a keyless,
+GitHub Actions. It builds Intel and Apple Silicon apps and creates a
+`label-lab-v<version>` release on this (private) repo with the DMGs for manual
+install. Because installed apps cannot read a private repo, the workflow then
+copies only the update feed — `latest.json`, the updater archives, and their
+signatures — to the repo's public GitHub Pages site
+(`https://energ.ee/art-files/`, via the account's custom domain), which is what
+the in-app updater
+polls. The source and release page stay private; only those update artifacts
+are served publicly. Pages must be enabled once with "GitHub Actions" as the
+source (Settings → Pages), and publishing Pages from a private repo requires a
+paid GitHub plan. The normal `npm run desktop:build` remains a keyless,
 ad-hoc-signed local build with updater checks disabled.
 
 ### Layered PSD
