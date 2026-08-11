@@ -91,8 +91,14 @@ jobs:
             --pattern '*.app.tar.gz.sig'
 
       - name: Point latest.json at the Pages copies
+        # The release's own URLs are API asset ids (the repo is private), so
+        # rebuild each platform URL from the downloaded archive's filename.
         run: |
-          jq '.platforms |= with_entries(.value.url |= "https://energ.ee/art-files/" + (split("/") | last))' \
+          aarch64=$(basename site/*_aarch64.app.tar.gz)
+          x64=$(basename site/*_x64.app.tar.gz)
+          jq --arg aarch64 "$aarch64" --arg x64 "$x64" \
+            '.platforms |= with_entries(.value.url = ("https://energ.ee/art-files/" +
+              (if .key | startswith("darwin-aarch64") then $aarch64 else $x64 end)))' \
             site/latest.json > site/latest.json.tmp
           mv site/latest.json.tmp site/latest.json
 
