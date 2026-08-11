@@ -75,6 +75,9 @@ describe("description markdown", () => {
       { text: "Roy Farms", bold: true, fill: GOLD, layer: "white" },
       { text: "Silvery", bold: false, fill: GOLD, layer: "white" },
       { text: "Bold Gold", bold: true, fill: GOLD, layer: "metallic" },
+      // Trailing blank lines are kept as empty body lines (vertical gaps).
+      { text: "", bold: false, fill: GOLD, layer: "metallic" },
+      { text: "", bold: false, fill: GOLD, layer: "metallic" },
     ]);
   });
   it("parses the Info line with the same markers, collapsed to one line", () => {
@@ -142,9 +145,12 @@ describe("description markdown", () => {
     expect(serializeDescription(parseDescription(reversed))).toBe(canonical);
   });
 
-  it("drops blank lines: they are skipped during parsing and cannot be recovered", () => {
-    const src = "A\n\nB";
-    expect(serializeDescription(parseDescription(src))).toBe("A\nB");
+  it("keeps interior blank lines and skips leading ones", () => {
+    // A blank line between body lines is an author's vertical gap: it
+    // survives the round-trip. Blanks before the first line render nothing,
+    // so they are still dropped.
+    expect(serializeDescription(parseDescription("A\n\nB"))).toBe("A\n\nB");
+    expect(serializeDescription(parseDescription("\n\nA\nB"))).toBe("A\nB");
   });
 
   it("a second # line does not overwrite the header: first # wins, second survives as a body line", () => {
