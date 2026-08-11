@@ -16,7 +16,10 @@ printer:
 Every text element — and each description line individually — has a **fill**
 (a hex color like `#F3CD80`, or `none` for no ink, drawn in the art PDF) and
 a **layer** (`metallic` knocks out of the white layer; `white` gets a
-white-ink underlay). The description block is authored as a markdown
+white-ink underlay). Outer strokes have their own independent layer using the
+same two choices; all strokes default to `white`/non-metallic, including in
+older saved projects that predate the setting. The description block is
+authored as a markdown
 subset, one label line per line: `# text` = header, `**text**` = bold,
 `_text_` = white ink, combinable; plain lines are gold metallic (parsed by
 `src/description.ts`). The barcode reproduces JsBarcode's UPC-A rendering,
@@ -74,8 +77,8 @@ selection outline around whatever's picked — opens one contextual style
 panel below the form (Photoshop's model: only one element's panel is
 ever open at a time). Its Fill (color picker with a screen eyedropper on
 Chromium/hex field/no-ink toggle),
-Layer select, and outer-stroke toggle (its own color + width, px at the
-600dpi deliverable, default 15px ≈ 1.8pt) are on every element's panel —
+Layer select, and outer-stroke toggle (its own color, white/metallic layer,
+and width in px at the 600dpi deliverable, default 15px ≈ 1.8pt) are on every element's panel —
 except that the QR and the barcode omit the no-ink option, since neither
 scans without ink, and the barcode's stroke defaults to 20px rather than
 the global 15px. Every text element also gets a Tracking field —
@@ -278,9 +281,10 @@ geometry (`buildPsd(cfg, assets, "mask")`): a white "Knockout base" flood,
 then the recolored mask raster (or, with no mask loaded, a solid white-ink
 blue flood — "no mask" means "print as a white label"), then every element
 repainted by its layer — metallic knocks out in white, white-layer prints
-mask blue, per-run for inline `_white ink_` spans. Strokes are omitted
-entirely: they never touch the mask plate. The barcode paints its true ink
-footprint (outset bar rects plus digit pills), exactly like the mask PDF.
+mask blue, per-run for inline `_white ink_` spans. Every enabled stroke is
+repainted the same way from its own layer assignment, as an editable outside
+effect beneath the fill. The barcode follows that same independent
+stroke/fill composition, exactly like the mask PDF.
 
 Headless (same renderer, used for iteration/batches):
 
@@ -298,7 +302,9 @@ field) are auto-migrated on load: `gold` → the current default gold (`#F3CD80`
 payload. Configs saved before the barcode carried a style of its own pick
 up the colors the renderer used to hardcode, and leave its stroke width
 unset so the measured halo is preserved — those files print exactly as
-they always have. The app entry point is `src/main.tsx` (the old
+they always have. Configs saved before stroke layers existed acquire a
+`white`/non-metallic stroke layer on every element. The app entry point is
+`src/main.tsx` (the old
 `src/main.ts` / `src/style.css` vanilla-TS UI is gone).
 
 ## CMYK for the printer

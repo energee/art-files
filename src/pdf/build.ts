@@ -25,6 +25,7 @@ import * as L from "../layout";
 import { barcodeFootprint, barcodeGeometry, barcodeStrokePt } from "../barcode";
 import { qrPath, qrShapes, qrUrl } from "../qr";
 import { parseDescription, parseInfoLine, parseRuns } from "../description";
+import { strokeLayerOf } from "../strokes";
 import { warningColumnLen, warningMeasure, wrapWarning } from "../warning";
 
 /** A collab brewery's logo: vector source (recolored by its slot's style, like
@@ -79,17 +80,13 @@ function maskColor(layer: "metallic" | "white") {
   return layer === "metallic" ? toRgb(L.COLORS.white) : toRgb(L.COLORS.maskBlue);
 }
 
-/** Outer-stroke params for an element (art mode only), or null when off.
- *  Widths are authored in px at the 600dpi deliverable.
- *
- *  Strokes never draw on the MASK plate (Ted's ask, 2026-08-05), on any
- *  layer: the mask keeps whatever its flood and the element's own
- *  glyphs/paths put there, so a keyline neither knocks out white ink nor
- *  adds any. */
+/** Outer-stroke params for an element, or null when off. Art uses the stroke
+ *  color; mask output independently resolves the stroke's white/metallic
+ *  plate. Widths are authored in px at the 600dpi deliverable. */
 function strokeOf(style: Style, mode: Mode) {
-  if (mode !== "art" || !style.stroke || style.stroke === "none") return null;
+  if (!style.stroke || style.stroke === "none") return null;
   return {
-    color: fillColor(style.stroke),
+    color: mode === "art" ? fillColor(style.stroke) : maskColor(strokeLayerOf(style)),
     w: (style.strokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX,
   };
 }
@@ -346,13 +343,20 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode:
   const glyph = { size: B.textSize, font: fonts.regular, rotate: degrees(90) };
 
   if (mode === "mask") {
-    // The true footprint the art pass inks, from the shared resolver the PSD
-    // builder paints too (see barcodeFootprint). Top-origin rects convert to
-    // PDF space by their far edge, exactly like the bars above.
-    const color = maskColor(cfg.barcodeLayer);
+    // Stroke and fill have independent mask plates. Paint the expanded stroke
+    // footprint first, then the exact fill footprint on top so unlike plate
+    // choices leave the outer halo visible and the bars/digits retain their
+    // own assignment. When both plates match, one expanded pass is the same
+    // flattened result and preserves the compact legacy stream.
     const measure = (t: string) => fonts.regular.widthOfTextAtSize(t, B.textSize);
-    for (const r of barcodeFootprint(geo, S, measure))
-      page.drawRectangle({ x: r.x, y: y(r.yTop + r.h), width: r.w, height: r.h, color });
+    const fillLayer = cfg.barcodeLayer;
+    const strokeLayer = strokeLayerOf({ strokeLayer: cfg.barcodeStrokeLayer });
+    const drawFootprint = (outset: number, color: ReturnType<typeof maskColor>) => {
+      for (const r of barcodeFootprint(geo, outset, measure))
+        page.drawRectangle({ x: r.x, y: y(r.yTop + r.h), width: r.w, height: r.h, color });
+    };
+    if (S > 0) drawFootprint(S, maskColor(strokeLayer));
+    if (S === 0 || strokeLayer !== fillLayer) drawFootprint(0, maskColor(fillLayer));
     return;
   }
 
@@ -487,10 +491,15 @@ async function drawElements(
   if (!hide("qr")) {
     const shapes = qrShapes(qrUrl(displayName(cfg)));
     const qrAt = { x: L.QR.x, y: y(L.QR.yTop) };
-    if (mode === "art" && cfg.qrStroke !== "none")
+    if (cfg.qrStroke !== "none")
       page.drawSvgPath(
         qrPath(shapes, L.QR.size, (cfg.qrStrokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX),
-        { ...qrAt, color: fillColor(cfg.qrStroke) },
+        {
+          ...qrAt,
+          color: mode === "art"
+            ? fillColor(cfg.qrStroke)
+            : maskColor(strokeLayerOf({ strokeLayer: cfg.qrStrokeLayer })),
+        },
       );
     const qrColor = mode === "art" ? fillColor(cfg.qrFill) : maskColor(cfg.qrLayer);
     page.drawSvgPath(qrPath(shapes, L.QR.size), { ...qrAt, color: qrColor });

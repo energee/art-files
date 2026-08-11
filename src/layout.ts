@@ -428,9 +428,9 @@ const UPC_DEPTH = UPC_DEPTH_MODULES * UPC_MOD;
  *  plate moves with it. */
 const UPC_STROKE = 1.8 * UPC_MOD;
 
-// Colors are cfg.barcodeFill / barcodeStroke / barcodeLayer now (shipping as
-// near-black bars in a white halo over white ink); only the geometry lives
-// here. Contrast comes from the white ink the mask PDF lays under the whole
+// Colors and plates are cfg.barcodeFill / barcodeStroke / barcodeLayer /
+// barcodeStrokeLayer now (shipping as near-black bars in a white halo over
+// white ink); only the geometry lives here. Contrast comes from the white ink the mask PDF lays under the whole
 // footprint (x/yTop/w/h) — per-bar outlines drawn interleaved with their bars
 // distorted module widths badly enough to stop it scanning, which is why
 // drawBarcode paints every stroke shape before any fill.

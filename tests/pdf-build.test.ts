@@ -83,6 +83,38 @@ describe("drawJustifiedRotated", () => {
     expect(warningColumnLen("SUPERCALIFRAGILISTIC", maxLen, (t) => font.widthOfTextAtSize(t, 6))).toBeCloseTo(natural, 10);
   });
 
+  it.each([
+    {
+      name: "white stroke around metallic fill",
+      style: {
+        fill: "#000000", layer: "metallic", stroke: "#000000",
+        strokeLayer: "white", strokeWidth: 15,
+      } as const,
+      stroke: { red: 0, green: 156 / 255, blue: 215 / 255 },
+      fill: { red: 1, green: 1, blue: 1 },
+    },
+    {
+      name: "metallic stroke around white fill",
+      style: {
+        fill: "#000000", layer: "white", stroke: "#000000",
+        strokeLayer: "metallic", strokeWidth: 15,
+      } as const,
+      stroke: { red: 1, green: 1, blue: 1 },
+      fill: { red: 0, green: 156 / 255, blue: 215 / 255 },
+    },
+  ])("paints $name in stroke-then-fill order on the mask", ({ style, stroke, fill }) => {
+    const colors: { red: number; green: number; blue: number }[] = [];
+    const page = {
+      drawText: (_txt: string, o: { color: typeof stroke }) => colors.push(o.color),
+    } as unknown as PDFPage;
+    drawJustifiedRotated(page, font, "INK", "mask", style, {
+      x: 100, yStart: 200, size: 6, maxLen: 150,
+    });
+    expect(colors.length).toBeGreaterThan(1);
+    for (const color of colors.slice(0, -1)) expect(color).toMatchObject(stroke);
+    expect(colors.at(-1)).toMatchObject(fill);
+  });
+
   // The real WARNING_TEXT, wrapped through the real wrapper, with THIS
   // test's font — every resulting column here is multi-word, so every one
   // must justify out to exactly maxLen.

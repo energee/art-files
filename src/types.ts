@@ -14,6 +14,9 @@ export interface Style {
   layer: Layer;
   /** Outer stroke drawn behind the element in the art PDF; "none"/absent = off. */
   stroke?: Fill;
+  /** White-ink plate assignment for the outer stroke, independent of the
+   *  fill's layer. Absent in older version-1 files resolves to "white". */
+  strokeLayer?: Layer;
   /** Stroke width in px at the 600dpi deliverable (default 15 ≈ 1.8pt). */
   strokeWidth?: number;
   /** Extra space between glyphs (tracking), in PDF points; absent = 0.
@@ -96,18 +99,22 @@ export interface LabelConfig {
    *  shipped default sets 20; left unset it keeps the halo measured off the
    *  old finished labels (L.BARCODE.stroke ≈ 15.5px), which is how pre-style
    *  configs migrate. barcodeLayer "white" is the white ink the code needs
-   *  to scan over the texture. */
+   *  to scan over the texture; barcodeStrokeLayer assigns the halo to its
+   *  own plate and also defaults to white/non-metallic. */
   barcodeFill: Fill;
   barcodeStroke: Fill;
   barcodeStrokeWidth?: number;
   barcodeLayer: Layer;
+  barcodeStrokeLayer: Layer;
   /** QR payload is derived: https://lolev.beer/beer/<machineName(beerName)>.
    *  Fill is free hex; qrStroke "none" = no stroke, else modules get an
-   *  outer stroke in that color, qrStrokeWidth px @600dpi wide. */
+   *  outer stroke in that color, qrStrokeWidth px @600dpi wide. Its plate is
+   *  independent of qrLayer and defaults to white/non-metallic. */
   qrFill: Fill;
   qrStroke: Fill;
   qrStrokeWidth?: number;
   qrLayer: Layer;
+  qrStrokeLayer: Layer;
   // Static template elements (text fixed, style assignable):
   volume: StyledLine; // "1 PINT"
   wordmark: Style; // "Lolev Beer"
