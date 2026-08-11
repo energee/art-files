@@ -135,3 +135,9 @@ no status, no attempts, no delta.
 - status: done
 - attempts: 1/3
 - delta: none — benchmark shows subset:true is ~3× faster than subset:false (≈8–10 ms vs ≈25 ms per doc save) and 25× smaller; current code already optimal, no change made
+
+## 2026-08-11 tauri-native-save-dialog
+- finding: [Fail fast/high] src/App.tsx:1081 — Tauri lacks the browser File System Access API, so Save As silently fell through to a browser download instead of opening a native save dialog
+- status: done
+- attempts: 1/3
+- delta: Tauri Save As dialog calls 0 → native dialog plus scoped file write and remembered Save path; 193 root tests, TypeScript/Vite build, Cargo check, and 0.1.3 release gate pass

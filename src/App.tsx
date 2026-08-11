@@ -4,12 +4,14 @@
 // whole-project save/open (.label — see labelfile.ts). Mirrors the old
 // main.ts wiring, componentized.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 import type { CollabSlot, Fill, LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
 import { defaultConfig, exportBaseName, parseConfigFile } from "@/defaults";
 import { strToU8 } from "fflate";
 import { LABEL_EXT, packLabel, unpackLabel } from "@/labelfile";
+import { saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import { validateUpc } from "@/upc";
 import { mimeFor, rasterKind, tintRgba } from "@/collab";
@@ -107,6 +109,7 @@ function loadViewToggles(): { showRulers: boolean; showGuides: boolean; showBlee
 const LABEL_TYPES = [
   { description: "Label project", accept: { "application/zip": [LABEL_EXT] } },
 ];
+const LABEL_FILTER = { name: "Label project", extensions: [LABEL_EXT.slice(1)] };
 
 // The File System Access surface, typed once — absent on Safari/Firefox, so
 // every caller branches on these and keeps a download/input fallback. The
@@ -953,17 +956,24 @@ export default function App() {
     lastSaved.current.push(url);
     download(url, name);
   }
-  /** Save one exported file through the browser's save dialog (name/place it,
-   *  like Save Project), falling back to the plain download where
-   *  showSaveFilePicker doesn't exist (Safari/Firefox). A cancelled dialog
-   *  means "don't save this file" — no fallback download. Multi-file exports
-   *  (both PDFs, both PSDs) prompt once per file: the File System Access API
-   *  has no multi-save dialog, and a directory picker would change the flow
-   *  for the single-file case too. */
+  /** Save one exported file through the platform's save dialog (name/place
+   *  it, like Save Project). Tauri uses the OS dialog; supported browsers use
+   *  File System Access; Safari/Firefox keep the plain-download fallback. A
+   *  cancelled dialog means "don't save this file" — no fallback download.
+   *  Multi-file exports prompt once per file because neither platform offers
+   *  a multi-save dialog. */
   async function saveVia(bytes: Uint8Array, name: string, type: string) {
+    const extension = name.slice(name.lastIndexOf(".") + 1);
+    if (isTauri()) {
+      await saveNativeFile(bytes, {
+        defaultPath: name,
+        filter: { name: `${extension.toUpperCase()} file`, extensions: [extension] },
+      });
+      return;
+    }
     const pick = savePicker();
     if (pick) {
-      const ext = name.slice(name.lastIndexOf("."));
+      const ext = `.${extension}`;
       try {
         const handle = await pick({
           suggestedName: name,
@@ -1023,6 +1033,13 @@ export default function App() {
    *  Null until then, so plain Save falls through to the Save As dialog —
    *  the classic editor contract. A ref, not state: nothing renders it. */
   const projectHandle = useRef<FileSystemFileHandle | null>(null);
+  /** Tauri's equivalent of projectHandle. A native dialog returns a path,
+   *  which Save reuses until New/Open or a failed in-place write clears it. */
+  const projectPath = useRef<string | null>(null);
+  function forgetProjectFile() {
+    projectHandle.current = null;
+    projectPath.current = null;
+  }
   /** Whether the document differs from the last saved/opened project —
    *  File → Save disables while clean. Marked at three sites: `update` (all
    *  config edits), `swapLoaded` (all assets — a new asset can't dodge the
@@ -1051,7 +1068,7 @@ export default function App() {
    *  and any stale rendered result do not. */
   function createNewProject() {
     resetDocument(defaultConfig());
-    projectHandle.current = null;
+    forgetProjectFile();
     clearSelection();
     setPdfs(null);
     setLoadError("");
@@ -1069,9 +1086,8 @@ export default function App() {
 
   /** File → Save / Save As…: everything needed to reopen this label — config
    *  plus original image bytes — zipped as <beerName>.label (see labelfile.ts).
-   *  Chromium shows a real save dialog (name/place the file) and Save then
-   *  rewrites that same file silently; Safari/Firefox lack
-   *  showSaveFilePicker, so every save is a plain download there. */
+   *  Tauri and supported Chromium browsers show a real save dialog and Save
+   *  then rewrites that same file; Safari/Firefox use a plain download. */
   async function saveProject(as = false) {
     const collabAsset = (c: CollabFile | null) =>
       c ? { name: c.name, bytes: c.image.kind === "svg" ? strToU8(c.image.svg) : c.image.bytes } : undefined;
@@ -1081,6 +1097,26 @@ export default function App() {
       collabLeft: collabAsset(collabLeft),
       collabCenter: collabAsset(collabCenter),
     });
+    if (isTauri()) {
+      const existingPath = as ? null : projectPath.current;
+      try {
+        const path = await saveNativeFile(zip, {
+          defaultPath: exportBaseName(cfg) + LABEL_EXT,
+          filter: LABEL_FILTER,
+          path: existingPath ?? undefined,
+        });
+        if (path === null) return;
+        projectPath.current = path;
+        setDirty(false);
+        setLoadError("");
+      } catch (err) {
+        // A failed in-place write should prompt on the next Save. A failed or
+        // cancelled Save As must keep the prior file association intact.
+        if (existingPath) projectPath.current = null;
+        setLoadError(`Could not save project: ${errMsg(err)}`);
+      }
+      return;
+    }
     const pick = savePicker();
     if (pick) {
       try {
@@ -1372,7 +1408,11 @@ export default function App() {
             onChange={(e) => {
               const f = e.currentTarget.files?.[0];
               e.currentTarget.value = "";
-              if (f) void openWithRetry(async () => f);
+              if (f) void openWithRetry(async () => f).then((opened) => {
+                // Hidden-input Open provides bytes but no writable identity.
+                // Forget any earlier Save As path so Save prompts for this file.
+                if (opened) forgetProjectFile();
+              });
             }} />
         </header>
       <div className="flex min-h-0 flex-1">
