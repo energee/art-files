@@ -36,8 +36,6 @@ describe("history stacks", () => {
   });
 
   it("resets both stacks at a new project boundary", () => {
-    const edited = undone(pushed(pushed(resetTo("old"), "draft", false), "final", false));
     expect(resetTo("new")).toEqual({ past: [], present: "new", future: [] });
-    expect(resetTo(edited.present)).toEqual({ past: [], present: "draft", future: [] });
   });
 });

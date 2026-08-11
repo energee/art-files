@@ -1,6 +1,6 @@
-// collab.ts — pixel work for raster collab logos. DOM-free like maskimage.ts,
-// so the browser app and the Node harness share it: both decode the file
-// themselves (canvas / pngjs), call in here, then re-encode.
+// collab.ts — pixel work for raster collab logos. DOM-free, so the browser
+// app and the Node harness share it: both decode the file themselves
+// (canvas / pngjs), call in here, then re-encode.
 import type { Fill } from "./types";
 import { parseHexFill } from "./layout";
 

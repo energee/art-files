@@ -41,7 +41,7 @@
   "colors": [],
   "render": {
     "cornerRadius": 1.219115734720416,
-    "edgeSoftness": 0.1,
+    "edgeSoftness": 0,
     "dpi": 600,
     "bleedIn": 0.0635
   }

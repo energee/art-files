@@ -12,7 +12,6 @@ import { strToU8 } from "fflate";
 import { LABEL_EXT, packLabel, unpackLabel } from "@/labelfile";
 import { useHistory } from "@/history";
 import { validateUpc } from "@/upc";
-import { prepareMaskForPdf } from "@/maskimage";
 import { mimeFor, rasterKind, tintRgba } from "@/collab";
 // The builders are imported dynamically at export time (see downloadPdfs /
 // exportPsd) so they stay out of the initial bundle; only their types are
@@ -205,9 +204,12 @@ async function readCollab(f: File): Promise<CollabFile> {
   return { image, name: f.name, previewUrl: URL.createObjectURL(f) };
 }
 
-/** Longest preview-texture edge in px — covers PreviewCompare's canvas at its
- *  2.5x oversample while keeping each preview rebuild a few MB. */
-const PREVIEW_PX = 1600;
+/** Longest preview-texture edge in px. Sized to the 3D label texture
+ *  (~2340px: the preview PDF's 585pt page at labelTextures' 4x oversample) so
+ *  the mask plate is never upscaled into it — at 1600 the binary mask's steps
+ *  were rebuilt on a coarser grid and blown up 1.46x, which read as visible
+ *  pixelation on the can. Also covers PreviewCompare's 2.5x oversample. */
+const PREVIEW_PX = 2400;
 
 async function previewPng(src: ImageBitmap | HTMLCanvasElement): Promise<Uint8Array> {
   const scale = Math.min(1, PREVIEW_PX / Math.max(src.width, src.height));
@@ -761,23 +763,19 @@ export default function App() {
   }
 
   async function onMask(f: File) {
-    // Independent reads of the same file — decode and raw bytes in parallel.
+    // The mask passes through untouched — the printer accepts these plates
+    // as-authored, and binarizing here was what pixelated the 3D preview
+    // (the metalness map classifies pixels itself, see labelTextures.ts).
     const [srcBytes, canvas] = await Promise.all([
       f.arrayBuffer().then((b) => new Uint8Array(b)), decodeToCanvas(f),
     ]);
-    const ctx = canvas.getContext("2d")!;
-    const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const check = prepareMaskForPdf(data.data);
-    ctx.putImageData(data, 0, 0);
-    const bytes = await canvasToPng(canvas);
-    const previewBytes = await previewPng(canvas); // recolored canvas, downscaled
+    const previewBytes = await previewPng(canvas);
     const previewUrl = URL.createObjectURL(f);
     swapLoaded(setMask, {
-      bytes,
+      bytes: srcBytes,
       previewBytes,
       name: f.name,
       previewUrl,
-      error: check.ok ? undefined : check.error,
       srcBytes,
     });
   }

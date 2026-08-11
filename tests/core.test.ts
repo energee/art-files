@@ -3,7 +3,6 @@
 import { describe, expect, it } from "vitest";
 import { encodeUpc, upcCheckDigit, validateUpc } from "../src/upc";
 import { qrPath, qrShapes, machineName, qrUrl } from "../src/qr";
-import { prepareMaskForPdf } from "../src/maskimage";
 import { tintRgba } from "../src/collab";
 import { defaultConfig, displayAbv, parseConfigFile, toConfigFile } from "../src/defaults";
 import { parseDescription, parseInfoLine, parseRuns, serializeDescription } from "../src/description";
@@ -63,36 +62,6 @@ describe("qr", () => {
   });
 });
 
-describe("mask", () => {
-  const px = (r: number, g: number, b: number) => [r, g, b, 255];
-  it("accepts a pure white/blue mask and recolors it", () => {
-    const rgba = new Uint8Array([...px(255, 255, 255), ...px(0, 156, 215)]);
-    expect(prepareMaskForPdf(rgba).ok).toBe(true);
-    expect(rgba[3]).toBe(0); // metallic white -> transparent (knockout)
-    expect([...rgba.slice(4)]).toEqual([0, 156, 215, 255]); // blue stays
-  });
-  it("rejects off-palette masks", () => {
-    const rgba = new Uint8Array([...px(255, 0, 0), ...px(0, 255, 0)]);
-    const v = prepareMaskForPdf(rgba);
-    expect(v.ok).toBe(false);
-    expect(v.offPalette).toBe(1);
-  });
-  it("validates and recolors a mask in one pass", () => {
-    const rgba = new Uint8Array([
-      ...px(255, 255, 255),
-      ...px(0, 156, 215),
-      ...px(255, 0, 0),
-    ]);
-    const v = prepareMaskForPdf(rgba);
-    expect(v.ok).toBe(false);
-    expect(v.offPalette).toBeCloseTo(1 / 3);
-    expect([...rgba]).toEqual([
-      255, 255, 255, 0,
-      0, 156, 215, 255,
-      255, 0, 0, 0,
-    ]);
-  });
-});
 
 describe("description markdown", () => {
   it("parses header, bold, white-ink, and combined styles", () => {

@@ -46,8 +46,8 @@ export interface Assets {
   /** Optional: without it the art PDF is just the elements on bare stock,
    *  which is what the preview shows before a texture is dropped. */
   texture?: { bytes: Uint8Array; kind: "png" | "jpg" };
-  /** Mask recolored to blue/transparent (see maskimage.ts), re-encoded as
-   *  PNG. Optional: without it buildMaskPdf floods the whole page white-ink
+  /** Uploaded mask PNG, embedded as-authored (the printer accepts these
+   *  plates unrecolored). Optional: without it buildMaskPdf floods the whole page white-ink
    *  blue instead ("no mask" = "print as a white label"), and the per-element
    *  assignments (metallic knockouts, white-layer ink) draw on top of that. */
   maskPng?: Uint8Array;
@@ -350,7 +350,7 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode:
     // flattened result and preserves the compact legacy stream.
     const measure = (t: string) => fonts.regular.widthOfTextAtSize(t, B.textSize);
     const fillLayer = cfg.barcodeLayer;
-    const strokeLayer = strokeLayerOf({ strokeLayer: cfg.barcodeStrokeLayer });
+    const strokeLayer = cfg.barcodeStrokeLayer;
     const drawFootprint = (outset: number, color: ReturnType<typeof maskColor>) => {
       for (const r of barcodeFootprint(geo, outset, measure))
         page.drawRectangle({ x: r.x, y: y(r.yTop + r.h), width: r.w, height: r.h, color });
@@ -498,7 +498,7 @@ async function drawElements(
           ...qrAt,
           color: mode === "art"
             ? fillColor(cfg.qrStroke)
-            : maskColor(strokeLayerOf({ strokeLayer: cfg.qrStrokeLayer })),
+            : maskColor(cfg.qrStrokeLayer),
         },
       );
     const qrColor = mode === "art" ? fillColor(cfg.qrFill) : maskColor(cfg.qrLayer);

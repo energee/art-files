@@ -186,8 +186,6 @@ export function parseConfigFile(json: string): LabelConfig {
     const style = cfg[key];
     if (style && typeof style === "object" && typeof style.fill === "string")
       style.strokeLayer ??= DEFAULT_STROKE_LAYER;
-  }
-  for (const key of Object.keys(base) as (keyof LabelConfig)[]) {
     // barcodeStrokeWidth is optional: pre-style configs omit it — that is
     // what preserves their measured halo — while defaultConfig ships 20.
     if (key === "barcodeStrokeWidth") continue;

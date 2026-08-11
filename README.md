@@ -7,8 +7,11 @@ printer:
 - `{Beer Name}.pdf` — label art (8x5 in + 0.0633 in bleed, 585.12 x 369.12 pt)
 - `{Beer Name}-mask.pdf` — white-ink layer: **blue = white ink, white =
   knockout** (silver stock shows through), same convention as the
-  `label-gen/Rocks` mask PNGs (white `255,255,255` = metallic, blue
-  `0,156,215` = everything else). Without an uploaded mask, the plate floods
+  `label-gen/Rocks` mask PNGs. Uploaded masks are embedded as-authored — no
+  recoloring or binarization; the printer accepts these plates as delivered.
+  (The 3D preview classifies pixels by brightness for its metalness map:
+  bright/unsaturated = foil, any ink color = matte white ink.)
+  Without an uploaded mask, the plate floods
   full blue (white ink everywhere) rather than knocking out — "no mask"
   means "print as a white label" — and metallic elements still knock back
   out to bare stock on top of the flood.

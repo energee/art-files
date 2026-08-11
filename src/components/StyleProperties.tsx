@@ -679,7 +679,7 @@ export function Inspector(props: {
           fill: d.fill,
           layer: d.layer,
           stroke: d.stroke ?? "none",
-          strokeLayer: d.strokeLayer ?? "white",
+          strokeLayer: strokeLayerOf(d),
           strokeWidth: d.strokeWidth,
           letterSpacing: d.letterSpacing,
           ...(el.hasBold ? { bold: (d as StyledLine).bold ?? false } : {}),

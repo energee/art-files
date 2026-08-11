@@ -47,8 +47,9 @@ export interface PsdAssets {
    *  and passes native pixels, which then sit centred).
    *  Omitted leaves the background empty, like a PDF built without one. */
   texture?: { data: Uint8Array; width: number; height: number };
-  /** Decoded RGBA of the recolored mask (blue/transparent, see maskimage.ts),
-   *  for mask-mode builds. Same 1:1 pixel contract as `texture`. Omitted
+  /** Decoded RGBA of the uploaded mask, passed through as-authored (the
+   *  printer accepts these plates unrecolored), for mask-mode builds.
+   *  Same 1:1 pixel contract as `texture`. Omitted
    *  floods the plate solid white-ink blue, matching buildMaskPdf. */
   mask?: { data: Uint8Array; width: number; height: number };
 }

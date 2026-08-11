@@ -50,7 +50,7 @@ function styleLine(raw: string, base: Style, bold = false): StyledLine {
     fill: base.fill,
     layer: white ? "white" : base.layer,
     stroke: base.stroke,
-    ...(base.strokeLayer ? { strokeLayer: base.strokeLayer } : {}),
+    strokeLayer: base.strokeLayer,
     strokeWidth: base.strokeWidth,
     // Tracking is a block-level setting like the stroke: the white marker
     // overrides the fill layer only, never the stroke plate or spacing.

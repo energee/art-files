@@ -12,6 +12,10 @@ binary-impacting change gets its own version before it is merged.
 - Added independent white/metallic layer assignments for outer strokes,
   defaulting every stroke to white/non-metallic with matching PDF and PSD mask
   output.
+- Changed mask handling: uploaded masks are embedded in the mask PDF exactly
+  as authored (no more recoloring or palette validation), the 3D preview now
+  detects foil by brightness so any ink color works, and the default foil
+  edge softness is now 0.
 
 ## [0.1.0] - 2026-08-11
 
