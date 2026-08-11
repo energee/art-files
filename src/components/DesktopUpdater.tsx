@@ -1,0 +1,215 @@
+// DesktopUpdater.tsx — checks signed Tauri releases and installs one only
+// after the operator accepts the restart.
+import { useCallback, useEffect, useRef, useState } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import type { DownloadEvent, Update } from "@tauri-apps/plugin-updater";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+
+const AUTO_CHECK_DELAY_MS = 2_000;
+
+type CheckResult =
+  | { kind: "available"; update: Update }
+  | { kind: "current" }
+  | { kind: "disabled" }
+  | { kind: "error"; message: string };
+
+type Status =
+  | { kind: "idle" }
+  | { kind: "checking" }
+  | { kind: "available"; version: string; body?: string; date?: string }
+  | { kind: "current" }
+  | { kind: "disabled" }
+  | { kind: "downloading"; version: string; downloaded: number; total?: number }
+  | { kind: "error"; message: string };
+
+async function checkForUpdate(): Promise<CheckResult> {
+  try {
+    // Local builds deliberately omit the release key. Avoid invoking a
+    // half-configured updater while keeping its UI testable in `tauri dev`.
+    if (!await invoke<boolean>("updater_enabled")) return { kind: "disabled" };
+    const { check } = await import("@tauri-apps/plugin-updater");
+    const update = await check({ timeout: 15_000 });
+    return update ? { kind: "available", update } : { kind: "current" };
+  } catch (error) {
+    return { kind: "error", message: String(error) };
+  }
+}
+
+function releaseUpdate(update: Update) {
+  void update.close().catch((error) => {
+    console.error(`Could not release the updater resource: ${String(error)}`);
+  });
+}
+
+export function DesktopUpdater(props: { dirty: boolean; checkRequest: number }) {
+  const desktop = isTauri();
+  const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const updateRef = useRef<Update | null>(null);
+  const checkRef = useRef<Promise<CheckResult> | null>(null);
+  const mountedRef = useRef(true);
+  const lastRequestRef = useRef(props.checkRequest);
+
+  const dropUpdate = useCallback(() => {
+    const update = updateRef.current;
+    updateRef.current = null;
+    if (update) releaseUpdate(update);
+  }, []);
+
+  const performCheck = useCallback(() => {
+    if (checkRef.current) return checkRef.current;
+    const operation = checkForUpdate();
+    checkRef.current = operation;
+    void operation.finally(() => {
+      if (checkRef.current === operation) checkRef.current = null;
+    });
+    return operation;
+  }, []);
+
+  const present = useCallback((result: CheckResult, manual: boolean) => {
+    if (!mountedRef.current) {
+      if (result.kind === "available") releaseUpdate(result.update);
+      return;
+    }
+    if (result.kind === "available") {
+      if (updateRef.current && updateRef.current !== result.update) dropUpdate();
+      updateRef.current = result.update;
+      setStatus({
+        kind: "available",
+        version: result.update.version,
+        body: result.update.body,
+        date: result.update.date,
+      });
+    } else if (manual) {
+      setStatus(result);
+    } else if (result.kind === "error") {
+      // Being offline at launch must not block label work. A manual check
+      // shows this same error in the dialog instead.
+      console.error(`Automatic update check failed: ${result.message}`);
+    }
+  }, [dropUpdate]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      dropUpdate();
+    };
+  }, [dropUpdate]);
+
+  // A quiet launch check: only an available update opens UI. The short delay
+  // keeps updater network work out of the editor's first-paint path.
+  useEffect(() => {
+    if (!desktop) return;
+    const timer = window.setTimeout(() => {
+      void performCheck().then((result) => present(result, false));
+    }, AUTO_CHECK_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [desktop, performCheck, present]);
+
+  // macOS Label Lab menu → Check for Updates… requests a visible result even
+  // when the current version is already latest or this is a local build.
+  useEffect(() => {
+    if (!desktop || props.checkRequest === lastRequestRef.current) return;
+    lastRequestRef.current = props.checkRequest;
+    setStatus({ kind: "checking" });
+    void performCheck().then((result) => present(result, true));
+  }, [desktop, performCheck, present, props.checkRequest]);
+
+  const dismiss = () => {
+    if (status.kind === "downloading") return;
+    dropUpdate();
+    setStatus({ kind: "idle" });
+  };
+
+  const install = async () => {
+    const update = updateRef.current;
+    if (!update || status.kind !== "available") return;
+    let downloaded = 0;
+    let total: number | undefined;
+    const showProgress = (event: DownloadEvent) => {
+      if (event.event === "Started") total = event.data.contentLength;
+      if (event.event === "Progress") downloaded += event.data.chunkLength;
+      if (event.event === "Finished" && total !== undefined) downloaded = total;
+      setStatus({ kind: "downloading", version: update.version, downloaded, total });
+    };
+    setStatus({ kind: "downloading", version: update.version, downloaded: 0 });
+    try {
+      await update.downloadAndInstall(showProgress, { timeout: 120_000 });
+      await invoke("relaunch_app");
+    } catch (error) {
+      dropUpdate();
+      setStatus({ kind: "error", message: `Could not install the update: ${String(error)}` });
+    }
+  };
+
+  const progress = status.kind === "downloading" && status.total
+    ? Math.min(100, Math.round(status.downloaded / status.total * 100))
+    : undefined;
+  const busy = status.kind === "checking" || status.kind === "downloading";
+
+  return (
+    <Dialog open={status.kind !== "idle"}
+      onOpenChange={(open) => { if (!open && !busy) dismiss(); }}>
+      <DialogContent showCloseButton={!busy}>
+        <DialogHeader>
+          <DialogTitle>
+            {status.kind === "available" && `Label Lab ${status.version} is available`}
+            {status.kind === "downloading" && `Installing Label Lab ${status.version}`}
+            {status.kind === "checking" && "Checking for updates"}
+            {status.kind === "current" && "Label Lab is up to date"}
+            {status.kind === "disabled" && "Updates are not configured"}
+            {status.kind === "error" && "Update failed"}
+          </DialogTitle>
+          <DialogDescription>
+            {status.kind === "available" && "Install the signed update and restart the app."}
+            {status.kind === "downloading" && "Keep Label Lab open while the update downloads."}
+            {status.kind === "checking" && "Looking for the latest signed release…"}
+            {status.kind === "current" && "You already have the newest available version."}
+            {status.kind === "disabled" && "Local builds do not contain the release signing key."}
+            {status.kind === "error" && status.message}
+          </DialogDescription>
+        </DialogHeader>
+
+        {status.kind === "available" && status.body && (
+          <div className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted p-3 text-xs">
+            {status.body}
+          </div>
+        )}
+        {status.kind === "available" && status.date && (
+          <p className="text-xs text-muted-foreground">
+            Released {new Date(status.date).toLocaleDateString()}
+          </p>
+        )}
+        {status.kind === "available" && props.dirty && (
+          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
+            This label has unsaved changes. Choose Later and save it before restarting if you want
+            to keep those changes.
+          </p>
+        )}
+        {status.kind === "downloading" && (
+          <div className="space-y-2" aria-live="polite">
+            <progress className="h-2 w-full" max={100} value={progress} />
+            <p className="text-xs text-muted-foreground">
+              {progress === undefined ? "Downloading…" : `${progress}% downloaded`}
+            </p>
+          </div>
+        )}
+
+        {status.kind === "available" && (
+          <DialogFooter>
+            <Button variant="outline" onClick={dismiss}>Later</Button>
+            <Button onClick={() => void install()}>Install and Restart</Button>
+          </DialogFooter>
+        )}
+        {(status.kind === "current" || status.kind === "disabled" || status.kind === "error") && (
+          <DialogFooter>
+            <Button onClick={dismiss}>Close</Button>
+          </DialogFooter>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}

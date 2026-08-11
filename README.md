@@ -188,6 +188,53 @@ npm run dev        # open the app: the label previews immediately (text on bare
                    # previews update live, download both PDFs
 ```
 
+### Label Lab for macOS
+
+The same editor is available as the **Label Lab** desktop app. Building it
+requires the Apple command-line tools and a stable Rust toolchain in addition
+to Node.js:
+
+```bash
+xcode-select --install       # once per Mac
+rustup toolchain install stable
+npm run desktop:dev          # run Label Lab in a native development window
+npm run desktop:build        # create both Label Lab.app and a DMG installer
+```
+
+Release artifacts are written under `src-tauri/target/release/bundle/`. Local
+builds receive an ad-hoc signature; distributing the app to other Macs without
+security warnings requires authenticated Apple signing and notarization.
+The browser build keeps its in-window File/Edit/View menu; the desktop build
+removes that duplicate chrome and installs the same actions in the macOS menu
+bar, including live checkmarks and disabled states.
+
+#### Automatic updates
+
+Published desktop builds check the latest GitHub Release shortly after launch.
+When a signed update is available, Label Lab shows its release notes and asks
+before downloading, installing, and restarting. **Label Lab → Check for
+Updates…** runs the same check manually. Local development builds skip the
+automatic check because they intentionally contain no release key.
+
+One updater signing keypair is required before the first release. Keep the
+private key and its password backed up: Tauri cannot update existing installs
+if that key is lost.
+
+```bash
+npm run tauri -- signer generate -w ~/.tauri/label-lab.key
+gh secret set TAURI_SIGNING_PRIVATE_KEY < ~/.tauri/label-lab.key
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+gh secret set TAURI_UPDATER_PUBLIC_KEY < ~/.tauri/label-lab.key.pub
+```
+
+The key generator prompts for the password used by the second secret. To ship
+a release, bump the version in `package.json`, `src-tauri/Cargo.toml`, and
+`src-tauri/tauri.conf.json`, then run the **Release Label Lab** workflow from
+GitHub Actions. It builds Intel and Apple Silicon apps, creates a public
+`label-lab-v<version>` release, and uploads updater archives, signatures, and
+`latest.json`. The normal `npm run desktop:build` remains a keyless,
+ad-hoc-signed local build with updater checks disabled.
+
 ### Layered PSD
 
 `src/psd/build.ts` is a second renderer over the same `LabelConfig` and the

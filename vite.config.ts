@@ -8,8 +8,8 @@ import type { Plugin } from "vite";
 
 /** Reusable styles and UPCs live in presets.json at the repo root rather than
  *  localStorage: they must survive a cleared browser profile, and git gives
- *  them history and review. Dev-server only — the app runs locally, so there
- *  is no deployed build that would need a real backend for this. */
+ *  them history and review. This endpoint serves browser development; the
+ *  packaged desktop app persists the same data through its Tauri backend. */
 const PRESETS_FILE = fileURLToPath(new URL("./presets.json", import.meta.url));
 /** Deliberately `{}` rather than a spelled-out empty library: the client's
  *  normalizePresets (src/presets.ts) fills in every key with its default, so
@@ -65,6 +65,6 @@ export default defineConfig({
   // presets.json is data the running app writes, not a source file: without
   // this, saving a preset trips the watcher and full-reloads the page,
   // throwing away the config being edited.
-  server: { watch: { ignored: ["**/presets.json"] } },
+  server: { watch: { ignored: ["**/presets.json", "**/src-tauri/**"] } },
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
 });

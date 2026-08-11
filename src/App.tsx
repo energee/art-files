@@ -39,7 +39,9 @@ import { PANEL_ORDER, isElementId, type HideableLayerId, type LayerId } from "@/
 import {
   EMPTY_SELECTION, resolveSelect, type SelectMods, type Selection,
 } from "@/selection";
-import { CommandMenu, shortcutOf, type Command } from "@/components/CommandMenu";
+import { CommandMenu, type Command } from "@/components/CommandMenu";
+import { AppMenu } from "@/components/AppMenu";
+import { DesktopUpdater } from "@/components/DesktopUpdater";
 import { PresetsDialog } from "@/components/PresetsDialog";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
 import { Rulers } from "@/components/Rulers";
@@ -48,10 +50,6 @@ import {
   DEFAULT_MARGIN_PT, nextRulerUnit, sizeLabel,
   type GuideAxis, type ManualGuide, type RulerUnit,
 } from "@/rulers";
-import {
-  Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator,
-  MenubarShortcut, MenubarSub, MenubarSubContent, MenubarSubTrigger, MenubarTrigger,
-} from "@/components/ui/menubar";
 import {
   Sidebar, SidebarContent, SidebarInset, SidebarProvider, SidebarTrigger,
 } from "@/components/ui/sidebar";
@@ -277,15 +275,6 @@ const zoomAbout = (
   const k = z / v.z;
   return clampView(r, z, ax - k * (ax - v.x), ay - k * (ay - v.y));
 };
-
-// Menu chrome, shared by all three menus so they can't drift apart: small
-// regular-weight triggers, and items sized to match.
-const MENU_TRIGGER = "px-2 py-1 text-xs font-normal";
-// min-w keeps the longest item ("Save Project As… ⇧⌘S") on one line. Both
-// slots sized: plain items AND submenu triggers (data-slot=menubar-sub-trigger),
-// or an "Export ▸" row renders larger than its neighbours.
-const MENU_ITEMS =
-  "min-w-52 [&_[data-slot=menubar-item]]:text-xs [&_[data-slot=menubar-sub-trigger]]:text-xs";
 
 /** The five preview views in keys-1–5 order: status-bar label, the command
  *  id that shows it, and the state that means "this one is current". One
@@ -1037,6 +1026,9 @@ export default function App() {
    *  exact saved state still counts as dirty: the flag tracks mutations,
    *  not content equality. */
   const [dirty, setDirty] = useState(true);
+  // Incremented by the native application menu. DesktopUpdater also performs
+  // its own silent launch check; this signal requests a user-visible check.
+  const [updateCheckRequest, setUpdateCheckRequest] = useState(0);
   /** File → Save / Save As…: everything needed to reopen this label — config
    *  plus original image bytes — zipped as <beerName>.label (see labelfile.ts).
    *  Chromium shows a real save dialog (name/place the file) and Save then
@@ -1219,13 +1211,10 @@ export default function App() {
     }
   }
 
-  /** Every command the app exposes, once. The palette renders this list, the
-   *  bare-key listener dispatches off `key`, and the menubar's items pull
-   *  their `run`/`disabled`/`label` from it, and every surface renders its
-   *  glyphs through shortcutOf — so a shortcut can't drift from the key that
-   *  actually fires it, a label can't drift from the command it names, and a
-   *  command can't be enabled in one surface while disabled in another. The menubar keeps its own JSX: it groups,
-   *  separates and check-marks, which is layout, not command identity. */
+  /** Every command the app exposes, once. The palette and AppMenu read this
+   *  list, while the key listener dispatches off `key`, so an action cannot
+   *  be enabled in one surface while disabled in another. AppMenu owns one
+   *  layout shared by its browser and native Tauri renderers. */
   // The two conditions the view commands share, stated once: rulers and guides
   // are 2D-only chrome, and the per-kind guide toggles are meaningless while
   // the umbrella is off. Restated per entry, an eighth 2D command silently
@@ -1283,12 +1272,10 @@ export default function App() {
     { id: "clear-guides", label: "Clear manual guides",
       disabled: !guideEdit || manualGuides.length === 0, run: () => setManualGuides([]) },
   ];
-  // Indexed once per render rather than a linear find per menu item: the
-  // menubar reads ~15 commands and App re-renders on every keystroke.
+  // Indexed once per render for status-bar command dispatch.
   const index = Object.fromEntries(commands.map((c) => [c.id, c])) as Record<string, Command>;
-  // Throws at the lookup rather than at the .run/.disabled access downstream:
-  // every caller is a literal id in the menubar's JSX, so a miss means a typo
-  // or a deleted command, and the id is the only useful thing to report.
+  // Throws at the lookup rather than at the .run access downstream, keeping a
+  // missing VIEW_CYCLE command explicit.
   const byId = (id: string): Command => {
     const c = index[id];
     if (!c) throw new Error(`Unknown command: ${id}`);
@@ -1319,134 +1306,20 @@ export default function App() {
         <header className="flex items-center gap-3 border-b border-border bg-sidebar text-sidebar-foreground px-3 py-2">
           {/* Toggles the Layers sidebar; the component also binds ⌘B. */}
           <SidebarTrigger className="size-6" />
-          {/* Stripped to a real menu bar: no pill border or rounding of its
-              own, and small regular-weight labels rather than the default's
-              badge-like medium ones. The header owns the structural rule. */}
-          <Menubar className="h-auto gap-0 rounded-none border-0 p-0">
-            <MenubarMenu>
-              <MenubarTrigger className={MENU_TRIGGER}>File</MenubarTrigger>
-              <MenubarContent align="start" className={MENU_ITEMS}>
-                {/* Project save/load first — the whole label, not just a
-                    deliverable. */}
-                {["project-open", "project-save", "project-save-as"].map((id) => {
-                  const cmd = byId(id);
-                  return (
-                    <MenubarItem key={id} disabled={cmd.disabled} onClick={cmd.run}>
-                      {cmd.label} <MenubarShortcut>{shortcutOf(cmd)}</MenubarShortcut>
-                    </MenubarItem>
-                  );
-                })}
-                <MenubarSeparator />
-                {/* Deliverables first, both-at-once first within each format:
-                    that is the common run. !pdfs is the mid-build state, so
-                    only the PDF items wait on it — the PSD path rebuilds from
-                    the config alone. */}
-                {/* All six deliverable runs under one Export submenu — PDFs
-                    above the separator, PSDs below, both-at-once first within
-                    each format (the common run). */}
-                <MenubarSub>
-                  <MenubarSubTrigger>Export</MenubarSubTrigger>
-                  <MenubarSubContent className={MENU_ITEMS}>
-                    {(["export-both", "export-art", "export-mask", null,
-                      "export-psd", "export-psd-art", "export-psd-mask"] as const).map((id, i) => {
-                      if (id === null) return <MenubarSeparator key={i} />;
-                      const cmd = byId(id);
-                      const keys = shortcutOf(cmd);
-                      return (
-                        <MenubarItem key={id} disabled={cmd.disabled} onClick={cmd.run}>
-                          {cmd.label}
-                          {keys && <MenubarShortcut>{keys}</MenubarShortcut>}
-                        </MenubarItem>
-                      );
-                    })}
-                  </MenubarSubContent>
-                </MenubarSub>
-                <MenubarSeparator />
-                {/* The preset library: beer styles and barcodes reused across
-                    labels. Ellipsis — import opens a file picker. */}
-                <MenubarItem onClick={byId("presets-view").run}>
-                  View Presets…
-                </MenubarItem>
-                <MenubarItem onClick={byId("presets-import").run}>
-                  Import Presets…
-                </MenubarItem>
-                <MenubarItem onClick={byId("presets-export").run}>
-                  Export Presets
-                </MenubarItem>
-              </MenubarContent>
-            </MenubarMenu>
-            <MenubarMenu>
-              <MenubarTrigger className={MENU_TRIGGER}>Edit</MenubarTrigger>
-              <MenubarContent align="start" className={MENU_ITEMS}>
-                <MenubarItem disabled={byId("undo").disabled} onClick={byId("undo").run}>
-                  Undo <MenubarShortcut>{shortcutOf(byId("undo"))}</MenubarShortcut>
-                </MenubarItem>
-                <MenubarItem disabled={byId("redo").disabled} onClick={byId("redo").run}>
-                  Redo <MenubarShortcut>{shortcutOf(byId("redo"))}</MenubarShortcut>
-                </MenubarItem>
-              </MenubarContent>
-            </MenubarMenu>
-            <MenubarMenu>
-              <MenubarTrigger className={MENU_TRIGGER}>View</MenubarTrigger>
-              <MenubarContent align="start" className={MENU_ITEMS}>
-                {/* Checked only at the extremes: anywhere in between is a
-                    manual compare position, which is neither view. */}
-                <MenubarCheckboxItem checked={viewMode === "2d" && split === 0}
-                  onClick={byId("view-standard").run}>
-                  Standard <MenubarShortcut>{shortcutOf(byId("view-standard"))}</MenubarShortcut>
-                </MenubarCheckboxItem>
-                <MenubarCheckboxItem checked={viewMode === "2d" && split === 100}
-                  onClick={byId("view-mask").run}>
-                  Mask <MenubarShortcut>{shortcutOf(byId("view-mask"))}</MenubarShortcut>
-                </MenubarCheckboxItem>
-                <MenubarSeparator />
-                <MenubarCheckboxItem checked={viewMode === "flat"}
-                  onClick={byId("view-rendered").run}>
-                  Rendered <MenubarShortcut>{shortcutOf(byId("view-rendered"))}</MenubarShortcut>
-                </MenubarCheckboxItem>
-                <MenubarCheckboxItem checked={viewMode === "can"}
-                  onClick={byId("view-can").run}>
-                  Single Can <MenubarShortcut>{shortcutOf(byId("view-can"))}</MenubarShortcut>
-                </MenubarCheckboxItem>
-                <MenubarCheckboxItem checked={viewMode === "pack"}
-                  onClick={byId("view-pack").run}>
-                  Four-Pack <MenubarShortcut>{shortcutOf(byId("view-pack"))}</MenubarShortcut>
-                </MenubarCheckboxItem>
-                <MenubarSeparator />
-                {/* 2D only: the trim guide is drawn in page space, which the
-                    3D views don't present. */}
-                <MenubarCheckboxItem checked={bleed}
-                  disabled={byId("bleed").disabled} onClick={byId("bleed").run}>
-                  Bleed Lines <MenubarShortcut>{shortcutOf(byId("bleed"))}</MenubarShortcut>
-                </MenubarCheckboxItem>
-                <MenubarCheckboxItem checked={showRulers}
-                  disabled={byId("rulers").disabled} onClick={byId("rulers").run}>
-                  Rulers <MenubarShortcut>{shortcutOf(byId("rulers"))}</MenubarShortcut>
-                </MenubarCheckboxItem>
-                <MenubarSeparator />
-                <MenubarCheckboxItem checked={showGuides}
-                  disabled={byId("guides").disabled} onClick={byId("guides").run}>
-                  Guides
-                </MenubarCheckboxItem>
-                <MenubarCheckboxItem checked={showMargins}
-                  disabled={byId("margin-guides").disabled} onClick={byId("margin-guides").run}>
-                  Margin Guides
-                </MenubarCheckboxItem>
-                <MenubarCheckboxItem checked={showCenter}
-                  disabled={byId("center-guides").disabled} onClick={byId("center-guides").run}>
-                  Center Guides
-                </MenubarCheckboxItem>
-                <MenubarCheckboxItem checked={showManualGuides}
-                  disabled={byId("manual-guides").disabled} onClick={byId("manual-guides").run}>
-                  Manual Guides
-                </MenubarCheckboxItem>
-                <MenubarItem disabled={byId("clear-guides").disabled}
-                  onClick={byId("clear-guides").run}>
-                  Clear Manual Guides
-                </MenubarItem>
-              </MenubarContent>
-            </MenubarMenu>
-          </Menubar>
+          <AppMenu actions={commands} onNativeError={setBuildError}
+            onCheckForUpdates={() => setUpdateCheckRequest((request) => request + 1)} checked={{
+            "view-standard": viewMode === "2d" && split === 0,
+            "view-mask": viewMode === "2d" && split === 100,
+            "view-rendered": viewMode === "flat",
+            "view-can": viewMode === "can",
+            "view-pack": viewMode === "pack",
+            bleed,
+            rulers: showRulers,
+            guides: showGuides,
+            "margin-guides": showMargins,
+            "center-guides": showCenter,
+            "manual-guides": showManualGuides,
+          }} />
           {/* Replaces the tooltip the old disabled Export button carried: a
               menu item can't explain its own disabled state, so the reason
               sits in the bar itself. */}
@@ -1704,6 +1577,7 @@ export default function App() {
           onMask={(f) => void onMask(f)} />
         <CommandMenu actions={commands} />
         <PresetsDialog open={presetsOpen} onOpenChange={setPresetsOpen} presets={presets} />
+        <DesktopUpdater dirty={dirty} checkRequest={updateCheckRequest} />
       </div>
         </SidebarInset>
       </SidebarProvider>

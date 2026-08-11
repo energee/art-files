@@ -1,0 +1,14 @@
+[package]
+name = "label-lab"
+version = "0.1.0"
+description = "Desktop label artwork and print plate generator"
+edition = "2021"
+rust-version = "1.77.2"
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+tauri = { version = "2.11.3", features = [] }
+tauri-plugin-updater = "2.10.1"
