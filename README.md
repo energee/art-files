@@ -237,9 +237,11 @@ gh secret set TAURI_UPDATER_PUBLIC_KEY < ~/.tauri/label-lab.key.pub
 ```
 
 The key generator prompts for the password used by the second secret. To ship
-a release, bump the version in `package.json`, `src-tauri/Cargo.toml`, and
-`src-tauri/tauri.conf.json`, then run the **Release Label Lab** workflow from
-GitHub Actions. It builds Intel and Apple Silicon apps and creates a
+a release, follow the release-steward checklist in `.agents/release-steward.md`:
+bump the synchronized application version, add that version's user-facing notes
+to `CHANGELOG.md`, and run the metadata check against the latest release tag.
+Then run the **Release Label Lab** workflow from GitHub Actions. It validates
+the version and notes again, builds Intel and Apple Silicon apps, and creates a
 `label-lab-v<version>` release on this (private) repo with the DMGs for manual
 install. Because installed apps cannot read a private repo, the workflow then
 copies only the update feed — `latest.json`, the updater archives, and their
