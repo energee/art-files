@@ -9,6 +9,9 @@ binary-impacting change gets its own version before it is merged.
   shortcut, and a clean document/history reset.
 - Restored full-window and inspector-field image drops in the packaged desktop
   app.
+- Added independent white/metallic layer assignments for outer strokes,
+  defaulting every stroke to white/non-metallic with matching PDF and PSD mask
+  output.
 
 ## [0.1.0] - 2026-08-11
 
