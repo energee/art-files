@@ -10,6 +10,10 @@ binary-impacting change gets its own version before it is merged.
 - Internal cleanup of the menu wiring and the project-open pipeline following
   review; opening a project behaves exactly as before, including the quiet
   retries for files that fail their first read.
+- Default save and export filenames are now machine-friendly slugs of the
+  beer name — lowercased with spaces and punctuation turned to dashes, the
+  same rule the QR code URL uses ("Peregrine Falcon" saves as
+  peregrine-falcon.label / .pdf / .psd).
 
 ## [0.1.4] - 2026-08-11
 

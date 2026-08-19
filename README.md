@@ -173,7 +173,8 @@ used. Every action lives in a menubar across the top of
 the window, above the sidebar/preview split: **File** (New Project ⌘N — with
 an unsaved-changes confirmation before replacing the current label; Open Project… ⌘O,
 Save Project ⌘S, Save Project As… ⇧⌘S — the whole label, including its
-texture, mask, and collab logos, zipped as a `<beerName>.label` file, see
+texture, mask, and collab logos, zipped as a `<beer-name-slug>.label` file
+(slugged like the QR URL: lowercase, punctuation to dashes), see
 `src/labelfile.ts`; in Chromium these use real open/save dialogs and Save
 rewrites the last-saved/opened file in place, elsewhere saving falls back
 to a download; then Export PDF,

@@ -1094,7 +1094,8 @@ export default function App() {
   }
 
   /** File → Save / Save As…: everything needed to reopen this label — config
-   *  plus original image bytes — zipped as <beerName>.label (see labelfile.ts).
+   *  plus original image bytes — zipped as <beer-name-slug>.label
+   *  (exportBaseName; see labelfile.ts).
    *  Tauri and supported Chromium browsers show a real save dialog and Save
    *  then rewrites that same file; Safari/Firefox use a plain download. */
   async function saveProject(as = false) {
@@ -1185,7 +1186,9 @@ export default function App() {
       try {
         if (await openProject(await getFile(), { quiet })) return true;
       } catch (err) {
-        if (!quiet) setLoadError(`Could not open project: ${errMsg(err)}`);
+        // isAbort: a user/UA abort mid-read stays silent, exactly as it did
+        // when these errors propagated to openProjectPicker's catch.
+        if (!quiet && !isAbort(err)) setLoadError(`Could not open project: ${errMsg(err)}`);
       }
     }
     return false;
