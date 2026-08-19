@@ -7,6 +7,9 @@ binary-impacting change gets its own version before it is merged.
 
 - Restored Cut, Copy, Paste, and Select All in the desktop app, including the
   standard keyboard shortcuts while editing any text field.
+- Internal cleanup of the menu wiring and the project-open pipeline following
+  review; opening a project behaves exactly as before, including the quiet
+  retries for files that fail their first read.
 
 ## [0.1.4] - 2026-08-11
 

@@ -134,6 +134,15 @@ async function writeHandle(handle: FileSystemFileHandle, bytes: Uint8Array) {
  *  share. */
 const errMsg = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
+/** What every open path hands to openProject. Each entry point converts
+ *  to this shape itself (fileSource for picked Files), so the shared
+ *  pipeline never branches on where the bytes came from — the Finder path
+ *  hands over bytes the desktop shell already read, skipping a second
+ *  ~40MB File/arrayBuffer copy. */
+type LabelSource = { name: string; bytes: Uint8Array };
+const fileSource = async (f: File): Promise<LabelSource> =>
+  ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
+
 /** Encode a canvas's pixels as PNG bytes — the shared tail of every
  *  decode/recolor/re-encode pipeline in this file. */
 async function canvasToPng(canvas: HTMLCanvasElement): Promise<Uint8Array> {
@@ -1149,16 +1158,13 @@ export default function App() {
     if (!pick) { openRef.current?.click(); return; }
     try {
       const [handle] = await pick({ types: LABEL_TYPES });
-      if (await openWithRetry(() => handle.getFile())) projectHandle.current = handle;
+      if (await openWithRetry(async () => fileSource(await handle.getFile()))) {
+        projectHandle.current = handle;
+      }
     } catch (err) {
       if (!isAbort(err)) setLoadError(`Could not open project: ${errMsg(err)}`);
     }
   }
-
-  /** What the open paths hand to openProject: a picked File, or bytes the
-   *  desktop shell already read from disk (the Finder path) — the latter
-   *  skips the File/arrayBuffer round trip, which matters at ~40MB. */
-  type LabelSource = File | { name: string; bytes: Uint8Array };
 
   /** Open a .label with quiet retries — shared by ALL entry points (the
    *  FS-Access picker, the hidden-input fallback, and the desktop
@@ -1167,12 +1173,20 @@ export default function App() {
    *  just-downloaded file can fail while the OS materializes or scans the
    *  bytes — users saw "cancel and reopen fixes it", which is this race
    *  resolving itself. Backoff to ~1.5s total because a 38MB file scans
-   *  measurably slower than a small one; only the last attempt reports. */
+   *  measurably slower than a small one; only the last attempt reports.
+   *  getFile sits INSIDE the try: the flaky read is the file read itself
+   *  (fileSource's arrayBuffer / readNativeFile), so its failures must be
+   *  retried exactly like a failed unpack. */
   async function openWithRetry(getFile: () => Promise<LabelSource>): Promise<boolean> {
     const delays = [0, 300, 1200];
     for (let i = 0; i < delays.length; i++) {
       if (delays[i]) await new Promise((r) => setTimeout(r, delays[i]));
-      if (await openProject(await getFile(), { quiet: i < delays.length - 1 })) return true;
+      const quiet = i < delays.length - 1;
+      try {
+        if (await openProject(await getFile(), { quiet })) return true;
+      } catch (err) {
+        if (!quiet) setLoadError(`Could not open project: ${errMsg(err)}`);
+      }
     }
     return false;
   }
@@ -1184,8 +1198,7 @@ export default function App() {
    *  the file are cleared: opening a project is a full restore, not a merge. */
   async function openProject(f: LabelSource, opts?: { quiet?: boolean }): Promise<boolean> {
     try {
-      const bytes = f instanceof File ? new Uint8Array(await f.arrayBuffer()) : f.bytes;
-      const unpacked = unpackLabel(bytes);
+      const unpacked = unpackLabel(f.bytes);
       resetDocument(parseConfigFile(unpacked.json));
       // The type matters: FileDrop thumbnails are createObjectURL(file), and
       // an <img> won't render a typeless blob as SVG — logos restored from a
@@ -1226,6 +1239,8 @@ export default function App() {
       try {
         const path = await invoke<string | null>("take_opened_file");
         if (!path) return;
+        // ponytail: "/"-only basename — same macOS-only scope as the Opened
+        // handling in src-tauri/src/main.rs; revisit both together.
         const name = path.slice(path.lastIndexOf("/") + 1);
         if (await openWithRetry(async () => ({ name, bytes: await readNativeFile(path) })))
           projectPath.current = path;
@@ -1445,7 +1460,7 @@ export default function App() {
             onChange={(e) => {
               const f = e.currentTarget.files?.[0];
               e.currentTarget.value = "";
-              if (f) void openWithRetry(async () => f).then((opened) => {
+              if (f) void openWithRetry(() => fileSource(f)).then((opened) => {
                 // Hidden-input Open provides bytes but no writable identity.
                 // Forget any earlier Save As path so Save prompts for this file.
                 if (opened) forgetProjectFile();

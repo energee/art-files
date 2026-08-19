@@ -159,3 +159,9 @@ no status, no attempts, no delta.
 - status: done
 - attempts: 1/3
 - delta: native text-edit roles 0 → 4; 195 scoped root tests, TypeScript/Vite build, Cargo check, diff check, and 0.1.5 release gate pass
+
+## 2026-08-18 simplify-pass
+- finding: [user request] /simplify over label-file-associations — AppMenu duplicated the PredefinedMenuItem branch and exported NATIVE_TEXT_EDIT_ITEMS only for a tautological test; App.tsx's LabelSource union pushed the Finder special case into the shared open pipeline
+- status: done
+- attempts: 1/3
+- delta: nativeEntry predefined/separator branches merged; edit roles inlined and APP_MENUS exported so the test pins the real wiring; all open entry points hand { name, bytes } via module-scope fileSource, with getFile moved inside openWithRetry's try so transient read failures still retry; logoNudge hoisted to one logoCy in boxesOf; 195 root tests, tsc pass

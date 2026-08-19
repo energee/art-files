@@ -19,10 +19,9 @@ type ActionEntry = {
   check?: true;
 };
 type SeparatorEntry = { kind: "separator"; id: string };
-export const NATIVE_TEXT_EDIT_ITEMS = ["Cut", "Copy", "Paste", "SelectAll"] as const;
 type PredefinedEntry = {
   kind: "predefined";
-  item: "Separator" | (typeof NATIVE_TEXT_EDIT_ITEMS)[number];
+  item: "Separator" | "Cut" | "Copy" | "Paste" | "SelectAll";
 };
 type SubmenuEntry = {
   kind: "submenu";
@@ -34,8 +33,9 @@ type MenuEntry = ActionEntry | SeparatorEntry | PredefinedEntry | SubmenuEntry;
 
 /** The application-owned menus. This is intentionally data rather than two
  *  JSX/Rust trees: adding, removing, or moving an action changes the browser
- *  and native menus together. */
-const APP_MENUS: SubmenuEntry[] = [
+ *  and native menus together. Exported for tests, which pin the wiring
+ *  (e.g. the Edit menu's native clipboard roles) against this data. */
+export const APP_MENUS: SubmenuEntry[] = [
   {
     kind: "submenu", id: "file-menu", text: "File", items: [
       { kind: "action", id: "project-new", text: "New Project" },
@@ -66,9 +66,10 @@ const APP_MENUS: SubmenuEntry[] = [
       { kind: "action", id: "undo", text: "Undo" },
       { kind: "action", id: "redo", text: "Redo" },
       { kind: "predefined", item: "Separator" },
-      ...NATIVE_TEXT_EDIT_ITEMS.map((item) => (
-        { kind: "predefined" as const, item }
-      )),
+      { kind: "predefined", item: "Cut" },
+      { kind: "predefined", item: "Copy" },
+      { kind: "predefined", item: "Paste" },
+      { kind: "predefined", item: "SelectAll" },
     ],
   },
   {
@@ -227,13 +228,10 @@ async function nativeEntry(
   run: (id: string) => void,
   resources: NativeResource[],
 ): Promise<NativeEntry> {
-  if (entry.kind === "predefined") {
-    const item = await api.PredefinedMenuItem.new({ item: entry.item });
-    resources.push(item);
-    return item;
-  }
-  if (entry.kind === "separator") {
-    const item = await api.PredefinedMenuItem.new({ item: "Separator" });
+  if (entry.kind === "predefined" || entry.kind === "separator") {
+    const item = await api.PredefinedMenuItem.new({
+      item: entry.kind === "predefined" ? entry.item : "Separator",
+    });
     resources.push(item);
     return item;
   }
