@@ -19,13 +19,18 @@ type ActionEntry = {
   check?: true;
 };
 type SeparatorEntry = { kind: "separator"; id: string };
+export const NATIVE_TEXT_EDIT_ITEMS = ["Cut", "Copy", "Paste", "SelectAll"] as const;
+type PredefinedEntry = {
+  kind: "predefined";
+  item: "Separator" | (typeof NATIVE_TEXT_EDIT_ITEMS)[number];
+};
 type SubmenuEntry = {
   kind: "submenu";
   id: string;
   text: string;
   items: MenuEntry[];
 };
-type MenuEntry = ActionEntry | SeparatorEntry | SubmenuEntry;
+type MenuEntry = ActionEntry | SeparatorEntry | PredefinedEntry | SubmenuEntry;
 
 /** The application-owned menus. This is intentionally data rather than two
  *  JSX/Rust trees: adding, removing, or moving an action changes the browser
@@ -60,6 +65,10 @@ const APP_MENUS: SubmenuEntry[] = [
     kind: "submenu", id: "edit-menu", text: "Edit", items: [
       { kind: "action", id: "undo", text: "Undo" },
       { kind: "action", id: "redo", text: "Redo" },
+      { kind: "predefined", item: "Separator" },
+      ...NATIVE_TEXT_EDIT_ITEMS.map((item) => (
+        { kind: "predefined" as const, item }
+      )),
     ],
   },
   {
@@ -106,6 +115,10 @@ function WebEntries(props: {
   checked: CheckedState;
 }) {
   return props.entries.map((entry) => {
+    // Native-only edit items are omitted in the browser build: the browser
+    // already owns text-edit shortcuts, while Tauri needs the corresponding OS
+    // responder-chain items for those shortcuts to reach the focused field.
+    if (entry.kind === "predefined") return null;
     if (entry.kind === "separator") return <MenubarSeparator key={entry.id} />;
     if (entry.kind === "submenu") {
       return (
@@ -214,6 +227,11 @@ async function nativeEntry(
   run: (id: string) => void,
   resources: NativeResource[],
 ): Promise<NativeEntry> {
+  if (entry.kind === "predefined") {
+    const item = await api.PredefinedMenuItem.new({ item: entry.item });
+    resources.push(item);
+    return item;
+  }
   if (entry.kind === "separator") {
     const item = await api.PredefinedMenuItem.new({ item: "Separator" });
     resources.push(item);
