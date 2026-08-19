@@ -1,6 +1,6 @@
 // appmenu.test.ts — native menu accelerators and standard text-edit roles.
 import { describe, expect, it } from "vitest";
-import { NATIVE_TEXT_EDIT_ITEMS, nativeAccelerator } from "@/components/AppMenu";
+import { APP_MENUS, nativeAccelerator } from "@/components/AppMenu";
 import type { Command } from "@/components/CommandMenu";
 
 const command = (fields: Partial<Command>): Command => ({
@@ -29,6 +29,9 @@ describe("native menu accelerators", () => {
 
 describe("native text editing menu", () => {
   it("installs every standard role needed for clipboard editing", () => {
-    expect(NATIVE_TEXT_EDIT_ITEMS).toEqual(["Cut", "Copy", "Paste", "SelectAll"]);
+    const edit = APP_MENUS.find((menu) => menu.id === "edit-menu")!;
+    const roles = edit.items.flatMap((entry) =>
+      entry.kind === "predefined" && entry.item !== "Separator" ? [entry.item] : []);
+    expect(roles).toEqual(["Cut", "Copy", "Paste", "SelectAll"]);
   });
 });

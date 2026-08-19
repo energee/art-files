@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 import { encodeUpc, upcCheckDigit, validateUpc } from "../src/upc";
 import { qrPath, qrShapes, machineName, qrUrl } from "../src/qr";
 import { tintRgba } from "../src/collab";
-import { defaultConfig, displayAbv, parseConfigFile, toConfigFile } from "../src/defaults";
+import {
+  defaultConfig, displayAbv, exportBaseName, parseConfigFile, toConfigFile,
+} from "../src/defaults";
 import { parseDescription, parseInfoLine, parseRuns, serializeDescription } from "../src/description";
 import {
   COLLAB_LEAD, COLLAB_LEFT, DEFAULT_STROKE_PX, DESC, GOLD, QR,
@@ -364,5 +366,28 @@ describe("displayAbv", () => {
     expect(displayAbv(cfg)).toBe("5.2");
     cfg.abv = "  ";
     expect(displayAbv(cfg)).toBe("#");
+  });
+});
+
+describe("exportBaseName", () => {
+  it("slugs the beer name with the QR machineName rule", () => {
+    const cfg = defaultConfig();
+    cfg.beerName = "Peregrine Falcon";
+    expect(exportBaseName(cfg)).toBe("peregrine-falcon");
+    cfg.beerName = "  Double   IPA  ";
+    expect(exportBaseName(cfg)).toBe("double-ipa");
+    // Filesystem-hostile characters fold to dashes too — a "/" must never
+    // reach a save dialog's suggestedName/defaultPath as a path separator.
+    cfg.beerName = "Blood/Orange Wit";
+    expect(exportBaseName(cfg)).toBe("blood-orange-wit");
+    cfg.beerName = "Hop: Drop!";
+    expect(exportBaseName(cfg)).toBe("hop-drop");
+  });
+  it("falls back to \"label\" when the name slugs to nothing", () => {
+    const cfg = defaultConfig();
+    cfg.beerName = "   ";
+    expect(exportBaseName(cfg)).toBe("label");
+    cfg.beerName = "!!!";
+    expect(exportBaseName(cfg)).toBe("label");
   });
 });

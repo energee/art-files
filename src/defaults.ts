@@ -1,6 +1,7 @@
 // defaults.ts — default LabelConfig mirroring the Labradorite reference label,
 // plus the fixed template strings (warning text, address) used by the layout.
 import type { LabelConfig, ConfigFile } from "./types";
+import { machineName } from "./qr";
 import { DEFAULT_STROKE_PX, GOLD, WARNING_TRACKING } from "./layout";
 import { DEFAULT_STROKE_LAYER } from "./strokes";
 
@@ -32,9 +33,14 @@ export const WARNING_TEXT =
  *  can never disagree about what a blank field draws. */
 export const displayName = (c: LabelConfig) => c.beerName.trim() || "Name";
 
-/** Filename stem for every export (PDF, PSD, and their mask plates). One
- *  fallback, so an unnamed label downloads as "label.*" everywhere. */
-export const exportBaseName = (c: LabelConfig) => c.beerName.trim() || "label";
+/** Filename stem for every export (PDF, PSD, and their mask plates),
+ *  machine-shaped via the same slug the QR URL uses ("Peregrine Falcon" →
+ *  "peregrine-falcon", punctuation folded to dashes) — one slug rule for
+ *  the whole app, and nothing filesystem-hostile ("/", ":", …) survives
+ *  into save-dialog paths. One fallback, so an unnamed label downloads as
+ *  "label.*" everywhere. */
+export const exportBaseName = (c: LabelConfig) =>
+  machineName(c.beerName) || "label";
 export const displayStyle = (c: LabelConfig) => c.styleLine.text.trim() || "Style";
 /** The ABV figure alone. Every caller appends the unit ("% alc by vol" on the
  *  label), so a trailing percent sign — typed, or inherited from a config

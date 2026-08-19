@@ -3,6 +3,16 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.6] - 2026-08-19
+
+- Default save and export filenames are now machine-friendly slugs of the
+  beer name — lowercased with spaces and punctuation turned to dashes, the
+  same rule the QR code URL uses ("Peregrine Falcon" saves as
+  peregrine-falcon.label / .pdf / .psd).
+- Internal cleanup of the menu wiring and the project-open pipeline following
+  review; opening a project behaves exactly as before, including the quiet
+  retries for files that fail their first read.
+
 ## [0.1.5] - 2026-08-18
 
 - Restored Cut, Copy, Paste, and Select All in the desktop app, including the

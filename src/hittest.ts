@@ -95,6 +95,10 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
     })),
   ];
 
+  // The laurel's nudged centre, shared by the logo box and the collab-centre
+  // box hanging off its bottom (same value drawElements draws with).
+  const logoCy = L.LOGO.cy + logoNudge(cfg);
+
   const boxes: Box[] = [
     // Left column
     flat("volume", cfg.volume.text, L.VOLUME.x, L.VOLUME.baseline, L.VOLUME.size, m, !!cfg.volume.bold, cfg.volume.letterSpacing),
@@ -112,8 +116,8 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
     // move with it or the click target drifts off the artwork.
     { id: "logo",
       x0: L.LOGO.cx - L.LOGO.w / 2, x1: L.LOGO.cx + L.LOGO.w / 2,
-      y0: L.LOGO.cy + logoNudge(cfg) - LOGO_H / 2,
-      y1: L.LOGO.cy + logoNudge(cfg) + LOGO_H / 2 },
+      y0: logoCy - LOGO_H / 2,
+      y1: logoCy + LOGO_H / 2 },
     centred("name", displayName(cfg).toUpperCase(), L.NAME.cx, L.NAME.baseline, L.NAME.size, m, true, cfg.nameStyle.letterSpacing),
     centred("styleLine", displayStyle(cfg), L.STYLE_LINE.cx, L.STYLE_LINE.baseline, L.STYLE_LINE.size, m, !!cfg.styleLine.bold, cfg.styleLine.letterSpacing),
     // QR is a box, not text.
@@ -186,7 +190,7 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
     // Hangs off the laurel's nudged bottom, exactly like drawElements — the
     // centre stack moves as one, so this box follows the logo's offsetY.
     const centerW = L.COLLAB_CENTER.maxW * cfg.collabCenter.scale;
-    const centerTop = L.LOGO.cy + logoNudge(cfg) + LOGO_H / 2
+    const centerTop = logoCy + LOGO_H / 2
       + L.COLLAB_CENTER.gapAbove + (cfg.collabCenter.offsetY ?? 0);
     boxes.push({
       id: "collabCenter",
