@@ -153,3 +153,9 @@ no status, no attempts, no delta.
 - status: done
 - attempts: 1/3
 - delta: logoNudge(cfg) in elements.ts gates the nudge on collabEnabled for draw + hit-test; value stays saved in config; inspector hints "applies while collab is on"; new hittest test covers both states
+
+## 2026-08-18 tauri-native-clipboard-editing
+- finding: [user request] src/components/AppMenu.tsx:60 — replacing Tauri's default application menu omitted the native Cut, Copy, Paste, and Select All roles, so macOS did not route their shortcuts to focused fields
+- status: done
+- attempts: 1/3
+- delta: native text-edit roles 0 → 4; 195 scoped root tests, TypeScript/Vite build, Cargo check, diff check, and 0.1.5 release gate pass

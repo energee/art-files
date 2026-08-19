@@ -1,6 +1,6 @@
-// appmenu.test.ts — native menu accelerator translation.
+// appmenu.test.ts — native menu accelerators and standard text-edit roles.
 import { describe, expect, it } from "vitest";
-import { nativeAccelerator } from "@/components/AppMenu";
+import { NATIVE_TEXT_EDIT_ITEMS, nativeAccelerator } from "@/components/AppMenu";
 import type { Command } from "@/components/CommandMenu";
 
 const command = (fields: Partial<Command>): Command => ({
@@ -24,5 +24,11 @@ describe("native menu accelerators", () => {
   it("leaves bare-key bindings with the guarded webview listener", () => {
     expect(nativeAccelerator(command({ key: "1" }))).toBeUndefined();
     expect(nativeAccelerator(command({ key: "b" }))).toBeUndefined();
+  });
+});
+
+describe("native text editing menu", () => {
+  it("installs every standard role needed for clipboard editing", () => {
+    expect(NATIVE_TEXT_EDIT_ITEMS).toEqual(["Cut", "Copy", "Paste", "SelectAll"]);
   });
 });

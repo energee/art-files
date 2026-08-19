@@ -3,6 +3,11 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.5] - 2026-08-18
+
+- Restored Cut, Copy, Paste, and Select All in the desktop app, including the
+  standard keyboard shortcuts while editing any text field.
+
 ## [0.1.4] - 2026-08-11
 
 - Registered the .label file type with macOS: double-clicking a project in
