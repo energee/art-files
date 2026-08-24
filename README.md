@@ -201,25 +201,36 @@ npm run dev        # open the app: the label previews immediately (text on bare
                    # previews update live, download both PDFs
 ```
 
-### Label Lab for macOS
+### Label Lab desktop app
 
-The same editor is available as the **Label Lab** desktop app. Building it
-requires the Apple command-line tools and a stable Rust toolchain in addition
-to Node.js:
+The same editor is available as the **Label Lab** desktop app for macOS,
+Windows, and Linux (built for Debian 13 "trixie" and newer). Building it
+locally requires a stable Rust toolchain in addition to Node.js — plus the
+Apple command-line tools on macOS (`xcode-select --install`), or the WebKitGTK
+development packages on Linux:
 
 ```bash
-xcode-select --install       # once per Mac
 rustup toolchain install stable
 npm run desktop:dev          # run Label Lab in a native development window
-npm run desktop:build        # create both Label Lab.app and a DMG installer
+npm run desktop:build        # create the platform installer:
+                             #   macOS Label Lab.app + DMG, Windows NSIS
+                             #   setup.exe, Linux AppImage
 ```
 
 Release artifacts are written under `src-tauri/target/release/bundle/`. Local
-builds receive an ad-hoc signature; distributing the app to other Macs without
-security warnings requires authenticated Apple signing and notarization.
-The browser build keeps its in-window File/Edit/View menu; the desktop build
-removes that duplicate chrome and installs the same actions in the macOS menu
-bar, including live checkmarks and disabled states.
+macOS builds receive an ad-hoc signature; distributing the app to other Macs
+without security warnings requires authenticated Apple signing and
+notarization. The browser build keeps its in-window File/Edit/View menu; the
+desktop build removes that duplicate chrome and installs the same actions in
+the native menu — the macOS menu bar, or the window menu elsewhere —
+including live checkmarks and disabled states.
+
+Double-clicking a `.label` project opens it in Label Lab on every platform,
+including into an already-running window (macOS delivers this via Apple
+events; Windows and Linux forward the path from the second launch through the
+single-instance plugin). On Linux the file association registers when the
+AppImage is desktop-integrated (e.g. via AppImageLauncher or Gear Lever);
+running `Label_Lab.AppImage path/to/file.label` works regardless.
 
 #### Automatic updates
 
@@ -247,8 +258,9 @@ to `CHANGELOG.md`, and run the metadata check against the latest release tag.
 Once that change passes the required metadata check and merges to `main`, the
 **Release Label Lab** workflow starts automatically. It validates the version
 and notes again, uses that changelog section as the GitHub Release body, builds
-Intel and Apple Silicon apps, and creates a `label-lab-v<version>` release on
-this (private) repo with the DMGs for manual install. A manual workflow dispatch
+Intel and Apple Silicon Macs, a Windows NSIS installer, and a Linux AppImage,
+and creates a `label-lab-v<version>` release on
+this (private) repo with the installers for manual download. A manual workflow dispatch
 remains available for release recovery. Because installed apps cannot read a
 private repo, the workflow then copies only the update feed — `latest.json`, the
 updater archives, and their signatures — to the repo's public GitHub Pages site

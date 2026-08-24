@@ -3,6 +3,14 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.10] - 2026-08-24
+
+- Label Lab now runs on Windows and Linux: releases add a Windows installer
+  (setup.exe) and a Linux AppImage built for Debian 13 "trixie" and newer,
+  both with the same automatic updates as macOS. Double-clicking a .label
+  project opens it in the app on every platform — including into an
+  already-running window.
+
 ## [0.1.6] - 2026-08-19
 
 - Default save and export filenames are now machine-friendly slugs of the
