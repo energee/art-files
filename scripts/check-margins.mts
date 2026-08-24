@@ -6,8 +6,8 @@
 // inline **bold** run draws in Bold, which is wider), the element's
 // letter-spacing, and the outer stroke — which pdf/build.ts paints OUTSIDE the
 // glyph (text rendering mode 2 with a 2x line width, fill drawn on top), so it
-// extends the ink by its full width on every side. Getting any of those wrong makes an element look aligned here and
-// overhang on press.
+// extends the ink by its full width on every side. Getting any of those wrong
+// makes an element look aligned here and overhang on press.
 import { readFileSync } from "node:fs";
 import fontkit from "@pdf-lib/fontkit";
 import { layoutGuides, DEFAULT_MARGIN_PT } from "../src/rulers";

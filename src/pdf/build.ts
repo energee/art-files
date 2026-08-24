@@ -90,11 +90,12 @@ function maskColor(layer: "metallic" | "white") {
  *  plate. Widths are authored in px at the 600dpi deliverable. */
 function strokeOf(style: Style, mode: Mode) {
   if (!style.stroke || style.stroke === "none") return null;
+  const px = style.strokeWidth ?? L.DEFAULT_STROKE_PX;
   // Width 0 means no stroke, not PDF's "thinnest device line" hairline.
-  if ((style.strokeWidth ?? L.DEFAULT_STROKE_PX) <= 0) return null;
+  if (px <= 0) return null;
   return {
     color: mode === "art" ? fillColor(style.stroke) : maskColor(strokeLayerOf(style)),
-    w: (style.strokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX,
+    w: px * L.PX,
   };
 }
 
@@ -107,7 +108,10 @@ function strokeOf(style: Style, mode: Mode) {
  *  as white gaps — its copies sat only AT radius w, never inside it. The
  *  page's round join/cap (see newDoc) keeps corners round. Set BEFORE the
  *  draw: drawText wraps itself in q/Q, so outer text state is inherited
- *  inside and survives the pop — same escape hatch as withTracking's Tc. */
+ *  inside and survives the pop — same escape hatch as withTracking's Tc.
+ *  Single text runs go through strokedText below; only drawBarcode uses this
+ *  raw, to batch EVERY digit's stroke before ANY fill (its module-width
+ *  invariant), which a per-text helper can't express. */
 function withTextStroke(
   page: PDFPage,
   stroke: { color: Color; w: number },
@@ -120,6 +124,21 @@ function withTextStroke(
   );
   draw();
   page.pushOperators(setTextRenderingMode(TextRenderingMode.Fill));
+}
+
+/** One text run with its outer stroke: the Tr-2 stroke pass (whose drawText
+ *  must carry the STROKE color — Tr 2 fills the glyph body too), then the
+ *  fill copy on top. Owning both passes here keeps the order and the stroke
+ *  pass's color out of caller hands. A null stroke is just the fill draw. */
+function strokedText(
+  page: PDFPage,
+  stroke: ReturnType<typeof strokeOf>,
+  txt: string,
+  opts: { x: number; y: number; size: number; font: PDFFont; color: Color; rotate?: ReturnType<typeof degrees> },
+) {
+  if (stroke)
+    withTextStroke(page, stroke, () => page.drawText(txt, { ...opts, color: stroke.color }));
+  page.drawText(txt, opts);
 }
 
 const y = (topY: number) => L.PAGE.h - topY; // top-left origin -> PDF space
@@ -214,11 +233,7 @@ function drawLine(
       // which in art mode means it must not paint at all (fillColor("none")
       // handles a none-fill; the mask pass paints it instead).
       const color = mode === "art" ? fillColor(run.fill) : maskColor(run.layer);
-      const at = { y: yBase, size: opts.size, font };
-      if (stroke)
-        withTextStroke(page, stroke, () =>
-          page.drawText(run.text, { ...at, x, color: stroke.color }));
-      page.drawText(run.text, { ...at, x, color });
+      strokedText(page, stroke, run.text, { x, y: yBase, size: opts.size, font, color });
       x += advances[i];
     });
   });
@@ -252,11 +267,9 @@ function drawRotated(
     runs.forEach((run, i) => {
       const face = run.bold ? boldFont ?? font : font;
       const color = mode === "art" ? fillColor(run.fill) : maskColor(run.layer);
-      const base = { size: opts.size, font: face, rotate: degrees(90) };
-      if (stroke)
-        withTextStroke(page, stroke, () =>
-          page.drawText(run.text, { ...base, x: opts.x, y: yPos, color: stroke.color }));
-      page.drawText(run.text, { ...base, x: opts.x, y: yPos, color });
+      strokedText(page, stroke, run.text, {
+        x: opts.x, y: yPos, size: opts.size, font: face, color, rotate: degrees(90),
+      });
       yPos += advances[i];
     });
   });

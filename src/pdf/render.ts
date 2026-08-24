@@ -2,11 +2,10 @@
 // owns the raster worker and its request/cancel protocol; the two consumers
 // (the 2D compare preview and the 3D label's textures) differ only in how
 // they size the output. The painting itself happens in rasterWorker.ts
-// against an OffscreenCanvas — pdf.js paints on the calling thread, and this
-// label is expensive to raster, so painting here froze the whole app for the
-// duration. The
-// worker sends the finished frame back as a transferred ImageBitmap, and the
-// only main-thread work left is one drawImage.
+// against an OffscreenCanvas — pdf.js paints on the calling thread, so
+// painting here froze the whole app for the duration. The worker sends the
+// finished frame back as a transferred ImageBitmap, and the only main-thread
+// work left is one drawImage.
 
 export interface RenderPageOptions {
   /** Draw into this canvas instead of a fresh one (the preview reuses its
