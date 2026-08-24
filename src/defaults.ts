@@ -75,8 +75,8 @@ export function defaultConfig(): LabelConfig {
     barcodeLayer: "white",
     barcodeStrokeLayer: DEFAULT_STROKE_LAYER,
     qrFill: GOLD,
-    // Same keyline as the text elements. The QR's stroke is a real stroked
-    // path under the dots (drawSvgPath), not the faked ring text uses.
+    // Same keyline as the text elements. The QR's stroke is a stroked path
+    // under the dots (drawSvgPath).
     qrStroke: KEYLINE.stroke,
     qrStrokeWidth: KEYLINE.strokeWidth,
     qrLayer: "metallic",

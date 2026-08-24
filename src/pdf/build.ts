@@ -14,7 +14,13 @@ import {
   setCharacterSpacing,
   setLineCap,
   setLineJoin,
+  setLineWidth,
+  setStrokingColor,
+  setTextRenderingMode,
+  TextRenderingMode,
   translate,
+  type Color,
+  type Rotation,
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import type { CollabSlot, Fill, LabelConfig, Style, StyledLine } from "../types";
@@ -85,45 +91,94 @@ function maskColor(layer: "metallic" | "white") {
  *  plate. Widths are authored in px at the 600dpi deliverable. */
 function strokeOf(style: Style, mode: Mode) {
   if (!style.stroke || style.stroke === "none") return null;
+  const px = style.strokeWidth ?? L.DEFAULT_STROKE_PX;
+  // Width 0 means no stroke, not PDF's "thinnest device line" hairline.
+  if (px <= 0) return null;
   return {
     color: mode === "art" ? fillColor(style.stroke) : maskColor(strokeLayerOf(style)),
-    w: (style.strokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX,
+    w: px * L.PX,
   };
 }
 
-/** pdf-lib can't stroke text, so an outer stroke is faked as a ring of
- *  offset copies drawn under the fill. The sample count scales with the
- *  radius — a fixed count leaves adjacent copies 2w*sin(pi/n) apart, which
- *  at a wide stroke reads as stair-steps down the outer edge. One sample
- *  per ~0.4pt of circumference keeps that step below a printer's dot. */
-// Memoized: every element in a config shares one stroke width, so this table
-// is built once per build instead of once per line. Keyed by width, which is
-// the only input.
-const RINGS = new Map<number, [number, number][]>();
-
-function ring(w: number): [number, number][] {
-  const hit = RINGS.get(w);
-  if (hit) return hit;
-  const built = buildRing(w);
-  RINGS.set(w, built);
-  return built;
+/** drawText has no stroke option, but PDF's text rendering mode does the job:
+ *  Tr 2 (FillAndOutline) with a 2w line width paints the glyph body plus a
+ *  centered outline whose outer half is the w-wide outer stroke; the fill
+ *  copy drawn on top covers the inner half. A true stroke, unlike the old
+ *  ring-of-offset-copies fake, closes solid around features smaller than the
+ *  stroke radius (an i-dot, a diaeresis, the % counters), which the ring left
+ *  as white gaps — its copies sat only AT radius w, never inside it. The
+ *  page's round join/cap (see newDoc) keeps corners round. Set BEFORE the
+ *  draw: drawText wraps itself in q/Q, so outer text state is inherited
+ *  inside and survives the pop — same escape hatch as withTracking's Tc.
+ *  Single text runs go through strokedText below; only drawBarcode uses this
+ *  raw, to batch EVERY digit's stroke before ANY fill (its module-width
+ *  invariant), which a per-text helper can't express. */
+function withTextStroke(
+  page: PDFPage,
+  stroke: { color: Color; w: number },
+  draw: () => void,
+) {
+  page.pushOperators(
+    setTextRenderingMode(TextRenderingMode.FillAndOutline),
+    setLineWidth(2 * stroke.w),
+    setStrokingColor(stroke.color),
+  );
+  draw();
+  page.pushOperators(setTextRenderingMode(TextRenderingMode.Fill));
 }
 
-function buildRing(w: number): [number, number][] {
-  // Capped only as a backstop: each sample is its own drawText, so an
-  // uncapped count would let a stroke width become a build-time amplifier
-  // (600px measured at ~18k calls / 700ms, outlasting the 600ms debounce).
-  // The UI now clamps width at 60px (StyleProperties' stroke-width input),
-  // i.e. 7.2pt, where the 0.4pt rule asks for n = 114 — so the ceiling sits
-  // at 128 and never binds in practice. The old cap of 64 DID bind above
-  // ~34px and broke the spacing guarantee: at 60px it left adjacent copies
-  // 2w*sin(pi/64) ~ 0.71pt apart, ~6 device dots at 600dpi, which prints as
-  // a visibly scalloped outer edge.
-  const n = Math.min(128, Math.max(16, Math.ceil((2 * Math.PI * w) / 0.4)));
-  return Array.from({ length: n }, (_, i) => {
-    const a = (i * 2 * Math.PI) / n;
-    return [w * Math.cos(a), w * Math.sin(a)];
-  });
+/** Filled glyph copies halfway through the intended outside stroke. pdf.js's
+ *  path-font renderer (required in rasterWorker, where DOM fonts do not exist)
+ *  can leave the inner half of a wide text stroke unpainted around tiny glyph
+ *  features even though PDF/Poppler renders the true stroke solid. These
+ *  copies bridge only that interior: at radius w/2 their outermost ink stays
+ *  inside the real w-wide stroke envelope, so the true PDF stroke below still
+ *  owns the smooth outer edge and print geometry. The radius comes from the
+ *  live per-element width — no punctuation-specific size or default. */
+/** Placement shared by the stroke helpers below — one spelling so an added
+ *  option (say, letter-spacing) can't drift between them. */
+type TextAt = { x: number; y: number; size: number; font: PDFFont; rotate?: Rotation };
+
+function bridgeTextStroke(
+  page: PDFPage,
+  stroke: { color: Color; w: number },
+  txt: string,
+  opts: TextAt,
+) {
+  const radius = stroke.w / 2;
+  // Keep adjacent samples within about 0.4pt, the same printer-scale bound
+  // used by the former perimeter-only stroke approximation. This ring is
+  // interior-only and the true stroke still supplies the perimeter.
+  // The UI's 60px maximum asks for 57 samples. The ceiling is only a
+  // backstop for hand-edited project files so one extreme width cannot turn
+  // every text run into an unbounded number of PDF operators.
+  const count = Math.min(64, Math.max(8, Math.ceil((2 * Math.PI * radius) / 0.4)));
+  for (let i = 0; i < count; i++) {
+    const angle = (i * 2 * Math.PI) / count;
+    page.drawText(txt, {
+      ...opts,
+      x: opts.x + radius * Math.cos(angle),
+      y: opts.y + radius * Math.sin(angle),
+      color: stroke.color,
+    });
+  }
+}
+
+/** One text run with its outer stroke: the Tr-2 stroke pass (whose drawText
+ *  must carry the STROKE color — Tr 2 fills the glyph body too), then the
+ *  fill copy on top. Owning both passes here keeps the order and the stroke
+ *  pass's color out of caller hands. A null stroke is just the fill draw. */
+function strokedText(
+  page: PDFPage,
+  stroke: ReturnType<typeof strokeOf>,
+  txt: string,
+  opts: TextAt & { color: Color },
+) {
+  if (stroke) {
+    bridgeTextStroke(page, stroke, txt, opts);
+    withTextStroke(page, stroke, () => page.drawText(txt, { ...opts, color: stroke.color }));
+  }
+  page.drawText(txt, opts);
 }
 
 const y = (topY: number) => L.PAGE.h - topY; // top-left origin -> PDF space
@@ -218,11 +273,7 @@ function drawLine(
       // which in art mode means it must not paint at all (fillColor("none")
       // handles a none-fill; the mask pass paints it instead).
       const color = mode === "art" ? fillColor(run.fill) : maskColor(run.layer);
-      const at = { y: yBase, size: opts.size, font };
-      if (stroke)
-        for (const [dx, dy] of ring(stroke.w))
-          page.drawText(run.text, { ...at, x: x + dx, y: yBase + dy, color: stroke.color });
-      page.drawText(run.text, { ...at, x, color });
+      strokedText(page, stroke, run.text, { x, y: yBase, size: opts.size, font, color });
       x += advances[i];
     });
   });
@@ -256,11 +307,9 @@ function drawRotated(
     runs.forEach((run, i) => {
       const face = run.bold ? boldFont ?? font : font;
       const color = mode === "art" ? fillColor(run.fill) : maskColor(run.layer);
-      const base = { size: opts.size, font: face, rotate: degrees(90) };
-      if (stroke)
-        for (const [dx, dy] of ring(stroke.w))
-          page.drawText(run.text, { ...base, x: opts.x + dx, y: yPos + dy, color: stroke.color });
-      page.drawText(run.text, { ...base, x: opts.x, y: yPos, color });
+      strokedText(page, stroke, run.text, {
+        x: opts.x, y: yPos, size: opts.size, font: face, color, rotate: degrees(90),
+      });
       yPos += advances[i];
     });
   });
@@ -369,8 +418,8 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode:
     return;
   }
 
-  // Outer stroke, skipped entirely at S = 0 — ring(0) would emit 16 identical
-  // copies at zero offset. EVERY stroke shape draws before ANY fill one —
+  // Outer stroke, skipped entirely at S = 0 — a zero-width stroke would still
+  // paint a hairline. EVERY stroke shape draws before ANY fill one —
   // that ordering is what makes this safe. Interleaving the two (an underlay
   // per bar, then its bar) lets a later stroke bite into an already-drawn
   // neighbour, which distorted the module widths until the code stopped
@@ -379,7 +428,6 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode:
   // white shape without a backing box.
   if (S > 0) {
     const strokeColor = fillColor(cfg.barcodeStroke);
-    const ringS = ring(S); // loop-invariant
     // A centered border at 2S extends S beyond the bar and — because the page
     // sets a ROUND line join (see newDoc) — rounds each corner at radius S,
     // which is what Photoshop's outside stroke does and what the PSD's real
@@ -389,9 +437,10 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode:
       page.drawRectangle({
         ...r, color: strokeColor, borderColor: strokeColor, borderWidth: 2 * S,
       });
-    for (const d of digits)
-      for (const [dx, dy] of ringS)
-        page.drawText(d.txt, { ...glyph, x: d.x + dx, y: d.y + dy, color: strokeColor });
+    withTextStroke(page, { color: strokeColor, w: S }, () => {
+      for (const d of digits)
+        page.drawText(d.txt, { ...glyph, x: d.x, y: d.y, color: strokeColor });
+    });
   }
 
   // The artwork itself, at its exact geometry.

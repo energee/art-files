@@ -3,6 +3,27 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.9] - 2026-08-24
+
+- Wide text outlines in Label Lab previews now close cleanly around punctuation
+  and other tiny glyphs, matching Photoshop at the dynamically selected stroke
+  width instead of leaving white cavities. Print geometry is unchanged.
+
+## [0.1.8] - 2026-08-24
+
+- Zoomed 2D previews now redraw from the PDF at the current zoom and display
+  density, keeping small punctuation and fine stroke details crisp instead of
+  stretching a low-resolution bitmap. Preview memory remains capped at a
+  600-DPI-equivalent canvas.
+
+## [0.1.7] - 2026-08-24
+
+- Text outlines now render as true strokes instead of stacked offset copies,
+  fixing white gaps inside the outline around small glyph features — dots on
+  i and ü, the counters of % — and the subtly scalloped outline edge. Applies
+  to every stroked text element and the barcode digits' halo; barcodes still
+  scan (verified by decoding the rendered pixels).
+
 ## [0.1.6] - 2026-08-19
 
 - Default save and export filenames are now machine-friendly slugs of the

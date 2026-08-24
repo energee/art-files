@@ -32,6 +32,7 @@ function draw(cfg: LabelConfig, mode: "art" | "mask") {
   const page = {
     drawRectangle: (r: Rect) => rects.push(r),
     drawText: (txt: string, o: Omit<Text, "txt">) => texts.push({ txt, ...o }),
+    pushOperators: () => {}, // digit stroke pass sets text state (Tr/w/RG)
   } as unknown as PDFPage;
   const font = { widthOfTextAtSize: () => 10 } as unknown as PDFFont;
   drawBarcode(page, { regular: font, semibold: font, bold: font }, cfg, mode);
@@ -199,7 +200,7 @@ describe("drawBarcode styling", () => {
 
   // Digit pills: a rect around each digit group's glyph box (measured font
   // width x the same ASC/DESC font-box ratio hittest.ts uses) expanded by S
-  // — the shape the art's ring-of-copies halo approximates around text.
+  // — the shape the art's stroked digit halo traces around text.
   const DIGIT_ASC = FONT_ASC;
   const DIGIT_DESC = FONT_DESC;
   it.each(cases)("mask digit pills track the same S, sized to each digit's glyph box: %s", (_name, patch, expected) => {

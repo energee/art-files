@@ -1,7 +1,7 @@
 // psd-build.test.ts — the layered PSD deliverable: that every element it
 // promises actually lands as a layer, and that a keylined element carries a
-// stroke effect Photoshop can show (the PDF fakes strokes as a ring of offset
-// text copies, which has no PSD equivalent — a layer effect is the parallel).
+// stroke effect Photoshop can show (the PDF strokes text via its text
+// rendering mode, which has no PSD equivalent — a layer effect is the parallel).
 import { describe, expect, it } from "vitest";
 import { readPsd } from "ag-psd";
 import { buildPsd } from "../src/psd/build";

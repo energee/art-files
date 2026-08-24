@@ -10,9 +10,19 @@ import {
 import { parseDescription, parseInfoLine, parseRuns, serializeDescription } from "../src/description";
 import {
   COLLAB_LEAD, COLLAB_LEFT, DEFAULT_STROKE_PX, DESC, GOLD, QR,
-  collabLeftFlow, parseHexFill,
+  PREVIEW_RASTER_MAX_EDGE, PREVIEW_RASTER_MAX_SCALE,
+  collabLeftFlow, parseHexFill, previewRasterScale,
 } from "../src/layout";
 import { addColor } from "../src/presets";
+
+describe("preview raster scale", () => {
+  it("tracks zoom and display density up to the 600-DPI memory ceiling", () => {
+    expect(previewRasterScale(1, 1)).toBe(2.5);
+    expect(previewRasterScale(2.5, 1)).toBe(6.25);
+    expect(previewRasterScale(2.5, 2)).toBe(PREVIEW_RASTER_MAX_SCALE);
+    expect(PREVIEW_RASTER_MAX_EDGE).toBe(4876);
+  });
+});
 
 describe("color presets", () => {
   it("appends a new hex, lowercased", () => {
