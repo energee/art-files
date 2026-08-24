@@ -165,3 +165,9 @@ no status, no attempts, no delta.
 - status: done
 - attempts: 1/3
 - delta: nativeEntry predefined/separator branches merged; edit roles inlined and APP_MENUS exported so the test pins the real wiring; all open entry points hand { name, bytes } via module-scope fileSource, with getFile moved inside openWithRetry's try so transient read failures still retry; logoNudge hoisted to one logoCy in boxesOf; 195 root tests, tsc pass
+
+## 2026-08-24 zoom-aware-preview-raster
+- finding: [user request] src/components/PreviewCompare.tsx:97 — the 2D preview always rasterized at 180 DPI and CSS zoom stretched that fixed bitmap, smearing punctuation and fine text-stroke pockets
+- status: done
+- attempts: 1/3
+- delta: fixed 180-DPI backing bitmap → debounced zoom/DPR-aware raster (450 DPI at 250% on 1x displays, capped at 600 DPI / 4876px long edge); art and mask scratch paints are serialized; the 5.8% period changed from a gray-gold smudge in the enlarged baseline crop to a distinct gold dot; 198 tests, tsc, Vite build, Cargo check, and 0.1.8 release gate pass

@@ -3,6 +3,13 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.8] - 2026-08-24
+
+- Zoomed 2D previews now redraw from the PDF at the current zoom and display
+  density, keeping small punctuation and fine stroke details crisp instead of
+  stretching a low-resolution bitmap. Preview memory remains capped at a
+  600-DPI-equivalent canvas.
+
 ## [0.1.7] - 2026-08-24
 
 - Text outlines now render as true strokes instead of stacked offset copies,

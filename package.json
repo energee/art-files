@@ -1,7 +1,7 @@
 {
   "name": "label-lab",
   "private": true,
-  "version": "0.1.7",
+  "version": "0.1.8",
   "type": "module",
   "description": "Label Lab: create print-ready label artwork and white-ink plates",
   "scripts": {
@@ -12,7 +12,7 @@
     "desktop:release-config": "node scripts/configure-updater.mjs",
     "prepare": "git config core.hooksPath .githooks || true",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "vitest run --dir tests",
     "generate": "tsx scripts/generate.ts",
     "tauri": "tauri"
   },

@@ -277,9 +277,10 @@ const clampView = (r: DOMRect, z: number, x: number, y: number) => ({
   y: Math.min(0, Math.max(r.height * (1 - z), y)),
 });
 
-/** The pane's zoom range: 1 (fitted) up to the preview's own oversample, which
- *  is where the bitmap runs out of real pixels. The 3D views clamp their dolly
- *  to the same ceiling, so a zoom carried across is never silently clipped. */
+/** The pane's zoom range: 1 (fitted) through the same ceiling used by the 3D
+ *  dolly, so a zoom carried across is never silently clipped. PreviewCompare
+ *  re-rasterizes the PDFs as this increases; the ceiling is no longer a point
+ *  where CSS runs past a fixed bitmap. */
 const clampZoom = (z: number) => Math.min(PREVIEW_OVERSAMPLE, Math.max(1, z));
 
 /** Zoom to `z` about the pane point (ax, ay), keeping whatever is under that
@@ -1511,7 +1512,7 @@ export default function App() {
               // Nulled while a 3D view is up: this component stays mounted but
               // display:none, and a hidden canvas rasterizes just as expensively
               // as a visible one — that was two wasted pdf.js passes per rebuild
-              // on top of CanView's own. useRenderPdf no-ops on null, so the
+              // on top of CanView's own. useRenderPdfs no-ops on null, so the
               // canvases keep their last painting and coming back to 2D flips
               // the identity and repaints once.
               artBytes={viewMode === "2d" ? pdfs?.artBytes ?? null : null}
@@ -1525,9 +1526,10 @@ export default function App() {
               bleed={bleed}
               // Same Settings knob the 3D die uses, so both previews cut alike.
               cornerRadiusPct={render.cornerRadius}
+              zoom={zoom.z}
               // setBuildError itself, not a wrapper: useState setters are
               // identity-stable, and an inline arrow here would be a new
-              // function every render (see useRenderPdf's note on that).
+              // function every render (see useRenderPdfs' note on that).
               onRenderError={setBuildError} />
             </div>
             {viewMode !== "2d" && (
