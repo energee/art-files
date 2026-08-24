@@ -3,6 +3,12 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.9] - 2026-08-24
+
+- Wide text outlines in Label Lab previews now close cleanly around punctuation
+  and other tiny glyphs, matching Photoshop at the dynamically selected stroke
+  width instead of leaving white cavities. Print geometry is unchanged.
+
 ## [0.1.8] - 2026-08-24
 
 - Zoomed 2D previews now redraw from the PDF at the current zoom and display

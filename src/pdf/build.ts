@@ -126,6 +126,39 @@ function withTextStroke(
   page.pushOperators(setTextRenderingMode(TextRenderingMode.Fill));
 }
 
+/** Filled glyph copies halfway through the intended outside stroke. pdf.js's
+ *  path-font renderer (required in rasterWorker, where DOM fonts do not exist)
+ *  can leave the inner half of a wide text stroke unpainted around tiny glyph
+ *  features even though PDF/Poppler renders the true stroke solid. These
+ *  copies bridge only that interior: at radius w/2 their outermost ink stays
+ *  inside the real w-wide stroke envelope, so the true PDF stroke below still
+ *  owns the smooth outer edge and print geometry. The radius comes from the
+ *  live per-element width — no punctuation-specific size or default. */
+function bridgeTextStroke(
+  page: PDFPage,
+  stroke: { color: Color; w: number },
+  txt: string,
+  opts: { x: number; y: number; size: number; font: PDFFont; rotate?: ReturnType<typeof degrees> },
+) {
+  const radius = stroke.w / 2;
+  // Keep adjacent samples within about 0.4pt, the same printer-scale bound
+  // used by the former perimeter-only stroke approximation. This ring is
+  // interior-only and the true stroke still supplies the perimeter.
+  // The UI's 60px maximum asks for 57 samples. The ceiling is only a
+  // backstop for hand-edited project files so one extreme width cannot turn
+  // every text run into an unbounded number of PDF operators.
+  const count = Math.min(64, Math.max(8, Math.ceil((2 * Math.PI * radius) / 0.4)));
+  for (let i = 0; i < count; i++) {
+    const angle = (i * 2 * Math.PI) / count;
+    page.drawText(txt, {
+      ...opts,
+      x: opts.x + radius * Math.cos(angle),
+      y: opts.y + radius * Math.sin(angle),
+      color: stroke.color,
+    });
+  }
+}
+
 /** One text run with its outer stroke: the Tr-2 stroke pass (whose drawText
  *  must carry the STROKE color — Tr 2 fills the glyph body too), then the
  *  fill copy on top. Owning both passes here keeps the order and the stroke
@@ -136,8 +169,10 @@ function strokedText(
   txt: string,
   opts: { x: number; y: number; size: number; font: PDFFont; color: Color; rotate?: ReturnType<typeof degrees> },
 ) {
-  if (stroke)
+  if (stroke) {
+    bridgeTextStroke(page, stroke, txt, opts);
     withTextStroke(page, stroke, () => page.drawText(txt, { ...opts, color: stroke.color }));
+  }
   page.drawText(txt, opts);
 }
 

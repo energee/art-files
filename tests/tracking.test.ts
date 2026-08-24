@@ -13,10 +13,9 @@ import { defaultConfig } from "../src/defaults";
 import * as L from "../src/layout";
 import { assets, contentStreamText, measure } from "./fixtures";
 
-/** Show-text operators in a content stream. A stroked line draws each run
- *  twice — a Tr-2 stroke pass under the fill copy — so it emits more of
- *  these than a bare one; that ratio is the stroke evidence a stream
- *  carries. */
+/** Show-text operators in a content stream. A stroked line draws bridge
+ *  copies plus its Tr-2 stroke pass under the fill copy, so it emits more of
+ *  these than a bare one; that ratio is the stroke evidence a stream carries. */
 const showOps = (s: string) => (s.match(/\bTj\b/g) ?? []).length;
 
 describe("trackedWidth", () => {
@@ -98,9 +97,8 @@ describe("the art PDF's character-spacing operator", () => {
 });
 
 // Regression: the shipped black keyline on the rotated Info line. drawRotated
-// draws each stroked run twice (a Tr-2 stroke pass under the fill copy), so a
-// stroked line emits more show-text operators than a bare one — that ratio is
-// the stroke evidence in the stream.
+// draws bridge copies and a Tr-2 stroke pass under the fill copy, so a stroked
+// line emits more show-text operators than a bare one.
 describe("the Info line's shipped keyline", () => {
   it("draws a stroke around Info in the art PDF", async () => {
     const stroked = await contentStreamText(await buildArtPdf(defaultConfig(), assets));
@@ -108,6 +106,21 @@ describe("the Info line's shipped keyline", () => {
     bare.handleAddress.stroke = "none";
     const plain = await contentStreamText(await buildArtPdf(bare, assets));
     expect(showOps(stroked)).toBeGreaterThan(showOps(plain));
+  });
+});
+
+describe("the pdf.js text-stroke bridge", () => {
+  it("scales its filled underlay from the live description stroke width", async () => {
+    const narrow = defaultConfig();
+    narrow.description = ".";
+    narrow.descStyle.strokeWidth = 3;
+    const wide = defaultConfig();
+    wide.description = ".";
+    wide.descStyle.strokeWidth = 15;
+
+    const narrowOps = showOps(await contentStreamText(await buildArtPdf(narrow, assets)));
+    const wideOps = showOps(await contentStreamText(await buildArtPdf(wide, assets)));
+    expect(wideOps).toBeGreaterThan(narrowOps);
   });
 });
 
