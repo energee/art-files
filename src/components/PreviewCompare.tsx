@@ -9,7 +9,9 @@ import { renderPdfPage } from "@/pdf/render";
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import { ART, PAGE, PREVIEW_MAX_W, PREVIEW_OVERSAMPLE } from "@/layout";
+import {
+  ART, PAGE, PREVIEW_MAX_W, PREVIEW_RASTER_MAX_EDGE, previewRasterScale,
+} from "@/layout";
 import type { LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import { boxesFor, hitTest, type CollabSlots, type Measure } from "@/hittest";
@@ -90,29 +92,40 @@ const pageBox = (
 // PanelGroup/Panel/ImperativePanelHandle API; the left panel needs a fixed
 // id so its percentage can be read out of that map by key.
 const WHITE_INK_PANEL_ID = "white-ink";
+/** Wheel/pinch events arrive every frame. Keep the CSS transform immediate,
+ *  then replace its backing bitmap once the gesture pauses. */
+const RASTER_DEBOUNCE_MS = 160;
 
 async function renderPdf(
-  bytes: Uint8Array, canvas: HTMLCanvasElement | null, signal: AbortSignal,
+  bytes: Uint8Array, canvas: HTMLCanvasElement | null, signal: AbortSignal, scale: number,
 ) {
-  if (canvas) await renderPdfPage(bytes, { canvas, scale: PREVIEW_OVERSAMPLE, signal });
+  if (canvas) {
+    await renderPdfPage(bytes, {
+      canvas,
+      scaleCap: { maxEdge: PREVIEW_RASTER_MAX_EDGE, maxScale: scale },
+      signal,
+    });
+  }
 }
 
-/** Render `bytes` into `canvas` whenever they change.
+/** Render the PDF pair whenever its bytes or requested density change.
  *
- *  Renders are chained because pdf.js hard-throws on two concurrent render()
- *  calls into one canvas, so a new render has to wait out the one in flight.
- *  That queue is only tolerable because superseding a render ABORTS it (see
- *  RenderPageOptions.signal): without that, every stale frame in the queue
- *  rasterizes to completion first and the newest one — the one the user is
- *  waiting on — lands last. Dragging a Settings knob makes that tens of seconds.
+ *  The pair shares one chain: pdf.js hard-throws on concurrent render() calls
+ *  into one canvas, and serializing art/mask also prevents two up-to-60 MB
+ *  scratch canvases from peaking together. Superseding either the PDF bytes or
+ *  zoom density ABORTS the in-flight paint (see RenderPageOptions.signal), so
+ *  stale zoom frames cannot queue ahead of the latest one.
  *
  *  Errors are reported rather than swallowed. A cancelled render is not an
  *  error (renderPdfPage resolves it as null), so anything reaching the catch is
  *  a real failure, and discarding it silently leaves the preview frozen with
  *  nothing on screen to say why. */
-function useRenderPdf(
-  bytes: Uint8Array | null,
-  canvas: RefObject<HTMLCanvasElement | null>,
+function useRenderPdfs(
+  artBytes: Uint8Array | null,
+  maskBytes: Uint8Array | null,
+  artCanvas: RefObject<HTMLCanvasElement | null>,
+  maskCanvas: RefObject<HTMLCanvasElement | null>,
+  scale: number,
   onError?: (message: string) => void,
 ) {
   const chain = useRef<Promise<void>>(Promise.resolve());
@@ -122,13 +135,18 @@ function useRenderPdf(
   const report = useRef(onError);
   report.current = onError;
   useEffect(() => {
-    if (!bytes) return;
+    if (!artBytes && !maskBytes) return;
     const abort = new AbortController();
     chain.current = chain.current
-      .then(() => (abort.signal.aborted ? undefined : renderPdf(bytes, canvas.current, abort.signal)))
+      .then(async () => {
+        if (artBytes && !abort.signal.aborted)
+          await renderPdf(artBytes, artCanvas.current, abort.signal, scale);
+        if (maskBytes && !abort.signal.aborted)
+          await renderPdf(maskBytes, maskCanvas.current, abort.signal, scale);
+      })
       .catch((error: unknown) => { report.current?.(String(error)); });
     return () => abort.abort();
-  }, [bytes, canvas]);
+  }, [artBytes, maskBytes, artCanvas, maskCanvas, scale]);
 }
 
 export interface PreviewCompareHandle {
@@ -172,6 +190,9 @@ export const PreviewCompare = forwardRef<
      *  layer's knob, shared with the 3D views). Rounds the sheet and the trim
      *  guide so the 2D preview shows the shape that actually gets cut. */
     cornerRadiusPct: number;
+    /** Current CSS zoom. Rasterization follows it after a short debounce so
+     *  settled zoom shows new PDF detail instead of stretching old pixels. */
+    zoom: number;
     /** A rasterization that failed outright, for App's error strip. Cancelled
      *  renders are routine and never reported here — only real failures, which
      *  would otherwise leave the preview stuck on its last good frame with no
@@ -181,7 +202,7 @@ export const PreviewCompare = forwardRef<
 >(function PreviewCompare(
   {
     artBytes, maskBytes, cfg, measure, collab, selected, onPick, onSplit, bleed,
-    cornerRadiusPct, onRenderError,
+    cornerRadiusPct, zoom, onRenderError,
   },
   ref,
 ) {
@@ -194,6 +215,18 @@ export const PreviewCompare = forwardRef<
   const pageElement = useRef<HTMLDivElement>(null);
   const leftPanel = useRef<PanelImperativeHandle>(null);
   const [split, setSplit] = useState(0); // % width showing white-ink
+  const [rasterScale, setRasterScale] = useState(() =>
+    previewRasterScale(zoom, window.devicePixelRatio));
+
+  useEffect(() => {
+    const next = previewRasterScale(zoom, window.devicePixelRatio);
+    // Ratchet up only: zooming out just shrinks the on-screen bitmap via CSS,
+    // which is visually lossless — re-rastering would cost two serialized
+    // worker passes for strictly less detail than what's already painted.
+    const timeout = window.setTimeout(
+      () => setRasterScale((prev) => Math.max(prev, next)), RASTER_DEBOUNCE_MS);
+    return () => window.clearTimeout(timeout);
+  }, [zoom]);
 
   useImperativeHandle(ref, () => ({
     // Numbers in resize() are pixels, not percent — units must be explicit.
@@ -202,8 +235,9 @@ export const PreviewCompare = forwardRef<
     getPageElement: () => pageElement.current,
   }));
 
-  useRenderPdf(artBytes, artCanvas, onRenderError);
-  useRenderPdf(maskBytes, maskCanvas, onRenderError);
+  useRenderPdfs(
+    artBytes, maskBytes, artCanvas, maskCanvas, rasterScale, onRenderError,
+  );
 
   // Click-to-select: the canvases fill the wrapper exactly and the wrapper's
   // aspect ratio is locked to PAGE.w/PAGE.h (see the style below), so a

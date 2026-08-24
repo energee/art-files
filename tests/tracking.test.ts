@@ -13,10 +13,9 @@ import { defaultConfig } from "../src/defaults";
 import * as L from "../src/layout";
 import { assets, contentStreamText, measure } from "./fixtures";
 
-/** Show-text operators in a content stream. A faked stroke is a ring of
- *  offset copies of the same text, so a stroked line emits many more of
- *  these than a bare one — that ratio is the only stroke evidence a stream
- *  carries, the ring copies having no operator of their own. */
+/** Show-text operators in a content stream. A stroked line draws bridge
+ *  copies plus its Tr-2 stroke pass under the fill copy, so it emits more of
+ *  these than a bare one; that ratio is the stroke evidence a stream carries. */
 const showOps = (s: string) => (s.match(/\bTj\b/g) ?? []).length;
 
 describe("trackedWidth", () => {
@@ -98,17 +97,30 @@ describe("the art PDF's character-spacing operator", () => {
 });
 
 // Regression: the shipped black keyline on the rotated Info line. drawRotated
-// fakes an outer stroke as a ring of offset copies under the fill (pdf-lib
-// cannot stroke text), so a stroked line emits many more show-text operators
-// than a bare one — that ratio is the only stroke evidence in the stream,
-// since the ring copies carry no operator of their own.
+// draws bridge copies and a Tr-2 stroke pass under the fill copy, so a stroked
+// line emits more show-text operators than a bare one.
 describe("the Info line's shipped keyline", () => {
-  it("draws a stroke ring around Info in the art PDF", async () => {
+  it("draws a stroke around Info in the art PDF", async () => {
     const stroked = await contentStreamText(await buildArtPdf(defaultConfig(), assets));
     const bare = defaultConfig();
     bare.handleAddress.stroke = "none";
     const plain = await contentStreamText(await buildArtPdf(bare, assets));
     expect(showOps(stroked)).toBeGreaterThan(showOps(plain));
+  });
+});
+
+describe("the pdf.js text-stroke bridge", () => {
+  it("scales its filled underlay from the live description stroke width", async () => {
+    const narrow = defaultConfig();
+    narrow.description = ".";
+    narrow.descStyle.strokeWidth = 3;
+    const wide = defaultConfig();
+    wide.description = ".";
+    wide.descStyle.strokeWidth = 15;
+
+    const narrowOps = showOps(await contentStreamText(await buildArtPdf(narrow, assets)));
+    const wideOps = showOps(await contentStreamText(await buildArtPdf(wide, assets)));
+    expect(wideOps).toBeGreaterThan(narrowOps);
   });
 });
 
@@ -129,7 +141,7 @@ describe("the shipped keyline colour", () => {
     expect(cfg.barcodeStroke).toBe("#FFFFFF");
   });
 
-  it("draws the volume's ring in that black on the art plate", async () => {
+  it("draws the volume's stroke in that black on the art plate", async () => {
     const text = await contentStreamText(await buildArtPdf(defaultConfig(), assets));
     expect(text).toContain("0 0 0 rg");
     const bare = defaultConfig();
@@ -140,7 +152,7 @@ describe("the shipped keyline colour", () => {
 });
 
 // Mask strokes are independent of the fill layer and therefore add their own
-// ring of show-text operations whenever enabled.
+// stroke-pass show-text operations whenever enabled.
 describe("a stroke on the mask plate", () => {
   it("draws its footprint regardless of the element's fill layer", async () => {
     for (const layer of ["metallic", "white"] as const) {

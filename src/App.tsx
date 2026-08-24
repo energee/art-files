@@ -5,6 +5,7 @@
 // main.ts wiring, componentized.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { basename } from "@tauri-apps/api/path";
 import type { CollabSlot, Fill, LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
@@ -277,9 +278,10 @@ const clampView = (r: DOMRect, z: number, x: number, y: number) => ({
   y: Math.min(0, Math.max(r.height * (1 - z), y)),
 });
 
-/** The pane's zoom range: 1 (fitted) up to the preview's own oversample, which
- *  is where the bitmap runs out of real pixels. The 3D views clamp their dolly
- *  to the same ceiling, so a zoom carried across is never silently clipped. */
+/** The pane's zoom range: 1 (fitted) through the same ceiling used by the 3D
+ *  dolly, so a zoom carried across is never silently clipped. PreviewCompare
+ *  re-rasterizes the PDFs as this increases; the ceiling is no longer a point
+ *  where CSS runs past a fixed bitmap. */
 const clampZoom = (z: number) => Math.min(PREVIEW_OVERSAMPLE, Math.max(1, z));
 
 /** Zoom to `z` about the pane point (ax, ay), keeping whatever is under that
@@ -1151,6 +1153,13 @@ export default function App() {
     saveBytes(zip, exportBaseName(cfg) + LABEL_EXT, "application/zip");
     setDirty(false);
   }
+  /** The one spelling of "open failed" for every open entry point — picker,
+   *  retry loop, Finder — so wording and the abort-stays-silent rule can't
+   *  drift between them. */
+  const reportOpenError = (err: unknown) => {
+    if (!isAbort(err)) setLoadError(`Could not open project: ${errMsg(err)}`);
+  };
+
   /** File → Open Project…: the native picker where available, so Save can
    *  rewrite the opened file; elsewhere the hidden-input fallback (which
    *  yields no writable handle — Save then behaves as Save As). */
@@ -1163,7 +1172,7 @@ export default function App() {
         projectHandle.current = handle;
       }
     } catch (err) {
-      if (!isAbort(err)) setLoadError(`Could not open project: ${errMsg(err)}`);
+      reportOpenError(err);
     }
   }
 
@@ -1186,9 +1195,7 @@ export default function App() {
       try {
         if (await openProject(await getFile(), { quiet })) return true;
       } catch (err) {
-        // isAbort: a user/UA abort mid-read stays silent, exactly as it did
-        // when these errors propagated to openProjectPicker's catch.
-        if (!quiet && !isAbort(err)) setLoadError(`Could not open project: ${errMsg(err)}`);
+        if (!quiet) reportOpenError(err);
       }
     }
     return false;
@@ -1242,13 +1249,11 @@ export default function App() {
       try {
         const path = await invoke<string | null>("take_opened_file");
         if (!path) return;
-        // ponytail: "/"-only basename — same macOS-only scope as the Opened
-        // handling in src-tauri/src/main.rs; revisit both together.
-        const name = path.slice(path.lastIndexOf("/") + 1);
+        const name = await basename(path);
         if (await openWithRetry(async () => ({ name, bytes: await readNativeFile(path) })))
           projectPath.current = path;
       } catch (err) {
-        setLoadError(`Could not open project: ${errMsg(err)}`);
+        reportOpenError(err);
       }
     }
     const stopping = import("@tauri-apps/api/event")
@@ -1511,7 +1516,7 @@ export default function App() {
               // Nulled while a 3D view is up: this component stays mounted but
               // display:none, and a hidden canvas rasterizes just as expensively
               // as a visible one — that was two wasted pdf.js passes per rebuild
-              // on top of CanView's own. useRenderPdf no-ops on null, so the
+              // on top of CanView's own. useRenderPdfs no-ops on null, so the
               // canvases keep their last painting and coming back to 2D flips
               // the identity and repaints once.
               artBytes={viewMode === "2d" ? pdfs?.artBytes ?? null : null}
@@ -1525,9 +1530,10 @@ export default function App() {
               bleed={bleed}
               // Same Settings knob the 3D die uses, so both previews cut alike.
               cornerRadiusPct={render.cornerRadius}
+              zoom={zoom.z}
               // setBuildError itself, not a wrapper: useState setters are
               // identity-stable, and an inline arrow here would be a new
-              // function every render (see useRenderPdf's note on that).
+              // function every render (see useRenderPdfs' note on that).
               onRenderError={setBuildError} />
             </div>
             {viewMode !== "2d" && (

@@ -73,15 +73,30 @@ export const PAGE = { w: TRIM.w + 2 * BLEED, h: TRIM.h + 2 * BLEED };
  *  predict that sheet's on-screen height to frame its own label to match
  *  (see canScene's framingDistance) — two readers, one number. */
 export const PREVIEW_MAX_W = 900;
-/** How far past 1:1 the 2D preview rasterizes its PDFs — and therefore the
- *  zoom ceiling every view shares, because that is where the bitmap runs out
- *  of real pixels and a further zoom magnifies blur, not detail. It lives here
- *  because all three readers have to agree on it: PreviewCompare rasterizes at
- *  it, App clamps the 2D pane to it, and canScene clamps its dolly to it, so a
- *  zoom carried between the views is never silently clipped on the way in.
- *  ponytail: fixed oversample, CSS downscales; to zoom deeper, re-render the
- *  PDFs at this x zoom while zoomed rather than raising the number. */
+/** Baseline PDF raster oversample and the zoom ceiling every view shares.
+ *  PreviewCompare multiplies this by the live 2D zoom (and display density),
+ *  while App and canScene use the same value as their maximum zoom so a view
+ *  handoff is never silently clipped. */
 export const PREVIEW_OVERSAMPLE = 2.5;
+/** Hard ceiling for the zoom-aware 2D raster. At the default page size this
+ *  is 4876 x 3076 (about 60 MB of RGBA per canvas); PreviewCompare keeps the
+ *  art and mask paints serial, so their temporary render surfaces do not peak
+ *  together. This is the same 600-DPI density used for print output and keeps
+ *  high-DPR zoom sharp without putting full-resolution uploaded textures back
+ *  into the live rebuild loop. */
+export const PREVIEW_RASTER_MAX_SCALE = 600 / 72;
+/** Long-edge guard at the shipped page geometry. The scale cap above keeps
+ *  ordinary pages at 600 DPI; this second bound keeps a user-expanded bleed
+ *  from growing a preview canvas past the same memory budget. */
+export const PREVIEW_RASTER_MAX_EDGE = Math.round(PAGE.w * PREVIEW_RASTER_MAX_SCALE);
+
+/** Raster density for a 2D view. CSS zoom stays immediate; the preview
+ *  debounces re-rasterization to this density after the gesture settles. */
+export const previewRasterScale = (zoom: number, devicePixelRatio = 1) =>
+  Math.min(
+    PREVIEW_RASTER_MAX_SCALE,
+    PREVIEW_OVERSAMPLE * Math.max(1, zoom) * Math.max(1, devicePixelRatio),
+  );
 /** Art box inside the bleed — the TRIM, offset by the bleed. Only x/y move
  *  with the knob; the die does not change size. */
 export const ART = { x: BLEED, y: BLEED, w: TRIM.w, h: TRIM.h };

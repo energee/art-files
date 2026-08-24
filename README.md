@@ -128,8 +128,10 @@ parses to itself, so configs written before this render unchanged. The preview i
 render to bitmaps via pdf.js and stack there, and a draggable divider
 reveals the white-ink layer over the art in place — no embedded PDF
 viewer, no tabs. Scrolling or pinching over the 2D preview zooms it about
-the pointer, up to 2.5x (the oversample the bitmaps are rendered at, past
-which zooming would magnify blur rather than detail), and a two-finger —
+the pointer, up to 2.5x. The CSS transform follows the gesture immediately;
+after it pauses, the PDFs re-rasterize for that zoom and the display's pixel
+density, capped at a 600-DPI-equivalent canvas so fine type stays sharp without
+putting unbounded full-resolution surfaces into the preview loop. A two-finger —
 i.e. right-button — drag pans, under a grabbing cursor. That mapping is
 deliberately the one OrbitControls gives the 3D views, so the same habits
 work in all four, and it is why the browser's own pinch-zoom and context
@@ -279,9 +281,10 @@ same `src/layout.ts` geometry, for handing artwork to a designer. Text
 elements become editable Photoshop type layers; the logo and QR become
 vector shape layers with real bezier knots. Every element carrying an outer
 stroke gets it as an editable **layer effect** (outside, in the stroke's own
-colour) — the PDF has to fake a text stroke as a ring of offset copies,
-Photoshop has the real thing. The description is ONE type layer holding the
-whole block: per-line faces and fills ride along as Photoshop style runs,
+colour) — the PDF draws its text stroke via PDF's fill-and-outline text
+rendering mode, Photoshop has its own stroke effect. The description is ONE
+type layer holding the whole block: per-line faces and fills ride along as
+Photoshop style runs,
 and the PDF's line advance becomes the layer's leading. The warning is
 likewise one justified, rotated layer whose lines are the columns, wrapped
 by the same `wrapWarning` measure the PDF uses. The barcode is one merged shape

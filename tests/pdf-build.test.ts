@@ -58,6 +58,7 @@ describe("drawJustifiedRotated", () => {
     const texts: { txt: string; y: number }[] = [];
     const page = {
       drawText: (txt: string, o: { y: number }) => texts.push({ txt, y: o.y }),
+      pushOperators: () => {}, // text state (stroke mode, Tc) — geometry only here
     } as unknown as PDFPage;
     drawJustifiedRotated(page, font, text, "art", style, {
       x: 100, yStart: 200, size: 6, maxLen,
@@ -106,6 +107,7 @@ describe("drawJustifiedRotated", () => {
     const colors: { red: number; green: number; blue: number }[] = [];
     const page = {
       drawText: (_txt: string, o: { color: typeof stroke }) => colors.push(o.color),
+      pushOperators: () => {}, // stroke pass sets text state; colors carry the order
     } as unknown as PDFPage;
     drawJustifiedRotated(page, font, "INK", "mask", style, {
       x: 100, yStart: 200, size: 6, maxLen: 150,
