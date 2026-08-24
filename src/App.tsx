@@ -5,6 +5,7 @@
 // main.ts wiring, componentized.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { basename } from "@tauri-apps/api/path";
 import type { CollabSlot, Fill, LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
@@ -1152,6 +1153,13 @@ export default function App() {
     saveBytes(zip, exportBaseName(cfg) + LABEL_EXT, "application/zip");
     setDirty(false);
   }
+  /** The one spelling of "open failed" for every open entry point — picker,
+   *  retry loop, Finder — so wording and the abort-stays-silent rule can't
+   *  drift between them. */
+  const reportOpenError = (err: unknown) => {
+    if (!isAbort(err)) setLoadError(`Could not open project: ${errMsg(err)}`);
+  };
+
   /** File → Open Project…: the native picker where available, so Save can
    *  rewrite the opened file; elsewhere the hidden-input fallback (which
    *  yields no writable handle — Save then behaves as Save As). */
@@ -1164,7 +1172,7 @@ export default function App() {
         projectHandle.current = handle;
       }
     } catch (err) {
-      if (!isAbort(err)) setLoadError(`Could not open project: ${errMsg(err)}`);
+      reportOpenError(err);
     }
   }
 
@@ -1187,9 +1195,7 @@ export default function App() {
       try {
         if (await openProject(await getFile(), { quiet })) return true;
       } catch (err) {
-        // isAbort: a user/UA abort mid-read stays silent, exactly as it did
-        // when these errors propagated to openProjectPicker's catch.
-        if (!quiet && !isAbort(err)) setLoadError(`Could not open project: ${errMsg(err)}`);
+        if (!quiet) reportOpenError(err);
       }
     }
     return false;
@@ -1243,13 +1249,11 @@ export default function App() {
       try {
         const path = await invoke<string | null>("take_opened_file");
         if (!path) return;
-        // ponytail: "/"-only basename — same macOS-only scope as the Opened
-        // handling in src-tauri/src/main.rs; revisit both together.
-        const name = path.slice(path.lastIndexOf("/") + 1);
+        const name = await basename(path);
         if (await openWithRetry(async () => ({ name, bytes: await readNativeFile(path) })))
           projectPath.current = path;
       } catch (err) {
-        setLoadError(`Could not open project: ${errMsg(err)}`);
+        reportOpenError(err);
       }
     }
     const stopping = import("@tauri-apps/api/event")

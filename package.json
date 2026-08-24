@@ -12,7 +12,7 @@
     "desktop:release-config": "node scripts/configure-updater.mjs",
     "prepare": "git config core.hooksPath .githooks || true",
     "preview": "vite preview",
-    "test": "vitest run --dir tests",
+    "test": "vitest run",
     "generate": "tsx scripts/generate.ts",
     "tauri": "tauri"
   },

@@ -220,10 +220,13 @@ export const PreviewCompare = forwardRef<
 
   useEffect(() => {
     const next = previewRasterScale(zoom, window.devicePixelRatio);
-    if (next === rasterScale) return;
-    const timeout = window.setTimeout(() => setRasterScale(next), RASTER_DEBOUNCE_MS);
+    // Ratchet up only: zooming out just shrinks the on-screen bitmap via CSS,
+    // which is visually lossless — re-rastering would cost two serialized
+    // worker passes for strictly less detail than what's already painted.
+    const timeout = window.setTimeout(
+      () => setRasterScale((prev) => Math.max(prev, next)), RASTER_DEBOUNCE_MS);
     return () => window.clearTimeout(timeout);
-  }, [zoom, rasterScale]);
+  }, [zoom]);
 
   useImperativeHandle(ref, () => ({
     // Numbers in resize() are pixels, not percent — units must be explicit.

@@ -20,6 +20,7 @@ import {
   TextRenderingMode,
   translate,
   type Color,
+  type Rotation,
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import type { CollabSlot, Fill, LabelConfig, Style, StyledLine } from "../types";
@@ -134,11 +135,15 @@ function withTextStroke(
  *  inside the real w-wide stroke envelope, so the true PDF stroke below still
  *  owns the smooth outer edge and print geometry. The radius comes from the
  *  live per-element width — no punctuation-specific size or default. */
+/** Placement shared by the stroke helpers below — one spelling so an added
+ *  option (say, letter-spacing) can't drift between them. */
+type TextAt = { x: number; y: number; size: number; font: PDFFont; rotate?: Rotation };
+
 function bridgeTextStroke(
   page: PDFPage,
   stroke: { color: Color; w: number },
   txt: string,
-  opts: { x: number; y: number; size: number; font: PDFFont; rotate?: ReturnType<typeof degrees> },
+  opts: TextAt,
 ) {
   const radius = stroke.w / 2;
   // Keep adjacent samples within about 0.4pt, the same printer-scale bound
@@ -167,7 +172,7 @@ function strokedText(
   page: PDFPage,
   stroke: ReturnType<typeof strokeOf>,
   txt: string,
-  opts: { x: number; y: number; size: number; font: PDFFont; color: Color; rotate?: ReturnType<typeof degrees> },
+  opts: TextAt & { color: Color },
 ) {
   if (stroke) {
     bridgeTextStroke(page, stroke, txt, opts);
