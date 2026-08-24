@@ -32,6 +32,7 @@ function draw(cfg: LabelConfig, mode: "art" | "mask") {
   const page = {
     drawRectangle: (r: Rect) => rects.push(r),
     drawText: (txt: string, o: Omit<Text, "txt">) => texts.push({ txt, ...o }),
+    pushOperators: () => {}, // digit stroke pass sets text state (Tr/w/RG)
   } as unknown as PDFPage;
   const font = { widthOfTextAtSize: () => 10 } as unknown as PDFFont;
   drawBarcode(page, { regular: font, semibold: font, bold: font }, cfg, mode);

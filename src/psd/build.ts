@@ -386,9 +386,9 @@ function textLayer(
     /** Justify every line to the full measure, the way drawJustifiedRotated
      *  spaces the warning's columns. */
     justify?: boolean;
-    /** Outer stroke, as an editable Photoshop layer EFFECT. The PDF fakes
-     *  the same stroke as a ring of offset text copies (pdf-lib cannot
-     *  stroke text); Photoshop has the real thing, so the PSD uses it. */
+    /** Outer stroke, as an editable Photoshop layer EFFECT. The PDF draws
+     *  the same stroke via PDF's fill-and-outline text rendering mode;
+     *  Photoshop has its own stroke effect, so the PSD uses that. */
     stroke?: Fill;
     strokeLayer?: "metallic" | "white";
     strokeWidth?: number;

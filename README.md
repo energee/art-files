@@ -267,8 +267,8 @@ same `src/layout.ts` geometry, for handing artwork to a designer. Text
 elements become editable Photoshop type layers; the logo and QR become
 vector shape layers with real bezier knots. Every element carrying an outer
 stroke gets it as an editable **layer effect** (outside, in the stroke's own
-colour) — the PDF has to fake a text stroke as a ring of offset copies,
-Photoshop has the real thing. The description is ONE type layer holding the
+colour) — the PDF draws its text stroke via PDF's fill-and-outline text
+rendering mode, Photoshop has its own stroke effect. The description is ONE type layer holding the
 whole block: per-line faces and fills ride along as Photoshop style runs,
 and the PDF's line advance becomes the layer's leading. The warning is
 likewise one justified, rotated layer whose lines are the columns, wrapped

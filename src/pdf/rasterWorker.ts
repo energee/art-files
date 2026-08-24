@@ -1,8 +1,7 @@
 // rasterWorker.ts — rasterizes a generated PDF's first page OFF the main
 // thread. pdf.js parses in its own nested worker, but page.render() paints on
-// the calling thread — and this label is expensive to paint (every stroke is
-// a ring of up to 128 offset text copies), which froze the whole app for the
-// duration. Running the paint here against an OffscreenCanvas keeps the UI
+// the calling thread — and this label is expensive to paint, which froze the
+// whole app for the duration. Running the paint here against an OffscreenCanvas keeps the UI
 // live; the finished frame travels back as a transferred ImageBitmap.
 // Protocol (see render.ts, the only client): {id, bytes, scale|scaleCap|size}
 // in; {id, bitmap|cancelled|error} out; {cancel: id} aborts an in-flight render.

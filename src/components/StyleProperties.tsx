@@ -629,8 +629,8 @@ function ElementStyle(props: {
                 className="size-6 border border-input"
               />
             </div>
-            {/* Clamped at 60px by ScrubField: each extra px adds stroke draw
-                calls, and ring()'s sample ceiling is sized for that limit. */}
+            {/* Clamped at 60px by ScrubField: wider strokes swallow the
+                letterforms long before the geometry breaks. */}
             <ScrubField
               id={`${fid}-stroke-width`} label="Width" unit="px"
               {...strokeWidth} min={1} max={60} step={1}

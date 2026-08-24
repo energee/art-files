@@ -4,9 +4,9 @@
 // This measures what actually hits the page, which is more than hittest.ts's
 // boxes describe: real glyph ink rather than the em box, the per-run face (an
 // inline **bold** run draws in Bold, which is wider), the element's
-// letter-spacing, and the outer stroke — which pdf/build.ts paints as a ring of
-// offset copies OUTSIDE the glyph, so it extends the ink by its full width on
-// every side. Getting any of those wrong makes an element look aligned here and
+// letter-spacing, and the outer stroke — which pdf/build.ts paints OUTSIDE the
+// glyph (text rendering mode 2 with a 2x line width, fill drawn on top), so it
+// extends the ink by its full width on every side. Getting any of those wrong makes an element look aligned here and
 // overhang on press.
 import { readFileSync } from "node:fs";
 import fontkit from "@pdf-lib/fontkit";
