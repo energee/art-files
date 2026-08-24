@@ -74,14 +74,24 @@ fn relaunch_app(app: tauri::AppHandle) {
 struct OpenedFile(Mutex<Option<PathBuf>>);
 
 /** The .label path among command-line arguments, if any — how Windows and
- * Linux deliver file-association opens. Matching on the extension rather
- * than taking args[1] blindly keeps stray flags out. */
-#[cfg(not(target_os = "macos"))]
+ * Linux deliver file-association opens. The extension match is the filter:
+ * it skips the exe path in args[0] and any stray flags alike. */
 fn label_path_from_args<I: IntoIterator<Item = String>>(args: I) -> Option<PathBuf> {
     args.into_iter().map(PathBuf::from).find(|path| {
         path.extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("label"))
     })
+}
+
+/** Hand an OS-provided .label path to the frontend. State FIRST, then the
+ * emit — the webview may not be listening yet, and OpenedFile's doc explains
+ * the pull-based contract. Both delivery paths (macOS Apple events, the
+ * Windows/Linux single-instance forward) go through here so the ordering
+ * cannot drift between them. */
+fn deliver_opened_file(app: &tauri::AppHandle, path: PathBuf) {
+    use tauri::Emitter;
+    *app.state::<OpenedFile>().0.lock().unwrap() = Some(path);
+    let _ = app.emit("project-file-opened", ());
 }
 
 #[tauri::command]
@@ -98,10 +108,8 @@ fn main() {
     // receives the file — the same behavior macOS gets from Apple events.
     #[cfg(not(target_os = "macos"))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-        use tauri::Emitter;
-        if let Some(path) = label_path_from_args(args.into_iter().skip(1)) {
-            *app.state::<OpenedFile>().0.lock().unwrap() = Some(path);
-            let _ = app.emit("project-file-opened", ());
+        if let Some(path) = label_path_from_args(args) {
+            deliver_opened_file(app, path);
         }
     }));
     let builder = builder
@@ -116,12 +124,10 @@ fn main() {
         builder
     };
 
-    // A Windows/Linux launch-by-file arrives as plain argv on THIS process;
-    // macOS seeds the state from the Opened event in run() below instead.
-    #[cfg(not(target_os = "macos"))]
-    let opened_at_launch = label_path_from_args(std::env::args().skip(1));
-    #[cfg(target_os = "macos")]
-    let opened_at_launch = None;
+    // A Windows/Linux launch-by-file arrives as plain argv on THIS process.
+    // No platform gate: macOS argv never carries a .label path (Finder sends
+    // Apple events, handled in run() below), so the scan is a no-op there.
+    let opened_at_launch = label_path_from_args(std::env::args());
 
     builder
         .manage(OpenedFile(Mutex::new(opened_at_launch)))
@@ -140,10 +146,8 @@ fn main() {
             // callback in main() above.
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = event {
-                use tauri::Emitter;
                 if let Some(path) = urls.into_iter().find_map(|url| url.to_file_path().ok()) {
-                    *app.state::<OpenedFile>().0.lock().unwrap() = Some(path);
-                    let _ = app.emit("project-file-opened", ());
+                    deliver_opened_file(app, path);
                 }
             }
             #[cfg(not(target_os = "macos"))]

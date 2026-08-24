@@ -30,7 +30,6 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
     "category": "GraphicsAndDesign",
     "fileAssociations": [
       {
