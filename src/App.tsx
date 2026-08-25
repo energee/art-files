@@ -20,7 +20,7 @@ import { strToU8 } from "fflate";
 import { LABEL_EXT, packLabel, unpackLabel } from "@/labelfile";
 import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
-import { fileTitle, makeHiddenPropsEqual } from "@/tabs";
+import { makeHiddenPropsEqual } from "@/tabs";
 import { validateUpc } from "@/upc";
 import { mimeFor, rasterKind, tintRgba } from "@/collab";
 // The builders are imported dynamically at export time (see downloadPdfs /
@@ -1119,10 +1119,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** State mirror of projectPath (a ref, which can't drive onMeta): the
    *  Tauri path identity the shell dedupes OS opens against. */
   const [filePath, setFilePath] = useState<string | null>(null);
-  // What the tab strip and window title show: the backing file's basename
-  // once there is one, else the beer name as typed — display text, not
-  // exportBaseName's filename slug — and "Untitled" while it's blank.
-  const title = filePath ? fileTitle(filePath) : cfg.beerName.trim() || "Untitled";
+  // What the tab strip and window title show: the beer name as typed (not
+  // exportBaseName's filename slug); "Untitled" while blank, saved or not.
+  const title = cfg.beerName.trim() || "Untitled";
   useEffect(() => {
     onMeta({ title, dirty, edited, filePath });
     // onMeta is this tab's shell callback; identity is irrelevant to when

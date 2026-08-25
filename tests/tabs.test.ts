@@ -3,7 +3,7 @@
 // routeFileOpen's focus/reuse/new routing for OS file-opens.
 import { describe, expect, test } from "vitest";
 import {
-  activateTab, addTab, closeTab, fileTitle, initialTabs, isPristine,
+  activateTab, addTab, closeTab, initialTabs, isPristine,
   makeHiddenPropsEqual, routeFileOpen, updateTabMeta,
 } from "@/tabs";
 
@@ -100,19 +100,6 @@ describe("routeFileOpen", () => {
     // busy doesn't affect focus: the path's tab is the right target anyway.
     const backed = updateTabMeta(s, s.active, opened("/a.label"));
     expect(routeFileOpen(backed, "/a.label", () => true)).toEqual({ focus: s.active });
-  });
-});
-
-describe("fileTitle", () => {
-  test("strips directories and the extension", () => {
-    expect(fileTitle("/beers/Hazy Test.label")).toBe("Hazy Test");
-  });
-  test("handles Windows separators and uppercase extensions", () => {
-    expect(fileTitle("C:\\beers\\BEER.LABEL")).toBe("BEER");
-    expect(fileTitle("C:\\beers\\Mixed.Label")).toBe("Mixed");
-  });
-  test("passes through a name without the extension", () => {
-    expect(fileTitle("/beers/notes.txt")).toBe("notes.txt");
   });
 });
 
