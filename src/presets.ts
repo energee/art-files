@@ -1,8 +1,10 @@
 // presets.ts — the reusable style and barcode library, read from and written
 // back to presets.json through the Vite dev server in a browser or through the
-// native Tauri backend in Label Lab. Deliberately NOT localStorage: presets
-// have to survive a cleared browser profile, and browser development keeps a
-// file in git that can be reviewed, diffed, and restored.
+// native Tauri backend in Label Lab. Deliberately file-first, NOT localStorage:
+// presets have to survive a cleared browser profile, and browser development
+// keeps a file in git that can be reviewed, diffed, and restored. localStorage
+// is only the fallback store for a browser build with neither backend, where
+// the alternative is no persistence at all.
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useSyncExternalStore } from "react";
 import { DESIGN_DPI, LABEL_SHORT_IN } from "@/layout";
@@ -149,20 +151,46 @@ export function normalizePresets(raw: Partial<Presets>): Presets {
   };
 }
 
-/** Read the library. Label Lab uses its writable application-config copy;
- *  browser development uses Vite's repo-backed endpoint. Returns empty rather
- *  than breaking the inspector when neither storage boundary is available. */
-export async function loadPresets(): Promise<Presets> {
+/** The browser fallback store, same JSON shape as presets.json. */
+export const LOCAL_PRESETS_KEY = "labellab.presets";
+
+// Whether the dev endpoint answered with a real library this session. Decides
+// where a browser save goes: a working endpoint keeps its throw-on-failure
+// contract (a dev save that vanishes must be visible), while a build without
+// the endpoint saves to localStorage instead of failing every write.
+let serverBacked = false;
+
+function loadLocalPresets(): Presets {
   try {
-    if (isTauri()) {
-      return normalizePresets(await invoke<Partial<Presets>>("load_presets"));
-    }
-    const res = await fetch("/api/presets");
-    if (!res.ok) return EMPTY_PRESETS;
-    return normalizePresets((await res.json()) as Partial<Presets>);
+    const raw = localStorage.getItem(LOCAL_PRESETS_KEY);
+    return raw ? normalizePresets(JSON.parse(raw) as Partial<Presets>) : EMPTY_PRESETS;
   } catch {
     return EMPTY_PRESETS;
   }
+}
+
+/** Read the library. Label Lab uses its writable application-config copy;
+ *  browser development uses Vite's repo-backed endpoint; a browser build
+ *  without either falls back to this profile's localStorage copy. */
+export async function loadPresets(): Promise<Presets> {
+  if (isTauri()) {
+    try {
+      return normalizePresets(await invoke<Partial<Presets>>("load_presets"));
+    } catch {
+      return EMPTY_PRESETS;
+    }
+  }
+  try {
+    const res = await fetch("/api/presets");
+    if (res.ok) {
+      // A static host's SPA fallback answers 200 with HTML; the json() throw
+      // below routes that to localStorage like any other missing endpoint.
+      const parsed = normalizePresets((await res.json()) as Partial<Presets>);
+      serverBacked = true;
+      return parsed;
+    }
+  } catch { /* fall through to the local copy */ }
+  return loadLocalPresets();
 }
 
 /** Write the whole library back. Throws with a message the caller can show:
@@ -172,12 +200,16 @@ export async function savePresets(presets: Presets): Promise<void> {
     await invoke("save_presets", { presets });
     return;
   }
-  const res = await fetch("/api/presets", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(presets, null, 2),
-  });
-  if (!res.ok) throw new Error(`presets save failed (${res.status})`);
+  if (serverBacked) {
+    const res = await fetch("/api/presets", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(presets, null, 2),
+    });
+    if (!res.ok) throw new Error(`presets save failed (${res.status})`);
+    return;
+  }
+  localStorage.setItem(LOCAL_PRESETS_KEY, JSON.stringify(presets));
 }
 
 // ---------------------------------------------------------------------------
