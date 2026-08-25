@@ -110,7 +110,9 @@ Two layers, cheapest first:
 
 - Renderer throws propagate to the existing `buildError` strip; a failed
   frame keeps the last painted canvas (same policy as today's aborted
-  renders).
+  renders). (Applies to the 2D preview; a 3D texture-build failure keeps
+  the last applied texture and warns to the console, matching the
+  pre-canvas behavior — Phase 3 ruling.)
 - Missing assets (no texture yet) render the plate without them, exactly
   as the PDF build does now.
 - Font gate failure falls back as today: preview blocked with the error

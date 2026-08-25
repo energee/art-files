@@ -468,8 +468,8 @@ export const PreviewCompare = forwardRef<
           ))}
         </div>
       ))}
-      {/* IN-PLACE editor for unrotated single-line elements. App hides the
-          element from the preview build for the session (see onEditSession),
+      {/* IN-PLACE editor for unrotated single-line elements. App skips the
+          element from the render for the session (see onEditSession),
           so this input's styled text IS the element while you type — same
           family (via the fonts.ts gate), size, weight, tracking, and fill,
           drawn by the DOM instead of the canvas render. The box (and the selection
