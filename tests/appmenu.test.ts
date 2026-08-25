@@ -27,6 +27,19 @@ describe("native menu accelerators", () => {
   });
 });
 
+describe("file menu", () => {
+  it("wires the workspace-tab commands in place of New Project", () => {
+    const file = APP_MENUS.find((menu) => menu.id === "file-menu")!;
+    const ids = file.items.flatMap((entry) =>
+      entry.kind === "action" ? [entry.id] : []);
+    // The leading trio: a menu entry whose id has no command crashes the
+    // menu render, so the tab commands' ids are pinned here (they live in
+    // DocumentEditor's command table).
+    expect(ids.slice(0, 3)).toEqual(["tab-new", "project-open", "tab-close"]);
+    expect(ids).not.toContain("project-new");
+  });
+});
+
 describe("native text editing menu", () => {
   it("installs every standard role needed for clipboard editing", () => {
     const edit = APP_MENUS.find((menu) => menu.id === "edit-menu")!;

@@ -1,0 +1,326 @@
+// TabsShell.tsx — the workspace: a tab strip over one mounted DocumentEditor
+// per open .label project, inactive ones hidden (display:none), their state
+// intact but their rendered previews dropped (see App.tsx's active gating).
+// The shell owns everything that outlives or spans documents: the tab list
+// (src/tabs.ts), OS file-open routing, the File → Open picker (an open must
+// be able to target a new tab), the dirty-close confirm flow, shared render
+// settings (adopted from and persisted to the presets library), the desktop
+// updater, window title/close integration, and the preview worker's
+// disposal.
+import { useEffect, useRef, useState } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { X } from "lucide-react";
+import {
+  DocumentEditor, LABEL_TYPES, isAbort, openPicker,
+  type FileToOpen, type RenderSettings,
+} from "@/App";
+import {
+  activateTab, addTab, closeTab, initialTabs, isPristine, routeFileOpen,
+  updateTabMeta,
+} from "@/tabs";
+import { LABEL_EXT } from "@/labelfile";
+import { DEFAULT_RENDER, mutatePresets, usePresets } from "@/presets";
+import { disposePreviewWorker } from "@/pdf/client";
+import { DesktopUpdater } from "@/components/DesktopUpdater";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
+
+export default function TabsShell() {
+  const [state, setState] = useState(initialTabs);
+  // The OS-open listener and window-close handler are registered once but
+  // route against the current tabs; same pattern as App.tsx's commandsRef.
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  // Opens queued per tab. Kept after handling — the editor's seq gate makes
+  // a stale entry inert — and dropped with the tab.
+  const [pending, setPending] = useState<Record<number, FileToOpen>>({});
+  const seq = useRef(1);
+  // One stable save-slot object per tab, assigned into by its editor every
+  // render (see App.tsx saveSlot) and read here by the close flow.
+  const saveSlots = useRef(new Map<number, { current: (() => Promise<boolean>) | null }>());
+  // The dirty-close dialog: which tab it is deciding, and whether a Save
+  // click is in flight (disables the buttons; a cancelled save dialog
+  // resolves false and leaves this dialog up).
+  const [confirmClose, setConfirmClose] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  // A window close sweeps every unsaved tab through the same dialog; any
+  // Cancel aborts the sweep and the close.
+  const [closingWindow, setClosingWindow] = useState(false);
+  const closingRef = useRef(closingWindow);
+  closingRef.current = closingWindow;
+  const [checkRequest, setCheckRequest] = useState(0);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const unsaved = (t: { dirty: boolean; edited: boolean }) => t.dirty && t.edited;
+  const anyUnsaved = state.tabs.some(unsaved);
+  const activeTab = state.tabs.find((t) => t.id === state.active)!;
+
+  // ---- shared, formerly per-document surfaces (moved from App.tsx) ----
+
+  // One context-menu blocker for the whole window (right-click means "pan"
+  // over the preview; nothing in this tool uses the browser menu).
+  useEffect(() => {
+    const block = (e: MouseEvent) => e.preventDefault();
+    window.addEventListener("contextmenu", block);
+    return () => window.removeEventListener("contextmenu", block);
+  }, []);
+
+  // The preview worker serves every tab; it dies with the workspace.
+  useEffect(() => () => disposePreviewWorker(), []);
+
+  // Render settings (Document Settings knobs): shared across tabs — they
+  // describe the press's die and stock, not one label. Adopted from the
+  // presets library once loaded, then debounced back into it. Lifted here
+  // so per-editor copies can't diverge and stomp the shared layout globals
+  // (see App.tsx's RenderSettings note).
+  const { presets, loaded: presetsLoaded } = usePresets();
+  const [render, setRender] = useState<RenderSettings>(DEFAULT_RENDER);
+  const adopted = useRef(false);
+  useEffect(() => {
+    if (adopted.current || !presetsLoaded) return;
+    adopted.current = true;
+    setRender(presets.render);
+  }, [presetsLoaded, presets.render]);
+  useEffect(() => {
+    if (!adopted.current) return;
+    const t = setTimeout(() => void mutatePresets((p) => ({ ...p, render })), 500);
+    return () => clearTimeout(t);
+  }, [render]);
+
+  // ---- open routing ----
+
+  /** Queue an open into tab `id` and show it. */
+  const openInTab = (id: number, fo: Omit<FileToOpen, "seq">) => {
+    setPending((p) => ({ ...p, [id]: { ...fo, seq: seq.current++ } }));
+    setState((s) => activateTab(s, id));
+  };
+
+  /** File → Open lands in a pristine active tab, else a new one. */
+  const openSomewhere = (fo: Omit<FileToOpen, "seq">) => {
+    const s = stateRef.current;
+    const active = s.tabs.find((t) => t.id === s.active);
+    if (active && isPristine(active)) return openInTab(active.id, fo);
+    const next = addTab(s);
+    setState(next);
+    openInTab(next.active, fo);
+  };
+
+  /** OS file-opens (Finder / Explorer double-click, second-instance argv):
+   *  the Rust side stores the path and emits (see take_opened_file in
+   *  src-tauri/src/main.rs); pulled once on mount — a launch-by-file beats
+   *  the webview loading — and again per emit. Routed by path identity:
+   *  already open → focus, pristine active tab → reuse, else a new tab. */
+  useEffect(() => {
+    if (!isTauri()) return;
+    async function openFromOs() {
+      const path = await invoke<string | null>("take_opened_file");
+      if (!path) return;
+      const route = routeFileOpen(stateRef.current, path);
+      if ("focus" in route) setState((s) => activateTab(s, route.focus));
+      else if ("reuse" in route) openInTab(route.reuse, { path });
+      else openSomewhere({ path });
+    }
+    const stopping = import("@tauri-apps/api/event")
+      .then(({ listen }) => listen("project-file-opened", () => void openFromOs()));
+    void openFromOs();
+    return () => void stopping.then((stop) => stop());
+    // Routing reads live state through stateRef; the helpers are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** File → Open Project…: FS-Access picker where available (yields a
+   *  writable handle, so Save rewrites the picked file), hidden-input
+   *  fallback elsewhere. The editor runs the actual open (see fileToOpen
+   *  in App.tsx). */
+  async function openProjectPicker() {
+    const pick = openPicker();
+    if (!pick) { fileInput.current?.click(); return; }
+    try {
+      const [handle] = await pick({ types: LABEL_TYPES });
+      openSomewhere({ handle });
+    } catch (err) {
+      if (!isAbort(err)) console.error(err); // open failures surface in-editor
+    }
+  }
+
+  // ---- closing ----
+
+  const doClose = (id: number) => {
+    saveSlots.current.delete(id);
+    setPending(({ [id]: _dropped, ...rest }) => rest);
+    setState((s) => closeTab(s, id));
+    setConfirmClose(null);
+    // Mid-sweep: hand the dialog to the next unsaved tab, or finish the
+    // window close. Computed against the post-close list.
+    if (closingRef.current) {
+      const rest = stateRef.current.tabs.filter((t) => t.id !== id);
+      const next = rest.find(unsaved);
+      if (next) {
+        setState((s) => activateTab(s, next.id));
+        setConfirmClose(next.id);
+      } else {
+        void import("@tauri-apps/api/window")
+          .then(({ getCurrentWindow }) => getCurrentWindow().destroy());
+      }
+    }
+  };
+
+  /** Tab × / File → Close Tab: unsaved work gets the three-way dialog. */
+  const requestClose = (id: number) => {
+    const tab = stateRef.current.tabs.find((t) => t.id === id);
+    if (!tab) return;
+    if (unsaved(tab)) {
+      setState((s) => activateTab(s, id)); // show what's being decided
+      setConfirmClose(id);
+    } else doClose(id);
+  };
+
+  const cancelClose = () => {
+    setConfirmClose(null);
+    setClosingWindow(false);
+  };
+
+  const saveAndClose = async (id: number) => {
+    setSaving(true);
+    try {
+      // false = the user cancelled the save dialog — keep the tab (and,
+      // mid-sweep, abort the window close: a cancel is a cancel).
+      if (await saveSlots.current.get(id)?.current?.()) doClose(id);
+      else cancelClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Desktop window close: intercept, sweep unsaved tabs through the dialog.
+  useEffect(() => {
+    if (!isTauri()) return;
+    const stopping = import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
+      getCurrentWindow().onCloseRequested((event) => {
+        const first = stateRef.current.tabs.find(unsaved);
+        if (!first) return; // nothing unsaved — close proceeds
+        event.preventDefault();
+        setClosingWindow(true);
+        setState((s) => activateTab(s, first.id));
+        setConfirmClose(first.id);
+      }));
+    return () => void stopping.then((stop) => stop());
+  }, []);
+
+  // Browser window close: the generic prompt is all a page may show.
+  useEffect(() => {
+    if (isTauri() || !anyUnsaved) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [anyUnsaved]);
+
+  // Desktop window title tracks the active tab; • marks unsaved work.
+  useEffect(() => {
+    if (!isTauri()) return;
+    void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
+      getCurrentWindow().setTitle(
+        unsaved(activeTab) ? `• ${activeTab.title}` : activeTab.title));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab.title, activeTab.dirty, activeTab.edited]);
+
+  const confirmTab = confirmClose === null
+    ? null : state.tabs.find((t) => t.id === confirmClose) ?? null;
+
+  return (
+    <div className="flex h-svh flex-col">
+      {/* Tab strip: part of the chrome band, like the menubar below it. */}
+      <div className="flex h-9 shrink-0 items-end gap-1 overflow-x-auto border-b border-border bg-sidebar px-2 pt-1.5">
+        {state.tabs.map((t) => (
+          <div
+            key={t.id}
+            className={cn(
+              "group flex h-full min-w-0 max-w-48 items-center gap-1 rounded-t-md border border-b-0 border-border px-2",
+              t.id === state.active
+                ? "bg-background text-foreground"
+                : "bg-sidebar text-muted-foreground hover:text-foreground",
+            )}>
+            <button
+              onClick={() => setState((s) => activateTab(s, t.id))}
+              title={t.filePath ?? t.title}
+              className="min-w-0 flex-1 truncate text-left text-xs outline-none">
+              {unsaved(t) && <span className="mr-1" aria-label="unsaved changes">•</span>}
+              {t.title}
+            </button>
+            <button
+              onClick={() => requestClose(t.id)}
+              aria-label={`Close ${t.title}`}
+              className="rounded p-0.5 opacity-0 outline-none hover:bg-muted group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring">
+              <X className="size-3" />
+            </button>
+          </div>
+        ))}
+        <button
+          onClick={() => setState(addTab)}
+          aria-label="New tab"
+          title="New tab (⌘N)"
+          className="mb-1 shrink-0 rounded px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+          +
+        </button>
+      </div>
+      <div className="relative min-h-0 flex-1">
+        {state.tabs.map((t) => {
+          let slot = saveSlots.current.get(t.id);
+          if (!slot) saveSlots.current.set(t.id, (slot = { current: null }));
+          return (
+            <div key={t.id} className={t.id === state.active ? "h-full" : "hidden"}>
+              <DocumentEditor
+                active={t.id === state.active}
+                fileToOpen={pending[t.id] ?? null}
+                onMeta={(m) => setState((s) => updateTabMeta(s, t.id, m))}
+                saveSlot={slot}
+                render={render}
+                onRenderChange={setRender}
+                onOpenProject={() => void openProjectPicker()}
+                onNewTab={() => setState(addTab)}
+                onCloseTab={() => requestClose(t.id)}
+                onCheckForUpdates={() => setCheckRequest((n) => n + 1)} />
+            </div>
+          );
+        })}
+      </div>
+      {/* Hidden-input Open fallback (no FS-Access): bytes, no save identity. */}
+      <input ref={fileInput} type="file" accept={LABEL_EXT} className="hidden"
+        onChange={(e) => {
+          const f = e.currentTarget.files?.[0];
+          e.currentTarget.value = "";
+          if (f) openSomewhere({ file: f });
+        }} />
+      {/* The dirty-close decision, per tab; Save resolves through the
+          editor's own save flow (dialog cancel keeps the tab). */}
+      <Dialog open={confirmTab !== null} onOpenChange={(open) => !open && cancelClose()}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Close “{confirmTab?.title}”?</DialogTitle>
+            <DialogDescription>
+              This tab has unsaved changes. Save them, discard them, or keep
+              the tab open.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" disabled={saving} onClick={cancelClose}>
+              Cancel
+            </Button>
+            <Button variant="destructive" disabled={saving}
+              onClick={() => confirmClose !== null && doClose(confirmClose)}>
+              Discard
+            </Button>
+            <Button disabled={saving}
+              onClick={() => confirmClose !== null && void saveAndClose(confirmClose)}>
+              {saving ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <DesktopUpdater dirty={anyUnsaved} checkRequest={checkRequest} />
+    </div>
+  );
+}

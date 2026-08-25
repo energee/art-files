@@ -1,10 +1,16 @@
-// App.tsx — owns all state: LabelConfig, texture/mask assets (full-res +
-// preview-res pairs), validation, debounced preview-resolution PDF builds,
-// overlay-compare preview, and on-demand full-resolution exports, plus
-// whole-project save/open (.label — see labelfile.ts). Mirrors the old
-// main.ts wiring, componentized.
+// App.tsx — one document's editor: LabelConfig, texture/mask assets
+// (full-res + preview-res pairs), validation, debounced preview-resolution
+// PDF builds, overlay-compare preview, and on-demand full-resolution
+// exports, plus whole-project save/open (.label — see labelfile.ts).
+// TabsShell mounts one DocumentEditor per workspace tab and hides the
+// inactive ones, so anything here that registers window/document-level
+// listeners or renders a singleton surface (the native menu) MUST honor the
+// `active` prop — and per-document renders are dropped while inactive (see
+// the deactivation effect). The editor reports { title, dirty, edited,
+// filePath } upward through onMeta; the shell owns tabs, file-open routing,
+// render settings, and the updater.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
 import type { CollabSlot, Fill, LabelConfig } from "@/types";
 import type { ElementId } from "@/elements";
@@ -34,7 +40,7 @@ import {
 import { LayersPanel } from "@/components/LayersPanel";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
 import {
-  DEFAULT_RENDER, commitBleedIn, loadPresets, mutatePresets, normalizePresets, usePresets,
+  commitBleedIn, loadPresets, mutatePresets, normalizePresets, usePresets,
   type Presets,
 } from "@/presets";
 import { PANEL_ORDER, isElementId, type HideableLayerId, type LayerId } from "@/components/layers";
@@ -43,7 +49,6 @@ import {
 } from "@/selection";
 import { CommandMenu, type Command } from "@/components/CommandMenu";
 import { AppMenu } from "@/components/AppMenu";
-import { DesktopUpdater } from "@/components/DesktopUpdater";
 import { PresetsDialog } from "@/components/PresetsDialog";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
 import { Rulers } from "@/components/Rulers";
@@ -56,10 +61,6 @@ import {
   Sidebar, SidebarContent, SidebarInset, SidebarProvider, SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -106,8 +107,10 @@ function loadViewToggles(): { showRulers: boolean; showGuides: boolean; showBlee
   }
 }
 
-/** The .label file picker option, shared by open and save dialogs. */
-const LABEL_TYPES = [
+/** The .label file picker option, shared by open and save dialogs.
+ *  Exported: TabsShell hosts File → Open now (an open must be able to
+ *  target a new tab), and its picker must match Save's typing. */
+export const LABEL_TYPES = [
   { description: "Label project", accept: { "application/zip": [LABEL_EXT] } },
 ];
 const LABEL_FILTER = { name: "Label project", extensions: [LABEL_EXT.slice(1)] };
@@ -119,11 +122,11 @@ const LABEL_FILTER = { name: "Label project", extensions: [LABEL_EXT.slice(1)] }
 const savePicker = () => (window as {
   showSaveFilePicker?: (opts: object) => Promise<FileSystemFileHandle>;
 }).showSaveFilePicker;
-const openPicker = () => (window as {
+export const openPicker = () => (window as {
   showOpenFilePicker?: (opts: object) => Promise<FileSystemFileHandle[]>;
 }).showOpenFilePicker;
 /** A dismissed picker dialog — "no thanks", never an error. */
-const isAbort = (err: unknown) =>
+export const isAbort = (err: unknown) =>
   err instanceof DOMException && err.name === "AbortError";
 async function writeHandle(handle: FileSystemFileHandle, bytes: Uint8Array) {
   const writable = await handle.createWritable();
@@ -318,7 +321,52 @@ function download(url: string, name: string) {
   a.click();
 }
 
-export default function App() {
+/** A file the shell wants this editor to open. seq is monotonic — a new
+ *  value triggers the open, so a re-render can never re-open. Exactly one
+ *  of path (Tauri), handle (FS-Access picker), or file (hidden-input
+ *  fallback, no save identity) is set. */
+export type FileToOpen = {
+  seq: number;
+  path?: string;
+  handle?: FileSystemFileHandle;
+  file?: File;
+};
+
+/** What the tab strip shows for this document — reported through onMeta
+ *  whenever any field changes. */
+export type DocumentMeta = {
+  title: string;
+  dirty: boolean;
+  edited: boolean;
+  filePath: string | null;
+};
+
+/** The Document Settings knobs (DPI/bleed/corner/edge) — shell-owned:
+ *  they describe the press's die and stock, not one label, and per-editor
+ *  copies would let a hidden tab stomp the shared layout globals with
+ *  stale values during its renders. */
+export type RenderSettings = Presets["render"];
+
+type DocumentEditorProps = {
+  active: boolean;
+  fileToOpen: FileToOpen | null;
+  onMeta: (meta: DocumentMeta) => void;
+  /** Shell-owned slot this editor assigns its save fn into on every render;
+   *  resolves false when the user cancels the save dialog (the shell's
+   *  close-tab flow keeps the tab open on false). */
+  saveSlot: { current: (() => Promise<boolean>) | null };
+  render: RenderSettings;
+  onRenderChange: (render: RenderSettings) => void;
+  onOpenProject: () => void;
+  onNewTab: () => void;
+  onCloseTab: () => void;
+  onCheckForUpdates: () => void;
+};
+
+export function DocumentEditor({
+  active, fileToOpen, onMeta, saveSlot, render, onRenderChange,
+  onOpenProject, onNewTab, onCloseTab, onCheckForUpdates,
+}: DocumentEditorProps) {
   // Config lives in a history stack, not plain useState — every edit that
   // goes through setCfg (i.e. all of them, see `update` below) is undoable.
   const { value: cfg, set: setCfg, reset: resetCfg, undo, redo, canUndo, canRedo } =
@@ -485,10 +533,9 @@ export default function App() {
   // corner radius, label height on the can, foil-edge blur). The print PDFs
   // and saved configs never see them; they persist in presets.json, since
   // they describe the press's die and stock rather than one label.
-  // Local while dragging (a scrub field emits a change per pixel), then
-  // debounced into the shared library.
-  const { presets, loaded: presetsLoaded, error: presetsError } = usePresets();
-  const [render, setRender] = useState(DEFAULT_RENDER);
+  // Owned by TabsShell (see RenderSettings) and debounced into the shared
+  // library there; this editor only reads the prop and calls onRenderChange.
+  const { presets, error: presetsError } = usePresets();
   // Published to layout.ts during render rather than from an effect: the
   // toolbar's px readout and the rulers read OUTPUT_DPI while rendering, so an
   // effect would leave them a frame behind the knob. Idempotent — it writes
@@ -499,38 +546,17 @@ export default function App() {
   //
   // THIS thread only — the preview worker holds its own layout module and is
   // told separately, per build (see buildPreviewPdfs).
+  // `render` is a prop: TabsShell owns adoption from and persistence to the
+  // presets library. These writes stay here (idempotent, and identical from
+  // every editor instance since the settings are shared).
   setLayoutBleed(render.bleedIn);
   setOutputDpi(render.dpi);
-  // Adopt the saved settings once, when the library first arrives. Writing
-  // before that would stamp the defaults over the file.
-  const adopted = useRef(false);
-  useEffect(() => {
-    if (adopted.current || !presetsLoaded) return;
-    adopted.current = true;
-    setRender(presets.render);
-  }, [presetsLoaded, presets.render]);
-  // Debounced back into the library once adopted. View toggles are NOT here
-  // any more: they live in localStorage (see the view state below) — writing
-  // per-operator UI state into git-tracked presets.json dirtied the repo on
-  // every View-menu click.
-  useEffect(() => {
-    if (!adopted.current) return;
-    const t = setTimeout(() => void mutatePresets((p) => ({ ...p, render })), 500);
-    return () => clearTimeout(t);
-  }, [render]);
   useEffect(() => {
     if (presetsError) setLoadError(`presets save failed: ${presetsError}`);
   }, [presetsError]);
 
-  // Block the browser context menu app-wide (2026-08, by request): right-click
-  // already means "pan" over the preview, nothing in this tool uses the menu,
-  // and its Inspect item was being opened by accident. DevTools stay reachable
-  // from the browser menu / ⌘⌥I — a page can only suppress its own triggers.
-  useEffect(() => {
-    const block = (e: MouseEvent) => e.preventDefault();
-    window.addEventListener("contextmenu", block);
-    return () => window.removeEventListener("contextmenu", block);
-  }, []);
+  // The app-wide context-menu blocker lives in TabsShell now — one window
+  // listener, not one per tab.
 
   // Wheel-to-zoom, scoped to the preview pane, matching what OrbitControls
   // gives the 3D views so one set of habits works in all four: wheel (or a
@@ -635,13 +661,8 @@ export default function App() {
     });
   };
   const presetsInput = useRef<HTMLInputElement>(null);
-  // File → Open Project…'s hidden picker, mirroring presetsInput's pattern.
-  const openRef = useRef<HTMLInputElement>(null);
   // The read-only "View presets" dialog (File menu / ⌘K).
   const [presetsOpen, setPresetsOpen] = useState(false);
-  // Dirty-project confirmation for File → New Project. An in-app dialog keeps
-  // the destructive choice themed, accessible, and keyboard-drivable.
-  const [newProjectOpen, setNewProjectOpen] = useState(false);
   const previewRef = useRef<PreviewCompareHandle>(null);
   // Trim guide over the 2D preview at the art box, wherever the bleed knob
   // currently puts it (ART.x/ART.y follow it). View-only — this toggle draws
@@ -676,12 +697,12 @@ export default function App() {
   }, [showRulers, showGuides, bleed]);
 
   const update = (fn: (c: LabelConfig) => void) => {
-    setDirty(true); // every config edit passes through here — see `dirty`
+    markDirty(); // every config edit passes through here — see `dirty`
     setCfg((c) => { const n = structuredClone(c); fn(n); return n; });
   };
   /** Wrap a config mutation that bypasses `update` (undo/redo) so it still
    *  marks the document dirty. */
-  const mutating = (fn: () => void) => () => { setDirty(true); fn(); };
+  const mutating = (fn: () => void) => () => { markDirty(); fn(); };
 
   // Canvas uses the same bundled Regular/SemiBold font files as the PDF, but
   // avoids loading pdf-lib + fontkit on the UI thread just to measure hit
@@ -696,13 +717,20 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => () => disposePreviewWorker(), []);
+  // (disposePreviewWorker moved to TabsShell: the worker is shared by every
+  // tab and must outlive any one editor.)
+
+  // Which instance the window/document-level key listeners below belong to.
+  // A ref, not the prop: the listeners are registered once on mount.
+  const activeRef = useRef(active);
+  activeRef.current = active;
 
   // ⌘Z / ⇧⌘Z (and ⌘Y) for the config history. Deliberately inert while a
   // text field has focus: there the browser's own per-field undo is the one
   // the user means, and stealing it would blow away a whole typed line.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (!activeRef.current) return; // a hidden tab owns no shortcuts
       const key = e.key.toLowerCase();
       if (key !== "z" && key !== "y") return;
       if (!e.metaKey && !e.ctrlKey) return;
@@ -721,6 +749,7 @@ export default function App() {
   // field is text. Registered once — the handler reads the table through a ref.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (!activeRef.current) return; // a hidden tab owns no shortcuts
       if (e.altKey) return;
       // The pressed combo, in the same notation the table declares: undefined
       // for a bare key, so a command can't fire under the wrong modifiers.
@@ -759,7 +788,7 @@ export default function App() {
   const swapLoaded = <T extends { previewUrl: string }>(
     set: (fn: (old: T | null) => T | null) => void, next: T | null,
   ) => {
-    setDirty(true); // every asset change passes through here — see `dirty`
+    markDirty(); // every asset change passes through here — see `dirty`
     set((old) => { if (old) URL.revokeObjectURL(old.previewUrl); return next; });
   };
 
@@ -811,21 +840,20 @@ export default function App() {
    *  plus the collab logos. */
   const docSettings: DocSettings = {
     cornerRadius: render.cornerRadius,
-    onCornerRadius: (v) => setRender((r) => ({ ...r, cornerRadius: v })),
+    onCornerRadius: (v) => onRenderChange({ ...render, cornerRadius: v }),
     edgeSoftness: render.edgeSoftness,
-    onEdgeSoftness: (v) => setRender((r) => ({ ...r, edgeSoftness: v })),
+    onEdgeSoftness: (v) => onRenderChange({ ...render, edgeSoftness: v }),
     dpi: render.dpi,
-    onDpi: (v) => setRender((r) => ({ ...r, dpi: Math.round(v) })),
+    onDpi: (v) => onRenderChange({ ...render, dpi: Math.round(v) }),
     bleedIn: render.bleedIn,
     // commitBleedIn, not a plain write: the field can only show 0.063 for the
     // shipped 0.063333..., so a commit that just echoes the display must leave
-    // the stored value alone. Returning `r` itself (not a copy) is load-bearing
-    // — React bails out on an unchanged reference, so an echo costs no re-render,
-    // no preview rebuild, and no write to presets.json.
-    onBleedIn: (v) => setRender((r) => {
-      const bleedIn = commitBleedIn(r.bleedIn, v);
-      return bleedIn === r.bleedIn ? r : { ...r, bleedIn };
-    }),
+    // the stored value alone. Skipping onRenderChange on an echo is
+    // load-bearing — no re-render, no preview rebuild, no presets.json write.
+    onBleedIn: (v) => {
+      const bleedIn = commitBleedIn(render.bleedIn, v);
+      if (bleedIn !== render.bleedIn) onRenderChange({ ...render, bleedIn });
+    },
   };
   const files: InspectorFiles = {
     texture: {
@@ -902,8 +930,19 @@ export default function App() {
   // unchanged inputs. Identity comparison is enough: `update` structuredClones
   // cfg, and each asset/hidden-set edit replaces its object.
   const built = useRef<{ inputs: typeof inputs; withMask: boolean } | null>(null);
+  // Background tabs keep their state and asset bytes but not their rendered
+  // output: the preview PDFs are the heavy, cheaply-rebuildable part. The
+  // effect below then bails while inactive, and `active` in its deps is the
+  // reactivation trigger — flipping true reruns it against a null `built`,
+  // which repaints via the ordinary debounced build.
   useEffect(() => {
-    if (blocked) return;
+    if (!active) {
+      setPdfs(null);
+      built.current = null;
+    }
+  }, [active]);
+  useEffect(() => {
+    if (blocked || !active) return;
     const done = built.current;
     const sameInputs = !!done && done.inputs.every((v, i) => v === inputs[i]);
     // Already on screen and still current: the mask half only forces a rebuild
@@ -949,7 +988,7 @@ export default function App() {
       });
     }, 150);
     return () => { stale = true; clearTimeout(timer); };
-  }, [...inputs, blocked, needMask]);
+  }, [...inputs, blocked, needMask, active]);
 
   // Revoking immediately can abort a large download, so each URL lives until
   // the NEXT export batch — a timer would instead pin a full Blob copy of
@@ -1050,6 +1089,7 @@ export default function App() {
   function forgetProjectFile() {
     projectHandle.current = null;
     projectPath.current = null;
+    setFilePath(null);
   }
   /** Whether the document differs from the last saved/opened project —
    *  File → Save disables while clean. Marked at three sites: `update` (all
@@ -1059,13 +1099,32 @@ export default function App() {
    *  exact saved state still counts as dirty: the flag tracks mutations,
    *  not content equality. */
   const [dirty, setDirty] = useState(true);
-  // Incremented by the native application menu. DesktopUpdater also performs
-  // its own silent launch check; this signal requests a user-visible check.
-  const [updateCheckRequest, setUpdateCheckRequest] = useState(0);
+  /** Whether the user has actually touched this document — unlike `dirty`,
+   *  which starts true so Save is enabled on a fresh default document. The
+   *  shell prompts about closing a tab only when edited AND dirty, so an
+   *  untouched Untitled tab closes silently. Set wherever dirty is set
+   *  (markDirty), cleared by open. */
+  const [edited, setEdited] = useState(false);
+  const markDirty = () => { setDirty(true); setEdited(true); };
+  /** State mirror of projectPath (a ref, which can't drive onMeta): the
+   *  Tauri path identity the shell dedupes OS opens against. */
+  const [filePath, setFilePath] = useState<string | null>(null);
+  // What the tab strip and window title show: the backing file's basename
+  // once there is one, else the beer name as typed — display text, not
+  // exportBaseName's filename slug — and "Untitled" while it's blank.
+  const title = filePath
+    ? filePath.split(/[\\/]/).pop()!.replace(/\.label$/i, "")
+    : cfg.beerName.trim() || "Untitled";
+  useEffect(() => {
+    onMeta({ title, dirty, edited, filePath });
+    // onMeta is this tab's shell callback; identity is irrelevant to when
+    // the report should fire, so only the reported facts are deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, dirty, edited, filePath]);
 
-  /** Full-document replacement shared by New and Open: swap the config in
-   *  (resetting history) and clear every asset slot. A slot added later must
-   *  be cleared here so neither path can leak the previous project's asset. */
+  /** Full-document replacement for Open: swap the config in (resetting
+   *  history) and clear every asset slot. A slot added later must be
+   *  cleared here so an open can't leak the previous project's asset. */
   function resetDocument(config: LabelConfig) {
     resetCfg(config);
     swapLoaded(setTexture, null);
@@ -1074,33 +1133,15 @@ export default function App() {
     swapLoaded(setCollabCenter, null);
   }
 
-  /** Start an unsaved project from the shipped defaults. View and shop state
-   *  deliberately survive; project content, history, file identity, selection,
-   *  and any stale rendered result do not. */
-  function createNewProject() {
-    resetDocument(defaultConfig());
-    forgetProjectFile();
-    clearSelection();
-    setPdfs(null);
-    setLoadError("");
-    setBuildError("");
-    setDirty(true);
-    setNewProjectOpen(false);
-  }
-
-  /** Clean documents can be replaced immediately; dirty ones require an
-   *  explicit destructive choice in the dialog rendered below. */
-  function requestNewProject() {
-    if (dirty) setNewProjectOpen(true);
-    else createNewProject();
-  }
+  // (New Project is gone: ⌘N opens a new tab via the shell, and the old
+  // discard-confirm dialog's job moved to the shell's close-tab flow.)
 
   /** File → Save / Save As…: everything needed to reopen this label — config
    *  plus original image bytes — zipped as <beer-name-slug>.label
    *  (exportBaseName; see labelfile.ts).
    *  Tauri and supported Chromium browsers show a real save dialog and Save
    *  then rewrites that same file; Safari/Firefox use a plain download. */
-  async function saveProject(as = false) {
+  async function saveProject(as = false): Promise<boolean> {
     const collabAsset = (c: CollabFile | null) =>
       c ? { name: c.name, bytes: c.image.kind === "svg" ? strToU8(c.image.svg) : c.image.bytes } : undefined;
     const zip = packLabel(cfg, {
@@ -1117,17 +1158,22 @@ export default function App() {
           filter: LABEL_FILTER,
           path: existingPath ?? undefined,
         });
-        if (path === null) return;
+        if (path === null) return false;
         projectPath.current = path;
+        setFilePath(path);
         setDirty(false);
         setLoadError("");
+        return true;
       } catch (err) {
         // A failed in-place write should prompt on the next Save. A failed or
         // cancelled Save As must keep the prior file association intact.
-        if (existingPath) projectPath.current = null;
+        if (existingPath) {
+          projectPath.current = null;
+          setFilePath(null);
+        }
         setLoadError(`Could not save project: ${errMsg(err)}`);
+        return false;
       }
-      return;
     }
     const pick = savePicker();
     if (pick) {
@@ -1140,19 +1186,23 @@ export default function App() {
         }
         await writeHandle(projectHandle.current, zip);
         setDirty(false);
-        return;
+        return true;
       } catch (err) {
         // Cancelled dialog = no save wanted; anything else falls back to
         // the download path rather than losing the file. A handle that
         // failed to write is not trusted again.
         projectHandle.current = null;
-        if (isAbort(err)) return;
+        if (isAbort(err)) return false;
       }
     }
     startSaveBatch();
     saveBytes(zip, exportBaseName(cfg) + LABEL_EXT, "application/zip");
     setDirty(false);
+    return true;
   }
+  // The shell's close-tab flow saves through this slot; reassigned every
+  // render so it always closes over current state.
+  saveSlot.current = () => saveProject();
   /** The one spelling of "open failed" for every open entry point — picker,
    *  retry loop, Finder — so wording and the abort-stays-silent rule can't
    *  drift between them. */
@@ -1160,21 +1210,8 @@ export default function App() {
     if (!isAbort(err)) setLoadError(`Could not open project: ${errMsg(err)}`);
   };
 
-  /** File → Open Project…: the native picker where available, so Save can
-   *  rewrite the opened file; elsewhere the hidden-input fallback (which
-   *  yields no writable handle — Save then behaves as Save As). */
-  async function openProjectPicker() {
-    const pick = openPicker();
-    if (!pick) { openRef.current?.click(); return; }
-    try {
-      const [handle] = await pick({ types: LABEL_TYPES });
-      if (await openWithRetry(async () => fileSource(await handle.getFile()))) {
-        projectHandle.current = handle;
-      }
-    } catch (err) {
-      reportOpenError(err);
-    }
-  }
+  // (File → Open's picker lives in TabsShell now — an open has to be able
+  // to target a new tab. The picked handle/file arrives via fileToOpen.)
 
   /** Open a .label with quiet retries — shared by ALL entry points (the
    *  FS-Access picker, the hidden-input fallback, and the desktop
@@ -1225,6 +1262,7 @@ export default function App() {
         l && onCollab("left", toFile(l)), c && onCollab("center", toFile(c)),
       ]);
       setDirty(false);
+      setEdited(false); // a freshly opened document is untouched by definition
       setLoadError("");
       return true;
     } catch (err) {
@@ -1235,35 +1273,42 @@ export default function App() {
     }
   }
 
-  /** Finder → Label Lab: a double-clicked .label arrives from Rust as a
-   *  stored path (macOS delivers open-document Apple events, not argv — see
-   *  take_opened_file in src-tauri/src/main.rs). Pulled once on mount, since
-   *  a launch-by-file beats the webview loading, and again on each
-   *  "project-file-opened" emit for opens while the app is running. The
-   *  same quiet-retry open as the pickers; success adopts the path so Save
-   *  rewrites the double-clicked file. (projectHandle needs no clearing:
-   *  WKWebView has no FS-Access picker, so it is never set under Tauri.) */
+  /** Opens handed down by the shell — OS file-opens (Finder/Explorer, routed
+   *  through TabsShell's take_opened_file listener) and File → Open both
+   *  land here. seq-gated so a re-render can never re-open; each source
+   *  adopts its save identity exactly as the per-editor entry points used
+   *  to: a path lets Save rewrite the double-clicked file, a handle lets
+   *  Save rewrite the picked one, a bare File yields none (Save prompts).
+   *  The same quiet-retry open as before (see openWithRetry). */
+  const openedSeq = useRef(0);
   useEffect(() => {
-    if (!isTauri()) return;
-    async function openFromFinder() {
+    if (!fileToOpen || fileToOpen.seq === openedSeq.current) return;
+    openedSeq.current = fileToOpen.seq;
+    const { path, handle, file } = fileToOpen;
+    void (async () => {
       try {
-        const path = await invoke<string | null>("take_opened_file");
-        if (!path) return;
-        const name = await basename(path);
-        if (await openWithRetry(async () => ({ name, bytes: await readNativeFile(path) })))
-          projectPath.current = path;
+        if (path) {
+          const name = await basename(path);
+          if (await openWithRetry(async () => ({ name, bytes: await readNativeFile(path) }))) {
+            projectPath.current = path;
+            setFilePath(path);
+          }
+        } else if (handle) {
+          if (await openWithRetry(async () => fileSource(await handle.getFile())))
+            projectHandle.current = handle;
+        } else if (file) {
+          // Hidden-input fallback: bytes but no writable identity — forget
+          // any earlier association so Save prompts for this file.
+          if (await openWithRetry(() => fileSource(file))) forgetProjectFile();
+        }
       } catch (err) {
         reportOpenError(err);
       }
-    }
-    const stopping = import("@tauri-apps/api/event")
-      .then(({ listen }) => listen("project-file-opened", () => void openFromFinder()));
-    void openFromFinder();
-    return () => void stopping.then((stop) => stop());
-    // openWithRetry's closure chain ends in stable setters and useCallbacks,
-    // so the mount-render copy is never stale — same reasoning as onKey above.
+    })();
+    // openWithRetry's closure chain ends in stable setters, so the current
+    // render's copy is never stale — same reasoning as onKey above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fileToOpen]);
 
   /** The PSD's texture layer needs raw RGBA at document size — PSD layers
    *  hold pixels 1:1, so the cover-fit happens here rather than in the
@@ -1351,10 +1396,13 @@ export default function App() {
   const twoD = viewMode === "2d";
   const guideEdit = twoD && showGuides;
   const commands: Command[] = [
-    { id: "project-new", label: "New Project", key: "n", mods: "⌘",
-      run: requestNewProject },
+    // Tab commands run in the shell: a new document is a new tab, and
+    // closing goes through the shell's dirty-confirm flow. (⌘N/⌘W are
+    // browser-reserved in the web build — the menu items still work there.)
+    { id: "tab-new", label: "New Tab", key: "n", mods: "⌘", run: onNewTab },
+    { id: "tab-close", label: "Close Tab", key: "w", mods: "⌘", run: onCloseTab },
     { id: "project-open", label: "Open Project…", key: "o", mods: "⌘",
-      run: () => void openProjectPicker() },
+      run: onOpenProject },
     // Disabled while clean: with nothing changed since the last save/open
     // there is nothing to write. Save As stays live — a copy under a new
     // name is always meaningful.
@@ -1420,7 +1468,10 @@ export default function App() {
     <TooltipProvider>
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
           preview center, fixed inspector column right. */}
-      <SidebarProvider>
+      {/* h-full, not the provider's min-h-svh default: the shell's tab strip
+          sits above this editor, so the viewport is no longer all ours.
+          hotkey: only the visible tab's provider may own ⌘B. */}
+      <SidebarProvider hotkey={active} className="min-h-0 h-full">
         {/* No border of its own: the menubar and status bar share the
             sidebar's paint, so a full-height rule would slice one band of
             chrome in two. The canvas pane below draws the separating edge
@@ -1431,14 +1482,16 @@ export default function App() {
               onToggleHidden={toggleHidden} selected={selected} onSelect={pick} />
           </SidebarContent>
         </Sidebar>
-        <SidebarInset className="flex h-svh flex-col overflow-hidden">
+        <SidebarInset className="flex h-full flex-col overflow-hidden">
         {/* A quiet bottom rule separates application chrome from the canvas.
             Painted like the sidebar so the two read as one band of chrome. */}
         <header className="flex items-center gap-3 border-b border-border bg-sidebar text-sidebar-foreground px-3 py-2">
           {/* Toggles the Layers sidebar; the component also binds ⌘B. */}
           <SidebarTrigger className="size-6" />
-          <AppMenu actions={commands} onNativeError={setBuildError}
-            onCheckForUpdates={() => setUpdateCheckRequest((request) => request + 1)} checked={{
+          {/* Only the active tab renders the menu: under Tauri AppMenu
+              installs the one native application menu, a singleton. */}
+          {active && <AppMenu actions={commands} onNativeError={setBuildError}
+            onCheckForUpdates={onCheckForUpdates} checked={{
             "view-standard": viewMode === "2d" && split === 0,
             "view-mask": viewMode === "2d" && split === 100,
             "view-rendered": viewMode === "flat",
@@ -1450,7 +1503,7 @@ export default function App() {
             "margin-guides": showMargins,
             "center-guides": showCenter,
             "manual-guides": showManualGuides,
-          }} />
+          }} />}
           {/* Replaces the tooltip the old disabled Export button carried: a
               menu item can't explain its own disabled state, so the reason
               sits in the bar itself. */}
@@ -1464,16 +1517,6 @@ export default function App() {
           {buildError && <HeaderAlert>{buildError}</HeaderAlert>}
           <input ref={presetsInput} type="file" accept="application/json" hidden
             onChange={(e) => e.target.files?.[0] && void importPresets(e.target.files[0])} />
-          <input ref={openRef} type="file" accept={LABEL_EXT} className="hidden"
-            onChange={(e) => {
-              const f = e.currentTarget.files?.[0];
-              e.currentTarget.value = "";
-              if (f) void openWithRetry(() => fileSource(f)).then((opened) => {
-                // Hidden-input Open provides bytes but no writable identity.
-                // Forget any earlier Save As path so Save prompts for this file.
-                if (opened) forgetProjectFile();
-              });
-            }} />
         </header>
       <div className="flex min-h-0 flex-1">
         <section className="flex min-w-0 flex-1 flex-col">
@@ -1536,7 +1579,9 @@ export default function App() {
               // function every render (see useRenderPdfs' note on that).
               onRenderError={setBuildError} />
             </div>
-            {viewMode !== "2d" && (
+            {/* active gate: a hidden tab must not hold a live three.js
+                context and texture set — reactivation rebuilds them. */}
+            {active && viewMode !== "2d" && (
               <CanView ref={canView}
                 initialView={carried.current}
                 onZoom={(z, pan) => {
@@ -1671,7 +1716,11 @@ export default function App() {
             layers panel stay clickable while inspecting; dismissible={false}
             keeps an outside click (e.g. preview click-to-select) from
             closing it mid-selection (no backdrop = no outside-press target). */}
-        <Sheet open={selected.length > 0} modal={false}
+        {/* active gate: the sheet portals to document.body, escaping the
+            shell's display:none wrapper — without it a hidden tab's open
+            inspector floats over the active tab. The selection itself is
+            kept, so the sheet reopens on switching back. */}
+        <Sheet open={active && selected.length > 0} modal={false}
           // The selection is the source of truth for this sheet, so only a
           // deliberate close clears it — a WHITELIST, not a blocklist. The
           // sheet has no backdrop, so base-ui reports every click in the
@@ -1708,26 +1757,15 @@ export default function App() {
         </Sheet>
         {/* Drop a texture or mask anywhere in the window — no layer selection
             or inspector trip required. Armed only during a PNG/JPEG drag. */}
-        <AssetDropOverlay
+        {/* Both register window/document-level listeners, so only the
+            active tab may mount them: a hidden overlay would swallow the
+            visible tab's drop, and ⌘K would open every tab's palette. */}
+        {active && <AssetDropOverlay
           onTexture={(f) => void onTexture(f)}
-          onMask={(f) => void onMask(f)} />
-        <CommandMenu actions={commands} />
-        <PresetsDialog open={presetsOpen} onOpenChange={setPresetsOpen} presets={presets} />
-        <Dialog open={newProjectOpen} onOpenChange={setNewProjectOpen}>
-          <DialogContent showCloseButton={false}>
-            <DialogHeader>
-              <DialogTitle>Start a new project?</DialogTitle>
-              <DialogDescription>
-                This will discard unsaved changes in the current project. This cannot be undone.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setNewProjectOpen(false)}>Cancel</Button>
-              <Button variant="destructive" onClick={createNewProject}>Discard and Create</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-        <DesktopUpdater dirty={dirty} checkRequest={updateCheckRequest} />
+          onMask={(f) => void onMask(f)} />}
+        {active && <CommandMenu actions={commands} />}
+        {/* Same portal reasoning as the Sheet above. */}
+        <PresetsDialog open={active && presetsOpen} onOpenChange={setPresetsOpen} presets={presets} />
       </div>
         </SidebarInset>
       </SidebarProvider>
