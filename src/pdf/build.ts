@@ -275,7 +275,12 @@ async function drawElements(
   // the walk below can find its bytes again.
   const embedded = new Map<ElementId, Awaited<ReturnType<typeof doc.embedPng>>>();
   const planArt = async (id: ElementId, img: CollabImage | null | undefined): Promise<PlanArt | null> => {
-    if (!img || !cfg.collabEnabled) return null;
+    // Hidden means no ink AND no embedded bytes: a layer the UI's eye has
+    // hidden must not survive into the saved PDF even as an unreferenced
+    // XObject, so this early-return has to check the same skip set planLabel
+    // uses to omit the drawn item — bailing here keeps the raster off the
+    // page before doc.embedPng/embedJpg ever runs.
+    if (!img || !cfg.collabEnabled || assets.hidden?.has(id)) return null;
     if (img.kind === "svg") return img;
     const emb = img.kind === "png" ? await doc.embedPng(img.bytes) : await doc.embedJpg(img.bytes);
     embedded.set(id, emb);

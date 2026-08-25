@@ -4,12 +4,28 @@
 // disk like scripts/generate.ts does and inspects the actual PDF content
 // stream pdf-lib emits, rather than mocking PDFPage.
 import { describe, expect, it } from "vitest";
-import { buildArtPdf, buildMaskPdf } from "../src/pdf/build";
+import { PDFDocument, PDFName } from "pdf-lib";
+import { buildArtPdf, buildMaskPdf, type CollabImage } from "../src/pdf/build";
 import { warningColumnLen, warningMeasure, wrapWarning } from "../src/warning";
 import { defaultConfig } from "../src/defaults";
 import type { ElementId } from "../src/elements";
 import * as L from "../src/layout";
 import { assets, contentStreamText } from "./fixtures";
+
+// Counts /Subtype /Image XObjects in a saved PDF's indirect object table —
+// the thing a hidden collab logo must NOT contribute, even though planLabel
+// already omits its drawn item. Counting XObjects (not grepping raw bytes
+// for a JPEG/PNG marker) survives pdf-lib's own re-compression of the
+// embedded stream.
+async function countImageXObjects(bytes: Uint8Array): Promise<number> {
+  const doc = await PDFDocument.load(bytes);
+  let n = 0;
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    const dict = (obj as { dict?: { get(name: PDFName): unknown } }).dict;
+    if (dict?.get(PDFName.of("Subtype"))?.toString() === "/Image") n++;
+  }
+  return n;
+}
 
 // Every text/image ElementId except one, so a test can hide the whole label
 // down to a single element and read its operators without the rest of the
@@ -178,5 +194,24 @@ describe("Assets.hidden — the layers-panel eye", () => {
       await buildMaskPdf(cfg, { ...assets, hidden: new Set(["name", "storeCold"]) }),
     ));
     expect(hidden).toBeLessThan(plain);
+  });
+
+  // Regression: a pre-refactor bug gated the whole collab-logo embed on
+  // !hide(id), but the refactored planArt embedded the raster bytes BEFORE
+  // consulting assets.hidden — so a hidden collab slot drew nothing (plan.ts
+  // correctly omitted the item) yet still left its image XObject sitting in
+  // the saved PDF. Hidden must mean no ink AND no embedded bytes.
+  it("does not embed a hidden collab logo's raster bytes into the saved PDF", async () => {
+    const cfg = defaultConfig();
+    cfg.collabEnabled = true;
+    const collabLeft: CollabImage = { kind: "png", bytes: onePxPng };
+
+    const noCollab = await buildArtPdf(cfg, assets);
+    const visible = await buildArtPdf(cfg, { ...assets, collabLeft });
+    const hidden = await buildArtPdf(cfg, { ...assets, collabLeft, hidden: new Set(["collabLeft"]) });
+
+    const baseline = await countImageXObjects(noCollab);
+    expect(await countImageXObjects(visible)).toBeGreaterThan(baseline);
+    expect(await countImageXObjects(hidden)).toBe(baseline);
   });
 });
