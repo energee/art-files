@@ -2,22 +2,22 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** The 2D preview renders from the canvas backend for real — per-keystroke, no worker round-trip, no debounce — while the preview worker survives only for the 3D views' textures and PDFs/PSDs otherwise build on export alone; in-place editing becomes a `planLabel` skip flag and the v0.1.16 hide-element-and-rebuild plumbing is deleted.
+**Goal:** Everything on screen renders from the canvas backend — the 2D preview per keystroke with no worker round-trip or debounce, and the 3D views' textures from the same plates — so the preview PDF worker stack (`pdf/client.ts`, `pdf/worker.ts`, App's debounced build, the `pdfs` state) is deleted outright; PDFs/PSDs build on export only. In-place editing becomes a `planLabel` skip flag and the v0.1.16 hide-element-and-rebuild plumbing is deleted.
 
-**Architecture:** The dev-only `CANVAS_PREVIEW` path from Phase 2 is promoted to THE path and the flag deleted. App splits what was one debounced everything-effect into (a) an asset-assembly effect keyed only on asset-shaped inputs (bitmaps, collab tint knobs, eyes) and (b) config flowing straight through the `cfg` prop into PreviewCompare's rAF paint — so a keystroke repaints next frame without touching `createImageBitmap` or a worker. The debounced `buildPreviewPdfs` effect gates to `viewMode !== "2d"` (CanView still textures from PDF bytes until Phase 4). Canvas render failures route to the existing `buildError` strip; a failed frame keeps the last painted canvas.
+**Architecture:** The dev-only `CANVAS_PREVIEW` path from Phase 2 is promoted to THE path and the flag deleted. App splits what was one debounced everything-effect into (a) an asset-assembly effect keyed only on asset-shaped inputs (bitmaps, collab tint knobs, eyes) and (b) config flowing straight through the `cfg` prop into PreviewCompare's rAF paint — so a keystroke repaints next frame without touching `createImageBitmap` or a worker. The 3D views consume the same source: `labelTextures.ts` stops rasterizing PDFs (its input was always just two plate images — `deriveMetalness` is a pixel pass, and its ink classifier is color-agnostic, so the canvas mask plate's `MASK_BLUE_HEX` classifies exactly like the pdf.js raster did) and instead receives plates drawn by `drawPlate` at texture resolution. With no consumer left, the preview worker protocol and its byte cache are deleted. pdf.js survives only for the dev parity page. Canvas render failures route to the existing `buildError` strip; a failed frame keeps the last painted canvas.
 
 **Tech Stack:** TypeScript, React, vitest, Canvas 2D. No new dependencies.
 
-**Spec:** `docs/superpowers/specs/2026-08-25-canvas-preview-renderer-design.md` (Phase 3 bullet + "Editing integration" + "Error handling"). Phase 2 conventions: `docs/superpowers/plans/2026-08-25-canvas-backend-phase2.md`.
+**Spec:** `docs/superpowers/specs/2026-08-25-canvas-preview-renderer-design.md` (Phase 3 + "Editing integration" + "Error handling"; the "3D views texture from the canvas plates" follow-on is pulled forward from Phase 4 by user decision — it deletes the whole worker stack instead of gating it). Phase 2 conventions: `docs/superpowers/plans/2026-08-25-canvas-backend-phase2.md`.
 
 ## Global Constraints
 
-- Exports stay pixel-identical: Phase 3 changes PREVIEW behavior only. `buildFull` / `exportPsd` / `npm run generate` are untouched.
-- Every task ends with `npx tsc --noEmit` clean and `npx vitest run` fully green (258+ tests).
+- Exports stay pixel-identical: Phase 3 changes on-screen rendering only. `buildFull` / `exportPsd` / `npm run generate` are untouched.
+- Every task ends with `npx tsc --noEmit` clean and `npx vitest run` fully green.
 - No new dependencies. Never hardcode "Poppins" — fonts through `src/fonts.ts` (`loadLabelFaces`, `FACE_WEIGHT`, `LABEL_FONT_FAMILY`).
 - Follow `.agents/conventions.md`: `// filename — purpose` headers, comments state constraints not narration. Commit prefixes `refactor:`/`feat:`/`fix:`/`chore:`, **no co-author lines**.
 - Worktree: `/Users/tedslesinski/Repos/art-files/.claude/worktrees/update-dialog`, branch `fix/code-review-findings`. Never bare `git stash`; never kill processes by name pattern — only PIDs you started.
-- Phase 2's six carried review items land here (Task 1 and Task 3): silent drawImage skip, ImageBitmap close race, stroke-before-fill pin tests, buildError routing, textBaseline/textAlign ownership, `box.x!` in `collabItems`.
+- Phase 2's six carried review items land here (Tasks 1, 2, 4): silent drawImage skip, ImageBitmap close race, stroke-before-fill pin tests, buildError routing, textBaseline/textAlign ownership, `box.x!` in `collabItems`.
 
 ---
 
@@ -155,18 +155,34 @@ git commit -m "fix: drawPlate pins text alignment and fails fast on a missing im
 
 ---
 
-### Task 2: PreviewCompare — the canvas path becomes the only path
+### Task 2: `CanvasRenderSource` + PreviewCompare — the canvas path becomes the only path
 
 **Files:**
+- Modify: `src/canvas/draw.ts` (add the shared source type)
 - Modify: `src/components/PreviewCompare.tsx`
 
 **Interfaces:**
-- Consumes: `drawPlate`, `CanvasAssets` from `src/canvas/draw.ts`; `planLabel`, `MeasureFace`, `PlanAssets` from `src/plan.ts` (all unchanged).
-- Produces (Task 3 relies on these exact prop names):
-  - `artBytes` / `maskBytes` props DELETED; `useRenderPdfs`, `renderPdf`, and the `renderPdfPage` / `PREVIEW_RASTER_MAX_EDGE` imports deleted.
-  - `canvasRender` prop keeps its shape `{ m: MeasureFace; planAssets: PlanAssets; drawAssets: CanvasAssets; skip: { has(id: ElementId): boolean } } | null` but loses the "DEV-ONLY" framing: null now means "not ready yet / view hidden" (first font+asset assembly still in flight, or a 3D view is up) and the canvases keep their last frame.
+- Consumes: `drawPlate`, `CanvasAssets` from `src/canvas/draw.ts`; `planLabel`, `MeasureFace`, `PlanAssets` from `src/plan.ts`.
+- Produces (Tasks 3–4 rely on these exact names):
+  - `src/canvas/draw.ts` exports the wiring type both views consume:
+
+    ```ts
+    /** Everything a view needs to render label plates from the display list:
+     *  the face-aware measure, the plan's asset descriptors, the decoded
+     *  bitmaps, and the skip set (layer eyes + the in-place edit session). */
+    export interface CanvasRenderSource {
+      m: MeasureFace;
+      planAssets: PlanAssets;
+      drawAssets: CanvasAssets;
+      skip: { has(id: ElementId): boolean };
+    }
+    ```
+
+    (adds `MeasureFace`, `PlanAssets` to the existing type-only import from `../plan`, and `ElementId` from `../elements`.)
+  - PreviewCompare: `artBytes` / `maskBytes` props DELETED; `useRenderPdfs`, `renderPdf`, and the `renderPdfPage` / `PREVIEW_RASTER_MAX_EDGE` imports deleted.
+  - `canvasRender` prop becomes `canvasRender: CanvasRenderSource | null` — null means "not ready yet / a 3D view is up" and the canvases keep their last frame.
   - New prop `bleedIn: number` — repaint trigger only (the paint effect reads geometry from the live `PAGE`, which App's render already updated via `setLayoutBleed`; without this dep a bleed change would leave the canvas stale).
-  - `onRenderError` semantics: called with the message on a failed frame, `""` on the next successful one (Task 3 wires it to `setBuildError`, same clearing contract the worker build had).
+  - `onRenderError` semantics: called with the message on a failed frame, `""` on the next successful one (App wires it to `setBuildError`, same clearing contract the worker build had).
 
 - [ ] **Step 1: Replace the two render paths with one**
 
@@ -217,37 +233,127 @@ Update the prop doc comments: `canvasRender` is the render source (drop "DEV-ONL
 - [ ] **Step 2: Typecheck the tree mid-task**
 
 Run: `npx tsc --noEmit`
-Expected: errors ONLY in `src/App.tsx` (it still passes `artBytes`/`maskBytes`). That is the expected mid-phase state; Task 3 fixes App. If errors appear anywhere else, fix them before moving on.
+Expected: errors ONLY in `src/App.tsx` (it still passes `artBytes`/`maskBytes`). That is the expected mid-phase state; Task 4 fixes App. If errors appear anywhere else, fix them before moving on.
 
 - [ ] **Step 3: Do not commit yet**
 
-App is broken until Task 3 — the two land as one commit there. (Sequencing note for the executor: Tasks 2 and 3 are one reviewable unit split for readability; run them back-to-back in the same session.)
+App is broken until Task 4 — Tasks 2–4 land as one commit there. (Sequencing note for the executor: they are one reviewable unit split for readability; run them back-to-back in the same session.)
 
 ---
 
-### Task 3: App — promote the canvas path, retire the 2D worker builds, delete the hide plumbing
+### Task 3: `labelTextures` + CanView — the 3D views texture from canvas plates
 
 **Files:**
-- Modify: `src/App.tsx`
+- Modify: `src/three/labelTextures.ts`
+- Modify: `src/components/CanView.tsx`
 
 **Interfaces:**
-- Consumes: Task 2's PreviewCompare props (`canvasRender`, `bleedIn`, `onRenderError`; no more `artBytes`/`maskBytes`); `loadLabelFaces` from `@/fonts`; existing `collabAssets` / `eyedAssets` helpers.
-- Produces: no exported-interface changes. `buildPreviewPdfs` is now called only while a 3D view is up; `pdfs` feeds CanView alone.
+- Consumes: `drawPlate`, `CanvasAssets`, `CanvasRenderSource` from `src/canvas/draw.ts`; `planLabel`, `Placed` from `src/plan.ts`; `PAGE` from `src/layout.ts`.
+- Produces (Task 4 relies on these exact names):
+  - `labelTextures.ts`: `export function drawPlates(plan: readonly Placed[], assets: CanvasAssets): { art: HTMLCanvasElement; mask: HTMLCanvasElement }` and `export function buildLabelTextures(plates: { art: HTMLCanvasElement; mask: HTMLCanvasElement }): LabelTextures` — now SYNCHRONOUS; the `renderPdfPage` import and `renderPlate` are deleted. `LabelTextures` shape unchanged.
+  - CanView props: `artBytes`/`maskBytes` DELETED; new `cfg: LabelConfig`, `source: CanvasRenderSource | null`, `bleedIn: number`.
+
+- [ ] **Step 1: Rewrite `labelTextures.ts`'s input half**
+
+Delete the `renderPdfPage` import and `renderPlate`. Keep `MAX_EDGE`, `MAX_SCALE`, `isPage`, `LabelTextures`, `deriveMetalness` exactly as they are (`deriveMetalness`'s classifier is color-agnostic — the canvas mask plate's saturated `MASK_BLUE_HEX` ink classifies as matte and the white knockouts as foil, identical to the old pdf.js raster). Replace the bottom of the file:
+
+```ts
+/** Draw both plates from the display list at texture resolution: MAX_SCALE
+ *  over the page's natural pt size, long edge capped at MAX_EDGE — the same
+ *  texel density the old PDF raster produced. One scale for both plates, so
+ *  the maps share the art's UV grid pixel-for-pixel. */
+export function drawPlates(
+  plan: readonly Placed[], assets: CanvasAssets,
+): { art: HTMLCanvasElement; mask: HTMLCanvasElement } {
+  const s = Math.min(MAX_SCALE, MAX_EDGE / Math.max(PAGE.w, PAGE.h));
+  const plate = (mode: "art" | "mask") => {
+    const c = document.createElement("canvas");
+    c.width = Math.round(PAGE.w * s);
+    c.height = Math.round(PAGE.h * s);
+    drawPlate(c.getContext("2d")!, plan, assets, mode);
+    return c;
+  };
+  return { art: plate("art"), mask: plate("mask") };
+}
+
+/**
+ * Build the 3D label's texture inputs from the two rendered plates. Pixel
+ * work only — synchronous; drawing the plates is drawPlates' job.
+ */
+export function buildLabelTextures(
+  { art, mask }: { art: HTMLCanvasElement; mask: HTMLCanvasElement },
+): LabelTextures {
+  const { canvas: metalness, hasFoil } = deriveMetalness(mask);
+  return { art, metalness, hasFoil, aspect: art.width / art.height };
+}
+```
+
+Imports become: `import { drawPlate, type CanvasAssets } from "@/canvas/draw";`, `import type { Placed } from "@/plan";`, `import { PAGE } from "@/layout";`. Update the file-header comment: the plates come from the canvas backend's display-list walk, not a PDF raster.
+
+- [ ] **Step 2: Rewire CanView's texture effect**
+
+Replace the `artBytes`/`maskBytes` props with `cfg: LabelConfig; source: CanvasRenderSource | null; bleedIn: number` (imports: `type { LabelConfig } from "@/types"`, `type { CanvasRenderSource } from "@/canvas/draw"`, `{ planLabel } from "@/plan"`, `{ drawPlates } from "@/three/labelTextures"`). The rebuild effect replaces the promise chain (everything is synchronous now — the chain existed for pdf.js):
+
+```ts
+  // Texture rebuilds are debounced: each one is a synchronous two-plate draw
+  // plus deriveMetalness' per-pixel pass over ~3.4M px — fine per pause,
+  // too heavy per keystroke. A superseded rebuild simply never fires
+  // (clearTimeout), so stale textures can't overwrite newer ones.
+  useEffect(() => {
+    if (!source) return;
+    setLoading(true);
+    let done = false;
+    const timer = setTimeout(() => {
+      done = true;
+      try {
+        const plan = planLabel(cfg, source.m,
+          { skip: source.skip, assets: source.planAssets });
+        sceneRef.current?.applyTextures(buildLabelTextures(drawPlates(plan, source.drawAssets)));
+      } catch (err) {
+        console.warn("3D label texture build failed:", err);
+      } finally {
+        setLoading(false);
+      }
+    }, 150);
+    return () => { clearTimeout(timer); if (!done) setLoading(false); };
+  }, [source, cfg, bleedIn]);
+```
+
+Update the file-header comment (no more "re-renders the PDF pair"). Delete the `chain` ref.
+
+- [ ] **Step 3: Typecheck**
+
+Run: `npx tsc --noEmit`
+Expected: errors ONLY in `src/App.tsx` (still passing the old props to both views). Task 4 fixes App.
+
+- [ ] **Step 4: Do not commit yet** — Task 4 completes the unit.
+
+---
+
+### Task 4: App + TabsShell — promote the canvas path, delete the worker stack and the hide plumbing
+
+**Files:**
+- Modify: `src/App.tsx`, `src/TabsShell.tsx`, `src/layout.ts` (one stale comment), `src/pdf/fonts.ts` + `src/pdf/render.ts` (stale header comments)
+- Delete: `src/pdf/client.ts`, `src/pdf/worker.ts`, `tests/preview-client.test.ts`
+
+**Interfaces:**
+- Consumes: Task 2's PreviewCompare props (`canvasRender`, `bleedIn`, `onRenderError`); Task 3's CanView props (`cfg`, `source`, `bleedIn`); `CanvasRenderSource` from `@/canvas/draw`; `loadLabelFaces` from `@/fonts`; existing `collabAssets` / `eyedAssets` helpers.
+- Produces: no exported-interface changes. The preview worker protocol no longer exists anywhere in `src/`.
 
 - [ ] **Step 1: Delete the flag and restructure the assembly effect**
 
-1. Delete the `CANVAS_PREVIEW` const (module scope, ~line 354).
+1. Delete the `CANVAS_PREVIEW` const (module scope, ~line 354) and the `import { buildPreviewPdfs, disposePreviewWorker } from "@/pdf/client";` line.
 
 2. The canvas-assets effect loses the flag gate and — critically — narrows its deps from `inputs` to asset-shaped inputs only, so a keystroke never re-decodes bitmaps. `skip` moves OUT of the assembled state (an edit session must skip the element the SAME frame, not after a 150ms debounce + decode):
 
 ```ts
-  // The 2D preview's render source: fonts + decoded bitmaps for drawPlate,
+  // The render source for BOTH views: fonts + decoded bitmaps for drawPlate,
   // assembled off the asset inputs alone (debounced — uploads and eye/tint
   // toggles are rare and each re-assembly decodes up to 4 ImageBitmaps).
-  // Config changes deliberately DON'T re-run this: cfg flows into
-  // PreviewCompare as a prop and repaints per-keystroke with these same
-  // bitmaps. The two collab tint knobs are the only cfg fields the bitmaps
-  // depend on, so they are dependencies here by value.
+  // Config changes deliberately DON'T re-run this: cfg flows into the views
+  // as a prop and repaints with these same bitmaps. The two collab tint
+  // knobs are the only cfg fields the bitmaps depend on, so they are
+  // dependencies here by value.
   const [canvasAssets, setCanvasAssets] = useState<{
     m: MeasureFace; planAssets: PlanAssets; drawAssets: CanvasAssets;
   } | null>(null);
@@ -302,14 +408,14 @@ App is broken until Task 3 — the two land as one commit there. (Sequencing not
   ]);
 ```
 
-3. **Close race fix (carried item):** the previous generation's bitmaps must be closed AFTER React commits the new one — closing them inline before `setCanvasAssets` let a pending rAF (scheduled with the old `canvasRender`) draw already-closed bitmaps. Post-commit, PreviewCompare's effect cleanup has already cancelled that rAF (child cleanups run before parent effects), so this is race-free:
+3. **Close race fix (carried item):** the previous generation's bitmaps must be closed AFTER React commits the new one — closing them inline before `setCanvasAssets` let a pending rAF (scheduled with the old `canvasRender`) draw already-closed bitmaps. Post-commit, the views' effect cleanups have already cancelled that rAF / rebuild timer (child cleanups run before parent effects), so this is race-free:
 
 ```ts
   // Close the superseded generation's ImageBitmaps AFTER the commit that
-  // replaces them: any rAF still holding the old assets was cancelled by
-  // PreviewCompare's effect cleanup during this same commit (child cleanups
-  // run first), so nothing can draw a closed bitmap. Unmount closes the
-  // last generation.
+  // replaces them: any rAF or rebuild timer still holding the old assets was
+  // cancelled by the views' effect cleanups during this same commit (child
+  // cleanups run first), so nothing can draw a closed bitmap. Unmount closes
+  // the last generation.
   useEffect(() => {
     const prev = canvasBitmaps.current;
     if (prev && prev !== canvasAssets?.drawAssets) closeCanvasBitmaps(prev);
@@ -318,15 +424,15 @@ App is broken until Task 3 — the two land as one commit there. (Sequencing not
   useEffect(() => () => closeCanvasBitmaps(canvasBitmaps.current), []);
 ```
 
-(`canvasBitmaps` / `closeCanvasBitmaps` already exist — keep them, delete the old inline `closeCanvasBitmaps(canvasBitmaps.current)` call from the assembly effect body.)
+(`canvasBitmaps` / `closeCanvasBitmaps` already exist — keep them.)
 
-4. The skip set and the prop, memoized so a divider-drag re-render doesn't schedule repaints:
+4. The skip set and the shared source, memoized so a divider-drag re-render doesn't schedule repaints:
 
 ```ts
   // What planLabel omits: the layers-panel eyes, plus the in-place edit
   // session's element — the v0.1.16 hide-and-rebuild plumbing reduced to a
   // render flag. Same-frame: a new editSession changes this memo, the
-  // canvasRender memo below, and PreviewCompare repaints on the next rAF.
+  // source memo below, and PreviewCompare repaints on the next rAF.
   const skip = useMemo<{ has(id: ElementId): boolean }>(
     () => editSession
       ? { has: (id: ElementId) => id === editSession
@@ -334,95 +440,93 @@ App is broken until Task 3 — the two land as one commit there. (Sequencing not
       : hiddenLayers,
     [editSession, hiddenLayers],
   );
-  // Null while assets assemble or a 3D view is up — PreviewCompare keeps its
-  // last frame and, before any first frame, App shows the loading state.
-  const canvasRender = useMemo(
-    () => (canvasAssets && viewMode === "2d" ? { ...canvasAssets, skip } : null),
-    [canvasAssets, skip, viewMode],
+  // Null until the first assembly lands — both views render from this.
+  const canvasSource = useMemo<CanvasRenderSource | null>(
+    () => (canvasAssets ? { ...canvasAssets, skip } : null),
+    [canvasAssets, skip],
   );
 ```
 
-Type note: import `MeasureFace` from `@/plan` (add to the existing type-only import) for the state annotation; `ComponentProps` may become unused — remove it if so.
+Type notes: import `MeasureFace` from `@/plan` (add to the existing type-only import) and `CanvasRenderSource` from `@/canvas/draw`; `ComponentProps` becomes unused — remove it from the react import.
 
-- [ ] **Step 2: Gate the worker builds to the 3D views and delete the hide plumbing**
+5. Delete the whole old dev-only assembly effect (the one gated on `CANVAS_PREVIEW`, ~lines 1016–1105) — the effects above replace it.
 
-1. `inputs` drops `editSession` (the worker build no longer draws while a session is possible — sessions live in the 2D view):
+- [ ] **Step 2: Delete the preview build machinery**
 
-```ts
-  const inputs = [
-    cfg, texture, mask, collabLeft, collabCenter, hiddenLayers, render.bleedIn,
-  ] as const;
-```
+Delete outright from App.tsx:
 
-Delete the `editSession` entry and its comment. (`editSession` state itself STAYS — it feeds `skip`.)
-
-2. The debounced build effect bails in 2D — the canvas is the preview; PDF bytes exist for CanView alone (Phase 4 retargets that too). `needMask` dies: every 3D view textures with both plates.
+- the `pdfs` state and its comment; the `building`-adjacent `needMask` const and comment block; the `inputs` array, `built` ref, `buildChain` ref, and the entire debounced build effect (~lines 914–1014); the deactivation effect's `setPdfs(null); built.current = null;` body — replace it with:
 
 ```ts
+  // Background tabs keep their state and asset bytes but not their decoded
+  // render source: the ImageBitmaps are the heavy, cheaply-rebuildable part.
+  // The assembly effect above bails while inactive, and `active` in its deps
+  // reruns it on reactivation; the close effect below reclaims the bitmaps.
   useEffect(() => {
-    // PDFs are built for the 3D views' textures only (see CanView); the 2D
-    // preview renders from the canvas backend and exports rebuild at full
-    // resolution on demand. Leaving 2D triggers the first build here.
-    if (blocked || !active || viewMode === "2d") return;
-    ...
-        const assets = {
-          ...(await collabAssets()),
-          ...eyedAssets(true),
-          hidden: hiddenLayers,
-        };
-        const { art, mask: maskPdf } =
-          await buildPreviewPdfs(cfg, assets, { art: !sameInputs, mask: true }, render.bleedIn);
-    ...
-  }, [...inputs, blocked, active, viewMode]);
+    if (!active) setCanvasAssets(null);
+  }, [active]);
 ```
 
-Concretely: replace the `hidden:` wrapper (the `editSession ? { has: ... } : hiddenLayers` conditional) with plain `hiddenLayers`; replace `mask: needMask` with `mask: true`; change `built.current = { inputs, withMask: needMask }` to `withMask: true`; the `sameInputs && (!needMask || done.withMask)` guard becomes `sameInputs && done.withMask`; swap `needMask` for `viewMode` in the dep array. Then delete the `needMask` const and its comment block entirely (`grep -n needMask src/App.tsx` must come back empty). Keep the deactivation effect (`!active` → `setPdfs(null)`) as is.
+- (`editSession` state itself STAYS — it feeds `skip`. `building` STAYS — the export builds still use it.)
 
-3. Delete the whole old dev-only assembly effect (the one gated on `CANVAS_PREVIEW`, ~lines 1016–1105) — Step 1's new effects replace it. Make sure the `canvasBitmaps` ref and `closeCanvasBitmaps` helper survive the deletion (Step 1.3 uses them).
+Verify with `grep -n "pdfs\|needMask\|buildChain\|built\.current\|buildPreviewPdfs" src/App.tsx` — only `previewReady`-related lines from Step 3 may remain.
 
-- [ ] **Step 3: Rewire the render**
+- [ ] **Step 3: Rewire the render and the readiness gates**
 
-1. `PreviewCompare` call site: delete the `artBytes`/`maskBytes` props and their comment; pass
+1. PreviewCompare call site: delete the `artBytes`/`maskBytes` props and their comment; pass
 
 ```tsx
-              canvasRender={canvasRender}
+              canvasRender={viewMode === "2d" ? canvasSource : null}
               bleedIn={render.bleedIn}
 ```
 
-(the `canvasRender` memo already nulls itself in 3D, so no inline `viewMode` ternary). Keep `onRenderError={setBuildError}` — Task 2's success-clears-error contract matches what the worker build did with `setBuildError("")`.
+Keep `onRenderError={setBuildError}`.
 
-2. Readiness gates — `pdfs` no longer exists in 2D, so the three overlays split on view:
+2. CanView call site: replace `artBytes={...} maskBytes={...}` with
+
+```tsx
+                cfg={cfg} source={canvasSource} bleedIn={render.bleedIn}
+```
+
+3. Readiness gates — one definition replaces every `pdfs` check:
 
 ```ts
-  // What "the preview has rendered" means per view: 2D paints from
-  // canvasAssets; the 3D views texture from the worker-built PDFs.
-  const previewReady = viewMode === "2d" ? !!canvasAssets : !!pdfs;
+  // "The preview has something to render from": both views draw from the
+  // assembled canvas source; CanView shows its own corner spinner while a
+  // texture rebuild is in flight.
+  const previewReady = !!canvasAssets;
 ```
 
 - First-load spinner: `{!pdfs && !buildError && (` → `{!previewReady && !buildError && (`.
-- Corner rebuild spinner: `{building && pdfs && (` → `{building && previewReady && (`.
+- Corner rebuild spinner: `{building && pdfs && (` → `{building && previewReady && (` (now shows only during export builds, which is when `building` is true).
 - No-texture hint: `{!texture && !building && pdfs && (` → `{!texture && !building && previewReady && (`.
-- Export guard: `const pdfExportBlocked = exportBlocked || !pdfs;` → `const pdfExportBlocked = exportBlocked || !previewReady;` and update its comment (the guard means "the pipeline has proven it can render", no longer "preview bytes exist").
+- Export guard: `const pdfExportBlocked = exportBlocked || !pdfs;` → `const pdfExportBlocked = exportBlocked || !previewReady;` and update its comment (the guard means "the render pipeline has come up", no longer "preview bytes exist").
 
-3. Update the file-header comment (App.tsx lines 1–11): the 2D preview is drawn by the canvas backend per keystroke; debounced preview-resolution PDF builds serve the 3D views only.
+4. Comment sweep: the file-header (lines 1–11: the 2D preview draws per keystroke from the canvas backend; the 3D views texture from the same plates; PDFs/PSDs build on export only); `editSession`'s state comment (~line 404 — "the preview build hides that element" → "planLabel skips it via the render flag"); the layout-publish comment (~line 555) loses its "preview worker holds its own layout module" paragraph; PreviewCompare's `onEditSession` prop comment if it says "preview build".
 
-4. Update stale comments that describe the old flow: `editSession`'s state comment (~line 404 — "the preview build hides that element" → "planLabel skips that element via the render flag"), `PreviewCompare`'s `onEditSession` prop comment if it says "preview build", and the `built`/`inputs` comments if they reference editSession or needMask.
+- [ ] **Step 4: TabsShell + dead-file deletion + stale comments elsewhere**
 
-- [ ] **Step 4: Full suite + typecheck**
+1. `src/TabsShell.tsx`: delete `import { disposePreviewWorker } from "@/pdf/client";`, the `useEffect(() => () => disposePreviewWorker(), []);` (and its comment), and the header comment's "preview worker" mention.
+2. Delete `src/pdf/client.ts`, `src/pdf/worker.ts`, `tests/preview-client.test.ts` (`git rm`).
+3. `src/layout.ts` (~line 340): rewrite the "NOTE for callers: the PDF preview worker runs its own copy of this module … pdf/client.ts ships the value with every request" comment — the preview worker is gone; the note shrinks to whatever remains true for `npm run generate`'s separate Node module registry (read the surrounding text and keep only what still holds).
+4. `src/pdf/fonts.ts` header: drop the "preview worker" mention (its consumers are now the export builds and the parity page).
+5. `src/pdf/render.ts` header: its consumers are now `src/dev/parity.ts` only — say so (dev-only; kept for the parity harness). `rasterWorker.ts` stays with it.
+
+- [ ] **Step 5: Full suite + typecheck**
 
 Run: `npx tsc --noEmit && npx vitest run`
-Expected: all green, 262+ tests (Task 1 added four). `grep -rn "CANVAS_PREVIEW\|canvasPreview" src` returns nothing; `grep -n "needMask" src/App.tsx` returns nothing.
+Expected: all green (262+ tests: Task 1 added four, `preview-client.test.ts`'s three are gone). `grep -rn "CANVAS_PREVIEW\|canvasPreview\|buildPreviewPdfs\|disposePreviewWorker" src tests` returns nothing.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/App.tsx src/components/PreviewCompare.tsx
-git commit -m "feat: the 2D preview renders from the canvas backend; PDFs build for 3D views and exports only"
+git add -A
+git commit -m "feat: canvas backend renders the 2D preview and 3D textures; preview PDF worker deleted"
 ```
 
 ---
 
-### Task 4: Verification — real Chrome + parity
+### Task 5: Verification — real Chrome + parity
 
 No file changes expected (fixes found here fold into a follow-up commit).
 
@@ -430,15 +534,15 @@ No file changes expected (fixes found here fold into a follow-up commit).
 
 Start `npm run dev` (record the PID; kill only that PID afterwards). Verify:
 
-1. The 2D preview paints both plates on load with NO `localStorage.canvasPreview` flag set (and DevTools network shows no preview-worker traffic while typing).
+1. The 2D preview paints both plates on load with NO `localStorage.canvasPreview` flag set, and DevTools shows no preview-worker module loading at any point (pdf.js's rasterWorker may still load if the parity page was visited — not from the app itself).
 2. Typing in the name field updates the canvas per keystroke (no 150ms lag, no blur flash).
 3. Double-click the name → in-place editor opens and the drawn element vanishes the same frame; Enter restores it; Escape reverts the text.
 4. Divider drag reveals the mask plate; both plates track config edits.
 5. Texture/mask/collab uploads appear; layer eyes hide elements (a hidden background renders bare stock).
-6. Keys 3/4/5: the 3D views build their textures (first trip shows the spinner, then the can renders); back to 2D keeps the canvas preview.
+6. Keys 3/4/5: each 3D view textures the can from the canvas plates (corner "rendering…" while building, then the label wraps with foil/matte reading correctly — the metalness split is the thing this change could plausibly break, look at it deliberately); back to 2D keeps the canvas preview.
 7. Export PDFs still produces both files (full-res on-demand build path untouched).
 8. Zoom in past 250%: the raster ratchet re-sizes the canvas backing store (text stays sharp).
-9. Bleed knob change (Document Settings) repaints the preview at the new geometry.
+9. Bleed knob change (Document Settings) repaints the 2D preview AND rebuilds the 3D texture at the new geometry.
 
 - [ ] **Step 2: Pixel parity**
 
@@ -448,7 +552,7 @@ Run: `npm run parity` — all four rows PASS (threshold 5%, Phase 2 observed 2.0
 
 ---
 
-### Task 5: Release steward — version 0.1.19 + changelog
+### Task 6: Release steward — version 0.1.19 + changelog
 
 **Files:**
 - Modify: `package.json`, `package-lock.json` (two version fields), `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` (the `label-lab` entry), `src-tauri/tauri.conf.json`, `CHANGELOG.md`
@@ -462,10 +566,10 @@ Run: `npm run parity` — all four rows PASS (threshold 5%, Phase 2 observed 2.0
 ```markdown
 ## [0.1.19] - 2026-08-25
 
-- The 2D preview now renders directly on canvas from the shared display
-  list — updates land per keystroke with no debounce, and in-place editing
-  hides the edited element instantly. PDFs are built only for the 3D views
-  and on export; exported files are unchanged.
+- The preview now renders directly on canvas from the shared display list —
+  2D updates land per keystroke with no debounce, in-place editing hides the
+  edited element instantly, and the 3D views texture from the same plates.
+  PDFs and PSDs are built only on export; exported files are unchanged.
 ```
 
 - [ ] **Step 3: Release check, final validation, commit**
@@ -477,13 +581,13 @@ git add -A
 git commit -m "chore: bump version to 0.1.19 and record the changelog"
 ```
 
-Do NOT merge or push — the user gates that. After committing, update `.agents/ledger.md` (Phase 3 entry: status, delta, anything carried to Phase 4) and `learnings.md` if anything new was learned, in a final `docs:` commit.
+Do NOT merge or push — the user gates that. After committing, update `.agents/ledger.md` (Phase 3 entry: status, delta, anything carried to Phase 4 — note that "3D from canvas plates" moved INTO Phase 3, so Phase 4 is now PSD-on-plan, drag-to-move, dynamic fonts) and `learnings.md` if anything new was learned, in a final `docs:` commit.
 
 ---
 
 ## Self-review notes
 
-- Spec coverage (Phase 3): preview renders from canvas per keystroke with no worker/debounce (Tasks 2–3), preview worker + App's debounced build retired *for the preview* and retained only where 3D views still consume bytes — confirmed by reading `src/three`/`CanView` (`buildLabelTextures({ artBytes, maskBytes })`), in-place editing via `skip` with the v0.1.16 hide plumbing deleted (Task 3), error handling to `buildError` with failed frames keeping the last canvas (Task 2), exports build on demand and stay pixel-identical (untouched paths, Task 4 checks), release steward (Task 5).
-- All six carried Phase 2 items have homes: silent drawImage skip + textBaseline/textAlign + stroke-order pins + `box.x!` (Task 1), close race (Task 3 Step 1.3) + buildError routing (Task 2).
-- Deliberate choices: `pdfs`/worker survive for CanView (Phase 4 removes); the mask plate paints every frame even at split 0 (drawPlate is cheap; the old needMask machinery bought nothing on the canvas path); the 150ms debounce survives only in the asset-assembly effect (decode churn) and the 3D build effect — never between a keystroke and the canvas.
-- Type consistency: `canvasRender` prop shape identical between Task 2 (PreviewCompare) and Task 3 (App memo); `bleedIn` prop consumed in Task 2's dep list and passed in Task 3; `previewReady` defined and used only in Task 3.
+- Spec coverage (Phase 3 + pulled-forward item): preview renders from canvas per keystroke with no worker/debounce (Tasks 2, 4); 3D views texture from canvas plates and the whole preview worker stack — `pdf/client.ts`, `pdf/worker.ts`, App's debounced build, `pdfs`, TabsShell's dispose — is deleted (Tasks 3–4; user-approved scope pull from Phase 4); in-place editing via `skip` with the v0.1.16 hide plumbing deleted (Task 4); error handling to `buildError` with failed frames keeping the last canvas (Task 2); exports build on demand and stay pixel-identical (untouched paths; Task 5 checks). pdf.js (`render.ts`/`rasterWorker.ts`) survives solely for the dev parity page.
+- All six carried Phase 2 items have homes: silent drawImage skip + textBaseline/textAlign + stroke-order pins + `box.x!` (Task 1), close race (Task 4 Step 1.3) + buildError routing (Task 2).
+- Deliberate choices: the mask plate paints every frame even at split 0 (drawPlate is cheap; needMask bought nothing on the canvas path); CanView keeps a 150ms debounce because deriveMetalness is a ~3.4M-px pass — the 2D path has none; 3D texture quality is preserved by matching the old raster's texel density (MAX_SCALE 4 / MAX_EDGE 4096) and the texture bitmap was already sized for it (PREVIEW_PX 2400); `buildLabelTextures` goes synchronous, so CanView's promise chain dies with pdf.js.
+- Type consistency: `CanvasRenderSource` defined once in `canvas/draw.ts` (Task 2), consumed by PreviewCompare (Task 2), CanView (Task 3), and App's memo (Task 4); `drawPlates`/`buildLabelTextures` signatures match between Tasks 3 and 4; `previewReady` defined and used only in Task 4.
