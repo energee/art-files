@@ -235,20 +235,20 @@ export default function TabsShell() {
   // strip above the whole shell, and under the menubar is where tabs read
   // as document chrome.
   // Current VS Code tab language: each tab is a rounded chip floating in
-  // the strip with a gap from its neighbors — a subtle outline on inactive
-  // chips, a filled background on the active one — rather than flush
-  // full-height cells. The dirty dot lives in the close slot: a dot until
-  // hover, then the ×.
+  // the strip with a gap from its neighbors — contrast comes from fill, not
+  // borders: the active chip in the editor background, a muted wash on
+  // hover. The dirty dot lives in the close slot: a dot until hover, then
+  // the ×.
   const tabStrip = (
     <div className="flex h-9 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-sidebar px-2">
         {state.tabs.map((t) => (
           <div
             key={t.id}
             className={cn(
-              "group flex h-6.5 min-w-0 max-w-48 shrink-0 items-center gap-1 rounded-md border px-2.5",
+              "group flex h-6.5 min-w-0 max-w-48 shrink-0 items-center gap-1 rounded-md px-2.5",
               t.id === state.active
-                ? "border-border bg-background text-foreground shadow-xs"
-                : "border-transparent text-muted-foreground hover:border-border hover:text-foreground",
+                ? "bg-background text-foreground shadow-xs"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}>
             <button
               onClick={() => setState((s) => activateTab(s, t.id))}
@@ -260,7 +260,9 @@ export default function TabsShell() {
               onClick={() => requestClose(t.id)}
               aria-label={`Close ${t.title}`}
               className={cn(
-                "rounded p-0.5 outline-none hover:bg-muted focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring",
+                // fraction-of-foreground, not bg-muted: it has to read on
+                // both chip fills (active bg-background, hovered bg-muted)
+                "rounded p-0.5 outline-none hover:bg-foreground/10 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring",
                 !unsaved(t) && "opacity-0 group-hover:opacity-100",
               )}>
               {unsaved(t) ? (
