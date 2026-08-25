@@ -3,6 +3,14 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.18] - 2026-08-25
+
+- Internal: the shared display list now covers the whole label (laurel, QR,
+  collab logos, barcode), and a new canvas renderer draws both plates from
+  it — groundwork for the direct-canvas preview, behind a dev-only flag.
+  Exports are unchanged; a parity harness (npm run parity) checks the two
+  renderers against each other.
+
 ## [0.1.17] - 2026-08-25
 
 - Internal: text placement is now computed once (a shared display list)
