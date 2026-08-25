@@ -369,7 +369,9 @@ async function drawElements(
   // element (the collab image, the laurel) is interleaved between it and
   // its neighbours. Keep this in sync with plan.ts's element walk: a new
   // left-column or early-drawn text element that isn't added here silently
-  // falls into the "rest" pass at the bottom instead.
+  // falls into the "rest" pass at the bottom instead. tests/plan.test.ts's
+  // "LEFT-column ids form a strict prefix" test restates this set and pins
+  // that invariant, so a drift here fails there.
   const LEFT: ReadonlySet<ElementId> = new Set(["volume", "abv", "description", "collabLead"]);
 
   // Left column: volume, abv, description, and the collab lead-in text.
@@ -390,10 +392,9 @@ async function drawElements(
   // Center column. Wordmark draws in its own pre-laurel slot, matching the
   // original draw order exactly: the laurel's stack nudge (logoNudge,
   // cfg.logo.offsetY — see below) is user-controlled and unbounded, so a
-  // large nudge CAN drag the laurel up into the wordmark's ink. Drawing the
-  // wordmark after the laurel would let that nudge silently flip which one
-  // paints on top; keeping this slot preserves the shipped z-order (wordmark
-  // over laurel) regardless of the nudge.
+  // large nudge CAN drag the laurel up into the wordmark's ink. The laurel
+  // paints over the wordmark (it draws after, below); keeping the wordmark
+  // in this pre-laurel slot preserves that z-order regardless of the nudge.
   plan.filter((r) => r.id === "wordmark").forEach(drawPlaced);
   // The laurel's geometry is computed even when hidden: the centre collab
   // mark hangs off logoCy below, and hiding the laurel must not move it.

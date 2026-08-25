@@ -361,7 +361,7 @@ const PS_NAME = {
 type Face = keyof typeof PS_NAME;
 
 /** One editable type layer. `x`/`baseline` are in label points; `rotated`
- *  applies the same quarter turn the PDF's drawRotated does (text reads
+ *  applies the same quarter turn plan.ts's rotatedRuns does (text reads
  *  bottom-to-top), expressed purely in the affine transform. */
 function textLayer(
   name: string,
@@ -369,8 +369,8 @@ function textLayer(
   opts: {
     x: number; baseline: number; size: number; fill: Fill; face: Face;
     /** Face an inline `**bold**` run steps up to. Defaults to semibold,
-     *  matching drawLine; the rotated Info column passes bold, since its
-     *  unmarked text is already semibold. */
+     *  matching plan.ts's lineRuns; the rotated Info column passes bold,
+     *  since its unmarked text is already semibold. */
     boldFace?: Face;
     rotated?: boolean;
     /** Letter-spacing in label points (Style.letterSpacing). */
@@ -383,8 +383,8 @@ function textLayer(
      *  entry styles one line of `text` (its newline included), so the block
      *  keeps its per-line faces and fills in ONE editable layer. */
     lines?: StyledLine[];
-    /** Justify every line to the full measure, the way drawJustifiedRotated
-     *  spaces the warning's columns. */
+    /** Justify every line to the full measure, the way plan.ts's
+     *  justifiedRotatedRuns spaces the warning's columns. */
     justify?: boolean;
     /** Outer stroke, as an editable Photoshop layer EFFECT. The PDF draws
      *  the same stroke via PDF's fill-and-outline text rendering mode;
@@ -569,7 +569,7 @@ function buildLayers(
   // Center column ----------------------------------------------------------
   // Measure with the SAME face the layer renders in, or a bold style line
   // centres against regular metrics and sits off-centre.
-  // Tracked, like the PDF's drawLine: a tracked line is wider than the font
+  // Tracked, like plan.ts's lineRuns: a tracked line is wider than the font
   // measures it, and centring on the untracked width would leave it sitting
   // half a run's worth of spacing left of the centre line.
   // Measured over inline runs, like both PDF passes: the layer holds the

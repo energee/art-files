@@ -29,8 +29,12 @@ const NO_SLOTS: CollabSlots = { left: false, center: false };
 
 /** Every element's box, in paint order (later entries sit on top): volume,
  *  abv, description, wordmark, logo, name, styleLine, qr, handleAddress,
- *  warning, storeCold, barcode — exactly drawElements' order in
- *  src/pdf/build.ts.
+ *  warning, storeCold, barcode. This matches drawElements' order in
+ *  src/pdf/build.ts with one deliberate exception: drawElements actually
+ *  draws the QR after storeCold (it was moved there to keep non-overlapping
+ *  elements apart), but the QR overlaps nothing else on the label, so its
+ *  hit-test position doesn't matter and it stays listed here between
+ *  styleLine and handleAddress for readability.
  *  Text boxes are grouped from planLabel's runs, one box per drawn line
  *  (unrotated) or column (rotated); the measure adapter below folds
  *  semibold and bold alike onto Measure's single bold flag, the same

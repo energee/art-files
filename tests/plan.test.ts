@@ -38,7 +38,7 @@ describe("lineRuns", () => {
     expect(runs[2].x).toBeCloseTo(runs[1].x + runs[1].w);
   });
 
-  it("a forced face wins over the bold flag, matching drawLine's opts.font", () => {
+  it("a forced face wins over the bold flag, matching lineRuns's at.face contract", () => {
     const runs = lineRuns("name", { text: "HAZY", fill: "#C8A951", layer: "metallic", bold: true },
       m, { cx: 100, baseline: 50, size: 20, face: "bold" });
     expect(runs[0].face).toBe("bold");
@@ -49,8 +49,8 @@ describe("rotatedRuns", () => {
   it("advances along -y from yStart, reading bottom-to-top", () => {
     const runs = rotatedRuns("storeCold", { fill: "#C8A951", layer: "metallic" },
       "STORE **COLD**", m, { x: 500, yStart: 300, size: 6, base: "semibold" });
-    // No boldFace: **bold** runs keep the base face (drawRotated's contract
-    // when its boldFont parameter is omitted, as storeCold's call does).
+    // No boldFace: **bold** runs keep the base face (rotatedRuns's contract
+    // when its boldFace parameter is omitted, as storeCold's call does).
     expect(runs.map((r) => r.face)).toEqual(["semibold", "semibold"]);
     expect(runs[0]).toMatchObject({ x: 500, y: 300, rotated: true });
     // The second run starts one full advance closer to the label top.
@@ -93,6 +93,24 @@ describe("planLabel", () => {
       "volume", "abv", "description", "wordmark", "name", "styleLine",
       "handleAddress", "warning", "storeCold",
     ]);
+  });
+
+  it("the LEFT-column ids form a strict prefix of the run order", () => {
+    // src/pdf/build.ts's drawElements keeps a hand-maintained `LEFT` set
+    // (volume, abv, description, collabLead) and draws it as one filter
+    // pass before everything else, relying on those ids already being
+    // contiguous and first in planLabel's output. Restated here (that set
+    // isn't exported) so a future reorder of planLabel's element walk that
+    // breaks the split fails this test instead of silently reordering the
+    // PDF's left column.
+    const LEFT = new Set(["volume", "abv", "description", "collabLead"]);
+    const on = { ...defaultConfig(), collabEnabled: true };
+    const ids = planLabel(on, m, { collab: { left: true, center: false } }).map((r) => r.id);
+    const inLeft = ids.map((id) => LEFT.has(id));
+    const split = inLeft.lastIndexOf(true);
+    expect(split).toBeGreaterThanOrEqual(0);
+    expect(inLeft.slice(0, split + 1).every(Boolean)).toBe(true);
+    expect(inLeft.slice(split + 1).some(Boolean)).toBe(false);
   });
 
   it("skip removes an element without moving its neighbours", () => {

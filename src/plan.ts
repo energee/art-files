@@ -51,9 +51,11 @@ export function strokeSpec(style: Style): StrokeSpec | null {
   return { fill: style.stroke, layer: strokeLayerOf(style), w: px * L.PX };
 }
 
-/** One styled line as placed runs — drawLine's math without the drawing.
- *  `at.face` (the wordmark/name's forced Bold) wins over the bold flag,
- *  exactly like drawLine's opts.font. */
+/** One styled line as placed runs: walks the parsed runs left to right (or
+ *  centered around `at.cx`), advancing x by each run's measured width plus
+ *  tracking. `at.face` (the wordmark/name's forced Bold) wins over the bold
+ *  flag on each run. This is the PDF backend's former drawLine, minus the
+ *  drawing. */
 export function lineRuns(
   id: ElementId,
   line: StyledLine,
@@ -80,9 +82,12 @@ export function lineRuns(
   });
 }
 
-/** Rotated 90° CCW text (reads bottom-to-top) as placed runs — drawRotated's
- *  math without the drawing. `boldFace` omitted means inline `**bold**` runs
- *  keep `base` (storeCold's contract); given, they step up (info/warning). */
+/** Rotated 90° CCW text (reads bottom-to-top) as placed runs: walks the
+ *  parsed runs bottom to top, advancing y by each run's measured width plus
+ *  tracking (the rotation swaps the advance axis to y). `boldFace` omitted
+ *  means inline `**bold**` runs keep `base` (storeCold's contract); given,
+ *  they step up (info/warning). This is the PDF backend's former
+ *  drawRotated, minus the drawing. */
 export function rotatedRuns(
   id: ElementId,
   style: Style,
@@ -108,10 +113,10 @@ export function rotatedRuns(
 }
 
 /** A justified warning column: inter-word gaps stretched so the span lands
- *  exactly on maxLen — drawJustifiedRotated's math. Word widths measure the
- *  runs each word actually draws (markers stripped, own faces), or a bold-
- *  marked column would overshoot. A single word has no gap and stays at its
- *  natural length (see warningColumnLen). */
+ *  exactly on maxLen (the PDF backend's former drawJustifiedRotated's math).
+ *  Word widths measure the runs each word actually draws (markers stripped,
+ *  own faces), or a bold-marked column would overshoot. A single word has no
+ *  gap and stays at its natural length (see warningColumnLen). */
 export function justifiedRotatedRuns(
   id: ElementId,
   style: Style,

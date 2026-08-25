@@ -376,8 +376,8 @@ export const HANDLE_ADDR = { x: 474.58, yStart: 339.58, size: 12.91 };
 // whole rotated info block moved left (see HANDLE_ADDR above): x is set so
 // the 4th column's ink (descender + stroke) stops at the barcode halo's left
 // edge (BARCODE.x - BARCODE.stroke = 535.28).
-// yStart is the run's BOTTOM (the text reads bottom-to-top). drawJustifiedRotated
-// stretches every column to exactly maxLen, so all three share a top and a
+// yStart is the run's BOTTOM (the text reads bottom-to-top). justifiedRotatedRuns
+// (plan.ts) stretches every column to exactly maxLen, so all three share a top and a
 // bottom edge by construction rather than by measurement — the only question is
 // where those edges land. maxLen is the safe span less the outer stroke at each
 // end, and yStart is one stroke inside the bottom margin, which puts the drawn
