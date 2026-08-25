@@ -234,21 +234,21 @@ export default function TabsShell() {
   // tabStrip prop in App.tsx): the fixed-position sidebar would overlap a
   // strip above the whole shell, and under the menubar is where tabs read
   // as document chrome.
-  // VS Code's tab language: flat full-height tabs packed flush, a thin
-  // border-r between neighbors, the active tab in the editor background
-  // with the strip's bottom border cut away under it (border-b sits on the
-  // tabs and the filler, not the container, to make that cut possible).
-  // The dirty dot lives in the close slot — a dot until hover, then the ×.
+  // Current VS Code tab language: each tab is a rounded chip floating in
+  // the strip with a gap from its neighbors — a subtle outline on inactive
+  // chips, a filled background on the active one — rather than flush
+  // full-height cells. The dirty dot lives in the close slot: a dot until
+  // hover, then the ×.
   const tabStrip = (
-    <div className="flex h-9 shrink-0 items-stretch overflow-x-auto bg-sidebar">
+    <div className="flex h-9 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-sidebar px-2">
         {state.tabs.map((t) => (
           <div
             key={t.id}
             className={cn(
-              "group flex min-w-0 max-w-48 items-center gap-1 border-b border-r border-border px-3",
+              "group flex h-6.5 min-w-0 max-w-48 shrink-0 items-center gap-1 rounded-md border px-2.5",
               t.id === state.active
-                ? "border-b-transparent bg-background text-foreground"
-                : "text-muted-foreground hover:text-foreground",
+                ? "border-border bg-background text-foreground shadow-xs"
+                : "border-transparent text-muted-foreground hover:border-border hover:text-foreground",
             )}>
             <button
               onClick={() => setState((s) => activateTab(s, t.id))}
@@ -273,17 +273,13 @@ export default function TabsShell() {
             </button>
           </div>
         ))}
-        {/* Filler carries the strip's bottom border past the last tab; the
-            + lives on it, off the tab row like VS Code's action area. */}
-        <div className="flex flex-1 items-center border-b border-border pl-1">
-          <button
-            onClick={() => setState(addTab)}
-            aria-label="New tab"
-            title="New tab (⌘N)"
-            className="rounded px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
-            +
-          </button>
-        </div>
+        <button
+          onClick={() => setState(addTab)}
+          aria-label="New tab"
+          title="New tab (⌘N)"
+          className="shrink-0 rounded-md px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+          +
+        </button>
     </div>
   );
 
