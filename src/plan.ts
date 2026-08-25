@@ -1,4 +1,4 @@
-// plan.ts — the label's display list: WHERE every text run draws, computed
+// plan.ts — the label's display list: WHERE every element draws, computed
 // once, renderer-agnostically. pdf/build.ts and hittest.ts both consume it
 // (the canvas backend joins in Phase 2 — see the 2026-08-25 canvas preview
 // renderer spec), so placement cannot drift between what is drawn, hit-
@@ -7,37 +7,75 @@
 // Measurement is injected: the PDF backend passes PDFFont metrics so built
 // bytes place text exactly as before, the UI passes the fonts.ts canvas
 // metrics — the same split hittest always had.
-import type { Fill, Style, StyledLine, LabelConfig } from "./types";
-import type { ElementId } from "./elements";
+import type { CollabSlot, Fill, Style, StyledLine, LabelConfig } from "./types";
+import { logoNudge, type ElementId } from "./elements";
 import { parseRuns } from "./description";
 import { strokeLayerOf } from "./strokes";
 import * as L from "./layout";
 import { displayAbv, displayName, displayStyle } from "./defaults";
 import { parseDescription, parseInfoLine } from "./description";
 import { warningMeasure, wrapWarning } from "./warning";
+import { parseLogo } from "./logo";
+import { qrPath, qrShapes, qrUrl } from "./qr";
 
 export type Face = "regular" | "semibold" | "bold";
 export type MeasureFace = (text: string, size: number, face: Face) => number;
 
 export type StrokeSpec = { fill: Fill; layer: Style["layer"]; w: number };
 
+/** The two plates every backend renders. */
+export type Mode = "art" | "mask";
+
 export interface PlacedText {
-  id: ElementId;
-  text: string;
+  readonly kind: "text";
+  readonly id: ElementId;
+  readonly text: string;
   /** Unrotated: run's left edge / baseline. Rotated (reads bottom-to-top):
    *  x is the baseline's vertical line, y is where the run STARTS, and the
    *  run extends toward smaller y by `w`. */
-  x: number;
-  y: number;
+  readonly x: number;
+  readonly y: number;
   /** Drawn width of this run — tracked, without the trailing gap. */
-  w: number;
-  size: number;
-  face: Face;
-  tracking: number;
-  fill: Fill;
-  layer: Style["layer"];
-  stroke: StrokeSpec | null;
-  rotated: boolean;
+  readonly w: number;
+  readonly size: number;
+  readonly face: Face;
+  readonly tracking: number;
+  readonly fill: Fill;
+  readonly layer: Style["layer"];
+  readonly stroke: StrokeSpec | null;
+  readonly rotated: boolean;
+}
+
+/** Vector art placed on the label: pre-scaled absolute path data (see
+ *  parseLogo) translated to (x, y), top-left origin. Backends fill with the
+ *  nonzero rule (pdf-lib's drawSvgPath and Path2D's default agree); a stroke
+ *  paints every path before any fill so overlapping laurel branches keep
+ *  clean edges. */
+export interface PlacedPaths {
+  readonly kind: "paths";
+  readonly id: ElementId;
+  readonly paths: readonly string[];
+  readonly x: number;
+  readonly y: number;
+  readonly fill: Fill;
+  readonly layer: Style["layer"];
+  readonly stroke: StrokeSpec | null;
+}
+
+export type Placed = PlacedText | PlacedPaths; // PlacedImage | PlacedBarcode join in Task 2
+
+/** Collab art as the plan needs it: SVG art plans as paths (the plan fits
+ *  it itself, via parseLogo); raster art plans as a fitted rect, so only
+ *  the intrinsic pixel size travels — bytes stay with the backend. */
+export type PlanArt =
+  | { kind: "svg"; svg: string }
+  | { kind: "raster"; w: number; h: number };
+
+export interface PlanAssets {
+  /** Raw contents of logo2025.svg. */
+  logoSvg: string;
+  collabLeft?: PlanArt | null;
+  collabCenter?: PlanArt | null;
 }
 
 /** The element's outer stroke as data (width in points). Null when off —
@@ -60,18 +98,18 @@ export function lineRuns(
   id: ElementId,
   line: StyledLine,
   m: MeasureFace,
-  at: { x?: number; cx?: number; baseline: number; size: number; face?: Face },
+  at: ({ x: number } | { cx: number }) & { baseline: number; size: number; face?: Face },
 ): PlacedText[] {
   const runs = parseRuns(line);
   const faceOf = (r: StyledLine): Face => at.face ?? (r.bold ? "semibold" : "regular");
   const tracking = line.letterSpacing ?? 0;
   const advances = L.runAdvances(runs, (r) => m(r.text, at.size, faceOf(r)), tracking);
   const total = advances.reduce((a, b) => a + b, 0) - tracking;
-  let x = at.cx !== undefined ? at.cx - total / 2 : at.x!;
+  let x = "cx" in at ? at.cx - total / 2 : at.x;
   const stroke = strokeSpec(line);
   return runs.map((run, i) => {
     const placed: PlacedText = {
-      id, text: run.text, x, y: at.baseline,
+      kind: "text", id, text: run.text, x, y: at.baseline,
       // The run's drawn width is its advance minus the gap to the next run.
       w: advances[i] - tracking,
       size: at.size, face: faceOf(run), tracking,
@@ -103,7 +141,7 @@ export function rotatedRuns(
   let yPos = at.yStart;
   return runs.map((run, i) => {
     const placed: PlacedText = {
-      id, text: run.text, x: at.x, y: yPos, w: advances[i] - tracking,
+      kind: "text", id, text: run.text, x: at.x, y: yPos, w: advances[i] - tracking,
       size: at.size, face: faceOf(run), tracking,
       fill: run.fill, layer: run.layer, stroke, rotated: true,
     };
@@ -150,13 +188,51 @@ export interface PlanOpts {
    *  skipping never reflows neighbours. */
   skip?: { has(id: ElementId): boolean };
   collab?: CollabSlots;
+  /** With assets, planLabel emits the COMPLETE display list — text, laurel,
+   *  QR, collab art, barcode — in drawElements' historical draw order, and
+   *  the collab gates read the slots from here (opts.collab is ignored).
+   *  Without assets: text only, gated by opts.collab — hittest's contract. */
+  assets?: PlanAssets;
 }
 
-/** Every text run of the label, in drawElements' order. Non-text elements
- *  (logo, QR, barcode, collab images) are not planned yet — Phase 2. */
-export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {}): PlacedText[] {
+/** A collab slot's art as placed items — drawCollab's placement without the
+ *  drawing: the box scaled by the slot's scale knob, offsetY nudging the
+ *  flowed position, SVG fitted ink-tight by parseLogo, raster fitted by its
+ *  intrinsic aspect. */
+function collabItems(
+  id: ElementId,
+  art: PlanArt,
+  slot: CollabSlot,
+  box: { x?: number; cx?: number; top: number; maxW: number; maxH: number },
+): Placed[] {
+  const maxW = box.maxW * slot.scale;
+  const maxH = box.maxH * slot.scale;
+  const top = box.top + (slot.offsetY ?? 0);
+  const place = (w: number) => (box.cx !== undefined ? box.cx - w / 2 : box.x!);
+  if (art.kind === "svg") {
+    const a = parseLogo(art.svg, maxW, maxH);
+    return [{
+      kind: "paths", id, paths: a.paths, x: place(a.w), y: top,
+      fill: slot.fill, layer: slot.layer, stroke: strokeSpec(slot),
+    }];
+  }
+  // Raster branch stubbed here — PlacedImage joins the Placed union in Task 2.
+  return [];
+}
+
+/** Every display-list item of the label, in drawElements' order. Without
+ *  `opts.assets` the list is text only — hittest's contract, and the numbers
+ *  match what planLabel has always produced. With it, the laurel, QR, collab
+ *  art and barcode interleave at their historical draw positions. */
+export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {}): Placed[] {
   const skip = (id: ElementId) => !!opts.skip?.has(id);
-  const out: PlacedText[] = [];
+  const A = opts.assets;
+  // One source for the slot gates: the art itself when assets are in hand,
+  // opts.collab (hittest's booleans) otherwise — never both.
+  const slots = A
+    ? { left: !!A.collabLeft, center: !!A.collabCenter }
+    : opts.collab ?? { left: false, center: false };
+  const out: Placed[] = [];
 
   if (!skip("volume"))
     out.push(...lineRuns("volume", cfg.volume, m,
@@ -177,16 +253,46 @@ export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {})
 
   // Lead-in only when there is a left logo for it to introduce — the same
   // gate drawElements applies with assets.collabLeft.
-  if (cfg.collabEnabled && opts.collab?.left && !skip("collabLead")) {
+  if (cfg.collabEnabled && slots.left && !skip("collabLead")) {
     const flow = L.collabLeftFlow(desc.lines.length);
     L.COLLAB_LEAD.lines.forEach((text, i) =>
       out.push(...lineRuns("collabLead", { text, ...cfg.collabLead, bold: true }, m,
         { x: L.COLLAB_LEAD.x, baseline: flow.leadBaselines[i], size: L.COLLAB_LEAD.size })));
   }
 
+  // Left collab art, flowed under the lead-in — drawCollab's placement.
+  if (A && cfg.collabEnabled && A.collabLeft && !skip("collabLeft")) {
+    const flow = L.collabLeftFlow(desc.lines.length);
+    out.push(...collabItems("collabLeft", A.collabLeft, cfg.collabLeft, {
+      x: L.COLLAB_LEFT.x, top: flow.logoTop,
+      maxW: L.COLLAB_LEFT.maxW, maxH: L.COLLAB_LEFT.maxH,
+    }));
+  }
+
   if (!skip("wordmark"))
     out.push(...lineRuns("wordmark", { text: L.WORDMARK.text, ...cfg.wordmark, bold: true }, m,
       { cx: L.WORDMARK.cx, baseline: L.WORDMARK.baseline, size: L.WORDMARK.size, face: "bold" }));
+
+  // The laurel, and the centre collab mark hanging off its nudged bottom.
+  // Geometry is computed even when the laurel is skipped: the centre mark
+  // hangs off logoCy, and hiding the laurel must not move it.
+  if (A) {
+    const logo = parseLogo(A.logoSvg, L.LOGO.w);
+    const logoCy = L.LOGO.cy + logoNudge(cfg);
+    if (!skip("logo"))
+      out.push({
+        kind: "paths", id: "logo", paths: logo.paths,
+        x: L.LOGO.cx - logo.w / 2, y: logoCy - logo.h / 2,
+        fill: cfg.logo.fill, layer: cfg.logo.layer, stroke: strokeSpec(cfg.logo),
+      });
+    if (cfg.collabEnabled && A.collabCenter && !skip("collabCenter"))
+      out.push(...collabItems("collabCenter", A.collabCenter, cfg.collabCenter, {
+        cx: L.COLLAB_CENTER.cx,
+        top: logoCy + logo.h / 2 + L.COLLAB_CENTER.gapAbove,
+        maxW: L.COLLAB_CENTER.maxW, maxH: L.COLLAB_CENTER.maxH,
+      }));
+  }
+
   if (!skip("name"))
     out.push(...lineRuns("name", { text: displayName(cfg).toUpperCase(), ...cfg.nameStyle, bold: true }, m,
       { cx: L.NAME.cx, baseline: L.NAME.baseline, size: L.NAME.size, face: "bold" }));
@@ -224,5 +330,23 @@ export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {})
       base: cfg.storeCold.bold ? "bold" : "semibold",
     }));
 
+  // QR — payload derived from the beer name; the stroked underlay is its own
+  // paths item (the grow'd path IS the stroke, so the item itself is unstroked).
+  if (A && !skip("qr")) {
+    const shapes = qrShapes(qrUrl(displayName(cfg)));
+    const at = { x: L.QR.x, y: L.QR.yTop };
+    if (cfg.qrStroke !== "none")
+      out.push({
+        kind: "paths", id: "qr", ...at, stroke: null,
+        paths: [qrPath(shapes, L.QR.size, (cfg.qrStrokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX)],
+        fill: cfg.qrStroke, layer: cfg.qrStrokeLayer,
+      });
+    out.push({
+      kind: "paths", id: "qr", ...at, stroke: null,
+      paths: [qrPath(shapes, L.QR.size)], fill: cfg.qrFill, layer: cfg.qrLayer,
+    });
+  }
+
+  // Barcode joins in Task 2.
   return out;
 }

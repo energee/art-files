@@ -375,7 +375,7 @@ async function drawElements(
   const LEFT: ReadonlySet<ElementId> = new Set(["volume", "abv", "description", "collabLead"]);
 
   // Left column: volume, abv, description, and the collab lead-in text.
-  plan.filter((r) => LEFT.has(r.id)).forEach(drawPlaced);
+  plan.filter((r): r is PlacedText => r.kind === "text" && LEFT.has(r.id)).forEach(drawPlaced);
 
   // Left collab logo, flowed under the description. The lead-in text above
   // already carries its own gate (cfg.collabEnabled && a left logo present);
@@ -395,7 +395,7 @@ async function drawElements(
   // large nudge CAN drag the laurel up into the wordmark's ink. The laurel
   // paints over the wordmark (it draws after, below); keeping the wordmark
   // in this pre-laurel slot preserves that z-order regardless of the nudge.
-  plan.filter((r) => r.id === "wordmark").forEach(drawPlaced);
+  plan.filter((r): r is PlacedText => r.kind === "text" && r.id === "wordmark").forEach(drawPlaced);
   // The laurel's geometry is computed even when hidden: the centre collab
   // mark hangs off logoCy below, and hiding the laurel must not move it.
   const logo = parseLogo(assets.logoSvg, L.LOGO.w);
@@ -436,7 +436,7 @@ async function drawElements(
   // non-overlapping elements: the QR below now draws after storeCold
   // instead of before handleAddress — the QR touches nothing in the rotated
   // column.
-  plan.filter((r) => !LEFT.has(r.id) && r.id !== "wordmark").forEach(drawPlaced);
+  plan.filter((r): r is PlacedText => r.kind === "text" && !LEFT.has(r.id) && r.id !== "wordmark").forEach(drawPlaced);
 
   // QR — payload derived from the beer name; optional stroked underlay.
   if (!hide("qr")) {

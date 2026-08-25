@@ -55,6 +55,7 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
   const textBoxes: Box[] = [];
   const groups = new Map<string, PlacedText[]>();
   for (const r of plan) {
+    if (r.kind !== "text") continue;
     // Unrotated runs of one drawn line share a baseline; rotated runs of one
     // column share their x. Group on that, per element.
     const key = `${r.id}:${r.rotated ? `r${r.x}` : `f${r.y}`}`;

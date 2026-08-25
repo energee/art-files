@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lineRuns, rotatedRuns, justifiedRotatedRuns, planLabel, type MeasureFace } from "../src/plan";
+import { lineRuns, rotatedRuns, justifiedRotatedRuns, planLabel, type MeasureFace, type PlacedText } from "../src/plan";
 import * as L from "../src/layout";
 import { defaultConfig } from "../src/defaults";
 
@@ -122,13 +122,13 @@ describe("planLabel", () => {
   });
 
   it("the ABV line is the display string, not the raw config field", () => {
-    const abv = planLabel(cfg, m).filter((r) => r.id === "abv");
+    const abv = planLabel(cfg, m).filter((r): r is PlacedText => r.id === "abv" && r.kind === "text");
     expect(abv.map((r) => r.text).join("")).toContain("% alc by vol");
   });
 
   it("name and wordmark are forced to the Bold face and the name is uppercased", () => {
     const c = { ...defaultConfig(), beerName: "hazy" };
-    const name = planLabel(c, m).filter((r) => r.id === "name");
+    const name = planLabel(c, m).filter((r): r is PlacedText => r.id === "name" && r.kind === "text");
     expect(name.every((r) => r.face === "bold")).toBe(true);
     expect(name.map((r) => r.text).join("")).toBe("HAZY");
   });
@@ -142,7 +142,7 @@ describe("planLabel", () => {
 
   it("every warning column with 2+ words justifies to exactly maxLen", () => {
     const byColumn = new Map<number, { start: number; end: number; words: number }>();
-    for (const r of planLabel(cfg, m).filter((r) => r.id === "warning")) {
+    for (const r of planLabel(cfg, m).filter((r): r is PlacedText => r.id === "warning" && r.kind === "text")) {
       const col = byColumn.get(r.x) ?? { start: -Infinity, end: Infinity, words: 0 };
       byColumn.set(r.x, {
         start: Math.max(col.start, r.y), end: Math.min(col.end, r.y - r.w),
@@ -153,5 +153,56 @@ describe("planLabel", () => {
     for (const col of byColumn.values())
       if (col.words >= 2)
         expect(col.start - col.end).toBeCloseTo(L.WARNING.maxLen, 5);
+  });
+});
+
+// A tiny valid logo SVG: one triangle, laurel-shaped viewBox.
+const LOGO_SVG =
+  '<svg viewBox="0 0 480 525"><path d="M0 0 L480 0 L240 525 Z"/></svg>';
+
+describe("planLabel with assets", () => {
+  const cfg = defaultConfig();
+  const assets = { logoSvg: LOGO_SVG };
+
+  it("emits the laurel as a paths item centred on LOGO.cx", () => {
+    const logo = planLabel(cfg, m, { assets }).find((r) => r.id === "logo");
+    expect(logo).toBeDefined();
+    expect(logo!.kind).toBe("paths");
+    if (logo!.kind !== "paths") return;
+    // parseLogo scales by width: drawn w is exactly LOGO.w, x centres it.
+    expect(logo!.x).toBeCloseTo(L.LOGO.cx - L.LOGO.w / 2);
+    expect(logo!.paths.length).toBeGreaterThan(0);
+    expect(logo!.fill).toBe(cfg.logo.fill);
+  });
+
+  it("skip('logo') removes the laurel; without assets no laurel exists", () => {
+    expect(planLabel(cfg, m, { assets, skip: new Set(["logo" as const]) })
+      .some((r) => r.id === "logo")).toBe(false);
+    expect(planLabel(cfg, m).some((r) => r.id === "logo")).toBe(false);
+  });
+
+  it("emits the QR as underlay+fill paths when stroked, fill alone when not", () => {
+    const stroked = planLabel(cfg, m, { assets }).filter((r) => r.id === "qr");
+    // defaultConfig ships a qrStroke; both items sit at the QR plate origin.
+    expect(stroked).toHaveLength(2);
+    expect(stroked.every((r) => r.kind === "paths"
+      && r.x === L.QR.x && r.y === L.QR.yTop)).toBe(true);
+    const bare = planLabel({ ...cfg, qrStroke: "none" }, m, { assets })
+      .filter((r) => r.id === "qr");
+    expect(bare).toHaveLength(1);
+  });
+
+  it("keeps text placement identical with and without assets", () => {
+    const textOnly = planLabel(cfg, m);
+    const full = planLabel(cfg, m, { assets }).filter((r) => r.kind === "text");
+    expect(full).toEqual(textOnly);
+  });
+
+  it("orders the laurel between wordmark and name (the z-order pin)", () => {
+    const ids = planLabel(cfg, m, { assets }).map((r) => r.id);
+    expect(ids.indexOf("logo")).toBeGreaterThan(ids.lastIndexOf("wordmark"));
+    expect(ids.indexOf("logo")).toBeLessThan(ids.indexOf("name"));
+    // QR draws after storeCold — drawElements' actual order.
+    expect(ids.indexOf("qr")).toBeGreaterThan(ids.lastIndexOf("storeCold"));
   });
 });
