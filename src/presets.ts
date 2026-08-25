@@ -154,12 +154,14 @@ export function normalizePresets(raw: Partial<Presets>): Presets {
 /** The browser fallback store, same JSON shape as presets.json. */
 export const LOCAL_PRESETS_KEY = "labellab.presets";
 
-// Which store a browser session talks to, resolved by the first load's probe
-// of /api/presets and then remembered: "server" keeps the dev endpoint's
-// throw-on-failure save contract (a dev save that vanishes must be visible),
-// "local" saves to localStorage instead of re-attempting a fetch that is
-// known to fail on every write. Saves always follow a load (mutatePresets
-// reads before writing), so the backend is resolved before any save runs.
+// Which store a browser session talks to. "local" is latched only by a
+// definitive missing-endpoint signal (a 404, or a static host's SPA fallback
+// answering HTML) so localStorage writes stop re-attempting a fetch known to
+// fail. A network error or 5xx could be the dev server mid-restart, so it
+// leaves the state "unknown" and the next load re-probes — and an "unknown"
+// save still tries the endpoint, keeping the throw-on-failure contract: a dev
+// save that vanishes must be a visible error, never a silent localStorage
+// detour.
 let backend: "unknown" | "server" | "local" = "unknown";
 
 function loadLocalPresets(): Presets {
@@ -186,15 +188,20 @@ export async function loadPresets(): Promise<Presets> {
     try {
       const res = await fetch("/api/presets");
       if (res.ok) {
-        // A static host's SPA fallback answers 200 with HTML; the json()
-        // throw below routes that to localStorage like any other missing
-        // endpoint.
-        const parsed = normalizePresets((await res.json()) as Partial<Presets>);
-        backend = "server";
-        return parsed;
+        try {
+          const parsed = normalizePresets((await res.json()) as Partial<Presets>);
+          backend = "server";
+          return parsed;
+        } catch {
+          // 200 with a non-JSON body is a static host's SPA fallback —
+          // definitively not the endpoint.
+          backend = "local";
+        }
+      } else if (res.status === 404) {
+        backend = "local";
       }
-    } catch { /* fall through to the local copy */ }
-    if (backend === "unknown") backend = "local";
+      // Other statuses: possibly a dev-server hiccup — stay "unknown".
+    } catch { /* network error — same: stay "unknown" and re-probe */ }
   }
   return loadLocalPresets();
 }
@@ -206,14 +213,20 @@ export async function savePresets(presets: Presets): Promise<void> {
     await invoke("save_presets", { presets });
     return;
   }
-  if (backend === "server") {
+  if (backend !== "local") {
+    // "server", or still "unknown": try the endpoint, so a failing dev save
+    // throws (network errors propagate) instead of detouring to localStorage.
     const res = await fetch("/api/presets", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(presets, null, 2),
     });
-    if (!res.ok) throw new Error(`presets save failed (${res.status})`);
-    return;
+    if (res.ok) {
+      backend = "server";
+      return;
+    }
+    if (res.status !== 404) throw new Error(`presets save failed (${res.status})`);
+    backend = "local";
   }
   localStorage.setItem(LOCAL_PRESETS_KEY, JSON.stringify(presets));
 }
