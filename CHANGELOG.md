@@ -3,6 +3,13 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.12] - 2026-08-24
+
+- No user-visible changes: hardening around workspace tabs. The rules for
+  where an opened file lands, tab titles for unusual paths, and the OS
+  file-open queue are now pinned by unit tests (including the app's first
+  Rust tests), with small internal refactors to make them testable.
+
 ## [0.1.11] - 2026-08-24
 
 - Workspace tabs: several .label projects can be open at once in one window,

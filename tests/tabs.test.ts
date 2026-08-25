@@ -3,8 +3,8 @@
 // routeFileOpen's focus/reuse/new routing for OS file-opens.
 import { describe, expect, test } from "vitest";
 import {
-  activateTab, addTab, closeTab, initialTabs, isPristine, routeFileOpen,
-  updateTabMeta,
+  activateTab, addTab, closeTab, fileTitle, hiddenEditorPropsEqual,
+  initialTabs, isPristine, routeFileOpen, updateTabMeta,
 } from "@/tabs";
 
 const opened = (path: string) =>
@@ -91,5 +91,46 @@ describe("routeFileOpen", () => {
     expect(routeFileOpen(edited, "/a.label")).toEqual({ open: "new" });
     const backed = updateTabMeta(s0, s0.active, opened("/b.label"));
     expect(routeFileOpen(backed, "/a.label")).toEqual({ open: "new" });
+  });
+
+  test("a busy tab is never reused — two rapid opens can't share an editor", () => {
+    const s = initialTabs();
+    expect(routeFileOpen(s, "/a.label", () => true)).toEqual({ open: "new" });
+    expect(routeFileOpen(s, undefined, (id) => id === s.active)).toEqual({ open: "new" });
+    // busy doesn't affect focus: the path's tab is the right target anyway.
+    const backed = updateTabMeta(s, s.active, opened("/a.label"));
+    expect(routeFileOpen(backed, "/a.label", () => true)).toEqual({ focus: s.active });
+  });
+});
+
+describe("fileTitle", () => {
+  test("strips directories and the extension", () => {
+    expect(fileTitle("/beers/Hazy Test.label")).toBe("Hazy Test");
+  });
+  test("handles Windows separators and uppercase extensions", () => {
+    expect(fileTitle("C:\\beers\\BEER.LABEL")).toBe("BEER");
+    expect(fileTitle("C:\\beers\\Mixed.Label")).toBe("Mixed");
+  });
+  test("passes through a name without the extension", () => {
+    expect(fileTitle("/beers/notes.txt")).toBe("notes.txt");
+  });
+});
+
+describe("hiddenEditorPropsEqual", () => {
+  const props = (over: object) => ({
+    active: false, render: { dpi: 600 }, fileToOpen: null, other: "x", ...over,
+  });
+  test("ignores render churn between two hidden renders", () => {
+    expect(hiddenEditorPropsEqual(props({}), props({ render: { dpi: 300 } }))).toBe(true);
+  });
+  test("render changes still re-render an active editor", () => {
+    expect(hiddenEditorPropsEqual(
+      props({ active: true }), props({ active: true, render: { dpi: 300 } }),
+    )).toBe(false);
+  });
+  test("activation and any other prop change re-render", () => {
+    expect(hiddenEditorPropsEqual(props({}), props({ active: true }))).toBe(false);
+    expect(hiddenEditorPropsEqual(props({}), props({ fileToOpen: { seq: 1 } }))).toBe(false);
+    expect(hiddenEditorPropsEqual(props({}), props({}))).toBe(true);
   });
 });
