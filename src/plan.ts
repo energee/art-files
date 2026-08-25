@@ -88,7 +88,7 @@ export interface PlacedBarcode {
   /** Resolved halo width in points; 0 = no halo at all. */
   readonly S: number;
   readonly fill: Fill;
-  readonly stroke: Fill | "none";
+  readonly stroke: Fill;
   readonly fillLayer: Style["layer"];
   readonly strokeLayer: Style["layer"];
   readonly textSize: number;

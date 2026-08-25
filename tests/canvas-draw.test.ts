@@ -7,10 +7,10 @@ import { drawPlate, type CanvasAssets } from "../src/canvas/draw";
 import { planLabel, type MeasureFace } from "../src/plan";
 import { defaultConfig } from "../src/defaults";
 import { MASK_BLUE_HEX, PAGE } from "../src/layout";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { assets as fixtureAssets } from "./fixtures";
 
-const logoSvg = readFileSync(join(__dirname, "..", "src", "assets", "logo2025.svg"), "utf8");
+// The shared fixture logo — fixtures.ts exists so every suite reads ONE copy.
+const logoSvg = fixtureAssets.logoSvg;
 const m: MeasureFace = (t, size) => t.length * size * 0.5;
 
 /** Records every call and property set, in order, so ordering rules

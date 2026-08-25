@@ -9,7 +9,7 @@
 // which is exactly what the gate exists to prevent.
 import type { Mode, Placed, PlacedBarcode, PlacedText } from "../plan";
 import type { Fill, Style } from "../types";
-import { LABEL_FONT_FAMILY } from "../fonts";
+import { FACE_WEIGHT, LABEL_FONT_FAMILY } from "../fonts";
 import * as L from "../layout";
 
 // TypeScript note: some lib.dom versions lack `letterSpacing` on the 2D
@@ -26,8 +26,6 @@ export interface CanvasAssets {
   collabLeft?: CanvasImageSource | null;
   collabCenter?: CanvasImageSource | null;
 }
-
-const WEIGHT = { regular: 400, semibold: 600, bold: 700 } as const;
 
 /** Art-mode CSS color for a Fill — "none" is no ink, i.e. white, the same
  *  rule as pdf/build.ts's fillColor via parseHexFill. */
@@ -77,11 +75,14 @@ export function drawPlate(
       c.save();
       c.translate(r.x, r.y);
       const paths = r.paths.map((d) => new Path2D(d));
-      // Every stroke path before any fill — the laurel-branch rule.
+      // Every stroke path before any fill — the laurel-branch rule. Unlike
+      // pdf-lib's stroked drawSvgPath (whose one op fills AND strokes), the
+      // stroke pass only strokes: the fill pass below repaints every
+      // interior anyway, so a stroke-colored fill here would be dead paint.
       if (r.stroke) {
         c.strokeStyle = mode === "art" ? cssFill(r.stroke.fill) : cssMask(r.stroke.layer);
         c.lineWidth = 2 * r.stroke.w;
-        for (const p of paths) { c.stroke(p); c.fill(p); }
+        for (const p of paths) c.stroke(p);
       }
       c.fillStyle = mode === "art" ? cssFill(r.fill) : cssMask(r.layer);
       for (const p of paths) c.fill(p);
@@ -99,13 +100,8 @@ export function drawPlate(
   }
 }
 
-// Note the stroke pass above: pdf-lib's stroked `drawSvgPath` fills AND
-// strokes each path in one op (`color` + `borderColor`), so the canvas
-// stroke pass does `stroke(p)` then `fill(p)` per path in stroke color, then
-// the fill pass repaints all fills — same layering result.
-
 function drawText(ctx: Ctx, r: PlacedText, mode: Mode) {
-  ctx.font = `${WEIGHT[r.face]} ${r.size}px ${LABEL_FONT_FAMILY}`;
+  ctx.font = `${FACE_WEIGHT[r.face]} ${r.size}px ${LABEL_FONT_FAMILY}`;
   // Tracking in points: under the pt-scaled transform, user-space px ARE
   // points. Canvas letterSpacing also gaps after the final glyph, but that
   // is advance, not ink — run positions come from the plan, so it cannot
@@ -133,10 +129,10 @@ function drawBarcode(ctx: Ctx, item: PlacedBarcode, mode: Mode) {
     ctx.translate(d.x, d.y);
     ctx.rotate(-Math.PI / 2);
     if (paint === "fill") ctx.fillText(d.text, 0, 0);
-    else { ctx.strokeText(d.text, 0, 0); ctx.fillText(d.text, 0, 0); }
+    else ctx.strokeText(d.text, 0, 0); // ink pass repaints the glyph body
     ctx.restore();
   };
-  ctx.font = `${WEIGHT.regular} ${item.textSize}px ${LABEL_FONT_FAMILY}`;
+  ctx.font = `${FACE_WEIGHT.regular} ${item.textSize}px ${LABEL_FONT_FAMILY}`;
   ctx.letterSpacing = "0px";
 
   if (mode === "mask") {
@@ -159,18 +155,16 @@ function drawBarcode(ctx: Ctx, item: PlacedBarcode, mode: Mode) {
 
   const bars = item.geo.bars;
   if (item.S > 0) {
-    const sc = cssFill(item.stroke === "none" ? "none" : item.stroke);
-    ctx.fillStyle = sc;
-    ctx.strokeStyle = sc;
+    // Halo only: the ink pass below repaints every bar body and digit, so
+    // this pass strokes without filling (dead paint otherwise).
+    ctx.strokeStyle = cssFill(item.stroke);
     ctx.lineWidth = 2 * item.S;
     // EVERY stroke shape before ANY fill — interleaving distorts module
     // widths until the code stops decoding (see pdf/build.ts).
-    for (const b of bars) { ctx.fillRect(b.x, b.yTop, b.w, b.h); ctx.strokeRect(b.x, b.yTop, b.w, b.h); }
+    for (const b of bars) ctx.strokeRect(b.x, b.yTop, b.w, b.h);
     for (const d of item.digits) digit(d, "stroke");
   }
-  const ink = cssFill(item.fill);
-  ctx.fillStyle = ink;
-  ctx.strokeStyle = ink;
+  ctx.fillStyle = cssFill(item.fill);
   for (const b of bars) ctx.fillRect(b.x, b.yTop, b.w, b.h);
   for (const d of item.digits) digit(d, "fill");
 }

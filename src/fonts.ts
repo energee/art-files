@@ -15,6 +15,11 @@ import type { MeasureFace } from "./plan";
  *  editor). Weights: 400 regular, 600 semibold, 700 the name's true Bold. */
 export const LABEL_FONT_FAMILY = "LabelFont";
 
+/** CSS weight per plan face. Measure and draw MUST agree on this mapping —
+ *  a mismatch silently mismeasures or misdraws — so it lives once, beside
+ *  the family it styles, and both loadLabelFaces and canvas/draw import it. */
+export const FACE_WEIGHT = { regular: 400, semibold: 600, bold: 700 } as const;
+
 let measurePromise: Promise<Measure> | null = null;
 
 /** Memoized; a failed load clears the memo so the next caller retries.
@@ -46,14 +51,23 @@ export function loadLabelFont(): Promise<Measure> {
  *  at their true weights (unlike Measure's bold-boolean approximation, which
  *  hit boxes keep for compatibility). The canvas renderer places with THIS,
  *  so what it measures is what it draws. */
+let facesPromise: Promise<MeasureFace> | null = null;
+
 export function loadLabelFaces(): Promise<MeasureFace> {
-  return loadLabelFont().then(() => {
+  if (facesPromise) return facesPromise;
+  // Memoized like loadLabelFont: callers sit on hot paths (the dev preview
+  // effect re-asks per rebuild), and the measurement canvas is reusable.
+  const p: Promise<MeasureFace> = loadLabelFont().then((): MeasureFace => {
     const ctx = document.createElement("canvas").getContext("2d");
     if (!ctx) throw new Error("Could not create the font measurement canvas.");
-    const weight = { regular: 400, semibold: 600, bold: 700 } as const;
     return (text, size, face) => {
-      ctx.font = `${weight[face]} ${size}px ${LABEL_FONT_FAMILY}`;
+      ctx.font = `${FACE_WEIGHT[face]} ${size}px ${LABEL_FONT_FAMILY}`;
       return ctx.measureText(text).width;
     };
+  }).catch((error) => {
+    facesPromise = null;
+    throw error;
   });
+  facesPromise = p;
+  return p;
 }
