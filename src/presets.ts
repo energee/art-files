@@ -1,8 +1,10 @@
 // presets.ts — the reusable style and barcode library, read from and written
 // back to presets.json through the Vite dev server in a browser or through the
-// native Tauri backend in Label Lab. Deliberately NOT localStorage: presets
-// have to survive a cleared browser profile, and browser development keeps a
-// file in git that can be reviewed, diffed, and restored.
+// native Tauri backend in Label Lab. Deliberately file-first, NOT localStorage:
+// presets have to survive a cleared browser profile, and browser development
+// keeps a file in git that can be reviewed, diffed, and restored. localStorage
+// is only the fallback store for a browser build with neither backend, where
+// the alternative is no persistence at all.
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useSyncExternalStore } from "react";
 import { DESIGN_DPI, LABEL_SHORT_IN } from "@/layout";
@@ -149,20 +151,59 @@ export function normalizePresets(raw: Partial<Presets>): Presets {
   };
 }
 
-/** Read the library. Label Lab uses its writable application-config copy;
- *  browser development uses Vite's repo-backed endpoint. Returns empty rather
- *  than breaking the inspector when neither storage boundary is available. */
-export async function loadPresets(): Promise<Presets> {
+/** The browser fallback store, same JSON shape as presets.json. */
+export const LOCAL_PRESETS_KEY = "labellab.presets";
+
+// Which store a browser session talks to. "local" is latched only by a
+// definitive missing-endpoint signal (a 404, or a static host's SPA fallback
+// answering HTML) so localStorage writes stop re-attempting a fetch known to
+// fail. A network error or 5xx could be the dev server mid-restart, so it
+// leaves the state "unknown" and the next load re-probes — and an "unknown"
+// save still tries the endpoint, keeping the throw-on-failure contract: a dev
+// save that vanishes must be a visible error, never a silent localStorage
+// detour.
+let backend: "unknown" | "server" | "local" = "unknown";
+
+function loadLocalPresets(): Presets {
   try {
-    if (isTauri()) {
-      return normalizePresets(await invoke<Partial<Presets>>("load_presets"));
-    }
-    const res = await fetch("/api/presets");
-    if (!res.ok) return EMPTY_PRESETS;
-    return normalizePresets((await res.json()) as Partial<Presets>);
+    const raw = localStorage.getItem(LOCAL_PRESETS_KEY);
+    return raw ? normalizePresets(JSON.parse(raw) as Partial<Presets>) : EMPTY_PRESETS;
   } catch {
     return EMPTY_PRESETS;
   }
+}
+
+/** Read the library. Label Lab uses its writable application-config copy;
+ *  browser development uses Vite's repo-backed endpoint; a browser build
+ *  without either falls back to this profile's localStorage copy. */
+export async function loadPresets(): Promise<Presets> {
+  if (isTauri()) {
+    try {
+      return normalizePresets(await invoke<Partial<Presets>>("load_presets"));
+    } catch {
+      return EMPTY_PRESETS;
+    }
+  }
+  if (backend !== "local") {
+    try {
+      const res = await fetch("/api/presets");
+      if (res.ok) {
+        try {
+          const parsed = normalizePresets((await res.json()) as Partial<Presets>);
+          backend = "server";
+          return parsed;
+        } catch {
+          // 200 with a non-JSON body is a static host's SPA fallback —
+          // definitively not the endpoint.
+          backend = "local";
+        }
+      } else if (res.status === 404) {
+        backend = "local";
+      }
+      // Other statuses: possibly a dev-server hiccup — stay "unknown".
+    } catch { /* network error — same: stay "unknown" and re-probe */ }
+  }
+  return loadLocalPresets();
 }
 
 /** Write the whole library back. Throws with a message the caller can show:
@@ -172,12 +213,22 @@ export async function savePresets(presets: Presets): Promise<void> {
     await invoke("save_presets", { presets });
     return;
   }
-  const res = await fetch("/api/presets", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(presets, null, 2),
-  });
-  if (!res.ok) throw new Error(`presets save failed (${res.status})`);
+  if (backend !== "local") {
+    // "server", or still "unknown": try the endpoint, so a failing dev save
+    // throws (network errors propagate) instead of detouring to localStorage.
+    const res = await fetch("/api/presets", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(presets, null, 2),
+    });
+    if (res.ok) {
+      backend = "server";
+      return;
+    }
+    if (res.status !== 404) throw new Error(`presets save failed (${res.status})`);
+    backend = "local";
+  }
+  localStorage.setItem(LOCAL_PRESETS_KEY, JSON.stringify(presets));
 }
 
 // ---------------------------------------------------------------------------

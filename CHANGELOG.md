@@ -3,6 +3,19 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.13] - 2026-08-25
+
+- Update dialog polish: release notes render with styled headings and bullets
+  instead of raw markdown text, the release date sits next to the version in
+  the header, the download shows a themed progress bar with "X MB of Y MB",
+  and a manual update check shows a spinner while it looks for a release.
+- Switches match the current shadcn look — larger track and thumb — and turn
+  royal blue when on instead of purple.
+- The document Settings layer now uses a gear icon.
+- Presets persist in the browser: a build with neither the desktop backend nor
+  the dev server now saves the library to localStorage instead of losing it.
+  Desktop and dev storage are unchanged.
+
 ## [0.1.12] - 2026-08-24
 
 - No user-visible changes: hardening around workspace tabs. The rules for
