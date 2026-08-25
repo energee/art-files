@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { lineRuns, rotatedRuns, justifiedRotatedRuns, type MeasureFace } from "../src/plan";
+import { lineRuns, rotatedRuns, justifiedRotatedRuns, planLabel, type MeasureFace } from "../src/plan";
+import * as L from "../src/layout";
+import { defaultConfig } from "../src/defaults";
 
 // Deterministic fake metrics: 0.5pt per char per size unit, bold faces 10% wider.
 const m: MeasureFace = (text, size, face) =>
@@ -79,5 +81,59 @@ describe("justifiedRotatedRuns", () => {
       "ALCOHOL", m, { x: 520, yStart: 300, size: 5, maxLen: 100, base: "regular" });
     expect(runs).toHaveLength(1);
     expect(runs[0].w).toBeCloseTo(m("ALCOHOL", 5, "regular"));
+  });
+});
+
+describe("planLabel", () => {
+  const cfg = defaultConfig();
+
+  it("emits every text element of a default config, in draw order", () => {
+    const ids = [...new Set(planLabel(cfg, m).map((r) => r.id))];
+    expect(ids).toEqual([
+      "volume", "abv", "description", "wordmark", "name", "styleLine",
+      "handleAddress", "warning", "storeCold",
+    ]);
+  });
+
+  it("skip removes an element without moving its neighbours", () => {
+    const all = planLabel(cfg, m);
+    const skipped = planLabel(cfg, m, { skip: new Set<import("../src/elements").ElementId>(["abv"]) });
+    expect(skipped.some((r) => r.id === "abv")).toBe(false);
+    const others = (rs: typeof all) => rs.filter((r) => r.id !== "abv");
+    expect(others(skipped)).toEqual(others(all));
+  });
+
+  it("the ABV line is the display string, not the raw config field", () => {
+    const abv = planLabel(cfg, m).filter((r) => r.id === "abv");
+    expect(abv.map((r) => r.text).join("")).toContain("% alc by vol");
+  });
+
+  it("name and wordmark are forced to the Bold face and the name is uppercased", () => {
+    const c = { ...defaultConfig(), beerName: "hazy" };
+    const name = planLabel(c, m).filter((r) => r.id === "name");
+    expect(name.every((r) => r.face === "bold")).toBe(true);
+    expect(name.map((r) => r.text).join("")).toBe("HAZY");
+  });
+
+  it("collabLead appears only with the switch on AND a left slot filled", () => {
+    const on = { ...defaultConfig(), collabEnabled: true };
+    expect(planLabel(on, m).some((r) => r.id === "collabLead")).toBe(false);
+    expect(planLabel(on, m, { collab: { left: true, center: false } })
+      .some((r) => r.id === "collabLead")).toBe(true);
+  });
+
+  it("every warning column with 2+ words justifies to exactly maxLen", () => {
+    const byColumn = new Map<number, { start: number; end: number; words: number }>();
+    for (const r of planLabel(cfg, m).filter((r) => r.id === "warning")) {
+      const col = byColumn.get(r.x) ?? { start: -Infinity, end: Infinity, words: 0 };
+      byColumn.set(r.x, {
+        start: Math.max(col.start, r.y), end: Math.min(col.end, r.y - r.w),
+        words: col.words + 1,
+      });
+    }
+    expect(byColumn.size).toBeGreaterThan(1);
+    for (const col of byColumn.values())
+      if (col.words >= 2)
+        expect(col.start - col.end).toBeCloseTo(L.WARNING.maxLen, 5);
   });
 });
