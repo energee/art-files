@@ -139,15 +139,14 @@ export default function TabsShell() {
 
   /** Both open entry points land here; tabs.ts's routeFileOpen is the one
    *  spelling of the rule (focus the tab already holding the path, reuse a
-   *  pristine active tab, else a new tab — which addTab self-activates).
-   *  A "reuse" of a tab that already has a queued or delivered open is
-   *  demoted to a new tab: two opens must never share one editor, and a
-   *  browser handle-open leaves no filePath to break pristineness. */
+   *  pristine UNCLAIMED active tab, else a new tab — which addTab
+   *  self-activates). The busy predicate is "has a queued open": see
+   *  routeFileOpen's doc for why such tabs are never reused. */
   const openRouted = (fo: Omit<FileToOpen, "seq">) => {
     const s = stateRef.current;
-    const route = routeFileOpen(s, fo.path);
+    const route = routeFileOpen(s, fo.path, (id) => !!pendingRef.current[id]);
     if ("focus" in route) return setState((st) => activateTab(st, route.focus));
-    if ("reuse" in route && !pendingRef.current[route.reuse]) {
+    if ("reuse" in route) {
       queueOpen(route.reuse, fo);
       return setState((st) => activateTab(st, route.reuse));
     }

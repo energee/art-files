@@ -1,10 +1,13 @@
-// tabs.ts — pure tab-strip state for the workspace shell (TabsShell.tsx).
-// Data + transition functions with no React, like history.ts: the shell
-// owns a TabsState in useState and applies these on user events. Editors
-// report TabMeta upward through onMeta; the shell never reaches into
-// editor internals.
+// tabs.ts — pure workspace-tab logic for the shell (TabsShell.tsx): the
+// tab-strip state machine plus the shell/editor contract helpers, all
+// plain functions importing no React (like history.ts), so every rule is
+// testable without a DOM renderer. The shell owns a TabsState in useState
+// and applies the transitions on user events. Editors report TabMeta
+// upward through onMeta; the shell never reaches into editor internals.
+import { LABEL_EXT } from "@/labelfile";
+
 export type TabMeta = {
-  title: string;            // file basename or exportBaseName; "Untitled" default
+  title: string;            // fileTitle(filePath) or the beer name as typed; "Untitled" default
   dirty: boolean;           // the editor's dirty flag (Save enabled)
   edited: boolean;          // any user mutation since mount/open — gates close prompts
   filePath: string | null;  // Tauri path identity, for OS-open dedupe
@@ -59,14 +62,49 @@ export const isPristine = (t: Tab) => !t.edited && !t.filePath;
 /** Where an opened .label lands: the tab already holding that path (OS
  *  opens carry one; picker opens without a path skip this), else a pristine
  *  active tab, else a new tab. The ONE spelling of the routing rule — both
- *  of the shell's open entry points go through it. */
+ *  of the shell's open entry points go through it.
+ *  `busy` marks tabs already spoken for (the shell passes "has a queued
+ *  open"): a busy tab is never reused, so two rapid opens can't share one
+ *  editor — and a browser handle-open, which leaves no filePath to break
+ *  pristineness, still claims its tab. */
 export type OpenRoute = { focus: number } | { reuse: number } | { open: "new" };
-export function routeFileOpen(s: TabsState, path?: string): OpenRoute {
+export function routeFileOpen(
+  s: TabsState, path?: string, busy?: (id: number) => boolean,
+): OpenRoute {
   if (path) {
     const existing = s.tabs.find((t) => t.filePath === path);
     if (existing) return { focus: existing.id };
   }
   const active = s.tabs.find((t) => t.id === s.active);
-  if (active && isPristine(active)) return { reuse: active.id };
+  if (active && isPristine(active) && !busy?.(active.id)) return { reuse: active.id };
   return { open: "new" };
+}
+
+/** A .label path's display title: basename with the extension stripped,
+ *  handling both separator styles (a Tauri path can be Windows-style) and
+ *  any extension casing (the OS accepts .LABEL — see main.rs's argv
+ *  filter and the fs-scope variants in capabilities/default.json). */
+export const fileTitle = (path: string) => {
+  const name = path.split(/[\\/]/).pop()!;
+  return name.toLowerCase().endsWith(LABEL_EXT) ? name.slice(0, -LABEL_EXT.length) : name;
+};
+
+/** Builds DocumentEditor's memo comparator (the editor passes the result
+ *  to React.memo): shallow compare, except `ignoredWhenHidden` between two
+ *  HIDDEN renders — DPI/bleed scrubs replace the render-settings object per
+ *  frame and a hidden editor has no use for it (its build effect bails on
+ *  !active; it repaints on activation). A factory taking `keyof P`, not a
+ *  hardcoded string: the caller names the ignored prop against its real
+ *  props type, so renaming that prop fails to compile instead of silently
+ *  degrading the bail. */
+export function makeHiddenPropsEqual<P extends { active: boolean }>(
+  ignoredWhenHidden: keyof P & string,
+) {
+  return (prev: P, next: P): boolean => {
+    for (const key of Object.keys(next) as (keyof P)[]) {
+      if (key === ignoredWhenHidden && !prev.active && !next.active) continue;
+      if (!Object.is(prev[key], next[key])) return false;
+    }
+    return true;
+  };
 }

@@ -20,6 +20,7 @@ import { strToU8 } from "fflate";
 import { LABEL_EXT, packLabel, unpackLabel } from "@/labelfile";
 import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
+import { fileTitle, makeHiddenPropsEqual } from "@/tabs";
 import { validateUpc } from "@/upc";
 import { mimeFor, rasterKind, tintRgba } from "@/collab";
 // The builders are imported dynamically at export time (see downloadPdfs /
@@ -365,12 +366,6 @@ type DocumentEditorProps = {
    *  menubar row — inside the editor because the sidebar is fixed-position
    *  and would overlap (and float over) any strip above the whole shell. */
   tabStrip: React.ReactNode;
-};
-
-/** A .label path's display title: basename, extension stripped. */
-const fileTitle = (path: string) => {
-  const name = path.split(/[\\/]/).pop()!;
-  return name.toLowerCase().endsWith(LABEL_EXT) ? name.slice(0, -LABEL_EXT.length) : name;
 };
 
 // memo is load-bearing, not an optimization garnish: every keystroke in any
@@ -1794,14 +1789,4 @@ export const DocumentEditor = memo(function DocumentEditor({
       </SidebarProvider>
     </TooltipProvider>
   );
-}, (prev, next) => {
-  // Shallow compare, except `render` on a hidden editor: DPI/bleed scrubs
-  // replace that object per frame, and a hidden editor has no use for it —
-  // its build effect bails on !active and it repaints on activation anyway.
-  // Everything else identity-stable is the shell's side of the contract.
-  for (const key of Object.keys(next) as (keyof DocumentEditorProps)[]) {
-    if (key === "render" && !prev.active && !next.active) continue;
-    if (!Object.is(prev[key], next[key])) return false;
-  }
-  return true;
-});
+}, makeHiddenPropsEqual<DocumentEditorProps>("render"));

@@ -75,6 +75,18 @@ fn relaunch_app(app: tauri::AppHandle) {
  * ready and again on each "project-file-opened" emit. */
 struct OpenedFile(Mutex<Vec<PathBuf>>);
 
+impl OpenedFile {
+    /** Pop the oldest queued path — FIFO, so files open in the order the
+     * OS delivered them. Plain method (not the command) so tests reach it. */
+    fn take(&self) -> Option<String> {
+        let mut queue = self.0.lock().unwrap();
+        if queue.is_empty() {
+            return None;
+        }
+        Some(queue.remove(0).to_string_lossy().into_owned())
+    }
+}
+
 /** Every .label path among command-line arguments — how Windows and Linux
  * deliver file-association opens (multi-select Open delivers several). The
  * extension match is the filter: it skips the exe path in args[0] and any
@@ -104,11 +116,7 @@ fn deliver_opened_file(app: &tauri::AppHandle, path: PathBuf) {
  * returns null, so one emit can drain several deliveries. */
 #[tauri::command]
 fn take_opened_file(state: tauri::State<OpenedFile>) -> Option<String> {
-    let mut queue = state.0.lock().unwrap();
-    if queue.is_empty() {
-        return None;
-    }
-    Some(queue.remove(0).to_string_lossy().into_owned())
+    state.take()
 }
 
 fn main() {
@@ -175,4 +183,51 @@ fn main() {
             #[cfg(not(target_os = "macos"))]
             let _ = (app, event);
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn argv_filter_collects_every_label_path_in_order() {
+        let paths = label_paths_from_args(args(&[
+            "/usr/bin/label-lab", // argv[0]: no .label extension, skipped
+            "--flag",
+            "/beers/a.label",
+            "/beers/b.label",
+        ]));
+        assert_eq!(
+            paths,
+            vec![PathBuf::from("/beers/a.label"), PathBuf::from("/beers/b.label")]
+        );
+    }
+
+    #[test]
+    fn argv_filter_matches_the_extension_case_insensitively() {
+        let paths = label_paths_from_args(args(&["exe", "/x/BEER.LABEL", "/x/Mixed.Label"]));
+        assert_eq!(paths.len(), 2);
+    }
+
+    #[test]
+    fn argv_filter_yields_nothing_without_label_paths() {
+        assert!(label_paths_from_args(args(&["exe", "--flag", "notes.txt"])).is_empty());
+    }
+
+    #[test]
+    fn opened_file_queue_is_fifo_and_drains_to_none() {
+        let state = OpenedFile(Mutex::new(vec![
+            PathBuf::from("/a.label"),
+            PathBuf::from("/b.label"),
+        ]));
+        state.0.lock().unwrap().push(PathBuf::from("/c.label"));
+        assert_eq!(state.take().as_deref(), Some("/a.label"));
+        assert_eq!(state.take().as_deref(), Some("/b.label"));
+        assert_eq!(state.take().as_deref(), Some("/c.label"));
+        assert_eq!(state.take(), None);
+    }
 }
