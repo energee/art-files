@@ -5,7 +5,7 @@
 // or document knobs, not Style objects.
 import {
   Barcode, Handshake, Hexagon, Image, ImagePlus, QrCode, Scan,
-  Settings2, Type, type LucideIcon,
+  Settings, Type, type LucideIcon,
 } from "lucide-react";
 import { ELEMENTS, type ElementId } from "@/elements";
 
@@ -36,7 +36,7 @@ export const LAYER_ICONS: Record<LayerId, LucideIcon> = {
   storeCold: Type,
   background: Image,
   mask: Scan,
-  settings: Settings2,
+  settings: Settings,
 };
 
 export const DOC_LAYER_LABELS: Record<DocLayerId, string> = {
