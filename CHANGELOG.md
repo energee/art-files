@@ -3,6 +3,18 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.15] - 2026-08-25
+
+- Fixed hidden tabs reverting the shared DPI and bleed settings during
+  background re-renders, which could skew rulers, size readouts, and exports
+  until the active tab refreshed.
+- Typing the beer name no longer re-renders the whole editor twice per
+  keystroke to retitle the tab.
+- Double-clicking a .label file twice in quick succession now focuses the tab
+  already opening it instead of opening the same file in two tabs.
+- Closing the window right after changing Document Settings no longer loses
+  that change — the pending save completes before the window closes.
+
 ## [0.1.14] - 2026-08-25
 
 - Fixed the preview losing its image with "Preview asset bytes were not sent
