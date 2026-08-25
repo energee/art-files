@@ -3,8 +3,8 @@
 // routeFileOpen's focus/reuse/new routing for OS file-opens.
 import { describe, expect, test } from "vitest";
 import {
-  activateTab, addTab, closeTab, fileTitle, hiddenEditorPropsEqual,
-  initialTabs, isPristine, routeFileOpen, updateTabMeta,
+  activateTab, addTab, closeTab, fileTitle, initialTabs, isPristine,
+  makeHiddenPropsEqual, routeFileOpen, updateTabMeta,
 } from "@/tabs";
 
 const opened = (path: string) =>
@@ -116,10 +116,11 @@ describe("fileTitle", () => {
   });
 });
 
-describe("hiddenEditorPropsEqual", () => {
+describe("makeHiddenPropsEqual", () => {
   const props = (over: object) => ({
-    active: false, render: { dpi: 600 }, fileToOpen: null, other: "x", ...over,
+    active: false, render: { dpi: 600 }, fileToOpen: null as unknown, other: "x", ...over,
   });
+  const hiddenEditorPropsEqual = makeHiddenPropsEqual<ReturnType<typeof props>>("render");
   test("ignores render churn between two hidden renders", () => {
     expect(hiddenEditorPropsEqual(props({}), props({ render: { dpi: 300 } }))).toBe(true);
   });

@@ -20,7 +20,7 @@ import { strToU8 } from "fflate";
 import { LABEL_EXT, packLabel, unpackLabel } from "@/labelfile";
 import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
-import { fileTitle, hiddenEditorPropsEqual } from "@/tabs";
+import { fileTitle, makeHiddenPropsEqual } from "@/tabs";
 import { validateUpc } from "@/upc";
 import { mimeFor, rasterKind, tintRgba } from "@/collab";
 // The builders are imported dynamically at export time (see downloadPdfs /
@@ -1789,4 +1789,4 @@ export const DocumentEditor = memo(function DocumentEditor({
       </SidebarProvider>
     </TooltipProvider>
   );
-}, hiddenEditorPropsEqual);
+}, makeHiddenPropsEqual<DocumentEditorProps>("render"));

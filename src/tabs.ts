@@ -1,12 +1,13 @@
-// tabs.ts — pure tab-strip state for the workspace shell (TabsShell.tsx).
-// Data + transition functions with no React, like history.ts: the shell
-// owns a TabsState in useState and applies these on user events. Editors
-// report TabMeta upward through onMeta; the shell never reaches into
-// editor internals.
+// tabs.ts — pure workspace-tab logic for the shell (TabsShell.tsx): the
+// tab-strip state machine plus the shell/editor contract helpers, all
+// plain functions importing no React (like history.ts), so every rule is
+// testable without a DOM renderer. The shell owns a TabsState in useState
+// and applies the transitions on user events. Editors report TabMeta
+// upward through onMeta; the shell never reaches into editor internals.
 import { LABEL_EXT } from "@/labelfile";
 
 export type TabMeta = {
-  title: string;            // file basename or exportBaseName; "Untitled" default
+  title: string;            // fileTitle(filePath) or the beer name as typed; "Untitled" default
   dirty: boolean;           // the editor's dirty flag (Save enabled)
   edited: boolean;          // any user mutation since mount/open — gates close prompts
   filePath: string | null;  // Tauri path identity, for OS-open dedupe
@@ -88,17 +89,22 @@ export const fileTitle = (path: string) => {
   return name.toLowerCase().endsWith(LABEL_EXT) ? name.slice(0, -LABEL_EXT.length) : name;
 };
 
-/** DocumentEditor's memo comparator (the editor passes it to React.memo):
- *  shallow compare, except `render` between two HIDDEN renders — DPI/bleed
- *  scrubs replace that object per frame and a hidden editor has no use for
- *  it (its build effect bails on !active; it repaints on activation). Pure
- *  and exported so the hidden-editor bail rule is testable. */
-export function hiddenEditorPropsEqual<P extends { active: boolean; render: unknown }>(
-  prev: P, next: P,
-): boolean {
-  for (const key of Object.keys(next) as (keyof P)[]) {
-    if (key === "render" && !prev.active && !next.active) continue;
-    if (!Object.is(prev[key], next[key])) return false;
-  }
-  return true;
+/** Builds DocumentEditor's memo comparator (the editor passes the result
+ *  to React.memo): shallow compare, except `ignoredWhenHidden` between two
+ *  HIDDEN renders — DPI/bleed scrubs replace the render-settings object per
+ *  frame and a hidden editor has no use for it (its build effect bails on
+ *  !active; it repaints on activation). A factory taking `keyof P`, not a
+ *  hardcoded string: the caller names the ignored prop against its real
+ *  props type, so renaming that prop fails to compile instead of silently
+ *  degrading the bail. */
+export function makeHiddenPropsEqual<P extends { active: boolean }>(
+  ignoredWhenHidden: keyof P & string,
+) {
+  return (prev: P, next: P): boolean => {
+    for (const key of Object.keys(next) as (keyof P)[]) {
+      if (key === ignoredWhenHidden && !prev.active && !next.active) continue;
+      if (!Object.is(prev[key], next[key])) return false;
+    }
+    return true;
+  };
 }
