@@ -1,7 +1,7 @@
 # ci.yml — type-check and frontend unit tests for every PR and push to main.
-# Runs in the node:lts-alpine container: node is preinstalled (no setup-node
-# step) and the image pull is a few tens of MB. Rust tests are not run here —
-# release.yml compiles the backend on tags.
+# Runs on the runner's preinstalled Node (no container, no setup-node: both
+# only added seconds). Rust tests are not run here — release.yml compiles
+# the backend on tags.
 name: Tests
 
 on:
@@ -12,7 +12,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    container: node:lts-alpine
     steps:
       - uses: actions/checkout@v4
       - run: npm ci
