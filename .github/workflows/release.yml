@@ -17,16 +17,26 @@ concurrency:
 
 jobs:
   release:
-    name: macOS ${{ matrix.arch }}
-    runs-on: macos-latest
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: Apple Silicon
+          - name: macOS Apple Silicon
+            os: macos-latest
             target: aarch64-apple-darwin
-          - arch: Intel
+          - name: macOS Intel
+            os: macos-latest
             target: x86_64-apple-darwin
+          - name: Windows x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+          # ubuntu-24.04's glibc 2.39 sets the AppImage's floor — fine for the
+          # supported Debian 13 (glibc 2.41), too new for e.g. Ubuntu 22.04.
+          - name: Linux x64
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
 
     steps:
       - uses: actions/checkout@v7
@@ -52,9 +62,16 @@ jobs:
         id: release-notes
         run: node scripts/release-notes.mjs --github-output
 
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev \
+            libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: ${{ matrix.target }}
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -89,7 +106,9 @@ jobs:
   # The repo is private, so installed apps cannot read its release assets.
   # Copy just the update feed (latest.json + updater archives + signatures) to
   # the public GitHub Pages site; DMGs for manual install stay on the private
-  # release page.
+  # release page. On Windows/Linux the updater artifact IS the installer
+  # (-setup.exe / .AppImage), so those land on Pages too — acceptable, since
+  # the whole feed is already reachable only by the unguessable site URL.
   publish-update-feed:
     name: Publish update feed to Pages
     needs: release
@@ -110,7 +129,11 @@ jobs:
           gh release download --repo "$GITHUB_REPOSITORY" --dir site \
             --pattern 'latest.json' \
             --pattern '*.app.tar.gz' \
-            --pattern '*.app.tar.gz.sig'
+            --pattern '*.app.tar.gz.sig' \
+            --pattern '*.AppImage' \
+            --pattern '*.AppImage.sig' \
+            --pattern '*-setup.exe' \
+            --pattern '*-setup.exe.sig'
 
       - name: Point latest.json at the Pages copies
         # The release's own URLs are API asset ids (the repo is private), so
@@ -118,9 +141,14 @@ jobs:
         run: |
           aarch64=$(basename site/*_aarch64.app.tar.gz)
           x64=$(basename site/*_x64.app.tar.gz)
+          appimage=$(basename site/*.AppImage)
+          nsis=$(basename site/*-setup.exe)
           jq --arg aarch64 "$aarch64" --arg x64 "$x64" \
+             --arg appimage "$appimage" --arg nsis "$nsis" \
             '.platforms |= with_entries(.value.url = ("https://energ.ee/art-files/" +
-              (if .key | startswith("darwin-aarch64") then $aarch64 else $x64 end)))' \
+              ({ "darwin-aarch64": $aarch64, "darwin-x86_64": $x64,
+                 "linux-x86_64": $appimage, "windows-x86_64": $nsis
+               }[.key] // error("no artifact mapped for platform " + .key))))' \
             site/latest.json > site/latest.json.tmp
           mv site/latest.json.tmp site/latest.json
 
