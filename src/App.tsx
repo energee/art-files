@@ -73,8 +73,8 @@ import type { CanvasAssets, CanvasRenderSource } from "@/canvas/draw";
 import logoSvg from "@/assets/logo2025.svg?raw";
 
 /** bytes = full print resolution (exports); previewBytes = downscaled PNG the
- *  debounced preview builds use, so keystroke-driven rebuilds never churn the
- *  print-size image (a burst of those OOMs the tab). Neither is necessarily
+ *  assembly effect decodes into a bitmap, so keystroke-driven rebuilds never
+ *  churn the print-size image (a burst of those OOMs the tab). Neither is necessarily
  *  the original file bytes: the mask's `bytes` is recolored (see onMask), so
  *  it carries an extra `srcBytes` — the untouched upload — for Save Project
  *  to round-trip without double-processing on reload. */
@@ -389,8 +389,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const elementSelection = useMemo(() => selected.filter(isElementId), [selected]);
   // Layers the panel's eye has hidden — session state, deliberately outside
   // the config/history: a saved label never records a hidden layer, and
-  // toggling an eye is not an undoable document edit. Flows into
-  // Assets.hidden, where the renderer skips the element in both plates.
+  // toggling an eye is not an undoable document edit. Exports fold it into
+  // Assets.hidden directly; the preview folds it into the skip set instead
+  // (see `skip` below), so both draw the same omissions from one source.
   const [hiddenLayers, setHiddenLayers] = useState<ReadonlySet<HideableLayerId>>(new Set());
   // The element being edited in place on the preview, if any (reported by
   // PreviewCompare). While set, planLabel skips it via the render flag (see
@@ -432,9 +433,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Divider position reported by PreviewCompare (% of width showing
   // white-ink), so the View menu can check off whichever end it sits at.
   const [split, setSplit] = useState(0);
-  // "2d" = the PDF compare view; the rest are CanView's three.js modes. The
-  // 2D preview stays mounted (hidden) so its rendered canvases and divider
-  // position survive a round-trip through the 3D views.
+  // "2d" = the canvas-backend compare view; the rest are CanView's three.js
+  // modes. The 2D preview stays mounted (hidden) so its rendered canvases and
+  // divider position survive a round-trip through the 3D views.
   const [viewMode, setViewMode] = useState<"2d" | "can" | "pack" | "flat">("2d");
   // Preview pane zoom: scale `z` about the pane's top-left, then offset by
   // (x, y) screen px. z === 1 is the fitted view, and the clamp in the wheel
@@ -878,9 +879,9 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** The texture/mask half of Assets, with the eyes applied by omission: a
    *  hidden asset simply isn't handed to the build, same as never dropped.
-   *  The ONE place both the eye rule and the byte choice live — the preview
-   *  build spreads eyedAssets(true) (downscaled preview bytes), the export
-   *  build eyedAssets(false) (full-resolution). */
+   *  The ONE place both the eye rule and the byte choice live — the assembly
+   *  effect below spreads eyedAssets(true) (downscaled preview bytes), the
+   *  export build eyedAssets(false) (full-resolution). */
   const eyedAssets = (preview: boolean) => ({
     texture: !texture || hiddenLayers.has("background") ? undefined
       : preview
@@ -906,22 +907,43 @@ export const DocumentEditor = memo(function DocumentEditor({
     const timer = setTimeout(() => {
       (async () => {
         const m = await loadLabelFaces();
-        const bitmap = async (bytes: Uint8Array | undefined) =>
-          bytes ? await createImageBitmap(new Blob([bytes as BlobPart])) : null;
+        // Every decode this run makes is tracked here, so a throw partway
+        // through (a later await failing after an earlier one already
+        // decoded a bitmap) can still close everything decoded so far —
+        // only the fully-published drawAssets is otherwise reachable to
+        // close, and a throw never reaches that assignment.
+        const decoded: ImageBitmap[] = [];
+        const bitmap = async (bytes: Uint8Array | undefined) => {
+          if (!bytes) return null;
+          const bmp = await createImageBitmap(new Blob([bytes as BlobPart]));
+          decoded.push(bmp);
+          return bmp;
+        };
         const { collabLeft: cl, collabCenter: cc } = await collabAssets();
         const slot = async (img: CollabImage | null | undefined) => {
           if (!img) return { art: null, image: null };
           if (img.kind === "svg") return { art: img, image: null };
           const bmp = await createImageBitmap(new Blob([img.bytes as BlobPart]));
+          decoded.push(bmp);
           return { art: { kind: "raster" as const, w: bmp.width, h: bmp.height }, image: bmp };
         };
-        const [left, center] = await Promise.all([slot(cl), slot(cc)]);
-        const eyed = eyedAssets(true);
-        const drawAssets: CanvasAssets = {
-          texture: await bitmap(eyed.texture?.bytes),
-          maskImage: await bitmap(eyed.maskPng),
-          collabLeft: left.image, collabCenter: center.image,
-        };
+        let drawAssets: CanvasAssets;
+        let left: Awaited<ReturnType<typeof slot>>, center: Awaited<ReturnType<typeof slot>>;
+        try {
+          [left, center] = await Promise.all([slot(cl), slot(cc)]);
+          const eyed = eyedAssets(true);
+          drawAssets = {
+            texture: await bitmap(eyed.texture?.bytes),
+            maskImage: await bitmap(eyed.maskPng),
+            collabLeft: left.image, collabCenter: center.image,
+          };
+        } catch (err) {
+          // A later decode failed after an earlier one landed: close
+          // everything this run decoded before rethrowing to the outer
+          // .catch, which surfaces the error exactly as before.
+          for (const bmp of decoded) bmp.close();
+          throw err;
+        }
         if (cancelled) {
           // Superseded before publish: nothing will ever reference these.
           closeCanvasBitmaps(drawAssets);
@@ -1291,9 +1313,9 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  Save rewrite the picked one, a bare File yields none (Save prompts).
    *  The same quiet-retry open as before (see openWithRetry). */
   const openedSeq = useRef(0);
-  // Serialized through a sequence number, and superseded opens are skipped: two opens
-  // routed to this editor in quick succession must never interleave their
-  // resetDocument/asset writes (a half-A half-B document marked clean), and
+  // Serialized through a sequence number, and superseded opens are skipped:
+  // two opens routed to this editor in quick succession must never interleave
+  // their resetDocument/asset writes (a half-A half-B document marked clean), and
   // once B is queued there is no point applying A at all.
   const openChain = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
