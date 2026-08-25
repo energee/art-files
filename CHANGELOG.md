@@ -3,6 +3,18 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.16] - 2026-08-25
+
+- Double-clicking any editable text on the 2D preview — beer name, style,
+  ABV, description, volume, info line, or store cold — now edits it in
+  place: the label re-renders live as you type, in the element's true style.
+  The description opens the same WYSIWYG field as the sidebar over its block
+  (buttons on top of the field; markdown only behind its "Edit as Markdown"
+  toggle), and the rotated info / store-cold lines edit in a small field at
+  the element. Enter or clicking away ends the edit (one undo step for the
+  whole session), Escape restores the old text. The ABV editor accepts only
+  the number — its "% alc by vol" tail stays fixed.
+
 ## [0.1.15] - 2026-08-25
 
 - Fixed hidden tabs reverting the shared DPI and bleed settings during

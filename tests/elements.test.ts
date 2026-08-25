@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ELEMENTS, applyStyle, elementById, isDefaultStyle } from "../src/elements";
+import { ELEMENTS, applyStyle, editableText, elementById, isDefaultStyle } from "../src/elements";
 import { defaultConfig } from "../src/defaults";
 import { GOLD } from "../src/layout";
 
@@ -188,5 +188,24 @@ describe("element registry", () => {
     expect(cfg.storeCold.bold).toBe(true);
     applyStyle(cfg, "storeCold", { bold: false });
     expect(cfg.storeCold.bold).toBe(false);
+  });
+});
+
+describe("inline editable text", () => {
+  it("round-trips every editable element's text through the config", () => {
+    const cfg = defaultConfig();
+    for (const [id, spec] of Object.entries(editableText)) {
+      spec.set(cfg, `edited ${id}`);
+      expect(spec.get(cfg)).toBe(`edited ${id}`);
+    }
+    // The accessors hit the real backing fields, flat and styled alike.
+    expect(cfg.beerName).toBe("edited name");
+    expect(cfg.abv).toBe("edited abv");
+    expect(cfg.styleLine.text).toBe("edited styleLine");
+    expect(cfg.volume.text).toBe("edited volume");
+  });
+
+  it("marks the ABV numeric-only, so its drawn unit text stays uneditable", () => {
+    expect(editableText.abv?.numeric).toBe(true);
   });
 });

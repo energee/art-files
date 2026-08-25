@@ -13,7 +13,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
 import type { CollabSlot, Fill, LabelConfig } from "@/types";
-import type { ElementId } from "@/elements";
+import { editableText, type ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
 import { defaultConfig, exportBaseName, parseConfigFile } from "@/defaults";
 import { strToU8 } from "fflate";
@@ -65,9 +65,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import poppinsRegular from "@/assets/fonts/Poppins-Regular.ttf?url";
-import poppinsSemiBold from "@/assets/fonts/Poppins-SemiBold.ttf?url";
-import poppinsBold from "@/assets/fonts/Poppins-Bold.ttf?url";
+import { loadLabelFont } from "@/fonts";
 import { loadFonts } from "@/pdf/fonts";
 import logoSvg from "@/assets/logo2025.svg?raw";
 
@@ -237,27 +235,6 @@ async function previewPng(src: ImageBitmap | HTMLCanvasElement): Promise<Uint8Ar
   return canvasToPng(c);
 }
 
-let measurePromise: Promise<Measure> | null = null;
-function loadMeasure(): Promise<Measure> {
-  if (measurePromise) return measurePromise;
-  measurePromise = Promise.all([
-    new FontFace("PoppinsMeasure", `url(${poppinsRegular})`, { weight: "400" }).load(),
-    new FontFace("PoppinsMeasure", `url(${poppinsSemiBold})`, { weight: "600" }).load(),
-  ]).then((faces) => {
-    faces.forEach((face) => document.fonts.add(face));
-    const ctx = document.createElement("canvas").getContext("2d");
-    if (!ctx) throw new Error("Could not create the font measurement canvas.");
-    return (text: string, size: number, bold: boolean) => {
-      ctx.font = `${bold ? 600 : 400} ${size}px PoppinsMeasure`;
-      return ctx.measureText(text).width;
-    };
-  }).catch((error) => {
-    measurePromise = null;
-    throw error;
-  });
-  return measurePromise;
-}
-
 // Blob snapshots the bytes at construction (no transfer), so no copy needed —
 // unlike pdf.js, which neuters the buffer it's handed (see PreviewCompare).
 const blobUrl = (bytes: Uint8Array, type: string) =>
@@ -412,6 +389,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   // toggling an eye is not an undoable document edit. Flows into
   // Assets.hidden, where the renderer skips the element in both plates.
   const [hiddenLayers, setHiddenLayers] = useState<ReadonlySet<HideableLayerId>>(new Set());
+  // The element being edited in place on the preview, if any (reported by
+  // PreviewCompare). While set, the preview build hides that element so the
+  // editor's live DOM text IS the element — no doubled glyphs — and the
+  // ordinary render takes back over when the session ends. Only in-place
+  // sessions report; the description's floating editor does not (yet).
+  const [editSession, setEditSession] = useState<ElementId | null>(null);
   const toggleHidden = (id: HideableLayerId) =>
     setHiddenLayers((old) => {
       const next = new Set(old);
@@ -714,9 +697,9 @@ export const DocumentEditor = memo(function DocumentEditor({
     localStorage.setItem(VIEW_KEY, JSON.stringify({ showRulers, showGuides, showBleed: bleed }));
   }, [showRulers, showGuides, bleed]);
 
-  const update = (fn: (c: LabelConfig) => void) => {
+  const update = (fn: (c: LabelConfig) => void, coalesce?: boolean) => {
     markDirty(); // every config edit passes through here — see `dirty`
-    setCfg((c) => { const n = structuredClone(c); fn(n); return n; });
+    setCfg((c) => { const n = structuredClone(c); fn(n); return n; }, coalesce);
   };
   /** Wrap a config mutation that bypasses `update` (undo/redo) so it still
    *  marks the document dirty. */
@@ -729,7 +712,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // the small symmetric under-measurement (see hittest.ts).
   useEffect(() => {
     let cancelled = false;
-    void loadMeasure()
+    void loadLabelFont()
       .then((next) => { if (!cancelled) setMeasure(() => next); })
       .catch((error) => { if (!cancelled) setBuildError(String(error)); });
     return () => { cancelled = true; };
@@ -940,7 +923,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   // plates are drawn on, so it is an input to the build exactly like the config
   // is, and the identity check has to see it or a bleed change would be
   // dismissed as "same inputs" and never rebuild.
-  const inputs = [cfg, texture, mask, collabLeft, collabCenter, hiddenLayers, render.bleedIn] as const;
+  const inputs = [
+    cfg, texture, mask, collabLeft, collabCenter, hiddenLayers, render.bleedIn,
+    // An in-place edit session changes what the plates draw (the edited
+    // element is skipped), so starting/ending one is a build input too.
+    editSession,
+  ] as const;
   // What the last COMPLETED build was made from, so a re-run of this effect
   // that changes none of it doesn't rebuild. needMask is a dependency (the
   // plate has to appear when it's first needed), which without this made every
@@ -975,7 +963,13 @@ export const DocumentEditor = memo(function DocumentEditor({
           const assets = {
             ...(await collabAssets()),
             ...eyedAssets(true),
-            hidden: hiddenLayers,
+            // The in-place editor's element is hidden from the PREVIEW build
+            // only — exports (which read hiddenLayers directly below) always
+            // draw everything the eyes haven't hidden.
+            hidden: editSession
+              ? { has: (id: ElementId) => id === editSession
+                  || hiddenLayers.has(id as HideableLayerId) }
+              : hiddenLayers,
           };
           // Only the plates that aren't already current. sameInputs means the
           // art on screen was built from exactly these inputs, so the mask
@@ -1596,6 +1590,19 @@ export const DocumentEditor = memo(function DocumentEditor({
               // layer (background/mask) shows no selection box there.
               selected={elementSelection}
               onPick={pick}
+              // Live per-keystroke updates so the canvas render IS the edit
+              // feedback, folded into one undo step per session: the first
+              // keystroke opens the step, the rest coalesce (see useHistory).
+              onEditText={(id, text, first) => {
+                const spec = editableText[id];
+                if (spec) update((c) => spec.set(c, text), !first);
+              }}
+              // Escape: the whole session is that one step, so undoing it
+              // restores the text as it was when the editor opened.
+              onEditCancel={mutating(undo)}
+              // In-place sessions hide their element from the preview build
+              // (see editSession) so the editor's DOM text is the element.
+              onEditSession={setEditSession}
               onSplit={setSplit}
               bleed={bleed}
               // Same Settings knob the 3D die uses, so both previews cut alike.

@@ -107,6 +107,42 @@ export const ELEMENTS: LabelElement[] = [
   { id: "storeCold", label: "Store cold", group: "template", hasBold: true, isText: true, allowNone: true, style: (c) => c.storeCold },
 ];
 
+/** Elements whose text can be edited from the preview: double-clicking one
+ *  floats an editor panel over its outline (see PreviewCompare). Every
+ *  config-backed text element is here — the wordmark, the government
+ *  warning, and the collab lead-in draw fixed text with no backing config
+ *  field, so they are the only text elements absent. */
+export interface EditableText {
+  get(c: LabelConfig): string;
+  set(c: LabelConfig, text: string): void;
+  /** Restrict typing to digits and a decimal point (the ABV number — its
+   *  "% alc by vol" tail is drawn, not stored, and never editable). */
+  numeric?: boolean;
+  /** The description's markdown block: edited through the sidebar's
+   *  DescriptionEditor (WYSIWYG buttons over rendered lines, raw markdown
+   *  only behind its own edit-as-markdown toggle) floated over the block,
+   *  instead of a plain input. */
+  multiline?: boolean;
+  /** Drawn centred on the label, so the in-place editor centres too. */
+  centred?: boolean;
+  /** Rendered uppercase (the name); the stored text keeps its case. */
+  upper?: boolean;
+  /** Drawn rotated in the right column: a horizontal caret can't sit on
+   *  vertical glyphs, so these edit in a small floating field at the
+   *  element instead of truly in place. */
+  rotated?: boolean;
+}
+
+export const editableText: Partial<Record<ElementId, EditableText>> = {
+  name: { get: (c) => c.beerName, set: (c, t) => { c.beerName = t; }, centred: true, upper: true },
+  styleLine: { get: (c) => c.styleLine.text, set: (c, t) => { c.styleLine.text = t; }, centred: true },
+  abv: { get: (c) => c.abv, set: (c, t) => { c.abv = t; }, numeric: true },
+  description: { get: (c) => c.description, set: (c, t) => { c.description = t; }, multiline: true },
+  volume: { get: (c) => c.volume.text, set: (c, t) => { c.volume.text = t; } },
+  handleAddress: { get: (c) => c.handleAddress.text, set: (c, t) => { c.handleAddress.text = t; }, rotated: true },
+  storeCold: { get: (c) => c.storeCold.text, set: (c, t) => { c.storeCold.text = t; }, rotated: true },
+};
+
 export function elementById(id: ElementId): LabelElement {
   const e = ELEMENTS.find((x) => x.id === id);
   if (!e) throw new Error(`Unknown element: ${id}`);
