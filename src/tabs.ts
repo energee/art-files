@@ -4,10 +4,8 @@
 // testable without a DOM renderer. The shell owns a TabsState in useState
 // and applies the transitions on user events. Editors report TabMeta
 // upward through onMeta; the shell never reaches into editor internals.
-import { LABEL_EXT } from "@/labelfile";
-
 export type TabMeta = {
-  title: string;            // fileTitle(filePath) or the beer name as typed; "Untitled" default
+  title: string;            // the beer name as typed; "Untitled" while blank
   dirty: boolean;           // the editor's dirty flag (Save enabled)
   edited: boolean;          // any user mutation since mount/open — gates close prompts
   filePath: string | null;  // Tauri path identity, for OS-open dedupe
@@ -79,15 +77,6 @@ export function routeFileOpen(
   if (active && isPristine(active) && !busy?.(active.id)) return { reuse: active.id };
   return { open: "new" };
 }
-
-/** A .label path's display title: basename with the extension stripped,
- *  handling both separator styles (a Tauri path can be Windows-style) and
- *  any extension casing (the OS accepts .LABEL — see main.rs's argv
- *  filter and the fs-scope variants in capabilities/default.json). */
-export const fileTitle = (path: string) => {
-  const name = path.split(/[\\/]/).pop()!;
-  return name.toLowerCase().endsWith(LABEL_EXT) ? name.slice(0, -LABEL_EXT.length) : name;
-};
 
 /** Builds DocumentEditor's memo comparator (the editor passes the result
  *  to React.memo): shallow compare, except `ignoredWhenHidden` between two
