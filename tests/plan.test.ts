@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lineRuns, type MeasureFace } from "../src/plan";
+import { lineRuns, rotatedRuns, justifiedRotatedRuns, type MeasureFace } from "../src/plan";
 
 // Deterministic fake metrics: 0.5pt per char per size unit, bold faces 10% wider.
 const m: MeasureFace = (text, size, face) =>
@@ -40,5 +40,44 @@ describe("lineRuns", () => {
     const runs = lineRuns("name", { text: "HAZY", fill: "#C8A951", layer: "metallic", bold: true },
       m, { cx: 100, baseline: 50, size: 20, face: "bold" });
     expect(runs[0].face).toBe("bold");
+  });
+});
+
+describe("rotatedRuns", () => {
+  it("advances along -y from yStart, reading bottom-to-top", () => {
+    const runs = rotatedRuns("storeCold", { fill: "#C8A951", layer: "metallic" },
+      "STORE **COLD**", m, { x: 500, yStart: 300, size: 6, base: "semibold" });
+    // No boldFace: **bold** runs keep the base face (drawRotated's contract
+    // when its boldFont parameter is omitted, as storeCold's call does).
+    expect(runs.map((r) => r.face)).toEqual(["semibold", "semibold"]);
+    expect(runs[0]).toMatchObject({ x: 500, y: 300, rotated: true });
+    // The second run starts one full advance closer to the label top.
+    expect(runs[1].y).toBeCloseTo(300 - runs[0].w);
+  });
+
+  it("steps **bold** runs up to boldFace when given", () => {
+    const runs = rotatedRuns("handleAddress", { fill: "#C8A951", layer: "metallic" },
+      "@LOLEV **BEER**", m, { x: 500, yStart: 300, size: 6, base: "semibold", boldFace: "bold" });
+    expect(runs.map((r) => r.face)).toEqual(["semibold", "bold"]);
+  });
+});
+
+describe("justifiedRotatedRuns", () => {
+  it("stretches inter-word gaps so the span is exactly maxLen", () => {
+    const runs = justifiedRotatedRuns("warning", { fill: "none", layer: "metallic" },
+      "AB CD EF", m, { x: 520, yStart: 300, size: 5, maxLen: 100, base: "regular" });
+    expect(runs).toHaveLength(3);
+    // First word starts at yStart; the far end of the last word lands at
+    // yStart - maxLen exactly.
+    expect(runs[0].y).toBe(300);
+    const last = runs[runs.length - 1];
+    expect(last.y - last.w).toBeCloseTo(300 - 100);
+  });
+
+  it("a single word keeps its natural length (no gap to stretch)", () => {
+    const runs = justifiedRotatedRuns("warning", { fill: "none", layer: "metallic" },
+      "ALCOHOL", m, { x: 520, yStart: 300, size: 5, maxLen: 100, base: "regular" });
+    expect(runs).toHaveLength(1);
+    expect(runs[0].w).toBeCloseTo(m("ALCOHOL", 5, "regular"));
   });
 });

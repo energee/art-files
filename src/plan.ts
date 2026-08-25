@@ -76,3 +76,58 @@ export function lineRuns(
     return placed;
   });
 }
+
+/** Rotated 90° CCW text (reads bottom-to-top) as placed runs — drawRotated's
+ *  math without the drawing. `boldFace` omitted means inline `**bold**` runs
+ *  keep `base` (storeCold's contract); given, they step up (info/warning). */
+export function rotatedRuns(
+  id: ElementId,
+  style: Style,
+  text: string,
+  m: MeasureFace,
+  at: { x: number; yStart: number; size: number; base: Face; boldFace?: Face },
+): PlacedText[] {
+  const runs = parseRuns({ ...style, text });
+  const faceOf = (r: StyledLine): Face => (r.bold ? at.boldFace ?? at.base : at.base);
+  const tracking = style.letterSpacing ?? 0;
+  const advances = L.runAdvances(runs, (r) => m(r.text, at.size, faceOf(r)), tracking);
+  const stroke = strokeSpec(style);
+  let yPos = at.yStart;
+  return runs.map((run, i) => {
+    const placed: PlacedText = {
+      id, text: run.text, x: at.x, y: yPos, w: advances[i] - tracking,
+      size: at.size, face: faceOf(run), tracking,
+      fill: run.fill, layer: run.layer, stroke, rotated: true,
+    };
+    yPos -= advances[i];
+    return placed;
+  });
+}
+
+/** A justified warning column: inter-word gaps stretched so the span lands
+ *  exactly on maxLen — drawJustifiedRotated's math. Word widths measure the
+ *  runs each word actually draws (markers stripped, own faces), or a bold-
+ *  marked column would overshoot. A single word has no gap and stays at its
+ *  natural length (see warningColumnLen). */
+export function justifiedRotatedRuns(
+  id: ElementId,
+  style: Style,
+  text: string,
+  m: MeasureFace,
+  at: { x: number; yStart: number; size: number; maxLen: number; base: Face; boldFace?: Face },
+): PlacedText[] {
+  const words = text.split(" ");
+  if (words.length < 2) return rotatedRuns(id, style, text, m, at);
+  const faceOf = (r: StyledLine): Face => (r.bold ? at.boldFace ?? at.base : at.base);
+  const widths = words.map((w) =>
+    L.runsWidth(parseRuns({ ...style, text: w }),
+      (r) => m(r.text, at.size, faceOf(r)), style.letterSpacing ?? 0));
+  const totalWordWidth = widths.reduce((a, b) => a + b, 0);
+  const gap = (at.maxLen - totalWordWidth) / (words.length - 1);
+  let cursor = at.yStart;
+  return words.flatMap((w, i) => {
+    const placed = rotatedRuns(id, style, w, m, { ...at, yStart: cursor });
+    cursor -= widths[i] + gap;
+    return placed;
+  });
+}
