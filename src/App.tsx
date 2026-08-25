@@ -1024,44 +1024,85 @@ export const DocumentEditor = memo(function DocumentEditor({
   // the 3D views still consume its output, flag on or off.
   const [canvasRender, setCanvasRender] =
     useState<ComponentProps<typeof PreviewCompare>["canvasRender"]>(null);
+  // The bitmaps backing the CURRENTLY LIVE `canvasRender` generation (i.e.
+  // whatever the last successful setCanvasRender below stored). Tracked
+  // outside React state so the next generation can .close() them once it has
+  // fully replaced them — createImageBitmap results aren't GC'd on their own.
+  const canvasBitmaps = useRef<CanvasAssets | null>(null);
+  const closeCanvasBitmaps = (a: CanvasAssets | null | undefined) => {
+    if (!a) return;
+    for (const b of [a.texture, a.maskImage, a.collabLeft, a.collabCenter]) {
+      if (b instanceof ImageBitmap) b.close();
+    }
+  };
   useEffect(() => {
-    if (!CANVAS_PREVIEW) return;
+    // Same gates the debounced build effect above uses (blocked/active), plus
+    // the flag. needMask isn't read below — this path always builds both
+    // plates — but it's included for symmetry/drift-safety with that effect's
+    // dep list.
+    if (!CANVAS_PREVIEW || blocked || !active) return;
     let cancelled = false;
-    (async () => {
-      const m = await loadLabelFaces();
-      const bitmap = async (bytes: Uint8Array | undefined) =>
-        bytes ? await createImageBitmap(new Blob([bytes as BlobPart])) : null;
-      // Same resolution collabAssets() gives every build; each slot splits
-      // into its plan half (svg string / intrinsic raster size, for
-      // planLabel) and its draw half (a decoded bitmap, for drawPlate).
-      const { collabLeft: cl, collabCenter: cc } = await collabAssets();
-      const slot = async (img: CollabImage | null | undefined) => {
-        if (!img) return { art: null, image: null };
-        if (img.kind === "svg") return { art: img, image: null };
-        const bmp = await createImageBitmap(new Blob([img.bytes as BlobPart]));
-        return { art: { kind: "raster" as const, w: bmp.width, h: bmp.height }, image: bmp };
-      };
-      const [left, center] = await Promise.all([slot(cl), slot(cc)]);
-      const eyed = eyedAssets(true);
-      const next = {
-        m,
-        planAssets: { logoSvg, collabLeft: left.art, collabCenter: center.art } as PlanAssets,
-        drawAssets: {
+    // Mirrors the debounced build effect's 150ms debounce above (same
+    // comment applies: without it, every keystroke launches up to 4
+    // overlapping createImageBitmap decode chains that all run to
+    // completion even though only the last one's result is ever used).
+    const timer = setTimeout(() => {
+      (async () => {
+        const m = await loadLabelFaces();
+        const bitmap = async (bytes: Uint8Array | undefined) =>
+          bytes ? await createImageBitmap(new Blob([bytes as BlobPart])) : null;
+        // Same resolution collabAssets() gives every build; each slot splits
+        // into its plan half (svg string / intrinsic raster size, for
+        // planLabel) and its draw half (a decoded bitmap, for drawPlate).
+        const { collabLeft: cl, collabCenter: cc } = await collabAssets();
+        const slot = async (img: CollabImage | null | undefined) => {
+          if (!img) return { art: null, image: null };
+          if (img.kind === "svg") return { art: img, image: null };
+          const bmp = await createImageBitmap(new Blob([img.bytes as BlobPart]));
+          return { art: { kind: "raster" as const, w: bmp.width, h: bmp.height }, image: bmp };
+        };
+        const [left, center] = await Promise.all([slot(cl), slot(cc)]);
+        const eyed = eyedAssets(true);
+        const drawAssets: CanvasAssets = {
           texture: await bitmap(eyed.texture?.bytes),
           maskImage: await bitmap(eyed.maskPng),
           collabLeft: left.image, collabCenter: center.image,
-        } as CanvasAssets,
-        skip: editSession
-          ? { has: (id: ElementId) => id === editSession
-              || hiddenLayers.has(id as HideableLayerId) }
-          : hiddenLayers,
-      };
-      if (!cancelled) setCanvasRender(next);
-    })().catch(() => {});
-    return () => { cancelled = true; };
+        };
+        const next = {
+          m,
+          planAssets: { logoSvg, collabLeft: left.art, collabCenter: center.art } as PlanAssets,
+          drawAssets,
+          skip: editSession
+            ? { has: (id: ElementId) => id === editSession
+                || hiddenLayers.has(id as HideableLayerId) }
+            : hiddenLayers,
+        };
+        if (cancelled) {
+          // Superseded before we could publish it: close the bitmaps this
+          // run decoded so they don't leak — nothing will ever reference
+          // them.
+          closeCanvasBitmaps(drawAssets);
+          return;
+        }
+        // Publishing: the previous generation's bitmaps are no longer drawn
+        // from (PreviewCompare's paint effect only reads the latest
+        // `canvasRender`), so close them now that the new ones are live.
+        closeCanvasBitmaps(canvasBitmaps.current);
+        canvasBitmaps.current = drawAssets;
+        setCanvasRender(next);
+      })().catch((err) => {
+        // Dev-only rehearsal harness — a visible failure is the point, not a
+        // silently blank canvas.
+        console.error("[CANVAS_PREVIEW] failed to assemble canvas assets:", err);
+      });
+    }, 150);
+    return () => { cancelled = true; clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- inputs mirrors
     // the build effect above; see the comment on this effect.
-  }, [...inputs]);
+  }, [...inputs, blocked, needMask, active]);
+  // Close whatever generation is still live when this dev-only wiring
+  // unmounts (Phase 3 deletes all of it, so this ref is the only owner).
+  useEffect(() => () => closeCanvasBitmaps(canvasBitmaps.current), []);
 
   // Revoking immediately can abort a large download, so each URL lives until
   // the NEXT export batch — a timer would instead pin a full Blob copy of
