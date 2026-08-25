@@ -101,6 +101,16 @@ describe("routeFileOpen", () => {
     const backed = updateTabMeta(s, s.active, opened("/a.label"));
     expect(routeFileOpen(backed, "/a.label", () => true)).toEqual({ focus: s.active });
   });
+
+  test("focuses a tab whose queued open holds the path (filePath still null)", () => {
+    // OS re-delivery race: the first open is queued but hasn't completed, so
+    // the tab's filePath is still null — the second delivery must focus that
+    // tab, not mint a duplicate editor on the same file.
+    const s = initialTabs();
+    expect(routeFileOpen(
+      s, "/a.label", (id) => id === s.active, (id) => (id === s.active ? "/a.label" : undefined),
+    )).toEqual({ focus: s.active });
+  });
 });
 
 describe("makeHiddenPropsEqual", () => {
