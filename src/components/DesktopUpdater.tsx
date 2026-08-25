@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { DownloadEvent, Update } from "@tauri-apps/plugin-updater";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -36,6 +37,28 @@ async function checkForUpdate(): Promise<CheckResult> {
   } catch (error) {
     return { kind: "error", message: String(error) };
   }
+}
+
+// Release bodies arrive as markdown-ish text from the release feed. Classify
+// each line so the dialog can style headings and bullets without a markdown
+// dependency. ponytail: headings and bullets only; add a renderer if release
+// notes ever use links or emphasis.
+export function releaseNoteLines(body: string) {
+  return body
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line): { kind: "heading" | "bullet" | "text"; text: string } => {
+      const heading = /^#{1,6}\s+(.*)/.exec(line);
+      if (heading) return { kind: "heading", text: heading[1] };
+      const bullet = /^[-*]\s+(.*)/.exec(line);
+      if (bullet) return { kind: "bullet", text: bullet[1] };
+      return { kind: "text", text: line };
+    });
+}
+
+function formatMB(bytes: number) {
+  return `${(bytes / 1_048_576).toFixed(1)} MB`;
 }
 
 function releaseUpdate(update: Update) {
@@ -156,7 +179,7 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number }) 
       <DialogContent showCloseButton={!busy}>
         <DialogHeader>
           <DialogTitle>
-            {status.kind === "available" && `Label Lab ${status.version} is available`}
+            {status.kind === "available" && "Update available"}
             {status.kind === "downloading" && `Installing Label Lab ${status.version}`}
             {status.kind === "checking" && "Checking for updates"}
             {status.kind === "current" && "Label Lab is up to date"}
@@ -164,9 +187,20 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number }) 
             {status.kind === "error" && "Update failed"}
           </DialogTitle>
           <DialogDescription>
-            {status.kind === "available" && "Install the signed update and restart the app."}
+            {status.kind === "available" && (
+              `Label Lab ${status.version}` + (status.date
+                ? ` · Released ${new Date(status.date).toLocaleDateString(undefined, {
+                    month: "short", day: "numeric", year: "numeric",
+                  })}`
+                : "")
+            )}
             {status.kind === "downloading" && "Keep Label Lab open while the update downloads."}
-            {status.kind === "checking" && "Looking for the latest signed release…"}
+            {status.kind === "checking" && (
+              <span className="flex items-center gap-2">
+                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                Looking for the latest signed release…
+              </span>
+            )}
             {status.kind === "current" && "You already have the newest available version."}
             {status.kind === "disabled" && "Local builds do not contain the release signing key."}
             {status.kind === "error" && status.message}
@@ -174,14 +208,17 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number }) 
         </DialogHeader>
 
         {status.kind === "available" && status.body && (
-          <div className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted p-3 text-xs">
-            {status.body}
+          <div className="max-h-40 space-y-1 overflow-y-auto rounded-md bg-muted p-3 text-xs">
+            {releaseNoteLines(status.body).map((line, i) =>
+              line.kind === "heading"
+                ? <p key={i} className="pt-1.5 font-semibold first:pt-0">{line.text}</p>
+                : (
+                  <p key={i}
+                    className={`text-muted-foreground${line.kind === "bullet" ? " pl-3 before:mr-1.5 before:content-['•']" : ""}`}>
+                    {line.text}
+                  </p>
+                ))}
           </div>
-        )}
-        {status.kind === "available" && status.date && (
-          <p className="text-xs text-muted-foreground">
-            Released {new Date(status.date).toLocaleDateString()}
-          </p>
         )}
         {status.kind === "available" && props.dirty && (
           <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
@@ -191,9 +228,19 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number }) 
         )}
         {status.kind === "downloading" && (
           <div className="space-y-2" aria-live="polite">
-            <progress className="h-2 w-full" max={100} value={progress} />
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted" role="progressbar"
+              aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
+              <div
+                className={progress === undefined
+                  ? "h-full w-1/3 animate-pulse rounded-full bg-primary"
+                  : "h-full rounded-full bg-primary transition-[width] duration-300"}
+                style={progress === undefined ? undefined : { width: `${progress}%` }}
+              />
+            </div>
             <p className="text-xs text-muted-foreground">
-              {progress === undefined ? "Downloading…" : `${progress}% downloaded`}
+              {status.total === undefined || progress === undefined
+                ? "Downloading…"
+                : `${formatMB(status.downloaded)} of ${formatMB(status.total)} · ${progress}%`}
             </p>
           </div>
         )}
