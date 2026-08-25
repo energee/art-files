@@ -361,11 +361,15 @@ type DocumentEditorProps = {
   onNewTab: () => void;
   onCloseTab: () => void;
   onCheckForUpdates: () => void;
+  /** The shell's tab strip, rendered by the ACTIVE editor just under its
+   *  menubar row — inside the editor because the sidebar is fixed-position
+   *  and would overlap (and float over) any strip above the whole shell. */
+  tabStrip: React.ReactNode;
 };
 
 export function DocumentEditor({
   active, fileToOpen, onMeta, saveSlot, render, onRenderChange,
-  onOpenProject, onNewTab, onCloseTab, onCheckForUpdates,
+  onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, tabStrip,
 }: DocumentEditorProps) {
   // Config lives in a history stack, not plain useState — every edit that
   // goes through setCfg (i.e. all of them, see `update` below) is undoable.
@@ -1518,6 +1522,9 @@ export function DocumentEditor({
           <input ref={presetsInput} type="file" accept="application/json" hidden
             onChange={(e) => e.target.files?.[0] && void importPresets(e.target.files[0])} />
         </header>
+      {/* The workspace tab strip, under the menubar (in the desktop build
+          the menubar is native, so this is the window's top content row). */}
+      {active && tabStrip}
       <div className="flex min-h-0 flex-1">
         <section className="flex min-w-0 flex-1 flex-col">
           {/* overflow-hidden is what makes the pane the window the zoomed

@@ -189,7 +189,7 @@ palette lists them as "Preview: Standard" / "Preview: Mask"). Export items disab
 reason sits in the bar next to the menus. Press <kbd>⌘K</kbd> /
 <kbd>Ctrl+K</kbd> for a command palette covering the same actions.
 
-A tab strip above the menubar holds one tab per open project — each with its
+A tab strip under the menubar holds one tab per open project — each with its
 own undo history, unsaved-changes state, and save target, while presets and
 the Document Settings knobs are shared. Background tabs keep their state and
 assets in memory but drop their rendered previews; switching back repaints

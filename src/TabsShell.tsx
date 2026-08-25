@@ -230,10 +230,12 @@ export default function TabsShell() {
   const confirmTab = confirmClose === null
     ? null : state.tabs.find((t) => t.id === confirmClose) ?? null;
 
-  return (
-    <div className="flex h-svh flex-col">
-      {/* Tab strip: part of the chrome band, like the menubar below it. */}
-      <div className="flex h-9 shrink-0 items-end gap-1 overflow-x-auto border-b border-border bg-sidebar px-2 pt-1.5">
+  // Rendered by the ACTIVE editor just under its menubar row (see the
+  // tabStrip prop in App.tsx): the fixed-position sidebar would overlap a
+  // strip above the whole shell, and under the menubar is where tabs read
+  // as document chrome.
+  const tabStrip = (
+    <div className="flex h-9 shrink-0 items-end gap-1 overflow-x-auto border-b border-border bg-sidebar px-2 pt-1.5">
         {state.tabs.map((t) => (
           <div
             key={t.id}
@@ -265,14 +267,18 @@ export default function TabsShell() {
           className="mb-1 shrink-0 rounded px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
           +
         </button>
-      </div>
-      <div className="relative min-h-0 flex-1">
-        {state.tabs.map((t) => {
-          let slot = saveSlots.current.get(t.id);
-          if (!slot) saveSlots.current.set(t.id, (slot = { current: null }));
-          return (
-            <div key={t.id} className={t.id === state.active ? "h-full" : "hidden"}>
+    </div>
+  );
+
+  return (
+    <>
+      {state.tabs.map((t) => {
+        let slot = saveSlots.current.get(t.id);
+        if (!slot) saveSlots.current.set(t.id, (slot = { current: null }));
+        return (
+            <div key={t.id} className={t.id === state.active ? "h-svh" : "hidden"}>
               <DocumentEditor
+                tabStrip={tabStrip}
                 active={t.id === state.active}
                 fileToOpen={pending[t.id] ?? null}
                 onMeta={(m) => setState((s) => updateTabMeta(s, t.id, m))}
@@ -284,9 +290,8 @@ export default function TabsShell() {
                 onCloseTab={() => requestClose(t.id)}
                 onCheckForUpdates={() => setCheckRequest((n) => n + 1)} />
             </div>
-          );
-        })}
-      </div>
+        );
+      })}
       {/* Hidden-input Open fallback (no FS-Access): bytes, no save identity. */}
       <input ref={fileInput} type="file" accept={LABEL_EXT} className="hidden"
         onChange={(e) => {
@@ -321,6 +326,6 @@ export default function TabsShell() {
         </DialogContent>
       </Dialog>
       <DesktopUpdater dirty={anyUnsaved} checkRequest={checkRequest} />
-    </div>
+    </>
   );
 }
