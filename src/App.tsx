@@ -9,7 +9,7 @@
 // the deactivation effect). The editor reports { title, dirty, edited,
 // filePath } upward through onMeta; the shell owns tabs, file-open routing,
 // render settings, and the updater.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
 import type { CollabSlot, Fill, LabelConfig } from "@/types";
@@ -367,7 +367,18 @@ type DocumentEditorProps = {
   tabStrip: React.ReactNode;
 };
 
-export function DocumentEditor({
+/** A .label path's display title: basename, extension stripped. */
+const fileTitle = (path: string) => {
+  const name = path.split(/[\\/]/).pop()!;
+  return name.toLowerCase().endsWith(LABEL_EXT) ? name.slice(0, -LABEL_EXT.length) : name;
+};
+
+// memo is load-bearing, not an optimization garnish: every keystroke in any
+// tab updates the shell's tab list (onMeta → title/dirty), and without the
+// bail every HIDDEN editor's 1700-line body would re-run per keystroke. It
+// only holds if the shell passes identity-stable props to inactive editors
+// (per-tab callbacks and slots created once — see TabsShell's extrasFor).
+export const DocumentEditor = memo(function DocumentEditor({
   active, fileToOpen, onMeta, saveSlot, render, onRenderChange,
   onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, tabStrip,
 }: DocumentEditorProps) {
@@ -1116,9 +1127,7 @@ export function DocumentEditor({
   // What the tab strip and window title show: the backing file's basename
   // once there is one, else the beer name as typed — display text, not
   // exportBaseName's filename slug — and "Untitled" while it's blank.
-  const title = filePath
-    ? filePath.split(/[\\/]/).pop()!.replace(/\.label$/i, "")
-    : cfg.beerName.trim() || "Untitled";
+  const title = filePath ? fileTitle(filePath) : cfg.beerName.trim() || "Untitled";
   useEffect(() => {
     onMeta({ title, dirty, edited, filePath });
     // onMeta is this tab's shell callback; identity is irrelevant to when
@@ -1778,4 +1787,4 @@ export function DocumentEditor({
       </SidebarProvider>
     </TooltipProvider>
   );
-}
+});

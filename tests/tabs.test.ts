@@ -58,6 +58,12 @@ describe("tab transitions", () => {
     const s = updateTabMeta(s0, s0.tabs[0].id, { dirty: false });
     expect(s.tabs[0].dirty).toBe(false);
   });
+
+  test("updateTabMeta bails on a no-op patch", () => {
+    const s0 = initialTabs();
+    expect(updateTabMeta(s0, s0.tabs[0].id, { title: "Untitled" })).toBe(s0);
+    expect(updateTabMeta(s0, 999, { dirty: false })).toBe(s0);
+  });
 });
 
 describe("routeFileOpen", () => {
@@ -70,6 +76,13 @@ describe("routeFileOpen", () => {
   test("reuses a pristine active tab", () => {
     const s = initialTabs();
     expect(routeFileOpen(s, "/a.label")).toEqual({ reuse: s.active });
+  });
+
+  test("without a path (picker opens) it still reuses pristine or opens new", () => {
+    const s0 = initialTabs();
+    expect(routeFileOpen(s0)).toEqual({ reuse: s0.active });
+    const edited = updateTabMeta(s0, s0.active, { edited: true });
+    expect(routeFileOpen(edited)).toEqual({ open: "new" });
   });
 
   test("edited or file-backed active tab means a new tab", () => {

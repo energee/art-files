@@ -31,6 +31,11 @@ export function activateTab(s: TabsState, id: number): TabsState {
 }
 
 export function updateTabMeta(s: TabsState, id: number, meta: Partial<TabMeta>): TabsState {
+  const tab = s.tabs.find((t) => t.id === id);
+  // Same-value patches return the same state, so a repeated report from an
+  // editor costs no re-render.
+  if (!tab || (Object.keys(meta) as (keyof TabMeta)[]).every((k) => Object.is(tab[k], meta[k])))
+    return s;
   return { ...s, tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...meta } : t)) };
 }
 
@@ -51,12 +56,16 @@ export function closeTab(s: TabsState, id: number): TabsState {
  *  and free to close without a prompt. */
 export const isPristine = (t: Tab) => !t.edited && !t.filePath;
 
-/** Where an OS-opened .label lands: the tab already holding that path, else
- *  a pristine active tab, else a new tab. */
+/** Where an opened .label lands: the tab already holding that path (OS
+ *  opens carry one; picker opens without a path skip this), else a pristine
+ *  active tab, else a new tab. The ONE spelling of the routing rule — both
+ *  of the shell's open entry points go through it. */
 export type OpenRoute = { focus: number } | { reuse: number } | { open: "new" };
-export function routeFileOpen(s: TabsState, path: string): OpenRoute {
-  const existing = s.tabs.find((t) => t.filePath === path);
-  if (existing) return { focus: existing.id };
+export function routeFileOpen(s: TabsState, path?: string): OpenRoute {
+  if (path) {
+    const existing = s.tabs.find((t) => t.filePath === path);
+    if (existing) return { focus: existing.id };
+  }
   const active = s.tabs.find((t) => t.id === s.active);
   if (active && isPristine(active)) return { reuse: active.id };
   return { open: "new" };

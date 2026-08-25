@@ -7,16 +7,15 @@
 // settings (adopted from and persisted to the presets library), the desktop
 // updater, window title/close integration, and the preview worker's
 // disposal.
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
 import {
   DocumentEditor, LABEL_TYPES, isAbort, openPicker,
-  type FileToOpen, type RenderSettings,
+  type DocumentMeta, type FileToOpen, type RenderSettings,
 } from "@/App";
 import {
-  activateTab, addTab, closeTab, initialTabs, isPristine, routeFileOpen,
-  updateTabMeta,
+  activateTab, addTab, closeTab, initialTabs, routeFileOpen, updateTabMeta,
 } from "@/tabs";
 import { LABEL_EXT } from "@/labelfile";
 import { DEFAULT_RENDER, mutatePresets, usePresets } from "@/presets";
@@ -28,6 +27,20 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
+/** The one spelling of the window-module import its three consumers
+ *  (destroy, close-requested, title) share. The registry caches the load. */
+const currentWindow = () =>
+  import("@tauri-apps/api/window").then((m) => m.getCurrentWindow());
+
+/** The shell-side per-tab objects that must stay identity-stable for the
+ *  editor's memo bail to hold (see DocumentEditor): the save slot its
+ *  editor assigns into, and the two callbacks that close over the tab id. */
+type TabExtras = {
+  saveSlot: { current: (() => Promise<boolean>) | null };
+  onMeta: (meta: DocumentMeta) => void;
+  onCloseTab: () => void;
+};
+
 export default function TabsShell() {
   const [state, setState] = useState(initialTabs);
   // The OS-open listener and window-close handler are registered once but
@@ -38,19 +51,30 @@ export default function TabsShell() {
   // a stale entry inert — and dropped with the tab.
   const [pending, setPending] = useState<Record<number, FileToOpen>>({});
   const seq = useRef(1);
-  // One stable save-slot object per tab, assigned into by its editor every
-  // render (see App.tsx saveSlot) and read here by the close flow.
-  const saveSlots = useRef(new Map<number, { current: (() => Promise<boolean>) | null }>());
+  // Per-tab extras (save slot + id-closing callbacks), created once per tab
+  // so inactive editors see identity-stable props and memo-bail. Dropped in
+  // doClose. The callbacks reach the CURRENT handlers through `api` below —
+  // a stable closure over a ref, the same pattern as stateRef.
+  const extras = useRef(new Map<number, TabExtras>());
+  const api = useRef<{ requestClose: (id: number) => void }>(null!);
+  const extrasFor = (id: number): TabExtras => {
+    let e = extras.current.get(id);
+    if (!e) extras.current.set(id, (e = {
+      saveSlot: { current: null },
+      onMeta: (meta) => setState((s) => updateTabMeta(s, id, meta)),
+      onCloseTab: () => api.current.requestClose(id),
+    }));
+    return e;
+  };
   // The dirty-close dialog: which tab it is deciding, and whether a Save
   // click is in flight (disables the buttons; a cancelled save dialog
   // resolves false and leaves this dialog up).
   const [confirmClose, setConfirmClose] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   // A window close sweeps every unsaved tab through the same dialog; any
-  // Cancel aborts the sweep and the close.
-  const [closingWindow, setClosingWindow] = useState(false);
-  const closingRef = useRef(closingWindow);
-  closingRef.current = closingWindow;
+  // Cancel aborts the sweep and the close. A ref, not state: nothing
+  // renders it — only doClose reads it.
+  const closingWindow = useRef(false);
   const [checkRequest, setCheckRequest] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -92,20 +116,24 @@ export default function TabsShell() {
 
   // ---- open routing ----
 
-  /** Queue an open into tab `id` and show it. */
-  const openInTab = (id: number, fo: Omit<FileToOpen, "seq">) => {
+  /** Queue an open for tab `id`; the editor's fileToOpen effect runs it. */
+  const queueOpen = (id: number, fo: Omit<FileToOpen, "seq">) =>
     setPending((p) => ({ ...p, [id]: { ...fo, seq: seq.current++ } }));
-    setState((s) => activateTab(s, id));
-  };
 
-  /** File → Open lands in a pristine active tab, else a new one. */
-  const openSomewhere = (fo: Omit<FileToOpen, "seq">) => {
+  /** Both open entry points land here; tabs.ts's routeFileOpen is the one
+   *  spelling of the rule (focus the tab already holding the path, reuse a
+   *  pristine active tab, else a new tab — which addTab self-activates). */
+  const openRouted = (fo: Omit<FileToOpen, "seq">) => {
     const s = stateRef.current;
-    const active = s.tabs.find((t) => t.id === s.active);
-    if (active && isPristine(active)) return openInTab(active.id, fo);
+    const route = routeFileOpen(s, fo.path);
+    if ("focus" in route) return setState((st) => activateTab(st, route.focus));
+    if ("reuse" in route) {
+      queueOpen(route.reuse, fo);
+      return setState((st) => activateTab(st, route.reuse));
+    }
     const next = addTab(s);
     setState(next);
-    openInTab(next.active, fo);
+    queueOpen(next.active, fo);
   };
 
   /** OS file-opens (Finder / Explorer double-click, second-instance argv):
@@ -117,11 +145,7 @@ export default function TabsShell() {
     if (!isTauri()) return;
     async function openFromOs() {
       const path = await invoke<string | null>("take_opened_file");
-      if (!path) return;
-      const route = routeFileOpen(stateRef.current, path);
-      if ("focus" in route) setState((s) => activateTab(s, route.focus));
-      else if ("reuse" in route) openInTab(route.reuse, { path });
-      else openSomewhere({ path });
+      if (path) openRouted({ path });
     }
     const stopping = import("@tauri-apps/api/event")
       .then(({ listen }) => listen("project-file-opened", () => void openFromOs()));
@@ -140,7 +164,7 @@ export default function TabsShell() {
     if (!pick) { fileInput.current?.click(); return; }
     try {
       const [handle] = await pick({ types: LABEL_TYPES });
-      openSomewhere({ handle });
+      openRouted({ handle });
     } catch (err) {
       if (!isAbort(err)) console.error(err); // open failures surface in-editor
     }
@@ -149,21 +173,20 @@ export default function TabsShell() {
   // ---- closing ----
 
   const doClose = (id: number) => {
-    saveSlots.current.delete(id);
+    extras.current.delete(id);
     setPending(({ [id]: _dropped, ...rest }) => rest);
     setState((s) => closeTab(s, id));
     setConfirmClose(null);
     // Mid-sweep: hand the dialog to the next unsaved tab, or finish the
     // window close. Computed against the post-close list.
-    if (closingRef.current) {
+    if (closingWindow.current) {
       const rest = stateRef.current.tabs.filter((t) => t.id !== id);
       const next = rest.find(unsaved);
       if (next) {
         setState((s) => activateTab(s, next.id));
         setConfirmClose(next.id);
       } else {
-        void import("@tauri-apps/api/window")
-          .then(({ getCurrentWindow }) => getCurrentWindow().destroy());
+        void currentWindow().then((w) => w.destroy());
       }
     }
   };
@@ -177,10 +200,11 @@ export default function TabsShell() {
       setConfirmClose(id);
     } else doClose(id);
   };
+  api.current = { requestClose };
 
   const cancelClose = () => {
     setConfirmClose(null);
-    setClosingWindow(false);
+    closingWindow.current = false;
   };
 
   const saveAndClose = async (id: number) => {
@@ -188,22 +212,30 @@ export default function TabsShell() {
     try {
       // false = the user cancelled the save dialog — keep the tab (and,
       // mid-sweep, abort the window close: a cancel is a cancel).
-      if (await saveSlots.current.get(id)?.current?.()) doClose(id);
+      if (await extras.current.get(id)?.saveSlot.current?.()) doClose(id);
       else cancelClose();
     } finally {
       setSaving(false);
     }
   };
 
+  // Identity-stable shared callbacks, for the editors' memo bail. setState
+  // is stable; the picker reaches live state through stateRef.
+  const newTab = useCallback(() => setState(addTab), []);
+  const openProjectPickerRef = useRef(openProjectPicker);
+  openProjectPickerRef.current = openProjectPicker;
+  const openProject = useCallback(() => void openProjectPickerRef.current(), []);
+  const checkForUpdates = useCallback(() => setCheckRequest((n) => n + 1), []);
+
   // Desktop window close: intercept, sweep unsaved tabs through the dialog.
   useEffect(() => {
     if (!isTauri()) return;
-    const stopping = import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
-      getCurrentWindow().onCloseRequested((event) => {
+    const stopping = currentWindow().then((w) =>
+      w.onCloseRequested((event) => {
         const first = stateRef.current.tabs.find(unsaved);
         if (!first) return; // nothing unsaved — close proceeds
         event.preventDefault();
-        setClosingWindow(true);
+        closingWindow.current = true;
         setState((s) => activateTab(s, first.id));
         setConfirmClose(first.id);
       }));
@@ -219,16 +251,14 @@ export default function TabsShell() {
   }, [anyUnsaved]);
 
   // Desktop window title tracks the active tab; • marks unsaved work.
+  // Derived first so the effect deps on exactly the string it writes.
+  const windowTitle = unsaved(activeTab) ? `• ${activeTab.title}` : activeTab.title;
   useEffect(() => {
     if (!isTauri()) return;
-    void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
-      getCurrentWindow().setTitle(
-        unsaved(activeTab) ? `• ${activeTab.title}` : activeTab.title));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab.title, activeTab.dirty, activeTab.edited]);
+    void currentWindow().then((w) => w.setTitle(windowTitle));
+  }, [windowTitle]);
 
-  const confirmTab = confirmClose === null
-    ? null : state.tabs.find((t) => t.id === confirmClose) ?? null;
+  const confirmTab = state.tabs.find((t) => t.id === confirmClose) ?? null;
 
   // Rendered by the ACTIVE editor just under its menubar row (see the
   // tabStrip prop in App.tsx): the fixed-position sidebar would overlap a
@@ -288,22 +318,26 @@ export default function TabsShell() {
   return (
     <>
       {state.tabs.map((t) => {
-        let slot = saveSlots.current.get(t.id);
-        if (!slot) saveSlots.current.set(t.id, (slot = { current: null }));
+        const e = extrasFor(t.id);
+        const isActive = t.id === state.active;
         return (
-            <div key={t.id} className={t.id === state.active ? "h-svh" : "hidden"}>
+            <div key={t.id} className={isActive ? "h-svh" : "hidden"}>
+              {/* Inactive editors get identity-stable props throughout
+                  (extras + the useCallbacks + null strip), so the memo on
+                  DocumentEditor bails and a keystroke in one tab never
+                  re-runs the hidden ones. */}
               <DocumentEditor
-                tabStrip={tabStrip}
-                active={t.id === state.active}
+                tabStrip={isActive ? tabStrip : null}
+                active={isActive}
                 fileToOpen={pending[t.id] ?? null}
-                onMeta={(m) => setState((s) => updateTabMeta(s, t.id, m))}
-                saveSlot={slot}
+                onMeta={e.onMeta}
+                saveSlot={e.saveSlot}
                 render={render}
                 onRenderChange={setRender}
-                onOpenProject={() => void openProjectPicker()}
-                onNewTab={() => setState(addTab)}
-                onCloseTab={() => requestClose(t.id)}
-                onCheckForUpdates={() => setCheckRequest((n) => n + 1)} />
+                onOpenProject={openProject}
+                onNewTab={newTab}
+                onCloseTab={e.onCloseTab}
+                onCheckForUpdates={checkForUpdates} />
             </div>
         );
       })}
@@ -312,7 +346,7 @@ export default function TabsShell() {
         onChange={(e) => {
           const f = e.currentTarget.files?.[0];
           e.currentTarget.value = "";
-          if (f) openSomewhere({ file: f });
+          if (f) openRouted({ file: f });
         }} />
       {/* The dirty-close decision, per tab; Save resolves through the
           editor's own save flow (dialog cancel keeps the tab). */}
