@@ -3,6 +3,13 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.17] - 2026-08-25
+
+- Internal: text placement is now computed once (a shared display list)
+  and consumed by both the PDF renderer and click-target hit-testing,
+  groundwork for the direct-canvas preview. No visual or output changes
+  intended.
+
 ## [0.1.16] - 2026-08-25
 
 - Double-clicking any editable text on the 2D preview — beer name, style,
