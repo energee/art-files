@@ -234,39 +234,56 @@ export default function TabsShell() {
   // tabStrip prop in App.tsx): the fixed-position sidebar would overlap a
   // strip above the whole shell, and under the menubar is where tabs read
   // as document chrome.
+  // VS Code's tab language: flat full-height tabs packed flush, a thin
+  // border-r between neighbors, the active tab in the editor background
+  // with the strip's bottom border cut away under it (border-b sits on the
+  // tabs and the filler, not the container, to make that cut possible).
+  // The dirty dot lives in the close slot — a dot until hover, then the ×.
   const tabStrip = (
-    <div className="flex h-9 shrink-0 items-end gap-1 overflow-x-auto border-b border-border bg-sidebar px-2 pt-1.5">
+    <div className="flex h-9 shrink-0 items-stretch overflow-x-auto bg-sidebar">
         {state.tabs.map((t) => (
           <div
             key={t.id}
             className={cn(
-              "group flex h-full min-w-0 max-w-48 items-center gap-1 rounded-t-md border border-b-0 border-border px-2",
+              "group flex min-w-0 max-w-48 items-center gap-1 border-b border-r border-border px-3",
               t.id === state.active
-                ? "bg-background text-foreground"
-                : "bg-sidebar text-muted-foreground hover:text-foreground",
+                ? "border-b-transparent bg-background text-foreground"
+                : "text-muted-foreground hover:text-foreground",
             )}>
             <button
               onClick={() => setState((s) => activateTab(s, t.id))}
               title={t.filePath ?? t.title}
               className="min-w-0 flex-1 truncate text-left text-xs outline-none">
-              {unsaved(t) && <span className="mr-1" aria-label="unsaved changes">•</span>}
               {t.title}
             </button>
             <button
               onClick={() => requestClose(t.id)}
               aria-label={`Close ${t.title}`}
-              className="rounded p-0.5 opacity-0 outline-none hover:bg-muted group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring">
-              <X className="size-3" />
+              className={cn(
+                "rounded p-0.5 outline-none hover:bg-muted focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring",
+                !unsaved(t) && "opacity-0 group-hover:opacity-100",
+              )}>
+              {unsaved(t) ? (
+                <>
+                  <span className="block size-3 text-center leading-3 group-hover:hidden"
+                    aria-label="unsaved changes">•</span>
+                  <X className="hidden size-3 group-hover:block" />
+                </>
+              ) : <X className="size-3" />}
             </button>
           </div>
         ))}
-        <button
-          onClick={() => setState(addTab)}
-          aria-label="New tab"
-          title="New tab (⌘N)"
-          className="mb-1 shrink-0 rounded px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
-          +
-        </button>
+        {/* Filler carries the strip's bottom border past the last tab; the
+            + lives on it, off the tab row like VS Code's action area. */}
+        <div className="flex flex-1 items-center border-b border-border pl-1">
+          <button
+            onClick={() => setState(addTab)}
+            aria-label="New tab"
+            title="New tab (⌘N)"
+            className="rounded px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+            +
+          </button>
+        </div>
     </div>
   );
 
