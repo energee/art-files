@@ -3,6 +3,13 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.14] - 2026-08-25
+
+- Fixed the preview losing its image with "Preview asset bytes were not sent
+  to the worker" when switching back to a tab while several tabs are open.
+- Tab and window titles now always show the beer name as typed ("Untitled"
+  while blank), instead of switching to the saved file's name after Save.
+
 ## [0.1.13] - 2026-08-25
 
 - Update dialog polish: release notes render with styled headings and bullets
