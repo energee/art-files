@@ -143,11 +143,18 @@ jobs:
           x64=$(basename site/*_x64.app.tar.gz)
           appimage=$(basename site/*.AppImage)
           nsis=$(basename site/*-setup.exe)
+          # Tauri emits each platform twice: the bare key and a
+          # bundle-suffixed alias (darwin-x86_64 AND darwin-x86_64-app,
+          # linux-x86_64-appimage, windows-x86_64-nsis). Both must map, and
+          # the error() stays so a future new key fails loudly here instead
+          # of shipping a feed with a broken URL.
           jq --arg aarch64 "$aarch64" --arg x64 "$x64" \
              --arg appimage "$appimage" --arg nsis "$nsis" \
             '.platforms |= with_entries(.value.url = ("https://energ.ee/art-files/" +
-              ({ "darwin-aarch64": $aarch64, "darwin-x86_64": $x64,
-                 "linux-x86_64": $appimage, "windows-x86_64": $nsis
+              ({ "darwin-aarch64": $aarch64, "darwin-aarch64-app": $aarch64,
+                 "darwin-x86_64": $x64, "darwin-x86_64-app": $x64,
+                 "linux-x86_64": $appimage, "linux-x86_64-appimage": $appimage,
+                 "windows-x86_64": $nsis, "windows-x86_64-nsis": $nsis
                }[.key] // error("no artifact mapped for platform " + .key))))' \
             site/latest.json > site/latest.json.tmp
           mv site/latest.json.tmp site/latest.json
