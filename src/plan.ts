@@ -17,6 +17,7 @@ import { parseDescription, parseInfoLine } from "./description";
 import { warningMeasure, wrapWarning } from "./warning";
 import { parseLogo } from "./logo";
 import { qrPath, qrShapes, qrUrl } from "./qr";
+import { barcodeFootprint, barcodeGeometry, barcodeStrokePt, type BarcodeGeometry } from "./barcode";
 
 export type Face = "regular" | "semibold" | "bold";
 export type MeasureFace = (text: string, size: number, face: Face) => number;
@@ -62,7 +63,42 @@ export interface PlacedPaths {
   readonly stroke: StrokeSpec | null;
 }
 
-export type Placed = PlacedText | PlacedPaths; // PlacedImage | PlacedBarcode join in Task 2
+/** A raster collab logo's fitted rect. The bytes stay with the backend
+ *  (keyed by id); art mode draws the image, mask mode paints the rect
+ *  white-ink blue so a full-color logo prints on white ink. */
+export interface PlacedImage {
+  readonly kind: "image";
+  readonly id: ElementId;
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+}
+
+/** The barcode as one item: shared geometry plus everything both plates
+ *  paint from. Genuinely mode-asymmetric (art = stroked bars+digits, mask =
+ *  the outset footprint), so it stays one item rather than mode-dependent
+ *  primitives — the backends keep their paint logic, the geometry exists
+ *  once. `digits` follow the rotated-run convention: x is the baseline's
+ *  vertical line, y the run's start, extent -w. */
+export interface PlacedBarcode {
+  readonly kind: "barcode";
+  readonly id: "barcode";
+  readonly geo: BarcodeGeometry;
+  /** Resolved halo width in points; 0 = no halo at all. */
+  readonly S: number;
+  readonly fill: Fill;
+  readonly stroke: Fill | "none";
+  readonly fillLayer: Style["layer"];
+  readonly strokeLayer: Style["layer"];
+  readonly textSize: number;
+  readonly digits: readonly { text: string; x: number; y: number; w: number }[];
+  /** The white-ink footprint at S = 0 (bars + digit pills); the mask pass
+   *  outsets it by S as a border, matching barcodeFootprint's contract. */
+  readonly footprint: readonly { x: number; yTop: number; w: number; h: number }[];
+}
+
+export type Placed = PlacedText | PlacedPaths | PlacedImage | PlacedBarcode;
 
 /** Collab art as the plan needs it: SVG art plans as paths (the plan fits
  *  it itself, via parseLogo); raster art plans as a fitted rect, so only
@@ -216,8 +252,30 @@ function collabItems(
       fill: slot.fill, layer: slot.layer, stroke: strokeSpec(slot),
     }];
   }
-  // Raster branch stubbed here — PlacedImage joins the Placed union in Task 2.
-  return [];
+  const s = Math.min(maxW / art.w, maxH / art.h);
+  const w = art.w * s;
+  const h = art.h * s;
+  return [{ kind: "image", id, x: place(w), y: top, w, h }];
+}
+
+/** The barcode's placed item. Exported for the barcode tests, which assert
+ *  paint behaviour against a hand-built item. */
+export function barcodeItem(cfg: LabelConfig, m: MeasureFace): PlacedBarcode {
+  const B = L.BARCODE;
+  const measure = (t: string) => m(t, B.textSize, "regular");
+  const geo = barcodeGeometry(cfg.upc, measure);
+  return {
+    kind: "barcode", id: "barcode", geo,
+    S: barcodeStrokePt(cfg),
+    fill: cfg.barcodeFill, stroke: cfg.barcodeStroke,
+    fillLayer: cfg.barcodeLayer, strokeLayer: cfg.barcodeStrokeLayer,
+    textSize: B.textSize,
+    digits: geo.digits.map((d) => {
+      const w = measure(d.text);
+      return { text: d.text, x: d.x, y: geo.bottom - d.center * geo.mod + w / 2, w };
+    }),
+    footprint: barcodeFootprint(geo, 0, measure),
+  };
 }
 
 /** Every display-list item of the label, in drawElements' order. Without
@@ -347,6 +405,7 @@ export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {})
     });
   }
 
-  // Barcode joins in Task 2.
+  if (A && !skip("barcode")) out.push(barcodeItem(cfg, m));
+
   return out;
 }

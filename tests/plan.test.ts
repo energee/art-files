@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lineRuns, rotatedRuns, justifiedRotatedRuns, planLabel, type MeasureFace, type PlacedText } from "../src/plan";
+import { lineRuns, rotatedRuns, justifiedRotatedRuns, planLabel, barcodeItem, type MeasureFace, type PlacedText } from "../src/plan";
 import * as L from "../src/layout";
 import { defaultConfig } from "../src/defaults";
 
@@ -204,5 +204,57 @@ describe("planLabel with assets", () => {
     expect(ids.indexOf("logo")).toBeLessThan(ids.indexOf("name"));
     // QR draws after storeCold — drawElements' actual order.
     expect(ids.indexOf("qr")).toBeGreaterThan(ids.lastIndexOf("storeCold"));
+  });
+});
+
+describe("planLabel collab images and barcode", () => {
+  const cfg = defaultConfig();
+  const assets = { logoSvg: LOGO_SVG };
+
+  it("fits a raster centre logo into its envelope, centred on cx", () => {
+    // 200x100 raster in a 36x36 envelope at scale 1: width-bound, s=0.18.
+    const c = { ...cfg, collabEnabled: true };
+    const item = planLabel(c, m, {
+      assets: { ...assets, collabCenter: { kind: "raster" as const, w: 200, h: 100 } },
+    }).find((r) => r.id === "collabCenter");
+    expect(item).toBeDefined();
+    if (item!.kind !== "image") throw new Error("expected an image item");
+    expect(item!.w).toBeCloseTo(L.COLLAB_CENTER.maxW * c.collabCenter.scale);
+    expect(item!.h).toBeCloseTo(item!.w / 2);
+    expect(item!.x).toBeCloseTo(L.COLLAB_CENTER.cx - item!.w / 2);
+  });
+
+  it("plans an svg left logo as paths at the flowed position", () => {
+    const c = { ...cfg, collabEnabled: true };
+    const item = planLabel(c, m, {
+      assets: { ...assets, collabLeft: { kind: "svg" as const, svg: LOGO_SVG } },
+    }).find((r) => r.id === "collabLeft");
+    expect(item?.kind).toBe("paths");
+    if (item?.kind !== "paths") return;
+    expect(item.x).toBeCloseTo(L.COLLAB_LEFT.x);
+  });
+
+  it("barcodeItem resolves the halo exactly like barcodeStrokePt", () => {
+    expect(barcodeItem({ ...cfg, barcodeStroke: "none" }, m).S).toBe(0);
+    expect(barcodeItem({ ...cfg, barcodeStrokeWidth: 10 }, m).S).toBeCloseTo(10 * L.PX);
+    // defaultConfig ships barcodeStrokeWidth set (20); explicitly unsetting it
+    // is what exercises the "unset -> measured halo" branch of barcodeStrokePt.
+    expect(barcodeItem({ ...cfg, barcodeStrokeWidth: undefined }, m).S).toBeCloseTo(L.BARCODE.stroke);
+  });
+
+  it("places digit runs so each spans w toward the label top from y", () => {
+    const item = barcodeItem(cfg, m);
+    expect(item.digits).toHaveLength(4);
+    for (const d of item.digits) {
+      // Rotated-run convention: y is the run's start (bottom), extent is -w.
+      const centerTop = (d.y + (d.y - d.w)) / 2;
+      const g = item.geo.digits.find((x) => x.text === d.text)!;
+      expect(centerTop).toBeCloseTo(item.geo.bottom - g.center * item.geo.mod, 5);
+    }
+  });
+
+  it("the barcode is the plan's last item", () => {
+    const list = planLabel(cfg, m, { assets });
+    expect(list[list.length - 1].kind).toBe("barcode");
   });
 });
