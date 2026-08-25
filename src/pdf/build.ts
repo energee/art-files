@@ -367,12 +367,11 @@ function shiftForBleed(page: PDFPage) {
   if (L.BLEED_SHIFT) page.pushOperators(translate(L.BLEED_SHIFT, -L.BLEED_SHIFT));
 }
 
-/** Cover-fit an embedded image over the full bleed page, centered. */
+/** Cover-fit an embedded image over the full bleed page, centered. Delegates
+ *  to L.coverFit, the geometry the canvas backend shares. */
 function coverPage(page: PDFPage, img: { width: number; height: number }) {
-  const s = Math.max(L.PAGE.w / img.width, L.PAGE.h / img.height);
-  const w = img.width * s;
-  const h = img.height * s;
-  return { x: (L.PAGE.w - w) / 2, y: (L.PAGE.h - h) / 2, width: w, height: h };
+  const r = L.coverFit(img.width, img.height);
+  return { x: r.x, y: r.y, width: r.w, height: r.h };
 }
 
 export async function buildArtPdf(cfg: LabelConfig, assets: Assets): Promise<Uint8Array> {

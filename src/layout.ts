@@ -68,6 +68,17 @@ const SAFE = {
 };
 
 export const PAGE = { w: TRIM.w + 2 * BLEED, h: TRIM.h + 2 * BLEED };
+/** Cover-fit an image over the full bleed page, centered — shared by the PDF
+ *  builders and the canvas backend. Centered, so the same rect serves both a
+ *  top-left and a bottom-left origin: (PAGE.h - h) / 2 is the inset from
+ *  either edge. */
+export function coverFit(imgW: number, imgH: number) {
+  const s = Math.max(PAGE.w / imgW, PAGE.h / imgH);
+  const w = imgW * s;
+  const h = imgH * s;
+  return { x: (PAGE.w - w) / 2, y: (PAGE.h - h) / 2, w, h };
+}
+
 /** Widest the 2D preview sheet is drawn on screen, in CSS px. It lives here
  *  rather than in PreviewCompare's class list because the 3D scene has to
  *  predict that sheet's on-screen height to frame its own label to match

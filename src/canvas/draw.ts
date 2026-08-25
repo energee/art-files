@@ -1,0 +1,176 @@
+// draw.ts — the canvas backend: walks the display list (plan.ts) and paints
+// one plate into a 2D context. Same Mode semantics as pdf/build.ts — art
+// paints fills over the texture, mask paints knockout white / white-ink blue
+// — but no y-flip (canvas and the plan are both top-left origin) and no
+// stroke-cavity bridge (real canvas strokes are solid; the bridge exists
+// only for pdf.js's path-font renderer). Fonts arrive through the fonts.ts
+// gate: callers must have awaited loadLabelFont()/loadLabelFaces() so
+// LABEL_FONT_FAMILY resolves — a missing face would silently measure wrong,
+// which is exactly what the gate exists to prevent.
+import type { Mode, Placed, PlacedBarcode, PlacedText } from "../plan";
+import type { Fill, Style } from "../types";
+import { LABEL_FONT_FAMILY } from "../fonts";
+import * as L from "../layout";
+
+// TypeScript note: some lib.dom versions lack `letterSpacing` on the 2D
+// context type; declared locally rather than `as any` per call site.
+interface Ctx2DLetterSpacing { letterSpacing: string }
+type Ctx = (CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D) & Ctx2DLetterSpacing;
+
+export interface CanvasAssets {
+  /** Art plate background, cover-fitted; absent = bare stock (white). */
+  texture?: (CanvasImageSource & { width: number; height: number }) | null;
+  /** Uploaded mask, drawn as-authored; absent = flood white-ink blue. */
+  maskImage?: (CanvasImageSource & { width: number; height: number }) | null;
+  /** Raster collab logos, keyed to the PlacedImage ids. */
+  collabLeft?: CanvasImageSource | null;
+  collabCenter?: CanvasImageSource | null;
+}
+
+const WEIGHT = { regular: 400, semibold: 600, bold: 700 } as const;
+
+/** Art-mode CSS color for a Fill — "none" is no ink, i.e. white, the same
+ *  rule as pdf/build.ts's fillColor via parseHexFill. */
+const cssFill = (fill: Fill) => (fill === "none" ? "#FFFFFF" : fill);
+/** Mask-mode paint: knockout (white) or white-ink (blue). */
+const cssMask = (layer: Style["layer"]) =>
+  layer === "metallic" ? "#FFFFFF" : L.MASK_BLUE_HEX;
+
+/** Paint one plate from the plan. The canvas's pixel size sets the scale
+ *  (width / PAGE.w); the caller sizes it. Backgrounds paint before the
+ *  BLEED_SHIFT translate, exactly like shiftForBleed in the PDF: they cover
+ *  the page and must not move with the design. */
+export function drawPlate(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  plan: readonly Placed[],
+  assets: CanvasAssets,
+  mode: Mode,
+): void {
+  const c = ctx as Ctx;
+  const scale = c.canvas.width / L.PAGE.w;
+  c.setTransform(scale, 0, 0, scale, 0, 0);
+  c.lineJoin = "round";
+  c.lineCap = "round";
+
+  // Plate background — mirrors buildArtPdf / buildMaskPdf.
+  c.fillStyle = "#FFFFFF";
+  c.fillRect(0, 0, L.PAGE.w, L.PAGE.h);
+  const cover = (img: CanvasImageSource & { width: number; height: number }) => {
+    const r = L.coverFit(img.width, img.height);
+    c.drawImage(img, r.x, r.y, r.w, r.h);
+  };
+  if (mode === "art") {
+    if (assets.texture) cover(assets.texture);
+  } else if (assets.maskImage) cover(assets.maskImage);
+  else {
+    // No mask uploaded: flood white ink ("print as a white label"); metallic
+    // elements knock back out on top.
+    c.fillStyle = L.MASK_BLUE_HEX;
+    c.fillRect(0, 0, L.PAGE.w, L.PAGE.h);
+  }
+
+  c.translate(L.BLEED_SHIFT, L.BLEED_SHIFT);
+
+  for (const r of plan) {
+    if (r.kind === "text") drawText(c, r, mode);
+    else if (r.kind === "paths") {
+      c.save();
+      c.translate(r.x, r.y);
+      const paths = r.paths.map((d) => new Path2D(d));
+      // Every stroke path before any fill — the laurel-branch rule.
+      if (r.stroke) {
+        c.strokeStyle = mode === "art" ? cssFill(r.stroke.fill) : cssMask(r.stroke.layer);
+        c.lineWidth = 2 * r.stroke.w;
+        for (const p of paths) { c.stroke(p); c.fill(p); }
+      }
+      c.fillStyle = mode === "art" ? cssFill(r.fill) : cssMask(r.layer);
+      for (const p of paths) c.fill(p);
+      c.restore();
+    } else if (r.kind === "image") {
+      if (mode === "art") {
+        const img = r.id === "collabLeft" ? assets.collabLeft : assets.collabCenter;
+        if (img) c.drawImage(img, r.x, r.y, r.w, r.h);
+      } else {
+        // Raster art prints on white ink: the mask paints its footprint blue.
+        c.fillStyle = L.MASK_BLUE_HEX;
+        c.fillRect(r.x, r.y, r.w, r.h);
+      }
+    } else drawBarcode(c, r, mode);
+  }
+}
+
+// Note the stroke pass above: pdf-lib's stroked `drawSvgPath` fills AND
+// strokes each path in one op (`color` + `borderColor`), so the canvas
+// stroke pass does `stroke(p)` then `fill(p)` per path in stroke color, then
+// the fill pass repaints all fills — same layering result.
+
+function drawText(ctx: Ctx, r: PlacedText, mode: Mode) {
+  ctx.font = `${WEIGHT[r.face]} ${r.size}px ${LABEL_FONT_FAMILY}`;
+  // Tracking in points: under the pt-scaled transform, user-space px ARE
+  // points. Canvas letterSpacing also gaps after the final glyph, but that
+  // is advance, not ink — run positions come from the plan, so it cannot
+  // shift anything.
+  ctx.letterSpacing = `${r.tracking}px`;
+  ctx.save();
+  ctx.translate(r.x, r.y);
+  if (r.rotated) ctx.rotate(-Math.PI / 2); // y-down CCW = PDF's degrees(90)
+  if (r.stroke) {
+    ctx.strokeStyle = mode === "art" ? cssFill(r.stroke.fill) : cssMask(r.stroke.layer);
+    ctx.lineWidth = 2 * r.stroke.w; // outer half is the w-wide stroke; fill covers the inner
+    ctx.strokeText(r.text, 0, 0);
+  }
+  ctx.fillStyle = mode === "art" ? cssFill(r.fill) : cssMask(r.layer);
+  ctx.fillText(r.text, 0, 0);
+  ctx.restore();
+  ctx.letterSpacing = "0px";
+}
+
+/** Both plates of the barcode — the same paint logic as pdf/build.ts's
+ *  drawBarcode, from the same item. */
+function drawBarcode(ctx: Ctx, item: PlacedBarcode, mode: Mode) {
+  const digit = (d: { text: string; x: number; y: number }, paint: "fill" | "stroke") => {
+    ctx.save();
+    ctx.translate(d.x, d.y);
+    ctx.rotate(-Math.PI / 2);
+    if (paint === "fill") ctx.fillText(d.text, 0, 0);
+    else { ctx.strokeText(d.text, 0, 0); ctx.fillText(d.text, 0, 0); }
+    ctx.restore();
+  };
+  ctx.font = `${WEIGHT.regular} ${item.textSize}px ${LABEL_FONT_FAMILY}`;
+  ctx.letterSpacing = "0px";
+
+  if (mode === "mask") {
+    // Expanded stroke footprint first, exact fill footprint on top — same
+    // plate-independence rule as the PDF's mask branch.
+    const paintFootprint = (outset: number, color: string) => {
+      ctx.fillStyle = color;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2 * outset;
+      for (const f of item.footprint) {
+        ctx.fillRect(f.x, f.yTop, f.w, f.h);
+        if (outset > 0) ctx.strokeRect(f.x, f.yTop, f.w, f.h);
+      }
+    };
+    if (item.S > 0) paintFootprint(item.S, cssMask(item.strokeLayer));
+    if (item.S === 0 || item.strokeLayer !== item.fillLayer)
+      paintFootprint(0, cssMask(item.fillLayer));
+    return;
+  }
+
+  const bars = item.geo.bars;
+  if (item.S > 0) {
+    const sc = cssFill(item.stroke === "none" ? "none" : item.stroke);
+    ctx.fillStyle = sc;
+    ctx.strokeStyle = sc;
+    ctx.lineWidth = 2 * item.S;
+    // EVERY stroke shape before ANY fill — interleaving distorts module
+    // widths until the code stops decoding (see pdf/build.ts).
+    for (const b of bars) { ctx.fillRect(b.x, b.yTop, b.w, b.h); ctx.strokeRect(b.x, b.yTop, b.w, b.h); }
+    for (const d of item.digits) digit(d, "stroke");
+  }
+  const ink = cssFill(item.fill);
+  ctx.fillStyle = ink;
+  ctx.strokeStyle = ink;
+  for (const b of bars) ctx.fillRect(b.x, b.yTop, b.w, b.h);
+  for (const d of item.digits) digit(d, "fill");
+}

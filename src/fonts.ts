@@ -9,6 +9,7 @@ import poppinsRegular from "./assets/fonts/Poppins-Regular.ttf?url";
 import poppinsSemiBold from "./assets/fonts/Poppins-SemiBold.ttf?url";
 import poppinsBold from "./assets/fonts/Poppins-Bold.ttf?url";
 import type { Measure } from "./hittest";
+import type { MeasureFace } from "./plan";
 
 /** The registered family for label text drawn by the DOM (the in-place
  *  editor). Weights: 400 regular, 600 semibold, 700 the name's true Bold. */
@@ -39,4 +40,20 @@ export function loadLabelFont(): Promise<Measure> {
     throw error;
   });
   return measurePromise;
+}
+
+/** Face-aware canvas measure for the plan: the same loaded faces, measured
+ *  at their true weights (unlike Measure's bold-boolean approximation, which
+ *  hit boxes keep for compatibility). The canvas renderer places with THIS,
+ *  so what it measures is what it draws. */
+export function loadLabelFaces(): Promise<MeasureFace> {
+  return loadLabelFont().then(() => {
+    const ctx = document.createElement("canvas").getContext("2d");
+    if (!ctx) throw new Error("Could not create the font measurement canvas.");
+    const weight = { regular: 400, semibold: 600, bold: 700 } as const;
+    return (text, size, face) => {
+      ctx.font = `${weight[face]} ${size}px ${LABEL_FONT_FAMILY}`;
+      return ctx.measureText(text).width;
+    };
+  });
 }

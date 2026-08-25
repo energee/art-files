@@ -1,0 +1,98 @@
+// tests/canvas-draw.test.ts — the canvas backend against a recording fake
+// ctx: Node has no 2D canvas, and what parity needs pinned here is the PAINT
+// PROTOCOL (order, colors, transforms), not rasterized pixels — the pixel
+// side is the parity page's job.
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { drawPlate, type CanvasAssets } from "../src/canvas/draw";
+import { planLabel, type MeasureFace } from "../src/plan";
+import { defaultConfig } from "../src/defaults";
+import { MASK_BLUE_HEX, PAGE } from "../src/layout";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const logoSvg = readFileSync(join(__dirname, "..", "src", "assets", "logo2025.svg"), "utf8");
+const m: MeasureFace = (t, size) => t.length * size * 0.5;
+
+/** Records every call and property set, in order, so ordering rules
+ *  (stroke-before-fill, background-before-elements) are assertable. */
+function fakeCtx() {
+  const log: { op: string; args: unknown[] }[] = [];
+  const target: Record<string, unknown> = { canvas: { width: PAGE.w * 2, height: PAGE.h * 2 } };
+  const ctx = new Proxy(target, {
+    get(t, p: string) {
+      if (p in t) return t[p];
+      return (...args: unknown[]) => { log.push({ op: p, args }); };
+    },
+    set(t, p: string, v) {
+      t[p] = v;
+      log.push({ op: `set:${p}`, args: [v] });
+      return true;
+    },
+  });
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, log };
+}
+
+beforeEach(() => {
+  vi.stubGlobal("Path2D", class { constructor(public d?: string) {} });
+});
+
+const cfg = defaultConfig();
+const plan = () => planLabel(cfg, m, { assets: { logoSvg } });
+
+describe("drawPlate", () => {
+  it("mask mode with no mask image floods the plate white-ink blue first", () => {
+    const { ctx, log } = fakeCtx();
+    drawPlate(ctx, plan(), {}, "mask");
+    const rects = log.filter((c) => c.op === "fillRect");
+    // White base, then the blue flood, both before any element paints.
+    const firstText = log.findIndex((c) => c.op === "fillText");
+    const floodIdx = log.findIndex(
+      (c, i) => c.op === "set:fillStyle" && c.args[0] === MASK_BLUE_HEX && i < firstText);
+    expect(rects.length).toBeGreaterThanOrEqual(2);
+    expect(floodIdx).toBeGreaterThan(-1);
+  });
+
+  it("art mode draws the texture cover-fit before any element", () => {
+    const { ctx, log } = fakeCtx();
+    const texture = { width: 100, height: 100 } as unknown as CanvasAssets["texture"];
+    drawPlate(ctx, plan(), { texture }, "art");
+    const img = log.findIndex((c) => c.op === "drawImage");
+    const firstText = log.findIndex((c) => c.op === "fillText");
+    expect(img).toBeGreaterThan(-1);
+    expect(img).toBeLessThan(firstText);
+  });
+
+  it("strokes a stroked text run before filling it", () => {
+    const { ctx, log } = fakeCtx();
+    // Force a stroke on the volume line so the rule is exercised.
+    const stroked = planLabel(
+      { ...cfg, volume: { ...cfg.volume, stroke: "#112233" } }, m, { assets: { logoSvg } });
+    drawPlate(ctx, stroked, {}, "art");
+    const s = log.findIndex((c) => c.op === "strokeText");
+    const f = log.findIndex((c) => c.op === "fillText");
+    expect(s).toBeGreaterThan(-1);
+    expect(s).toBeLessThan(f);
+  });
+
+  it("rotates rotated runs a quarter turn counter-clockwise", () => {
+    const { ctx, log } = fakeCtx();
+    drawPlate(ctx, plan(), {}, "art");
+    const rot = log.find((c) => c.op === "rotate");
+    expect(rot).toBeDefined();
+    expect(rot!.args[0]).toBeCloseTo(-Math.PI / 2);
+  });
+
+  it("paints a raster collab rect blue in mask mode, image in art mode", () => {
+    const c = { ...cfg, collabEnabled: true };
+    const p = planLabel(c, m, {
+      assets: { logoSvg, collabCenter: { kind: "raster", w: 10, h: 10 } },
+    });
+    const art = fakeCtx();
+    drawPlate(art.ctx, p, { collabCenter: {} as CanvasImageSource }, "art");
+    expect(art.log.filter((x) => x.op === "drawImage").length).toBeGreaterThan(0);
+    const mask = fakeCtx();
+    drawPlate(mask.ctx, p, {}, "mask");
+    // Mask never draws the image itself.
+    expect(mask.log.some((x) => x.op === "drawImage")).toBe(false);
+  });
+});
