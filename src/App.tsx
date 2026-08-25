@@ -223,7 +223,7 @@ async function readCollab(f: File): Promise<CollabFile> {
 }
 
 /** Longest preview-texture edge in px. Sized to the 3D label texture
- *  (~2340px: the preview PDF's 585pt page at labelTextures' 4x oversample) so
+ *  (~2340px: the 585pt preview page at labelTextures' 4x oversample) so
  *  the mask plate is never upscaled into it — at 1600 the binary mask's steps
  *  were rebuilt on a coarser grid and blown up 1.46x, which read as visible
  *  pixelation on the can. Also covers PreviewCompare's 2.5x oversample. */
@@ -238,8 +238,7 @@ async function previewPng(src: ImageBitmap | HTMLCanvasElement): Promise<Uint8Ar
   return canvasToPng(c);
 }
 
-// Blob snapshots the bytes at construction (no transfer), so no copy needed —
-// unlike pdf.js, which neuters the buffer it's handed (see PreviewCompare).
+// Blob snapshots the bytes at construction (no transfer), so no copy needed.
 const blobUrl = (bytes: Uint8Array, type: string) =>
   URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type }));
 
@@ -264,8 +263,8 @@ const clampView = (r: DOMRect, z: number, x: number, y: number) => ({
 
 /** The pane's zoom range: 1 (fitted) through the same ceiling used by the 3D
  *  dolly, so a zoom carried across is never silently clipped. PreviewCompare
- *  re-rasterizes the PDFs as this increases; the ceiling is no longer a point
- *  where CSS runs past a fixed bitmap. */
+ *  re-rasterizes/repaints the canvas plates as this increases; the ceiling is
+ *  no longer a point where CSS runs past a fixed bitmap. */
 const clampZoom = (z: number) => Math.min(PREVIEW_OVERSAMPLE, Math.max(1, z));
 
 /** Zoom to `z` about the pane point (ax, ay), keeping whatever is under that
@@ -1075,7 +1074,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   }
 
   /** Downloads rebuild from the full-resolution assets on demand — the
-   *  preview PDFs on screen are deliberately low-res (see Loaded). */
+   *  on-screen preview is deliberately preview-resolution (see Loaded). */
   async function buildFull(which: "art" | "mask" | "both") {
     if (building) return;
     setBuilding(true);

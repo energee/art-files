@@ -16,7 +16,8 @@ import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import {
-  ART, FONT_ASC, FONT_DESC, PAGE, PREVIEW_MAX_W, previewRasterScale,
+  ART, FONT_ASC, FONT_DESC, PAGE, PREVIEW_MAX_W, PREVIEW_RASTER_MAX_EDGE,
+  previewRasterScale,
 } from "@/layout";
 import type { LabelConfig, StyledLine } from "@/types";
 import { editableText, elementById, type ElementId } from "@/elements";
@@ -147,8 +148,8 @@ export const PreviewCompare = forwardRef<
      *  was typed. */
     onEditCancel: () => void;
     /** The element currently in an IN-PLACE session (null when idle or when
-     *  the session floats — description, rotated column). App hides it from
-     *  the preview build so the editor's live DOM text is the element. */
+     *  the session floats — description, rotated column). planLabel skips it
+     *  via the render flag so the editor's live DOM text is the element. */
     onEditSession: (id: ElementId | null) => void;
     /** Divider position as % of width showing white-ink, on every change —
      *  including a manual drag, so the View menu's checkmarks track the real
@@ -196,8 +197,9 @@ export const PreviewCompare = forwardRef<
   useEffect(() => {
     const next = previewRasterScale(zoom, window.devicePixelRatio);
     // Ratchet up only: zooming out just shrinks the on-screen bitmap via CSS,
-    // which is visually lossless — re-rastering would cost two serialized
-    // worker passes for strictly less detail than what's already painted.
+    // which is visually lossless — repainting now would cost reallocating a
+    // large canvas backing store for strictly less detail than what's already
+    // painted.
     const timeout = window.setTimeout(
       () => setRasterScale((prev) => Math.max(prev, next)), RASTER_DEBOUNCE_MS);
     return () => window.clearTimeout(timeout);
@@ -224,13 +226,21 @@ export const PreviewCompare = forwardRef<
         // failed-frame policy.
         const plan = planLabel(cfg, canvasRender.m,
           { skip: canvasRender.skip, assets: canvasRender.planAssets });
+        // Long-edge guard: rasterScale alone would let a user-expanded bleed
+        // grow the backing store past PREVIEW_RASTER_MAX_EDGE (measured 5040px
+        // at bleed 0.2, past the 4876 cap). Capping the long edge and deriving
+        // the other side from the same PAGE aspect ratio is safe because
+        // PAGE.w and PAGE.h both move linearly with BLEED, so their ratio (and
+        // so the derived edge) never depends on which one triggered the cap.
+        const rawW = PAGE.w * rasterScale, rawH = PAGE.h * rasterScale;
+        const cap = Math.min(1, PREVIEW_RASTER_MAX_EDGE / Math.max(rawW, rawH));
         for (const [canvas, mode] of
             [[artCanvas.current, "art"], [maskCanvas.current, "mask"]] as const) {
           if (!canvas) continue;
-          const w = Math.round(PAGE.w * rasterScale);
+          const w = Math.round(rawW * cap);
           if (canvas.width !== w) {
             canvas.width = w;
-            canvas.height = Math.round(PAGE.h * rasterScale);
+            canvas.height = Math.round(rawH * cap);
           }
           drawPlate(canvas.getContext("2d")!, plan, canvasRender.drawAssets, mode);
         }
@@ -291,8 +301,9 @@ export const PreviewCompare = forwardRef<
   const edited = useRef(false);
 
   // Report in-place sessions (editing with no floating panel) so App can
-  // hide the element from the preview build for the session's duration.
-  // One effect covers every open/close path — Enter, Escape, click-away.
+  // skip the element from the render via planLabel's render flag for the
+  // session's duration. One effect covers every open/close path — Enter,
+  // Escape, click-away.
   useEffect(() => {
     onEditSession(editing && !panelPos ? editing : null);
     // onEditSession is a useState setter in App — identity-stable.
@@ -461,7 +472,7 @@ export const PreviewCompare = forwardRef<
           element from the preview build for the session (see onEditSession),
           so this input's styled text IS the element while you type — same
           family (via the fonts.ts gate), size, weight, tracking, and fill,
-          drawn by the DOM instead of the PDF. The box (and the selection
+          drawn by the DOM instead of the canvas render. The box (and the selection
           outline above) grow with the text as it's typed, and the real
           render takes back over the moment the session ends. */}
       {editing && !panelPos && measure && (() => {
