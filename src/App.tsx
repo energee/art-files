@@ -9,7 +9,7 @@
 // the deactivation effect). The editor reports { title, dirty, edited,
 // filePath } upward through onMeta; the shell owns tabs, file-open routing,
 // render settings, and the updater.
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
 import type { CollabSlot, Fill, LabelConfig } from "@/types";
@@ -65,8 +65,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { loadLabelFont } from "@/fonts";
+import { loadLabelFont, loadLabelFaces } from "@/fonts";
 import { loadFonts } from "@/pdf/fonts";
+import type { PlanAssets } from "@/plan";
+import type { CanvasAssets } from "@/canvas/draw";
 import logoSvg from "@/assets/logo2025.svg?raw";
 
 /** bytes = full print resolution (exports); previewBytes = downscaled PNG the
@@ -348,6 +350,15 @@ type DocumentEditorProps = {
    *  — defeating the memo below and double-rendering the editor. */
   tabStripHost: (el: HTMLDivElement | null) => void;
 };
+
+/** DEV-ONLY (Phase 2): paint the 2D preview with the canvas backend instead
+ *  of the PDF raster path. Set localStorage.canvasPreview = "1" and reload.
+ *  `import.meta.env.DEV` makes this `false` at compile time in a production
+ *  build (Vite dead-code-eliminates the branch it guards), so the flag and
+ *  everything it gates cost production nothing. Deleted when Phase 3 makes
+ *  the canvas path the only path. */
+const CANVAS_PREVIEW =
+  import.meta.env.DEV && localStorage.getItem("canvasPreview") === "1";
 
 // memo is load-bearing, not an optimization garnish: every keystroke in any
 // tab updates the shell's tab list (onMeta → title/dirty), and without the
@@ -1002,6 +1013,56 @@ export const DocumentEditor = memo(function DocumentEditor({
     return () => { stale = true; clearTimeout(timer); };
   }, [...inputs, blocked, needMask, active]);
 
+  // DEV-ONLY (Phase 2): assemble the canvas-backend assets PreviewCompare
+  // needs to paint the 2D preview itself, instead of pdf.js rastering the
+  // PDFs built above. Deps are `inputs` itself — the exact same array the
+  // preview build effect above depends on — so this can never drift out of
+  // sync with what counts as a build input. `skip` is the identical
+  // editSession-folded-over-hiddenLayers set that effect passes as
+  // `assets.hidden` (see its build above): the flag path must hide exactly
+  // what the build path hides. Never disables buildPreviewPdfs — exports and
+  // the 3D views still consume its output, flag on or off.
+  const [canvasRender, setCanvasRender] =
+    useState<ComponentProps<typeof PreviewCompare>["canvasRender"]>(null);
+  useEffect(() => {
+    if (!CANVAS_PREVIEW) return;
+    let cancelled = false;
+    (async () => {
+      const m = await loadLabelFaces();
+      const bitmap = async (bytes: Uint8Array | undefined) =>
+        bytes ? await createImageBitmap(new Blob([bytes as BlobPart])) : null;
+      // Same resolution collabAssets() gives every build; each slot splits
+      // into its plan half (svg string / intrinsic raster size, for
+      // planLabel) and its draw half (a decoded bitmap, for drawPlate).
+      const { collabLeft: cl, collabCenter: cc } = await collabAssets();
+      const slot = async (img: CollabImage | null | undefined) => {
+        if (!img) return { art: null, image: null };
+        if (img.kind === "svg") return { art: img, image: null };
+        const bmp = await createImageBitmap(new Blob([img.bytes as BlobPart]));
+        return { art: { kind: "raster" as const, w: bmp.width, h: bmp.height }, image: bmp };
+      };
+      const [left, center] = await Promise.all([slot(cl), slot(cc)]);
+      const eyed = eyedAssets(true);
+      const next = {
+        m,
+        planAssets: { logoSvg, collabLeft: left.art, collabCenter: center.art } as PlanAssets,
+        drawAssets: {
+          texture: await bitmap(eyed.texture?.bytes),
+          maskImage: await bitmap(eyed.maskPng),
+          collabLeft: left.image, collabCenter: center.image,
+        } as CanvasAssets,
+        skip: editSession
+          ? { has: (id: ElementId) => id === editSession
+              || hiddenLayers.has(id as HideableLayerId) }
+          : hiddenLayers,
+      };
+      if (!cancelled) setCanvasRender(next);
+    })().catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- inputs mirrors
+    // the build effect above; see the comment on this effect.
+  }, [...inputs]);
+
   // Revoking immediately can abort a large download, so each URL lives until
   // the NEXT export batch — a timer would instead pin a full Blob copy of
   // every export (tens of MB for the PSD) for its whole duration. Revocation
@@ -1585,6 +1646,10 @@ export const DocumentEditor = memo(function DocumentEditor({
               // the identity and repaints once.
               artBytes={viewMode === "2d" ? pdfs?.artBytes ?? null : null}
               maskBytes={viewMode === "2d" ? pdfs?.maskBytes ?? null : null}
+              // DEV-ONLY (Phase 2): null whenever the flag is off, so
+              // production and every non-opted-in dev session take the
+              // untouched PDF raster path below (see CANVAS_PREVIEW).
+              canvasRender={canvasRender}
               cfg={cfg} measure={measure} collab={collabSlots}
               // The preview knows only renderer elements; a selected document
               // layer (background/mask) shows no selection box there.

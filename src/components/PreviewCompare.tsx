@@ -11,6 +11,8 @@ import {
 import { createPortal } from "react-dom";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { renderPdfPage } from "@/pdf/render";
+import { planLabel, type MeasureFace, type PlanAssets } from "@/plan";
+import { drawPlate, type CanvasAssets } from "@/canvas/draw";
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from "@/components/ui/resizable";
@@ -170,6 +172,16 @@ export const PreviewCompare = forwardRef<
   {
     artBytes: Uint8Array | null;
     maskBytes: Uint8Array | null;
+    /** DEV-ONLY (Phase 2): when set, the preview paints its two canvases
+     *  from the canvas backend instead of the PDF raster path — the Phase 3
+     *  swap, behind a flag. Everything else (hit-testing, editing, divider)
+     *  is source-agnostic and stays as-is. */
+    canvasRender?: {
+      m: MeasureFace;
+      planAssets: PlanAssets;
+      drawAssets: CanvasAssets;
+      skip: { has(id: ElementId): boolean };
+    } | null;
     /** Current label config — read-only here, needed to hit-test a click
      *  against the same geometry the renderer just painted. */
     cfg: LabelConfig;
@@ -223,7 +235,7 @@ export const PreviewCompare = forwardRef<
   }
 >(function PreviewCompare(
   {
-    artBytes, maskBytes, cfg, measure, collab, selected, onPick, onEditText,
+    artBytes, maskBytes, canvasRender, cfg, measure, collab, selected, onPick, onEditText,
     onEditCancel, onEditSession, onSplit, bleed, cornerRadiusPct, zoom,
     onRenderError,
   },
@@ -258,9 +270,37 @@ export const PreviewCompare = forwardRef<
     getPageElement: () => pageElement.current,
   }));
 
+  // DEV-ONLY (Phase 2): canvasRender set nulls both PDF args, so useRenderPdfs'
+  // effect bails entirely (see its `if (!artBytes && !maskBytes) return`) and
+  // the flag path never pays for a pdf.js raster it isn't going to show.
   useRenderPdfs(
-    artBytes, maskBytes, artCanvas, maskCanvas, rasterScale, onRenderError,
+    canvasRender ? null : artBytes, canvasRender ? null : maskBytes,
+    artCanvas, maskCanvas, rasterScale, onRenderError,
   );
+
+  // DEV-ONLY (Phase 2): repaint both plates straight from the canvas backend
+  // on every config/asset change, on a rAF so a burst of keystrokes coalesces
+  // into one paint per frame (matching the PDF path's per-frame raster cap).
+  // No debounce beyond that — drawPlate is synchronous and cheap compared to
+  // pdf.js, so there's nothing here worth trading responsiveness for.
+  useEffect(() => {
+    if (!canvasRender) return;
+    const raf = requestAnimationFrame(() => {
+      const plan = planLabel(cfg, canvasRender.m,
+        { skip: canvasRender.skip, assets: canvasRender.planAssets });
+      for (const [canvas, mode] of
+          [[artCanvas.current, "art"], [maskCanvas.current, "mask"]] as const) {
+        if (!canvas) continue;
+        const w = Math.round(PAGE.w * rasterScale);
+        if (canvas.width !== w) {
+          canvas.width = w;
+          canvas.height = Math.round(PAGE.h * rasterScale);
+        }
+        drawPlate(canvas.getContext("2d")!, plan, canvasRender.drawAssets, mode);
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [canvasRender, cfg, rasterScale]);
 
   // Click-to-select: the canvases fill the wrapper exactly and the wrapper's
   // aspect ratio is locked to PAGE.w/PAGE.h (see the style below), so a
