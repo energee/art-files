@@ -25,13 +25,18 @@ const library = {
 
 describe("presets browser fallback", () => {
   it("round-trips through localStorage when the endpoint is missing", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("no server")));
+    const fetchMock = vi.fn().mockRejectedValue(new Error("no server"));
+    vi.stubGlobal("fetch", fetchMock);
     const { loadPresets, savePresets, normalizePresets } = await import("@/presets");
     await savePresets(normalizePresets(library));
     const loaded = await loadPresets();
     expect(loaded.styles).toEqual(["IPA"]);
     expect(loaded.barcodes).toEqual(library.barcodes);
     expect(loaded.colors).toEqual(["#4169e1"]);
+    // The missing endpoint is probed once, then remembered — later loads
+    // (every save re-reads first) must not repeat the failing fetch.
+    await loadPresets();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("treats an SPA's HTML fallback response as a missing endpoint", async () => {

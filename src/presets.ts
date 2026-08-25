@@ -154,11 +154,13 @@ export function normalizePresets(raw: Partial<Presets>): Presets {
 /** The browser fallback store, same JSON shape as presets.json. */
 export const LOCAL_PRESETS_KEY = "labellab.presets";
 
-// Whether the dev endpoint answered with a real library this session. Decides
-// where a browser save goes: a working endpoint keeps its throw-on-failure
-// contract (a dev save that vanishes must be visible), while a build without
-// the endpoint saves to localStorage instead of failing every write.
-let serverBacked = false;
+// Which store a browser session talks to, resolved by the first load's probe
+// of /api/presets and then remembered: "server" keeps the dev endpoint's
+// throw-on-failure save contract (a dev save that vanishes must be visible),
+// "local" saves to localStorage instead of re-attempting a fetch that is
+// known to fail on every write. Saves always follow a load (mutatePresets
+// reads before writing), so the backend is resolved before any save runs.
+let backend: "unknown" | "server" | "local" = "unknown";
 
 function loadLocalPresets(): Presets {
   try {
@@ -180,16 +182,20 @@ export async function loadPresets(): Promise<Presets> {
       return EMPTY_PRESETS;
     }
   }
-  try {
-    const res = await fetch("/api/presets");
-    if (res.ok) {
-      // A static host's SPA fallback answers 200 with HTML; the json() throw
-      // below routes that to localStorage like any other missing endpoint.
-      const parsed = normalizePresets((await res.json()) as Partial<Presets>);
-      serverBacked = true;
-      return parsed;
-    }
-  } catch { /* fall through to the local copy */ }
+  if (backend !== "local") {
+    try {
+      const res = await fetch("/api/presets");
+      if (res.ok) {
+        // A static host's SPA fallback answers 200 with HTML; the json()
+        // throw below routes that to localStorage like any other missing
+        // endpoint.
+        const parsed = normalizePresets((await res.json()) as Partial<Presets>);
+        backend = "server";
+        return parsed;
+      }
+    } catch { /* fall through to the local copy */ }
+    if (backend === "unknown") backend = "local";
+  }
   return loadLocalPresets();
 }
 
@@ -200,7 +206,7 @@ export async function savePresets(presets: Presets): Promise<void> {
     await invoke("save_presets", { presets });
     return;
   }
-  if (serverBacked) {
+  if (backend === "server") {
     const res = await fetch("/api/presets", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

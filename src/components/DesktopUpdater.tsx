@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { DownloadEvent, Update } from "@tauri-apps/plugin-updater";
-import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -43,22 +43,39 @@ async function checkForUpdate(): Promise<CheckResult> {
 // each line so the dialog can style headings and bullets without a markdown
 // dependency. ponytail: headings and bullets only; add a renderer if release
 // notes ever use links or emphasis.
+const HEADING_RE = /^#{1,6}\s+(.*)/;
+const BULLET_RE = /^[-*]\s+(.*)/;
+
 export function releaseNoteLines(body: string) {
   return body
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line): { kind: "heading" | "bullet" | "text"; text: string } => {
-      const heading = /^#{1,6}\s+(.*)/.exec(line);
+      const heading = HEADING_RE.exec(line);
       if (heading) return { kind: "heading", text: heading[1] };
-      const bullet = /^[-*]\s+(.*)/.exec(line);
+      const bullet = BULLET_RE.exec(line);
       if (bullet) return { kind: "bullet", text: bullet[1] };
       return { kind: "text", text: line };
     });
 }
 
+const NOTE_CLASS = {
+  heading: "pt-1.5 font-semibold first:pt-0",
+  bullet: "pl-3 text-muted-foreground before:mr-1.5 before:content-['•']",
+  text: "text-muted-foreground",
+} as const;
+
 function formatMB(bytes: number) {
   return `${(bytes / 1_048_576).toFixed(1)} MB`;
+}
+
+/** Percentage and human-readable label for the download in flight; undefined
+ *  until the release's size is known. */
+function downloadProgress(downloaded: number, total?: number) {
+  if (!total) return undefined;
+  const pct = Math.min(100, Math.round(downloaded / total * 100));
+  return { pct, label: `${formatMB(downloaded)} of ${formatMB(total)} · ${pct}%` };
 }
 
 function releaseUpdate(update: Update) {
@@ -152,10 +169,16 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number }) 
     if (!update || status.kind !== "available") return;
     let downloaded = 0;
     let total: number | undefined;
+    let shownPct = -1;
     const showProgress = (event: DownloadEvent) => {
       if (event.event === "Started") total = event.data.contentLength;
       if (event.event === "Progress") downloaded += event.data.chunkLength;
       if (event.event === "Finished" && total !== undefined) downloaded = total;
+      // Chunk events arrive many times a second; re-render only when the
+      // visible percent moves so the bar's width transition can play out.
+      const pct = downloadProgress(downloaded, total)?.pct ?? -1;
+      if (event.event === "Progress" && pct === shownPct) return;
+      shownPct = pct;
       setStatus({ kind: "downloading", version: update.version, downloaded, total });
     };
     setStatus({ kind: "downloading", version: update.version, downloaded: 0 });
@@ -168,9 +191,14 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number }) 
     }
   };
 
-  const progress = status.kind === "downloading" && status.total
-    ? Math.min(100, Math.round(status.downloaded / status.total * 100))
+  const download = status.kind === "downloading"
+    ? downloadProgress(status.downloaded, status.total)
     : undefined;
+  const releasedOn = status.kind === "available" && status.date
+    ? ` · Released ${new Date(status.date).toLocaleDateString(undefined, {
+        month: "short", day: "numeric", year: "numeric",
+      })}`
+    : "";
   const busy = status.kind === "checking" || status.kind === "downloading";
 
   return (
@@ -187,17 +215,11 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number }) 
             {status.kind === "error" && "Update failed"}
           </DialogTitle>
           <DialogDescription>
-            {status.kind === "available" && (
-              `Label Lab ${status.version}` + (status.date
-                ? ` · Released ${new Date(status.date).toLocaleDateString(undefined, {
-                    month: "short", day: "numeric", year: "numeric",
-                  })}`
-                : "")
-            )}
+            {status.kind === "available" && `Label Lab ${status.version}${releasedOn}`}
             {status.kind === "downloading" && "Keep Label Lab open while the update downloads."}
             {status.kind === "checking" && (
               <span className="flex items-center gap-2">
-                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" aria-hidden />
                 Looking for the latest signed release…
               </span>
             )}
@@ -209,15 +231,9 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number }) 
 
         {status.kind === "available" && status.body && (
           <div className="max-h-40 space-y-1 overflow-y-auto rounded-md bg-muted p-3 text-xs">
-            {releaseNoteLines(status.body).map((line, i) =>
-              line.kind === "heading"
-                ? <p key={i} className="pt-1.5 font-semibold first:pt-0">{line.text}</p>
-                : (
-                  <p key={i}
-                    className={`text-muted-foreground${line.kind === "bullet" ? " pl-3 before:mr-1.5 before:content-['•']" : ""}`}>
-                    {line.text}
-                  </p>
-                ))}
+            {releaseNoteLines(status.body).map((line, i) => (
+              <p key={i} className={NOTE_CLASS[line.kind]}>{line.text}</p>
+            ))}
           </div>
         )}
         {status.kind === "available" && props.dirty && (
@@ -228,19 +244,9 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number }) 
         )}
         {status.kind === "downloading" && (
           <div className="space-y-2" aria-live="polite">
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted" role="progressbar"
-              aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
-              <div
-                className={progress === undefined
-                  ? "h-full w-1/3 animate-pulse rounded-full bg-primary"
-                  : "h-full rounded-full bg-primary transition-[width] duration-300"}
-                style={progress === undefined ? undefined : { width: `${progress}%` }}
-              />
-            </div>
+            <Progress value={download?.pct ?? null} />
             <p className="text-xs text-muted-foreground">
-              {status.total === undefined || progress === undefined
-                ? "Downloading…"
-                : `${formatMB(status.downloaded)} of ${formatMB(status.total)} · ${progress}%`}
+              {download?.label ?? "Downloading…"}
             </p>
           </div>
         )}
