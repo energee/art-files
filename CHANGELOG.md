@@ -3,6 +3,13 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.19] - 2026-08-25
+
+- The preview now renders directly on canvas from the shared display list —
+  2D updates land per keystroke with no debounce, in-place editing hides the
+  edited element instantly, and the 3D views texture from the same plates.
+  PDFs and PSDs are built only on export; exported files are unchanged.
+
 ## [0.1.18] - 2026-08-25
 
 - Internal: the shared display list now covers the whole label (laurel, QR,

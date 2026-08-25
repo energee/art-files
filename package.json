@@ -1,7 +1,7 @@
 {
   "name": "label-lab",
   "private": true,
-  "version": "0.1.18",
+  "version": "0.1.19",
   "type": "module",
   "description": "Label Lab: create print-ready label artwork and white-ink plates",
   "scripts": {
