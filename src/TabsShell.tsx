@@ -240,7 +240,7 @@ export default function TabsShell() {
   // hover. The dirty dot lives in the close slot: a dot until hover, then
   // the ×.
   const tabStrip = (
-    <div className="flex h-9 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-sidebar px-2">
+    <div className="flex h-9 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-sidebar">
         {state.tabs.map((t) => (
           <div
             key={t.id}
