@@ -4,12 +4,10 @@
 // baseline and 0.35em below (measured with pdftotext -bbox).
 import type { LabelConfig } from "./types";
 import { logoNudge, type ElementId } from "./elements";
-import { parseDescription, parseInfoLine, parseRuns } from "./description";
-import { displayAbv, displayName, displayStyle } from "./defaults";
-// The renderer's own paragraph wrapper and justified-column length, so the
-// warning's hit columns can't disagree with the columns it draws or the
-// justified width it draws them at (see the warning boxes below).
-import { wrapWarning, warningColumnLen, warningMeasure } from "./warning";
+import { parseDescription } from "./description";
+// Text boxes are derived from the same display list the renderers draw from,
+// so a hit box can't drift from the artwork.
+import { planLabel, type MeasureFace, type PlacedText, type CollabSlots } from "./plan";
 import * as L from "./layout";
 
 export type Measure = (text: string, size: number, bold: boolean) => number;
@@ -24,88 +22,65 @@ const LOGO_H = L.LOGO.w * L.LOGO_ASPECT;
 
 /** Which collab logo slots currently hold art. The renderers skip a slot with
  *  nothing in it, so its box has to disappear too. */
-export interface CollabSlots { left: boolean; center: boolean }
+export type { CollabSlots };
 /** Default: no collab art, hence no collab boxes — the safe answer for any
  *  caller that doesn't track uploads. */
 const NO_SLOTS: CollabSlots = { left: false, center: false };
-
-// Every text box measures through `width` below, so an element's tracking
-// widens its hit box exactly as much as it widens the drawn line, and inline
-// `**bold**` / `_white_` markers never pad it by their own glyphs.
-// `tracking` defaults to 0, which reduces each of these to the untracked
-// measurement.
-
-/** Tracked width of a line, summed over its inline runs (see parseRuns) so
- *  markers are measured as the text they produce, in the face they produce.
- *  Shares layout.ts's runsWidth with both renderers, so a hit box can't
- *  disagree with what got drawn. */
-function width(text: string, size: number, m: Measure, bold: boolean, tracking: number): number {
-  // fill/layer are irrelevant here — only text and bold reach the measure.
-  const runs = parseRuns({ text, bold, fill: "none", layer: "metallic" });
-  return L.runsWidth(runs, (r) => m(r.text, size, !!r.bold), tracking);
-}
-
-const flat = (
-  id: ElementId, text: string, x: number, baseline: number, size: number,
-  m: Measure, bold = false, tracking = 0,
-): Box => ({
-  id, x0: x, x1: x + width(text, size, m, bold, tracking),
-  y0: baseline - ASC * size, y1: baseline + DESC * size,
-});
-
-const centred = (
-  id: ElementId, text: string, cx: number, baseline: number, size: number,
-  m: Measure, bold = false, tracking = 0,
-): Box => {
-  const w = width(text, size, m, bold, tracking);
-  return {
-    id, x0: cx - w / 2, x1: cx + w / 2,
-    y0: baseline - ASC * size, y1: baseline + DESC * size,
-  };
-};
-
-const rotated = (
-  id: ElementId, text: string, x: number, yStart: number, size: number,
-  m: Measure, bold = false, tracking = 0,
-): Box => ({
-  id, x0: x - ASC * size, x1: x + DESC * size,
-  y0: yStart - width(text, size, m, bold, tracking), y1: yStart,
-});
 
 /** Every element's box, in paint order (later entries sit on top): volume,
  *  abv, description, wordmark, logo, name, styleLine, qr, handleAddress,
  *  warning, storeCold, barcode — exactly drawElements' order in
  *  src/pdf/build.ts.
- *  handleAddress and storeCold pass bold=true because semibold is their plain
- *  face (their bold toggle only steps them up to Bold, whose metrics are close
- *  enough to reuse the semibold measure); the description header passes its own bold since
- *  parseDescription hardcodes header bold=true (e.g. the default "# HOPS"). */
+ *  Text boxes are grouped from planLabel's runs, one box per drawn line
+ *  (unrotated) or column (rotated); the measure adapter below folds
+ *  semibold and bold alike onto Measure's single bold flag, the same
+ *  approximation these boxes always made. */
 export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SLOTS): Box[] {
   const desc = parseDescription(cfg.description, cfg.descStyle);
-  // Every description line maps to the one description element; the header,
-  // if present, always precedes the body lines, matching drawElements.
-  const descLines = [
-    ...(desc.header
-      ? [{ text: desc.header.text, x: L.DESC_HEADER.x, baseline: L.DESC_HEADER.baseline, size: L.DESC_HEADER.size, bold: !!desc.header.bold, tracking: desc.header.letterSpacing }]
-      : []),
-    ...desc.lines.map((l, i) => ({
-      text: l.text, x: L.DESC.x,
-      baseline: L.DESC.firstBaseline + i * L.DESC.leading, size: L.DESC.size, bold: !!l.bold,
-      tracking: l.letterSpacing,
-    })),
-  ];
 
   // The laurel's nudged centre, shared by the logo box and the collab-centre
   // box hanging off its bottom (same value drawElements draws with).
   const logoCy = L.LOGO.cy + logoNudge(cfg);
 
+  // Text boxes from the plan, one box per drawn line/column. The measure
+  // adapter maps faces onto the existing bold-boolean Measure so every
+  // number matches today's boxes exactly: semibold AND bold both measure as
+  // the "bold" metrics, the same approximation these boxes always made.
+  const mf: MeasureFace = (t, s, face) => m(t, s, face !== "regular");
+  const plan = planLabel(cfg, mf, { collab: slots });
+  const textBoxes: Box[] = [];
+  const groups = new Map<string, PlacedText[]>();
+  for (const r of plan) {
+    // Unrotated runs of one drawn line share a baseline; rotated runs of one
+    // column share their x. Group on that, per element.
+    const key = `${r.id}:${r.rotated ? `r${r.x}` : `f${r.y}`}`;
+    const g = groups.get(key);
+    if (g) g.push(r); else groups.set(key, [r]);
+  }
+  for (const runs of groups.values()) {
+    const { id, rotated, size } = runs[0];
+    textBoxes.push(rotated
+      ? {
+          id, x0: runs[0].x - ASC * size, x1: runs[0].x + DESC * size,
+          y0: Math.min(...runs.map((r) => r.y - r.w)), y1: Math.max(...runs.map((r) => r.y)),
+        }
+      : {
+          id, x0: Math.min(...runs.map((r) => r.x)), x1: Math.max(...runs.map((r) => r.x + r.w)),
+          y0: runs[0].y - ASC * size, y1: runs[0].y + DESC * size,
+        });
+  }
+  // Runs of the same id land in the group in plan order, and groups.values()
+  // walks in first-seen order, so filtering by id keeps each element's lines
+  // (or the warning's columns) in drawn order.
+  const textFor = (id: ElementId) => textBoxes.filter((b) => b.id === id);
+
   const boxes: Box[] = [
     // Left column
-    flat("volume", cfg.volume.text, L.VOLUME.x, L.VOLUME.baseline, L.VOLUME.size, m, !!cfg.volume.bold, cfg.volume.letterSpacing),
-    flat("abv", `${displayAbv(cfg)}% alc by vol`, L.ABV.x, L.ABV.baseline, L.ABV.size, m, false, cfg.abvStyle.letterSpacing),
-    ...descLines.map((d) => flat("description", d.text, d.x, d.baseline, d.size, m, d.bold, d.tracking)),
+    ...textFor("volume"),
+    ...textFor("abv"),
+    ...textFor("description"),
     // Center column. Wordmark and beer name always render with the Bold face.
-    centred("wordmark", L.WORDMARK.text, L.WORDMARK.cx, L.WORDMARK.baseline, L.WORDMARK.size, m, true, cfg.wordmark.letterSpacing),
+    ...textFor("wordmark"),
     // Logo is a box, not text. It is drawn at LOGO.w wide and whatever height
     // the SVG's aspect gives (logo2025.svg is viewBox "0 0 480 525", so ~1.09
     // x the width — see parseLogo, which both renderers scale by width alone),
@@ -118,45 +93,19 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
       x0: L.LOGO.cx - L.LOGO.w / 2, x1: L.LOGO.cx + L.LOGO.w / 2,
       y0: logoCy - LOGO_H / 2,
       y1: logoCy + LOGO_H / 2 },
-    centred("name", displayName(cfg).toUpperCase(), L.NAME.cx, L.NAME.baseline, L.NAME.size, m, true, cfg.nameStyle.letterSpacing),
-    centred("styleLine", displayStyle(cfg), L.STYLE_LINE.cx, L.STYLE_LINE.baseline, L.STYLE_LINE.size, m, !!cfg.styleLine.bold, cfg.styleLine.letterSpacing),
+    ...textFor("name"),
+    ...textFor("styleLine"),
     // QR is a box, not text.
     { id: "qr",
       x0: L.QR.x, x1: L.QR.x + L.QR.size,
       y0: L.QR.yTop, y1: L.QR.yTop + L.QR.size },
-    // Right rotated column. Measured off the PARSED Info line, so the box
-    // tracks the drawn text rather than the raw markdown (markers would
-    // otherwise pad the column by their own width). bold=true either way:
-    // the unmarked line renders semibold, which is what this flag means (see
-    // the function doc comment).
-    rotated("handleAddress", parseInfoLine(cfg.handleAddress.text, cfg.handleAddress).text, L.HANDLE_ADDR.x, L.HANDLE_ADDR.yStart, L.HANDLE_ADDR.size, m, true, cfg.handleAddress.letterSpacing),
+    // Right rotated column.
+    ...textFor("handleAddress"),
+    // The warning is a wrapped paragraph in rotated, justified columns
+    // sharing one style, painted after handleAddress and before storeCold —
+    // one box per column, from the plan's own wrap and justification.
+    ...textFor("warning"),
   ];
-  // The warning is a wrapped paragraph in rotated, justified columns sharing
-  // one style, painted after handleAddress and before storeCold. Column
-  // count comes from wrapWarning with THIS caller's measure — the same
-  // function and the same metrics the renderers wrap with — so a font or
-  // maxLen change can never leave the boxes describing a column count the
-  // artwork doesn't have. Column LENGTH comes from warningColumnLen: every
-  // multi-word column is justified out to exactly maxLen (see
-  // drawJustifiedRotated), so the box uses maxLen too rather than the
-  // column's natural (pre-justification) measured width; a single-word
-  // column has no gaps to stretch and stays natural-length.
-  // Tracked, matching drawElements' wrap measure: the warning's own spacing
-  // decides both how many columns the paragraph wraps into and how long each
-  // justified one is.
-  const warnMeasure = warningMeasure(
-    (t, bold) => m(t, L.WARNING.size, bold), cfg.warning.letterSpacing,
-  );
-  const warnLines = wrapWarning(warnMeasure, L.WARNING.maxLen);
-  warnLines.forEach((line, i) =>
-    boxes.push({
-      id: "warning",
-      x0: L.WARNING.x + i * L.WARNING.leading - ASC * L.WARNING.size,
-      x1: L.WARNING.x + i * L.WARNING.leading + DESC * L.WARNING.size,
-      y0: L.WARNING.yStart - warningColumnLen(line, L.WARNING.maxLen, warnMeasure),
-      y1: L.WARNING.yStart,
-    }),
-  );
   // Collab block, drawn after the description and before the centre column.
   // Only present when the switch is on: with it off the renderers skip the
   // block entirely, and a box with nothing under it would swallow clicks
@@ -174,10 +123,8 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
   if (cfg.collabEnabled && slots.left) {
     // The lead-in only exists to introduce a left logo, so it is gated on the
     // same slot the renderers gate it on.
+    boxes.push(...textFor("collabLead"));
     const flow = L.collabLeftFlow(desc.lines.length);
-    L.COLLAB_LEAD.lines.forEach((text, i) =>
-      boxes.push(flat("collabLead", text, L.COLLAB_LEAD.x, flow.leadBaselines[i], L.COLLAB_LEAD.size, m, true, cfg.collabLead.letterSpacing)),
-    );
     const leftW = L.COLLAB_LEFT.maxW * cfg.collabLeft.scale;
     const leftTop = flow.logoTop + (cfg.collabLeft.offsetY ?? 0);
     boxes.push({
@@ -198,9 +145,7 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
       y0: centerTop, y1: centerTop + L.COLLAB_CENTER.maxH * cfg.collabCenter.scale,
     });
   }
-  // storeCold measures semibold (bold=true; see the doc comment) even when its
-  // bold toggle picks the Bold face — close enough for a hit box.
-  boxes.push(rotated("storeCold", cfg.storeCold.text, L.STORE_COLD.x, L.STORE_COLD.yStart, L.STORE_COLD.size, m, true, cfg.storeCold.letterSpacing));
+  boxes.push(...textFor("storeCold"));
   // The barcode is drawn last, so its box goes last too. No font measurement:
   // the footprint is the whole symbol, bars AND the digits column (BARCODE.w
   // is the full symbol depth), which is exactly the rectangle the mask lays
