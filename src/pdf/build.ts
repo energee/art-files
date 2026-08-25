@@ -23,16 +23,16 @@ import {
   type Rotation,
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
-import type { CollabSlot, Fill, LabelConfig, Style, StyledLine } from "../types";
+import type { CollabSlot, Fill, LabelConfig, Style } from "../types";
 import { logoNudge, type ElementId } from "../elements";
 import { parseLogo } from "../logo";
 import { WARNING_TEXT, displayAbv, displayName, displayStyle } from "../defaults";
+import { planLabel, type Face, type MeasureFace, type PlacedText } from "../plan";
 import * as L from "../layout";
 import { barcodeFootprint, barcodeGeometry, barcodeStrokePt } from "../barcode";
 import { qrPath, qrShapes, qrUrl } from "../qr";
-import { parseDescription, parseInfoLine, parseRuns } from "../description";
+import { parseDescription } from "../description";
 import { strokeLayerOf } from "../strokes";
-import { warningColumnLen, warningMeasure, wrapWarning } from "../warning";
 
 /** A collab brewery's logo: vector source (recolored by its slot's style, like
  *  the laurel) or raster bytes (drawn as-is, over white ink). */
@@ -241,125 +241,6 @@ async function drawCollab(
   else page.drawRectangle({ ...rect, color: toRgb(L.COLORS.maskBlue) });
 }
 
-function drawLine(
-  page: PDFPage,
-  fonts: Fonts,
-  line: StyledLine,
-  mode: Mode,
-  opts: { x?: number; cx?: number; baseline: number; size: number; font?: PDFFont },
-) {
-  // Inline runs: a marker-free line yields one run identical to the line, so
-  // this is the old single drawText path with an extra loop around it.
-  // opts.font (the wordmark/name's forced Bold face) still wins outright —
-  // those slots are one face by design, markers or not.
-  const runs = parseRuns(line);
-  const faceOf = (r: StyledLine) => opts.font ?? (r.bold ? fonts.semibold : fonts.regular);
-  const tracking = line.letterSpacing;
-  // Measured once and reused as the per-run advance below, rather than
-  // measuring each run again while walking it.
-  const advances = L.runAdvances(
-    runs, (r) => faceOf(r).widthOfTextAtSize(r.text, opts.size), tracking,
-  );
-  // Centring measures the TRACKED width, not the font's — at 0 tracking the
-  // two are identical, so this is the same math as before for untracked text.
-  const total = advances.reduce((a, b) => a + b, 0) - (tracking ?? 0);
-  let x = opts.cx !== undefined ? opts.cx - total / 2 : opts.x!;
-  const yBase = y(opts.baseline);
-  const stroke = strokeOf(line, mode);
-  withTracking(page, tracking, () => {
-    runs.forEach((run, i) => {
-      const font = faceOf(run);
-      // Colour is per RUN: `_white ink_` moves that span to the mask plate,
-      // which in art mode means it must not paint at all (fillColor("none")
-      // handles a none-fill; the mask pass paints it instead).
-      const color = mode === "art" ? fillColor(run.fill) : maskColor(run.layer);
-      strokedText(page, stroke, run.text, { x, y: yBase, size: opts.size, font, color });
-      x += advances[i];
-    });
-  });
-}
-
-/** Rotated 90deg CCW text (reads bottom-to-top). x = baseline vertical line,
- *  yStart = where the first character sits (toward the label bottom). */
-function drawRotated(
-  page: PDFPage,
-  font: PDFFont,
-  text: string,
-  mode: Mode,
-  style: Style,
-  opts: { x: number; yStart: number; size: number },
-  /** Face for `**bold**` runs. Omitted (the warning's justified words, which
-   *  carry no markers of their own) means inline bold just keeps `font`. */
-  boldFont?: PDFFont,
-) {
-  // Same inline-run treatment as drawLine, advancing along the rotated
-  // baseline (+y, since the text reads bottom-to-top) instead of x. `font`
-  // is the caller's face for unmarked text; a `**bold**` run steps up to
-  // Bold, which is the only face above the semibold this column uses.
-  const runs = parseRuns({ ...style, text });
-  const tracking = style.letterSpacing;
-  const advances = L.runAdvances(
-    runs, (r) => (r.bold ? boldFont ?? font : font).widthOfTextAtSize(r.text, opts.size), tracking,
-  );
-  const stroke = strokeOf(style, mode);
-  let yPos = y(opts.yStart);
-  withTracking(page, tracking, () => {
-    runs.forEach((run, i) => {
-      const face = run.bold ? boldFont ?? font : font;
-      const color = mode === "art" ? fillColor(run.fill) : maskColor(run.layer);
-      strokedText(page, stroke, run.text, {
-        x: opts.x, y: yPos, size: opts.size, font: face, color, rotate: degrees(90),
-      });
-      yPos += advances[i];
-    });
-  });
-}
-
-/** Like drawRotated, but for a warning column: stretches inter-word gaps so
- *  the line's run reaches EXACTLY `opts.maxLen` (full justification — no
- *  ragged final column). Draws word-by-word, reusing drawRotated's per-word
- *  coordinate math rather than a second rotated-text scheme: each word is
- *  its own drawRotated call, advanced along the run by that word's width
- *  plus the stretched gap. A single-word line has no gap to stretch and
- *  falls back to one plain drawRotated call at its natural length — see
- *  warningColumnLen. */
-export function drawJustifiedRotated(
-  page: PDFPage,
-  font: PDFFont,
-  text: string,
-  mode: Mode,
-  style: Style,
-  opts: { x: number; yStart: number; size: number; maxLen: number },
-  boldFont?: PDFFont,
-) {
-  const words = text.split(" ");
-  if (words.length < 2) {
-    drawRotated(page, font, text, mode, style, opts, boldFont);
-    return;
-  }
-  // Run-aware tracked widths: the gap that justifies the line has to be
-  // computed against the length each word actually draws at — the stripped
-  // text of its inline runs, each in its own face — or a tracked or
-  // **bold**-marked warning column overshoots maxLen.
-  const widths = words.map((w) =>
-    L.runsWidth(
-      parseRuns({ ...style, text: w }),
-      (r) => (r.bold ? boldFont ?? font : font).widthOfTextAtSize(r.text, opts.size),
-      style.letterSpacing ?? 0,
-    ));
-  const totalWordWidth = widths.reduce((a, b) => a + b, 0);
-  // The gap that makes sum(widths) + (n-1)*gap land exactly on maxLen.
-  const gap = (opts.maxLen - totalWordWidth) / (words.length - 1);
-  // The run advances from yStart toward SMALLER yStart (drawRotated's
-  // "reads bottom-to-top": later characters/words sit at a smaller top-
-  // origin y) — see drawRotated's doc comment.
-  let cursor = opts.yStart;
-  words.forEach((w, i) => {
-    drawRotated(page, font, w, mode, style, { x: opts.x, yStart: cursor, size: opts.size }, boldFont);
-    cursor -= widths[i] + gap;
-  });
-}
-
 /** The barcode, in both modes. `cfg` (not just the UPC digits) because both
  *  branches below resolve their geometry from the same barcode* style fields
  *  — see S. */
@@ -462,50 +343,58 @@ async function drawElements(
   // toggling a layer's eye never reflows its neighbours.
   const hide = (id: ElementId) => !!assets.hidden?.has(id);
 
-  // Left column
-  if (!hide("volume"))
-    drawLine(page, fonts, cfg.volume, mode, { x: L.VOLUME.x, baseline: L.VOLUME.baseline, size: L.VOLUME.size });
-  if (!hide("abv"))
-    drawLine(page, fonts, { text: `${displayAbv(cfg)}% alc by vol`, ...cfg.abvStyle }, mode, {
-      x: L.ABV.x, baseline: L.ABV.baseline, size: L.ABV.size,
-    });
+  // Every text run on the label, placed once by plan.ts — the same
+  // computation hittest.ts uses — measured here with the actual embedded
+  // PDFFont widths so the built bytes place text exactly as before.
+  const faceFont = (f: Face) =>
+    f === "bold" ? fonts.bold : f === "semibold" ? fonts.semibold : fonts.regular;
+  const pdfMeasure: MeasureFace = (t, size, f) => faceFont(f).widthOfTextAtSize(t, size);
+  const plan = planLabel(cfg, pdfMeasure, {
+    skip: assets.hidden,
+    collab: { left: !!assets.collabLeft, center: !!assets.collabCenter },
+  });
+  const drawPlaced = (r: PlacedText) => {
+    const color = mode === "art" ? fillColor(r.fill) : maskColor(r.layer);
+    const stroke = r.stroke
+      ? { color: mode === "art" ? fillColor(r.stroke.fill) : maskColor(r.stroke.layer), w: r.stroke.w }
+      : null;
+    withTracking(page, r.tracking || undefined, () =>
+      strokedText(page, stroke, r.text, {
+        x: r.x, y: y(r.y), size: r.size, font: faceFont(r.face), color,
+        ...(r.rotated ? { rotate: degrees(90) } : {}),
+      }));
+  };
+  // The ids drawn OUTSIDE the single "everything else" pass below — each
+  // has its own fixed slot in drawElements' order because a non-text
+  // element (the collab image, the laurel) is interleaved between it and
+  // its neighbours. Keep this in sync with plan.ts's element walk: a new
+  // left-column or early-drawn text element that isn't added here silently
+  // falls into the "rest" pass at the bottom instead.
+  const LEFT: ReadonlySet<ElementId> = new Set(["volume", "abv", "description", "collabLead"]);
+
+  // Left column: volume, abv, description, and the collab lead-in text.
+  plan.filter((r) => LEFT.has(r.id)).forEach(drawPlaced);
+
+  // Left collab logo, flowed under the description. The lead-in text above
+  // already carries its own gate (cfg.collabEnabled && a left logo present);
+  // this block draws only the image.
   const desc = parseDescription(cfg.description, cfg.descStyle);
-  if (!hide("description")) {
-    if (desc.header)
-      drawLine(page, fonts, desc.header, mode, {
-        x: L.DESC_HEADER.x, baseline: L.DESC_HEADER.baseline, size: L.DESC_HEADER.size,
-      });
-    desc.lines.forEach((line, i) =>
-      drawLine(page, fonts, line, mode, {
-        x: L.DESC.x, baseline: L.DESC.firstBaseline + i * L.DESC.leading, size: L.DESC.size,
-      }),
-    );
-  }
-
-  // Left collab logo, flowed under the description with its lead-in. The
-  // lead-in is drawn in SemiBold like the reference label's, and only when
-  // there is actually a left logo for it to introduce.
-  if (cfg.collabEnabled && assets.collabLeft) {
+  if (cfg.collabEnabled && assets.collabLeft && !hide("collabLeft")) {
     const flow = L.collabLeftFlow(desc.lines.length);
-    if (!hide("collabLead"))
-      L.COLLAB_LEAD.lines.forEach((text, i) =>
-        drawLine(page, fonts, { text, ...cfg.collabLead, bold: true }, mode, {
-          x: L.COLLAB_LEAD.x, baseline: flow.leadBaselines[i], size: L.COLLAB_LEAD.size,
-        }),
-      );
-    if (!hide("collabLeft"))
-      await drawCollab(doc, page, assets.collabLeft, cfg.collabLeft, mode, {
-        x: L.COLLAB_LEFT.x, top: flow.logoTop,
-        maxW: L.COLLAB_LEFT.maxW, maxH: L.COLLAB_LEFT.maxH,
-      });
+    await drawCollab(doc, page, assets.collabLeft, cfg.collabLeft, mode, {
+      x: L.COLLAB_LEFT.x, top: flow.logoTop,
+      maxW: L.COLLAB_LEFT.maxW, maxH: L.COLLAB_LEFT.maxH,
+    });
   }
 
-  // Center column. Wordmark and beer name use the Bold face — the reference
-  // label sets both in the same heavy weight.
-  if (!hide("wordmark"))
-    drawLine(page, fonts, { text: L.WORDMARK.text, ...cfg.wordmark, bold: true }, mode, {
-      cx: L.WORDMARK.cx, baseline: L.WORDMARK.baseline, size: L.WORDMARK.size, font: fonts.bold,
-    });
+  // Center column. Wordmark draws in its own pre-laurel slot, matching the
+  // original draw order exactly: the laurel's stack nudge (logoNudge,
+  // cfg.logo.offsetY — see below) is user-controlled and unbounded, so a
+  // large nudge CAN drag the laurel up into the wordmark's ink. Drawing the
+  // wordmark after the laurel would let that nudge silently flip which one
+  // paints on top; keeping this slot preserves the shipped z-order (wordmark
+  // over laurel) regardless of the nudge.
+  plan.filter((r) => r.id === "wordmark").forEach(drawPlaced);
   // The laurel's geometry is computed even when hidden: the centre collab
   // mark hangs off logoCy below, and hiding the laurel must not move it.
   const logo = parseLogo(assets.logoSvg, L.LOGO.w);
@@ -536,14 +425,17 @@ async function drawElements(
       top: logoCy + logo.h / 2 + L.COLLAB_CENTER.gapAbove,
       maxW: L.COLLAB_CENTER.maxW, maxH: L.COLLAB_CENTER.maxH,
     });
-  if (!hide("name"))
-    drawLine(page, fonts, { text: displayName(cfg).toUpperCase(), ...cfg.nameStyle, bold: true }, mode, {
-      cx: L.NAME.cx, baseline: L.NAME.baseline, size: L.NAME.size, font: fonts.bold,
-    });
-  if (!hide("styleLine"))
-    drawLine(page, fonts, { ...cfg.styleLine, text: displayStyle(cfg) }, mode, {
-      cx: L.STYLE_LINE.cx, baseline: L.STYLE_LINE.baseline, size: L.STYLE_LINE.size,
-    });
+
+  // Remaining text: beer name, style line, the rotated handle / address,
+  // warning, and store-cold — in that order (plan.ts's order, matching
+  // drawElements' historical draw order for these five; wordmark was
+  // already drawn above, in its own pre-laurel slot).
+  //
+  // One deliberate paint-order move versus the pre-plan build, between
+  // non-overlapping elements: the QR below now draws after storeCold
+  // instead of before handleAddress — the QR touches nothing in the rotated
+  // column.
+  plan.filter((r) => !LEFT.has(r.id) && r.id !== "wordmark").forEach(drawPlaced);
 
   // QR — payload derived from the beer name; optional stroked underlay.
   if (!hide("qr")) {
@@ -562,40 +454,6 @@ async function drawElements(
     const qrColor = mode === "art" ? fillColor(cfg.qrFill) : maskColor(cfg.qrLayer);
     page.drawSvgPath(qrPath(shapes, L.QR.size), { ...qrAt, color: qrColor });
   }
-
-  // Right rotated column
-  // Info carries the description block's markdown subset (see parseInfoLine):
-  // the markers set the face and the white-ink layer, the rest of the style
-  // stays the element's own. A plain, marker-free line renders exactly as it
-  // always did — semibold, on the element's layer.
-  const info = parseInfoLine(cfg.handleAddress.text, cfg.handleAddress);
-  if (!hide("handleAddress"))
-    drawRotated(page, info.bold ? fonts.bold : fonts.semibold, info.text, mode, info, {
-      x: L.HANDLE_ADDR.x, yStart: L.HANDLE_ADDR.yStart, size: L.HANDLE_ADDR.size,
-    }, fonts.bold);
-  // Wrapping measures with the warning's own tracking and inline runs (the
-  // "GOVERNMENT WARNING:" prefix draws in Bold): tracked or bold text needs
-  // more columns, and hittest.ts derives its columns from the same measure.
-  const warnLines = wrapWarning(
-    warningMeasure(
-      (t, bold) => (bold ? fonts.bold : fonts.regular).widthOfTextAtSize(t, L.WARNING.size),
-      cfg.warning.letterSpacing,
-    ),
-    L.WARNING.maxLen,
-  );
-  if (!hide("warning"))
-    warnLines.forEach((line, i) =>
-      drawJustifiedRotated(page, fonts.regular, line, mode, cfg.warning, {
-        x: L.WARNING.x + i * L.WARNING.leading, yStart: L.WARNING.yStart, size: L.WARNING.size,
-        maxLen: L.WARNING.maxLen,
-      }, fonts.bold),
-    );
-  if (!hide("storeCold"))
-    // Semibold is this line's plain face; the element's bold toggle steps it up
-    // to Bold, exactly as handleAddress above.
-    drawRotated(page, cfg.storeCold.bold ? fonts.bold : fonts.semibold, cfg.storeCold.text, mode, cfg.storeCold, {
-      x: L.STORE_COLD.x, yStart: L.STORE_COLD.yStart, size: L.STORE_COLD.size,
-    });
 
   // Barcode
   if (!hide("barcode")) drawBarcode(page, fonts, cfg, mode);
