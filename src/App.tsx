@@ -1487,9 +1487,9 @@ export function DocumentEditor({
           </SidebarContent>
         </Sidebar>
         <SidebarInset className="flex h-full flex-col overflow-hidden">
-        {/* A quiet bottom rule separates application chrome from the canvas.
-            Painted like the sidebar so the two read as one band of chrome. */}
-        <header className="flex items-center gap-3 border-b border-border bg-sidebar text-sidebar-foreground px-3 py-2">
+        {/* No bottom rule of its own: the tab strip below is painted the
+            same, and its border draws the one chrome/canvas separation. */}
+        <header className="flex items-center gap-3 bg-sidebar text-sidebar-foreground px-3 py-2">
           {/* Toggles the Layers sidebar; the component also binds ⌘B. */}
           <SidebarTrigger className="size-6" />
           {/* Only the active tab renders the menu: under Tauri AppMenu
