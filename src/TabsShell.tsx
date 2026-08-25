@@ -7,7 +7,7 @@
 // settings (adopted from and persisted to the presets library), the desktop
 // updater, window title/close integration, and the preview worker's
 // disposal.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
 import {
@@ -32,6 +32,10 @@ import { cn } from "@/lib/utils";
 const currentWindow = () =>
   import("@tauri-apps/api/window").then((m) => m.getCurrentWindow());
 
+/** Unsaved work worth prompting about: dirty AND touched by the user — a
+ *  fresh Untitled tab boots dirty (Save enabled) but closes silently. */
+const unsaved = (t: { dirty: boolean; edited: boolean }) => t.dirty && t.edited;
+
 /** The shell-side per-tab objects that must stay identity-stable for the
  *  editor's memo bail to hold (see DocumentEditor): the save slot its
  *  editor assigns into, and the two callbacks that close over the tab id. */
@@ -47,9 +51,15 @@ export default function TabsShell() {
   // route against the current tabs; same pattern as App.tsx's commandsRef.
   const stateRef = useRef(state);
   stateRef.current = state;
-  // Opens queued per tab. Kept after handling — the editor's seq gate makes
-  // a stale entry inert — and dropped with the tab.
+  // Opens queued per tab. Deliberately kept after handling — the editor's
+  // seq gate makes a stale entry inert, and a lingering entry marks its tab
+  // as spoken-for so openRouted never "reuses" a tab that already received
+  // an open (see the pendingRef check there). Dropped with the tab.
   const [pending, setPending] = useState<Record<number, FileToOpen>>({});
+  // Mirror for the routing path: two opens can arrive in one task (the OS
+  // drain loop), before the state above has flushed.
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
   const seq = useRef(1);
   // Per-tab extras (save slot + id-closing callbacks), created once per tab
   // so inactive editors see identity-stable props and memo-bail. Dropped in
@@ -77,8 +87,10 @@ export default function TabsShell() {
   const closingWindow = useRef(false);
   const [checkRequest, setCheckRequest] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
+  // A File → Open picker failure (not a cancel): no tab exists yet to show
+  // it, so the strip does. Cleared by the next successful pick.
+  const [pickError, setPickError] = useState("");
 
-  const unsaved = (t: { dirty: boolean; edited: boolean }) => t.dirty && t.edited;
   const anyUnsaved = state.tabs.some(unsaved);
   const activeTab = state.tabs.find((t) => t.id === state.active)!;
 
@@ -116,18 +128,26 @@ export default function TabsShell() {
 
   // ---- open routing ----
 
-  /** Queue an open for tab `id`; the editor's fileToOpen effect runs it. */
-  const queueOpen = (id: number, fo: Omit<FileToOpen, "seq">) =>
-    setPending((p) => ({ ...p, [id]: { ...fo, seq: seq.current++ } }));
+  /** Queue an open for tab `id`; the editor's fileToOpen effect runs it.
+   *  pendingRef is written synchronously so a second open arriving in the
+   *  same task already sees this tab as taken. */
+  const queueOpen = (id: number, fo: Omit<FileToOpen, "seq">) => {
+    const entry = { ...fo, seq: seq.current++ };
+    pendingRef.current = { ...pendingRef.current, [id]: entry };
+    setPending((p) => ({ ...p, [id]: entry }));
+  };
 
   /** Both open entry points land here; tabs.ts's routeFileOpen is the one
    *  spelling of the rule (focus the tab already holding the path, reuse a
-   *  pristine active tab, else a new tab — which addTab self-activates). */
+   *  pristine active tab, else a new tab — which addTab self-activates).
+   *  A "reuse" of a tab that already has a queued or delivered open is
+   *  demoted to a new tab: two opens must never share one editor, and a
+   *  browser handle-open leaves no filePath to break pristineness. */
   const openRouted = (fo: Omit<FileToOpen, "seq">) => {
     const s = stateRef.current;
     const route = routeFileOpen(s, fo.path);
     if ("focus" in route) return setState((st) => activateTab(st, route.focus));
-    if ("reuse" in route) {
+    if ("reuse" in route && !pendingRef.current[route.reuse]) {
       queueOpen(route.reuse, fo);
       return setState((st) => activateTab(st, route.reuse));
     }
@@ -144,8 +164,13 @@ export default function TabsShell() {
   useEffect(() => {
     if (!isTauri()) return;
     async function openFromOs() {
-      const path = await invoke<string | null>("take_opened_file");
-      if (path) openRouted({ path });
+      // Drain, don't take-once: the Rust side queues paths (rapid double-
+      // clicks, multi-file opens) and one emit can cover several.
+      for (;;) {
+        const path = await invoke<string | null>("take_opened_file");
+        if (!path) return;
+        openRouted({ path });
+      }
     }
     const stopping = import("@tauri-apps/api/event")
       .then(({ listen }) => listen("project-file-opened", () => void openFromOs()));
@@ -164,9 +189,14 @@ export default function TabsShell() {
     if (!pick) { fileInput.current?.click(); return; }
     try {
       const [handle] = await pick({ types: LABEL_TYPES });
+      setPickError("");
       openRouted({ handle });
     } catch (err) {
-      if (!isAbort(err)) console.error(err); // open failures surface in-editor
+      // Failures AFTER a tab is chosen surface in that editor's own alert;
+      // this is the picker itself failing, before any tab exists — shown in
+      // the strip, the shell's one visible surface.
+      if (!isAbort(err))
+        setPickError(`Could not open project: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -174,6 +204,7 @@ export default function TabsShell() {
 
   const doClose = (id: number) => {
     extras.current.delete(id);
+    delete pendingRef.current[id];
     setPending(({ [id]: _dropped, ...rest }) => rest);
     setState((s) => closeTab(s, id));
     setConfirmClose(null);
@@ -226,6 +257,8 @@ export default function TabsShell() {
   openProjectPickerRef.current = openProjectPicker;
   const openProject = useCallback(() => void openProjectPickerRef.current(), []);
   const checkForUpdates = useCallback(() => setCheckRequest((n) => n + 1), []);
+  const activate = useCallback((id: number) => setState((s) => activateTab(s, id)), []);
+  const closeReq = useCallback((id: number) => api.current.requestClose(id), []);
 
   // Desktop window close: intercept, sweep unsaved tabs through the dialog.
   useEffect(() => {
@@ -269,7 +302,10 @@ export default function TabsShell() {
   // borders: the active chip in the editor background, a muted wash on
   // hover. The dirty dot lives in the close slot: a dot until hover, then
   // the ×.
-  const tabStrip = (
+  // useMemo is part of the editor-memo contract (see DocumentEditor): the
+  // strip's element identity must only change when its content does, or
+  // every unrelated shell state change would re-render the active editor.
+  const tabStrip = useMemo(() => (
     <div className="flex h-9 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-sidebar">
         {state.tabs.map((t) => (
           <div
@@ -281,13 +317,13 @@ export default function TabsShell() {
                 : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}>
             <button
-              onClick={() => setState((s) => activateTab(s, t.id))}
+              onClick={() => activate(t.id)}
               title={t.filePath ?? t.title}
               className="min-w-0 flex-1 truncate text-left text-xs outline-none">
               {t.title}
             </button>
             <button
-              onClick={() => requestClose(t.id)}
+              onClick={() => closeReq(t.id)}
               aria-label={`Close ${t.title}`}
               className={cn(
                 // fraction-of-foreground, not bg-muted: it has to read on
@@ -306,14 +342,17 @@ export default function TabsShell() {
           </div>
         ))}
         <button
-          onClick={() => setState(addTab)}
+          onClick={newTab}
           aria-label="New tab"
           title="New tab (⌘N)"
           className="shrink-0 rounded-md px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
           +
         </button>
+        {pickError && (
+          <span className="shrink-0 px-2 text-xs text-destructive">{pickError}</span>
+        )}
     </div>
-  );
+  ), [state.tabs, state.active, pickError, activate, closeReq, newTab]);
 
   return (
     <>

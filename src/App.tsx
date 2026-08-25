@@ -1294,11 +1294,18 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  Save rewrite the picked one, a bare File yields none (Save prompts).
    *  The same quiet-retry open as before (see openWithRetry). */
   const openedSeq = useRef(0);
+  // Serialized like buildChain, and superseded opens are skipped: two opens
+  // routed to this editor in quick succession must never interleave their
+  // resetDocument/asset writes (a half-A half-B document marked clean), and
+  // once B is queued there is no point applying A at all.
+  const openChain = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
     if (!fileToOpen || fileToOpen.seq === openedSeq.current) return;
     openedSeq.current = fileToOpen.seq;
+    const mySeq = fileToOpen.seq;
     const { path, handle, file } = fileToOpen;
-    void (async () => {
+    openChain.current = openChain.current.then(async () => {
+      if (openedSeq.current !== mySeq) return; // a newer open superseded us
       try {
         if (path) {
           const name = await basename(path);
@@ -1317,7 +1324,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       } catch (err) {
         reportOpenError(err);
       }
-    })();
+    });
     // openWithRetry's closure chain ends in stable setters, so the current
     // render's copy is never stale — same reasoning as onKey above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1787,4 +1794,14 @@ export const DocumentEditor = memo(function DocumentEditor({
       </SidebarProvider>
     </TooltipProvider>
   );
+}, (prev, next) => {
+  // Shallow compare, except `render` on a hidden editor: DPI/bleed scrubs
+  // replace that object per frame, and a hidden editor has no use for it —
+  // its build effect bails on !active and it repaints on activation anyway.
+  // Everything else identity-stable is the shell's side of the contract.
+  for (const key of Object.keys(next) as (keyof DocumentEditorProps)[]) {
+    if (key === "render" && !prev.active && !next.active) continue;
+    if (!Object.is(prev[key], next[key])) return false;
+  }
+  return true;
 });

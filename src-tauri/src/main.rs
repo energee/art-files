@@ -64,40 +64,51 @@ fn relaunch_app(app: tauri::AppHandle) {
     app.restart();
 }
 
-/** The .label path the OS handed us — macOS via its open-document Apple
+/** The .label paths the OS handed us — macOS via its open-document Apple
  * event (Finder double-click, Open With, Dock drop), Windows/Linux via argv
  * (directly at launch, or forwarded from a second instance by the
- * single-instance plugin). Held in state rather than emitted directly: a
- * launch-by-file delivers the path before the webview is listening, so the
- * frontend pulls it once ready and again on each "project-file-opened"
- * emit. */
-struct OpenedFile(Mutex<Option<PathBuf>>);
+ * single-instance plugin). A QUEUE, not a slot: deliveries can outpace the
+ * webview's async take_opened_file round-trips (two rapid double-clicks, or
+ * several files opened at once), and a slot would drop all but the last.
+ * Held in state rather than emitted directly: a launch-by-file delivers
+ * before the webview is listening, so the frontend drains the queue once
+ * ready and again on each "project-file-opened" emit. */
+struct OpenedFile(Mutex<Vec<PathBuf>>);
 
-/** The .label path among command-line arguments, if any — how Windows and
- * Linux deliver file-association opens. The extension match is the filter:
- * it skips the exe path in args[0] and any stray flags alike. */
-fn label_path_from_args<I: IntoIterator<Item = String>>(args: I) -> Option<PathBuf> {
-    args.into_iter().map(PathBuf::from).find(|path| {
-        path.extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("label"))
-    })
+/** Every .label path among command-line arguments — how Windows and Linux
+ * deliver file-association opens (multi-select Open delivers several). The
+ * extension match is the filter: it skips the exe path in args[0] and any
+ * stray flags alike. */
+fn label_paths_from_args<I: IntoIterator<Item = String>>(args: I) -> Vec<PathBuf> {
+    args.into_iter()
+        .map(PathBuf::from)
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("label"))
+        })
+        .collect()
 }
 
-/** Hand an OS-provided .label path to the frontend. State FIRST, then the
+/** Hand an OS-provided .label path to the frontend. Queue FIRST, then the
  * emit — the webview may not be listening yet, and OpenedFile's doc explains
  * the pull-based contract. Both delivery paths (macOS Apple events, the
  * Windows/Linux single-instance forward) go through here so the ordering
  * cannot drift between them. */
 fn deliver_opened_file(app: &tauri::AppHandle, path: PathBuf) {
     use tauri::Emitter;
-    *app.state::<OpenedFile>().0.lock().unwrap() = Some(path);
+    app.state::<OpenedFile>().0.lock().unwrap().push(path);
     let _ = app.emit("project-file-opened", ());
 }
 
+/** Pop the oldest queued path; the frontend calls this in a loop until it
+ * returns null, so one emit can drain several deliveries. */
 #[tauri::command]
 fn take_opened_file(state: tauri::State<OpenedFile>) -> Option<String> {
-    let path = state.0.lock().unwrap().take()?;
-    Some(path.to_string_lossy().into_owned())
+    let mut queue = state.0.lock().unwrap();
+    if queue.is_empty() {
+        return None;
+    }
+    Some(queue.remove(0).to_string_lossy().into_owned())
 }
 
 fn main() {
@@ -107,8 +118,16 @@ fn main() {
     // the app runs) forwards its argv here and exits, so the running window
     // receives the file — the same behavior macOS gets from Apple events.
     #[cfg(not(target_os = "macos"))]
-    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-        if let Some(path) = label_path_from_args(args) {
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+        for path in label_paths_from_args(args) {
+            // Relative argv paths (a shell `label-lab foo.label`) are
+            // relative to the SECOND instance's cwd, not this process's —
+            // resolve against the forwarded cwd before delivering.
+            let path = if path.is_relative() {
+                std::path::Path::new(&cwd).join(path)
+            } else {
+                path
+            };
             deliver_opened_file(app, path);
         }
     }));
@@ -124,10 +143,11 @@ fn main() {
         builder
     };
 
-    // A Windows/Linux launch-by-file arrives as plain argv on THIS process.
-    // No platform gate: macOS argv never carries a .label path (Finder sends
+    // A Windows/Linux launch-by-file arrives as plain argv on THIS process
+    // (relative paths are naturally relative to this process's cwd). No
+    // platform gate: macOS argv never carries a .label path (Finder sends
     // Apple events, handled in run() below), so the scan is a no-op there.
-    let opened_at_launch = label_path_from_args(std::env::args());
+    let opened_at_launch = label_paths_from_args(std::env::args());
 
     builder
         .manage(OpenedFile(Mutex::new(opened_at_launch)))
@@ -146,7 +166,9 @@ fn main() {
             // callback in main() above.
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = event {
-                if let Some(path) = urls.into_iter().find_map(|url| url.to_file_path().ok()) {
+                // Every URL, not just the first: Finder sends one event for
+                // a multi-file "Open With", and each file gets its own tab.
+                for path in urls.into_iter().filter_map(|url| url.to_file_path().ok()) {
                     deliver_opened_file(app, path);
                 }
             }

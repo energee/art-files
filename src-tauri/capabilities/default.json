@@ -13,7 +13,11 @@
     "fs:allow-write-file",
     {
       "identifier": "fs:allow-read-file",
-      "allow": [{ "path": "**/*.label" }]
+      "allow": [
+        { "path": "**/*.label" },
+        { "path": "**/*.LABEL" },
+        { "path": "**/*.Label" }
+      ]
     },
     "updater:default"
   ]
