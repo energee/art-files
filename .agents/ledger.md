@@ -177,3 +177,9 @@ no status, no attempts, no delta.
 - status: done
 - attempts: 1/3
 - delta: true PDF stroke alone → true stroke plus a bounded interior bridge derived from each element's live width; the three 15px-stroked periods render as solid gold dots on black in the exact 180/600-DPI pdf.js pipeline, the 600-DPI Poppler render changed 0 pixels, normal builds remain ~30ms, and 199 tests, tsc, Vite build, Cargo check, and the 0.1.9 release gate pass
+
+## 2026-08-25 canvas-backend-phase2
+- finding: [user request] canvas preview renderer Phase 2 — full display list, canvas backend, parity harness, dev toggle
+- status: done
+- attempts: 1/3
+- delta: plan.ts text-only -> full Placed union (paths/image/barcode); pdf/build.ts one plan walk (LEFT seam, drawCollab, strokeOf, dead imports deleted); new src/canvas/draw.ts + tests; parity page (npm run parity, observed 2.04-2.48% diff, threshold 5%); dev toggle localStorage.canvasPreview (DEV only); exports pixel-identical (0 diff px at 200/400dpi); 242 -> 258 tests green; v0.1.18. Carried to Phase 3: silent drawImage skip on missing canvas asset (draw.ts), close-race on ImageBitmap swap (App.tsx dev effect), pin barcode/paths stroke-before-fill in fake-ctx tests, route canvas render errors to buildError, textBaseline/textAlign ownership in drawPlate, box.x! in collabItems.
