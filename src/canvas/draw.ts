@@ -49,6 +49,12 @@ export function drawPlate(
   c.setTransform(scale, 0, 0, scale, 0, 0);
   c.lineJoin = "round";
   c.lineCap = "round";
+  // This backend owns text alignment: the plan's x/baseline are start-of-run
+  // and alphabetic-baseline coordinates, so a caller-mutated ctx (canvas
+  // contexts persist state between frames) must not be able to shift every
+  // glyph.
+  c.textAlign = "left";
+  c.textBaseline = "alphabetic";
 
   // Plate background — mirrors buildArtPdf / buildMaskPdf.
   c.fillStyle = "#FFFFFF";
@@ -90,7 +96,11 @@ export function drawPlate(
     } else if (r.kind === "image") {
       if (mode === "art") {
         const img = r.id === "collabLeft" ? assets.collabLeft : assets.collabCenter;
-        if (img) c.drawImage(img, r.x, r.y, r.w, r.h);
+        // The plan only places an image the caller declared (PlanArt came
+        // from the same slot), so a missing bitmap is an assembly bug —
+        // fail fast rather than render a silently incomplete label.
+        if (!img) throw new Error(`Canvas asset missing for "${r.id}" — the plan placed it, so its bitmap must be supplied.`);
+        c.drawImage(img, r.x, r.y, r.w, r.h);
       } else {
         // Raster art prints on white ink: the mask paints its footprint blue.
         c.fillStyle = L.MASK_BLUE_HEX;

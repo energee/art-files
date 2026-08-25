@@ -239,12 +239,12 @@ function collabItems(
   id: ElementId,
   art: PlanArt,
   slot: CollabSlot,
-  box: { x?: number; cx?: number; top: number; maxW: number; maxH: number },
+  box: ({ x: number } | { cx: number }) & { top: number; maxW: number; maxH: number },
 ): Placed[] {
   const maxW = box.maxW * slot.scale;
   const maxH = box.maxH * slot.scale;
   const top = box.top + (slot.offsetY ?? 0);
-  const place = (w: number) => (box.cx !== undefined ? box.cx - w / 2 : box.x!);
+  const place = (w: number) => ("cx" in box ? box.cx - w / 2 : box.x);
   if (art.kind === "svg") {
     const a = parseLogo(art.svg, maxW, maxH);
     return [{
