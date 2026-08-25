@@ -362,10 +362,14 @@ type DocumentEditorProps = {
   onNewTab: () => void;
   onCloseTab: () => void;
   onCheckForUpdates: () => void;
-  /** The shell's tab strip, rendered by the ACTIVE editor just under its
-   *  menubar row — inside the editor because the sidebar is fixed-position
-   *  and would overlap (and float over) any strip above the whole shell. */
-  tabStrip: React.ReactNode;
+  /** Ref callback for the tab-strip host: the ACTIVE editor mounts an empty
+   *  slot just under its menubar row and the shell portals the strip into it
+   *  (inside the editor because the sidebar is fixed-position and would
+   *  overlap any strip above the whole shell). A stable callback, not a
+   *  ReactNode: passing the strip element itself would hand the editor a new
+   *  prop identity on every tab-list change — every keystroke retitles a tab
+   *  — defeating the memo below and double-rendering the editor. */
+  tabStripHost: (el: HTMLDivElement | null) => void;
 };
 
 // memo is load-bearing, not an optimization garnish: every keystroke in any
@@ -375,7 +379,7 @@ type DocumentEditorProps = {
 // (per-tab callbacks and slots created once — see TabsShell's extrasFor).
 export const DocumentEditor = memo(function DocumentEditor({
   active, fileToOpen, onMeta, saveSlot, render, onRenderChange,
-  onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, tabStrip,
+  onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, tabStripHost,
 }: DocumentEditorProps) {
   // Config lives in a history stack, not plain useState — every edit that
   // goes through setCfg (i.e. all of them, see `update` below) is undoable.
@@ -557,10 +561,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   // THIS thread only — the preview worker holds its own layout module and is
   // told separately, per build (see buildPreviewPdfs).
   // `render` is a prop: TabsShell owns adoption from and persistence to the
-  // presets library. These writes stay here (idempotent, and identical from
-  // every editor instance since the settings are shared).
-  setLayoutBleed(render.bleedIn);
-  setOutputDpi(render.dpi);
+  // presets library. ACTIVE editor only: a hidden editor's memo bail freezes
+  // its `render` prop (makeHiddenPropsEqual skips it while hidden), so a
+  // hidden render — e.g. from a presets-store update — would stomp the
+  // shared globals with stale DPI/bleed. It rewrites them on activation.
+  if (active) {
+    setLayoutBleed(render.bleedIn);
+    setOutputDpi(render.dpi);
+  }
   useEffect(() => {
     if (presetsError) setLoadError(`presets save failed: ${presetsError}`);
   }, [presetsError]);
@@ -1532,9 +1540,11 @@ export const DocumentEditor = memo(function DocumentEditor({
           <input ref={presetsInput} type="file" accept="application/json" hidden
             onChange={(e) => e.target.files?.[0] && void importPresets(e.target.files[0])} />
         </header>
-      {/* The workspace tab strip, under the menubar (in the desktop build
-          the menubar is native, so this is the window's top content row). */}
-      {active && tabStrip}
+      {/* The workspace tab strip's slot, under the menubar (in the desktop
+          build the menubar is native, so this is the window's top content
+          row). The shell portals the strip in; display:contents keeps the
+          strip a direct flex child of this column. */}
+      {active && <div className="contents" ref={tabStripHost} />}
       <div className="flex min-h-0 flex-1">
         <section className="flex min-w-0 flex-1 flex-col">
           {/* overflow-hidden is what makes the pane the window the zoomed

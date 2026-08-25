@@ -8,6 +8,7 @@
 // updater, window title/close integration, and the preview worker's
 // disposal.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
 import {
@@ -120,9 +121,18 @@ export default function TabsShell() {
     adopted.current = true;
     setRender(presets.render);
   }, [presetsLoaded, presets.render]);
+  // The pending debounced write, exposed so the desktop close paths can
+  // flush it — destroy() (and a native close) would otherwise land before
+  // the timer and silently revert a just-changed Document Settings knob.
+  const renderFlush = useRef<(() => Promise<unknown>) | null>(null);
   useEffect(() => {
     if (!adopted.current) return;
-    const t = setTimeout(() => void mutatePresets((p) => ({ ...p, render })), 500);
+    const write = () => {
+      renderFlush.current = null;
+      return mutatePresets((p) => ({ ...p, render }));
+    };
+    renderFlush.current = write;
+    const t = setTimeout(() => void write(), 500);
     return () => clearTimeout(t);
   }, [render]);
 
@@ -144,7 +154,14 @@ export default function TabsShell() {
    *  routeFileOpen's doc for why such tabs are never reused. */
   const openRouted = (fo: Omit<FileToOpen, "seq">) => {
     const s = stateRef.current;
-    const route = routeFileOpen(s, fo.path, (id) => !!pendingRef.current[id]);
+    const route = routeFileOpen(
+      s, fo.path,
+      (id) => !!pendingRef.current[id],
+      // Dedupe against queued-but-uncompleted opens too: tab.filePath stays
+      // null until the async open finishes, and the OS re-delivers rapid
+      // double-clicks (the Rust side queues them).
+      (id) => pendingRef.current[id]?.path,
+    );
     if ("focus" in route) return setState((st) => activateTab(st, route.focus));
     if ("reuse" in route) {
       queueOpen(route.reuse, fo);
@@ -216,7 +233,12 @@ export default function TabsShell() {
         setState((s) => activateTab(s, next.id));
         setConfirmClose(next.id);
       } else {
-        void currentWindow().then((w) => w.destroy());
+        // Flush any pending Document Settings write first: destroy() skips
+        // onCloseRequested and would land before the 500ms debounce.
+        void currentWindow().then(async (w) => {
+          await renderFlush.current?.();
+          void w.destroy();
+        });
       }
     }
   };
@@ -265,7 +287,15 @@ export default function TabsShell() {
     const stopping = currentWindow().then((w) =>
       w.onCloseRequested((event) => {
         const first = stateRef.current.tabs.find(unsaved);
-        if (!first) return; // nothing unsaved — close proceeds
+        if (!first) {
+          // Nothing unsaved — close proceeds, unless a debounced Document
+          // Settings write is pending: hold the close, flush, then destroy.
+          if (renderFlush.current) {
+            event.preventDefault();
+            void renderFlush.current().finally(() => void w.destroy());
+          }
+          return;
+        }
         event.preventDefault();
         closingWindow.current = true;
         setState((s) => activateTab(s, first.id));
@@ -292,18 +322,23 @@ export default function TabsShell() {
 
   const confirmTab = state.tabs.find((t) => t.id === confirmClose) ?? null;
 
-  // Rendered by the ACTIVE editor just under its menubar row (see the
-  // tabStrip prop in App.tsx): the fixed-position sidebar would overlap a
+  // Portaled into the ACTIVE editor's slot just under its menubar row (see
+  // tabStripHost in App.tsx): the fixed-position sidebar would overlap a
   // strip above the whole shell, and under the menubar is where tabs read
-  // as document chrome.
+  // as document chrome. A portal, not a prop: the strip re-renders on every
+  // tab retitle (each beer-name keystroke), and passing its element down
+  // would defeat the active editor's memo on exactly that hot path.
   // Current VS Code tab language: each tab is a rounded chip floating in
   // the strip with a gap from its neighbors — contrast comes from fill, not
   // borders: the active chip in the editor background, a muted wash on
   // hover. The dirty dot lives in the close slot: a dot until hover, then
   // the ×.
-  // useMemo is part of the editor-memo contract (see DocumentEditor): the
-  // strip's element identity must only change when its content does, or
-  // every unrelated shell state change would re-render the active editor.
+  // The active editor mounts the slot div and hands it up through this
+  // stable ref callback; null while no editor is active (startup teardown).
+  const [stripHost, setStripHost] = useState<HTMLDivElement | null>(null);
+  const tabStripHost = useCallback((el: HTMLDivElement | null) => setStripHost(el), []);
+  // useMemo so the strip element is rebuilt only when its content changes,
+  // not on every unrelated shell state change.
   const tabStrip = useMemo(() => (
     <div className="flex h-9 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-sidebar">
         {state.tabs.map((t) => (
@@ -360,12 +395,13 @@ export default function TabsShell() {
         const isActive = t.id === state.active;
         return (
             <div key={t.id} className={isActive ? "h-svh" : "hidden"}>
-              {/* Inactive editors get identity-stable props throughout
-                  (extras + the useCallbacks + null strip), so the memo on
+              {/* Every editor gets identity-stable props throughout (extras
+                  + the useCallbacks + the strip-host ref), so the memo on
                   DocumentEditor bails and a keystroke in one tab never
-                  re-runs the hidden ones. */}
+                  re-runs the hidden ones — nor a second render of the
+                  active one when its own keystroke retitles its tab. */}
               <DocumentEditor
-                tabStrip={isActive ? tabStrip : null}
+                tabStripHost={tabStripHost}
                 active={isActive}
                 fileToOpen={pending[t.id] ?? null}
                 onMeta={e.onMeta}
@@ -379,6 +415,9 @@ export default function TabsShell() {
             </div>
         );
       })}
+      {/* The strip lands in the active editor's slot without being one of
+          its props (see tabStripHost). */}
+      {stripHost && createPortal(tabStrip, stripHost)}
       {/* Hidden-input Open fallback (no FS-Access): bytes, no save identity. */}
       <input ref={fileInput} type="file" accept={LABEL_EXT} className="hidden"
         onChange={(e) => {

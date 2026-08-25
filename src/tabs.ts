@@ -64,13 +64,18 @@ export const isPristine = (t: Tab) => !t.edited && !t.filePath;
  *  `busy` marks tabs already spoken for (the shell passes "has a queued
  *  open"): a busy tab is never reused, so two rapid opens can't share one
  *  editor — and a browser handle-open, which leaves no filePath to break
- *  pristineness, still claims its tab. */
+ *  pristineness, still claims its tab.
+ *  `queuedPath` exposes the path of a tab's queued-but-uncompleted open:
+ *  tab.filePath stays null until the async open finishes, so without it a
+ *  re-delivered OS open (the Rust side queues rapid double-clicks) would
+ *  mint a second tab editing the same file. */
 export type OpenRoute = { focus: number } | { reuse: number } | { open: "new" };
 export function routeFileOpen(
   s: TabsState, path?: string, busy?: (id: number) => boolean,
+  queuedPath?: (id: number) => string | undefined,
 ): OpenRoute {
   if (path) {
-    const existing = s.tabs.find((t) => t.filePath === path);
+    const existing = s.tabs.find((t) => t.filePath === path || queuedPath?.(t.id) === path);
     if (existing) return { focus: existing.id };
   }
   const active = s.tabs.find((t) => t.id === s.active);
