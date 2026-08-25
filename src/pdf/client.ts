@@ -69,8 +69,9 @@ const pending = new Map<number, Pending>();
 // Uint8Array and gets a fresh id. WeakMap lets replaced uploads collect.
 let nextByteId = 0;
 const byteIds = new WeakMap<Uint8Array, number>();
-// Ids the CURRENT worker instance holds — cleared whenever the worker is
-// torn down, so a respawned worker gets the bytes again.
+// Ids the CURRENT worker instance holds — replaced per request (see
+// buildPreviewPdfs) and cleared whenever the worker is torn down, so a
+// respawned worker gets the bytes again.
 let workerHas = new Set<number>();
 
 function ensureWorker(): Worker {
@@ -100,20 +101,19 @@ function ensureWorker(): Worker {
 }
 
 /** Reference `bytes` for the wire, attaching the payload only if the current
- *  worker hasn't received it yet. Collects the tentatively-attached ids so a
- *  failed postMessage can roll them back (see buildPreviewPdfs). */
-function ref(bytes: Uint8Array, attached: number[]): ByteRef {
+ *  worker hasn't received it yet, and recording the id in `used` (see
+ *  buildPreviewPdfs). */
+function ref(bytes: Uint8Array, used: Set<number>): ByteRef {
   let id = byteIds.get(bytes);
   if (id === undefined) byteIds.set(bytes, (id = ++nextByteId));
-  if (workerHas.has(id)) return { id };
-  attached.push(id);
-  return { id, bytes };
+  used.add(id);
+  return workerHas.has(id) ? { id } : { id, bytes };
 }
 
-function wireImage(img: CollabImage | null | undefined, attached: number[]): WireImage | null {
+function wireImage(img: CollabImage | null | undefined, used: Set<number>): WireImage | null {
   if (!img) return null;
   if (img.kind === "svg") return img;
-  return { kind: img.kind, ref: ref(img.bytes, attached) };
+  return { kind: img.kind, ref: ref(img.bytes, used) };
 }
 
 /** Build the requested preview plates; a plate left out of `plates` is not
@@ -130,7 +130,7 @@ export function buildPreviewPdfs(
     pending.set(id, { resolve, reject });
     try {
       const w = ensureWorker();
-      const attached: number[] = [];
+      const used = new Set<number>();
       const request: WorkerRequest = {
         id,
         cfg,
@@ -138,18 +138,23 @@ export function buildPreviewPdfs(
         bleedIn,
         assets: {
           texture: assets.texture && {
-            kind: assets.texture.kind, ref: ref(assets.texture.bytes, attached),
+            kind: assets.texture.kind, ref: ref(assets.texture.bytes, used),
           },
-          maskPng: assets.maskPng && ref(assets.maskPng, attached),
-          collabLeft: wireImage(assets.collabLeft, attached),
-          collabCenter: wireImage(assets.collabCenter, attached),
+          maskPng: assets.maskPng && ref(assets.maskPng, used),
+          collabLeft: wireImage(assets.collabLeft, used),
+          collabCenter: wireImage(assets.collabCenter, used),
           hidden: assets.hidden,
         },
       };
       w.postMessage(request);
-      // Only now is delivery guaranteed (message order is FIFO): a throwing
-      // postMessage must not leave ids marked as held by the worker.
-      attached.forEach((byteId) => workerHas.add(byteId));
+      // Recorded only after a successful post: a throwing postMessage must
+      // not change what we believe the worker holds. The worker evicts every
+      // id this build didn't reference (worker.ts derefAssets), so the mirror
+      // is REPLACED, not grown — with several tabs alive, one tab's build
+      // drops the others' bytes and they re-attach on the next switch back.
+      // ponytail: that re-clone per tab switch (or eye toggle) is the accepted
+      // cost; a client-owned release protocol would remove it if it matters.
+      workerHas = used;
     } catch (error) {
       pending.delete(id);
       reject(error instanceof Error ? error : new Error(String(error)));

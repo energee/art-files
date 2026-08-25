@@ -20,9 +20,9 @@ const bytesById = new Map<number, Uint8Array>();
 function deref(r: ByteRef, used: Set<number>): Uint8Array {
   if (r.bytes) bytesById.set(r.id, r.bytes);
   const bytes = bytesById.get(r.id);
-  // Only reachable if the client's sent-tracking broke (it rolls back on a
-  // failed postMessage); failing loudly beats silently building without the
-  // texture the user dropped.
+  // Only reachable if the client's sent-tracking desyncs from the eviction
+  // below (client.ts mirrors it after every postMessage); failing loudly
+  // beats silently building without the texture the user dropped.
   if (!bytes) throw new Error("Preview asset bytes were not sent to the worker.");
   used.add(r.id);
   return bytes;
