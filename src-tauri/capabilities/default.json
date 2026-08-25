@@ -7,11 +7,17 @@
   ],
   "permissions": [
     "core:default",
+    "core:window:allow-set-title",
+    "core:window:allow-destroy",
     "dialog:allow-save",
     "fs:allow-write-file",
     {
       "identifier": "fs:allow-read-file",
-      "allow": [{ "path": "**/*.label" }]
+      "allow": [
+        { "path": "**/*.label" },
+        { "path": "**/*.LABEL" },
+        { "path": "**/*.Label" }
+      ]
     },
     "updater:default"
   ]

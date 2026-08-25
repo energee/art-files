@@ -172,9 +172,10 @@ resolution when clicked. Preview PDF generation runs in a lazy Web Worker,
 keeping pdf-lib/fontkit parsing and rendering off the UI thread; the
 full-resolution PDF and PSD renderers load only when their export actions are
 used. Every action lives in a menubar across the top of
-the window, above the sidebar/preview split: **File** (New Project ⌘N — with
-an unsaved-changes confirmation before replacing the current label; Open Project… ⌘O,
-Save Project ⌘S, Save Project As… ⇧⌘S — the whole label, including its
+the window, above the sidebar/preview split: **File** (New Tab ⌘N; Open
+Project… ⌘O — into the current tab if it's untouched, else a new one;
+Close Tab ⌘W — with a Save / Discard / Cancel prompt when the tab has
+unsaved work; Save Project ⌘S, Save Project As… ⇧⌘S — the whole label, including its
 texture, mask, and collab logos, zipped as a `<beer-name-slug>.label` file
 (slugged like the QR URL: lowercase, punctuation to dashes), see
 `src/labelfile.ts`; in Chromium these use real open/save dialogs and Save
@@ -187,6 +188,16 @@ in the palette as "Export PDF + Mask PDF"),
 palette lists them as "Preview: Standard" / "Preview: Mask"). Export items disable while the label is invalid, and the
 reason sits in the bar next to the menus. Press <kbd>⌘K</kbd> /
 <kbd>Ctrl+K</kbd> for a command palette covering the same actions.
+
+A tab strip under the menubar holds one tab per open project — each with its
+own undo history, unsaved-changes state, and save target, while presets and
+the Document Settings knobs are shared. Background tabs keep their state and
+assets in memory but drop their rendered previews; switching back repaints
+through the normal debounced build. Closing the window with unsaved tabs
+walks each one through the same Save / Discard / Cancel prompt (the browser
+build shows its generic leave-page warning instead). See `src/tabs.ts` (the
+pure tab model), `src/TabsShell.tsx` (the workspace shell), and the
+DocumentEditor contract at the top of `src/App.tsx`.
 
 Undo (<kbd>⌘Z</kbd>) and redo (<kbd>⇧⌘Z</kbd> or <kbd>⌘Y</kbd>) cover the
 label config only — every field, style tweak, and scrub, but not the loaded
@@ -230,7 +241,8 @@ including live checkmarks and disabled states.
 Double-clicking a `.label` project opens it in Label Lab on every platform,
 including into an already-running window (macOS delivers this via Apple
 events; Windows and Linux forward the path from the second launch through the
-single-instance plugin). On Linux the file association registers when the
+single-instance plugin). It lands in a new workspace tab — or just focuses
+the tab that already has that file open. On Linux the file association registers when the
 AppImage is desktop-integrated (e.g. via AppImageLauncher or Gear Lever);
 running `Label_Lab.AppImage path/to/file.label` works regardless.
 

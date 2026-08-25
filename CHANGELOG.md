@@ -3,6 +3,18 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.11] - 2026-08-24
+
+- Workspace tabs: several .label projects can be open at once in one window,
+  each in its own tab with its own undo history, unsaved-changes state, and
+  save target. ⌘N opens a new tab and ⌘W closes one; closing a tab (or the
+  window) with unsaved work asks Save / Discard / Cancel per tab.
+  Double-clicking a .label file now opens it in a new tab — or focuses the
+  tab that already has it — instead of replacing the current document.
+  Works in the browser build too. Several files opened at once (or in quick
+  succession) each get their tab — none are dropped — and uppercase .LABEL
+  extensions open correctly on Windows and Linux.
+
 ## [0.1.10] - 2026-08-24
 
 - Label Lab now runs on Windows and Linux: releases add a Windows installer

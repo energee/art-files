@@ -1,43 +1,6 @@
 {
-  "styles": [
-    "Ultra Hopped Ale",
-    "Hazy India Pale Ale",
-    "Hazy Pale Ale"
-  ],
-  "barcodes": [
-    {
-      "name": "Tier 1",
-      "upc": "850051366040"
-    },
-    {
-      "name": "Tier 2",
-      "upc": "860009737631"
-    },
-    {
-      "name": "Tier 3",
-      "upc": "860009737617"
-    },
-    {
-      "name": "Tier 4",
-      "upc": "850051366156"
-    },
-    {
-      "name": "Tier 5",
-      "upc": "850051366170"
-    },
-    {
-      "name": "Tier 6",
-      "upc": "850051366224"
-    },
-    {
-      "name": "Tier 7",
-      "upc": "860009737655"
-    },
-    {
-      "name": "Tier 8",
-      "upc": "860009737600"
-    }
-  ],
+  "styles": [],
+  "barcodes": [],
   "colors": [],
   "render": {
     "cornerRadius": 1.219115734720416,

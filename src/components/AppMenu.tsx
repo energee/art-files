@@ -38,9 +38,10 @@ type MenuEntry = ActionEntry | SeparatorEntry | PredefinedEntry | SubmenuEntry;
 export const APP_MENUS: SubmenuEntry[] = [
   {
     kind: "submenu", id: "file-menu", text: "File", items: [
-      { kind: "action", id: "project-new", text: "New Project" },
-      { kind: "separator", id: "file-new" },
+      { kind: "action", id: "tab-new", text: "New Tab" },
       { kind: "action", id: "project-open", text: "Open Project…" },
+      { kind: "action", id: "tab-close", text: "Close Tab" },
+      { kind: "separator", id: "file-new" },
       { kind: "action", id: "project-save", text: "Save Project" },
       { kind: "action", id: "project-save-as", text: "Save Project As…" },
       { kind: "separator", id: "file-projects" },
