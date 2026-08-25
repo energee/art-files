@@ -49,12 +49,20 @@ today's App.tsx either gates on it or moves to the shell:
 | Surface | Disposition |
 | --- | --- |
 | document keydown (undo/redo, command keys) | gate: return early when `!active` |
+| `CommandMenu`'s ⌘K document keydown | gate on `active` (N palettes otherwise) |
+| `AssetDropOverlay`'s window drag/drop listeners | gate on `active` — a hidden tab's overlay could swallow the active tab's drop |
+| sidebar ⌘B window keydown (`SidebarProvider`) | gate on `active` — instances share a state cookie and would all toggle |
 | `AppMenu` (the native Tauri menu is a singleton) | render only in the active instance |
 | context-menu blocker (window listener) | move to `TabsShell` |
 | `disposePreviewWorker` unmount effect | move to `TabsShell` (worker is shared) |
 | `DesktopUpdater` | move to `TabsShell`; `dirty` = any tab dirty; the menu's Check-for-Updates reaches it via a shell callback prop |
-| preview worker, tint cache, measure fonts, layout globals | shared module singletons, already safe — render settings come from shared presets, so every tab writes identical DPI/bleed |
-| presets state (`usePresets`, presets dialogs) | stays per-editor; the store is shared so instances agree |
+| `render` settings (DPI/bleed/corner radius) + presets adopt/debounce-write | **lift to `TabsShell`**, passed down as a prop. Per-editor copies adopted once at mount would diverge, and each instance writes `setLayoutBleed`/`setOutputDpi` into shared module globals during render — a hidden tab re-rendering after the active one would stomp them with stale values. Shared state makes the render-time global writes identical from every instance; they're press/die settings, not document state |
+| preview worker, tint cache, measure fonts | shared module singletons, safe as-is |
+| presets dialogs / import-export (`usePresets` reads) | stay per-editor; the store is shared so instances agree |
+
+The debounced build effect also gains `active` in its dependency list: it
+bails while inactive, and the flip back to true is what triggers the
+reactivation rebuild (nulling the `built` ref alone re-runs nothing).
 
 Anything later added to `DocumentEditor` that registers window/document-level
 listeners or singletons must honor `active` — stated in the component's
@@ -118,9 +126,9 @@ open/new — it distinguishes an untouched default document (which boots with
   a document, as today.
 - **Window close:** desktop intercepts `onCloseRequested`; each
   `edited && dirty` tab is activated in turn and gets the same three-way
-  dialog; any Cancel aborts the window close. The browser build keeps a
-  plain `beforeunload` prompt while any tab is dirty (browsers only allow
-  the generic dialog).
+  dialog; any Cancel aborts the window close. The browser build gains a
+  `beforeunload` prompt while any tab is edited-and-dirty (new — today's
+  single-document app has none; browsers only allow the generic dialog).
 - ⌘W caveat: the browser reserves the shortcut, so the web build gets the
   menu item only; desktop gets the real accelerator.
 
@@ -155,9 +163,10 @@ tab's title with the standard modified marker.
 
 - `src/tabs.ts`, `tests/tabs.test.ts` — new.
 - `src/App.tsx` — App → `DocumentEditor` with props
-  `{ active, fileToOpen, onMeta, saveRef, onCheckForUpdates }`; gating per
-  the table; renders dropped on deactivate; New-Project dialog removed;
-  save returns a boolean.
+  `{ active, fileToOpen, onMeta, saveRef, render, onRenderChange,
+  onOpenProject, onCheckForUpdates }`; gating per the table; renders
+  dropped on deactivate; New-Project dialog removed; save returns a
+  boolean.
 - `src/TabsShell.tsx` — new shell; `src/main.tsx` renders it.
 - `src/components/AppMenu.tsx` — command-list entries only.
 - `README.md`, `CHANGELOG.md`, and the synchronized version files
