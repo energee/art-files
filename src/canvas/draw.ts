@@ -7,8 +7,9 @@
 // gate: callers must have awaited loadLabelFont()/loadLabelFaces() so
 // LABEL_FONT_FAMILY resolves — a missing face would silently measure wrong,
 // which is exactly what the gate exists to prevent.
-import type { Mode, Placed, PlacedBarcode, PlacedText } from "../plan";
+import type { Mode, MeasureFace, Placed, PlacedBarcode, PlacedText, PlanAssets } from "../plan";
 import type { Fill, Style } from "../types";
+import type { ElementId } from "../elements";
 import { FACE_WEIGHT, LABEL_FONT_FAMILY } from "../fonts";
 import * as L from "../layout";
 
@@ -25,6 +26,16 @@ export interface CanvasAssets {
   /** Raster collab logos, keyed to the PlacedImage ids. */
   collabLeft?: CanvasImageSource | null;
   collabCenter?: CanvasImageSource | null;
+}
+
+/** Everything a view needs to render label plates from the display list:
+ *  the face-aware measure, the plan's asset descriptors, the decoded
+ *  bitmaps, and the skip set (layer eyes + the in-place edit session). */
+export interface CanvasRenderSource {
+  m: MeasureFace;
+  planAssets: PlanAssets;
+  drawAssets: CanvasAssets;
+  skip: { has(id: ElementId): boolean };
 }
 
 /** Art-mode CSS color for a Fill — "none" is no ink, i.e. white, the same

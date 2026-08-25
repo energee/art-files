@@ -5,8 +5,7 @@
 // (src/tabs.ts), OS file-open routing, the File → Open picker (an open must
 // be able to target a new tab), the dirty-close confirm flow, shared render
 // settings (adopted from and persisted to the presets library), the desktop
-// updater, window title/close integration, and the preview worker's
-// disposal.
+// updater, and window title/close integration.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
@@ -20,7 +19,6 @@ import {
 } from "@/tabs";
 import { LABEL_EXT } from "@/labelfile";
 import { DEFAULT_RENDER, mutatePresets, usePresets } from "@/presets";
-import { disposePreviewWorker } from "@/pdf/client";
 import { DesktopUpdater } from "@/components/DesktopUpdater";
 import { Button } from "@/components/ui/button";
 import {
@@ -104,9 +102,6 @@ export default function TabsShell() {
     window.addEventListener("contextmenu", block);
     return () => window.removeEventListener("contextmenu", block);
   }, []);
-
-  // The preview worker serves every tab; it dies with the workspace.
-  useEffect(() => () => disposePreviewWorker(), []);
 
   // Render settings (Document Settings knobs): shared across tabs — they
   // describe the press's die and stock, not one label. Adopted from the

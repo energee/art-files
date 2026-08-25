@@ -1,24 +1,22 @@
-// PreviewCompare.tsx — the single preview: both generated PDFs rendered to
-// bitmaps via pdf.js and stacked; a resizable divider reveals the white-ink
-// layer (left side) over the art (right side). Replaces <embed> + tabs.
-// Click selects the element under the cursor; double-clicking a text element
+// PreviewCompare.tsx — the single preview: both plates painted straight from
+// the display list by the canvas backend and stacked; a resizable divider
+// reveals the white-ink layer (left side) over the art (right side). Click
+// selects the element under the cursor; double-clicking a text element
 // (see elements.ts's editableText) floats an editor panel over its outline —
 // the description gets the sidebar's WYSIWYG field, everything else a plain
 // input — applying live, one undo step per session.
 import {
-  forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type RefObject,
+  forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from "react";
 import { createPortal } from "react-dom";
 import type { PanelImperativeHandle } from "react-resizable-panels";
-import { renderPdfPage } from "@/pdf/render";
-import { planLabel, type MeasureFace, type PlanAssets } from "@/plan";
-import { drawPlate, type CanvasAssets } from "@/canvas/draw";
+import { planLabel } from "@/plan";
+import { drawPlate, type CanvasRenderSource } from "@/canvas/draw";
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import {
-  ART, FONT_ASC, FONT_DESC, PAGE, PREVIEW_MAX_W, PREVIEW_RASTER_MAX_EDGE,
-  previewRasterScale,
+  ART, FONT_ASC, FONT_DESC, PAGE, PREVIEW_MAX_W, previewRasterScale,
 } from "@/layout";
 import type { LabelConfig, StyledLine } from "@/types";
 import { editableText, elementById, type ElementId } from "@/elements";
@@ -107,59 +105,6 @@ const WHITE_INK_PANEL_ID = "white-ink";
  *  then replace its backing bitmap once the gesture pauses. */
 const RASTER_DEBOUNCE_MS = 160;
 
-async function renderPdf(
-  bytes: Uint8Array, canvas: HTMLCanvasElement | null, signal: AbortSignal, scale: number,
-) {
-  if (canvas) {
-    await renderPdfPage(bytes, {
-      canvas,
-      scaleCap: { maxEdge: PREVIEW_RASTER_MAX_EDGE, maxScale: scale },
-      signal,
-    });
-  }
-}
-
-/** Render the PDF pair whenever its bytes or requested density change.
- *
- *  The pair shares one chain: pdf.js hard-throws on concurrent render() calls
- *  into one canvas, and serializing art/mask also prevents two up-to-60 MB
- *  scratch canvases from peaking together. Superseding either the PDF bytes or
- *  zoom density ABORTS the in-flight paint (see RenderPageOptions.signal), so
- *  stale zoom frames cannot queue ahead of the latest one.
- *
- *  Errors are reported rather than swallowed. A cancelled render is not an
- *  error (renderPdfPage resolves it as null), so anything reaching the catch is
- *  a real failure, and discarding it silently leaves the preview frozen with
- *  nothing on screen to say why. */
-function useRenderPdfs(
-  artBytes: Uint8Array | null,
-  maskBytes: Uint8Array | null,
-  artCanvas: RefObject<HTMLCanvasElement | null>,
-  maskCanvas: RefObject<HTMLCanvasElement | null>,
-  scale: number,
-  onError?: (message: string) => void,
-) {
-  const chain = useRef<Promise<void>>(Promise.resolve());
-  // Held in a ref, not a dependency: an inline callback from the parent would
-  // change identity on every render and re-run this effect, aborting the render
-  // it just started, forever.
-  const report = useRef(onError);
-  report.current = onError;
-  useEffect(() => {
-    if (!artBytes && !maskBytes) return;
-    const abort = new AbortController();
-    chain.current = chain.current
-      .then(async () => {
-        if (artBytes && !abort.signal.aborted)
-          await renderPdf(artBytes, artCanvas.current, abort.signal, scale);
-        if (maskBytes && !abort.signal.aborted)
-          await renderPdf(maskBytes, maskCanvas.current, abort.signal, scale);
-      })
-      .catch((error: unknown) => { report.current?.(String(error)); });
-    return () => abort.abort();
-  }, [artBytes, maskBytes, artCanvas, maskCanvas, scale]);
-}
-
 export interface PreviewCompareHandle {
   showArt: () => void;
   showMask: () => void;
@@ -170,18 +115,10 @@ export interface PreviewCompareHandle {
 export const PreviewCompare = forwardRef<
   PreviewCompareHandle,
   {
-    artBytes: Uint8Array | null;
-    maskBytes: Uint8Array | null;
-    /** DEV-ONLY (Phase 2): when set, the preview paints its two canvases
-     *  from the canvas backend instead of the PDF raster path — the Phase 3
-     *  swap, behind a flag. Everything else (hit-testing, editing, divider)
-     *  is source-agnostic and stays as-is. */
-    canvasRender?: {
-      m: MeasureFace;
-      planAssets: PlanAssets;
-      drawAssets: CanvasAssets;
-      skip: { has(id: ElementId): boolean };
-    } | null;
+    /** The render source: fonts + decoded bitmaps for drawPlate, assembled
+     *  from the display list. Null means "not ready yet / a 3D view is up" —
+     *  the canvases keep their last frame. */
+    canvasRender: CanvasRenderSource | null;
     /** Current label config — read-only here, needed to hit-test a click
      *  against the same geometry the renderer just painted. */
     cfg: LabelConfig;
@@ -225,18 +162,21 @@ export const PreviewCompare = forwardRef<
      *  guide so the 2D preview shows the shape that actually gets cut. */
     cornerRadiusPct: number;
     /** Current CSS zoom. Rasterization follows it after a short debounce so
-     *  settled zoom shows new PDF detail instead of stretching old pixels. */
+     *  settled zoom shows new pixel detail instead of stretching old pixels. */
     zoom: number;
-    /** A rasterization that failed outright, for App's error strip. Cancelled
-     *  renders are routine and never reported here — only real failures, which
-     *  would otherwise leave the preview stuck on its last good frame with no
-     *  explanation. */
+    /** Repaint trigger only: the paint effect reads geometry from the live
+     *  PAGE, which App's render already updated via setLayoutBleed. Without
+     *  this dep a bleed change would leave the canvas stale. */
+    bleedIn: number;
+    /** A failed frame, for App's error strip. Called with the message on
+     *  failure, "" on the next successful frame — the same clearing contract
+     *  a cleared error strip needs. */
     onRenderError?: (message: string) => void;
   }
 >(function PreviewCompare(
   {
-    artBytes, maskBytes, canvasRender, cfg, measure, collab, selected, onPick, onEditText,
-    onEditCancel, onEditSession, onSplit, bleed, cornerRadiusPct, zoom,
+    canvasRender, cfg, measure, collab, selected, onPick, onEditText,
+    onEditCancel, onEditSession, onSplit, bleed, cornerRadiusPct, zoom, bleedIn,
     onRenderError,
   },
   ref,
@@ -270,37 +210,41 @@ export const PreviewCompare = forwardRef<
     getPageElement: () => pageElement.current,
   }));
 
-  // DEV-ONLY (Phase 2): canvasRender set nulls both PDF args, so useRenderPdfs'
-  // effect bails entirely (see its `if (!artBytes && !maskBytes) return`) and
-  // the flag path never pays for a pdf.js raster it isn't going to show.
-  useRenderPdfs(
-    canvasRender ? null : artBytes, canvasRender ? null : maskBytes,
-    artCanvas, maskCanvas, rasterScale, onRenderError,
-  );
-
-  // DEV-ONLY (Phase 2): repaint both plates straight from the canvas backend
+  // The one render path: repaint both plates straight from the display list
   // on every config/asset change, on a rAF so a burst of keystrokes coalesces
-  // into one paint per frame (matching the PDF path's per-frame raster cap).
-  // No debounce beyond that — drawPlate is synchronous and cheap compared to
-  // pdf.js, so there's nothing here worth trading responsiveness for.
+  // into one paint per frame. drawPlate is synchronous and cheap — no
+  // debounce, no worker. null canvasRender (assets still assembling, or a 3D
+  // view is up) paints nothing and the canvases keep their last frame.
   useEffect(() => {
     if (!canvasRender) return;
     const raf = requestAnimationFrame(() => {
-      const plan = planLabel(cfg, canvasRender.m,
-        { skip: canvasRender.skip, assets: canvasRender.planAssets });
-      for (const [canvas, mode] of
-          [[artCanvas.current, "art"], [maskCanvas.current, "mask"]] as const) {
-        if (!canvas) continue;
-        const w = Math.round(PAGE.w * rasterScale);
-        if (canvas.width !== w) {
-          canvas.width = w;
-          canvas.height = Math.round(PAGE.h * rasterScale);
+      try {
+        // planLabel runs before any canvas is touched, so its throws (the
+        // realistic failure) leave the last frame intact — the spec's
+        // failed-frame policy.
+        const plan = planLabel(cfg, canvasRender.m,
+          { skip: canvasRender.skip, assets: canvasRender.planAssets });
+        for (const [canvas, mode] of
+            [[artCanvas.current, "art"], [maskCanvas.current, "mask"]] as const) {
+          if (!canvas) continue;
+          const w = Math.round(PAGE.w * rasterScale);
+          if (canvas.width !== w) {
+            canvas.width = w;
+            canvas.height = Math.round(PAGE.h * rasterScale);
+          }
+          drawPlate(canvas.getContext("2d")!, plan, canvasRender.drawAssets, mode);
         }
-        drawPlate(canvas.getContext("2d")!, plan, canvasRender.drawAssets, mode);
+        onRenderError?.("");
+      } catch (err) {
+        // Routed to App's buildError strip; the canvases keep whatever frame
+        // last painted successfully.
+        onRenderError?.(String(err));
       }
     });
     return () => cancelAnimationFrame(raf);
-  }, [canvasRender, cfg, rasterScale]);
+    // onRenderError is a useState setter in App — identity-stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canvasRender, cfg, rasterScale, bleedIn]);
 
   // Click-to-select: the canvases fill the wrapper exactly and the wrapper's
   // aspect ratio is locked to PAGE.w/PAGE.h (see the style below), so a

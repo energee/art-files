@@ -337,10 +337,10 @@ setOutputDpi(DESIGN_DPI);
  *  one label at a time. If it ever opens two, thread a Geometry through the
  *  renderers instead of reading module state.
  *
- *  NOTE for callers: the PDF preview worker runs its own copy of this module
- *  (separate registry), so calling this on the main thread alone leaves the
- *  worker building at the default. pdf/client.ts ships the value with every
- *  request for exactly that reason. */
+ *  NOTE for callers: this affects only the current process. `npm run
+ *  generate`'s Node harness (scripts/generate.ts) imports this module in a
+ *  separate process with its own copy of this state and never calls
+ *  setBleed — it always builds at the default bleed. */
 export function setBleed(inches: number) {
   BLEED = inches * 72;
   BLEED_SHIFT = BLEED - MEASURED_BLEED;

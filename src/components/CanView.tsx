@@ -1,12 +1,16 @@
 // CanView.tsx — React wrapper around the vanilla-three CanScene: mounts the
-// scene once into a fill-parent div, re-renders the PDF pair into label
-// textures whenever the bytes change (App already debounces the byte churn),
-// switches view modes, and tears everything down on unmount.
+// scene once into a fill-parent div, rebuilds the label textures from the
+// canvas backend's plates whenever the render source or config changes
+// (debounced — see the rebuild effect), switches view modes, and tears
+// everything down on unmount.
 import {
   forwardRef, useEffect, useImperativeHandle, useRef, useState,
 } from "react";
 import { CanScene, type CanSceneMode } from "@/three/canScene";
-import { buildLabelTextures } from "@/three/labelTextures";
+import { drawPlates, buildLabelTextures } from "@/three/labelTextures";
+import type { CanvasRenderSource } from "@/canvas/draw";
+import { planLabel } from "@/plan";
+import type { LabelConfig } from "@/types";
 import { cn } from "@/lib/utils";
 
 export interface CanViewHandle {
@@ -22,8 +26,12 @@ export const CanView = forwardRef<CanViewHandle, {
   cornerRadiusPct: number;
   /** Foil-mask blur, % of label width (Settings layer). */
   edgeSoftnessPct: number;
-  artBytes: Uint8Array | null;
-  maskBytes: Uint8Array | null;
+  cfg: LabelConfig;
+  /** The render source: fonts + decoded bitmaps for drawPlate, assembled
+   *  from the display list. Null means "not ready yet". */
+  source: CanvasRenderSource | null;
+  /** Repaint trigger only — see PreviewCompare's prop of the same name. */
+  bleedIn: number;
   mode: CanSceneMode;
   /** Current dolly as a multiple of the mode's framing distance (1 = as
    *  framed) plus the pan as a fraction of the frame, on every camera change,
@@ -35,7 +43,7 @@ export const CanView = forwardRef<CanViewHandle, {
    *  outside landed on the instance that was about to be thrown away. */
   initialView?: { zoom: number; pan: { x: number; y: number } };
 }>(function CanView({
-  artBytes, maskBytes, mode, cornerRadiusPct,
+  cfg, source, bleedIn, mode, cornerRadiusPct,
   edgeSoftnessPct, onZoom, initialView,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -84,24 +92,28 @@ export const CanView = forwardRef<CanViewHandle, {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Texture rebuilds are serialized and superseded ones dropped, mirroring
-  // PreviewCompare's render chain: pdf.js work can outlast the next byte
-  // change, and a slow stale result must not overwrite a newer one.
-  const chain = useRef<Promise<void>>(Promise.resolve());
+  // Texture rebuilds are debounced: each one is a synchronous two-plate draw
+  // plus deriveMetalness' per-pixel pass over ~3.4M px — fine per pause,
+  // too heavy per keystroke. A superseded rebuild simply never fires
+  // (clearTimeout), so stale textures can't overwrite newer ones.
   useEffect(() => {
-    if (!artBytes || !maskBytes) return;
-    let cancelled = false;
+    if (!source) return;
     setLoading(true);
-    chain.current = chain.current
-      .then(async () => {
-        if (cancelled) return;
-        const tex = await buildLabelTextures({ artBytes, maskBytes });
-        if (!cancelled) sceneRef.current?.applyTextures(tex);
-      })
-      .catch((err) => console.warn("3D label texture build failed:", err))
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [artBytes, maskBytes]);
+    let done = false;
+    const timer = setTimeout(() => {
+      done = true;
+      try {
+        const plan = planLabel(cfg, source.m,
+          { skip: source.skip, assets: source.planAssets });
+        sceneRef.current?.applyTextures(buildLabelTextures(drawPlates(plan, source.drawAssets)));
+      } catch (err) {
+        console.warn("3D label texture build failed:", err);
+      } finally {
+        setLoading(false);
+      }
+    }, 150);
+    return () => { clearTimeout(timer); if (!done) setLoading(false); };
+  }, [source, cfg, bleedIn]);
 
   useEffect(() => {
     sceneRef.current?.setMode(mode);

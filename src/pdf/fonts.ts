@@ -1,6 +1,7 @@
 // fonts.ts — the three Poppins faces every build needs, fetched once per
-// context. Imported by both the UI thread (full-resolution exports) and the
-// preview worker; each gets its own module instance, so each fetches once.
+// context. Consumers are the full-resolution export builds and the dev-only
+// parity harness (src/dev/parity.ts); each gets its own module instance, so
+// each fetches once.
 import poppinsRegular from "../assets/fonts/Poppins-Regular.ttf?url";
 import poppinsSemiBold from "../assets/fonts/Poppins-SemiBold.ttf?url";
 import poppinsBold from "../assets/fonts/Poppins-Bold.ttf?url";
