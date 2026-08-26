@@ -5,7 +5,7 @@
 // The font is whatever CSS family the caller's render source is loaded
 // under (see fonts.ts's gate); drawPlates just forwards it to drawPlate.
 import { drawPlate, type CanvasAssets } from "@/canvas/draw";
-import { labelFontCss } from "@/fonts";
+
 import type { Placed } from "@/plan";
 import { PAGE } from "@/layout";
 
@@ -80,7 +80,8 @@ function deriveMetalness(
  *  texel density the old PDF raster produced. One scale for both plates, so
  *  the maps share the art's UV grid pixel-for-pixel. */
 export function drawPlates(
-  plan: readonly Placed[], assets: CanvasAssets, fontCss = labelFontCss("poppins"),
+  // fontCss required for the same reason drawPlate's is — see its comment.
+  plan: readonly Placed[], assets: CanvasAssets, fontCss: string,
 ): { art: HTMLCanvasElement; mask: HTMLCanvasElement } {
   const s = Math.min(MAX_SCALE, MAX_EDGE / Math.max(PAGE.w, PAGE.h));
   const plate = (mode: "art" | "mask") => {

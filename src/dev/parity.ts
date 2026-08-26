@@ -9,7 +9,7 @@ import { loadFonts } from "../pdf/fonts";
 import { renderPdfPage } from "../pdf/render";
 import { planLabel } from "../plan";
 import { drawPlate, type CanvasAssets } from "../canvas/draw";
-import { loadLabelFont, loadLabelFaces } from "../fonts";
+import { labelFontCss, loadLabelFont, loadLabelFaces } from "../fonts";
 import { defaultConfig } from "../defaults";
 import { PAGE } from "../layout";
 import type { LabelConfig } from "../types";
@@ -93,7 +93,9 @@ async function run() {
       const ours = document.createElement("canvas");
       ours.width = w;
       ours.height = h;
-      drawPlate(ours.getContext("2d")!, plan, canvasAssets, mode);
+      // Dev harness compares poppins configs only, spelled explicitly now
+      // that drawPlate no longer defaults the family.
+      drawPlate(ours.getContext("2d")!, plan, canvasAssets, mode, labelFontCss("poppins"));
 
       const A = ours.getContext("2d")!.getImageData(0, 0, w, h);
       const B = pdfCanvas.getContext("2d")!.getImageData(0, 0, w, h);

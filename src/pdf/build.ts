@@ -292,6 +292,10 @@ async function drawElements(
   // embedded PDFFont widths so the built bytes place text exactly as before.
   const plan = planLabel(cfg, pdfMeasure, {
     skip: assets.hidden,
+    // Presence, not what planArt returned: a hidden logo yields no art (no
+    // embedded bytes) but still holds its slot, so the "A collaborative
+    // project with" lead-in stays — exactly what the preview draws.
+    collab: { left: !!assets.collabLeft, center: !!assets.collabCenter },
     assets: {
       logoSvg: assets.logoSvg,
       collabLeft: await planArt("collabLeft", assets.collabLeft),

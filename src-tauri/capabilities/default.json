@@ -14,9 +14,7 @@
     {
       "identifier": "fs:allow-read-file",
       "allow": [
-        { "path": "**/*.label" },
-        { "path": "**/*.LABEL" },
-        { "path": "**/*.Label" }
+        { "path": "**/*.[lL][aA][bB][eE][lL]" }
       ]
     },
     "updater:default"

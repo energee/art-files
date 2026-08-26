@@ -331,6 +331,10 @@ export type RenderSettings = Presets["render"];
 type DocumentEditorProps = {
   active: boolean;
   fileToOpen: FileToOpen | null;
+  /** Reports fileToOpen's attempt finished (success or failure), so the
+   *  shell can drop the queued entry — a stale entry blocks re-opening the
+   *  path and keeps claiming it after Save As (see TabsShell's pending). */
+  onOpenSettled: (seq: number) => void;
   onMeta: (meta: DocumentMeta) => void;
   /** Shell-owned slot this editor assigns its save fn into on every render;
    *  resolves false when the user cancels the save dialog (the shell's
@@ -358,7 +362,7 @@ type DocumentEditorProps = {
 // only holds if the shell passes identity-stable props to inactive editors
 // (per-tab callbacks and slots created once — see TabsShell's extrasFor).
 export const DocumentEditor = memo(function DocumentEditor({
-  active, fileToOpen, onMeta, saveSlot, render, onRenderChange,
+  active, fileToOpen, onOpenSettled, onMeta, saveSlot, render, onRenderChange,
   onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, tabStripHost,
 }: DocumentEditorProps) {
   // Config lives in a history stack, not plain useState — every edit that
@@ -428,7 +432,15 @@ export const DocumentEditor = memo(function DocumentEditor({
     [collabLeft, collabCenter],
   );
   const [building, setBuilding] = useState(false);
+  // Two error channels, split by who can clear them. renderError belongs to
+  // the renderers (2D paint / 3D texture rebuild): every successful frame
+  // clears it, which is safe because only a frame can fix a frame. buildError
+  // belongs to asset assembly, exports, and native menu failures: it survives
+  // successful frames (a repaint from STALE assets used to wipe a decode
+  // error the user never saw resolved) and clears when assembly or an export
+  // succeeds. The strip shows whichever is set.
   const [buildError, setBuildError] = useState("");
+  const [renderError, setRenderError] = useState("");
   const [loadError, setLoadError] = useState("");
   // Divider position reported by PreviewCompare (% of width showing
   // white-ink), so the View menu can check off whichever end it sits at.
@@ -959,6 +971,9 @@ export const DocumentEditor = memo(function DocumentEditor({
           drawAssets,
           fontCss: labelFontCss(family),
         });
+        // A full assembly succeeded: whatever font/decode (or lingering
+        // export) failure the strip was showing is resolved or stale.
+        setBuildError("");
       })().catch((err) => {
         // The font gate or a decode failed: the preview cannot render.
         // Surface it — the spec's "never a silently wrong face".
@@ -1108,6 +1123,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       ]);
       if (artPdf) await saveVia(artPdf, `${exportBaseName(cfg)}.pdf`, "application/pdf");
       if (maskPdf) await saveVia(maskPdf, `${exportBaseName(cfg)}-mask.pdf`, "application/pdf");
+      setBuildError(""); // same clear-on-success the PSD export already does
     } catch (err) {
       setBuildError(String(err));
     } finally {
@@ -1347,10 +1363,15 @@ export const DocumentEditor = memo(function DocumentEditor({
         }
       } catch (err) {
         reportOpenError(err);
+      } finally {
+        // Either way the attempt is over — let the shell drop the queued
+        // entry (seq-guarded there against a newer open on this tab).
+        onOpenSettled(mySeq);
       }
     });
-    // openWithRetry's closure chain ends in stable setters, so the current
-    // render's copy is never stale — same reasoning as onKey above.
+    // openWithRetry's closure chain ends in stable setters (and
+    // onOpenSettled is an identity-stable TabExtras callback), so the
+    // current render's copy is never stale — same reasoning as onKey above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileToOpen]);
 
@@ -1558,7 +1579,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           {/* Build failures sit here too rather than in their own strip above
               the preview — one place for chrome-level errors, and the strip
               was 20px reserved for a row that is empty almost always. */}
-          {buildError && <HeaderAlert>{buildError}</HeaderAlert>}
+          {(buildError || renderError) && <HeaderAlert>{buildError || renderError}</HeaderAlert>}
           <input ref={presetsInput} type="file" accept="application/json" hidden
             onChange={(e) => e.target.files?.[0] && void importPresets(e.target.files[0])} />
         </header>
@@ -1641,10 +1662,12 @@ export const DocumentEditor = memo(function DocumentEditor({
               // Same Settings knob the 3D die uses, so both previews cut alike.
               cornerRadiusPct={render.cornerRadius}
               zoom={zoom.z}
-              // setBuildError itself, not a wrapper: useState setters are
+              // setRenderError itself, not a wrapper: useState setters are
               // identity-stable, and an inline arrow here would be a new
               // function every render, defeating the paint effect's deps.
-              onRenderError={setBuildError} />
+              // The RENDER channel, not buildError: a successful frame
+              // clears it, and frames must never wipe asset/export errors.
+              onRenderError={setRenderError} />
             </div>
             {/* active gate: a hidden tab must not hold a live three.js
                 context and texture set — reactivation rebuilds them. */}
@@ -1663,7 +1686,8 @@ export const DocumentEditor = memo(function DocumentEditor({
                 }}
                 cfg={cfg} source={canvasSource} bleedIn={render.bleedIn}
                 mode={viewMode} cornerRadiusPct={render.cornerRadius}
-                edgeSoftnessPct={render.edgeSoftness} />
+                edgeSoftnessPct={render.edgeSoftness}
+                onRenderError={setRenderError} />
             )}
             </div>
             {viewMode === "2d" && (
@@ -1709,7 +1733,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 a spinner instead of a bare box. Later rebuilds keep the
                 previous render visible, blur it, and show the corner spinner
                 instead. */}
-            {!previewReady && !buildError && (
+            {!previewReady && !buildError && !renderError && (
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
                   <span className="size-6 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-foreground" />

@@ -7,7 +7,11 @@ import { drawPlate, type CanvasAssets } from "../src/canvas/draw";
 import { barcodeItem, planLabel, type MeasureFace } from "../src/plan";
 import { defaultConfig } from "../src/defaults";
 import { MASK_BLUE_HEX, PAGE } from "../src/layout";
+import { labelFontCss } from "../src/fonts";
 import { assets as fixtureAssets } from "./fixtures";
+
+// drawPlate requires the font family explicitly (no poppins default).
+const FONT = labelFontCss("poppins");
 
 // The shared fixture logo — fixtures.ts exists so every suite reads ONE copy.
 const logoSvg = fixtureAssets.logoSvg;
@@ -42,7 +46,7 @@ const plan = () => planLabel(cfg, m, { assets: { logoSvg } });
 describe("drawPlate", () => {
   it("mask mode with no mask image floods the plate white-ink blue first", () => {
     const { ctx, log } = fakeCtx();
-    drawPlate(ctx, plan(), {}, "mask");
+    drawPlate(ctx, plan(), {}, "mask", FONT);
     const rects = log.filter((c) => c.op === "fillRect");
     // White base, then the blue flood, both before any element paints.
     const firstText = log.findIndex((c) => c.op === "fillText");
@@ -55,7 +59,7 @@ describe("drawPlate", () => {
   it("art mode draws the texture cover-fit before any element", () => {
     const { ctx, log } = fakeCtx();
     const texture = { width: 100, height: 100 } as unknown as CanvasAssets["texture"];
-    drawPlate(ctx, plan(), { texture }, "art");
+    drawPlate(ctx, plan(), { texture }, "art", FONT);
     const img = log.findIndex((c) => c.op === "drawImage");
     const firstText = log.findIndex((c) => c.op === "fillText");
     expect(img).toBeGreaterThan(-1);
@@ -67,7 +71,7 @@ describe("drawPlate", () => {
     // Force a stroke on the volume line so the rule is exercised.
     const stroked = planLabel(
       { ...cfg, volume: { ...cfg.volume, stroke: "#112233" } }, m, { assets: { logoSvg } });
-    drawPlate(ctx, stroked, {}, "art");
+    drawPlate(ctx, stroked, {}, "art", FONT);
     const s = log.findIndex((c) => c.op === "strokeText");
     const f = log.findIndex((c) => c.op === "fillText");
     expect(s).toBeGreaterThan(-1);
@@ -76,7 +80,7 @@ describe("drawPlate", () => {
 
   it("rotates rotated runs a quarter turn counter-clockwise", () => {
     const { ctx, log } = fakeCtx();
-    drawPlate(ctx, plan(), {}, "art");
+    drawPlate(ctx, plan(), {}, "art", FONT);
     const rot = log.find((c) => c.op === "rotate");
     expect(rot).toBeDefined();
     expect(rot!.args[0]).toBeCloseTo(-Math.PI / 2);
@@ -88,10 +92,10 @@ describe("drawPlate", () => {
       assets: { logoSvg, collabCenter: { kind: "raster", w: 10, h: 10 } },
     });
     const art = fakeCtx();
-    drawPlate(art.ctx, p, { collabCenter: {} as CanvasImageSource }, "art");
+    drawPlate(art.ctx, p, { collabCenter: {} as CanvasImageSource }, "art", FONT);
     expect(art.log.filter((x) => x.op === "drawImage").length).toBeGreaterThan(0);
     const mask = fakeCtx();
-    drawPlate(mask.ctx, p, {}, "mask");
+    drawPlate(mask.ctx, p, {}, "mask", FONT);
     // Mask never draws the image itself.
     expect(mask.log.some((x) => x.op === "drawImage")).toBe(false);
   });
@@ -102,12 +106,12 @@ describe("drawPlate", () => {
       assets: { logoSvg, collabCenter: { kind: "raster", w: 10, h: 10 } },
     });
     const { ctx } = fakeCtx();
-    expect(() => drawPlate(ctx, p, {}, "art")).toThrow(/collabCenter/);
+    expect(() => drawPlate(ctx, p, {}, "art", FONT)).toThrow(/collabCenter/);
   });
 
   it("owns textAlign/textBaseline: pins both before any text paints", () => {
     const { ctx, log } = fakeCtx();
-    drawPlate(ctx, plan(), {}, "art");
+    drawPlate(ctx, plan(), {}, "art", FONT);
     const firstText = log.findIndex((x) => x.op === "fillText");
     const align = log.findIndex((x) => x.op === "set:textAlign" && x.args[0] === "left");
     const base = log.findIndex((x) => x.op === "set:textBaseline" && x.args[0] === "alphabetic");
@@ -124,7 +128,7 @@ describe("drawPlate", () => {
       { ...cfg, logo: { ...cfg.logo, stroke: "#112233" } }, m, { assets: { logoSvg } },
     ).filter((r) => r.id === "logo");
     const { ctx, log } = fakeCtx();
-    drawPlate(ctx, stroked, {}, "art");
+    drawPlate(ctx, stroked, {}, "art", FONT);
     const strokes = log.map((x, i) => (x.op === "stroke" ? i : -1)).filter((i) => i >= 0);
     const fills = log.map((x, i) => (x.op === "fill" ? i : -1)).filter((i) => i >= 0);
     expect(strokes.length).toBeGreaterThan(0);
@@ -136,7 +140,7 @@ describe("drawPlate", () => {
     const item = barcodeItem(cfg, m);
     expect(item.S).toBeGreaterThan(0); // default config ships the measured halo
     const { ctx, log } = fakeCtx();
-    drawPlate(ctx, [item], {}, "art");
+    drawPlate(ctx, [item], {}, "art", FONT);
     // The plate's white background flood is also a fillRect, before the item
     // loop even starts — scope to ops after drawPlate's one unconditional
     // pre-loop translate (BLEED_SHIFT) so the background isn't mistaken for

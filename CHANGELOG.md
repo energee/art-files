@@ -3,6 +3,34 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.24] - 2026-08-26
+
+- Opening several .label files at once from Finder no longer drops all but
+  the last one — each file gets its own tab.
+- Hiding a collaboration logo no longer removed the "A collaborative project
+  with" lead-in from the exported PDF while the preview kept showing it. The
+  lead-in now follows its own eye in both.
+- The 2D preview rasterizes at the density it is actually displayed at
+  instead of oversampling past it, and releases that density when you zoom
+  back out — noticeably less work per keystroke.
+- "Open With" on a non-.label file is now ignored instead of surfacing an
+  open error, and a .LABEL file opens like a .label one.
+- Fresh installs get their seed preset library back (styles and Tier
+  barcodes) — an accidental dev-server writeback had emptied it.
+- A failed file open no longer permanently blocks re-opening that file, and
+  a project saved under a new name no longer intercepts opens of its
+  original file.
+- An upload or export failure now stays in the error strip until it is
+  actually resolved, instead of vanishing on the next keystroke; failures
+  while a 3D view is rebuilding its textures now reach the strip too.
+- The preview no longer renders distorted after changing bleed at maximum
+  zoom, and tracked text renders correctly on macOS WebViews older than
+  Safari 17.4.
+- Internal: launching by file no longer crashes on non-Unicode command-line
+  arguments; the font family parameter is now required through the canvas
+  backend; the collab slot envelopes have one shared spelling between
+  placement and hit-testing.
+
 ## [0.1.23] - 2026-08-26
 
 - Double-clicking the description on the 2D preview now edits it in place

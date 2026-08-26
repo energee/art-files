@@ -84,10 +84,9 @@ export function coverFit(imgW: number, imgH: number) {
  *  predict that sheet's on-screen height to frame its own label to match
  *  (see canScene's framingDistance) — two readers, one number. */
 export const PREVIEW_MAX_W = 900;
-/** Baseline PDF raster oversample and the zoom ceiling every view shares.
- *  PreviewCompare multiplies this by the live 2D zoom (and display density),
- *  while App and canScene use the same value as their maximum zoom so a view
- *  handoff is never silently clipped. */
+/** The zoom ceiling every view shares: App clamps the 2D zoom to it and
+ *  canScene derives its closest orbit from it, so a view handoff is never
+ *  silently clipped. (Raster density is previewRasterScale's job.) */
 export const PREVIEW_OVERSAMPLE = 2.5;
 /** Hard ceiling for the zoom-aware 2D raster. At the default page size this
  *  is 4876 x 3076 (about 60 MB of RGBA per canvas); PreviewCompare keeps the
@@ -102,11 +101,16 @@ export const PREVIEW_RASTER_MAX_SCALE = 600 / 72;
 export const PREVIEW_RASTER_MAX_EDGE = Math.round(PAGE.w * PREVIEW_RASTER_MAX_SCALE);
 
 /** Raster density for a 2D view. CSS zoom stays immediate; the preview
- *  debounces re-rasterization to this density after the gesture settles. */
+ *  debounces re-rasterization to this density after the gesture settles.
+ *  Derived from the sheet's ON-SCREEN size, not from PREVIEW_OVERSAMPLE: the
+ *  sheet is at most PREVIEW_MAX_W CSS px wide, so PREVIEW_MAX_W * zoom * dpr
+ *  device pixels is exactly one raster pixel per device pixel. Oversampling
+ *  past that bought no visible detail and cost backing store on every repaint
+ *  (the paint runs per keystroke). */
 export const previewRasterScale = (zoom: number, devicePixelRatio = 1) =>
   Math.min(
     PREVIEW_RASTER_MAX_SCALE,
-    PREVIEW_OVERSAMPLE * Math.max(1, zoom) * Math.max(1, devicePixelRatio),
+    (PREVIEW_MAX_W / PAGE.w) * Math.max(1, zoom) * Math.max(1, devicePixelRatio),
   );
 /** Art box inside the bleed — the TRIM, offset by the bleed. Only x/y move
  *  with the knob; the die does not change size. */

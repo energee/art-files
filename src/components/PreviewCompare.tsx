@@ -320,13 +320,12 @@ export const PreviewCompare = forwardRef<
     previewRasterScale(zoom, window.devicePixelRatio));
 
   useEffect(() => {
-    const next = previewRasterScale(zoom, window.devicePixelRatio);
-    // Ratchet up only: zooming out just shrinks the on-screen bitmap via CSS,
-    // which is visually lossless — repainting now would cost reallocating a
-    // large canvas backing store for strictly less detail than what's already
-    // painted.
+    // Follows the zoom in both directions — the settled density is paid again
+    // on every repaint (which is per keystroke), so it has to come back down.
+    // The debounce is what keeps the gesture itself cheap.
     const timeout = window.setTimeout(
-      () => setRasterScale((prev) => Math.max(prev, next)), RASTER_DEBOUNCE_MS);
+      () => setRasterScale(previewRasterScale(zoom, window.devicePixelRatio)),
+      RASTER_DEBOUNCE_MS);
     return () => window.clearTimeout(timeout);
   }, [zoom]);
 
@@ -362,9 +361,13 @@ export const PreviewCompare = forwardRef<
             [[artCanvas.current, "art"], [maskCanvas.current, "mask"]] as const) {
           if (!canvas) continue;
           const w = Math.round(rawW * cap);
-          if (canvas.width !== w) {
+          const h = Math.round(rawH * cap);
+          // Both dimensions guard the resize: when the long-edge cap pins
+          // width, a bleed change moves only the height — a width-only
+          // check left the canvas at the old aspect and CSS stretched it.
+          if (canvas.width !== w || canvas.height !== h) {
             canvas.width = w;
-            canvas.height = Math.round(rawH * cap);
+            canvas.height = h;
           }
           drawPlate(canvas.getContext("2d")!, plan, canvasRender.drawAssets, mode, canvasRender.fontCss);
         }

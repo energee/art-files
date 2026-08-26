@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { lineRuns, rotatedRuns, justifiedRotatedRuns, planLabel, barcodeItem, type MeasureFace, type PlacedText } from "../src/plan";
 import * as L from "../src/layout";
 import { defaultConfig } from "../src/defaults";
+import { assets } from "./fixtures";
 
 // Deterministic fake metrics: 0.5pt per char per size unit, bold faces 10% wider.
 const m: MeasureFace = (text, size, face) =>
@@ -138,6 +139,20 @@ describe("planLabel", () => {
     expect(planLabel(on, m).some((r) => r.id === "collabLead")).toBe(false);
     expect(planLabel(on, m, { collab: { left: true, center: false } })
       .some((r) => r.id === "collabLead")).toBe(true);
+  });
+
+  it("opts.collab holds the slot open when the art is nulled out (hidden logo)", () => {
+    // The PDF build drops a hidden logo's art so no bytes reach the file, but
+    // the lead-in has its own eye — it must survive, or the export diverges
+    // from the preview.
+    const on = { ...defaultConfig(), collabEnabled: true };
+    const { logoSvg } = assets;
+    const plan = planLabel(on, m, {
+      collab: { left: true, center: false },
+      assets: { logoSvg, collabLeft: null, collabCenter: null },
+    });
+    expect(plan.some((r) => r.id === "collabLead")).toBe(true);
+    expect(plan.some((r) => r.id === "collabLeft")).toBe(false);
   });
 
   it("every warning column with 2+ words justifies to exactly maxLen", () => {

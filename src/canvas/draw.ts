@@ -14,13 +14,23 @@ import {
 } from "../plan";
 import type { Fill, LabelConfig, Style } from "../types";
 import type { ElementId } from "../elements";
-import { FACE_WEIGHT, labelFontCss } from "../fonts";
+import { FACE_WEIGHT } from "../fonts";
 import * as L from "../layout";
 
 // TypeScript note: some lib.dom versions lack `letterSpacing` on the 2D
 // context type; declared locally rather than `as any` per call site.
 interface Ctx2DLetterSpacing { letterSpacing: string }
 type Ctx = (CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D) & Ctx2DLetterSpacing;
+
+/** Whether the engine's 2D context implements letterSpacing (Safari/WKWebView
+ *  gained it in 17.4). Older engines silently IGNORE the assignment, so
+ *  tracked text would paint narrower than the plan placed it — drawText
+ *  falls back to per-glyph advances there instead. Detected once; in Node
+ *  (vitest hands in fake contexts, nothing rasterizes) the normal path is
+ *  fine and `document` doesn't exist, so absence of DOM means "supported". */
+const CANVAS_LETTER_SPACING =
+  typeof document === "undefined"
+  || "letterSpacing" in (document.createElement("canvas").getContext("2d") ?? {});
 
 export interface CanvasAssets {
   /** Art plate background, cover-fitted; absent = bare stock (white). */
@@ -67,7 +77,10 @@ export function drawPlate(
   plan: readonly Placed[],
   assets: CanvasAssets,
   mode: Mode,
-  fontCss = labelFontCss("poppins"),
+  // Required, no poppins default: a caller that forgot to thread the
+  // config's family would silently render the wrong face — the exact
+  // failure the fonts.ts gate exists to prevent.
+  fontCss: string,
 ): void {
   const c = ctx as Ctx;
   const scale = c.canvas.width / L.PAGE.w;
@@ -142,16 +155,29 @@ function drawText(ctx: Ctx, r: PlacedText, mode: Mode, fontCss: string) {
   // is advance, not ink — run positions come from the plan, so it cannot
   // shift anything.
   ctx.letterSpacing = `${r.tracking}px`;
+  // Engines without letterSpacing ignore the assignment above, so tracked
+  // runs are laid out by hand: one glyph per call, advancing by the glyph's
+  // own measured width plus the tracking — all in user-space px, which the
+  // pt-scaled transform makes scale-free. Kerning between pairs is lost on
+  // this degraded path; positions still match the plan's run starts.
+  const paint = (method: "fillText" | "strokeText") => {
+    if (CANVAS_LETTER_SPACING || !r.tracking) return ctx[method](r.text, 0, 0);
+    let x = 0;
+    for (const ch of r.text) {
+      ctx[method](ch, x, 0);
+      x += ctx.measureText(ch).width + r.tracking;
+    }
+  };
   ctx.save();
   ctx.translate(r.x, r.y);
   if (r.rotated) ctx.rotate(-Math.PI / 2); // y-down CCW = PDF's degrees(90)
   if (r.stroke) {
     ctx.strokeStyle = mode === "art" ? cssFill(r.stroke.fill) : cssMask(r.stroke.layer);
     ctx.lineWidth = 2 * r.stroke.w; // outer half is the w-wide stroke; fill covers the inner
-    ctx.strokeText(r.text, 0, 0);
+    paint("strokeText");
   }
   ctx.fillStyle = mode === "art" ? cssFill(r.fill) : cssMask(r.layer);
-  ctx.fillText(r.text, 0, 0);
+  paint("fillText");
   ctx.restore();
   ctx.letterSpacing = "0px";
 }

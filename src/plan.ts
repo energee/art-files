@@ -223,10 +223,13 @@ export interface PlanOpts {
    *  editor's session element from Phase 3 on). Layout is untouched:
    *  skipping never reflows neighbours. */
   skip?: { has(id: ElementId): boolean };
+  /** Which slots hold collab art. Overrides what `assets` implies, for the
+   *  caller whose art is nulled out by something other than absence: the PDF
+   *  build drops a hidden logo's art so no bytes reach the file, but the
+   *  lead-in it introduces has its own eye and must not vanish with it. */
   collab?: CollabSlots;
   /** With assets, planLabel emits the COMPLETE display list — text, laurel,
-   *  QR, collab art, barcode — in drawElements' historical draw order, and
-   *  the collab gates read the slots from here (opts.collab is ignored).
+   *  QR, collab art, barcode — in drawElements' historical draw order.
    *  Without assets: text only, gated by opts.collab — hittest's contract. */
   assets?: PlanAssets;
 }
@@ -235,6 +238,25 @@ export interface PlanOpts {
  *  drawing: the box scaled by the slot's scale knob, offsetY nudging the
  *  flowed position, SVG fitted ink-tight by parseLogo, raster fitted by its
  *  intrinsic aspect. */
+/** The two collab slots' fit ENVELOPES — the unscaled frame each slot's art
+ *  aspect-fits into. The ONE spelling shared by collabItems' call sites
+ *  below and the hit-tester's envelope boxes (hittest.ts), so slot placement
+ *  cannot drift between draw and hit-test. The slot's scale/offsetY knobs
+ *  are applied by each consumer on top, identically (see collabItems). */
+export function collabLeftFrame(descLineCount: number) {
+  const flow = L.collabLeftFlow(descLineCount);
+  return {
+    x: L.COLLAB_LEFT.x, top: flow.logoTop,
+    maxW: L.COLLAB_LEFT.maxW, maxH: L.COLLAB_LEFT.maxH,
+  };
+}
+export function collabCenterFrame(logoBottom: number) {
+  return {
+    cx: L.COLLAB_CENTER.cx, top: logoBottom + L.COLLAB_CENTER.gapAbove,
+    maxW: L.COLLAB_CENTER.maxW, maxH: L.COLLAB_CENTER.maxH,
+  };
+}
+
 function collabItems(
   id: ElementId,
   art: PlanArt,
@@ -285,11 +307,10 @@ export function barcodeItem(cfg: LabelConfig, m: MeasureFace): PlacedBarcode {
 export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {}): Placed[] {
   const skip = (id: ElementId) => !!opts.skip?.has(id);
   const A = opts.assets;
-  // One source for the slot gates: the art itself when assets are in hand,
-  // opts.collab (hittest's booleans) otherwise — never both.
-  const slots = A
-    ? { left: !!A.collabLeft, center: !!A.collabCenter }
-    : opts.collab ?? { left: false, center: false };
+  // One source for the slot gates: opts.collab when the caller knows which
+  // slots HOLD art (hittest's booleans; the PDF build, whose art is nulled
+  // out for a hidden layer), the art itself otherwise.
+  const slots = opts.collab ?? { left: !!A?.collabLeft, center: !!A?.collabCenter };
   const out: Placed[] = [];
 
   if (!skip("volume"))
@@ -319,13 +340,9 @@ export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {})
   }
 
   // Left collab art, flowed under the lead-in — drawCollab's placement.
-  if (A && cfg.collabEnabled && A.collabLeft && !skip("collabLeft")) {
-    const flow = L.collabLeftFlow(desc.lines.length);
-    out.push(...collabItems("collabLeft", A.collabLeft, cfg.collabLeft, {
-      x: L.COLLAB_LEFT.x, top: flow.logoTop,
-      maxW: L.COLLAB_LEFT.maxW, maxH: L.COLLAB_LEFT.maxH,
-    }));
-  }
+  if (A && cfg.collabEnabled && A.collabLeft && !skip("collabLeft"))
+    out.push(...collabItems(
+      "collabLeft", A.collabLeft, cfg.collabLeft, collabLeftFrame(desc.lines.length)));
 
   if (!skip("wordmark"))
     out.push(...lineRuns("wordmark", { text: L.WORDMARK.text, ...cfg.wordmark, bold: true }, m,
@@ -344,11 +361,8 @@ export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {})
         fill: cfg.logo.fill, layer: cfg.logo.layer, stroke: strokeSpec(cfg.logo),
       });
     if (cfg.collabEnabled && A.collabCenter && !skip("collabCenter"))
-      out.push(...collabItems("collabCenter", A.collabCenter, cfg.collabCenter, {
-        cx: L.COLLAB_CENTER.cx,
-        top: logoCy + logo.h / 2 + L.COLLAB_CENTER.gapAbove,
-        maxW: L.COLLAB_CENTER.maxW, maxH: L.COLLAB_CENTER.maxH,
-      }));
+      out.push(...collabItems("collabCenter", A.collabCenter, cfg.collabCenter,
+        collabCenterFrame(logoCy + logo.h / 2)));
   }
 
   if (!skip("name"))

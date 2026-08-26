@@ -7,7 +7,10 @@ import { logoNudge, type ElementId } from "./elements";
 import { parseDescription } from "./description";
 // Text boxes are derived from the same display list the renderers draw from,
 // so a hit box can't drift from the artwork.
-import { planLabel, type MeasureFace, type PlacedText, type CollabSlots } from "./plan";
+import {
+  collabCenterFrame, collabLeftFrame, planLabel,
+  type MeasureFace, type PlacedText, type CollabSlots,
+} from "./plan";
 import * as L from "./layout";
 
 export type Measure = (text: string, size: number, bold: boolean) => number;
@@ -129,25 +132,29 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
     // The lead-in only exists to introduce a left logo, so it is gated on the
     // same slot the renderers gate it on.
     boxes.push(...textFor("collabLead"));
-    const flow = L.collabLeftFlow(desc.lines.length);
-    const leftW = L.COLLAB_LEFT.maxW * cfg.collabLeft.scale;
-    const leftTop = flow.logoTop + (cfg.collabLeft.offsetY ?? 0);
+    // Frames from plan.ts — the one spelling of each slot's envelope — with
+    // the scale/offsetY knobs applied here exactly as collabItems applies
+    // them, so drag-to-move and draw agree by construction.
+    const left = collabLeftFrame(desc.lines.length);
+    const leftW = left.maxW * cfg.collabLeft.scale;
+    const leftTop = left.top + (cfg.collabLeft.offsetY ?? 0);
     boxes.push({
       id: "collabLeft",
-      x0: L.COLLAB_LEFT.x, x1: L.COLLAB_LEFT.x + leftW,
-      y0: leftTop, y1: leftTop + L.COLLAB_LEFT.maxH * cfg.collabLeft.scale,
+      x0: left.x, x1: left.x + leftW,
+      y0: leftTop, y1: leftTop + left.maxH * cfg.collabLeft.scale,
     });
   }
   if (cfg.collabEnabled && slots.center) {
     // Hangs off the laurel's nudged bottom, exactly like drawElements — the
     // centre stack moves as one, so this box follows the logo's offsetY.
-    const centerW = L.COLLAB_CENTER.maxW * cfg.collabCenter.scale;
-    const centerTop = logoCy + LOGO_H / 2
-      + L.COLLAB_CENTER.gapAbove + (cfg.collabCenter.offsetY ?? 0);
+    // (LOGO_H approximates the parsed SVG's height; see its comment.)
+    const center = collabCenterFrame(logoCy + LOGO_H / 2);
+    const centerW = center.maxW * cfg.collabCenter.scale;
+    const centerTop = center.top + (cfg.collabCenter.offsetY ?? 0);
     boxes.push({
       id: "collabCenter",
-      x0: L.COLLAB_CENTER.cx - centerW / 2, x1: L.COLLAB_CENTER.cx + centerW / 2,
-      y0: centerTop, y1: centerTop + L.COLLAB_CENTER.maxH * cfg.collabCenter.scale,
+      x0: center.cx - centerW / 2, x1: center.cx + centerW / 2,
+      y0: centerTop, y1: centerTop + center.maxH * cfg.collabCenter.scale,
     });
   }
   boxes.push(...textFor("storeCold"));

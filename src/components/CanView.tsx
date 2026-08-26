@@ -41,9 +41,14 @@ export const CanView = forwardRef<CanViewHandle, {
    *  created after the host's effects have run, so anything pushed in from
    *  outside landed on the instance that was about to be thrown away. */
   initialView?: { zoom: number; pan: { x: number; y: number } };
+  /** A failed texture rebuild, with "" on the next successful one — the
+   *  same render-error channel PreviewCompare reports on, so a 3D failure
+   *  reaches the error strip instead of freezing the can on stale textures
+   *  with only a console.warn. */
+  onRenderError: (message: string) => void;
 }>(function CanView({
   cfg, source, bleedIn, mode, cornerRadiusPct,
-  edgeSoftnessPct, onZoom, initialView,
+  edgeSoftnessPct, onZoom, initialView, onRenderError,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<CanScene | null>(null);
@@ -105,13 +110,17 @@ export const CanView = forwardRef<CanViewHandle, {
         const plan = planFrom(cfg, source);
         sceneRef.current?.applyTextures(
           buildLabelTextures(drawPlates(plan, source.drawAssets, source.fontCss)));
+        onRenderError("");
       } catch (err) {
-        console.warn("3D label texture build failed:", err);
+        // The can keeps its last textures; the strip says why they're stale.
+        onRenderError(String(err));
       } finally {
         setLoading(false);
       }
     }, 150);
     return () => { clearTimeout(timer); if (!done) setLoading(false); };
+    // onRenderError is a useState setter in App — identity-stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source, cfg, bleedIn]);
 
   useEffect(() => {

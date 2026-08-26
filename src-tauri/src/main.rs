@@ -94,11 +94,14 @@ impl OpenedFile {
 fn label_paths_from_args<I: IntoIterator<Item = String>>(args: I) -> Vec<PathBuf> {
     args.into_iter()
         .map(PathBuf::from)
-        .filter(|path| {
-            path.extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("label"))
-        })
+        .filter(|path| is_label_path(path))
         .collect()
+}
+
+/** The one spelling of "this is ours", shared by both delivery paths. */
+fn is_label_path(path: &std::path::Path) -> bool {
+    path.extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("label"))
 }
 
 /** Hand an OS-provided .label path to the frontend. Queue FIRST, then the
@@ -155,7 +158,13 @@ fn main() {
     // (relative paths are naturally relative to this process's cwd). No
     // platform gate: macOS argv never carries a .label path (Finder sends
     // Apple events, handled in run() below), so the scan is a no-op there.
-    let opened_at_launch = label_paths_from_args(std::env::args());
+    // args_os, not args(): std::env::args() PANICS on any non-Unicode
+    // argument (legal on Windows — unpaired UTF-16 surrogates in a path),
+    // which would crash the app before the window appears. A non-Unicode
+    // path can't round-trip through the String pipeline anyway, so it is
+    // skipped rather than lossily mangled into a path that doesn't exist.
+    let opened_at_launch =
+        label_paths_from_args(std::env::args_os().filter_map(|a| a.into_string().ok()));
 
     builder
         .manage(OpenedFile(Mutex::new(opened_at_launch)))
@@ -176,7 +185,15 @@ fn main() {
             if let tauri::RunEvent::Opened { urls } = event {
                 // Every URL, not just the first: Finder sends one event for
                 // a multi-file "Open With", and each file gets its own tab.
-                for path in urls.into_iter().filter_map(|url| url.to_file_path().ok()) {
+                // Same extension filter as the argv path: "Open With" points
+                // Finder at any file, and a non-.label one would only travel
+                // to the frontend to be denied by the fs scope and surface as
+                // an open error. Ignoring it there is the argv behaviour.
+                for path in urls
+                    .into_iter()
+                    .filter_map(|url| url.to_file_path().ok())
+                    .filter(|path| is_label_path(path))
+                {
                     deliver_opened_file(app, path);
                 }
             }

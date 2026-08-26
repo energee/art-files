@@ -16,6 +16,7 @@ import {
 } from "@/App";
 import {
   activateTab, addTab, closeTab, initialTabs, routeFileOpen, updateTabMeta,
+  type TabsState,
 } from "@/tabs";
 import { LABEL_EXT } from "@/labelfile";
 import { DEFAULT_RENDER, mutatePresets, usePresets } from "@/presets";
@@ -37,23 +38,40 @@ const unsaved = (t: { dirty: boolean; edited: boolean }) => t.dirty && t.edited;
 
 /** The shell-side per-tab objects that must stay identity-stable for the
  *  editor's memo bail to hold (see DocumentEditor): the save slot its
- *  editor assigns into, and the two callbacks that close over the tab id. */
+ *  editor assigns into, and the callbacks that close over the tab id. */
 type TabExtras = {
   saveSlot: { current: (() => Promise<boolean>) | null };
   onMeta: (meta: DocumentMeta) => void;
   onCloseTab: () => void;
+  onOpenSettled: (seq: number) => void;
 };
 
 export default function TabsShell() {
   const [state, setState] = useState(initialTabs);
   // The OS-open listener and window-close handler are registered once but
   // route against the current tabs; same pattern as App.tsx's commandsRef.
+  // The ref, not `state`, is the authority: EVERY transition goes through
+  // apply(), which advances it before React re-renders, so a second caller
+  // in the same task (the OS drain loop) already sees the first one's
+  // result instead of the pre-render state — two file-opens racing there
+  // used to mint the same tab id and drop one of the files.
   const stateRef = useRef(state);
-  stateRef.current = state;
-  // Opens queued per tab. Deliberately kept after handling — the editor's
-  // seq gate makes a stale entry inert, and a lingering entry marks its tab
-  // as spoken-for so openRouted never "reuses" a tab that already received
-  // an open (see the pendingRef check there). Dropped with the tab.
+  /** Advance the tab state and return the new value. */
+  const apply = useCallback((fn: (s: TabsState) => TabsState) => {
+    const next = fn(stateRef.current);
+    stateRef.current = next;
+    setState(next);
+    return next;
+  }, []);
+  // Opens queued per tab. An entry lives from queueOpen until the editor
+  // reports the open settled (onOpenSettled) or the tab closes; while it
+  // lives it marks its tab as spoken-for so openRouted never "reuses" a tab
+  // whose open is still in flight (see the pendingRef check there). It must
+  // NOT outlive the attempt: routeFileOpen also dedupes by a queued entry's
+  // path, so a stale entry made a FAILED open permanently un-retryable (the
+  // re-open just focused the empty tab) and let a Save-As'd tab keep
+  // claiming its original path. After success tab.filePath carries the
+  // claim; after failure the tab is legitimately pristine again.
   const [pending, setPending] = useState<Record<number, FileToOpen>>({});
   // Mirror for the routing path: two opens can arrive in one task (the OS
   // drain loop), before the state above has flushed.
@@ -70,8 +88,22 @@ export default function TabsShell() {
     let e = extras.current.get(id);
     if (!e) extras.current.set(id, (e = {
       saveSlot: { current: null },
-      onMeta: (meta) => setState((s) => updateTabMeta(s, id, meta)),
+      onMeta: (meta) => apply((s) => updateTabMeta(s, id, meta)),
       onCloseTab: () => api.current.requestClose(id),
+      // The editor reports its open attempt finished (success or failure).
+      // seq-guarded: a newer open queued to this tab owns the entry now.
+      onOpenSettled: (settledSeq) => {
+        if (pendingRef.current[id]?.seq !== settledSeq) return;
+        const next = { ...pendingRef.current };
+        delete next[id];
+        pendingRef.current = next;
+        setPending((p) => {
+          if (p[id]?.seq !== settledSeq) return p;
+          const n = { ...p };
+          delete n[id];
+          return n;
+        });
+      },
     }));
     return e;
   };
@@ -157,14 +189,15 @@ export default function TabsShell() {
       // double-clicks (the Rust side queues them).
       (id) => pendingRef.current[id]?.path,
     );
-    if ("focus" in route) return setState((st) => activateTab(st, route.focus));
+    if ("focus" in route) { apply((st) => activateTab(st, route.focus)); return; }
     if ("reuse" in route) {
       queueOpen(route.reuse, fo);
-      return setState((st) => activateTab(st, route.reuse));
+      apply((st) => activateTab(st, route.reuse));
+      return;
     }
-    const next = addTab(s);
-    setState(next);
-    queueOpen(next.active, fo);
+    // addTab self-activates, so the new tab's id is the applied state's
+    // `active` — never re-derived here.
+    queueOpen(apply(addTab).active, fo);
   };
 
   /** OS file-opens (Finder / Explorer double-click, second-instance argv):
@@ -217,7 +250,7 @@ export default function TabsShell() {
     extras.current.delete(id);
     delete pendingRef.current[id];
     setPending(({ [id]: _dropped, ...rest }) => rest);
-    setState((s) => closeTab(s, id));
+    apply((s) => closeTab(s, id));
     setConfirmClose(null);
     // Mid-sweep: hand the dialog to the next unsaved tab, or finish the
     // window close. Computed against the post-close list.
@@ -225,7 +258,7 @@ export default function TabsShell() {
       const rest = stateRef.current.tabs.filter((t) => t.id !== id);
       const next = rest.find(unsaved);
       if (next) {
-        setState((s) => activateTab(s, next.id));
+        apply((s) => activateTab(s, next.id));
         setConfirmClose(next.id);
       } else {
         // Flush any pending Document Settings write first: destroy() skips
@@ -243,7 +276,7 @@ export default function TabsShell() {
     const tab = stateRef.current.tabs.find((t) => t.id === id);
     if (!tab) return;
     if (unsaved(tab)) {
-      setState((s) => activateTab(s, id)); // show what's being decided
+      apply((s) => activateTab(s, id)); // show what's being decided
       setConfirmClose(id);
     } else doClose(id);
   };
@@ -266,14 +299,14 @@ export default function TabsShell() {
     }
   };
 
-  // Identity-stable shared callbacks, for the editors' memo bail. setState
-  // is stable; the picker reaches live state through stateRef.
-  const newTab = useCallback(() => setState(addTab), []);
+  // Identity-stable shared callbacks, for the editors' memo bail. apply is
+  // stable; the picker reaches live state through stateRef.
+  const newTab = useCallback(() => { apply(addTab); }, [apply]);
   const openProjectPickerRef = useRef(openProjectPicker);
   openProjectPickerRef.current = openProjectPicker;
   const openProject = useCallback(() => void openProjectPickerRef.current(), []);
   const checkForUpdates = useCallback(() => setCheckRequest((n) => n + 1), []);
-  const activate = useCallback((id: number) => setState((s) => activateTab(s, id)), []);
+  const activate = useCallback((id: number) => { apply((s) => activateTab(s, id)); }, [apply]);
   const closeReq = useCallback((id: number) => api.current.requestClose(id), []);
 
   // Desktop window close: intercept, sweep unsaved tabs through the dialog.
@@ -293,7 +326,7 @@ export default function TabsShell() {
         }
         event.preventDefault();
         closingWindow.current = true;
-        setState((s) => activateTab(s, first.id));
+        apply((s) => activateTab(s, first.id));
         setConfirmClose(first.id);
       }));
     return () => void stopping.then((stop) => stop());
@@ -399,6 +432,7 @@ export default function TabsShell() {
                 tabStripHost={tabStripHost}
                 active={isActive}
                 fileToOpen={pending[t.id] ?? null}
+                onOpenSettled={e.onOpenSettled}
                 onMeta={e.onMeta}
                 saveSlot={e.saveSlot}
                 render={render}
