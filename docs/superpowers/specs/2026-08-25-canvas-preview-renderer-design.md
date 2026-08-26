@@ -27,6 +27,7 @@ gate rather than by being the preview.
   flag with zero latency.
 - Fonts flow through the `src/fonts.ts` gate, ready for a config-driven
   font choice (the font is Poppins today but intended to become dynamic).
+  The gate landed in Phase 4c; font sourcing (choices) is Phase 5.
 - Exports (PDF art + mask, PSD) unchanged in output.
 
 ## Non-goals

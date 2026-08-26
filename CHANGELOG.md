@@ -3,6 +3,11 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.22] - 2026-08-25
+
+- Internal: font pipeline is config-driven internally; typeface choices
+  arrive with font sourcing.
+
 ## [0.1.21] - 2026-08-25
 
 - Drag the laurel and collab logos vertically on the 2D preview; one undo

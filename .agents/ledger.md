@@ -203,3 +203,9 @@ no status, no attempts, no delta.
 - status: done
 - attempts: 1/3
 - delta: dragTarget() helper + pointer wiring in PreviewCompare/App; logo gated on collabEnabled, collab slots on loaded art; vertical only, no schema change; one undo step per drag, Escape cancels; verified in real Chrome (6/6 checks); 263 tests green; v0.1.21
+
+## 2026-08-25 font-infrastructure-phase4c
+- finding: [user request] canvas preview Phase 4c — config-driven font pipeline infrastructure
+- status: done
+- attempts: 1/3
+- delta: config-driven font pipeline (fontCatalog.ts + family-aware fonts.ts gate + cfg.fontFamily optional, absent = poppins); planFrom() deferred minor landed at both planLabel call sites; buildError split ruled unnecessary — no new writers; exports byte/pixel-identical (8/8), parity 4/4 PASS (2.04–2.48%), Chrome regression 4/4; 267 tests green; v0.1.22. Phase 5 backlog: font sourcing — Google Fonts (metadata scan via fonts.google.com/metadata/fonts, static-instanced TTFs via css2 wght requests, local byte cache, fonts embedded in the project file for print reproducibility) + external TTF import (fontkit-extracted PS names, three-face mapping, OS/2 fsType embedding check)
