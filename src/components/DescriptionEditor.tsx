@@ -6,6 +6,14 @@
 // field but renders each line in its real appearance (gold/white, bold,
 // header size) instead of encoding it as punctuation.
 //
+// Two consumers share the machinery here through useDescriptionField: the
+// sidebar's DescriptionEditor below (a chromed form field with an inline
+// toolbar row and an "Edit as Markdown" escape hatch), and PreviewCompare's
+// in-place session (the same contenteditable positioned over the drawn
+// description on the 2D preview, with DescriptionToolbarButtons floating
+// above it as a pill). The hook owns the DOM/caret strategy; each consumer
+// owns its own chrome and per-line paint.
+//
 // markdownToLines/linesToMarkdown are thin adapters over description.ts's
 // parseDescription/serializeDescription — they do NOT re-implement the
 // markdown grammar. serializeDescription canonicalizes (white-inside/
@@ -96,11 +104,18 @@ export function linesToMarkdown(lines: EditorLine[], base: Style): string {
 // split is the whole caret-preservation strategy: a contenteditable bound
 // to React state (children re-rendered from `lines` on every keystroke)
 // moves the caret to the start on every input, because reconciliation
-// fights the browser's own DOM mutations mid-edit. So the JSX below never
-// declares this field's line-divs as children — they exist only because
-// these functions put them there — and React's re-renders never touch
-// them. The DOM is the source of truth while focused; props are the
+// fights the browser's own DOM mutations mid-edit. So the consumers' JSX
+// never declares this field's line-divs as children — they exist only
+// because these functions put them there — and React's re-renders never
+// touch them. The DOM is the source of truth while focused; props are the
 // source of truth while not.
+
+/** Writes a line-div's appearance. Each consumer supplies its own: the
+ *  sidebar paints UI-sized lines (below), the preview's in-place editor
+ *  paints label-metric lines that match the hidden canvas render. */
+export type LinePaint = (
+  el: HTMLDivElement, l: Pick<EditorLine, "bold" | "white" | "header">,
+) => void;
 
 function lineClasses(l: Pick<EditorLine, "bold" | "white" | "header">): string {
   return cn(
@@ -111,15 +126,15 @@ function lineClasses(l: Pick<EditorLine, "bold" | "white" | "header">): string {
   );
 }
 
-/** Writes a line-div's appearance: class for size/weight/white, and the gold
- *  as an inline color straight from layout.ts's GOLD. Gold can't be a
- *  Tailwind arbitrary value (`text-[…]` is scanned statically, so it could
- *  never reference the constant) — inline style is what keeps the field's
- *  gold and the renderers' gold the same one value. */
-function paintLine(el: HTMLDivElement, l: Pick<EditorLine, "bold" | "white" | "header">) {
+/** The sidebar's painter: class for size/weight/white, and the gold as an
+ *  inline color straight from layout.ts's GOLD. Gold can't be a Tailwind
+ *  arbitrary value (`text-[…]` is scanned statically, so it could never
+ *  reference the constant) — inline style is what keeps the field's gold
+ *  and the renderers' gold the same one value. */
+const paintSidebarLine: LinePaint = (el, l) => {
   el.className = lineClasses(l);
   el.style.color = l.white ? "" : GOLD;
-}
+};
 
 /** Reads a line-div's data-* flags back into an EditorLine. Missing data-*
  *  (e.g. a brand-new div the browser inserted for a native Enter keypress)
@@ -143,29 +158,29 @@ function readLineEl(el: HTMLDivElement): EditorLine {
  *  the text is kept, and the Header toggle's pressed/disabled state stops
  *  claiming a second header exists. Only attributes and classes are touched,
  *  never text nodes, so the caret does not move. */
-function demoteStrayHeaders(root: HTMLDivElement) {
+function demoteStrayHeaders(root: HTMLDivElement, paint: LinePaint) {
   const kids = Array.from(root.children).filter(
     (el): el is HTMLDivElement => el.tagName === "DIV",
   );
   for (const el of kids.slice(1)) {
     if (el.dataset.header !== "true") continue;
     delete el.dataset.header;
-    paintLine(el, readLineEl(el));
+    paint(el, readLineEl(el));
   }
 }
 
 /** Replaces the field's content with fresh line-divs built from `lines`.
  *  Only ever called while NOT focused (mount, external value/base change,
  *  the post-blur snap to serializeDescription's canonical form, or
- *  switching back from "Edit as text") — see the effect below. */
-function seedDom(root: HTMLDivElement, lines: EditorLine[]) {
+ *  switching back from "Edit as text") — see the hook's seed effect. */
+function seedDom(root: HTMLDivElement, lines: EditorLine[], paint: LinePaint) {
   root.replaceChildren();
   // An empty description still needs one focusable/clickable line to type
   // into — parseDescription("", base) legitimately yields zero lines.
   const list = lines.length ? lines : [{ text: "", bold: false, white: false, header: false }];
   for (const line of list) {
     const div = document.createElement("div");
-    paintLine(div, line);
+    paint(div, line);
     div.dataset.bold = String(line.bold);
     div.dataset.white = String(line.white);
     if (line.header) div.dataset.header = "true";
@@ -282,15 +297,28 @@ function insertTextAtCaretFallback(text: string) {
   sel.addRange(range);
 }
 
-export function DescriptionEditor(props: {
+// ---- Hook ------------------------------------------------------------
+
+/** The rich description field's engine, shared by the sidebar editor and
+ *  the preview's in-place session. Owns seeding, selection tracking, the
+ *  Bold/White/Header actions, and change emission; the consumer renders
+ *  the contenteditable div itself (spreading `fieldProps` onto it) plus
+ *  whatever toolbar chrome fits its surface.
+ *
+ *  `active` gates seeding for consumers that unmount the field while
+ *  keeping the hook mounted (the sidebar's "Edit as Markdown" mode): a
+ *  remount alone re-runs no effect, so the flag is what re-seeds the
+ *  fresh div when the rich field returns. */
+export function useDescriptionField(opts: {
   value: string;
   base: Style;
   onChange: (markdown: string) => void;
+  paint?: LinePaint;
+  active?: boolean;
 }) {
-  const { value, base, onChange } = props;
+  const { value, base, onChange, paint = paintSidebarLine, active = true } = opts;
   const rootRef = useRef<HTMLDivElement>(null);
   const [focused, setFocused] = useState(false);
-  const [asText, setAsText] = useState(false);
   // Whether every line the caret/selection currently touches is bold/white/
   // header (plus whether Header is even eligible right now) — drives the
   // toolbar buttons' pressed/disabled state. Purely a display cache:
@@ -299,11 +327,14 @@ export function DescriptionEditor(props: {
   const [caret, setCaret] = useState({ bold: false, white: false, header: false, headerEnabled: false });
 
   useEffect(() => {
-    if (focused || asText) return;
+    if (focused || !active) return;
     const root = rootRef.current;
     if (!root) return;
-    seedDom(root, markdownToLines(value, base));
-  }, [value, base, focused, asText]);
+    seedDom(root, markdownToLines(value, base), paint);
+    // `paint` is a module-level constant at both call sites (see
+    // PreviewCompare's paintLabelLine), so it can't oscillate the effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, base, focused, active]);
 
   // Selection tracking is scoped to while the field is focused, via a
   // document-level listener (not onKeyUp/onMouseUp on the div) so it also
@@ -324,7 +355,7 @@ export function DescriptionEditor(props: {
   const emitChange = () => {
     const root = rootRef.current;
     if (!root) return;
-    demoteStrayHeaders(root);
+    demoteStrayHeaders(root, paint);
     onChange(linesToMarkdown(readLines(root), base));
   };
 
@@ -369,7 +400,7 @@ export function DescriptionEditor(props: {
     if (!lines.length) return;
     for (const el of lines) {
       el.dataset[attr] = String(el.dataset[attr] !== "true");
-      paintLine(el, readLineEl(el));
+      paint(el, readLineEl(el));
     }
     setCaret(computeCaret(root, lines));
     emitChange();
@@ -394,10 +425,147 @@ export function DescriptionEditor(props: {
     const nowHeader = !c.header;
     if (nowHeader) first.dataset.header = "true";
     else delete first.dataset.header;
-    paintLine(first, readLineEl(first));
+    paint(first, readLineEl(first));
     setCaret(computeCaret(root, lines));
     emitChange();
   };
+
+  /** Everything the contenteditable div itself needs — spread onto it. The
+   *  consumer adds its own className/aria-label/positioning. */
+  const fieldProps = {
+    ref: rootRef,
+    contentEditable: true,
+    suppressContentEditableWarning: true,
+    role: "textbox",
+    "aria-multiline": true,
+    onInput: emitChange,
+    onFocus: () => setFocused(true),
+    onBlur: () => setFocused(false),
+    onPaste: (e: React.ClipboardEvent) => {
+      // Coerce to plain text so pasting, e.g., a hop list copied off
+      // a web page can't drag in that page's markup (which could
+      // otherwise be misread as our own bold/white-ink syntax).
+      e.preventDefault();
+      const text = e.clipboardData.getData("text/plain");
+      // execCommand is deprecated but still broadly supported, and
+      // it's the browser's own well-tested caret/undo-aware insert —
+      // including splitting embedded newlines into new line-divs the
+      // same way a native Enter keypress would. Reimplementing that
+      // split by hand would be exactly the kind of manual caret
+      // surgery this file otherwise avoids.
+      if (typeof document.execCommand === "function") {
+        document.execCommand("insertText", false, text);
+      } else {
+        insertTextAtCaretFallback(text);
+      }
+      emitChange();
+    },
+  } as const;
+
+  return { rootRef, focused, setFocused, caret, toggle, toggleHeader, fieldProps };
+}
+
+// ---- Toolbar ---------------------------------------------------------
+
+/** The Header / Bold / White-ink toggles, shared verbatim by the sidebar's
+ *  toolbar row and the preview's floating pill so the two surfaces can't
+ *  drift. Layout chrome (row vs pill) belongs to the caller. */
+export function DescriptionToolbarButtons(props: {
+  caret: ReturnType<typeof useDescriptionField>["caret"];
+  toggle: (attr: "bold" | "white") => void;
+  toggleHeader: () => void;
+}) {
+  const { caret, toggle, toggleHeader } = props;
+  return (
+    <>
+      {/* Header is wrapped in an extra <span> (rather than putting
+          TooltipTrigger's render prop directly on the button) so the
+          tooltip still opens on hover while the button is disabled:
+          toggleVariants applies disabled:pointer-events-none to the
+          <button> itself, which would otherwise swallow the hover
+          that triggers the tooltip. The span isn't disabled, so it
+          still receives the pointer events the button now ignores. */}
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <span className="inline-flex">
+              {/* Standalone Toggles, not ToggleGroupItems: the group
+                  items' styles assume adjacent siblings inside a
+                  ToggleGroup (collapsed rounding/margins) and
+                  overlapped when rendered bare. */}
+              <Toggle
+                aria-label="Toggle header"
+                size="sm"
+                pressed={caret.header}
+                disabled={!caret.headerEnabled}
+                // Same focus-preservation trick as Bold/White ink
+                // below — see that comment for why this matters.
+                onMouseDown={(e) => e.preventDefault()}
+                onPressedChange={toggleHeader}
+              >
+                <HeaderIcon />
+              </Toggle>
+            </span>
+          }
+        />
+        <TooltipContent>
+          {caret.headerEnabled ? "Header" : "Header must be the first line"}
+        </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Toggle
+              aria-label="Toggle bold"
+              size="sm"
+              pressed={caret.bold}
+              // Keeps focus (and the selection) in the
+              // contenteditable field instead of moving it to the
+              // button, so the toggle still knows which line(s) to
+              // flip.
+              onMouseDown={(e) => e.preventDefault()}
+              onPressedChange={() => toggle("bold")}
+            >
+              <Bold />
+            </Toggle>
+          }
+        />
+        <TooltipContent>Bold</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Toggle
+              aria-label="Toggle white ink underlay"
+              size="sm"
+              pressed={caret.white}
+              onMouseDown={(e) => e.preventDefault()}
+              onPressedChange={() => toggle("white")}
+            >
+              <Droplet />
+            </Toggle>
+          }
+        />
+        {/* White ink is a print layer (a separate underlay plate),
+            not a text colour, hence the explicit label — Droplet
+            alone reads ambiguously next to a colour swatch. */}
+        <TooltipContent>White ink underlay</TooltipContent>
+      </Tooltip>
+    </>
+  );
+}
+
+// ---- Sidebar editor --------------------------------------------------
+
+export function DescriptionEditor(props: {
+  value: string;
+  base: Style;
+  onChange: (markdown: string) => void;
+}) {
+  const { value, base, onChange } = props;
+  const [asText, setAsText] = useState(false);
+  const { focused, setFocused, caret, toggle, toggleHeader, fieldProps } =
+    useDescriptionField({ value, base, onChange, active: !asText });
 
   return (
     <div className="space-y-1">
@@ -406,81 +574,7 @@ export function DescriptionEditor(props: {
       <div className="flex h-7 items-center justify-between gap-1">
         <div className="flex gap-1">
           {focused && !asText && (
-            <>
-              {/* Header is wrapped in an extra <span> (rather than putting
-                  TooltipTrigger's render prop directly on the button) so the
-                  tooltip still opens on hover while the button is disabled:
-                  toggleVariants applies disabled:pointer-events-none to the
-                  <button> itself, which would otherwise swallow the hover
-                  that triggers the tooltip. The span isn't disabled, so it
-                  still receives the pointer events the button now ignores. */}
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span className="inline-flex">
-                      {/* Standalone Toggles, not ToggleGroupItems: the group
-                          items' styles assume adjacent siblings inside a
-                          ToggleGroup (collapsed rounding/margins) and
-                          overlapped when rendered bare. */}
-                      <Toggle
-                        aria-label="Toggle header"
-                        size="sm"
-                        pressed={caret.header}
-                        disabled={!caret.headerEnabled}
-                        // Same focus-preservation trick as Bold/White ink
-                        // below — see that comment for why this matters.
-                        onMouseDown={(e) => e.preventDefault()}
-                        onPressedChange={toggleHeader}
-                      >
-                        <HeaderIcon />
-                      </Toggle>
-                    </span>
-                  }
-                />
-                <TooltipContent>
-                  {caret.headerEnabled ? "Header" : "Header must be the first line"}
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Toggle
-                      aria-label="Toggle bold"
-                      size="sm"
-                      pressed={caret.bold}
-                      // Keeps focus (and the selection) in the
-                      // contenteditable field instead of moving it to the
-                      // button, so the toggle still knows which line(s) to
-                      // flip.
-                      onMouseDown={(e) => e.preventDefault()}
-                      onPressedChange={() => toggle("bold")}
-                    >
-                      <Bold />
-                    </Toggle>
-                  }
-                />
-                <TooltipContent>Bold</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Toggle
-                      aria-label="Toggle white ink underlay"
-                      size="sm"
-                      pressed={caret.white}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onPressedChange={() => toggle("white")}
-                    >
-                      <Droplet />
-                    </Toggle>
-                  }
-                />
-                {/* White ink is a print layer (a separate underlay plate),
-                    not a text colour, hence the explicit label — Droplet
-                    alone reads ambiguously next to a colour swatch. */}
-                <TooltipContent>White ink underlay</TooltipContent>
-              </Tooltip>
-            </>
+            <DescriptionToolbarButtons caret={caret} toggle={toggle} toggleHeader={toggleHeader} />
           )}
         </div>
         <Button
@@ -518,38 +612,12 @@ export function DescriptionEditor(props: {
         </>
       ) : (
         <div
-          ref={rootRef}
-          contentEditable
-          suppressContentEditableWarning
-          role="textbox"
-          aria-multiline="true"
+          {...fieldProps}
           aria-label="Description"
           className={cn(
             "min-h-[8.5rem] w-full space-y-0.5 rounded-lg border border-input bg-transparent px-2.5 py-2",
             "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
           )}
-          onInput={emitChange}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onPaste={(e) => {
-            // Coerce to plain text so pasting, e.g., a hop list copied off
-            // a web page can't drag in that page's markup (which could
-            // otherwise be misread as our own bold/white-ink syntax).
-            e.preventDefault();
-            const text = e.clipboardData.getData("text/plain");
-            // execCommand is deprecated but still broadly supported, and
-            // it's the browser's own well-tested caret/undo-aware insert —
-            // including splitting embedded newlines into new line-divs the
-            // same way a native Enter keypress would. Reimplementing that
-            // split by hand would be exactly the kind of manual caret
-            // surgery this file otherwise avoids.
-            if (typeof document.execCommand === "function") {
-              document.execCommand("insertText", false, text);
-            } else {
-              insertTextAtCaretFallback(text);
-            }
-            emitChange();
-          }}
         />
       )}
     </div>

@@ -2,11 +2,13 @@
 // the display list by the canvas backend and stacked; a resizable divider
 // reveals the white-ink layer (left side) over the art (right side). Click
 // selects the element under the cursor; double-clicking a text element
-// (see elements.ts's editableText) floats an editor panel over its outline —
-// the description gets the sidebar's WYSIWYG field, everything else a plain
-// input — applying live, one undo step per session. Pointer-down on a
-// draggable element (see elements.ts's dragTarget) arms a vertical drag that
-// nudges its offsetY live, folded into one undo step the same way.
+// (see elements.ts's editableText) edits it IN PLACE over the artwork —
+// unrotated elements (the description included) become live DOM text where
+// they sit, the description with a floating pill toolbar above it; only the
+// rotated column still floats a small input beside its outline — applying
+// live, one undo step per session. Pointer-down on a draggable element (see
+// elements.ts's dragTarget) arms a vertical drag that nudges its offsetY
+// live, folded into one undo step the same way.
 import {
   forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from "react";
@@ -17,18 +19,19 @@ import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import {
-  ART, FONT_ASC, FONT_DESC, PAGE, PREVIEW_MAX_W, PREVIEW_RASTER_MAX_EDGE,
-  previewRasterScale,
+  ART, DESC, FONT_ASC, FONT_DESC, GOLD, PAGE, PREVIEW_MAX_W,
+  PREVIEW_RASTER_MAX_EDGE, previewRasterScale,
 } from "@/layout";
-import type { LabelConfig, StyledLine } from "@/types";
+import type { LabelConfig, Style, StyledLine } from "@/types";
 import { dragTarget, editableText, elementById, type ElementId } from "@/elements";
 import { fontFamilyOf } from "@/fontCatalog";
 import { labelFontCss } from "@/fonts";
-import { DescriptionEditor } from "@/components/DescriptionEditor";
+import {
+  DescriptionToolbarButtons, useDescriptionField, type LinePaint,
+} from "@/components/DescriptionEditor";
 import { Input } from "@/components/ui/input";
 import { boxesFor, hitTest, type CollabSlots, type Measure } from "@/hittest";
 import { modsOf, type SelectMods } from "@/selection";
-import { cn } from "@/lib/utils";
 
 /** The selection box's four corner ticks, each already placed. */
 const CORNER_CLASS = {
@@ -98,6 +101,108 @@ const pageBox = (
   height: `calc(${(h / PAGE.h) * 100}% + ${pad * 2}px)`,
 });
 
+/** The in-place description's per-line painter: the same data-driven flags
+ *  the sidebar field paints, but at label metrics — weight and ink only,
+ *  since size/leading/family live on the container (uniform: DESC and
+ *  DESC_HEADER share size 9 / leading 10.8; the header differs by weight
+ *  alone). Bold means the SemiBold face, the same convention the renderers
+ *  and the single-line editor use. whitespace-pre because the canvas never
+ *  auto-wraps description lines, so the editor must not either. Module
+ *  constant, not a closure, so the hook's seed effect stays stable. */
+const paintLabelLine: LinePaint = (el, l) => {
+  el.className = "whitespace-pre outline-none";
+  el.style.fontWeight = l.bold ? "600" : "400";
+  el.style.color = l.white ? "#FFFFFF" : GOLD;
+};
+
+/** The description's IN-PLACE session: the same rich-lines engine as the
+ *  sidebar field (useDescriptionField), but the contenteditable sits over
+ *  the element's own spot on the sheet at label metrics — the canvas skips
+ *  the element for the session (see onEditSession), so this DOM text IS the
+ *  description while you type — and the Header/Bold/White-ink toggles float
+ *  above it as a fixed pill, portaled to <body> so App's CSS zoom scales
+ *  the text with the artwork but never the toolbar chrome. */
+function InPlaceDescription(props: {
+  value: string;
+  base: Style;
+  fontCss: string;
+  /** Union hit box of the drawn lines, label-space points — the anchor. */
+  box: { x0: number; y0: number };
+  /** Pill position, viewport px, captured once at open (like panelPos). */
+  toolbarPos: { left: number; top: number };
+  onApply: (markdown: string) => void;
+  onEscape: () => void;
+  /** Click-away guards — the field wrapper and the portaled pill both count
+   *  as "inside the session" (see the pointerdown capture effect). */
+  fieldRef: React.RefObject<HTMLDivElement | null>;
+  toolbarRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const { value, base, fontCss, box, toolbarPos, onApply, onEscape, fieldRef, toolbarRef } = props;
+  const { rootRef, caret, toggle, toggleHeader, fieldProps } =
+    useDescriptionField({ value, base, onChange: onApply, paint: paintLabelLine });
+
+  // Focus with the caret at the end once on open — the hook's seed effect
+  // registered first, so the line-divs exist by the time this runs. Caret at
+  // the end, no select-all, matching the single-line editor's convention.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    root.focus();
+    const sel = window.getSelection();
+    if (sel) {
+      sel.selectAllChildren(root);
+      sel.collapseToEnd();
+    }
+  }, [rootRef]);
+
+  // CSS positions the first BASELINE where the canvas drew it: the hit box's
+  // top is FONT_ASC above the baseline (see hittest.ts), while a CSS line
+  // box of `leading` height centers the font's (FONT_ASC+FONT_DESC) content
+  // area inside it — the half-leading difference is the offset between the
+  // two tops.
+  const topPt = box.y0 + ((FONT_ASC + FONT_DESC) * DESC.size - DESC.leading) / 2;
+  return (
+    <>
+      <div
+        ref={fieldRef}
+        className="absolute"
+        style={{
+          left: `${(box.x0 / PAGE.w) * 100}%`,
+          top: `${(topPt / PAGE.h) * 100}%`,
+          // Room to type rightward: the block is left-aligned and unwrapped,
+          // so the editable area just runs to the sheet's edge.
+          width: `${((PAGE.w - box.x0) / PAGE.w) * 100}%`,
+          fontSize: `${(DESC.size / PAGE.h) * 100}cqh`,
+          lineHeight: DESC.leading / DESC.size,
+          fontFamily: fontCss,
+          letterSpacing: `${((base.letterSpacing ?? 0) / PAGE.h) * 100}cqh`,
+        }}
+        // The wrapper's click/dblclick handlers hit-test the canvas;
+        // interacting with the editor must not re-select or reopen.
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { if (e.key === "Escape") onEscape(); }}
+      >
+        <div
+          {...fieldProps}
+          aria-label="Edit description text"
+          className="outline-none caret-sky-400"
+        />
+      </div>
+      {createPortal(
+        <div
+          ref={toolbarRef}
+          className="fixed z-50 flex items-center gap-1 rounded-lg border border-border bg-background p-1 shadow-md"
+          style={toolbarPos}
+        >
+          <DescriptionToolbarButtons caret={caret} toggle={toggle} toggleHeader={toggleHeader} />
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
 // The installed react-resizable-panels major (Group/Panel/Separator, with
 // panelRef instead of a forwarded ref, and onLayoutChange reporting a
 // {[panelId]: percent} map instead of a sizes array) postdates the classic
@@ -159,8 +264,8 @@ export const PreviewCompare = forwardRef<
      *  threshold (a plain click). */
     onNudgeCancel: () => void;
     /** The element currently in an IN-PLACE session (null when idle or when
-     *  the session floats — description, rotated column). planLabel skips it
-     *  via the render flag so the editor's live DOM text is the element. */
+     *  the session floats — the rotated column). planLabel skips it via the
+     *  render flag so the editor's live DOM text is the element. */
     onEditSession: (id: ElementId | null) => void;
     /** Divider position as % of width showing white-ink, on every change —
      *  including a manual drag, so the View menu's checkmarks track the real
@@ -316,7 +421,14 @@ export const PreviewCompare = forwardRef<
   // CSS zoom transform would scale the panel's UI with the artwork.
   const [panelPos, setPanelPos] =
     useState<{ left: number; top: number; width: number } | null>(null);
+  // The in-place description's pill toolbar position (viewport px, captured
+  // at open alongside the session). Only meaningful while editing the
+  // description; stale values are harmless — the pill renders only then.
+  const [toolbarPos, setToolbarPos] = useState({ left: 8, top: 8 });
   const panelRef = useRef<HTMLDivElement>(null);
+  // The pill portals to <body> like the floating panel does, so click-away
+  // must ask it separately whether a pointerdown was "inside the session".
+  const toolbarRef = useRef<HTMLDivElement>(null);
   // Whether this session has applied any keystroke yet — the first one opens
   // the undo step, and Escape has nothing to undo before it.
   const edited = useRef(false);
@@ -384,7 +496,11 @@ export const PreviewCompare = forwardRef<
   useEffect(() => {
     if (!editing) return;
     const onDown = (e: PointerEvent) => {
-      if (e.target instanceof Node && !panelRef.current?.contains(e.target)) setEditing(null);
+      if (
+        e.target instanceof Node
+        && !panelRef.current?.contains(e.target)
+        && !toolbarRef.current?.contains(e.target)
+      ) setEditing(null);
     };
     document.addEventListener("pointerdown", onDown, true);
     return () => document.removeEventListener("pointerdown", onDown, true);
@@ -405,33 +521,44 @@ export const PreviewCompare = forwardRef<
       id: a.id, x0: Math.min(a.x0, x.x0), y0: Math.min(a.y0, x.y0),
       x1: Math.max(a.x1, x.x1), y1: Math.max(a.y1, x.y1),
     }));
-    // Unrotated single-line elements edit truly IN PLACE: an invisible
-    // input over the element (see the overlay below) whose text is the
-    // live canvas render itself — no floating field, so no panelPos.
-    if (!spec.multiline && !spec.rotated) {
+    // Unrotated elements edit truly IN PLACE — no floating field, so no
+    // panelPos: single-line ones as an invisible input over the element,
+    // the description as the rich-lines field over its block with a pill
+    // toolbar floating above (see InPlaceDescription). Both leave the DOM
+    // text as the element while the canvas skips it for the session.
+    if (!spec.rotated) {
+      if (spec.multiline) {
+        // Pill position in viewport px, captured once like panelPos was:
+        // it portals to <body>, so App's CSS zoom can't scale it and the
+        // preview's overflow-hidden can't clip it near the sheet's edge.
+        const r = e.currentTarget.getBoundingClientRect();
+        const boxLeft = r.left + (b.x0 / PAGE.w) * r.width;
+        const boxTop = r.top + (b.y0 / PAGE.h) * r.height;
+        setToolbarPos({
+          left: Math.max(8, Math.min(boxLeft, window.innerWidth - 148)),
+          top: Math.max(8, boxTop - 48),
+        });
+      }
       setPanelPos(null);
       edited.current = false;
       setEditing(id);
       return;
     }
     const r = e.currentTarget.getBoundingClientRect();
-    // Floating cases — the description's WYSIWYG block and the rotated
-    // column's small field — anchor over the element: at least as wide as
-    // it, never narrower than a usable field.
+    // The one floating case left — the rotated column's small field —
+    // anchors over the element: at least as wide as it, never narrower
+    // than a usable field.
     const boxLeft = r.left + (b.x0 / PAGE.w) * r.width;
     const boxTop = r.top + (b.y0 / PAGE.h) * r.height;
     const boxW = ((b.x1 - b.x0) / PAGE.w) * r.width;
     const boxH = ((b.y1 - b.y0) / PAGE.h) * r.height;
-    const width = Math.max(spec.multiline ? 340 : 200, boxW + 24);
+    const width = Math.max(200, boxW + 24);
     // ponytail: fixed clamp margins instead of measuring the field —
     // measure the real node if a size ever changes enough to clip.
     setPanelPos({
       width,
       left: Math.max(8, Math.min(boxLeft - 10, window.innerWidth - width - 8)),
-      top: Math.max(8, Math.min(
-        spec.multiline ? boxTop - 8 : boxTop + boxH / 2 - 14,
-        window.innerHeight - 320,
-      )),
+      top: Math.max(8, Math.min(boxTop + boxH / 2 - 14, window.innerHeight - 320)),
     });
     edited.current = false;
     setEditing(id);
@@ -540,15 +667,43 @@ export const PreviewCompare = forwardRef<
           ))}
         </div>
       ))}
-      {/* IN-PLACE editor for unrotated single-line elements. App skips the
-          element from the render for the session (see onEditSession),
-          so this input's styled text IS the element while you type — same
-          family (via the fonts.ts gate), size, weight, tracking, and fill,
-          drawn by the DOM instead of the canvas render. The box (and the selection
-          outline above) grow with the text as it's typed, and the real
-          render takes back over the moment the session ends. */}
+      {/* IN-PLACE editor for unrotated elements. App skips the element from
+          the render for the session (see onEditSession), so the editor's
+          styled text IS the element while you type — same family (via the
+          fonts.ts gate), size, weight, tracking, and fill, drawn by the DOM
+          instead of the canvas render. The box (and the selection outline
+          above) grow with the text as it's typed, and the real render takes
+          back over the moment the session ends. The description gets the
+          rich-lines field with its pill toolbar; everything else the plain
+          styled input below. */}
       {editing && !panelPos && measure && (() => {
         const spec = editableText[editing]!;
+        if (spec.multiline) {
+          const boxes = boxesFor([editing], cfg, measure, collab);
+          if (!boxes.length) return null;
+          const anchor = boxes.reduce((a, x) => ({
+            x0: Math.min(a.x0, x.x0), y0: Math.min(a.y0, x.y0),
+          }), { x0: boxes[0].x0, y0: boxes[0].y0 });
+          return (
+            <InPlaceDescription
+              value={spec.get(cfg)}
+              base={cfg.descStyle}
+              fontCss={canvasRender?.fontCss ?? labelFontCss(fontFamilyOf(cfg))}
+              box={anchor}
+              toolbarPos={toolbarPos}
+              onApply={(v) => {
+                onEditText(editing, v, !edited.current);
+                edited.current = true;
+              }}
+              onEscape={() => {
+                if (edited.current) onEditCancel();
+                setEditing(null);
+              }}
+              fieldRef={panelRef}
+              toolbarRef={toolbarRef}
+            />
+          );
+        }
         const b = boxesFor([editing], cfg, measure, collab)[0];
         if (!b) return null;
         // Glyphs sized off the hit box — its height is ASC+DESC em by
@@ -626,11 +781,11 @@ export const PreviewCompare = forwardRef<
         );
       })()}
       {/* Floating text editor, portaled to <body> (see panelPos), for the
-          description's WYSIWYG block and the rotated column's fields. The
-          drawn render is still the live text — every keystroke updates the
-          config and the canvas repaints the real style. The element's
-          outline comes from the selection boxes above (double-clicking
-          selects it). */}
+          rotated column's fields — the one case that can't edit in place
+          (the DOM text would have to lie on its side). The drawn render is
+          still the live text — every keystroke updates the config and the
+          canvas repaints the real style. The element's outline comes from
+          the selection boxes above (double-clicking selects it). */}
       {editing && panelPos && (() => {
         const spec = editableText[editing]!;
         const value = spec.get(cfg); // live: keystrokes land in cfg, so bind it
@@ -642,14 +797,8 @@ export const PreviewCompare = forwardRef<
         return createPortal(
           <div
             ref={panelRef}
-            // No chrome for the rotated column's bare field — anything more
-            // reads as a popup. The description gets a light glass ground so
-            // its WYSIWYG toolbar sits legibly on top of the field without
-            // walling the artwork off behind a solid card.
-            className={cn(
-              "fixed z-50",
-              spec.multiline && "rounded-lg bg-background/70 p-1.5 shadow-sm backdrop-blur-sm",
-            )}
+            // No chrome for the bare field — anything more reads as a popup.
+            className="fixed z-50"
             style={{ left: panelPos.left, top: panelPos.top, width: panelPos.width }}
             onKeyDown={(e) => {
               if (e.key === "Escape") {
@@ -658,33 +807,26 @@ export const PreviewCompare = forwardRef<
               }
             }}
           >
-            {spec.multiline ? (
-              // The description keeps its full WYSIWYG field: buttons style
-              // the rendered lines, raw markdown only behind the editor's
-              // own "Edit as Markdown" toggle — same field as the sidebar.
-              <DescriptionEditor value={value} base={cfg.descStyle} onChange={apply} />
-            ) : (
-              <div className="flex items-center gap-1.5">
-                <Input
-                  autoFocus
-                  aria-label={`Edit ${editing} text`}
-                  // Opaque over the artwork — the stock input is transparent,
-                  // which would show the drawn text through the field.
-                  className="h-7 bg-background text-xs shadow-sm dark:bg-background"
-                  value={value}
-                  onChange={(e) => apply(
-                    spec.numeric ? e.target.value.replace(/[^0-9.]/g, "") : e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") close(); }}
-                />
-                {spec.numeric && (
-                  // Chip-backed so the unit stays legible straight over the
-                  // artwork now that there's no panel behind it.
-                  <span className="whitespace-nowrap rounded bg-background/85 px-1 text-xs text-muted-foreground">
-                    % alc by vol
-                  </span>
-                )}
-              </div>
-            )}
+            <div className="flex items-center gap-1.5">
+              <Input
+                autoFocus
+                aria-label={`Edit ${editing} text`}
+                // Opaque over the artwork — the stock input is transparent,
+                // which would show the drawn text through the field.
+                className="h-7 bg-background text-xs shadow-sm dark:bg-background"
+                value={value}
+                onChange={(e) => apply(
+                  spec.numeric ? e.target.value.replace(/[^0-9.]/g, "") : e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") close(); }}
+              />
+              {spec.numeric && (
+                // Chip-backed so the unit stays legible straight over the
+                // artwork now that there's no panel behind it.
+                <span className="whitespace-nowrap rounded bg-background/85 px-1 text-xs text-muted-foreground">
+                  % alc by vol
+                </span>
+              )}
+            </div>
           </div>,
           document.body,
         );
