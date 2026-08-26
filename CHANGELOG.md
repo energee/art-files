@@ -3,6 +3,13 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.26] - 2026-08-26
+
+- No behaviour changes. This release only adds automated coverage for the
+  description editor's on-screen formatting — the part that turns bold and
+  white-ink markers into styled text and back again — so the two ways it once
+  lost those markers while typing cannot come back unnoticed.
+
 ## [0.1.25] - 2026-08-26
 
 - Backgrounds now accept WebP alongside PNG and JPEG, by drop or file picker.
