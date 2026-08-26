@@ -2,6 +2,7 @@
 // the preview both read it, so they cannot disagree about what exists or
 // which config field backs it.
 import type { LabelConfig, Style, StyledLine } from "./types";
+import type { CollabSlots } from "./plan";
 import { defaultConfig } from "./defaults";
 import { strokeLayerOf } from "./strokes";
 
@@ -238,4 +239,21 @@ export function isDefaultStyle(id: ElementId, s: Style): boolean {
     offsetOf(s) === offsetOf(d) &&
     boldOf(s) === boldOf(d)
   );
+}
+
+/** Drag-to-move targets: the elements whose vertical position is a persisted
+ *  config knob (see types.ts's Positioned). Null = not draggable right now —
+ *  the laurel's offsetY only applies while collab is on (logoNudge's gate),
+ *  and an empty collab slot draws nothing to drag. Horizontal position is
+ *  not a knob anywhere, so dragging is vertical by construction. */
+export function dragTarget(
+  cfg: LabelConfig, slots: CollabSlots, id: ElementId,
+): { get(): number; set(c: LabelConfig, v: number): void } | null {
+  if (id === "logo" && cfg.collabEnabled)
+    return { get: () => cfg.logo.offsetY ?? 0, set: (c, v) => { c.logo.offsetY = v; } };
+  if (id === "collabLeft" && cfg.collabEnabled && slots.left)
+    return { get: () => cfg.collabLeft.offsetY ?? 0, set: (c, v) => { c.collabLeft.offsetY = v; } };
+  if (id === "collabCenter" && cfg.collabEnabled && slots.center)
+    return { get: () => cfg.collabCenter.offsetY ?? 0, set: (c, v) => { c.collabCenter.offsetY = v; } };
+  return null;
 }

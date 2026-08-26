@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ELEMENTS, applyStyle, editableText, elementById, isDefaultStyle } from "../src/elements";
+import { ELEMENTS, applyStyle, dragTarget, editableText, elementById, isDefaultStyle } from "../src/elements";
 import { defaultConfig } from "../src/defaults";
 import { GOLD } from "../src/layout";
 
@@ -207,5 +207,37 @@ describe("inline editable text", () => {
 
   it("marks the ABV numeric-only, so its drawn unit text stays uneditable", () => {
     expect(editableText.abv?.numeric).toBe(true);
+  });
+});
+
+describe("dragTarget", () => {
+  it("logo drags only while collab is on (offsetY is ignored otherwise)", () => {
+    const cfg = defaultConfig();
+    const slots = { left: false, center: false };
+    cfg.collabEnabled = false;
+    expect(dragTarget(cfg, slots, "logo")).toBeNull();
+    cfg.collabEnabled = true;
+    const t = dragTarget(cfg, slots, "logo")!;
+    expect(t.get()).toBe(cfg.logo.offsetY ?? 0);
+    const next = structuredClone(cfg);
+    t.set(next, 12.5);
+    expect(next.logo.offsetY).toBe(12.5);
+  });
+
+  it("collab slots drag only when their art is loaded", () => {
+    const cfg = defaultConfig();
+    cfg.collabEnabled = true;
+    expect(dragTarget(cfg, { left: false, center: false }, "collabLeft")).toBeNull();
+    const t = dragTarget(cfg, { left: true, center: false }, "collabLeft")!;
+    const next = structuredClone(cfg);
+    t.set(next, -3);
+    expect(next.collabLeft.offsetY).toBe(-3);
+  });
+
+  it("everything else is not draggable", () => {
+    const cfg = defaultConfig();
+    cfg.collabEnabled = true;
+    for (const id of ["name", "description", "barcode", "qr", "warning"] as const)
+      expect(dragTarget(cfg, { left: true, center: true }, id)).toBeNull();
   });
 });
