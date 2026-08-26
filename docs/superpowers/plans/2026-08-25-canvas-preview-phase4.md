@@ -4,7 +4,7 @@
 
 **Goal:** Finish the canvas-preview-renderer effort: move the PSD builder onto the shared display list (byte-identical exports), add drag-to-move for the position-adjustable elements, and make the label font config-driven through the `fonts.ts` gate.
 
-**Architecture:** Three independent sub-phases, each separately shippable with its own version + changelog. 4a: `psd/build.ts` keeps authoring *editable* Photoshop layers (type layers, style runs, effects) but reads every placement it currently re-derives — centered-text x, the laurel's nudged origin, barcode geometry — from `planLabel` consumed with the same PDFFont measure the PDF backend uses. 4b: dragging on the 2D preview writes the *existing* persisted position knobs (`logo.offsetY`, `collabLeft.offsetY`, `collabCenter.offsetY`) through the same undo-coalescing path the in-place editor uses; no stored-format change. 4c: a Node-safe font catalog (`fontCatalog.ts`) becomes the single source for family ids, labels, PostScript names, and file basenames; `fonts.ts` stays the one DOM gate, now family-aware; `cfg.fontFamily` (optional, absent = poppins) drives every renderer.
+**Architecture:** Three independent sub-phases, each separately shippable with its own version + changelog. 4a: `psd/build.ts` keeps authoring *editable* Photoshop layers (type layers, style runs, effects) but reads every placement it currently re-derives — centered-text x, the laurel's nudged origin, barcode geometry — from `planLabel` consumed with the same PDFFont measure the PDF backend uses. 4b: dragging on the 2D preview writes the *existing* persisted position knobs (`logo.offsetY`, `collabLeft.offsetY`, `collabCenter.offsetY`) through the same undo-coalescing path the in-place editor uses; no stored-format change. 4c: font *infrastructure* only — a Node-safe font catalog (`fontCatalog.ts`, poppins its sole entry) becomes the single source for family ids, labels, PostScript names, and file basenames; `fonts.ts` stays the one DOM gate, now family-aware; `cfg.fontFamily` (optional, absent = poppins) drives every renderer. Font *sourcing* (Google Fonts browse/download + external TTF import) is Phase 5, separately specced.
 
 **Tech Stack:** TypeScript, React, vitest (node env — pure-logic tests only, DOM verified in real Chrome), pdf-lib + fontkit (metrics), ag-psd, Vite.
 
@@ -322,9 +322,11 @@ Start a dev server on a free port (NOT :5173; kill only the PID you started). Vi
 
 ---
 
-## Sub-phase 4c — Dynamic font config (v0.1.22)
+## Sub-phase 4c — Dynamic font infrastructure (v0.1.22)
 
-Design (from the brainstorm): `cfg.fontFamily?: FontFamilyId` — optional, absent = `"poppins"`, so every existing version-1 file loads unchanged. A Node-safe catalog module carries the data (ids, label, PostScript names, TTF basenames); `fonts.ts` remains the ONE DOM gate, now family-aware, registering each family under its own CSS name (`LabelFont-<id>`) so two open tabs with different fonts can't race. One additional bundled family — Montserrat (OFL, static Regular/SemiBold/Bold TTFs) — proves the mechanism; more families are a catalog entry + three TTFs later. `planFrom()` (deferred minor) lands here because both `planLabel` call sites are touched.
+Design (revised per user direction): **infrastructure only — no new bundled family, no picker UI.** Font *sourcing* is Phase 5 (Google Fonts browse/download/cache via static-instanced TTFs, plus external TTF import); it needs its own short spec because it touches the stored format (font bytes persisted with the project). 4c lands what Phase 5 plugs into: `cfg.fontFamily?: FontFamilyId` (optional, absent = `"poppins"`, so every existing file loads unchanged), a Node-safe catalog module (`fontCatalog.ts` — poppins is its only entry for now), and a family-aware `fonts.ts` gate registering each family under its own CSS name (`LabelFont-<id>`) so two open tabs can't race. `planFrom()` (deferred minor) lands here because both `planLabel` call sites are touched.
+
+Because nothing user-visible changes, 4c is a pure refactor and inherits 4a's gate: **exports must stay byte-identical** (reuse the 4a fixture and `cmp` procedure).
 
 ### Task 7: Font catalog + config field
 
@@ -344,10 +346,9 @@ import { FONT_FAMILIES, fontFamilyOf } from "../src/fontCatalog";
 import { defaultConfig } from "../src/defaults";
 
 describe("font catalog", () => {
-  it("defaults to poppins, absent field included", () => {
+  it("defaults to poppins; unknown ids from hand-edited files fall back", () => {
     expect(fontFamilyOf(defaultConfig())).toBe("poppins");
-    expect(fontFamilyOf({ ...defaultConfig(), fontFamily: "montserrat" })).toBe("montserrat");
-    // An unknown id from a hand-edited file falls back rather than crashing.
+    expect(fontFamilyOf({ ...defaultConfig(), fontFamily: "poppins" })).toBe("poppins");
     expect(fontFamilyOf({ ...defaultConfig(), fontFamily: "papyrus" as never })).toBe("poppins");
   });
   it("every family names three faces and three files", () => {
@@ -370,17 +371,14 @@ describe("font catalog", () => {
 // PostScript names (what Photoshop resolves type layers against), and TTF
 // basenames under src/assets/fonts. Node-safe on purpose (no ?url imports):
 // the headless harness and psd/build.ts read names from here, while the
-// DOM/URL side of each family lives in fonts.ts — the one gate.
+// DOM/URL side of each family lives in fonts.ts — the one gate. Poppins is
+// the only entry today; Phase 5 (font sourcing: Google Fonts + user TTFs)
+// turns this into a dynamic registry fed by downloaded/imported bytes.
 export const FONT_FAMILIES = {
   poppins: {
     label: "Poppins",
     ps: { regular: "Poppins-Regular", semibold: "Poppins-SemiBold", bold: "Poppins-Bold" },
     files: { regular: "Poppins-Regular.ttf", semibold: "Poppins-SemiBold.ttf", bold: "Poppins-Bold.ttf" },
-  },
-  montserrat: {
-    label: "Montserrat",
-    ps: { regular: "Montserrat-Regular", semibold: "Montserrat-SemiBold", bold: "Montserrat-Bold" },
-    files: { regular: "Montserrat-Regular.ttf", semibold: "Montserrat-SemiBold.ttf", bold: "Montserrat-Bold.ttf" },
   },
 } as const;
 export type FontFamilyId = keyof typeof FONT_FAMILIES;
@@ -399,31 +397,12 @@ export const fontFamilyOf = (cfg: { fontFamily?: string }): FontFamilyId =>
   fontFamily?: FontFamilyId;
 ```
 
-Add a labelfile round-trip case to `tests/labelfile.test.ts`: a config with `fontFamily: "montserrat"` survives save→parse, and one without the field parses fine. Inspect `parseConfigFile` in `src/defaults.ts` first — if it strips unknown keys, add `fontFamily` to its handling.
+Add a labelfile round-trip case to `tests/labelfile.test.ts`: a config with `fontFamily: "poppins"` survives save→parse, and one without the field parses fine. Inspect `parseConfigFile` in `src/defaults.ts` first — if it strips unknown keys, add `fontFamily` to its handling.
 
 - [ ] **Step 4: Tests pass** — `npx vitest run tests/fontcatalog.test.ts tests/labelfile.test.ts` → PASS.
 - [ ] **Step 5: Commit** — `git commit -m "feat: font catalog and the optional cfg.fontFamily field"` (add the touched files).
 
-### Task 8: Bundle Montserrat
-
-**Files:**
-- Create: `src/assets/fonts/Montserrat-{Regular,SemiBold,Bold}.ttf`, `src/assets/fonts/OFL-Montserrat.txt`
-
-- [ ] **Step 1: Fetch the static TTFs + license**
-
-```bash
-base=https://raw.githubusercontent.com/JulietaUla/Montserrat/master
-for w in Regular SemiBold Bold; do
-  curl -fsSL "$base/fonts/ttf/Montserrat-$w.ttf" -o "src/assets/fonts/Montserrat-$w.ttf"
-done
-curl -fsSL "$base/OFL.txt" -o src/assets/fonts/OFL-Montserrat.txt
-```
-
-Sanity: `file src/assets/fonts/Montserrat-*.ttf` reports TrueType; sizes are plausibly 100KB+. Verify the PostScript names match the catalog with fontkit (`fontkit.create(bytes).postscriptName` per face via a one-liner `npx tsx` script) — if a name differs, fix the CATALOG to match reality. If the URLs 404 (repo layout moved), find the static TTF path in that same repo rather than substituting a different font.
-
-- [ ] **Step 2: Commit** — `git add src/assets/fonts && git commit -m "feat: bundle Montserrat (OFL) as the second label typeface"`
-
-### Task 9: Family-aware fonts gate + renderers
+### Task 8: Family-aware fonts gate + renderers
 
 **Files:**
 - Modify: `src/fonts.ts`, `src/canvas/draw.ts`, `src/pdf/fonts.ts`, `src/psd/build.ts`, `src/components/PreviewCompare.tsx`, `src/three/labelTextures.ts` and/or `src/components/CanView.tsx` (wherever the second `planLabel` call site lives), `src/App.tsx`, `scripts/generate.ts`
@@ -434,10 +413,10 @@ Sanity: `file src/assets/fonts/Montserrat-*.ttf` reports TrueType; sizes are pla
 
 - [ ] **Step 1: `src/fonts.ts` becomes family-aware**
 
-- URL map (the ?url side of the catalog — Vite needs static imports, so import all six TTFs): `const FONT_URLS: Record<FontFamilyId, Record<Face, string>>`, exported for `pdf/fonts.ts`.
-- `export const labelFontCss = (id: FontFamilyId) => \`LabelFont-${id}\`;` — delete `LABEL_FONT_FAMILY` and update its consumers (draw.ts, PreviewCompare) rather than keeping a poppins-flavoured constant around.
+- URL map (the ?url side of the catalog — Vite needs static imports): `export const FONT_URLS: Record<FontFamilyId, Record<Face, string>>` (one poppins entry today; consumed by `pdf/fonts.ts` too, so the URL side has one source).
+- `export const labelFontCss = (id: FontFamilyId) => "LabelFont-" + id;` — delete `LABEL_FONT_FAMILY` and update its consumers (draw.ts, PreviewCompare) rather than keeping a poppins-flavoured constant around.
 - `loadLabelFont(id: FontFamilyId = "poppins")` / `loadLabelFaces(id = "poppins")`: memoize per family in a `Map<FontFamilyId, Promise<…>>` (a failed load deletes its map entry so retries work — the current single-promise contract, per family). Register `FontFace(labelFontCss(id), url, { weight })` per face; measure closures set `ctx.font` with `labelFontCss(id)`.
-- Update the module comment: the gate now takes the config's choice, closing the "intended to become config-driven" note.
+- Update the module comment: the gate now takes the config's choice; Phase 5 supplies the choices.
 
 - [ ] **Step 2: Canvas backend + planFrom**
 
@@ -458,36 +437,22 @@ In App: the effect that builds `measure` (`loadLabelFont`) and the render-source
 
 - [ ] **Step 4: Export paths**
 
-- `src/pdf/fonts.ts`: `loadFonts(id: FontFamilyId = "poppins")` — memoize per family; URLs via the `FONT_URLS` export from `fonts.ts` (one source for the ?url side).
-- `src/psd/build.ts`: replace the hardcoded `PS_NAME` with `FONT_FAMILIES[fontFamilyOf(cfg)].ps` (thread `cfg` to where names resolve). The FONT BYTES already arrive via `PsdAssets.fonts` — every caller that loads them must now load the family's bytes.
+- `src/pdf/fonts.ts`: `loadFonts(id: FontFamilyId = "poppins")` — memoize per family; URLs via the `FONT_URLS` export from `fonts.ts`.
+- `src/psd/build.ts`: replace the hardcoded `PS_NAME` with `FONT_FAMILIES[fontFamilyOf(cfg)].ps` (thread `cfg` to where names resolve). The FONT BYTES already arrive via `PsdAssets.fonts`; callers keep loading the family's bytes.
 - App's export handlers: pass `fontFamilyOf(cfg)` to `loadFonts`.
 - `scripts/generate.ts`: resolve TTF paths via `FONT_FAMILIES[fontFamilyOf(cfg)].files` against `src/assets/fonts` instead of hardcoded Poppins basenames.
 
-- [ ] **Step 5: Type-check + full suite** — `npx tsc --noEmit && npx vitest run` → green (existing tests exercise the poppins default throughout).
+- [ ] **Step 5: Type-check + full suite** — `npx tsc --noEmit && npx vitest run` → green (everything exercises the poppins default).
 
 - [ ] **Step 6: Commit** — `git commit -m "feat: label font flows from cfg.fontFamily through the fonts.ts gate"` (add all touched files).
 
-### Task 10: Font picker UI
+### Task 9: 4c verification + release chores
 
-**Files:**
-- Modify: `src/components/StyleProperties.tsx`, `src/App.tsx` (and `src/TabsShell.tsx` only if the prop threads through it)
-
-**Interfaces:**
-- Consumes: `FONT_FAMILIES`, `FontFamilyId` (Task 7).
-- Produces: StyleProperties props `fontFamily: FontFamilyId`, `onFontFamily(id: FontFamilyId): void`.
-
-- [ ] **Step 1:** Add a "Font" select to the Document Settings section of `StyleProperties.tsx` (beside the corner-radius knob, ~line 406; use the same select component the file already uses — match its idiom exactly). Options from `Object.entries(FONT_FAMILIES)` showing `label`. New props as above.
-- [ ] **Step 2:** App passes `fontFamily={fontFamilyOf(cfg)}` and `onFontFamily={(id) => update((c) => { c.fontFamily = id; })}` — undoable like every other cfg edit. (If the Document Settings card is fed via the shell-owned `DocSettings` object, still wire the font through cfg/`update` — it is label data, saved in the file, NOT a render preset; add a one-line comment saying so.)
-- [ ] **Step 3:** `npx tsc --noEmit && npx vitest run` → green.
-- [ ] **Step 4: Commit** — `git commit -m "feat: font picker in Document Settings"`
-
-### Task 11: 4c verification + release chores
-
-- [ ] **Step 1: Parity** — `npm run parity`: all rows PASS ≤ 5% (Poppins default — geometry untouched).
-- [ ] **Step 2: Real Chrome** — own dev server, own PID: switch the font to Montserrat and verify (1) the 2D preview re-renders in it per keystroke, (2) hit boxes/selection outlines still frame the text (measure follows the family), (3) the in-place editor's DOM text matches the drawn face, (4) both 3D views texture in the new font, (5) undo toggles the font back, (6) save the project, reload, the font persists; open a pre-existing `.label` file — it still reads as Poppins.
-- [ ] **Step 3: Exports** — `npm run generate` with a `fontFamily: "montserrat"` config: PDFs embed Montserrat (spot-check the font names with `strings out.pdf | grep -i montserrat` or pdffonts if available), and the PSD's type layers name `Montserrat-*` PostScript faces (readPsd spot-check).
-- [ ] **Step 4: Docs** — update the spec's Goals note ("ready for a config-driven font choice") with a one-line "landed in Phase 4c" amendment; CHANGELOG entry ("Label typeface is configurable — Poppins or Montserrat — stored in the project file").
-- [ ] **Step 5: Version 0.1.22** across the six files, `node scripts/check-release.mjs origin/main` passes, ledger entry for 4c (including "planFrom() deferred minor landed; buildError split ruled unnecessary — no new writers").
-- [ ] **Step 6:** `npx tsc --noEmit && npx vitest run` green; `git add -A && git commit -m "chore: bump version to 0.1.22 and record the dynamic-font changelog"`.
+- [ ] **Step 1: Byte-identity** — pure refactor, so exports must not move: regenerate the 4a fixture + default outputs into `$SCRATCH/phase4c/after` and `cmp` every PDF and PSD against the 4a `after/` set (which Task 3 proved identical to the original baseline). Any difference = stop and fix the refactor.
+- [ ] **Step 2: Parity** — `npm run parity`: all rows PASS ≤ 5% (geometry and face unchanged).
+- [ ] **Step 3: Real Chrome regression** — own dev server, own PID: preview renders per keystroke as before, in-place editor shows the same face, both 3D views texture correctly, and a pre-existing `.label` file opens as Poppins. (No font *switching* to verify — one family until Phase 5.)
+- [ ] **Step 4: Docs** — amend the spec's font Goals line with "gate landed in Phase 4c; font sourcing (choices) is Phase 5"; CHANGELOG entry ("Font pipeline is config-driven internally; typeface choices arrive with font sourcing").
+- [ ] **Step 5: Version 0.1.22** across the six files, `node scripts/check-release.mjs origin/main` passes, ledger entry for 4c — include: "planFrom() deferred minor landed; buildError split ruled unnecessary — no new writers; Phase 5 backlog: font sourcing — Google Fonts (metadata scan via fonts.google.com/metadata/fonts, static-instanced TTFs via css2 wght requests, local byte cache, fonts embedded in the project file for print reproducibility) + external TTF import (fontkit-extracted PS names, three-face mapping, OS/2 fsType embedding check)".
+- [ ] **Step 6:** `npx tsc --noEmit && npx vitest run` green; `git add -A && git commit -m "chore: bump version to 0.1.22 and record the font-infrastructure changelog"`.
 
 **FINAL CHECKPOINT: report Phase 4 complete; do not merge or push without user approval.**
