@@ -4,7 +4,7 @@
 // side is the parity page's job.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { drawPlate, type CanvasAssets } from "../src/canvas/draw";
-import { barcodeItem, planLabel, type MeasureFace } from "../src/plan";
+import { barcodeItem, lineRuns, planLabel, type MeasureFace } from "../src/plan";
 import { defaultConfig } from "../src/defaults";
 import { MASK_BLUE_HEX, PAGE } from "../src/layout";
 import { labelFontCss } from "../src/fonts";
@@ -21,7 +21,15 @@ const m: MeasureFace = (t, size) => t.length * size * 0.5;
  *  (stroke-before-fill, background-before-elements) are assertable. */
 function fakeCtx() {
   const log: { op: string; args: unknown[] }[] = [];
-  const target: Record<string, unknown> = { canvas: { width: PAGE.w * 2, height: PAGE.h * 2 } };
+  const target: Record<string, unknown> = {
+    canvas: { width: PAGE.w * 2, height: PAGE.h * 2 },
+    // Real metrics, not a logging stub: the no-letterSpacing fallback advances
+    // by measureText(glyph).width, so it needs a number back. 3 per char.
+    measureText: (t: string) => {
+      log.push({ op: "measureText", args: [t] });
+      return { width: t.length * 3 };
+    },
+  };
   const ctx = new Proxy(target, {
     get(t, p: string) {
       if (p in t) return t[p];
@@ -134,6 +142,36 @@ describe("drawPlate", () => {
     expect(strokes.length).toBeGreaterThan(0);
     expect(fills.length).toBeGreaterThan(0);
     expect(Math.max(...strokes)).toBeLessThan(Math.min(...fills));
+  });
+
+  /** The pre-17.4 WKWebView path: those engines silently IGNORE
+   *  ctx.letterSpacing, so drawText lays tracked runs out per glyph instead.
+   *  No developer ever executes this branch (every dev browser supports the
+   *  property), which is exactly why it needs pinning here.
+   *
+   *  CANVAS_LETTER_SPACING is a module-level const evaluated at IMPORT time,
+   *  and in Node it short-circuits to "supported" before probing anything —
+   *  so the only way to flip it is to re-import draw.ts with a `document`
+   *  whose 2D context lacks the property. */
+  it("without ctx.letterSpacing, a tracked run is placed glyph by glyph", async () => {
+    vi.resetModules();
+    vi.stubGlobal("document", { createElement: () => ({ getContext: () => ({}) }) });
+    vi.stubGlobal("Path2D", class { constructor(public d?: string) {} });
+    const { drawPlate: drawUnsupported } = await import("../src/canvas/draw");
+    const runs = lineRuns(
+      "styleLine", { text: "IPA", fill: "#C8A951", layer: "metallic", letterSpacing: 4 },
+      m, { x: 100, baseline: 200, size: 10 },
+    );
+    expect(runs[0].tracking).toBe(4); // the fallback only engages on tracked runs
+    const { ctx, log } = fakeCtx();
+    drawUnsupported(ctx, runs, {}, "art", FONT);
+    const glyphs = log.filter((x) => x.op === "fillText");
+    expect(glyphs.map((g) => g.args[0])).toEqual(["I", "P", "A"]);
+    // Advance is the glyph's own measured width (3 per char here) + tracking,
+    // in user-space px — the pt-scaled transform makes that scale-free.
+    expect(glyphs.map((g) => g.args[1])).toEqual([0, 7, 14]);
+    vi.unstubAllGlobals();
+    vi.resetModules();
   });
 
   it("paints every barcode halo shape before any ink shape", () => {

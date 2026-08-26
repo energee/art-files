@@ -2,7 +2,7 @@
 // Prevents an additional console window on Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::{fs, io::ErrorKind, path::PathBuf, sync::Mutex};
+use std::{ffi::OsString, fs, io::ErrorKind, path::PathBuf, sync::Mutex};
 use tauri::Manager;
 
 // Deliberately the repo library rather than `{}`: a fresh desktop install is
@@ -90,9 +90,20 @@ impl OpenedFile {
 /** Every .label path among command-line arguments — how Windows and Linux
  * deliver file-association opens (multi-select Open delivers several). The
  * extension match is the filter: it skips the exe path in args[0] and any
- * stray flags alike. */
-fn label_paths_from_args<I: IntoIterator<Item = String>>(args: I) -> Vec<PathBuf> {
+ * stray flags alike.
+ *
+ * Takes OsStrings because std::env::args() PANICS on a non-Unicode argument
+ * (legal on Windows: an unpaired UTF-16 surrogate in a path), which would
+ * crash the app before its window appeared. Such a path is SKIPPED here
+ * rather than mangled: take_opened_file hands the frontend a String, and the
+ * tab's filePath — that same string — is what Save writes back through, so a
+ * lossy path would mean a failed open or, worse, a save aimed elsewhere.
+ * ponytail: skipping is the ceiling. Opening those files means identifying
+ * documents by an opaque handle instead of a path string through the whole
+ * open/save pipeline — a bigger change than the case deserves. */
+fn label_paths_from_args<I: IntoIterator<Item = OsString>>(args: I) -> Vec<PathBuf> {
     args.into_iter()
+        .filter_map(|arg| arg.into_string().ok())
         .map(PathBuf::from)
         .filter(|path| is_label_path(path))
         .collect()
@@ -130,7 +141,7 @@ fn main() {
     // receives the file — the same behavior macOS gets from Apple events.
     #[cfg(not(target_os = "macos"))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
-        for path in label_paths_from_args(args) {
+        for path in label_paths_from_args(args.into_iter().map(OsString::from)) {
             // Relative argv paths (a shell `label-lab foo.label`) are
             // relative to the SECOND instance's cwd, not this process's —
             // resolve against the forwarded cwd before delivering.
@@ -158,13 +169,9 @@ fn main() {
     // (relative paths are naturally relative to this process's cwd). No
     // platform gate: macOS argv never carries a .label path (Finder sends
     // Apple events, handled in run() below), so the scan is a no-op there.
-    // args_os, not args(): std::env::args() PANICS on any non-Unicode
-    // argument (legal on Windows — unpaired UTF-16 surrogates in a path),
-    // which would crash the app before the window appears. A non-Unicode
-    // path can't round-trip through the String pipeline anyway, so it is
-    // skipped rather than lossily mangled into a path that doesn't exist.
-    let opened_at_launch =
-        label_paths_from_args(std::env::args_os().filter_map(|a| a.into_string().ok()));
+    // args_os, not args(): args() panics on non-Unicode argv. The skip rule
+    // lives in label_paths_from_args, where it is tested.
+    let opened_at_launch = label_paths_from_args(std::env::args_os());
 
     builder
         .manage(OpenedFile(Mutex::new(opened_at_launch)))
@@ -206,8 +213,8 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn args(list: &[&str]) -> Vec<String> {
-        list.iter().map(|s| s.to_string()).collect()
+    fn args(list: &[&str]) -> Vec<OsString> {
+        list.iter().map(OsString::from).collect()
     }
 
     #[test]
@@ -228,6 +235,21 @@ mod tests {
     fn argv_filter_matches_the_extension_case_insensitively() {
         let paths = label_paths_from_args(args(&["exe", "/x/BEER.LABEL", "/x/Mixed.Label"]));
         assert_eq!(paths.len(), 2);
+    }
+
+    /** A non-Unicode argument must be skipped, not panic and not arrive
+     *  mangled: the whole open/save pipeline addresses files by path STRING
+     *  (see label_paths_from_args). Unix bytes stand in for the Windows
+     *  unpaired-surrogate case — both are OsStrings that cannot round-trip. */
+    #[test]
+    #[cfg(unix)]
+    fn argv_filter_skips_a_non_unicode_path_without_panicking() {
+        use std::os::unix::ffi::OsStringExt;
+        let bad = OsString::from_vec(b"/x/\xff\xfe.label".to_vec());
+        assert!(bad.clone().into_string().is_err(), "fixture must be non-Unicode");
+        let paths =
+            label_paths_from_args(vec![OsString::from("exe"), bad, OsString::from("/x/ok.label")]);
+        assert_eq!(paths, vec![PathBuf::from("/x/ok.label")]);
     }
 
     #[test]
