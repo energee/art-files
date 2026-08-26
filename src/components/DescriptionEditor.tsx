@@ -203,8 +203,12 @@ function flagsOf(el: HTMLElement): Pick<EditorLine, "bold" | "white" | "header">
  *  the field paints become the `**`/`_` pairs the stored format keeps and
  *  both renderers parse. Missing data-* (e.g. a brand-new div the browser
  *  inserted for a native Enter keypress) reads as
- *  plain/non-bold/non-white/non-header. */
-function readLineEl(el: HTMLDivElement): EditorLine {
+ *  plain/non-bold/non-white/non-header.
+ *
+ *  Exported for tests/description-editor-dom.test.ts only — it and seedDom
+ *  are inverses, and that pairing is what the suite pins. No src/ module
+ *  imports it. */
+export function readLineEl(el: HTMLDivElement): EditorLine {
   return { ...flagsOf(el), text: Array.from(el.childNodes).map(runMarkdown).join("") };
 }
 
@@ -260,8 +264,10 @@ function repaintLine(line: HTMLDivElement, paint: LinePaint) {
  *  external value/base change, the post-blur snap to serializeDescription's
  *  canonical form, or switching back from "Edit as text") — see the hook's
  *  seed effect. That blur-time reseed is also what canonicalizes whatever
- *  span nesting an edit session produced. */
-function seedDom(root: HTMLDivElement, lines: EditorLine[], paint: LinePaint) {
+ *  span nesting an edit session produced.
+ *
+ *  Exported for tests/description-editor-dom.test.ts only (see readLineEl). */
+export function seedDom(root: HTMLDivElement, lines: EditorLine[], paint: LinePaint) {
   root.replaceChildren();
   // An empty description still needs one focusable/clickable line to type
   // into — parseDescription("", base) legitimately yields zero lines.

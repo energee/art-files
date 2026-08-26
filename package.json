@@ -26,6 +26,7 @@
     "@types/three": "^0.185.4",
     "@vitejs/plugin-react": "^4.7.0",
     "ag-psd": "^31.0.2",
+    "happy-dom": "^20.11.6",
     "pngjs": "^7.0.0",
     "shadcn": "^4.16.1",
     "tailwindcss": "^4.3.3",
