@@ -3,6 +3,13 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.25] - 2026-08-26
+
+- Backgrounds now accept WebP alongside PNG and JPEG, by drop or file picker.
+  A WebP is decoded and kept as PNG in the project and both PDFs, since the
+  PDF embed handles PNG and JPEG only. The mask is still PNG-only, so a WebP
+  dropped on the mask half of the chooser lands on the background.
+
 ## [0.1.24] - 2026-08-26
 
 - Opening several .label files at once from Finder no longer drops all but

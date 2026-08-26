@@ -24,7 +24,7 @@ import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import { makeHiddenPropsEqual } from "@/tabs";
 import { validateUpc } from "@/upc";
-import { mimeFor, rasterKind, tintRgba } from "@/collab";
+import { EMBEDDABLE_RASTER, mimeFor, rasterKind, tintRgba } from "@/collab";
 // The builders are imported dynamically at export time (see downloadPdfs /
 // exportPsd) so they stay out of the initial bundle; only their types are
 // needed up front.
@@ -803,14 +803,24 @@ export const DocumentEditor = memo(function DocumentEditor({
   };
 
   async function onTexture(f: File) {
-    const bytes = new Uint8Array(await f.arrayBuffer());
-    const bmp = await createImageBitmap(f);
-    const previewBytes = await previewPng(bmp);
-    bmp.close();
+    // PNG and JPEG pass through byte-for-byte; anything else the browser can
+    // decode (WebP) is re-encoded to PNG ONCE, here, and renamed to match.
+    // pdf-lib embeds PNG and JPEG only, so transcoding at the door is what
+    // keeps every later consumer — the PDF embed, the .label round-trip,
+    // rasterKind/mimeFor — reading bytes whose format its name claims. The
+    // rename is the honest half: the project now holds a PNG.
+    const passthrough = EMBEDDABLE_RASTER.test(f.name);
+    const decoded = passthrough ? await createImageBitmap(f) : await decodeToCanvas(f);
+    const bytes = passthrough
+      ? new Uint8Array(await f.arrayBuffer())
+      : await canvasToPng(decoded as HTMLCanvasElement);
+    const previewBytes = await previewPng(decoded);
+    if (decoded instanceof ImageBitmap) decoded.close();
+    const name = passthrough ? f.name : `${f.name.replace(/\.[^.]*$/, "")}.png`;
     const previewUrl = URL.createObjectURL(f);
     swapLoaded(setTexture, {
-      bytes, previewBytes, name: f.name,
-      kind: rasterKind(f.name),
+      bytes, previewBytes, name,
+      kind: rasterKind(name),
       previewUrl,
     });
   }

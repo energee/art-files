@@ -368,8 +368,14 @@ function Content(props: {
     case "background":
       return (
         <FileDrop
-          label="Texture PNG/JPG"
-          accept={{ "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] }}
+          label="Texture PNG/JPG/WebP"
+          accept={{
+            "image/png": [".png"],
+            "image/jpeg": [".jpg", ".jpeg"],
+            // Decoded and stored as PNG on drop (see onTexture): the PDF
+            // embed takes PNG/JPEG only.
+            "image/webp": [".webp"],
+          }}
           fileName={files.texture.fileName}
           previewUrl={files.texture.previewUrl}
           onFile={files.texture.onFile}
