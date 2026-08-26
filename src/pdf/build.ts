@@ -1,8 +1,8 @@
-// build.ts — builds the two deliverable PDFs with pdf-lib. One element walk
-// (drawElements) serves both: in "art" mode elements draw with their fill
-// color over the texture; in "mask" mode metallic elements knock out (white)
-// and white-layer elements paint mask blue. Both modes share the exact same
-// geometry, so the pair stays registered.
+// build.ts — builds the two deliverable PDFs with pdf-lib. drawElements walks
+// the plan (see ../plan) in draw order once per mode: in "art" mode elements
+// draw with their fill color over the texture; in "mask" mode metallic
+// elements knock out (white) and white-layer elements paint mask blue. Both
+// modes share the exact same geometry, so the pair stays registered.
 import {
   LineCapStyle,
   LineJoinStyle,
@@ -23,16 +23,19 @@ import {
   type Rotation,
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
-import type { CollabSlot, Fill, LabelConfig, Style, StyledLine } from "../types";
-import { logoNudge, type ElementId } from "../elements";
-import { parseLogo } from "../logo";
-import { WARNING_TEXT, displayAbv, displayName, displayStyle } from "../defaults";
+import type { Fill, LabelConfig } from "../types";
+import type { ElementId } from "../elements";
+import { displayName } from "../defaults";
+import {
+  planLabel,
+  type Face,
+  type MeasureFace,
+  type Mode,
+  type PlacedBarcode,
+  type PlacedText,
+  type PlanArt,
+} from "../plan";
 import * as L from "../layout";
-import { barcodeFootprint, barcodeGeometry, barcodeStrokePt } from "../barcode";
-import { qrPath, qrShapes, qrUrl } from "../qr";
-import { parseDescription, parseInfoLine, parseRuns } from "../description";
-import { strokeLayerOf } from "../strokes";
-import { warningColumnLen, warningMeasure, wrapWarning } from "../warning";
 
 /** A collab brewery's logo: vector source (recolored by its slot's style, like
  *  the laurel) or raster bytes (drawn as-is, over white ink). */
@@ -73,8 +76,6 @@ interface Fonts {
   bold: PDFFont;
 }
 
-type Mode = "art" | "mask";
-
 const toRgb = (c: { r: number; g: number; b: number }) => rgb(c.r, c.g, c.b);
 
 function fillColor(fill: Fill) {
@@ -84,20 +85,6 @@ function fillColor(fill: Fill) {
 /** Mask-mode paint for an element: knockout (white) or white-ink (blue). */
 function maskColor(layer: "metallic" | "white") {
   return layer === "metallic" ? toRgb(L.COLORS.white) : toRgb(L.COLORS.maskBlue);
-}
-
-/** Outer-stroke params for an element, or null when off. Art uses the stroke
- *  color; mask output independently resolves the stroke's white/metallic
- *  plate. Widths are authored in px at the 600dpi deliverable. */
-function strokeOf(style: Style, mode: Mode) {
-  if (!style.stroke || style.stroke === "none") return null;
-  const px = style.strokeWidth ?? L.DEFAULT_STROKE_PX;
-  // Width 0 means no stroke, not PDF's "thinnest device line" hairline.
-  if (px <= 0) return null;
-  return {
-    color: mode === "art" ? fillColor(style.stroke) : maskColor(strokeLayerOf(style)),
-    w: px * L.PX,
-  };
 }
 
 /** drawText has no stroke option, but PDF's text rendering mode does the job:
@@ -170,7 +157,7 @@ function bridgeTextStroke(
  *  pass's color out of caller hands. A null stroke is just the fill draw. */
 function strokedText(
   page: PDFPage,
-  stroke: ReturnType<typeof strokeOf>,
+  stroke: { color: Color; w: number } | null,
   txt: string,
   opts: TextAt & { color: Color },
 ) {
@@ -196,200 +183,22 @@ function withTracking(page: PDFPage, tracking: number | undefined, draw: () => v
   page.pushOperators(setCharacterSpacing(0));
 }
 
-/** Draw a collab logo fitted into `box` (scaled by the slot's `scale` knob),
- *  anchored at `top` and either left-aligned at `x` or centered on `cx`.
- *  Vector art is recolored and stroked per the slot's style, exactly like the
- *  laurel. Raster art draws as-is in the art PDF; the mask paints its footprint
- *  blue so a full-color logo prints on white ink rather than on the metallic
- *  texture. Async only because embedding a raster needs the document. */
-async function drawCollab(
-  doc: PDFDocument,
-  page: PDFPage,
-  img: CollabImage,
-  slot: CollabSlot,
-  mode: Mode,
-  box: { x?: number; cx?: number; top: number; maxW: number; maxH: number },
-): Promise<void> {
-  const maxW = box.maxW * slot.scale;
-  const maxH = box.maxH * slot.scale;
-  // offsetY nudges the laid-out position (flowed, for the left slot) rather
-  // than replacing it — see Positioned.
-  const top = box.top + (slot.offsetY ?? 0);
-  const place = (w: number) => (box.cx !== undefined ? box.cx - w / 2 : box.x!);
-  if (img.kind === "svg") {
-    const art = parseLogo(img.svg, maxW, maxH);
-    const at = { x: place(art.w), y: y(top) };
-    const color = mode === "art" ? fillColor(slot.fill) : maskColor(slot.layer);
-    // Same two-pass order as the laurel: every stroke path before any fill, so
-    // overlapping strokes can't paint over a neighbour's fill.
-    const stroke = strokeOf(slot, mode);
-    if (stroke)
-      for (const d of art.paths)
-        page.drawSvgPath(d, {
-          ...at, color: stroke.color, borderColor: stroke.color, borderWidth: 2 * stroke.w,
-        });
-    for (const d of art.paths) page.drawSvgPath(d, { ...at, color });
-    return;
-  }
-  const emb =
-    img.kind === "png" ? await doc.embedPng(img.bytes) : await doc.embedJpg(img.bytes);
-  const s = Math.min(maxW / emb.width, maxH / emb.height);
-  const w = emb.width * s;
-  const h = emb.height * s;
-  const rect = { x: place(w), y: y(top + h), width: w, height: h };
-  if (mode === "art") page.drawImage(emb, rect);
-  else page.drawRectangle({ ...rect, color: toRgb(L.COLORS.maskBlue) });
-}
-
-function drawLine(
-  page: PDFPage,
-  fonts: Fonts,
-  line: StyledLine,
-  mode: Mode,
-  opts: { x?: number; cx?: number; baseline: number; size: number; font?: PDFFont },
-) {
-  // Inline runs: a marker-free line yields one run identical to the line, so
-  // this is the old single drawText path with an extra loop around it.
-  // opts.font (the wordmark/name's forced Bold face) still wins outright —
-  // those slots are one face by design, markers or not.
-  const runs = parseRuns(line);
-  const faceOf = (r: StyledLine) => opts.font ?? (r.bold ? fonts.semibold : fonts.regular);
-  const tracking = line.letterSpacing;
-  // Measured once and reused as the per-run advance below, rather than
-  // measuring each run again while walking it.
-  const advances = L.runAdvances(
-    runs, (r) => faceOf(r).widthOfTextAtSize(r.text, opts.size), tracking,
-  );
-  // Centring measures the TRACKED width, not the font's — at 0 tracking the
-  // two are identical, so this is the same math as before for untracked text.
-  const total = advances.reduce((a, b) => a + b, 0) - (tracking ?? 0);
-  let x = opts.cx !== undefined ? opts.cx - total / 2 : opts.x!;
-  const yBase = y(opts.baseline);
-  const stroke = strokeOf(line, mode);
-  withTracking(page, tracking, () => {
-    runs.forEach((run, i) => {
-      const font = faceOf(run);
-      // Colour is per RUN: `_white ink_` moves that span to the mask plate,
-      // which in art mode means it must not paint at all (fillColor("none")
-      // handles a none-fill; the mask pass paints it instead).
-      const color = mode === "art" ? fillColor(run.fill) : maskColor(run.layer);
-      strokedText(page, stroke, run.text, { x, y: yBase, size: opts.size, font, color });
-      x += advances[i];
-    });
-  });
-}
-
-/** Rotated 90deg CCW text (reads bottom-to-top). x = baseline vertical line,
- *  yStart = where the first character sits (toward the label bottom). */
-function drawRotated(
-  page: PDFPage,
-  font: PDFFont,
-  text: string,
-  mode: Mode,
-  style: Style,
-  opts: { x: number; yStart: number; size: number },
-  /** Face for `**bold**` runs. Omitted (the warning's justified words, which
-   *  carry no markers of their own) means inline bold just keeps `font`. */
-  boldFont?: PDFFont,
-) {
-  // Same inline-run treatment as drawLine, advancing along the rotated
-  // baseline (+y, since the text reads bottom-to-top) instead of x. `font`
-  // is the caller's face for unmarked text; a `**bold**` run steps up to
-  // Bold, which is the only face above the semibold this column uses.
-  const runs = parseRuns({ ...style, text });
-  const tracking = style.letterSpacing;
-  const advances = L.runAdvances(
-    runs, (r) => (r.bold ? boldFont ?? font : font).widthOfTextAtSize(r.text, opts.size), tracking,
-  );
-  const stroke = strokeOf(style, mode);
-  let yPos = y(opts.yStart);
-  withTracking(page, tracking, () => {
-    runs.forEach((run, i) => {
-      const face = run.bold ? boldFont ?? font : font;
-      const color = mode === "art" ? fillColor(run.fill) : maskColor(run.layer);
-      strokedText(page, stroke, run.text, {
-        x: opts.x, y: yPos, size: opts.size, font: face, color, rotate: degrees(90),
-      });
-      yPos += advances[i];
-    });
-  });
-}
-
-/** Like drawRotated, but for a warning column: stretches inter-word gaps so
- *  the line's run reaches EXACTLY `opts.maxLen` (full justification — no
- *  ragged final column). Draws word-by-word, reusing drawRotated's per-word
- *  coordinate math rather than a second rotated-text scheme: each word is
- *  its own drawRotated call, advanced along the run by that word's width
- *  plus the stretched gap. A single-word line has no gap to stretch and
- *  falls back to one plain drawRotated call at its natural length — see
- *  warningColumnLen. */
-export function drawJustifiedRotated(
-  page: PDFPage,
-  font: PDFFont,
-  text: string,
-  mode: Mode,
-  style: Style,
-  opts: { x: number; yStart: number; size: number; maxLen: number },
-  boldFont?: PDFFont,
-) {
-  const words = text.split(" ");
-  if (words.length < 2) {
-    drawRotated(page, font, text, mode, style, opts, boldFont);
-    return;
-  }
-  // Run-aware tracked widths: the gap that justifies the line has to be
-  // computed against the length each word actually draws at — the stripped
-  // text of its inline runs, each in its own face — or a tracked or
-  // **bold**-marked warning column overshoots maxLen.
-  const widths = words.map((w) =>
-    L.runsWidth(
-      parseRuns({ ...style, text: w }),
-      (r) => (r.bold ? boldFont ?? font : font).widthOfTextAtSize(r.text, opts.size),
-      style.letterSpacing ?? 0,
-    ));
-  const totalWordWidth = widths.reduce((a, b) => a + b, 0);
-  // The gap that makes sum(widths) + (n-1)*gap land exactly on maxLen.
-  const gap = (opts.maxLen - totalWordWidth) / (words.length - 1);
-  // The run advances from yStart toward SMALLER yStart (drawRotated's
-  // "reads bottom-to-top": later characters/words sit at a smaller top-
-  // origin y) — see drawRotated's doc comment.
-  let cursor = opts.yStart;
-  words.forEach((w, i) => {
-    drawRotated(page, font, w, mode, style, { x: opts.x, yStart: cursor, size: opts.size }, boldFont);
-    cursor -= widths[i] + gap;
-  });
-}
-
-/** The barcode, in both modes. `cfg` (not just the UPC digits) because both
- *  branches below resolve their geometry from the same barcode* style fields
- *  — see S. */
-export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode: Mode) {
+/** The barcode, in both modes, from its placed item (see PlacedBarcode). The
+ *  plan resolved geometry, colors-by-name and digit centring once; this only
+ *  paints. */
+export function drawBarcode(page: PDFPage, fonts: Fonts, item: PlacedBarcode, mode: Mode) {
   const B = L.BARCODE;
-  // Resolved outer-stroke width, in points — from the shared resolver in
-  // ../barcode, which the PSD builder reads too. BOTH branches below read
-  // this one value: if the mask's footprint stopped matching the art's ink
-  // extent, the white-ink plate would fringe against the printed artwork.
-  const S = barcodeStrokePt(cfg);
-  // Rotated layout: bars run horizontally, the code advances bottom-to-top,
-  // and the digits column sits to the RIGHT of the bars — the same
-  // arrangement JsBarcode renders, turned a quarter turn. The geometry
-  // itself is shared with the PSD builder (see ../barcode), and BOTH modes
-  // below read the same bars/digits so the mask's footprint can't drift
-  // from what the art pass actually inks.
-  const geo = barcodeGeometry(cfg.upc, (t) => fonts.regular.widthOfTextAtSize(t, B.textSize));
+  const S = item.S;
+  const geo = item.geo;
   // y() of a run's lowest module IS the rect's bottom edge in PDF space, so
   // the top-origin box converts by its far edge.
   const bars = geo.bars.map((b) => ({
     x: b.x, y: y(b.yTop + b.h), width: b.w, height: b.h,
   }));
   // rotate(90) turns the glyph body toward -x, so `x` is the baseline and the
-  // digits grow back toward the bars from it. `w` (the glyph run's length)
-  // is kept alongside for the mask's digit pills below.
-  const digits = geo.digits.map((d) => {
-    const w = fonts.regular.widthOfTextAtSize(d.text, B.textSize);
-    return { txt: d.text, x: d.x, y: y(geo.bottom - d.center * geo.mod) - w / 2, w };
-  });
-  const glyph = { size: B.textSize, font: fonts.regular, rotate: degrees(90) };
+  // digits grow back toward the bars from it; the plan already centred `y`.
+  const digits = item.digits.map((d) => ({ txt: d.text, x: d.x, y: y(d.y), w: d.w }));
+  const glyph = { size: item.textSize, font: fonts.regular, rotate: degrees(90) };
 
   if (mode === "mask") {
     // Stroke and fill have independent mask plates. Paint the expanded stroke
@@ -397,9 +206,8 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode:
     // choices leave the outer halo visible and the bars/digits retain their
     // own assignment. When both plates match, one expanded pass is the same
     // flattened result and preserves the compact legacy stream.
-    const measure = (t: string) => fonts.regular.widthOfTextAtSize(t, B.textSize);
-    const fillLayer = cfg.barcodeLayer;
-    const strokeLayer = cfg.barcodeStrokeLayer;
+    const fillLayer = item.fillLayer;
+    const strokeLayer = item.strokeLayer;
     // A non-zero outset draws as a centered border of 2*outset on the BASE
     // footprint instead of a pre-outset rectangle: with the page's round line
     // join (see newDoc) that rounds each corner at radius `outset`, matching
@@ -407,7 +215,7 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode:
     // rectangles were square-cornered, leaving the white-ink plate overhanging
     // the art ink by a corner nib at every bar and digit-pill corner.
     const drawFootprint = (outset: number, color: ReturnType<typeof maskColor>) => {
-      for (const r of barcodeFootprint(geo, 0, measure))
+      for (const r of item.footprint)
         page.drawRectangle({
           x: r.x, y: y(r.yTop + r.h), width: r.w, height: r.h, color,
           ...(outset > 0 ? { borderColor: color, borderWidth: 2 * outset } : {}),
@@ -425,9 +233,10 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode:
   // neighbour, which distorted the module widths until the code stopped
   // decoding. Between the dense bars the stroke closes into a solid field
   // and around the digits it reads as a pill, matching the reference's
-  // white shape without a backing box.
-  if (S > 0) {
-    const strokeColor = fillColor(cfg.barcodeStroke);
+  // white shape without a backing box. Reached only when S > 0, which a
+  // "none" stroke never resolves to (see barcodeStrokePt).
+  if (S > 0 && item.stroke !== "none") {
+    const strokeColor = fillColor(item.stroke);
     // A centered border at 2S extends S beyond the bar and — because the page
     // sets a ROUND line join (see newDoc) — rounds each corner at radius S,
     // which is what Photoshop's outside stroke does and what the PSD's real
@@ -444,7 +253,7 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, cfg: LabelConfig, mode:
   }
 
   // The artwork itself, at its exact geometry.
-  const ink = fillColor(cfg.barcodeFill);
+  const ink = fillColor(item.fill);
   for (const r of bars) page.drawRectangle({ ...r, color: ink });
   for (const d of digits) page.drawText(d.txt, { ...glyph, x: d.x, y: d.y, color: ink });
 }
@@ -457,148 +266,75 @@ async function drawElements(
   assets: Assets,
   mode: Mode,
 ) {
-  // Hidden layers skip BOTH modes — no ink, no stroke, no mask footprint.
-  // Layout is untouched: everything else stays exactly where it was, so
-  // toggling a layer's eye never reflows its neighbours.
-  const hide = (id: ElementId) => !!assets.hidden?.has(id);
+  const faceFont = (f: Face) =>
+    f === "bold" ? fonts.bold : f === "semibold" ? fonts.semibold : fonts.regular;
+  const pdfMeasure: MeasureFace = (t, size, f) => faceFont(f).widthOfTextAtSize(t, size);
 
-  // Left column
-  if (!hide("volume"))
-    drawLine(page, fonts, cfg.volume, mode, { x: L.VOLUME.x, baseline: L.VOLUME.baseline, size: L.VOLUME.size });
-  if (!hide("abv"))
-    drawLine(page, fonts, { text: `${displayAbv(cfg)}% alc by vol`, ...cfg.abvStyle }, mode, {
-      x: L.ABV.x, baseline: L.ABV.baseline, size: L.ABV.size,
-    });
-  const desc = parseDescription(cfg.description, cfg.descStyle);
-  if (!hide("description")) {
-    if (desc.header)
-      drawLine(page, fonts, desc.header, mode, {
-        x: L.DESC_HEADER.x, baseline: L.DESC_HEADER.baseline, size: L.DESC_HEADER.size,
-      });
-    desc.lines.forEach((line, i) =>
-      drawLine(page, fonts, line, mode, {
-        x: L.DESC.x, baseline: L.DESC.firstBaseline + i * L.DESC.leading, size: L.DESC.size,
-      }),
-    );
+  // Raster collab logos embed first: the plan places by intrinsic pixel
+  // size, and the embedded image is what the art pass draws. Keyed by id so
+  // the walk below can find its bytes again.
+  const embedded = new Map<ElementId, Awaited<ReturnType<typeof doc.embedPng>>>();
+  const planArt = async (id: ElementId, img: CollabImage | null | undefined): Promise<PlanArt | null> => {
+    // Hidden means no ink AND no embedded bytes: a layer the UI's eye has
+    // hidden must not survive into the saved PDF even as an unreferenced
+    // XObject, so this early-return has to check the same skip set planLabel
+    // uses to omit the drawn item — bailing here keeps the raster off the
+    // page before doc.embedPng/embedJpg ever runs.
+    if (!img || !cfg.collabEnabled || assets.hidden?.has(id)) return null;
+    if (img.kind === "svg") return img;
+    const emb = img.kind === "png" ? await doc.embedPng(img.bytes) : await doc.embedJpg(img.bytes);
+    embedded.set(id, emb);
+    return { kind: "raster", w: emb.width, h: emb.height };
+  };
+
+  // The complete label, placed once by plan.ts in draw order — the same
+  // list hittest groups its text boxes from — measured with the actual
+  // embedded PDFFont widths so the built bytes place text exactly as before.
+  const plan = planLabel(cfg, pdfMeasure, {
+    skip: assets.hidden,
+    // Presence, not what planArt returned: a hidden logo yields no art (no
+    // embedded bytes) but still holds its slot, so the "A collaborative
+    // project with" lead-in stays — exactly what the preview draws.
+    collab: { left: !!assets.collabLeft, center: !!assets.collabCenter },
+    assets: {
+      logoSvg: assets.logoSvg,
+      collabLeft: await planArt("collabLeft", assets.collabLeft),
+      collabCenter: await planArt("collabCenter", assets.collabCenter),
+    },
+  });
+
+  const drawText = (r: PlacedText) => {
+    const color = mode === "art" ? fillColor(r.fill) : maskColor(r.layer);
+    const stroke = r.stroke
+      ? { color: mode === "art" ? fillColor(r.stroke.fill) : maskColor(r.stroke.layer), w: r.stroke.w }
+      : null;
+    withTracking(page, r.tracking || undefined, () =>
+      strokedText(page, stroke, r.text, {
+        x: r.x, y: y(r.y), size: r.size, font: faceFont(r.face), color,
+        ...(r.rotated ? { rotate: degrees(90) } : {}),
+      }));
+  };
+
+  for (const r of plan) {
+    if (r.kind === "text") drawText(r);
+    else if (r.kind === "paths") {
+      const color = mode === "art" ? fillColor(r.fill) : maskColor(r.layer);
+      const at = { x: r.x, y: y(r.y) };
+      // Every stroke path before any fill, so overlapping strokes can't
+      // paint over a neighbour's fill (the laurel-branch rule).
+      if (r.stroke) {
+        const sc = mode === "art" ? fillColor(r.stroke.fill) : maskColor(r.stroke.layer);
+        for (const d of r.paths)
+          page.drawSvgPath(d, { ...at, color: sc, borderColor: sc, borderWidth: 2 * r.stroke.w });
+      }
+      for (const d of r.paths) page.drawSvgPath(d, { ...at, color });
+    } else if (r.kind === "image") {
+      const rect = { x: r.x, y: y(r.y + r.h), width: r.w, height: r.h };
+      if (mode === "art") page.drawImage(embedded.get(r.id)!, rect);
+      // Raster art prints on white ink: the mask paints its footprint blue.
+      else page.drawRectangle({ ...rect, color: toRgb(L.COLORS.maskBlue) });
+    } else drawBarcode(page, fonts, r, mode);
   }
-
-  // Left collab logo, flowed under the description with its lead-in. The
-  // lead-in is drawn in SemiBold like the reference label's, and only when
-  // there is actually a left logo for it to introduce.
-  if (cfg.collabEnabled && assets.collabLeft) {
-    const flow = L.collabLeftFlow(desc.lines.length);
-    if (!hide("collabLead"))
-      L.COLLAB_LEAD.lines.forEach((text, i) =>
-        drawLine(page, fonts, { text, ...cfg.collabLead, bold: true }, mode, {
-          x: L.COLLAB_LEAD.x, baseline: flow.leadBaselines[i], size: L.COLLAB_LEAD.size,
-        }),
-      );
-    if (!hide("collabLeft"))
-      await drawCollab(doc, page, assets.collabLeft, cfg.collabLeft, mode, {
-        x: L.COLLAB_LEFT.x, top: flow.logoTop,
-        maxW: L.COLLAB_LEFT.maxW, maxH: L.COLLAB_LEFT.maxH,
-      });
-  }
-
-  // Center column. Wordmark and beer name use the Bold face — the reference
-  // label sets both in the same heavy weight.
-  if (!hide("wordmark"))
-    drawLine(page, fonts, { text: L.WORDMARK.text, ...cfg.wordmark, bold: true }, mode, {
-      cx: L.WORDMARK.cx, baseline: L.WORDMARK.baseline, size: L.WORDMARK.size, font: fonts.bold,
-    });
-  // The laurel's geometry is computed even when hidden: the centre collab
-  // mark hangs off logoCy below, and hiding the laurel must not move it.
-  const logo = parseLogo(assets.logoSvg, L.LOGO.w);
-  const logoColor = mode === "art" ? fillColor(cfg.logo.fill) : maskColor(cfg.logo.layer);
-  const logoCy = L.LOGO.cy + logoNudge(cfg);
-  const logoAt = { x: L.LOGO.cx - logo.w / 2, y: y(logoCy - logo.h / 2) };
-  // Outer stroke: a centered border at 2w extends w beyond the shape; the
-  // fill pass on top then covers the inner half. All stroke paths draw
-  // before any fill so overlapping laurel branches keep clean edges.
-  const logoStroke = hide("logo") ? null : strokeOf(cfg.logo, mode);
-  if (logoStroke)
-    for (const d of logo.paths)
-      page.drawSvgPath(d, {
-        ...logoAt,
-        color: logoStroke.color,
-        borderColor: logoStroke.color,
-        borderWidth: 2 * logoStroke.w,
-      });
-  if (!hide("logo"))
-    for (const d of logo.paths) page.drawSvgPath(d, { ...logoAt, color: logoColor });
-  // Center collab logo hangs under the laurel.
-  if (cfg.collabEnabled && assets.collabCenter && !hide("collabCenter"))
-    await drawCollab(doc, page, assets.collabCenter, cfg.collabCenter, mode, {
-      cx: L.COLLAB_CENTER.cx,
-      // Hangs off the laurel's nudged bottom, so moving the laurel carries
-      // the collab mark with it and the pair keeps its gap — the centre stack
-      // moves as one. This slot has no nudge of its own (see types.ts).
-      top: logoCy + logo.h / 2 + L.COLLAB_CENTER.gapAbove,
-      maxW: L.COLLAB_CENTER.maxW, maxH: L.COLLAB_CENTER.maxH,
-    });
-  if (!hide("name"))
-    drawLine(page, fonts, { text: displayName(cfg).toUpperCase(), ...cfg.nameStyle, bold: true }, mode, {
-      cx: L.NAME.cx, baseline: L.NAME.baseline, size: L.NAME.size, font: fonts.bold,
-    });
-  if (!hide("styleLine"))
-    drawLine(page, fonts, { ...cfg.styleLine, text: displayStyle(cfg) }, mode, {
-      cx: L.STYLE_LINE.cx, baseline: L.STYLE_LINE.baseline, size: L.STYLE_LINE.size,
-    });
-
-  // QR — payload derived from the beer name; optional stroked underlay.
-  if (!hide("qr")) {
-    const shapes = qrShapes(qrUrl(displayName(cfg)));
-    const qrAt = { x: L.QR.x, y: y(L.QR.yTop) };
-    if (cfg.qrStroke !== "none")
-      page.drawSvgPath(
-        qrPath(shapes, L.QR.size, (cfg.qrStrokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX),
-        {
-          ...qrAt,
-          color: mode === "art"
-            ? fillColor(cfg.qrStroke)
-            : maskColor(cfg.qrStrokeLayer),
-        },
-      );
-    const qrColor = mode === "art" ? fillColor(cfg.qrFill) : maskColor(cfg.qrLayer);
-    page.drawSvgPath(qrPath(shapes, L.QR.size), { ...qrAt, color: qrColor });
-  }
-
-  // Right rotated column
-  // Info carries the description block's markdown subset (see parseInfoLine):
-  // the markers set the face and the white-ink layer, the rest of the style
-  // stays the element's own. A plain, marker-free line renders exactly as it
-  // always did — semibold, on the element's layer.
-  const info = parseInfoLine(cfg.handleAddress.text, cfg.handleAddress);
-  if (!hide("handleAddress"))
-    drawRotated(page, info.bold ? fonts.bold : fonts.semibold, info.text, mode, info, {
-      x: L.HANDLE_ADDR.x, yStart: L.HANDLE_ADDR.yStart, size: L.HANDLE_ADDR.size,
-    }, fonts.bold);
-  // Wrapping measures with the warning's own tracking and inline runs (the
-  // "GOVERNMENT WARNING:" prefix draws in Bold): tracked or bold text needs
-  // more columns, and hittest.ts derives its columns from the same measure.
-  const warnLines = wrapWarning(
-    warningMeasure(
-      (t, bold) => (bold ? fonts.bold : fonts.regular).widthOfTextAtSize(t, L.WARNING.size),
-      cfg.warning.letterSpacing,
-    ),
-    L.WARNING.maxLen,
-  );
-  if (!hide("warning"))
-    warnLines.forEach((line, i) =>
-      drawJustifiedRotated(page, fonts.regular, line, mode, cfg.warning, {
-        x: L.WARNING.x + i * L.WARNING.leading, yStart: L.WARNING.yStart, size: L.WARNING.size,
-        maxLen: L.WARNING.maxLen,
-      }, fonts.bold),
-    );
-  if (!hide("storeCold"))
-    // Semibold is this line's plain face; the element's bold toggle steps it up
-    // to Bold, exactly as handleAddress above.
-    drawRotated(page, cfg.storeCold.bold ? fonts.bold : fonts.semibold, cfg.storeCold.text, mode, cfg.storeCold, {
-      x: L.STORE_COLD.x, yStart: L.STORE_COLD.yStart, size: L.STORE_COLD.size,
-    });
-
-  // Barcode
-  if (!hide("barcode")) drawBarcode(page, fonts, cfg, mode);
 }
 
 async function newDoc(assets: Assets): Promise<{ doc: PDFDocument; page: PDFPage; fonts: Fonts }> {
@@ -635,12 +371,11 @@ function shiftForBleed(page: PDFPage) {
   if (L.BLEED_SHIFT) page.pushOperators(translate(L.BLEED_SHIFT, -L.BLEED_SHIFT));
 }
 
-/** Cover-fit an embedded image over the full bleed page, centered. */
+/** Cover-fit an embedded image over the full bleed page, centered. Delegates
+ *  to L.coverFit, the geometry the canvas backend shares. */
 function coverPage(page: PDFPage, img: { width: number; height: number }) {
-  const s = Math.max(L.PAGE.w / img.width, L.PAGE.h / img.height);
-  const w = img.width * s;
-  const h = img.height * s;
-  return { x: (L.PAGE.w - w) / 2, y: (L.PAGE.h - h) / 2, width: w, height: h };
+  const r = L.coverFit(img.width, img.height);
+  return { x: r.x, y: r.y, width: r.w, height: r.h };
 }
 
 export async function buildArtPdf(cfg: LabelConfig, assets: Assets): Promise<Uint8Array> {

@@ -177,3 +177,47 @@ no status, no attempts, no delta.
 - status: done
 - attempts: 1/3
 - delta: true PDF stroke alone → true stroke plus a bounded interior bridge derived from each element's live width; the three 15px-stroked periods render as solid gold dots on black in the exact 180/600-DPI pdf.js pipeline, the 600-DPI Poppler render changed 0 pixels, normal builds remain ~30ms, and 199 tests, tsc, Vite build, Cargo check, and the 0.1.9 release gate pass
+
+## 2026-08-25 canvas-backend-phase2
+- finding: [user request] canvas preview renderer Phase 2 — full display list, canvas backend, parity harness, dev toggle
+- status: done
+- attempts: 1/3
+- delta: plan.ts text-only -> full Placed union (paths/image/barcode); pdf/build.ts one plan walk (LEFT seam, drawCollab, strokeOf, dead imports deleted); new src/canvas/draw.ts + tests; parity page (npm run parity, observed 2.04-2.48% diff, threshold 5%); dev toggle localStorage.canvasPreview (DEV only); exports pixel-identical (0 diff px at 200/400dpi); 242 -> 258 tests green; v0.1.18. Carried to Phase 3: silent drawImage skip on missing canvas asset (draw.ts), close-race on ImageBitmap swap (App.tsx dev effect), pin barcode/paths stroke-before-fill in fake-ctx tests, route canvas render errors to buildError, textBaseline/textAlign ownership in drawPlate, box.x! in collabItems.
+
+## 2026-08-25 canvas-preview-swap-phase3
+- finding: [user request] canvas preview renderer Phase 3 — the swap, plus 3D-from-canvas pulled forward from Phase 4 (user decision)
+- status: done
+- attempts: 1/3
+- delta: 2D preview renders per keystroke from planLabel+drawPlate (no worker, no debounce; asset assembly split off with asset-only deps); in-place editing = planLabel skip flag, v0.1.16 hide-and-rebuild plumbing deleted; 3D views texture via new drawPlates/sync buildLabelTextures (pdf.js retained only for the dev parity page); DELETED pdf/client.ts, pdf/worker.ts, tests/preview-client.test.ts, App's pdfs/needMask/inputs/built/buildChain machinery, TabsShell dispose; all six Phase-2 carried items landed; final review restored the dropped PREVIEW_RASTER_MAX_EDGE cap (backing store measured 5040px at bleed 0.2, now clamps at 4876). Verified in real Chrome (per-keystroke paint, same-frame edit skip, mask plate, eyes, 3D can from canvas plates, zoom ratchet, bleed repaint, zero worker traffic), parity 2.04-2.48% (max 5%), npm run generate builds all four exports; 260 tests + tsc green; v0.1.19. Commits e552d35..7e262a1 + docs.
+- learning: replacing a rendering pipeline must port the old call's guard OPTIONS, not just its happy path — scaleCap's maxEdge half was silently dropped and only the final whole-branch review caught it
+- Carried to Phase 4: PSD-on-plan (priority), drag-to-move, dynamic fonts via src/fonts.ts; deferred minors — half-painted plate if drawPlate ever throws mid-walk (unreachable today; offscreen+blit if it matters), shared buildError channel cleared by any successful frame (split per-source state before Phase 4 adds writers), mask plate repaints at split 0 (gate on split>0 if keystroke latency regresses at max zoom), planFrom() helper to dedupe the two planLabel spellings, unit pin on drawPlates scale math (needs DOM stub), barcode-halo test's translate-index scoping invariant, CanView 3D texture failures warn-only (spec amended to record this).
+
+## 2026-08-25 psd-on-plan-phase4a
+- finding: [user request] canvas preview Phase 4a — PSD placement from shared display list
+- status: done
+- attempts: 1/3
+- delta: placement duplicates in psd/build.ts 3 → 0; PSD bytes identical across default+fixture, both plates (PDFs pixel-identical at 200dpi); 260 tests green; v0.1.20
+
+## 2026-08-25 drag-to-move-phase4b
+- finding: [user request] canvas preview Phase 4b — drag-to-move for offsetY elements on the 2D preview
+- status: done
+- attempts: 1/3
+- delta: dragTarget() helper + pointer wiring in PreviewCompare/App; logo gated on collabEnabled, collab slots on loaded art; vertical only, no schema change; one undo step per drag, Escape cancels; verified in real Chrome (6/6 checks); 263 tests green; v0.1.21
+
+## 2026-08-25 font-infrastructure-phase4c
+- finding: [user request] canvas preview Phase 4c — config-driven font pipeline infrastructure
+- status: done
+- attempts: 1/3
+- delta: config-driven font pipeline (fontCatalog.ts + family-aware fonts.ts gate + cfg.fontFamily optional, absent = poppins); planFrom() deferred minor landed at both planLabel call sites; buildError split ruled unnecessary — no new writers; exports byte/pixel-identical (8/8), parity 4/4 PASS (2.04–2.48%), Chrome regression 4/4; 267 tests green; v0.1.22. Phase 5 backlog: font sourcing — Google Fonts (metadata scan via fonts.google.com/metadata/fonts, static-instanced TTFs via css2 wght requests, local byte cache, fonts embedded in the project file for print reproducibility) + external TTF import (fontkit-extracted PS names, three-face mapping, OS/2 fsType embedding check)
+
+## 2026-08-26 inplace-description-editor
+- finding: [user request] src/components/PreviewCompare.tsx:628 — double-clicking the description floated a panel duplicating the sidebar's WYSIWYG field over the artwork; user wants Google-style in-place editing with a compact floating toolbar
+- status: done
+- attempts: 1/3
+- delta: DescriptionEditor's contenteditable machinery extracted into useDescriptionField (per-line paint injectable) + shared DescriptionToolbarButtons; the description now joins the in-place render-skip session (onEditSession) with the rich-lines field positioned over its block at label metrics (9pt/10.8pt leading in cqh, baseline-aligned via half-leading offset) and the Header/Bold/White-ink toggles floating above as a body-portaled pill; the floating panel path serves only the rotated column now; sidebar field unchanged. Verified in real Chrome: in-place alignment matches hit boxes, per-keystroke apply, Enter/Bold/White toggles, click-away commit, Escape cancel, one undo step per session, sidebar regression-free. 267 tests, tsc, Vite build, and the 0.1.23 release gate pass
+
+## 2026-08-26 code-review-fix-wave
+- finding: [user request] /code-review over the whole branch — 8 confirmed findings + 3 below-cap, fixed across two coordinated sessions (this one + art-files-47) in one shared worktree
+- status: done
+- attempts: 1/3
+- delta: THIS SESSION — presets.json seed library restored from main (fresh installs got empty presets); TabsShell/App onOpenSettled clears queued open entries when the attempt settles (failed opens were permanently un-retryable, Save-As'd tabs hijacked their old path); PreviewCompare resize guard checks height (bleed change at the raster cap rendered distorted); error strip split into renderError (renderers own it, frames clear it) vs buildError (assembly/export/native, cleared on assembly/export success — frames no longer wipe unrelated failures); CanView texture-rebuild failures routed to the strip (was console.warn only); main.rs launch scan uses args_os (args() panics on non-Unicode argv); drawPlate/drawPlates fontCss now REQUIRED (poppins default bypassed the fonts.ts gate); ctx.letterSpacing feature-detected with per-glyph user-space fallback (pre-17.4 WKWebView ignored it); collabLeftFrame/collabCenterFrame in plan.ts are the one envelope spelling shared with hittest. PEER SESSION (art-files-47) — TabsShell apply() transition helper (OS-open drain race), collab lead-in preview/export divergence (opts.collab), rasterScale derived from PREVIEW_MAX_W with ratchet removed, main.rs is_label_path on the macOS Opened arm + case-class fs glob; peer merged origin/main (69119ad) and bumped v0.1.24. Combined tree: tsc clean, 268/268 tests, cargo check clean, Vite build clean

@@ -1,15 +1,20 @@
-// labelTextures.ts — turns the app's preview-resolution PDF pair (art plate +
+// labelTextures.ts — turns the app's canvas-backend plates (art plate +
 // white-ink mask plate) into the canvases the 3D label material consumes: the
-// art itself and a binary per-pixel metalness mask. Rasterization is shared
-// with the 2D preview (see pdf/render.ts).
-import { renderPdfPage } from "@/pdf/render";
+// art itself and a binary per-pixel metalness mask. The plates come from the
+// canvas backend's display-list walk (see canvas/draw.ts), not a PDF raster.
+// The font is whatever CSS family the caller's render source is loaded
+// under (see fonts.ts's gate); drawPlates just forwards it to drawPlate.
+import { drawPlate, type CanvasAssets } from "@/canvas/draw";
+
+import type { Placed } from "@/plan";
+import { PAGE } from "@/layout";
 
 /** Longest rendered edge in px. The label wraps most of the way around the
  *  can, so at typical zoom the texture — not the framebuffer — is what limits
  *  sharpness; the cap still bounds each rebuild's canvases. */
 const MAX_EDGE = 4096;
 
-/** Oversample factor over the PDF's natural (72dpi) page size. Together with
+/** Oversample factor over the page's natural (72dpi) size. Together with
  *  MAX_EDGE this is what sets the label's texel density: preview pages are
  *  small enough that this factor, not MAX_EDGE, is usually what binds. */
 const MAX_SCALE = 4;
@@ -35,21 +40,6 @@ export interface LabelTextures {
   hasFoil: boolean;
   /** Artwork width / height — drives the cylinder wrap angle. */
   aspect: number;
-}
-
-/** Render a plate, longest edge capped at MAX_EDGE. `size` forces exact
- *  output dimensions (the mask must match the art pixel-for-pixel so the maps
- *  sample in lockstep on the same UVs). Never cancelled, so never null. */
-async function renderPlate(
-  bytes: Uint8Array, size?: { width: number; height: number },
-): Promise<HTMLCanvasElement> {
-  // scaleCap, not a scale function: the page's natural size is only known in
-  // the raster worker, which resolves the cap there (size, when set, wins).
-  const canvas = await renderPdfPage(bytes, {
-    size,
-    scaleCap: { maxEdge: MAX_EDGE, maxScale: MAX_SCALE },
-  });
-  return canvas!;
 }
 
 /**
@@ -85,16 +75,32 @@ function deriveMetalness(
   return { canvas: out, hasFoil };
 }
 
+/** Draw both plates from the display list at texture resolution: MAX_SCALE
+ *  over the page's natural pt size, long edge capped at MAX_EDGE — the same
+ *  texel density the old PDF raster produced. One scale for both plates, so
+ *  the maps share the art's UV grid pixel-for-pixel. */
+export function drawPlates(
+  // fontCss required for the same reason drawPlate's is — see its comment.
+  plan: readonly Placed[], assets: CanvasAssets, fontCss: string,
+): { art: HTMLCanvasElement; mask: HTMLCanvasElement } {
+  const s = Math.min(MAX_SCALE, MAX_EDGE / Math.max(PAGE.w, PAGE.h));
+  const plate = (mode: "art" | "mask") => {
+    const c = document.createElement("canvas");
+    c.width = Math.round(PAGE.w * s);
+    c.height = Math.round(PAGE.h * s);
+    drawPlate(c.getContext("2d")!, plan, assets, mode, fontCss);
+    return c;
+  };
+  return { art: plate("art"), mask: plate("mask") };
+}
+
 /**
- * Build the 3D label's texture inputs from the two preview PDFs. The art
- * drives the render dimensions; the mask plate is rendered to exactly the
- * same size so every derived map shares the art's UV grid.
+ * Build the 3D label's texture inputs from the two rendered plates. Pixel
+ * work only — synchronous; drawing the plates is drawPlates' job.
  */
-export async function buildLabelTextures(
-  { artBytes, maskBytes }: { artBytes: Uint8Array; maskBytes: Uint8Array },
-): Promise<LabelTextures> {
-  const art = await renderPlate(artBytes);
-  const maskRender = await renderPlate(maskBytes, { width: art.width, height: art.height });
-  const { canvas: metalness, hasFoil } = deriveMetalness(maskRender);
+export function buildLabelTextures(
+  { art, mask }: { art: HTMLCanvasElement; mask: HTMLCanvasElement },
+): LabelTextures {
+  const { canvas: metalness, hasFoil } = deriveMetalness(mask);
   return { art, metalness, hasFoil, aspect: art.width / art.height };
 }

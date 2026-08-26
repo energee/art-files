@@ -68,15 +68,25 @@ const SAFE = {
 };
 
 export const PAGE = { w: TRIM.w + 2 * BLEED, h: TRIM.h + 2 * BLEED };
+/** Cover-fit an image over the full bleed page, centered — shared by the PDF
+ *  builders and the canvas backend. Centered, so the same rect serves both a
+ *  top-left and a bottom-left origin: (PAGE.h - h) / 2 is the inset from
+ *  either edge. */
+export function coverFit(imgW: number, imgH: number) {
+  const s = Math.max(PAGE.w / imgW, PAGE.h / imgH);
+  const w = imgW * s;
+  const h = imgH * s;
+  return { x: (PAGE.w - w) / 2, y: (PAGE.h - h) / 2, w, h };
+}
+
 /** Widest the 2D preview sheet is drawn on screen, in CSS px. It lives here
  *  rather than in PreviewCompare's class list because the 3D scene has to
  *  predict that sheet's on-screen height to frame its own label to match
  *  (see canScene's framingDistance) — two readers, one number. */
 export const PREVIEW_MAX_W = 900;
-/** Baseline PDF raster oversample and the zoom ceiling every view shares.
- *  PreviewCompare multiplies this by the live 2D zoom (and display density),
- *  while App and canScene use the same value as their maximum zoom so a view
- *  handoff is never silently clipped. */
+/** The zoom ceiling every view shares: App clamps the 2D zoom to it and
+ *  canScene derives its closest orbit from it, so a view handoff is never
+ *  silently clipped. (Raster density is previewRasterScale's job.) */
 export const PREVIEW_OVERSAMPLE = 2.5;
 /** Hard ceiling for the zoom-aware 2D raster. At the default page size this
  *  is 4876 x 3076 (about 60 MB of RGBA per canvas); PreviewCompare keeps the
@@ -91,11 +101,16 @@ export const PREVIEW_RASTER_MAX_SCALE = 600 / 72;
 export const PREVIEW_RASTER_MAX_EDGE = Math.round(PAGE.w * PREVIEW_RASTER_MAX_SCALE);
 
 /** Raster density for a 2D view. CSS zoom stays immediate; the preview
- *  debounces re-rasterization to this density after the gesture settles. */
+ *  debounces re-rasterization to this density after the gesture settles.
+ *  Derived from the sheet's ON-SCREEN size, not from PREVIEW_OVERSAMPLE: the
+ *  sheet is at most PREVIEW_MAX_W CSS px wide, so PREVIEW_MAX_W * zoom * dpr
+ *  device pixels is exactly one raster pixel per device pixel. Oversampling
+ *  past that bought no visible detail and cost backing store on every repaint
+ *  (the paint runs per keystroke). */
 export const previewRasterScale = (zoom: number, devicePixelRatio = 1) =>
   Math.min(
     PREVIEW_RASTER_MAX_SCALE,
-    PREVIEW_OVERSAMPLE * Math.max(1, zoom) * Math.max(1, devicePixelRatio),
+    (PREVIEW_MAX_W / PAGE.w) * Math.max(1, zoom) * Math.max(1, devicePixelRatio),
   );
 /** Art box inside the bleed — the TRIM, offset by the bleed. Only x/y move
  *  with the knob; the die does not change size. */
@@ -326,10 +341,10 @@ setOutputDpi(DESIGN_DPI);
  *  one label at a time. If it ever opens two, thread a Geometry through the
  *  renderers instead of reading module state.
  *
- *  NOTE for callers: the PDF preview worker runs its own copy of this module
- *  (separate registry), so calling this on the main thread alone leaves the
- *  worker building at the default. pdf/client.ts ships the value with every
- *  request for exactly that reason. */
+ *  NOTE for callers: this affects only the current process. `npm run
+ *  generate`'s Node harness (scripts/generate.ts) imports this module in a
+ *  separate process with its own copy of this state and never calls
+ *  setBleed — it always builds at the default bleed. */
 export function setBleed(inches: number) {
   BLEED = inches * 72;
   BLEED_SHIFT = BLEED - MEASURED_BLEED;
@@ -376,8 +391,8 @@ export const HANDLE_ADDR = { x: 474.58, yStart: 339.58, size: 12.91 };
 // whole rotated info block moved left (see HANDLE_ADDR above): x is set so
 // the 4th column's ink (descender + stroke) stops at the barcode halo's left
 // edge (BARCODE.x - BARCODE.stroke = 535.28).
-// yStart is the run's BOTTOM (the text reads bottom-to-top). drawJustifiedRotated
-// stretches every column to exactly maxLen, so all three share a top and a
+// yStart is the run's BOTTOM (the text reads bottom-to-top). justifiedRotatedRuns
+// (plan.ts) stretches every column to exactly maxLen, so all three share a top and a
 // bottom edge by construction rather than by measurement — the only question is
 // where those edges land. maxLen is the safe span less the outer stroke at each
 // end, and yStart is one stroke inside the bottom margin, which puts the drawn

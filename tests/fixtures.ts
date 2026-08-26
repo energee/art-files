@@ -52,7 +52,7 @@ export async function contentStreamText(bytes: Uint8Array): Promise<string> {
 export const measure = (text: string, size: number) => text.length * size * 0.55;
 
 /** Bold-sensitive stand-in, for asserting boxes measure with the same weight
- *  the renderer actually paints with (drawLine/drawRotated pick semibold vs
- *  regular by bold, which changes glyph widths in the real font). */
+ *  the renderer actually paints with (plan.ts's lineRuns/rotatedRuns pick
+ *  semibold vs regular by bold, which changes glyph widths in the real font). */
 export const measureBW = (text: string, size: number, bold: boolean) =>
   text.length * size * (bold ? 0.7 : 0.55);

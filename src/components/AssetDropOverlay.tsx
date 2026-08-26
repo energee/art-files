@@ -9,9 +9,10 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { FILE_DROP_ATTR } from "@/components/FileDrop";
 
-/** MIME types the overlay claims. JPEG is texture-only — the mask must be a
- *  PNG — so a JPEG dropped on the mask half still lands on the texture. */
-const CLAIMED_TYPES = ["image/png", "image/jpeg"];
+/** MIME types the overlay claims. JPEG and WebP are texture-only — the mask
+ *  must be a PNG — so either one dropped on the mask half still lands on the
+ *  texture. */
+const CLAIMED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
 type DropKind = "texture" | "mask";
 
@@ -28,7 +29,9 @@ export function globalAssetKind(
   const name = file.name.toLowerCase();
   const png = type === "image/png" || name.endsWith(".png");
   const jpeg = type === "image/jpeg" || name.endsWith(".jpg") || name.endsWith(".jpeg");
-  if (!png && !jpeg) return null;
+  const webp = type === "image/webp" || name.endsWith(".webp");
+  if (!png && !jpeg && !webp) return null;
+  // Only a PNG can be a mask, so only a PNG reads the drop's side.
   return png && clientX >= viewportWidth / 2 ? "mask" : "texture";
 }
 

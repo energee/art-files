@@ -96,9 +96,10 @@ describe("the art PDF's character-spacing operator", () => {
   });
 });
 
-// Regression: the shipped black keyline on the rotated Info line. drawRotated
-// draws bridge copies and a Tr-2 stroke pass under the fill copy, so a stroked
-// line emits more show-text operators than a bare one.
+// Regression: the shipped black keyline on the rotated Info line. strokedText
+// draws bridge copies and a Tr-2 stroke pass under the fill copy for each
+// rotatedRuns run, so a stroked line emits more show-text operators than a
+// bare one.
 describe("the Info line's shipped keyline", () => {
   it("draws a stroke around Info in the art PDF", async () => {
     const stroked = await contentStreamText(await buildArtPdf(defaultConfig(), assets));

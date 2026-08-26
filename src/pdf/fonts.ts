@@ -1,23 +1,28 @@
-// fonts.ts — the three Poppins faces every build needs, fetched once per
-// context. Imported by both the UI thread (full-resolution exports) and the
-// preview worker; each gets its own module instance, so each fetches once.
-import poppinsRegular from "../assets/fonts/Poppins-Regular.ttf?url";
-import poppinsSemiBold from "../assets/fonts/Poppins-SemiBold.ttf?url";
-import poppinsBold from "../assets/fonts/Poppins-Bold.ttf?url";
+// fonts.ts — the three faces every build needs for a given family, fetched
+// once per context. URLs come from fonts.ts's FONT_URLS (the ?url side of
+// the catalog, shared with the DOM gate so the two never drift). Consumers
+// are the full-resolution export builds and the dev-only parity harness
+// (src/dev/parity.ts); each gets its own module instance, so each fetches
+// once per family.
+import { FONT_URLS } from "../fonts";
+import type { FontFamilyId } from "../fontCatalog";
 import type { Assets } from "./build";
 
-let fontsPromise: Promise<Assets["fonts"]> | null = null;
+const fontsPromises = new Map<FontFamilyId, Promise<Assets["fonts"]>>();
 
-/** Memoized. A failed load clears the memo so the next build retries rather
- *  than replaying the rejection forever. */
-export function loadFonts(): Promise<Assets["fonts"]> {
-  if (fontsPromise) return fontsPromise;
+/** Memoized per family. A failed load clears that family's memo so the next
+ *  build retries rather than replaying the rejection forever. */
+export function loadFonts(id: FontFamilyId = "poppins"): Promise<Assets["fonts"]> {
+  const cached = fontsPromises.get(id);
+  if (cached) return cached;
+  const urls = FONT_URLS[id];
   const get = async (url: string) => new Uint8Array(await (await fetch(url)).arrayBuffer());
-  fontsPromise = Promise.all([get(poppinsRegular), get(poppinsSemiBold), get(poppinsBold)])
+  const p = Promise.all([get(urls.regular), get(urls.semibold), get(urls.bold)])
     .then(([regular, semibold, bold]) => ({ regular, semibold, bold }))
     .catch((error) => {
-      fontsPromise = null;
+      fontsPromises.delete(id);
       throw error;
     });
-  return fontsPromise;
+  fontsPromises.set(id, p);
+  return p;
 }

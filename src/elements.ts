@@ -2,6 +2,8 @@
 // the preview both read it, so they cannot disagree about what exists or
 // which config field backs it.
 import type { LabelConfig, Style, StyledLine } from "./types";
+import type { CollabSlots, Face } from "./plan";
+import { DESC, FONT_ASC, FONT_DESC, HANDLE_ADDR } from "./layout";
 import { defaultConfig } from "./defaults";
 import { strokeLayerOf } from "./strokes";
 
@@ -107,6 +109,77 @@ export const ELEMENTS: LabelElement[] = [
   { id: "storeCold", label: "Store cold", group: "template", hasBold: true, isText: true, allowNone: true, style: (c) => c.storeCold },
 ];
 
+/** Elements whose text can be edited from the preview: double-clicking one
+ *  edits it in place over the artwork (see PreviewCompare). Every
+ *  config-backed text element is here — the wordmark, the government
+ *  warning, and the collab lead-in draw fixed text with no backing config
+ *  field, so they are the only text elements absent. */
+export interface EditableText {
+  get(c: LabelConfig): string;
+  set(c: LabelConfig, text: string): void;
+  /** Restrict typing to digits and a decimal point (the ABV number). */
+  numeric?: boolean;
+  /** Drawn after the text but NOT stored, so an editor redraws it beside the
+   *  field, uneditable, while the element itself is hidden for the session
+   *  (the ABV's unit tail). */
+  suffix?: string;
+  /** Authored in the markdown subset (`**bold**`, `_white ink_`, plus the
+   *  description block's `# header`), so both the sidebar and the preview
+   *  edit it with the WYSIWYG field (DescriptionEditor) — markers PAINTED as
+   *  bold/white runs, never shown as punctuation.
+   *
+   *  The value is what that field has to draw with: the element's size and
+   *  leading in points, and the face pair plan.ts hands the renderers for it
+   *  (its `base` / `boldFace`), so the field paints what the canvas would.
+   *  Being the flag AND the metrics is deliberate — a separate table of
+   *  metrics could disagree with the flag about which elements are rich. */
+  rich?: { size: number; leading: number; faces: { base: Face; bold: Face } };
+  /** Several lines (the description block). A `rich` element without it
+   *  holds one line, matching what the renderer draws for it. */
+  multiline?: boolean;
+  /** Drawn centred on the label, so the in-place editor centres too. */
+  centred?: boolean;
+  /** Rendered uppercase (the name); the stored text keeps its case. */
+  upper?: boolean;
+  /** Drawn rotated 90deg CCW in the right column: the in-place editor
+   *  turns with the text, so the field lies on its side over the element
+   *  like every other element's does (see PreviewCompare). */
+  rotated?: boolean;
+}
+
+export const editableText: Partial<Record<ElementId, EditableText>> = {
+  name: { get: (c) => c.beerName, set: (c, t) => { c.beerName = t; }, centred: true, upper: true },
+  styleLine: { get: (c) => c.styleLine.text, set: (c, t) => { c.styleLine.text = t; }, centred: true },
+  abv: {
+    get: (c) => c.abv, set: (c, t) => { c.abv = t; },
+    numeric: true, suffix: "% alc by vol",
+  },
+  description: {
+    get: (c) => c.description, set: (c, t) => { c.description = t; },
+    rich: { size: DESC.size, leading: DESC.leading, faces: { base: "regular", bold: "semibold" } },
+    multiline: true,
+  },
+  volume: { get: (c) => c.volume.text, set: (c, t) => { c.volume.text = t; } },
+  // One rotated line in the markdown subset (see parseInfoLine): rich, so
+  // the preview paints `**@handle**` bold instead of showing the asterisks.
+  // The setter keeps the FIRST line whatever a field hands it — the slot
+  // draws one baseline, so a stored second line would silently never
+  // appear; every writer goes through here, so no caller repeats the rule.
+  handleAddress: {
+    get: (c) => c.handleAddress.text,
+    set: (c, t) => { c.handleAddress.text = t.split("\n")[0]; },
+    // ONE drawn line, so its "leading" is just its em box — which lands the
+    // field's line box exactly on the drawn one.
+    rich: {
+      size: HANDLE_ADDR.size,
+      leading: (FONT_ASC + FONT_DESC) * HANDLE_ADDR.size,
+      faces: { base: "semibold", bold: "bold" },
+    },
+    rotated: true,
+  },
+  storeCold: { get: (c) => c.storeCold.text, set: (c, t) => { c.storeCold.text = t; }, rotated: true },
+};
+
 export function elementById(id: ElementId): LabelElement {
   const e = ELEMENTS.find((x) => x.id === id);
   if (!e) throw new Error(`Unknown element: ${id}`);
@@ -202,4 +275,21 @@ export function isDefaultStyle(id: ElementId, s: Style): boolean {
     offsetOf(s) === offsetOf(d) &&
     boldOf(s) === boldOf(d)
   );
+}
+
+/** Drag-to-move targets: the elements whose vertical position is a persisted
+ *  config knob (see types.ts's Positioned). Null = not draggable right now —
+ *  the laurel's offsetY only applies while collab is on (logoNudge's gate),
+ *  and an empty collab slot draws nothing to drag. Horizontal position is
+ *  not a knob anywhere, so dragging is vertical by construction. */
+export function dragTarget(
+  cfg: LabelConfig, slots: CollabSlots, id: ElementId,
+): { get(): number; set(c: LabelConfig, v: number): void } | null {
+  if (id === "logo" && cfg.collabEnabled)
+    return { get: () => cfg.logo.offsetY ?? 0, set: (c, v) => { c.logo.offsetY = v; } };
+  if (id === "collabLeft" && cfg.collabEnabled && slots.left)
+    return { get: () => cfg.collabLeft.offsetY ?? 0, set: (c, v) => { c.collabLeft.offsetY = v; } };
+  if (id === "collabCenter" && cfg.collabEnabled && slots.center)
+    return { get: () => cfg.collabCenter.offsetY ?? 0, set: (c, v) => { c.collabCenter.offsetY = v; } };
+  return null;
 }

@@ -5,6 +5,13 @@
 // (bezier paths, node-editable), and the texture is the one honest raster
 // layer.
 //
+// Placement (where every element sits) comes from plan.ts's planLabel — the
+// same display list pdf/build.ts and hittest.ts consume — via a pdf-lib
+// MeasureFace mirroring the PDF backend's, so text/logo/barcode positions
+// cannot drift from the other renderers. This file re-derives its OWN QR
+// shapes and warning wrap (see the comments at qrShapes/wrapWarning below)
+// because it draws them as different structures than the plan's flat items.
+//
 // The barcode is ONE merged shape layer (Task 9b): bars and digit glyph
 // outlines in a single vectorMask, fill from cfg.barcodeFill. The digits are
 // bezier outlines, not editable type — an explicit, user-approved tradeoff
@@ -29,11 +36,11 @@ import fontkit from "@pdf-lib/fontkit";
 import { writePsdUint8Array, type BezierPath, type Layer, type Psd } from "ag-psd";
 import type { Fill, LabelConfig, StyledLine } from "../types";
 import { displayAbv, displayName, displayStyle } from "../defaults";
-import { logoNudge } from "../elements";
+import type { ElementId } from "../elements";
+import { FONT_FAMILIES, fontFamilyOf } from "../fontCatalog";
 import * as L from "../layout";
-import { barcodeFootprint, barcodeGeometry, barcodeStrokePt } from "../barcode";
 import { parseDescription, parseInfoLine, parseRuns } from "../description";
-import { parseLogo } from "../logo";
+import { planLabel, type MeasureFace, type Placed, type PlacedBarcode } from "../plan";
 import { qrShapes, qrUrl } from "../qr";
 import { strokeLayerOf } from "../strokes";
 import { warningMeasure, wrapWarning } from "../warning";
@@ -352,25 +359,25 @@ interface Faces {
   semibold: PDFFont;
   bold: PDFFont;
 }
-/** PostScript names, which is what Photoshop resolves the type layer against. */
-const PS_NAME = {
-  regular: "Poppins-Regular",
-  semibold: "Poppins-SemiBold",
-  bold: "Poppins-Bold",
-} as const;
-type Face = keyof typeof PS_NAME;
+/** PostScript names, which is what Photoshop resolves the type layer
+ *  against — cfg's family (see fontCatalog.ts's FONT_FAMILIES), not a fixed
+ *  Poppins map. */
+type Face = keyof typeof FONT_FAMILIES["poppins"]["ps"];
 
-/** One editable type layer. `x`/`baseline` are in label points; `rotated`
- *  applies the same quarter turn the PDF's drawRotated does (text reads
- *  bottom-to-top), expressed purely in the affine transform. */
-function textLayer(
+/** One editable type layer, bound to one family's PostScript names (`ps`,
+ *  resolved once per build from cfg — see buildLayers). `x`/`baseline` are
+ *  in label points; `rotated` applies the same quarter turn plan.ts's
+ *  rotatedRuns does (text reads bottom-to-top), expressed purely in the
+ *  affine transform. */
+function makeTextLayer(ps: Record<Face, string>) {
+  return function textLayer(
   name: string,
   text: string,
   opts: {
     x: number; baseline: number; size: number; fill: Fill; face: Face;
     /** Face an inline `**bold**` run steps up to. Defaults to semibold,
-     *  matching drawLine; the rotated Info column passes bold, since its
-     *  unmarked text is already semibold. */
+     *  matching plan.ts's lineRuns; the rotated Info column passes bold,
+     *  since its unmarked text is already semibold. */
     boldFace?: Face;
     rotated?: boolean;
     /** Letter-spacing in label points (Style.letterSpacing). */
@@ -383,8 +390,8 @@ function textLayer(
      *  entry styles one line of `text` (its newline included), so the block
      *  keeps its per-line faces and fills in ONE editable layer. */
     lines?: StyledLine[];
-    /** Justify every line to the full measure, the way drawJustifiedRotated
-     *  spaces the warning's columns. */
+    /** Justify every line to the full measure, the way plan.ts's
+     *  justifiedRotatedRuns spaces the warning's columns. */
     justify?: boolean;
     /** Outer stroke, as an editable Photoshop layer EFFECT. The PDF draws
      *  the same stroke via PDF's fill-and-outline text rendering mode;
@@ -429,7 +436,7 @@ function textLayer(
     ? runs.map((r) => ({
         length: r.text.length,
         style: {
-          font: { name: PS_NAME[r.bold ? boldFace : opts.face] },
+          font: { name: ps[r.bold ? boldFace : opts.face] },
           // A merged block's lines can differ in colour (a `_white ink_`
           // line keeps the block's fill, a re-filled one does not), so the
           // run carries its own. Mask mode repaints per run: a white-ink
@@ -446,7 +453,7 @@ function textLayer(
       text: drawn,
       transform: opts.rotated ? [0, -1, 1, 0, t, b] : [1, 0, 0, 1, t, b],
       style: {
-        font: { name: PS_NAME[opts.face] },
+        font: { name: ps[opts.face] },
         fontSize: px(opts.size),
         fillColor: color255(opts.fill),
         ...(opts.leading ? { leading: px(opts.leading), autoLeading: false } : {}),
@@ -468,6 +475,7 @@ function textLayer(
       opts.strokeWidth,
     ),
   };
+  };
 }
 
 const faceOf = (line: { bold?: boolean }): Face => (line.bold ? "semibold" : "regular");
@@ -480,6 +488,24 @@ function buildLayers(
   const groups: Layer[] = [];
   /** This mode's paint for a styled element. */
   const P = (s: { fill: Fill; layer: "metallic" | "white" }) => paint(mode, s.fill, s.layer);
+  // Bound once to cfg's family's PostScript names — every textLayer call
+  // below resolves the type layer's font against these, not a fixed Poppins
+  // map (see fontCatalog.ts's FONT_FAMILIES).
+  const textLayer = makeTextLayer(FONT_FAMILIES[fontFamilyOf(cfg)].ps);
+
+  // Text + laurel + barcode placement, from the same display list every other
+  // backend consumes. The PSD draws no collab art, so no collab assets go in —
+  // the plan simply plans none.
+  const pdfMeasure: MeasureFace = (t, size, face) =>
+    (face === "bold" ? f.bold : face === "semibold" ? f.semibold : f.regular)
+      .widthOfTextAtSize(t, size);
+  const plan = planLabel(cfg, pdfMeasure, { assets: { logoSvg: assets.logoSvg } });
+  const planned = <K extends Placed["kind"]>(id: string, kind: K) =>
+    plan.filter((p): p is Extract<Placed, { kind: K }> => p.kind === kind && p.id === id);
+  // The min-x of an element's planned runs is exactly what the old centered()
+  // helper computed: both subtract half the tracked runs-width from the same
+  // cx, measured with the same PDFFont metrics.
+  const textX = (id: ElementId) => Math.min(...planned(id, "text").map((r) => r.x));
 
   if (mode === "mask") {
     // Same base coats as buildMaskPdf: white page (knockout by default),
@@ -567,34 +593,18 @@ function buildLayers(
   groups.push({ name: "Left column", opened: false, children: left });
 
   // Center column ----------------------------------------------------------
-  // Measure with the SAME face the layer renders in, or a bold style line
-  // centres against regular metrics and sits off-centre.
-  // Tracked, like the PDF's drawLine: a tracked line is wider than the font
-  // measures it, and centring on the untracked width would leave it sitting
-  // half a run's worth of spacing left of the centre line.
-  // Measured over inline runs, like both PDF passes: the layer holds the
-  // marker-STRIPPED text (see textLayer), so centring the raw markdown would
-  // shove a marked-up line right by the markers' own width. A bold run also
-  // measures in the bold face, which is what it draws in.
-  const centered = (text: string, cx: number, size: number, face: Face, tracking = 0) =>
-    cx - L.runsWidth(
-      parseRuns({ text, fill: "none", layer: "metallic" }),
-      (r) => f[r.bold ? "bold" : face].widthOfTextAtSize(r.text, size),
-      tracking,
-    ) / 2;
-  const logo = parseLogo(assets.logoSvg, L.LOGO.w);
-  // Same nudge gate the PDFs and hit-testing apply (see logoNudge), so the
-  // PSD stays registered with them — collab off means no nudge everywhere.
-  const logoCy = L.LOGO.cy + logoNudge(cfg);
-  const logoPaths = logo.paths.flatMap((d) =>
-    svgToPaths(d, L.LOGO.cx - logo.w / 2, logoCy - logo.h / 2),
-  );
+  // x for each centred line comes from textX (see its definition above): the
+  // plan already centred these runs against the same cx with the same
+  // PDFFont metrics, so re-deriving the measurement here would risk a
+  // different rounding for a byte-identical requirement.
+  const logoItem = planned("logo", "paths")[0];
+  const logoPaths = logoItem.paths.flatMap((d) => svgToPaths(d, logoItem.x, logoItem.y));
   groups.push({
     name: "Center",
     opened: false,
     children: [
       textLayer("Wordmark", L.WORDMARK.text, {
-        x: centered(L.WORDMARK.text, L.WORDMARK.cx, L.WORDMARK.size, "bold", cfg.wordmark.letterSpacing),
+        x: textX("wordmark"),
         baseline: L.WORDMARK.baseline, size: L.WORDMARK.size,
         fill: P(cfg.wordmark), face: "bold", tracking: cfg.wordmark.letterSpacing,
         stroke: cfg.wordmark.stroke, strokeLayer: cfg.wordmark.strokeLayer,
@@ -605,14 +615,14 @@ function buildLayers(
         strokePaint(mode, cfg.logo.stroke, cfg.logo.strokeLayer), cfg.logo.strokeWidth,
       ),
       textLayer("Beer name", displayName(cfg).toUpperCase(), {
-        x: centered(displayName(cfg).toUpperCase(), L.NAME.cx, L.NAME.size, "bold", cfg.nameStyle.letterSpacing),
+        x: textX("name"),
         baseline: L.NAME.baseline, size: L.NAME.size,
         fill: P(cfg.nameStyle), face: "bold", tracking: cfg.nameStyle.letterSpacing,
         stroke: cfg.nameStyle.stroke, strokeLayer: cfg.nameStyle.strokeLayer,
         strokeWidth: cfg.nameStyle.strokeWidth, mode,
       }),
       textLayer("Style line", displayStyle(cfg), {
-        x: centered(displayStyle(cfg), L.STYLE_LINE.cx, L.STYLE_LINE.size, faceOf(cfg.styleLine), cfg.styleLine.letterSpacing),
+        x: textX("styleLine"),
         baseline: L.STYLE_LINE.baseline, size: L.STYLE_LINE.size,
         fill: P(cfg.styleLine), face: faceOf(cfg.styleLine), tracking: cfg.styleLine.letterSpacing,
         stroke: cfg.styleLine.stroke, strokeLayer: cfg.styleLine.strokeLayer,
@@ -622,8 +632,11 @@ function buildLayers(
   });
 
   // Right rotated column ---------------------------------------------------
-  // Same tracked measure the PDF wraps with, so both deliverables break the
-  // warning into the same columns.
+  // Kept local because plan.ts's warning items are already the wrapped,
+  // justified runs — this call exists only to get the LINE TEXT back out for
+  // the merged multi-line layer (styleRuns need per-line strings, not the
+  // plan's per-run x/y), so re-wrapping here is cheaper than re-joining the
+  // plan's runs back into lines.
   const warnLines = wrapWarning(
     warningMeasure(
       (t, bold) => (bold ? f.bold : f.regular).widthOfTextAtSize(t, L.WARNING.size),
@@ -671,7 +684,7 @@ function buildLayers(
   });
 
   // Codes ------------------------------------------------------------------
-  groups.push({ name: "Codes", opened: false, children: codeLayers(cfg, f, fk, mode) });
+  groups.push({ name: "Codes", opened: false, children: codeLayers(cfg, fk, mode, plan) });
   // PSD layer order is bottom-first, matching the PDF's draw order.
   return groups;
 }
@@ -679,7 +692,12 @@ function buildLayers(
 /** QR (vector) + the barcode: one merged "Barcode" shape layer (bars and
  *  digit glyph outlines, both bezier, in cfg.barcodeFill) with an optional
  *  "Barcode stroke" layer directly beneath it, mirroring the PDF's halo. */
-function codeLayers(cfg: LabelConfig, f: Faces, fk: FKFont, mode: PsdMode): Layer[] {
+function codeLayers(cfg: LabelConfig, fk: FKFont, mode: PsdMode, plan: Placed[]): Layer[] {
+  // Kept local because plan.ts's QR item is the already-flattened path string
+  // (qrPath), sized for pdf-lib's drawSvgPath — this file instead draws the
+  // QR as its own dots/finders shape layer (node-editable circles rather than
+  // one opaque path), which needs qrShapes' structured module data, not the
+  // flattened path.
   const q = qrShapes(qrUrl(displayName(cfg)));
   const ms = q.moduleSize * L.QR.size;
   const at = (u: number, axis: "x" | "y") =>
@@ -695,32 +713,30 @@ function codeLayers(cfg: LabelConfig, f: Faces, fk: FKFont, mode: PsdMode): Laye
     ),
   ];
 
-  // Geometry is shared with the PDF builder (see ../barcode) so the two
-  // deliverables cannot drift on the one element where drift stops it
-  // scanning.
-  const B = L.BARCODE;
-  const measure = (t: string) => f.regular.widthOfTextAtSize(t, B.textSize);
-  const geo = barcodeGeometry(cfg.upc, measure);
+  // The barcode's one planned item: geometry, resolved stroke width, digit
+  // placements and the mask footprint all come from the shared plan, so this
+  // backend cannot re-derive them differently from the PDF.
+  const bc = plan.find((p): p is PlacedBarcode => p.kind === "barcode" && p.id === "barcode")!;
 
   // yStart is exactly what the old digit TYPE layers used as `baseline` —
   // the string-start Y a `rotate(90)` PDF drawText lands at (see
   // digitGroupPaths for the derivation); keeping this identical is what
   // makes the outlines land where the type layers used to.
-  const digitGroups = geo.digits.map((d) =>
-    digitGroupPaths(fk, d.text, B.textSize, d.x, geo.bottom - d.center * geo.mod + measure(d.text) / 2),
+  const digitGroups = bc.geo.digits.map((d, i) =>
+    digitGroupPaths(fk, d.text, bc.textSize, d.x, bc.digits[i].y),
   );
   const barcodePaths: BezierPath[] = [
-    ...geo.bars.map((b) => rectPath(b.x, b.yTop, b.w, b.h)),
+    ...bc.geo.bars.map((b) => rectPath(b.x, b.yTop, b.w, b.h)),
     ...digitGroups.flatMap((g) => g.paths),
   ];
 
-  // Resolved outer-stroke width, from the SAME shared resolver the PDF's
-  // drawBarcode uses (barcodeStrokePt in ../barcode) rather than a second
-  // copy of the expression. "none" or an explicit zero width both collapse to
-  // S = 0, which omits the stroke effect entirely — matching the PDF's own `if
-  // (S > 0)` gate so the two deliverables can't disagree on whether a halo
-  // exists, or on how wide it is.
-  const S = barcodeStrokePt(cfg);
+  // Resolved outer-stroke width, from the plan's shared resolver
+  // (barcodeStrokePt in ../barcode, via plan.ts's barcodeItem). "none" or an
+  // explicit zero width both collapse to S = 0, which omits the stroke
+  // effect entirely — matching the PDF's own `if (S > 0)` gate so the two
+  // deliverables can't disagree on whether a halo exists, or on how wide it
+  // is.
+  const S = bc.S;
 
   const qr = shapeLayer(
     "QR", qrPaths, paint(mode, cfg.qrFill, cfg.qrLayer),
@@ -732,7 +748,7 @@ function codeLayers(cfg: LabelConfig, f: Faces, fk: FKFont, mode: PsdMode): Laye
     // rectangles plus one glyph-box pill per digit group. The editable
     // outside effect expands that base footprint by the same S as the PDF's
     // stroke pass while keeping its color independent from the fill.
-    const footprint: BezierPath[] = barcodeFootprint(geo, 0, measure)
+    const footprint: BezierPath[] = bc.footprint
       .map((r) => ({ ...rectPath(r.x, r.yTop, r.w, r.h), operation: "combine" as const }));
     return [
       qr,

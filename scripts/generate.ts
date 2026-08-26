@@ -11,6 +11,7 @@ import { buildPsd, type PsdAssets } from "../src/psd/build";
 import { defaultConfig, parseConfigFile } from "../src/defaults";
 import { rasterKind, tintRgba } from "../src/collab";
 import { validateUpc } from "../src/upc";
+import { FONT_FAMILIES, fontFamilyOf } from "../src/fontCatalog";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const asset = (p: string) => join(here, "..", "src", "assets", p);
@@ -72,11 +73,15 @@ if (maskPath !== "none") {
 // Read once — both the PDF assets and the PSD's pixel decode use these bytes.
 const textureBytes = texturePath === "none" ? undefined : readFileSync(texturePath);
 
+// TTF basenames resolve through the catalog against cfg's family — Node-safe
+// (fontCatalog.ts has no ?url imports), so this harness never hardcodes
+// Poppins basenames the way the DOM/PDF gates would otherwise tempt.
+const fontFiles = FONT_FAMILIES[fontFamilyOf(cfg)].files;
 const assets: Assets = {
   fonts: {
-    regular: readFileSync(asset("fonts/Poppins-Regular.ttf")),
-    semibold: readFileSync(asset("fonts/Poppins-SemiBold.ttf")),
-    bold: readFileSync(asset("fonts/Poppins-Bold.ttf")),
+    regular: readFileSync(asset(`fonts/${fontFiles.regular}`)),
+    semibold: readFileSync(asset(`fonts/${fontFiles.semibold}`)),
+    bold: readFileSync(asset(`fonts/${fontFiles.bold}`)),
   },
   logoSvg: readFileSync(asset("logo2025.svg"), "utf8"),
   collabLeft: collabImage(flag("collab-left"), cfg.collabLeft),

@@ -1,11 +1,13 @@
 // render.ts — rasterize a generated PDF's first page to a canvas. One place
-// owns the raster worker and its request/cancel protocol; the two consumers
-// (the 2D compare preview and the 3D label's textures) differ only in how
-// they size the output. The painting itself happens in rasterWorker.ts
-// against an OffscreenCanvas — pdf.js paints on the calling thread, so
-// painting here froze the whole app for the duration. The worker sends the
-// finished frame back as a transferred ImageBitmap, and the only main-thread
-// work left is one drawImage.
+// owns the raster worker and its request/cancel protocol. Its only consumer
+// now is src/dev/parity.ts, a dev-only harness kept to compare the canvas
+// backend's plates against the PDF's own raster; the 2D preview and the 3D
+// label's textures both moved to the canvas backend in Phase 3. The painting
+// itself happens in rasterWorker.ts (which stays with this file) against an
+// OffscreenCanvas — pdf.js paints on the calling thread, so painting here
+// froze the whole app for the duration. The worker sends the finished frame
+// back as a transferred ImageBitmap, and the only main-thread work left is
+// one drawImage.
 
 export interface RenderPageOptions {
   /** Draw into this canvas instead of a fresh one (the preview reuses its

@@ -25,7 +25,7 @@ type Line = Style & { text: string };
 
 /** Ink extent of a styled line, relative to origin (x=0) and baseline (y=0),
  *  y DOWN. `base` is the face for unmarked text; **bold** runs step up to Bold,
- *  exactly as drawLine/drawRotated choose faces. */
+ *  exactly as plan.ts's lineRuns/rotatedRuns choose faces. */
 function inkOf(style: Line, size: number, base: Face) {
   const tracking = style.letterSpacing ?? 0;
   let cursor = 0, minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -77,7 +77,7 @@ console.log("element           slackL  slackR  slackT  slackB");
 
 rotated("Info", cfg.handleAddress, L.HANDLE_ADDR, SEMIBOLD);
 rotated("storeCold", cfg.storeCold, L.STORE_COLD, SEMIBOLD);
-// Every warning column is stretched to exactly maxLen by drawJustifiedRotated,
+// Every warning column is stretched to exactly maxLen by plan.ts's justifiedRotatedRuns,
 // so its drawn length is maxLen regardless of what the words measure.
 const faceWidth = (face: Face, t: string, size: number) =>
   (face.layout(t).advanceWidth / face.unitsPerEm) * size;

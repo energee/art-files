@@ -4,12 +4,47 @@
 // disk like scripts/generate.ts does and inspects the actual PDF content
 // stream pdf-lib emits, rather than mocking PDFPage.
 import { describe, expect, it } from "vitest";
-import type { PDFFont, PDFPage } from "pdf-lib";
-import { buildMaskPdf, drawJustifiedRotated } from "../src/pdf/build";
+import { PDFDocument, PDFName } from "pdf-lib";
+import { buildArtPdf, buildMaskPdf, type CollabImage } from "../src/pdf/build";
 import { warningColumnLen, warningMeasure, wrapWarning } from "../src/warning";
 import { defaultConfig } from "../src/defaults";
+import type { ElementId } from "../src/elements";
 import * as L from "../src/layout";
 import { assets, contentStreamText } from "./fixtures";
+
+// Counts /Subtype /Image XObjects in a saved PDF's indirect object table —
+// the thing a hidden collab logo must NOT contribute, even though planLabel
+// already omits its drawn item. Counting XObjects (not grepping raw bytes
+// for a JPEG/PNG marker) survives pdf-lib's own re-compression of the
+// embedded stream.
+async function countImageXObjects(bytes: Uint8Array): Promise<number> {
+  const doc = await PDFDocument.load(bytes);
+  let n = 0;
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    const dict = (obj as { dict?: { get(name: PDFName): unknown } }).dict;
+    if (dict?.get(PDFName.of("Subtype"))?.toString() === "/Image") n++;
+  }
+  return n;
+}
+
+// Every text/image ElementId except one, so a test can hide the whole label
+// down to a single element and read its operators without the rest of the
+// page's ink interfering.
+const allBut = (id: ElementId): Set<ElementId> =>
+  new Set<ElementId>([
+    "name", "styleLine", "abv", "description", "volume", "wordmark", "logo",
+    "handleAddress", "warning", "storeCold", "qr", "barcode",
+    "collabLead", "collabLeft", "collabCenter",
+  ].filter((x) => x !== id) as ElementId[]);
+
+// A minimal embeddable 1x1 PNG, standing in for an uploaded mask — buildMaskPdf
+// only needs it to be embeddable, and using it here skips the page-covering
+// no-mask flood rect so its "rg" doesn't show up in the isolated element's
+// operator sequence below.
+const onePxPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
 
 // The exact operator sequence pdf-lib emits for a full-bleed rect filled
 // mask blue — what page.drawRectangle({x:0, y:0, width:PAGE.w, height:PAGE.h,
@@ -38,51 +73,27 @@ describe("buildMaskPdf — no-mask flood", () => {
   });
 });
 
-// Justified warning columns: every column's inter-word spacing stretches to
-// fill L.WARNING.maxLen exactly, so there's no ragged final column. This
-// exercises drawJustifiedRotated directly with a mocked page (deterministic
-// varying word widths, unlike drawBarcode's tests which only need a
-// constant), then reconstructs the drawn run's total length from the
-// recorded per-word y positions the way the coordinate math in
-// drawJustifiedRotated's doc comment describes: the run advances from
-// yStart toward smaller yStart, so PDF-space y increases word to word, and
-// the whole run's length is (last word's y - first word's y) + last word's
-// width.
-describe("drawJustifiedRotated", () => {
-  const font = {
-    widthOfTextAtSize: (t: string, size: number) => t.length * size * 0.6,
-  } as unknown as PDFFont;
-  const style = { fill: "#000000" as const, layer: "white" as const };
-
-  function drawnWordPositions(text: string, maxLen: number) {
-    const texts: { txt: string; y: number }[] = [];
-    const page = {
-      drawText: (txt: string, o: { y: number }) => texts.push({ txt, y: o.y }),
-      pushOperators: () => {}, // text state (stroke mode, Tc) — geometry only here
-    } as unknown as PDFPage;
-    drawJustifiedRotated(page, font, text, "art", style, {
-      x: 100, yStart: 200, size: 6, maxLen,
-    });
-    return texts;
-  }
-
-  it("stretches a multi-word column to exactly maxLen", () => {
-    const maxLen = 150;
-    const texts = drawnWordPositions("THE QUICK FOX", maxLen);
-    expect(texts).toHaveLength(3);
-    const lastWidth = font.widthOfTextAtSize("FOX", 6);
-    const runLen = texts[texts.length - 1].y - texts[0].y + lastWidth;
-    expect(runLen).toBeCloseTo(maxLen, 10);
-  });
-
-  it("does not letter-space a single-word column to fill maxLen", () => {
-    const maxLen = 150;
-    const texts = drawnWordPositions("SUPERCALIFRAGILISTIC", maxLen);
-    expect(texts).toHaveLength(1);
-    const natural = font.widthOfTextAtSize("SUPERCALIFRAGILISTIC", 6);
-    expect(natural).toBeLessThan(maxLen); // otherwise this case proves nothing
-    expect(warningColumnLen("SUPERCALIFRAGILISTIC", maxLen, (t) => font.widthOfTextAtSize(t, 6))).toBeCloseTo(natural, 10);
-  });
+// The rotated column's Tr-2 stroke technique (bridge copies + a stroke-color
+// fill pass, THEN the true fill on top — see strokedText's doc comment), on
+// the LIVE draw path: drawElements' plan-driven drawPlaced, not a
+// hand-rolled mocked-page harness. The multi-word maxLen-justification math
+// itself (what the old drawJustifiedRotated/drawRotated duo also computed)
+// is covered directly at the placement layer by tests/plan.test.ts's
+// "justifiedRotatedRuns" describe block (both the multi-word exact-maxLen
+// case and the single-word natural-length case) — this block only needs to
+// guard the part plan.ts does NOT touch: the actual paint order and the
+// mask's per-layer color resolution once pdf-lib draws it.
+describe("the rotated column's stroke pass, on the live draw path", () => {
+  // Isolate storeCold (a rotated element) by hiding every other element, and
+  // supply a maskPng so buildMaskPdf skips its own page-covering flood rect
+  // — otherwise that flood's "rg" would land ahead of storeCold's in the
+  // stream and confuse the ordering check below. `rgOps` reads every
+  // fill-color-setting "r g b rg" operator (NOT "RG", the separate stroke-
+  // paint operator) in emission order — exactly the color sequence
+  // strokedText's bridge copies + Tr-2 stroke pass + final fill pass draw.
+  const rgOps = (stream: string) =>
+    [...stream.matchAll(/(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) rg\b/g)]
+      .map((m) => [Number(m[1]), Number(m[2]), Number(m[3])] as const);
 
   it.each([
     {
@@ -91,8 +102,8 @@ describe("drawJustifiedRotated", () => {
         fill: "#000000", layer: "metallic", stroke: "#000000",
         strokeLayer: "white", strokeWidth: 15,
       } as const,
-      stroke: { red: 0, green: 156 / 255, blue: 215 / 255 },
-      fill: { red: 1, green: 1, blue: 1 },
+      stroke: [0, 156 / 255, 215 / 255], // maskColor("white") — L.COLORS.maskBlue
+      fill: [1, 1, 1], // maskColor("metallic") — knockout white
     },
     {
       name: "metallic stroke around white fill",
@@ -100,30 +111,56 @@ describe("drawJustifiedRotated", () => {
         fill: "#000000", layer: "white", stroke: "#000000",
         strokeLayer: "metallic", strokeWidth: 15,
       } as const,
-      stroke: { red: 1, green: 1, blue: 1 },
-      fill: { red: 0, green: 156 / 255, blue: 215 / 255 },
+      stroke: [1, 1, 1],
+      fill: [0, 156 / 255, 215 / 255],
     },
-  ])("paints $name in stroke-then-fill order on the mask", ({ style, stroke, fill }) => {
-    const colors: { red: number; green: number; blue: number }[] = [];
-    const page = {
-      drawText: (_txt: string, o: { color: typeof stroke }) => colors.push(o.color),
-      pushOperators: () => {}, // stroke pass sets text state; colors carry the order
-    } as unknown as PDFPage;
-    drawJustifiedRotated(page, font, "INK", "mask", style, {
-      x: 100, yStart: 200, size: 6, maxLen: 150,
+  ])("paints $name in stroke-then-fill order on the mask", async ({ style, stroke, fill }) => {
+    const cfg = defaultConfig();
+    cfg.storeCold = { text: "INK", ...style };
+    const bytes = await buildMaskPdf(cfg, {
+      ...assets, maskPng: onePxPng, hidden: allBut("storeCold"),
     });
-    expect(colors.length).toBeGreaterThan(1);
-    for (const color of colors.slice(0, -1)) expect(color).toMatchObject(stroke);
-    expect(colors.at(-1)).toMatchObject(fill);
+    // Drop the first match: buildMaskPdf's page-background rect (always
+    // white, unconditionally, before drawElements ever runs) is not part of
+    // storeCold's own draw and isn't the ordering this test is about.
+    const ops = rgOps(await contentStreamText(bytes)).slice(1);
+    expect(ops.length).toBeGreaterThan(1);
+    for (const op of ops.slice(0, -1)) for (const c of [0, 1, 2]) expect(op[c]).toBeCloseTo(stroke[c], 10);
+    for (const c of [0, 1, 2]) expect(ops.at(-1)![c]).toBeCloseTo(fill[c], 10);
   });
 
-  // The real WARNING_TEXT, wrapped through the real wrapper, with THIS
-  // test's font — every resulting column here is multi-word, so every one
-  // must justify out to exactly maxLen.
+  it("paints the same stroke-then-fill order on the art plate", async () => {
+    const cfg = defaultConfig();
+    cfg.storeCold = {
+      text: "INK", fill: "#111111", layer: "metallic",
+      stroke: "#eeeeee", strokeLayer: "white", strokeWidth: 15,
+    };
+    const bytes = await buildArtPdf(cfg, { ...assets, hidden: allBut("storeCold") });
+    // No page-level background paint in art mode (no texture supplied), so
+    // every "rg" here belongs to storeCold's own draw — nothing to drop.
+    const ops = rgOps(await contentStreamText(bytes));
+    expect(ops.length).toBeGreaterThan(1);
+    const stroke = [0xee / 255, 0xee / 255, 0xee / 255];
+    const fill = [0x11 / 255, 0x11 / 255, 0x11 / 255];
+    for (const op of ops.slice(0, -1)) for (const c of [0, 1, 2]) expect(op[c]).toBeCloseTo(stroke[c], 10);
+    for (const c of [0, 1, 2]) expect(ops.at(-1)![c]).toBeCloseTo(fill[c], 10);
+  });
+});
+
+// The real WARNING_TEXT, wrapped through the real wrapper, with a
+// deterministic stand-in font — every resulting column here is multi-word,
+// so every one must justify out to exactly maxLen. Exercises src/warning.ts
+// directly (the same module plan.ts's warning branch calls), independent of
+// drawRotated/drawJustifiedRotated — nothing here changed with their removal.
+describe("warning wrapping invariants", () => {
+  const font = {
+    widthOfTextAtSize: (t: string, size: number) => t.length * size * 0.6,
+  };
+
   it("every real wrapped warning column measures exactly maxLen after justification", () => {
     // Marker-aware, as every renderer measures now: WARNING_TEXT carries
     // **bold** runs whose asterisks must not be counted as glyphs. This
-    // test's single embedded font stands in for both faces.
+    // test's single stand-in measure stands in for both faces.
     const measure = warningMeasure((t) => font.widthOfTextAtSize(t, L.WARNING.size));
     const cols = wrapWarning(measure, L.WARNING.maxLen);
     expect(cols.length).toBeGreaterThan(1);
@@ -157,5 +194,24 @@ describe("Assets.hidden — the layers-panel eye", () => {
       await buildMaskPdf(cfg, { ...assets, hidden: new Set(["name", "storeCold"]) }),
     ));
     expect(hidden).toBeLessThan(plain);
+  });
+
+  // Regression: a pre-refactor bug gated the whole collab-logo embed on
+  // !hide(id), but the refactored planArt embedded the raster bytes BEFORE
+  // consulting assets.hidden — so a hidden collab slot drew nothing (plan.ts
+  // correctly omitted the item) yet still left its image XObject sitting in
+  // the saved PDF. Hidden must mean no ink AND no embedded bytes.
+  it("does not embed a hidden collab logo's raster bytes into the saved PDF", async () => {
+    const cfg = defaultConfig();
+    cfg.collabEnabled = true;
+    const collabLeft: CollabImage = { kind: "png", bytes: onePxPng };
+
+    const noCollab = await buildArtPdf(cfg, assets);
+    const visible = await buildArtPdf(cfg, { ...assets, collabLeft });
+    const hidden = await buildArtPdf(cfg, { ...assets, collabLeft, hidden: new Set(["collabLeft"]) });
+
+    const baseline = await countImageXObjects(noCollab);
+    expect(await countImageXObjects(visible)).toBeGreaterThan(baseline);
+    expect(await countImageXObjects(hidden)).toBe(baseline);
   });
 });

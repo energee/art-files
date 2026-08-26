@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import type { PDFFont, PDFPage } from "pdf-lib";
 import type { LabelConfig } from "../src/types";
 import { drawBarcode } from "../src/pdf/build";
+import { barcodeItem, type MeasureFace } from "../src/plan";
 import { barcodeStrokePt } from "../src/barcode";
 import { encodeUpc } from "../src/upc";
 import { defaultConfig, parseConfigFile, toConfigFile } from "../src/defaults";
@@ -35,7 +36,9 @@ function draw(cfg: LabelConfig, mode: "art" | "mask") {
     pushOperators: () => {}, // digit stroke pass sets text state (Tr/w/RG)
   } as unknown as PDFPage;
   const font = { widthOfTextAtSize: () => 10 } as unknown as PDFFont;
-  drawBarcode(page, { regular: font, semibold: font, bold: font }, cfg, mode);
+  const fonts = { regular: font, semibold: font, bold: font };
+  const mf: MeasureFace = (t, size) => fonts.regular.widthOfTextAtSize(t, size);
+  drawBarcode(page, fonts, barcodeItem(cfg, mf), mode);
   return { rects, texts };
 }
 

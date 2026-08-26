@@ -2,7 +2,7 @@
 // Prevents an additional console window on Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::{fs, io::ErrorKind, path::PathBuf, sync::Mutex};
+use std::{ffi::OsString, fs, io::ErrorKind, path::PathBuf, sync::Mutex};
 use tauri::Manager;
 
 // Deliberately the repo library rather than `{}`: a fresh desktop install is
@@ -73,9 +73,38 @@ fn relaunch_app(app: tauri::AppHandle) {
  * Held in state rather than emitted directly: a launch-by-file delivers
  * before the webview is listening, so the frontend drains the queue once
  * ready and again on each "project-file-opened" emit. */
-struct OpenedFile(Mutex<Vec<PathBuf>>);
+struct OpenedFile(Mutex<Vec<String>>);
 
 impl OpenedFile {
+    /** Seed the queue from the paths argv carried at launch. */
+    fn new(paths: impl IntoIterator<Item = PathBuf>) -> Self {
+        let queue = Self(Mutex::new(Vec::new()));
+        for path in paths {
+            queue.push(path);
+        }
+        queue
+    }
+
+    /** Queue a path the OS handed us, or DROP it when it cannot round-trip to
+     * a String — the queue holds Strings for that reason, so the rule has one
+     * home and both delivery paths (argv, Apple event) inherit it. Mangling
+     * instead is not an option: take_opened_file hands the frontend a String,
+     * and the tab's filePath — that same string — is what Save writes back
+     * through, so a lossy path means a failed open or a save aimed elsewhere.
+     * ponytail: dropping is the ceiling — opening these needs an opaque
+     * document handle through the whole open/save pipeline.
+     *
+     * Returns whether it was queued. Plain method so tests reach it. */
+    fn push(&self, path: PathBuf) -> bool {
+        match path.into_os_string().into_string() {
+            Ok(path) => {
+                self.0.lock().unwrap().push(path);
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
     /** Pop the oldest queued path — FIFO, so files open in the order the
      * OS delivered them. Plain method (not the command) so tests reach it. */
     fn take(&self) -> Option<String> {
@@ -83,33 +112,45 @@ impl OpenedFile {
         if queue.is_empty() {
             return None;
         }
-        Some(queue.remove(0).to_string_lossy().into_owned())
+        Some(queue.remove(0))
     }
 }
 
 /** Every .label path among command-line arguments — how Windows and Linux
  * deliver file-association opens (multi-select Open delivers several). The
  * extension match is the filter: it skips the exe path in args[0] and any
- * stray flags alike. */
-fn label_paths_from_args<I: IntoIterator<Item = String>>(args: I) -> Vec<PathBuf> {
+ * stray flags alike.
+ *
+ * Item is `Into<OsString>` so std::env::args_os() passes straight in: args()
+ * PANICS on a non-Unicode argument (legal on Windows — an unpaired UTF-16
+ * surrogate in a path), which would crash the app before its window appeared.
+ * A path that survives to here but cannot become a String is dropped later,
+ * by OpenedFile::push, which is where that rule lives. */
+fn label_paths_from_args<S: Into<OsString>, I: IntoIterator<Item = S>>(args: I) -> Vec<PathBuf> {
     args.into_iter()
-        .map(PathBuf::from)
-        .filter(|path| {
-            path.extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("label"))
-        })
+        .map(|arg| PathBuf::from(arg.into()))
+        .filter(|path| is_label_path(path))
         .collect()
+}
+
+/** The one spelling of "this is ours", shared by both delivery paths. */
+fn is_label_path(path: &std::path::Path) -> bool {
+    path.extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("label"))
 }
 
 /** Hand an OS-provided .label path to the frontend. Queue FIRST, then the
  * emit — the webview may not be listening yet, and OpenedFile's doc explains
  * the pull-based contract. Both delivery paths (macOS Apple events, the
  * Windows/Linux single-instance forward) go through here so the ordering
- * cannot drift between them. */
+ * cannot drift between them — including the drop of a path that cannot be a
+ * String (see OpenedFile::push), which is why a rejected path emits nothing:
+ * there would be nothing for the frontend's drain to find. */
 fn deliver_opened_file(app: &tauri::AppHandle, path: PathBuf) {
     use tauri::Emitter;
-    app.state::<OpenedFile>().0.lock().unwrap().push(path);
-    let _ = app.emit("project-file-opened", ());
+    if app.state::<OpenedFile>().push(path) {
+        let _ = app.emit("project-file-opened", ());
+    }
 }
 
 /** Pop the oldest queued path; the frontend calls this in a loop until it
@@ -155,10 +196,12 @@ fn main() {
     // (relative paths are naturally relative to this process's cwd). No
     // platform gate: macOS argv never carries a .label path (Finder sends
     // Apple events, handled in run() below), so the scan is a no-op there.
-    let opened_at_launch = label_paths_from_args(std::env::args());
+    // args_os, not args(): args() panics on non-Unicode argv. The skip rule
+    // lives in label_paths_from_args, where it is tested.
+    let opened_at_launch = label_paths_from_args(std::env::args_os());
 
     builder
-        .manage(OpenedFile(Mutex::new(opened_at_launch)))
+        .manage(OpenedFile::new(opened_at_launch))
         .invoke_handler(tauri::generate_handler![
             load_presets,
             save_presets,
@@ -176,7 +219,15 @@ fn main() {
             if let tauri::RunEvent::Opened { urls } = event {
                 // Every URL, not just the first: Finder sends one event for
                 // a multi-file "Open With", and each file gets its own tab.
-                for path in urls.into_iter().filter_map(|url| url.to_file_path().ok()) {
+                // Same extension filter as the argv path: "Open With" points
+                // Finder at any file, and a non-.label one would only travel
+                // to the frontend to be denied by the fs scope and surface as
+                // an open error. Ignoring it there is the argv behaviour.
+                for path in urls
+                    .into_iter()
+                    .filter_map(|url| url.to_file_path().ok())
+                    .filter(|path| is_label_path(path))
+                {
                     deliver_opened_file(app, path);
                 }
             }
@@ -189,18 +240,14 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn args(list: &[&str]) -> Vec<String> {
-        list.iter().map(|s| s.to_string()).collect()
-    }
-
     #[test]
     fn argv_filter_collects_every_label_path_in_order() {
-        let paths = label_paths_from_args(args(&[
+        let paths = label_paths_from_args([
             "/usr/bin/label-lab", // argv[0]: no .label extension, skipped
             "--flag",
             "/beers/a.label",
             "/beers/b.label",
-        ]));
+        ]);
         assert_eq!(
             paths,
             vec![PathBuf::from("/beers/a.label"), PathBuf::from("/beers/b.label")]
@@ -209,22 +256,32 @@ mod tests {
 
     #[test]
     fn argv_filter_matches_the_extension_case_insensitively() {
-        let paths = label_paths_from_args(args(&["exe", "/x/BEER.LABEL", "/x/Mixed.Label"]));
+        let paths = label_paths_from_args(["exe", "/x/BEER.LABEL", "/x/Mixed.Label"]);
         assert_eq!(paths.len(), 2);
     }
 
     #[test]
     fn argv_filter_yields_nothing_without_label_paths() {
-        assert!(label_paths_from_args(args(&["exe", "--flag", "notes.txt"])).is_empty());
+        assert!(label_paths_from_args(["exe", "--flag", "notes.txt"]).is_empty());
+    }
+
+    /** A path that cannot be a String is dropped, not mangled — see
+     *  OpenedFile::push. Unix bytes stand in for the Windows
+     *  unpaired-surrogate case; neither can round-trip. */
+    #[test]
+    #[cfg(unix)]
+    fn opened_file_queue_drops_a_non_unicode_path() {
+        use std::os::unix::ffi::OsStringExt;
+        let bad = PathBuf::from(OsString::from_vec(b"/x/\xff\xfe.label".to_vec()));
+        let state = OpenedFile::new([bad, PathBuf::from("/x/ok.label")]);
+        assert_eq!(state.take().as_deref(), Some("/x/ok.label"));
+        assert_eq!(state.take(), None);
     }
 
     #[test]
     fn opened_file_queue_is_fifo_and_drains_to_none() {
-        let state = OpenedFile(Mutex::new(vec![
-            PathBuf::from("/a.label"),
-            PathBuf::from("/b.label"),
-        ]));
-        state.0.lock().unwrap().push(PathBuf::from("/c.label"));
+        let state = OpenedFile::new([PathBuf::from("/a.label"), PathBuf::from("/b.label")]);
+        assert!(state.push(PathBuf::from("/c.label")));
         assert_eq!(state.take().as_deref(), Some("/a.label"));
         assert_eq!(state.take().as_deref(), Some("/b.label"));
         assert_eq!(state.take().as_deref(), Some("/c.label"));

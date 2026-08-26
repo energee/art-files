@@ -127,7 +127,7 @@ describe("preview hit-testing", () => {
 
   // Every wrapped warning column is drawn justified — its inter-word spacing
   // stretched so the run reaches exactly maxLen — so a multi-word column's
-  // hit box (and, by the same math in drawJustifiedRotated, its printed
+  // hit box (and, by the same math in plan.ts's justifiedRotatedRuns, its printed
   // extent) must measure exactly maxLen, not the ragged natural width.
   it("boxes multi-word warning columns at exactly maxLen (justified, no ragged final column)", () => {
     const cols = wrapWarning((t) => measure(t, L.WARNING.size), L.WARNING.maxLen);
@@ -139,7 +139,7 @@ describe("preview hit-testing", () => {
     });
   });
 
-  it("measures storeCold at the bold width, matching drawRotated's hardcoded semibold face", () => {
+  it("measures storeCold at the bold width, matching rotatedRuns's hardcoded semibold face", () => {
     const b = boxOf("storeCold", cfg, measureBW)!;
     // Tracked: storeCold ships at 1.25pt, and the box has to follow the run
     // the renderer actually draws, not the font's bare measurement.

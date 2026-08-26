@@ -54,15 +54,19 @@ export function useHistory<T>(initial: T | (() => T)) {
   // Timestamp of the last accepted edit, for the coalescing window above.
   const lastEdit = useRef(0);
 
-  const set = useCallback((next: T | ((current: T) => T)) => {
+  // `coalesce` overrides the timing window when given: the preview's inline
+  // text editor applies every keystroke live but must land as ONE undo step
+  // per session, however slowly the user types — it passes false on the
+  // session's first edit (open a step) and true on the rest (fold in).
+  const set = useCallback((next: T | ((current: T) => T), coalesce?: boolean) => {
     setH((s) => {
       const value = typeof next === "function" ? (next as (c: T) => T)(s.present) : next;
       // ponytail: reading the clock inside the updater is impure, but the
       // only cost of a double-invoke under StrictMode is one coalesced step.
       const now = performance.now();
-      const coalesce = now - lastEdit.current < COALESCE_MS;
+      const fold = coalesce ?? now - lastEdit.current < COALESCE_MS;
       if (!Object.is(value, s.present)) lastEdit.current = now;
-      return pushed(s, value, coalesce);
+      return pushed(s, value, fold);
     });
   }, []);
 

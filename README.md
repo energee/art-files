@@ -101,10 +101,14 @@ its fill alone; the logo's classic
 dark keyline is just this stroke, on by default. Clicking empty
 background in the preview clears the selection.
 
-PNG/JPEG files can be dropped anywhere in the browser or packaged Tauri
+PNG/JPEG/WebP files can be dropped anywhere in the browser or packaged Tauri
 window to open the background/mask chooser. Dropping directly on an inspector
 image field takes precedence and loads that field instead; clicking a field
-still opens its file picker.
+still opens its file picker. The background takes PNG, JPEG or WebP; a WebP is
+decoded and stored as PNG on drop (the PDF embed handles PNG and JPEG only),
+so the project file and both PDFs carry PNG for it. The mask must be a PNG —
+it is embedded as-authored — so a JPEG or WebP dropped on the mask half of the
+chooser lands on the background instead.
 
 The description itself is a WYSIWYG multiline field now, not a
 raw-markdown textarea: each line renders in its real appearance

@@ -1,7 +1,9 @@
 // App.tsx — one document's editor: LabelConfig, texture/mask assets
-// (full-res + preview-res pairs), validation, debounced preview-resolution
-// PDF builds, overlay-compare preview, and on-demand full-resolution
-// exports, plus whole-project save/open (.label — see labelfile.ts).
+// (full-res + preview-res pairs), validation, and on-demand full-resolution
+// exports, plus whole-project save/open (.label — see labelfile.ts). The 2D
+// preview draws per keystroke from the canvas backend (see canvas/draw.ts);
+// the 3D views texture from the same plates (see three/labelTextures.ts).
+// PDFs/PSDs build only on export.
 // TabsShell mounts one DocumentEditor per workspace tab and hides the
 // inactive ones, so anything here that registers window/document-level
 // listeners or renders a singleton surface (the native menu) MUST honor the
@@ -13,7 +15,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
 import type { CollabSlot, Fill, LabelConfig } from "@/types";
-import type { ElementId } from "@/elements";
+import { dragTarget, editableText, type ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
 import { defaultConfig, exportBaseName, parseConfigFile } from "@/defaults";
 import { strToU8 } from "fflate";
@@ -22,12 +24,11 @@ import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import { makeHiddenPropsEqual } from "@/tabs";
 import { validateUpc } from "@/upc";
-import { mimeFor, rasterKind, tintRgba } from "@/collab";
+import { EMBEDDABLE_RASTER, mimeFor, rasterKind, tintRgba } from "@/collab";
 // The builders are imported dynamically at export time (see downloadPdfs /
 // exportPsd) so they stay out of the initial bundle; only their types are
 // needed up front.
 import type { Assets, CollabImage } from "@/pdf/build";
-import { buildPreviewPdfs, disposePreviewWorker } from "@/pdf/client";
 import type { PsdAssets } from "@/psd/build";
 // setBleed is aliased: `bleed` is already taken here by the show-bleed-lines
 // toggle, and the two are unrelated — one is a view option, the other the
@@ -65,15 +66,16 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import poppinsRegular from "@/assets/fonts/Poppins-Regular.ttf?url";
-import poppinsSemiBold from "@/assets/fonts/Poppins-SemiBold.ttf?url";
-import poppinsBold from "@/assets/fonts/Poppins-Bold.ttf?url";
+import { loadLabelFont, loadLabelFaces, labelFontCss } from "@/fonts";
+import { fontFamilyOf } from "@/fontCatalog";
 import { loadFonts } from "@/pdf/fonts";
+import type { MeasureFace, PlanAssets } from "@/plan";
+import type { CanvasAssets, CanvasRenderSource } from "@/canvas/draw";
 import logoSvg from "@/assets/logo2025.svg?raw";
 
 /** bytes = full print resolution (exports); previewBytes = downscaled PNG the
- *  debounced preview builds use, so keystroke-driven rebuilds never churn the
- *  print-size image (a burst of those OOMs the tab). Neither is necessarily
+ *  assembly effect decodes into a bitmap, so keystroke-driven rebuilds never
+ *  churn the print-size image (a burst of those OOMs the tab). Neither is necessarily
  *  the original file bytes: the mask's `bytes` is recolored (see onMask), so
  *  it carries an extra `srcBytes` — the untouched upload — for Save Project
  *  to round-trip without double-processing on reload. */
@@ -222,7 +224,7 @@ async function readCollab(f: File): Promise<CollabFile> {
 }
 
 /** Longest preview-texture edge in px. Sized to the 3D label texture
- *  (~2340px: the preview PDF's 585pt page at labelTextures' 4x oversample) so
+ *  (~2340px: the 585pt preview page at labelTextures' 4x oversample) so
  *  the mask plate is never upscaled into it — at 1600 the binary mask's steps
  *  were rebuilt on a coarser grid and blown up 1.46x, which read as visible
  *  pixelation on the can. Also covers PreviewCompare's 2.5x oversample. */
@@ -237,29 +239,7 @@ async function previewPng(src: ImageBitmap | HTMLCanvasElement): Promise<Uint8Ar
   return canvasToPng(c);
 }
 
-let measurePromise: Promise<Measure> | null = null;
-function loadMeasure(): Promise<Measure> {
-  if (measurePromise) return measurePromise;
-  measurePromise = Promise.all([
-    new FontFace("PoppinsMeasure", `url(${poppinsRegular})`, { weight: "400" }).load(),
-    new FontFace("PoppinsMeasure", `url(${poppinsSemiBold})`, { weight: "600" }).load(),
-  ]).then((faces) => {
-    faces.forEach((face) => document.fonts.add(face));
-    const ctx = document.createElement("canvas").getContext("2d");
-    if (!ctx) throw new Error("Could not create the font measurement canvas.");
-    return (text: string, size: number, bold: boolean) => {
-      ctx.font = `${bold ? 600 : 400} ${size}px PoppinsMeasure`;
-      return ctx.measureText(text).width;
-    };
-  }).catch((error) => {
-    measurePromise = null;
-    throw error;
-  });
-  return measurePromise;
-}
-
-// Blob snapshots the bytes at construction (no transfer), so no copy needed —
-// unlike pdf.js, which neuters the buffer it's handed (see PreviewCompare).
+// Blob snapshots the bytes at construction (no transfer), so no copy needed.
 const blobUrl = (bytes: Uint8Array, type: string) =>
   URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type }));
 
@@ -284,8 +264,8 @@ const clampView = (r: DOMRect, z: number, x: number, y: number) => ({
 
 /** The pane's zoom range: 1 (fitted) through the same ceiling used by the 3D
  *  dolly, so a zoom carried across is never silently clipped. PreviewCompare
- *  re-rasterizes the PDFs as this increases; the ceiling is no longer a point
- *  where CSS runs past a fixed bitmap. */
+ *  re-rasterizes/repaints the canvas plates as this increases; the ceiling is
+ *  no longer a point where CSS runs past a fixed bitmap. */
 const clampZoom = (z: number) => Math.min(PREVIEW_OVERSAMPLE, Math.max(1, z));
 
 /** Zoom to `z` about the pane point (ax, ay), keeping whatever is under that
@@ -351,6 +331,10 @@ export type RenderSettings = Presets["render"];
 type DocumentEditorProps = {
   active: boolean;
   fileToOpen: FileToOpen | null;
+  /** Reports fileToOpen's attempt finished (success or failure), so the
+   *  shell can drop the queued entry — a stale entry blocks re-opening the
+   *  path and keeps claiming it after Save As (see TabsShell's pending). */
+  onOpenSettled: (seq: number) => void;
   onMeta: (meta: DocumentMeta) => void;
   /** Shell-owned slot this editor assigns its save fn into on every render;
    *  resolves false when the user cancels the save dialog (the shell's
@@ -378,7 +362,7 @@ type DocumentEditorProps = {
 // only holds if the shell passes identity-stable props to inactive editors
 // (per-tab callbacks and slots created once — see TabsShell's extrasFor).
 export const DocumentEditor = memo(function DocumentEditor({
-  active, fileToOpen, onMeta, saveSlot, render, onRenderChange,
+  active, fileToOpen, onOpenSettled, onMeta, saveSlot, render, onRenderChange,
   onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, tabStripHost,
 }: DocumentEditorProps) {
   // Config lives in a history stack, not plain useState — every edit that
@@ -409,9 +393,15 @@ export const DocumentEditor = memo(function DocumentEditor({
   const elementSelection = useMemo(() => selected.filter(isElementId), [selected]);
   // Layers the panel's eye has hidden — session state, deliberately outside
   // the config/history: a saved label never records a hidden layer, and
-  // toggling an eye is not an undoable document edit. Flows into
-  // Assets.hidden, where the renderer skips the element in both plates.
+  // toggling an eye is not an undoable document edit. Exports fold it into
+  // Assets.hidden directly; the preview folds it into the skip set instead
+  // (see `skip` below), so both draw the same omissions from one source.
   const [hiddenLayers, setHiddenLayers] = useState<ReadonlySet<HideableLayerId>>(new Set());
+  // The element being edited in place on the preview, if any (reported by
+  // PreviewCompare). While set, planLabel skips it via the render flag (see
+  // `skip` below) so the editor's live DOM text IS the element — no doubled
+  // glyphs — and the ordinary render takes back over when the session ends.
+  const [editSession, setEditSession] = useState<ElementId | null>(null);
   const toggleHidden = (id: HideableLayerId) =>
     setHiddenLayers((old) => {
       const next = new Set(old);
@@ -439,21 +429,23 @@ export const DocumentEditor = memo(function DocumentEditor({
     () => ({ left: !!collabLeft, center: !!collabCenter }),
     [collabLeft, collabCenter],
   );
-  // Preview-resolution PDFs for the on-screen compare only; downloads always
-  // rebuild at full resolution (see buildFull).
-  // maskBytes is null until a build that included the white-ink plate lands
-  // (see needMask): the art plate alone is enough for the default view.
-  const [pdfs, setPdfs] =
-    useState<{ artBytes: Uint8Array; maskBytes: Uint8Array | null } | null>(null);
   const [building, setBuilding] = useState(false);
+  // Two error channels, split by who can clear them. renderError belongs to
+  // the renderers (2D paint / 3D texture rebuild): every successful frame
+  // clears it, which is safe because only a frame can fix a frame. buildError
+  // belongs to asset assembly, exports, and native menu failures: it survives
+  // successful frames (a repaint from STALE assets used to wipe a decode
+  // error the user never saw resolved) and clears when assembly or an export
+  // succeeds. The strip shows whichever is set.
   const [buildError, setBuildError] = useState("");
+  const [renderError, setRenderError] = useState("");
   const [loadError, setLoadError] = useState("");
   // Divider position reported by PreviewCompare (% of width showing
   // white-ink), so the View menu can check off whichever end it sits at.
   const [split, setSplit] = useState(0);
-  // "2d" = the PDF compare view; the rest are CanView's three.js modes. The
-  // 2D preview stays mounted (hidden) so its rendered canvases and divider
-  // position survive a round-trip through the 3D views.
+  // "2d" = the canvas-backend compare view; the rest are CanView's three.js
+  // modes. The 2D preview stays mounted (hidden) so its rendered canvases and
+  // divider position survive a round-trip through the 3D views.
   const [viewMode, setViewMode] = useState<"2d" | "can" | "pack" | "flat">("2d");
   // Preview pane zoom: scale `z` about the pane's top-left, then offset by
   // (x, y) screen px. z === 1 is the fitted view, and the clamp in the wheel
@@ -558,8 +550,6 @@ export const DocumentEditor = memo(function DocumentEditor({
   // size readout read PAGE and OUTPUT_DPI while rendering, so an effect would
   // leave them a frame behind the knob. Both are idempotent scalar writes.
   //
-  // THIS thread only — the preview worker holds its own layout module and is
-  // told separately, per build (see buildPreviewPdfs).
   // `render` is a prop: TabsShell owns adoption from and persistence to the
   // presets library. ACTIVE editor only: a hidden editor's memo bail freezes
   // its `render` prop (makeHiddenPropsEqual skips it while hidden), so a
@@ -714,9 +704,9 @@ export const DocumentEditor = memo(function DocumentEditor({
     localStorage.setItem(VIEW_KEY, JSON.stringify({ showRulers, showGuides, showBleed: bleed }));
   }, [showRulers, showGuides, bleed]);
 
-  const update = (fn: (c: LabelConfig) => void) => {
+  const update = (fn: (c: LabelConfig) => void, coalesce?: boolean) => {
     markDirty(); // every config edit passes through here — see `dirty`
-    setCfg((c) => { const n = structuredClone(c); fn(n); return n; });
+    setCfg((c) => { const n = structuredClone(c); fn(n); return n; }, coalesce);
   };
   /** Wrap a config mutation that bypasses `update` (undo/redo) so it still
    *  marks the document dirty. */
@@ -726,17 +716,18 @@ export const DocumentEditor = memo(function DocumentEditor({
   // avoids loading pdf-lib + fontkit on the UI thread just to measure hit
   // boxes. `bold` intentionally means SemiBold here: most bold hit targets
   // use that face, while the two true-Bold elements are centred and tolerate
-  // the small symmetric under-measurement (see hittest.ts).
+  // the small symmetric under-measurement (see hittest.ts). Keyed on the
+  // config's family (fontFamilyOf) so switching families re-embeds — the
+  // fonts.ts gate memoizes per family, so re-selecting one already loaded
+  // resolves immediately.
+  const family = fontFamilyOf(cfg);
   useEffect(() => {
     let cancelled = false;
-    void loadMeasure()
+    void loadLabelFont(family)
       .then((next) => { if (!cancelled) setMeasure(() => next); })
       .catch((error) => { if (!cancelled) setBuildError(String(error)); });
     return () => { cancelled = true; };
-  }, []);
-
-  // (disposePreviewWorker moved to TabsShell: the worker is shared by every
-  // tab and must outlive any one editor.)
+  }, [family]);
 
   // Which instance the window/document-level key listeners below belong to.
   // A ref, not the prop: the listeners are registered once on mount.
@@ -799,7 +790,6 @@ export const DocumentEditor = memo(function DocumentEditor({
   const blockedWhy = [mask?.error, errors.upc].filter(Boolean).join(" · ");
   // main's export guards kept: a build in flight has no bytes worth writing.
   const exportBlocked = blocked || building;
-  const pdfExportBlocked = exportBlocked || !pdfs;
 
   /** Replaces (or, with null, removes) a loaded asset, revoking the old
    *  thumbnail URL — the one shape every drop and every FileDrop X share. */
@@ -811,14 +801,24 @@ export const DocumentEditor = memo(function DocumentEditor({
   };
 
   async function onTexture(f: File) {
-    const bytes = new Uint8Array(await f.arrayBuffer());
-    const bmp = await createImageBitmap(f);
-    const previewBytes = await previewPng(bmp);
-    bmp.close();
+    // PNG and JPEG pass through byte-for-byte; anything else the browser can
+    // decode (WebP) is re-encoded to PNG ONCE, here, and renamed to match.
+    // pdf-lib embeds PNG and JPEG only, so transcoding at the door is what
+    // keeps every later consumer — the PDF embed, the .label round-trip,
+    // rasterKind/mimeFor — reading bytes whose format its name claims. The
+    // rename is the honest half: the project now holds a PNG.
+    const passthrough = EMBEDDABLE_RASTER.test(f.name);
+    const decoded = passthrough ? await createImageBitmap(f) : await decodeToCanvas(f);
+    const bytes = passthrough
+      ? new Uint8Array(await f.arrayBuffer())
+      : await canvasToPng(decoded as HTMLCanvasElement);
+    const previewBytes = await previewPng(decoded);
+    if (decoded instanceof ImageBitmap) decoded.close();
+    const name = passthrough ? f.name : `${f.name.replace(/\.[^.]*$/, "")}.png`;
     const previewUrl = URL.createObjectURL(f);
     swapLoaded(setTexture, {
-      bytes, previewBytes, name: f.name,
-      kind: rasterKind(f.name),
+      bytes, previewBytes, name,
+      kind: rasterKind(name),
       previewUrl,
     });
   }
@@ -901,29 +901,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     };
   }
 
-  // Is the white-ink plate visible anywhere right now? In the 2D compare it is
-  // clipped away entirely at split 0 (PreviewCompare's clipPath), which is
-  // where a typing session lives; the 3D views always texture with it. False
-  // skips ~40% of every rebuild — the mask build in the worker plus its pdf.js
-  // raster here. A boolean, not `split` itself, so dragging the divider
-  // doesn't re-run the effect once per pointer frame; flipping it to true is
-  // itself a dependency, so the plate is rebuilt the moment it's needed (it
-  // lags one build behind at that instant, the same lag the whole preview
-  // already has).
-  const needMask = viewMode !== "2d" || split > 0;
-
-  // Debounced preview regeneration on any input change, at preview resolution
-  // (Loaded.previewBytes). Short: the two guards below, not the wait, are what
-  // keep keystroke bursts from OOMing the tab — builds are serialized through
-  // buildChain (the debounce alone can't stop overlap once a build outlasts
-  // the typing gap), and superseded builds bail before allocating anything. So
-  // the delay only has to outlast a fast typist's inter-key gap.
-  const buildChain = useRef<Promise<void>>(Promise.resolve());
   /** The texture/mask half of Assets, with the eyes applied by omission: a
    *  hidden asset simply isn't handed to the build, same as never dropped.
-   *  The ONE place both the eye rule and the byte choice live — the preview
-   *  build spreads eyedAssets(true) (downscaled preview bytes), the export
-   *  build eyedAssets(false) (full-resolution). */
+   *  The ONE place both the eye rule and the byte choice live — the assembly
+   *  effect below spreads eyedAssets(true) (downscaled preview bytes), the
+   *  export build eyedAssets(false) (full-resolution). */
   const eyedAssets = (preview: boolean) => ({
     texture: !texture || hiddenLayers.has("background") ? undefined
       : preview
@@ -932,81 +914,144 @@ export const DocumentEditor = memo(function DocumentEditor({
     maskPng: hiddenLayers.has("mask") ? undefined
       : preview ? mask?.previewBytes : mask?.bytes,
   });
-  // Everything a plate is built from. Spread into the effect's deps below, so
-  // this is the ONE list — a future input added here can't be forgotten in the
-  // dep array (which would stop rebuilds) or in the identity check (which
-  // would silently freeze the preview for that input).
-  // bleedIn belongs here and not just in the dep array: it changes the PAGE the
-  // plates are drawn on, so it is an input to the build exactly like the config
-  // is, and the identity check has to see it or a bleed change would be
-  // dismissed as "same inputs" and never rebuild.
-  const inputs = [cfg, texture, mask, collabLeft, collabCenter, hiddenLayers, render.bleedIn] as const;
-  // What the last COMPLETED build was made from, so a re-run of this effect
-  // that changes none of it doesn't rebuild. needMask is a dependency (the
-  // plate has to appear when it's first needed), which without this made every
-  // trip between the standard and mask views rebuild both plates from
-  // unchanged inputs. Identity comparison is enough: `update` structuredClones
-  // cfg, and each asset/hidden-set edit replaces its object.
-  const built = useRef<{ inputs: typeof inputs; withMask: boolean } | null>(null);
-  // Background tabs keep their state and asset bytes but not their rendered
-  // output: the preview PDFs are the heavy, cheaply-rebuildable part. The
-  // effect below then bails while inactive, and `active` in its deps is the
-  // reactivation trigger — flipping true reruns it against a null `built`,
-  // which repaints via the ordinary debounced build.
-  useEffect(() => {
-    if (!active) {
-      setPdfs(null);
-      built.current = null;
-    }
-  }, [active]);
+
+  // The render source for BOTH views: fonts + decoded bitmaps for drawPlate,
+  // assembled off the asset inputs alone (debounced — uploads and eye/tint
+  // toggles are rare and each re-assembly decodes up to 4 ImageBitmaps).
+  // Config changes deliberately DON'T re-run this: cfg flows into the views
+  // as a prop and repaints with these same bitmaps. The two collab tint
+  // knobs are the only cfg fields the bitmaps depend on, so they are
+  // dependencies here by value.
+  const [canvasAssets, setCanvasAssets] = useState<{
+    m: MeasureFace; planAssets: PlanAssets; drawAssets: CanvasAssets; fontCss: string;
+  } | null>(null);
   useEffect(() => {
     if (blocked || !active) return;
-    const done = built.current;
-    const sameInputs = !!done && done.inputs.every((v, i) => v === inputs[i]);
-    // Already on screen and still current: the mask half only forces a rebuild
-    // when it's newly needed and the last build skipped it.
-    if (sameInputs && (!needMask || done.withMask)) return;
-    let stale = false;
+    let cancelled = false;
     const timer = setTimeout(() => {
-      buildChain.current = buildChain.current.then(async () => {
-        if (stale) return; // a newer edit is queued behind us — skip entirely
-        setBuilding(true);
+      (async () => {
+        const m = await loadLabelFaces(family);
+        // Every decode this run makes is tracked here, so a throw partway
+        // through (a later await failing after an earlier one already
+        // decoded a bitmap) can still close everything decoded so far —
+        // only the fully-published drawAssets is otherwise reachable to
+        // close, and a throw never reaches that assignment.
+        const decoded: ImageBitmap[] = [];
+        const bitmap = async (bytes: Uint8Array | undefined) => {
+          if (!bytes) return null;
+          const bmp = await createImageBitmap(new Blob([bytes as BlobPart]));
+          decoded.push(bmp);
+          return bmp;
+        };
+        const { collabLeft: cl, collabCenter: cc } = await collabAssets();
+        const slot = async (img: CollabImage | null | undefined) => {
+          if (!img) return { art: null, image: null };
+          if (img.kind === "svg") return { art: img, image: null };
+          const bmp = await createImageBitmap(new Blob([img.bytes as BlobPart]));
+          decoded.push(bmp);
+          return { art: { kind: "raster" as const, w: bmp.width, h: bmp.height }, image: bmp };
+        };
+        let drawAssets: CanvasAssets;
+        let left: Awaited<ReturnType<typeof slot>>, center: Awaited<ReturnType<typeof slot>>;
         try {
-          const assets = {
-            ...(await collabAssets()),
-            ...eyedAssets(true),
-            hidden: hiddenLayers,
+          [left, center] = await Promise.all([slot(cl), slot(cc)]);
+          const eyed = eyedAssets(true);
+          drawAssets = {
+            texture: await bitmap(eyed.texture?.bytes),
+            maskImage: await bitmap(eyed.maskPng),
+            collabLeft: left.image, collabCenter: center.image,
           };
-          // Only the plates that aren't already current. sameInputs means the
-          // art on screen was built from exactly these inputs, so the mask
-          // top-up that a first trip to the mask view triggers rebuilds the
-          // mask alone — and leaving artBytes' identity untouched is what
-          // keeps that trip from re-rasterizing the art through pdf.js too.
-          const { art, mask: maskPdf } =
-            await buildPreviewPdfs(
-              cfg, assets, { art: !sameInputs, mask: needMask }, render.bleedIn,
-            );
-          if (stale) return;
-          // A skipped plate keeps the last one it built rather than blanking
-          // the canvas: nothing is showing it, and if something starts to,
-          // stale-by-one-build beats an empty frame while the rebuild runs.
-          // (art is only ever skipped when a previous build already landed one,
-          // so the `?? old` can't leave us without an art plate.)
-          setPdfs((old) => {
-            const artBytes = art ?? old?.artBytes;
-            return artBytes ? { artBytes, maskBytes: maskPdf ?? old?.maskBytes ?? null } : old;
-          });
-          built.current = { inputs, withMask: needMask };
-          setBuildError("");
         } catch (err) {
-          if (!stale) setBuildError(String(err));
-        } finally {
-          if (!stale) setBuilding(false);
+          // A later decode failed after an earlier one landed: close
+          // everything this run decoded before rethrowing to the outer
+          // .catch, which surfaces the error exactly as before.
+          for (const bmp of decoded) bmp.close();
+          throw err;
         }
+        if (cancelled) {
+          // Superseded before publish: nothing will ever reference these.
+          closeCanvasBitmaps(drawAssets);
+          return;
+        }
+        setCanvasAssets({
+          m,
+          planAssets: { logoSvg, collabLeft: left.art, collabCenter: center.art },
+          drawAssets,
+          fontCss: labelFontCss(family),
+        });
+        // A full assembly succeeded: whatever font/decode (or lingering
+        // export) failure the strip was showing is resolved or stale.
+        setBuildError("");
+      })().catch((err) => {
+        // The font gate or a decode failed: the preview cannot render.
+        // Surface it — the spec's "never a silently wrong face".
+        if (!cancelled) setBuildError(String(err));
       });
     }, 150);
-    return () => { stale = true; clearTimeout(timer); };
-  }, [...inputs, blocked, needMask, active]);
+    return () => { cancelled = true; clearTimeout(timer); };
+    // Asset inputs only — cfg deliberately excluded except the tint knobs
+    // and the font family (see the comment above). eslint can't see that
+    // collabAssets() reads exactly these.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    texture, mask, collabLeft, collabCenter, hiddenLayers, family,
+    cfg.collabLeft.fill, cfg.collabLeft.tintRaster,
+    cfg.collabCenter.fill, cfg.collabCenter.tintRaster,
+    blocked, active,
+  ]);
+  // The bitmaps backing the CURRENTLY LIVE `canvasAssets` generation. Tracked
+  // outside React state so the next generation can .close() them once it has
+  // fully replaced them — createImageBitmap results aren't GC'd on their own.
+  const canvasBitmaps = useRef<CanvasAssets | null>(null);
+  const closeCanvasBitmaps = (a: CanvasAssets | null | undefined) => {
+    if (!a) return;
+    for (const b of [a.texture, a.maskImage, a.collabLeft, a.collabCenter]) {
+      if (b instanceof ImageBitmap) b.close();
+    }
+  };
+  // Close the superseded generation's ImageBitmaps AFTER the commit that
+  // replaces them: any rAF or rebuild timer still holding the old assets was
+  // cancelled by the views' effect cleanups during this same commit (child
+  // cleanups run first), so nothing can draw a closed bitmap. Unmount closes
+  // the last generation.
+  useEffect(() => {
+    const prev = canvasBitmaps.current;
+    if (prev && prev !== canvasAssets?.drawAssets) closeCanvasBitmaps(prev);
+    canvasBitmaps.current = canvasAssets?.drawAssets ?? null;
+  }, [canvasAssets]);
+  useEffect(() => () => closeCanvasBitmaps(canvasBitmaps.current), []);
+
+  // What planLabel omits: the layers-panel eyes, plus the in-place edit
+  // session's element — the v0.1.16 hide-and-rebuild plumbing reduced to a
+  // render flag. Same-frame: a new editSession changes this memo, the
+  // source memo below, and PreviewCompare repaints on the next rAF.
+  const skip = useMemo<{ has(id: ElementId): boolean }>(
+    () => editSession
+      ? { has: (id: ElementId) => id === editSession
+          || hiddenLayers.has(id as HideableLayerId) }
+      : hiddenLayers,
+    [editSession, hiddenLayers],
+  );
+  // Null until the first assembly lands — both views render from this.
+  const canvasSource = useMemo<CanvasRenderSource | null>(
+    () => (canvasAssets ? { ...canvasAssets, skip } : null),
+    [canvasAssets, skip],
+  );
+  // "The preview has something to render from": both views draw from the
+  // assembled canvas source; CanView shows its own corner spinner while a
+  // texture rebuild is in flight.
+  const previewReady = !!canvasAssets;
+  // The guard means "the render pipeline has come up" — not "preview bytes
+  // exist", since there are no more preview PDF bytes to have.
+  const pdfExportBlocked = exportBlocked || !previewReady;
+
+  // Background tabs keep their state and asset bytes but not their decoded
+  // render source: the ImageBitmaps are the heavy, cheaply-rebuildable part.
+  // The assembly effect above bails while inactive, and `active` in its deps
+  // reruns it on reactivation; the close effect below reclaims the bitmaps.
+  useEffect(() => {
+    if (!active) setCanvasAssets(null);
+  }, [active]);
 
   // Revoking immediately can abort a large download, so each URL lives until
   // the NEXT export batch — a timer would instead pin a full Blob copy of
@@ -1058,7 +1103,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   }
 
   /** Downloads rebuild from the full-resolution assets on demand — the
-   *  preview PDFs on screen are deliberately low-res (see Loaded). */
+   *  on-screen preview is deliberately preview-resolution (see Loaded). */
   async function buildFull(which: "art" | "mask" | "both") {
     if (building) return;
     setBuilding(true);
@@ -1066,7 +1111,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     try {
       const [{ buildArtPdf, buildMaskPdf }, fonts] = await Promise.all([
         import("@/pdf/build"),
-        loadFonts(),
+        loadFonts(fontFamilyOf(cfg)),
       ]);
       // Exports honor the eye too: a hidden layer is "not on this label",
       // preview and deliverable alike. (PSDs still carry every layer — a
@@ -1086,6 +1131,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       ]);
       if (artPdf) await saveVia(artPdf, `${exportBaseName(cfg)}.pdf`, "application/pdf");
       if (maskPdf) await saveVia(maskPdf, `${exportBaseName(cfg)}-mask.pdf`, "application/pdf");
+      setBuildError(""); // same clear-on-success the PSD export already does
     } catch (err) {
       setBuildError(String(err));
     } finally {
@@ -1296,9 +1342,9 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  Save rewrite the picked one, a bare File yields none (Save prompts).
    *  The same quiet-retry open as before (see openWithRetry). */
   const openedSeq = useRef(0);
-  // Serialized like buildChain, and superseded opens are skipped: two opens
-  // routed to this editor in quick succession must never interleave their
-  // resetDocument/asset writes (a half-A half-B document marked clean), and
+  // Serialized through a sequence number, and superseded opens are skipped:
+  // two opens routed to this editor in quick succession must never interleave
+  // their resetDocument/asset writes (a half-A half-B document marked clean), and
   // once B is queued there is no point applying A at all.
   const openChain = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
@@ -1325,10 +1371,15 @@ export const DocumentEditor = memo(function DocumentEditor({
         }
       } catch (err) {
         reportOpenError(err);
+      } finally {
+        // Either way the attempt is over — let the shell drop the queued
+        // entry (seq-guarded there against a newer open on this tab).
+        onOpenSettled(mySeq);
       }
     });
-    // openWithRetry's closure chain ends in stable setters, so the current
-    // render's copy is never stale — same reasoning as onKey above.
+    // openWithRetry's closure chain ends in stable setters (and
+    // onOpenSettled is an identity-stable TabExtras callback), so the
+    // current render's copy is never stale — same reasoning as onKey above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileToOpen]);
 
@@ -1355,7 +1406,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     try {
       const [{ buildPsd }, fonts] = await Promise.all([
         import("@/psd/build"),
-        loadFonts(),
+        loadFonts(fontFamilyOf(cfg)),
       ]);
       const assets: PsdAssets = {
         fonts, logoSvg,
@@ -1536,7 +1587,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           {/* Build failures sit here too rather than in their own strip above
               the preview — one place for chrome-level errors, and the strip
               was 20px reserved for a row that is empty almost always. */}
-          {buildError && <HeaderAlert>{buildError}</HeaderAlert>}
+          {(buildError || renderError) && <HeaderAlert>{buildError || renderError}</HeaderAlert>}
           <input ref={presetsInput} type="file" accept="application/json" hidden
             onChange={(e) => e.target.files?.[0] && void importPresets(e.target.files[0])} />
         </header>
@@ -1584,27 +1635,47 @@ export const DocumentEditor = memo(function DocumentEditor({
               }}>
             <PreviewCompare ref={previewRef}
               // Nulled while a 3D view is up: this component stays mounted but
-              // display:none, and a hidden canvas rasterizes just as expensively
-              // as a visible one — that was two wasted pdf.js passes per rebuild
-              // on top of CanView's own. useRenderPdfs no-ops on null, so the
-              // canvases keep their last painting and coming back to 2D flips
-              // the identity and repaints once.
-              artBytes={viewMode === "2d" ? pdfs?.artBytes ?? null : null}
-              maskBytes={viewMode === "2d" ? pdfs?.maskBytes ?? null : null}
+              // display:none, and a hidden canvas paints just as expensively as
+              // a visible one — that was a wasted repaint per rebuild on top of
+              // CanView's own. The paint effect no-ops on null, so the canvases
+              // keep their last frame and coming back to 2D repaints once.
+              canvasRender={viewMode === "2d" ? canvasSource : null}
+              bleedIn={render.bleedIn}
               cfg={cfg} measure={measure} collab={collabSlots}
               // The preview knows only renderer elements; a selected document
               // layer (background/mask) shows no selection box there.
               selected={elementSelection}
               onPick={pick}
+              // Live per-keystroke updates so the canvas render IS the edit
+              // feedback, folded into one undo step per session: the first
+              // keystroke opens the step, the rest coalesce (see useHistory).
+              onEditText={(id, text, first) => {
+                const spec = editableText[id];
+                if (spec) update((c) => spec.set(c, text), !first);
+              }}
+              // Escape: the whole session is that one step, so undoing it
+              // restores the text as it was when the editor opened.
+              onEditCancel={mutating(undo)}
+              // Drag-to-move: first move opens the step, the rest coalesce —
+              // one undo per drag, mirroring the text-edit session above.
+              onNudge={(id, offsetY, first) => {
+                update((c) => { dragTarget(c, collabSlots, id)?.set(c, offsetY); }, !first);
+              }}
+              onNudgeCancel={mutating(undo)}
+              // In-place sessions skip their element from the render (see
+              // editSession) so the editor's DOM text is the element.
+              onEditSession={setEditSession}
               onSplit={setSplit}
               bleed={bleed}
               // Same Settings knob the 3D die uses, so both previews cut alike.
               cornerRadiusPct={render.cornerRadius}
               zoom={zoom.z}
-              // setBuildError itself, not a wrapper: useState setters are
+              // setRenderError itself, not a wrapper: useState setters are
               // identity-stable, and an inline arrow here would be a new
-              // function every render (see useRenderPdfs' note on that).
-              onRenderError={setBuildError} />
+              // function every render, defeating the paint effect's deps.
+              // The RENDER channel, not buildError: a successful frame
+              // clears it, and frames must never wipe asset/export errors.
+              onRenderError={setRenderError} />
             </div>
             {/* active gate: a hidden tab must not hold a live three.js
                 context and texture set — reactivation rebuilds them. */}
@@ -1621,9 +1692,10 @@ export const DocumentEditor = memo(function DocumentEditor({
                   if (carriedMode.current !== "2d") carried.current = { zoom: z, pan };
                   setCamZoomPct(Math.round(z * 100));
                 }}
-                artBytes={pdfs?.artBytes ?? null} maskBytes={pdfs?.maskBytes ?? null}
+                cfg={cfg} source={canvasSource} bleedIn={render.bleedIn}
                 mode={viewMode} cornerRadiusPct={render.cornerRadius}
-                edgeSoftnessPct={render.edgeSoftness} />
+                edgeSoftnessPct={render.edgeSoftness}
+                onRenderError={setRenderError} />
             )}
             </div>
             {viewMode === "2d" && (
@@ -1643,9 +1715,11 @@ export const DocumentEditor = memo(function DocumentEditor({
                 strip above it: it belongs to the thing that is changing. Same
                 corner CanView uses for its texture build, which runs right
                 after this one, so the two read as one continuous indicator.
-                Outside the blur wrapper, so it stays sharp; gated on pdfs so
-                it can't double up with the first-load spinner below. */}
-            {building && pdfs && (
+                Outside the blur wrapper, so it stays sharp; gated on
+                previewReady so it can't double up with the first-load
+                spinner below (now shows only during export builds, which is
+                when `building` is true). */}
+            {building && previewReady && (
               <span className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1.5 text-xs text-muted-foreground">
                 <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" />
                 rendering preview…
@@ -1653,20 +1727,21 @@ export const DocumentEditor = memo(function DocumentEditor({
             )}
             {/* No-texture hint. It used to sit in the status strip above the
                 frame, where it read as chrome; low on the label it is the
-                one thing in an empty preview. Waits for the first build so it
+                one thing in an empty preview. Waits for the first assembly so it
                 can't share the frame with the loading spinner. */}
-            {!texture && !building && pdfs && (
+            {!texture && !building && previewReady && (
               <div className="pointer-events-none absolute inset-x-0 bottom-16 flex justify-center">
                 <span className="rounded-full border border-dashed border-border bg-background/85 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-sm">
                   drop a texture anywhere to fill the background
                 </span>
               </div>
             )}
-            {/* First-load state: until the first debounced build lands there is
-                nothing on the canvases, so fill the empty frame with a spinner
-                instead of a bare box. Later rebuilds keep the previous render
-                visible, blur it, and show the corner spinner instead. */}
-            {!pdfs && !buildError && (
+            {/* First-load state: until the first debounced assembly lands
+                there is nothing on the canvases, so fill the empty frame with
+                a spinner instead of a bare box. Later rebuilds keep the
+                previous render visible, blur it, and show the corner spinner
+                instead. */}
+            {!previewReady && !buildError && !renderError && (
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
                   <span className="size-6 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-foreground" />

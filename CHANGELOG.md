@@ -3,6 +3,96 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.25] - 2026-08-26
+
+- Backgrounds now accept WebP alongside PNG and JPEG, by drop or file picker.
+  A WebP is decoded and kept as PNG in the project and both PDFs, since the
+  PDF embed handles PNG and JPEG only. The mask is still PNG-only, so a WebP
+  dropped on the mask half of the chooser lands on the background.
+
+## [0.1.24] - 2026-08-26
+
+- Opening several .label files at once from Finder no longer drops all but
+  the last one — each file gets its own tab.
+- Hiding a collaboration logo no longer removed the "A collaborative project
+  with" lead-in from the exported PDF while the preview kept showing it. The
+  lead-in now follows its own eye in both.
+- The 2D preview rasterizes at the density it is actually displayed at
+  instead of oversampling past it, and releases that density when you zoom
+  back out — noticeably less work per keystroke.
+- "Open With" on a non-.label file is now ignored instead of surfacing an
+  open error, and a .LABEL file opens like a .label one.
+- Fresh installs get their seed preset library back (styles and Tier
+  barcodes) — an accidental dev-server writeback had emptied it.
+- A failed file open no longer permanently blocks re-opening that file, and
+  a project saved under a new name no longer intercepts opens of its
+  original file.
+- An upload or export failure now stays in the error strip until it is
+  actually resolved, instead of vanishing on the next keystroke; failures
+  while a 3D view is rebuilding its textures now reach the strip too.
+- The preview no longer renders distorted after changing bleed at maximum
+  zoom, and tracked text renders correctly on macOS WebViews older than
+  Safari 17.4.
+- Internal: launching by file no longer crashes on non-Unicode command-line
+  arguments; the font family parameter is now required through the canvas
+  backend; the collab slot envelopes have one shared spelling between
+  placement and hit-testing.
+
+## [0.1.23] - 2026-08-26
+
+- Double-clicking the description on the 2D preview now edits it in place
+  over the artwork with a compact floating toolbar, instead of opening a
+  panel that duplicated the field.
+
+## [0.1.22] - 2026-08-25
+
+- Internal: font pipeline is config-driven internally; typeface choices
+  arrive with font sourcing.
+
+## [0.1.21] - 2026-08-25
+
+- Drag the laurel and collab logos vertically on the 2D preview; one undo
+  step per drag.
+
+## [0.1.20] - 2026-08-25
+
+- Internal: the PSD builder now places layers from the shared display list
+  instead of computing its own layout; exported PSDs are byte-identical.
+
+## [0.1.19] - 2026-08-25
+
+- The preview now renders directly on canvas from the shared display list —
+  2D updates land per keystroke with no debounce, in-place editing hides the
+  edited element instantly, and the 3D views texture from the same plates.
+  PDFs and PSDs are built only on export; exported files are unchanged.
+
+## [0.1.18] - 2026-08-25
+
+- Internal: the shared display list now covers the whole label (laurel, QR,
+  collab logos, barcode), and a new canvas renderer draws both plates from
+  it — groundwork for the direct-canvas preview, behind a dev-only flag.
+  Exports are unchanged; a parity harness (npm run parity) checks the two
+  renderers against each other.
+
+## [0.1.17] - 2026-08-25
+
+- Internal: text placement is now computed once (a shared display list)
+  and consumed by both the PDF renderer and click-target hit-testing,
+  groundwork for the direct-canvas preview. No visual or output changes
+  intended.
+
+## [0.1.16] - 2026-08-25
+
+- Double-clicking any editable text on the 2D preview — beer name, style,
+  ABV, description, volume, info line, or store cold — now edits it in
+  place: the label re-renders live as you type, in the element's true style.
+  The description opens the same WYSIWYG field as the sidebar over its block
+  (buttons on top of the field; markdown only behind its "Edit as Markdown"
+  toggle), and the rotated info / store-cold lines edit in a small field at
+  the element. Enter or clicking away ends the edit (one undo step for the
+  whole session), Escape restores the old text. The ABV editor accepts only
+  the number — its "% alc by vol" tail stays fixed.
+
 ## [0.1.15] - 2026-08-25
 
 - Fixed hidden tabs reverting the shared DPI and bleed settings during

@@ -12,7 +12,13 @@ describe("global asset drops", () => {
 
   it("recognizes image extensions when the OS omits a MIME type", () => {
     expect(globalAssetKind({ name: "FOIL.PNG", type: "" }, 900, 1000)).toBe("mask");
+    expect(globalAssetKind({ name: "rock.webp", type: "" }, 100, 1000)).toBe("texture");
     expect(globalAssetKind({ name: "logo.svg", type: "image/svg+xml" }, 100, 1000)).toBeNull();
+  });
+
+  it("sends a WebP to the texture from either half — only a PNG can be a mask", () => {
+    expect(globalAssetKind({ name: "rock.webp", type: "image/webp" }, 100, 1000)).toBe("texture");
+    expect(globalAssetKind({ name: "rock.webp", type: "image/webp" }, 900, 1000)).toBe("texture");
   });
 });
 
