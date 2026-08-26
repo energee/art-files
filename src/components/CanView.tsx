@@ -8,8 +8,7 @@ import {
 } from "react";
 import { CanScene, type CanSceneMode } from "@/three/canScene";
 import { drawPlates, buildLabelTextures } from "@/three/labelTextures";
-import type { CanvasRenderSource } from "@/canvas/draw";
-import { planLabel } from "@/plan";
+import { planFrom, type CanvasRenderSource } from "@/canvas/draw";
 import type { LabelConfig } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -103,9 +102,9 @@ export const CanView = forwardRef<CanViewHandle, {
     const timer = setTimeout(() => {
       done = true;
       try {
-        const plan = planLabel(cfg, source.m,
-          { skip: source.skip, assets: source.planAssets });
-        sceneRef.current?.applyTextures(buildLabelTextures(drawPlates(plan, source.drawAssets)));
+        const plan = planFrom(cfg, source);
+        sceneRef.current?.applyTextures(
+          buildLabelTextures(drawPlates(plan, source.drawAssets, source.fontCss)));
       } catch (err) {
         console.warn("3D label texture build failed:", err);
       } finally {

@@ -12,8 +12,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { PanelImperativeHandle } from "react-resizable-panels";
-import { planLabel } from "@/plan";
-import { drawPlate, type CanvasRenderSource } from "@/canvas/draw";
+import { drawPlate, planFrom, type CanvasRenderSource } from "@/canvas/draw";
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from "@/components/ui/resizable";
@@ -23,7 +22,8 @@ import {
 } from "@/layout";
 import type { LabelConfig, StyledLine } from "@/types";
 import { dragTarget, editableText, elementById, type ElementId } from "@/elements";
-import { LABEL_FONT_FAMILY } from "@/fonts";
+import { fontFamilyOf } from "@/fontCatalog";
+import { labelFontCss } from "@/fonts";
 import { DescriptionEditor } from "@/components/DescriptionEditor";
 import { Input } from "@/components/ui/input";
 import { boxesFor, hitTest, type CollabSlots, type Measure } from "@/hittest";
@@ -232,11 +232,10 @@ export const PreviewCompare = forwardRef<
     if (!canvasRender) return;
     const raf = requestAnimationFrame(() => {
       try {
-        // planLabel runs before any canvas is touched, so its throws (the
+        // planFrom runs before any canvas is touched, so its throws (the
         // realistic failure) leave the last frame intact — the spec's
         // failed-frame policy.
-        const plan = planLabel(cfg, canvasRender.m,
-          { skip: canvasRender.skip, assets: canvasRender.planAssets });
+        const plan = planFrom(cfg, canvasRender);
         // Long-edge guard: rasterScale alone would let a user-expanded bleed
         // grow the backing store past PREVIEW_RASTER_MAX_EDGE (measured 5040px
         // at bleed 0.2, past the 4876 cap). Capping the long edge and deriving
@@ -253,7 +252,7 @@ export const PreviewCompare = forwardRef<
             canvas.width = w;
             canvas.height = Math.round(rawH * cap);
           }
-          drawPlate(canvas.getContext("2d")!, plan, canvasRender.drawAssets, mode);
+          drawPlate(canvas.getContext("2d")!, plan, canvasRender.drawAssets, mode, canvasRender.fontCss);
         }
         onRenderError?.("");
       } catch (err) {
@@ -566,7 +565,12 @@ export const PreviewCompare = forwardRef<
               ...pageBox(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0, SEL_PAD),
               fontSize: `${fontCqh}cqh`,
               lineHeight: 1,
-              fontFamily: LABEL_FONT_FAMILY,
+              // canvasRender.fontCss wins when the render source is ready
+              // (it's the family the canvas is actually painting with); the
+              // fontFamilyOf(cfg) fallback only covers the gap before the
+              // first assembly lands. Both resolve the same family, since
+              // canvasRender is itself assembled from fontFamilyOf(cfg).
+              fontFamily: canvasRender?.fontCss ?? labelFontCss(fontFamilyOf(cfg)),
               // The name draws in the true Bold face; other bold elements
               // mean SemiBold (the same convention measure/hit-test use).
               fontWeight: editing === "name" ? 700 : (st as StyledLine).bold ? 600 : 400,

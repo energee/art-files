@@ -1,73 +1,90 @@
 // fonts.ts — the ONE gate between the label's font and the DOM. Registers
-// the same bundled TTFs the PDF builds embed (see pdf/fonts.ts) as document
-// faces under LABEL_FONT_FAMILY, and hands back the canvas-metrics Measure
-// that hit-testing and the in-place editor share. The font is Poppins today,
-// but it is intended to become config-driven: when that lands, this module
-// takes the choice and every consumer — measure, hit boxes, the editor's
-// visible text — follows without touching a hardcoded family name.
+// the bundled TTFs the PDF builds embed (see pdf/fonts.ts, which shares the
+// FONT_URLS map below) as document faces under labelFontCss(id), and hands
+// back the canvas-metrics Measure that hit-testing and the in-place editor
+// share. The gate is family-aware: every consumer — measure, hit boxes, the
+// editor's visible text — takes the config's fontFamilyOf(cfg) choice
+// (fontCatalog.ts) and follows it, memoized per family so switching families
+// never re-fetches a face already loaded.
 import poppinsRegular from "./assets/fonts/Poppins-Regular.ttf?url";
 import poppinsSemiBold from "./assets/fonts/Poppins-SemiBold.ttf?url";
 import poppinsBold from "./assets/fonts/Poppins-Bold.ttf?url";
+import type { FontFamilyId } from "./fontCatalog";
 import type { Measure } from "./hittest";
 import type { MeasureFace } from "./plan";
 
-/** The registered family for label text drawn by the DOM (the in-place
- *  editor). Weights: 400 regular, 600 semibold, 700 the name's true Bold. */
-export const LABEL_FONT_FAMILY = "LabelFont";
+type Face = "regular" | "semibold" | "bold";
+
+/** The ?url side of the catalog: Vite needs static imports, so this is the
+ *  one place a family's face URLs are wired up. Consumed here and by
+ *  pdf/fonts.ts (loadFonts), so the URL side has one source. */
+export const FONT_URLS: Record<FontFamilyId, Record<Face, string>> = {
+  poppins: { regular: poppinsRegular, semibold: poppinsSemiBold, bold: poppinsBold },
+};
+
+/** The CSS font-family a family's faces register under — one distinct name
+ *  per family, so two families' faces never collide in `document.fonts`. */
+export const labelFontCss = (id: FontFamilyId) => "LabelFont-" + id;
 
 /** CSS weight per plan face. Measure and draw MUST agree on this mapping —
  *  a mismatch silently mismeasures or misdraws — so it lives once, beside
  *  the family it styles, and both loadLabelFaces and canvas/draw import it. */
 export const FACE_WEIGHT = { regular: 400, semibold: 600, bold: 700 } as const;
 
-let measurePromise: Promise<Measure> | null = null;
+const measurePromises = new Map<FontFamilyId, Promise<Measure>>();
 
-/** Memoized; a failed load clears the memo so the next caller retries.
- *  `bold` intentionally measures the SemiBold face: most bold targets use
- *  it, and the two true-Bold elements are centred and tolerate the small
- *  symmetric under-measurement (see hittest.ts). */
-export function loadLabelFont(): Promise<Measure> {
-  if (measurePromise) return measurePromise;
-  measurePromise = Promise.all([
-    new FontFace(LABEL_FONT_FAMILY, `url(${poppinsRegular})`, { weight: "400" }).load(),
-    new FontFace(LABEL_FONT_FAMILY, `url(${poppinsSemiBold})`, { weight: "600" }).load(),
-    new FontFace(LABEL_FONT_FAMILY, `url(${poppinsBold})`, { weight: "700" }).load(),
+/** Memoized per family; a failed load clears that family's memo so the next
+ *  caller retries. `bold` intentionally measures the SemiBold face: most
+ *  bold targets use it, and the two true-Bold elements are centred and
+ *  tolerate the small symmetric under-measurement (see hittest.ts). */
+export function loadLabelFont(id: FontFamilyId = "poppins"): Promise<Measure> {
+  const cached = measurePromises.get(id);
+  if (cached) return cached;
+  const css = labelFontCss(id);
+  const urls = FONT_URLS[id];
+  const p = Promise.all([
+    new FontFace(css, `url(${urls.regular})`, { weight: "400" }).load(),
+    new FontFace(css, `url(${urls.semibold})`, { weight: "600" }).load(),
+    new FontFace(css, `url(${urls.bold})`, { weight: "700" }).load(),
   ]).then((faces) => {
     faces.forEach((face) => document.fonts.add(face));
     const ctx = document.createElement("canvas").getContext("2d");
     if (!ctx) throw new Error("Could not create the font measurement canvas.");
     return (text: string, size: number, bold: boolean) => {
-      ctx.font = `${bold ? 600 : 400} ${size}px ${LABEL_FONT_FAMILY}`;
+      ctx.font = `${bold ? 600 : 400} ${size}px ${css}`;
       return ctx.measureText(text).width;
     };
   }).catch((error) => {
-    measurePromise = null;
+    measurePromises.delete(id);
     throw error;
   });
-  return measurePromise;
+  measurePromises.set(id, p);
+  return p;
 }
 
 /** Face-aware canvas measure for the plan: the same loaded faces, measured
  *  at their true weights (unlike Measure's bold-boolean approximation, which
  *  hit boxes keep for compatibility). The canvas renderer places with THIS,
  *  so what it measures is what it draws. */
-let facesPromise: Promise<MeasureFace> | null = null;
+const facesPromises = new Map<FontFamilyId, Promise<MeasureFace>>();
 
-export function loadLabelFaces(): Promise<MeasureFace> {
-  if (facesPromise) return facesPromise;
+export function loadLabelFaces(id: FontFamilyId = "poppins"): Promise<MeasureFace> {
+  const cached = facesPromises.get(id);
+  if (cached) return cached;
+  const css = labelFontCss(id);
   // Memoized like loadLabelFont: callers sit on hot paths (the dev preview
   // effect re-asks per rebuild), and the measurement canvas is reusable.
-  const p: Promise<MeasureFace> = loadLabelFont().then((): MeasureFace => {
+  const p: Promise<MeasureFace> = loadLabelFont(id).then((): MeasureFace => {
     const ctx = document.createElement("canvas").getContext("2d");
     if (!ctx) throw new Error("Could not create the font measurement canvas.");
     return (text, size, face) => {
-      ctx.font = `${FACE_WEIGHT[face]} ${size}px ${LABEL_FONT_FAMILY}`;
+      ctx.font = `${FACE_WEIGHT[face]} ${size}px ${css}`;
       return ctx.measureText(text).width;
     };
   }).catch((error) => {
-    facesPromise = null;
+    facesPromises.delete(id);
     throw error;
   });
-  facesPromise = p;
+  facesPromises.set(id, p);
   return p;
 }

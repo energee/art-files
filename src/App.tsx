@@ -66,7 +66,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { loadLabelFont, loadLabelFaces } from "@/fonts";
+import { loadLabelFont, loadLabelFaces, labelFontCss } from "@/fonts";
+import { fontFamilyOf } from "@/fontCatalog";
 import { loadFonts } from "@/pdf/fonts";
 import type { MeasureFace, PlanAssets } from "@/plan";
 import type { CanvasAssets, CanvasRenderSource } from "@/canvas/draw";
@@ -705,14 +706,18 @@ export const DocumentEditor = memo(function DocumentEditor({
   // avoids loading pdf-lib + fontkit on the UI thread just to measure hit
   // boxes. `bold` intentionally means SemiBold here: most bold hit targets
   // use that face, while the two true-Bold elements are centred and tolerate
-  // the small symmetric under-measurement (see hittest.ts).
+  // the small symmetric under-measurement (see hittest.ts). Keyed on the
+  // config's family (fontFamilyOf) so switching families re-embeds — the
+  // fonts.ts gate memoizes per family, so re-selecting one already loaded
+  // resolves immediately.
+  const family = fontFamilyOf(cfg);
   useEffect(() => {
     let cancelled = false;
-    void loadLabelFont()
+    void loadLabelFont(family)
       .then((next) => { if (!cancelled) setMeasure(() => next); })
       .catch((error) => { if (!cancelled) setBuildError(String(error)); });
     return () => { cancelled = true; };
-  }, []);
+  }, [family]);
 
   // Which instance the window/document-level key listeners below belong to.
   // A ref, not the prop: the listeners are registered once on mount.
@@ -898,14 +903,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   // knobs are the only cfg fields the bitmaps depend on, so they are
   // dependencies here by value.
   const [canvasAssets, setCanvasAssets] = useState<{
-    m: MeasureFace; planAssets: PlanAssets; drawAssets: CanvasAssets;
+    m: MeasureFace; planAssets: PlanAssets; drawAssets: CanvasAssets; fontCss: string;
   } | null>(null);
   useEffect(() => {
     if (blocked || !active) return;
     let cancelled = false;
     const timer = setTimeout(() => {
       (async () => {
-        const m = await loadLabelFaces();
+        const m = await loadLabelFaces(family);
         // Every decode this run makes is tracked here, so a throw partway
         // through (a later await failing after an earlier one already
         // decoded a bitmap) can still close everything decoded so far —
@@ -952,6 +957,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           m,
           planAssets: { logoSvg, collabLeft: left.art, collabCenter: center.art },
           drawAssets,
+          fontCss: labelFontCss(family),
         });
       })().catch((err) => {
         // The font gate or a decode failed: the preview cannot render.
@@ -961,11 +967,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     }, 150);
     return () => { cancelled = true; clearTimeout(timer); };
     // Asset inputs only — cfg deliberately excluded except the tint knobs
-    // (see the comment above). eslint can't see that collabAssets() reads
-    // exactly these.
+    // and the font family (see the comment above). eslint can't see that
+    // collabAssets() reads exactly these.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    texture, mask, collabLeft, collabCenter, hiddenLayers,
+    texture, mask, collabLeft, collabCenter, hiddenLayers, family,
     cfg.collabLeft.fill, cfg.collabLeft.tintRaster,
     cfg.collabCenter.fill, cfg.collabCenter.tintRaster,
     blocked, active,
@@ -1082,7 +1088,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     try {
       const [{ buildArtPdf, buildMaskPdf }, fonts] = await Promise.all([
         import("@/pdf/build"),
-        loadFonts(),
+        loadFonts(fontFamilyOf(cfg)),
       ]);
       // Exports honor the eye too: a hidden layer is "not on this label",
       // preview and deliverable alike. (PSDs still carry every layer — a
@@ -1371,7 +1377,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     try {
       const [{ buildPsd }, fonts] = await Promise.all([
         import("@/psd/build"),
-        loadFonts(),
+        loadFonts(fontFamilyOf(cfg)),
       ]);
       const assets: PsdAssets = {
         fonts, logoSvg,

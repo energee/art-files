@@ -37,6 +37,7 @@ import { writePsdUint8Array, type BezierPath, type Layer, type Psd } from "ag-ps
 import type { Fill, LabelConfig, StyledLine } from "../types";
 import { displayAbv, displayName, displayStyle } from "../defaults";
 import type { ElementId } from "../elements";
+import { FONT_FAMILIES, fontFamilyOf } from "../fontCatalog";
 import * as L from "../layout";
 import { parseDescription, parseInfoLine, parseRuns } from "../description";
 import { planLabel, type MeasureFace, type Placed, type PlacedBarcode } from "../plan";
@@ -358,18 +359,18 @@ interface Faces {
   semibold: PDFFont;
   bold: PDFFont;
 }
-/** PostScript names, which is what Photoshop resolves the type layer against. */
-const PS_NAME = {
-  regular: "Poppins-Regular",
-  semibold: "Poppins-SemiBold",
-  bold: "Poppins-Bold",
-} as const;
-type Face = keyof typeof PS_NAME;
+/** PostScript names, which is what Photoshop resolves the type layer
+ *  against — cfg's family (see fontCatalog.ts's FONT_FAMILIES), not a fixed
+ *  Poppins map. */
+type Face = keyof typeof FONT_FAMILIES["poppins"]["ps"];
 
-/** One editable type layer. `x`/`baseline` are in label points; `rotated`
- *  applies the same quarter turn plan.ts's rotatedRuns does (text reads
- *  bottom-to-top), expressed purely in the affine transform. */
-function textLayer(
+/** One editable type layer, bound to one family's PostScript names (`ps`,
+ *  resolved once per build from cfg — see buildLayers). `x`/`baseline` are
+ *  in label points; `rotated` applies the same quarter turn plan.ts's
+ *  rotatedRuns does (text reads bottom-to-top), expressed purely in the
+ *  affine transform. */
+function makeTextLayer(ps: Record<Face, string>) {
+  return function textLayer(
   name: string,
   text: string,
   opts: {
@@ -435,7 +436,7 @@ function textLayer(
     ? runs.map((r) => ({
         length: r.text.length,
         style: {
-          font: { name: PS_NAME[r.bold ? boldFace : opts.face] },
+          font: { name: ps[r.bold ? boldFace : opts.face] },
           // A merged block's lines can differ in colour (a `_white ink_`
           // line keeps the block's fill, a re-filled one does not), so the
           // run carries its own. Mask mode repaints per run: a white-ink
@@ -452,7 +453,7 @@ function textLayer(
       text: drawn,
       transform: opts.rotated ? [0, -1, 1, 0, t, b] : [1, 0, 0, 1, t, b],
       style: {
-        font: { name: PS_NAME[opts.face] },
+        font: { name: ps[opts.face] },
         fontSize: px(opts.size),
         fillColor: color255(opts.fill),
         ...(opts.leading ? { leading: px(opts.leading), autoLeading: false } : {}),
@@ -474,6 +475,7 @@ function textLayer(
       opts.strokeWidth,
     ),
   };
+  };
 }
 
 const faceOf = (line: { bold?: boolean }): Face => (line.bold ? "semibold" : "regular");
@@ -486,6 +488,10 @@ function buildLayers(
   const groups: Layer[] = [];
   /** This mode's paint for a styled element. */
   const P = (s: { fill: Fill; layer: "metallic" | "white" }) => paint(mode, s.fill, s.layer);
+  // Bound once to cfg's family's PostScript names — every textLayer call
+  // below resolves the type layer's font against these, not a fixed Poppins
+  // map (see fontCatalog.ts's FONT_FAMILIES).
+  const textLayer = makeTextLayer(FONT_FAMILIES[fontFamilyOf(cfg)].ps);
 
   // Text + laurel + barcode placement, from the same display list every other
   // backend consumes. The PSD draws no collab art, so no collab assets go in —

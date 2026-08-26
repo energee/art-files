@@ -2,7 +2,10 @@
 // white-ink mask plate) into the canvases the 3D label material consumes: the
 // art itself and a binary per-pixel metalness mask. The plates come from the
 // canvas backend's display-list walk (see canvas/draw.ts), not a PDF raster.
+// The font is whatever CSS family the caller's render source is loaded
+// under (see fonts.ts's gate); drawPlates just forwards it to drawPlate.
 import { drawPlate, type CanvasAssets } from "@/canvas/draw";
+import { labelFontCss } from "@/fonts";
 import type { Placed } from "@/plan";
 import { PAGE } from "@/layout";
 
@@ -77,14 +80,14 @@ function deriveMetalness(
  *  texel density the old PDF raster produced. One scale for both plates, so
  *  the maps share the art's UV grid pixel-for-pixel. */
 export function drawPlates(
-  plan: readonly Placed[], assets: CanvasAssets,
+  plan: readonly Placed[], assets: CanvasAssets, fontCss = labelFontCss("poppins"),
 ): { art: HTMLCanvasElement; mask: HTMLCanvasElement } {
   const s = Math.min(MAX_SCALE, MAX_EDGE / Math.max(PAGE.w, PAGE.h));
   const plate = (mode: "art" | "mask") => {
     const c = document.createElement("canvas");
     c.width = Math.round(PAGE.w * s);
     c.height = Math.round(PAGE.h * s);
-    drawPlate(c.getContext("2d")!, plan, assets, mode);
+    drawPlate(c.getContext("2d")!, plan, assets, mode, fontCss);
     return c;
   };
   return { art: plate("art"), mask: plate("mask") };

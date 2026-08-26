@@ -4,13 +4,17 @@
 // — but no y-flip (canvas and the plan are both top-left origin) and no
 // stroke-cavity bridge (real canvas strokes are solid; the bridge exists
 // only for pdf.js's path-font renderer). Fonts arrive through the fonts.ts
-// gate: callers must have awaited loadLabelFont()/loadLabelFaces() so
-// LABEL_FONT_FAMILY resolves — a missing face would silently measure wrong,
-// which is exactly what the gate exists to prevent.
-import type { Mode, MeasureFace, Placed, PlacedBarcode, PlacedText, PlanAssets } from "../plan";
-import type { Fill, Style } from "../types";
+// gate: callers must have awaited loadLabelFont()/loadLabelFaces() for the
+// same family as the `fontCss` passed in, so that CSS family resolves — a
+// missing face would silently measure wrong, which is exactly what the gate
+// exists to prevent.
+import {
+  planLabel, type Mode, type MeasureFace, type Placed, type PlacedBarcode, type PlacedText,
+  type PlanAssets,
+} from "../plan";
+import type { Fill, LabelConfig, Style } from "../types";
 import type { ElementId } from "../elements";
-import { FACE_WEIGHT, LABEL_FONT_FAMILY } from "../fonts";
+import { FACE_WEIGHT, labelFontCss } from "../fonts";
 import * as L from "../layout";
 
 // TypeScript note: some lib.dom versions lack `letterSpacing` on the 2D
@@ -36,7 +40,16 @@ export interface CanvasRenderSource {
   planAssets: PlanAssets;
   drawAssets: CanvasAssets;
   skip: { has(id: ElementId): boolean };
+  /** The registered CSS font-family for this source's family (labelFontCss
+   *  of fontFamilyOf(cfg)) — the same string the faces were loaded under, so
+   *  drawPlate's text/barcode calls resolve the right glyphs. */
+  fontCss: string;
 }
+
+/** The one spelling of "plan from a render source" — PreviewCompare and the
+ *  3D texture path both build the identical call (Phase-3 deferred minor). */
+export const planFrom = (cfg: LabelConfig, s: CanvasRenderSource): Placed[] =>
+  planLabel(cfg, s.m, { skip: s.skip, assets: s.planAssets });
 
 /** Art-mode CSS color for a Fill — "none" is no ink, i.e. white, the same
  *  rule as pdf/build.ts's fillColor via parseHexFill. */
@@ -54,6 +67,7 @@ export function drawPlate(
   plan: readonly Placed[],
   assets: CanvasAssets,
   mode: Mode,
+  fontCss = labelFontCss("poppins"),
 ): void {
   const c = ctx as Ctx;
   const scale = c.canvas.width / L.PAGE.w;
@@ -87,7 +101,7 @@ export function drawPlate(
   c.translate(L.BLEED_SHIFT, L.BLEED_SHIFT);
 
   for (const r of plan) {
-    if (r.kind === "text") drawText(c, r, mode);
+    if (r.kind === "text") drawText(c, r, mode, fontCss);
     else if (r.kind === "paths") {
       c.save();
       c.translate(r.x, r.y);
@@ -117,12 +131,12 @@ export function drawPlate(
         c.fillStyle = L.MASK_BLUE_HEX;
         c.fillRect(r.x, r.y, r.w, r.h);
       }
-    } else drawBarcode(c, r, mode);
+    } else drawBarcode(c, r, mode, fontCss);
   }
 }
 
-function drawText(ctx: Ctx, r: PlacedText, mode: Mode) {
-  ctx.font = `${FACE_WEIGHT[r.face]} ${r.size}px ${LABEL_FONT_FAMILY}`;
+function drawText(ctx: Ctx, r: PlacedText, mode: Mode, fontCss: string) {
+  ctx.font = `${FACE_WEIGHT[r.face]} ${r.size}px ${fontCss}`;
   // Tracking in points: under the pt-scaled transform, user-space px ARE
   // points. Canvas letterSpacing also gaps after the final glyph, but that
   // is advance, not ink — run positions come from the plan, so it cannot
@@ -144,7 +158,7 @@ function drawText(ctx: Ctx, r: PlacedText, mode: Mode) {
 
 /** Both plates of the barcode — the same paint logic as pdf/build.ts's
  *  drawBarcode, from the same item. */
-function drawBarcode(ctx: Ctx, item: PlacedBarcode, mode: Mode) {
+function drawBarcode(ctx: Ctx, item: PlacedBarcode, mode: Mode, fontCss: string) {
   const digit = (d: { text: string; x: number; y: number }, paint: "fill" | "stroke") => {
     ctx.save();
     ctx.translate(d.x, d.y);
@@ -153,7 +167,7 @@ function drawBarcode(ctx: Ctx, item: PlacedBarcode, mode: Mode) {
     else ctx.strokeText(d.text, 0, 0); // ink pass repaints the glyph body
     ctx.restore();
   };
-  ctx.font = `${FACE_WEIGHT.regular} ${item.textSize}px ${LABEL_FONT_FAMILY}`;
+  ctx.font = `${FACE_WEIGHT.regular} ${item.textSize}px ${fontCss}`;
   ctx.letterSpacing = "0px";
 
   if (mode === "mask") {
