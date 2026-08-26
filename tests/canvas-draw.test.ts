@@ -2,7 +2,7 @@
 // ctx: Node has no 2D canvas, and what parity needs pinned here is the PAINT
 // PROTOCOL (order, colors, transforms), not rasterized pixels — the pixel
 // side is the parity page's job.
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { drawPlate, type CanvasAssets } from "../src/canvas/draw";
 import { barcodeItem, lineRuns, planLabel, type MeasureFace } from "../src/plan";
 import { defaultConfig } from "../src/defaults";
@@ -47,6 +47,10 @@ function fakeCtx() {
 beforeEach(() => {
   vi.stubGlobal("Path2D", class { constructor(public d?: string) {} });
 });
+// Teardown, not inline: a test that stubs `document` (the letterSpacing
+// fallback one) must not leak it to its siblings even when an assertion
+// throws mid-test. beforeEach re-stubs Path2D for the next one.
+afterEach(() => vi.unstubAllGlobals());
 
 const cfg = defaultConfig();
 const plan = () => planLabel(cfg, m, { assets: { logoSvg } });
@@ -156,7 +160,6 @@ describe("drawPlate", () => {
   it("without ctx.letterSpacing, a tracked run is placed glyph by glyph", async () => {
     vi.resetModules();
     vi.stubGlobal("document", { createElement: () => ({ getContext: () => ({}) }) });
-    vi.stubGlobal("Path2D", class { constructor(public d?: string) {} });
     const { drawPlate: drawUnsupported } = await import("../src/canvas/draw");
     const runs = lineRuns(
       "styleLine", { text: "IPA", fill: "#C8A951", layer: "metallic", letterSpacing: 4 },
@@ -170,8 +173,6 @@ describe("drawPlate", () => {
     // Advance is the glyph's own measured width (3 per char here) + tracking,
     // in user-space px — the pt-scaled transform makes that scale-free.
     expect(glyphs.map((g) => g.args[1])).toEqual([0, 7, 14]);
-    vi.unstubAllGlobals();
-    vi.resetModules();
   });
 
   it("paints every barcode halo shape before any ink shape", () => {
