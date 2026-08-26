@@ -3,6 +3,7 @@
 import type { LabelConfig, ConfigFile } from "./types";
 import { machineName } from "./qr";
 import { DEFAULT_STROKE_PX, GOLD, WARNING_TRACKING } from "./layout";
+import { markRun } from "./description";
 import { DEFAULT_STROKE_LAYER } from "./strokes";
 
 /** The shipped outer stroke: pure black, at the standard width. The barcode
@@ -135,12 +136,11 @@ export function parseConfigFile(json: string): LabelConfig {
   if (data?.version !== 1) throw new Error("Unsupported config version");
   const { version: _v, ...cfg } = data;
   if (cfg.description === undefined && Array.isArray(cfg.descriptionLines)) {
-    const md = (l: { text: string; fill: string; layer: string; bold?: boolean }) => {
-      let s = l.text;
-      if (l.fill === "white" || l.layer === "white") s = `_${s}_`;
-      if (l.bold) s = `**${s}**`;
-      return s;
-    };
+    // Through markRun, so this migration writes the markers in the same
+    // alphabet and canonical order serializeDescription does — the two have
+    // to agree for an old file to round-trip.
+    const md = (l: { text: string; fill: string; layer: string; bold?: boolean }) =>
+      markRun(l.text, { bold: l.bold, white: l.fill === "white" || l.layer === "white" });
     cfg.description = [
       ...(cfg.descriptionHeader ? [`# ${cfg.descriptionHeader.text}`] : []),
       ...cfg.descriptionLines.map(md),

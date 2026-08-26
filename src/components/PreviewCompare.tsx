@@ -3,10 +3,11 @@
 // reveals the white-ink layer (left side) over the art (right side). Click
 // selects the element under the cursor; double-clicking a text element
 // (see elements.ts's editableText) edits it IN PLACE over the artwork —
-// unrotated elements (the description included) become live DOM text where
-// they sit, the description with a floating pill toolbar above it; only the
-// rotated column still floats a small input beside its outline — applying
-// live, one undo step per session. Pointer-down on a draggable element (see
+// every element becomes live DOM text where it sits: the markdown-backed
+// ones (the description block, the Info row) as the WYSIWYG field with a
+// floating pill toolbar, the rotated column turned -90deg with the text,
+// everything else a plain styled input — applying live, one undo step per
+// session. Pointer-down on a draggable element (see
 // elements.ts's dragTarget) arms a vertical drag that nudges its offsetY
 // live, folded into one undo step the same way.
 import {
@@ -15,22 +16,24 @@ import {
 import { createPortal } from "react-dom";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { drawPlate, planFrom, type CanvasRenderSource } from "@/canvas/draw";
+import type { Face } from "@/plan";
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import {
-  ART, DESC, FONT_ASC, FONT_DESC, GOLD, PAGE, PREVIEW_MAX_W,
+  ART, DESC, FONT_ASC, FONT_DESC, GOLD, HANDLE_ADDR, PAGE, PREVIEW_MAX_W,
   PREVIEW_RASTER_MAX_EDGE, previewRasterScale,
 } from "@/layout";
 import type { LabelConfig, Style, StyledLine } from "@/types";
-import { dragTarget, editableText, elementById, type ElementId } from "@/elements";
+import {
+  dragTarget, editableText, elementById, type EditableText, type ElementId,
+} from "@/elements";
 import { fontFamilyOf } from "@/fontCatalog";
-import { labelFontCss } from "@/fonts";
+import { FACE_WEIGHT, labelFontCss } from "@/fonts";
 import {
   DescriptionToolbarButtons, useDescriptionField, type LinePaint,
 } from "@/components/DescriptionEditor";
-import { Input } from "@/components/ui/input";
-import { boxesFor, hitTest, type CollabSlots, type Measure } from "@/hittest";
+import { boxOf, boxesFor, hitTest, type CollabSlots, type Measure } from "@/hittest";
 import { modsOf, type SelectMods } from "@/selection";
 
 /** The selection box's four corner ticks, each already placed. */
@@ -101,45 +104,105 @@ const pageBox = (
   height: `calc(${(h / PAGE.h) * 100}% + ${pad * 2}px)`,
 });
 
-/** The in-place description's per-line painter: the same data-driven flags
- *  the sidebar field paints, but at label metrics — weight and ink only,
- *  since size/leading/family live on the container (uniform: DESC and
- *  DESC_HEADER share size 9 / leading 10.8; the header differs by weight
- *  alone). Bold means the SemiBold face, the same convention the renderers
- *  and the single-line editor use. whitespace-pre because the canvas never
- *  auto-wraps description lines, so the editor must not either. Module
- *  constant, not a closure, so the hook's seed effect stays stable. */
-const paintLabelLine: LinePaint = (el, l) => {
-  el.className = "whitespace-pre outline-none";
-  el.style.fontWeight = l.bold ? "600" : "400";
-  el.style.color = l.white ? "#FFFFFF" : GOLD;
-};
+/** Label-space points as a container-query length — a share of the preview's
+ *  HEIGHT, which is the unit the in-place editors size glyphs, tracking and
+ *  rotated rows in so they track the sheet at any zoom. Page x and y are the
+ *  same points against a wrapper whose aspect ratio is locked to the page,
+ *  so this is the right unit on both axes. */
+const cqh = (pt: number) => `${(pt / PAGE.h) * 100}cqh`;
 
-/** The description's IN-PLACE session: the same rich-lines engine as the
- *  sidebar field (useDescriptionField), but the contenteditable sits over
- *  the element's own spot on the sheet at label metrics — the canvas skips
- *  the element for the session (see onEditSession), so this DOM text IS the
- *  description while you type — and the Header/Bold/White-ink toggles float
- *  above it as a fixed pill, portaled to <body> so App's CSS zoom scales
- *  the text with the artwork but never the toolbar chrome. */
-function InPlaceDescription(props: {
+/** Just pageBox's top-left corner, for an overlay that sizes itself. */
+const corner = (x: number, y: number): React.CSSProperties => ({
+  left: `${(x / PAGE.w) * 100}%`,
+  top: `${(y / PAGE.h) * 100}%`,
+});
+
+/** An in-place field's painter, for an element that draws in `base` and its
+ *  `**bold**` runs in `boldFace` — the same pair plan.ts hands the renderers
+ *  (see its rotatedRuns/lineRuns calls). The same data-driven flags the
+ *  sidebar field paints, but at label metrics: weight and ink only, since
+ *  size/leading/family live on the container. FACE_WEIGHT is the one
+ *  face→CSS-weight table measure and draw already share, so the editor
+ *  can't paint a weight the canvas wouldn't. whitespace-pre because neither
+ *  renderer auto-wraps a line, so the editor must not either. */
+function paintFor(faces: { base: Face; bold: Face }, st: StyledLine): LinePaint {
+  // The element's Bold checkbox is a FLOOR, not a flag the markdown can
+  // clear: parseInfoLine ORs it into the drawn line, so the editor must too
+  // or a bold Info row loses a weight for the session (its own text carries
+  // no `**`, so the line reads unbold here).
+  const plainWeight = String(FACE_WEIGHT[st.bold ? faces.bold : faces.base]);
+  const boldWeight = String(FACE_WEIGHT[faces.bold]);
+  // The element's own ink, exactly as the plain in-place input resolves it —
+  // the canvas is skipping this element, so the field IS the element, and a
+  // hardcoded gold would make a re-inked block jump colour for the session.
+  const ink = inkOf(st);
+  return (el, l) => {
+    el.className = "whitespace-pre outline-none";
+    el.style.fontWeight = l.bold ? boldWeight : plainWeight;
+    el.style.color = l.white ? "#FFFFFF" : ink;
+  };
+}
+
+/** What an element's style paints as on screen: white-plate text renders
+ *  white, anything else shows its fill (flat — the metallic sheen is the
+ *  print's, not the screen's). */
+const inkOf = (st: Style) =>
+  (st.layer === "white" || st.fill === "none" ? "#FFFFFF" : st.fill);
+
+/** The IN-PLACE session for a markdown-backed element — the description
+ *  block and the rotated Info row: the same rich-lines engine as the sidebar
+ *  field (useDescriptionField), but the contenteditable sits over the
+ *  element's own spot on the sheet at label metrics, so `**bold**` and
+ *  `_white ink_` show as bold and white ink rather than as punctuation. The
+ *  canvas skips the element for the session (see onEditSession), so this DOM
+ *  text IS the element while you type, and the Bold/White-ink toggles (plus
+ *  Header, for the block) float above it as a fixed pill, portaled to <body>
+ *  so App's CSS zoom scales the text with the artwork but never the toolbar
+ *  chrome. */
+function InPlaceRichField(props: {
   value: string;
-  base: Style;
+  /** The element's own style: the base a `_white ink_` marker overrides,
+   *  what linesToMarkdown compares against, and the ink and bold floor the
+   *  painter draws with. */
+  base: StyledLine;
   fontCss: string;
+  /** What the element draws as — size and leading in points, and its face
+   *  pair. Straight off the spec (editableText[id].rich), which is also what
+   *  says the element gets this field at all. */
+  metrics: NonNullable<EditableText["rich"]>;
   /** Union hit box of the drawn lines, label-space points — the anchor. */
-  box: { x0: number; y0: number };
-  /** Pill position, viewport px, captured once at open (like panelPos). */
+  box: { x0: number; y0: number; y1: number };
+  /** Drawn rotated 90deg CCW in the right column (Info): the whole field
+   *  turns with the text, the way the plain in-place input does. */
+  rotated?: boolean;
+  /** Enter opens a new line (the description block) rather than ending the
+   *  session (the Info row, which the renderer draws as ONE line). */
+  multiline?: boolean;
+  label: string;
+  /** Pill position, viewport px, captured once at open. */
   toolbarPos: { left: number; top: number };
   onApply: (markdown: string) => void;
-  onEscape: () => void;
+  /** Ends the session: Escape asks to undo it (`cancel`), Enter on a
+   *  one-line field just closes — the plain in-place input's contract. */
+  onClose: (cancel: boolean) => void;
   /** Click-away guards — the field wrapper and the portaled pill both count
    *  as "inside the session" (see the pointerdown capture effect). */
   fieldRef: React.RefObject<HTMLDivElement | null>;
   toolbarRef: React.RefObject<HTMLDivElement | null>;
 }) {
-  const { value, base, fontCss, box, toolbarPos, onApply, onEscape, fieldRef, toolbarRef } = props;
+  const {
+    value, base, fontCss, metrics, box, rotated, multiline, label,
+    toolbarPos, onApply, onClose, fieldRef, toolbarRef,
+  } = props;
+  const { size, leading, faces } = metrics;
+  // Rebuilt only when the element's faces or ink change — the field seeds
+  // from it, and every reseed repaints every line and run through it.
+  const paint = useMemo(
+    () => paintFor(faces, base),
+    [faces, base.bold, base.fill, base.layer],
+  );
   const { rootRef, caret, toggle, toggleHeader, fieldProps } =
-    useDescriptionField({ value, base, onChange: onApply, paint: paintLabelLine });
+    useDescriptionField({ value, base, onChange: onApply, paint });
 
   // Focus with the caret at the end once on open — the hook's seed effect
   // registered first, so the line-divs exist by the time this runs. Caret at
@@ -156,37 +219,62 @@ function InPlaceDescription(props: {
   }, [rootRef]);
 
   // CSS positions the first BASELINE where the canvas drew it: the hit box's
-  // top is FONT_ASC above the baseline (see hittest.ts), while a CSS line
-  // box of `leading` height centers the font's (FONT_ASC+FONT_DESC) content
-  // area inside it — the half-leading difference is the offset between the
-  // two tops.
-  const topPt = box.y0 + ((FONT_ASC + FONT_DESC) * DESC.size - DESC.leading) / 2;
-  // pageBox keeps this on the same coordinate basis as every other overlay;
-  // height is dropped so the field auto-sizes to its lines. The width runs
-  // to the sheet's edge — the block is left-aligned and unwrapped, so that
-  // is the room to type rightward.
-  const { left, top, width } = pageBox(box.x0, topPt, PAGE.w - box.x0, 0);
+  // leading edge is FONT_ASC beyond the baseline (see hittest.ts), while a
+  // CSS line box of `leading` height centers the font's (FONT_ASC+FONT_DESC)
+  // content area inside it — the half-leading difference is the offset
+  // between the two. Rotated, that edge is the box's LEFT (the column grows
+  // rightward from the baseline) rather than its top; everything else about
+  // the field is identical, which is the point.
+  const cross = ((FONT_ASC + FONT_DESC) * size - leading) / 2;
+  // pageBox keeps this on the same coordinate basis as every other overlay.
+  // Only the corner comes from the page mapping — the field states its own
+  // width and never a height, so it auto-sizes to however many lines it
+  // holds. That width is the room to type INTO, which is where the text
+  // grows: to the sheet's right edge for the left-aligned, unwrapped
+  // description block; up to its top edge for the rotated column, which
+  // reads bottom-to-top from its own start.
+  const place: React.CSSProperties = rotated
+    // Turned about its own start corner, so that corner stays put and the
+    // text runs upward — the canvas's rotate(-PI/2) (see draw.ts).
+    ? {
+        ...corner(box.x0 + cross, box.y1),
+        width: cqh(box.y1),
+        transformOrigin: "0 0",
+        transform: "rotate(-90deg)",
+      }
+    // A share of the frame's WIDTH here (the block runs along page x), which
+    // the aspect-ratio box makes equal to cqh up to subpixel rounding — the
+    // rotated branch above measures along page y and uses cqh for it.
+    : { ...corner(box.x0, box.y0 + cross), width: `${((PAGE.w - box.x0) / PAGE.w) * 100}%` };
   return (
     <>
       <div
         ref={fieldRef}
         className="absolute"
         style={{
-          left, top, width,
-          fontSize: `${(DESC.size / PAGE.h) * 100}cqh`,
-          lineHeight: DESC.leading / DESC.size,
+          ...place,
+          fontSize: cqh(size),
+          lineHeight: leading / size,
           fontFamily: fontCss,
-          letterSpacing: `${((base.letterSpacing ?? 0) / PAGE.h) * 100}cqh`,
+          letterSpacing: cqh(base.letterSpacing ?? 0),
         }}
         // The wrapper's click/dblclick handlers hit-test the canvas;
         // interacting with the editor must not re-select or reopen.
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => { if (e.key === "Escape") onEscape(); }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClose(true);
+          // One drawn line means one field line: Enter ends the session
+          // instead of opening a line the renderer would never draw. A
+          // pasted newline still gets through (the hook's paste splits
+          // lines); the consumer keeps the first line, and the blur reseed
+          // makes the field agree.
+          if (e.key === "Enter" && !multiline) { e.preventDefault(); onClose(false); }
+        }}
       >
         <div
           {...fieldProps}
-          aria-label="Edit description text"
+          aria-label={label}
           className="outline-none caret-sky-400"
         />
       </div>
@@ -196,21 +284,18 @@ function InPlaceDescription(props: {
           className="fixed z-50 flex items-center gap-1 rounded-lg border border-border bg-background p-1 shadow-md"
           style={toolbarPos}
         >
-          <DescriptionToolbarButtons caret={caret} toggle={toggle} toggleHeader={toggleHeader} />
+          {/* No Header toggle on a one-line field: the storage format's
+              header slot is the description block's, and on the Info row a
+              `# ` would only collapse back to bold (see parseInfoLine). */}
+          <DescriptionToolbarButtons
+            caret={caret} toggle={toggle} toggleHeader={toggleHeader} showHeader={!!multiline}
+          />
         </div>,
         document.body,
       )}
     </>
   );
 }
-
-/** Union of several hit boxes — the description spans one per drawn line.
- *  Callers guarantee at least one box. */
-const unionBox = (boxes: { x0: number; y0: number; x1: number; y1: number }[]) =>
-  boxes.reduce((a, x) => ({
-    x0: Math.min(a.x0, x.x0), y0: Math.min(a.y0, x.y0),
-    x1: Math.max(a.x1, x.x1), y1: Math.max(a.y1, x.y1),
-  }));
 
 // The installed react-resizable-panels major (Group/Panel/Separator, with
 // panelRef instead of a forwarded ref, and onLayoutChange reporting a
@@ -254,7 +339,7 @@ export const PreviewCompare = forwardRef<
      *  the click's modifiers, so shift/⌘ on the canvas extend the selection
      *  exactly as they do in the layers panel. */
     onPick: (id: ElementId | null, mods: SelectMods) => void;
-    /** Called on every keystroke of a floating-editor session, so the canvas
+    /** Called on every keystroke of an in-place session, so the canvas
      *  re-renders the real styled text live. `first` is true on the
      *  session's opening keystroke; App uses it to fold the whole session
      *  into one undo step (see useHistory's coalesce override). */
@@ -272,8 +357,8 @@ export const PreviewCompare = forwardRef<
      *  pre-drag position. Never called when the drag never crossed the
      *  threshold (a plain click). */
     onNudgeCancel: () => void;
-    /** The element currently in an IN-PLACE session (null when idle or when
-     *  the session floats — the rotated column). planLabel skips it via the
+    /** The element currently being edited on the preview, null when idle —
+     *  every editable element edits in place. planLabel skips it via the
      *  render flag so the editor's live DOM text is the element. */
     onEditSession: (id: ElementId | null) => void;
     /** Divider position as % of width showing white-ink, on every change —
@@ -329,12 +414,14 @@ export const PreviewCompare = forwardRef<
     return () => window.clearTimeout(timeout);
   }, [zoom]);
 
+  // Built once: all three read refs, nothing from this render, so rebuilding
+  // the handle per keystroke and per divider pointer-move frame was churn.
   useImperativeHandle(ref, () => ({
     // Numbers in resize() are pixels, not percent — units must be explicit.
     showArt: () => leftPanel.current?.resize("0%"),
     showMask: () => leftPanel.current?.resize("100%"),
     getPageElement: () => pageElement.current,
-  }));
+  }), []);
 
   // The one render path: repaint both plates straight from the display list
   // on every config/asset change, on a rAF so a burst of keystrokes coalesces
@@ -423,26 +510,21 @@ export const PreviewCompare = forwardRef<
     if (id !== undefined) onPick(id, modsOf(e));
   }
 
-  // Inline text editing: double-click a text element to float an editor
-  // panel under its outline. Every keystroke goes straight to the config
-  // (see onEditText's doc), so the drawn render is the live feedback.
+  // Inline text editing: double-click a text element to edit it IN PLACE
+  // over the artwork — every element, the rotated column included (its
+  // editor is the same field, turned with the text). Every keystroke goes
+  // straight to the config (see onEditText's doc), so the drawn render is
+  // the live feedback.
   const [editing, setEditing] = useState<ElementId | null>(null);
-  // Viewport px, captured once at open (see onDoubleClick). Fixed rather
-  // than page-relative because the panel PORTALS to <body>: the preview's
-  // overflow-hidden would clip a panel near the sheet's edge, and App's
-  // CSS zoom transform would scale the panel's UI with the artwork.
-  const [panelPos, setPanelPos] =
-    useState<{ left: number; top: number; width: number } | null>(null);
   // The in-place description's pill toolbar position (viewport px, captured
   // at open alongside the session). Only meaningful while editing the
   // description; stale values are harmless — the pill renders only then.
   const [toolbarPos, setToolbarPos] = useState({ left: 8, top: 8 });
   // The open session's click-away boundary, whatever shape the editor takes:
-  // the in-place input's wrapper, the in-place description field, or the
-  // rotated column's floating panel.
+  // the in-place input's wrapper or the in-place description field.
   const sessionRef = useRef<HTMLDivElement>(null);
-  // The pill portals to <body> like the floating panel does, so click-away
-  // must ask it separately whether a pointerdown was "inside the session".
+  // The pill portals to <body>, so click-away must ask it separately
+  // whether a pointerdown was "inside the session".
   const toolbarRef = useRef<HTMLDivElement>(null);
   // Whether this session has applied any keystroke yet — the first one opens
   // the undo step, and Escape has nothing to undo before it.
@@ -495,20 +577,20 @@ export const PreviewCompare = forwardRef<
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onNudgeCancel]);
 
-  // Report in-place sessions (editing with no floating panel) so App can
-  // skip the element from the render via planLabel's render flag for the
-  // session's duration. One effect covers every open/close path — Enter,
+  // Report the open session so App can skip the element from the render via
+  // planLabel's render flag for its duration — the editor's DOM text is the
+  // element while you type. One effect covers every open/close path — Enter,
   // Escape, click-away.
   useEffect(() => {
-    onEditSession(editing && !panelPos ? editing : null);
+    onEditSession(editing);
     // onEditSession is a useState setter in App — identity-stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editing, panelPos]);
+  }, [editing]);
 
   // Click-away ends the session (capture phase, so it beats stopPropagation
-  // anywhere in the app). The rotated column's panel and the description's
-  // pill both portal outside this component's DOM tree, so "inside the
-  // session" must be asked of those nodes themselves.
+  // anywhere in the app). The description's pill portals outside this
+  // component's DOM tree, so "inside the session" must be asked of that node
+  // itself.
   useEffect(() => {
     if (!editing) return;
     const onDown = (e: PointerEvent) => {
@@ -526,78 +608,62 @@ export const PreviewCompare = forwardRef<
     const id = hitOf(e);
     const spec = id ? editableText[id] : undefined;
     if (!id || !spec || !measure) return;
-    // Anchor over the element itself: union of its hit boxes (the
-    // description spans one per drawn line), mapped page → viewport px off
-    // the same rect the click math uses. Clamped so the right rotated
-    // column's panel stays on screen. Captured once — the panel doesn't
-    // chase pan/zoom mid-session, it just closes on the next click-away.
-    const boxes = boxesFor([id], cfg, measure, collab);
-    if (!boxes.length) return;
-    const b = unionBox(boxes);
-    // Unrotated elements edit truly IN PLACE — no floating field, so no
-    // panelPos: single-line ones as an invisible input over the element,
-    // the description as the rich-lines field over its block with a pill
-    // toolbar floating above (see InPlaceDescription). Both leave the DOM
-    // text as the element while the canvas skips it for the session.
-    if (!spec.rotated) {
-      if (spec.multiline) {
-        // Pill position in viewport px, captured once like panelPos was:
-        // it portals to <body>, so App's CSS zoom can't scale it and the
-        // preview's overflow-hidden can't clip it near the sheet's edge.
-        const r = e.currentTarget.getBoundingClientRect();
-        const boxLeft = r.left + (b.x0 / PAGE.w) * r.width;
-        const boxTop = r.top + (b.y0 / PAGE.h) * r.height;
-        // ponytail: fixed clamps sized to the three-toggle pill (~140x40px)
-        // instead of measuring it — measure toolbarRef if its content grows.
-        setToolbarPos({
-          left: Math.max(8, Math.min(boxLeft, window.innerWidth - 148)),
-          top: Math.max(8, boxTop - 48),
-        });
-      }
-      setPanelPos(null);
-      edited.current = false;
-      setEditing(id);
-      return;
+    // Every element edits truly IN PLACE — plain ones (rotated or not) as
+    // an invisible input over the element, the markdown-backed ones (the
+    // description block and the Info row) as the rich field over the same
+    // spot with a pill toolbar floating above (see InPlaceRichField). All
+    // of them leave the DOM text as the element while the canvas skips it
+    // for the session.
+    if (spec.rich) {
+      // Anchor the pill over the element's hit box, mapped page → viewport
+      // px off the same rect the click math uses. Viewport px, captured
+      // once, because the pill portals to <body>: App's CSS zoom can't scale
+      // it there and the preview's overflow-hidden can't clip it near the
+      // sheet's edge.
+      const b = boxOf(id, cfg, measure, collab);
+      if (!b) return;
+      const r = e.currentTarget.getBoundingClientRect();
+      const boxLeft = r.left + (b.x0 / PAGE.w) * r.width;
+      const boxTop = r.top + (b.y0 / PAGE.h) * r.height;
+      // ponytail: fixed clamps sized to the three-toggle pill (~140x40px)
+      // instead of measuring it — measure toolbarRef if its content grows.
+      setToolbarPos({
+        left: Math.max(8, Math.min(boxLeft, window.innerWidth - 148)),
+        top: Math.max(8, boxTop - 48),
+      });
     }
-    const r = e.currentTarget.getBoundingClientRect();
-    // The one floating case left — the rotated column's small field —
-    // anchors over the element: at least as wide as it, never narrower
-    // than a usable field.
-    const boxLeft = r.left + (b.x0 / PAGE.w) * r.width;
-    const boxTop = r.top + (b.y0 / PAGE.h) * r.height;
-    const boxW = ((b.x1 - b.x0) / PAGE.w) * r.width;
-    const boxH = ((b.y1 - b.y0) / PAGE.h) * r.height;
-    const width = Math.max(200, boxW + 24);
-    // ponytail: fixed clamp margins instead of measuring the field —
-    // measure the real node if a size ever changes enough to clip.
-    setPanelPos({
-      width,
-      left: Math.max(8, Math.min(boxLeft - 10, window.innerWidth - width - 8)),
-      top: Math.max(8, Math.min(boxTop + boxH / 2 - 14, window.innerHeight - 320)),
-    });
     edited.current = false;
     setEditing(id);
   }
 
-  // Selection outline geometry, in label-space points (pageBox maps it to
-  // percentages at render). Memoized: boxesFor re-measures every element,
-  // the warning's word-by-word wrap included, and dragging the divider
-  // re-renders this component per pointer-move frame without any of these
-  // inputs changing — `selected` is memoized in App for exactly that reason.
-  const selBoxes = useMemo(
-    // One measurement pass for the whole selection (see boxesFor); elements
-    // the renderer isn't drawing — an empty collab slot — come back absent
-    // and simply get no outline.
-    () => (measure ? boxesFor(selected, cfg, measure, collab) : []),
-    [selected, cfg, measure, collab],
+  // Every box this render needs — the selection outlines and the in-place
+  // session's own anchor — from ONE measurement pass, in label-space points
+  // (pageBox maps them to percentages at render).
+  //
+  // Memoized, and pooled into a single boxesFor call, because that call is
+  // the expensive thing on the keystroke path: it re-plans and re-measures
+  // every element, the warning's word-by-word column wrap included. Two
+  // calls both keyed on `cfg` invalidated together on every keystroke of a
+  // session and paid for that pass twice. Dragging the divider re-renders
+  // per pointer-move frame with none of these inputs changing, which the
+  // memo covers — `selected` is memoized in App for exactly that reason.
+  const boxes = useMemo(
+    // Elements the renderer isn't drawing — an empty collab slot — come back
+    // absent, and simply get no outline and no editor anchor.
+    () => (measure
+      ? boxesFor([...new Set(editing ? [...selected, editing] : selected)], cfg, measure, collab)
+      : []),
+    [selected, editing, cfg, measure, collab],
   );
-
-  // The in-place session's own measurement pass, memoized for the same
-  // reason as selBoxes: every keystroke of the session changes cfg and
-  // re-renders this component, and boxesFor re-measures every element.
-  const editBoxes = useMemo(
-    () => (editing && measure ? boxesFor([editing], cfg, measure, collab) : []),
-    [editing, cfg, measure, collab],
+  const selBoxes = useMemo(
+    () => boxes.filter((b) => selected.includes(b.id)),
+    [boxes, selected],
+  );
+  // One box, already the union of the element's drawn lines (see boxesFor),
+  // with a stable identity so the editor's `box` prop doesn't churn.
+  const editBox = useMemo(
+    () => boxes.find((b) => b.id === editing) ?? null,
+    [boxes, editing],
   );
 
   return (
@@ -690,32 +756,42 @@ export const PreviewCompare = forwardRef<
           ))}
         </div>
       ))}
-      {/* IN-PLACE editor for unrotated elements. App skips the element from
+      {/* IN-PLACE editor — the ONE editor every element gets. App skips the
           the render for the session (see onEditSession), so the editor's
           styled text IS the element while you type — same family (via the
           fonts.ts gate), size, weight, tracking, and fill, drawn by the DOM
           instead of the canvas render. The box (and the selection outline
           above) grow with the text as it's typed, and the real render takes
-          back over the moment the session ends. The description gets the
-          rich-lines field with its pill toolbar; everything else the plain
-          styled input below. */}
-      {editing && !panelPos && measure && (() => {
+          back over the moment the session ends. Markdown-backed elements get
+          the rich field with its pill toolbar; everything else the plain
+          styled input below, turned with the text for the rotated column. */}
+      {editing && measure && (() => {
         const spec = editableText[editing]!;
-        if (spec.multiline) {
-          if (!editBoxes.length) return null;
+        const el = elementById(editing);
+        // The element's own style: the ink and weight both editors paint
+        // with, and the base a `_white ink_` marker overrides.
+        const st = el.style(cfg) as StyledLine;
+        const label = `Edit ${el.label.toLowerCase()} text`;
+        const b = editBox;
+        if (!b) return null;
+        if (spec.rich) {
           return (
-            <InPlaceDescription
+            <InPlaceRichField
               value={spec.get(cfg)}
-              base={cfg.descStyle}
+              base={st}
               fontCss={canvasRender?.fontCss ?? labelFontCss(fontFamilyOf(cfg))}
-              box={unionBox(editBoxes)}
+              metrics={spec.rich}
+              box={b}
+              rotated={spec.rotated}
+              multiline={spec.multiline}
+              label={label}
               toolbarPos={toolbarPos}
               onApply={(v) => {
                 onEditText(editing, v, !edited.current);
                 edited.current = true;
               }}
-              onEscape={() => {
-                if (edited.current) onEditCancel();
+              onClose={(cancel) => {
+                if (cancel && edited.current) onEditCancel();
                 setEditing(null);
               }}
               fieldRef={sessionRef}
@@ -723,21 +799,21 @@ export const PreviewCompare = forwardRef<
             />
           );
         }
-        const b = editBoxes[0];
-        if (!b) return null;
-        // Glyphs sized off the hit box — its height is ASC+DESC em by
-        // construction (see hittest.ts) — as a share of page height in cqh,
-        // so the editor tracks the preview at any zoom. Tracking converts
-        // the same way: it's absolute label-space points per glyph gap.
-        const fontCqh = ((b.y1 - b.y0) / (FONT_ASC + FONT_DESC) / PAGE.h) * 100;
-        const st = elementById(editing).style(cfg);
+        // Glyphs sized off the hit box — the ASC+DESC em axis is its height
+        // unrotated, its width in the rotated column (see hittest.ts) — as a
+        // share of page height in cqh, so the editor tracks the preview at
+        // any zoom. Tracking converts the same way: it's absolute
+        // label-space points per glyph gap. Both axes are points against a
+        // wrapper whose aspect ratio is locked to the page, so cqh is the
+        // right unit for a page-x span too.
+        const em = spec.rotated ? b.x1 - b.x0 : b.y1 - b.y0;
         return (
           <div
             ref={sessionRef}
-            className="absolute flex items-center"
+            className="absolute"
             style={{
               ...pageBox(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0, SEL_PAD),
-              fontSize: `${fontCqh}cqh`,
+              fontSize: cqh(em / (FONT_ASC + FONT_DESC)),
               lineHeight: 1,
               // canvasRender.fontCss wins when the render source is ready
               // (it's the family the canvas is actually painting with); the
@@ -747,107 +823,73 @@ export const PreviewCompare = forwardRef<
               fontFamily: canvasRender?.fontCss ?? labelFontCss(fontFamilyOf(cfg)),
               // The name draws in the true Bold face; other bold elements
               // mean SemiBold (the same convention measure/hit-test use).
-              fontWeight: editing === "name" ? 700 : (st as StyledLine).bold ? 600 : 400,
-              letterSpacing: `${((st.letterSpacing ?? 0) / PAGE.h) * 100}cqh`,
-              // White-plate text renders white; anything else shows its fill
-              // (flat — the metallic sheen is the print's, not the screen's).
-              color: st.layer === "white" || st.fill === "none" ? "#FFFFFF" : st.fill,
+              fontWeight: FACE_WEIGHT[
+                editing === "name" ? "bold" : st.bold ? "semibold" : "regular"
+              ],
+              letterSpacing: cqh(st.letterSpacing ?? 0),
+              color: inkOf(st),
             }}
             // The wrapper's click/dblclick handlers hit-test the canvas;
             // interacting with the editor must not re-select or reopen.
             onClick={(e) => e.stopPropagation()}
             onDoubleClick={(e) => e.stopPropagation()}
           >
-            <input
-              autoFocus
-              value={spec.get(cfg)}
-              aria-label={`Edit ${editing} text`}
-              // Caret at the end, no select-all: a highlighted block over
-              // the artwork reads as a smudge, and typing usually appends.
-              onFocus={(e) => {
-                const end = e.currentTarget.value.length;
-                e.currentTarget.setSelectionRange(end, end);
-              }}
-              onChange={(e) => {
-                const v = spec.numeric
-                  ? e.target.value.replace(/[^0-9.]/g, "") : e.target.value;
-                onEditText(editing, v, !edited.current);
-                edited.current = true;
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") setEditing(null);
-                if (e.key === "Escape") {
-                  if (edited.current) onEditCancel();
-                  setEditing(null);
-                }
-              }}
-              className="h-full bg-transparent px-1 outline-none caret-sky-400"
-              style={{
-                // The ABV input hugs its digits (1ch each, plus caret room)
-                // so the redrawn unit tail sits right after the number.
-                width: spec.numeric ? `${Math.max(spec.get(cfg).length, 1) + 1}ch` : "100%",
-                textAlign: spec.centred ? "center" : "left",
-                textTransform: spec.upper ? "uppercase" : undefined,
-              }}
-            />
-            {spec.numeric && (
-              // The drawn "% alc by vol" tail is hidden with its element for
-              // the session, so the editor re-draws it, uneditable, in the
-              // same style right after the number.
-              <span className="whitespace-nowrap">% alc by vol</span>
-            )}
-          </div>
-        );
-      })()}
-      {/* Floating text editor, portaled to <body> (see panelPos), for the
-          rotated column's fields — the one case that can't edit in place
-          (the DOM text would have to lie on its side). The drawn render is
-          still the live text — every keystroke updates the config and the
-          canvas repaints the real style. The element's outline comes from
-          the selection boxes above (double-clicking selects it). */}
-      {editing && panelPos && (() => {
-        const spec = editableText[editing]!;
-        const value = spec.get(cfg); // live: keystrokes land in cfg, so bind it
-        const apply = (v: string) => {
-          onEditText(editing, v, !edited.current);
-          edited.current = true;
-        };
-        const close = () => setEditing(null);
-        return createPortal(
-          <div
-            ref={sessionRef}
-            // No chrome for the bare field — anything more reads as a popup.
-            className="fixed z-50"
-            style={{ left: panelPos.left, top: panelPos.top, width: panelPos.width }}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                if (edited.current) onEditCancel();
-                close();
-              }
-            }}
-          >
-            <div className="flex items-center gap-1.5">
-              <Input
+            {/* The row the field sits on. Unrotated it just fills the hit
+                box; rotated it is the SAME row, sized to the drawn column,
+                centred in the (tall, narrow) box and turned -90deg to match
+                the canvas (see draw.ts). Text reads bottom-to-top
+                afterwards, so the row's left edge is the baseline's start
+                and it grows upward exactly as the box does. */}
+            <div
+              className="absolute flex items-center"
+              style={spec.rotated ? {
+                left: "50%",
+                top: "50%",
+                width: cqh(b.y1 - b.y0),
+                height: cqh(b.x1 - b.x0),
+                transform: "translate(-50%, -50%) rotate(-90deg)",
+              } : { inset: 0 }}
+            >
+              <input
                 autoFocus
-                aria-label={`Edit ${editing} text`}
-                // Opaque over the artwork — the stock input is transparent,
-                // which would show the drawn text through the field.
-                className="h-7 bg-background text-xs shadow-sm dark:bg-background"
-                value={value}
-                onChange={(e) => apply(
-                  spec.numeric ? e.target.value.replace(/[^0-9.]/g, "") : e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") close(); }}
+                value={spec.get(cfg)}
+                aria-label={label}
+                // Caret at the end, no select-all: a highlighted block over
+                // the artwork reads as a smudge, and typing usually appends.
+                onFocus={(e) => {
+                  const end = e.currentTarget.value.length;
+                  e.currentTarget.setSelectionRange(end, end);
+                }}
+                onChange={(e) => {
+                  const v = spec.numeric
+                    ? e.target.value.replace(/[^0-9.]/g, "") : e.target.value;
+                  onEditText(editing, v, !edited.current);
+                  edited.current = true;
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") setEditing(null);
+                  if (e.key === "Escape") {
+                    if (edited.current) onEditCancel();
+                    setEditing(null);
+                  }
+                }}
+                className="h-full bg-transparent px-1 outline-none caret-sky-400"
+                style={{
+                  // The ABV input hugs its digits (1ch each, plus caret room)
+                  // so the redrawn unit tail sits right after the number.
+                  width: spec.numeric ? `${Math.max(spec.get(cfg).length, 1) + 1}ch` : "100%",
+                  textAlign: spec.centred ? "center" : "left",
+                  textTransform: spec.upper ? "uppercase" : undefined,
+                }}
               />
-              {spec.numeric && (
-                // Chip-backed so the unit stays legible straight over the
-                // artwork now that there's no panel behind it.
-                <span className="whitespace-nowrap rounded bg-background/85 px-1 text-xs text-muted-foreground">
-                  % alc by vol
-                </span>
+              {spec.suffix && (
+                // The drawn tail (the ABV's unit) is hidden with its element
+                // for the session, so the editor redraws it, uneditable, in
+                // the same style right after the number.
+                <span className="whitespace-nowrap">{spec.suffix}</span>
               )}
             </div>
-          </div>,
-          document.body,
+          </div>
         );
       })()}
     </div>

@@ -12,7 +12,7 @@
 import { Bold, WholeWord, X } from "lucide-react";
 import type { LabelConfig, Style, StyledLine } from "@/types";
 import {
-  SHIPPED, applyStyle, elementById, isDefaultStyle,
+  SHIPPED, applyStyle, editableText, elementById, isDefaultStyle,
   type ElementId, type LabelElement,
 } from "@/elements";
 import { DOC_LAYER_LABELS, LAYER_ICONS, isElementId, type LayerId } from "@/components/layers";
@@ -243,6 +243,23 @@ function CollabSlotContent(props: {
   );
 }
 
+/** The WYSIWYG field for a markdown-backed element, wired entirely from the
+ *  registry — see the description/handleAddress arm below. */
+function RichContent(props: { id: ElementId; cfg: LabelConfig; update: Update }) {
+  const { id, cfg, update } = props;
+  const spec = editableText[id]!;
+  const el = elementById(id);
+  return (
+    <DescriptionEditor
+      value={spec.get(cfg)}
+      base={el.style(cfg)}
+      label={el.label}
+      multiline={spec.multiline}
+      onChange={(md) => update((c) => { spec.set(c, md); })}
+    />
+  );
+}
+
 /** The selected layer's Content section body, or null when the layer has
  *  nothing editable beyond style (wordmark, warning) — the caller shows a
  *  muted note instead. */
@@ -302,28 +319,6 @@ function Content(props: {
             <span className="text-xs text-muted-foreground">% alc by vol</span>
           )}
         </div>
-      );
-    case "description":
-      return (
-        <DescriptionEditor
-          value={cfg.description}
-          base={cfg.descStyle}
-          onChange={(md) => update((c) => { c.description = md; })}
-        />
-      );
-    case "handleAddress":
-      // Info authors in the same markdown subset as the description, through
-      // the same WYSIWYG editor — `**bold**` and `_white ink_` over the row's
-      // own style (see parseInfoLine). The slot draws ONE rotated line, so
-      // only the first line is kept: a stored second line would silently
-      // never appear on the label.
-      return (
-        <DescriptionEditor
-          value={cfg.handleAddress.text}
-          base={cfg.handleAddress}
-          onChange={(md) =>
-            update((c) => { c.handleAddress.text = md.split("\n")[0]; })}
-        />
       );
     case "barcode":
       return (
@@ -465,6 +460,14 @@ function Content(props: {
           </div>
         </div>
       );
+    // Markdown-backed elements share ONE field, driven by the element
+    // registry: `rich` says the element authors in the subset, `multiline`
+    // how many lines it draws, its setter enforces whatever that implies
+    // (see editableText), and the element's own label names the field.
+    // Listed by id only so this switch stays exhaustive over LayerId.
+    case "description":
+    case "handleAddress":
+      return <RichContent id={id} cfg={cfg} update={update} />;
     case "wordmark":
     case "warning":
       // Fixed template art/text: nothing to edit beyond style — say so

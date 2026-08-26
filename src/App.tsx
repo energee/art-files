@@ -401,8 +401,6 @@ export const DocumentEditor = memo(function DocumentEditor({
   // PreviewCompare). While set, planLabel skips it via the render flag (see
   // `skip` below) so the editor's live DOM text IS the element — no doubled
   // glyphs — and the ordinary render takes back over when the session ends.
-  // Only in-place sessions report; the description's floating editor does
-  // not (yet).
   const [editSession, setEditSession] = useState<ElementId | null>(null);
   const toggleHidden = (id: HideableLayerId) =>
     setHiddenLayers((old) => {

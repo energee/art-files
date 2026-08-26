@@ -154,19 +154,28 @@ export function parseInfoLine(src: string, base: StyledLine): StyledLine {
   return { ...line, bold: !!base.bold || !!line.bold };
 }
 
+/** Wraps a run of text in the markers its style carries — parseRuns' inverse
+ *  for one run, and the single place the marker alphabet and its canonical
+ *  order (white inside, bold outside) live. Empty text stays empty: `__` or
+ *  `****` would parse back as a marked empty run, and style on nothing has
+ *  nothing to apply to. */
+export function markRun(text: string, s: { bold?: boolean; white?: boolean }): string {
+  if (!text) return "";
+  const b = s.bold ? "**" : "";
+  const w = s.white ? "_" : "";
+  return `${b}${w}${text}${w}${b}`;
+}
+
 /** Inverse of parseDescription — the WYSIWYG editor edits styled lines and
  *  writes back the markdown string LabelConfig still stores. Canonicalizes
  *  marker order to white-inside/bold-outside (e.g., `**_text_**`), and drops
  *  the redundant `**` from headers since they are always bold. */
 export function serializeDescription(d: ParsedDescription): string {
   const line = (l: StyledLine, header = false) => {
-    let s = l.text;
-    // An empty line stays empty: wrapping "" in markers would write `__` or
-    // `****`, which parse back as marked empty lines — style on a blank
-    // line has nothing to apply to anyway.
+    // markRun keeps the empty-line and marker-order rules (see there); a
+    // header is always bold, so it never writes its own `**`.
+    const s = markRun(l.text, { bold: !!l.bold && !header, white: l.layer === "white" });
     if (!s && !header) return "";
-    if (l.layer === "white") s = `_${s}_`;
-    if (l.bold && !header) s = `**${s}**`;
     return header ? `# ${s}` : s;
   };
   const head = d.header ? [line(d.header, true)] : [];
