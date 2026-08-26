@@ -3,6 +3,12 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.23] - 2026-08-26
+
+- Double-clicking the description on the 2D preview now edits it in place
+  over the artwork with a compact floating toolbar, instead of opening a
+  panel that duplicated the field.
+
 ## [0.1.22] - 2026-08-25
 
 - Internal: font pipeline is config-driven internally; typeface choices

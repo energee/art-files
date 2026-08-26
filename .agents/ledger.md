@@ -209,3 +209,9 @@ no status, no attempts, no delta.
 - status: done
 - attempts: 1/3
 - delta: config-driven font pipeline (fontCatalog.ts + family-aware fonts.ts gate + cfg.fontFamily optional, absent = poppins); planFrom() deferred minor landed at both planLabel call sites; buildError split ruled unnecessary — no new writers; exports byte/pixel-identical (8/8), parity 4/4 PASS (2.04–2.48%), Chrome regression 4/4; 267 tests green; v0.1.22. Phase 5 backlog: font sourcing — Google Fonts (metadata scan via fonts.google.com/metadata/fonts, static-instanced TTFs via css2 wght requests, local byte cache, fonts embedded in the project file for print reproducibility) + external TTF import (fontkit-extracted PS names, three-face mapping, OS/2 fsType embedding check)
+
+## 2026-08-26 inplace-description-editor
+- finding: [user request] src/components/PreviewCompare.tsx:628 — double-clicking the description floated a panel duplicating the sidebar's WYSIWYG field over the artwork; user wants Google-style in-place editing with a compact floating toolbar
+- status: done
+- attempts: 1/3
+- delta: DescriptionEditor's contenteditable machinery extracted into useDescriptionField (per-line paint injectable) + shared DescriptionToolbarButtons; the description now joins the in-place render-skip session (onEditSession) with the rich-lines field positioned over its block at label metrics (9pt/10.8pt leading in cqh, baseline-aligned via half-leading offset) and the Header/Bold/White-ink toggles floating above as a body-portaled pill; the floating panel path serves only the rotated column now; sidebar field unchanged. Verified in real Chrome: in-place alignment matches hit boxes, per-keystroke apply, Enter/Bold/White toggles, click-away commit, Escape cancel, one undo step per session, sidebar regression-free. 267 tests, tsc, Vite build, and the 0.1.23 release gate pass
