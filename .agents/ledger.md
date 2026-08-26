@@ -197,3 +197,9 @@ no status, no attempts, no delta.
 - status: done
 - attempts: 1/3
 - delta: placement duplicates in psd/build.ts 3 → 0; PSD bytes identical across default+fixture, both plates (PDFs pixel-identical at 200dpi); 260 tests green; v0.1.20
+
+## 2026-08-25 drag-to-move-phase4b
+- finding: [user request] canvas preview Phase 4b — drag-to-move for offsetY elements on the 2D preview
+- status: done
+- attempts: 1/3
+- delta: dragTarget() helper + pointer wiring in PreviewCompare/App; logo gated on collabEnabled, collab slots on loaded art; vertical only, no schema change; one undo step per drag, Escape cancels; verified in real Chrome (6/6 checks); 263 tests green; v0.1.21
