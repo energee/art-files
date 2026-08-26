@@ -161,17 +161,18 @@ function InPlaceDescription(props: {
   // area inside it — the half-leading difference is the offset between the
   // two tops.
   const topPt = box.y0 + ((FONT_ASC + FONT_DESC) * DESC.size - DESC.leading) / 2;
+  // pageBox keeps this on the same coordinate basis as every other overlay;
+  // height is dropped so the field auto-sizes to its lines. The width runs
+  // to the sheet's edge — the block is left-aligned and unwrapped, so that
+  // is the room to type rightward.
+  const { left, top, width } = pageBox(box.x0, topPt, PAGE.w - box.x0, 0);
   return (
     <>
       <div
         ref={fieldRef}
         className="absolute"
         style={{
-          left: `${(box.x0 / PAGE.w) * 100}%`,
-          top: `${(topPt / PAGE.h) * 100}%`,
-          // Room to type rightward: the block is left-aligned and unwrapped,
-          // so the editable area just runs to the sheet's edge.
-          width: `${((PAGE.w - box.x0) / PAGE.w) * 100}%`,
+          left, top, width,
           fontSize: `${(DESC.size / PAGE.h) * 100}cqh`,
           lineHeight: DESC.leading / DESC.size,
           fontFamily: fontCss,
@@ -202,6 +203,14 @@ function InPlaceDescription(props: {
     </>
   );
 }
+
+/** Union of several hit boxes — the description spans one per drawn line.
+ *  Callers guarantee at least one box. */
+const unionBox = (boxes: { x0: number; y0: number; x1: number; y1: number }[]) =>
+  boxes.reduce((a, x) => ({
+    x0: Math.min(a.x0, x.x0), y0: Math.min(a.y0, x.y0),
+    x1: Math.max(a.x1, x.x1), y1: Math.max(a.y1, x.y1),
+  }));
 
 // The installed react-resizable-panels major (Group/Panel/Separator, with
 // panelRef instead of a forwarded ref, and onLayoutChange reporting a
@@ -425,7 +434,10 @@ export const PreviewCompare = forwardRef<
   // at open alongside the session). Only meaningful while editing the
   // description; stale values are harmless — the pill renders only then.
   const [toolbarPos, setToolbarPos] = useState({ left: 8, top: 8 });
-  const panelRef = useRef<HTMLDivElement>(null);
+  // The open session's click-away boundary, whatever shape the editor takes:
+  // the in-place input's wrapper, the in-place description field, or the
+  // rotated column's floating panel.
+  const sessionRef = useRef<HTMLDivElement>(null);
   // The pill portals to <body> like the floating panel does, so click-away
   // must ask it separately whether a pointerdown was "inside the session".
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -491,14 +503,15 @@ export const PreviewCompare = forwardRef<
   }, [editing, panelPos]);
 
   // Click-away ends the session (capture phase, so it beats stopPropagation
-  // anywhere in the app). The panel lives outside this component's DOM tree,
-  // so "inside the panel" must be asked of the panel node itself.
+  // anywhere in the app). The rotated column's panel and the description's
+  // pill both portal outside this component's DOM tree, so "inside the
+  // session" must be asked of those nodes themselves.
   useEffect(() => {
     if (!editing) return;
     const onDown = (e: PointerEvent) => {
       if (
         e.target instanceof Node
-        && !panelRef.current?.contains(e.target)
+        && !sessionRef.current?.contains(e.target)
         && !toolbarRef.current?.contains(e.target)
       ) setEditing(null);
     };
@@ -517,10 +530,7 @@ export const PreviewCompare = forwardRef<
     // chase pan/zoom mid-session, it just closes on the next click-away.
     const boxes = boxesFor([id], cfg, measure, collab);
     if (!boxes.length) return;
-    const b = boxes.reduce((a, x) => ({
-      id: a.id, x0: Math.min(a.x0, x.x0), y0: Math.min(a.y0, x.y0),
-      x1: Math.max(a.x1, x.x1), y1: Math.max(a.y1, x.y1),
-    }));
+    const b = unionBox(boxes);
     // Unrotated elements edit truly IN PLACE — no floating field, so no
     // panelPos: single-line ones as an invisible input over the element,
     // the description as the rich-lines field over its block with a pill
@@ -534,6 +544,8 @@ export const PreviewCompare = forwardRef<
         const r = e.currentTarget.getBoundingClientRect();
         const boxLeft = r.left + (b.x0 / PAGE.w) * r.width;
         const boxTop = r.top + (b.y0 / PAGE.h) * r.height;
+        // ponytail: fixed clamps sized to the three-toggle pill (~140x40px)
+        // instead of measuring it — measure toolbarRef if its content grows.
         setToolbarPos({
           left: Math.max(8, Math.min(boxLeft, window.innerWidth - 148)),
           top: Math.max(8, boxTop - 48),
@@ -575,6 +587,14 @@ export const PreviewCompare = forwardRef<
     // and simply get no outline.
     () => (measure ? boxesFor(selected, cfg, measure, collab) : []),
     [selected, cfg, measure, collab],
+  );
+
+  // The in-place session's own measurement pass, memoized for the same
+  // reason as selBoxes: every keystroke of the session changes cfg and
+  // re-renders this component, and boxesFor re-measures every element.
+  const editBoxes = useMemo(
+    () => (editing && measure ? boxesFor([editing], cfg, measure, collab) : []),
+    [editing, cfg, measure, collab],
   );
 
   return (
@@ -679,17 +699,13 @@ export const PreviewCompare = forwardRef<
       {editing && !panelPos && measure && (() => {
         const spec = editableText[editing]!;
         if (spec.multiline) {
-          const boxes = boxesFor([editing], cfg, measure, collab);
-          if (!boxes.length) return null;
-          const anchor = boxes.reduce((a, x) => ({
-            x0: Math.min(a.x0, x.x0), y0: Math.min(a.y0, x.y0),
-          }), { x0: boxes[0].x0, y0: boxes[0].y0 });
+          if (!editBoxes.length) return null;
           return (
             <InPlaceDescription
               value={spec.get(cfg)}
               base={cfg.descStyle}
               fontCss={canvasRender?.fontCss ?? labelFontCss(fontFamilyOf(cfg))}
-              box={anchor}
+              box={unionBox(editBoxes)}
               toolbarPos={toolbarPos}
               onApply={(v) => {
                 onEditText(editing, v, !edited.current);
@@ -699,12 +715,12 @@ export const PreviewCompare = forwardRef<
                 if (edited.current) onEditCancel();
                 setEditing(null);
               }}
-              fieldRef={panelRef}
+              fieldRef={sessionRef}
               toolbarRef={toolbarRef}
             />
           );
         }
-        const b = boxesFor([editing], cfg, measure, collab)[0];
+        const b = editBoxes[0];
         if (!b) return null;
         // Glyphs sized off the hit box — its height is ASC+DESC em by
         // construction (see hittest.ts) — as a share of page height in cqh,
@@ -714,7 +730,7 @@ export const PreviewCompare = forwardRef<
         const st = elementById(editing).style(cfg);
         return (
           <div
-            ref={panelRef}
+            ref={sessionRef}
             className="absolute flex items-center"
             style={{
               ...pageBox(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0, SEL_PAD),
@@ -796,7 +812,7 @@ export const PreviewCompare = forwardRef<
         const close = () => setEditing(null);
         return createPortal(
           <div
-            ref={panelRef}
+            ref={sessionRef}
             // No chrome for the bare field — anything more reads as a popup.
             className="fixed z-50"
             style={{ left: panelPos.left, top: panelPos.top, width: panelPos.width }}
