@@ -3,6 +3,11 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.20] - 2026-08-25
+
+- Internal: the PSD builder now places layers from the shared display list
+  instead of computing its own layout; exported PSDs are byte-identical.
+
 ## [0.1.19] - 2026-08-25
 
 - The preview now renders directly on canvas from the shared display list —
