@@ -32,4 +32,15 @@ describe("labelfile", () => {
     const zip = zipSync({ "readme.txt": strToU8("hi") });
     expect(() => unpackLabel(zip)).toThrow(/missing config\.json/);
   });
+
+  it("round-trips an explicit fontFamily", () => {
+    const cfg = { ...defaultConfig(), fontFamily: "poppins" as const };
+    const out = unpackLabel(packLabel(cfg, {}));
+    expect(parseConfigFile(out.json).fontFamily).toBe("poppins");
+  });
+
+  it("parses a config with no fontFamily field", () => {
+    const out = unpackLabel(packLabel(defaultConfig(), {}));
+    expect(parseConfigFile(out.json).fontFamily).toBeUndefined();
+  });
 });

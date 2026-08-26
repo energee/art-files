@@ -1,6 +1,8 @@
 // types.ts — the label config data model. This is also the schema of the
 // Save/Load JSON: a LabelConfig serializes as-is (plus {version: 1}).
 
+import type { FontFamilyId } from "./fontCatalog";
+
 /** Fill color drawn in the art PDF: a "#rrggbb" hex string, or "none"
  *  meaning no ink (draws white; stock/white ink shows through). */
 export type Fill = `#${string}` | "none";
@@ -125,6 +127,9 @@ export interface LabelConfig {
   handleAddress: StyledLine; // "@LOLEVBEER  5247 BUTLER ST, PITTSBURGH, PA"
   warning: Style; // government warning paragraph
   storeCold: StyledLine; // "STORE COLD"
+  /** Label typeface, one of fontCatalog's families. Absent = "poppins" —
+   *  the fallback every pre-0.1.22 file relies on (see fontFamilyOf). */
+  fontFamily?: FontFamilyId;
 }
 
 export interface ConfigFile extends LabelConfig {
