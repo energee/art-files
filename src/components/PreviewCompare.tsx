@@ -4,7 +4,9 @@
 // selects the element under the cursor; double-clicking a text element
 // (see elements.ts's editableText) floats an editor panel over its outline —
 // the description gets the sidebar's WYSIWYG field, everything else a plain
-// input — applying live, one undo step per session.
+// input — applying live, one undo step per session. Pointer-down on a
+// draggable element (see elements.ts's dragTarget) arms a vertical drag that
+// nudges its offsetY live, folded into one undo step the same way.
 import {
   forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from "react";
@@ -20,7 +22,7 @@ import {
   previewRasterScale,
 } from "@/layout";
 import type { LabelConfig, StyledLine } from "@/types";
-import { editableText, elementById, type ElementId } from "@/elements";
+import { dragTarget, editableText, elementById, type ElementId } from "@/elements";
 import { LABEL_FONT_FAMILY } from "@/fonts";
 import { DescriptionEditor } from "@/components/DescriptionEditor";
 import { Input } from "@/components/ui/input";
@@ -147,6 +149,15 @@ export const PreviewCompare = forwardRef<
      *  the text as it was when the editor opened. Never called when nothing
      *  was typed. */
     onEditCancel: () => void;
+    /** Drag-to-move: called on every pointermove past the 3px threshold with
+     *  the dragged element's new offsetY, `first` true on the movement that
+     *  crosses the threshold — App folds the whole drag into one undo step
+     *  the same way it folds a text-edit session (see onEditText). */
+    onNudge: (id: ElementId, offsetY: number, first: boolean) => void;
+    /** Escape mid-drag: App undoes the drag's single step, restoring the
+     *  pre-drag position. Never called when the drag never crossed the
+     *  threshold (a plain click). */
+    onNudgeCancel: () => void;
     /** The element currently in an IN-PLACE session (null when idle or when
      *  the session floats — description, rotated column). planLabel skips it
      *  via the render flag so the editor's live DOM text is the element. */
@@ -177,8 +188,8 @@ export const PreviewCompare = forwardRef<
 >(function PreviewCompare(
   {
     canvasRender, cfg, measure, collab, selected, onPick, onEditText,
-    onEditCancel, onEditSession, onSplit, bleed, cornerRadiusPct, zoom, bleedIn,
-    onRenderError,
+    onEditCancel, onNudge, onNudgeCancel, onEditSession, onSplit, bleed,
+    cornerRadiusPct, zoom, bleedIn, onRenderError,
   },
   ref,
 ) {
@@ -260,6 +271,21 @@ export const PreviewCompare = forwardRef<
   // aspect ratio is locked to PAGE.w/PAGE.h (see the style below), so a
   // click maps to label-space points proportionally off the bounding rect —
   // no separate art/mask coordinate math needed, both canvases share one box.
+  // Shared by hitOf (click/dblclick) and the pointer-drag handlers below,
+  // which need the same mapping to arm and track a drag.
+  function pagePointOf(
+    e: { clientX: number; clientY: number; currentTarget: HTMLDivElement },
+  ): { xPt: number; yPt: number } | undefined {
+    const r = e.currentTarget.getBoundingClientRect();
+    if (!r.width || !r.height) return undefined; // not laid out yet (e.g. display:none)
+    // getBoundingClientRect already reflects any CSS zoom App applies to the
+    // preview pane, so the proportion holds at any scale without extra math.
+    return {
+      xPt: ((e.clientX - r.left) / r.width) * PAGE.w,
+      yPt: ((e.clientY - r.top) / r.height) * PAGE.h,
+    };
+  }
+
   // Which element under the event, or null — undefined means "can't tell":
   // metrics not loaded, not laid out, or the click was really the divider.
   function hitOf(e: React.MouseEvent<HTMLDivElement>): ElementId | null | undefined {
@@ -271,13 +297,9 @@ export const PreviewCompare = forwardRef<
     // is the handle (or its grip child) so finishing a drag can't also
     // hit-test the divider's position and change or clear the selection.
     if (e.target instanceof Element && e.target.closest('[data-slot="resizable-handle"]')) return undefined;
-    const r = e.currentTarget.getBoundingClientRect();
-    if (!r.width || !r.height) return undefined; // not laid out yet (e.g. display:none)
-    // getBoundingClientRect already reflects any CSS zoom App applies to the
-    // preview pane, so the proportion holds at any scale without extra math.
-    const xPt = ((e.clientX - r.left) / r.width) * PAGE.w;
-    const yPt = ((e.clientY - r.top) / r.height) * PAGE.h;
-    return hitTest(xPt, yPt, measure!, cfg, collab);
+    const p = pagePointOf(e);
+    if (!p) return undefined;
+    return hitTest(p.xPt, p.yPt, measure!, cfg, collab);
   }
 
   function onClick(e: React.MouseEvent<HTMLDivElement>) {
@@ -299,6 +321,53 @@ export const PreviewCompare = forwardRef<
   // Whether this session has applied any keystroke yet — the first one opens
   // the undo step, and Escape has nothing to undo before it.
   const edited = useRef(false);
+
+  // Drag-to-move: pointerdown on a draggable element arms a vertical drag;
+  // crossing a 3px threshold opens ONE undo step (first=true) and every
+  // further move coalesces into it — the same session contract as onEditText.
+  // The browser's synthesized click after pointerup lands on the element at
+  // its NEW position (it moved with the cursor), so selection stays correct
+  // with no click suppression.
+  const drag = useRef<{
+    id: ElementId; startClientY: number; base: number;
+    pxPerPt: number; started: boolean;
+  } | null>(null);
+
+  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.button !== 0 || editing || !measure) return;
+    const id = hitOf(e);
+    if (!id || !dragTarget(cfg, collab, id)) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    drag.current = {
+      id, startClientY: e.clientY, started: false,
+      base: dragTarget(cfg, collab, id)!.get(), pxPerPt: r.height / PAGE.h,
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const d = drag.current;
+    if (!d) return;
+    const dyPx = e.clientY - d.startClientY;
+    if (!d.started && Math.abs(dyPx) < 3) return; // plain click, no undo step
+    const first = !d.started;
+    d.started = true;
+    onNudge(d.id, d.base + dyPx / d.pxPerPt, first);
+  }
+  function onPointerUp() { drag.current = null; }
+
+  // Escape mid-drag: undo the single step the drag opened (mirrors the
+  // in-place editor's Escape) and drop the in-flight session so a further
+  // pointermove (the pointer capture is still live until pointerup) can't
+  // resume it.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (drag.current?.started) onNudgeCancel();
+      drag.current = null;
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onNudgeCancel]);
 
   // Report in-place sessions (editing with no floating panel) so App can
   // skip the element from the render via planLabel's render flag for the
@@ -400,6 +469,10 @@ export const PreviewCompare = forwardRef<
       }}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
     >
       <canvas ref={artCanvas} className="absolute inset-0 h-full w-full" />
       <canvas
