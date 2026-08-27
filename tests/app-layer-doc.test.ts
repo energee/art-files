@@ -10,7 +10,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import { addLayerDoc, type Doc, materializedLayerEditDoc, moveLayerDoc } from "../src/App";
-import { buildSkip } from "../src/elements";
+import { buildSkip } from "../src/model/skip";
 import { composeConfig } from "../src/model/document";
 import { resolve } from "../src/model/resolve";
 import { lolevMaster } from "../src/model/lolev";

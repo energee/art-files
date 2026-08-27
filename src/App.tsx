@@ -18,7 +18,7 @@ import type {
   CollabSlot, CustomBarcodeLayer, CustomImageLayer, CustomQrLayer, CustomTextLayer,
   Fill, LabelConfig,
 } from "@/types";
-import { buildSkip, dragTarget, dragTarget2, editableText, type ElementId } from "@/elements";
+import { dragTarget, dragTarget2, editableText, type ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
 import { defaultConfig, exportBaseName, legacyCollabEnabled, parseConfigFile } from "@/defaults";
 import { machineName } from "@/qr";
@@ -37,6 +37,7 @@ import {
   toggleVariant, valuesFromConfig, visibleFieldsOf, type EditTarget,
 } from "@/model/document";
 import { parseLabelFile } from "@/model/labelfile";
+import { buildSkip } from "@/model/skip";
 import { MASTER_EXT, parseMasterFile, serializeMaster } from "@/model/masterfile";
 import { rebind } from "@/model/rebind";
 import { lolevMaster } from "@/model/lolev";

@@ -30,24 +30,6 @@ export function logoNudge(cfg: LabelConfig): number {
   return cfg.logo.offsetY ?? 0;
 }
 
-/** What a plan-driven build must OMIT, for the preview and the exported
- *  deliverables alike: the layers-panel eyes plus everything the
- *  master/variant resolution has switched off (a layer the panel disabled on
- *  the master, or one owned by a variant that is off). ONE spelling, shared
- *  by the preview's skip memo and buildFull's export assets — they used to
- *  compute it separately and the export forgot `disabled`, so a master layer
- *  disabled in the panel vanished from the preview and still PRINTED. Since
- *  `collabEnabled` was deleted this set is also the only thing suppressing
- *  the collab block on a non-collab label, which makes the two agreeing
- *  load-bearing rather than tidy. Module-level and exported so the union has
- *  a test without mounting the editor (tests/app-layer-doc.test.ts), and
- *  DOM-free so tests/pdf-build.test.ts can pin the export consequence too. */
-export function buildSkip(
-  hidden: { has(id: string): boolean }, disabled: { has(id: string): boolean },
-): { has(id: ElementId): boolean } {
-  return { has: (id: ElementId) => hidden.has(id) || disabled.has(id) };
-}
-
 export type ElementId =
   | "name" | "styleLine" | "abv" | "description"
   | "volume" | "wordmark" | "logo" | "handleAddress" | "warning" | "storeCold"
