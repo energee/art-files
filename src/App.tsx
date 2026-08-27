@@ -20,7 +20,7 @@ import type { Measure } from "@/hittest";
 import { defaultConfig, exportBaseName, parseConfigFile } from "@/defaults";
 import { strToU8 } from "fflate";
 import { LABEL_EXT, packLabel, unpackLabel } from "@/labelfile";
-import { LABEL_TYPES, isAbort, openPicker, savePicker, writeHandle } from "@/filePickers";
+import { LABEL_FILTER, LABEL_TYPES, isAbort, savePicker, writeHandle } from "@/filePickers";
 import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import { makeHiddenPropsEqual } from "@/tabs";
@@ -111,7 +111,6 @@ function loadViewToggles(): { showRulers: boolean; showGuides: boolean; showBlee
   }
 }
 
-const LABEL_FILTER = { name: "Label project", extensions: [LABEL_EXT.slice(1)] };
 
 /** One spelling for the "which error do I show?" expression the open paths
  *  share. */
