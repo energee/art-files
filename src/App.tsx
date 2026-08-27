@@ -27,13 +27,14 @@ import { LABEL_FILTER, LABEL_TYPES, isAbort, savePicker, writeHandle } from "@/f
 import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import {
-  bridgeCollabOverride, composeConfig, configDiff, expandCustomFormats, toggleVariant,
-  valuesFromConfig, visibleFieldsOf,
+  addVariant, applyDesignEdit, applyLayerEdit, bridgeCollabOverride, composeConfig,
+  configDiff, expandCustomFormats, toggleVariant, valuesFromConfig, visibleFieldsOf,
+  type EditTarget,
 } from "@/model/document";
 import { parseLabelFile } from "@/model/labelfile";
 import { lolevMaster } from "@/model/lolev";
 import { masterIndex, resolveMasterById } from "@/masters";
-import type { FieldDecl, FieldValue, LabelFileV2, Master } from "@/model/types";
+import type { FieldDecl, FieldValue, LabelFileV2, Master, MasterLayer } from "@/model/types";
 import { setPath } from "@/model/resolve";
 import { makeHiddenPropsEqual } from "@/tabs";
 import { validateUpc } from "@/upc";
@@ -54,6 +55,7 @@ import {
   Inspector, type CollabFiles, type DocSettings, type InspectorFiles,
 } from "@/components/StyleProperties";
 import { LayersPanel } from "@/components/LayersPanel";
+import { EditingTarget } from "@/components/EditingTarget";
 import { FieldList } from "@/components/FieldList";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
 import {
@@ -323,11 +325,14 @@ function download(url: string, name: string) {
   a.click();
 }
 
-/** The undoable half of one document: the live config plus which of its
- *  master's variants are enabled. The two travel together through history
- *  (see useHistory<Doc> above) so undoing a variant toggle restores the
- *  FieldList checkboxes in the same step as the config it produced. */
-type Doc = { cfg: LabelConfig; enabledVariants: string[] };
+/** The undoable half of one document: the live config, which of its master's
+ *  variants are enabled, and the master itself. All three travel together
+ *  through history (see useHistory<Doc> above) so undoing a variant toggle
+ *  restores the FieldList checkboxes in the same step as the config it
+ *  produced — and, since Design mode authors the master rather than the label
+ *  (see `designEdit`), so a design edit's new master and the config it
+ *  recomposed undo as ONE step instead of drifting apart. */
+type Doc = { cfg: LabelConfig; enabledVariants: string[]; master: Master };
 
 /** A file the shell wants this editor to open. seq is monotonic — a new
  *  value triggers the open, so a re-render can never re-open. Exactly one
@@ -399,7 +404,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // composed config AND the FieldList checkboxes that produced it, in one
   // step, or the two fall out of sync (see toggleVariant in model/document).
   const { value: doc, set: setDoc, reset: resetDoc, undo, redo, canUndo, canRedo } =
-    useHistory<Doc>(() => ({ cfg: defaultConfig(), enabledVariants: [] }));
+    useHistory<Doc>(() => ({ cfg: defaultConfig(), enabledVariants: [], master: lolevMaster() }));
   const cfg = doc.cfg;
   const enabledVariants = doc.enabledVariants;
   // Which layers the inspector shows — Figma's model: an ordered selection
@@ -410,15 +415,26 @@ export const DocumentEditor = memo(function DocumentEditor({
   // and document layers being single-select) live in selection.ts.
   const [selection, setSelection] = useState<Selection>(EMPTY_SELECTION);
   const selected = selection.ids;
-  // Which master this document composes against — session state, deliberately
-  // outside the config/history like hiddenLayers below: it is not label
-  // content, so switching masters isn't itself an undoable edit. (Which
-  // variants are enabled DOES ride in history, alongside cfg — see Doc and
-  // useHistory<Doc> above — because undoing a variant toggle has to restore
-  // the FieldList checkboxes along with the config the toggle produced.)
-  // Reset alongside cfg on Open/New so a document can't leak the previous
+  // Which master this document composes against. It rides IN history now
+  // (see Doc above): Design mode edits the master itself, so a design edit
+  // has to undo as one step with the config it recomposed. Swapped wholesale
+  // on Open/New through resetDocument, so a document can't leak the previous
   // one's master.
-  const [master, setMaster] = useState<Master>(lolevMaster);
+  const master = doc.master;
+  // Where a Design-mode edit is recorded: the master's own defaults, or a
+  // named variant's overrides (model/document.ts's EditTarget). Design-only
+  // UI state — deliberately outside history and never persisted: which target
+  // is selected isn't a document edit, and an undone edit shouldn't drag the
+  // selector back with it. Defaults to the master.
+  const [editingTarget, setEditingTarget] = useState<EditTarget>("master");
+  // The master as of the last open/reset — the baseline the "unsaved master
+  // edits" dot compares against. A ref, not state: nothing renders it
+  // directly. Identity is the whole test, and it is exact in both directions:
+  // applyDesignEdit returns the SAME master when a mutation changed nothing,
+  // and undo restores the previous object itself, so undoing back to the
+  // opened master clears the dot.
+  const pristineMaster = useRef(doc.master);
+  const masterDirty = doc.master !== pristineMaster.current;
   // The master's resolved layers and which of them are off right now
   // (master-disabled, or their owning variant is off) — values don't affect
   // either, only master + enabledVariants, so an empty values object is fine
@@ -438,11 +454,20 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** A row or canvas click, resolved against the anchor and the panel's row
    *  order. A background click (null) clears everything, anchor included. */
   const clearSelection = () => setSelection(EMPTY_SELECTION);
-  const pick = (id: LayerId | null, mods: SelectMods) =>
-    id === null
-      ? clearSelection()
-      : setSelection((s) => resolveSelect(
-          s, id, mods, panelLayerRows.map((r) => r.id) as LayerId[]));
+  const pick = (id: LayerId | null, mods: SelectMods) => {
+    if (id === null) { clearSelection(); return; }
+    // Auto-target on selection (spec: edits record into the selected variant
+    // automatically): picking a variant-owned layer in Design mode moves the
+    // editing target onto that variant, so styling e.g. a Collab layer can't
+    // silently land on the master. One-way — a master-owned layer never
+    // switches away from a target the user chose explicitly, because
+    // "master" is also the default and pulling back to it on every ordinary
+    // click would make the selector impossible to hold on a variant.
+    const owner = master.layers.find((l) => l.id === id)?.variant;
+    if (mode === "design" && owner) setEditingTarget({ variant: owner });
+    setSelection((s) => resolveSelect(
+      s, id, mods, panelLayerRows.map((r) => r.id) as LayerId[]));
+  };
   // The renderer elements of the selection, for the preview's outlines.
   // Memoized like collabSlots below and for the same reason: it is a
   // dependency of PreviewCompare's outline memo, and a fresh array every
@@ -467,7 +492,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   const setVariant = (id: string, on: boolean) => {
     const r = toggleVariant(master, cfg, enabledVariants, id, on);
     markDirty();
-    setDoc(() => ({ cfg: r.config, enabledVariants: r.enabled }));
+    setDoc((d) => ({ ...d, cfg: r.config, enabledVariants: r.enabled }));
   };
   // Insertable refs for a custom barcode/qr layer's FormatBuilder (the
   // Inspector's fields prop) — the master's own fields plus whichever
@@ -802,13 +827,69 @@ export const DocumentEditor = memo(function DocumentEditor({
     localStorage.setItem(VIEW_KEY, JSON.stringify({ showRulers, showGuides, showBleed: bleed }));
   }, [showRulers, showGuides, bleed]);
 
-  const update = (fn: (c: LabelConfig) => void, coalesce?: boolean) => {
+  /** A per-LABEL edit: mutate this document's own config, exactly as every
+   *  edit did before Design mode learned to author masters. Still the whole
+   *  story in Fill mode, and the path the two label-fact exceptions below
+   *  (onFieldValue, onNudge*) take in BOTH modes. */
+  const labelEdit = (fn: (c: LabelConfig) => void, coalesce?: boolean) => {
     markDirty(); // every config edit passes through here — see `dirty`
     setDoc((d) => {
       const n = structuredClone(d.cfg);
       fn(n);
       return { ...d, cfg: n };
     }, coalesce);
+  };
+
+  /** A DESIGN edit: run the same LabelConfig mutation, but record its diff on
+   *  the master (or the editing variant) instead of this label — see
+   *  applyDesignEdit in model/document.ts. The label's own deviations are
+   *  diffed off the OLD master first and re-applied on top of the new one, so
+   *  authoring the master never silently discards them; cfg is recomposed in
+   *  the SAME history entry as the new master, so the preview updates now and
+   *  undo restores both together. An edit that changed nothing returns the
+   *  master by identity — no history entry, and no phantom dirty dot. */
+  const designEdit = (fn: (c: LabelConfig) => void, coalesce?: boolean) => {
+    markDirty();
+    setDoc((d) => {
+      const values = valuesFromConfig(d.master, d.enabledVariants, d.cfg);
+      const nextMaster = applyDesignEdit(d.master, editingTarget, d.enabledVariants, values, fn);
+      if (nextMaster === d.master) return d;
+      const overrides = configDiff(
+        composeConfig(d.master, d.enabledVariants, values, undefined).config, d.cfg);
+      const config = composeConfig(
+        nextMaster, d.enabledVariants, values,
+        Object.keys(overrides).length ? overrides : undefined).config;
+      return { cfg: config, enabledVariants: d.enabledVariants, master: nextMaster };
+    }, coalesce);
+  };
+
+  /** THE routing rule, in one branch so no call site has to know about it:
+   *  Design mode authors the master, Fill mode fills the label (spec: the
+   *  two modes' whole difference). Everything that edits the document —
+   *  the inspector, the layers panel, Add layer, the style controls — keeps
+   *  calling `update` and keeps mutating a plain LabelConfig; only where the
+   *  resulting diff is recorded changes. */
+  const update = (fn: (c: LabelConfig) => void, coalesce?: boolean) =>
+    mode === "design" ? designEdit(fn, coalesce) : labelEdit(fn, coalesce);
+
+  /** A layer POLICY edit (rename / enable / lock) at the current editing
+   *  target. Layer policy isn't part of LabelConfig, so it can't ride
+   *  `update`'s diff and gets its own entry point (applyLayerEdit). The
+   *  layers panel's eye is NOT this: hiding is session-only, never recorded. */
+  const layerEdit = (layerId: string, patch: Partial<MasterLayer>) => {
+    markDirty();
+    setDoc((d) => ({ ...d, master: applyLayerEdit(d.master, editingTarget, layerId, patch) }));
+  };
+
+  /** The Editing selector's "New variant…": mint the variant, enable it (a
+   *  fresh variant you can't see is useless), and select it as the target so
+   *  the next edit lands in it — all one undoable step. */
+  const addAndSelectVariant = (name: string) => {
+    const { master: withVariant, id } = addVariant(master, name);
+    const r = toggleVariant(withVariant, cfg, enabledVariants, id, true);
+    markDirty();
+    setDoc(() => ({ cfg: r.config, enabledVariants: r.enabled, master: withVariant }));
+    setEditingTarget({ variant: id });
   };
   /** Wrap a config mutation that bypasses `update` (undo/redo) so it still
    *  marks the document dirty. */
@@ -899,7 +980,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const onFieldValue = (field: FieldDecl, value: FieldValue) => {
     const first = lastFieldRef.current !== field.id;
     lastFieldRef.current = field.id;
-    update((c) => setPath(c as unknown as Record<string, unknown>, field.path,
+    // labelEdit, not update: a field's VALUE is a label fact — this beer's
+    // name — never a master default, so it stays per-label in both modes.
+    labelEdit((c) => setPath(c as unknown as Record<string, unknown>, field.path,
       field.kind === "toggle" ? value === true : String(value)), !first);
   };
 
@@ -1430,15 +1513,18 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Full-document replacement for Open: swap the whole Doc in (resetting
    *  history) and clear every asset slot. A slot added later must be
    *  cleared here so an open can't leak the previous project's asset.
-   *  `enabledVariants` defaults to [] for a bare New Project; the v2 open
-   *  path passes the label's real set directly so it lands in the same
-   *  history step as the config, rather than a second write right after. */
-  function resetDocument(config: LabelConfig, enabledVariants: string[] = []) {
-    resetDoc({ cfg: config, enabledVariants });
-    // master isn't part of Doc/history (see its declaration above) — reset it
-    // here too so a bare New Project can't leak the previous document's
-    // master.
-    setMaster(lolevMaster());
+   *  `enabledVariants` and `master` default to [] / the shipped Lolev master
+   *  for a bare New Project; the v2 open path passes the label's real set and
+   *  its resolved master directly so all three land in the same history step,
+   *  rather than a second write right after (which could leak a stale master
+   *  into the opened document depending on call order). */
+  function resetDocument(
+    config: LabelConfig, enabledVariants: string[] = [], master: Master = lolevMaster(),
+  ) {
+    resetDoc({ cfg: config, enabledVariants, master });
+    // The freshly opened master is the baseline the dirty dot compares
+    // against — see pristineMaster.
+    pristineMaster.current = master;
     swapLoaded(setTexture, null);
     swapLoaded(setMask, null);
     swapLoaded(setCollabLeft, null);
@@ -1610,19 +1696,15 @@ export const DocumentEditor = memo(function DocumentEditor({
           openedVariants = bridged.enabledVariants;
           c = composeConfig(m, bridged.enabledVariants, parsed.values, bridged.overrides);
         }
-        // resetDocument sets master back to the Lolev default (see its own
-        // comment) and enabledVariants to the real set in the same history
-        // step — set the real master again right after, so neither call
-        // order can leak a stale master into this document.
-        resetDocument(c.config, openedVariants);
-        setMaster(m);
+        // Config, variants and master all land in ONE history step (see
+        // resetDocument), so no call order can leak a stale master here.
+        resetDocument(c.config, openedVariants, m);
         warnings = c.warnings; // advisory only — a lossy compose still opens
       } else {
         const parsedCfg = parseConfigFile(unpacked.config!);
         // Bridge: an old collab label has no master/variant concept, but a
         // checked Collab box in its config is exactly the "collab" variant.
         resetDocument(parsedCfg, parsedCfg.collabEnabled ? ["collab"] : []);
-        setMaster(lolevMaster());
       }
       // The type matters: FileDrop thumbnails are createObjectURL(file), and
       // an <img> won't render a typeless blob as SVG — logos restored from a
@@ -1913,14 +1995,20 @@ export const DocumentEditor = memo(function DocumentEditor({
             for just the rows where the two differ. */}
         <Sidebar collapsible="offcanvas">
           <SidebarContent>
-            {/* Design shows the layers panel (style, order, visibility);
-                Fill shows the label, the field list, and variant
-                checkboxes — no styling, no layers panel (spec: UI). */}
+            {/* Design shows the Editing selector (which the whole sidebar is
+                scoped by — see EditingTarget) over the layers panel (style,
+                order, visibility); Fill shows the label, the field list, and
+                variant checkboxes — no styling, no layers panel (spec: UI). */}
             {mode === "design"
-              ? <LayersPanel cfg={cfg} update={update} hidden={hiddenLayers} mode={mode}
-                  onToggleHidden={toggleHidden} selected={selected} onSelect={pick}
-                  onAddLayer={addCustomLayer} onMoveCustomLayer={moveCustomLayer}
-                  rows={panelLayerRows} />
+              ? <>
+                  <EditingTarget master={master} target={editingTarget}
+                    onTarget={setEditingTarget} onNewVariant={addAndSelectVariant}
+                    dirty={masterDirty} />
+                  <LayersPanel cfg={cfg} update={update} hidden={hiddenLayers} mode={mode}
+                    onToggleHidden={toggleHidden} selected={selected} onSelect={pick}
+                    onAddLayer={addCustomLayer} onMoveCustomLayer={moveCustomLayer}
+                    onLayerEdit={layerEdit} rows={panelLayerRows} />
+                </>
               : <FieldList master={master} enabledVariants={enabledVariants} cfg={cfg}
                   onValue={onFieldValue} onVariant={setVariant} />}
           </SidebarContent>
@@ -2045,13 +2133,18 @@ export const DocumentEditor = memo(function DocumentEditor({
               // Drag-to-move: first move opens the step, the rest coalesce —
               // one undo per drag, mirroring the text-edit session above.
               onNudge={(id, offsetY, first) => {
-                update((c) => { dragTarget(c, collabSlots, id)?.set(c, offsetY); }, !first);
+                // labelEdit, not update: where this label's art actually sits
+                // is a label fact — a nudge answers "on THIS can", not "on
+                // every can" — so a drag stays per-label in both modes.
+                labelEdit((c) => { dragTarget(c, collabSlots, id)?.set(c, offsetY); }, !first);
               }}
               // Two-axis drag for an unlocked custom layer (dragTarget2's
               // "position" form) — same fold-into-one-undo-step contract as
               // onNudge above, sharing its onNudgeCancel.
               onNudgePosition={(id, position, first) => {
-                update((c) => {
+                // labelEdit for the same reason as onNudge above: a dragged
+                // position is a label fact, in both modes.
+                labelEdit((c) => {
                   const t = dragTarget2(c, collabSlots, id);
                   if (t?.kind === "position") t.set(c, position);
                 }, !first);

@@ -9,14 +9,19 @@
 // selection the preview's click-to-select uses — multi-select, so a row
 // reports the modifier keys and App resolves them (see selection.ts); the
 // eye toggles the id in App's session-level hidden set (Assets.hidden — the
-// renderer skips the element outright). Every element row has an eye (hiding
+// renderer skips the element outright) and is NEVER recorded — unlike a
+// master row's name and lock, which are master POLICY and go through
+// `onLayerEdit` (App's layerEdit → applyLayerEdit) at the current editing
+// target. Every element row has an eye (hiding
 // is a temporary skip, unlike the ink-less styling allowNone forbids); the
 // document layers go without for now, except Settings which has neither eye
 // nor asset to hide.
 import {
   Barcode, ChevronDown, ChevronUp, Eye, EyeOff, Image, Lock, Plus, QrCode, Type,
 } from "lucide-react";
+import { useState } from "react";
 import type { LabelConfig, StyledLine } from "@/types";
+import type { MasterLayer } from "@/model/types";
 import {
   applyStyle, customElement, elementById, type LabelElement,
 } from "@/elements";
@@ -123,7 +128,7 @@ type Row = Pick<PanelRow, "id" | "name"> & Partial<Pick<PanelRow, "variantName" 
 
 function LayerRow({
   row, cfg, update, hidden: hiddenSet, onToggleHidden, selected, onSelect,
-  mode, reorder,
+  mode, reorder, onLayerEdit,
 }: {
   row: Row;
   cfg: LabelConfig;
@@ -134,6 +139,13 @@ function LayerRow({
   onSelect: (id: LayerId, mods: SelectMods) => void;
   /** Design/Fill — reorder chevrons are Design-only, custom rows only. */
   mode: "design" | "fill";
+  /** Layer POLICY writes at the current editing target (App's layerEdit →
+   *  applyLayerEdit). Present only for a MASTER row in Design mode: a custom
+   *  layer's policy lives in `cfg.customLayers` and keeps going through
+   *  `update`, and the Document rows have no master layer at all. Absent
+   *  means read-only policy — the lock shows as a badge and the name can't
+   *  be renamed, which is what Fill mode and the panel's own tests get. */
+  onLayerEdit?: (layerId: string, patch: Partial<MasterLayer>) => void;
   /** Front/back position within the custom-layer stack, present only for a
    *  custom row (undefined for master and Document rows, which get no
    *  reorder control at all). */
@@ -182,6 +194,16 @@ function LayerRow({
   // than a phantom column under controls they don't have.
   const stop = (e: React.MouseEvent) => e.stopPropagation();
   const isSelected = selected.includes(id);
+  // Inline rename, master rows only: double-click the name for an input,
+  // Enter/blur commits through onLayerEdit, Esc cancels. A layer's name is
+  // master POLICY (MasterLayer.name), not label content — which is exactly
+  // why it can't ride `update` the way the metallic toggle does.
+  const [renaming, setRenaming] = useState(false);
+  const commitRename = (value: string) => {
+    const name = value.trim();
+    if (name && name !== label) onLayerEdit?.(row.id, { name });
+    setRenaming(false);
+  };
   return (
     <Collapsible>
       <SidebarMenuItem>
@@ -239,7 +261,24 @@ function LayerRow({
             className={cn("text-xs hover:bg-transparent focus-visible:ring-0", hidden && "opacity-50")}
           >
             <Icon />
-            <span>{label}</span>
+            {renaming ? (
+              <input
+                autoFocus
+                defaultValue={label}
+                aria-label={`Rename ${label}`}
+                onClick={stop}
+                onBlur={(e) => commitRename(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitRename(e.currentTarget.value);
+                  else if (e.key === "Escape") setRenaming(false);
+                  // The panel's own shortcuts must not see a typed name.
+                  e.stopPropagation();
+                }}
+                className="min-w-0 flex-1 rounded-sm border border-sidebar-border bg-transparent px-1 text-xs outline-none"
+              />
+            ) : (
+              <span onDoubleClick={() => onLayerEdit && setRenaming(true)}>{label}</span>
+            )}
             {/* A variant-owned row's badge — small and muted, after the
                 name, so a Collab (or future variant) row still reads as
                 itself first. */}
@@ -264,15 +303,14 @@ function LayerRow({
           {/* Applied-styles accordion, element rows only — the document
               layers have no styles. A read-only digest; editing stays in
               the inspector. */}
-          {/* Lock badge. Custom rows get the interactive toggle — the fixed/
-              master layers have no analogous "freeze in place" control on
-              the row yet (5b adds one; the logo/collab slots' lock today
-              lives in the inspector's StackNudge/CollabSlotContent, not the
-              row). A master row can still be locked (spec: Lock, stamped in
-              the master file), so it gets the same badge, read-only, when
-              `row.locked` is true — otherwise a locked master layer showed
-              no indicator at all even though PanelRow.locked was computed
-              for it. Lit while locked, same idiom as the eye. */}
+          {/* Lock. Custom rows write `locked` into their own cfg layer (a
+              per-label fact). A MASTER row's lock is master policy (spec:
+              Lock, stamped in the master file) and goes through onLayerEdit
+              instead — interactive while that prop is given (Design mode),
+              and a read-only badge without it, which is all a locked master
+              layer could show before. Lit while locked, same idiom as the
+              eye. (The logo/collab slots' own lock still lives in the
+              inspector's StackNudge/CollabSlotContent, not the row.) */}
           {customLayer ? (
             <button
               type="button"
@@ -288,6 +326,22 @@ function LayerRow({
               className={cn(
                 "grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70 hover:text-sidebar-foreground [&>svg]:size-3",
                 !customLayer.locked && "opacity-40 hover:opacity-100",
+              )}
+            >
+              <Lock />
+            </button>
+          ) : onLayerEdit ? (
+            // A master row in Design mode: lock is editable now, recorded on
+            // the master (or the editing variant) rather than in the config —
+            // same idiom as the custom toggle above, different destination.
+            <button
+              type="button"
+              onClick={(e) => { stop(e); onLayerEdit(row.id, { locked: !row.locked }); }}
+              aria-label={row.locked ? `Unlock ${label}` : `Lock ${label}`}
+              aria-pressed={!!row.locked}
+              className={cn(
+                "grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70 hover:text-sidebar-foreground [&>svg]:size-3",
+                !row.locked && "opacity-40 hover:opacity-100",
               )}
             >
               <Lock />
@@ -365,6 +419,12 @@ export function LayersPanel(props: {
   /** Front/back reorder within `cfg.customLayers` — App's moveCustomLayer,
    *  one undoable splice. Custom rows only; master draw order is fixed. */
   onMoveCustomLayer: (id: string, delta: -1 | 1) => void;
+  /** Layer POLICY writes (rename / enable / lock) at the current editing
+   *  target — App's layerEdit → applyLayerEdit, recorded on the master or the
+   *  editing variant, NOT in the config. Design-only; omitted, master rows'
+   *  policy is read-only. The eye is deliberately not routed here: hiding is
+   *  session-only and never recorded (see this file's header). */
+  onLayerEdit?: (layerId: string, patch: Partial<MasterLayer>) => void;
   /** The master's layers flat, in draw order, then any custom layers — see
    *  model/panel.ts's panelRows. App computes this against the live master/
    *  variants/config so the panel never has to re-derive it. */
@@ -433,7 +493,10 @@ export function LayersPanel(props: {
         <SidebarGroupContent>
           <SidebarMenu>
             {props.rows.map((row) => (
-              <LayerRow key={row.id} row={row} {...rowProps} reorder={reorderFor(row)} />
+              // onLayerEdit for master rows only: a custom layer lives in the
+              // config, so its name/lock stay `update` writes.
+              <LayerRow key={row.id} row={row} {...rowProps} reorder={reorderFor(row)}
+                onLayerEdit={row.custom ? undefined : props.onLayerEdit} />
             ))}
           </SidebarMenu>
         </SidebarGroupContent>
