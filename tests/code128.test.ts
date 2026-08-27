@@ -42,4 +42,20 @@ describe("Code 128", () => {
       "1101001000011101110110101101110001011011100010011100110110011100101100101110010001000110111010001101100011101011",
     );
   });
+  it("matches a hand-derived code-set-C reference encoding", () => {
+    // Derived independently of the encoder, straight from this file's own
+    // WIDTHS table (transcribed from the Wikipedia "Code 128" article) and
+    // the article's Code Set C rules: an all-digit payload starts with
+    // Start Code C (symbol 105), each digit pair is its own value, and the
+    // check digit is (start + sum(position * value)) mod 103.
+    // Payload "123456" -> pairs 12, 34, 56.
+    // Check = 105 + 1*12 + 2*34 + 3*56 = 105 + 12 + 68 + 168 = 353;
+    // 353 mod 103 = 44.
+    // Symbols: [105, 12, 34, 56, 44], widths from WIDTHS:
+    // 105 -> 211232, 12 -> 112232, 34 -> 131123, 56 -> 331121, 44 -> 132131,
+    // plus the 7-width Stop pattern 2331112 (13 modules).
+    expect(encodeCode128("123456").modules).toBe(
+      "11010011100101100111001000101100011100010110100011011101100011101011",
+    );
+  });
 });

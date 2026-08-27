@@ -83,10 +83,13 @@ export function parseMaster(json: unknown): Master {
     seen.add(v.id);
   }
   const kinds = new Set<FieldKind>(["text", "number", "image", "code", "select", "toggle"]);
+  const symbologies = new Set(["upc-a", "ean-13", "code-128"]);
   const fids = new Set<string>();
   for (const f of [...fields, ...variations.flatMap((v) => v.fields ?? [])]) {
     if (!f.id || !f.kind || !f.path) fail(`field "${f.id ?? "?"}" missing id/kind/path`);
     if (!kinds.has(f.kind)) fail(`field "${f.id}" has unknown kind "${f.kind}"`);
+    if (f.symbology !== undefined && !symbologies.has(f.symbology))
+      fail(`field "${f.id}" has unknown symbology "${f.symbology}"`);
     if (fids.has(f.id)) fail(`duplicate field id "${f.id}"`);
     fids.add(f.id);
   }

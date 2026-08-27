@@ -32,4 +32,9 @@ describe("parseMaster", () => {
     expect(() => parseMaster({ ...minimal, fields: [f] }))
       .toThrow(/kind/i);
   });
+  it("rejects a code field with an unknown symbology", () => {
+    const f = { id: "code1", label: "Code", kind: "code", path: "upc", symbology: "code-39" };
+    expect(() => parseMaster({ ...minimal, fields: [f] }))
+      .toThrow(/symbology/i);
+  });
 });

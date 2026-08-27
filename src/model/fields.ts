@@ -25,9 +25,12 @@ export function validateField(decl: FieldDecl, value: FieldValue): Result {
       return typeof value === "string" ? ok : err("Expected an image.");
     case "code": {
       if (typeof value !== "string") return err("Expected a code value.");
+      // upc-a and an unset symbology both validate as UPC-A: the historical
+      // `upc` field predates `symbology` and was always a UPC-A code, so
+      // leaving symbology unset is a deliberate default, not a fallback.
       const validate = decl.symbology === "ean-13" ? validateEan13
         : decl.symbology === "code-128" ? validateCode128
-        : validateUpc;   // upc-a, and the historical unset default
+        : validateUpc;
       const r = validate(value);
       return r.ok ? ok : err(r.error!);
     }

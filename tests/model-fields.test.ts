@@ -39,6 +39,11 @@ describe("validateField", () => {
     expect(validateField(decl({ kind: "image" }), "logo.png").ok).toBe(true);
     expect(validateField(decl({ kind: "image" }), 5).ok).toBe(false);
   });
+  it("defaults an unset symbology to UPC-A validation", () => {
+    const d = decl({ kind: "code", symbology: undefined });
+    expect(validateField(d, "036000291452").ok).toBe(true);    // valid UPC-A
+    expect(validateField(d, "036000291453").ok).toBe(false);   // bad check digit
+  });
   it("validates EAN-13 and Code 128 through the code kind", () => {
     const d = (s: "ean-13" | "code-128"): FieldDecl =>
       ({ id: "f", label: "F", kind: "code", path: "upc", symbology: s });
