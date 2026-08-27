@@ -18,18 +18,6 @@ describe("element registry", () => {
     expect(ids).toContain("barcode");
   });
 
-  it("splits per-beer fields from set-once template fields", () => {
-    const g = (id: string) => ELEMENTS.find((e) => e.id === id)!.group;
-    expect(g("name")).toBe("beer");
-    expect(g("styleLine")).toBe("beer");
-    // Both codes change per release (QR payload follows the name, UPC digits
-    // are per-beer), so neither belongs behind the brand-template disclosure.
-    expect(g("qr")).toBe("beer");
-    expect(g("barcode")).toBe("beer");
-    expect(g("wordmark")).toBe("template");
-    expect(g("storeCold")).toBe("template");
-  });
-
   it("reads each element's live style out of the config", () => {
     const cfg = defaultConfig();
     cfg.nameStyle.fill = "#123456";

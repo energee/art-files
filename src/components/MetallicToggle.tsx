@@ -25,6 +25,9 @@ export function MetallicToggle(props: {
   /** Prefixes the accessible name, e.g. "Beer Name: metallic". */
   label?: string;
   className?: string;
+  /** The layers panel disables this for a row that isn't drawing right now
+   *  (master-disabled, or its variant is off) — nothing to restyle. */
+  disabled?: boolean;
 }) {
   return (
     <Tooltip>
@@ -34,6 +37,7 @@ export function MetallicToggle(props: {
             size="sm"
             pressed={props.pressed}
             onPressedChange={props.onPressedChange}
+            disabled={props.disabled}
             aria-label={props.label ? `${props.label}: metallic` : "Metallic"}
             className={cn(
               "size-5 min-w-0 shrink-0 rounded-sm p-0",

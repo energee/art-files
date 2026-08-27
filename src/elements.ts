@@ -46,10 +46,6 @@ export interface LabelElement {
   id: ElementId;
   /** Shown in the form row and as the properties panel header. */
   label: string;
-  /** "beer" changes every time; "template" is set once; "collab" appears
-   *  only on collab releases (the layers panel dims those rows while the
-   *  collab switch is off). */
-  group: "beer" | "template" | "collab";
   /** Whether a bold toggle applies. False for the logo (no text at all) and
    *  for the two codes (the barcode's digits are drawn in one fixed face). */
   hasBold: boolean;
@@ -92,35 +88,33 @@ const flatStyle = (k: FlatKeys) => (c: LabelConfig): Style => ({
 });
 
 export const ELEMENTS: LabelElement[] = [
-  { id: "name", label: "Name", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.nameStyle },
-  { id: "styleLine", label: "Style", group: "beer", hasBold: true, isText: true, allowNone: true, style: (c) => c.styleLine },
-  { id: "abv", label: "ABV", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.abvStyle },
-  { id: "description", label: "Description", group: "beer", hasBold: false, isText: true, allowNone: true, style: (c) => c.descStyle },
-  // The two codes must always carry ink — see allowNone's doc. Both are
-  // "beer": the QR payload follows the beer name and the UPC digits change
-  // per release, so neither is a set-once brand-template element.
-  // Barcode precedes QR because the layers panel lists each group in registry
-  // order, and the spec's stacking puts the barcode first.
-  { id: "barcode", label: "Barcode", group: "beer", hasBold: false, isText: false, allowNone: false, style: flatStyle(FLAT.barcode) },
-  { id: "qr", label: "QR", group: "beer", hasBold: false, isText: false, allowNone: false, style: flatStyle(FLAT.qr) },
-  // Collab block — its own group: a collab partner changes per release like
-  // "beer", but the block exists only while the collab switch is on, and the
-  // layers panel shows it as its own section. The two logo slots draw
+  { id: "name", label: "Name", hasBold: false, isText: true, allowNone: true, style: (c) => c.nameStyle },
+  { id: "styleLine", label: "Style", hasBold: true, isText: true, allowNone: true, style: (c) => c.styleLine },
+  { id: "abv", label: "ABV", hasBold: false, isText: true, allowNone: true, style: (c) => c.abvStyle },
+  { id: "description", label: "Description", hasBold: false, isText: true, allowNone: true, style: (c) => c.descStyle },
+  // The two codes must always carry ink — see allowNone's doc. Both change
+  // per release (the QR payload follows the beer name, the UPC digits are
+  // per-beer), not set-once brand-template elements.
+  { id: "barcode", label: "Barcode", hasBold: false, isText: false, allowNone: false, style: flatStyle(FLAT.barcode) },
+  { id: "qr", label: "QR", hasBold: false, isText: false, allowNone: false, style: flatStyle(FLAT.qr) },
+  // Collab block — a partner changes per release, but the block exists only
+  // while its owning variant is enabled (see the master's `layers`, which
+  // tags these three ids `variant: "collab"`). The two logo slots draw
   // uploaded art, not glyphs, so they
   // get neither bold nor letter-spacing; the lead-in is text, but it is drawn
   // in one fixed SemiBold face like the handle/address, hence hasBold: false.
-  { id: "collabLead", label: "Lead-In", group: "collab", hasBold: false, isText: true, allowNone: true, style: (c) => c.collabLead },
+  { id: "collabLead", label: "Lead-In", hasBold: false, isText: true, allowNone: true, style: (c) => c.collabLead },
   // The two slots are named for what goes in them, not where they sit: the
   // left slot takes the partner's text/wordmark art, the centre one their
   // graphic mark (it hangs under the laurel in the centre stack).
-  { id: "collabLeft", label: "Text Logo", group: "collab", hasBold: false, isText: false, allowNone: true, style: (c) => c.collabLeft },
-  { id: "collabCenter", label: "Graphic Logo", group: "collab", hasBold: false, isText: false, allowNone: true, style: (c) => c.collabCenter },
-  { id: "volume", label: "Volume", group: "template", hasBold: true, isText: true, allowNone: true, style: (c) => c.volume },
-  { id: "wordmark", label: "Wordmark", group: "template", hasBold: false, isText: true, allowNone: true, style: (c) => c.wordmark },
-  { id: "logo", label: "Logo", group: "template", hasBold: false, isText: false, allowNone: true, style: (c) => c.logo },
-  { id: "handleAddress", label: "Info", group: "template", hasBold: true, isText: true, allowNone: true, style: (c) => c.handleAddress },
-  { id: "warning", label: "Warning", group: "template", hasBold: false, isText: true, allowNone: true, style: (c) => c.warning },
-  { id: "storeCold", label: "Store cold", group: "template", hasBold: true, isText: true, allowNone: true, style: (c) => c.storeCold },
+  { id: "collabLeft", label: "Text Logo", hasBold: false, isText: false, allowNone: true, style: (c) => c.collabLeft },
+  { id: "collabCenter", label: "Graphic Logo", hasBold: false, isText: false, allowNone: true, style: (c) => c.collabCenter },
+  { id: "volume", label: "Volume", hasBold: true, isText: true, allowNone: true, style: (c) => c.volume },
+  { id: "wordmark", label: "Wordmark", hasBold: false, isText: true, allowNone: true, style: (c) => c.wordmark },
+  { id: "logo", label: "Logo", hasBold: false, isText: false, allowNone: true, style: (c) => c.logo },
+  { id: "handleAddress", label: "Info", hasBold: true, isText: true, allowNone: true, style: (c) => c.handleAddress },
+  { id: "warning", label: "Warning", hasBold: false, isText: true, allowNone: true, style: (c) => c.warning },
+  { id: "storeCold", label: "Store cold", hasBold: true, isText: true, allowNone: true, style: (c) => c.storeCold },
 ];
 
 /** Elements whose text can be edited from the preview: double-clicking one
@@ -208,7 +202,7 @@ export const editableText: Partial<Record<ElementId, EditableText>> = {
  *  reader that calls style() can't have its result mutated by someone
  *  else's Object.assign. */
 const customFallback = (id: `custom-${string}`): LabelElement => ({
-  id, label: id, group: "beer", hasBold: false, isText: false, allowNone: true,
+  id, label: id, hasBold: false, isText: false, allowNone: true,
   style: () => ({ fill: "none", layer: "white" }),
 });
 
@@ -241,7 +235,7 @@ export function customElement(cfg: LabelConfig, id: `custom-${string}`): LabelEl
   // doesn't propagate to `?.line`), so each accessor narrows on its own `l`.
   if (layer.type === "text")
     return {
-      id, label, group: "beer", hasBold: true, isText: true, allowNone: true,
+      id, label, hasBold: true, isText: true, allowNone: true,
       style: (c) => {
         const l = c.customLayers?.find((x) => x.id === id);
         return l && l.type === "text" ? l.line : layer.line;
@@ -249,7 +243,7 @@ export function customElement(cfg: LabelConfig, id: `custom-${string}`): LabelEl
     };
   if (layer.type === "image")
     return {
-      id, label, group: "beer", hasBold: false, isText: false, allowNone: true,
+      id, label, hasBold: false, isText: false, allowNone: true,
       style: (c) => {
         const l = c.customLayers?.find((x) => x.id === id);
         return l && l.type === "image" ? l.style : layer.style;
@@ -260,7 +254,7 @@ export function customElement(cfg: LabelConfig, id: `custom-${string}`): LabelEl
   // (unlike text's StyledLine/image's tint Style), so no per-type narrowing
   // is needed here beyond ruling text/image back out.
   return {
-    id, label, group: "beer", hasBold: false, isText: false, allowNone: false,
+    id, label, hasBold: false, isText: false, allowNone: false,
     style: (c) => {
       const l = c.customLayers?.find((x) => x.id === id);
       return l && l.type !== "text" && l.type !== "image" ? l.style : layer.style;

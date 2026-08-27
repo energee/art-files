@@ -4,15 +4,27 @@
 // the promise that a multi-element style edit is ONE history entry.
 import { describe, expect, it } from "vitest";
 import { EMPTY_SELECTION, resolveSelect, sharedValue, type Selection } from "../src/selection";
-import { PANEL_ORDER, type LayerId } from "../src/components/layers";
+import { type LayerId } from "../src/components/layers";
 import { applyStyle, elementById } from "../src/elements";
 import { defaultConfig } from "../src/defaults";
 import { pushed, undone, type Stacks } from "../src/history";
 import type { LabelConfig } from "../src/types";
 
+// resolveSelect is generic over any row order — the real order now comes
+// from the layers panel's rows (model/panel.ts's panelRows), which is
+// exercised by tests/model-panel.test.ts and tests/layerspanel-dom.test.tsx.
+// This fixture only needs several distinct "groups" back to back so a range
+// crossing a boundary is exercised; its shape mirrors the panel's former
+// Beer/Collab/Template/Document layout, but nothing here reads that module.
+const TEST_ORDER: LayerId[] = [
+  "name", "styleLine", "abv", "description", "barcode", "qr", "background", "mask",
+  "collabLead", "collabLeft", "collabCenter",
+  "volume", "wordmark", "logo", "handleAddress", "warning", "storeCold",
+  "settings",
+];
 const sel = (ids: LayerId[], anchor: LayerId | null): Selection => ({ ids, anchor });
 const click = (s: Selection, id: LayerId, mods = {}) =>
-  resolveSelect(s, id, mods, PANEL_ORDER);
+  resolveSelect(s, id, mods, TEST_ORDER);
 
 describe("resolveSelect", () => {
   it("replaces the selection and sets the anchor on a plain click", () => {

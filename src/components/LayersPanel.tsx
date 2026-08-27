@@ -1,21 +1,24 @@
 // LayersPanel.tsx — the Figma-style layer list that fills the left sidebar.
-// Four groups (from ./layers' PANEL_GROUPS): "Beer" (per-release elements), "Collab" (the lead-in and
-// two partner-logo slots), "Template" (set-once brand elements), and
-// "Document" (the UI-level background/mask layers from ./layers, which carry
-// file drops rather than Styles). Rows select into the
-// same LayerId selection the preview's click-to-select uses — multi-select,
-// so a row reports the modifier keys and App resolves them (see
-// selection.ts); the eye toggles the
-// id in App's session-level hidden set (Assets.hidden — the renderer skips
-// the element outright). Rows appear in ELEMENTS order, which carries the
-// layers-ui spec's stacking (Barcode before QR); every element row has
-// an eye (hiding is a temporary skip, unlike the ink-less styling allowNone
-// forbids), the document layers go without for now.
-import { Barcode, ChevronDown, Eye, EyeOff, Image, Info, Lock, Plus, QrCode, Type } from "lucide-react";
+// One "Layers" group, flat, in the master's draw order (see model/panel.ts's
+// panelRows — App computes the rows and hands them down as `props.rows`):
+// every master layer, a variant-owned one badged with its variant's name and
+// dimmed while that variant is off, and any per-label custom layers appended
+// at the end. A separate "Document" group holds the UI-level background/mask/
+// settings layers (from ./layers, which carry file drops or document knobs
+// rather than Styles) — unchanged. Rows select into the same LayerId
+// selection the preview's click-to-select uses — multi-select, so a row
+// reports the modifier keys and App resolves them (see selection.ts); the
+// eye toggles the id in App's session-level hidden set (Assets.hidden — the
+// renderer skips the element outright). Every element row has an eye (hiding
+// is a temporary skip, unlike the ink-less styling allowNone forbids); the
+// document layers go without for now, except Settings which has neither eye
+// nor asset to hide.
+import { Barcode, ChevronDown, Eye, EyeOff, Image, Lock, Plus, QrCode, Type } from "lucide-react";
 import type { LabelConfig, StyledLine } from "@/types";
 import {
   applyStyle, customElement, elementById, type LabelElement,
 } from "@/elements";
+import type { PanelRow } from "@/model/panel";
 import { cn } from "@/lib/utils";
 import { MetallicToggle } from "./MetallicToggle";
 import { strokeLayerOf } from "@/strokes";
@@ -23,7 +26,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Switch } from "@/components/ui/switch";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -32,9 +34,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  DOC_LAYER_LABELS, LAYER_ICONS, PANEL_GROUPS,
+  DOC_LAYER_LABELS, DOC_LAYERS, LAYER_ICONS,
   isElementId, isHideable, type HideableLayerId, type LayerId,
 } from "./layers";
 import { modsOf, type SelectMods } from "@/selection";
@@ -111,10 +112,17 @@ function StyleSummary({ el, cfg }: { el: LabelElement; cfg: LabelConfig }) {
   );
 }
 
+/** A row this panel can draw: either one of `panelRows`' rows (a master or
+ *  custom layer, name/badge/inactive already resolved) or a bare document
+ *  layer id (Background/Mask/Settings — no panel-row equivalent, so the
+ *  Document group builds one inline with a plain lookup name and never
+ *  inactive/badged). */
+type Row = Pick<PanelRow, "id" | "name"> & Partial<Pick<PanelRow, "variantName" | "inactive">>;
+
 function LayerRow({
-  id, cfg, update, hidden: hiddenSet, onToggleHidden, selected, onSelect,
+  row, cfg, update, hidden: hiddenSet, onToggleHidden, selected, onSelect,
 }: {
-  id: LayerId;
+  row: Row;
   cfg: LabelConfig;
   update: (fn: (c: LabelConfig) => void) => void;
   hidden: ReadonlySet<HideableLayerId>;
@@ -122,6 +130,7 @@ function LayerRow({
   selected: readonly LayerId[];
   onSelect: (id: LayerId, mods: SelectMods) => void;
 }) {
+  const id = row.id as LayerId;
   const customLayer = cfg.customLayers?.find((l) => l.id === id);
   // Every text layer (fixed or custom) shares the one Type icon; a custom
   // image/barcode/QR layer borrows its matching fixed row's icon rather than
@@ -134,12 +143,15 @@ function LayerRow({
     : LAYER_ICONS[id as Exclude<LayerId, `custom-${string}`>];
   const el = isElementId(id)
     ? (customLayer ? customElement(cfg, id as `custom-${string}`) : elementById(id)) : null;
-  const label = el ? el.label : DOC_LAYER_LABELS[id as keyof typeof DOC_LAYER_LABELS];
+  // The row's own name, not elementById's — a renamed layer (a custom row,
+  // or a future master edit) shows what the user or the master call it.
+  const label = row.name;
   const hideable = isHideable(id);
   const hidden = hideable && hiddenSet.has(id);
-  // Collab rows are inert on the label while the collab switch (on the
-  // group header above) is off; they stay selectable and editable.
-  const collabOff = !cfg.collabEnabled && el?.group === "collab";
+  // The layer does not draw right now — master-disabled, or its owning
+  // variant is off. Distinct from `hidden` (a session-level eye toggle):
+  // this comes from the master/variant resolution, not the user.
+  const inactive = !!row.inactive;
 
   const toggleEye = (e: React.MouseEvent) => {
     stop(e); // the eye must never change the selection
@@ -173,19 +185,25 @@ function LayerRow({
             // highlight under the cursor.
             "flex cursor-pointer items-center rounded-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
             isSelected && "bg-sidebar-accent text-sidebar-accent-foreground",
+            // A row that isn't drawing right now (master-disabled, or its
+            // variant is off) reads as dimmed end to end — not just its name
+            // button — so it's clearly "not on this label" at a glance.
+            inactive && "opacity-50",
           )}
         >
           {/* Every hideable row gets an eye — including QR/Barcode (hiding
               is a session-level skip, not the ink-less styling allowNone
               forbids) and the texture/mask rows (hiding drops the asset
-              from the build). Only Settings goes without. */}
+              from the build). Only Settings goes without. Disabled while
+              inactive: there is nothing on the label to hide. */}
           {hideable ? (
             <button
               type="button"
               onClick={toggleEye}
+              disabled={inactive}
               aria-label={hidden ? `Show ${label}` : `Hide ${label}`}
               className={cn(
-                "grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70 hover:text-sidebar-foreground [&>svg]:size-3.5",
+                "grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70 hover:text-sidebar-foreground [&>svg]:size-3.5 disabled:cursor-not-allowed disabled:hover:text-sidebar-foreground/70",
                 !hidden && "opacity-40 hover:opacity-100",
               )}
             >
@@ -205,21 +223,26 @@ function LayerRow({
             // the only state this panel shows, and the ring read as an
             // outline appearing on rows the user hadn't picked. Trade-off:
             // tabbing through the rows is now invisible.
-            className={cn(
-              "text-xs hover:bg-transparent focus-visible:ring-0",
-              (hidden || collabOff) && "opacity-50",
-            )}
+            className={cn("text-xs hover:bg-transparent focus-visible:ring-0", hidden && "opacity-50")}
           >
             <Icon />
             <span>{label}</span>
+            {/* A variant-owned row's badge — small and muted, after the
+                name, so a Collab (or future variant) row still reads as
+                itself first. */}
+            {row.variantName && (
+              <span className="text-[10px] text-sidebar-foreground/50">{row.variantName}</span>
+            )}
           </SidebarMenuButton>
           {/* Shared metallic toggle — the same write as the inspector's Ink
-              group, so the two stay in lockstep. Lit while metallic. */}
+              group, so the two stay in lockstep. Lit while metallic;
+              disabled while inactive, same reasoning as the eye above. */}
           {el !== null && (
             <span className="contents" onClick={stop}>
               <MetallicToggle
                 label={label}
                 pressed={el.style(cfg).layer === "metallic"}
+                disabled={inactive}
                 onPressedChange={(on) =>
                   update((c) => applyStyle(c, el.id, { layer: on ? "metallic" : "white" }))}
               />
@@ -290,8 +313,15 @@ export function LayersPanel(props: {
    *  suspenders against the panel ever being reused in Fill. */
   mode: "design" | "fill";
   onAddLayer: (type: "text" | "image" | "barcode" | "qr") => void;
+  /** The master's layers flat, in draw order, then any custom layers — see
+   *  model/panel.ts's panelRows. App computes this against the live master/
+   *  variants/config so the panel never has to re-derive it. */
+  rows: PanelRow[];
 }): React.JSX.Element {
-  const customLayers = props.cfg.customLayers ?? [];
+  const rowProps = {
+    cfg: props.cfg, update: props.update, hidden: props.hidden,
+    onToggleHidden: props.onToggleHidden, selected: props.selected, onSelect: props.onSelect,
+  };
   return (
     <>
       {/* The two modifier gestures, said once at the top of the list — but
@@ -303,58 +333,15 @@ export function LayersPanel(props: {
           ⇧ click for a range · ⌘ click to add
         </p>
       )}
-      {PANEL_GROUPS.map(({ title, rows, info, collab }) => (
-        <SidebarGroup key={title}>
-          <SidebarGroupLabel className="justify-between">
-            <span className="flex items-center gap-1.5">
-              {title}
-              {/* The one place the collab block turns on/off — on the group
-                  header beside its name, not repeated per layer. Turning it
-                  off keeps the uploaded art and slot styles; flipping it
-                  back restores the label exactly as it was. */}
-              {collab && (
-                <Switch
-                  aria-label="Collab enabled"
-                  checked={props.cfg.collabEnabled}
-                  onCheckedChange={(on) =>
-                    props.update((c) => { c.collabEnabled = on; })}
-                />
-              )}
-            </span>
-            {/* What the group is FOR, one line behind an info icon — the
-                registry comments in elements.ts, surfaced. */}
-            {info && (
-              <Tooltip>
-                <TooltipTrigger
-                  aria-label={`About ${title}`}
-                  render={
-                    <span className="grid size-5 shrink-0 place-items-center">
-                      <Info className="size-3 text-sidebar-foreground/50" />
-                    </span>
-                  }
-                />
-                <TooltipContent className="max-w-56">{info}</TooltipContent>
-              </Tooltip>
-            )}
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {rows.map((id) => (
-                <LayerRow key={id} id={id} {...props} />
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      ))}
-      {/* Master-variant layers, in stored order — a "Custom" group of its
-          own rather than folded into "Beer", since these are per-LABEL, not
-          even per-beer: a one-off addition to a single variant, not
-          something every release of the same beer carries. Design-only,
-          matching the "Add layer" menu below it. */}
-      {props.mode === "design" && (
-        <SidebarGroup>
-          <SidebarGroupLabel className="justify-between">
-            <span>Custom</span>
+      {/* One flat group, in the master's draw order — no more Beer/Collab/
+          Template split. A variant-owned row carries its badge and dims
+          itself (see LayerRow); custom layers ride along at the end, in
+          stored order (panelRows' contract), so "Add layer" belongs on
+          THIS group's header now rather than a separate "Custom" one. */}
+      <SidebarGroup>
+        <SidebarGroupLabel className="justify-between">
+          <span>Layers</span>
+          {props.mode === "design" && (
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -375,21 +362,29 @@ export function LayersPanel(props: {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {customLayers.length === 0 && (
-                <p className="px-2 py-1.5 text-[11px] text-sidebar-foreground/50">
-                  No custom layers
-                </p>
-              )}
-              {customLayers.map((l) => (
-                <LayerRow key={l.id} id={l.id} {...props} />
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      )}
+          )}
+        </SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            {props.rows.map((row) => (
+              <LayerRow key={row.id} row={row} {...rowProps} />
+            ))}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+      {/* The UI-level document layers — background/mask/settings — carry
+          file drops and document knobs rather than a renderer Style, so they
+          stay their own group rather than folding into Layers above. */}
+      <SidebarGroup>
+        <SidebarGroupLabel>Document</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            {DOC_LAYERS.map((id) => (
+              <LayerRow key={id} row={{ id, name: DOC_LAYER_LABELS[id] }} {...rowProps} />
+            ))}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
     </>
   );
 }

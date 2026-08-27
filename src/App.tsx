@@ -60,7 +60,8 @@ import {
   commitBleedIn, loadPresets, mutatePresets, normalizePresets, usePresets,
   type Presets,
 } from "@/presets";
-import { PANEL_ORDER, isElementId, type HideableLayerId, type LayerId } from "@/components/layers";
+import { isElementId, type HideableLayerId, type LayerId } from "@/components/layers";
+import { panelRows } from "@/model/panel";
 import {
   EMPTY_SELECTION, resolveSelect, type SelectMods, type Selection,
 } from "@/selection";
@@ -409,6 +410,31 @@ export const DocumentEditor = memo(function DocumentEditor({
   // and document layers being single-select) live in selection.ts.
   const [selection, setSelection] = useState<Selection>(EMPTY_SELECTION);
   const selected = selection.ids;
+  // Which master this document composes against — session state, deliberately
+  // outside the config/history like hiddenLayers below: it is not label
+  // content, so switching masters isn't itself an undoable edit. (Which
+  // variants are enabled DOES ride in history, alongside cfg — see Doc and
+  // useHistory<Doc> above — because undoing a variant toggle has to restore
+  // the FieldList checkboxes along with the config the toggle produced.)
+  // Reset alongside cfg on Open/New so a document can't leak the previous
+  // one's master.
+  const [master, setMaster] = useState<Master>(lolevMaster);
+  // The master's resolved layers and which of them are off right now
+  // (master-disabled, or their owning variant is off) — values don't affect
+  // either, only master + enabledVariants, so an empty values object is fine
+  // here (unlike the real composeConfig calls that produce `cfg` itself).
+  const { layers: masterLayers, disabledLayers } = useMemo(
+    () => composeConfig(master, enabledVariants, {}, undefined),
+    [master, enabledVariants],
+  );
+  // The layers panel's rows — the master's layers flat, in draw order, then
+  // any custom layers (model/panel.ts's panelRows). Also the shift-range
+  // order `pick` resolves against below, so the panel's visible rows and the
+  // selection rules can never disagree about what "next row" means.
+  const panelLayerRows = useMemo(
+    () => panelRows(master, masterLayers, disabledLayers, cfg),
+    [master, masterLayers, disabledLayers, cfg],
+  );
   /** A row or canvas click, resolved against the anchor and the panel's row
    *  order. A background click (null) clears everything, anchor included. */
   const clearSelection = () => setSelection(EMPTY_SELECTION);
@@ -416,7 +442,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     id === null
       ? clearSelection()
       : setSelection((s) => resolveSelect(
-          s, id, mods, [...PANEL_ORDER, ...(cfg.customLayers ?? []).map((l) => l.id)]));
+          s, id, mods, panelLayerRows.map((r) => r.id) as LayerId[]));
   // The renderer elements of the selection, for the preview's outlines.
   // Memoized like collabSlots below and for the same reason: it is a
   // dependency of PreviewCompare's outline memo, and a fresh array every
@@ -430,15 +456,6 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Assets.hidden directly; the preview folds it into the skip set instead
   // (see `skip` below), so both draw the same omissions from one source.
   const [hiddenLayers, setHiddenLayers] = useState<ReadonlySet<HideableLayerId>>(new Set());
-  // Which master this document composes against — session state, deliberately
-  // outside the config/history like hiddenLayers above: it is not label
-  // content, so switching masters isn't itself an undoable edit. (Which
-  // variants are enabled DOES ride in history, alongside cfg — see Doc and
-  // useHistory<Doc> above — because undoing a variant toggle has to restore
-  // the FieldList checkboxes along with the config the toggle produced.)
-  // Reset alongside cfg on Open/New so a document can't leak the previous
-  // one's master.
-  const [master, setMaster] = useState<Master>(lolevMaster);
   // Design edits the canvas directly (layers, style, position); Fill edits
   // through the field list only. Per-document UI state, deliberately outside
   // both the config and its history like `master` above — which mode you're
@@ -1213,16 +1230,22 @@ export const DocumentEditor = memo(function DocumentEditor({
   }, [canvasAssets]);
   useEffect(() => () => closeCanvasBitmaps(canvasBitmaps.current), []);
 
-  // What planLabel omits: the layers-panel eyes, plus the in-place edit
-  // session's element — the v0.1.16 hide-and-rebuild plumbing reduced to a
-  // render flag. Same-frame: a new editSession changes this memo, the
-  // source memo below, and PreviewCompare repaints on the next rAF.
+  // What planLabel omits: the layers-panel eyes, the in-place edit session's
+  // element — the v0.1.16 hide-and-rebuild plumbing reduced to a render flag
+  // — and anything the master/variant resolution has switched off (a
+  // disabled layer, or one owned by a variant that's off). The byte-identity
+  // locks stay green: the shipped master never disables a layer the old
+  // hardcoded draw already omitted (collabEnabled === false already
+  // suppresses the same three ids planLabel's own gate does). Same-frame: a
+  // new editSession changes this memo, the source memo below, and
+  // PreviewCompare repaints on the next rAF.
   const skip = useMemo<{ has(id: ElementId): boolean }>(
-    () => editSession
-      ? { has: (id: ElementId) => id === editSession
-          || hiddenLayers.has(id as HideableLayerId) }
-      : hiddenLayers,
-    [editSession, hiddenLayers],
+    () => ({
+      has: (id: ElementId) => id === editSession
+        || hiddenLayers.has(id as HideableLayerId)
+        || disabledLayers.has(id),
+    }),
+    [editSession, hiddenLayers, disabledLayers],
   );
   // Null until the first assembly lands — both views render from this.
   const canvasSource = useMemo<CanvasRenderSource | null>(
@@ -1870,7 +1893,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             {mode === "design"
               ? <LayersPanel cfg={cfg} update={update} hidden={hiddenLayers} mode={mode}
                   onToggleHidden={toggleHidden} selected={selected} onSelect={pick}
-                  onAddLayer={addCustomLayer} />
+                  onAddLayer={addCustomLayer} rows={panelLayerRows} />
               : <FieldList master={master} enabledVariants={enabledVariants} cfg={cfg}
                   onValue={onFieldValue} onVariant={setVariant} />}
           </SidebarContent>

@@ -7,7 +7,7 @@ import {
   Barcode, Handshake, Hexagon, Image, ImagePlus, QrCode, Scan,
   Settings, Type, type LucideIcon,
 } from "lucide-react";
-import { ELEMENTS, type ElementId } from "@/elements";
+import type { ElementId } from "@/elements";
 
 export type LayerId = ElementId | "background" | "mask" | "settings";
 
@@ -59,51 +59,7 @@ export function isHideable(id: LayerId): id is HideableLayerId {
   return id !== "settings";
 }
 
-const DOC_LAYERS = Object.keys(DOC_LAYER_LABELS) as DocLayerId[];
-
-/** Every group derives both its membership and its order from the registry,
- *  so a regrouped, reordered or added element can't silently vanish from the
- *  panel or drift out of the spec's stacking order. */
-const rowsOf = (group: "beer" | "template" | "collab"): LayerId[] =>
-  ELEMENTS.filter((e) => e.group === group).map((e) => e.id);
-
-/** The panel's groups, top to bottom. Lives here rather than in LayersPanel
- *  because the row ORDER is also what a shift-click range is resolved
- *  against (see PANEL_ORDER) — the panel and the selection rules have to read
- *  one list, or a range would select rows the user didn't drag over. */
-export interface PanelGroup {
-  title: string;
-  rows: LayerId[];
-  /** One-line purpose, shown behind the header's info icon; none = no icon. */
-  info?: string;
-  /** This group's header carries the collab on/off switch. */
-  collab?: true;
-}
-
-export const PANEL_GROUPS: PanelGroup[] = [
-  // The hideable doc layers (texture, mask) ride along in "Beer": they
-  // change per release like the beer elements do, and they carry eyes now —
-  // only the unhideable Settings stays under "Document". Still derived from
-  // DOC_LAYER_LABELS, so a new doc layer appears without a second edit.
-  {
-    title: "Beer",
-    rows: [...rowsOf("beer"), ...DOC_LAYERS.filter(isHideable)],
-    info: "Changes with every release: the beer's name, style, numbers and copy.",
-  },
-  {
-    title: "Collab",
-    rows: rowsOf("collab"),
-    info: "Partner-brewery block, shown only while the switch is on. Art and styles are kept when it's off.",
-    collab: true,
-  },
-  {
-    title: "Template",
-    rows: rowsOf("template"),
-    info: "Set-once brand elements shared by every label.",
-  },
-  { title: "Document", rows: DOC_LAYERS.filter((d) => !isHideable(d)) },
-];
-
-/** Every row, flattened in panel order — the sequence a shift-range walks,
- *  so a range crosses group boundaries exactly as the visible list does. */
-export const PANEL_ORDER: LayerId[] = PANEL_GROUPS.flatMap((g) => g.rows);
+/** The document layers, in display order — the Document group's fixed row
+ *  list now that Beer/Collab/Template are gone (the panel's other rows come
+ *  from the master, see model/panel.ts's panelRows). */
+export const DOC_LAYERS: DocLayerId[] = Object.keys(DOC_LAYER_LABELS) as DocLayerId[];
