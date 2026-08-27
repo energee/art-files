@@ -316,6 +316,14 @@ async function drawElements(
       }
       for (const d of r.paths) page.drawSvgPath(d, { ...at, color });
     } else if (r.kind === "image") {
+      // Custom-layer images: the plan can place one (PlanAssets.custom only
+      // carries an aspect ratio, wired in Task 3) with no embedded bytes
+      // behind it — actual asset-bytes wiring is deferred to the plan that
+      // adds image assets to the UI. Skip the whole item on EITHER plate
+      // rather than crash on `embedded.get(r.id)!` or draw a mask footprint
+      // for art that was never embedded — matching the plan's own
+      // missing-asset -> nothing contract in both modes.
+      if (!embedded.has(r.id)) continue;
       const rect = { x: r.x, y: y(r.y + r.h), width: r.w, height: r.h };
       if (mode === "art") page.drawImage(embedded.get(r.id)!, rect);
       // Raster art prints on white ink: the mask paints its footprint blue.

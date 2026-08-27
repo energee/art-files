@@ -143,6 +143,12 @@ export function drawPlate(
       for (const p of paths) c.fill(p);
       c.restore();
     } else if (r.kind === "image") {
+      // Only the two collab slots resolve to a bitmap here. A custom-layer
+      // image (PlanAssets.custom only carries an aspect ratio, wired in Task
+      // 3) has no bitmap wired yet — actual asset-bytes wiring is deferred to
+      // the plan that adds image assets to the UI — so skip it on EITHER
+      // plate rather than mis-resolve to collabCenter's bitmap or throw.
+      if (r.id !== "collabLeft" && r.id !== "collabCenter") continue;
       if (mode === "art") {
         const img = r.id === "collabLeft" ? assets.collabLeft : assets.collabCenter;
         // The plan only places an image the caller declared (PlanArt came

@@ -126,6 +126,23 @@ describe("drawPlate", () => {
     expect(mask.log.some((x) => x.op === "drawImage")).toBe(false);
   });
 
+  it("skips an unresolvable custom image id instead of misreading collabCenter's bitmap", () => {
+    // A hand-placed item with an id neither slot name recognizes — the shape
+    // a custom-layer image takes before asset-bytes wiring exists (deferred
+    // to the plan that adds image assets to the UI).
+    const custom = { kind: "image" as const, id: "custom-i1" as const, x: 10, y: 10, w: 20, h: 10 };
+    const art = fakeCtx();
+    expect(() => drawPlate(art.ctx, [custom], { collabCenter: {} as CanvasImageSource }, "art", FONT))
+      .not.toThrow();
+    expect(art.log.filter((x) => x.op === "drawImage").length).toBe(0);
+    const mask = fakeCtx();
+    expect(() => drawPlate(mask.ctx, [custom], {}, "mask", FONT)).not.toThrow();
+    // No blue footprint rect drawn for the unresolved custom image (beyond
+    // the plate's own background fills, which happen before the item loop).
+    const itemLog = mask.log.slice(mask.log.findIndex((x) => x.op === "translate") + 1);
+    expect(itemLog.some((x) => x.op === "fillRect")).toBe(false);
+  });
+
   it("throws when an art-mode image item has no bitmap (assembly bug, not a blank)", () => {
     const c = { ...cfg, collabEnabled: true };
     const p = planLabel(c, m, {

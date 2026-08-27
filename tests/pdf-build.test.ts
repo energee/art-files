@@ -234,4 +234,28 @@ describe("Master-variation custom layers", () => {
     expect(showOps(await contentStreamText(withLayerBytes)))
       .toBeGreaterThan(showOps(await contentStreamText(plain)));
   });
+
+  // Round-1 fix: a custom image layer with a PlanAssets.custom aspect entry
+  // (as planLabel emits it) but no actual embedded bytes must not crash
+  // buildArtPdf — asset-bytes wiring is deferred, but the plan can still
+  // place the item. Guarded to a no-op: byte-identical to the same build
+  // without the layer.
+  it("a custom image layer with no embedded bytes builds without crashing, and is a no-op", async () => {
+    const cfg = defaultConfig();
+    const withImageLayer = {
+      ...cfg,
+      customLayers: [{
+        id: "custom-i1" as const, name: "Custom Image", type: "image" as const, w: 100,
+        asset: "art1",
+        position: { anchor: "left" as const, vAnchor: "top" as const, offsetX: 0, offsetY: 0 },
+        style: { fill: "none" as const, layer: "white" as const },
+      }],
+    };
+    const plain = await buildArtPdf(cfg, assets);
+    const withLayer = await buildArtPdf(withImageLayer, assets);
+    expect(withLayer).toEqual(plain);
+    const plainMask = await buildMaskPdf(cfg, assets);
+    const withLayerMask = await buildMaskPdf(withImageLayer, assets);
+    expect(withLayerMask).toEqual(plainMask);
+  });
 });
