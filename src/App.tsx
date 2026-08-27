@@ -286,6 +286,12 @@ function download(url: string, name: string) {
   a.click();
 }
 
+/** The undoable half of one document: the live config plus which of its
+ *  master's variations are enabled. The two travel together through history
+ *  (see useHistory<Doc> above) so undoing a variation toggle restores the
+ *  FieldList checkboxes in the same step as the config it produced. */
+type Doc = { cfg: LabelConfig; enabledVariations: string[] };
+
 /** A file the shell wants this editor to open. seq is monotonic — a new
  *  value triggers the open, so a re-render can never re-open. Exactly one
  *  of path (Tauri), handle (FS-Access picker), or file (hidden-input
@@ -350,9 +356,15 @@ export const DocumentEditor = memo(function DocumentEditor({
   onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, tabStripHost,
 }: DocumentEditorProps) {
   // Config lives in a history stack, not plain useState — every edit that
-  // goes through setCfg (i.e. all of them, see `update` below) is undoable.
-  const { value: cfg, set: setCfg, reset: resetCfg, undo, redo, canUndo, canRedo } =
-    useHistory<LabelConfig>(defaultConfig);
+  // goes through setDoc (i.e. all of them, see `update` below) is undoable.
+  // enabledVariations rides along in the same history entry as cfg (not a
+  // separate useState): undoing a variation toggle has to restore BOTH the
+  // composed config AND the FieldList checkboxes that produced it, in one
+  // step, or the two fall out of sync (see toggleVariation in model/document).
+  const { value: doc, set: setDoc, reset: resetDoc, undo, redo, canUndo, canRedo } =
+    useHistory<Doc>(() => ({ cfg: defaultConfig(), enabledVariations: [] }));
+  const cfg = doc.cfg;
+  const enabledVariations = doc.enabledVariations;
   // Which layers the inspector shows — Figma's model: an ordered selection
   // plus an anchor a shift-range extends from, driven by the layers panel or
   // PreviewCompare's click-to-select. LayerId, not ElementId: the
@@ -381,27 +393,27 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Assets.hidden directly; the preview folds it into the skip set instead
   // (see `skip` below), so both draw the same omissions from one source.
   const [hiddenLayers, setHiddenLayers] = useState<ReadonlySet<HideableLayerId>>(new Set());
-  // Which master this document composes against, and which of its variations
-  // are enabled — session state, deliberately outside the config/history like
-  // hiddenLayers above: the composed `cfg` toggling produces IS in history
-  // (undo restores the visual result), but which variations are ON is not
-  // itself an undoable edit. Reset alongside cfg on Open/New so a document
-  // can't leak the previous one's master or variation set.
+  // Which master this document composes against — session state, deliberately
+  // outside the config/history like hiddenLayers above: it is not label
+  // content, so switching masters isn't itself an undoable edit. (Which
+  // variations are enabled DOES ride in history, alongside cfg — see Doc and
+  // useHistory<Doc> above — because undoing a variation toggle has to restore
+  // the FieldList checkboxes along with the config the toggle produced.)
+  // Reset alongside cfg on Open/New so a document can't leak the previous
+  // one's master.
   const [master, setMaster] = useState<Master>(lolevMaster);
-  const [enabledVariations, setEnabledVariations] = useState<string[]>([]);
   // Design edits the canvas directly (layers, style, position); Fill edits
   // through the field list only. Per-document UI state, deliberately outside
-  // both the config and its history like `master`/`enabledVariations` above —
-  // which mode you're in isn't a document edit, and switching tabs shouldn't
-  // carry it along.
+  // both the config and its history like `master` above — which mode you're
+  // in isn't a document edit, and switching tabs shouldn't carry it along.
   const [mode, setMode] = useState<"design" | "fill">("fill");
-  /** Layers panel's variation checkboxes: recompose the whole config around
-   *  the toggle in one undoable step (see toggleVariation in model/document). */
+  /** Layers panel's variation checkboxes: recompose the whole config AND the
+   *  enabled set in one undoable step (see toggleVariation in model/document)
+   *  — so undo restores the checkbox along with the config it produced. */
   const setVariation = (id: string, on: boolean) => {
     const r = toggleVariation(master, cfg, enabledVariations, id, on);
-    setEnabledVariations(r.enabled);
     markDirty();
-    setCfg(() => r.config);
+    setDoc(() => ({ cfg: r.config, enabledVariations: r.enabled }));
   };
   // The element being edited in place on the preview, if any (reported by
   // PreviewCompare). While set, planLabel skips it via the render flag (see
@@ -712,7 +724,11 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   const update = (fn: (c: LabelConfig) => void, coalesce?: boolean) => {
     markDirty(); // every config edit passes through here — see `dirty`
-    setCfg((c) => { const n = structuredClone(c); fn(n); return n; }, coalesce);
+    setDoc((d) => {
+      const n = structuredClone(d.cfg);
+      fn(n);
+      return { ...d, cfg: n };
+    }, coalesce);
   };
   /** Wrap a config mutation that bypasses `update` (undo/redo) so it still
    *  marks the document dirty. */
@@ -1203,16 +1219,18 @@ export const DocumentEditor = memo(function DocumentEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, dirty, edited, filePath]);
 
-  /** Full-document replacement for Open: swap the config in (resetting
+  /** Full-document replacement for Open: swap the whole Doc in (resetting
    *  history) and clear every asset slot. A slot added later must be
-   *  cleared here so an open can't leak the previous project's asset. */
-  function resetDocument(config: LabelConfig) {
-    resetCfg(config);
-    // A v2 open resets these again right after (see openProject) — done here
-    // too so a bare New Project can't leak the previous document's master or
-    // variation set.
+   *  cleared here so an open can't leak the previous project's asset.
+   *  `enabledVariations` defaults to [] for a bare New Project; the v2 open
+   *  path passes the label's real set directly so it lands in the same
+   *  history step as the config, rather than a second write right after. */
+  function resetDocument(config: LabelConfig, enabledVariations: string[] = []) {
+    resetDoc({ cfg: config, enabledVariations });
+    // master isn't part of Doc/history (see its declaration above) — reset it
+    // here too so a bare New Project can't leak the previous document's
+    // master.
     setMaster(lolevMaster());
-    setEnabledVariations([]);
     swapLoaded(setTexture, null);
     swapLoaded(setMask, null);
     swapLoaded(setCollabLeft, null);
@@ -1359,20 +1377,19 @@ export const DocumentEditor = memo(function DocumentEditor({
           return false;
         }
         const c = composeConfig(m, parsed.enabledVariations, parsed.values, parsed.overrides);
-        // resetDocument sets master/variations back to the Lolev default (see
-        // its own comment) — set the real ones again right after, so neither
-        // call order can leak a stale master into this document.
-        resetDocument(c.config);
+        // resetDocument sets master back to the Lolev default (see its own
+        // comment) and enabledVariations to the real set in the same history
+        // step — set the real master again right after, so neither call
+        // order can leak a stale master into this document.
+        resetDocument(c.config, parsed.enabledVariations);
         setMaster(m);
-        setEnabledVariations(parsed.enabledVariations);
         warnings = c.warnings; // advisory only — a lossy compose still opens
       } else {
         const parsedCfg = parseConfigFile(unpacked.config!);
-        resetDocument(parsedCfg);
         // Bridge: an old collab label has no master/variation concept, but a
         // checked Collab box in its config is exactly the "collab" variation.
+        resetDocument(parsedCfg, parsedCfg.collabEnabled ? ["collab"] : []);
         setMaster(lolevMaster());
-        setEnabledVariations(parsedCfg.collabEnabled ? ["collab"] : []);
       }
       // The type matters: FileDrop thumbnails are createObjectURL(file), and
       // an <img> won't render a typeless blob as SVG — logos restored from a
@@ -1390,7 +1407,9 @@ export const DocumentEditor = memo(function DocumentEditor({
       ]);
       setDirty(false);
       setEdited(false); // a freshly opened document is untouched by definition
-      setLoadError(warnings.length ? warnings.join(" · ") : "");
+      // "Note: " prefix keeps these advisory resolve warnings from reading
+      // as a hard open failure — the same setLoadError slot shows both.
+      setLoadError(warnings.length ? "Note: " + warnings.join(" · ") : "");
       return true;
     } catch (err) {
       // quiet: the picker path retries once before reporting — a first-read

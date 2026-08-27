@@ -48,6 +48,22 @@ describe("configDiff / composeConfig round-trip", () => {
     const d = configDiff(base, cfg);
     expect(d.customLayers).toEqual(cfg.customLayers);
   });
+
+  // Golden test (C1): a legacy .label omits barcodeStrokeWidth deliberately
+  // (see defaults.ts's parseConfigFile comments — that absence is what
+  // preserves the pre-style measured halo). configDiff must record the
+  // removal so a re-save/reopen round-trip does not resurrect
+  // defaultConfig()'s barcodeStrokeWidth: 20 and change the printed barcode.
+  it("records a key present in base but absent from cfg, so reopening omits it (legacy barcodeStrokeWidth)", () => {
+    const m = lolevMaster();
+    const base = composeConfig(m, [], {}, undefined).config;
+    const cfg = structuredClone(base) as Partial<typeof base>;
+    delete cfg.barcodeStrokeWidth;
+    const values = valuesFromConfig(m, [], cfg as typeof base);
+    const overrides = configDiff(base, cfg as typeof base);
+    const reopened = composeConfig(m, [], values, overrides).config;
+    expect("barcodeStrokeWidth" in reopened).toBe(false);
+  });
 });
 
 describe("toggleVariation", () => {

@@ -42,22 +42,54 @@ export function valuesFromConfig(
 const isPlain = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
 
+// `null` is the removal marker configDiff emits for a key present in `base`
+// but absent from `cfg` (the one real case: a legacy config's unset
+// barcodeStrokeWidth — see defaults.ts's parseConfigFile comments). It has
+// to be `null`, not `undefined`: JSON.stringify drops undefined-valued keys
+// entirely, which would silently lose the removal across a save. composeConfig
+// strips every null-valued key back out to ABSENT after the deepMerge below.
+// DeepPartial<LabelConfig> has no room for this marker, so the two spots that
+// write or read it are cast — kept to just those two lines.
+const REMOVE: null = null;
+
 /** Everything in `cfg` that differs from `base`, deep for plain objects,
- *  wholesale for arrays and leaves. {} = no deviations. */
+ *  wholesale for arrays and leaves. A key present in `base` but absent from
+ *  `cfg` is recorded as REMOVE, not skipped — otherwise composeConfig would
+ *  resurrect it from the master/defaults on reopen (see REMOVE above).
+ *  {} = no deviations. */
 export function configDiff(base: LabelConfig, cfg: LabelConfig): DeepPartial<LabelConfig> {
-  const walk = (b: unknown, c: unknown): unknown => {
+  const walk = (b: unknown, c: unknown, cHasKey: boolean): unknown => {
+    if (!cHasKey) return REMOVE;
     if (isPlain(b) && isPlain(c)) {
       const out: Record<string, unknown> = {};
-      for (const k of Object.keys(c)) {
-        if (!(k in b)) { out[k] = c[k]; continue; }
-        const d = walk(b[k], c[k]);
+      for (const k of Object.keys(b)) {
+        const d = walk(b[k], c[k], k in c);
         if (d !== undefined) out[k] = d;
+      }
+      for (const k of Object.keys(c)) {
+        if (k in b) continue;
+        out[k] = c[k];
       }
       return Object.keys(out).length ? out : undefined;
     }
     return JSON.stringify(b) === JSON.stringify(c) ? undefined : c;
   };
-  return (walk(base, cfg) ?? {}) as DeepPartial<LabelConfig>;
+  return (walk(base, cfg, true) ?? {}) as DeepPartial<LabelConfig>;
+}
+
+/** Deletes every REMOVE-marked key `patch` carries, deep, after the merge
+ *  already applied its other values — turns the marker back into an absent
+ *  key rather than leaving a stray `null` in the composed config. */
+function stripRemovals(config: LabelConfig, patch: DeepPartial<LabelConfig>): LabelConfig {
+  const walk = (c: unknown, p: unknown): void => {
+    if (!isPlain(c) || !isPlain(p)) return;
+    for (const k of Object.keys(p)) {
+      if ((p as Record<string, unknown>)[k] === REMOVE) delete c[k];
+      else walk(c[k], (p as Record<string, unknown>)[k]);
+    }
+  };
+  walk(config, patch);
+  return config;
 }
 
 export function composeConfig(
@@ -65,10 +97,8 @@ export function composeConfig(
   values: Record<string, FieldValue>, overrides: DeepPartial<LabelConfig> | undefined,
 ): { config: LabelConfig; errors: Record<string, string>; warnings: string[] } {
   const r = resolve(master, enabledVariations, values);
-  return {
-    config: overrides ? deepMerge(r.config, overrides) : r.config,
-    errors: r.errors, warnings: r.warnings,
-  };
+  const config = overrides ? stripRemovals(deepMerge(r.config, overrides), overrides) : r.config;
+  return { config, errors: r.errors, warnings: r.warnings };
 }
 
 /** Re-compose the live config around a variation toggle, preserving the
