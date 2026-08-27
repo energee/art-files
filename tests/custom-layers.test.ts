@@ -8,9 +8,13 @@ import type {
 import { defaultConfig } from "@/defaults";
 import { dragTarget2, isCustomId } from "@/elements";
 import { anchoredX, anchoredY } from "@/model/position";
-import { labelGuides, planLabel, type PlacedBarcode, type PlacedImage, type PlacedPaths } from "@/plan";
+import {
+  barcodeItem, labelGuides, planLabel,
+  type PlacedBarcode, type PlacedImage, type PlacedPaths,
+} from "@/plan";
 import { minModuleWarning } from "@/model/fields";
 import { qrShapes, qrPath } from "@/qr";
+import { FONT_ASC, FONT_DESC } from "@/layout";
 
 describe("custom layer schema", () => {
   it("adds a custom text layer to LabelConfig and round-trips through JSON", () => {
@@ -289,6 +293,55 @@ describe("custom barcode layer", () => {
       const expectedX = guides.left - QUIET_MODULES * moduleW + ptsWidth / 2;
       expect(lead.x).toBeCloseTo(expectedX, 10);
     }
+  });
+
+  // Final fix wave (C1/I1): the template barcode is laid out sideways
+  // (modules along Y) and rotates every digit glyph 90°; a custom barcode
+  // layer is laid out upright (modules along X) and must NOT rotate its
+  // digits, or they collide with the bars. PlacedBarcode.rotated is what
+  // tells each backend which of the two placements to draw.
+  it("is laid out upright: rotated is false, unlike the template's true", () => {
+    const cfg = defaultConfig();
+    cfg.customLayers = [base];
+    const custom = planLabel(cfg, m)
+      .find((r): r is PlacedBarcode => r.kind === "barcode" && r.id === "custom-bc1")!;
+    expect(custom.rotated).toBe(false);
+
+    const template = barcodeItem(cfg, m);
+    expect(template.rotated).toBe(true);
+  });
+
+  // I1: the white-ink footprint used to cover the bars only — the digits'
+  // ink had no plate underneath it. It now adds one pill per digit group.
+  it("footprint includes one digit pill per digit group, in the upright layout, when showDigits is on", () => {
+    const cfg = defaultConfig();
+    cfg.customLayers = [base];
+    const withDigits = planLabel(cfg, m)
+      .find((r): r is PlacedBarcode => r.kind === "barcode" && r.id === "custom-bc1")!;
+    expect(withDigits.digits.length).toBeGreaterThan(0);
+    expect(withDigits.footprint.length).toBe(withDigits.geo.bars.length + withDigits.digits.length);
+
+    const cfgNoDigits = defaultConfig();
+    cfgNoDigits.customLayers = [{ ...base, showDigits: false }];
+    const noDigits = planLabel(cfgNoDigits, m)
+      .find((r): r is PlacedBarcode => r.kind === "barcode" && r.id === "custom-bc1")!;
+    expect(noDigits.digits).toHaveLength(0);
+    expect(noDigits.footprint.length).toBe(noDigits.geo.bars.length);
+
+    // The pill's rect matches the hand-computed upright formula: x spans the
+    // run's centered width, yTop/h span the font box (FONT_ASC/FONT_DESC at
+    // the item's own textSize) around the baseline, each outset by S.
+    const d = withDigits.digits[0];
+    const pill = withDigits.footprint[withDigits.geo.bars.length];
+    const S = withDigits.S;
+    const x0 = d.x - d.w / 2 - S;
+    const x1 = d.x + d.w / 2 + S;
+    const y0 = d.y - FONT_ASC * withDigits.textSize - S;
+    const y1 = d.y + FONT_DESC * withDigits.textSize + S;
+    expect(pill.x).toBeCloseTo(x0, 10);
+    expect(pill.w).toBeCloseTo(x1 - x0, 10);
+    expect(pill.yTop).toBeCloseTo(y0, 10);
+    expect(pill.h).toBeCloseTo(y1 - y0, 10);
   });
 });
 

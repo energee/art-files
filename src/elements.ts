@@ -3,7 +3,10 @@
 // which config field backs it.
 import type { LabelConfig, Style, StyledLine } from "./types";
 import type { CollabSlots, Face, MeasureFace } from "./plan";
-import { encodeFor, validateFor } from "./barcode";
+import {
+  CUSTOM_BARCODE_DIGIT_GAP_RATIO, CUSTOM_BARCODE_DIGIT_SIZE_RATIO,
+  encodeFor, validateFor,
+} from "./barcode";
 import { DESC, FONT_ASC, FONT_DESC, HANDLE_ADDR, runsWidth } from "./layout";
 import { defaultConfig } from "./defaults";
 import { strokeLayerOf } from "./strokes";
@@ -385,12 +388,13 @@ function customTextWidth(line: StyledLine, size: number, m: MeasureFace): number
 /** A custom barcode layer's drag box size — pattern length x moduleW wide, h
  *  tall plus the digit band when shown — null for a payload that fails its
  *  symbology's validator (no box, matching planLabel's emits-nothing rule).
- *  A local copy of plan.ts's customBarcodeBox math (same reasoning as
+ *  A local copy of plan.ts's customBarcodeBox FUNCTION (same reasoning as
  *  customTextWidth above: a runtime value-import back into plan.ts would
  *  make the two modules mutually dependent, since plan.ts already imports
- *  this file for logoNudge/ElementId). JsBarcode's UPC-A proportions (see
- *  layout.ts's UPC_UNITS) size the digit band as a ratio of the layer's own
- *  bar height, same as plan.ts's customBarcodeItem. */
+ *  this file for logoNudge/ElementId) — but the digit-size/gap RATIOS
+ *  themselves are shared, imported from barcode.ts (which both plan.ts and
+ *  this file already import at runtime), so this box and plan.ts's
+ *  customBarcodeItem can't drift apart on the two numbers that matter. */
 function customBarcodeDragBox(layer: {
   symbology: "upc-a" | "ean-13" | "code-128"; value: string;
   h: number; moduleW: number; showDigits?: boolean;
@@ -398,8 +402,8 @@ function customBarcodeDragBox(layer: {
   if (!validateFor(layer.symbology, layer.value).ok) return null;
   const pattern = encodeFor(layer.symbology, layer.value);
   const showDigits = layer.showDigits ?? true;
-  const textSize = layer.h * (10 / 15); // fontSize : barH
-  const gap = layer.h * (4 / 15); // textMargin : barH
+  const textSize = layer.h * CUSTOM_BARCODE_DIGIT_SIZE_RATIO;
+  const gap = layer.h * CUSTOM_BARCODE_DIGIT_GAP_RATIO;
   return {
     w: pattern.modules.length * layer.moduleW,
     h: layer.h + (showDigits ? gap + textSize : 0),

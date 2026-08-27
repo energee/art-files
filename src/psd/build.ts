@@ -309,34 +309,45 @@ interface FKGlyphRun {
 }
 
 /** One digit group's glyph outlines as closed bezier subpaths in label
- *  points, reproducing the PDF's `rotate(90)` placement (see
- *  `pdf/build.ts:177-182`) algebraically instead of via an affine layer
- *  transform (ag-psd shape layers have none — only type layers do).
+ *  points, algebraically reproducing one of the two placements
+ *  PlacedBarcode.rotated selects between (see that field's own doc) instead
+ *  of via an affine layer transform (ag-psd shape layers have none — only
+ *  type layers do).
  *
  *  A font-local point is (u, v): u runs along the baseline from the string's
  *  start (font's normal +x advance direction, in points, already scaled by
  *  size/unitsPerEm), v is height above the baseline (font's +y, ascenders
- *  positive). Composing pdf-lib's CCW 90 degree rotation about the PDF-space
- *  anchor with the PDF page's y-flip back into layout.ts's top-left/y-down
- *  space reduces to: label = (dx - v, yStart - u). `dx` is the digit
+ *  positive).
+ *
+ *  `rotated` (the template barcode): composing pdf-lib's CCW 90 degree
+ *  rotation about the PDF-space anchor with the PDF page's y-flip back into
+ *  layout.ts's top-left/y-down space reduces to: label = (anchorX - v,
+ *  anchorY - u) (see `pdf/build.ts`'s `drawBarcode`). `anchorX` is the digit
  *  column's fixed baseline x (all four groups share one, see barcodeGeometry
- *  `place`); `yStart` is the label-space Y the string's start lands at,
+ *  `place`); `anchorY` is the label-space Y the string's start lands at,
  *  already the value the old text layer used as `baseline`
  *  (`geo.bottom - d.center * geo.mod + measure(d.text) / 2`).
+ *
+ *  `!rotated` (every custom barcode layer, Task 3): ordinary horizontal
+ *  placement, no rotation — label = (anchorX + u, anchorY - v). `anchorX` is
+ *  the run's LEFT edge (the plan hands back the run's center, see
+ *  PlacedBarcode's own doc — callers subtract half the measured width);
+ *  `anchorY` is the baseline.
  *
  *  TrueType glyphs are quadratic (fontkit emits `quadraticCurveTo`, never
  *  cubic) — svgToPaths cannot be reused here, its regex only understands
  *  M/L/C/Z and would silently swallow a Q's numbers into the previous
  *  command. Elevation to cubic is exact: C1 = P0 + 2/3(Q-P0),
- *  C2 = P2 + 2/3(Q-P2); this still holds after the (u,v)->label map above
- *  because that map is affine, and affine maps preserve the barycentric
+ *  C2 = P2 + 2/3(Q-P2); this still holds after either (u,v)->label map above
+ *  because both maps are affine, and affine maps preserve the barycentric
  *  combination the elevation formula is built from. */
 function digitGroupPaths(
   font: FKFont,
   text: string,
   size: number,
-  dx: number,
-  yStart: number,
+  rotated: boolean,
+  anchorX: number,
+  anchorY: number,
 ): { paths: BezierPath[]; bbox: { minX: number; maxX: number; minY: number; maxY: number } } {
   const run = font.layout(text);
   const scale = size / font.unitsPerEm;
@@ -354,7 +365,9 @@ function digitGroupPaths(
     const pos = run.positions[i];
     const u0 = uCum + pos.xOffset * scale;
     const v0 = pos.yOffset * scale;
-    const toLabel = (fx: number, fy: number): Pt => [dx - (v0 + fy * scale), yStart - (u0 + fx * scale)];
+    const toLabel = rotated
+      ? (fx: number, fy: number): Pt => [anchorX - (v0 + fy * scale), anchorY - (u0 + fx * scale)]
+      : (fx: number, fy: number): Pt => [anchorX + (u0 + fx * scale), anchorY - (v0 + fy * scale)];
     let pts: { a: Pt; in?: Pt; out?: Pt }[] = [];
     let last: Pt = [0, 0];
     const flush = () => {
@@ -814,12 +827,18 @@ function barcodeLayer(name: string, bc: PlacedBarcode, fk: FKFont, mode: PsdMode
       S > 0 ? strokePaint(mode, bc.stroke, bc.strokeLayer) : undefined, px(S),
     );
   }
-  // yStart is exactly what the old digit TYPE layers used as `baseline` —
-  // the string-start Y a `rotate(90)` PDF drawText lands at (see
-  // digitGroupPaths for the derivation); keeping this identical is what
-  // makes the outlines land where the type layers used to.
-  const digitGroups = bc.geo.digits.map((d, i) =>
-    digitGroupPaths(fk, d.text, bc.textSize, d.x, bc.digits[i].y),
+  // Rotated (the template): anchorY is exactly what the old digit TYPE
+  // layers used as `baseline` — the string-start Y a `rotate(90)` PDF
+  // drawText lands at (see digitGroupPaths for the derivation); keeping this
+  // identical is what makes the outlines land where the type layers used
+  // to. Upright (every custom barcode layer): anchorX needs the run's LEFT
+  // edge, since bc.digits' `x` is the run's CENTER (see PlacedBarcode's own
+  // doc).
+  const digitGroups = bc.digits.map((d) =>
+    digitGroupPaths(
+      fk, d.text, bc.textSize, bc.rotated,
+      bc.rotated ? d.x : d.x - d.w / 2, d.y,
+    ),
   );
   const barcodePaths: BezierPath[] = [
     ...bc.geo.bars.map((b) => rectPath(b.x, b.yTop, b.w, b.h)),

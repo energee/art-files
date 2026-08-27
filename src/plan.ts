@@ -22,6 +22,7 @@ import { parseLogo } from "./logo";
 import { qrPath, qrShapes, qrUrl } from "./qr";
 import {
   barcodeDigitsFor, barcodeFootprint, barcodeGeometry, barcodeStrokePt,
+  CUSTOM_BARCODE_DIGIT_GAP_RATIO, CUSTOM_BARCODE_DIGIT_SIZE_RATIO,
   encodeFor, validateFor, type BarcodeGeometry,
 } from "./barcode";
 
@@ -88,11 +89,14 @@ export interface PlacedImage {
  *  paint from. Genuinely mode-asymmetric (art = stroked bars+digits, mask =
  *  the outset footprint), so it stays one item rather than mode-dependent
  *  primitives — the backends keep their paint logic, the geometry exists
- *  once. `digits` follow the rotated-run convention: x is the baseline's
- *  vertical line, y the run's start, extent -w. Widened from the literal
- *  "barcode" to ElementId so a master-variation custom barcode layer (Task 3)
- *  can be one of these too, keyed by its own `custom-${string}` id like every
- *  other custom layer's placed item. */
+ *  once. `digits` follow ONE of two conventions, gated by `rotated`: rotated
+ *  (the template) reads bottom-to-top — x is the baseline's vertical line, y
+ *  the run's start, extent -w; upright (every custom barcode layer) reads
+ *  left-to-right like ordinary text — x is the run's CENTER (left edge is
+ *  x - w/2), y is the baseline. Widened from the literal "barcode" to
+ *  ElementId so a master-variation custom barcode layer (Task 3) can be one
+ *  of these too, keyed by its own `custom-${string}` id like every other
+ *  custom layer's placed item. */
 export interface PlacedBarcode {
   readonly kind: "barcode";
   readonly id: ElementId;
@@ -104,6 +108,13 @@ export interface PlacedBarcode {
   readonly fillLayer: Style["layer"];
   readonly strokeLayer: Style["layer"];
   readonly textSize: number;
+  /** True for the template barcode, whose symbol lives pre-rotated into the
+   *  page's vertical right column (modules run along Y) — its digits paint
+   *  through a 90° glyph rotation. False for every custom barcode layer
+   *  (Task 3), whose symbol is laid out upright (modules along X) — its
+   *  digits paint as ordinary horizontal text. Backends (pdf/build.ts,
+   *  canvas/draw.ts, psd/build.ts) branch their digit-drawing on this. */
+  readonly rotated: boolean;
   readonly digits: readonly { text: string; x: number; y: number; w: number }[];
   /** The white-ink footprint at S = 0 (bars + digit pills); the mask pass
    *  outsets it by S as a border, matching barcodeFootprint's contract. */
@@ -326,7 +337,7 @@ export function barcodeItem(cfg: LabelConfig, m: MeasureFace): PlacedBarcode {
     S: barcodeStrokePt(cfg),
     fill: cfg.barcodeFill, stroke: cfg.barcodeStroke,
     fillLayer: cfg.barcodeLayer, strokeLayer: cfg.barcodeStrokeLayer,
-    textSize: B.textSize,
+    textSize: B.textSize, rotated: true,
     digits: geo.digits.map((d) => {
       const w = measure(d.text);
       return { text: d.text, x: d.x, y: geo.bottom - d.center * geo.mod + w / 2, w };
@@ -340,19 +351,15 @@ export function barcodeItem(cfg: LabelConfig, m: MeasureFace): PlacedBarcode {
 // template's UPC: barcodeGeometry itself stays untouched (its digits:[] rule
 // for any supplied pattern is a standing ruling — see its own comment), so
 // this is a small local geometry built directly from the layer's own
-// moduleW/h, in a plain (unrotated) layout — unlike the template's symbol,
-// which lives pre-rotated into the page's vertical right column. Both share
-// PlacedBarcode/drawBarcode as the paint step, so a custom layer's digit text
-// still paints through drawBarcode's rotate(-90) glyph pass exactly like the
-// template's — a known, accepted quirk inherited from the shared renderer
-// (see drawBarcode in pdf/build.ts and canvas/draw.ts), not something Task 3
-// changes.
+// moduleW/h, in a plain UPRIGHT layout (modules along X, digits a normal
+// horizontal caption below the bars) — unlike the template's symbol, which
+// lives pre-rotated into the page's vertical right column (modules along Y,
+// digits rotated 90°). Both share PlacedBarcode/drawBarcode as the paint
+// step; PlacedBarcode.rotated (false here, true for the template) is what
+// lets the shared renderer (drawBarcode in pdf/build.ts and canvas/draw.ts,
+// barcodeLayer in psd/build.ts) draw each orientation correctly instead of
+// unconditionally rotating every digit glyph.
 
-/** JsBarcode's UPC-A proportions (see layout.ts's UPC_UNITS), reused here as
- *  ratios of the layer's own bar height so a custom symbol's digit band
- *  scales with it instead of a fixed template constant. */
-const BARCODE_DIGIT_RATIO = 10 / 15; // fontSize : barH
-const BARCODE_GAP_RATIO = 4 / 15; // textMargin : barH
 /** Quiet-zone width in modules, matching JsBarcode's UPC-A/EAN-13 default —
  *  where barcodeDigitsFor's leading/trailing digit sits, outside the guards. */
 const BARCODE_QUIET_MODULES = 8;
@@ -381,16 +388,21 @@ function customBarcodeBars(
  *  possibly unexpanded — see CustomBarcodeLayer.value) payload fails the
  *  symbology's own validator, so hittest/dragTarget2 and customBarcodeItem
  *  below can't disagree about which layers are even present. Exported so
- *  hittest.ts and elements.ts's dragTarget2 share this exact sizing instead
- *  of re-deriving the digit-band math. */
+ *  hittest.ts shares this exact sizing instead of re-deriving the digit-band
+ *  math; elements.ts's dragTarget2 keeps its own small local copy of this
+ *  function (customBarcodeDragBox — a runtime value-import back into plan.ts
+ *  would make the two modules mutually dependent), but imports the SAME two
+ *  ratio constants from barcode.ts that this function uses below, so the two
+ *  copies' math cannot drift apart even though the functions themselves
+ *  aren't shared. */
 export function customBarcodeBox(
   layer: CustomBarcodeLayer,
 ): { w: number; h: number; pattern: ReturnType<typeof encodeFor> } | null {
   if (!validateFor(layer.symbology, layer.value).ok) return null;
   const pattern = encodeFor(layer.symbology, layer.value);
   const showDigits = layer.showDigits ?? true;
-  const textSize = layer.h * BARCODE_DIGIT_RATIO;
-  const gap = layer.h * BARCODE_GAP_RATIO;
+  const textSize = layer.h * CUSTOM_BARCODE_DIGIT_SIZE_RATIO;
+  const gap = layer.h * CUSTOM_BARCODE_DIGIT_GAP_RATIO;
   return {
     w: pattern.modules.length * layer.moduleW,
     h: layer.h + (showDigits ? gap + textSize : 0),
@@ -408,8 +420,8 @@ export function customBarcodeItem(
   if (!box) return null;
   const { pattern } = box;
   const showDigits = layer.showDigits ?? true;
-  const textSize = layer.h * BARCODE_DIGIT_RATIO;
-  const gap = layer.h * BARCODE_GAP_RATIO;
+  const textSize = layer.h * CUSTOM_BARCODE_DIGIT_SIZE_RATIO;
+  const gap = layer.h * CUSTOM_BARCODE_DIGIT_GAP_RATIO;
   const x = anchoredX(layer.position, box.w, guides);
   const yTop = anchoredY(layer.position, box.h, guides);
   const bars = customBarcodeBars(pattern, x, yTop, layer.h, layer.moduleW);
@@ -428,22 +440,39 @@ export function customBarcodeItem(
     : [];
   // barcodeDigitsFor's `x` is a placeholder (see its own comment) — real x
   // comes from this layer's own run origin plus the group's module center.
-  const digits = digitsRaw.map((d) => ({ ...d, x: x + d.center * layer.moduleW }));
-  const geo: BarcodeGeometry = { mod: layer.moduleW, bottom: yTop + layer.h, bars, digits };
+  const geoDigits = digitsRaw.map((d) => ({ ...d, x: x + d.center * layer.moduleW }));
+  const geo: BarcodeGeometry = { mod: layer.moduleW, bottom: yTop + layer.h, bars, digits: geoDigits };
   const style = layer.style;
   const S = style.stroke && style.stroke !== "none"
     ? (style.strokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX : 0;
+  const digits = geoDigits.map((d) => ({
+    text: d.text, x: d.x, y: yTop + layer.h + gap, w: measure(d.text),
+  }));
+  // Bars, plus one white-ink pill per digit group — unlike barcodeFootprint
+  // (whose pill formula assumes the template's ROTATED layout, see its own
+  // comment), this item is UPRIGHT: each digit's pill spans its centered run
+  // width (x = d.x ± w/2, matching how the item is actually drawn — see
+  // PlacedBarcode.rotated) and the font box around its baseline (FONT_ASC
+  // above, FONT_DESC below, at this item's own textSize — not the template's
+  // fixed BARCODE.textSize). Both bars and pills are outset by the halo S,
+  // same contract as the template's footprint.
+  const barFootprint = bars.map((b) => ({
+    x: b.x - S, yTop: b.yTop - S, w: b.w + 2 * S, h: b.h + 2 * S,
+  }));
+  const digitFootprint = digits.map((d) => {
+    const x0 = d.x - d.w / 2 - S;
+    const x1 = d.x + d.w / 2 + S;
+    const y0 = d.y - L.FONT_ASC * textSize - S;
+    const y1 = d.y + L.FONT_DESC * textSize + S;
+    return { x: x0, yTop: y0, w: x1 - x0, h: y1 - y0 };
+  });
   return {
-    kind: "barcode", id: layer.id, geo, S,
+    kind: "barcode", id: layer.id, geo, S, rotated: false,
     fill: style.fill, stroke: style.stroke ?? "none",
     fillLayer: style.layer, strokeLayer: strokeLayerOf(style),
     textSize,
-    digits: geo.digits.map((d) => ({ text: d.text, x: d.x, y: yTop + layer.h + gap, w: measure(d.text) })),
-    // Bars only, at S — see barcodeFootprint's own comment: it derives its
-    // digit-pill footprint from the template's fixed BARCODE.textSize, which
-    // does not apply to a custom layer's own textSize, so a digit footprint
-    // for a custom symbol is left for a later pass rather than computed wrong.
-    footprint: bars.map((b) => ({ x: b.x - S, yTop: b.yTop - S, w: b.w + 2 * S, h: b.h + 2 * S })),
+    digits,
+    footprint: [...barFootprint, ...digitFootprint],
   };
 }
 

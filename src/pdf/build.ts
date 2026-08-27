@@ -194,10 +194,18 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, item: PlacedBarcode, mo
   const bars = geo.bars.map((b) => ({
     x: b.x, y: y(b.yTop + b.h), width: b.w, height: b.h,
   }));
-  // rotate(90) turns the glyph body toward -x, so `x` is the baseline and the
-  // digits grow back toward the bars from it; the plan already centred `y`.
-  const digits = item.digits.map((d) => ({ txt: d.text, x: d.x, y: y(d.y), w: d.w }));
-  const glyph = { size: item.textSize, font: fonts.regular, rotate: degrees(90) };
+  // Rotated (the template): rotate(90) turns the glyph body toward -x, so
+  // `x` is the baseline and the digits grow back toward the bars from it;
+  // the plan already centred `y`. Upright (every custom barcode layer, Task
+  // 3): ordinary horizontal drawText, so `x` needs the left edge — the plan
+  // hands back the run's CENTER (see PlacedBarcode's own doc) — and no
+  // rotation.
+  const digits = item.digits.map((d) => ({
+    txt: d.text, x: item.rotated ? d.x : d.x - d.w / 2, y: y(d.y), w: d.w,
+  }));
+  const glyph = item.rotated
+    ? { size: item.textSize, font: fonts.regular, rotate: degrees(90) }
+    : { size: item.textSize, font: fonts.regular };
 
   if (mode === "mask") {
     // Stroke and fill have independent mask plates. Paint the expanded stroke

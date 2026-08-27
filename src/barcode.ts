@@ -24,6 +24,16 @@ export function encodeFor(symbology: Symbology, value: string): UpcModules {
   }
 }
 
+/** JsBarcode's UPC-A proportions (see layout.ts's UPC_UNITS), as ratios of a
+ *  custom barcode layer's own bar height so its digit band scales with
+ *  `layer.h` instead of the template's fixed BARCODE.textSize. The ONE place
+ *  these two ratios are defined — plan.ts's customBarcodeBox/customBarcodeItem
+ *  and elements.ts's customBarcodeDragBox both import them, so a custom
+ *  layer's plotted digit band and its hit/drag box can never disagree (they
+ *  used to be three independent hand copies of the same two numbers). */
+export const CUSTOM_BARCODE_DIGIT_SIZE_RATIO = 10 / 15; // fontSize : barH
+export const CUSTOM_BARCODE_DIGIT_GAP_RATIO = 4 / 15; // textMargin : barH
+
 /** Validate `value` under the named symbology — the gate a custom barcode
  *  layer's `value` must pass before `encodeFor` ever runs on it: an invalid
  *  payload (e.g. a still-unexpanded format string, see CustomBarcodeLayer)

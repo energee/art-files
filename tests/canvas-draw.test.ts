@@ -4,7 +4,10 @@
 // side is the parity page's job.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { drawPlate, type CanvasAssets } from "../src/canvas/draw";
-import { barcodeItem, lineRuns, planLabel, type MeasureFace } from "../src/plan";
+import {
+  barcodeItem, customBarcodeItem, labelGuides, lineRuns, planLabel, type MeasureFace,
+} from "../src/plan";
+import type { CustomBarcodeLayer } from "../src/types";
 import { defaultConfig } from "../src/defaults";
 import { MASK_BLUE_HEX, PAGE } from "../src/layout";
 import { labelFontCss } from "../src/fonts";
@@ -231,5 +234,47 @@ describe("drawPlate", () => {
     expect(halo.length).toBeGreaterThan(0);
     expect(ink.length).toBeGreaterThan(0);
     expect(Math.max(...halo)).toBeLessThan(Math.min(...ink));
+  });
+
+  // Final fix wave (C1): a custom barcode layer's digits must draw UPRIGHT —
+  // no quarter-turn — with ink landing inside customBarcodeBox's own band,
+  // not rotated off into the bars.
+  it("draws a custom barcode layer's digits upright, inside its own band, with no rotate call", () => {
+    const layer: CustomBarcodeLayer = {
+      id: "custom-bc1", name: "Custom Barcode", type: "barcode",
+      symbology: "code-128", value: "LOLEV-123",
+      h: 30, moduleW: 1,
+      position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
+      style: { fill: "#000000", layer: "white" },
+    };
+    const item = customBarcodeItem(layer, m, labelGuides())!;
+    expect(item).toBeDefined();
+    expect(item.rotated).toBe(false);
+    expect(item.digits.length).toBeGreaterThan(0);
+
+    const { ctx, log } = fakeCtx();
+    drawPlate(ctx, [item], {}, "art", FONT);
+
+    // No rotate() call at all: the whole point of `rotated: false` is that
+    // this backend skips the quarter-turn it applies to the template.
+    expect(log.some((x) => x.op === "rotate")).toBe(false);
+
+    // Every digit's translate() (the point fillText/strokeText paint at 0,0
+    // relative to) lands inside that digit's own footprint pill — the same
+    // band the white-ink plate reserves for it (I1) — proving the ink is not
+    // off in the bars' column.
+    const pills = item.footprint.slice(item.geo.bars.length);
+    expect(pills.length).toBe(item.digits.length);
+    const translates = log
+      .filter((x) => x.op === "translate")
+      .map((x) => x.args as [number, number]);
+    for (let i = 0; i < item.digits.length; i++) {
+      const pill = pills[i];
+      const hit = translates.some(
+        ([tx, ty]) => tx >= pill.x - 1e-6 && tx <= pill.x + pill.w + 1e-6
+          && ty >= pill.yTop - 1e-6 && ty <= pill.yTop + pill.h + 1e-6,
+      );
+      expect(hit).toBe(true);
+    }
   });
 });

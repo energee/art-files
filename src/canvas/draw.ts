@@ -238,13 +238,22 @@ function drawText(ctx: Ctx, r: PlacedText, mode: Mode, fontCss: string, ring: Ri
  *  drawBarcode, from the same item. */
 function drawBarcode(ctx: Ctx, item: PlacedBarcode, mode: Mode, fontCss: string, ring: Ring) {
   const digit = (
-    d: { text: string; x: number; y: number },
+    d: { text: string; x: number; y: number; w: number },
     paint: "fill" | "stroke",
     bridge: { dx: number; dy: number }[] = [],
   ) => {
     ctx.save();
-    ctx.translate(d.x, d.y);
-    ctx.rotate(-Math.PI / 2);
+    // Rotated (the template): quarter-turn about the baseline point, glyph
+    // grows back toward the bars. Upright (every custom barcode layer, Task
+    // 3): ordinary horizontal text — translate to the run's left edge (the
+    // plan hands back the run's CENTER, see PlacedBarcode's own doc) and
+    // skip the rotation.
+    if (item.rotated) {
+      ctx.translate(d.x, d.y);
+      ctx.rotate(-Math.PI / 2);
+    } else {
+      ctx.translate(d.x - d.w / 2, d.y);
+    }
     if (paint === "fill") ctx.fillText(d.text, 0, 0);
     else {
       // Digits are the same tiny-feature case drawText bridges — 0, 6, 8 and
