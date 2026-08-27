@@ -78,4 +78,15 @@ describe("LabelFileV2 overrides", () => {
     expect("legacy" in back).toBe(false);
     if (!("legacy" in back)) expect(back.overrides).toEqual(l.overrides);
   });
+
+  it("save/open round-trip: v2 label reproduces the exact config", () => {
+    const m = lolevMaster();
+    const cfg = composeConfig(m, ["collab"], {}, undefined).config;
+    cfg.beerName = "Peregrine";
+    cfg.nameStyle.fill = "#112233";
+    const values = valuesFromConfig(m, ["collab"], cfg);
+    const overrides = configDiff(composeConfig(m, ["collab"], values, undefined).config, cfg);
+    const reopened = composeConfig(m, ["collab"], values, overrides).config;
+    expect(reopened).toEqual(cfg);
+  });
 });

@@ -19,10 +19,17 @@ import { dragTarget, dragTarget2, editableText, type ElementId } from "@/element
 import type { Measure } from "@/hittest";
 import { defaultConfig, exportBaseName, parseConfigFile } from "@/defaults";
 import { strToU8 } from "fflate";
-import { LABEL_EXT, packLabel, unpackLabel } from "@/labelfile";
+import { LABEL_EXT, packLabelV2, unpackLabel } from "@/labelfile";
 import { LABEL_FILTER, LABEL_TYPES, isAbort, savePicker, writeHandle } from "@/filePickers";
 import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
+import {
+  composeConfig, configDiff, toggleVariation, valuesFromConfig,
+} from "@/model/document";
+import { parseLabelFile } from "@/model/labelfile";
+import { lolevMaster } from "@/model/lolev";
+import { masterIndex, resolveMasterById } from "@/masters";
+import type { LabelFileV2, Master } from "@/model/types";
 import { makeHiddenPropsEqual } from "@/tabs";
 import { validateUpc } from "@/upc";
 import { EMBEDDABLE_RASTER, mimeFor, rasterKind, tintRgba } from "@/collab";
@@ -372,6 +379,22 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Assets.hidden directly; the preview folds it into the skip set instead
   // (see `skip` below), so both draw the same omissions from one source.
   const [hiddenLayers, setHiddenLayers] = useState<ReadonlySet<HideableLayerId>>(new Set());
+  // Which master this document composes against, and which of its variations
+  // are enabled — session state, deliberately outside the config/history like
+  // hiddenLayers above: the composed `cfg` toggling produces IS in history
+  // (undo restores the visual result), but which variations are ON is not
+  // itself an undoable edit. Reset alongside cfg on Open/New so a document
+  // can't leak the previous one's master or variation set.
+  const [master, setMaster] = useState<Master>(lolevMaster);
+  const [enabledVariations, setEnabledVariations] = useState<string[]>([]);
+  /** Layers panel's variation checkboxes: recompose the whole config around
+   *  the toggle in one undoable step (see toggleVariation in model/document). */
+  const setVariation = (id: string, on: boolean) => {
+    const r = toggleVariation(master, cfg, enabledVariations, id, on);
+    setEnabledVariations(r.enabled);
+    markDirty();
+    setCfg(() => r.config);
+  };
   // The element being edited in place on the preview, if any (reported by
   // PreviewCompare). While set, planLabel skips it via the render flag (see
   // `skip` below) so the editor's live DOM text IS the element — no doubled
@@ -1163,6 +1186,11 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  cleared here so an open can't leak the previous project's asset. */
   function resetDocument(config: LabelConfig) {
     resetCfg(config);
+    // A v2 open resets these again right after (see openProject) — done here
+    // too so a bare New Project can't leak the previous document's master or
+    // variation set.
+    setMaster(lolevMaster());
+    setEnabledVariations([]);
     swapLoaded(setTexture, null);
     swapLoaded(setMask, null);
     swapLoaded(setCollabLeft, null);
@@ -1180,7 +1208,20 @@ export const DocumentEditor = memo(function DocumentEditor({
   async function saveProject(as = false): Promise<boolean> {
     const collabAsset = (c: CollabFile | null) =>
       c ? { name: c.name, bytes: c.image.kind === "svg" ? strToU8(c.image.svg) : c.image.bytes } : undefined;
-    const zip = packLabel(cfg, {
+    // Always writes v2 (see labelfile.ts): values are the fields the master
+    // and its enabled variations declare; overrides are whatever the user's
+    // config still deviates from a fresh compose of those exact values — the
+    // same shape openProject's v2 branch expects back.
+    const values = valuesFromConfig(master, enabledVariations, cfg);
+    const overrides = configDiff(
+      composeConfig(master, enabledVariations, values, undefined).config, cfg);
+    const label: LabelFileV2 = {
+      formatVersion: 2, masterId: master.id,
+      masterHint: masterIndex()[master.id]?.path,
+      enabledVariations, values,
+      ...(Object.keys(overrides).length ? { overrides } : {}),
+    };
+    const zip = packLabelV2(label, {
       texture: texture ? { name: texture.name, bytes: texture.bytes } : undefined,
       mask: mask ? { name: mask.name, bytes: mask.srcBytes } : undefined,
       collabLeft: collabAsset(collabLeft),
@@ -1274,16 +1315,43 @@ export const DocumentEditor = memo(function DocumentEditor({
     return false;
   }
 
-  /** File → Open Project…: unzip a .label, run its config through the same
-   *  forgiving parseConfigFile path saved configs use, then feed each embedded
-   *  image through the exact handler a manual drop uses so previews, mask
-   *  polarity, and object-URL lifecycle behave identically. Slots absent from
-   *  the file are cleared: opening a project is a full restore, not a merge. */
+  /** File → Open Project…: unzip a .label (v2 label.json or legacy
+   *  config.json), resolve it to a config against the right master, then feed
+   *  each embedded image through the exact handler a manual drop uses so
+   *  previews, mask polarity, and object-URL lifecycle behave identically.
+   *  Slots absent from the file are cleared: opening a project is a full
+   *  restore, not a merge. */
   async function openProject(f: LabelSource, opts?: { quiet?: boolean }): Promise<boolean> {
     try {
       const unpacked = unpackLabel(f.bytes);
-      if (unpacked.label) throw new Error("v2 label files open in a later task");
-      resetDocument(parseConfigFile(unpacked.config!));
+      let warnings: string[] = [];
+      if (unpacked.label) {
+        const parsed = parseLabelFile(JSON.parse(unpacked.label));
+        if ("legacy" in parsed) throw new Error("label.json is not a v2 label");
+        const m = await resolveMasterById(parsed.masterId, parsed.masterHint);
+        if (!m) {
+          setLoadError(
+            `Could not find master "${parsed.masterId}"` +
+            `${parsed.masterHint ? ` (last seen at ${parsed.masterHint})` : ""}` +
+            ` — open its .master file once to register it.`);
+          return false;
+        }
+        const c = composeConfig(m, parsed.enabledVariations, parsed.values, parsed.overrides);
+        // resetDocument sets master/variations back to the Lolev default (see
+        // its own comment) — set the real ones again right after, so neither
+        // call order can leak a stale master into this document.
+        resetDocument(c.config);
+        setMaster(m);
+        setEnabledVariations(parsed.enabledVariations);
+        warnings = c.warnings; // advisory only — a lossy compose still opens
+      } else {
+        const parsedCfg = parseConfigFile(unpacked.config!);
+        resetDocument(parsedCfg);
+        // Bridge: an old collab label has no master/variation concept, but a
+        // checked Collab box in its config is exactly the "collab" variation.
+        setMaster(lolevMaster());
+        setEnabledVariations(parsedCfg.collabEnabled ? ["collab"] : []);
+      }
       // The type matters: FileDrop thumbnails are createObjectURL(file), and
       // an <img> won't render a typeless blob as SVG — logos restored from a
       // project showed as broken images while fresh drops (whose File the
@@ -1300,7 +1368,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       ]);
       setDirty(false);
       setEdited(false); // a freshly opened document is untouched by definition
-      setLoadError("");
+      setLoadError(warnings.length ? warnings.join(" · ") : "");
       return true;
     } catch (err) {
       // quiet: the picker path retries once before reporting — a first-read
