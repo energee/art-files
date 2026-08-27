@@ -2,6 +2,10 @@
 
 Date: 2026-08-27
 Status: approved design, pre-implementation
+Amended: 2026-08-27 (after Plan 5a shipped) — a variant is presented as a named
+group of fields and layers rather than as a diff; `collabEnabled` is deleted
+from `LabelConfig` and Collab becomes an ordinary variant carrying three
+fields. See "Variant (embedded in master)", "UI", and "Migration".
 Approach: incremental re-layering (Approach 1) — the new model resolves down to
 the existing `LabelConfig` shape; renderers, PDF/PSD builders, and the white-ink
 pipeline are untouched at first and migrate piecemeal.
@@ -52,7 +56,15 @@ All artifacts are JSON.
 
 ### Variant (embedded in master)
 
-Pure diff — never a copy. Editing the master propagates to all variants.
+**A variant is a named group of fields and layers.** That is what the author
+builds and what the filler switches on: give it a name, add the layers it
+brings, declare which of them are fillable. `overrides` and `layerOverrides`
+remain in the shape — a variant may also restyle a layer the master already
+owns (the collab logo nudge is exactly this) — but they are the secondary
+story, surfaced as per-property badges on the controls, never as a diff UI.
+
+Still a pure diff on the master — never a copy. Editing the master propagates
+to all variants.
 
 ```jsonc
 {
@@ -119,7 +131,10 @@ Six kinds:
 - `text` — rich styled lines, WYSIWYG (one text model; no separate plain/rich
   split). A master may constrain a field to a single line.
 - `number` — min/max, unit, format (ABV, IBU, volume).
-- `image` — partner logo, badge art.
+- `image` — partner logo, badge art. The stored value is the **asset id** of
+  the image inside the `.label` (the same per-id image store custom image
+  layers already use), so a field value stays a plain string and the bytes
+  stay where every other label image lives.
 - `code` — barcode/QR payload, validated per the target layer's symbology
   (existing UPC check-digit validation).
 - `select` — one of a master-author-defined list (controlled choices without
@@ -250,6 +265,17 @@ simplify, then simplify again).
   mode. Edits record into the selected variant's diff automatically; touched
   properties show an "overridden" badge with per-property reset. No separate
   diff UI.
+- **The Design sidebar is scoped by that selector**, top to bottom: master
+  picker, the Editing selector (where variants live), the layers list, the
+  fields of the *current target only*, then the inspector. Choose Master and
+  you see the master's fields; choose Collab and you see its three. Adding a
+  layer or making one fillable lands in whatever the selector points at —
+  which is how a variant reads as a named group of fields rather than a diff.
+  Deliberately not stacking every group's fields at once: it duplicates the
+  selector and makes "where does this land?" ambiguous again.
+- **Fill mode is unscoped:** variant checkboxes, then every visible field
+  flat — the master's and every enabled variant's together. A filler does
+  not care which group a field came from.
 - **Per-layer properties:** 3–5 essential controls; the rest under one
   "Advanced" fold.
 - **Starter master:** the app ships one built-in master with the sensible
@@ -333,8 +359,23 @@ the model restructure.
 - **Presets → masters:** on first launch each stored preset converts to a
   `.master` in the library. The preset bar becomes the master picker.
 - **Collab → shipped variant:** partner slots and the logo-nudge gate are
-  re-expressed as a "Collab" variant on the migrated Lolev master.
-  `collabEnabled` maps to its toggle; slot images map to its fields.
+  re-expressed as a "Collab" variant on the migrated Lolev master, and
+  `collabEnabled` is **deleted from `LabelConfig`** — there is no collab
+  boolean left anywhere in the model or the UI. The variant carries three
+  fields: `collabLead` (text), `collabLeft` and `collabCenter` (image). Its
+  three layers are gated exactly like any other variant's, through the
+  resolver's disabled-layer set that `planLabel`, the PDF builder and the
+  hit-tester already consult. The logo nudge becomes an ordinary override on
+  the variant (`logo.offsetY`), so it arrives with the variant instead of
+  being gated by a flag; the master's default is 0.
+
+  This is the one place the "renderers are untouched" rule is deliberately
+  broken: `plan.ts`, `pdf/build.ts`, `hittest.ts` and `elements.ts` each lose
+  their `cfg.collabEnabled` test. The byte-identity locks are the guard —
+  goldens for collab **on** and collab **off** must both match before and
+  after. Legacy `.label` files still map `collabEnabled: true` onto the
+  variant, and zero `logo.offsetY` when the flag was false, so nothing that
+  opens today renders differently.
 - **Old `.label` files** open transparently: the loader detects the old
   format, maps known values (name, ABV, description, images, UPC) onto the
   migrated master's fields, and preserves nonstandard styling as label-level

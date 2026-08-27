@@ -2,7 +2,14 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Design mode edits the **master** — the shared core every label inherits — or a chosen **variant**, instead of writing per-label overrides. Ships the "Editing: Master ▾ / Collab / New variant…" selector, overridden badges with per-property reset, `.master` save/open with library registration, and "Make fillable" from a selection.
+**Goal:** Design mode edits the **master** — the shared core every label inherits — or a chosen **variant**, instead of writing per-label overrides. Ships the "Editing: Master ▾ / Collab / New variant…" selector, a Design sidebar scoped to that selector, overridden badges with per-property reset, `.master` save/open with library registration, and "Make fillable" from a selection.
+
+Amended 2026-08-27 after the spec amendment of the same date, which this plan implements in full:
+
+- A **variant is a named group of fields and layers** — that is what the author builds and the filler switches on. `overrides` / `layerOverrides` stay in the model (T3's badges survive) but stop being the headline. The Design sidebar's fields section shows the *current target's* fields only.
+- **Added layers unify into `master.layers`** (or the editing variant's `layers`), with `resolve()` materializing them into `config.customLayers` — new **Task 5b**. This kills the built-in/custom split rather than rebuilding it inside `master.defaults.customLayers`.
+- **`collabEnabled` is deleted from `LabelConfig`** and Collab becomes an ordinary variant carrying three fields — new **Task 5c**. This is the one deliberate breach of the "renderers untouched" rule; byte-identity goldens for collab on *and* off are the gate.
+- The PDF byte-compare flake is pinned first — new **Task 0** — because it fires on most full-suite runs and every task below gates on that suite.
 
 **Architecture:** The semantic flip is expressed once, purely: a Design edit runs the caller's ordinary `LabelConfig` mutation against a *freshly resolved base*, diffs the result with the `configDiff` already built in Plan 4a, and merges that diff into `master.defaults` (editing the master) or `variant.overrides` (editing a variant). So every existing editor — `applyStyle`, the inspector's fields, drag, lock — keeps mutating a `LabelConfig` and needs no rewrite; only the *destination* of the resulting diff changes. The app's undo history widens from `{cfg, enabledVariants}` to also carry `master`, so master edits are undoable exactly like label edits.
 
@@ -17,12 +24,41 @@
 - No new npm dependencies. Branch `design/master-variation`. Do NOT merge PR #41 — merging auto-publishes a release.
 - After each task: `npx vitest run` green, `npx tsc --noEmit` clean, then commit (sentence-style, no Co-Authored-By).
 - **What stays per-label, exactly:** field values, and dragging an *unlocked* layer in Fill mode. Everything else edited in Design mode is a master or variant edit. Fill mode's behavior does not change in this plan.
-- **Print-output invariant:** the shipped master with no edits must still produce byte-identical PDF/PSD/plan output; the existing byte-identity locks are the gate.
-- `planLabel` and the three backends are NOT edited by this plan.
+- **Print-output invariant:** the shipped master with no edits must still produce byte-identical PDF/PSD/plan output; the existing byte-identity locks are the gate. Task 5c widens this to **both** collab states — on and off.
+- `planLabel` and the three backends are NOT edited by this plan **except in Task 5c**, which removes their `cfg.collabEnabled` tests and nothing else. Tasks 0–5b leave them untouched.
 - The `.label` `overrides` blob stays supported on **read** (legacy files and Fill-mode drags still use it) but Design mode stops producing it.
-- Known pre-existing flake: `tests/pdf-build.test.ts`'s byte-compare can fail on a PDF timestamp second-boundary. Re-run once; it never produces false passes.
+- ~~Known pre-existing flake~~ — Task 0 pins it. If `tests/pdf-build.test.ts` byte-compare fails after Task 0, it is a real failure, not the timestamp.
 - Before push: synchronized version bump + CHANGELOG entry (package.json, package-lock.json, src-tauri/Cargo.toml, src-tauri/Cargo.lock `label-lab` entry, src-tauri/tauri.conf.json).
 - Reviewer subagents are STRICTLY READ-ONLY — no stash, no checkout, no writes.
+
+---
+
+### Task 0: Pin the PDF timestamp so byte-compares are deterministic
+
+**Files:**
+- Modify: `src/pdf/build.ts`
+- Test: `tests/pdf-build.test.ts` (extend)
+
+**Why first:** every task below gates on `npx vitest run`, and this flake fired on two consecutive full-suite runs at the end of Plan 5a. It produces false failures only, but each one costs a re-run and erodes trust in the byte-identity locks that are this plan's *only* guard for Task 5c.
+
+**Cause:** `pdf-lib` stamps `CreationDate` / `ModDate` from the wall clock at `PDFDocument.create()`. `tests/pdf-build.test.ts` compares two independently built documents byte-for-byte (e.g. `expect(withLayer).toEqual(plain)`); when the two builds straddle a second boundary the timestamps differ and the compare fails. No golden PDFs are stored on disk, so pinning changes nothing that is checked in.
+
+Binding: in **every** `PDFDocument.create()` site in `src/pdf/build.ts` (the art doc and the mask doc), immediately call `doc.setCreationDate(PDF_EPOCH)` and `doc.setModificationDate(PDF_EPOCH)` with one module-level constant. Deterministic output is the point — a print deliverable should build byte-identically from identical input — so this is a fix, not a test workaround. Add a one-line comment saying so.
+
+- [ ] **Step 1: Write the failing test** — in `tests/pdf-build.test.ts`, build the same config twice in a row and assert the two byte arrays are equal, plus assert the document's creation date equals the pinned constant. Left alone this passes ~most of the time; make it deterministic by construction, not by luck.
+
+- [ ] **Step 2: Run it** — `npx vitest run tests/pdf-build.test.ts`. The date assertion fails immediately.
+
+- [ ] **Step 3: Implement** the pinned dates.
+
+- [ ] **Step 4: Gate** — `npx vitest run && npx tsc --noEmit` green, twice in a row.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/pdf/build.ts tests/pdf-build.test.ts
+git commit -m "PDF: pin the document timestamp so identical input builds byte-identical output."
+```
 
 ---
 
@@ -251,6 +287,7 @@ Binding behavior:
 - `designEdit` produces the new master, then recomposes `cfg` from it (`composeConfig(master', enabledVariants, valuesFromConfig(...), labelOverrides)`) and stores `{cfg, enabledVariants, master}` as one history entry, marking the master dirty.
 - Auto-target on selection: selecting a layer owned by variant V switches the target to V (spec: edits record into the selected variant automatically); selecting a master-owned layer does not switch away from an explicitly chosen target.
 - `EditingTarget` renders at the top of the Design sidebar: a dropdown listing "Master" then every variant by name, plus a "New variant…" item that reveals an inline text input (Enter commits, Esc cancels — no dialog, per spec).
+- **The sidebar is scoped by the selector** (spec: "The Design sidebar is scoped by that selector"). Order: master picker (T4b) · Editing selector · layers · **fields of the current target only** · inspector. The fields section is a plain read-only list of the target's `FieldDecl`s — name plus kind — rendered inside `EditingTarget.tsx`, not a new component and not a second `FieldList`: Design mode *declares* fields, Fill mode *fills* them, and the two lists have nothing in common but the word. A target with no fields yet shows one line: "No fields yet — select a layer and choose Make fillable." Task 5's Make fillable appends to exactly this list.
 - `LayersPanel`'s per-row rename, enable, and lock go through `layerEdit`. The panel's *eye* stays session-only hiding — unchanged.
 
 - [ ] **Step 1: Write the failing DOM test**
@@ -265,7 +302,13 @@ Binding behavior:
 //   3. clicking "New variant…" reveals an input; typing "Winter" and
 //      pressing Enter calls onNewVariant("Winter"); pressing Escape
 //      instead hides the input without calling it;
-//   4. with dirty: true the trigger's text contains the "•" dot.
+//   4. with dirty: true the trigger's text contains the "•" dot;
+//   5. with target "master" the fields list shows the master's five field
+//      labels; with target { variant: "collab" } on a LOCAL fixture whose
+//      collab variant declares one field, it shows that field's label and
+//      none of the master's (the shipped collab variant has no fields until
+//      Task 5c — build the fixture in the test, do not wait on 5c);
+//   6. a variant with no fields shows the "No fields yet" line.
 ```
 
 - [ ] **Step 2: Run to verify failure** — component missing.
@@ -510,6 +553,95 @@ git commit -m "Design mode: make a selected layer fillable, inferring the field 
 
 ---
 
+### Task 5b: Added layers join the master (or the editing variant), not `defaults.customLayers`
+
+**Files:**
+- Modify: `src/model/resolve.ts`
+- Modify: `src/model/document.ts`
+- Modify: `src/App.tsx` (the four Add-layer handlers)
+- Test: `tests/model-master-layers.test.ts` (extend), `tests/model-authoring.test.ts` (extend)
+
+**The problem this exists to solve:** today Add layer appends to `cfg.customLayers`, which is per-label. Once Task 2 routes Design edits at the master, that append would diff into `master.defaults.customLayers` — rebuilding the exact built-in/custom split the spec set out to kill, one level down. A layer added in Design mode is a layer *of the master*, and must appear in `master.layers` beside `name`, `qr`, and `warning`.
+
+**Interfaces:**
+
+```ts
+// src/model/types.ts — MasterLayer gains what a custom layer needs to exist
+//                      before any styling is applied:
+  /** Custom layers only: which renderer shape this layer is. Absent = a
+   *  built-in layer whose id planLabel already knows. */
+  kind?: "text" | "image" | "barcode" | "qr";
+
+// src/model/document.ts
+/** Add a layer to the master (or the editing variant), returning a new
+ *  master. The layer's identity and policy land in `layers`; its styling
+ *  lands in `defaults` (or the variant's `overrides`) keyed by the new id,
+ *  exactly like every built-in layer's styling already does. */
+export function addLayer(
+  master: Master, target: EditTarget, layer: MasterLayer, style: unknown,
+): Master;
+```
+
+Binding semantics:
+- `resolve()` materializes every `MasterLayer` carrying a `kind` into `config.customLayers`, in `master.layers` order, reading its styling out of the resolved config by id. `planLabel` and the three backends see exactly the `customLayers` array they see today — this is the whole reason the change is safe.
+- Target `"master"` → the layer is appended to `master.layers`; target `{ variant }` → to that variant's `layers`. A layer in a disabled variant does not resolve, so it neither draws nor appears in the panel — the same rule the collab layers already follow.
+- `LabelConfig.customLayers` stays on the type and stays honoured on **read**, so legacy `.label` files with per-label custom layers keep opening. Design mode stops producing them.
+- The panel's existing forward/backward reorder (Plan 5a Task 4) now moves the entry within `master.layers`. Built-in rows still get no control.
+
+- [ ] **Step 1: Write the failing test** — in `tests/model-master-layers.test.ts`: a master with a `kind: "text"` layer resolves it into `config.customLayers` in declaration order; the same layer on a *disabled* variant resolves to no custom layer and lands in `disabledLayers`. In `tests/model-authoring.test.ts`: `addLayer(m, "master", …)` appends to `m.layers` and leaves `m.defaults.customLayers` undefined; `addLayer(m, { variant: "collab" }, …)` appends to the variant's `layers` and not to `m.layers`.
+
+- [ ] **Step 2: Run to verify failure** — `addLayer` missing, `kind` not materialized.
+
+- [ ] **Step 3: Implement** the `kind` field, the resolve-time materialization, `addLayer`, and re-point App's four Add-layer handlers at it.
+
+- [ ] **Step 4: Gate** — `npx vitest run && npx tsc --noEmit` green. The byte-identity locks must not move: a master with no added layers resolves to the same empty `customLayers` as today.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/model/resolve.ts src/model/document.ts src/model/types.ts src/App.tsx tests/model-master-layers.test.ts tests/model-authoring.test.ts
+git commit -m "Added layers belong to the master: Add layer records into master.layers, resolving into customLayers."
+```
+
+---
+
+### Task 5c: Delete `collabEnabled`; Collab becomes an ordinary variant of three fields
+
+**Files:**
+- Modify: `src/types.ts`, `src/defaults.ts`, `src/plan.ts`, `src/pdf/build.ts`, `src/hittest.ts`, `src/elements.ts`
+- Modify: `src/model/lolev.ts`, `src/model/document.ts` (`bridgeCollabOverride`), `src/labelfile.ts`
+- Modify: `src/components/FieldList.tsx` (real image widget), `src/components/StyleProperties.tsx` (drop the collab wells + copy), `src/App.tsx` (drop `collabFiles` state)
+- Test: `tests/pdf-build.test.ts`, `tests/psd-build.test.ts`, `tests/plan.test.ts`, `tests/hittest.test.ts`, `tests/model-lolev.test.ts`, `tests/fieldlist-dom.test.ts`
+
+**This is the one deliberate breach of the "renderers untouched" rule.** Take the goldens FIRST, in their own commit, and treat them as the gate for everything after.
+
+Binding semantics:
+- **Gating.** `plan.ts`, `pdf/build.ts` and `hittest.ts` drop `cfg.collabEnabled &&` from their collab tests and keep the rest verbatim. The resolver's disabled-layer set already suppresses `collabLead` / `collabLeft` / `collabCenter` when the Collab variant is off — Plan 5a's final review verified that skip union is a strict subset of what `collabEnabled` suppressed, which is exactly why this substitution is safe. The `slots.*` tests stay: art must still be loaded for a slot to draw.
+- **The logo nudge.** `elements.ts`'s `logoNudge` becomes an unconditional `cfg.logo.offsetY ?? 0`. The Collab variant carries `overrides: { logo: { offsetY: N } }` with N read off today's shipped behaviour, and the master default stays 0 — so the nudge arrives with the variant instead of being gated by a flag.
+- **Legacy `.label` v1.** The loader already maps `collabEnabled: true` → `enabledVariants: ["collab"]`. It additionally **zeroes `logo.offsetY` when the saved flag was false**, so a file that stored a stale nudge with collab off does not suddenly render nudged. `bridgeCollabOverride` loses its reason to exist once no override carries the key; delete it and its test with the flag.
+- **The three fields** land on the Collab variant in `lolev.ts`: `collabLead` (`text`, path `collabLead.text`), `collabLeft` and `collabCenter` (`image`, paths `collabLeft.image` / `collabCenter.image`).
+- **Image field values are asset ids.** `FieldValue` does not change: an image field's value is the string id of the image in the `.label`'s existing per-id image store (`custom/<assetId>/<name>`, already used by custom image layers). `FieldList`'s image placeholder ("Set in Design mode.") becomes a real file well reusing `App.tsx`'s `readCollab`, minting an asset id on drop and clearing to `""`. The fixed `collab-left` / `collab-center` ZIP roles stay **readable** for existing files and stop being written.
+- **UI removed:** the two bespoke collab logo wells in the inspector, `App.tsx`'s `collabFiles` / `collabLeft` / `collabCenter` state, and `StyleProperties.tsx:191`'s "applies while collab is on" copy (the metallic line loses its conditional and states what it covers). The generic per-variant checkbox in `FieldList` **stays** — that is how any variant is enabled, and it is the only collab-named control left.
+
+- [ ] **Step 1: Take the goldens** — a test that builds art + mask PDF and the PSD for the shipped master with the Collab variant **off**, and again with it **on** (both logo slots loaded), and pins the bytes. Commit this alone, before any production change, so the gate exists independently of the change it guards.
+
+- [ ] **Step 2: Write the failing tests** — `model-lolev`: the Collab variant declares the three fields and the `logo.offsetY` override, and `LabelConfig` has no `collabEnabled` key. `fieldlist-dom`: an image field renders a file input, not the placeholder text.
+
+- [ ] **Step 3: Run to verify failure.**
+
+- [ ] **Step 4: Implement** the deletion, the field declarations, the image widget, and the legacy-load nudge zeroing.
+
+- [ ] **Step 5: Gate** — `npx vitest run && npx tsc --noEmit` green, **and both Step 1 goldens still match byte-for-byte**. A golden that moves is a stop-and-report, not a golden to update.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A
+git commit -m "Collab is just a variant: delete collabEnabled and declare its three fields on the variant."
+```
+
+---
+
 ### Task 6: Version bump + CHANGELOG + push gate
 
 **Files:** `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` (label-lab entry), `src-tauri/tauri.conf.json`, `CHANGELOG.md`
@@ -530,7 +662,14 @@ git commit -m "Design mode: make a selected layer fillable, inferring the field 
   changes are badged, and each can be reset back to the master. Masters save
   and open as `.master` files and register themselves in the library, so a
   label can find its master again — or be re-aimed at someone else's. Any
-  layer with editable content can be made fillable from the inspector.
+  layer with editable content can be made fillable from the inspector, and a
+  layer added in Design mode now belongs to the master rather than to the one
+  label in front of you.
+- Collab is no longer a special case. It is an ordinary variant carrying its
+  three pieces — the lead-in line and the two partner logos — which you fill
+  from the field list like anything else, and switch on and off from the same
+  checkbox every variant gets. Labels saved with the old collab switch open
+  with the variant already on and look exactly as they did.
 ```
 
 - [ ] **Step 3: Full gate** — `npx vitest run && npx tsc --noEmit` green (re-run once if the known PDF timestamp flake fires).
@@ -549,7 +688,9 @@ Do NOT merge PR #41.
 
 ## Self-Review
 
-- Spec coverage (5b slice): "Editing: Master ▾ / Collab" selector ✓ (T2); edits record into the selected variant automatically ✓ (T2's auto-target); overridden badge + per-property reset ✓ (T3); no separate diff UI ✓ (badges live on the controls); `.master` files + library index ✓ (T4); make-fillable infers kind, names after ✓ (T5); inline variant creation, no dialog ✓ (T2). Deferred: compliance rule packs (its own plan, unchanged); presets→masters migration and collab slot images as `image` fields (Plan 7); a blank "New Master" (Save Master As from the shipped master covers it).
+- Spec coverage (5b slice): "Editing: Master ▾ / Collab" selector ✓ (T2); edits record into the selected variant automatically ✓ (T2's auto-target); sidebar scoped to the target, fields section ✓ (T2); overridden badge + per-property reset ✓ (T3); no separate diff UI ✓ (badges live on the controls); `.master` files + library index ✓ (T4); make-fillable infers kind, names after ✓ (T5); inline variant creation, no dialog ✓ (T2); added layers belong to the master ✓ (T5b); collab → ordinary variant with three fields, `collabEnabled` deleted ✓ (T5c). Deferred: compliance rule packs (its own plan, unchanged); presets→masters migration (Plan 7); a blank "New Master" (Save Master As from the shipped master covers it).
+- Amendment coverage: variant-as-named-group is delivered by T2's scoped sidebar + T5/T5b recording into the selected target — no new type was needed, which is the point. `overrides` survives as T3's demoted secondary path.
+- Risk register: T5c is the only task that edits `planLabel`'s callers or the backends. Its Step 1 goldens (collab on **and** off) are committed before the change and are a stop-and-report gate, not a file to regenerate. T0 exists so those goldens cannot fail for a reason unrelated to the change.
 - Placeholder scan: two prose-only steps (T2's DOM test body, T3's inspector wiring) each name their exact assertions and the file whose conventions they copy; every other code step carries real code.
 - Type consistency: `EditTarget` (T1) is the single target type used by `applyDesignEdit` / `applyLayerEdit` / `overriddenPaths` / `resetOverride` / `addField`, by App's `editingTarget`, and by `EditingTarget`'s props; `Doc` (T2) is what T4's dirty flag sits beside.
 - Stated judgment calls: diff-and-record (reuses `configDiff`, leaves every editor untouched) over teaching each editor to write master paths; field values and unlocked drags stay per-label in both modes; `.label` `overrides` stays readable but Design stops producing it.
