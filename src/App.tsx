@@ -1282,7 +1282,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   async function openProject(f: LabelSource, opts?: { quiet?: boolean }): Promise<boolean> {
     try {
       const unpacked = unpackLabel(f.bytes);
-      resetDocument(parseConfigFile(unpacked.json));
+      if (unpacked.label) throw new Error("v2 label files open in a later task");
+      resetDocument(parseConfigFile(unpacked.config!));
       // The type matters: FileDrop thumbnails are createObjectURL(file), and
       // an <img> won't render a typeless blob as SVG — logos restored from a
       // project showed as broken images while fresh drops (whose File the

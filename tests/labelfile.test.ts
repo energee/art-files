@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { packLabel, unpackLabel } from "@/labelfile";
+import { packLabel, packLabelV2, unpackLabel } from "@/labelfile";
 import { defaultConfig, parseConfigFile } from "@/defaults";
 import { zipSync, strToU8 } from "fflate";
 
@@ -15,7 +15,7 @@ describe("labelfile", () => {
       collabLeft: { name: "friend.svg", bytes: strToU8("<svg/>") },
     });
     const out = unpackLabel(zip);
-    expect(parseConfigFile(out.json).beerName).toBe("Test IPA");
+    expect(parseConfigFile(out.config!).beerName).toBe("Test IPA");
     expect(out.assets.texture).toEqual({ name: "rock.png", bytes: png() });
     expect(out.assets.mask?.name).toBe("metal mask.png");
     expect(out.assets.collabLeft?.name).toBe("friend.svg");
@@ -24,23 +24,43 @@ describe("labelfile", () => {
 
   it("packs with no assets", () => {
     const out = unpackLabel(packLabel(defaultConfig(), {}));
-    expect(parseConfigFile(out.json)).toBeTruthy();
+    expect(parseConfigFile(out.config!)).toBeTruthy();
     expect(out.assets).toEqual({});
   });
 
-  it("rejects a zip without config.json", () => {
+  it("rejects a zip without config.json or label.json", () => {
     const zip = zipSync({ "readme.txt": strToU8("hi") });
-    expect(() => unpackLabel(zip)).toThrow(/missing config\.json/);
+    expect(() => unpackLabel(zip)).toThrow(/missing label\.json\/config\.json/);
   });
 
   it("round-trips an explicit fontFamily", () => {
     const cfg = { ...defaultConfig(), fontFamily: "poppins" as const };
     const out = unpackLabel(packLabel(cfg, {}));
-    expect(parseConfigFile(out.json).fontFamily).toBe("poppins");
+    expect(parseConfigFile(out.config!).fontFamily).toBe("poppins");
   });
 
   it("parses a config with no fontFamily field", () => {
     const out = unpackLabel(packLabel(defaultConfig(), {}));
-    expect(parseConfigFile(out.json).fontFamily).toBeUndefined();
+    expect(parseConfigFile(out.config!).fontFamily).toBeUndefined();
+  });
+});
+
+describe("label v2 zip", () => {
+  const v2 = {
+    formatVersion: 2 as const, masterId: "lolev",
+    enabledVariations: ["collab"], values: { name: "Peregrine" },
+  };
+  it("round-trips label.json and assets", () => {
+    const bytes = packLabelV2(v2, { texture: { name: "rock.png", bytes: new Uint8Array([1, 2]) } });
+    const u = unpackLabel(bytes);
+    expect(u.config).toBeUndefined();
+    expect(JSON.parse(u.label!)).toMatchObject({ formatVersion: 2, masterId: "lolev" });
+    expect(u.assets.texture?.name).toBe("rock.png");
+  });
+  it("v1 zips still unpack as config", () => {
+    const bytes = packLabel(defaultConfig(), {});
+    const u = unpackLabel(bytes);
+    expect(u.label).toBeUndefined();
+    expect(JSON.parse(u.config!).version).toBe(1);
   });
 });
