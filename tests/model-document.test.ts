@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  composeConfig, configDiff, toggleVariation, valuesFromConfig,
+  composeConfig, configDiff, expandCustomFormats, toggleVariation, valuesFromConfig,
 } from "../src/model/document";
 import { lolevMaster } from "../src/model/lolev";
 import { defaultConfig } from "../src/defaults";
@@ -104,5 +104,43 @@ describe("LabelFileV2 overrides", () => {
     const overrides = configDiff(composeConfig(m, ["collab"], values, undefined).config, cfg);
     const reopened = composeConfig(m, ["collab"], values, overrides).config;
     expect(reopened).toEqual(cfg);
+  });
+});
+
+describe("expandCustomFormats", () => {
+  const barcodeLayer = (value: string): import("../src/types").CustomBarcodeLayer => ({
+    id: "custom-a", name: "Coupon", type: "barcode", symbology: "upc-a", value,
+    h: 40, moduleW: 1,
+    position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
+    style: { fill: "#000000", layer: "white" },
+  });
+
+  it("expands a format-string barcode value over the given field values", () => {
+    const cfg = defaultConfig();
+    cfg.customLayers = [barcodeLayer("{upc}")];
+    const out = expandCustomFormats(cfg, { upc: "012345678905" });
+    expect((out.customLayers![0] as { value: string }).value).toBe("012345678905");
+  });
+
+  it("returns cfg by identity when there are no custom layers", () => {
+    const cfg = defaultConfig();
+    expect(expandCustomFormats(cfg, {})).toBe(cfg);
+  });
+
+  it("returns cfg by identity when no custom barcode/qr layer's value contains a ref", () => {
+    const cfg = defaultConfig();
+    cfg.customLayers = [barcodeLayer("012345678905")];
+    expect(expandCustomFormats(cfg, {})).toBe(cfg);
+  });
+
+  it("leaves text/image custom layers untouched even with brace-like text", () => {
+    const cfg = defaultConfig();
+    cfg.customLayers = [{
+      id: "custom-b", name: "Note", type: "text", size: 10,
+      position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
+      line: { text: "{upc}", fill: "#000000", layer: "white" },
+    }];
+    const out = expandCustomFormats(cfg, { upc: "012345678905" });
+    expect(out).toBe(cfg);
   });
 });

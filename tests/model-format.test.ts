@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expandFormat, fieldRefs } from "../src/model/format";
+import { expandFormat, fieldRefs, segments } from "../src/model/format";
 
 describe("expandFormat", () => {
   it("substitutes plain refs", () => {
@@ -26,5 +26,24 @@ describe("expandFormat", () => {
   });
   it("ignores an unknown transform, keeping the raw value", () => {
     expect(expandFormat("{a|nope}", { a: "v" }).text).toBe("v");
+  });
+});
+
+describe("segments", () => {
+  it("splits literal text and refs, plain and transformed, in order", () => {
+    expect(segments("beer {name|slug} end")).toEqual([
+      { lit: "beer " },
+      { id: "name", tr: "slug" },
+      { lit: " end" },
+    ]);
+  });
+  it("returns a single literal segment for a ref-free string", () => {
+    expect(segments("1 PINT")).toEqual([{ lit: "1 PINT" }]);
+  });
+  it("returns a single ref segment for a bare ref, with no tr key when untransformed", () => {
+    expect(segments("{upc}")).toEqual([{ id: "upc" }]);
+  });
+  it("returns an empty array for an empty string", () => {
+    expect(segments("")).toEqual([]);
   });
 });

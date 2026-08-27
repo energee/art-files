@@ -27,7 +27,8 @@ import { LABEL_FILTER, LABEL_TYPES, isAbort, savePicker, writeHandle } from "@/f
 import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import {
-  composeConfig, configDiff, toggleVariation, valuesFromConfig,
+  composeConfig, configDiff, expandCustomFormats, toggleVariation, valuesFromConfig,
+  visibleFieldsOf,
 } from "@/model/document";
 import { parseLabelFile } from "@/model/labelfile";
 import { lolevMaster } from "@/model/lolev";
@@ -451,6 +452,28 @@ export const DocumentEditor = memo(function DocumentEditor({
     markDirty();
     setDoc(() => ({ cfg: r.config, enabledVariations: r.enabled }));
   };
+  // Insertable refs for a custom barcode/qr layer's FormatBuilder (the
+  // Inspector's fields prop) — the master's own fields plus whichever
+  // variations are enabled, same set FieldList's sidebar shows.
+  const visibleFields = useMemo(
+    () => visibleFieldsOf(master, enabledVariations), [master, enabledVariations]);
+  // The label's current field values, stringified — FormatBuilder's live
+  // preview and expandCustomFormats below both read plain strings, unlike
+  // valuesFromConfig's FieldValue (string | number | boolean).
+  const stringValues = useMemo(() => {
+    const values = valuesFromConfig(master, enabledVariations, cfg);
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(values)) out[k] = String(v);
+    return out;
+  }, [master, enabledVariations, cfg]);
+  // The display seam (Task 5): every custom barcode/qr layer's raw `value`
+  // expanded over stringValues, for whatever draws or exports the label.
+  // The sidebar, history, and save all keep `cfg` itself — only this derived
+  // copy sees the expansion. Identity (===) with `cfg` when there is nothing
+  // to expand (expandCustomFormats), so this memo doesn't force a re-render
+  // of its own consumers for the common case of a plain payload.
+  const displayCfg = useMemo(
+    () => expandCustomFormats(cfg, stringValues), [cfg, stringValues]);
   // The element being edited in place on the preview, if any (reported by
   // PreviewCompare). While set, planLabel skips it via the render flag (see
   // `skip` below) so the editor's live DOM text IS the element — no doubled
@@ -1280,7 +1303,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     try {
       const [{ buildArtPdf, buildMaskPdf }, fonts] = await Promise.all([
         import("@/pdf/build"),
-        loadFonts(fontFamilyOf(cfg)),
+        loadFonts(fontFamilyOf(displayCfg)),
       ]);
       // Exports honor the eye too: a hidden layer is "not on this label",
       // preview and deliverable alike. (PSDs still carry every layer — a
@@ -1309,8 +1332,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       // dialog #1 — and back-to-back dialogs stay inside the user-activation
       // window a long build could outlive.
       const [artPdf, maskPdf] = await Promise.all([
-        which !== "mask" ? buildArtPdf(cfg, assets) : null,
-        which !== "art" ? buildMaskPdf(cfg, assets) : null,
+        which !== "mask" ? buildArtPdf(displayCfg, assets) : null,
+        which !== "art" ? buildMaskPdf(displayCfg, assets) : null,
       ]);
       if (artPdf) await saveVia(artPdf, `${exportBaseName(cfg)}.pdf`, "application/pdf");
       if (maskPdf) await saveVia(maskPdf, `${exportBaseName(cfg)}-mask.pdf`, "application/pdf");
@@ -1660,7 +1683,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     try {
       const [{ buildPsd }, fonts] = await Promise.all([
         import("@/psd/build"),
-        loadFonts(fontFamilyOf(cfg)),
+        loadFonts(fontFamilyOf(displayCfg)),
       ]);
       const assets: PsdAssets = {
         fonts, logoSvg,
@@ -1669,8 +1692,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       };
       // Built before any dialog, same reasoning as the PDF exports above.
       const [artPsd, maskPsd] = await Promise.all([
-        which !== "mask" ? buildPsd(cfg, assets) : null,
-        which !== "art" ? buildPsd(cfg, assets, "mask") : null,
+        which !== "mask" ? buildPsd(displayCfg, assets) : null,
+        which !== "art" ? buildPsd(displayCfg, assets, "mask") : null,
       ]);
       if (artPsd)
         await saveVia(artPsd, `${exportBaseName(cfg)}.psd`, "image/vnd.adobe.photoshop");
@@ -1931,7 +1954,12 @@ export const DocumentEditor = memo(function DocumentEditor({
               // keep their last frame and coming back to 2D repaints once.
               canvasRender={viewMode === "2d" ? canvasSource : null}
               bleedIn={render.bleedIn}
-              cfg={cfg} measure={measure} collab={collabSlots}
+              // displayCfg, not cfg: hit-testing, drag boxes, and the plan
+              // this draws must see the SAME geometry — a barcode/qr's
+              // expanded payload can change its drawn width. onNudge*
+              // callbacks below still write through raw cfg by id, which is
+              // safe since ids never change between the two.
+              cfg={displayCfg} measure={measure} collab={collabSlots}
               // The preview knows only renderer elements; a selected document
               // layer (background/mask) shows no selection box there.
               selected={elementSelection}
@@ -1991,7 +2019,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                   if (carriedMode.current !== "2d") carried.current = { zoom: z, pan };
                   setCamZoomPct(Math.round(z * 100));
                 }}
-                cfg={cfg} source={canvasSource} bleedIn={render.bleedIn}
+                cfg={displayCfg} source={canvasSource} bleedIn={render.bleedIn}
                 mode={viewMode} cornerRadiusPct={render.cornerRadius}
                 edgeSoftnessPct={render.edgeSoftness}
                 onRenderError={setRenderError} />
@@ -2154,6 +2182,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             {selected.length > 0 && (
               <Inspector ids={selected} cfg={cfg} errors={errors} update={update} files={files}
                 settings={docSettings}
+                fields={visibleFields} preview={stringValues}
                 onClose={clearSelection} />
             )}
           </SheetContent>

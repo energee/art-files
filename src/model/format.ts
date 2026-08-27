@@ -14,6 +14,23 @@ export function fieldRefs(fmt: string): string[] {
   return [...fmt.matchAll(REF)].map((m) => m[1]);
 }
 
+/** The format string split into literal and ref segments, in order, using
+ *  the SAME REF grammar expandFormat consumes above — FormatBuilder renders
+ *  these directly rather than re-parsing the grammar itself. A ref segment
+ *  carries `tr` only when the format string names a transform. */
+export function segments(fmt: string): ({ lit: string } | { id: string; tr?: string })[] {
+  const out: ({ lit: string } | { id: string; tr?: string })[] = [];
+  let last = 0;
+  for (const m of fmt.matchAll(REF)) {
+    const at = m.index ?? 0;
+    if (at > last) out.push({ lit: fmt.slice(last, at) });
+    out.push(m[2] ? { id: m[1], tr: m[2] } : { id: m[1] });
+    last = at + m[0].length;
+  }
+  if (last < fmt.length) out.push({ lit: fmt.slice(last) });
+  return out;
+}
+
 /** Expand refs; a missing field keeps its literal "{ref}" (visible in the
  *  preview as an obvious placeholder) and is reported in `missing`. */
 export function expandFormat(

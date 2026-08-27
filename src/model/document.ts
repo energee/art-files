@@ -6,6 +6,7 @@ import type { LabelConfig } from "../types";
 import type { FieldDecl, FieldValue, Master } from "./types";
 import { deepMerge, type DeepPartial } from "./merge";
 import { resolve } from "./resolve";
+import { expandFormat, fieldRefs } from "./format";
 
 export function visibleFieldsOf(master: Master, enabledVariations: string[]): FieldDecl[] {
   const out = [...master.fields];
@@ -37,6 +38,31 @@ export function valuesFromConfig(
     else if (typeof v === "string" || typeof v === "number") values[f.id] = v;
   }
   return values;
+}
+
+/** Display seam: clone `cfg` with each custom barcode/qr layer's raw `value`
+ *  replaced by its expansion over the label's current field values (Format
+ *  strings — a barcode/qr `value` may be a "{fieldId|transform}" string).
+ *  The raw cfg stays the edited/saved document — only planning/export (and
+ *  the preview) consume this. Identity (===) return whenever there is
+ *  nothing to expand — no custom layers, or none whose value carries a ref —
+ *  so memo consumers keyed on this don't re-render for a plain payload.
+ *  Text/image custom layers are untouched: only barcode/qr `value`s are
+ *  format strings by contract (CustomBarcodeLayer/CustomQrLayer docs). */
+export function expandCustomFormats(
+  cfg: LabelConfig, values: Record<string, string>,
+): LabelConfig {
+  const layers = cfg.customLayers;
+  if (!layers || !layers.length) return cfg;
+  let changed = false;
+  const next = layers.map((l) => {
+    if ((l.type === "barcode" || l.type === "qr") && fieldRefs(l.value).length) {
+      changed = true;
+      return { ...l, value: expandFormat(l.value, values).text };
+    }
+    return l;
+  });
+  return changed ? { ...cfg, customLayers: next } : cfg;
 }
 
 const isPlain = (v: unknown): v is Record<string, unknown> =>

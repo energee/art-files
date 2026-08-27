@@ -18,6 +18,8 @@ import {
   type ElementId, type LabelElement,
 } from "@/elements";
 import { minModuleWarning } from "@/model/fields";
+import type { FieldDecl } from "@/model/types";
+import { FormatBuilder } from "./FormatBuilder";
 import { DOC_LAYER_LABELS, LAYER_ICONS, isElementId, type LayerId } from "@/components/layers";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
@@ -361,8 +363,11 @@ function CustomAdvanced(props: {
  *  for every type, so this only adds what's specific to the layer's kind:
  *  its payload, its own size knobs, and (barcode/qr only) the Advanced-fold
  *  extras moduleW/ecLevel. */
-function CustomLayerContentFor(props: { id: `custom-${string}`; cfg: LabelConfig; update: Update }) {
-  const { id, cfg, update } = props;
+function CustomLayerContentFor(props: {
+  id: `custom-${string}`; cfg: LabelConfig; update: Update;
+  fields: FieldDecl[]; preview: Record<string, string>;
+}) {
+  const { id, cfg, update, fields, preview } = props;
   const layer = cfg.customLayers?.find((l) => l.id === id);
   if (!layer) return null;
   const set = (fn: (l: CustomLayer) => void) =>
@@ -403,9 +408,9 @@ function CustomLayerContentFor(props: { id: `custom-${string}`; cfg: LabelConfig
     const warning = minModuleWarning(layer.symbology, layer.moduleW);
     return (
       <div className="space-y-2">
-        <Input
-          id={`${id}-value`} className="h-6 w-full font-mono text-xs" value={layer.value}
-          onChange={(e) => { const v = e.target.value; set((l) => { if (l.type === "barcode") l.value = v; }); }}
+        <FormatBuilder
+          value={layer.value} fields={fields} preview={preview}
+          onChange={(v) => set((l) => { if (l.type === "barcode") l.value = v; })}
         />
         <Select
           value={layer.symbology}
@@ -450,9 +455,9 @@ function CustomLayerContentFor(props: { id: `custom-${string}`; cfg: LabelConfig
   // "qr"
   return (
     <div className="space-y-2">
-      <Input
-        id={`${id}-value`} className="h-6 w-full text-xs" value={layer.value}
-        onChange={(e) => { const v = e.target.value; set((l) => { if (l.type === "qr") l.value = v; }); }}
+      <FormatBuilder
+        value={layer.value} fields={fields} preview={preview}
+        onChange={(v) => set((l) => { if (l.type === "qr") l.value = v; })}
       />
       <Select
         value={layer.qrStyle}
@@ -502,8 +507,9 @@ function CustomLayerContentFor(props: { id: `custom-${string}`; cfg: LabelConfig
 function Content(props: {
   id: LayerId; cfg: LabelConfig; errors: Record<string, string>; update: Update;
   files: InspectorFiles; settings: DocSettings;
+  fields: FieldDecl[]; preview: Record<string, string>;
 }): React.JSX.Element | null {
-  const { id, cfg, errors, update, files, settings } = props;
+  const { id, cfg, errors, update, files, settings, fields, preview } = props;
   switch (id) {
     case "name":
       return (
@@ -716,7 +722,7 @@ function Content(props: {
       // "Remove layer". The shared Style section below still carries fill/
       // layer/stroke/bold/tracking, driven by customElement.
       if (isCustomId(id))
-        return <CustomLayerContentFor id={id} cfg={cfg} update={update} />;
+        return <CustomLayerContentFor id={id} cfg={cfg} update={update} fields={fields} preview={preview} />;
       return null;
   }
 }
@@ -908,6 +914,11 @@ export function Inspector(props: {
   update: Update;
   files: InspectorFiles;
   settings: DocSettings;
+  /** Insertable refs for a custom barcode/qr layer's FormatBuilder
+   *  (visibleFieldsOf's output) and their current stringified values, for
+   *  its live preview. */
+  fields: FieldDecl[];
+  preview: Record<string, string>;
   /** Clears the selection, which closes the inspector sheet. */
   onClose: () => void;
 }): React.JSX.Element {
@@ -1002,7 +1013,8 @@ export function Inspector(props: {
         <>
           <Heading>Text</Heading>
           <Content id={id} cfg={props.cfg} errors={props.errors} update={props.update}
-            files={props.files} settings={props.settings} />
+            files={props.files} settings={props.settings}
+            fields={props.fields} preview={props.preview} />
         </>
       )}
 
