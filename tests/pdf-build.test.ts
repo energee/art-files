@@ -216,6 +216,40 @@ describe("Assets.hidden — the layers-panel eye", () => {
   });
 });
 
+describe("PDF timestamp determinism", () => {
+  const PDF_EPOCH = new Date("2000-01-01T00:00:00Z");
+
+  it("builds byte-identical output from the same config twice for art PDF", async () => {
+    const cfg = defaultConfig();
+    const bytes1 = await buildArtPdf(cfg, assets);
+    const bytes2 = await buildArtPdf(cfg, assets);
+    expect(bytes1).toEqual(bytes2);
+  });
+
+  it("builds byte-identical output from the same config twice for mask PDF", async () => {
+    const cfg = defaultConfig();
+    const bytes1 = await buildMaskPdf(cfg, assets);
+    const bytes2 = await buildMaskPdf(cfg, assets);
+    expect(bytes1).toEqual(bytes2);
+  });
+
+  it("art PDF creation date equals the pinned constant", async () => {
+    const cfg = defaultConfig();
+    const bytes = await buildArtPdf(cfg, assets);
+    const doc = await PDFDocument.load(bytes);
+    const creationDate = doc.getCreationDate();
+    expect(creationDate).toEqual(PDF_EPOCH);
+  });
+
+  it("mask PDF creation date equals the pinned constant", async () => {
+    const cfg = defaultConfig();
+    const bytes = await buildMaskPdf(cfg, assets);
+    const doc = await PDFDocument.load(bytes);
+    const creationDate = doc.getCreationDate();
+    expect(creationDate).toEqual(PDF_EPOCH);
+  });
+});
+
 describe("Master-variant custom layers", () => {
   it("a custom text layer draws through the shared display list", async () => {
     const showOps = (s: string) => (s.match(/\bTj\b/g) ?? []).length;

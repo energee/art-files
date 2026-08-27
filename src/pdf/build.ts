@@ -89,6 +89,9 @@ interface Fonts {
   bold: PDFFont;
 }
 
+/** Pinned UTC timestamp for deterministic PDF output — identical input builds byte-identically. */
+const PDF_EPOCH = new Date("2000-01-01T00:00:00Z");
+
 const toRgb = (c: { r: number; g: number; b: number }) => rgb(c.r, c.g, c.b);
 
 function fillColor(fill: Fill) {
@@ -369,6 +372,8 @@ async function drawElements(
 
 async function newDoc(assets: Assets): Promise<{ doc: PDFDocument; page: PDFPage; fonts: Fonts }> {
   const doc = await PDFDocument.create();
+  doc.setCreationDate(PDF_EPOCH);
+  doc.setModificationDate(PDF_EPOCH);
   doc.registerFontkit(fontkit);
   const fonts: Fonts = {
     regular: await doc.embedFont(assets.fonts.regular, { subset: true }),
