@@ -16,7 +16,8 @@ import {
 import { createPortal } from "react-dom";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { drawPlate, planFrom, type CanvasRenderSource } from "@/canvas/draw";
-import type { Face } from "@/plan";
+import { labelGuides, type Face, type MeasureFace } from "@/plan";
+import { anchoredX, anchoredY, positionFromDrag, type LayerPosition } from "@/model/position";
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from "@/components/ui/resizable";
@@ -26,7 +27,7 @@ import {
 } from "@/layout";
 import type { LabelConfig, Style, StyledLine } from "@/types";
 import {
-  dragTarget, editableText, elementById, type EditableText, type ElementId,
+  dragTarget2, editableText, elementById, type EditableText, type ElementId,
 } from "@/elements";
 import { fontFamilyOf } from "@/fontCatalog";
 import { FACE_WEIGHT, labelFontCss } from "@/fonts";
@@ -354,9 +355,15 @@ export const PreviewCompare = forwardRef<
      *  crosses the threshold — App folds the whole drag into one undo step
      *  the same way it folds a text-edit session (see onEditText). */
     onNudge: (id: ElementId, offsetY: number, first: boolean) => void;
+    /** Two-axis drag-to-move for an unlocked custom layer (dragTarget2's
+     *  "position" form): called on every pointermove past the 3px threshold
+     *  with the anchor+offset positionFromDrag resolved, snapped to a guide
+     *  within 6pt. Same first/coalesce contract as onNudge. */
+    onNudgePosition: (id: ElementId, position: LayerPosition, first: boolean) => void;
     /** Escape mid-drag: App undoes the drag's single step, restoring the
      *  pre-drag position. Never called when the drag never crossed the
-     *  threshold (a plain click). */
+     *  threshold (a plain click). Shared by both the offsetY and position
+     *  drag forms — either one folds into exactly one undo step. */
     onNudgeCancel: () => void;
     /** The element currently being edited on the preview, null when idle —
      *  every editable element edits in place. planLabel skips it via the
@@ -388,7 +395,7 @@ export const PreviewCompare = forwardRef<
 >(function PreviewCompare(
   {
     canvasRender, cfg, measure, collab, selected, onPick, onEditText,
-    onEditCancel, onNudge, onNudgeCancel, onEditSession, onSplit, bleed,
+    onEditCancel, onNudge, onNudgePosition, onNudgeCancel, onEditSession, onSplit, bleed,
     cornerRadiusPct, zoom, bleedIn, onRenderError,
   },
   ref,
@@ -537,32 +544,82 @@ export const PreviewCompare = forwardRef<
   // The browser's synthesized click after pointerup lands on the element at
   // its NEW position (it moved with the cursor), so selection stays correct
   // with no click suppression.
-  const drag = useRef<{
-    id: ElementId; startClientY: number; base: number;
-    pxPerPt: number; started: boolean;
-  } | null>(null);
+  const drag = useRef<
+    | {
+        kind: "offsetY"; id: ElementId; startClientY: number; base: number;
+        pxPerPt: number; started: boolean;
+      }
+    | {
+        kind: "position"; id: ElementId; startClientX: number; startClientY: number;
+        baseX: number; baseY: number; w: number; h: number;
+        pxPerPtX: number; pxPerPtY: number; started: boolean;
+      }
+    | null
+  >(null);
+
+  // Which guide (if any) the in-flight position drag has snapped to, purely
+  // to drive the guide-line highlight below — never read by the drag math
+  // itself (positionFromDrag recomputes snapping fresh every move).
+  const [snap, setSnap] = useState<{ x: "left" | "center" | "right" | null; y: "top" | "bottom" | null } | null>(null);
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (e.button !== 0 || editing || !measure) return;
     const id = hitOf(e);
-    if (!id || !dragTarget(cfg, collab, id)) return;
+    if (!id) return;
+    // dragTarget2's box() wants a MeasureFace (face-based, three-way) while
+    // this component only carries a Measure (bold-boolean, matching
+    // hitTest); adapt as hittest.ts's own boxesOf does — semibold and bold
+    // both count as "bold" for measurement, the same approximation every
+    // hit box already makes.
+    const mf: MeasureFace = (t, s, face) => measure(t, s, face !== "regular");
+    const target = dragTarget2(cfg, collab, id, mf);
+    if (!target) return;
     const r = e.currentTarget.getBoundingClientRect();
-    drag.current = {
-      id, startClientY: e.clientY, started: false,
-      base: dragTarget(cfg, collab, id)!.get(), pxPerPt: r.height / PAGE.h,
-    };
+    if (target.kind === "offsetY") {
+      drag.current = {
+        kind: "offsetY", id, startClientY: e.clientY, started: false,
+        base: target.get(), pxPerPt: r.height / PAGE.h,
+      };
+    } else {
+      const guides = labelGuides();
+      const { w, h } = target.box() ?? { w: 0, h: 0 };
+      const position = target.get();
+      drag.current = {
+        kind: "position", id,
+        startClientX: e.clientX, startClientY: e.clientY,
+        // Where the anchor+offset currently resolves to, in label-space
+        // points — the drag adds pointer deltas onto this exactly the way
+        // the offsetY form adds them onto its base.
+        baseX: anchoredX(position, w, guides), baseY: anchoredY(position, h, guides),
+        w, h, pxPerPtX: r.width / PAGE.w, pxPerPtY: r.height / PAGE.h,
+        started: false,
+      };
+    }
     e.currentTarget.setPointerCapture(e.pointerId);
   }
   function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
     const d = drag.current;
     if (!d) return;
+    if (d.kind === "offsetY") {
+      const dyPx = e.clientY - d.startClientY;
+      if (!d.started && Math.abs(dyPx) < 3) return; // plain click, no undo step
+      const first = !d.started;
+      d.started = true;
+      onNudge(d.id, d.base + dyPx / d.pxPerPt, first);
+      return;
+    }
+    const dxPx = e.clientX - d.startClientX;
     const dyPx = e.clientY - d.startClientY;
-    if (!d.started && Math.abs(dyPx) < 3) return; // plain click, no undo step
+    if (!d.started && Math.hypot(dxPx, dyPx) < 3) return; // plain click, no undo step
     const first = !d.started;
     d.started = true;
-    onNudge(d.id, d.base + dyPx / d.pxPerPt, first);
+    const x = d.baseX + dxPx / d.pxPerPtX;
+    const y = d.baseY + dyPx / d.pxPerPtY;
+    const { position, snappedX, snappedY } = positionFromDrag(x, y, d.w, d.h, labelGuides(), 6);
+    setSnap({ x: snappedX, y: snappedY });
+    onNudgePosition(d.id, position, first);
   }
-  function onPointerUp() { drag.current = null; }
+  function onPointerUp() { drag.current = null; setSnap(null); }
 
   // Escape mid-drag: undo the single step the drag opened (mirrors the
   // in-place editor's Escape) and drop the in-flight session so a further
@@ -573,6 +630,7 @@ export const PreviewCompare = forwardRef<
       if (e.key !== "Escape") return;
       if (drag.current?.started) onNudgeCancel();
       drag.current = null;
+      setSnap(null);
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -730,6 +788,30 @@ export const PreviewCompare = forwardRef<
           }}
         />
       )}
+      {/* Snap-guide highlight: while a two-axis custom-layer drag is engaged
+          on a guide (positionFromDrag's snappedX/Y, within its 6pt
+          threshold), draw a thin accent line at the engaged edge — the same
+          minimal treatment as the trim guide above, just for whichever axis
+          is currently snapped. */}
+      {snap?.x && (() => {
+        const g = labelGuides();
+        const at = snap.x === "left" ? g.left : snap.x === "right" ? g.right : g.center;
+        return (
+          <div
+            className="pointer-events-none absolute inset-y-0 w-px bg-sky-400"
+            style={pageBox(at, 0, 0, PAGE.h)}
+          />
+        );
+      })()}
+      {snap?.y && (() => {
+        const g = labelGuides();
+        return (
+          <div
+            className="pointer-events-none absolute inset-x-0 h-px bg-sky-400"
+            style={pageBox(0, snap.y === "top" ? g.top : g.bottom, PAGE.w, 0)}
+          />
+        );
+      })()}
       {selBoxes.map((b) => (
         // Figma's selection read: a 1px accent stroke with a dark outer halo
         // so it stays visible over both the gold art and bare white stock (a

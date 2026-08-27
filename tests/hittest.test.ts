@@ -156,4 +156,24 @@ describe("preview hit-testing", () => {
     const expected = measureBW("HOPS", L.DESC_HEADER.size, true);
     expect(headerBox.x1 - headerBox.x0).toBeCloseTo(expected, 5);
   });
+
+  it("hits a custom text layer at its box center and misses just outside it", () => {
+    const withCustom = {
+      ...cfg,
+      customLayers: [{
+        id: "custom-a1b2c3" as const,
+        name: "Extra line",
+        type: "text" as const,
+        position: { anchor: "left" as const, vAnchor: "top" as const, offsetX: 0, offsetY: 0 },
+        line: { text: "Hello", fill: "#000000" as const, layer: "white" as const },
+        size: 12,
+      }],
+    };
+    const b = boxOf("custom-a1b2c3", withCustom, measure)!;
+    expect(b).not.toBeNull();
+    const cx = (b.x0 + b.x1) / 2;
+    const cy = (b.y0 + b.y1) / 2;
+    expect(hitTest(cx, cy, measure, withCustom)).toBe("custom-a1b2c3");
+    expect(hitTest(b.x0 - 5, cy, measure, withCustom)).not.toBe("custom-a1b2c3");
+  });
 });

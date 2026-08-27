@@ -15,7 +15,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
 import type { CollabSlot, Fill, LabelConfig } from "@/types";
-import { dragTarget, editableText, type ElementId } from "@/elements";
+import { dragTarget, dragTarget2, editableText, type ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
 import { defaultConfig, exportBaseName, parseConfigFile } from "@/defaults";
 import { strToU8 } from "fflate";
@@ -1635,6 +1635,15 @@ export const DocumentEditor = memo(function DocumentEditor({
               // one undo per drag, mirroring the text-edit session above.
               onNudge={(id, offsetY, first) => {
                 update((c) => { dragTarget(c, collabSlots, id)?.set(c, offsetY); }, !first);
+              }}
+              // Two-axis drag for an unlocked custom layer (dragTarget2's
+              // "position" form) — same fold-into-one-undo-step contract as
+              // onNudge above, sharing its onNudgeCancel.
+              onNudgePosition={(id, position, first) => {
+                update((c) => {
+                  const t = dragTarget2(c, collabSlots, id);
+                  if (t?.kind === "position") t.set(c, position);
+                }, !first);
               }}
               onNudgeCancel={mutating(undo)}
               // In-place sessions skip their element from the render (see

@@ -2,10 +2,12 @@
 // the preview both read it, so they cannot disagree about what exists or
 // which config field backs it.
 import type { LabelConfig, Style, StyledLine } from "./types";
-import type { CollabSlots, Face } from "./plan";
-import { DESC, FONT_ASC, FONT_DESC, HANDLE_ADDR } from "./layout";
+import type { CollabSlots, Face, MeasureFace } from "./plan";
+import { DESC, FONT_ASC, FONT_DESC, HANDLE_ADDR, runsWidth } from "./layout";
 import { defaultConfig } from "./defaults";
 import { strokeLayerOf } from "./strokes";
+import { parseRuns } from "./description";
+import type { LayerPosition } from "./model/position";
 
 /** The shipped config, for reading any element's factory style. Built once:
  *  defaultConfig() allocates a whole config (description lines included), and
@@ -304,11 +306,73 @@ export function isDefaultStyle(id: ElementId, s: Style): boolean {
   );
 }
 
+/** A custom text layer's drawn width in points, for dragTarget2's box() —
+ *  the same run-width calc plan.ts uses to place it (parseRuns + tracked
+ *  runsWidth), kept in one small local copy so dragTarget2 doesn't need a
+ *  runtime import of plan.ts (plan.ts already imports THIS file, and a
+ *  value import back would make the two modules mutually dependent). */
+function customTextWidth(line: StyledLine, size: number, m: MeasureFace): number {
+  const runs = parseRuns(line);
+  const faceOf = (r: StyledLine): Face => (r.bold ? "semibold" : "regular");
+  return runsWidth(runs, (r) => m(r.text, size, faceOf(r)), line.letterSpacing ?? 0);
+}
+
+/** Drag-to-move targets: either the legacy single-axis "offsetY" knob (the
+ *  laurel/collab logos) or, for an unlocked custom layer, the full two-axis
+ *  "position" form driven by model/position.ts's anchor+offset math. Null =
+ *  not draggable right now: a locked custom layer, the laurel's offsetY off
+ *  the collab switch, an empty collab slot, or an unknown custom id.
+ *
+ *  `m` (a text measurer) is only needed for a text custom layer's box() —
+ *  every other branch ignores it, so callers that never touch a custom text
+ *  layer (this file's own dragTarget wrapper, most tests) can omit it. */
+export function dragTarget2(
+  cfg: LabelConfig, slots: CollabSlots, id: ElementId, m?: MeasureFace,
+):
+  | { kind: "position"; get(): LayerPosition; box(): { w: number; h: number } | null; set(c: LabelConfig, p: LayerPosition): void }
+  | { kind: "offsetY"; get(): number; set(c: LabelConfig, v: number): void }
+  | null {
+  if (isCustomId(id)) {
+    const layer = cfg.customLayers?.find((l) => l.id === id);
+    if (!layer || layer.locked) return null;
+    return {
+      kind: "position",
+      get: () => layer.position,
+      box: () => {
+        if (layer.type === "text") {
+          if (!m) return null;
+          return { w: customTextWidth(layer.line, layer.size, m), h: layer.size };
+        }
+        // Image layers keep only their box WIDTH in config (types.ts's
+        // CustomImageLayer.w); the drawn height follows the asset's own
+        // aspect, which dragTarget2 has no access to (planLabel needs the
+        // loaded PlanAssets for that, and this call has only cfg/slots). A
+        // square fallback is a safe over-estimate for a drag box: it can
+        // never be smaller than the real footprint, so the guide math below
+        // (which only cares about width and the vertical anchor edge it's
+        // measured from) still lands the anchored edge in the right place.
+        return { w: layer.w, h: layer.w };
+      },
+      set: (c, p) => {
+        const l = c.customLayers?.find((x) => x.id === id);
+        if (l) l.position = p;
+      },
+    };
+  }
+  const legacy = dragTarget(cfg, slots, id);
+  return legacy ? { kind: "offsetY", ...legacy } : null;
+}
+
 /** Drag-to-move targets: the elements whose vertical position is a persisted
  *  config knob (see types.ts's Positioned). Null = not draggable right now —
  *  the laurel's offsetY only applies while collab is on (logoNudge's gate),
  *  and an empty collab slot draws nothing to drag. Horizontal position is
- *  not a knob anywhere, so dragging is vertical by construction. */
+ *  not a knob anywhere, so dragging is vertical by construction.
+ *
+ *  Kept as the underlying "offsetY" implementation dragTarget2 wraps for
+ *  logo/collab ids, and as its own export since existing call sites (the
+ *  form-side style panels) only ever ask about those ids and want the plain
+ *  `{get,set}` shape, not dragTarget2's tagged union. */
 export function dragTarget(
   cfg: LabelConfig, slots: CollabSlots, id: ElementId,
 ): { get(): number; set(c: LabelConfig, v: number): void } | null {

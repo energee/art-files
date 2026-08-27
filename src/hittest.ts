@@ -8,9 +8,10 @@ import { parseDescription } from "./description";
 // Text boxes are derived from the same display list the renderers draw from,
 // so a hit box can't drift from the artwork.
 import {
-  collabCenterFrame, collabLeftFrame, planLabel,
+  collabCenterFrame, collabLeftFrame, labelGuides, planLabel,
   type MeasureFace, type PlacedText, type CollabSlots,
 } from "./plan";
+import { anchoredX, anchoredY } from "./model/position";
 import * as L from "./layout";
 
 export type Measure = (text: string, size: number, bold: boolean) => number;
@@ -168,6 +169,32 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
     x0: L.BARCODE.x, x1: L.BARCODE.x + L.BARCODE.w,
     y0: L.BARCODE.yTop, y1: L.BARCODE.yTop + L.BARCODE.h,
   });
+  // Master-variation custom layers, drawn (and hit-tested) last — same order
+  // planLabel appends them in, so a stacked custom layer's box wins ties the
+  // way its ink does. Text layers already have their run boxes in textBoxes
+  // (planLabel emits them as ordinary PlacedText, keyed by the layer's own
+  // id, and the grouping above builds boxes for every id present, not just
+  // the fixed ones), so they Just Work off `textFor`. Image layers get no
+  // PlacedImage here — planLabel only emits one once its asset has loaded
+  // (opts.assets, which this hit-test path never supplies) — so their box is
+  // computed directly from the anchor math, with a square fallback height
+  // (config only stores the box WIDTH; the real height follows the asset's
+  // aspect, unknown here). A safe over-estimate is fine for a click target.
+  for (const layer of cfg.customLayers ?? []) {
+    if (layer.type === "text") {
+      boxes.push(...textFor(layer.id));
+    } else {
+      const guides = labelGuides();
+      const h = layer.w;
+      boxes.push({
+        id: layer.id,
+        x0: anchoredX(layer.position, layer.w, guides),
+        x1: anchoredX(layer.position, layer.w, guides) + layer.w,
+        y0: anchoredY(layer.position, h, guides),
+        y1: anchoredY(layer.position, h, guides) + h,
+      });
+    }
+  }
   // Every box above is built from layout.ts's page-absolute constants, which
   // are measured at MEASURED_BLEED; the preview that clicks into here and
   // draws these outlines is at the CURRENT bleed. One shift at the end is this
