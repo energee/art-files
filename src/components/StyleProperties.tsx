@@ -112,8 +112,10 @@ function stylePath(id: ElementId, field: StyleField): string | null {
 
 /** The badge itself: a small filled dot with a reset affordance, rendered
  *  only when `path` is derivable AND currently overridden. `label` names the
- *  control for the aria-label/title (e.g. "Fill", "Letter Spacing"). */
-function OverrideBadge(props: {
+ *  control for the aria-label/title (e.g. "Fill", "Letter Spacing"). Exported
+ *  for tests/overridebadge-dom.test.tsx, which mounts it directly rather than
+ *  the whole Inspector (see that file's header). */
+export function OverrideBadge(props: {
   path: string | null;
   overridden: ReadonlySet<string>;
   label: string;
