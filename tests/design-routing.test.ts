@@ -12,8 +12,8 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import {
-  type Doc, addVariantDoc, clampTarget, designEditDoc, labelEditDoc, layerEditDoc,
-  resetOverrideDoc,
+  type Doc, addFieldDoc, addVariantDoc, clampTarget, designEditDoc, labelEditDoc, labelSnapshot,
+  layerEditDoc, removeFieldDoc, resetOverrideDoc,
 } from "../src/App";
 import { addVariant } from "../src/model/document";
 import { composeConfig, configDiff, valuesFromConfig } from "../src/model/document";
@@ -215,5 +215,67 @@ describe("Doc.dormant survives every pure Doc-transition (Task 4b fix round 1)",
     const next = resetOverrideDoc(withOverride, { variant: "collab" }, "logo.offsetY");
     expect(next.master.variants.find((v) => v.id === "collab")!.overrides.logo).toBeUndefined();
     expect(next.dormant).toEqual(BENCH);
+  });
+});
+
+// Task 5 fix round 1 — IMPORTANT: removeFieldDoc used to only edit
+// Master.fields, silently dropping a filler's already-entered value from
+// the next save the moment its field was removed (valuesFromConfig only
+// ever reads what visibleFieldsOf still declares). Fixed with the same
+// non-destructive bench Task 4b's rebind() uses for an unmatched value
+// (model/rebind.ts): removeFieldDoc benches the field's current value under
+// its own id before dropping the field, and addFieldDoc restores it if a
+// field with that same id is ever declared again.
+describe("addFieldDoc / removeFieldDoc field-value benching (Task 5 fix round 1)", () => {
+  function docWithAbv(value: string): Doc {
+    const master = lolevMaster();
+    const cfg = composeConfig(master, [], {}, undefined).config;
+    const doc: Doc = { cfg, enabledVariants: [], master };
+    return labelEditDoc(doc, (c) => { c.abv = value; });
+  }
+
+  it("removing a field benches its current value under the field's own id", () => {
+    const doc = docWithAbv("7.2");
+    const next = removeFieldDoc(doc, "master", "abv");
+    expect(next.master.fields.map((f) => f.id)).not.toContain("abv");
+    expect(next.dormant?.values.abv).toBe("7.2");
+  });
+
+  it("remove-then-save keeps the value benched, not lost", () => {
+    const doc = docWithAbv("7.2");
+    const next = removeFieldDoc(doc, "master", "abv");
+    const snapshot = labelSnapshot(next);
+    expect(snapshot.values.abv).toBeUndefined(); // no longer a visible field
+    expect(snapshot.dormant?.values.abv).toBe("7.2");
+  });
+
+  it("remove-then-re-add (same id) restores the value off the bench", () => {
+    const doc = docWithAbv("7.2");
+    const removed = removeFieldDoc(doc, "master", "abv");
+    const restored = addFieldDoc(removed, "master",
+      { id: "abv", label: "ABV", kind: "number", path: "abv", min: 0, max: 20 });
+    expect(restored.cfg.abv).toBe("7.2");
+    expect(restored.dormant?.values.abv).toBeUndefined();
+    expect(restored.master.fields.map((f) => f.id)).toContain("abv");
+  });
+
+  it("removing a field whose path resolves to nothing benches no value", () => {
+    const master = lolevMaster();
+    const withField = {
+      ...master,
+      fields: [...master.fields,
+        { id: "extra", label: "Extra", kind: "text" as const, path: "does.not.exist" }],
+    };
+    const cfg = composeConfig(withField, [], {}, undefined).config;
+    const doc: Doc = { cfg, enabledVariants: [], master: withField };
+    const next = removeFieldDoc(doc, "master", "extra");
+    expect(next.dormant).toBeUndefined();
+  });
+
+  it("preserves an unrelated existing bench entry when benching a new one", () => {
+    const doc = docWithAbv("7.2");
+    const withPriorBench: Doc = { ...doc, dormant: { values: { legacy: "x" }, variants: ["seasonal"] } };
+    const next = removeFieldDoc(withPriorBench, "master", "abv");
+    expect(next.dormant).toEqual({ values: { legacy: "x", abv: "7.2" }, variants: ["seasonal"] });
   });
 });

@@ -341,13 +341,33 @@ export function resetOverride(master: Master, target: EditTarget, path: string):
 
 /** The fields a `target` currently declares on its own — the master's own
  *  list for "master", a variant's own list (never the master's too) for a
- *  variant. Mirrors TargetFields' scoping (EditingTarget.tsx) so the model's
- *  duplicate-path check and the UI's "already fillable" check can't drift
- *  apart. Undefined when `target` names a variant the master doesn't
- *  declare. */
-function fieldsAt(master: Master, target: EditTarget): FieldDecl[] | undefined {
+ *  variant. Mirrors TargetFields' scoping (EditingTarget.tsx). Undefined
+ *  when `target` names a variant the master doesn't declare. Exported so
+ *  App.tsx's removeFieldDoc can look a field up by id before removing it
+ *  (to bench its current value — see removeFieldDoc's own doc comment). */
+export function fieldsAt(master: Master, target: EditTarget): FieldDecl[] | undefined {
   if (target === "master") return master.fields;
   return master.variants.find((v) => v.id === target.variant)?.fields;
+}
+
+/** Every dot-path declared ANYWHERE in the master — its own fields plus
+ *  every variant's, ENABLED OR NOT. This, not fieldsAt's per-target list, is
+ *  addField's collision set (fix round 1, Critical): a variant that is
+ *  currently disabled can still be enabled later, at which point a path it
+ *  shares with the master (or with another variant) becomes a live
+ *  collision — `visibleFieldsOf` just concatenates without deduping, and
+ *  Fill mode would render two independently-labelled rows editing one
+ *  underlying config value. Refusing the collision up front, regardless of
+ *  which variants happen to be enabled right now, is the conservative rule;
+ *  addField has no `enabledVariants` parameter to check "currently visible"
+ *  with, and this makes it need none. Exported so the UI's "already
+ *  fillable" check (StyleProperties.tsx's MakeFillable, via App's
+ *  `declaredPaths`) can use the exact same set the model refuses against —
+ *  see that file for the one deliberate trade-off this rule accepts. */
+export function declaredFieldPaths(master: Master): Set<string> {
+  const out = new Set(master.fields.map((f) => f.path));
+  for (const v of master.variants) for (const f of v.fields) out.add(f.path);
+  return out;
 }
 
 /** Declare a field for a layer at `target` (the master, or one of its
@@ -357,16 +377,18 @@ function fieldsAt(master: Master, target: EditTarget): FieldDecl[] | undefined {
  *  entry in the UI (src/elements.ts's editableText/FLAT), which this pure
  *  model must not import (see this file's header). Returns a NEW master —
  *  never mutates `master` — or `master` itself, unchanged, when `target`
- *  already has a field bound to `decl.path` (declaring the same content
- *  fillable twice) or names a variant the master doesn't declare. "Already
- *  has" is scoped to `target`'s own list (fieldsAt above) — a field the
- *  MASTER already declares does not block a VARIANT from also declaring one
- *  over the same path (and vice versa): each target's field list is its own
- *  fillable surface, the same scoping TargetFields renders. */
+ *  names a variant the master doesn't declare, or `decl.path` is already
+ *  declared ANYWHERE in the master (declaredFieldPaths above) — not just at
+ *  `target`. A field the MASTER already declares blocks a VARIANT from also
+ *  declaring one over the same path, and vice versa: one path, one field,
+ *  full stop (fix round 1 — the brief's original "visible field" wording,
+ *  read correctly). The one accepted trade-off: two variants meant to be
+ *  mutually exclusive can no longer each bind the same path; if that's ever
+ *  needed, the answer is one field on the master, not two on the variants. */
 export function addField(master: Master, target: EditTarget, decl: FieldDecl): Master {
   const existing = fieldsAt(master, target);
   if (!existing) return master; // target names a variant that doesn't exist
-  if (existing.some((f) => f.path === decl.path)) return master;
+  if (declaredFieldPaths(master).has(decl.path)) return master;
   if (target === "master") return { ...master, fields: [...master.fields, decl] };
   const variants = master.variants.map((v) =>
     v.id === target.variant ? { ...v, fields: [...v.fields, decl] } : v);

@@ -171,8 +171,11 @@ const FILLABLE: Partial<Record<ElementId, { path: string; kind: FieldKind }>> = 
  *  before commit — Enter/the Add button commits, Escape cancels) and hands
  *  it to `onMakeFillable`. Renders nothing when `id` has no content path
  *  (FILLABLE) or `declaredPaths` already covers it — App computes that set
- *  the same way addField's own no-op check does (model/document.ts's
- *  fieldsAt), so the button can't outlive the field it would duplicate.
+ *  with model/document.ts's declaredFieldPaths, EVERY path declared
+ *  anywhere in the master (fix round 1: not just the current editing
+ *  target — a path a disabled variant already owns still refuses a
+ *  duplicate, since enabling that variant later would make the collision
+ *  live), so the button can't outlive the field it would duplicate.
  *  Exported and mountable on its own, like OverrideBadge above, so its test
  *  doesn't need to stand up the whole Inspector. */
 export function MakeFillable(props: {

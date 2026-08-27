@@ -135,4 +135,28 @@ describe("addField", () => {
     expect(m.fields.map((f) => f.id)).not.toContain("partner");
     expect(m.variants[0].fields.map((f) => f.id)).toContain("partner");
   });
+  // Fix round 1 (Critical): a path already declared on ONE target refuses a
+  // duplicate on a DIFFERENT target too — master vs. variant, and variant
+  // vs. variant — even though the colliding variant isn't enabled.
+  it("refuses a path already declared on the master when adding to a variant", () => {
+    const m = addField(lolevMaster(), "master",
+      { id: "upc2", label: "UPC 2", kind: "code", path: "upc" });
+    expect(addField(m, { variant: "collab" },
+      { id: "upc3", label: "UPC 3", kind: "code", path: "upc" })).toBe(m);
+  });
+  it("refuses a path already declared on a variant when adding to the master", () => {
+    const m = addField(lolevMaster(), { variant: "collab" },
+      { id: "partner", label: "Partner", kind: "text", path: "collabLead.text" });
+    expect(addField(m, "master",
+      { id: "lead", label: "Lead-In", kind: "text", path: "collabLead.text" })).toBe(m);
+  });
+  it("refuses a path already declared on a DISABLED variant from a second variant", () => {
+    // Neither variant needs to be enabled — a disabled variant can still be
+    // enabled later, at which point the collision becomes live.
+    let m = addVariant(lolevMaster(), "Winter").master;
+    m = addField(m, { variant: "winter" },
+      { id: "partner", label: "Partner", kind: "text", path: "collabLead.text" });
+    expect(addField(m, { variant: "collab" },
+      { id: "lead", label: "Lead-In", kind: "text", path: "collabLead.text" })).toBe(m);
+  });
 });

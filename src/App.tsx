@@ -32,8 +32,8 @@ import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import {
   addField, addVariant, applyDesignEdit, applyLayerEdit, bridgeCollabOverride, composeConfig,
-  configDiff, expandCustomFormats, overriddenPaths, removeField, renameField, resetOverride,
-  toggleVariant, valuesFromConfig, visibleFieldsOf,
+  configDiff, declaredFieldPaths, expandCustomFormats, fieldsAt, getPath, overriddenPaths,
+  removeField, renameField, resetOverride, toggleVariant, valuesFromConfig, visibleFieldsOf,
   type EditTarget,
 } from "@/model/document";
 import { parseLabelFile } from "@/model/labelfile";
@@ -425,16 +425,33 @@ export function layerEditDoc(
 }
 
 /** The pure doc transition behind Design mode's "Make fillable" (addField):
- *  declare a field at the (clamped) editing target. Fields carry no
- *  LabelConfig diff of their own — unlike designEditDoc/resetOverrideDoc,
- *  cfg needs no recompose — so this is layerEditDoc's shape: a new master,
- *  or `doc` itself (addField's own identity contract) when `decl.path` is
- *  already declared at this target. Module-level and exported for the same
- *  reason as its siblings: testable without mounting the editor. */
+ *  declare a field at the (clamped) editing target. `doc` itself
+ *  (addField's own identity contract) when `decl.path` is already declared
+ *  anywhere in the master (model/document.ts's declaredFieldPaths — fix
+ *  round 1).
+ *
+ *  Fix round 1 (Important): re-declaring a field under an id the label's
+ *  `dormant` store still remembers (Task 4b's non-destructive bench —
+ *  model/rebind.ts) restores its benched value into `cfg` at `decl.path`
+ *  and drops it from `dormant` — the mirror of removeFieldDoc's benching
+ *  below, and the same "match by id" contract rebind() itself uses. Every
+ *  other case carries no LabelConfig diff of its own — unlike
+ *  designEditDoc/resetOverrideDoc, cfg needs no recompose there — so this
+ *  is otherwise layerEditDoc's shape. Module-level and exported for the
+ *  same reason as its siblings: testable without mounting the editor. */
 export function addFieldDoc(doc: Doc, target: EditTarget, decl: FieldDecl): Doc {
   const at = clampTarget(doc.master, target);
   const master = addField(doc.master, at, decl);
-  return master === doc.master ? doc : { ...doc, master };
+  if (master === doc.master) return doc;
+  const benched = doc.dormant?.values[decl.id];
+  if (benched === undefined) return { ...doc, master };
+  const cfg = structuredClone(doc.cfg);
+  setPath(cfg as unknown as Record<string, unknown>, decl.path, benched);
+  const { [decl.id]: _restored, ...restValues } = doc.dormant!.values;
+  const dormant = Object.keys(restValues).length > 0 || doc.dormant!.variants.length > 0
+    ? { values: restValues, variants: doc.dormant!.variants }
+    : undefined;
+  return { ...doc, cfg, master, dormant };
 }
 
 /** The pure doc transition behind TargetFields' inline rename, offered once
@@ -449,11 +466,34 @@ export function renameFieldDoc(doc: Doc, target: EditTarget, fieldId: string, la
 }
 
 /** The pure doc transition behind TargetFields' remove, offered once a field
- *  is unlocked — same shape/no-op contract as renameFieldDoc above. */
+ *  is unlocked.
+ *
+ *  Fix round 1 (Important): a filler's already-entered value must not
+ *  silently vanish on the next save just because the field declaring it was
+ *  removed — `valuesFromConfig` only ever reads what `visibleFieldsOf`
+ *  still declares, so an un-benched removal would quietly drop the value
+ *  from the saved .label the moment the field is gone (the same class of
+ *  loss Task 4b's `dormant` store exists to prevent — model/rebind.ts).
+ *  Before removing, the field's CURRENT value is read off `doc.cfg` at its
+ *  own path and benched into `doc.dormant.values` under its own id, exactly
+ *  where rebind() benches an unmatched value — addFieldDoc above restores it
+ *  if a field with the same id is ever declared again. No bench entry when
+ *  the field's value isn't a plain FieldValue (string/number/boolean) —
+ *  matches valuesFromConfig's own filter, since dormant is typed the same
+ *  way LabelFileV2.values is. */
 export function removeFieldDoc(doc: Doc, target: EditTarget, fieldId: string): Doc {
   const at = clampTarget(doc.master, target);
+  const field = fieldsAt(doc.master, at)?.find((f) => f.id === fieldId);
   const master = removeField(doc.master, at, fieldId);
-  return master === doc.master ? doc : { ...doc, master };
+  if (master === doc.master) return doc;
+  const value = field ? getPath(doc.cfg, field.path) : undefined;
+  if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean")
+    return { ...doc, master };
+  const dormant = {
+    values: { ...doc.dormant?.values, [fieldId]: value },
+    variants: doc.dormant?.variants ?? [],
+  };
+  return { ...doc, master, dormant };
 }
 
 /** The pure doc transition behind a per-PROPERTY RESET (the inspector's
@@ -1088,25 +1128,22 @@ export const DocumentEditor = memo(function DocumentEditor({
     setDoc((d) => (d === doc ? next : resetOverrideDoc(d, editTarget, path)));
   };
 
-  /** The dot-paths the current editing target already declares a field
-   *  over — what MakeFillable (StyleProperties.tsx) checks to decide
-   *  whether the selected layer still needs a button, and what addField
-   *  itself checks (fieldsAt in model/document.ts). Computed the same way
-   *  here so the UI's "already fillable" read can't drift from the model's
-   *  own no-op rule. */
-  const targetFieldPaths = useMemo(() => {
-    const own = editTarget === "master"
-      ? master.fields
-      : master.variants.find((v) => v.id === editTarget.variant)?.fields ?? [];
-    return new Set(own.map((f) => f.path));
-  }, [master, editTarget]);
+  /** Every dot-path declared ANYWHERE in the master — what MakeFillable
+   *  (StyleProperties.tsx) checks to decide whether the selected layer still
+   *  needs a button, and what addField itself refuses a duplicate against
+   *  (model/document.ts's declaredFieldPaths — fix round 1: NOT scoped to
+   *  the current editing target, since a path collision with a currently
+   *  DISABLED variant becomes live the moment someone enables it). Computed
+   *  the same way here so the UI's "already fillable" read can't drift from
+   *  the model's own no-op rule. */
+  const declaredPaths = useMemo(() => declaredFieldPaths(master), [master]);
 
   /** Design mode's "Make fillable" (addFieldDoc): declare a field for the
    *  selected layer at the current editing target — one undoable step, like
    *  every other design edit here. */
   const makeFillable = (decl: FieldDecl) => {
     const next = addFieldDoc(doc, editTarget, decl);
-    if (next === doc) return; // already fillable — see targetFieldPaths
+    if (next === doc) return; // already fillable — see declaredPaths
     markDirty();
     setDoc((d) => (d === doc ? next : addFieldDoc(d, editTarget, decl)));
   };
@@ -2857,7 +2894,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 settings={docSettings}
                 fields={visibleFields} preview={stringValues}
                 overridden={overridden} onResetOverride={resetVariantOverride}
-                declaredPaths={targetFieldPaths} onMakeFillable={makeFillable}
+                declaredPaths={declaredPaths} onMakeFillable={makeFillable}
                 onClose={clearSelection} />
             )}
           </SheetContent>
