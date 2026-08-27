@@ -190,22 +190,22 @@ export const editableText: Partial<Record<ElementId, EditableText>> = {
   storeCold: { get: (c) => c.storeCold.text, set: (c, t) => { c.storeCold.text = t; }, rotated: true },
 };
 
-/** A blank style for the generic fallback below — a custom layer's real
- *  style lives on its CustomLayer entry (line/style in types.ts), which
- *  elementById cannot reach (it only gets the id, not the config); Task 3
- *  wires the panels that read/write it directly. This is only a safe
- *  placeholder so exhaustive registry lookups never throw on a custom id. */
-const BLANK_STYLE: Style = { fill: "none", layer: "white" };
-
 /** Generic registry entry for any `custom-${string}` id — no ELEMENTS row
  *  backs these (they are user-added, not part of the fixed template), so
  *  this stands in wherever code looks an element up by id alone. No bold
  *  toggle and no letter-spacing capability by default; label falls back to
  *  the id itself since elementById has no config to read the layer's name
- *  from (callers with the config should prefer that name directly). */
+ *  from (callers with the config should prefer that name directly).
+ *
+ *  style() has no config here (elementById only gets the id), so it can't
+ *  reach the real CustomLayer entry — applyStyle below routes custom-id
+ *  writes into cfg.customLayers directly instead of through this accessor.
+ *  A fresh object per call (never a shared singleton) means any other
+ *  reader that calls style() can't have its result mutated by someone
+ *  else's Object.assign. */
 const customFallback = (id: `custom-${string}`): LabelElement => ({
   id, label: id, group: "beer", hasBold: false, isText: false, allowNone: true,
-  style: () => BLANK_STYLE,
+  style: () => ({ fill: "none", layer: "white" }),
 });
 
 export function elementById(id: ElementId): LabelElement {
@@ -258,6 +258,16 @@ export function applyStyle(c: LabelConfig, id: ElementId, patch: Partial<StyledL
     if (patch.stroke !== undefined) c[k.stroke] = patch.stroke;
     if (patch.strokeLayer !== undefined) c[k.strokeLayer] = patch.strokeLayer;
     if ("strokeWidth" in patch) c[k.strokeWidth] = patch.strokeWidth;
+    return;
+  }
+  if (isCustomId(id)) {
+    // elementById's customFallback has no config to write through (see its
+    // comment), so route the patch into the actual CustomLayer entry here —
+    // its line's Style fields for text, its style for image — instead of
+    // Object.assign'ing a throwaway object that no one reads back.
+    const layer = c.customLayers?.find((l) => l.id === id);
+    if (!layer) return;
+    Object.assign(layer.type === "text" ? layer.line : layer.style, patch);
     return;
   }
   Object.assign(el.style(c), patch);
@@ -348,10 +358,11 @@ export function dragTarget2(
         // CustomImageLayer.w); the drawn height follows the asset's own
         // aspect, which dragTarget2 has no access to (planLabel needs the
         // loaded PlanAssets for that, and this call has only cfg/slots). A
-        // square fallback is a safe over-estimate for a drag box: it can
-        // never be smaller than the real footprint, so the guide math below
-        // (which only cares about width and the vertical anchor edge it's
-        // measured from) still lands the anchored edge in the right place.
+        // square fallback only over-estimates the drag box for aspect >= 1
+        // (a wide or square asset); a portrait asset is taller than it is
+        // wide, so this under-estimates its real height. Deferred: giving
+        // custom image layers a stored/known aspect so this box (and
+        // hittest.ts's) can be exact instead of squared.
         return { w: layer.w, h: layer.w };
       },
       set: (c, p) => {

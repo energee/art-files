@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ELEMENTS, applyStyle, dragTarget, editableText, elementById, isDefaultStyle } from "../src/elements";
 import { defaultConfig } from "../src/defaults";
 import { GOLD } from "../src/layout";
+import type { CustomTextLayer } from "../src/types";
 
 describe("element registry", () => {
   it("covers every stylable element exactly once", () => {
@@ -244,5 +245,29 @@ describe("dragTarget", () => {
     cfg.collabEnabled = true;
     for (const id of ["name", "description", "barcode", "qr", "warning"] as const)
       expect(dragTarget(cfg, { left: true, center: true }, id)).toBeNull();
+  });
+
+  it("writes a custom text layer's style patch into its own cfg entry, not a shared object", () => {
+    const cfg = defaultConfig();
+    const pos = { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 } as const;
+    const layerA: CustomTextLayer = {
+      id: "custom-a", name: "A", type: "text", size: 10, position: pos,
+      line: { text: "hello", fill: "none", layer: "white" },
+    };
+    const layerB: CustomTextLayer = {
+      id: "custom-b", name: "B", type: "text", size: 10, position: pos,
+      line: { text: "world", fill: "none", layer: "white" },
+    };
+    cfg.customLayers = [layerA, layerB];
+
+    applyStyle(cfg, "custom-a", { fill: "#ABCDEF" });
+
+    expect(layerA.line.fill).toBe("#ABCDEF");
+    // The second custom layer must be untouched — a shared BLANK_STYLE
+    // singleton would have leaked the write onto it too.
+    expect(layerB.line.fill).toBe("none");
+    // A fresh elementById().style() call for either id must still read as
+    // the untouched placeholder, not reflect the patch above.
+    expect(elementById("custom-a").style(cfg)).toEqual({ fill: "none", layer: "white" });
   });
 });

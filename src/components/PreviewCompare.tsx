@@ -22,7 +22,7 @@ import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import {
-  ART, DESC, FONT_ASC, FONT_DESC, GOLD, HANDLE_ADDR, PAGE, PREVIEW_MAX_W,
+  ART, BLEED_SHIFT, DESC, FONT_ASC, FONT_DESC, GOLD, HANDLE_ADDR, PAGE, PREVIEW_MAX_W,
   PREVIEW_RASTER_MAX_EDGE, previewRasterScale, trackedWidth,
 } from "@/layout";
 import type { LabelConfig, Style, StyledLine } from "@/types";
@@ -792,10 +792,13 @@ export const PreviewCompare = forwardRef<
           on a guide (positionFromDrag's snappedX/Y, within its 6pt
           threshold), draw a thin accent line at the engaged edge — the same
           minimal treatment as the trim guide above, just for whichever axis
-          is currently snapped. */}
+          is currently snapped. labelGuides() is measured at MEASURED_BLEED
+          (a frozen basis), while this overlay draws at the live bleed, so
+          BLEED_SHIFT re-bases it the same way hittest.ts's boxesOf does for
+          selection boxes. */}
       {snap?.x && (() => {
         const g = labelGuides();
-        const at = snap.x === "left" ? g.left : snap.x === "right" ? g.right : g.center;
+        const at = (snap.x === "left" ? g.left : snap.x === "right" ? g.right : g.center) + BLEED_SHIFT;
         return (
           <div
             className="pointer-events-none absolute inset-y-0 w-px bg-sky-400"
@@ -805,10 +808,11 @@ export const PreviewCompare = forwardRef<
       })()}
       {snap?.y && (() => {
         const g = labelGuides();
+        const at = (snap.y === "top" ? g.top : g.bottom) + BLEED_SHIFT;
         return (
           <div
             className="pointer-events-none absolute inset-x-0 h-px bg-sky-400"
-            style={pageBox(0, snap.y === "top" ? g.top : g.bottom, PAGE.w, 0)}
+            style={pageBox(0, at, PAGE.w, 0)}
           />
         );
       })()}

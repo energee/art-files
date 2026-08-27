@@ -179,7 +179,11 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
   // (opts.assets, which this hit-test path never supplies) — so their box is
   // computed directly from the anchor math, with a square fallback height
   // (config only stores the box WIDTH; the real height follows the asset's
-  // aspect, unknown here). A safe over-estimate is fine for a click target.
+  // aspect, unknown here). This only over-estimates for aspect >= 1 (a wide
+  // or square asset); a portrait asset is taller than it is wide, so the
+  // square box under-estimates its real height. Deferred: giving custom
+  // image layers a stored/known aspect so this box (and dragTarget2's,
+  // elements.ts) can be exact instead of squared.
   for (const layer of cfg.customLayers ?? []) {
     if (layer.type === "text") {
       boxes.push(...textFor(layer.id));
