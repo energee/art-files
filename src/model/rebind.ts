@@ -48,10 +48,19 @@ export function rebind(
   const enabledVariants = candidateVariants.filter((id) => varIds.has(id));
   const disabledVariants = candidateVariants.filter((id) => !varIds.has(id));
 
-  // Omit `dormant` entirely once it would be empty — a clean rebind (target
-  // declares everything the label had) should serialize exactly like a v2
-  // label that never fell off a master, not carry an empty bench forward.
-  const dormant = Object.keys(dormantValues).length || disabledVariants.length
+  // A clean rebind (target declares everything the label had) should
+  // serialize exactly like a v2 label that never fell off a master, not
+  // carry an empty bench forward — so `dormant` goes back to `undefined`
+  // once nothing is left on it. Assigned explicitly (unlike labelSnapshot's
+  // conditional spread in App.tsx, the other place this same "nothing
+  // benched" state is built): this object starts from `...label`, which may
+  // itself already carry a real `dormant` from a PRIOR rebind, so an
+  // explicit `undefined` is required here to actually clear that stale key
+  // rather than leave it in place — labelSnapshot builds its object from
+  // scratch and has no stale key to clear, so a conditional spread suffices
+  // there. Both still mean the same thing on the wire: `JSON.stringify`
+  // drops an `undefined` value, so neither ever serializes an empty bench.
+  const dormant = Object.keys(dormantValues).length > 0 || disabledVariants.length > 0
     ? { values: dormantValues, variants: disabledVariants }
     : undefined;
 

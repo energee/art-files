@@ -11,7 +11,10 @@
 // per-label; everything else edited in Design mode is a master/variant edit.
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { type Doc, clampTarget, designEditDoc, labelEditDoc, layerEditDoc } from "../src/App";
+import {
+  type Doc, addVariantDoc, clampTarget, designEditDoc, labelEditDoc, layerEditDoc,
+  resetOverrideDoc,
+} from "../src/App";
 import { addVariant } from "../src/model/document";
 import { composeConfig, configDiff, valuesFromConfig } from "../src/model/document";
 import { lolevMaster } from "../src/model/lolev";
@@ -170,5 +173,47 @@ describe("layer policy edits", () => {
     // override, not the resolved row: the variant overrides nothing for this
     // layer yet, so the same patch IS a change there.
     expect(layerEditDoc(doc, { variant: "collab" }, "wordmark", { name: "Brand" })).not.toBe(doc);
+  });
+});
+
+// Task 4b fix round 1 — CRITICAL: addAndSelectVariant ("New variant…") built
+// a bare Doc object literal instead of spreading the previous doc, silently
+// wiping Doc.dormant (a rebind's bench — model/rebind.ts) on the very next
+// unrelated edit. Fixed by hoisting the transition into addVariantDoc, the
+// same "pure, exported Doc transition" seam designEditDoc/labelEditDoc use.
+// This block pins dormant survival across every pure Doc-transition function
+// App.tsx exports, so a future site that builds a bare `{ cfg, ... }`
+// literal instead of spreading `doc` fails here rather than shipping.
+describe("Doc.dormant survives every pure Doc-transition (Task 4b fix round 1)", () => {
+  const BENCH = { values: { extra: "x" }, variants: ["seasonal"] };
+  const withBench = (doc: Doc): Doc => ({ ...doc, dormant: BENCH });
+
+  it("addVariantDoc (\"New variant…\") does not drop the bench", () => {
+    const { doc: next } = addVariantDoc(withBench(docWithCollab()), "Winter");
+    expect(next.dormant).toEqual(BENCH);
+  });
+
+  it("labelEditDoc does not drop the bench", () => {
+    const next = labelEditDoc(withBench(docWithCollab()), nudgeLogo(18));
+    expect(next.dormant).toEqual(BENCH);
+  });
+
+  it("designEditDoc does not drop the bench, on the master and on a variant", () => {
+    const doc = withBench(docWithCollab());
+    expect(designEditDoc(doc, "master", nudgeLogo(18)).dormant).toEqual(BENCH);
+    expect(designEditDoc(doc, { variant: "collab" }, nudgeLogo(18)).dormant).toEqual(BENCH);
+  });
+
+  it("layerEditDoc does not drop the bench", () => {
+    const next = layerEditDoc(withBench(docWithCollab()), "master", "wordmark", { name: "Logotype" });
+    expect(next.dormant).toEqual(BENCH);
+  });
+
+  it("resetOverrideDoc does not drop the bench", () => {
+    const doc = withBench(docWithCollab());
+    const withOverride = designEditDoc(doc, { variant: "collab" }, nudgeLogo(18));
+    const next = resetOverrideDoc(withOverride, { variant: "collab" }, "logo.offsetY");
+    expect(next.master.variants.find((v) => v.id === "collab")!.overrides.logo).toBeUndefined();
+    expect(next.dormant).toEqual(BENCH);
   });
 });

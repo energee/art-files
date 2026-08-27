@@ -465,6 +465,20 @@ export function labelSnapshot(doc: Doc): Omit<LabelFileV2, "masterHint"> {
   };
 }
 
+/** The pure doc transition behind the Editing selector's "New variant…":
+ *  mint the variant (addVariant), enable it (a fresh variant you can't see
+ *  is useless, so toggleVariant runs immediately), and recompose cfg — all
+ *  in ONE returned Doc. Spread from the previous doc, not a bare object
+ *  literal, so Doc.dormant (a rebind's bench — Task 4b) survives an edit
+ *  that has nothing to do with rebinding; exported/pure, like
+ *  designEditDoc/labelEditDoc above, precisely so that survival is pinned
+ *  by a test without mounting the whole editor (tests/design-routing.test.ts). */
+export function addVariantDoc(doc: Doc, name: string): { doc: Doc; id: string } {
+  const { master: withVariant, id } = addVariant(doc.master, name);
+  const r = toggleVariant(withVariant, doc.cfg, doc.enabledVariants, id, true);
+  return { doc: { ...doc, cfg: r.config, enabledVariants: r.enabled, master: withVariant }, id };
+}
+
 /** A file the shell wants this editor to open. seq is monotonic — a new
  *  value triggers the open, so a re-render can never re-open. Exactly one
  *  of path (Tauri), handle (FS-Access picker), or file (hidden-input
@@ -534,6 +548,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   // separate useState): undoing a variant toggle has to restore BOTH the
   // composed config AND the FieldList checkboxes that produced it, in one
   // step, or the two fall out of sync (see toggleVariant in model/document).
+  // No `dormant` in this initial Doc — deliberate: a brand-new document has
+  // never been rebound, so it has nothing benched (resetDocument's later
+  // resets are the same story, just after an Open rather than at mount).
   const { value: doc, set: setDoc, reset: resetDoc, undo, redo, canUndo, canRedo } =
     useHistory<Doc>(() => ({ cfg: defaultConfig(), enabledVariants: [], master: lolevMaster() }));
   const cfg = doc.cfg;
@@ -1039,14 +1056,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     setDoc((d) => (d === doc ? next : resetOverrideDoc(d, editTarget, path)));
   };
 
-  /** The Editing selector's "New variant…": mint the variant, enable it (a
-   *  fresh variant you can't see is useless), and select it as the target so
-   *  the next edit lands in it — all one undoable step. */
+  /** The Editing selector's "New variant…": addVariantDoc (the pure
+   *  transition above), then select the new variant as the target so the
+   *  next edit lands in it — all one undoable step. */
   const addAndSelectVariant = (name: string) => {
-    const { master: withVariant, id } = addVariant(master, name);
-    const r = toggleVariant(withVariant, cfg, enabledVariants, id, true);
+    const { doc: next, id } = addVariantDoc(doc, name);
     markDirty();
-    setDoc(() => ({ cfg: r.config, enabledVariants: r.enabled, master: withVariant }));
+    setDoc(() => next);
     setEditingTarget({ variant: id });
   };
   /** Wrap a config mutation that bypasses `update` (undo/redo) so it still
