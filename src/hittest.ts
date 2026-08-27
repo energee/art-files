@@ -96,8 +96,8 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
     // NOT square: using w for both would leave the top and bottom of the
     // laurel unclickable and crop the selection ring.
     // The stack nudge moves the drawn laurel (see drawElements and
-    // logoNudge — it only applies while collab is on), so the box has to
-    // move with it or the click target drifts off the artwork.
+    // logoNudge), so the box has to move with it or the click target drifts
+    // off the artwork.
     { id: "logo",
       x0: L.LOGO.cx - L.LOGO.w / 2, x1: L.LOGO.cx + L.LOGO.w / 2,
       y0: logoCy - LOGO_H / 2,
@@ -116,9 +116,10 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
     ...textFor("warning"),
   ];
   // Collab block, drawn after the description and before the centre column.
-  // Only present when the switch is on: with it off the renderers skip the
-  // block entirely, and a box with nothing under it would swallow clicks
-  // meant for the artwork behind.
+  // Only present when there is art to click: with the Collab variant off the
+  // app hands over no collab art (and the resolver disables the three
+  // layers), so `slots` is false on both and no box is added — a box with
+  // nothing under it would swallow clicks meant for the artwork behind.
   //
   // The two logo slots use their fit ENVELOPE (the slot box scaled by the
   // slot's own scale knob), not the art's drawn size: the renderers fit the
@@ -126,10 +127,10 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
   // no image in hand to derive an aspect from. The target is therefore a
   // superset of the art — every pixel of the logo, plus its letterboxing.
   //
-  // `slots` says which logos are actually loaded. The switch alone is not
-  // enough: the renderers draw a slot only when its art exists, so a box
-  // keyed off the switch would swallow clicks over blank stock.
-  if (cfg.collabEnabled && slots.left) {
+  // `slots` says which logos are actually loaded — the renderers draw a slot
+  // only when its art exists, so a box has to key off the same fact or it
+  // would swallow clicks over blank stock.
+  if (slots.left) {
     // The lead-in only exists to introduce a left logo, so it is gated on the
     // same slot the renderers gate it on.
     boxes.push(...textFor("collabLead"));
@@ -145,7 +146,7 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
       y0: leftTop, y1: leftTop + left.maxH * cfg.collabLeft.scale,
     });
   }
-  if (cfg.collabEnabled && slots.center) {
+  if (slots.center) {
     // Hangs off the laurel's nudged bottom, exactly like drawElements — the
     // centre stack moves as one, so this box follows the logo's offsetY.
     // (LOGO_H approximates the parsed SVG's height; see its comment.)

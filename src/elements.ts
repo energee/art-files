@@ -20,12 +20,14 @@ import type { LayerPosition } from "./model/position";
 export const SHIPPED: LabelConfig = defaultConfig();
 
 /** The laurel's effective stack nudge. The nudge exists to make room for the
- *  centre collab mark, so while the collab switch is off the laurel draws at
- *  its laid-out position — the saved offsetY survives in the config for the
- *  next collab release. Renderers and hit-testing read the nudge through
- *  this one gate so they cannot disagree. */
+ *  centre collab mark, and it now ARRIVES WITH the Collab variant rather
+ *  than being gated by a flag: the master's own `logo` has no offsetY (so
+ *  the nudge is 0 with the variant off), and the Collab variant carries
+ *  `overrides.logo.offsetY`, which resolve() merges in only while the
+ *  variant is enabled. Renderers and hit-testing still read the nudge
+ *  through this one gate so they cannot disagree. */
 export function logoNudge(cfg: LabelConfig): number {
-  return cfg.collabEnabled ? cfg.logo.offsetY ?? 0 : 0;
+  return cfg.logo.offsetY ?? 0;
 }
 
 export type ElementId =
@@ -408,8 +410,7 @@ function customBarcodeDragBox(layer: {
  *  laurel/collab logos) or, for an unlocked custom layer, the full two-axis
  *  "position" form driven by model/position.ts's anchor+offset math. Null =
  *  not draggable right now: a locked custom layer, a locked logo/collab
- *  slot, the laurel's offsetY off the collab switch, an empty collab slot,
- *  or an unknown custom id.
+ *  slot, an empty collab slot, or an unknown custom id.
  *
  *  `m` (a text measurer) is only needed for a text custom layer's box() —
  *  every other branch ignores it, so callers that never touch a custom text
@@ -452,10 +453,14 @@ export function dragTarget2(
 
 /** Drag-to-move targets: the elements whose vertical position is a persisted
  *  config knob (see types.ts's Positioned). Null = not draggable right now —
- *  the laurel's offsetY only applies while collab is on (logoNudge's gate),
- *  an empty collab slot draws nothing to drag, and a locked slot (Positioned.
- *  locked) is frozen regardless of collab/asset state. Horizontal position is
- *  not a knob anywhere, so dragging is vertical by construction.
+ *  an empty collab slot draws nothing to drag, and a locked slot
+ *  (Positioned.locked) is frozen regardless of asset state. The laurel needs
+ *  no gate of its own any more: its offsetY applies unconditionally
+ *  (logoNudge), so dragging it always moves real ink. `slots` says which
+ *  collab art is actually loaded AND resolves (App hands over no art for a
+ *  slot the Collab variant has disabled), which is what keeps a collab slot
+ *  undraggable on a non-collab label. Horizontal position is not a knob
+ *  anywhere, so dragging is vertical by construction.
  *
  *  Kept as the underlying "offsetY" implementation dragTarget2 wraps for
  *  logo/collab ids, and as its own export since existing call sites (the
@@ -464,11 +469,11 @@ export function dragTarget2(
 export function dragTarget(
   cfg: LabelConfig, slots: CollabSlots, id: ElementId,
 ): { get(): number; set(c: LabelConfig, v: number): void } | null {
-  if (id === "logo" && cfg.collabEnabled && !cfg.logo.locked)
+  if (id === "logo" && !cfg.logo.locked)
     return { get: () => cfg.logo.offsetY ?? 0, set: (c, v) => { c.logo.offsetY = v; } };
-  if (id === "collabLeft" && cfg.collabEnabled && slots.left && !cfg.collabLeft.locked)
+  if (id === "collabLeft" && slots.left && !cfg.collabLeft.locked)
     return { get: () => cfg.collabLeft.offsetY ?? 0, set: (c, v) => { c.collabLeft.offsetY = v; } };
-  if (id === "collabCenter" && cfg.collabEnabled && slots.center && !cfg.collabCenter.locked)
+  if (id === "collabCenter" && slots.center && !cfg.collabCenter.locked)
     return { get: () => cfg.collabCenter.offsetY ?? 0, set: (c, v) => { c.collabCenter.offsetY = v; } };
   return null;
 }

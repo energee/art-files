@@ -14,7 +14,7 @@ const master: Master = {
     { id: "style", label: "Style", kind: "text", path: "styleLine.text" },
   ],
   variants: [
-    { id: "collab", name: "Collab", overrides: { collabEnabled: true }, layerOverrides: {},
+    { id: "collab", name: "Collab", overrides: { logo: { offsetY: 7 } }, layerOverrides: {},
       fields: [{ id: "partner", label: "Partner logo", kind: "image", path: "collabLeft.asset" }] },
     { id: "loud", name: "Loud", overrides: { abv: "9" }, layerOverrides: {}, fields: [] },
     { id: "loud2", name: "Loud2", overrides: { abv: "12" }, layerOverrides: {}, fields: [] },
@@ -26,10 +26,10 @@ describe("resolve", () => {
   it("starts from defaults", () => {
     const r = resolve(master, [], {});
     expect(r.config.beerName).toBe("DEFAULT");
-    expect(r.config.collabEnabled).toBe(false);   // defaultConfig()'s value
+    expect(r.config.logo.offsetY).toBeUndefined();   // defaultConfig()'s value
   });
   it("applies enabled variants in order, last wins", () => {
-    expect(resolve(master, ["collab"], {}).config.collabEnabled).toBe(true);
+    expect(resolve(master, ["collab"], {}).config.logo.offsetY).toBe(7);
     expect(resolve(master, ["loud"], {}).config.abv).toBe("9");
     // both variants override abv — the last-enabled one must win
     expect(resolve(master, ["loud", "loud2"], {}).config.abv).toBe("12");
@@ -71,9 +71,9 @@ describe("resolve", () => {
   });
   it("writes a toggle field's boolean value to its path", () => {
     const m: Master = { ...master, fields: [...master.fields,
-      { id: "featured", label: "Featured", kind: "toggle", path: "collabEnabled" }] };
+      { id: "featured", label: "Featured", kind: "toggle", path: "collabLeft.tintRaster" }] };
     const r = resolve(m, [], { featured: true });
-    expect(r.config.collabEnabled).toBe(true);
+    expect(r.config.collabLeft.tintRaster).toBe(true);
   });
 });
 

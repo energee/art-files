@@ -20,7 +20,7 @@ import type {
 } from "@/types";
 import { dragTarget, dragTarget2, editableText, type ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
-import { defaultConfig, exportBaseName, parseConfigFile } from "@/defaults";
+import { defaultConfig, exportBaseName, legacyCollabEnabled, parseConfigFile } from "@/defaults";
 import { machineName } from "@/qr";
 import { strToU8 } from "fflate";
 import { LABEL_EXT, packLabelV2, unpackLabel } from "@/labelfile";
@@ -32,7 +32,7 @@ import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import {
   addField, addLayer, addVariant, applyDesignEdit, applyLayerEdit, applyMaterializedLayerEdit,
-  bridgeCollabOverride, composeConfig, configDiff, declaredFieldPaths, expandCustomFormats,
+  composeConfig, configDiff, declaredFieldPaths, expandCustomFormats,
   fieldsAt, getPath, moveLayer, overriddenPaths, removeField, renameField, resetOverride,
   toggleVariant, valuesFromConfig, visibleFieldsOf, type EditTarget,
 } from "@/model/document";
@@ -59,7 +59,7 @@ import {
   ART, PAGE, PREVIEW_OVERSAMPLE, PSD_DOC, setBleed as setLayoutBleed, setOutputDpi,
 } from "@/layout";
 import {
-  Inspector, type CollabFiles, type DocSettings, type InspectorFiles,
+  Inspector, type DocSettings, type InspectorFiles,
 } from "@/components/StyleProperties";
 import { LayersPanel } from "@/components/LayersPanel";
 import { EditingTarget, TargetFields } from "@/components/EditingTarget";
@@ -107,14 +107,13 @@ import logoSvg from "@/assets/logo2025.svg?raw";
  *  to round-trip without double-processing on reload. */
 type Loaded = { bytes: Uint8Array; previewBytes: Uint8Array; name: string; previewUrl: string };
 
-/** A loaded collab logo: what the renderer needs, plus what the drop zone
- *  shows. previewUrl is the raw file, so an SVG thumbnails as itself. */
-type CollabFile = { image: CollabImage; name: string; previewUrl: string };
-
-/** A loaded master-variant custom-image-layer asset: mirrors CollabFile,
- *  plus the intrinsic aspect (w/h) stored back onto the layer (types.ts's
- *  CustomImageLayer.aspect) so hit/drag boxes are exact before/without a
- *  decoded bitmap. Keyed by the id minted at drop (mintCustomAssetId). */
+/** One loaded per-id image asset: a custom image layer's art OR a collab
+ *  logo (an image field's value is a key into the same store). `image` is
+ *  what the renderer needs; previewUrl is the raw file, so an SVG thumbnails
+ *  as itself; `aspect` is the intrinsic w/h stored back onto a custom layer
+ *  (types.ts's CustomImageLayer.aspect) so hit/drag boxes are exact
+ *  before/without a decoded bitmap. Keyed by the id minted at drop
+ *  (mintCustomAssetId). */
 type CustomFile = { image: CollabImage; name: string; previewUrl: string; aspect: number };
 
 /** Mint a new custom-layer asset id. One spelling of the format, so every
@@ -228,18 +227,12 @@ function tintedPngCached(bytes: Uint8Array, fill: Fill): Promise<Uint8Array> {
   return p;
 }
 
-/** Read a dropped collab logo: SVG as source text (so it can be recolored
- *  per its slot's style), anything else as raster bytes. */
-async function readCollab(f: File): Promise<CollabFile> {
-  const image: CollabImage = mimeFor(f.name) === "image/svg+xml"
-    ? { kind: "svg", svg: await f.text() }
-    : { kind: rasterKind(f.name), bytes: new Uint8Array(await f.arrayBuffer()) };
-  return { image, name: f.name, previewUrl: URL.createObjectURL(f) };
-}
-
-/** Read a custom-layer image asset: same shape as readCollab, plus the
- *  intrinsic aspect (w/h) — an SVG's ink box (parseLogo, fit into 1x1 so the
- *  returned w/h ratio IS the ink aspect), a raster's decoded bitmap size. */
+/** Read a dropped image asset — a custom image layer's art, or a collab
+ *  logo, which is an ordinary image field pointing into the same store. SVG
+ *  is kept as source text (so it can be recolored per its slot's style),
+ *  anything else as raster bytes, plus the intrinsic aspect (w/h): an SVG's
+ *  ink box (parseLogo, fit into 1x1 so the returned w/h ratio IS the ink
+ *  aspect), a raster's decoded bitmap size. */
 async function readCustomImage(f: File): Promise<CustomFile> {
   const previewUrl = URL.createObjectURL(f);
   if (mimeFor(f.name) === "image/svg+xml") {
@@ -837,15 +830,25 @@ export const DocumentEditor = memo(function DocumentEditor({
   // bytes Save Project writes, so Open Project doesn't recolor an
   // already-recolored mask.
   const [mask, setMask] = useState<(Loaded & { error?: string; srcBytes: Uint8Array }) | null>(null);
-  // Collab logos. Unlike the texture and mask these need no preview-resolution
-  // twin: they are at most a 70pt mark, so the same bytes serve the preview
-  // build and the print export.
-  const [collabLeft, setCollabLeft] = useState<CollabFile | null>(null);
-  const [collabCenter, setCollabCenter] = useState<CollabFile | null>(null);
-  // Master-variant custom image layers' assets, keyed by CustomImageLayer's
-  // `asset` (the id minted at drop — see mintCustomAssetId). Like the collab
-  // logos, no preview/print split: these are small marks, not backgrounds.
+  // Every per-id image asset this label carries: custom image layers' art AND
+  // the two collab logos, which are ordinary image FIELDS now (the field's
+  // value is the key here). Keyed by the id minted at drop — see
+  // mintCustomAssetId. No preview/print split: these are small marks, not
+  // backgrounds, so the same bytes serve the preview build and the export.
   const [customImages, setCustomImages] = useState<Record<string, CustomFile>>({});
+  /** The art loaded into a collab slot, or null. The slot's `image` FIELD
+   *  holds an asset id into `customImages`, so this is a lookup rather than
+   *  state of its own. A slot the Collab variant has disabled resolves to
+   *  null: no renderer tests a collab flag any more, so this is the single
+   *  place that fact is applied — a stale saved asset id on a non-collab
+   *  label must not reach the preview, the exports, the hit boxes or drag. */
+  const collabFileOf = (slot: "collabLeft" | "collabCenter"): CustomFile | null => {
+    if (disabledLayers.has(slot)) return null;
+    const id = cfg[slot].image;
+    return (id && customImages[id]) || null;
+  };
+  const collabLeft = collabFileOf("collabLeft");
+  const collabCenter = collabFileOf("collabCenter");
   // Which collab slots hold art, for the preview's hit boxes. Memoized: it is
   // a dependency of the selection-outline memo, and a fresh object every
   // render would defeat it.
@@ -1495,21 +1498,20 @@ export const DocumentEditor = memo(function DocumentEditor({
     });
   }
 
-  /** Load a collab logo into `slot`, revoking the previous thumbnail URL. */
-  function onCollab(slot: "left" | "center", f: File) {
-    return readCollab(f).then((next) =>
-      swapLoaded(slot === "left" ? setCollabLeft : setCollabCenter, next));
+  /** An image FIELD's well (FieldList): read the dropped file into the shared
+   *  per-id image store and hand back the minted asset id, which the row then
+   *  writes as the field's value. Same pipeline addCustomImageLayer and the
+   *  .label restore path use, so a collab logo and a custom image layer's art
+   *  are stored, saved and reloaded identically. */
+  async function onFieldImageFile(f: File): Promise<string> {
+    const assetId = mintCustomAssetId();
+    const file = await readCustomImage(f);
+    setCustomImages((old) => ({ ...old, [assetId]: file }));
+    markDirty();
+    return assetId;
   }
-  const collabFiles: CollabFiles = {
-    leftName: collabLeft?.name, leftUrl: collabLeft?.previewUrl,
-    centerName: collabCenter?.name, centerUrl: collabCenter?.previewUrl,
-    onLeft: (f) => onCollab("left", f),
-    onCenter: (f) => onCollab("center", f),
-    onClearLeft: () => swapLoaded(setCollabLeft, null),
-    onClearCenter: () => swapLoaded(setCollabCenter, null),
-  };
-  /** Everything file-shaped the inspector edits: the Document layers' drops
-   *  plus the collab logos. */
+  /** Everything file-shaped the inspector edits: the Document layers' drops.
+   *  (The collab logos left this prop when they became image fields.) */
   const docSettings: DocSettings = {
     cornerRadius: render.cornerRadius,
     onCornerRadius: (v) => onRenderChange({ ...render, cornerRadius: v }),
@@ -1538,13 +1540,12 @@ export const DocumentEditor = memo(function DocumentEditor({
       onFile: (f) => void onMask(f),
       onClear: () => swapLoaded(setMask, null),
     },
-    collab: collabFiles,
   };
   /** The collab half of Assets, shared by the preview and export builds.
    *  Async because a tinted raster has to be decoded and re-encoded; vector
    *  art and untinted rasters pass straight through. */
   async function collabAssets() {
-    const resolve = async (f: CollabFile | null, slot: CollabSlot) => {
+    const resolve = async (f: CustomFile | null, slot: CollabSlot) => {
       if (!f) return null;
       if (f.image.kind === "svg" || !slot.tintRaster) return f.image;
       return { kind: "png" as const, bytes: await tintedPngCached(f.image.bytes, slot.fill) };
@@ -1678,7 +1679,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     // collabAssets() reads exactly these.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    texture, mask, collabLeft, collabCenter, customImages, hiddenLayers, family,
+    texture, mask, customImages, hiddenLayers, family,
+    // The collab slots are lookups into customImages keyed by their own
+    // image FIELD, and gated by the Collab variant's disabled layers — so
+    // those three, not a pair of state slots, are what change the art.
+    cfg.collabLeft.image, cfg.collabCenter.image, disabledLayers,
     cfg.collabLeft.fill, cfg.collabLeft.tintRaster,
     cfg.collabCenter.fill, cfg.collabCenter.tintRaster,
     blocked, active,
@@ -1711,10 +1716,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   // What planLabel omits: the layers-panel eyes, the in-place edit session's
   // element — the v0.1.16 hide-and-rebuild plumbing reduced to a render flag
   // — and anything the master/variant resolution has switched off (a
-  // disabled layer, or one owned by a variant that's off). The byte-identity
-  // locks stay green: the shipped master never disables a layer the old
-  // hardcoded draw already omitted (collabEnabled === false already
-  // suppresses the same three ids planLabel's own gate does). Same-frame: a
+  // disabled layer, or one owned by a variant that's off). Since
+  // `collabEnabled` was deleted, this disabled-layer set is the ONLY thing
+  // suppressing the collab block on a non-collab label — see
+  // tests/collab-variant-goldens.test.ts, which pins both states' bytes.
+  // Same-frame: a
   // new editSession changes this memo, the source memo below, and
   // PreviewCompare repaints on the next rAF.
   const skip = useMemo<{ has(id: ElementId): boolean }>(
@@ -1939,12 +1945,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     setEditingTarget("master");
     swapLoaded(setTexture, null);
     swapLoaded(setMask, null);
-    swapLoaded(setCollabLeft, null);
-    swapLoaded(setCollabCenter, null);
     // A slot added later must be cleared here too, same rule as above — a
     // Record rather than one T|null, so it goes through its own revoke loop
-    // instead of swapLoaded (the four calls above already mark the document
-    // dirty for this reset).
+    // instead of swapLoaded (the two calls above already mark the document
+    // dirty for this reset). The collab logos live in here now, so this one
+    // loop clears them along with the custom layers' art.
     setCustomImages((old) => {
       for (const c of Object.values(old)) URL.revokeObjectURL(c.previewUrl);
       return {};
@@ -1960,8 +1965,6 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  Tauri and supported Chromium browsers show a real save dialog and Save
    *  then rewrites that same file; Safari/Firefox use a plain download. */
   async function saveProject(as = false): Promise<boolean> {
-    const collabAsset = (c: CollabFile | null) =>
-      c ? { name: c.name, bytes: c.image.kind === "svg" ? strToU8(c.image.svg) : c.image.bytes } : undefined;
     // Always writes v2 (see labelfile.ts): values are the fields the master
     // and its enabled variants declare; overrides are whatever the user's
     // config still deviates from a fresh compose of those exact values —
@@ -1976,8 +1979,9 @@ export const DocumentEditor = memo(function DocumentEditor({
     const zip = packLabelV2(label, {
       texture: texture ? { name: texture.name, bytes: texture.bytes } : undefined,
       mask: mask ? { name: mask.name, bytes: mask.srcBytes } : undefined,
-      collabLeft: collabAsset(collabLeft),
-      collabCenter: collabAsset(collabCenter),
+      // No collabLeft/collabCenter here: the fixed ZIP roles stay READABLE
+      // for existing files (see labelfile.ts) and stop being written — a
+      // collab logo is an ordinary entry in customImages now.
       customImages: customImageEntries.length
         ? Object.fromEntries(customImageEntries.map(([id, c]) => [
             id, { name: c.name, bytes: c.image.kind === "svg" ? strToU8(c.image.svg) : c.image.bytes },
@@ -2267,6 +2271,26 @@ export const DocumentEditor = memo(function DocumentEditor({
     try {
       const unpacked = unpackLabel(f.bytes);
       let warnings: string[] = [];
+      // Legacy fixed collab ZIP roles (collab-left/ and collab-center/): they
+      // stay READABLE for files saved before the slots became image fields,
+      // and are never written again. Restoring one means minting an id for it
+      // in the shared per-id image store and pointing the slot's own field at
+      // that id — done BEFORE resetDocument so the ids land in the same
+      // history entry as the config, not as a second undoable step.
+      const legacyRoles = {
+        collabLeft: unpacked.assets.collabLeft,
+        collabCenter: unpacked.assets.collabCenter,
+      } as const;
+      const legacyAssets: Record<string, { name: string; bytes: Uint8Array }> = {};
+      const adoptLegacyCollab = (config: LabelConfig) => {
+        for (const slot of ["collabLeft", "collabCenter"] as const) {
+          const a = legacyRoles[slot];
+          if (!a) continue;
+          const id = mintCustomAssetId();
+          legacyAssets[id] = a;
+          config[slot].image = id;
+        }
+      };
       if (unpacked.label) {
         const parsed = parseLabelFile(JSON.parse(unpacked.label));
         if ("legacy" in parsed) throw new Error("label.json is not a v2 label");
@@ -2278,27 +2302,26 @@ export const DocumentEditor = memo(function DocumentEditor({
             ` — open its .master file once to register it.`);
           return false;
         }
-        let c = composeConfig(m, parsed.enabledVariants, parsed.values, parsed.overrides);
-        // Pre-Plan-5a bridge (I1): a label saved before layer visibility
-        // moved onto enabledVariants may carry overrides.collabEnabled with
-        // "collab" absent from enabledVariants — recompose with "collab"
-        // enabled so its layers don't land in disabledLayers on reopen.
-        let openedVariants = parsed.enabledVariants;
-        const bridged = bridgeCollabOverride(
-          m, parsed.enabledVariants, parsed.overrides, c.config.collabEnabled);
-        if (bridged.changed) {
-          openedVariants = bridged.enabledVariants;
-          c = composeConfig(m, bridged.enabledVariants, parsed.values, bridged.overrides);
-        }
+        const c = composeConfig(m, parsed.enabledVariants, parsed.values, parsed.overrides);
+        adoptLegacyCollab(c.config);
+        // (The pre-Plan-5a collab bridge stood here: it reconciled an
+        // `overrides.collabEnabled` that disagreed with enabledVariants.
+        // `collabEnabled` no longer exists, so there is nothing to reconcile
+        // — enabledVariants has been the single source of that truth since.)
         // Config, variants and master all land in ONE history step (see
         // resetDocument), so no call order can leak a stale master here.
-        resetDocument(c.config, openedVariants, m, parsed.dormant);
+        resetDocument(c.config, parsed.enabledVariants, m, parsed.dormant);
         warnings = c.warnings; // advisory only — a lossy compose still opens
       } else {
-        const parsedCfg = parseConfigFile(unpacked.config!);
-        // Bridge: an old collab label has no master/variant concept, but a
+        // Bridge: an old v1 label has no master/variant concept, but a
         // checked Collab box in its config is exactly the "collab" variant.
-        resetDocument(parsedCfg, parsedCfg.collabEnabled ? ["collab"] : []);
+        // The flag itself is read off the raw JSON (parseConfigFile drops
+        // it, and zeroes a stale logo.offsetY saved with collab OFF — the
+        // stack nudge is unconditional now).
+        const wasCollab = legacyCollabEnabled(unpacked.config!);
+        const parsedCfg = parseConfigFile(unpacked.config!);
+        adoptLegacyCollab(parsedCfg);
+        resetDocument(parsedCfg, wasCollab ? ["collab"] : []);
       }
       // The type matters: FileDrop thumbnails are createObjectURL(file), and
       // an <img> won't render a typeless blob as SVG — logos restored from a
@@ -2306,18 +2329,19 @@ export const DocumentEditor = memo(function DocumentEditor({
       // browser types) worked.
       const toFile = (a: { name: string; bytes: Uint8Array }) =>
         new File([a.bytes as unknown as BlobPart], a.name, { type: mimeFor(a.name) });
-      const { texture: t, mask: m, collabLeft: l, collabCenter: c, customImages: ci } = unpacked.assets;
+      const { texture: t, mask: m, customImages: ci } = unpacked.assets;
       // Awaited so the freshly opened document can be marked clean AFTER the
       // asset handlers' state writes — each of those marks it dirty again,
       // and the last write has to be this clean one.
       await Promise.all([
         t && onTexture(toFile(t)), m && onMask(toFile(m)),
-        l && onCollab("left", toFile(l)), c && onCollab("center", toFile(c)),
         // resetDocument (above) already cleared customImages to {}, so this
         // is a full restore, not a merge — same contract as the other slots.
+        // Legacy collab roles ride in under the ids adoptLegacyCollab just
+        // minted, so they land in the very same store as everything else.
         (async () => {
           const entries = await Promise.all(
-            Object.entries(ci ?? {}).map(async ([id, a]) =>
+            Object.entries({ ...ci, ...legacyAssets }).map(async ([id, a]) =>
               [id, await readCustomImage(toFile(a))] as const));
           if (entries.length) setCustomImages(Object.fromEntries(entries));
         })(),
@@ -2619,7 +2643,8 @@ export const DocumentEditor = memo(function DocumentEditor({
                     onRenameField={renameTargetField} onRemoveField={removeTargetField} />
                 </>
               : <FieldList master={master} enabledVariants={enabledVariants} cfg={cfg}
-                  onValue={onFieldValue} onVariant={setVariant} />}
+                  onValue={onFieldValue} onVariant={setVariant}
+                  onImageFile={onFieldImageFile} />}
           </SidebarContent>
         </Sidebar>
         <SidebarInset className="flex h-full flex-col overflow-hidden">

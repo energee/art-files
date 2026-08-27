@@ -106,7 +106,7 @@ describe("planLabel", () => {
     // breaks the split fails this test instead of silently reordering the
     // PDF's left column.
     const LEFT = new Set(["volume", "abv", "description", "collabLead"]);
-    const on = { ...defaultConfig(), collabEnabled: true };
+    const on = defaultConfig();
     const ids = planLabel(on, m, { collab: { left: true, center: false } }).map((r) => r.id);
     const inLeft = ids.map((id) => LEFT.has(id));
     const split = inLeft.lastIndexOf(true);
@@ -135,8 +135,8 @@ describe("planLabel", () => {
     expect(name.map((r) => r.text).join("")).toBe("HAZY");
   });
 
-  it("collabLead appears only with the switch on AND a left slot filled", () => {
-    const on = { ...defaultConfig(), collabEnabled: true };
+  it("collabLead appears only when a left slot is filled", () => {
+    const on = defaultConfig();
     expect(planLabel(on, m).some((r) => r.id === "collabLead")).toBe(false);
     expect(planLabel(on, m, { collab: { left: true, center: false } })
       .some((r) => r.id === "collabLead")).toBe(true);
@@ -146,7 +146,7 @@ describe("planLabel", () => {
     // The PDF build drops a hidden logo's art so no bytes reach the file, but
     // the lead-in has its own eye — it must survive, or the export diverges
     // from the preview.
-    const on = { ...defaultConfig(), collabEnabled: true };
+    const on = defaultConfig();
     const { logoSvg } = assets;
     const plan = planLabel(on, m, {
       collab: { left: true, center: false },
@@ -229,7 +229,7 @@ describe("planLabel collab images and barcode", () => {
 
   it("fits a raster centre logo into its envelope, centred on cx", () => {
     // 200x100 raster in a 36x36 envelope at scale 1: width-bound, s=0.18.
-    const c = { ...cfg, collabEnabled: true };
+    const c = cfg;
     const item = planLabel(c, m, {
       assets: { ...assets, collabCenter: { kind: "raster" as const, w: 200, h: 100 } },
     }).find((r) => r.id === "collabCenter");
@@ -241,7 +241,7 @@ describe("planLabel collab images and barcode", () => {
   });
 
   it("plans an svg left logo as paths at the flowed position", () => {
-    const c = { ...cfg, collabEnabled: true };
+    const c = cfg;
     const item = planLabel(c, m, {
       assets: { ...assets, collabLeft: { kind: "svg" as const, svg: LOGO_SVG } },
     }).find((r) => r.id === "collabLeft");

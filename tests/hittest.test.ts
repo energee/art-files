@@ -16,14 +16,15 @@ describe("preview hit-testing", () => {
     expect(hitTest(L.LOGO.cx, L.LOGO.cy, measure, cfg)).toBe("logo");
   });
 
-  it("boxes a collab slot only when the switch is on AND its art is loaded", () => {
+  it("boxes a collab slot only when its art is loaded", () => {
     const both = { left: true, center: true };
     const ids = (c: typeof cfg, slots = both) =>
       new Set(boxesOf(c, measure, slots).map((b) => b.id));
-    const on = { ...cfg, collabEnabled: true };
-    // Switch off, or slot empty: the renderers draw nothing there, so a box
-    // would swallow clicks meant for whatever is behind it.
-    expect(ids(cfg).has("collabLeft")).toBe(false);
+    const on = cfg;
+    // Slot empty: the renderers draw nothing there, so a box would swallow
+    // clicks meant for whatever is behind it. (On a non-collab label the app
+    // hands over no collab art at all, so both slots read empty — see
+    // App.tsx's collabFileOf.)
     expect(ids(on, { left: false, center: false }).has("collabLeft")).toBe(false);
     // The lead-in only introduces the LEFT logo, and goes with it.
     expect(ids(on, { left: false, center: true }).has("collabLead")).toBe(false);
@@ -32,7 +33,7 @@ describe("preview hit-testing", () => {
   });
 
   it("hits the collab logo slots inside their fit envelopes", () => {
-    const on = { ...cfg, collabEnabled: true };
+    const on = cfg;
     const both = { left: true, center: true };
     const left = boxOf("collabLeft", on, measure, both)!;
     expect(hitTest(left.x0 + 1, left.y0 + 1, measure, on, both)).toBe("collabLeft");
@@ -43,15 +44,17 @@ describe("preview hit-testing", () => {
     expect(after.y0 - before.y0).toBeCloseTo(10);
   });
 
-  it("ignores the saved stack nudge while collab is off", () => {
-    // The nudge exists to clear the centre collab mark, so with the switch
-    // off the laurel sits at its laid-out spot; the value stays in the
-    // config for the next collab release (see logoNudge).
-    const nudgedOff = { ...cfg, collabEnabled: false, logo: { ...cfg.logo, offsetY: 40 } };
+  it("moves the laurel box by the stack nudge, unconditionally", () => {
+    // The nudge exists to clear the centre collab mark, and it arrives with
+    // the Collab variant now rather than being gated by a flag: whatever
+    // offsetY the resolved config carries is what the box moves by, so the
+    // box can never disagree with the drawn laurel (see logoNudge).
     const plain = boxOf("logo", cfg, measure)!;
-    expect(boxOf("logo", nudgedOff, measure)!.y0).toBeCloseTo(plain.y0);
-    const nudgedOn = { ...nudgedOff, collabEnabled: true };
-    expect(boxOf("logo", nudgedOn, measure)!.y0 - plain.y0).toBeCloseTo(40);
+    const nudged = { ...cfg, logo: { ...cfg.logo, offsetY: 40 } };
+    expect(boxOf("logo", nudged, measure)!.y0 - plain.y0).toBeCloseTo(40);
+    // The shipped master's own logo declares no offsetY, so a non-collab
+    // label's laurel sits exactly where it is laid out.
+    expect(cfg.logo.offsetY ?? 0).toBe(0);
   });
 
   it("hits the QR inside its box", () => {

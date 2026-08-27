@@ -5,7 +5,8 @@ import { encodeUpc, upcCheckDigit, validateUpc } from "../src/upc";
 import { qrPath, qrShapes, machineName, qrUrl } from "../src/qr";
 import { tintRgba } from "../src/collab";
 import {
-  defaultConfig, displayAbv, exportBaseName, parseConfigFile, toConfigFile,
+  defaultConfig, displayAbv, exportBaseName, legacyCollabEnabled, parseConfigFile,
+  toConfigFile,
 } from "../src/defaults";
 import { parseDescription, parseInfoLine, parseRuns, serializeDescription } from "../src/description";
 import {
@@ -328,6 +329,32 @@ describe("config", () => {
     }
     expect(toConfigFile(cfg).version).toBe(1);
   });
+  // Collab became an ordinary variant: `collabEnabled` is gone from
+  // LabelConfig, and the laurel's stack nudge is applied unconditionally
+  // (logoNudge) instead of being gated on that flag. So a v1 file that saved
+  // a nudge with collab OFF must have it zeroed on load, or it would suddenly
+  // render 40pt lower than it ever printed.
+  it("zeroes a stack nudge saved with collab off, and drops the flag", () => {
+    const legacy = toConfigFile(defaultConfig()) as unknown as Record<string, any>;
+    legacy.collabEnabled = false;
+    legacy.logo.offsetY = 40;
+    const cfg = parseConfigFile(JSON.stringify(legacy));
+    expect(cfg.logo.offsetY).toBe(0);
+    expect(cfg).not.toHaveProperty("collabEnabled");
+    expect(legacyCollabEnabled(JSON.stringify(legacy))).toBe(false);
+  });
+
+  it("keeps a stack nudge saved with collab on, and reports the variant", () => {
+    const legacy = toConfigFile(defaultConfig()) as unknown as Record<string, any>;
+    legacy.collabEnabled = true;
+    legacy.logo.offsetY = 40;
+    const cfg = parseConfigFile(JSON.stringify(legacy));
+    expect(cfg.logo.offsetY).toBe(40);
+    expect(cfg).not.toHaveProperty("collabEnabled");
+    // This is what App's open path turns into enabledVariants: ["collab"].
+    expect(legacyCollabEnabled(JSON.stringify(legacy))).toBe(true);
+  });
+
   it("rejects unknown versions and missing fields", () => {
     expect(() => parseConfigFile('{"version":2}')).toThrow(/version/);
     expect(() => parseConfigFile('{"version":1,"beerName":"X"}')).toThrow(/missing/);

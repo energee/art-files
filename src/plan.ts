@@ -508,7 +508,7 @@ export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {})
 
   // Lead-in only when there is a left logo for it to introduce — the same
   // gate drawElements applies with assets.collabLeft.
-  if (cfg.collabEnabled && slots.left && !skip("collabLead")) {
+  if (slots.left && !skip("collabLead")) {
     const flow = L.collabLeftFlow(desc.lines.length);
     L.COLLAB_LEAD.lines.forEach((text, i) =>
       out.push(...lineRuns("collabLead", { text, ...cfg.collabLead, bold: true }, m,
@@ -516,7 +516,7 @@ export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {})
   }
 
   // Left collab art, flowed under the lead-in — drawCollab's placement.
-  if (A && cfg.collabEnabled && A.collabLeft && !skip("collabLeft"))
+  if (A && A.collabLeft && !skip("collabLeft"))
     out.push(...collabItems(
       "collabLeft", A.collabLeft, cfg.collabLeft, collabLeftFrame(desc.lines.length)));
 
@@ -536,7 +536,7 @@ export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {})
         x: L.LOGO.cx - logo.w / 2, y: logoCy - logo.h / 2,
         fill: cfg.logo.fill, layer: cfg.logo.layer, stroke: strokeSpec(cfg.logo),
       });
-    if (cfg.collabEnabled && A.collabCenter && !skip("collabCenter"))
+    if (A.collabCenter && !skip("collabCenter"))
       out.push(...collabItems("collabCenter", A.collabCenter, cfg.collabCenter,
         collabCenterFrame(logoCy + logo.h / 2)));
   }

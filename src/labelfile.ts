@@ -1,7 +1,8 @@
 // labelfile.ts — pack/unpack the .label project file: a ZIP holding
 // config.json (the ConfigFile JSON, v1) or label.json (the LabelFileV2 JSON, v2)
 // plus the original source images under role directories (texture/<name>,
-// mask/<name>, collab-left/<name>, collab-center/<name>). Images are stored
+// mask/<name>, and — READ-ONLY LEGACY — collab-left/<name>,
+// collab-center/<name>). Images are stored
 // uncompressed (level 0): PNG/JPG bytes are already compressed, and storing
 // them untouched keeps the file lossless and byte-identical on round-trip.
 import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from "fflate";
@@ -21,6 +22,12 @@ export type CustomImageAsset = { name: string; bytes: Uint8Array };
 export type LabelAssets = {
   texture?: LabelAsset;
   mask?: LabelAsset;
+  /** LEGACY, read-only. The collab logos were fixed one-per-project roles
+   *  until they became ordinary image FIELDS on the Collab variant; their
+   *  bytes now ride in `customImages` under a minted asset id like any other
+   *  per-id image. Unpack still reads these two so a file saved before that
+   *  change opens with its art (App.tsx mints an id for each on open); pack
+   *  never writes them again. */
   collabLeft?: LabelAsset;
   collabCenter?: LabelAsset;
   /** Master-variant custom image layers' bytes, keyed by CustomImageLayer's

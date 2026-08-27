@@ -143,8 +143,28 @@ describe("EditingTarget", () => {
   });
 
   it("tells an empty target how to declare its first field", () => {
-    renderFields({ master: lolevMaster(), target: { variant: "collab" } });
+    // The Collab variant declares three fields of its own now, so an EMPTY
+    // target has to be one with no fields at all.
+    const master = lolevMaster();
+    master.variants = [{ ...master.variants[0], id: "winter", name: "Winter", fields: [] }];
+    renderFields({ master, target: { variant: "winter" } });
     expect(container.querySelector("#editing-target-fields")!.textContent)
       .toContain("No fields yet — select a layer and choose Make fillable.");
+  });
+
+  // The three shipped Collab fields are ordinary shipped fields: they render
+  // in the target's list with the same lock/unlock affordance every other
+  // field ships with (product rule — no read-only fields, ever).
+  it("lists the Collab variant's shipped fields, each with an unlock", () => {
+    renderFields({ master: lolevMaster(), target: { variant: "collab" } });
+    const fields = container.querySelector("#editing-target-fields")!;
+    for (const label of ["Lead-in", "Text Logo", "Graphic Logo"]) {
+      expect(fields.textContent).toContain(label);
+    }
+    for (const id of ["collabLead", "collabLeft", "collabCenter"]) {
+      const lock = container.querySelector(`#field-lock-${id}`) as HTMLButtonElement;
+      expect(lock).not.toBeNull();
+      expect(lock.getAttribute("aria-label")).toMatch(/^Unlock /);
+    }
   });
 });

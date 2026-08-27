@@ -46,9 +46,11 @@ export interface StyledLine extends Style {
  *  offsetY nudges that computed position, it does not replace it. */
 export interface Positioned {
   /** Vertical nudge in PDF points, positive = down. Absent/0 = as laid out.
-   *  For the laurel this is the "stack nudge", applied only while
-   *  collabEnabled (see logoNudge in elements.ts) — the saved value is kept
-   *  but ignored when the collab block is off. */
+   *  For the laurel this is the "stack nudge": it exists to clear the centre
+   *  collab mark, and the Collab variant is what carries a non-zero value
+   *  (its `overrides.logo.offsetY`). Applied unconditionally — logoNudge in
+   *  elements.ts is just `logo.offsetY ?? 0` now, because the master's own
+   *  default is 0 and disabling the variant takes the override away with it. */
   offsetY?: number;
   /** Freezes the element in place: dragTarget/dragTarget2 return null while
    *  set, same as a locked custom layer (see CustomLayerBase.locked).
@@ -56,10 +58,18 @@ export interface Positioned {
   locked?: boolean;
 }
 
-/** Styling for one collab-logo slot. The uploaded image itself is *not* part
- *  of the config (it is supplied at build time via Assets, like the texture
- *  and mask) — only how it is drawn. */
+/** Styling for one collab-logo slot, plus the id of the art filling it. The
+ *  image BYTES are still not part of the config (they are supplied at build
+ *  time via Assets, like the texture and mask) — `image` is only the key
+ *  that says which stored asset this slot points at. */
 export interface CollabSlot extends Style, Positioned {
+  /** Asset id of the logo loaded into this slot, into the label's per-id
+   *  image store (`custom/<assetId>/<name>` in the .label ZIP — the same
+   *  store custom image layers use). This is the value of the Collab
+   *  variant's `collabLeft` / `collabCenter` image FIELD, written through
+   *  its path like any other field value. Absent or "" = no art loaded, and
+   *  the slot draws nothing even with the variant on. */
+  image?: string;
   /** Multiplier on the fit-to-box size: 1 = fill the slot box, 0.5 = half. */
   scale: number;
   /** Raster art only (PNG/JPG): repaint every non-transparent pixel in this
@@ -92,13 +102,14 @@ export interface LabelConfig {
   descStyle: Style;
   /** 12-digit UPC-A. */
   upc: string;
-  /** Collab labels: the master switch for the whole collab block. Off, nothing
-   *  collab draws and the form hides its fields, whatever art is loaded. On,
-   *  each slot draws only once its image is supplied in Assets: `collabLeft`
-   *  flows under the description below an automatic bold "A collaborative
-   *  project with" lead-in (styled by `collabLead`); `collabCenter` hangs
-   *  under the laurel. */
-  collabEnabled: boolean;
+  /** Collab labels. There is no master switch here any more: "Collab" is an
+   *  ordinary master VARIANT (see model/lolev.ts), and with it off the
+   *  resolver puts `collabLead` / `collabLeft` / `collabCenter` in its
+   *  disabled-layer set, which is what stops them drawing. With it on, each
+   *  slot draws only once its art is supplied in Assets: `collabLeft` flows
+   *  under the description below an automatic bold "A collaborative project
+   *  with" lead-in (styled by `collabLead`); `collabCenter` hangs under the
+   *  laurel. */
   collabLead: Style;
   collabLeft: CollabSlot;
   /** Its `offsetY` is deliberately unused: the centre mark hangs off the

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  bridgeCollabOverride, composeConfig, configDiff, expandCustomFormats, toggleVariant,
+  composeConfig, configDiff, expandCustomFormats, toggleVariant,
   valuesFromConfig,
 } from "../src/model/document";
 import { lolevMaster } from "../src/model/lolev";
@@ -68,19 +68,26 @@ describe("configDiff / composeConfig round-trip", () => {
 });
 
 describe("toggleVariant", () => {
-  it("enabling collab flips collabEnabled and keeps user deviations", () => {
+  // Collab carries no boolean of its own any more, so what "enabling it"
+  // means is: its overrides apply (the laurel's stack nudge), its three
+  // layers leave the disabled set, and the user's own deviations survive
+  // both directions.
+  it("enabling collab applies its overrides and un-disables its layers, keeping user deviations", () => {
     const m = lolevMaster();
     const cfg = composeConfig(m, [], {}, undefined).config;
     cfg.beerName = "Peregrine";
     cfg.nameStyle.fill = "#112233";
     const on = toggleVariant(m, cfg, [], "collab", true);
     expect(on.enabled).toEqual(["collab"]);
-    expect(on.config.collabEnabled).toBe(true);
+    expect(on.config.logo.offsetY).toBe(0);
+    expect(composeConfig(m, on.enabled, {}, undefined).disabledLayers.size).toBe(0);
     expect(on.config.beerName).toBe("Peregrine");
     expect(on.config.nameStyle.fill).toBe("#112233");
     const off = toggleVariant(m, on.config, on.enabled, "collab", false);
     expect(off.enabled).toEqual([]);
-    expect(off.config.collabEnabled).toBe(false);
+    expect(off.config.logo.offsetY).toBeUndefined();
+    expect([...composeConfig(m, off.enabled, {}, undefined).disabledLayers].sort())
+      .toEqual(["collabCenter", "collabLead", "collabLeft"]);
     expect(off.config.nameStyle.fill).toBe("#112233");
   });
 });
@@ -143,49 +150,6 @@ describe("expandCustomFormats", () => {
     }];
     const out = expandCustomFormats(cfg, { upc: "012345678905" });
     expect(out).toBe(cfg);
-  });
-});
-
-describe("bridgeCollabOverride (I1)", () => {
-  it("enables the collab variant and drops the redundant override when collabEnabled came from overrides alone", () => {
-    const m = lolevMaster();
-    const r = bridgeCollabOverride(m, [], { collabEnabled: true }, true);
-    expect(r.changed).toBe(true);
-    expect(r.enabledVariants).toEqual(["collab"]);
-    expect(r.overrides).toBeUndefined();
-  });
-
-  it("keeps other overrides alongside the dropped collabEnabled key", () => {
-    const m = lolevMaster();
-    const r = bridgeCollabOverride(
-      m, [], { collabEnabled: true, nameStyle: { fill: "#112233" } }, true);
-    expect(r.changed).toBe(true);
-    expect(r.enabledVariants).toEqual(["collab"]);
-    expect(r.overrides).toEqual({ nameStyle: { fill: "#112233" } });
-  });
-
-  it("is a no-op when collab is already enabled", () => {
-    const m = lolevMaster();
-    const r = bridgeCollabOverride(m, ["collab"], { collabEnabled: true }, true);
-    expect(r.changed).toBe(false);
-    expect(r.enabledVariants).toEqual(["collab"]);
-    expect(r.overrides).toEqual({ collabEnabled: true });
-  });
-
-  it("is a no-op when the resolved config's collabEnabled is false", () => {
-    const m = lolevMaster();
-    const r = bridgeCollabOverride(m, [], undefined, false);
-    expect(r.changed).toBe(false);
-    expect(r.enabledVariants).toEqual([]);
-    expect(r.overrides).toBeUndefined();
-  });
-
-  it("is a no-op when the master declares no collab variant", () => {
-    const m = lolevMaster();
-    m.variants = m.variants.filter((v) => v.id !== "collab");
-    const r = bridgeCollabOverride(m, [], { collabEnabled: true }, true);
-    expect(r.changed).toBe(false);
-    expect(r.enabledVariants).toEqual([]);
   });
 });
 

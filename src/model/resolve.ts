@@ -11,7 +11,9 @@ import { defaultConfig } from "../defaults";
 
 /** Positioned config fields a MasterLayer's `locked` may stamp (spec 5a:
  *  the master's lock is a default, not a label fact — composeConfig's later
- *  override merge lets a label's own `locked` still win). */
+ *  override merge lets a label's own `locked` still win). The two collab
+ *  slots are in here because they carry Positioned knobs like the laurel
+ *  does, not because collab is special: it is an ordinary variant. */
 const LOCKABLE_IDS = new Set(["logo", "collabLeft", "collabCenter"]);
 
 /** Dot-path write, the mirror of document.ts's getPath. Exported for

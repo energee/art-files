@@ -267,27 +267,9 @@ function InchField(props: {
   );
 }
 
-/** Collab art is whatever the partner brewery sends: vector preferred (it
- *  takes the slot's fill/layer like the laurel), raster accepted. */
-const COLLAB_ACCEPT = {
-  "image/svg+xml": [".svg"],
-  "image/png": [".png"],
-  "image/jpeg": [".jpg", ".jpeg"],
-};
-
-/** The uploaded collab logos and their handlers. They live in App beside the
- *  texture and mask — like those, the image is a build-time asset, not part of
- *  the saved config, which holds only the slot's style and size. */
-export interface CollabFiles {
-  leftName?: string;
-  leftUrl?: string;
-  centerName?: string;
-  centerUrl?: string;
-  onLeft: (f: File) => void;
-  onCenter: (f: File) => void;
-  onClearLeft: () => void;
-  onClearCenter: () => void;
-}
+// (CollabFiles lived here: the two bespoke logo wells this inspector used to
+// own. The slots are ordinary image FIELDS on the Collab variant now, loaded
+// from Fill mode's field list, so the inspector keeps only their styling.)
 
 /** Document-presentation knobs the Settings layer edits — 3D view options
  *  that live in App and persist to presets.json, not in the saved label
@@ -311,11 +293,11 @@ export interface DocSettings {
 }
 
 /** All build-time file assets the inspector can edit, grouped so App passes
- *  one prop: the texture and mask (Document layers) plus the collab logos. */
+ *  one prop: the texture and mask (Document layers). The collab logos are
+ *  NOT here — they are image fields now (see FieldList). */
 export interface InspectorFiles {
   texture: { fileName?: string; previewUrl?: string; onFile: (f: File) => void; onClear: () => void };
   mask: { fileName?: string; previewUrl?: string; error?: string; onFile: (f: File) => void; onClear: () => void };
-  collab: CollabFiles;
 }
 
 /** Section heading — same idiom LabelForm used, so the inspector reads in
@@ -353,9 +335,10 @@ function OffsetInput(props: {
  *  can never disagree; it moves the whole centre stack — the collab mark
  *  hangs off the laurel's nudged bottom (see drawElements), so the pair
  *  keeps its gap and cannot drift apart the way two independent knobs
- *  let it. Applied only while collab is on (see logoNudge): the nudge
- *  exists to clear the centre mark, so disabling collab returns the
- *  laurel to its laid-out spot while the value stays saved. */
+ *  let it. Applied unconditionally (see logoNudge): the nudge exists to
+ *  clear the centre mark, and it is the Collab VARIANT that carries a
+ *  non-zero value — turning the variant off takes the override away with
+ *  it, which is what returns the laurel to its laid-out spot. */
 function StackNudge(props: { cfg: LabelConfig; update: Update }) {
   return (
     <div className="space-y-1.5">
@@ -366,13 +349,12 @@ function StackNudge(props: { cfg: LabelConfig; update: Update }) {
           title="Move the laurel and the centre collab mark together, points (+ = down)"
           onChange={(v) => props.update((c) => { c.logo.offsetY = v; })}
         />
-        <span className="text-[11px] text-muted-foreground">
-          {props.cfg.collabEnabled ? "laurel + centre mark" : "applies while collab is on"}
-        </span>
+        <span className="text-[11px] text-muted-foreground">laurel + centre mark</span>
       </div>
       {/* Freezes the laurel where it sits: dragTarget/dragTarget2 return null
           for "logo" while set, same as a locked custom layer. Shown always,
-          like tintRaster below, so it's discoverable before collab is on. */}
+          like tintRaster below, so it's discoverable before the Collab
+          variant is enabled. */}
       <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
         <Switch
           checked={!!props.cfg.logo.locked}
@@ -385,26 +367,19 @@ function StackNudge(props: { cfg: LabelConfig; update: Update }) {
   );
 }
 
-/** A collab logo slot's knobs: file drop, size, optional nudge, raster tint.
- *  Size is a plain multiplier on the slot's fit-to-box scale (1 = fit) —
- *  collab marks differ too much in visual weight for one fitted size to be
- *  right for all of them. */
+/** A collab logo slot's STYLE knobs: size, optional nudge, raster tint,
+ *  lock. The art itself is loaded from Fill mode's field list — the slot is
+ *  an ordinary image field on the Collab variant — so there is deliberately
+ *  no file well here any more. Size is a plain multiplier on the slot's
+ *  fit-to-box scale (1 = fit): collab marks differ too much in visual weight
+ *  for one fitted size to be right for all of them. */
 function CollabSlotContent(props: {
-  id: "collabLeft" | "collabCenter"; cfg: LabelConfig; update: Update; files: InspectorFiles;
+  id: "collabLeft" | "collabCenter"; cfg: LabelConfig; update: Update;
 }) {
   const slot = props.cfg[props.id];
   const left = props.id === "collabLeft";
-  const c = props.files.collab;
   return (
     <div className="space-y-2">
-      <FileDrop
-        label={left ? "Text Logo (SVG/PNG)" : "Graphic Logo (SVG/PNG)"}
-        accept={COLLAB_ACCEPT}
-        fileName={left ? c.leftName : c.centerName}
-        previewUrl={left ? c.leftUrl : c.centerUrl}
-        onFile={left ? c.onLeft : c.onCenter}
-        onClear={left ? c.onClearLeft : c.onClearCenter}
-      />
       <div className="flex items-center gap-1.5">
         <Label htmlFor={`${props.id}-scale`} className="text-xs text-muted-foreground">Size</Label>
         <Input
@@ -771,12 +746,12 @@ function Content(props: {
         </p>
       );
     case "collabLead":
-      // The lead-in's text is fixed, and the collab on/off switch lives on
-      // the layers panel's Collab group header — nothing to edit here.
+      // The lead-in's text is fixed template art, and enabling Collab is the
+      // variant checkbox in Fill mode — nothing to edit here.
       return <p className="text-[11px] text-muted-foreground">Fixed template art — nothing to edit.</p>;
     case "collabLeft":
     case "collabCenter":
-      return <CollabSlotContent id={id} cfg={cfg} update={update} files={files} />;
+      return <CollabSlotContent id={id} cfg={cfg} update={update} />;
     case "logo":
       // The laurel is drawn as a box at a fixed cy — unlike a text element
       // there is no baseline field to move it with, hence the nudge.

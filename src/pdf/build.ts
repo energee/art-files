@@ -48,9 +48,12 @@ export interface Assets {
   fonts: { regular: Uint8Array; semibold: Uint8Array; bold: Uint8Array };
   /** Raw contents of logo2025.svg. */
   logoSvg: string;
-  /** Collab logos. Ignored entirely unless cfg.collabEnabled; with the switch
-   *  on, a slot with no image draws nothing (and an empty left slot also
-   *  suppresses the "A collaborative project with" lead-in). */
+  /** Collab logos. A slot with no image draws nothing (and an empty left
+   *  slot also suppresses the "A collaborative project with" lead-in).
+   *  There is no collab switch to consult: on a non-collab label the Collab
+   *  variant is off, so its three layers are in the resolver's disabled set
+   *  — which reaches this build as `hidden` — and the app hands over no
+   *  collab art for them in the first place. */
   collabLeft?: CollabImage | null;
   collabCenter?: CollabImage | null;
   /** Optional: without it the art PDF is just the elements on bare stock,
@@ -290,7 +293,7 @@ async function drawElements(
     // XObject, so this early-return has to check the same skip set planLabel
     // uses to omit the drawn item — bailing here keeps the raster off the
     // page before doc.embedPng/embedJpg ever runs.
-    if (!img || !cfg.collabEnabled || assets.hidden?.has(id)) return null;
+    if (!img || assets.hidden?.has(id)) return null;
     if (img.kind === "svg") return img;
     const emb = img.kind === "png" ? await doc.embedPng(img.bytes) : await doc.embedJpg(img.bytes);
     embedded.set(id, emb);

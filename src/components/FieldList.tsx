@@ -12,9 +12,10 @@ import { validateField } from "@/model/fields";
  *  the filler gets"). Every widget is controlled off `cfg` via getPath and
  *  writes back only through `onValue` — no local state, so the field list and
  *  the canvas can never disagree about a value. */
-function FieldRow({ field, cfg, onValue }: {
+function FieldRow({ field, cfg, onValue, onImageFile }: {
   field: FieldDecl; cfg: LabelConfig;
   onValue: (f: FieldDecl, v: FieldValue) => void;
+  onImageFile: (file: File) => Promise<string>;
 }) {
   const raw = getPath(cfg, field.path);
   const id = `field-${field.id}`;
@@ -28,12 +29,33 @@ function FieldRow({ field, cfg, onValue }: {
     );
   }
   if (field.kind === "image") {
-    // Asset-bound image fields land with Plan 4b's asset wiring — until then
-    // this is a placeholder note, not a broken control.
+    // A real file well, not a note: since the Collab variant's two logo
+    // slots became ordinary image fields, this IS the only place a partner's
+    // logo can be loaded — the bespoke inspector wells are gone. The VALUE
+    // is an asset id into the label's per-id image store; `onImageFile`
+    // (App) reads the file, mints the id and returns it, and clearing writes
+    // "" rather than deleting the key, so the field stays a declared,
+    // overridable value like every other.
+    const assetId = typeof raw === "string" ? raw : "";
     return (
       <div className="space-y-1">
-        <span className="text-sm">{field.label}</span>
-        <p className="text-xs text-muted-foreground">Set in Design mode.</p>
+        <label htmlFor={id} className="text-sm">{field.label}</label>
+        <div className="flex items-center gap-2">
+          <input id={id} type="file" className="w-full text-xs"
+            accept="image/svg+xml,image/png,image/jpeg"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              // Reset the input so re-picking the SAME file fires onChange
+              // again — otherwise a cleared field can't be refilled from it.
+              e.target.value = "";
+              if (file) void onImageFile(file).then((asset) => onValue(field, asset));
+            }} />
+          {assetId && (
+            <button id={`${id}-clear`} type="button"
+              className="shrink-0 rounded border border-input px-2 py-0.5 text-xs"
+              onClick={() => onValue(field, "")}>Clear</button>
+          )}
+        </div>
       </div>
     );
   }
@@ -67,13 +89,18 @@ function FieldRow({ field, cfg, onValue }: {
   );
 }
 
-export function FieldList({ master, enabledVariants, cfg, onValue, onVariant }: {
+export function FieldList({ master, enabledVariants, cfg, onValue, onVariant, onImageFile }: {
   master: Master;
   enabledVariants: string[];
   cfg: LabelConfig;
   /** Write one field's value through its path (App routes through update()). */
   onValue: (field: FieldDecl, value: FieldValue) => void;
   onVariant: (id: string, on: boolean) => void;
+  /** An image field's well: read the dropped file into the label's per-id
+   *  image store and resolve to the minted asset id, which the row then
+   *  writes as the field's value. App owns the store (the same one custom
+   *  image layers use), so the widget itself never touches it. */
+  onImageFile: (file: File) => Promise<string>;
 }) {
   return (
     <div className="space-y-4 p-3">
@@ -86,7 +113,7 @@ export function FieldList({ master, enabledVariants, cfg, onValue, onVariant }: 
         </div>
       ))}
       {visibleFieldsOf(master, enabledVariants).map((f) => (
-        <FieldRow key={f.id} field={f} cfg={cfg} onValue={onValue} />
+        <FieldRow key={f.id} field={f} cfg={cfg} onValue={onValue} onImageFile={onImageFile} />
       ))}
     </div>
   );

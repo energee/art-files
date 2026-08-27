@@ -33,14 +33,34 @@ export function lolevMaster(): Master {
       { id: "description", label: "Description", kind: "text", path: "description" },
       { id: "upc", label: "UPC", kind: "code", symbology: "upc-a", path: "upc" },
     ],
+    // Collab is an ORDINARY variant — no boolean on LabelConfig, no special
+    // case in any renderer. It carries exactly what a collab label adds:
+    // three fields (the lead-in's text and the two logo slots' asset ids)
+    // and the laurel's stack nudge, which used to be gated on the deleted
+    // `collabEnabled` flag and now simply arrives with the variant. The
+    // nudge ships at 0 because that is what today's collab labels render
+    // with (the master's own `logo` declares no offsetY); it is a real,
+    // overridable knob, not a placeholder. What stops the collab block
+    // drawing when the variant is off is the resolver's disabled-layer set
+    // alone — the three layers below are tagged `variant: "collab"`.
     variants: [
-      { id: "collab", name: "Collab", overrides: { collabEnabled: true }, layerOverrides: {}, fields: [] },
+      {
+        id: "collab", name: "Collab",
+        overrides: { logo: { offsetY: 0 } },
+        layerOverrides: {},
+        fields: [
+          { id: "collabLead", label: "Lead-in", kind: "text", path: "collabLead.text" },
+          { id: "collabLeft", label: "Text Logo", kind: "image", path: "collabLeft.image" },
+          { id: "collabCenter", label: "Graphic Logo", kind: "image", path: "collabCenter.image" },
+        ],
+      },
     ],
     // Draw order per planLabel (src/plan.ts) — read top-to-bottom, not the
     // registry order in src/elements.ts. Names reuse ELEMENTS' labels
     // except the wordmark, renamed to "Brand" per the spec. The three collab
     // layers are tagged `variant: "collab"` rather than living in the
-    // variant's own layer list (see MasterLayer.variant's doc). The warning
+    // variant's own layer list (see MasterLayer.variant's doc); that tag is
+    // now the ONLY thing suppressing them on a non-collab label. The warning
     // ships locked: it is correct-by-default and fillers must not move it.
     layers: [
       { id: "volume", name: "Volume", enabled: true },

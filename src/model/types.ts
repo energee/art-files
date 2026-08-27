@@ -50,9 +50,11 @@ export interface MasterLayer {
   /** Fillers cannot move it (spec: Lock). Absent = unlocked. */
   locked?: boolean;
   /** Which variant owns this layer; absent = the master owns it. A layer
-   *  owned by a disabled variant does not draw. This is how the collab
-   *  block stops being a special case: its three layers are ordinary master
-   *  layers tagged `variant: "collab"`. Deliberate extension of the spec's
+   *  owned by a disabled variant does not draw — and since `collabEnabled`
+   *  was deleted from LabelConfig, this tag is the ONLY thing that stops the
+   *  collab block drawing: its three layers are ordinary master layers
+   *  tagged `variant: "collab"`, and no renderer knows the word "collab"
+   *  means anything special any more. Deliberate extension of the spec's
    *  `variant.layers` (which stays, for layers a variant APPENDS): the
    *  collab layers sit at fixed positions in the draw order, which an
    *  appended list cannot express. */
@@ -70,7 +72,11 @@ export interface MasterLayer {
 export interface Variant {
   id: string;
   name: string;
-  overrides: Partial<LabelConfig>;
+  /** DeepPartial, not Partial: a variant overrides LEAVES (the Collab
+   *  variant's `logo.offsetY`, an authored `nameStyle.fill`), which is
+   *  exactly what resolve()'s deepMerge applies and what applyDesignEdit
+   *  records. */
+  overrides: DeepPartial<LabelConfig>;
   layerOverrides: Record<string, Partial<MasterLayer>>;
   fields: FieldDecl[];
   /** Layers this variant APPENDS to the master's draw order when enabled —

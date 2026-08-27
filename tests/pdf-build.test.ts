@@ -203,7 +203,6 @@ describe("Assets.hidden — the layers-panel eye", () => {
   // the saved PDF. Hidden must mean no ink AND no embedded bytes.
   it("does not embed a hidden collab logo's raster bytes into the saved PDF", async () => {
     const cfg = defaultConfig();
-    cfg.collabEnabled = true;
     const collabLeft: CollabImage = { kind: "png", bytes: onePxPng };
 
     const noCollab = await buildArtPdf(cfg, assets);

@@ -38,9 +38,10 @@ describe("applyDesignEdit", () => {
     const m = applyDesignEdit(lolevMaster(), { variant: "collab" }, [], {},
       (c) => { c.abv = "7"; });
     expect(m.variants[0].overrides.abv).toBe("7");
-    // collabEnabled was already the variant's own override — the diff must
-    // not double-record it as a fresh edit.
-    expect(m.variants[0].overrides.collabEnabled).toBe(true);
+    // The laurel's stack nudge was already the Collab variant's own override
+    // (it replaced the deleted `collabEnabled` flag) — the diff must not
+    // drop it, nor double-record it as a fresh edit.
+    expect(m.variants[0].overrides.logo).toEqual({ offsetY: 0 });
   });
 });
 
@@ -63,9 +64,9 @@ describe("overriddenPaths / resetOverride", () => {
       (c) => { c.nameStyle.fill = "#445566"; c.abv = "7"; });
     const target = { variant: "collab" } as const;
     expect(overriddenPaths(m, target))
-      .toEqual(new Set(["collabEnabled", "nameStyle.fill", "abv"]));
+      .toEqual(new Set(["logo.offsetY", "nameStyle.fill", "abv"]));
     m = resetOverride(m, target, "nameStyle.fill");
-    expect(overriddenPaths(m, target)).toEqual(new Set(["collabEnabled", "abv"]));
+    expect(overriddenPaths(m, target)).toEqual(new Set(["logo.offsetY", "abv"]));
     expect(m.variants[0].overrides.nameStyle).toBeUndefined();
   });
   it("the master overrides nothing", () => {
@@ -132,7 +133,7 @@ describe("addField", () => {
   });
   it("addField on a variant declares it there, not on the master", () => {
     const m = addField(lolevMaster(), { variant: "collab" },
-      { id: "partner", label: "Partner", kind: "text", path: "collabLead.text" });
+      { id: "partner", label: "Partner", kind: "text", path: "storeCold.text" });
     expect(m.fields.map((f) => f.id)).not.toContain("partner");
     expect(m.variants[0].fields.map((f) => f.id)).toContain("partner");
   });
@@ -147,18 +148,18 @@ describe("addField", () => {
   });
   it("refuses a path already declared on a variant when adding to the master", () => {
     const m = addField(lolevMaster(), { variant: "collab" },
-      { id: "partner", label: "Partner", kind: "text", path: "collabLead.text" });
+      { id: "partner", label: "Partner", kind: "text", path: "storeCold.text" });
     expect(addField(m, "master",
-      { id: "lead", label: "Lead-In", kind: "text", path: "collabLead.text" })).toBe(m);
+      { id: "cold", label: "Store cold", kind: "text", path: "storeCold.text" })).toBe(m);
   });
   it("refuses a path already declared on a DISABLED variant from a second variant", () => {
     // Neither variant needs to be enabled — a disabled variant can still be
     // enabled later, at which point the collision becomes live.
     let m = addVariant(lolevMaster(), "Winter").master;
     m = addField(m, { variant: "winter" },
-      { id: "partner", label: "Partner", kind: "text", path: "collabLead.text" });
+      { id: "partner", label: "Partner", kind: "text", path: "storeCold.text" });
     expect(addField(m, { variant: "collab" },
-      { id: "lead", label: "Lead-In", kind: "text", path: "collabLead.text" })).toBe(m);
+      { id: "cold", label: "Store cold", kind: "text", path: "storeCold.text" })).toBe(m);
   });
 });
 

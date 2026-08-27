@@ -158,28 +158,20 @@ describe("dragTarget2", () => {
 
   it("keeps the offsetY form for logo/collab ids, unchanged by dragTarget2", () => {
     const cfg = defaultConfig();
-    cfg.collabEnabled = true;
     const t = dragTarget2(cfg, { left: false, center: false }, "logo");
     expect(t?.kind).toBe("offsetY");
     if (t?.kind !== "offsetY") throw new Error("expected offsetY form");
     expect(t.get()).toBe(cfg.logo.offsetY ?? 0);
   });
 
-  it("returns null for logo when collab is off, same as the legacy dragTarget", () => {
+  it("returns null for a locked logo", () => {
     const cfg = defaultConfig();
-    expect(dragTarget2(cfg, { left: false, center: false }, "logo")).toBeNull();
-  });
-
-  it("returns null for a locked logo even with collab on", () => {
-    const cfg = defaultConfig();
-    cfg.collabEnabled = true;
     cfg.logo.locked = true;
     expect(dragTarget2(cfg, { left: false, center: false }, "logo")).toBeNull();
   });
 
   it("keeps the offsetY form for logo when unlocked, same as before", () => {
     const cfg = defaultConfig();
-    cfg.collabEnabled = true;
     const t = dragTarget2(cfg, { left: false, center: false }, "logo");
     expect(t?.kind).toBe("offsetY");
   });

@@ -116,7 +116,7 @@ describe("drawPlate", () => {
   });
 
   it("paints a raster collab rect blue in mask mode, image in art mode", () => {
-    const c = { ...cfg, collabEnabled: true };
+    const c = cfg;
     const p = planLabel(c, m, {
       assets: { logoSvg, collabCenter: { kind: "raster", w: 10, h: 10 } },
     });
@@ -147,7 +147,7 @@ describe("drawPlate", () => {
   });
 
   it("throws when an art-mode image item has no bitmap (assembly bug, not a blank)", () => {
-    const c = { ...cfg, collabEnabled: true };
+    const c = cfg;
     const p = planLabel(c, m, {
       assets: { logoSvg, collabCenter: { kind: "raster", w: 10, h: 10 } },
     });

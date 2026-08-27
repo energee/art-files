@@ -22,12 +22,17 @@ import { dragTarget } from "../src/elements";
 import { pushed, resetTo } from "../src/history";
 import type { LabelConfig } from "../src/types";
 
-/** A document on the shipped master with the collab variant enabled — the
- *  logo's offsetY (dragTarget's only unconditional target) is draggable only
- *  while collab is on. */
-function docWithCollab(): Doc {
+/** A plain document on the shipped master, no variants enabled. The laurel's
+ *  offsetY is dragTarget's only unconditional target and needs no variant to
+ *  be draggable now that the stack nudge applies unconditionally. */
+function plainDoc(): Doc {
+  return docOn([]);
+}
+
+/** The same, with `enabledVariants` chosen — the collab-targeted test needs
+ *  the variant actually ON for its override to reach the composed config. */
+function docOn(enabledVariants: string[]): Doc {
   const master = lolevMaster();
-  const enabledVariants = ["collab"];
   const cfg = composeConfig(master, enabledVariants, {}, undefined).config;
   return { cfg, enabledVariants, master };
 }
@@ -47,7 +52,7 @@ const labelOverrides = (doc: Doc) => configDiff(
 
 describe("drag routing by mode", () => {
   it("Fill mode: a nudge writes the label and never touches the master", () => {
-    const doc = docWithCollab();
+    const doc = plainDoc();
     const next = labelEditDoc(doc, nudgeLogo(18));
     expect(next.cfg.logo.offsetY).toBe(18);
     expect(next.master).toBe(doc.master); // identity: the master is untouched
@@ -55,7 +60,7 @@ describe("drag routing by mode", () => {
   });
 
   it("Design mode on the master: a nudge writes master.defaults, not the label", () => {
-    const doc = docWithCollab();
+    const doc = plainDoc();
     const next = designEditDoc(doc, "master", nudgeLogo(18));
     expect(next.master).not.toBe(doc.master);
     expect(next.master.defaults.logo?.offsetY).toBe(18);
@@ -66,7 +71,7 @@ describe("drag routing by mode", () => {
   });
 
   it("Design mode on a variant: a nudge writes that variant's overrides", () => {
-    const doc = docWithCollab();
+    const doc = docOn(["collab"]);
     const next = designEditDoc(doc, { variant: "collab" }, nudgeLogo(18));
     const collab = next.master.variants.find((v) => v.id === "collab")!;
     expect(collab.overrides.logo?.offsetY).toBe(18);
@@ -81,7 +86,7 @@ describe("drag routing by mode", () => {
     // comes back by identity — no history entry, no phantom dirty dot.
     // (Note the offset must already EXIST: writing 0 over an absent
     // `offsetY` is a real change, absent and 0 being different documents.)
-    const doc = designEditDoc(docWithCollab(), "master", nudgeLogo(18));
+    const doc = designEditDoc(plainDoc(), "master", nudgeLogo(18));
     expect(designEditDoc(doc, "master", nudgeLogo(18))).toBe(doc);
   });
 
@@ -90,7 +95,7 @@ describe("drag routing by mode", () => {
     // useHistory's setter — so a drag's frames fold into the step its first
     // frame opened, exactly as before this routing existed. Driven through
     // history.ts's own `pushed`, which is the reducer that setter calls.
-    let stacks = resetTo(docWithCollab());
+    let stacks = resetTo(plainDoc());
     const before = stacks.present;
     // first frame: coalesce=false, opens a step
     stacks = pushed(stacks, designEditDoc(stacks.present, "master", nudgeLogo(4)), false);
@@ -115,7 +120,7 @@ describe("a target naming a variant the master no longer declares", () => {
    *  then undo — history hands back the pre-add doc while the selector still
    *  says {variant:"winter"}. */
   function afterUndoingTheNewVariant(): { before: Doc; target: { variant: string } } {
-    const before = docWithCollab();
+    const before = plainDoc();
     const { master, id } = addVariant(before.master, "Winter");
     const withVariant: Doc = { ...before, master };
     expect(withVariant.master.variants.some((v) => v.id === id)).toBe(true);
@@ -156,7 +161,7 @@ describe("a target naming a variant the master no longer declares", () => {
 
 describe("layer policy edits", () => {
   it("record on the master, and on a variant's layerOverrides", () => {
-    const doc = docWithCollab();
+    const doc = plainDoc();
     expect(layerEditDoc(doc, "master", "wordmark", { name: "Logotype" })
       .master.layers.find((l) => l.id === "wordmark")!.name).toBe("Logotype");
     expect(layerEditDoc(doc, { variant: "collab" }, "wordmark", { name: "Logotype" })
@@ -165,7 +170,7 @@ describe("layer policy edits", () => {
   });
 
   it("M1: a patch the target already stores returns the doc by identity", () => {
-    const doc = docWithCollab();
+    const doc = plainDoc();
     // The shipped wordmark is already enabled and already named "Brand".
     expect(layerEditDoc(doc, "master", "wordmark", { enabled: true })).toBe(doc);
     expect(layerEditDoc(doc, "master", "wordmark", { name: "Brand" })).toBe(doc);
@@ -189,28 +194,28 @@ describe("Doc.dormant survives every pure Doc-transition (Task 4b fix round 1)",
   const withBench = (doc: Doc): Doc => ({ ...doc, dormant: BENCH });
 
   it("addVariantDoc (\"New variant…\") does not drop the bench", () => {
-    const { doc: next } = addVariantDoc(withBench(docWithCollab()), "Winter");
+    const { doc: next } = addVariantDoc(withBench(plainDoc()), "Winter");
     expect(next.dormant).toEqual(BENCH);
   });
 
   it("labelEditDoc does not drop the bench", () => {
-    const next = labelEditDoc(withBench(docWithCollab()), nudgeLogo(18));
+    const next = labelEditDoc(withBench(plainDoc()), nudgeLogo(18));
     expect(next.dormant).toEqual(BENCH);
   });
 
   it("designEditDoc does not drop the bench, on the master and on a variant", () => {
-    const doc = withBench(docWithCollab());
+    const doc = withBench(plainDoc());
     expect(designEditDoc(doc, "master", nudgeLogo(18)).dormant).toEqual(BENCH);
     expect(designEditDoc(doc, { variant: "collab" }, nudgeLogo(18)).dormant).toEqual(BENCH);
   });
 
   it("layerEditDoc does not drop the bench", () => {
-    const next = layerEditDoc(withBench(docWithCollab()), "master", "wordmark", { name: "Logotype" });
+    const next = layerEditDoc(withBench(plainDoc()), "master", "wordmark", { name: "Logotype" });
     expect(next.dormant).toEqual(BENCH);
   });
 
   it("resetOverrideDoc does not drop the bench", () => {
-    const doc = withBench(docWithCollab());
+    const doc = withBench(plainDoc());
     const withOverride = designEditDoc(doc, { variant: "collab" }, nudgeLogo(18));
     const next = resetOverrideDoc(withOverride, { variant: "collab" }, "logo.offsetY");
     expect(next.master.variants.find((v) => v.id === "collab")!.overrides.logo).toBeUndefined();
