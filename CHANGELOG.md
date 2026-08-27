@@ -3,6 +3,14 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.28] - 2026-08-27
+
+- Groundwork for masters and variations: a new internal data model that can
+  describe a label template (master), stackable named overrides (variations),
+  fillable fields with validation, derived text like QR URLs, and a slimmer
+  `.label` format that can be re-aimed at a different master. Nothing in the
+  app uses it yet — no visible or behavioral change in this release.
+
 ## [0.1.27] - 2026-08-26
 
 - Wide keylines no longer eat small glyph features in the preview. A period,
