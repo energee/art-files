@@ -1672,6 +1672,18 @@ export const DocumentEditor = memo(function DocumentEditor({
     return { data: new Uint8Array(img.data.buffer), width: img.width, height: img.height };
   }
 
+  /** A custom image layer's raster bytes, decoded at NATURAL pixel size —
+   *  unlike `rasterPixels` above, this does no cover-fit: a custom layer's
+   *  placed box can differ from its asset's own resolution, so buildPsd
+   *  itself resamples to the placed rect (see psd/build.ts's resizeRGBA). */
+  async function rasterPixelsNatural(
+    bytes: Uint8Array,
+  ): Promise<NonNullable<PsdAssets["customImages"]>[string]> {
+    const canvas = await decodeToCanvas(blobOf(bytes));
+    const img = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
+    return { data: new Uint8Array(img.data.buffer), width: img.width, height: img.height };
+  }
+
   /** Layered Photoshop files: editable type layers, vector logo/QR/barcode.
    *  Built full-resolution on demand, like the PDF exports. `which` picks a
    *  single plate — `{name}.psd` (art) or `{name}-mask.psd` (white ink) — and
@@ -1685,10 +1697,32 @@ export const DocumentEditor = memo(function DocumentEditor({
         import("@/psd/build"),
         loadFonts(fontFamilyOf(displayCfg)),
       ]);
+      // Same `custom` shape as the PDF export's Assets.custom (see
+      // buildFull above): an SVG-sourced custom image plans as ink-tight
+      // vector paths, a raster-sourced one as a rect sized by `aspect`.
+      const customEntries = Object.entries(customImages);
+      const custom = Object.fromEntries(customEntries.map(([id, c]) => [
+        id,
+        {
+          aspect: c.aspect,
+          ...(c.image.kind === "svg" ? { art: { kind: "svg" as const, svg: c.image.svg } } : {}),
+        },
+      ]));
+      // Raster custom images decode at NATURAL size — buildPsd resamples to
+      // each layer's own placed box (see psd/build.ts's resizeRGBA); an SVG
+      // source needs no pixels, it plans as paths via `custom` above.
+      const customImageEntries = (await Promise.all(
+        customEntries.map(async ([id, c]) => {
+          if (c.image.kind === "svg") return null;
+          return [id, await rasterPixelsNatural(c.image.bytes)] as const;
+        }),
+      )).filter((e): e is readonly [string, NonNullable<PsdAssets["customImages"]>[string]] => e !== null);
       const assets: PsdAssets = {
         fonts, logoSvg,
         texture: await rasterPixels(texture?.bytes),
         mask: await rasterPixels(mask?.bytes),
+        custom,
+        customImages: Object.fromEntries(customImageEntries),
       };
       // Built before any dialog, same reasoning as the PDF exports above.
       const [artPsd, maskPsd] = await Promise.all([

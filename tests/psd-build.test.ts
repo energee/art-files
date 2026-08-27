@@ -3,10 +3,12 @@
 // stroke effect Photoshop can show (the PDF strokes text via its text
 // rendering mode, which has no PSD equivalent — a layer effect is the parallel).
 import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { readPsd } from "ag-psd";
-import { buildPsd, qrBeziers } from "../src/psd/build";
+import { buildPsd, qrBeziers, type PsdAssets } from "../src/psd/build";
 import { defaultConfig } from "../src/defaults";
 import { qrShapes } from "../src/qr";
+import type { CustomBarcodeLayer, CustomImageLayer, CustomQrLayer, CustomTextLayer } from "../src/types";
 import { psdAssets as assets } from "./fixtures";
 
 /** Every layer in the document, groups flattened. Deliberately `any`: this
@@ -144,5 +146,147 @@ describe("PSD QR squares", () => {
     const s = qrShapes("proof", { style: "dots" });
     // dots: one circle per data dot + 3 per finder (outer ring, hole, center)
     expect(qrBeziers(s, 100).length).toBe(s.dots.length + s.finders.length * 3);
+  });
+});
+
+describe("Master-variation custom layers", () => {
+  // Pinned BEFORE the custom-layer builder work landed (sha256 of buildPsd's
+  // bytes for defaultConfig() + the shared fixtures, art and mask, both
+  // plates): a config with NO customLayers must still build byte-identical
+  // output, so this test would fail the moment the builder started emitting
+  // a "Custom layers" group (or anything else) unconditionally.
+  it("builds byte-identical output for a config with no custom layers", async () => {
+    const hash = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
+    const art = await buildPsd(defaultConfig(), assets);
+    const mask = await buildPsd(defaultConfig(), assets, "mask");
+    expect({ art: hash(art), artLen: art.length }).toEqual({
+      art: "5421f3775cc47dbf3d272b374b63b5b84eddf0ce11b43240868402f19b6ea445",
+      artLen: 882336,
+    });
+    expect({ mask: hash(mask), maskLen: mask.length }).toEqual({
+      mask: "96fb0328cb76f2b5b7c4f68b545aba50f416c904b1cc2eb60413dc9d30d1c37a",
+      maskLen: 875834,
+    });
+  });
+
+  const position = { anchor: "left" as const, vAnchor: "top" as const, offsetX: 0, offsetY: 0 };
+
+  it("a custom text layer becomes a named type layer with its own text", async () => {
+    const cfg = defaultConfig();
+    const textLayer: CustomTextLayer = {
+      id: "custom-t1", name: "Custom Text", type: "text", size: 12, position,
+      line: { text: "HELLO CUSTOM", fill: "#000000", layer: "metallic" },
+    };
+    cfg.customLayers = [textLayer];
+    const psd = readPsd(
+      Buffer.from(await buildPsd(cfg, assets)).buffer as ArrayBuffer,
+      { skipCompositeImageData: true, skipLayerImageData: true, skipThumbnail: true },
+    );
+    const l = layer(psd.children as any[], "Custom Text");
+    expect(l).toBeDefined();
+    expect(l.text.text).toBe("HELLO CUSTOM");
+  });
+
+  it("a custom raster image layer becomes a raster layer scaled to the placed rect", async () => {
+    const cfg = defaultConfig();
+    const imageLayer: CustomImageLayer = {
+      id: "custom-i1", name: "Custom Image", type: "image", w: 100, aspect: 1, asset: "art1",
+      position, style: { fill: "none", layer: "white" },
+    };
+    cfg.customLayers = [imageLayer];
+    // 2x2 opaque red RGBA — natural size, deliberately smaller than the
+    // placed box so a straight 1:1 pixel copy (like `texture`'s) would prove
+    // nothing: this only passes if the builder actually resamples.
+    const px2x2: PsdAssets["customImages"] = {
+      art1: { data: new Uint8Array([255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255]), width: 2, height: 2 },
+    };
+    const psd = readPsd(
+      Buffer.from(await buildPsd(cfg, { ...assets, customImages: px2x2 })).buffer as ArrayBuffer,
+      // Node has no canvas to decode pixel data through — this test only
+      // needs the layer's bounding box, which readPsd populates either way.
+      { skipCompositeImageData: true, skipLayerImageData: true, skipThumbnail: true },
+    );
+    const l = layer(psd.children as any[], "Custom Image");
+    expect(l).toBeDefined();
+    // Placed box: 100pt square (aspect 1) at the 600dpi export resolution —
+    // NOT the source's native 2x2, which only passes if the builder actually
+    // resampled rather than copying pixels through 1:1.
+    const expectedPx = Math.round((100 / 72) * 600);
+    expect(l.right - l.left).toBe(expectedPx);
+    expect(l.bottom - l.top).toBe(expectedPx);
+  });
+
+  it("a custom image layer with no loaded asset bytes is a no-op, not a crash", async () => {
+    const cfg = defaultConfig();
+    const imageLayer: CustomImageLayer = {
+      id: "custom-i2", name: "Unloaded Image", type: "image", w: 100, aspect: 1, asset: "missing",
+      position, style: { fill: "none", layer: "white" },
+    };
+    cfg.customLayers = [imageLayer];
+    const psd = readPsd(
+      Buffer.from(await buildPsd(cfg, assets)).buffer as ArrayBuffer,
+      { skipCompositeImageData: true, skipLayerImageData: true, skipThumbnail: true },
+    );
+    expect(layer(psd.children as any[], "Unloaded Image")).toBeUndefined();
+  });
+
+  it("a custom barcode layer draws through the same merged-shape approach as the template's, without disturbing it", async () => {
+    const cfg = defaultConfig();
+    const barcodeLayer: CustomBarcodeLayer = {
+      id: "custom-bc1", name: "Custom Barcode", type: "barcode",
+      symbology: "code-128", value: "LOLEV-123", h: 30, moduleW: 1, position,
+      style: { fill: "#000000", layer: "white" },
+    };
+    cfg.customLayers = [barcodeLayer];
+    const psd = readPsd(
+      Buffer.from(await buildPsd(cfg, assets)).buffer as ArrayBuffer,
+      { skipCompositeImageData: true, skipLayerImageData: true, skipThumbnail: true },
+    );
+    // The template barcode is untouched…
+    const template = layer(psd.children as any[], "Barcode");
+    expect(template).toBeDefined();
+    expect(template.vectorMask?.paths?.length).toBeGreaterThan(0);
+    // …and the custom one emits alongside it, as its own merged shape.
+    const custom = layer(psd.children as any[], "Custom Barcode");
+    expect(custom).toBeDefined();
+    expect(custom.vectorMask?.paths?.length).toBeGreaterThan(0);
+  });
+
+  it("a custom QR layer draws as its own node-editable shape layer", async () => {
+    const cfg = defaultConfig();
+    const qrLayer: CustomQrLayer = {
+      id: "custom-qr1", name: "Custom QR", type: "qr",
+      value: "https://lolev.beer/beer/test", size: 40, qrStyle: "square", position,
+      style: { fill: "#000000", layer: "white" },
+    };
+    cfg.customLayers = [qrLayer];
+    const psd = readPsd(
+      Buffer.from(await buildPsd(cfg, assets)).buffer as ArrayBuffer,
+      { skipCompositeImageData: true, skipLayerImageData: true, skipThumbnail: true },
+    );
+    const l = layer(psd.children as any[], "Custom QR");
+    expect(l).toBeDefined();
+    expect(l.vectorMask?.paths?.length).toBeGreaterThan(0);
+    // The template QR is still there too.
+    expect(layer(psd.children as any[], "QR")).toBeDefined();
+  });
+
+  it("emits every custom layer on the mask plate too, per the standard paint rules", async () => {
+    const cfg = defaultConfig();
+    const textLayer: CustomTextLayer = {
+      id: "custom-t1", name: "Custom Text", type: "text", size: 12, position,
+      line: { text: "HELLO", fill: "#000000", layer: "white" },
+    };
+    cfg.customLayers = [textLayer];
+    const psd = readPsd(
+      Buffer.from(await buildPsd(cfg, assets, "mask")).buffer as ArrayBuffer,
+      { skipCompositeImageData: true, skipLayerImageData: true, skipThumbnail: true },
+    );
+    const l = layer(psd.children as any[], "Custom Text");
+    expect(l).toBeDefined();
+    // white-layer text prints ink on the mask plate: mask blue.
+    expect(l.text.style.fillColor.r).toBeCloseTo(0, 2);
+    expect(l.text.style.fillColor.g).toBeCloseTo(156, 2);
+    expect(l.text.style.fillColor.b).toBeCloseTo(215, 2);
   });
 });

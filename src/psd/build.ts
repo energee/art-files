@@ -40,7 +40,11 @@ import type { ElementId } from "../elements";
 import { FONT_FAMILIES, fontFamilyOf } from "../fontCatalog";
 import * as L from "../layout";
 import { parseDescription, parseInfoLine, parseRuns } from "../description";
-import { planLabel, type MeasureFace, type Placed, type PlacedBarcode } from "../plan";
+import {
+  labelGuides, planLabel,
+  type MeasureFace, type Placed, type PlacedBarcode, type PlanArt,
+} from "../plan";
+import { anchoredX, anchoredY } from "../model/position";
 import { qrShapes, qrUrl, type QrShapes } from "../qr";
 import { strokeLayerOf } from "../strokes";
 import { warningMeasure, wrapWarning } from "../warning";
@@ -60,6 +64,22 @@ export interface PsdAssets {
    *  Same 1:1 pixel contract as `texture`. Omitted
    *  floods the plate solid white-ink blue, matching buildMaskPdf. */
   mask?: { data: Uint8Array; width: number; height: number };
+  /** Master-variation custom image layers' loaded state, keyed by
+   *  CustomImageLayer's `asset` — mirrors pdf/build.ts's `Assets.custom`
+   *  exactly, so an SVG-sourced custom image plans as ink-tight vector paths
+   *  (like the logo) instead of a raster rect; a raster-sourced one plans as
+   *  an `image` rect sized from `aspect` (see plan.ts's PlanAssets.custom). */
+  custom?: Record<string, { aspect: number; art?: PlanArt }>;
+  /** Decoded RGBA of each RASTER custom image, at its NATURAL pixel size,
+   *  keyed by CustomImageLayer.asset. Unlike `texture` (a fixed background
+   *  the caller pre-scales or leaves centred), a custom layer's placed box
+   *  can differ from its asset's native resolution, so the builder itself
+   *  resamples to the placed rect (see resizeRGBA) — PSD layers still hold
+   *  pixels 1:1, just at the resampled size. An SVG-sourced custom image
+   *  carries no entry here (it plans as paths via `custom` above and needs
+   *  no pixels); a missing entry for a raster one is the same "asset bytes
+   *  not loaded yet" no-op every other backend honors. */
+  customImages?: Record<string, { data: Uint8Array; width: number; height: number }>;
 }
 
 /** Which deliverable to build: the art PSD, or the white-ink mask plate.
@@ -569,7 +589,9 @@ function buildLayers(
   const pdfMeasure: MeasureFace = (t, size, face) =>
     (face === "bold" ? f.bold : face === "semibold" ? f.semibold : f.regular)
       .widthOfTextAtSize(t, size);
-  const plan = planLabel(cfg, pdfMeasure, { assets: { logoSvg: assets.logoSvg } });
+  const plan = planLabel(cfg, pdfMeasure, {
+    assets: { logoSvg: assets.logoSvg, custom: assets.custom },
+  });
   const planned = <K extends Placed["kind"]>(id: string, kind: K) =>
     plan.filter((p): p is Extract<Placed, { kind: K }> => p.kind === kind && p.id === id);
   // The min-x of an element's planned runs is exactly what the old centered()
@@ -755,13 +777,66 @@ function buildLayers(
 
   // Codes ------------------------------------------------------------------
   groups.push({ name: "Codes", opened: false, children: codeLayers(cfg, fk, mode, plan) });
+
+  // Master-variation custom layers (Task 6) ---------------------------------
+  // Guarded on length, not just an always-empty-array fallthrough: an absent
+  // or empty customLayers must add NO group at all, so a config with none
+  // builds byte-identical output to before this feature (barcode custom
+  // layers are handled inside codeLayers above, alongside the template's).
+  if (cfg.customLayers?.length)
+    groups.push({
+      name: "Custom layers", opened: false,
+      children: buildCustomLayers(cfg, assets, plan, mode, textLayer),
+    });
   // PSD layer order is bottom-first, matching the PDF's draw order.
   return groups;
 }
 
-/** QR (vector) + the barcode: one merged "Barcode" shape layer (bars and
- *  digit glyph outlines, both bezier, in cfg.barcodeFill) with an optional
- *  "Barcode stroke" layer directly beneath it, mirroring the PDF's halo. */
+/** One barcode's merged shape layer, from its placed item — shared by the
+ *  template barcode (plan id "barcode") and any master-variation custom
+ *  barcode layers (Task 6): both are PlacedBarcode items out of the same
+ *  plan (see plan.ts's customBarcodeItem), so one code path builds either,
+ *  bars and digit glyph outlines both bezier, in the item's own fill. Mask
+ *  mode preserves the mask PDF's deliberate underprint geometry: exact bar
+ *  rectangles plus one glyph-box pill per digit group, outset by S as a
+ *  border. Art mode's halo is the same editable outside-stroke effect every
+ *  other element carries, so Photoshop dilates bars and digit outlines alike
+ *  and unions the result. `S` (resolved outer-stroke width; 0 = no halo)
+ *  gates the stroke identically to the PDF's own `if (S > 0)`, so the two
+ *  deliverables can't disagree on whether one exists. */
+function barcodeLayer(name: string, bc: PlacedBarcode, fk: FKFont, mode: PsdMode): Layer {
+  const S = bc.S;
+  if (mode === "mask") {
+    const footprint: BezierPath[] = bc.footprint
+      .map((r) => ({ ...rectPath(r.x, r.yTop, r.w, r.h), operation: "combine" as const }));
+    return shapeLayer(
+      name, footprint, paint(mode, bc.fill, bc.fillLayer),
+      S > 0 ? strokePaint(mode, bc.stroke, bc.strokeLayer) : undefined, px(S),
+    );
+  }
+  // yStart is exactly what the old digit TYPE layers used as `baseline` —
+  // the string-start Y a `rotate(90)` PDF drawText lands at (see
+  // digitGroupPaths for the derivation); keeping this identical is what
+  // makes the outlines land where the type layers used to.
+  const digitGroups = bc.geo.digits.map((d, i) =>
+    digitGroupPaths(fk, d.text, bc.textSize, d.x, bc.digits[i].y),
+  );
+  const barcodePaths: BezierPath[] = [
+    ...bc.geo.bars.map((b) => rectPath(b.x, b.yTop, b.w, b.h)),
+    ...digitGroups.flatMap((g) => g.paths),
+  ];
+  return shapeLayer(
+    name, barcodePaths, paint(mode, bc.fill, bc.fillLayer),
+    S > 0 ? strokePaint(mode, bc.stroke, bc.strokeLayer) : undefined, px(S),
+  );
+}
+
+/** QR (vector) + every barcode in the plan: the template's own ("barcode")
+ *  plus any master-variation custom barcode layers (Task 6), each named
+ *  after its layer and drawn through barcodeLayer's shared merged-shape
+ *  approach — widened from the old single-item lookup gated on
+ *  `id === "barcode"` so a custom barcode layer emits too, without changing
+ *  a byte of the template's own layer. */
 function codeLayers(cfg: LabelConfig, fk: FKFont, mode: PsdMode, plan: Placed[]): Layer[] {
   // Kept local because plan.ts's QR item is the already-flattened path string
   // (qrPath), sized for pdf-lib's drawSvgPath — this file instead draws the
@@ -775,66 +850,134 @@ function codeLayers(cfg: LabelConfig, fk: FKFont, mode: PsdMode, plan: Placed[])
   const qrPaths: BezierPath[] = qrBeziers(q, L.QR.size).map((p) =>
     translatePath(p, px(L.QR.x), px(L.QR.yTop)),
   );
-
-  // The barcode's one planned item: geometry, resolved stroke width, digit
-  // placements and the mask footprint all come from the shared plan, so this
-  // backend cannot re-derive them differently from the PDF.
-  const bc = plan.find((p): p is PlacedBarcode => p.kind === "barcode" && p.id === "barcode")!;
-
-  // yStart is exactly what the old digit TYPE layers used as `baseline` —
-  // the string-start Y a `rotate(90)` PDF drawText lands at (see
-  // digitGroupPaths for the derivation); keeping this identical is what
-  // makes the outlines land where the type layers used to.
-  const digitGroups = bc.geo.digits.map((d, i) =>
-    digitGroupPaths(fk, d.text, bc.textSize, d.x, bc.digits[i].y),
-  );
-  const barcodePaths: BezierPath[] = [
-    ...bc.geo.bars.map((b) => rectPath(b.x, b.yTop, b.w, b.h)),
-    ...digitGroups.flatMap((g) => g.paths),
-  ];
-
-  // Resolved outer-stroke width, from the plan's shared resolver
-  // (barcodeStrokePt in ../barcode, via plan.ts's barcodeItem). "none" or an
-  // explicit zero width both collapse to S = 0, which omits the stroke
-  // effect entirely — matching the PDF's own `if (S > 0)` gate so the two
-  // deliverables can't disagree on whether a halo exists, or on how wide it
-  // is.
-  const S = bc.S;
-
   const qr = shapeLayer(
     "QR", qrPaths, paint(mode, cfg.qrFill, cfg.qrLayer),
     strokePaint(mode, cfg.qrStroke, cfg.qrStrokeLayer), cfg.qrStrokeWidth,
   );
 
-  if (mode === "mask") {
-    // Preserve the mask PDF's deliberate underprint geometry: exact bar
-    // rectangles plus one glyph-box pill per digit group. The editable
-    // outside effect expands that base footprint by the same S as the PDF's
-    // stroke pass while keeping its color independent from the fill.
-    const footprint: BezierPath[] = bc.footprint
-      .map((r) => ({ ...rectPath(r.x, r.yTop, r.w, r.h), operation: "combine" as const }));
-    return [
-      qr,
-      shapeLayer(
-        "Barcode", footprint, paint(mode, cfg.barcodeFill, cfg.barcodeLayer),
-        S > 0 ? strokePaint(mode, cfg.barcodeStroke, cfg.barcodeStrokeLayer) : undefined,
-        px(S),
-      ),
-    ];
-  }
+  const barcodes = plan.filter((p): p is PlacedBarcode => p.kind === "barcode");
+  const nameOf = (bc: PlacedBarcode) =>
+    bc.id === "barcode" ? "Barcode" : (cfg.customLayers?.find((l) => l.id === bc.id)?.name ?? bc.id);
 
-  // The halo is the same editable stroke effect every other element carries
-  // (position outside, so Photoshop dilates bars and digit outlines alike and
-  // unions the result) — replacing the old approximate "Barcode stroke" rect
-  // layer. strokeEffect wants px @600dpi; S resolves in points, so convert.
-  return [
-    qr,
-    shapeLayer(
-      "Barcode", barcodePaths, paint(mode, cfg.barcodeFill, cfg.barcodeLayer),
-      S > 0 ? strokePaint(mode, cfg.barcodeStroke, cfg.barcodeStrokeLayer) : undefined,
-      px(S),
-    ),
-  ];
+  return [qr, ...barcodes.map((bc) => barcodeLayer(nameOf(bc), bc, fk, mode))];
+}
+
+/** Nearest-neighbor resample of RGBA pixels to (dstW, dstH). A custom raster
+ *  image's placed box can differ from its asset's native resolution — PSD
+ *  layers hold pixels 1:1, so the box's own pixels have to be resampled here
+ *  rather than centred at native size the way `texture` is. Nearest-
+ *  neighbor keeps this dependency-free (no canvas, so it runs identically
+ *  from the browser and scripts/generate.ts's Node CLI); export-resolution
+ *  raster art at print DPI rarely benefits from a smoother filter. */
+function resizeRGBA(
+  src: { data: Uint8Array; width: number; height: number }, dstW: number, dstH: number,
+): Uint8Array {
+  const out = new Uint8Array(dstW * dstH * 4);
+  for (let y = 0; y < dstH; y++) {
+    const sy = Math.min(src.height - 1, Math.floor((y * src.height) / dstH));
+    for (let x = 0; x < dstW; x++) {
+      const sx = Math.min(src.width - 1, Math.floor((x * src.width) / dstW));
+      const si = (sy * src.width + sx) * 4;
+      const di = (y * dstW + x) * 4;
+      out[di] = src.data[si];
+      out[di + 1] = src.data[si + 1];
+      out[di + 2] = src.data[si + 2];
+      out[di + 3] = src.data[si + 3];
+    }
+  }
+  return out;
+}
+
+/** Master-variation custom layers (Task 6): one PSD layer per entry in
+ *  cfg.customLayers, in stored order — the same order plan.ts appends their
+ *  placed items in, so this group draws on top of every fixed element just
+ *  like the plan does. Barcode layers are excluded here: codeLayers builds
+ *  them (template and custom alike) through the shared barcodeLayer helper,
+ *  so a custom barcode layer draws in the "Codes" group beside the
+ *  template's, not here. */
+function buildCustomLayers(
+  cfg: LabelConfig, assets: PsdAssets, plan: Placed[], mode: PsdMode,
+  textLayer: ReturnType<typeof makeTextLayer>,
+): Layer[] {
+  const out: Layer[] = [];
+  const guides = labelGuides();
+  for (const layer of cfg.customLayers ?? []) {
+    if (layer.type === "barcode") continue; // codeLayers
+    if (layer.type === "text") {
+      // Position comes from the plan's own placed runs (lineRuns), the same
+      // min-x + shared-baseline reading textX/baseline use for the fixed
+      // centred elements — not re-measured here, so it can't drift from the
+      // plan's own kerning. The RUN TEXT/styling still comes straight off
+      // layer.line, exactly like every fixed text element passes its own
+      // raw markdown string to textLayer rather than the plan's per-run text.
+      const items = plan.filter((p): p is Extract<Placed, { kind: "text" }> =>
+        p.kind === "text" && p.id === layer.id);
+      if (!items.length) continue;
+      const x = Math.min(...items.map((r) => r.x));
+      out.push(textLayer(layer.name, layer.line.text, {
+        x, baseline: items[0].y, size: layer.size,
+        fill: paint(mode, layer.line.fill, layer.line.layer), face: faceOf(layer.line),
+        tracking: layer.line.letterSpacing,
+        stroke: layer.line.stroke, strokeLayer: layer.line.strokeLayer,
+        strokeWidth: layer.line.strokeWidth, mode,
+      }));
+    } else if (layer.type === "image") {
+      // SVG source: plans as an ink-tight `paths` item (see PsdAssets.custom
+      // above) — drawn as a vector shape layer exactly like the Logo.
+      const svgItem = plan.find((p): p is Extract<Placed, { kind: "paths" }> =>
+        p.kind === "paths" && p.id === layer.id);
+      if (svgItem) {
+        const paths = svgItem.paths.flatMap((d) => svgToPaths(d, svgItem.x, svgItem.y));
+        out.push(shapeLayer(
+          layer.name, paths, paint(mode, layer.style.fill, layer.style.layer),
+          strokePaint(mode, layer.style.stroke, layer.style.strokeLayer), layer.style.strokeWidth,
+        ));
+        continue;
+      }
+      // Raster source: plans as an `image` rect (from the layer's/asset's
+      // aspect — see PlanAssets.custom). Missing bytes (asset not yet
+      // loaded) is a no-op, same contract as the PDF/canvas backends.
+      const imgItem = plan.find((p): p is Extract<Placed, { kind: "image" }> =>
+        p.kind === "image" && p.id === layer.id);
+      if (!imgItem) continue;
+      if (mode === "mask") {
+        // Raster art prints on white ink: the mask paints its footprint
+        // blue regardless of the layer's own fill/layer assignment — the
+        // same raster-collab rule pdf/build.ts's drawElements applies.
+        out.push(shapeLayer(
+          layer.name, [rectPath(imgItem.x, imgItem.y, imgItem.w, imgItem.h)], MASK_BLUE,
+        ));
+        continue;
+      }
+      const pixels = assets.customImages?.[layer.asset];
+      if (!pixels) continue;
+      const left = Math.round(pos(imgItem.x));
+      const top = Math.round(pos(imgItem.y));
+      const w = Math.max(1, Math.round(px(imgItem.w)));
+      const h = Math.max(1, Math.round(px(imgItem.h)));
+      out.push({
+        name: layer.name, left, top, right: left + w, bottom: top + h,
+        imageData: { data: resizeRGBA(pixels, w, h), width: w, height: h },
+      });
+    } else {
+      // "qr" — same structured qrShapes -> qrBeziers conversion as the
+      // template QR above, recomputed locally from the layer's own
+      // value/style/ecLevel (the plan's item is just the flattened path
+      // string, which can't drive qrBeziers' node-editable circles — see
+      // codeLayers' own comment on the same tradeoff for the template QR).
+      const shapes = qrShapes(layer.value, { style: layer.qrStyle, ecLevel: layer.ecLevel ?? "M" });
+      const at = {
+        x: anchoredX(layer.position, layer.size, guides),
+        y: anchoredY(layer.position, layer.size, guides),
+      };
+      const paths = qrBeziers(shapes, layer.size).map((p) => translatePath(p, px(at.x), px(at.y)));
+      out.push(shapeLayer(
+        layer.name, paths, paint(mode, layer.style.fill, layer.style.layer),
+        strokePaint(mode, layer.style.stroke, layer.style.strokeLayer), layer.style.strokeWidth,
+      ));
+    }
+  }
+  return out;
 }
 
 /** Build the layered Photoshop file. Text layers carry no rendered bitmap, so
