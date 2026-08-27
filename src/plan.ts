@@ -408,8 +408,17 @@ export function customBarcodeItem(
   const yTop = anchoredY(layer.position, box.h, guides);
   const bars = customBarcodeBars(pattern, x, yTop, layer.h, layer.moduleW);
   const measure = (t: string) => m(t, textSize, "regular");
+  // barcodeDigitsFor's `measure` must return MODULE units (see its own
+  // comment) since it has no `mod` to convert with — `measure` above is in
+  // POINTS, so divide by moduleW before handing it in. Skipping this step
+  // double-scaled the edge digits' (dir ±1) offset by moduleW a second time
+  // once `center` gets multiplied back by moduleW below; centered groups
+  // (dir 0) never combine measure with the anchor, so they were unaffected.
   const digitsRaw = showDigits
-    ? barcodeDigitsFor(layer.symbology, layer.value, pattern.modules.length, BARCODE_QUIET_MODULES, measure)
+    ? barcodeDigitsFor(
+        layer.symbology, layer.value, pattern.modules.length, BARCODE_QUIET_MODULES,
+        (t) => measure(t) / layer.moduleW,
+      )
     : [];
   // barcodeDigitsFor's `x` is a placeholder (see its own comment) — real x
   // comes from this layer's own run origin plus the group's module center.

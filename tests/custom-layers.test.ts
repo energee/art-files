@@ -225,6 +225,41 @@ describe("custom barcode layer", () => {
     const item = planLabel(cfg, m).find((r) => r.id === "custom-bc1");
     expect(item).toBeUndefined();
   });
+
+  // Regression: barcodeDigitsFor's `measure` must be in MODULE units (it has
+  // no `mod` to convert with — see its own comment); the caller here was
+  // passing raw points, double-scaling an edge digit's (dir +-1) offset by
+  // moduleW a second time once `center` gets multiplied back by moduleW.
+  // Centered groups (dir 0, e.g. code-128's single group) never combine
+  // measure with the anchor, so only an edge digit — ean-13's leading digit
+  // here — exercises this: its offset FROM the module anchor is a pure
+  // points quantity (half the digit's measured width) and must stay the same
+  // in points whatever moduleW scales the anchor itself by.
+  it("keeps an edge digit's measure-based offset in points, independent of moduleW", () => {
+    const ean13Base: CustomBarcodeLayer = {
+      ...base, symbology: "ean-13", value: "4006381333931",
+    };
+    const build = (moduleW: number) => {
+      const cfg = defaultConfig();
+      cfg.customLayers = [{ ...ean13Base, moduleW }];
+      return planLabel(cfg, m)
+        .find((r): r is PlacedBarcode => r.kind === "barcode" && r.id === "custom-bc1")!;
+    };
+    const guides = labelGuides();
+    const textSize = ean13Base.h * (10 / 15); // layer.h * fontSize:barH ratio, matching plan.ts
+    const ptsWidth = m("4", textSize); // leading digit's measured width in points
+    const QUIET_MODULES = 8; // matches plan.ts's BARCODE_QUIET_MODULES
+
+    for (const moduleW of [1, 2]) {
+      const item = build(moduleW);
+      const lead = item.digits[0];
+      expect(lead.text).toBe("4");
+      // anchor (in points) legitimately scales with moduleW; the measure/2
+      // term must not — it's a fixed points offset either way.
+      const expectedX = guides.left - QUIET_MODULES * moduleW + ptsWidth / 2;
+      expect(lead.x).toBeCloseTo(expectedX, 10);
+    }
+  });
 });
 
 describe("no custom layers -> byte-identical pre-feature plan", () => {
