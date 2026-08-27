@@ -24,4 +24,14 @@ describe("EAN-13", () => {
     const b = encodeEan13("4" + "00638133393" + String(ean13CheckDigit("4" + "00638133393")));
     expect(a.modules.slice(3, 45)).not.toBe(b.modules.slice(3, 45));
   });
+  it("nonzero first digit uses correct L/G parity in left half", () => {
+    // EAN-13 "4006381333931": first digit 4 has parity "LGLLGG"
+    // Positions 1-2 are digits 0 and 0
+    // After start guard "101" (positions 0-2):
+    // - Digit 0 with L parity = "0001101" (positions 3-9)
+    // - Digit 0 with G parity = complement(reverse("0001101")) = "0100111" (positions 10-16)
+    const { modules } = encodeEan13("4006381333931");
+    expect(modules.slice(3, 10)).toBe("0001101");  // L(0)
+    expect(modules.slice(10, 17)).toBe("0100111"); // G(0)
+  });
 });

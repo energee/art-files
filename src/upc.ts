@@ -62,9 +62,10 @@ const PARITY: string[] = [
   "LGGLLG", "LGGGLL", "LGLGLG", "LGLGGL", "LGGLGL",
 ];
 
-/** G pattern = L pattern reversed. R pattern = L pattern bit-inverted. */
-const gOf = (l: string) => [...l].reverse().join("");
+/** R pattern = L pattern bit-inverted. */
 const rOf = (l: string) => [...l].map((b) => (b === "0" ? "1" : "0")).join("");
+/** G pattern = bitwise complement of reversed L pattern. */
+const gOf = (l: string) => rOf([...l].reverse().join(""));
 
 export function ean13CheckDigit(first12: string): number {
   let sum = 0;
