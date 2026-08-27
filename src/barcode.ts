@@ -89,13 +89,15 @@ export interface BarcodeGeometry {
  *  supplied by the caller so this stays free of any font machinery.
  *  `pattern`, when supplied, is drawn instead of encoding `upc` as UPC-A —
  *  the entry point for any non-UPC symbology (see `encodeFor`). The
- *  human-readable digit layout below is UPC-A-specific: it runs on the
- *  default (no `pattern`) path, and on any supplied pattern that still
- *  carries UPC/EAN-style guard groups (an explicit `encodeUpc`/`encodeEan13`
- *  pattern reproduces the same digits as the default path); a guardless
- *  pattern (Code 128) gets bars only, with an empty `digits` array —
- *  human-readable text for EAN-13/Code 128 arrives with the layer renderer
- *  in a later plan. */
+ *  human-readable digit layout below is UPC-A-specific and runs ONLY on the
+ *  default (no `pattern`) path, where `upc` is known to be a valid UPC-A
+ *  string; ANY explicitly supplied pattern — even an explicit
+ *  `encodeUpc(upc)` that reproduces the default path's bars exactly — gets
+ *  an empty `digits` array. This is a uniform rule, not symbology sniffing:
+ *  encodeEan13 shares UPC-A's guard shape, so gating on guard presence would
+ *  silently slice a 13-digit EAN value with UPC-A's 12-digit layout. Human-
+ *  readable text for EAN-13/Code 128 arrives with the layer renderer in a
+ *  later plan. */
 export function barcodeGeometry(
   upc: string,
   measure: (text: string) => number,
@@ -138,7 +140,7 @@ export function barcodeGeometry(
     mod,
     bottom,
     bars,
-    digits: guards.length === 0 ? [] : [
+    digits: pattern !== undefined ? [] : [
       place(upc[0], -quiet, 1), // number-system digit, before the symbol
       place(upc.slice(1, 6), 27.5, 0), // centered on modules 10-45
       place(upc.slice(6, 11), 67.5, 0), // centered on modules 50-85

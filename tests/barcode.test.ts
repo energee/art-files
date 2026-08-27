@@ -10,7 +10,7 @@ import type { LabelConfig } from "../src/types";
 import { drawBarcode } from "../src/pdf/build";
 import { barcodeItem, type MeasureFace } from "../src/plan";
 import { barcodeGeometry, barcodeStrokePt } from "../src/barcode";
-import { encodeUpc } from "../src/upc";
+import { encodeUpc, encodeEan13 } from "../src/upc";
 import { encodeCode128 } from "../src/code128";
 import { defaultConfig, parseConfigFile, toConfigFile } from "../src/defaults";
 import { BARCODE as B, COLORS, FONT_ASC, FONT_DESC, PAGE, PX, parseHexFill } from "../src/layout";
@@ -283,7 +283,30 @@ describe("barcodeGeometry pattern parameter", () => {
   it("explicit UPC pattern matches the implicit default exactly", () => {
     const implicit = barcodeGeometry(UPC, measure);
     const explicit = barcodeGeometry(UPC, measure, encodeUpc(UPC));
-    expect(explicit).toEqual(implicit);
+    // Controller ruling (fix round 1): the digit-layout gate is on
+    // `pattern === undefined`, uniformly — even an explicit `encodeUpc`
+    // pattern that reproduces the default path's bars gets `digits: []`,
+    // because gating on guard shape instead would silently apply UPC-A's
+    // 12-digit slicing to an explicit EAN-13 pattern (which shares UPC-A's
+    // guard shape). So this equality holds for everything EXCEPT `digits`;
+    // that field is asserted separately, and always empty on the explicit
+    // path.
+    const { digits: _implicitDigits, ...implicitRest } = implicit;
+    const { digits: _explicitDigits, ...explicitRest } = explicit;
+    expect(explicitRest).toEqual(implicitRest);
+    expect(implicit.digits.length).toBeGreaterThan(0);
+    expect(explicit.digits).toEqual([]);
+  });
+
+  it("an explicit EAN-13 pattern also gets empty digits, not UPC-A digit slicing", () => {
+    // EAN-13 shares UPC-A's guard shape ([0,10),[45,50),[85,95)), so a gate
+    // on guard presence would misfire here and slice the 13-digit value
+    // with UPC-A's 12-digit layout. The uniform "any explicit pattern gets
+    // empty digits" rule is what prevents that.
+    const geo = barcodeGeometry("4006381333931", measure, encodeEan13("4006381333931"));
+    expect(geo.digits).toEqual([]);
+    expect(geo.bars.length).toBeGreaterThan(0);
+    expect(geo.bars.some((b) => b.w === B.guardLen)).toBe(true);
   });
 
   it("a Code 128 pattern yields bars, no digits, uniform heights", () => {
