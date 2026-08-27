@@ -3,6 +3,19 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.32] - 2026-08-27
+
+- Design mode can now add layers: text, image, barcode (UPC-A, EAN-13,
+  Code 128, with human-readable digits and a show/hide knob), and QR
+  (square/rounded/dots; error correction defaults to M, with a warning when
+  a Code 128 module is set too narrow to scan). Barcode and QR payloads can
+  be built from label fields with a chip-based format editor and live
+  preview. Custom image layers now actually render — their bytes travel
+  inside the `.label` file — and the PSD exports carry every custom layer
+  plus the square/rounded QR styles they previously dropped. Custom text
+  layers support bold and letter-spacing; image hit areas now match portrait
+  artwork exactly.
+
 ## [0.1.31] - 2026-08-27
 
 - Labels now run on a master + variations + values model. A new Design/Fill
