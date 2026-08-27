@@ -10,14 +10,17 @@
 // reports the modifier keys and App resolves them (see selection.ts); the
 // eye toggles the id in App's session-level hidden set (Assets.hidden — the
 // renderer skips the element outright) and is NEVER recorded — unlike a
-// master row's name and lock, which are master POLICY and go through
+// master row's name, ENABLE and lock, which are master POLICY and go through
 // `onLayerEdit` (App's layerEdit → applyLayerEdit) at the current editing
-// target. Every element row has an eye (hiding
+// target. The eye and the enable control are deliberately different things
+// and sit in different columns: the eye hides a layer for this session only,
+// the power button is the master's own on/off and stops the layer drawing on
+// every label built from that master. Every element row has an eye (hiding
 // is a temporary skip, unlike the ink-less styling allowNone forbids); the
 // document layers go without for now, except Settings which has neither eye
 // nor asset to hide.
 import {
-  Barcode, ChevronDown, ChevronUp, Eye, EyeOff, Image, Lock, Plus, QrCode, Type,
+  Barcode, ChevronDown, ChevronUp, Eye, EyeOff, Image, Lock, Plus, Power, QrCode, Type,
 } from "lucide-react";
 import { useState } from "react";
 import type { LabelConfig, StyledLine } from "@/types";
@@ -124,7 +127,8 @@ function StyleSummary({ el, cfg }: { el: LabelElement; cfg: LabelConfig }) {
  *  layer id (Background/Mask/Settings — no panel-row equivalent, so the
  *  Document group builds one inline with a plain lookup name and never
  *  inactive/badged). */
-type Row = Pick<PanelRow, "id" | "name"> & Partial<Pick<PanelRow, "variantName" | "inactive" | "locked">>;
+type Row = Pick<PanelRow, "id" | "name">
+  & Partial<Pick<PanelRow, "variantName" | "inactive" | "locked" | "enabled">>;
 
 function LayerRow({
   row, cfg, update, hidden: hiddenSet, onToggleHidden, selected, onSelect,
@@ -177,6 +181,9 @@ function LayerRow({
   // variant is off. Distinct from `hidden` (a session-level eye toggle):
   // this comes from the master/variant resolution, not the user.
   const inactive = !!row.inactive;
+  // The layer's own master-level enable (PanelRow.enabled). Absent on a
+  // Document row, which has no master layer behind it — those are always on.
+  const enabled = row.enabled ?? true;
 
   const toggleEye = (e: React.MouseEvent) => {
     stop(e); // the eye must never change the selection
@@ -303,6 +310,30 @@ function LayerRow({
           {/* Applied-styles accordion, element rows only — the document
               layers have no styles. A read-only digest; editing stays in
               the inspector. */}
+          {/* Master-level enable, master rows only (spec: "each layer
+              disable-able"). NOT the eye two columns left: the eye hides a
+              layer in THIS session and is never recorded, while this is the
+              master's own on/off — disable it here and the layer stops
+              drawing on every label built from this master, saved with it.
+              Hence the power icon rather than a second eye, and the
+              "on every label" wording in both the label and the tooltip. */}
+          {!customLayer && onLayerEdit && (
+            <button
+              type="button"
+              onClick={(e) => { stop(e); onLayerEdit(row.id, { enabled: !enabled }); }}
+              aria-label={enabled ? `Disable ${label} on every label` : `Enable ${label} on every label`}
+              aria-pressed={!enabled}
+              title={enabled
+                ? `Disable ${label} on every label built from this master (the eye only hides it here)`
+                : `Enable ${label} on every label built from this master`}
+              className={cn(
+                "grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70 hover:text-sidebar-foreground [&>svg]:size-3",
+                enabled && "opacity-40 hover:opacity-100",
+              )}
+            >
+              <Power />
+            </button>
+          )}
           {/* Lock. Custom rows write `locked` into their own cfg layer (a
               per-label fact). A MASTER row's lock is master policy (spec:
               Lock, stamped in the master file) and goes through onLayerEdit
@@ -493,8 +524,15 @@ export function LayersPanel(props: {
         <SidebarGroupContent>
           <SidebarMenu>
             {props.rows.map((row) => (
-              // onLayerEdit for master rows only: a custom layer lives in the
-              // config, so its name/lock stay `update` writes.
+              // onLayerEdit for master rows only. A custom layer has no
+              // MasterLayer entry to patch — it lives in cfg.customLayers —
+              // so its name/lock stay `update` writes. Note what that means
+              // NOW: `update` routes to designEdit in Design mode, so adding,
+              // reordering, or locking a custom layer records into
+              // master.defaults.customLayers and every label built from the
+              // master inherits it. That is the transitional shape, not the
+              // destination: Task 5b moves added layers onto master.layers
+              // proper and re-points these handlers.
               <LayerRow key={row.id} row={row} {...rowProps} reorder={reorderFor(row)}
                 onLayerEdit={row.custom ? undefined : props.onLayerEdit} />
             ))}

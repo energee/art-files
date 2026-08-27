@@ -68,6 +68,30 @@ describe("LayersPanel", () => {
     expect(container.querySelector('[aria-label="Collab enabled"]')).toBeNull();
   });
 
+  // The master-level enable, master rows only — distinct from the eye, which
+  // is session-only hiding and stays out of onLayerEdit entirely. Present
+  // only when the panel is given onLayerEdit (Design mode).
+  it("toggles a master layer's enable through onLayerEdit, and never through the eye", () => {
+    const onLayerEdit = vi.fn();
+    const onToggleHidden = vi.fn();
+    renderPanel({ ...shippedProps(), onLayerEdit, onToggleHidden });
+    const row = Array.from(container.querySelectorAll("li"))
+      .find((li) => li.textContent?.includes("Brand"))!;
+    const disable = row.querySelector('[aria-label="Disable Brand on every label"]') as HTMLButtonElement;
+    expect(disable).not.toBeNull();
+    act(() => { disable.click(); });
+    expect(onLayerEdit).toHaveBeenCalledWith("wordmark", { enabled: false });
+    // The eye is a separate control and writes nowhere near the master.
+    act(() => { (row.querySelector('[aria-label="Hide Brand"]') as HTMLButtonElement).click(); });
+    expect(onToggleHidden).toHaveBeenCalledWith("wordmark");
+    expect(onLayerEdit).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves master policy read-only when no onLayerEdit is given", () => {
+    renderPanel(shippedProps());
+    expect(container.querySelector('[aria-label="Disable Brand on every label"]')).toBeNull();
+  });
+
   it("badges a variant-owned row and dims it while the variant is off", () => {
     renderPanel(shippedProps());
     const leadRow = Array.from(container.querySelectorAll("li"))

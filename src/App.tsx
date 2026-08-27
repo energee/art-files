@@ -334,6 +334,22 @@ function download(url: string, name: string) {
  *  recomposed undo as ONE step instead of drifting apart. */
 export type Doc = { cfg: LabelConfig; enabledVariants: string[]; master: Master };
 
+/** The editing target, clamped to something `master` still declares. The
+ *  target is UI state outside history while the variant it names rides IN
+ *  history, so the two can genuinely disagree: undo past a "New variant…"
+ *  drops the variant while the selector still points at it, and opening a
+ *  project whose master has no such variant does the same. Without this,
+ *  applyDesignEdit would map over `variants`, match nothing, and hand back a
+ *  new-but-identical master — past designEditDoc's identity guard — so the
+ *  edit would be silently discarded while the tab went dirty. Falling back to
+ *  the master keeps the edit; App also resets the selector on open (see
+ *  resetDocument) and renders through this, so the UI can't show a variant
+ *  the document has lost. */
+export function clampTarget(master: Master, target: EditTarget): EditTarget {
+  if (target === "master") return "master";
+  return master.variants.some((v) => v.id === target.variant) ? target : "master";
+}
+
 /** The pure doc transition behind a per-LABEL edit: mutate this document's
  *  own config and nothing else. Exactly what every edit did before Design
  *  mode learned to author masters, and still the whole story in Fill mode.
@@ -358,8 +374,9 @@ export function labelEditDoc(doc: Doc, mutate: (c: LabelConfig) => void): Doc {
 export function designEditDoc(
   doc: Doc, target: EditTarget, mutate: (c: LabelConfig) => void,
 ): Doc {
+  const at = clampTarget(doc.master, target);
   const values = valuesFromConfig(doc.master, doc.enabledVariants, doc.cfg);
-  const master = applyDesignEdit(doc.master, target, doc.enabledVariants, values, mutate);
+  const master = applyDesignEdit(doc.master, at, doc.enabledVariants, values, mutate);
   if (master === doc.master) return doc;
   const overrides = configDiff(
     composeConfig(doc.master, doc.enabledVariants, values, undefined).config, doc.cfg);
@@ -367,6 +384,28 @@ export function designEditDoc(
     master, doc.enabledVariants, values,
     Object.keys(overrides).length ? overrides : undefined).config;
   return { cfg, enabledVariants: doc.enabledVariants, master };
+}
+
+/** The pure doc transition behind a layer POLICY edit (rename / enable /
+ *  lock) at `target` — see applyLayerEdit. Layer policy is not part of
+ *  LabelConfig, so it cannot ride designEditDoc's diff. Returns `doc` itself
+ *  when the patch is already what the target stores, so re-picking a layer's
+ *  current name or re-clicking a lock into the same state neither dirties the
+ *  document nor pushes an undo step. (applyLayerEdit always allocates, so
+ *  this guard has to be here, not there — and it compares against the
+ *  TARGET's stored value, which for a variant is its layerOverrides entry,
+ *  not the resolved row the panel is showing.) */
+export function layerEditDoc(
+  doc: Doc, target: EditTarget, layerId: string, patch: Partial<MasterLayer>,
+): Doc {
+  const at = clampTarget(doc.master, target);
+  const current: Partial<MasterLayer> | undefined = at === "master"
+    ? doc.master.layers.find((l) => l.id === layerId)
+    : doc.master.variants.find((v) => v.id === at.variant)?.layerOverrides[layerId];
+  const noop = current !== undefined && Object.entries(patch).every(
+    ([k, v]) => (current as Record<string, unknown>)[k] === v);
+  if (noop) return doc;
+  return { ...doc, master: applyLayerEdit(doc.master, at, layerId, patch) };
 }
 
 /** A file the shell wants this editor to open. seq is monotonic — a new
@@ -462,6 +501,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   // is selected isn't a document edit, and an undone edit shouldn't drag the
   // selector back with it. Defaults to the master.
   const [editingTarget, setEditingTarget] = useState<EditTarget>("master");
+  // …clamped to a variant this master still declares. The selector is UI
+  // state outside history while the variants it names ride IN history, so
+  // undo (or an Open) can leave it pointing at a variant that no longer
+  // exists; every edit AND every render goes through the clamped value so a
+  // stale target can never swallow an edit. See clampTarget.
+  const editTarget = clampTarget(doc.master, editingTarget);
   // The master as of the last open/reset — the baseline the "unsaved master
   // edits" dot compares against. A ref, not state: nothing renders it
   // directly. Identity is the whole test, and it is exact in both directions:
@@ -874,10 +919,19 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  or the editing variant, with cfg recomposed in the SAME history entry.
    *  `coalesce` rides straight through to the history stack, so a gesture
    *  that emits many updates (a drag, an inline text session) still lands as
-   *  one undo step — see useHistory's `pushed`. */
+   *  one undo step — see useHistory's `pushed`.
+   *
+   *  The transition is computed against the doc THIS render sees, so an edit
+   *  that changes nothing can return before marking the tab dirty — a no-op
+   *  must not light up File → Save. The updater still recomputes if it is
+   *  handed a different doc than the one probed (two edits inside one batch),
+   *  so the probe is an optimisation and a dirty-flag decision, never the
+   *  source of truth for what gets stored. */
   const designEdit = (fn: (c: LabelConfig) => void, coalesce?: boolean) => {
+    const next = designEditDoc(doc, editTarget, fn);
+    if (next === doc) return;
     markDirty();
-    setDoc((d) => designEditDoc(d, editingTarget, fn), coalesce);
+    setDoc((d) => (d === doc ? next : designEditDoc(d, editTarget, fn)), coalesce);
   };
 
   /** THE routing rule, in one branch so no call site has to know about it:
@@ -890,12 +944,14 @@ export const DocumentEditor = memo(function DocumentEditor({
     mode === "design" ? designEdit(fn, coalesce) : labelEdit(fn, coalesce);
 
   /** A layer POLICY edit (rename / enable / lock) at the current editing
-   *  target. Layer policy isn't part of LabelConfig, so it can't ride
-   *  `update`'s diff and gets its own entry point (applyLayerEdit). The
+   *  target — layerEditDoc, which is where the no-op guard lives. Layer
+   *  policy isn't part of LabelConfig, so it can't ride `update`'s diff. The
    *  layers panel's eye is NOT this: hiding is session-only, never recorded. */
   const layerEdit = (layerId: string, patch: Partial<MasterLayer>) => {
+    const next = layerEditDoc(doc, editTarget, layerId, patch);
+    if (next === doc) return; // already what the target stores — see layerEditDoc
     markDirty();
-    setDoc((d) => ({ ...d, master: applyLayerEdit(d.master, editingTarget, layerId, patch) }));
+    setDoc((d) => (d === doc ? next : layerEditDoc(d, editTarget, layerId, patch)));
   };
 
   /** The Editing selector's "New variant…": mint the variant, enable it (a
@@ -1544,6 +1600,12 @@ export const DocumentEditor = memo(function DocumentEditor({
     // The freshly opened master is the baseline the dirty dot compares
     // against — see pristineMaster.
     pristineMaster.current = master;
+    // The Editing selector is per-document UI state that history does not
+    // carry, so an open has to reset it: the incoming master rarely declares
+    // the outgoing document's variants, and pointing the selector at one it
+    // doesn't have is the stale-target hole clampTarget guards. Resetting
+    // here means the clamp is a backstop, not the everyday path.
+    setEditingTarget("master");
     swapLoaded(setTexture, null);
     swapLoaded(setMask, null);
     swapLoaded(setCollabLeft, null);
@@ -2021,14 +2083,14 @@ export const DocumentEditor = memo(function DocumentEditor({
                 variant checkboxes — no styling, no layers panel (spec: UI). */}
             {mode === "design"
               ? <>
-                  <EditingTarget master={master} target={editingTarget}
+                  <EditingTarget master={master} target={editTarget}
                     onTarget={setEditingTarget} onNewVariant={addAndSelectVariant}
                     dirty={masterDirty} />
                   <LayersPanel cfg={cfg} update={update} hidden={hiddenLayers} mode={mode}
                     onToggleHidden={toggleHidden} selected={selected} onSelect={pick}
                     onAddLayer={addCustomLayer} onMoveCustomLayer={moveCustomLayer}
                     onLayerEdit={layerEdit} rows={panelLayerRows} />
-                  <TargetFields master={master} target={editingTarget} />
+                  <TargetFields master={master} target={editTarget} />
                 </>
               : <FieldList master={master} enabledVariants={enabledVariants} cfg={cfg}
                   onValue={onFieldValue} onVariant={setVariant} />}

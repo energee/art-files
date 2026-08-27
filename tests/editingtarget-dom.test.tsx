@@ -135,7 +135,9 @@ describe("EditingTarget", () => {
     renderFields({ master: masterWithCollabField(), target: { variant: "collab" } });
     const variantFields = container.querySelector("#editing-target-fields")!;
     expect(variantFields.textContent).toContain("Pairing");
-    for (const label of ["Beer name", "ABV", "UPC"]) {
+    // All five master labels, not a sample: the point of the assertion is
+    // that a variant target shows its OWN fields and nothing inherited.
+    for (const label of ["Beer name", "Style", "ABV", "Description", "UPC"]) {
       expect(variantFields.textContent).not.toContain(label);
     }
   });

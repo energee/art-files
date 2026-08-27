@@ -11,7 +11,8 @@
 // per-label; everything else edited in Design mode is a master/variant edit.
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { type Doc, designEditDoc, labelEditDoc } from "../src/App";
+import { type Doc, clampTarget, designEditDoc, labelEditDoc, layerEditDoc } from "../src/App";
+import { addVariant } from "../src/model/document";
 import { composeConfig, configDiff, valuesFromConfig } from "../src/model/document";
 import { lolevMaster } from "../src/model/lolev";
 import { dragTarget } from "../src/elements";
@@ -97,5 +98,77 @@ describe("drag routing by mode", () => {
     expect(stacks.past).toHaveLength(1);
     expect(stacks.past[0]).toBe(before);          // one undo returns to pre-drag
     expect(stacks.present.master.defaults.logo?.offsetY).toBe(18); // final value kept
+  });
+});
+
+// I1: the Editing selector is UI state outside history while the variants it
+// names ride IN history, so the two can disagree. Without clampTarget,
+// applyDesignEdit maps over `variants`, matches nothing, and returns a
+// new-but-identical master — which slips past designEditDoc's identity guard,
+// so the document goes dirty, a history entry is pushed, and the edit
+// vanishes.
+describe("a target naming a variant the master no longer declares", () => {
+  /** The undo path, exactly: create "Winter" (the selector moves onto it),
+   *  then undo — history hands back the pre-add doc while the selector still
+   *  says {variant:"winter"}. */
+  function afterUndoingTheNewVariant(): { before: Doc; target: { variant: string } } {
+    const before = docWithCollab();
+    const { master, id } = addVariant(before.master, "Winter");
+    const withVariant: Doc = { ...before, master };
+    expect(withVariant.master.variants.some((v) => v.id === id)).toBe(true);
+    // undo === the previous history entry, which is `before`
+    expect(before.master.variants.some((v) => v.id === id)).toBe(false);
+    return { before, target: { variant: id } };
+  }
+
+  it("clamps to the master", () => {
+    const { before, target } = afterUndoingTheNewVariant();
+    expect(clampTarget(before.master, target)).toBe("master");
+    // A variant the master DOES declare is left alone.
+    expect(clampTarget(before.master, { variant: "collab" })).toEqual({ variant: "collab" });
+  });
+
+  it("keeps the design edit instead of silently discarding it", () => {
+    const { before, target } = afterUndoingTheNewVariant();
+    const next = designEditDoc(before, target, nudgeLogo(18));
+    expect(next.master.defaults.logo?.offsetY).toBe(18);
+    expect(next.cfg.logo.offsetY).toBe(18);
+    expect(next.master.variants.some((v) => v.id === "winter")).toBe(false);
+  });
+
+  it("still reports a genuine no-op by identity, rather than a phantom edit", () => {
+    const { before, target } = afterUndoingTheNewVariant();
+    const doc = designEditDoc(before, "master", nudgeLogo(18));
+    // Same value again, through the STALE target: nothing changed, so the doc
+    // comes back by identity — no dirty flag, no undo step.
+    expect(designEditDoc(doc, target, nudgeLogo(18))).toBe(doc);
+  });
+
+  it("routes a layer policy edit to the master too", () => {
+    const { before, target } = afterUndoingTheNewVariant();
+    const next = layerEditDoc(before, target, "wordmark", { enabled: false });
+    expect(next.master.layers.find((l) => l.id === "wordmark")!.enabled).toBe(false);
+  });
+});
+
+describe("layer policy edits", () => {
+  it("record on the master, and on a variant's layerOverrides", () => {
+    const doc = docWithCollab();
+    expect(layerEditDoc(doc, "master", "wordmark", { name: "Logotype" })
+      .master.layers.find((l) => l.id === "wordmark")!.name).toBe("Logotype");
+    expect(layerEditDoc(doc, { variant: "collab" }, "wordmark", { name: "Logotype" })
+      .master.variants.find((v) => v.id === "collab")!.layerOverrides.wordmark)
+      .toEqual({ name: "Logotype" });
+  });
+
+  it("M1: a patch the target already stores returns the doc by identity", () => {
+    const doc = docWithCollab();
+    // The shipped wordmark is already enabled and already named "Brand".
+    expect(layerEditDoc(doc, "master", "wordmark", { enabled: true })).toBe(doc);
+    expect(layerEditDoc(doc, "master", "wordmark", { name: "Brand" })).toBe(doc);
+    // …and for a VARIANT target the comparison is against its own stored
+    // override, not the resolved row: the variant overrides nothing for this
+    // layer yet, so the same patch IS a change there.
+    expect(layerEditDoc(doc, { variant: "collab" }, "wordmark", { name: "Brand" })).not.toBe(doc);
   });
 });

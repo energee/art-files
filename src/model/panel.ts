@@ -17,6 +17,13 @@ export interface PanelRow {
    *  can be reordered or removed. */
   custom: boolean;
   locked: boolean;
+  /** The layer's own master-level enable (MasterLayer.enabled, as resolved
+   *  for the current variants) — what the panel's enable control writes back
+   *  through applyLayerEdit. Distinct from `inactive`, which is ALSO false
+   *  when the layer is enabled but its owning variant is off: a row can be
+   *  enabled and still not draw. Always true for a custom row, which has no
+   *  master-level disable. */
+  enabled: boolean;
 }
 
 /** The resolved master layers, in draw order, then `cfg.customLayers` in
@@ -37,6 +44,7 @@ export function panelRows(
     inactive: disabledLayers.has(l.id),
     custom: false,
     locked: !!l.locked,
+    enabled: l.enabled,
   }));
   const customRows: PanelRow[] = (cfg.customLayers ?? []).map((l) => ({
     id: l.id,
@@ -44,6 +52,7 @@ export function panelRows(
     inactive: false,
     custom: true,
     locked: !!l.locked,
+    enabled: true,
   }));
   return [...masterRows, ...customRows];
 }

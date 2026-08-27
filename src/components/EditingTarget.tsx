@@ -40,9 +40,11 @@ export function EditingTarget(props: {
   const [draft, setDraft] = useState("");
 
   // A target naming a variant the master no longer declares falls back to its
-  // bare id with no fields, rather than silently reading as "Master" — App
-  // can't reach that state today, but a stale target must never look like it
-  // is editing the master.
+  // bare id rather than silently reading as "Master". App clamps the target
+  // before it gets here (App.tsx's clampTarget, which a stale target reaches
+  // through undo past a "New variant…" or an Open onto a different master),
+  // so this is a backstop — but a stale target must never look like it is
+  // editing the master.
   const variant = props.target === "master"
     ? undefined
     : props.master.variants.find((v) => v.id === (props.target as { variant: string }).variant);
