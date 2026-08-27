@@ -40,7 +40,7 @@ import { parseLabelFile } from "@/model/labelfile";
 import { MASTER_EXT, parseMasterFile, serializeMaster } from "@/model/masterfile";
 import { rebind } from "@/model/rebind";
 import { lolevMaster } from "@/model/lolev";
-import { masterIndex, rememberMaster, resolveMasterById } from "@/masters";
+import { SHIPPED_MASTER_ID, masterIndex, rememberMaster, resolveMasterById } from "@/masters";
 import type { FieldDecl, FieldValue, LabelFileV2, Master, MasterLayer } from "@/model/types";
 import { setPath } from "@/model/resolve";
 import { makeHiddenPropsEqual } from "@/tabs";
@@ -63,6 +63,7 @@ import {
 } from "@/components/StyleProperties";
 import { LayersPanel } from "@/components/LayersPanel";
 import { EditingTarget, TargetFields } from "@/components/EditingTarget";
+import { MasterPicker } from "@/components/MasterPicker";
 import { FieldList } from "@/components/FieldList";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
 import {
@@ -339,7 +340,15 @@ function download(url: string, name: string) {
  *  produced — and, since Design mode authors the master rather than the label
  *  (see `designEdit`), so a design edit's new master and the config it
  *  recomposed undo as ONE step instead of drifting apart. */
-export type Doc = { cfg: LabelConfig; enabledVariants: string[]; master: Master };
+/** dormant rides in Doc (not just the persisted LabelFileV2) so a LIVE
+ *  session's chain of rebinds stays non-destructive too: picking master B
+ *  then master A back again, both from the picker, without an intervening
+ *  save, still has to restore what B's rebind benched. Absent = nothing
+ *  benched (the common case — a document that has never been rebound). */
+export type Doc = {
+  cfg: LabelConfig; enabledVariants: string[]; master: Master;
+  dormant?: LabelFileV2["dormant"];
+};
 
 /** The editing target, clamped to something `master` still declares. The
  *  target is UI state outside history while the variant it names rides IN
@@ -390,7 +399,7 @@ export function designEditDoc(
   const cfg = composeConfig(
     master, doc.enabledVariants, values,
     Object.keys(overrides).length ? overrides : undefined).config;
-  return { cfg, enabledVariants: doc.enabledVariants, master };
+  return { cfg, enabledVariants: doc.enabledVariants, master, dormant: doc.dormant };
 }
 
 /** The pure doc transition behind a layer POLICY edit (rename / enable /
@@ -436,7 +445,24 @@ export function resetOverrideDoc(doc: Doc, target: EditTarget, path: string): Do
   const cfg = composeConfig(
     master, doc.enabledVariants, values,
     Object.keys(overrides).length ? overrides : undefined).config;
-  return { cfg, enabledVariants: doc.enabledVariants, master };
+  return { cfg, enabledVariants: doc.enabledVariants, master, dormant: doc.dormant };
+}
+
+/** The document's current state as a LabelFileV2 (minus `masterHint`, which
+ *  only Save fills in) — values/enabledVariants recomposed off the live cfg,
+ *  plus whatever `doc.dormant` is still benched. This is "the label" as far
+ *  as rebind is concerned: MasterPicker's preview, the picker's commit, File
+ *  → Open Master, and Save Project all have to agree on what it is, so it's
+ *  computed in exactly one place. */
+export function labelSnapshot(doc: Doc): Omit<LabelFileV2, "masterHint"> {
+  const values = valuesFromConfig(doc.master, doc.enabledVariants, doc.cfg);
+  const overrides = configDiff(
+    composeConfig(doc.master, doc.enabledVariants, values, undefined).config, doc.cfg);
+  return {
+    formatVersion: 2, masterId: doc.master.id, enabledVariants: doc.enabledVariants, values,
+    ...(Object.keys(overrides).length ? { overrides } : {}),
+    ...(doc.dormant ? { dormant: doc.dormant } : {}),
+  };
 }
 
 /** A file the shell wants this editor to open. seq is monotonic — a new
@@ -1661,14 +1687,17 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  history) and clear every asset slot. A slot added later must be
    *  cleared here so an open can't leak the previous project's asset.
    *  `enabledVariants` and `master` default to [] / the shipped Lolev master
-   *  for a bare New Project; the v2 open path passes the label's real set and
-   *  its resolved master directly so all three land in the same history step,
-   *  rather than a second write right after (which could leak a stale master
-   *  into the opened document depending on call order). */
+   *  for a bare New Project; the v2 open path passes the label's real set,
+   *  its resolved master, and whatever `dormant` bench the file carried
+   *  (Task 4b — a save/load round-trip must not empty the bench) directly so
+   *  all four land in the same history step, rather than a second write
+   *  right after (which could leak a stale master into the opened document
+   *  depending on call order). */
   function resetDocument(
     config: LabelConfig, enabledVariants: string[] = [], master: Master = lolevMaster(),
+    dormant?: LabelFileV2["dormant"],
   ) {
-    resetDoc({ cfg: config, enabledVariants, master });
+    resetDoc({ cfg: config, enabledVariants, master, dormant });
     // The freshly opened master is the baseline the dirty dot compares
     // against — see pristineMaster.
     pristineMaster.current = master;
@@ -1715,16 +1744,13 @@ export const DocumentEditor = memo(function DocumentEditor({
       c ? { name: c.name, bytes: c.image.kind === "svg" ? strToU8(c.image.svg) : c.image.bytes } : undefined;
     // Always writes v2 (see labelfile.ts): values are the fields the master
     // and its enabled variants declare; overrides are whatever the user's
-    // config still deviates from a fresh compose of those exact values — the
-    // same shape openProject's v2 branch expects back.
-    const values = valuesFromConfig(master, enabledVariants, cfg);
-    const overrides = configDiff(
-      composeConfig(master, enabledVariants, values, undefined).config, cfg);
+    // config still deviates from a fresh compose of those exact values —
+    // the same shape openProject's v2 branch expects back. dormant (Task
+    // 4b) rides along too, so a save/load round-trip never empties the
+    // bench a rebind built up.
     const label: LabelFileV2 = {
-      formatVersion: 2, masterId: master.id,
+      ...labelSnapshot(doc),
       masterHint: masterIndex()[master.id]?.path,
-      enabledVariants, values,
-      ...(Object.keys(overrides).length ? { overrides } : {}),
     };
     const customImageEntries = Object.entries(customImages);
     const zip = packLabelV2(label, {
@@ -1874,36 +1900,84 @@ export const DocumentEditor = memo(function DocumentEditor({
     }
   }
 
-  /** File → Open Master…: register the newly opened master in the library
-   *  index, then re-aim THIS document at it — the label's current values
-   *  routed through rebind (model/rebind.ts) onto the new master's fields,
-   *  recomposing `cfg` in the same history step as the master swap so undo
-   *  restores both together (the same shape designEditDoc uses). rebind is
-   *  destructive today (Task 4b makes it non-destructive and fronts this
-   *  call with a preview-then-commit picker); until then, anything it drops
-   *  surfaces as an advisory note in the same slot a lossy compose uses,
-   *  never a silent loss. */
-  function applyOpenedMaster(m: Master, path: string) {
-    rememberMaster(m, path);
-    const values = valuesFromConfig(doc.master, doc.enabledVariants, doc.cfg);
-    const overrides = configDiff(
-      composeConfig(doc.master, doc.enabledVariants, values, undefined).config, doc.cfg);
-    const label: LabelFileV2 = {
-      formatVersion: 2, masterId: doc.master.id, enabledVariants: doc.enabledVariants, values,
-      ...(Object.keys(overrides).length ? { overrides } : {}),
-    };
-    const { label: rebound, dropped, disabledVariants } = rebind(label, m);
-    const composed = composeConfig(m, rebound.enabledVariants, rebound.values, rebound.overrides);
-    pristineMaster.current = m; // freshly opened: clean by definition
+  /** Re-aim THIS document at `target` — the live label (labelSnapshot,
+   *  folding in whatever `doc.dormant` is already benched) routed through
+   *  rebind (model/rebind.ts, non-destructive since Task 4b) onto the new
+   *  master's fields, recomposing `cfg` in the same history step as the
+   *  master swap so undo restores all of it together (the same shape
+   *  designEditDoc uses). Shared by File → Open Master and the master
+   *  picker's "Continue" — both are "re-aim this document at a different
+   *  master", just reached from different UI, and both have to agree on
+   *  what benching looks like. Whatever the rebind can't match goes onto
+   *  the new doc's `dormant` (never dropped) and is also reported as an
+   *  advisory note in the same slot a lossy compose uses. */
+  function commitRebind(target: Master) {
+    const { label: rebound, dropped, disabledVariants } = rebind(labelSnapshot(doc), target);
+    const composed = composeConfig(target, rebound.enabledVariants, rebound.values, rebound.overrides);
+    pristineMaster.current = target; // freshly bound: clean by definition
     setEditingTarget("master"); // the old target may not exist on the new master (clampTarget also guards this)
-    setDoc({ cfg: composed.config, enabledVariants: rebound.enabledVariants, master: m });
+    setDoc({
+      cfg: composed.config, enabledVariants: rebound.enabledVariants, master: target,
+      dormant: rebound.dormant,
+    });
     markDirty(); // the label now names a different master — a real, unsaved change
     const notes = [...composed.warnings];
     if (dropped.length)
-      notes.push(`${dropped.length} value${dropped.length === 1 ? "" : "s"} dropped`);
+      notes.push(`${dropped.length} value${dropped.length === 1 ? "" : "s"} benched`);
     if (disabledVariants.length)
-      notes.push(`${disabledVariants.length} variant${disabledVariants.length === 1 ? "" : "s"} disabled`);
+      notes.push(`${disabledVariants.length} variant${disabledVariants.length === 1 ? "" : "s"} benched`);
     setLoadError(notes.length ? "Note: " + notes.join(" · ") : "");
+  }
+
+  /** File → Open Master…: register the newly opened master in the library
+   *  index, then commitRebind onto it. */
+  function applyOpenedMaster(m: Master, path: string) {
+    rememberMaster(m, path);
+    commitRebind(m);
+  }
+
+  /** MasterPicker's "pick a library master" commit path (the preview's
+   *  Continue): same commitRebind Open Master uses, plus adopting the
+   *  picked master's known file identity the way resetDocument does for an
+   *  Open, so a later Save Master writes back to the right file instead of
+   *  prompting. */
+  function pickLibraryMaster(target: Master) {
+    masterFileHandle.current = null;
+    masterFilePath.current = isTauri() ? masterIndex()[target.id]?.path ?? null : null;
+    commitRebind(target);
+  }
+
+  /** MasterPicker's "Duplicate as new master…": clone the current master
+   *  under a fresh id (minted the same way mintCustomAssetId mints custom
+   *  layer ids — a short random suffix, not a slug: a master's display name
+   *  is free text, and slugifying it would leave two "Lolev copy" clones
+   *  colliding), keep everything else identical, and rebind straight onto
+   *  the clone. A clone always matches its parent field-for-field, so this
+   *  commitRebind never benches anything — the app's answer to "start a new
+   *  master" without a blank-slate wizard. Not registered in the library
+   *  index: like a bare New Project, it has no file yet — Save Master
+   *  registers it once it does, exactly like a freshly opened master's
+   *  masterFileHandle/masterFilePath start clear until it is saved. */
+  function duplicateMaster(name: string) {
+    const clone: Master = { ...master, id: `master-${crypto.randomUUID().slice(0, 8)}`, name };
+    masterFileHandle.current = null;
+    masterFilePath.current = null;
+    commitRebind(clone);
+  }
+
+  /** MasterPicker's library listing: the shipped Lolev master plus every
+   *  master masters.ts's index remembers, id -> display name only — the
+   *  full Master is resolved lazily on pick (see MasterPicker's `resolve`
+   *  prop), so opening the dropdown never reads a file. Recomputed on every
+   *  render like every other masterIndex() read in this file (e.g.
+   *  masterFilePath above) — the index is a small localStorage blob, not
+   *  worth memoizing. */
+  function libraryEntries(): Record<string, { name: string }> {
+    const entries: Record<string, { name: string }> = {
+      [SHIPPED_MASTER_ID]: { name: lolevMaster().name },
+    };
+    for (const [id, e] of Object.entries(masterIndex())) entries[id] = { name: e.name };
+    return entries;
   }
 
   /** File → Open Master…: FS-Access picker where available (a writable
@@ -1998,7 +2072,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         }
         // Config, variants and master all land in ONE history step (see
         // resetDocument), so no call order can leak a stale master here.
-        resetDocument(c.config, openedVariants, m);
+        resetDocument(c.config, openedVariants, m, parsed.dormant);
         warnings = c.warnings; // advisory only — a lossy compose still opens
       } else {
         const parsedCfg = parseConfigFile(unpacked.config!);
@@ -2302,12 +2376,17 @@ export const DocumentEditor = memo(function DocumentEditor({
         <Sidebar collapsible="offcanvas">
           <SidebarContent>
             {/* Design's sidebar, scoped by the selector and in the spec's
-                order: the Editing selector, the layers list, then the fields
-                of the CURRENT target only (the inspector is the right-hand
-                column below). Fill shows the label, the field list, and
-                variant checkboxes — no styling, no layers panel (spec: UI). */}
+                order: the master picker, the Editing selector, the layers
+                list, then the fields of the CURRENT target only (the
+                inspector is the right-hand column below). Fill shows the
+                label, the field list, and variant checkboxes — no styling,
+                no layers panel (spec: UI). */}
             {mode === "design"
               ? <>
+                  <MasterPicker master={master} label={labelSnapshot(doc)}
+                    library={libraryEntries()} resolve={resolveMasterById}
+                    onMaster={pickLibraryMaster} onOpenMaster={() => void openMasterPicker()}
+                    onDuplicate={duplicateMaster} />
                   <EditingTarget master={master} target={editTarget}
                     onTarget={setEditingTarget} onNewVariant={addAndSelectVariant}
                     dirty={masterDirty} />

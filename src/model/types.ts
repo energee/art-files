@@ -98,6 +98,11 @@ export interface LabelFileV2 {
    *  (spec: Migration — "preserves nonstandard styling as label-level
    *  overrides"). Absent = none. */
   overrides?: DeepPartial<LabelConfig>;
+  /** Values and variant toggles that the CURRENT master does not declare,
+   *  kept verbatim so aiming a label at another master and back loses
+   *  nothing. Matching is by id, so a variant id the new master also
+   *  declares comes straight back off the bench. */
+  dormant?: { values: Record<string, FieldValue>; variants: string[] };
 }
 
 function fail(msg: string): never { throw new Error(`Invalid master file: ${msg}`); }
