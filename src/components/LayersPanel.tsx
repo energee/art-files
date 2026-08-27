@@ -346,9 +346,9 @@ export function LayersPanel(props: {
           </SidebarGroupContent>
         </SidebarGroup>
       ))}
-      {/* Master-variation layers, in stored order — a "Custom" group of its
+      {/* Master-variant layers, in stored order — a "Custom" group of its
           own rather than folded into "Beer", since these are per-LABEL, not
-          even per-beer: a one-off addition to a single variation, not
+          even per-beer: a one-off addition to a single variant, not
           something every release of the same beer carries. Design-only,
           matching the "Add layer" menu below it. */}
       {props.mode === "design" && (

@@ -4,7 +4,7 @@ import type { LabelFileV2 } from "../src/model/types";
 
 const v2: LabelFileV2 = {
   formatVersion: 2, masterId: "m1", masterHint: "lolev.master",
-  enabledVariations: ["collab"], values: { name: "HAZY", abv: "6.2" },
+  enabledVariants: ["collab"], values: { name: "HAZY", abv: "6.2" },
 };
 
 describe("label file v2", () => {

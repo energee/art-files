@@ -2,21 +2,21 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** The master owns a real, ordered layer list; the layers panel renders *that* list flat in draw order instead of the hardcoded Beer/Collab/Template registry groups; the collab block dissolves into layers owned by the Collab variation; custom layers can be reordered front/back.
+**Goal:** The master owns a real, ordered layer list; the layers panel renders *that* list flat in draw order instead of the hardcoded Beer/Collab/Template registry groups; the collab block dissolves into layers owned by the Collab variant; custom layers can be reordered front/back.
 
-**Architecture:** Layers stay **thin** — a `MasterLayer` carries identity and policy (`id`, `name`, `enabled`, `locked`, owning `variation`), never style or content. Built-in layer ids are the existing `ElementId`s, so `planLabel` and every renderer are untouched; `resolve()` gains one step that applies layer policy to the `LabelConfig` it already produces (disabled → a skip set the app folds into its existing `skip`, locked → the `Positioned.locked` fields drag already honors). This is the spec's Approach 1 held one notch further, not the rejected clean-slate rewrite.
+**Architecture:** Layers stay **thin** — a `MasterLayer` carries identity and policy (`id`, `name`, `enabled`, `locked`, owning `variant`), never style or content. Built-in layer ids are the existing `ElementId`s, so `planLabel` and every renderer are untouched; `resolve()` gains one step that applies layer policy to the `LabelConfig` it already produces (disabled → a skip set the app folds into its existing `skip`, locked → the `Positioned.locked` fields drag already honors). This is the spec's Approach 1 held one notch further, not the rejected clean-slate rewrite.
 
 **Tech Stack:** TypeScript, vitest, existing React components. No new dependencies.
 
-**Spec:** `docs/superpowers/specs/2026-08-27-master-variation-design.md` (sections "Layer" — no reserved ids, no sacred built-ins; "Lock, snap & guides"; "Migration" — collab becomes a variation)
+**Spec:** `docs/superpowers/specs/2026-08-27-master-variation-design.md` (sections "Layer" — no reserved ids, no sacred built-ins; "Lock, snap & guides"; "Migration" — collab becomes a variant)
 
-**Plan sequence:** Plans 1–4 complete (v0.1.34 pushed). This is 5a; 5b is master authoring (Design edits write the master); 6 is the Proof rename; 7 is presets→masters migration.
+**Plan sequence:** Plans 1–4 complete (v0.1.35 pushed, including the Variation→Variant rename). This is 5a; 5b is master authoring (Design edits write the master); 6 is the Proof rename; 7 is presets→masters migration.
 
 ## Global Constraints
 
 - No new npm dependencies. Branch `design/master-variation`. Do NOT merge PR #41 — merging auto-publishes a release.
 - After each task: `npx vitest run` green, `npx tsc --noEmit` clean, then commit (sentence-style, no Co-Authored-By).
-- **Print-output invariant:** the shipped master resolved with no variations must produce byte-identical PDF/PSD/plan output. The existing byte-identity locks (`tests/pdf-build.test.ts`, `tests/psd-build.test.ts`, `tests/custom-layers.test.ts`'s plan lock) are the gate — they must stay green unmodified.
+- **Print-output invariant:** the shipped master resolved with no variants must produce byte-identical PDF/PSD/plan output. The existing byte-identity locks (`tests/pdf-build.test.ts`, `tests/psd-build.test.ts`, `tests/custom-layers.test.ts`'s plan lock) are the gate — they must stay green unmodified.
 - `planLabel` and the three backends (`src/pdf/build.ts`, `src/canvas/draw.ts`, `src/psd/build.ts`) are NOT edited by this plan. If a task seems to need it, the task is wrong — stop and report.
 - Master edits are not yet persisted (that is 5b): `lolevMaster()` in code remains the source. Nothing in this plan may add a UI that writes the master.
 - Known pre-existing flake: `tests/pdf-build.test.ts`'s byte-compare occasionally fails on a PDF timestamp straddling a second boundary. Re-run once; it never produces false passes.
@@ -33,7 +33,7 @@
 - Test: `tests/model-master-layers.test.ts` (create)
 
 **Interfaces:**
-- Consumes: existing `Master`, `Variation`, `FieldDecl` (`src/model/types.ts`); `ElementId` values as documented below (do NOT import `src/elements.ts` into `src/model/` — that would drag the UI registry into the pure core; the ids are declared as plain strings with a pointer comment, the same deliberate duplication `FieldDecl.symbology` already uses).
+- Consumes: existing `Master`, `Variant`, `FieldDecl` (`src/model/types.ts`); `ElementId` values as documented below (do NOT import `src/elements.ts` into `src/model/` — that would drag the UI registry into the pure core; the ids are declared as plain strings with a pointer comment, the same deliberate duplication `FieldDecl.symbology` already uses).
 - Produces:
 
 ```ts
@@ -54,27 +54,27 @@ export interface MasterLayer {
   enabled: boolean;
   /** Fillers cannot move it (spec: Lock). Absent = unlocked. */
   locked?: boolean;
-  /** Which variation owns this layer; absent = the master owns it. A layer
-   *  owned by a disabled variation does not draw. This is how the collab
+  /** Which variant owns this layer; absent = the master owns it. A layer
+   *  owned by a disabled variant does not draw. This is how the collab
    *  block stops being a special case: its three layers are ordinary master
-   *  layers tagged `variation: "collab"`. Deliberate extension of the spec's
-   *  `variation.layers` (which stays, for layers a variation APPENDS): the
+   *  layers tagged `variant: "collab"`. Deliberate extension of the spec's
+   *  `variant.layers` (which stays, for layers a variant APPENDS): the
    *  collab layers sit at fixed positions in the draw order, which an
    *  appended list cannot express. */
-  variation?: string;
+  variant?: string;
 }
 
 // Master gains:
   /** Every layer, in DRAW ORDER (the order planLabel emits them). */
   layers: MasterLayer[];
 
-// Variation.layerOverrides tightens from Record<string, unknown> to:
+// Variant.layerOverrides tightens from Record<string, unknown> to:
   layerOverrides: Record<string, Partial<MasterLayer>>;
 ```
 
-`lolevMaster()` declares its layers in `planLabel`'s exact draw order (read `src/plan.ts`'s `planLabel` top-to-bottom to confirm before writing; as of this plan it is): `volume`, `abv`, `description`, `collabLead`, `collabLeft`, `wordmark`, `logo`, `collabCenter`, `name`, `styleLine`, `handleAddress`, `warning`, `storeCold`, `qr`, `barcode`. Names follow the spec's rename of the wordmark to **Brand**; the rest reuse the labels `src/elements.ts`'s `ELEMENTS` already carries (Volume, ABV, Description, Lead-In, Text Logo, Brand, Logo, Graphic Logo, Name, Style, Info, Warning, Store cold, QR, Barcode). The three collab layers carry `variation: "collab"`. `warning` ships `locked: true` (spec: the warning is correct-by-default); everything else ships unlocked, and every layer ships `enabled: true`.
+`lolevMaster()` declares its layers in `planLabel`'s exact draw order (read `src/plan.ts`'s `planLabel` top-to-bottom to confirm before writing; as of this plan it is): `volume`, `abv`, `description`, `collabLead`, `collabLeft`, `wordmark`, `logo`, `collabCenter`, `name`, `styleLine`, `handleAddress`, `warning`, `storeCold`, `qr`, `barcode`. Names follow the spec's rename of the wordmark to **Brand**; the rest reuse the labels `src/elements.ts`'s `ELEMENTS` already carries (Volume, ABV, Description, Lead-In, Text Logo, Brand, Logo, Graphic Logo, Name, Style, Info, Warning, Store cold, QR, Barcode). The three collab layers carry `variant: "collab"`. `warning` ships `locked: true` (spec: the warning is correct-by-default); everything else ships unlocked, and every layer ships `enabled: true`.
 
-`parseMaster` gains validation: `layers` must be an array; every layer needs a non-empty string `id` and `name` and a boolean `enabled`; duplicate layer ids fail; a `variation` naming no declared variation fails.
+`parseMaster` gains validation: `layers` must be an array; every layer needs a non-empty string `id` and `name` and a boolean `enabled`; duplicate layer ids fail; a `variant` naming no declared variant fails.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -92,8 +92,8 @@ describe("lolevMaster layers", () => {
       "storeCold", "qr", "barcode",
     ]);
   });
-  it("tags the collab block as the Collab variation's layers", () => {
-    const owned = lolevMaster().layers.filter((l) => l.variation === "collab");
+  it("tags the collab block as the Collab variant's layers", () => {
+    const owned = lolevMaster().layers.filter((l) => l.variant === "collab");
     expect(owned.map((l) => l.id)).toEqual(["collabLead", "collabLeft", "collabCenter"]);
   });
   it("renames the wordmark to Brand and ships every layer enabled", () => {
@@ -123,9 +123,9 @@ describe("parseMaster layer validation", () => {
       { id: "a", name: "A", enabled: true }, { id: "a", name: "A2", enabled: true },
     ]))).toThrow(/duplicate/i);
   });
-  it("rejects a layer owned by an undeclared variation", () => {
+  it("rejects a layer owned by an undeclared variant", () => {
     expect(() => parseMaster(withLayers([
-      { id: "a", name: "A", enabled: true, variation: "nope" },
+      { id: "a", name: "A", enabled: true, variant: "nope" },
     ]))).toThrow(/nope/);
   });
 });
@@ -138,7 +138,7 @@ Expected: FAIL — `lolevMaster().layers` is undefined.
 
 - [ ] **Step 3: Implement**
 
-Add `MasterLayer` and the `Master.layers` field per the Interfaces block, tighten `Variation.layerOverrides`, extend `parseMaster` with the validation above (follow the existing `fail(...)` idiom in that function), and add the `layers` array to `lolevMaster()`.
+Add `MasterLayer` and the `Master.layers` field per the Interfaces block, tighten `Variant.layerOverrides`, extend `parseMaster` with the validation above (follow the existing `fail(...)` idiom in that function), and add the `layers` array to `lolevMaster()`.
 
 - [ ] **Step 4: Run the tests and typecheck**
 
@@ -149,7 +149,7 @@ Expected: all green. Nothing consumes `layers` yet, so no other suite can move.
 
 ```bash
 git add src/model/types.ts src/model/lolev.ts tests/model-master-layers.test.ts
-git commit -m "Model: the master owns an ordered layer list, with the collab block tagged as its variation's."
+git commit -m "Model: the master owns an ordered layer list, with the collab block tagged as its variant's."
 ```
 
 ---
@@ -167,14 +167,14 @@ git commit -m "Model: the master owns an ordered layer list, with the collab blo
 
 ```ts
 // src/model/resolve.ts — resolve()'s return type gains:
-  /** Layer ids that must not draw: master-disabled, or owned by a variation
+  /** Layer ids that must not draw: master-disabled, or owned by a variant
    *  that is not enabled. The app folds these into the same `skip` set the
    *  layers-panel eyes already feed planLabel — the renderers stay untouched
    *  (spec: Approach 1). */
   disabledLayers: Set<string>;
-  /** The resolved layers, in draw order, each with its owning variation —
-   *  what the layers panel lists. Variation-owned layers are INCLUDED even
-   *  when their variation is off (they appear dimmed in Design mode); the
+  /** The resolved layers, in draw order, each with its owning variant —
+   *  what the layers panel lists. Variant-owned layers are INCLUDED even
+   *  when their variant is off (they appear dimmed in Design mode); the
    *  `disabledLayers` set is what decides drawing. */
   layers: MasterLayer[];
 
@@ -183,8 +183,8 @@ git commit -m "Model: the master owns an ordered layer list, with the collab blo
 ```
 
 Resolution rules (binding, applied after the existing merge + value steps, before returning):
-1. Start from `master.layers` in order; for each enabled variation, apply its `layerOverrides[id]` as a shallow patch onto the matching layer, then append its own `layers` (spec's appended-layer path — none ship today, but the code path exists and is tested).
-2. `disabledLayers` = every layer with `enabled === false`, plus every layer whose `variation` is set and not in `enabledVariations`.
+1. Start from `master.layers` in order; for each enabled variant, apply its `layerOverrides[id]` as a shallow patch onto the matching layer, then append its own `layers` (spec's appended-layer path — none ship today, but the code path exists and is tested).
+2. `disabledLayers` = every layer with `enabled === false`, plus every layer whose `variant` is set and not in `enabledVariants`.
 3. **Lock is a master default, not a label fact (5a only):** for each layer with `locked === true` whose id names a `Positioned` config field (`logo`, `collabLeft`, `collabCenter`), set `config.<id>.locked = true`. Because `composeConfig` applies label overrides *after* `resolve`, a label that carries its own `locked` still wins — which is the precedence 5a wants, and 5b will move the authority to the master.
 
 - [ ] **Step 1: Write the failing test**
@@ -192,14 +192,14 @@ Resolution rules (binding, applied after the existing merge + value steps, befor
 ```ts
 // appended to tests/model-resolve.test.ts
 describe("layer policy", () => {
-  it("lists every layer in draw order and skips the off-variation ones", () => {
+  it("lists every layer in draw order and skips the off-variant ones", () => {
     const r = resolve(lolevMaster(), [], {});
     expect(r.layers[0].id).toBe("volume");
     expect(r.layers.at(-1)!.id).toBe("barcode");
     expect([...r.disabledLayers].sort())
       .toEqual(["collabCenter", "collabLead", "collabLeft"]);
   });
-  it("enabling the collab variation lets its layers draw", () => {
+  it("enabling the collab variant lets its layers draw", () => {
     expect(resolve(lolevMaster(), ["collab"], {}).disabledLayers.size).toBe(0);
   });
   it("a master-disabled layer never draws", () => {
@@ -207,9 +207,9 @@ describe("layer policy", () => {
     m.layers.find((l) => l.id === "qr")!.enabled = false;
     expect(resolve(m, ["collab"], {}).disabledLayers.has("qr")).toBe(true);
   });
-  it("a variation's layerOverrides patch the layer only while it is enabled", () => {
+  it("a variant's layerOverrides patch the layer only while it is enabled", () => {
     const m = lolevMaster();
-    m.variations[0].layerOverrides = { qr: { enabled: false } };
+    m.variants[0].layerOverrides = { qr: { enabled: false } };
     expect(resolve(m, ["collab"], {}).disabledLayers.has("qr")).toBe(true);
     expect(resolve(m, [], {}).disabledLayers.has("qr")).toBe(false);
   });
@@ -248,7 +248,7 @@ it("composeConfig passes layers and disabledLayers through", () => {
 
 ```bash
 git add src/model/resolve.ts src/model/document.ts tests/model-resolve.test.ts tests/model-document.test.ts
-git commit -m "Resolve: apply layer policy — disabled and variation-owned layers skip, locked layers stamp the drag lock."
+git commit -m "Resolve: apply layer policy — disabled and variant-owned layers skip, locked layers stamp the drag lock."
 ```
 
 ---
@@ -273,11 +273,11 @@ git commit -m "Resolve: apply layer policy — disabled and variation-owned laye
 export interface PanelRow {
   id: string;
   name: string;
-  /** Owning variation's id, when a variation owns this layer. */
-  variation?: string;
-  /** Owning variation's display name, for the row badge. */
-  variationName?: string;
-  /** The layer does not draw right now (master-disabled, or its variation is
+  /** Owning variant's id, when a variant owns this layer. */
+  variant?: string;
+  /** Owning variant's display name, for the row badge. */
+  variantName?: string;
+  /** The layer does not draw right now (master-disabled, or its variant is
    *  off) — the panel dims the row. */
   inactive: boolean;
   /** A per-label custom layer rather than a master layer: the only rows that
@@ -292,12 +292,12 @@ export function panelRows(
 ): PanelRow[];
 ```
 
-`panelRows` = the resolved master layers in draw order, then `cfg.customLayers` in stored order (custom rows: `custom: true`, `locked` from the layer, never `inactive`). Master rows take `locked` from the resolved layer and `variationName` from `master.variations`.
+`panelRows` = the resolved master layers in draw order, then `cfg.customLayers` in stored order (custom rows: `custom: true`, `locked` from the layer, never `inactive`). Master rows take `locked` from the resolved layer and `variantName` from `master.variants`.
 
 Panel structure (binding):
-- **One `Layers` group**, flat, in draw order, holding every row `panelRows` returns — master, variation-owned, and custom inline. No Beer/Collab/Template groups. The "Add layer ▾" menu moves onto this group's header (Design-only, unchanged behavior).
-- A variation-owned row shows its `variationName` as a small muted badge after the name; an `inactive` row renders at reduced opacity (`opacity-50`) with its eye and metallic toggle disabled — it is not on this label.
-- The collab on/off `Switch` on the old group header is **deleted**: enabling Collab is the variation checkbox in Fill mode, and `cfg.collabEnabled` stops being directly editable from the panel.
+- **One `Layers` group**, flat, in draw order, holding every row `panelRows` returns — master, variant-owned, and custom inline. No Beer/Collab/Template groups. The "Add layer ▾" menu moves onto this group's header (Design-only, unchanged behavior).
+- A variant-owned row shows its `variantName` as a small muted badge after the name; an `inactive` row renders at reduced opacity (`opacity-50`) with its eye and metallic toggle disabled — it is not on this label.
+- The collab on/off `Switch` on the old group header is **deleted**: enabling Collab is the variant checkbox in Fill mode, and `cfg.collabEnabled` stops being directly editable from the panel.
 - The **Document** group (background/mask/settings) stays exactly as it is.
 - `LayerRow` takes its display name from the row (`row.name`), not `elementById`, so a renamed layer shows its master name.
 - App: `skip` becomes the union of `hiddenLayers`, the edit-session element, and `disabledLayers`; the shift-range order passed to `resolveSelect` becomes `panelRows(...).map(r => r.id)`.
@@ -321,10 +321,10 @@ describe("panelRows", () => {
   it("lists master layers flat, in draw order", () => {
     expect(rowsFor([]).map((r) => r.id).slice(0, 3)).toEqual(["volume", "abv", "description"]);
   });
-  it("marks collab rows inactive and badged while the variation is off", () => {
+  it("marks collab rows inactive and badged while the variant is off", () => {
     const lead = rowsFor([]).find((r) => r.id === "collabLead")!;
     expect(lead.inactive).toBe(true);
-    expect(lead.variationName).toBe("Collab");
+    expect(lead.variantName).toBe("Collab");
     expect(rowsFor(["collab"]).find((r) => r.id === "collabLead")!.inactive).toBe(false);
   });
   it("appends custom layers, flagged and never inactive", () => {
@@ -356,7 +356,7 @@ describe("panelRows", () => {
 //      "Brand", and NO text "Beer" / "Template" and no element with
 //      aria-label "Collab enabled" (the deleted switch).
 //   2. assert the "Lead-In" row's container carries the "Collab" badge text
-//      and the opacity-50 class while the variation is off.
+//      and the opacity-50 class while the variant is off.
 ```
 
 - [ ] **Step 2: Run to verify failure** — module missing / panel still renders groups.
@@ -369,7 +369,7 @@ describe("panelRows", () => {
 
 ```bash
 git add src/model/panel.ts src/components/layers.ts src/components/LayersPanel.tsx src/elements.ts src/App.tsx tests/model-panel.test.ts tests/layerspanel-dom.test.tsx
-git commit -m "Layers panel: one flat list driven by the master's layers, with the collab block as a badged variation."
+git commit -m "Layers panel: one flat list driven by the master's layers, with the collab block as a badged variant."
 ```
 
 ---
@@ -439,12 +439,12 @@ git commit -m "Layers panel: move custom layers forward and backward in the stac
 
 **Files:** `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` (label-lab entry), `src-tauri/tauri.conf.json`, `CHANGELOG.md`
 
-- [ ] **Step 1: Bump 0.1.34 → 0.1.35** in all five locations (`npm install --package-lock-only` refreshes the lockfile; edit Cargo.lock's `label-lab` entry by hand).
+- [ ] **Step 1: Bump 0.1.35 → 0.1.36** in all five locations (`npm install --package-lock-only` refreshes the lockfile; edit Cargo.lock's `label-lab` entry by hand).
 
 - [ ] **Step 2: CHANGELOG entry**
 
 ```markdown
-## [0.1.35] - 2026-08-27
+## [0.1.36] - 2026-08-27
 
 - The layers panel now lists the label's real layers in drawing order, in one
   flat list, instead of the fixed Beer / Collab / Template groups. Each layer
@@ -452,7 +452,7 @@ git commit -m "Layers panel: move custom layers forward and backward in the stac
   locked there rather than being hardwired into the app — the wordmark is now
   "Brand", and the government warning ships locked. The collab block is no
   longer a special section with its own switch: its three layers belong to the
-  Collab variation and appear when it is enabled, marked with a Collab badge
+  Collab variant and appear when it is enabled, marked with a Collab badge
   while it is off. Custom layers can be moved forward and backward in the
   stack.
 ```
@@ -463,7 +463,7 @@ git commit -m "Layers panel: move custom layers forward and backward in the stac
 
 ```bash
 git add -A
-git commit -m "Version 0.1.35: master-declared layers and a flat layers panel."
+git commit -m "Version 0.1.36: master-declared layers and a flat layers panel."
 git push
 ```
 
@@ -473,7 +473,7 @@ Do NOT merge PR #41.
 
 ## Self-Review
 
-- Spec coverage (5a slice): no reserved ids / no sacred built-ins ✓ (T1 declares every built-in as an ordinary layer); layer `enabled`/`locked`/`name` ✓ (T1/T2); collab → variation-owned layers ✓ (T1/T2/T3); panel reflects the master ✓ (T3); warning locked by default ✓ (T1). Deferred to 5b by design: Design edits writing the master, the Editing selector, `.master` save/open, make-fillable. Deferred beyond: built-in draw-order reordering (fixed in `planLabel`), collab slot images as `image` fields (Plan 7 migration).
+- Spec coverage (5a slice): no reserved ids / no sacred built-ins ✓ (T1 declares every built-in as an ordinary layer); layer `enabled`/`locked`/`name` ✓ (T1/T2); collab → variant-owned layers ✓ (T1/T2/T3); panel reflects the master ✓ (T3); warning locked by default ✓ (T1). Deferred to 5b by design: Design edits writing the master, the Editing selector, `.master` save/open, make-fillable. Deferred beyond: built-in draw-order reordering (fixed in `planLabel`), collab slot images as `image` fields (Plan 7 migration).
 - Placeholder scan: the only prose-only step is Task 3's DOM test body, which names its exact assertions and the suite whose setup it copies; every other code step carries real code.
 - Type consistency: `MasterLayer` (T1) → `resolve`'s `layers`/`disabledLayers` (T2) → `panelRows`/`PanelRow` (T3) → `moveCustomLayer` (T4) line up; `PanelRow.custom` is what T4 gates its buttons on.
-- Stated judgment calls: thin layers (policy only, style stays in `defaults`); `MasterLayer.variation` as an ownership tag rather than the spec's appended `variation.layers` (kept for genuinely appended layers); lock as a master *default* a label override can still beat, until 5b moves the authority.
+- Stated judgment calls: thin layers (policy only, style stays in `defaults`); `MasterLayer.variant` as an ownership tag rather than the spec's appended `variant.layers` (kept for genuinely appended layers); lock as a master *default* a label override can still beat, until 5b moves the authority.

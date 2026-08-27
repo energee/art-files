@@ -169,7 +169,7 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
     x0: L.BARCODE.x, x1: L.BARCODE.x + L.BARCODE.w,
     y0: L.BARCODE.yTop, y1: L.BARCODE.yTop + L.BARCODE.h,
   });
-  // Master-variation custom layers, drawn (and hit-tested) last — same order
+  // Master-variant custom layers, drawn (and hit-tested) last — same order
   // planLabel appends them in, so a stacked custom layer's box wins ties the
   // way its ink does. Text layers already have their run boxes in textBoxes
   // (planLabel emits them as ordinary PlacedText, keyed by the layer's own

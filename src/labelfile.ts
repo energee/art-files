@@ -23,7 +23,7 @@ export type LabelAssets = {
   mask?: LabelAsset;
   collabLeft?: LabelAsset;
   collabCenter?: LabelAsset;
-  /** Master-variation custom image layers' bytes, keyed by CustomImageLayer's
+  /** Master-variant custom image layers' bytes, keyed by CustomImageLayer's
    *  `asset` (the id minted at drop). Stored under `custom/<assetId>/<name>`
    *  — a directory per id, since each custom layer owns exactly one file and
    *  the id (not the filename) is the stable key. */

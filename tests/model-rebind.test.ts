@@ -7,11 +7,11 @@ const target: Master = {
   physical: { labelWidthIn: 8.125, labelHeightIn: 3.625, bleedIn: 0.125, canDiameterIn: 2.6 },
   defaults: {}, guides: { left: 24.12, center: "auto", right: 24.12, top: 24.12, bottom: 24.12 },
   fields: [{ id: "name", label: "Name", kind: "text", path: "beerName" }],
-  variations: [{ id: "collab", name: "Collab", overrides: {}, layerOverrides: {}, fields: [] }],
+  variants: [{ id: "collab", name: "Collab", overrides: {}, layerOverrides: {}, fields: [] }],
 };
 
 const label: LabelFileV2 = {
-  formatVersion: 2, masterId: "m1", enabledVariations: ["collab", "seasonal"],
+  formatVersion: 2, masterId: "m1", enabledVariants: ["collab", "seasonal"],
   values: { name: "HAZY", untappd: "u/x" },
 };
 
@@ -26,10 +26,10 @@ describe("rebind", () => {
     expect(r.dropped).toEqual(["untappd"]);
     expect(r.label.values.untappd).toBeUndefined();
   });
-  it("disables and reports variations the target lacks", () => {
+  it("disables and reports variants the target lacks", () => {
     const r = rebind(label, target);
-    expect(r.label.enabledVariations).toEqual(["collab"]);
-    expect(r.disabledVariations).toEqual(["seasonal"]);
+    expect(r.label.enabledVariants).toEqual(["collab"]);
+    expect(r.disabledVariants).toEqual(["seasonal"]);
   });
   it("does not mutate the input label", () => {
     rebind(label, target);

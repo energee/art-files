@@ -35,7 +35,7 @@ export type ElementId =
   | "collabLead" | "collabLeft" | "collabCenter"
   | `custom-${string}`;
 
-/** True when `id` names a master-variation custom layer rather than one of
+/** True when `id` names a master-variant custom layer rather than one of
  *  the fixed elements above. Every exhaustive switch/lookup over ElementId
  *  must check this first and branch to generic custom-layer handling —
  *  ELEMENTS has no entry for these ids. */

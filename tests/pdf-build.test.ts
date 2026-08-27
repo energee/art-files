@@ -216,7 +216,7 @@ describe("Assets.hidden — the layers-panel eye", () => {
   });
 });
 
-describe("Master-variation custom layers", () => {
+describe("Master-variant custom layers", () => {
   it("a custom text layer draws through the shared display list", async () => {
     const showOps = (s: string) => (s.match(/\bTj\b/g) ?? []).length;
     const cfg = defaultConfig();

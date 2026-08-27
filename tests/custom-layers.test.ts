@@ -1,4 +1,4 @@
-// custom-layers.test.ts — schema for the master-variation custom layers:
+// custom-layers.test.ts — schema for the master-variant custom layers:
 // CustomLayer (text/image) survives a JSON round-trip, and isCustomId
 // distinguishes custom layer ids from the fixed ElementId set.
 import { describe, expect, it } from "vitest";

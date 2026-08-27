@@ -49,36 +49,36 @@ describe("FieldList", () => {
     const cfg = defaultConfig();
     cfg.beerName = "Peregrine";
     renderList({
-      master: lolevMaster(), enabledVariations: [], cfg,
-      onValue: vi.fn(), onVariation: vi.fn(),
+      master: lolevMaster(), enabledVariants: [], cfg,
+      onValue: vi.fn(), onVariant: vi.fn(),
     });
     const nameInput = container.querySelector("#field-name") as HTMLInputElement;
     expect(nameInput.value).toBe("Peregrine");
-    const collabCheckbox = container.querySelector("#variation-collab") as HTMLInputElement;
+    const collabCheckbox = container.querySelector("#variant-collab") as HTMLInputElement;
     expect(collabCheckbox.checked).toBe(false);
   });
 
-  it("edits write through onValue and variations through onVariation", () => {
+  it("edits write through onValue and variants through onVariant", () => {
     const onValue = vi.fn();
-    const onVariation = vi.fn();
+    const onVariant = vi.fn();
     renderList({
-      master: lolevMaster(), enabledVariations: [], cfg: defaultConfig(),
-      onValue, onVariation,
+      master: lolevMaster(), enabledVariants: [], cfg: defaultConfig(),
+      onValue, onVariant,
     });
     change(container.querySelector("#field-name")!, "Kestrel");
     expect(onValue).toHaveBeenCalledWith(expect.objectContaining({ id: "name" }), "Kestrel");
 
-    const collabCheckbox = container.querySelector("#variation-collab") as HTMLInputElement;
+    const collabCheckbox = container.querySelector("#variant-collab") as HTMLInputElement;
     act(() => { collabCheckbox.click(); });
-    expect(onVariation).toHaveBeenCalledWith("collab", true);
+    expect(onVariant).toHaveBeenCalledWith("collab", true);
   });
 
   it("shows a validation error for a bad code value", () => {
     const cfg = defaultConfig();
     cfg.upc = "123";
     renderList({
-      master: lolevMaster(), enabledVariations: [], cfg,
-      onValue: vi.fn(), onVariation: vi.fn(),
+      master: lolevMaster(), enabledVariants: [], cfg,
+      onValue: vi.fn(), onVariant: vi.fn(),
     });
     // Pinned to validateUpc's real message (src/upc.ts): `"${value}" is not
     // a valid UPC-A code (12 digits).`

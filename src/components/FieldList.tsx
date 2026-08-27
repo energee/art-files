@@ -1,6 +1,6 @@
-// FieldList.tsx — Fill mode's sidebar: variation checkboxes + one widget per
+// FieldList.tsx — Fill mode's sidebar: variant checkboxes + one widget per
 // visible field, each writing through its FieldDecl.path (spec: UI — "Fill
-// shows the label, the field list, and variation checkboxes"). The canvas
+// shows the label, the field list, and variant checkboxes"). The canvas
 // remains the primary editing surface (click-to-select, in-place text edit);
 // this is the parallel path for fillers who never touch Design mode.
 import type { LabelConfig } from "@/types";
@@ -67,25 +67,25 @@ function FieldRow({ field, cfg, onValue }: {
   );
 }
 
-export function FieldList({ master, enabledVariations, cfg, onValue, onVariation }: {
+export function FieldList({ master, enabledVariants, cfg, onValue, onVariant }: {
   master: Master;
-  enabledVariations: string[];
+  enabledVariants: string[];
   cfg: LabelConfig;
   /** Write one field's value through its path (App routes through update()). */
   onValue: (field: FieldDecl, value: FieldValue) => void;
-  onVariation: (id: string, on: boolean) => void;
+  onVariant: (id: string, on: boolean) => void;
 }) {
   return (
     <div className="space-y-4 p-3">
-      {master.variations.map((v) => (
+      {master.variants.map((v) => (
         <div key={v.id} className="flex items-center gap-2">
-          <input type="checkbox" id={`variation-${v.id}`}
-            checked={enabledVariations.includes(v.id)}
-            onChange={(e) => onVariation(v.id, e.target.checked)} />
-          <label htmlFor={`variation-${v.id}`} className="text-sm font-medium">{v.name}</label>
+          <input type="checkbox" id={`variant-${v.id}`}
+            checked={enabledVariants.includes(v.id)}
+            onChange={(e) => onVariant(v.id, e.target.checked)} />
+          <label htmlFor={`variant-${v.id}`} className="text-sm font-medium">{v.name}</label>
         </div>
       ))}
-      {visibleFieldsOf(master, enabledVariations).map((f) => (
+      {visibleFieldsOf(master, enabledVariants).map((f) => (
         <FieldRow key={f.id} field={f} cfg={cfg} onValue={onValue} />
       ))}
     </div>

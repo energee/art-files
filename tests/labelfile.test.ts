@@ -48,7 +48,7 @@ describe("labelfile", () => {
 describe("label v2 zip", () => {
   const v2 = {
     formatVersion: 2 as const, masterId: "lolev",
-    enabledVariations: ["collab"], values: { name: "Peregrine" },
+    enabledVariants: ["collab"], values: { name: "Peregrine" },
   };
   it("round-trips label.json and assets", () => {
     const bytes = packLabelV2(v2, { texture: { name: "rock.png", bytes: new Uint8Array([1, 2]) } });

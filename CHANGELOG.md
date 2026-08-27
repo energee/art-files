@@ -3,6 +3,14 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.35] - 2026-08-27
+
+- "Variation" is now called **Variant** throughout — the Collab checkbox, the
+  data model, and the `.label` file format, which stores the enabled variants
+  under a renamed key. A `.label` saved before this release still opens, but
+  its enabled variants are forgotten and need re-checking once. No other
+  behavior changed.
+
 ## [0.1.34] - 2026-08-27
 
 - The layers panel's empty Custom group now reads just "No custom layers".

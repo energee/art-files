@@ -1,5 +1,5 @@
 // src/model/resolve.ts — the heart of the design: collapse master + enabled
-// variations + field values into the LabelConfig the renderers and both
+// variants + field values into the LabelConfig the renderers and both
 // deliverable builders already consume (spec: Resolution). Pure, synchronous,
 // deterministic; anchors/guides (spec step 6) land with the layer work.
 import type { LabelConfig } from "../types";
@@ -20,14 +20,14 @@ export function setPath(obj: Record<string, unknown>, path: string, value: unkno
 }
 
 export function resolve(
-  master: Master, enabledVariations: string[], values: Record<string, FieldValue>,
+  master: Master, enabledVariants: string[], values: Record<string, FieldValue>,
 ): { config: LabelConfig; visibleFields: FieldDecl[]; errors: Record<string, string>; warnings: string[] } {
   const warnings: string[] = [];
   let config = deepMerge(defaultConfig(), master.defaults as DeepPartial<LabelConfig>);
   const visibleFields = [...master.fields];
-  for (const id of enabledVariations) {
-    const v = master.variations.find((x) => x.id === id);
-    if (!v) { warnings.push(`Unknown variation "${id}" — skipped.`); continue; }
+  for (const id of enabledVariants) {
+    const v = master.variants.find((x) => x.id === id);
+    if (!v) { warnings.push(`Unknown variant "${id}" — skipped.`); continue; }
     config = deepMerge(config, v.overrides as DeepPartial<LabelConfig>);
     visibleFields.push(...v.fields);
   }

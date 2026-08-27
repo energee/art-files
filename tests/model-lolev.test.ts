@@ -4,10 +4,10 @@ import { resolve } from "../src/model/resolve";
 import { defaultConfig } from "../src/defaults";
 
 describe("lolevMaster", () => {
-  it("resolves with no variations/values to exactly the shipped defaults", () => {
+  it("resolves with no variants/values to exactly the shipped defaults", () => {
     expect(resolve(lolevMaster(), [], {}).config).toEqual(defaultConfig());
   });
-  it("collab variation flips only collabEnabled", () => {
+  it("collab variant flips only collabEnabled", () => {
     const base = resolve(lolevMaster(), [], {}).config;
     const collab = resolve(lolevMaster(), ["collab"], {}).config;
     expect(collab.collabEnabled).toBe(true);

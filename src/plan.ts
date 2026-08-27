@@ -94,7 +94,7 @@ export interface PlacedImage {
  *  the run's start, extent -w; upright (every custom barcode layer) reads
  *  left-to-right like ordinary text — x is the run's CENTER (left edge is
  *  x - w/2), y is the baseline. Widened from the literal "barcode" to
- *  ElementId so a master-variation custom barcode layer (Task 3) can be one
+ *  ElementId so a master-variant custom barcode layer (Task 3) can be one
  *  of these too, keyed by its own `custom-${string}` id like every other
  *  custom layer's placed item. */
 export interface PlacedBarcode {
@@ -597,7 +597,7 @@ export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {})
 
   if (A && !skip("barcode")) out.push(barcodeItem(cfg, m));
 
-  // Master-variation custom layers — appended last so they draw on top of
+  // Master-variant custom layers — appended last so they draw on top of
   // every fixed element, in the order they're stored. Absent/empty
   // customLayers is a no-op: nothing appends, so the plan is byte-for-byte
   // the pre-feature list (the regression lock plan.test.ts checks).

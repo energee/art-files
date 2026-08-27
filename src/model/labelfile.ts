@@ -1,4 +1,4 @@
-// src/model/labelfile.ts — the v2 .label payload: master ref + variation
+// src/model/labelfile.ts — the v2 .label payload: master ref + variant
 // toggles + field values BY ID ONLY, never layout (spec: ".label file" —
 // that is what makes rebinding meaningful). Legacy v1 files (version: 1,
 // embedded LabelConfig) are tagged for the migrator, not parsed here.
@@ -14,7 +14,7 @@ export function parseLabelFile(json: unknown): LabelFileV2 | { legacy: unknown }
     formatVersion: 2,
     masterId: o.masterId,
     masterHint: typeof o.masterHint === "string" ? o.masterHint : undefined,
-    enabledVariations: Array.isArray(o.enabledVariations) ? (o.enabledVariations as string[]) : [],
+    enabledVariants: Array.isArray(o.enabledVariants) ? (o.enabledVariants as string[]) : [],
     values: (o.values && typeof o.values === "object" ? o.values : {}) as LabelFileV2["values"],
     overrides: o.overrides && typeof o.overrides === "object" ? o.overrides as LabelFileV2["overrides"] : undefined,
   };
@@ -23,7 +23,7 @@ export function parseLabelFile(json: unknown): LabelFileV2 | { legacy: unknown }
 export function serializeLabelFile(l: LabelFileV2): string {
   return JSON.stringify(
     { formatVersion: 2, masterId: l.masterId, masterHint: l.masterHint,
-      enabledVariations: l.enabledVariations, values: l.values, overrides: l.overrides },
+      enabledVariants: l.enabledVariants, values: l.values, overrides: l.overrides },
     null, 2,
   );
 }

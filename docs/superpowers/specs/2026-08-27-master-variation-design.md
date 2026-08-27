@@ -1,4 +1,4 @@
-# Master / Variation restructure — design spec
+# Master / Variant restructure — design spec
 
 Date: 2026-08-27
 Status: approved design, pre-implementation
@@ -15,8 +15,8 @@ hardcoded concepts — presets, the template, and collab — with two general on
 - **Master** — the locked foundation shared by all `.label` files: physical
   dimensions, background/mask assets, layers, defaults, and the declaration of
   which parts are fillable per label.
-- **Variation** — a named, toggleable override-diff on a master (today's collab
-  becomes one). Variations stack; multiple can be enabled at once.
+- **Variant** — a named, toggleable override-diff on a master (today's collab
+  becomes one). Variants stack; multiple can be enabled at once.
 
 Plus: custom layers (text, image, barcode, QR), more barcode symbologies,
 derived QR/barcode payloads, per-layer lock, and snap guides whose alignment
@@ -46,13 +46,13 @@ All artifacts are JSON.
   },
   "layers": [ /* Layer, see below */ ],
   "fields": [ /* FieldDecl, see below */ ],
-  "variations": [ /* Variation, embedded — never separate files */ ]
+  "variants": [ /* Variant, embedded — never separate files */ ]
 }
 ```
 
-### Variation (embedded in master)
+### Variant (embedded in master)
 
-Pure diff — never a copy. Editing the master propagates to all variations.
+Pure diff — never a copy. Editing the master propagates to all variants.
 
 ```jsonc
 {
@@ -75,12 +75,12 @@ IDs and values only — no layout, no styling. This is what makes rebinding a
   "formatVersion": 2,
   "masterId": "<uuid>",
   "masterHint": "path/last/known.master",
-  "enabledVariations": ["collab"],        // in enable order
+  "enabledVariants": ["collab"],        // in enable order
   "values": { "<fieldId>": /* per-kind value */ }
 }
 ```
 
-Values for disabled variations stay in `values`, dormant, so re-enabling loses
+Values for disabled variants stay in `values`, dormant, so re-enabling loses
 nothing.
 
 ### Layer
@@ -154,16 +154,16 @@ files resolve by ID; a missing master falls back to `masterHint`, then a picker.
 One pure function is the heart of the design:
 
 ```
-resolve(master, enabledVariationIds, values) → EffectiveConfig  // LabelConfig shape
+resolve(master, enabledVariantIds, values) → EffectiveConfig  // LabelConfig shape
 ```
 
 In order:
 
 1. Start from master `physical` + `defaults` + `layers`.
-2. For each enabled variation in enable order: deep-merge `overrides`, apply
+2. For each enabled variant in enable order: deep-merge `overrides`, apply
    `layerOverrides`, append added `layers`. Last-enabled wins on conflicts
    (plain object-spread order).
-3. Visible fields = master's + enabled variations'.
+3. Visible fields = master's + enabled variants'.
 4. Apply `values`, validating per kind. Invalid value → field-level error; the
    layer renders last-valid or placeholder — never crashes the preview.
 5. Expand format strings.
@@ -232,7 +232,7 @@ simplify, then simplify again).
 
 - **Two hats, one app.** A prominent segmented control: **Design**
   (master-edit) / **Fill** (label-edit, the default). Fill shows the label,
-  the field list (each field with its kind's widget), and variation
+  the field list (each field with its kind's widget), and variant
   checkboxes — no styling, no layers panel. Design reveals layers, properties,
   guides, and field declarations.
 - **The canvas is the field list.** Double-click any text layer to edit in
@@ -246,8 +246,8 @@ simplify, then simplify again).
   layer immediately; configure after seeing it. No creation dialogs.
 - **No confirmation dialogs for undoable acts.** Everything on canvas is
   undo-covered (the one-step drag undo generalizes).
-- **Variation editing:** "Editing: Master ▾ / Collab / …" dropdown in Design
-  mode. Edits record into the selected variation's diff automatically; touched
+- **Variant editing:** "Editing: Master ▾ / Collab / …" dropdown in Design
+  mode. Edits record into the selected variant's diff automatically; touched
   properties show an "overridden" badge with per-property reset. No separate
   diff UI.
 - **Per-layer properties:** 3–5 essential controls; the rest under one
@@ -286,7 +286,7 @@ Check types:
   abbreviation expansions ("IPA" → "India Pale Ale"). Suggestions cite their
   CFR section.
 
-Execution: the validator runs on the **resolved** config (variations and
+Execution: the validator runs on the **resolved** config (variants and
 format strings included). Output is advisory, never blocking — COLA approval
 is a human process; our job is "you'll bounce, here's why, here's the fix."
 Each finding: severity, plain-English sentence, citation, and a one-click fix
@@ -332,8 +332,8 @@ the model restructure.
 
 - **Presets → masters:** on first launch each stored preset converts to a
   `.master` in the library. The preset bar becomes the master picker.
-- **Collab → shipped variation:** partner slots and the logo-nudge gate are
-  re-expressed as a "Collab" variation on the migrated Lolev master.
+- **Collab → shipped variant:** partner slots and the logo-nudge gate are
+  re-expressed as a "Collab" variant on the migrated Lolev master.
   `collabEnabled` maps to its toggle; slot images map to its fields.
 - **Old `.label` files** open transparently: the loader detects the old
   format, maps known values (name, ABV, description, images, UPC) onto the

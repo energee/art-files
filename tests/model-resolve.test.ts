@@ -12,7 +12,7 @@ const master: Master = {
     { id: "abv", label: "ABV", kind: "number", path: "abv", min: 0, max: 20 },
     { id: "style", label: "Style", kind: "text", path: "styleLine.text" },
   ],
-  variations: [
+  variants: [
     { id: "collab", name: "Collab", overrides: { collabEnabled: true }, layerOverrides: {},
       fields: [{ id: "partner", label: "Partner logo", kind: "image", path: "collabLeft.asset" }] },
     { id: "loud", name: "Loud", overrides: { abv: "9" }, layerOverrides: {}, fields: [] },
@@ -26,14 +26,14 @@ describe("resolve", () => {
     expect(r.config.beerName).toBe("DEFAULT");
     expect(r.config.collabEnabled).toBe(false);   // defaultConfig()'s value
   });
-  it("applies enabled variations in order, last wins", () => {
+  it("applies enabled variants in order, last wins", () => {
     expect(resolve(master, ["collab"], {}).config.collabEnabled).toBe(true);
     expect(resolve(master, ["loud"], {}).config.abv).toBe("9");
-    // both variations override abv — the last-enabled one must win
+    // both variants override abv — the last-enabled one must win
     expect(resolve(master, ["loud", "loud2"], {}).config.abv).toBe("12");
     expect(resolve(master, ["loud2", "loud"], {}).config.abv).toBe("9");
   });
-  it("exposes variation fields only when enabled", () => {
+  it("exposes variant fields only when enabled", () => {
     expect(resolve(master, [], {}).visibleFields.map((f) => f.id)).not.toContain("partner");
     expect(resolve(master, ["collab"], {}).visibleFields.map((f) => f.id)).toContain("partner");
   });
@@ -47,11 +47,11 @@ describe("resolve", () => {
     expect(r.errors.abv).toMatch(/20/);
     expect(r.config.abv).toBe("5");
   });
-  it("ignores dormant values for disabled variations", () => {
+  it("ignores dormant values for disabled variants", () => {
     const r = resolve(master, [], { partner: "x.png" });
     expect(r.errors.partner).toBeUndefined();   // dormant, not an error
   });
-  it("warns on unknown variation ids", () => {
+  it("warns on unknown variant ids", () => {
     expect(resolve(master, ["nope"], {}).warnings.join(" ")).toMatch(/nope/);
   });
   it("expands a field's format string", () => {

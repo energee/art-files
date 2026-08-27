@@ -1,5 +1,5 @@
-// Variation-override merge: plain recursive object merge, patch wins, arrays
-// and scalars replace wholesale. Stacked variations get last-enabled-wins by
+// Variant-override merge: plain recursive object merge, patch wins, arrays
+// and scalars replace wholesale. Stacked variants get last-enabled-wins by
 // simply merging in enable order (spec: Resolution step 2).
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
 
@@ -8,7 +8,7 @@ const isPlain = (v: unknown): v is Record<string, unknown> =>
 
 /** Deep-clones plain objects/arrays so a stored patch value is never the same
  *  reference as the caller's — otherwise resolve's setPath could mutate the
- *  patch (e.g. a Variation's overrides) through the merged result. */
+ *  patch (e.g. a Variant's overrides) through the merged result. */
 function clone(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(clone);
   if (isPlain(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, clone(x)]));

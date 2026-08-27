@@ -27,7 +27,7 @@ import { LABEL_FILTER, LABEL_TYPES, isAbort, savePicker, writeHandle } from "@/f
 import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import {
-  composeConfig, configDiff, expandCustomFormats, toggleVariation, valuesFromConfig,
+  composeConfig, configDiff, expandCustomFormats, toggleVariant, valuesFromConfig,
   visibleFieldsOf,
 } from "@/model/document";
 import { parseLabelFile } from "@/model/labelfile";
@@ -100,7 +100,7 @@ type Loaded = { bytes: Uint8Array; previewBytes: Uint8Array; name: string; previ
  *  shows. previewUrl is the raw file, so an SVG thumbnails as itself. */
 type CollabFile = { image: CollabImage; name: string; previewUrl: string };
 
-/** A loaded master-variation custom-image-layer asset: mirrors CollabFile,
+/** A loaded master-variant custom-image-layer asset: mirrors CollabFile,
  *  plus the intrinsic aspect (w/h) stored back onto the layer (types.ts's
  *  CustomImageLayer.aspect) so hit/drag boxes are exact before/without a
  *  decoded bitmap. Keyed by the id minted at drop (mintCustomAssetId). */
@@ -323,10 +323,10 @@ function download(url: string, name: string) {
 }
 
 /** The undoable half of one document: the live config plus which of its
- *  master's variations are enabled. The two travel together through history
- *  (see useHistory<Doc> above) so undoing a variation toggle restores the
+ *  master's variants are enabled. The two travel together through history
+ *  (see useHistory<Doc> above) so undoing a variant toggle restores the
  *  FieldList checkboxes in the same step as the config it produced. */
-type Doc = { cfg: LabelConfig; enabledVariations: string[] };
+type Doc = { cfg: LabelConfig; enabledVariants: string[] };
 
 /** A file the shell wants this editor to open. seq is monotonic — a new
  *  value triggers the open, so a re-render can never re-open. Exactly one
@@ -393,14 +393,14 @@ export const DocumentEditor = memo(function DocumentEditor({
 }: DocumentEditorProps) {
   // Config lives in a history stack, not plain useState — every edit that
   // goes through setDoc (i.e. all of them, see `update` below) is undoable.
-  // enabledVariations rides along in the same history entry as cfg (not a
-  // separate useState): undoing a variation toggle has to restore BOTH the
+  // enabledVariants rides along in the same history entry as cfg (not a
+  // separate useState): undoing a variant toggle has to restore BOTH the
   // composed config AND the FieldList checkboxes that produced it, in one
-  // step, or the two fall out of sync (see toggleVariation in model/document).
+  // step, or the two fall out of sync (see toggleVariant in model/document).
   const { value: doc, set: setDoc, reset: resetDoc, undo, redo, canUndo, canRedo } =
-    useHistory<Doc>(() => ({ cfg: defaultConfig(), enabledVariations: [] }));
+    useHistory<Doc>(() => ({ cfg: defaultConfig(), enabledVariants: [] }));
   const cfg = doc.cfg;
-  const enabledVariations = doc.enabledVariations;
+  const enabledVariants = doc.enabledVariants;
   // Which layers the inspector shows — Figma's model: an ordered selection
   // plus an anchor a shift-range extends from, driven by the layers panel or
   // PreviewCompare's click-to-select. LayerId, not ElementId: the
@@ -433,8 +433,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Which master this document composes against — session state, deliberately
   // outside the config/history like hiddenLayers above: it is not label
   // content, so switching masters isn't itself an undoable edit. (Which
-  // variations are enabled DOES ride in history, alongside cfg — see Doc and
-  // useHistory<Doc> above — because undoing a variation toggle has to restore
+  // variants are enabled DOES ride in history, alongside cfg — see Doc and
+  // useHistory<Doc> above — because undoing a variant toggle has to restore
   // the FieldList checkboxes along with the config the toggle produced.)
   // Reset alongside cfg on Open/New so a document can't leak the previous
   // one's master.
@@ -444,28 +444,28 @@ export const DocumentEditor = memo(function DocumentEditor({
   // both the config and its history like `master` above — which mode you're
   // in isn't a document edit, and switching tabs shouldn't carry it along.
   const [mode, setMode] = useState<"design" | "fill">("fill");
-  /** Layers panel's variation checkboxes: recompose the whole config AND the
-   *  enabled set in one undoable step (see toggleVariation in model/document)
+  /** Layers panel's variant checkboxes: recompose the whole config AND the
+   *  enabled set in one undoable step (see toggleVariant in model/document)
    *  — so undo restores the checkbox along with the config it produced. */
-  const setVariation = (id: string, on: boolean) => {
-    const r = toggleVariation(master, cfg, enabledVariations, id, on);
+  const setVariant = (id: string, on: boolean) => {
+    const r = toggleVariant(master, cfg, enabledVariants, id, on);
     markDirty();
-    setDoc(() => ({ cfg: r.config, enabledVariations: r.enabled }));
+    setDoc(() => ({ cfg: r.config, enabledVariants: r.enabled }));
   };
   // Insertable refs for a custom barcode/qr layer's FormatBuilder (the
   // Inspector's fields prop) — the master's own fields plus whichever
-  // variations are enabled, same set FieldList's sidebar shows.
+  // variants are enabled, same set FieldList's sidebar shows.
   const visibleFields = useMemo(
-    () => visibleFieldsOf(master, enabledVariations), [master, enabledVariations]);
+    () => visibleFieldsOf(master, enabledVariants), [master, enabledVariants]);
   // The label's current field values, stringified — FormatBuilder's live
   // preview and expandCustomFormats below both read plain strings, unlike
   // valuesFromConfig's FieldValue (string | number | boolean).
   const stringValues = useMemo(() => {
-    const values = valuesFromConfig(master, enabledVariations, cfg);
+    const values = valuesFromConfig(master, enabledVariants, cfg);
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(values)) out[k] = String(v);
     return out;
-  }, [master, enabledVariations, cfg]);
+  }, [master, enabledVariants, cfg]);
   // The display seam (Task 5): every custom barcode/qr layer's raw `value`
   // expanded over stringValues, for whatever draws or exports the label.
   // The sidebar, history, and save all keep `cfg` itself — only this derived
@@ -499,7 +499,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // build and the print export.
   const [collabLeft, setCollabLeft] = useState<CollabFile | null>(null);
   const [collabCenter, setCollabCenter] = useState<CollabFile | null>(null);
-  // Master-variation custom image layers' assets, keyed by CustomImageLayer's
+  // Master-variant custom image layers' assets, keyed by CustomImageLayer's
   // `asset` (the id minted at drop — see mintCustomAssetId). Like the collab
   // logos, no preview/print split: these are small marks, not backgrounds.
   const [customImages, setCustomImages] = useState<Record<string, CustomFile>>({});
@@ -1392,11 +1392,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Full-document replacement for Open: swap the whole Doc in (resetting
    *  history) and clear every asset slot. A slot added later must be
    *  cleared here so an open can't leak the previous project's asset.
-   *  `enabledVariations` defaults to [] for a bare New Project; the v2 open
+   *  `enabledVariants` defaults to [] for a bare New Project; the v2 open
    *  path passes the label's real set directly so it lands in the same
    *  history step as the config, rather than a second write right after. */
-  function resetDocument(config: LabelConfig, enabledVariations: string[] = []) {
-    resetDoc({ cfg: config, enabledVariations });
+  function resetDocument(config: LabelConfig, enabledVariants: string[] = []) {
+    resetDoc({ cfg: config, enabledVariants });
     // master isn't part of Doc/history (see its declaration above) — reset it
     // here too so a bare New Project can't leak the previous document's
     // master.
@@ -1427,16 +1427,16 @@ export const DocumentEditor = memo(function DocumentEditor({
     const collabAsset = (c: CollabFile | null) =>
       c ? { name: c.name, bytes: c.image.kind === "svg" ? strToU8(c.image.svg) : c.image.bytes } : undefined;
     // Always writes v2 (see labelfile.ts): values are the fields the master
-    // and its enabled variations declare; overrides are whatever the user's
+    // and its enabled variants declare; overrides are whatever the user's
     // config still deviates from a fresh compose of those exact values — the
     // same shape openProject's v2 branch expects back.
-    const values = valuesFromConfig(master, enabledVariations, cfg);
+    const values = valuesFromConfig(master, enabledVariants, cfg);
     const overrides = configDiff(
-      composeConfig(master, enabledVariations, values, undefined).config, cfg);
+      composeConfig(master, enabledVariants, values, undefined).config, cfg);
     const label: LabelFileV2 = {
       formatVersion: 2, masterId: master.id,
       masterHint: masterIndex()[master.id]?.path,
-      enabledVariations, values,
+      enabledVariants, values,
       ...(Object.keys(overrides).length ? { overrides } : {}),
     };
     const customImageEntries = Object.entries(customImages);
@@ -1560,18 +1560,18 @@ export const DocumentEditor = memo(function DocumentEditor({
             ` — open its .master file once to register it.`);
           return false;
         }
-        const c = composeConfig(m, parsed.enabledVariations, parsed.values, parsed.overrides);
+        const c = composeConfig(m, parsed.enabledVariants, parsed.values, parsed.overrides);
         // resetDocument sets master back to the Lolev default (see its own
-        // comment) and enabledVariations to the real set in the same history
+        // comment) and enabledVariants to the real set in the same history
         // step — set the real master again right after, so neither call
         // order can leak a stale master into this document.
-        resetDocument(c.config, parsed.enabledVariations);
+        resetDocument(c.config, parsed.enabledVariants);
         setMaster(m);
         warnings = c.warnings; // advisory only — a lossy compose still opens
       } else {
         const parsedCfg = parseConfigFile(unpacked.config!);
-        // Bridge: an old collab label has no master/variation concept, but a
-        // checked Collab box in its config is exactly the "collab" variation.
+        // Bridge: an old collab label has no master/variant concept, but a
+        // checked Collab box in its config is exactly the "collab" variant.
         resetDocument(parsedCfg, parsedCfg.collabEnabled ? ["collab"] : []);
         setMaster(lolevMaster());
       }
@@ -1865,14 +1865,14 @@ export const DocumentEditor = memo(function DocumentEditor({
         <Sidebar collapsible="offcanvas">
           <SidebarContent>
             {/* Design shows the layers panel (style, order, visibility);
-                Fill shows the label, the field list, and variation
+                Fill shows the label, the field list, and variant
                 checkboxes — no styling, no layers panel (spec: UI). */}
             {mode === "design"
               ? <LayersPanel cfg={cfg} update={update} hidden={hiddenLayers} mode={mode}
                   onToggleHidden={toggleHidden} selected={selected} onSelect={pick}
                   onAddLayer={addCustomLayer} />
-              : <FieldList master={master} enabledVariations={enabledVariations} cfg={cfg}
-                  onValue={onFieldValue} onVariation={setVariation} />}
+              : <FieldList master={master} enabledVariants={enabledVariants} cfg={cfg}
+                  onValue={onFieldValue} onVariant={setVariant} />}
           </SidebarContent>
         </Sidebar>
         <SidebarInset className="flex h-full flex-col overflow-hidden">

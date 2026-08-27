@@ -149,7 +149,7 @@ describe("PSD QR squares", () => {
   });
 });
 
-describe("Master-variation custom layers", () => {
+describe("Master-variant custom layers", () => {
   // Pinned BEFORE the custom-layer builder work landed (sha256 of buildPsd's
   // bytes for defaultConfig() + the shared fixtures, art and mask, both
   // plates): a config with NO customLayers must still build byte-identical

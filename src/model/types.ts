@@ -1,4 +1,4 @@
-// Model types and parser for the Master/Variation label model (spec:
+// Model types and parser for the Master/Variant label model (spec:
 // docs/superpowers/specs/2026-08-27-master-variation-design.md). Pure types +
 // a defensive parser; no DOM, no rendering. resolve.ts collapses these into
 // the existing LabelConfig, which stays the renderers' contract.
@@ -34,7 +34,7 @@ export interface Guides {
 }
 
 /** A pure diff on the master — never a copy. */
-export interface Variation {
+export interface Variant {
   id: string;
   name: string;
   overrides: Partial<LabelConfig>;
@@ -50,7 +50,7 @@ export interface Master {
   defaults: Partial<LabelConfig>;
   guides: Guides;
   fields: FieldDecl[];
-  variations: Variation[];
+  variants: Variant[];
 }
 
 /** The new .label payload: IDs and values only — no layout, no styling. */
@@ -58,7 +58,7 @@ export interface LabelFileV2 {
   formatVersion: 2;
   masterId: string;
   masterHint?: string;
-  enabledVariations: string[];        // in enable order
+  enabledVariants: string[];        // in enable order
   values: Record<string, FieldValue>; // keyed by FieldDecl.id; dormant values kept
   /** Label-level deviations from the resolved master, applied after resolve
    *  (spec: Migration — "preserves nonstandard styling as label-level
@@ -80,17 +80,17 @@ export function parseMaster(json: unknown): Master {
   if (!m.defaults || typeof m.defaults !== "object") fail("missing defaults");
   if (!m.guides || typeof m.guides !== "object") fail("missing guides");
   const fields = m.fields ?? fail("missing fields");
-  const variations = m.variations ?? fail("missing variations");
+  const variants = m.variants ?? fail("missing variants");
   const seen = new Set<string>();
-  for (const v of variations) {
-    if (!v.id) fail("variation without id");
-    if (seen.has(v.id)) fail(`duplicate variation id "${v.id}"`);
+  for (const v of variants) {
+    if (!v.id) fail("variant without id");
+    if (seen.has(v.id)) fail(`duplicate variant id "${v.id}"`);
     seen.add(v.id);
   }
   const kinds = new Set<FieldKind>(["text", "number", "image", "code", "select", "toggle"]);
   const symbologies = new Set(["upc-a", "ean-13", "code-128"]);
   const fids = new Set<string>();
-  for (const f of [...fields, ...variations.flatMap((v) => v.fields ?? [])]) {
+  for (const f of [...fields, ...variants.flatMap((v) => v.fields ?? [])]) {
     if (!f.id || !f.kind || !f.path) fail(`field "${f.id ?? "?"}" missing id/kind/path`);
     if (!kinds.has(f.kind)) fail(`field "${f.id}" has unknown kind "${f.kind}"`);
     if (f.symbology !== undefined && !symbologies.has(f.symbology))

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  composeConfig, configDiff, expandCustomFormats, toggleVariation, valuesFromConfig,
+  composeConfig, configDiff, expandCustomFormats, toggleVariant, valuesFromConfig,
 } from "../src/model/document";
 import { lolevMaster } from "../src/model/lolev";
 import { defaultConfig } from "../src/defaults";
@@ -66,18 +66,18 @@ describe("configDiff / composeConfig round-trip", () => {
   });
 });
 
-describe("toggleVariation", () => {
+describe("toggleVariant", () => {
   it("enabling collab flips collabEnabled and keeps user deviations", () => {
     const m = lolevMaster();
     const cfg = composeConfig(m, [], {}, undefined).config;
     cfg.beerName = "Peregrine";
     cfg.nameStyle.fill = "#112233";
-    const on = toggleVariation(m, cfg, [], "collab", true);
+    const on = toggleVariant(m, cfg, [], "collab", true);
     expect(on.enabled).toEqual(["collab"]);
     expect(on.config.collabEnabled).toBe(true);
     expect(on.config.beerName).toBe("Peregrine");
     expect(on.config.nameStyle.fill).toBe("#112233");
-    const off = toggleVariation(m, on.config, on.enabled, "collab", false);
+    const off = toggleVariant(m, on.config, on.enabled, "collab", false);
     expect(off.enabled).toEqual([]);
     expect(off.config.collabEnabled).toBe(false);
     expect(off.config.nameStyle.fill).toBe("#112233");
@@ -87,7 +87,7 @@ describe("toggleVariation", () => {
 describe("LabelFileV2 overrides", () => {
   it("round-trips through serialize/parse", () => {
     const l: import("../src/model/types").LabelFileV2 = {
-      formatVersion: 2, masterId: "lolev", enabledVariations: [],
+      formatVersion: 2, masterId: "lolev", enabledVariants: [],
       values: { name: "Peregrine" }, overrides: { nameStyle: { fill: "#112233" } },
     };
     const back = parseLabelFile(JSON.parse(serializeLabelFile(l)));

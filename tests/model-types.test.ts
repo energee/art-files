@@ -5,7 +5,7 @@ const minimal = {
   formatVersion: 1, id: "m1", name: "Test",
   physical: { labelWidthIn: 8.125, labelHeightIn: 3.625, bleedIn: 0.125, canDiameterIn: 2.6 },
   defaults: {}, guides: { left: 24.12, center: "auto", right: 24.12, top: 24.12, bottom: 24.12 },
-  fields: [], variations: [],
+  fields: [], variants: [],
 };
 
 describe("parseMaster", () => {
@@ -22,9 +22,9 @@ describe("parseMaster", () => {
     expect(() => parseMaster({ ...minimal, formatVersion: 99 }))
       .toThrow(/format/i);
   });
-  it("rejects a variation with a duplicate id", () => {
+  it("rejects a variant with a duplicate id", () => {
     const v = { id: "collab", name: "Collab", overrides: {}, layerOverrides: {}, fields: [] };
-    expect(() => parseMaster({ ...minimal, variations: [v, v] }))
+    expect(() => parseMaster({ ...minimal, variants: [v, v] }))
       .toThrow(/duplicate/i);
   });
   it("rejects a field with an unknown kind", () => {

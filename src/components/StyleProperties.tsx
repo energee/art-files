@@ -716,7 +716,7 @@ function Content(props: {
       // rather than rendering an empty section.
       return <p className="text-[11px] text-muted-foreground">Fixed template art — nothing to edit.</p>;
     default:
-      // Custom master-variation layers: per-type content (see
+      // Custom master-variant layers: per-type content (see
       // CustomLayerContentFor above) — its own payload/size knobs, name and
       // lock, and (barcode/qr) the Advanced fold's moduleW/ecLevel and
       // "Remove layer". The shared Style section below still carries fill/

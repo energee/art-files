@@ -1,5 +1,5 @@
 // Lolev master fixture — the coverage bridge proving the model can express
-// today's product. Resolution of this master with no variations reproduces
+// today's product. Resolution of this master with no variants reproduces
 // the shipped defaults exactly. Used as the migration seed and proof the
 // model expresses the existing product (spec: Migration).
 import type { Master } from "./types";
@@ -33,7 +33,7 @@ export function lolevMaster(): Master {
       { id: "description", label: "Description", kind: "text", path: "description" },
       { id: "upc", label: "UPC", kind: "code", symbology: "upc-a", path: "upc" },
     ],
-    variations: [
+    variants: [
       { id: "collab", name: "Collab", overrides: { collabEnabled: true }, layerOverrides: {}, fields: [] },
     ],
   };

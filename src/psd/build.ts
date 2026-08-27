@@ -64,7 +64,7 @@ export interface PsdAssets {
    *  Same 1:1 pixel contract as `texture`. Omitted
    *  floods the plate solid white-ink blue, matching buildMaskPdf. */
   mask?: { data: Uint8Array; width: number; height: number };
-  /** Master-variation custom image layers' loaded state, keyed by
+  /** Master-variant custom image layers' loaded state, keyed by
    *  CustomImageLayer's `asset` — mirrors pdf/build.ts's `Assets.custom`
    *  exactly, so an SVG-sourced custom image plans as ink-tight vector paths
    *  (like the logo) instead of a raster rect; a raster-sourced one plans as
@@ -791,7 +791,7 @@ function buildLayers(
   // Codes ------------------------------------------------------------------
   groups.push({ name: "Codes", opened: false, children: codeLayers(cfg, fk, mode, plan) });
 
-  // Master-variation custom layers (Task 6) ---------------------------------
+  // Master-variant custom layers (Task 6) ---------------------------------
   // Guarded on length, not just an always-empty-array fallthrough: an absent
   // or empty customLayers must add NO group at all, so a config with none
   // builds byte-identical output to before this feature (barcode custom
@@ -806,7 +806,7 @@ function buildLayers(
 }
 
 /** One barcode's merged shape layer, from its placed item — shared by the
- *  template barcode (plan id "barcode") and any master-variation custom
+ *  template barcode (plan id "barcode") and any master-variant custom
  *  barcode layers (Task 6): both are PlacedBarcode items out of the same
  *  plan (see plan.ts's customBarcodeItem), so one code path builds either,
  *  bars and digit glyph outlines both bezier, in the item's own fill. Mask
@@ -851,7 +851,7 @@ function barcodeLayer(name: string, bc: PlacedBarcode, fk: FKFont, mode: PsdMode
 }
 
 /** QR (vector) + every barcode in the plan: the template's own ("barcode")
- *  plus any master-variation custom barcode layers (Task 6), each named
+ *  plus any master-variant custom barcode layers (Task 6), each named
  *  after its layer and drawn through barcodeLayer's shared merged-shape
  *  approach — widened from the old single-item lookup gated on
  *  `id === "barcode"` so a custom barcode layer emits too, without changing
@@ -907,7 +907,7 @@ function resizeRGBA(
   return out;
 }
 
-/** Master-variation custom layers (Task 6): one PSD layer per entry in
+/** Master-variant custom layers (Task 6): one PSD layer per entry in
  *  cfg.customLayers, in stored order — the same order plan.ts appends their
  *  placed items in, so this group draws on top of every fixed element just
  *  like the plan does. Barcode layers are excluded here: codeLayers builds

@@ -1,6 +1,6 @@
 // types.ts — the label config data model. This is also the schema of the
 // Save/Load JSON: a LabelConfig serializes as-is (plus {version: 1}). Still
-// version 1: `customLayers` (master-variation free-floating text/image
+// version 1: `customLayers` (master-variant free-floating text/image
 // layers) is additive — absent on every pre-existing file, which loads as
 // "no custom layers" with no migration needed.
 
@@ -138,7 +138,7 @@ export interface LabelConfig {
   /** Label typeface, one of fontCatalog's families. Absent = "poppins" —
    *  the fallback every pre-0.1.22 file relies on (see fontFamilyOf). */
   fontFamily?: FontFamilyId;
-  /** Free-floating layers added on a master variation: extra text lines or
+  /** Free-floating layers added on a master variant: extra text lines or
    *  small images positioned by anchor rather than by the fixed layout.
    *  Absent = none, which is every file saved before this feature. */
   customLayers?: CustomLayer[];

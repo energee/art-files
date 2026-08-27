@@ -8,10 +8,10 @@ import { deepMerge, type DeepPartial } from "./merge";
 import { resolve } from "./resolve";
 import { expandFormat, fieldRefs } from "./format";
 
-export function visibleFieldsOf(master: Master, enabledVariations: string[]): FieldDecl[] {
+export function visibleFieldsOf(master: Master, enabledVariants: string[]): FieldDecl[] {
   const out = [...master.fields];
-  for (const id of enabledVariations) {
-    const v = master.variations.find((x) => x.id === id);
+  for (const id of enabledVariants) {
+    const v = master.variants.find((x) => x.id === id);
     if (v) out.push(...v.fields);
   }
   return out;
@@ -28,10 +28,10 @@ export function getPath(obj: unknown, path: string): unknown {
 }
 
 export function valuesFromConfig(
-  master: Master, enabledVariations: string[], cfg: LabelConfig,
+  master: Master, enabledVariants: string[], cfg: LabelConfig,
 ): Record<string, FieldValue> {
   const values: Record<string, FieldValue> = {};
-  for (const f of visibleFieldsOf(master, enabledVariations)) {
+  for (const f of visibleFieldsOf(master, enabledVariants)) {
     if (f.format) continue; // derived content — the filler edits the refs
     const v = getPath(cfg, f.path);
     if (f.kind === "toggle") { if (typeof v === "boolean") values[f.id] = v; }
@@ -119,19 +119,19 @@ function stripRemovals(config: LabelConfig, patch: DeepPartial<LabelConfig>): La
 }
 
 export function composeConfig(
-  master: Master, enabledVariations: string[],
+  master: Master, enabledVariants: string[],
   values: Record<string, FieldValue>, overrides: DeepPartial<LabelConfig> | undefined,
 ): { config: LabelConfig; errors: Record<string, string>; warnings: string[] } {
-  const r = resolve(master, enabledVariations, values);
+  const r = resolve(master, enabledVariants, values);
   const config = overrides ? stripRemovals(deepMerge(r.config, overrides), overrides) : r.config;
   return { config, errors: r.errors, warnings: r.warnings };
 }
 
-/** Re-compose the live config around a variation toggle, preserving the
+/** Re-compose the live config around a variant toggle, preserving the
  *  user's deviations. The diff runs against the OLD enable set's base, so a
- *  variation's own overrides are attributed to the variation, never to the
+ *  variant's own overrides are attributed to the variant, never to the
  *  user — that attribution is what makes disable actually undo them. */
-export function toggleVariation(
+export function toggleVariant(
   master: Master, cfg: LabelConfig, enabled: string[], id: string, on: boolean,
 ): { enabled: string[]; config: LabelConfig } {
   const values = valuesFromConfig(master, enabled, cfg);
