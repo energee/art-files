@@ -61,6 +61,10 @@ export interface Assets {
    *  blue instead ("no mask" = "print as a white label"), and the per-element
    *  assignments (metallic knockouts, white-layer ink) draw on top of that. */
   maskPng?: Uint8Array;
+  /** Custom image layers' intrinsic aspect ratio (w/h), keyed by CustomImageLayer's
+   *  `asset`. Used in the plan but not embedded in buildArtPdf/buildMaskPdf;
+   *  actual asset bytes are embedded separately (Task 3 deferred). */
+  custom?: Record<string, { aspect: number }>;
   /** Elements the UI's layers-panel eye has hidden: skipped entirely — ink,
    *  stroke AND mask footprint. Distinct from fill "none", which is a live
    *  style meaning "no ink / knockout white". Session state, not config: a
@@ -287,6 +291,7 @@ async function drawElements(
       logoSvg: assets.logoSvg,
       collabLeft: await planArt("collabLeft", assets.collabLeft),
       collabCenter: await planArt("collabCenter", assets.collabCenter),
+      custom: assets.custom,
     },
   });
 

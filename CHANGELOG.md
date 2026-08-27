@@ -3,6 +3,16 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.31] - 2026-08-27
+
+- Labels now run on a master + variations + values model. A new Design/Fill
+  control (Fill is the default) shows fillers just the label, a field list,
+  and variation checkboxes — the collab switch is now the shipped Collab
+  variation. Files save in a slimmer v2 `.label` format recording the master,
+  enabled variations, and values; existing `.label` files still open exactly
+  as before, and re-saving upgrades them. The app keeps a library index of
+  where `.master` files live; the Lolev master ships built in.
+
 ## [0.1.30] - 2026-08-27
 
 - Custom text and image layers: a label file can now carry extra layers that

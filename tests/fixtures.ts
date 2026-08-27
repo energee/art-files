@@ -21,6 +21,10 @@ export const assets: Assets = {
     bold: readFileSync(asset("fonts/Poppins-Bold.ttf")),
   },
   logoSvg: readFileSync(asset("logo2025.svg"), "utf8"),
+  // Custom image assets for tests: aspect ratios only (bytes are wired in Task 3).
+  custom: {
+    art1: { aspect: 1 },
+  },
 };
 
 /** The same assets, narrowed to what the PSD builder takes (it embeds the
