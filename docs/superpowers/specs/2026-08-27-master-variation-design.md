@@ -259,6 +259,17 @@ simplify, then simplify again).
   configuration; Design mode is where you make it yours. It is a well-made
   default file, not a special mechanism.
 
+## Rename: Label Lab → Proof
+
+The product is renamed **Proof** (print-proofing connotation; trademark/domain
+check still owed). Scope: app display name, Tauri bundle identifier and window
+title, `package.json`, README, and the release pipeline — tags move from
+`label-lab-v*` to a new prefix, and the desktop updater feed renames with the
+app, so the final Label Lab release must point existing installs at the new
+feed or they stop receiving updates. Binary-impacting: ships as its own
+coordinated, versioned release under the release-steward gate, separate from
+the model restructure.
+
 ## Migration
 
 - **Presets → masters:** on first launch each stored preset converts to a
