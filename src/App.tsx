@@ -874,6 +874,21 @@ export const DocumentEditor = memo(function DocumentEditor({
   }
   const customImageInput = useRef<HTMLInputElement>(null);
 
+  /** Move a custom layer one place earlier (back) or later (front) in
+   *  cfg.customLayers — which IS its z-order: planLabel appends custom layers
+   *  in stored order, so later means drawn on top. One undoable step; a
+   *  no-op at either end of the custom range. */
+  function moveCustomLayer(id: string, delta: -1 | 1) {
+    update((c) => {
+      const layers = c.customLayers ?? [];
+      const i = layers.findIndex((l) => l.id === id);
+      const j = i + delta;
+      if (i === -1 || j < 0 || j >= layers.length) return;
+      const [layer] = layers.splice(i, 1);
+      layers.splice(j, 0, layer);
+    });
+  }
+
   // FieldList's onValue: writes one field straight into the config via its
   // path. Coalescing mirrors onEditText's contract (see PreviewCompare's
   // onEditText below) — the first change to a field opens an undo step, the
@@ -1893,7 +1908,8 @@ export const DocumentEditor = memo(function DocumentEditor({
             {mode === "design"
               ? <LayersPanel cfg={cfg} update={update} hidden={hiddenLayers} mode={mode}
                   onToggleHidden={toggleHidden} selected={selected} onSelect={pick}
-                  onAddLayer={addCustomLayer} rows={panelLayerRows} />
+                  onAddLayer={addCustomLayer} onMoveCustomLayer={moveCustomLayer}
+                  rows={panelLayerRows} />
               : <FieldList master={master} enabledVariants={enabledVariants} cfg={cfg}
                   onValue={onFieldValue} onVariant={setVariant} />}
           </SidebarContent>

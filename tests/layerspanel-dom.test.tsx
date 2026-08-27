@@ -53,6 +53,7 @@ function shippedProps() {
     onSelect: vi.fn(),
     mode: "design" as const,
     onAddLayer: vi.fn(),
+    onMoveCustomLayer: vi.fn(),
     rows,
   };
 }

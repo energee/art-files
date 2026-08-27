@@ -3,7 +3,7 @@
 // distinguishes custom layer ids from the fixed ElementId set.
 import { describe, expect, it } from "vitest";
 import type {
-  CustomBarcodeLayer, CustomImageLayer, CustomLayer, CustomQrLayer, CustomTextLayer,
+  CustomBarcodeLayer, CustomImageLayer, CustomLayer, CustomQrLayer, CustomTextLayer, LabelConfig,
 } from "@/types";
 import { defaultConfig } from "@/defaults";
 import { dragTarget2, isCustomId } from "@/elements";
@@ -351,6 +351,24 @@ describe("no custom layers -> byte-identical pre-feature plan", () => {
     const cfgEmpty = defaultConfig();
     cfgEmpty.customLayers = [];
     expect(planLabel(cfgEmpty, m)).toEqual(planLabel(cfgAbsent, m));
+  });
+});
+
+describe("custom layer order is z-order (Task 4)", () => {
+  it("custom layer order is z-order: a later layer plans on top", () => {
+    const cfg = defaultConfig();
+    const layer = (id: `custom-${string}`, text: string) => ({
+      id, name: text, type: "text" as const, size: 10,
+      position: { anchor: "left" as const, vAnchor: "top" as const, offsetX: 0, offsetY: 0 },
+      line: { text, fill: "#000000" as const, layer: "white" as const },
+    });
+    cfg.customLayers = [layer("custom-a", "A"), layer("custom-b", "B")];
+    const ids = (c: LabelConfig) =>
+      planLabel(c, m).filter((p) => p.id.startsWith("custom-")).map((p) => p.id);
+    expect(ids(cfg)).toEqual(["custom-a", "custom-b"]);
+    const swapped = structuredClone(cfg);
+    swapped.customLayers = [cfg.customLayers[1], cfg.customLayers[0]];
+    expect(ids(swapped)).toEqual(["custom-b", "custom-a"]);
   });
 });
 

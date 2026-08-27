@@ -13,7 +13,9 @@
 // is a temporary skip, unlike the ink-less styling allowNone forbids); the
 // document layers go without for now, except Settings which has neither eye
 // nor asset to hide.
-import { Barcode, ChevronDown, Eye, EyeOff, Image, Lock, Plus, QrCode, Type } from "lucide-react";
+import {
+  Barcode, ChevronDown, ChevronUp, Eye, EyeOff, Image, Lock, Plus, QrCode, Type,
+} from "lucide-react";
 import type { LabelConfig, StyledLine } from "@/types";
 import {
   applyStyle, customElement, elementById, type LabelElement,
@@ -121,6 +123,7 @@ type Row = Pick<PanelRow, "id" | "name"> & Partial<Pick<PanelRow, "variantName" 
 
 function LayerRow({
   row, cfg, update, hidden: hiddenSet, onToggleHidden, selected, onSelect,
+  mode, reorder,
 }: {
   row: Row;
   cfg: LabelConfig;
@@ -129,6 +132,12 @@ function LayerRow({
   onToggleHidden: (id: HideableLayerId) => void;
   selected: readonly LayerId[];
   onSelect: (id: LayerId, mods: SelectMods) => void;
+  /** Design/Fill — reorder chevrons are Design-only, custom rows only. */
+  mode: "design" | "fill";
+  /** Front/back position within the custom-layer stack, present only for a
+   *  custom row (undefined for master and Document rows, which get no
+   *  reorder control at all). */
+  reorder?: { atFront: boolean; atBack: boolean; onMove: (delta: -1 | 1) => void };
 }) {
   const id = row.id as LayerId;
   const customLayer = cfg.customLayers?.find((l) => l.id === id);
@@ -276,6 +285,31 @@ function LayerRow({
               <Lock />
             </button>
           )}
+          {/* Front/back reorder, custom rows only, Design mode only — master
+              rows have no control here: their draw order is fixed in
+              planLabel, so offering one would be a lie. */}
+          {customLayer && mode === "design" && reorder && (
+            <span className="flex shrink-0 items-center" onClick={stop}>
+              <button
+                type="button"
+                onClick={() => reorder.onMove(-1)}
+                disabled={reorder.atBack}
+                aria-label={`Send ${label} backward`}
+                className="grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70 opacity-40 hover:text-sidebar-foreground hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-20 [&>svg]:size-3"
+              >
+                <ChevronDown />
+              </button>
+              <button
+                type="button"
+                onClick={() => reorder.onMove(1)}
+                disabled={reorder.atFront}
+                aria-label={`Bring ${label} forward`}
+                className="grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70 opacity-40 hover:text-sidebar-foreground hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-20 [&>svg]:size-3"
+              >
+                <ChevronUp />
+              </button>
+            </span>
+          )}
           {el !== null && (
             <CollapsibleTrigger
               aria-label={`${label} styles`}
@@ -313,6 +347,9 @@ export function LayersPanel(props: {
    *  suspenders against the panel ever being reused in Fill. */
   mode: "design" | "fill";
   onAddLayer: (type: "text" | "image" | "barcode" | "qr") => void;
+  /** Front/back reorder within `cfg.customLayers` — App's moveCustomLayer,
+   *  one undoable splice. Custom rows only; master draw order is fixed. */
+  onMoveCustomLayer: (id: string, delta: -1 | 1) => void;
   /** The master's layers flat, in draw order, then any custom layers — see
    *  model/panel.ts's panelRows. App computes this against the live master/
    *  variants/config so the panel never has to re-derive it. */
@@ -321,6 +358,20 @@ export function LayersPanel(props: {
   const rowProps = {
     cfg: props.cfg, update: props.update, hidden: props.hidden,
     onToggleHidden: props.onToggleHidden, selected: props.selected, onSelect: props.onSelect,
+    mode: props.mode,
+  };
+  // Position within the custom-layer stack alone (not the whole rows list) —
+  // reorder is scoped to custom rows, so "at the end" must mean the last
+  // custom row, not the last row overall.
+  const customIds = props.rows.filter((r) => r.custom).map((r) => r.id);
+  const reorderFor = (row: PanelRow) => {
+    if (!row.custom) return undefined;
+    const i = customIds.indexOf(row.id);
+    return {
+      atBack: i <= 0,
+      atFront: i === customIds.length - 1,
+      onMove: (delta: -1 | 1) => props.onMoveCustomLayer(row.id, delta),
+    };
   };
   return (
     <>
@@ -367,7 +418,7 @@ export function LayersPanel(props: {
         <SidebarGroupContent>
           <SidebarMenu>
             {props.rows.map((row) => (
-              <LayerRow key={row.id} row={row} {...rowProps} />
+              <LayerRow key={row.id} row={row} {...rowProps} reorder={reorderFor(row)} />
             ))}
           </SidebarMenu>
         </SidebarGroupContent>
