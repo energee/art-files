@@ -20,14 +20,32 @@ import type { LayerPosition } from "./model/position";
 export const SHIPPED: LabelConfig = defaultConfig();
 
 /** The laurel's effective stack nudge. The nudge exists to make room for the
- *  centre collab mark, and it now ARRIVES WITH the Collab variant rather
- *  than being gated by a flag: the master's own `logo` has no offsetY (so
- *  the nudge is 0 with the variant off), and the Collab variant carries
- *  `overrides.logo.offsetY`, which resolve() merges in only while the
- *  variant is enabled. Renderers and hit-testing still read the nudge
- *  through this one gate so they cannot disagree. */
+ *  centre collab mark, but it is no longer gated on anything: the shipped
+ *  `logo` declares no offsetY, so it is 0 on every label that has not
+ *  authored one, and the Collab variant deliberately overrides nothing here
+ *  (an explicit 0 would stomp a master-level nudge — see model/lolev.ts).
+ *  Renderers and hit-testing still read the nudge through this one gate so
+ *  they cannot disagree. */
 export function logoNudge(cfg: LabelConfig): number {
   return cfg.logo.offsetY ?? 0;
+}
+
+/** What a plan-driven build must OMIT, for the preview and the exported
+ *  deliverables alike: the layers-panel eyes plus everything the
+ *  master/variant resolution has switched off (a layer the panel disabled on
+ *  the master, or one owned by a variant that is off). ONE spelling, shared
+ *  by the preview's skip memo and buildFull's export assets — they used to
+ *  compute it separately and the export forgot `disabled`, so a master layer
+ *  disabled in the panel vanished from the preview and still PRINTED. Since
+ *  `collabEnabled` was deleted this set is also the only thing suppressing
+ *  the collab block on a non-collab label, which makes the two agreeing
+ *  load-bearing rather than tidy. Module-level and exported so the union has
+ *  a test without mounting the editor (tests/app-layer-doc.test.ts), and
+ *  DOM-free so tests/pdf-build.test.ts can pin the export consequence too. */
+export function buildSkip(
+  hidden: { has(id: string): boolean }, disabled: { has(id: string): boolean },
+): { has(id: ElementId): boolean } {
+  return { has: (id: ElementId) => hidden.has(id) || disabled.has(id) };
 }
 
 export type ElementId =

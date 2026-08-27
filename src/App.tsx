@@ -18,7 +18,7 @@ import type {
   CollabSlot, CustomBarcodeLayer, CustomImageLayer, CustomQrLayer, CustomTextLayer,
   Fill, LabelConfig,
 } from "@/types";
-import { dragTarget, dragTarget2, editableText, type ElementId } from "@/elements";
+import { buildSkip, dragTarget, dragTarget2, editableText, type ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
 import { defaultConfig, exportBaseName, legacyCollabEnabled, parseConfigFile } from "@/defaults";
 import { machineName } from "@/qr";
@@ -1715,21 +1715,17 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   // What planLabel omits: the layers-panel eyes, the in-place edit session's
   // element — the v0.1.16 hide-and-rebuild plumbing reduced to a render flag
-  // — and anything the master/variant resolution has switched off (a
-  // disabled layer, or one owned by a variant that's off). Since
-  // `collabEnabled` was deleted, this disabled-layer set is the ONLY thing
-  // suppressing the collab block on a non-collab label — see
-  // tests/collab-variant-goldens.test.ts, which pins both states' bytes.
-  // Same-frame: a
-  // new editSession changes this memo, the source memo below, and
-  // PreviewCompare repaints on the next rAF.
+  // — and buildSkip's union (the eyes plus the resolution's disabled
+  // layers), which the export path consumes too so preview and deliverable
+  // cannot disagree. Only the edit session is preview-only: an element being
+  // typed into is hidden while its live editor floats over it, which is
+  // meaningless for a print file. Same-frame: a new editSession changes this
+  // memo, the source memo below, and PreviewCompare repaints on the next rAF.
+  const exportSkip = useMemo(
+    () => buildSkip(hiddenLayers, disabledLayers), [hiddenLayers, disabledLayers]);
   const skip = useMemo<{ has(id: ElementId): boolean }>(
-    () => ({
-      has: (id: ElementId) => id === editSession
-        || hiddenLayers.has(id as HideableLayerId)
-        || disabledLayers.has(id),
-    }),
-    [editSession, hiddenLayers, disabledLayers],
+    () => ({ has: (id: ElementId) => id === editSession || exportSkip.has(id) }),
+    [editSession, exportSkip],
   );
   // Null until the first assembly lands — both views render from this.
   const canvasSource = useMemo<CanvasRenderSource | null>(
@@ -1812,14 +1808,16 @@ export const DocumentEditor = memo(function DocumentEditor({
         import("@/pdf/build"),
         loadFonts(fontFamilyOf(displayCfg)),
       ]);
-      // Exports honor the eye too: a hidden layer is "not on this label",
-      // preview and deliverable alike. (PSDs still carry every layer — a
-      // layered handoff is the place to keep them all.)
+      // Exports honor the eye AND the resolution: a hidden layer is "not on
+      // this label", and a layer the panel disabled on the master is not on
+      // ANY label — preview and deliverable alike, off the one buildSkip
+      // union. (PSDs still carry every layer — a layered handoff is the
+      // place to keep them all.)
       const customEntries = Object.entries(customImages);
       const assets: Assets = {
         fonts, logoSvg, ...(await collabAssets()),
         ...eyedAssets(false),
-        hidden: hiddenLayers,
+        hidden: exportSkip,
         // Same `art` addition as the preview assembly effect above: an SVG
         // custom image has no raster bytes for `customImages` below to embed
         // (drawElements' embed loop skips SVG sources), so without `art` it

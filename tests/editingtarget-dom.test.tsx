@@ -158,10 +158,10 @@ describe("EditingTarget", () => {
   it("lists the Collab variant's shipped fields, each with an unlock", () => {
     renderFields({ master: lolevMaster(), target: { variant: "collab" } });
     const fields = container.querySelector("#editing-target-fields")!;
-    for (const label of ["Lead-in", "Text Logo", "Graphic Logo"]) {
+    for (const label of ["Text Logo", "Graphic Logo"]) {
       expect(fields.textContent).toContain(label);
     }
-    for (const id of ["collabLead", "collabLeft", "collabCenter"]) {
+    for (const id of ["collabLeft", "collabCenter"]) {
       const lock = container.querySelector(`#field-lock-${id}`) as HTMLButtonElement;
       expect(lock).not.toBeNull();
       expect(lock.getAttribute("aria-label")).toMatch(/^Unlock /);

@@ -10,6 +10,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import { addLayerDoc, type Doc, materializedLayerEditDoc, moveLayerDoc } from "../src/App";
+import { buildSkip } from "../src/elements";
 import { composeConfig } from "../src/model/document";
 import { resolve } from "../src/model/resolve";
 import { lolevMaster } from "../src/model/lolev";
@@ -120,5 +121,30 @@ describe("materializedLayerEditDoc (Task 5b fix round 1)", () => {
     const doc = addLayerDoc(docOn(), "master", textLayer("custom-a", "Text"), textStyle("Hi"));
     const locked = materializedLayerEditDoc(doc, "custom-a", { locked: true });
     expect(materializedLayerEditDoc(locked, "custom-a", { locked: true })).toBe(locked);
+  });
+});
+
+// buildSkip is the ONE spelling of "what a plan-driven build must omit",
+// shared by the preview's skip memo and buildFull's export assets. They used
+// to compute it separately and the export forgot the resolution's disabled
+// layers, so a master layer disabled in the panel vanished from the preview
+// and still PRINTED. The union is pinned here; the end-to-end consequence is
+// pinned in tests/pdf-build.test.ts ("a master layer disabled in the panel is
+// absent from the exported PDF").
+describe("buildSkip", () => {
+  it("unions the layers-panel eyes with the resolution's disabled layers", () => {
+    const skip = buildSkip(new Set(["mask"]), new Set(["volume"]));
+    expect(skip.has("volume" as never)).toBe(true);   // disabled on the master
+    expect(skip.has("mask" as never)).toBe(true);     // hidden by the eye
+    expect(skip.has("name" as never)).toBe(false);
+  });
+
+  it("omits a layer the panel disabled on the shipped master", () => {
+    const m = lolevMaster();
+    m.layers.find((l) => l.id === "volume")!.enabled = false;
+    const skip = buildSkip(new Set(), resolve(m, [], {}).disabledLayers);
+    expect(skip.has("volume" as never)).toBe(true);
+    // …and the collab block, which has no flag left to suppress it.
+    expect(skip.has("collabLeft" as never)).toBe(true);
   });
 });

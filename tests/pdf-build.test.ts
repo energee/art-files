@@ -8,9 +8,11 @@ import { PDFDocument, PDFName } from "pdf-lib";
 import { buildArtPdf, buildMaskPdf, type CollabImage } from "../src/pdf/build";
 import { warningColumnLen, warningMeasure, wrapWarning } from "../src/warning";
 import { defaultConfig } from "../src/defaults";
-import type { ElementId } from "../src/elements";
+import { buildSkip, type ElementId } from "../src/elements";
 import * as L from "../src/layout";
 import { assets, contentStreamText } from "./fixtures";
+import { resolve } from "../src/model/resolve";
+import { lolevMaster } from "../src/model/lolev";
 
 // Counts /Subtype /Image XObjects in a saved PDF's indirect object table —
 // the thing a hidden collab logo must NOT contribute, even though planLabel
@@ -212,6 +214,31 @@ describe("Assets.hidden — the layers-panel eye", () => {
     const baseline = await countImageXObjects(noCollab);
     expect(await countImageXObjects(visible)).toBeGreaterThan(baseline);
     expect(await countImageXObjects(hidden)).toBe(baseline);
+  });
+});
+
+// Regression (Task 5c fix round 1): the export path built its skip set
+// separately from the preview's and forgot the resolution's disabled layers,
+// so a built-in master layer switched off in the layers panel disappeared
+// from the preview and still PRINTED — a wrong deliverable. App.tsx's
+// buildSkip is now the single union both consume; this pins the consequence
+// at the builder, where the wrong bytes would actually be written.
+describe("a master layer disabled in the panel is absent from the exported PDF", () => {
+  const showOps = (s: string) => (s.match(/\bTj\b/g) ?? []).length;
+
+  it("drops its ink from the art plate", async () => {
+    const master = lolevMaster();
+    const plain = resolve(master, [], {});
+    master.layers.find((l) => l.id === "volume")!.enabled = false;
+    const off = resolve(master, [], {});
+    expect(off.disabledLayers.has("volume")).toBe(true);
+
+    const build = (r: typeof plain) => buildArtPdf(r.config, {
+      ...assets, hidden: buildSkip(new Set(), r.disabledLayers),
+    });
+    const before = showOps(await contentStreamText(await build(plain)));
+    const after = showOps(await contentStreamText(await build(off)));
+    expect(after).toBeLessThan(before);
   });
 });
 

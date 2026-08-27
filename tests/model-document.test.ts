@@ -68,24 +68,22 @@ describe("configDiff / composeConfig round-trip", () => {
 });
 
 describe("toggleVariant", () => {
-  // Collab carries no boolean of its own any more, so what "enabling it"
-  // means is: its overrides apply (the laurel's stack nudge), its three
+  // Collab carries no boolean of its own any more — and, deliberately, no
+  // config overrides either — so what "enabling it" means is: its three
   // layers leave the disabled set, and the user's own deviations survive
   // both directions.
-  it("enabling collab applies its overrides and un-disables its layers, keeping user deviations", () => {
+  it("enabling collab un-disables its layers and keeps user deviations", () => {
     const m = lolevMaster();
     const cfg = composeConfig(m, [], {}, undefined).config;
     cfg.beerName = "Peregrine";
     cfg.nameStyle.fill = "#112233";
     const on = toggleVariant(m, cfg, [], "collab", true);
     expect(on.enabled).toEqual(["collab"]);
-    expect(on.config.logo.offsetY).toBe(0);
     expect(composeConfig(m, on.enabled, {}, undefined).disabledLayers.size).toBe(0);
     expect(on.config.beerName).toBe("Peregrine");
     expect(on.config.nameStyle.fill).toBe("#112233");
     const off = toggleVariant(m, on.config, on.enabled, "collab", false);
     expect(off.enabled).toEqual([]);
-    expect(off.config.logo.offsetY).toBeUndefined();
     expect([...composeConfig(m, off.enabled, {}, undefined).disabledLayers].sort())
       .toEqual(["collabCenter", "collabLead", "collabLeft"]);
     expect(off.config.nameStyle.fill).toBe("#112233");

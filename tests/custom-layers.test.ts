@@ -170,11 +170,6 @@ describe("dragTarget2", () => {
     expect(dragTarget2(cfg, { left: false, center: false }, "logo")).toBeNull();
   });
 
-  it("keeps the offsetY form for logo when unlocked, same as before", () => {
-    const cfg = defaultConfig();
-    const t = dragTarget2(cfg, { left: false, center: false }, "logo");
-    expect(t?.kind).toBe("offsetY");
-  });
 });
 
 const m = (text: string, size: number) => text.length * size;

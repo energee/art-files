@@ -34,22 +34,34 @@ export function lolevMaster(): Master {
       { id: "upc", label: "UPC", kind: "code", symbology: "upc-a", path: "upc" },
     ],
     // Collab is an ORDINARY variant — no boolean on LabelConfig, no special
-    // case in any renderer. It carries exactly what a collab label adds:
-    // three fields (the lead-in's text and the two logo slots' asset ids)
-    // and the laurel's stack nudge, which used to be gated on the deleted
-    // `collabEnabled` flag and now simply arrives with the variant. The
-    // nudge ships at 0 because that is what today's collab labels render
-    // with (the master's own `logo` declares no offsetY); it is a real,
-    // overridable knob, not a placeholder. What stops the collab block
-    // drawing when the variant is off is the resolver's disabled-layer set
-    // alone — the three layers below are tagged `variant: "collab"`.
+    // case in any renderer. It carries exactly what a collab label adds: the
+    // two logo slots, as ordinary image fields whose value is the asset id
+    // of the art loaded into them.
+    //
+    // Deliberately NO config overrides. The laurel's stack nudge used to be
+    // gated on the deleted `collabEnabled` flag and is unconditional now
+    // (logoNudge), but the shipped `logo` declares no offsetY, so there is no
+    // nudge to preserve — and an explicit `logo: { offsetY: 0 }` here would
+    // be worse than nothing: variant overrides merge ON TOP of
+    // master.defaults, so it would silently stomp a designer's master-level
+    // nudge the moment Collab was enabled, on exactly the labels the nudge
+    // exists to serve.
+    //
+    // The lead-in is deliberately NOT a field: `cfg.collabLead` is a Style
+    // with no text, and plan.ts draws the lead-in from the fixed
+    // L.COLLAB_LEAD.lines (whose line COUNT also positions collabLeft, via
+    // collabLeftFlow). It stays fixed template art, which is what the
+    // inspector's collabLead panel already says.
+    //
+    // What stops the collab block drawing when the variant is off is the
+    // resolver's disabled-layer set alone — the three layers below are
+    // tagged `variant: "collab"`.
     variants: [
       {
         id: "collab", name: "Collab",
-        overrides: { logo: { offsetY: 0 } },
+        overrides: {},
         layerOverrides: {},
         fields: [
-          { id: "collabLead", label: "Lead-in", kind: "text", path: "collabLead.text" },
           { id: "collabLeft", label: "Text Logo", kind: "image", path: "collabLeft.image" },
           { id: "collabCenter", label: "Graphic Logo", kind: "image", path: "collabCenter.image" },
         ],

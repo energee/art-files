@@ -20,26 +20,24 @@ describe("preview hit-testing", () => {
     const both = { left: true, center: true };
     const ids = (c: typeof cfg, slots = both) =>
       new Set(boxesOf(c, measure, slots).map((b) => b.id));
-    const on = cfg;
     // Slot empty: the renderers draw nothing there, so a box would swallow
     // clicks meant for whatever is behind it. (On a non-collab label the app
     // hands over no collab art at all, so both slots read empty — see
     // App.tsx's collabFileOf.)
-    expect(ids(on, { left: false, center: false }).has("collabLeft")).toBe(false);
+    expect(ids(cfg, { left: false, center: false }).has("collabLeft")).toBe(false);
     // The lead-in only introduces the LEFT logo, and goes with it.
-    expect(ids(on, { left: false, center: true }).has("collabLead")).toBe(false);
+    expect(ids(cfg, { left: false, center: true }).has("collabLead")).toBe(false);
     for (const id of ["collabLead", "collabLeft", "collabCenter"] as const)
-      expect(ids(on).has(id)).toBe(true);
+      expect(ids(cfg).has(id)).toBe(true);
   });
 
   it("hits the collab logo slots inside their fit envelopes", () => {
-    const on = cfg;
     const both = { left: true, center: true };
-    const left = boxOf("collabLeft", on, measure, both)!;
-    expect(hitTest(left.x0 + 1, left.y0 + 1, measure, on, both)).toBe("collabLeft");
+    const left = boxOf("collabLeft", cfg, measure, both)!;
+    expect(hitTest(left.x0 + 1, left.y0 + 1, measure, cfg, both)).toBe("collabLeft");
     // The centre slot hangs off the laurel, so nudging the laurel carries it.
-    const nudged = { ...on, logo: { ...on.logo, offsetY: 10 } };
-    const before = boxOf("collabCenter", on, measure, both)!;
+    const nudged = { ...cfg, logo: { ...cfg.logo, offsetY: 10 } };
+    const before = boxOf("collabCenter", cfg, measure, both)!;
     const after = boxOf("collabCenter", nudged, measure, both)!;
     expect(after.y0 - before.y0).toBeCloseTo(10);
   });

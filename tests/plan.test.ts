@@ -106,8 +106,7 @@ describe("planLabel", () => {
     // breaks the split fails this test instead of silently reordering the
     // PDF's left column.
     const LEFT = new Set(["volume", "abv", "description", "collabLead"]);
-    const on = defaultConfig();
-    const ids = planLabel(on, m, { collab: { left: true, center: false } }).map((r) => r.id);
+    const ids = planLabel(defaultConfig(), m, { collab: { left: true, center: false } }).map((r) => r.id);
     const inLeft = ids.map((id) => LEFT.has(id));
     const split = inLeft.lastIndexOf(true);
     expect(split).toBeGreaterThanOrEqual(0);
@@ -136,9 +135,9 @@ describe("planLabel", () => {
   });
 
   it("collabLead appears only when a left slot is filled", () => {
-    const on = defaultConfig();
-    expect(planLabel(on, m).some((r) => r.id === "collabLead")).toBe(false);
-    expect(planLabel(on, m, { collab: { left: true, center: false } })
+    const c = defaultConfig();
+    expect(planLabel(c, m).some((r) => r.id === "collabLead")).toBe(false);
+    expect(planLabel(c, m, { collab: { left: true, center: false } })
       .some((r) => r.id === "collabLead")).toBe(true);
   });
 
@@ -146,9 +145,9 @@ describe("planLabel", () => {
     // The PDF build drops a hidden logo's art so no bytes reach the file, but
     // the lead-in has its own eye — it must survive, or the export diverges
     // from the preview.
-    const on = defaultConfig();
+    const c = defaultConfig();
     const { logoSvg } = assets;
-    const plan = planLabel(on, m, {
+    const plan = planLabel(c, m, {
       collab: { left: true, center: false },
       assets: { logoSvg, collabLeft: null, collabCenter: null },
     });
@@ -229,20 +228,18 @@ describe("planLabel collab images and barcode", () => {
 
   it("fits a raster centre logo into its envelope, centred on cx", () => {
     // 200x100 raster in a 36x36 envelope at scale 1: width-bound, s=0.18.
-    const c = cfg;
-    const item = planLabel(c, m, {
+    const item = planLabel(cfg, m, {
       assets: { ...assets, collabCenter: { kind: "raster" as const, w: 200, h: 100 } },
     }).find((r) => r.id === "collabCenter");
     expect(item).toBeDefined();
     if (item!.kind !== "image") throw new Error("expected an image item");
-    expect(item!.w).toBeCloseTo(L.COLLAB_CENTER.maxW * c.collabCenter.scale);
+    expect(item!.w).toBeCloseTo(L.COLLAB_CENTER.maxW * cfg.collabCenter.scale);
     expect(item!.h).toBeCloseTo(item!.w / 2);
     expect(item!.x).toBeCloseTo(L.COLLAB_CENTER.cx - item!.w / 2);
   });
 
   it("plans an svg left logo as paths at the flowed position", () => {
-    const c = cfg;
-    const item = planLabel(c, m, {
+    const item = planLabel(cfg, m, {
       assets: { ...assets, collabLeft: { kind: "svg" as const, svg: LOGO_SVG } },
     }).find((r) => r.id === "collabLeft");
     expect(item?.kind).toBe("paths");

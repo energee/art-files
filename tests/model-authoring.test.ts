@@ -34,14 +34,16 @@ describe("applyDesignEdit", () => {
     expect(configOf(m, []).nameStyle.fill).not.toBe("#445566");
     expect(configOf(m, ["collab"]).nameStyle.fill).toBe("#445566");
   });
-  it("editing a variant does not re-record what it already overrides", () => {
-    const m = applyDesignEdit(lolevMaster(), { variant: "collab" }, [], {},
+  it("editing a variant does not disturb what it already overrides", () => {
+    // The shipped Collab variant overrides nothing (see lolev.ts), so this
+    // seeds an override first: a second, unrelated edit must add its own
+    // leaf and leave the first exactly as it was.
+    const seeded = applyDesignEdit(lolevMaster(), { variant: "collab" }, [], {},
+      (c) => { c.nameStyle.fill = "#445566"; });
+    const m = applyDesignEdit(seeded, { variant: "collab" }, [], {},
       (c) => { c.abv = "7"; });
     expect(m.variants[0].overrides.abv).toBe("7");
-    // The laurel's stack nudge was already the Collab variant's own override
-    // (it replaced the deleted `collabEnabled` flag) — the diff must not
-    // drop it, nor double-record it as a fresh edit.
-    expect(m.variants[0].overrides.logo).toEqual({ offsetY: 0 });
+    expect(m.variants[0].overrides.nameStyle).toEqual({ fill: "#445566" });
   });
 });
 
@@ -64,9 +66,9 @@ describe("overriddenPaths / resetOverride", () => {
       (c) => { c.nameStyle.fill = "#445566"; c.abv = "7"; });
     const target = { variant: "collab" } as const;
     expect(overriddenPaths(m, target))
-      .toEqual(new Set(["logo.offsetY", "nameStyle.fill", "abv"]));
+      .toEqual(new Set(["nameStyle.fill", "abv"]));
     m = resetOverride(m, target, "nameStyle.fill");
-    expect(overriddenPaths(m, target)).toEqual(new Set(["logo.offsetY", "abv"]));
+    expect(overriddenPaths(m, target)).toEqual(new Set(["abv"]));
     expect(m.variants[0].overrides.nameStyle).toBeUndefined();
   });
   it("the master overrides nothing", () => {

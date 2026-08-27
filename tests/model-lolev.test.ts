@@ -10,20 +10,31 @@ describe("lolevMaster", () => {
   // Collab is an ordinary variant now: three fields plus the laurel's stack
   // nudge, and NOT a boolean on LabelConfig. What suppresses the collab
   // block when the variant is off is `disabledLayers` alone.
-  it("the collab variant declares its three fields", () => {
+  it("the collab variant declares its two logo fields", () => {
+    // The lead-in is deliberately not among them: it is fixed template art
+    // (plan.ts draws L.COLLAB_LEAD.lines), so a field bound to
+    // `collabLead.text` would be a control nothing reads.
     const v = lolevMaster().variants.find((x) => x.id === "collab")!;
     expect(v.fields).toEqual([
-      { id: "collabLead", label: "Lead-in", kind: "text", path: "collabLead.text" },
       { id: "collabLeft", label: "Text Logo", kind: "image", path: "collabLeft.image" },
       { id: "collabCenter", label: "Graphic Logo", kind: "image", path: "collabCenter.image" },
     ]);
   });
-  it("the collab variant's only config override is the laurel's stack nudge", () => {
+  it("the collab variant overrides no config at all", () => {
     // N = 0: the shipped `logo` carries no offsetY (defaults.ts), so today's
-    // collab-on nudge is `cfg.logo.offsetY ?? 0` = 0. Recording it as the
-    // variant's own override is what lets logoNudge drop its flag gate
-    // without moving a single point of ink.
-    expect(lolevMaster().variants[0].overrides).toEqual({ logo: { offsetY: 0 } });
+    // collab-on nudge is `cfg.logo.offsetY ?? 0` = 0 and there is nothing to
+    // preserve. An explicit 0 here would only shadow — see the next test.
+    expect(lolevMaster().variants[0].overrides).toEqual({});
+  });
+  it("a master-level stack nudge survives enabling Collab", () => {
+    // Variant overrides merge ON TOP of master.defaults, so an explicit
+    // `logo.offsetY: 0` on the Collab variant would silently discard a
+    // designer's master-level nudge on precisely the labels the nudge exists
+    // to serve. This is the test that catches that regression.
+    const m = lolevMaster();
+    m.defaults = { ...m.defaults, logo: { offsetY: 18 } as never };
+    expect(resolve(m, [], {}).config.logo.offsetY).toBe(18);
+    expect(resolve(m, ["collab"], {}).config.logo.offsetY).toBe(18);
   });
   it("no resolved config carries a collabEnabled key any more", () => {
     for (const enabled of [[], ["collab"]]) {

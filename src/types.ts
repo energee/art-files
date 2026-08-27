@@ -47,10 +47,12 @@ export interface StyledLine extends Style {
 export interface Positioned {
   /** Vertical nudge in PDF points, positive = down. Absent/0 = as laid out.
    *  For the laurel this is the "stack nudge": it exists to clear the centre
-   *  collab mark, and the Collab variant is what carries a non-zero value
-   *  (its `overrides.logo.offsetY`). Applied unconditionally — logoNudge in
-   *  elements.ts is just `logo.offsetY ?? 0` now, because the master's own
-   *  default is 0 and disabling the variant takes the override away with it. */
+   *  collab mark. Applied UNCONDITIONALLY — logoNudge in elements.ts is just
+   *  `logo.offsetY ?? 0` — because it is a real position knob, not a
+   *  collab-only one: it ships absent (= 0), it is whatever the master or the
+   *  label has authored, and no variant overrides it (the Collab variant
+   *  deliberately declares no `logo` override, so a master-level nudge is not
+   *  stomped when Collab is enabled — see model/lolev.ts). */
   offsetY?: number;
   /** Freezes the element in place: dragTarget/dragTarget2 return null while
    *  set, same as a locked custom layer (see CustomLayerBase.locked).

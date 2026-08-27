@@ -149,9 +149,13 @@ export function OverrideBadge(props: {
  *  the master's built-in fields (the "Plan-1 bridge" FieldDecl.path's own
  *  doc comment describes). No entry = no config-backed content path, so
  *  MakeFillable renders no button: the laurel and the fixed wordmark (as the
- *  brief calls out), warning and collabLead (fixed template text), and the
- *  two collab image slots (their art is a runtime File, not a LabelConfig
- *  field). qr is deliberately absent too — its payload is DERIVED from the
+ *  brief calls out), and warning and collabLead (fixed template text — the
+ *  lead-in's wording is L.COLLAB_LEAD.lines, whose line COUNT also positions
+ *  collabLeft via collabLeftFlow, so it is not a value a field can set). The
+ *  two collab image slots are absent for the opposite reason: they ARE
+ *  fields already, shipped on the Collab variant (`collabLeft.image` /
+ *  `collabCenter.image`), so declaredPaths covers them and the button would
+ *  only offer a duplicate. qr is deliberately absent too — its payload is DERIVED from the
  *  beer name (see Content's "qr" case above), not stored, so there is
  *  nothing for a field to bind to. barcode is the one "code" kind: its UPC
  *  digits are a plain scalar (`upc`), the same field lolevMaster ships. */
@@ -336,9 +340,8 @@ function OffsetInput(props: {
  *  hangs off the laurel's nudged bottom (see drawElements), so the pair
  *  keeps its gap and cannot drift apart the way two independent knobs
  *  let it. Applied unconditionally (see logoNudge): the nudge exists to
- *  clear the centre mark, and it is the Collab VARIANT that carries a
- *  non-zero value — turning the variant off takes the override away with
- *  it, which is what returns the laurel to its laid-out spot. */
+ *  clear the centre mark, but it is an ordinary authored position knob —
+ *  it ships at 0, and enabling Collab neither applies nor discards it. */
 function StackNudge(props: { cfg: LabelConfig; update: Update }) {
   return (
     <div className="space-y-1.5">
