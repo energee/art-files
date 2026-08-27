@@ -524,15 +524,22 @@ export function LayersPanel(props: {
         <SidebarGroupContent>
           <SidebarMenu>
             {props.rows.map((row) => (
-              // onLayerEdit for master rows only. A custom layer has no
-              // MasterLayer entry to patch — it lives in cfg.customLayers —
-              // so its name/lock stay `update` writes. Note what that means
-              // NOW: `update` routes to designEdit in Design mode, so adding,
-              // reordering, or locking a custom layer records into
-              // master.defaults.customLayers and every label built from the
-              // master inherits it. That is the transitional shape, not the
-              // destination: Task 5b moves added layers onto master.layers
-              // proper and re-points these handlers.
+              // onLayerEdit for master rows only. A custom (kind-bearing) row
+              // DOES have a MasterLayer entry now (Task 5b: addLayer records
+              // it into master.layers, or the editing variant's own layers)
+              // — but this row still reads it off `cfg.customLayers`, which
+              // is exactly what it should be: resolve() materializes the
+              // MasterLayer's styling back into that array (model/resolve.ts),
+              // so the row's icon/style-summary logic didn't have to change
+              // at all. `custom: true` rows still route through `update` for
+              // their name/lock, same as before Task 5b — Add layer and the
+              // reorder chevrons below are the two writes this task moved
+              // onto master.layers proper (App's addCustomLayer/
+              // addCustomImageLayer/moveCustomLayer, via addLayerDoc/
+              // moveLayerDoc); a custom row's Lock button stays a `update`
+              // write into `cfg.customLayers[i].locked` for now — re-pointing
+              // it onto MasterLayer.locked (like enable/rename already are
+              // for master rows) is follow-up work, not this task's.
               <LayerRow key={row.id} row={row} {...rowProps} reorder={reorderFor(row)}
                 onLayerEdit={row.custom ? undefined : props.onLayerEdit} />
             ))}

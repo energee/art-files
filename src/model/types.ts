@@ -57,6 +57,13 @@ export interface MasterLayer {
    *  collab layers sit at fixed positions in the draw order, which an
    *  appended list cannot express. */
   variant?: string;
+  /** Custom layers only: which renderer shape this layer is. Absent = a
+   *  built-in layer whose id planLabel already knows. Set by `addLayer`
+   *  (document.ts) — Design mode's "Add layer" — and read by resolve()'s
+   *  materialization step, which uses it to reconstruct the CustomLayer's
+   *  `type` from the resolved config's styling at this layer's own id (see
+   *  resolve.ts). Never set on a built-in id. */
+  kind?: "text" | "image" | "barcode" | "qr";
 }
 
 /** A pure diff on the master — never a copy. */
@@ -140,6 +147,7 @@ export function parseMaster(json: unknown): Master {
   const layers = m.layers ?? fail("missing layers");
   if (!Array.isArray(layers)) fail("layers must be an array");
   const lids = new Set<string>();
+  const layerKinds = new Set(["text", "image", "barcode", "qr"]);
   const validateLayer = (l: MasterLayer, context: string) => {
     if (!l.id || typeof l.id !== "string") fail(`${context} layer missing id`);
     if (!l.name || typeof l.name !== "string") fail(`${context} layer "${l.id}" missing name`);
@@ -148,6 +156,12 @@ export function parseMaster(json: unknown): Master {
     lids.add(l.id);
     if (l.variant !== undefined && !seen.has(l.variant))
       fail(`${context} layer "${l.id}" names undeclared variant "${l.variant}"`);
+    // `kind` is the one field this task adds: validated the same way
+    // FieldDecl.symbology already is above, so a hand-edited or corrupted
+    // .master with a bogus kind fails to open loudly instead of resolving
+    // into a CustomLayer with an unrenderable `type`.
+    if (l.kind !== undefined && !layerKinds.has(l.kind))
+      fail(`${context} layer "${l.id}" has unknown kind "${l.kind}"`);
   };
   for (const l of layers) validateLayer(l, "master");
   // Variant.layers (the appended-layer path — see its own doc comment): same

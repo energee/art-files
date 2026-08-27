@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  addField, addVariant, applyDesignEdit, applyLayerEdit, composeConfig,
+  addField, addLayer, addVariant, applyDesignEdit, applyLayerEdit, composeConfig, moveLayer,
   overriddenPaths, resetOverride,
 } from "../src/model/document";
 import { lolevMaster } from "../src/model/lolev";
@@ -158,5 +158,62 @@ describe("addField", () => {
       { id: "partner", label: "Partner", kind: "text", path: "collabLead.text" });
     expect(addField(m, { variant: "collab" },
       { id: "lead", label: "Lead-In", kind: "text", path: "collabLead.text" })).toBe(m);
+  });
+});
+
+// Task 5b: Design mode's "Add layer" records into the master (or the
+// editing variant), never into `defaults.customLayers` wholesale.
+describe("addLayer", () => {
+  const layer = { id: "custom-a", name: "Text", enabled: true, kind: "text" as const };
+  const style = { type: "text", size: 12, line: { text: "Hi", fill: "#000", layer: "white" } };
+
+  it("appends to master.layers and leaves master.defaults.customLayers undefined", () => {
+    const m = addLayer(lolevMaster(), "master", layer, style);
+    expect(m.layers.at(-1)).toEqual(layer);
+    expect((m.defaults as unknown as Record<string, unknown>).customLayers).toBeUndefined();
+    expect((m.defaults as unknown as Record<string, unknown>)["custom-a"]).toEqual(style);
+  });
+
+  it("never mutates the master it was given", () => {
+    const before = lolevMaster();
+    addLayer(before, "master", layer, style);
+    expect(before.layers.some((l) => l.id === "custom-a")).toBe(false);
+  });
+
+  it("appends to the variant's own layers, not master.layers, when the target is a variant", () => {
+    const m = addLayer(lolevMaster(), { variant: "collab" }, layer, style);
+    expect(m.layers.some((l) => l.id === "custom-a")).toBe(false);
+    expect(m.variants[0].layers).toEqual([layer]);
+    expect((m.variants[0].overrides as unknown as Record<string, unknown>)["custom-a"]).toEqual(style);
+  });
+});
+
+describe("moveLayer", () => {
+  const a = { id: "custom-a", name: "A", enabled: true, kind: "text" as const };
+  const b = { id: "custom-b", name: "B", enabled: true, kind: "text" as const };
+  const style = { type: "text", size: 12, line: { text: "x", fill: "#000", layer: "white" } };
+
+  it("swaps two adjacent kind-bearing master layers", () => {
+    let m = addLayer(lolevMaster(), "master", a, style);
+    m = addLayer(m, "master", b, style);
+    expect(m.layers.slice(-2).map((l) => l.id)).toEqual(["custom-a", "custom-b"]);
+    const moved = moveLayer(m, "custom-b", -1);
+    expect(moved.layers.slice(-2).map((l) => l.id)).toEqual(["custom-b", "custom-a"]);
+  });
+
+  it("never moves a built-in layer, or past either end of the custom range", () => {
+    let m = addLayer(lolevMaster(), "master", a, style);
+    m = addLayer(m, "master", b, style);
+    expect(moveLayer(m, "custom-a", -1)).toBe(m); // already the first custom entry
+    expect(moveLayer(m, "custom-b", 1)).toBe(m); // already the last custom entry
+    expect(moveLayer(m, "qr", -1)).toBe(m); // built-in — no kind, no reorder
+  });
+
+  it("moves within the owning variant's own layers, not the master's", () => {
+    let m = addLayer(lolevMaster(), { variant: "collab" }, a, style);
+    m = addLayer(m, { variant: "collab" }, b, style);
+    const moved = moveLayer(m, "custom-b", -1);
+    expect(moved.variants[0].layers!.map((l) => l.id)).toEqual(["custom-b", "custom-a"]);
+    expect(moved.layers.some((l) => l.id === "custom-a" || l.id === "custom-b")).toBe(false);
   });
 });

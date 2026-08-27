@@ -15,7 +15,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
 import type {
-  CollabSlot, CustomBarcodeLayer, CustomImageLayer, CustomLayer, CustomQrLayer, CustomTextLayer,
+  CollabSlot, CustomBarcodeLayer, CustomImageLayer, CustomQrLayer, CustomTextLayer,
   Fill, LabelConfig,
 } from "@/types";
 import { dragTarget, dragTarget2, editableText, type ElementId } from "@/elements";
@@ -31,10 +31,10 @@ import {
 import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import {
-  addField, addVariant, applyDesignEdit, applyLayerEdit, bridgeCollabOverride, composeConfig,
-  configDiff, declaredFieldPaths, expandCustomFormats, fieldsAt, getPath, overriddenPaths,
-  removeField, renameField, resetOverride, toggleVariant, valuesFromConfig, visibleFieldsOf,
-  type EditTarget,
+  addField, addLayer, addVariant, applyDesignEdit, applyLayerEdit, bridgeCollabOverride,
+  composeConfig, configDiff, declaredFieldPaths, expandCustomFormats, fieldsAt, getPath,
+  moveLayer, overriddenPaths, removeField, renameField, resetOverride, toggleVariant,
+  valuesFromConfig, visibleFieldsOf, type EditTarget,
 } from "@/model/document";
 import { parseLabelFile } from "@/model/labelfile";
 import { MASTER_EXT, parseMasterFile, serializeMaster } from "@/model/masterfile";
@@ -452,6 +452,46 @@ export function addFieldDoc(doc: Doc, target: EditTarget, decl: FieldDecl): Doc 
     ? { values: restValues, variants: doc.dormant!.variants }
     : undefined;
   return { ...doc, cfg, master, dormant };
+}
+
+/** The pure doc transition behind Design mode's "Add layer" (addLayer): add
+ *  a `kind`-bearing layer at the (clamped) editing target and recompose cfg
+ *  in the SAME history entry — same shape as designEditDoc, since adding a
+ *  layer changes `config.customLayers` (via resolve()'s materialization)
+ *  exactly the way a style edit changes any other config path. addLayer
+ *  never returns `master` unchanged (every call mints a fresh layer id), so
+ *  unlike designEditDoc there is no identity/no-op case to guard here. */
+export function addLayerDoc(
+  doc: Doc, target: EditTarget, layer: MasterLayer, style: unknown,
+): Doc {
+  const at = clampTarget(doc.master, target);
+  const values = valuesFromConfig(doc.master, doc.enabledVariants, doc.cfg);
+  const master = addLayer(doc.master, at, layer, style);
+  const overrides = configDiff(
+    composeConfig(doc.master, doc.enabledVariants, values, undefined).config, doc.cfg);
+  const cfg = composeConfig(
+    master, doc.enabledVariants, values,
+    Object.keys(overrides).length ? overrides : undefined).config;
+  return { cfg, enabledVariants: doc.enabledVariants, master, dormant: doc.dormant };
+}
+
+/** The pure doc transition behind the layers panel's custom-row reorder
+ *  (moveLayer): move one `kind`-bearing layer within its own list (the
+ *  master's `layers`, or the owning variant's) and recompose cfg — the
+ *  reorder changes the DRAW ORDER resolve() materializes `customLayers` in,
+ *  so it needs the same recompose designEditDoc/addLayerDoc do. `doc` itself
+ *  (moveLayer's own identity contract) when the move is a no-op: the layer
+ *  isn't `kind`-bearing, or it's already at that end of its custom range. */
+export function moveLayerDoc(doc: Doc, layerId: string, delta: -1 | 1): Doc {
+  const master = moveLayer(doc.master, layerId, delta);
+  if (master === doc.master) return doc;
+  const values = valuesFromConfig(doc.master, doc.enabledVariants, doc.cfg);
+  const overrides = configDiff(
+    composeConfig(doc.master, doc.enabledVariants, values, undefined).config, doc.cfg);
+  const cfg = composeConfig(
+    master, doc.enabledVariants, values,
+    Object.keys(overrides).length ? overrides : undefined).config;
+  return { cfg, enabledVariants: doc.enabledVariants, master, dormant: doc.dormant };
 }
 
 /** The pure doc transition behind TargetFields' inline rename, offered once
@@ -1182,25 +1222,36 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  freshly placed layer always lands somewhere visible on the label. */
   const NEW_LAYER_POSITION = { anchor: "center", vAnchor: "top", offsetX: 0, offsetY: 24 } as const;
 
-  /** Design-mode "Add layer": mints the id, appends the layer through
-   *  `update` (one undo step) and selects it — the spec's "placed
-   *  immediately, configure after". Text/barcode/QR default styles borrow the
-   *  matching template element's CURRENT style/ink, so a fresh layer starts
-   *  in the label's own palette rather than a hardcoded black. Image is
-   *  file-pick FIRST (see the hidden input below and addCustomImageLayer):
-   *  there is nothing to place until an asset exists. */
+  /** Design-mode "Add layer": mints the id, adds it at the current editing
+   *  target through addLayerDoc — the master, or the editing variant (spec:
+   *  "placed immediately, configure after") — and selects it. Task 5b: this
+   *  is a layer OF the master (or variant), not a per-label
+   *  `cfg.customLayers` append — addLayerDoc records the layer's identity
+   *  into `layers` and its styling into `defaults`/`overrides` at its own
+   *  id, and resolve() materializes it back into `config.customLayers` for
+   *  the renderers (model/resolve.ts). Text/barcode/QR default styles borrow
+   *  the matching template element's CURRENT style/ink, so a fresh layer
+   *  starts in the label's own palette rather than a hardcoded black. Image
+   *  is file-pick FIRST (see the hidden input below and
+   *  addCustomImageLayer): there is nothing to place until an asset exists. */
   function addCustomLayer(type: "text" | "image" | "barcode" | "qr") {
     if (type === "image") { customImageInput.current?.click(); return; }
     const id = `custom-${crypto.randomUUID().slice(0, 8)}` as const;
-    const layer: CustomTextLayer | CustomBarcodeLayer | CustomQrLayer =
+    const layer: MasterLayer = {
+      id, name: type === "text" ? "Text" : type === "barcode" ? "Barcode" : "QR",
+      enabled: true, kind: type,
+    };
+    const style:
+      | Omit<CustomTextLayer, "id" | "name"> | Omit<CustomBarcodeLayer, "id" | "name">
+      | Omit<CustomQrLayer, "id" | "name"> =
       type === "text"
         ? {
-            id, name: "Text", type: "text", size: 12, position: NEW_LAYER_POSITION,
+            type: "text", size: 12, position: NEW_LAYER_POSITION,
             line: { text: "Text", fill: cfg.nameStyle.fill, layer: cfg.nameStyle.layer },
           }
         : type === "barcode"
         ? {
-            id, name: "Barcode", type: "barcode", symbology: "code-128", value: "",
+            type: "barcode", symbology: "code-128", value: "",
             h: 40, moduleW: 1, position: NEW_LAYER_POSITION,
             style: {
               fill: cfg.barcodeFill, layer: cfg.barcodeLayer, stroke: cfg.barcodeStroke,
@@ -1208,48 +1259,53 @@ export const DocumentEditor = memo(function DocumentEditor({
             },
           }
         : {
-            id, name: "QR", type: "qr", value: "", size: 40, qrStyle: "square",
+            type: "qr", value: "", size: 40, qrStyle: "square",
             position: NEW_LAYER_POSITION,
             style: {
               fill: cfg.qrFill, layer: cfg.qrLayer, stroke: cfg.qrStroke,
               strokeLayer: cfg.qrStrokeLayer, strokeWidth: cfg.qrStrokeWidth,
             },
           };
-    update((c) => { c.customLayers = [...(c.customLayers ?? []), layer]; });
+    const next = addLayerDoc(doc, editTarget, layer, style);
+    markDirty();
+    setDoc((d) => (d === doc ? next : addLayerDoc(d, editTarget, layer, style)));
     setSelection({ ids: [id], anchor: id });
   }
 
   /** The image half of addCustomLayer: picks the file first (customImageInput's
    *  onChange below), reads it through the same pipeline the .label restore
-   *  path uses (readCustomImage + mintCustomAssetId), then appends the layer —
-   *  there is no sensible empty image layer to place before an asset exists. */
+   *  path uses (readCustomImage + mintCustomAssetId), then adds the layer at
+   *  the editing target via addLayerDoc — there is no sensible empty image
+   *  layer to place before an asset exists. */
   async function addCustomImageLayer(f: File) {
     const assetId = mintCustomAssetId();
     const file = await readCustomImage(f);
     setCustomImages((old) => ({ ...old, [assetId]: file }));
     const id = `custom-${crypto.randomUUID().slice(0, 8)}` as const;
-    const layer: CustomImageLayer = {
-      id, name: "Image", type: "image", asset: assetId, w: 60, aspect: file.aspect,
+    const layer: MasterLayer = { id, name: "Image", enabled: true, kind: "image" };
+    const style: Omit<CustomImageLayer, "id" | "name"> = {
+      type: "image", asset: assetId, w: 60, aspect: file.aspect,
       position: NEW_LAYER_POSITION, style: { fill: "none", layer: "white" },
     };
-    update((c) => { c.customLayers = [...(c.customLayers ?? []), layer]; });
+    const next = addLayerDoc(doc, editTarget, layer, style);
+    markDirty();
+    setDoc((d) => (d === doc ? next : addLayerDoc(d, editTarget, layer, style)));
     setSelection({ ids: [id], anchor: id });
   }
   const customImageInput = useRef<HTMLInputElement>(null);
 
-  /** Move a custom layer one place earlier (back) or later (front) in
-   *  cfg.customLayers — which IS its z-order: planLabel appends custom layers
-   *  in stored order, so later means drawn on top. One undoable step; a
-   *  no-op at either end of the custom range. */
+  /** Move a custom (kind-bearing) layer one place earlier (back) or later
+   *  (front) among its own list's other custom entries — moveLayerDoc, which
+   *  is what its z-order now IS: resolve() materializes `config.customLayers`
+   *  in `master.layers` (or the owning variant's `layers`) draw order, so
+   *  moving the entry there moves where it draws, exactly as the old
+   *  `cfg.customLayers` splice did. One undoable step; a no-op at either end
+   *  of the custom range (moveLayerDoc's own identity contract). */
   function moveCustomLayer(id: string, delta: -1 | 1) {
-    update((c) => {
-      const layers = c.customLayers ?? [];
-      const i = layers.findIndex((l) => l.id === id);
-      const j = i + delta;
-      if (i === -1 || j < 0 || j >= layers.length) return;
-      const [layer] = layers.splice(i, 1);
-      layers.splice(j, 0, layer);
-    });
+    const next = moveLayerDoc(doc, id, delta);
+    if (next === doc) return;
+    markDirty();
+    setDoc((d) => (d === doc ? next : moveLayerDoc(d, id, delta)));
   }
 
   // FieldList's onValue: writes one field straight into the config via its

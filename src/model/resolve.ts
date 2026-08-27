@@ -2,7 +2,7 @@
 // variants + field values into the LabelConfig the renderers and both
 // deliverable builders already consume (spec: Resolution). Pure, synchronous,
 // deterministic; anchors/guides (spec step 6) land with the layer work.
-import type { LabelConfig } from "../types";
+import type { CustomLayer, LabelConfig } from "../types";
 import type { FieldDecl, FieldValue, Master, MasterLayer } from "./types";
 import { deepMerge, type DeepPartial } from "./merge";
 import { validateField } from "./fields";
@@ -61,6 +61,37 @@ export function resolve(
       out0[l.id] = { ...out0[l.id], locked: true };
     }
   }
+  // Materialize every `kind`-bearing layer into config.customLayers, in
+  // master.layers draw order — the whole safety argument for Task 5b: a
+  // MasterLayer with `kind` carries only identity/policy (id, name, enabled,
+  // locked); its styling was written by addLayer to `config[id]`, exactly
+  // where a built-in layer's own styling already sits (config.name,
+  // config.qr, ...). Reading it back out here and stamping the layer's own
+  // id/name/type/locked over whatever the stored style carries (so a rename
+  // or a lock toggle — MasterLayer edits, not style edits — take effect
+  // without touching the stored style) reproduces precisely the CustomLayer
+  // object Design mode used to build inline. planLabel and the three
+  // backends never see this step: they only ever see config.customLayers.
+  // A layer that doesn't resolve (master-disabled, or its variant is off —
+  // `disabledLayers` above already covers both) contributes nothing, same
+  // as the collab layers. `kept` — the non-`kind` layers — is what's
+  // returned as `layers` below: a materialized layer never appears there, so
+  // it can't also show up as a phantom master row in the panel (which
+  // builds its custom rows off config.customLayers already, via panelRows).
+  const kept: MasterLayer[] = [];
+  const materialized: CustomLayer[] = [];
+  for (const l of layers) {
+    if (!l.kind) { kept.push(l); continue; }
+    if (disabledLayers.has(l.id)) continue;
+    const style = out0[l.id];
+    if (!style) continue; // addLayer always records one — defensive only
+    materialized.push({
+      ...(style as object), id: l.id, name: l.name, type: l.kind, locked: l.locked,
+    } as CustomLayer);
+  }
+  if (materialized.length) {
+    (config as unknown as { customLayers: CustomLayer[] }).customLayers = materialized;
+  }
   const errors: Record<string, string> = {};
   const strings: Record<string, string> = {};
   for (const f of visibleFields) {
@@ -81,5 +112,5 @@ export function resolve(
       setPath(out, f.path, f.kind === "toggle" ? v === true : strings[f.id]);
     }
   }
-  return { config, visibleFields, errors, warnings, disabledLayers, layers };
+  return { config, visibleFields, errors, warnings, disabledLayers, layers: kept };
 }

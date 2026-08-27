@@ -428,6 +428,72 @@ export function removeField(master: Master, target: EditTarget, fieldId: string)
 const slugify = (name: string): string =>
   name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
+/** Add a layer to the master (or the editing variant) — Design mode's "Add
+ *  layer" (spec: a filler-invisible, master-authored layer). Returns a NEW
+ *  master; never mutates `master`, and always allocates (every call mints a
+ *  fresh layer, so there is no no-op case the way applyDesignEdit has).
+ *
+ *  `layer`'s identity and policy (id, name, enabled, `kind`) land in
+ *  `layers` — `master.layers` for target "master", the target variant's OWN
+ *  `layers` (the appended-layer path Variant.layers already exists for, not
+ *  `layerOverrides`, which only patches an EXISTING master layer) for a
+ *  variant target. `style` — the rest of the CustomLayer shape (position,
+ *  and whichever of line/asset/value/size/style the layer's `kind`
+ *  needs) — lands in `defaults` (or the variant's `overrides`) keyed by
+ *  `layer.id`, exactly like every built-in layer's own styling already sits
+ *  at `defaults[builtinId]`. resolve() reads it back out at that same key
+ *  when it materializes the layer into `config.customLayers` (see
+ *  resolve.ts) — this split keeps identity and style in separate places, so
+ *  a rename or lock (layer policy) never touches the stored style, and a
+ *  style edit (an ordinary applyDesignEdit through `config[layer.id]`) never
+ *  touches the layer's identity. */
+export function addLayer(
+  master: Master, target: EditTarget, layer: MasterLayer, style: unknown,
+): Master {
+  if (target === "master") {
+    const defaults = { ...master.defaults, [layer.id]: style } as Partial<LabelConfig>;
+    return { ...master, layers: [...master.layers, layer], defaults };
+  }
+  const variants = master.variants.map((v) => {
+    if (v.id !== target.variant) return v;
+    const overrides = { ...v.overrides, [layer.id]: style } as Partial<LabelConfig>;
+    return { ...v, overrides, layers: [...(v.layers ?? []), layer] };
+  });
+  return { ...master, variants };
+}
+
+/** Move one `kind`-bearing (custom) layer one place earlier (delta -1) or
+ *  later (delta 1) among its OWN list's other `kind`-bearing entries only —
+ *  the master's `layers` if Design mode added it there, or the owning
+ *  variant's `layers` if added there instead. Built-in layers interleaved in
+ *  the same list never move and are never swapped with (the panel offers no
+ *  reorder control for them — spec: their draw order is fixed in
+ *  planLabel). Mirrors the pre-Task-5b `cfg.customLayers` splice this
+ *  replaces: an adjacent swap, since delta is always ±1. Returns `master`
+ *  itself when `layerId` isn't a `kind`-bearing layer anywhere in the master,
+ *  or the move would run off either end of its own custom range. */
+export function moveLayer(master: Master, layerId: string, delta: -1 | 1): Master {
+  const moveWithin = (list: MasterLayer[]): MasterLayer[] | null => {
+    const at = list.findIndex((l) => l.id === layerId);
+    if (at === -1 || list[at].kind === undefined) return null;
+    const customIdx = list.reduce<number[]>((acc, l, i) => (l.kind ? [...acc, i] : acc), []);
+    const swapWith = customIdx[customIdx.indexOf(at) + delta];
+    if (swapWith === undefined) return null;
+    const next = [...list];
+    [next[at], next[swapWith]] = [next[swapWith], next[at]];
+    return next;
+  };
+  const masterNext = moveWithin(master.layers);
+  if (masterNext) return { ...master, layers: masterNext };
+  for (const v of master.variants) {
+    const vNext = moveWithin(v.layers ?? []);
+    if (vNext) {
+      return { ...master, variants: master.variants.map((x) => (x.id === v.id ? { ...x, layers: vNext } : x)) };
+    }
+  }
+  return master;
+}
+
 /** Add a variant and return the new master. Ids are slugged from `name`
  *  and de-duplicated with a numeric suffix, so the caller only supplies a
  *  human name (spec: inline creation, no dialogs). */
