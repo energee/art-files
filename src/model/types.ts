@@ -66,6 +66,12 @@ export interface Variant {
   overrides: Partial<LabelConfig>;
   layerOverrides: Record<string, Partial<MasterLayer>>;
   fields: FieldDecl[];
+  /** Layers this variant APPENDS to the master's draw order when enabled —
+   *  distinct from MasterLayer.variant, which tags an existing master layer
+   *  as owned by this variant. Absent = none; no shipped master uses this
+   *  yet (spec's appended-layer path, kept for a future variant that adds
+   *  wholly new layers rather than reusing a master one). */
+  layers?: MasterLayer[];
 }
 
 export interface Master {

@@ -99,6 +99,15 @@ describe("layer policy", () => {
     expect(resolve(m, ["collab"], {}).disabledLayers.has("qr")).toBe(true);
     expect(resolve(m, [], {}).disabledLayers.has("qr")).toBe(false);
   });
+  it("a variant's appended layers land after the master's layers, and only while enabled", () => {
+    const m = lolevMaster();
+    m.variants[0].layers = [{ id: "extra", name: "Extra", enabled: true, variant: "collab" }];
+    const enabled = resolve(m, ["collab"], {});
+    expect(enabled.layers.at(-1)!.id).toBe("extra");
+    expect(enabled.disabledLayers.has("extra")).toBe(false);
+    const disabled = resolve(m, [], {});
+    expect(disabled.layers.map((l) => l.id)).not.toContain("extra");
+  });
   it("a locked layer stamps the config's Positioned lock", () => {
     const m = lolevMaster();
     m.layers.find((l) => l.id === "logo")!.locked = true;

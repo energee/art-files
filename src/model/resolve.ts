@@ -48,8 +48,7 @@ export function resolve(
       const patch = v.layerOverrides[layers[i].id];
       if (patch) layers[i] = { ...layers[i], ...patch };
     }
-    const appended = (v as unknown as { layers?: MasterLayer[] }).layers;
-    if (appended) layers.push(...appended.map((l) => ({ ...l })));
+    if (v.layers) layers.push(...v.layers.map((l) => ({ ...l })));
   }
   const disabledLayers = new Set<string>();
   for (const l of layers) {
