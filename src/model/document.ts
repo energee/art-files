@@ -145,3 +145,32 @@ export function toggleVariant(
     : enabled.filter((x) => x !== id);
   return { enabled: next, config: composeConfig(master, next, values, overrides).config };
 }
+
+/** Pure half of the pre-Plan-5a collab bridge (I1): a v2 label saved before
+ *  layer-visibility moved onto enabledVariants could carry a label-level
+ *  `overrides.collabEnabled === true` with "collab" absent from
+ *  enabledVariants — resolve() now derives the collab block's layers from
+ *  enabledVariants alone (MasterLayer.variant), so such a label would reopen
+ *  with `collabEnabled` still true but its layers stuck in disabledLayers.
+ *  Called after composeConfig with the resolved config's `collabEnabled`;
+ *  when it needs to bridge, enables "collab" and drops the now-redundant
+ *  override so it can't fight the variant on the next diff. No-op (changed:
+ *  false, same references) whenever there is nothing to bridge — callers can
+ *  skip recomposing in that case. */
+export function bridgeCollabOverride(
+  master: Master, enabledVariants: string[], overrides: DeepPartial<LabelConfig> | undefined,
+  resolvedCollabEnabled: boolean,
+): { enabledVariants: string[]; overrides: DeepPartial<LabelConfig> | undefined; changed: boolean } {
+  const alreadyEnabled = enabledVariants.includes("collab");
+  const hasCollabVariant = master.variants.some((v) => v.id === "collab");
+  if (!resolvedCollabEnabled || alreadyEnabled || !hasCollabVariant) {
+    return { enabledVariants, overrides, changed: false };
+  }
+  let nextOverrides = overrides;
+  if (overrides && (overrides as Record<string, unknown>).collabEnabled === true) {
+    const rest = { ...(overrides as Record<string, unknown>) };
+    delete rest.collabEnabled;
+    nextOverrides = Object.keys(rest).length ? (rest as DeepPartial<LabelConfig>) : undefined;
+  }
+  return { enabledVariants: [...enabledVariants, "collab"], overrides: nextOverrides, changed: true };
+}

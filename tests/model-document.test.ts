@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  composeConfig, configDiff, expandCustomFormats, toggleVariant, valuesFromConfig,
+  bridgeCollabOverride, composeConfig, configDiff, expandCustomFormats, toggleVariant,
+  valuesFromConfig,
 } from "../src/model/document";
 import { lolevMaster } from "../src/model/lolev";
 import { defaultConfig } from "../src/defaults";
@@ -142,6 +143,49 @@ describe("expandCustomFormats", () => {
     }];
     const out = expandCustomFormats(cfg, { upc: "012345678905" });
     expect(out).toBe(cfg);
+  });
+});
+
+describe("bridgeCollabOverride (I1)", () => {
+  it("enables the collab variant and drops the redundant override when collabEnabled came from overrides alone", () => {
+    const m = lolevMaster();
+    const r = bridgeCollabOverride(m, [], { collabEnabled: true }, true);
+    expect(r.changed).toBe(true);
+    expect(r.enabledVariants).toEqual(["collab"]);
+    expect(r.overrides).toBeUndefined();
+  });
+
+  it("keeps other overrides alongside the dropped collabEnabled key", () => {
+    const m = lolevMaster();
+    const r = bridgeCollabOverride(
+      m, [], { collabEnabled: true, nameStyle: { fill: "#112233" } }, true);
+    expect(r.changed).toBe(true);
+    expect(r.enabledVariants).toEqual(["collab"]);
+    expect(r.overrides).toEqual({ nameStyle: { fill: "#112233" } });
+  });
+
+  it("is a no-op when collab is already enabled", () => {
+    const m = lolevMaster();
+    const r = bridgeCollabOverride(m, ["collab"], { collabEnabled: true }, true);
+    expect(r.changed).toBe(false);
+    expect(r.enabledVariants).toEqual(["collab"]);
+    expect(r.overrides).toEqual({ collabEnabled: true });
+  });
+
+  it("is a no-op when the resolved config's collabEnabled is false", () => {
+    const m = lolevMaster();
+    const r = bridgeCollabOverride(m, [], undefined, false);
+    expect(r.changed).toBe(false);
+    expect(r.enabledVariants).toEqual([]);
+    expect(r.overrides).toBeUndefined();
+  });
+
+  it("is a no-op when the master declares no collab variant", () => {
+    const m = lolevMaster();
+    m.variants = m.variants.filter((v) => v.id !== "collab");
+    const r = bridgeCollabOverride(m, [], { collabEnabled: true }, true);
+    expect(r.changed).toBe(false);
+    expect(r.enabledVariants).toEqual([]);
   });
 });
 

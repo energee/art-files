@@ -47,3 +47,42 @@ describe("parseMaster layer validation", () => {
     ]))).toThrow(/nope/);
   });
 });
+
+// M2: Variant.layers (the appended-layer path) went through parseMaster
+// unvalidated — an appended layer with a bad shape, or one whose id
+// duplicated a master layer id, passed silently and would have produced
+// duplicate panel rows / duplicate React keys downstream.
+describe("parseMaster Variant.layers validation (M2)", () => {
+  const withCollabLayers = (layers: unknown) => {
+    const m = lolevMaster();
+    m.variants = m.variants.map((v) =>
+      v.id === "collab" ? { ...v, layers: layers as never } : v);
+    return m;
+  };
+
+  it("accepts a well-formed appended layer with a fresh id", () => {
+    const m = withCollabLayers([{ id: "collab-extra", name: "Extra", enabled: true }]);
+    expect(() => parseMaster(m)).not.toThrow();
+  });
+
+  it("rejects an appended layer without an id or name", () => {
+    expect(() => parseMaster(withCollabLayers([{ name: "x", enabled: true }]))).toThrow(/id/i);
+    expect(() => parseMaster(withCollabLayers([{ id: "x", enabled: true }]))).toThrow(/name/i);
+  });
+
+  it("rejects an appended layer missing enabled", () => {
+    expect(() => parseMaster(withCollabLayers([{ id: "x", name: "X" }]))).toThrow(/enabled/i);
+  });
+
+  it("rejects an appended layer id colliding with a master layer id", () => {
+    expect(() => parseMaster(withCollabLayers([
+      { id: "barcode", name: "Duplicate", enabled: true },
+    ]))).toThrow(/duplicate/i);
+  });
+
+  it("rejects two appended layers with the same id", () => {
+    expect(() => parseMaster(withCollabLayers([
+      { id: "x", name: "X", enabled: true }, { id: "x", name: "X2", enabled: true },
+    ]))).toThrow(/duplicate/i);
+  });
+});

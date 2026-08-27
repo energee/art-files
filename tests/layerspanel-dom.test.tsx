@@ -77,3 +77,74 @@ describe("LayersPanel", () => {
     expect(leadRow!.querySelector(".opacity-50")).not.toBeNull();
   });
 });
+
+// I4: reorder chevrons, custom rows only. plan.ts appends customLayers in
+// stored order and draws later entries on top (see its comment above the
+// custom-layer loop) — so the FIRST stored custom row is backmost ("Send
+// backward" disabled there) and the LAST is frontmost ("Bring forward"
+// disabled there).
+describe("LayersPanel reorder chevrons", () => {
+  function twoCustomLayerProps() {
+    const props = shippedProps();
+    const customLayers: import("../src/types").CustomLayer[] = [
+      {
+        id: "custom-a", name: "First", type: "text", size: 10,
+        position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
+        line: { text: "one", fill: "#000000", layer: "white" },
+      },
+      {
+        id: "custom-b", name: "Second", type: "text", size: 10,
+        position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
+        line: { text: "two", fill: "#000000", layer: "white" },
+      },
+    ];
+    const cfg = { ...props.cfg, customLayers };
+    const master = lolevMaster();
+    const r = composeConfig(master, [], {}, undefined);
+    const rows = panelRows(master, r.layers, r.disabledLayers, cfg);
+    return { ...props, cfg, rows };
+  }
+
+  function rowFor(name: string) {
+    return Array.from(container.querySelectorAll("li"))
+      .find((li) => li.textContent?.includes(name))!;
+  }
+
+  it("renders both chevrons on both custom rows with the expected aria-labels", () => {
+    renderPanel(twoCustomLayerProps());
+    for (const name of ["First", "Second"]) {
+      const row = rowFor(name);
+      expect(row.querySelector(`[aria-label="Bring ${name} forward"]`)).not.toBeNull();
+      expect(row.querySelector(`[aria-label="Send ${name} backward"]`)).not.toBeNull();
+    }
+  });
+
+  it("disables the first row's Send backward and the last row's Bring forward", () => {
+    renderPanel(twoCustomLayerProps());
+    const first = rowFor("First");
+    const second = rowFor("Second");
+    expect(first.querySelector('[aria-label="Send First backward"]'))
+      .toHaveProperty("disabled", true);
+    expect(first.querySelector('[aria-label="Bring First forward"]'))
+      .toHaveProperty("disabled", false);
+    expect(second.querySelector('[aria-label="Bring Second forward"]'))
+      .toHaveProperty("disabled", true);
+    expect(second.querySelector('[aria-label="Send Second backward"]'))
+      .toHaveProperty("disabled", false);
+  });
+
+  it("clicking Bring forward / Send backward calls onMoveCustomLayer with the right delta", () => {
+    const props = twoCustomLayerProps();
+    renderPanel(props);
+    const first = rowFor("First");
+    const second = rowFor("Second");
+    act(() => {
+      (first.querySelector('[aria-label="Bring First forward"]') as HTMLButtonElement).click();
+    });
+    expect(props.onMoveCustomLayer).toHaveBeenCalledWith("custom-a", 1);
+    act(() => {
+      (second.querySelector('[aria-label="Send Second backward"]') as HTMLButtonElement).click();
+    });
+    expect(props.onMoveCustomLayer).toHaveBeenCalledWith("custom-b", -1);
+  });
+});

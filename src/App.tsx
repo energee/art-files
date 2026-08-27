@@ -27,8 +27,8 @@ import { LABEL_FILTER, LABEL_TYPES, isAbort, savePicker, writeHandle } from "@/f
 import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import {
-  composeConfig, configDiff, expandCustomFormats, toggleVariant, valuesFromConfig,
-  visibleFieldsOf,
+  bridgeCollabOverride, composeConfig, configDiff, expandCustomFormats, toggleVariant,
+  valuesFromConfig, visibleFieldsOf,
 } from "@/model/document";
 import { parseLabelFile } from "@/model/labelfile";
 import { lolevMaster } from "@/model/lolev";
@@ -1598,12 +1598,23 @@ export const DocumentEditor = memo(function DocumentEditor({
             ` — open its .master file once to register it.`);
           return false;
         }
-        const c = composeConfig(m, parsed.enabledVariants, parsed.values, parsed.overrides);
+        let c = composeConfig(m, parsed.enabledVariants, parsed.values, parsed.overrides);
+        // Pre-Plan-5a bridge (I1): a label saved before layer visibility
+        // moved onto enabledVariants may carry overrides.collabEnabled with
+        // "collab" absent from enabledVariants — recompose with "collab"
+        // enabled so its layers don't land in disabledLayers on reopen.
+        let openedVariants = parsed.enabledVariants;
+        const bridged = bridgeCollabOverride(
+          m, parsed.enabledVariants, parsed.overrides, c.config.collabEnabled);
+        if (bridged.changed) {
+          openedVariants = bridged.enabledVariants;
+          c = composeConfig(m, bridged.enabledVariants, parsed.values, bridged.overrides);
+        }
         // resetDocument sets master back to the Lolev default (see its own
         // comment) and enabledVariants to the real set in the same history
         // step — set the real master again right after, so neither call
         // order can leak a stale master into this document.
-        resetDocument(c.config, parsed.enabledVariants);
+        resetDocument(c.config, openedVariants);
         setMaster(m);
         warnings = c.warnings; // advisory only — a lossy compose still opens
       } else {

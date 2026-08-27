@@ -135,14 +135,23 @@ export function parseMaster(json: unknown): Master {
   const layers = m.layers ?? fail("missing layers");
   if (!Array.isArray(layers)) fail("layers must be an array");
   const lids = new Set<string>();
-  for (const l of layers) {
-    if (!l.id || typeof l.id !== "string") fail(`layer missing id`);
-    if (!l.name || typeof l.name !== "string") fail(`layer "${l.id}" missing name`);
-    if (typeof l.enabled !== "boolean") fail(`layer "${l.id}" missing enabled`);
+  const validateLayer = (l: MasterLayer, context: string) => {
+    if (!l.id || typeof l.id !== "string") fail(`${context} layer missing id`);
+    if (!l.name || typeof l.name !== "string") fail(`${context} layer "${l.id}" missing name`);
+    if (typeof l.enabled !== "boolean") fail(`${context} layer "${l.id}" missing enabled`);
     if (lids.has(l.id)) fail(`duplicate layer id "${l.id}"`);
     lids.add(l.id);
     if (l.variant !== undefined && !seen.has(l.variant))
-      fail(`layer "${l.id}" names undeclared variant "${l.variant}"`);
+      fail(`${context} layer "${l.id}" names undeclared variant "${l.variant}"`);
+  };
+  for (const l of layers) validateLayer(l, "master");
+  // Variant.layers (the appended-layer path — see its own doc comment): same
+  // shape rules as a master layer, and checked against the SAME `lids` set
+  // built above, so an appended id colliding with a master layer id (or
+  // another variant's appended id) fails here rather than surfacing later as
+  // duplicate panel rows / duplicate React keys (M2).
+  for (const v of variants) {
+    for (const l of v.layers ?? []) validateLayer(l, `variant "${v.id}"`);
   }
   return m;
 }

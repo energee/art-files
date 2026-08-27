@@ -119,7 +119,7 @@ function StyleSummary({ el, cfg }: { el: LabelElement; cfg: LabelConfig }) {
  *  layer id (Background/Mask/Settings — no panel-row equivalent, so the
  *  Document group builds one inline with a plain lookup name and never
  *  inactive/badged). */
-type Row = Pick<PanelRow, "id" | "name"> & Partial<Pick<PanelRow, "variantName" | "inactive">>;
+type Row = Pick<PanelRow, "id" | "name"> & Partial<Pick<PanelRow, "variantName" | "inactive" | "locked">>;
 
 function LayerRow({
   row, cfg, update, hidden: hiddenSet, onToggleHidden, selected, onSelect,
@@ -149,7 +149,11 @@ function LayerRow({
       : customLayer.type === "barcode" ? LAYER_ICONS.barcode
       : customLayer.type === "qr" ? LAYER_ICONS.qr
       : LAYER_ICONS.name
-    : LAYER_ICONS[id as Exclude<LayerId, `custom-${string}`>];
+    // Fallback for an id LAYER_ICONS has no entry for — reachable now that a
+    // variant can append a Variant.layers row whose id is neither a built-in
+    // LayerId nor a `custom-*` layer; rendering `<undefined />` throws, so
+    // this can't silently fall through to that.
+    : (LAYER_ICONS[id as Exclude<LayerId, `custom-${string}`>] ?? Type);
   const el = isElementId(id)
     ? (customLayer ? customElement(cfg, id as `custom-${string}`) : elementById(id)) : null;
   // The row's own name, not elementById's — a renamed layer (a custom row,
@@ -260,12 +264,16 @@ function LayerRow({
           {/* Applied-styles accordion, element rows only — the document
               layers have no styles. A read-only digest; editing stays in
               the inspector. */}
-          {/* Lock badge, custom rows only — the fixed elements have no
-              analogous "freeze in place" flag on the layer itself (the
-              logo/collab slots' lock lives in the inspector's StackNudge/
-              CollabSlotContent, not the row). Lit while locked, same idiom as
-              the eye. */}
-          {customLayer && (
+          {/* Lock badge. Custom rows get the interactive toggle — the fixed/
+              master layers have no analogous "freeze in place" control on
+              the row yet (5b adds one; the logo/collab slots' lock today
+              lives in the inspector's StackNudge/CollabSlotContent, not the
+              row). A master row can still be locked (spec: Lock, stamped in
+              the master file), so it gets the same badge, read-only, when
+              `row.locked` is true — otherwise a locked master layer showed
+              no indicator at all even though PanelRow.locked was computed
+              for it. Lit while locked, same idiom as the eye. */}
+          {customLayer ? (
             <button
               type="button"
               onClick={(e) => {
@@ -284,7 +292,14 @@ function LayerRow({
             >
               <Lock />
             </button>
-          )}
+          ) : row.locked ? (
+            <span
+              aria-label={`${label} is locked`}
+              className="grid size-5 shrink-0 place-items-center text-sidebar-foreground/70 [&>svg]:size-3"
+            >
+              <Lock />
+            </span>
+          ) : null}
           {/* Front/back reorder, custom rows only, Design mode only — master
               rows have no control here: their draw order is fixed in
               planLabel, so offering one would be a lie. */}
