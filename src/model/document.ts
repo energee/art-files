@@ -3,7 +3,7 @@
 // are the boundary: values/diff OUT of cfg at save time, compose INTO cfg at
 // open/toggle time (spec: Resolution; Migration — label-level overrides).
 import type { LabelConfig } from "../types";
-import type { FieldDecl, FieldValue, Master, MasterLayer } from "./types";
+import type { FieldDecl, FieldValue, Master, MasterLayer, Variant } from "./types";
 import { deepMerge, type DeepPartial } from "./merge";
 import { resolve } from "./resolve";
 import { expandFormat, fieldRefs } from "./format";
@@ -173,4 +173,163 @@ export function bridgeCollabOverride(
     nextOverrides = Object.keys(rest).length ? (rest as DeepPartial<LabelConfig>) : undefined;
   }
   return { enabledVariants: [...enabledVariants, "collab"], overrides: nextOverrides, changed: true };
+}
+
+// --- Authoring: Design-mode edits recorded into the master or a variant ---
+// (spec: "Editing: Master ▾" — a design edit is an ordinary LabelConfig
+// mutation whose resulting diff is redirected into the master's own defaults
+// or a named variant's overrides, instead of a per-label override.)
+
+/** Where a Design-mode edit is recorded. "master" = master.defaults; any
+ *  other value = that variant's overrides (spec: "Editing: Master ▾"). */
+export type EditTarget = "master" | { variant: string };
+
+/** authoring diffs (master.defaults / a variant's overrides) never go
+ *  through resolve()'s stripRemovals the way a label's own overrides do via
+ *  composeConfig — resolve() deepMerges master.defaults and variant.overrides
+ *  directly (resolve.ts). A stored REMOVE marker would therefore leak into
+ *  every resolved config as a literal `null` forever instead of an absent
+ *  key. None of applyDesignEdit's callers ever delete a LabelConfig key
+ *  (they only set fields), so a REMOVE marker here is not a real "unset"
+ *  intent — it is dropped rather than recorded. */
+function dropRemovals(patch: DeepPartial<LabelConfig>): DeepPartial<LabelConfig> {
+  const walk = (v: unknown): unknown => {
+    if (!isPlain(v)) return v;
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(v)) {
+      const c = (v as Record<string, unknown>)[k];
+      if (c === REMOVE) continue;
+      out[k] = walk(c);
+    }
+    return out;
+  };
+  return walk(patch) as DeepPartial<LabelConfig>;
+}
+
+/** Run an ordinary LabelConfig mutation as an AUTHORING edit: apply it to a
+ *  freshly resolved base, diff, and record the diff at `target`. Returns a
+ *  NEW master — never mutates the one passed in — so it drops straight into
+ *  the app's history stack.
+ *
+ *  This is the whole semantic flip in one function: every existing editor
+ *  (applyStyle, the inspector's fields, drag, lock) keeps mutating a
+ *  LabelConfig, and only the destination of the resulting diff changes. */
+export function applyDesignEdit(
+  master: Master, target: EditTarget, enabledVariants: string[],
+  values: Record<string, FieldValue>,
+  mutate: (cfg: LabelConfig) => void,
+): Master {
+  const variantId = target === "master" ? undefined : target.variant;
+  // Editing a variant resolves its base WITH that variant enabled —
+  // otherwise the diff would re-record everything the variant already
+  // changes (it would look like a fresh label deviation from the un-varianted
+  // base rather than the variant's own known overrides).
+  const resolveEnabled = variantId && !enabledVariants.includes(variantId)
+    ? [...enabledVariants, variantId]
+    : enabledVariants;
+  const base = composeConfig(master, resolveEnabled, values, undefined).config;
+  const next = structuredClone(base);
+  mutate(next);
+  const d = dropRemovals(configDiff(base, next));
+  if (Object.keys(d).length === 0) return master; // memo/dirty-flag contract: identity, not a clone
+  if (target === "master") {
+    // Master.defaults is typed Partial<LabelConfig> (shallow) but in practice
+    // stores arbitrarily deep patches — the same seam resolve.ts already
+    // crosses via its own `master.defaults as DeepPartial<LabelConfig>` cast.
+    const defaults = deepMerge(master.defaults as DeepPartial<LabelConfig>, d) as Partial<LabelConfig>;
+    return { ...master, defaults };
+  }
+  const variants = master.variants.map((v) => {
+    if (v.id !== target.variant) return v;
+    const overrides = deepMerge(v.overrides as DeepPartial<LabelConfig>, d) as Partial<LabelConfig>;
+    return { ...v, overrides };
+  });
+  return { ...master, variants };
+}
+
+/** Patch one layer's policy (name/enabled/locked) at `target`: the master's
+ *  own layer entry, or the variant's layerOverrides[id]. Returns a new
+ *  master. Layer policy is NOT part of LabelConfig, so it cannot ride
+ *  applyDesignEdit's diff and gets its own entry point. */
+export function applyLayerEdit(
+  master: Master, target: EditTarget, layerId: string, patch: Partial<MasterLayer>,
+): Master {
+  if (target === "master") {
+    const layers = master.layers.map((l) => (l.id === layerId ? { ...l, ...patch } : l));
+    return { ...master, layers };
+  }
+  const variants = master.variants.map((v) => {
+    if (v.id !== target.variant) return v;
+    const layerOverrides = { ...v.layerOverrides, [layerId]: { ...v.layerOverrides[layerId], ...patch } };
+    return { ...v, layerOverrides };
+  });
+  return { ...master, variants };
+}
+
+/** Flattens a plain object/array-leaved value to dot-path leaves, arrays
+ *  counting as leaves (mirrors configDiff's own plain-vs-leaf split). */
+function leafPaths(obj: unknown, prefix: string, out: Set<string>): void {
+  if (!isPlain(obj)) {
+    if (prefix) out.add(prefix);
+    return;
+  }
+  for (const k of Object.keys(obj)) {
+    leafPaths(obj[k], prefix ? `${prefix}.${k}` : k, out);
+  }
+}
+
+/** Every dot-path a variant currently overrides — what the inspector badges
+ *  as "overridden" (spec: touched properties show a badge with per-property
+ *  reset). Empty for the master, which overrides nothing by definition. */
+export function overriddenPaths(master: Master, target: EditTarget): Set<string> {
+  const out = new Set<string>();
+  if (target === "master") return out;
+  const v = master.variants.find((x) => x.id === target.variant);
+  if (v) leafPaths(v.overrides, "", out);
+  return out;
+}
+
+/** Deletes one dot-path from an object in place, then prunes any object
+ *  left empty by the deletion (so a fully-reset nested style doesn't leave a
+ *  stray `{}` in overrides). No-op if the path doesn't resolve. */
+function deletePath(obj: Record<string, unknown>, path: string): void {
+  const keys = path.split(".");
+  const chain: Record<string, unknown>[] = [obj];
+  for (let i = 0; i < keys.length - 1; i++) {
+    const at = chain[i][keys[i]];
+    if (!isPlain(at)) return;
+    chain.push(at);
+  }
+  delete chain[chain.length - 1][keys[keys.length - 1]];
+  for (let i = chain.length - 1; i > 0; i--) {
+    if (Object.keys(chain[i]).length === 0) delete chain[i - 1][keys[i - 1]];
+  }
+}
+
+/** Drop one overridden path from a variant, restoring the master's value.
+ *  Returns a new master; a no-op for the master target. */
+export function resetOverride(master: Master, target: EditTarget, path: string): Master {
+  if (target === "master") return master;
+  const variants = master.variants.map((v) => {
+    if (v.id !== target.variant) return v;
+    const overrides = structuredClone(v.overrides) as Record<string, unknown>;
+    deletePath(overrides, path);
+    return { ...v, overrides: overrides as Partial<LabelConfig> };
+  });
+  return { ...master, variants };
+}
+
+const slugify = (name: string): string =>
+  name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+/** Add a variant and return the new master. Ids are slugged from `name`
+ *  and de-duplicated with a numeric suffix, so the caller only supplies a
+ *  human name (spec: inline creation, no dialogs). */
+export function addVariant(master: Master, name: string): { master: Master; id: string } {
+  const stem = slugify(name);
+  const ids = new Set(master.variants.map((v) => v.id));
+  let id = stem;
+  for (let n = 2; ids.has(id); n++) id = `${stem}-${n}`;
+  const variant: Variant = { id, name, overrides: {}, layerOverrides: {}, fields: [] };
+  return { master: { ...master, variants: [...master.variants, variant] }, id };
 }
