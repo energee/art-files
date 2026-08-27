@@ -16,13 +16,14 @@ export function parseLabelFile(json: unknown): LabelFileV2 | { legacy: unknown }
     masterHint: typeof o.masterHint === "string" ? o.masterHint : undefined,
     enabledVariations: Array.isArray(o.enabledVariations) ? (o.enabledVariations as string[]) : [],
     values: (o.values && typeof o.values === "object" ? o.values : {}) as LabelFileV2["values"],
+    overrides: o.overrides && typeof o.overrides === "object" ? o.overrides as LabelFileV2["overrides"] : undefined,
   };
 }
 
 export function serializeLabelFile(l: LabelFileV2): string {
   return JSON.stringify(
     { formatVersion: 2, masterId: l.masterId, masterHint: l.masterHint,
-      enabledVariations: l.enabledVariations, values: l.values },
+      enabledVariations: l.enabledVariations, values: l.values, overrides: l.overrides },
     null, 2,
   );
 }

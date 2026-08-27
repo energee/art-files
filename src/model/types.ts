@@ -3,6 +3,7 @@
 // a defensive parser; no DOM, no rendering. resolve.ts collapses these into
 // the existing LabelConfig, which stays the renderers' contract.
 import type { LabelConfig } from "../types";
+import type { DeepPartial } from "./merge";
 
 export type FieldKind = "text" | "number" | "image" | "code" | "select" | "toggle";
 export type FieldValue = string | number | boolean;
@@ -59,6 +60,10 @@ export interface LabelFileV2 {
   masterHint?: string;
   enabledVariations: string[];        // in enable order
   values: Record<string, FieldValue>; // keyed by FieldDecl.id; dormant values kept
+  /** Label-level deviations from the resolved master, applied after resolve
+   *  (spec: Migration — "preserves nonstandard styling as label-level
+   *  overrides"). Absent = none. */
+  overrides?: DeepPartial<LabelConfig>;
 }
 
 function fail(msg: string): never { throw new Error(`Invalid master file: ${msg}`); }
