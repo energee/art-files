@@ -1,10 +1,28 @@
-// barcode.ts — UPC-A layout in label points (top-left origin, y down), shared
-// by both deliverable builders. Each renderer only paints; the geometry lives
+// barcode.ts — barcode layout in label points (top-left origin, y down),
+// shared by both deliverable builders: bar geometry is symbology-agnostic
+// (any {modules, guards} pattern), while the human-readable digit layout
+// below stays UPC-A-specific. Each renderer only paints; the geometry lives
 // here, so the two can't silently disagree about the one element where drift
 // means a code that no longer scans.
 import type { LabelConfig } from "./types";
 import * as L from "./layout";
-import { encodeUpc } from "./upc";
+import { encodeUpc, encodeEan13, type UpcModules } from "./upc";
+import { encodeCode128 } from "./code128";
+
+/** The three symbologies the model's "code" field kind can dispatch to.
+ *  Re-declared (not imported) on FieldDecl in src/model/types.ts to avoid a
+ *  circular import; keep the two in sync. */
+export type Symbology = "upc-a" | "ean-13" | "code-128";
+
+/** Encode `value` under the named symbology into the shared {modules,
+ *  guards} shape consumed by barcodeGeometry. */
+export function encodeFor(symbology: Symbology, value: string): UpcModules {
+  switch (symbology) {
+    case "upc-a": return encodeUpc(value);
+    case "ean-13": return encodeEan13(value);
+    case "code-128": return encodeCode128(value);
+  }
+}
 
 /** The barcode's resolved outer-stroke ("halo") width, in points — the one
  *  place both deliverable builders get it from, so the art PDF's ink extent
@@ -68,13 +86,23 @@ export interface BarcodeGeometry {
 }
 
 /** `measure` returns a digit group's width at BARCODE.textSize, in points —
- *  supplied by the caller so this stays free of any font machinery. */
+ *  supplied by the caller so this stays free of any font machinery.
+ *  `pattern`, when supplied, is drawn instead of encoding `upc` as UPC-A —
+ *  the entry point for any non-UPC symbology (see `encodeFor`). The
+ *  human-readable digit layout below is UPC-A-specific: it runs on the
+ *  default (no `pattern`) path, and on any supplied pattern that still
+ *  carries UPC/EAN-style guard groups (an explicit `encodeUpc`/`encodeEan13`
+ *  pattern reproduces the same digits as the default path); a guardless
+ *  pattern (Code 128) gets bars only, with an empty `digits` array —
+ *  human-readable text for EAN-13/Code 128 arrives with the layer renderer
+ *  in a later plan. */
 export function barcodeGeometry(
   upc: string,
   measure: (text: string) => number,
+  pattern?: UpcModules,
 ): BarcodeGeometry {
   const B = L.BARCODE;
-  const { modules, guards } = encodeUpc(upc);
+  const { modules, guards } = pattern ?? encodeUpc(upc);
   const inGuard = (i: number) => guards.some(([a, b]) => i >= a && i < b);
   const mod = (B.h - 2 * B.padRun) / modules.length;
   const bottom = B.yTop + B.h - B.padRun;
@@ -110,7 +138,7 @@ export function barcodeGeometry(
     mod,
     bottom,
     bars,
-    digits: [
+    digits: guards.length === 0 ? [] : [
       place(upc[0], -quiet, 1), // number-system digit, before the symbol
       place(upc.slice(1, 6), 27.5, 0), // centered on modules 10-45
       place(upc.slice(6, 11), 67.5, 0), // centered on modules 50-85

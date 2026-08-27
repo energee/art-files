@@ -22,8 +22,9 @@ export interface FieldDecl {
   min?: number; max?: number;
   /** select kind */
   options?: string[];
-  /** code kind: which validator applies */
-  symbology?: "upc-a";
+  /** code kind: which validator applies. Mirrors barcode.ts's `Symbology`
+   *  (re-declared, not imported, to avoid a circular import). */
+  symbology?: "upc-a" | "ean-13" | "code-128";
 }
 
 export interface Guides {

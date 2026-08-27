@@ -39,4 +39,12 @@ describe("validateField", () => {
     expect(validateField(decl({ kind: "image" }), "logo.png").ok).toBe(true);
     expect(validateField(decl({ kind: "image" }), 5).ok).toBe(false);
   });
+  it("validates EAN-13 and Code 128 through the code kind", () => {
+    const d = (s: "ean-13" | "code-128"): FieldDecl =>
+      ({ id: "f", label: "F", kind: "code", path: "upc", symbology: s });
+    expect(validateField(d("ean-13"), "4006381333931").ok).toBe(true);
+    expect(validateField(d("ean-13"), "4006381333932").ok).toBe(false);
+    expect(validateField(d("code-128"), "BEER-123").ok).toBe(true);
+    expect(validateField(d("code-128"), "").ok).toBe(false);
+  });
 });

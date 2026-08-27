@@ -9,8 +9,9 @@ import type { PDFFont, PDFPage } from "pdf-lib";
 import type { LabelConfig } from "../src/types";
 import { drawBarcode } from "../src/pdf/build";
 import { barcodeItem, type MeasureFace } from "../src/plan";
-import { barcodeStrokePt } from "../src/barcode";
+import { barcodeGeometry, barcodeStrokePt } from "../src/barcode";
 import { encodeUpc } from "../src/upc";
+import { encodeCode128 } from "../src/code128";
 import { defaultConfig, parseConfigFile, toConfigFile } from "../src/defaults";
 import { BARCODE as B, COLORS, FONT_ASC, FONT_DESC, PAGE, PX, parseHexFill } from "../src/layout";
 
@@ -269,6 +270,31 @@ describe("drawBarcode styling", () => {
       expect(sameColor(r.color, COLORS.white)).toBe(true);
     for (const r of rects.slice(footprintCount))
       expect(sameColor(r.color, COLORS.maskBlue)).toBe(true);
+  });
+});
+
+// The geometry entry point (barcodeGeometry) became symbology-agnostic: an
+// optional trailing `pattern` lets a caller supply any {modules, guards}
+// shape, while the default (no pattern) path must stay byte-identical to
+// today's UPC-A-only behavior.
+describe("barcodeGeometry pattern parameter", () => {
+  const measure = () => 10;
+
+  it("explicit UPC pattern matches the implicit default exactly", () => {
+    const implicit = barcodeGeometry(UPC, measure);
+    const explicit = barcodeGeometry(UPC, measure, encodeUpc(UPC));
+    expect(explicit).toEqual(implicit);
+  });
+
+  it("a Code 128 pattern yields bars, no digits, uniform heights", () => {
+    const geo = barcodeGeometry("BEER-123", measure, encodeCode128("BEER-123"));
+    expect(geo.digits).toEqual([]);
+    expect(geo.bars.length).toBeGreaterThan(0);
+    // No guards on a Code 128 pattern, so every bar uses the plain bar
+    // length — none stretches to the tall guardLen used at UPC-A's guard
+    // groups.
+    const widths = new Set(geo.bars.map((b) => b.w));
+    expect(widths.size).toBe(1);
   });
 });
 
