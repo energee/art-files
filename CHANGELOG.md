@@ -3,6 +3,12 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.33] - 2026-08-27
+
+- The Design/Fill control moved from the top menubar row to the right end of
+  the preview toolbar at the bottom of the window, beside the view readouts.
+  No behavior change — same two buttons, same keyboard/palette commands.
+
 ## [0.1.32] - 2026-08-27
 
 - Design mode can now add layers: text, image, barcode (UPC-A, EAN-13,

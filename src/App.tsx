@@ -1881,22 +1881,6 @@ export const DocumentEditor = memo(function DocumentEditor({
         <header className="flex items-center gap-3 bg-sidebar text-sidebar-foreground px-3 py-2">
           {/* Toggles the Layers sidebar; the component also binds ⌘B. */}
           <SidebarTrigger className="size-6" />
-          {/* Design/Fill segmented control — same view-toggle styling as the
-              "View Mode" status-bar button below, aria-pressed per button
-              rather than a radiogroup so each is its own reachable control. */}
-          <div className="flex shrink-0 overflow-hidden rounded border border-sidebar-border">
-            {(["design", "fill"] as const).map((m) => (
-              <button key={m} type="button" aria-pressed={mode === m}
-                onClick={() => setMode(m)}
-                className={`px-2 py-0.5 text-xs capitalize outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                  mode === m
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-                }`}>
-                {m}
-              </button>
-            ))}
-          </div>
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}
           {active && <AppMenu actions={commands} onNativeError={setBuildError}
@@ -2171,6 +2155,24 @@ export const DocumentEditor = memo(function DocumentEditor({
               className="shrink-0 rounded px-1 py-0.5 text-xs whitespace-nowrap text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
               View Mode: {viewLabel}
             </button>
+            {/* Design/Fill segmented control, pinned to the toolbar's right
+                end — the mode is a property of how you're working, like the
+                view readouts beside it, not a command (so not in the menus).
+                aria-pressed per button rather than a radiogroup so each is
+                its own reachable control. */}
+            <div className="ml-auto flex shrink-0 overflow-hidden rounded border border-border">
+              {(["design", "fill"] as const).map((m) => (
+                <button key={m} type="button" aria-pressed={mode === m}
+                  onClick={() => setMode(m)}
+                  className={`px-2 py-0.5 text-xs capitalize outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    mode === m
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+                  }`}>
+                  {m}
+                </button>
+              ))}
+            </div>
           </div>
         </section>
         {/* Right inspector: a shadcn Sheet driven by the selection — open
