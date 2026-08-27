@@ -9,7 +9,10 @@ import { validateField } from "./fields";
 import { expandFormat } from "./format";
 import { defaultConfig } from "../defaults";
 
-function setPath(obj: Record<string, unknown>, path: string, value: unknown): void {
+/** Dot-path write, the mirror of document.ts's getPath. Exported for
+ *  FieldList's onValue plumbing (App.tsx), which writes a single field
+ *  straight into the live config the same way resolve() composes one. */
+export function setPath(obj: Record<string, unknown>, path: string, value: unknown): void {
   const keys = path.split(".");
   let at = obj;
   for (const k of keys.slice(0, -1)) at = (at[k] ??= {}) as Record<string, unknown>;

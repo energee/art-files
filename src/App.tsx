@@ -29,7 +29,8 @@ import {
 import { parseLabelFile } from "@/model/labelfile";
 import { lolevMaster } from "@/model/lolev";
 import { masterIndex, resolveMasterById } from "@/masters";
-import type { LabelFileV2, Master } from "@/model/types";
+import type { FieldDecl, FieldValue, LabelFileV2, Master } from "@/model/types";
+import { setPath } from "@/model/resolve";
 import { makeHiddenPropsEqual } from "@/tabs";
 import { validateUpc } from "@/upc";
 import { EMBEDDABLE_RASTER, mimeFor, rasterKind, tintRgba } from "@/collab";
@@ -48,6 +49,7 @@ import {
   Inspector, type CollabFiles, type DocSettings, type InspectorFiles,
 } from "@/components/StyleProperties";
 import { LayersPanel } from "@/components/LayersPanel";
+import { FieldList } from "@/components/FieldList";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
 import {
   commitBleedIn, loadPresets, mutatePresets, normalizePresets, usePresets,
@@ -387,6 +389,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   // can't leak the previous one's master or variation set.
   const [master, setMaster] = useState<Master>(lolevMaster);
   const [enabledVariations, setEnabledVariations] = useState<string[]>([]);
+  // Design edits the canvas directly (layers, style, position); Fill edits
+  // through the field list only. Per-document UI state, deliberately outside
+  // both the config and its history like `master`/`enabledVariations` above —
+  // which mode you're in isn't a document edit, and switching tabs shouldn't
+  // carry it along.
+  const [mode, setMode] = useState<"design" | "fill">("fill");
   /** Layers panel's variation checkboxes: recompose the whole config around
    *  the toggle in one undoable step (see toggleVariation in model/document). */
   const setVariation = (id: string, on: boolean) => {
@@ -709,6 +717,20 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Wrap a config mutation that bypasses `update` (undo/redo) so it still
    *  marks the document dirty. */
   const mutating = (fn: () => void) => () => { markDirty(); fn(); };
+
+  // FieldList's onValue: writes one field straight into the config via its
+  // path. Coalescing mirrors onEditText's contract (see PreviewCompare's
+  // onEditText below) — the first change to a field opens an undo step, the
+  // rest fold into it, and moving to a different field starts a new one.
+  // Tracked in a ref rather than state so switching fields doesn't itself
+  // trigger a render.
+  const lastFieldRef = useRef<string | null>(null);
+  const onFieldValue = (field: FieldDecl, value: FieldValue) => {
+    const first = lastFieldRef.current !== field.id;
+    lastFieldRef.current = field.id;
+    update((c) => setPath(c as unknown as Record<string, unknown>, field.path,
+      field.kind === "toggle" ? value === true : String(value)), !first);
+  };
 
   // Canvas uses the same bundled Regular/SemiBold font files as the PDF, but
   // avoids loading pdf-lib + fontkit on the UI thread just to measure hit
@@ -1567,6 +1589,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       disabled: !guideEdit, run: () => setShowManualGuides((shown) => !shown) },
     { id: "clear-guides", label: "Clear manual guides",
       disabled: !guideEdit || manualGuides.length === 0, run: () => setManualGuides([]) },
+    { id: "mode-design", label: "Design mode", run: () => setMode("design") },
+    { id: "mode-fill", label: "Fill mode", run: () => setMode("fill") },
   ];
   // Indexed once per render for status-bar command dispatch.
   const index = Object.fromEntries(commands.map((c) => [c.id, c])) as Record<string, Command>;
@@ -1595,8 +1619,14 @@ export const DocumentEditor = memo(function DocumentEditor({
             for just the rows where the two differ. */}
         <Sidebar collapsible="offcanvas">
           <SidebarContent>
-            <LayersPanel cfg={cfg} update={update} hidden={hiddenLayers}
-              onToggleHidden={toggleHidden} selected={selected} onSelect={pick} />
+            {/* Design shows the layers panel (style, order, visibility);
+                Fill shows the label, the field list, and variation
+                checkboxes — no styling, no layers panel (spec: UI). */}
+            {mode === "design"
+              ? <LayersPanel cfg={cfg} update={update} hidden={hiddenLayers}
+                  onToggleHidden={toggleHidden} selected={selected} onSelect={pick} />
+              : <FieldList master={master} enabledVariations={enabledVariations} cfg={cfg}
+                  onValue={onFieldValue} onVariation={setVariation} />}
           </SidebarContent>
         </Sidebar>
         <SidebarInset className="flex h-full flex-col overflow-hidden">
@@ -1605,6 +1635,22 @@ export const DocumentEditor = memo(function DocumentEditor({
         <header className="flex items-center gap-3 bg-sidebar text-sidebar-foreground px-3 py-2">
           {/* Toggles the Layers sidebar; the component also binds ⌘B. */}
           <SidebarTrigger className="size-6" />
+          {/* Design/Fill segmented control — same view-toggle styling as the
+              "View Mode" status-bar button below, aria-pressed per button
+              rather than a radiogroup so each is its own reachable control. */}
+          <div className="flex shrink-0 overflow-hidden rounded border border-sidebar-border">
+            {(["design", "fill"] as const).map((m) => (
+              <button key={m} type="button" aria-pressed={mode === m}
+                onClick={() => setMode(m)}
+                className={`px-2 py-0.5 text-xs capitalize outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  mode === m
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+                }`}>
+                {m}
+              </button>
+            ))}
+          </div>
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}
           {active && <AppMenu actions={commands} onNativeError={setBuildError}
@@ -1874,8 +1920,10 @@ export const DocumentEditor = memo(function DocumentEditor({
         {/* active gate: the sheet portals to document.body, escaping the
             shell's display:none wrapper — without it a hidden tab's open
             inspector floats over the active tab. The selection itself is
-            kept, so the sheet reopens on switching back. */}
-        <Sheet open={active && selected.length > 0} modal={false}
+            kept, so the sheet reopens on switching back. mode gate: Fill
+            exposes no styling (spec: UI) — canvas clicks still select and
+            in-place edit there, but the style inspector stays closed. */}
+        <Sheet open={active && mode === "design" && selected.length > 0} modal={false}
           // The selection is the source of truth for this sheet, so only a
           // deliberate close clears it — a WHITELIST, not a blocklist. The
           // sheet has no backdrop, so base-ui reports every click in the
