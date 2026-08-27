@@ -1,7 +1,7 @@
 {
   "name": "label-lab",
   "private": true,
-  "version": "0.1.26",
+  "version": "0.1.27",
   "type": "module",
   "description": "Label Lab: create print-ready label artwork and white-ink plates",
   "scripts": {
@@ -13,6 +13,7 @@
     "prepare": "git config core.hooksPath .githooks || true",
     "preview": "vite preview",
     "parity": "vite --open /parity.html",
+    "strokecap": "vite --open /strokecap.html",
     "test": "vitest run",
     "generate": "tsx scripts/generate.ts",
     "tauri": "tauri"

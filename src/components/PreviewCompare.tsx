@@ -35,6 +35,7 @@ import {
 } from "@/components/DescriptionEditor";
 import { boxOf, boxesFor, hitTest, type CollabSlots, type Measure } from "@/hittest";
 import { modsOf, type SelectMods } from "@/selection";
+import { cn } from "@/lib/utils";
 
 /** The selection box's four corner ticks, each already placed. */
 const CORNER_CLASS = {
@@ -665,7 +666,6 @@ export const PreviewCompare = forwardRef<
     () => boxes.find((b) => b.id === editing) ?? null,
     [boxes, editing],
   );
-
   return (
     <div
       ref={pageElement}
@@ -807,13 +807,29 @@ export const PreviewCompare = forwardRef<
         // wrapper whose aspect ratio is locked to the page, so cqh is the
         // right unit for a page-x span too.
         const em = spec.rotated ? b.x1 - b.x0 : b.y1 - b.y0;
+        // The drawn glyph size in label points — the em box read back out of
+        // the font's own ascent/descent. One derivation, used by both the
+        // container's fontSize and the measured field width below, so the
+        // two can't disagree about how big a glyph is.
+        const size = em / (FONT_ASC + FONT_DESC);
+        // A suffixed field (the ABV's unit tail) has to END where its glyphs
+        // end, so the redrawn tail lands where the render will put it: the
+        // same Measure the canvas draws and hit-tests with, plus the tracking
+        // CSS adds after every glyph (which the ink measure excludes), plus
+        // 2px of caret room. Every other field keeps the full box — shrinking
+        // those to their glyphs would only shrink the click target.
+        const typed = spec.get(cfg);
+        const fieldWidth = spec.suffix
+          ? `calc(${cqh(measure(typed, size, !!st.bold)
+              + (st.letterSpacing ?? 0) * typed.length)} + 2px)`
+          : "100%";
         return (
           <div
             ref={sessionRef}
             className="absolute"
             style={{
               ...pageBox(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0, SEL_PAD),
-              fontSize: cqh(em / (FONT_ASC + FONT_DESC)),
+              fontSize: cqh(size),
               lineHeight: 1,
               // canvasRender.fontCss wins when the render source is ready
               // (it's the family the canvas is actually painting with); the
@@ -873,11 +889,15 @@ export const PreviewCompare = forwardRef<
                     setEditing(null);
                   }
                 }}
-                className="h-full bg-transparent px-1 outline-none caret-sky-400"
+                // A measured field gives up its side padding too: width is
+                // border-box, so padding would push the redrawn tail back
+                // out. Keyed on the suffix, not on `numeric` — being a number
+                // is what filters the KEYSTROKES, having a tail is what
+                // constrains the WIDTH.
+                className={cn("h-full bg-transparent outline-none caret-sky-400",
+                  !spec.suffix && "px-1")}
                 style={{
-                  // The ABV input hugs its digits (1ch each, plus caret room)
-                  // so the redrawn unit tail sits right after the number.
-                  width: spec.numeric ? `${Math.max(spec.get(cfg).length, 1) + 1}ch` : "100%",
+                  width: fieldWidth,
                   textAlign: spec.centred ? "center" : "left",
                   textTransform: spec.upper ? "uppercase" : undefined,
                 }}

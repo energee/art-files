@@ -3,6 +3,20 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.27] - 2026-08-26
+
+- Wide keylines no longer eat small glyph features in the preview. A period,
+  the dot on an i, and the counters of characters like % and 8 were showing
+  white bites out of their outline — the on-screen renderer's stroke leaves
+  unpainted cavities where a wide outline folds over itself, which the
+  exported PDFs already worked around. The preview and the 3D views now use
+  the same remedy, so what is on screen matches the printed plate. The PDFs
+  and the PSD were never affected.
+- Editing the ABV on the preview no longer leaves a gap between the number
+  being typed and "% alc by vol": the field is measured with the same metrics
+  the artwork is drawn with instead of guessing a digit's width, so the unit
+  sits where the finished render puts it.
+
 ## [0.1.26] - 2026-08-26
 
 - No behaviour changes. This release only adds automated coverage for the

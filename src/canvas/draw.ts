@@ -1,9 +1,10 @@
 // draw.ts — the canvas backend: walks the display list (plan.ts) and paints
 // one plate into a 2D context. Same Mode semantics as pdf/build.ts — art
 // paints fills over the texture, mask paints knockout white / white-ink blue
-// — but no y-flip (canvas and the plan are both top-left origin) and no
-// stroke-cavity bridge (real canvas strokes are solid; the bridge exists
-// only for pdf.js's path-font renderer). Fonts arrive through the fonts.ts
+// — but no y-flip (canvas and the plan are both top-left origin). Text
+// strokes DO carry the same cavity bridge the PDF backend uses; Skia
+// underpaints a wide stroke's interior just as pdf.js does (see
+// bridgeOffsets in strokes.ts). Fonts arrive through the fonts.ts
 // gate: callers must have awaited loadLabelFont()/loadLabelFaces() for the
 // same family as the `fontCss` passed in, so that CSS family resolves — a
 // missing face would silently measure wrong, which is exactly what the gate
@@ -14,6 +15,7 @@ import {
 } from "../plan";
 import type { Fill, LabelConfig, Style } from "../types";
 import type { ElementId } from "../elements";
+import { bridgeOffsets } from "../strokes";
 import { FACE_WEIGHT } from "../fonts";
 import * as L from "../layout";
 
@@ -113,8 +115,13 @@ export function drawPlate(
 
   c.translate(L.BLEED_SHIFT, L.BLEED_SHIFT);
 
+  // One copy per device pixel: this plate knows its own density, and
+  // bridgeOffsets floors the request at the print bound so a dense raster
+  // still samples the way the PDF it has to match does.
+  const ring: Ring = (w) => bridgeOffsets(w, 1 / scale);
+
   for (const r of plan) {
-    if (r.kind === "text") drawText(c, r, mode, fontCss);
+    if (r.kind === "text") drawText(c, r, mode, fontCss, ring);
     else if (r.kind === "paths") {
       c.save();
       c.translate(r.x, r.y);
@@ -123,6 +130,10 @@ export function drawPlate(
       // pdf-lib's stroked drawSvgPath (whose one op fills AND strokes), the
       // stroke pass only strokes: the fill pass below repaints every
       // interior anyway, so a stroke-colored fill here would be dead paint.
+      // No cavity bridge here, unlike drawText: the laurel's stroke measured
+      // clean against the PDF (0 stray pixels over its whole crop) — its leaf
+      // tips never fold the stroke over itself. Re-measure with strokecap
+      // before assuming otherwise.
       if (r.stroke) {
         c.strokeStyle = mode === "art" ? cssFill(r.stroke.fill) : cssMask(r.stroke.layer);
         c.lineWidth = 2 * r.stroke.w;
@@ -144,11 +155,18 @@ export function drawPlate(
         c.fillStyle = L.MASK_BLUE_HEX;
         c.fillRect(r.x, r.y, r.w, r.h);
       }
-    } else drawBarcode(c, r, mode, fontCss);
+    } else drawBarcode(c, r, mode, fontCss, ring);
   }
 }
 
-function drawText(ctx: Ctx, r: PlacedText, mode: Mode, fontCss: string) {
+/** This plate's bridge ring for a stroke of width `w`: where to stamp the
+ *  filled copies that close the cavities Skia's stroker leaves. Handed down
+ *  from drawPlate so the sampling policy — one copy per device pixel, which
+ *  bridgeOffsets floors at the print bound — is stated once per plate rather
+ *  than at each painter. */
+type Ring = (w: number) => { dx: number; dy: number }[];
+
+function drawText(ctx: Ctx, r: PlacedText, mode: Mode, fontCss: string, ring: Ring) {
   ctx.font = `${FACE_WEIGHT[r.face]} ${r.size}px ${fontCss}`;
   // Tracking in points: under the pt-scaled transform, user-space px ARE
   // points. Canvas letterSpacing also gaps after the final glyph, but that
@@ -159,20 +177,34 @@ function drawText(ctx: Ctx, r: PlacedText, mode: Mode, fontCss: string) {
   // runs are laid out by hand: one glyph per call, advancing by the glyph's
   // own measured width plus the tracking — all in user-space px, which the
   // pt-scaled transform makes scale-free. Kerning between pairs is lost on
-  // this degraded path; positions still match the plan's run starts.
-  const paint = (method: "fillText" | "strokeText") => {
-    if (CANVAS_LETTER_SPACING || !r.tracking) return ctx[method](r.text, 0, 0);
-    let x = 0;
-    for (const ch of r.text) {
-      ctx[method](ch, x, 0);
-      x += ctx.measureText(ch).width + r.tracking;
-    }
+  // this degraded path; positions still match the plan's run starts. The
+  // glyphs are PLACED once per run, not per paint: a stroked run paints the
+  // text up to 66 times (the bridge ring, the stroke, the ink), and measuring
+  // every glyph for each of those was the whole cost of this path on the
+  // engines stuck with it. Null means the engine can place the run itself.
+  let x = 0;
+  const placed = !CANVAS_LETTER_SPACING && r.tracking
+    ? [...r.text].map((ch) => {
+        const at = { ch, x };
+        x += ctx.measureText(ch).width + r.tracking;
+        return at;
+      })
+    : null;
+  const paint = (method: "fillText" | "strokeText", dx = 0, dy = 0) => {
+    if (!placed) return ctx[method](r.text, dx, dy);
+    for (const p of placed) ctx[method](p.ch, dx + p.x, dy);
   };
   ctx.save();
   ctx.translate(r.x, r.y);
   if (r.rotated) ctx.rotate(-Math.PI / 2); // y-down CCW = PDF's degrees(90)
   if (r.stroke) {
-    ctx.strokeStyle = mode === "art" ? cssFill(r.stroke.fill) : cssMask(r.stroke.layer);
+    const ink = mode === "art" ? cssFill(r.stroke.fill) : cssMask(r.stroke.layer);
+    // Bridge the cavities first, in the stroke's own ink, then stroke over
+    // them: the copies sit inside the true envelope, so the stroke keeps the
+    // outer edge.
+    ctx.fillStyle = ink;
+    for (const { dx, dy } of ring(r.stroke.w)) paint("fillText", dx, dy);
+    ctx.strokeStyle = ink;
     ctx.lineWidth = 2 * r.stroke.w; // outer half is the w-wide stroke; fill covers the inner
     paint("strokeText");
   }
@@ -184,13 +216,22 @@ function drawText(ctx: Ctx, r: PlacedText, mode: Mode, fontCss: string) {
 
 /** Both plates of the barcode — the same paint logic as pdf/build.ts's
  *  drawBarcode, from the same item. */
-function drawBarcode(ctx: Ctx, item: PlacedBarcode, mode: Mode, fontCss: string) {
+function drawBarcode(ctx: Ctx, item: PlacedBarcode, mode: Mode, fontCss: string, ring: Ring) {
+  // One ring for the whole barcode: every digit strokes at the same width.
+  const bridge = item.S > 0 ? ring(item.S) : [];
   const digit = (d: { text: string; x: number; y: number }, paint: "fill" | "stroke") => {
     ctx.save();
     ctx.translate(d.x, d.y);
     ctx.rotate(-Math.PI / 2);
     if (paint === "fill") ctx.fillText(d.text, 0, 0);
-    else ctx.strokeText(d.text, 0, 0); // ink pass repaints the glyph body
+    else {
+      // Digits are the same tiny-feature case drawText bridges — 0, 6, 8 and
+      // 9 all have counters a wide halo folds over. The copies are stroke-
+      // colored and belong to this stroke pass, so they stay ahead of every
+      // fill below (the module-width rule).
+      for (const { dx, dy } of bridge) ctx.fillText(d.text, dx, dy);
+      ctx.strokeText(d.text, 0, 0); // ink pass repaints the glyph body
+    }
     ctx.restore();
   };
   ctx.font = `${FACE_WEIGHT.regular} ${item.textSize}px ${fontCss}`;
@@ -218,7 +259,8 @@ function drawBarcode(ctx: Ctx, item: PlacedBarcode, mode: Mode, fontCss: string)
   if (item.S > 0) {
     // Halo only: the ink pass below repaints every bar body and digit, so
     // this pass strokes without filling (dead paint otherwise).
-    ctx.strokeStyle = cssFill(item.stroke);
+    // One ink for both: the digits' bridge copies FILL in the stroke colour.
+    ctx.fillStyle = ctx.strokeStyle = cssFill(item.stroke);
     ctx.lineWidth = 2 * item.S;
     // EVERY stroke shape before ANY fill — interleaving distorts module
     // widths until the code stops decoding (see pdf/build.ts).
