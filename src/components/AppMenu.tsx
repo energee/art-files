@@ -44,6 +44,10 @@ export const APP_MENUS: SubmenuEntry[] = [
       { kind: "separator", id: "file-new" },
       { kind: "action", id: "project-save", text: "Save Project" },
       { kind: "action", id: "project-save-as", text: "Save Project As…" },
+      { kind: "separator", id: "file-master" },
+      { kind: "action", id: "master-open", text: "Open Master…" },
+      { kind: "action", id: "master-save", text: "Save Master" },
+      { kind: "action", id: "master-save-as", text: "Save Master As…" },
       { kind: "separator", id: "file-projects" },
       {
         kind: "submenu", id: "export-menu", text: "Export", items: [

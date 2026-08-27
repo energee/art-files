@@ -21,9 +21,13 @@ import type {
 import { dragTarget, dragTarget2, editableText, type ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
 import { defaultConfig, exportBaseName, parseConfigFile } from "@/defaults";
+import { machineName } from "@/qr";
 import { strToU8 } from "fflate";
 import { LABEL_EXT, packLabelV2, unpackLabel } from "@/labelfile";
-import { LABEL_FILTER, LABEL_TYPES, isAbort, savePicker, writeHandle } from "@/filePickers";
+import {
+  LABEL_FILTER, LABEL_TYPES, MASTER_FILTER, MASTER_TYPES, isAbort, openPicker, savePicker,
+  writeHandle,
+} from "@/filePickers";
 import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import {
@@ -33,8 +37,10 @@ import {
   type EditTarget,
 } from "@/model/document";
 import { parseLabelFile } from "@/model/labelfile";
+import { MASTER_EXT, parseMasterFile, serializeMaster } from "@/model/masterfile";
+import { rebind } from "@/model/rebind";
 import { lolevMaster } from "@/model/lolev";
-import { masterIndex, resolveMasterById } from "@/masters";
+import { masterIndex, rememberMaster, resolveMasterById } from "@/masters";
 import type { FieldDecl, FieldValue, LabelFileV2, Master, MasterLayer } from "@/model/types";
 import { setPath } from "@/model/resolve";
 import { makeHiddenPropsEqual } from "@/tabs";
@@ -540,6 +546,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   // opened master clears the dot.
   const pristineMaster = useRef(doc.master);
   const masterDirty = doc.master !== pristineMaster.current;
+  // A save/open that only moves pristineMaster's target (no `doc` change,
+  // e.g. Save Master writing out the CURRENT master) has nothing else to
+  // make this component re-render, and masterDirty is read fresh every
+  // render rather than stored — so nothing would ever notice the dot should
+  // clear. This counter carries no meaning of its own and nothing reads its
+  // value; bumping it is the one job it does. pristineMaster's identity
+  // comparison stays the sole source of truth for "dirty".
+  const [, repaintMasterDirty] = useState(0);
   // The master's resolved layers and which of them are off right now
   // (master-disabled, or their owning variant is off) — values don't affect
   // either, only master + enabledVariants, so an empty values object is fine
@@ -1602,6 +1616,19 @@ export const DocumentEditor = memo(function DocumentEditor({
     projectPath.current = null;
     setFilePath(null);
   }
+  /** masterFileHandle/masterFilePath: the SAME save-identity pattern as
+   *  projectHandle/projectPath above, but naming whichever .master this
+   *  document's master was last saved to or opened from — Save Master
+   *  rewrites that file in place; with neither set it falls through to a
+   *  Save-As prompt, exactly like a bare-File project open leaves Save
+   *  Project prompting (see the fileToOpen effect below). Both refs; neither
+   *  renders anything directly. */
+  const masterFileHandle = useRef<FileSystemFileHandle | null>(null);
+  const masterFilePath = useRef<string | null>(null);
+  // Open Master's hidden-input fallback — same role as presetsInput/
+  // customImageInput below: a picker-less browser (or, today, Tauri — see
+  // openMasterPicker) clicks this instead.
+  const masterInput = useRef<HTMLInputElement>(null);
   /** Whether the document differs from the last saved/opened project —
    *  File → Save disables while clean. Marked at three sites: `update` (all
    *  config edits), `swapLoaded` (all assets — a new asset can't dodge the
@@ -1645,6 +1672,16 @@ export const DocumentEditor = memo(function DocumentEditor({
     // The freshly opened master is the baseline the dirty dot compares
     // against — see pristineMaster.
     pristineMaster.current = master;
+    // Save Master's file identity belongs to THIS document's master, same as
+    // projectHandle/projectPath belong to the project — a New/Open can't
+    // leak the previous document's .master association forward. On Tauri, a
+    // resolved master (see resolveMasterById) is registered under its known
+    // path (masterIndex, refreshed by the resolve itself), so Save Master
+    // can write straight back to the file this document's master came from;
+    // the browser has no path concept for a resolved master, only for one
+    // the user just explicitly picked, so masterFileHandle stays null here.
+    masterFileHandle.current = null;
+    masterFilePath.current = isTauri() ? masterIndex()[master.id]?.path ?? null : null;
     // The Editing selector is per-document UI state that history does not
     // carry, so an open has to reset it: the incoming master rarely declares
     // the outgoing document's variants, and pointing the selector at one it
@@ -1754,6 +1791,143 @@ export const DocumentEditor = memo(function DocumentEditor({
   // The shell's close-tab flow saves through this slot; reassigned every
   // render so it always closes over current state.
   saveSlot.current = () => saveProject();
+
+  /** File → Save Master / Save Master As…: writes serializeMaster(master)
+   *  through the exact same three-way platform save path saveProject uses
+   *  above (Tauri dialog, FS-Access picker+handle, plain download), against
+   *  masterFileHandle/masterFilePath instead of projectHandle/projectPath.
+   *  Registers the just-written file in the library index (rememberMaster)
+   *  so a `.label` naming this master can resolve it again, and clears the
+   *  master-dirty dot by moving pristineMaster's baseline to the object that
+   *  was just written — the SAME identity-comparison mechanism the dot
+   *  already uses, not a second flag (see masterDirty/repaintMasterDirty).
+   *  `as` forces the picker even with a known file, same as saveProject's. */
+  async function saveMaster(as = false): Promise<boolean> {
+    const bytes = strToU8(serializeMaster(master));
+    const suggested = machineName(master.name) || "master";
+    const clean = () => {
+      pristineMaster.current = master;
+      repaintMasterDirty((n) => n + 1);
+    };
+    if (isTauri()) {
+      const existingPath = as ? null : masterFilePath.current;
+      try {
+        const path = await saveNativeFile(bytes, {
+          defaultPath: suggested + MASTER_EXT,
+          filter: MASTER_FILTER,
+          path: existingPath ?? undefined,
+        });
+        if (path === null) return false;
+        masterFilePath.current = path;
+        rememberMaster(master, path);
+        clean();
+        setLoadError("");
+        return true;
+      } catch (err) {
+        // Same contract as saveProject: a failed in-place write drops the
+        // path so the next Save prompts again; a failed/cancelled Save As
+        // keeps whatever association already existed.
+        if (existingPath) masterFilePath.current = null;
+        setLoadError(`Could not save master: ${errMsg(err)}`);
+        return false;
+      }
+    }
+    const pick = savePicker();
+    if (pick) {
+      try {
+        if (as || !masterFileHandle.current) {
+          masterFileHandle.current = await pick({
+            suggestedName: suggested + MASTER_EXT,
+            types: MASTER_TYPES,
+          });
+        }
+        await writeHandle(masterFileHandle.current, bytes);
+        rememberMaster(master, masterFileHandle.current.name);
+        clean();
+        return true;
+      } catch (err) {
+        masterFileHandle.current = null;
+        if (isAbort(err)) return false;
+        setLoadError(`Could not save master: ${errMsg(err)}`);
+        return false;
+      }
+    }
+    const name = suggested + MASTER_EXT;
+    startSaveBatch();
+    saveBytes(bytes, name, "application/json");
+    rememberMaster(master, name);
+    clean();
+    return true;
+  }
+
+  /** Parse a candidate .master file, reporting a clear error and leaving the
+   *  current document untouched on a bad file — a wrong pick or a corrupt
+   *  file must never half-apply. Null return means "already reported,
+   *  nothing else to do"; success is handed to applyOpenedMaster below,
+   *  which is the only thing allowed to touch `doc`. */
+  function tryParseMaster(text: string): Master | null {
+    try {
+      return parseMasterFile(text);
+    } catch (err) {
+      setLoadError(`Could not open master: ${errMsg(err)}`);
+      return null;
+    }
+  }
+
+  /** File → Open Master…: register the newly opened master in the library
+   *  index, then re-aim THIS document at it — the label's current values
+   *  routed through rebind (model/rebind.ts) onto the new master's fields,
+   *  recomposing `cfg` in the same history step as the master swap so undo
+   *  restores both together (the same shape designEditDoc uses). rebind is
+   *  destructive today (Task 4b makes it non-destructive and fronts this
+   *  call with a preview-then-commit picker); until then, anything it drops
+   *  surfaces as an advisory note in the same slot a lossy compose uses,
+   *  never a silent loss. */
+  function applyOpenedMaster(m: Master, path: string) {
+    rememberMaster(m, path);
+    const values = valuesFromConfig(doc.master, doc.enabledVariants, doc.cfg);
+    const overrides = configDiff(
+      composeConfig(doc.master, doc.enabledVariants, values, undefined).config, doc.cfg);
+    const label: LabelFileV2 = {
+      formatVersion: 2, masterId: doc.master.id, enabledVariants: doc.enabledVariants, values,
+      ...(Object.keys(overrides).length ? { overrides } : {}),
+    };
+    const { label: rebound, dropped, disabledVariants } = rebind(label, m);
+    const composed = composeConfig(m, rebound.enabledVariants, rebound.values, rebound.overrides);
+    pristineMaster.current = m; // freshly opened: clean by definition
+    setEditingTarget("master"); // the old target may not exist on the new master (clampTarget also guards this)
+    setDoc({ cfg: composed.config, enabledVariants: rebound.enabledVariants, master: m });
+    markDirty(); // the label now names a different master — a real, unsaved change
+    const notes = [...composed.warnings];
+    if (dropped.length)
+      notes.push(`${dropped.length} value${dropped.length === 1 ? "" : "s"} dropped`);
+    if (disabledVariants.length)
+      notes.push(`${disabledVariants.length} variant${disabledVariants.length === 1 ? "" : "s"} disabled`);
+    setLoadError(notes.length ? "Note: " + notes.join(" · ") : "");
+  }
+
+  /** File → Open Master…: FS-Access picker where available (a writable
+   *  handle, so a later Save Master rewrites the picked file in place — same
+   *  contract as openProjectPicker in TabsShell), hidden-input fallback
+   *  elsewhere (including Tauri today: like project-open, there is no native
+   *  Tauri Open dialog wired up, so desktop opens a bare File with no save
+   *  identity and Save Master then prompts, exactly as a bare-File project
+   *  open leaves Save Project prompting). */
+  async function openMasterPicker() {
+    const pick = openPicker();
+    if (!pick) { masterInput.current?.click(); return; }
+    try {
+      const [handle] = await pick({ types: MASTER_TYPES });
+      const file = await handle.getFile();
+      const m = tryParseMaster(await file.text());
+      if (!m) return;
+      masterFileHandle.current = handle;
+      masterFilePath.current = null;
+      applyOpenedMaster(m, file.name);
+    } catch (err) {
+      if (!isAbort(err)) setLoadError(`Could not open master: ${errMsg(err)}`);
+    }
+  }
   /** The one spelling of "open failed" for every open entry point — picker,
    *  retry loop, Finder — so wording and the abort-stays-silent rule can't
    *  drift between them. */
@@ -2051,6 +2225,12 @@ export const DocumentEditor = memo(function DocumentEditor({
       disabled: !dirty, run: () => void saveProject() },
     { id: "project-save-as", label: "Save Project As…", key: "s", mods: "⇧⌘",
       run: () => void saveProject(true) },
+    // Menu-only — no shortcut, so as not to collide with ⌘S/⇧⌘S above.
+    // Disabled while clean, same rule as project-save but keyed off the
+    // MASTER's own dirty flag (masterDirty), not the label's.
+    { id: "master-open", label: "Open Master…", run: () => void openMasterPicker() },
+    { id: "master-save", label: "Save Master", disabled: !masterDirty, run: () => void saveMaster() },
+    { id: "master-save-as", label: "Save Master As…", run: () => void saveMaster(true) },
     // ⌘E exports the PDFs, ⇧⌘E the PSDs — the whole-deliverable runs. The
     // single-plate variants stay menu-only: naming six distinct combos costs
     // more than it saves.
@@ -2186,6 +2366,23 @@ export const DocumentEditor = memo(function DocumentEditor({
               const f = e.target.files?.[0];
               e.target.value = "";
               if (f) void addCustomImageLayer(f);
+            }} />
+          {/* Open Master's fallback — see masterInput/openMasterPicker. On a
+              bare-File open like this one there's no writable handle, so a
+              later Save Master prompts (masterFileHandle/masterFilePath stay
+              null), same contract as a bare-File project open. */}
+          <input ref={masterInput} type="file" accept={MASTER_EXT} hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (!f) return;
+              void f.text().then((text) => {
+                const m = tryParseMaster(text);
+                if (!m) return;
+                masterFileHandle.current = null;
+                masterFilePath.current = null;
+                applyOpenedMaster(m, f.name);
+              });
             }} />
         </header>
       {/* The workspace tab strip's slot, under the menubar (in the desktop

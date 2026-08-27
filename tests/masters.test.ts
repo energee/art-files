@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { masterIndex, rememberMaster, resolveMasterById, SHIPPED_MASTER_ID } from "../src/masters";
 import { lolevMaster } from "../src/model/lolev";
+import { parseMasterFile, serializeMaster } from "../src/model/masterfile";
 
 const stored = new Map<string, string>();
 const fakeLocalStorage = {
@@ -32,5 +33,15 @@ describe("master library index", () => {
   it("survives a mangled index entry", () => {
     localStorage.setItem("labellab.masters", "{not json");
     expect(masterIndex()).toEqual({});
+  });
+  // Task 4's save/open round trip: a saved-then-reparsed master registers
+  // under its own id, exactly as a freshly authored one would. This passes
+  // unchanged because rememberMaster itself didn't change — the real work of
+  // Task 4 is App.tsx's save/open wiring, which has no automated harness
+  // (see task-4-report.md).
+  it("a saved master registers in the library index under its own id", () => {
+    const m = parseMasterFile(serializeMaster(lolevMaster()));
+    rememberMaster(m, "/tmp/lolev.master");
+    expect(masterIndex()[m.id]).toMatchObject({ name: "Lolev", path: "/tmp/lolev.master" });
   });
 });

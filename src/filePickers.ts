@@ -1,16 +1,18 @@
-// filePickers.ts — the .label dialog surface: the browser File System
-// Access helpers, typed once, plus the Tauri-native dialog filter they must
-// stay in sync with. The FS Access API is absent on Safari/Firefox, so every
-// caller branches on these and keeps a download/input fallback. The fiddly
-// parts (the window casts, the ArrayBuffer cast, abort detection) live here
-// so save/export/open can't drift apart. Lives outside App.tsx so that
+// filePickers.ts — the .label and .master dialog surface: the browser File
+// System Access helpers, typed once, plus the Tauri-native dialog filter they
+// must stay in sync with. The FS Access API is absent on Safari/Firefox, so
+// every caller branches on these and keeps a download/input fallback. The
+// fiddly parts (the window casts, the ArrayBuffer cast, abort detection) live
+// here so save/export/open can't drift apart. Lives outside App.tsx so that
 // module exports only React components and Fast Refresh keeps working (a
 // mixed export forces Vite into full-reload HMR).
 import { LABEL_EXT } from "@/labelfile";
+import { MASTER_EXT } from "@/model/masterfile";
 
 /** One spelling of the dialog's file-type name, so the browser picker and
  *  the Tauri-native dialog can't drift apart. */
 const LABEL_DESC = "Label project";
+const MASTER_DESC = "Label master";
 
 /** The .label file picker option, shared by open and save dialogs. */
 export const LABEL_TYPES = [
@@ -18,6 +20,14 @@ export const LABEL_TYPES = [
 ];
 /** LABEL_TYPES' Tauri-native twin, for the desktop save dialog. */
 export const LABEL_FILTER = { name: LABEL_DESC, extensions: [LABEL_EXT.slice(1)] };
+
+/** The .master file picker option — masterfile.ts's pretty-printed JSON, not
+ *  a zip like .label. Shared by Save Master / Save Master As / Open Master. */
+export const MASTER_TYPES = [
+  { description: MASTER_DESC, accept: { "application/json": [MASTER_EXT] } },
+];
+/** MASTER_TYPES' Tauri-native twin, for the desktop save dialog. */
+export const MASTER_FILTER = { name: MASTER_DESC, extensions: [MASTER_EXT.slice(1)] };
 
 export const savePicker = () => (window as {
   showSaveFilePicker?: (opts: object) => Promise<FileSystemFileHandle>;
