@@ -3,6 +3,27 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.37] - 2026-08-27
+
+- Design mode now edits the master — the shared core every label inherits —
+  instead of the label in front of you. Restyle the name, move the QR, lock
+  the logo, switch a layer off: it applies to every label made from that
+  master from now on. For a one-off, pick or create a variant from the new
+  "Editing" selector in the Design sidebar and the change is recorded there
+  instead, ready to enable whenever you need it; properties a variant changes
+  are badged, and each can be reset back to the master. Masters save and open
+  as `.master` files and register themselves in the library, so a label can
+  find its master again — or be re-aimed at another one, with anything that
+  does not carry over kept on a bench rather than dropped. Any layer with
+  editable content can be made fillable from the inspector, and a layer added
+  in Design mode now belongs to the master rather than to the one label in
+  front of you.
+- Collab is no longer a special case. It is an ordinary variant carrying the
+  two partner logos, which you fill from the field list like anything else and
+  switch on and off from the same checkbox every variant gets. The lead-in
+  line above them stays fixed template art. Labels saved with the old collab
+  switch open with the variant already on and look exactly as they did.
+
 ## [0.1.36] - 2026-08-27
 
 - The layers panel now lists the label's real layers in drawing order, in one
