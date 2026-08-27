@@ -3,6 +3,7 @@
 // which config field backs it.
 import type { LabelConfig, Style, StyledLine } from "./types";
 import type { CollabSlots, Face, MeasureFace } from "./plan";
+import { encodeFor, validateFor } from "./barcode";
 import { DESC, FONT_ASC, FONT_DESC, HANDLE_ADDR, runsWidth } from "./layout";
 import { defaultConfig } from "./defaults";
 import { strokeLayerOf } from "./strokes";
@@ -327,6 +328,30 @@ function customTextWidth(line: StyledLine, size: number, m: MeasureFace): number
   return runsWidth(runs, (r) => m(r.text, size, faceOf(r)), line.letterSpacing ?? 0);
 }
 
+/** A custom barcode layer's drag box size — pattern length x moduleW wide, h
+ *  tall plus the digit band when shown — null for a payload that fails its
+ *  symbology's validator (no box, matching planLabel's emits-nothing rule).
+ *  A local copy of plan.ts's customBarcodeBox math (same reasoning as
+ *  customTextWidth above: a runtime value-import back into plan.ts would
+ *  make the two modules mutually dependent, since plan.ts already imports
+ *  this file for logoNudge/ElementId). JsBarcode's UPC-A proportions (see
+ *  layout.ts's UPC_UNITS) size the digit band as a ratio of the layer's own
+ *  bar height, same as plan.ts's customBarcodeItem. */
+function customBarcodeDragBox(layer: {
+  symbology: "upc-a" | "ean-13" | "code-128"; value: string;
+  h: number; moduleW: number; showDigits?: boolean;
+}): { w: number; h: number } | null {
+  if (!validateFor(layer.symbology, layer.value).ok) return null;
+  const pattern = encodeFor(layer.symbology, layer.value);
+  const showDigits = layer.showDigits ?? true;
+  const textSize = layer.h * (10 / 15); // fontSize : barH
+  const gap = layer.h * (4 / 15); // textMargin : barH
+  return {
+    w: pattern.modules.length * layer.moduleW,
+    h: layer.h + (showDigits ? gap + textSize : 0),
+  };
+}
+
 /** Drag-to-move targets: either the legacy single-axis "offsetY" knob (the
  *  laurel/collab logos) or, for an unlocked custom layer, the full two-axis
  *  "position" form driven by model/position.ts's anchor+offset math. Null =
@@ -354,6 +379,8 @@ export function dragTarget2(
           if (!m) return null;
           return { w: customTextWidth(layer.line, layer.size, m), h: layer.size };
         }
+        if (layer.type === "barcode") return customBarcodeDragBox(layer);
+        if (layer.type === "qr") return { w: layer.size, h: layer.size };
         // Image layers keep only their box WIDTH in config (types.ts's
         // CustomImageLayer.w); the drawn height follows the layer's own
         // stored `aspect` (captured at drop time), so the drag box is exact

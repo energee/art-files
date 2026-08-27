@@ -2,11 +2,15 @@
 // CustomLayer (text/image) survives a JSON round-trip, and isCustomId
 // distinguishes custom layer ids from the fixed ElementId set.
 import { describe, expect, it } from "vitest";
-import type { CustomImageLayer, CustomLayer, CustomTextLayer } from "@/types";
+import type {
+  CustomBarcodeLayer, CustomImageLayer, CustomLayer, CustomQrLayer, CustomTextLayer,
+} from "@/types";
 import { defaultConfig } from "@/defaults";
 import { dragTarget2, isCustomId } from "@/elements";
 import { anchoredX, anchoredY } from "@/model/position";
-import { labelGuides, planLabel, type PlacedImage } from "@/plan";
+import { labelGuides, planLabel, type PlacedBarcode, type PlacedImage, type PlacedPaths } from "@/plan";
+import { minModuleWarning } from "@/model/fields";
+import { qrShapes, qrPath } from "@/qr";
 
 describe("custom layer schema", () => {
   it("adds a custom text layer to LabelConfig and round-trips through JSON", () => {
@@ -144,5 +148,97 @@ describe("dragTarget2", () => {
     cfg.collabEnabled = true;
     const t = dragTarget2(cfg, { left: false, center: false }, "logo");
     expect(t?.kind).toBe("offsetY");
+  });
+});
+
+const m = (text: string, size: number) => text.length * size;
+
+describe("custom qr layer", () => {
+  const base: CustomQrLayer = {
+    id: "custom-qr1", name: "Custom QR", type: "qr",
+    value: "https://lolev.beer/beer/test",
+    size: 40, qrStyle: "square",
+    position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
+    style: { fill: "#000000", layer: "white" },
+  };
+
+  it("defaults to EC M: differs from an explicit L plan, matches an explicit M plan", () => {
+    const cfgDefault = defaultConfig();
+    cfgDefault.customLayers = [base];
+    const cfgL = defaultConfig();
+    cfgL.customLayers = [{ ...base, ecLevel: "L" }];
+    const cfgM = defaultConfig();
+    cfgM.customLayers = [{ ...base, ecLevel: "M" }];
+
+    const fillPaths = (cfg: typeof cfgDefault) =>
+      planLabel(cfg, m).filter((r): r is PlacedPaths => r.kind === "paths" && r.id === "custom-qr1");
+
+    const def = fillPaths(cfgDefault);
+    const l = fillPaths(cfgL);
+    const mLevel = fillPaths(cfgM);
+    expect(def).toEqual(mLevel);
+    expect(def).not.toEqual(l);
+
+    // Sanity: this is really EC-driven, not a fluke — qrShapes/qrPath for the
+    // same payload at M and L differ (M adds codewords -> a bigger matrix).
+    const shapesL = qrShapes(base.value, { style: "square", ecLevel: "L" });
+    const shapesM = qrShapes(base.value, { style: "square", ecLevel: "M" });
+    expect(qrPath(shapesM, base.size)).not.toBe(qrPath(shapesL, base.size));
+  });
+
+  it("emits a stroke-underlay path when styled with a stroke", () => {
+    const cfg = defaultConfig();
+    cfg.customLayers = [{ ...base, style: { ...base.style, stroke: "#ffffff", strokeWidth: 20 } }];
+    const items = planLabel(cfg, m).filter((r): r is PlacedPaths => r.kind === "paths" && r.id === "custom-qr1");
+    expect(items).toHaveLength(2);
+  });
+});
+
+describe("custom barcode layer", () => {
+  const base: CustomBarcodeLayer = {
+    id: "custom-bc1", name: "Custom Barcode", type: "barcode",
+    symbology: "code-128", value: "LOLEV-123",
+    h: 30, moduleW: 1,
+    position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
+    style: { fill: "#000000", layer: "white" },
+  };
+
+  it("digits obey showDigits: default plans digits, false plans none", () => {
+    const cfgDefault = defaultConfig();
+    cfgDefault.customLayers = [base];
+    const withDigits = planLabel(cfgDefault, m)
+      .find((r): r is PlacedBarcode => r.kind === "barcode" && r.id === "custom-bc1");
+    expect(withDigits).toBeDefined();
+    expect(withDigits!.digits.length).toBeGreaterThan(0);
+
+    const cfgNoDigits = defaultConfig();
+    cfgNoDigits.customLayers = [{ ...base, showDigits: false }];
+    const noDigits = planLabel(cfgNoDigits, m)
+      .find((r): r is PlacedBarcode => r.kind === "barcode" && r.id === "custom-bc1");
+    expect(noDigits).toBeDefined();
+    expect(noDigits!.digits).toHaveLength(0);
+  });
+
+  it("an invalid payload emits nothing", () => {
+    const cfg = defaultConfig();
+    cfg.customLayers = [{ ...base, symbology: "upc-a", value: "not-a-upc" }];
+    const item = planLabel(cfg, m).find((r) => r.id === "custom-bc1");
+    expect(item).toBeUndefined();
+  });
+});
+
+describe("no custom layers -> byte-identical pre-feature plan", () => {
+  it("matches a plan built with customLayers entirely absent", () => {
+    const cfgAbsent = defaultConfig();
+    const cfgEmpty = defaultConfig();
+    cfgEmpty.customLayers = [];
+    expect(planLabel(cfgEmpty, m)).toEqual(planLabel(cfgAbsent, m));
+  });
+});
+
+describe("minModuleWarning (P4)", () => {
+  it("fires under 0.72pt and stays quiet at 1pt", () => {
+    expect(minModuleWarning("code-128", 0.5)).toMatch(/module/i);
+    expect(minModuleWarning("code-128", 1)).toBeNull();
   });
 });

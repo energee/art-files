@@ -7,7 +7,9 @@
 // Measurement is injected: the PDF backend passes PDFFont metrics so built
 // bytes place text exactly as before, the UI passes the fonts.ts canvas
 // metrics — the same split hittest always had.
-import type { CollabSlot, Fill, Style, StyledLine, LabelConfig } from "./types";
+import type {
+  CollabSlot, CustomBarcodeLayer, Fill, Style, StyledLine, LabelConfig,
+} from "./types";
 import { anchoredX, anchoredY, type GuideLines } from "./model/position";
 import { logoNudge, type ElementId } from "./elements";
 import { parseRuns } from "./description";
@@ -18,7 +20,10 @@ import { parseDescription, parseInfoLine } from "./description";
 import { warningMeasure, wrapWarning } from "./warning";
 import { parseLogo } from "./logo";
 import { qrPath, qrShapes, qrUrl } from "./qr";
-import { barcodeFootprint, barcodeGeometry, barcodeStrokePt, type BarcodeGeometry } from "./barcode";
+import {
+  barcodeDigitsFor, barcodeFootprint, barcodeGeometry, barcodeStrokePt,
+  encodeFor, validateFor, type BarcodeGeometry,
+} from "./barcode";
 
 export type Face = "regular" | "semibold" | "bold";
 export type MeasureFace = (text: string, size: number, face: Face) => number;
@@ -84,10 +89,13 @@ export interface PlacedImage {
  *  the outset footprint), so it stays one item rather than mode-dependent
  *  primitives — the backends keep their paint logic, the geometry exists
  *  once. `digits` follow the rotated-run convention: x is the baseline's
- *  vertical line, y the run's start, extent -w. */
+ *  vertical line, y the run's start, extent -w. Widened from the literal
+ *  "barcode" to ElementId so a master-variation custom barcode layer (Task 3)
+ *  can be one of these too, keyed by its own `custom-${string}` id like every
+ *  other custom layer's placed item. */
 export interface PlacedBarcode {
   readonly kind: "barcode";
-  readonly id: "barcode";
+  readonly id: ElementId;
   readonly geo: BarcodeGeometry;
   /** Resolved halo width in points; 0 = no halo at all. */
   readonly S: number;
@@ -321,6 +329,109 @@ export function barcodeItem(cfg: LabelConfig, m: MeasureFace): PlacedBarcode {
   };
 }
 
+// --- Custom barcode layers (Task 3) ---------------------------------------
+// A custom barcode layer draws its own independent symbol rather than the
+// template's UPC: barcodeGeometry itself stays untouched (its digits:[] rule
+// for any supplied pattern is a standing ruling — see its own comment), so
+// this is a small local geometry built directly from the layer's own
+// moduleW/h, in a plain (unrotated) layout — unlike the template's symbol,
+// which lives pre-rotated into the page's vertical right column. Both share
+// PlacedBarcode/drawBarcode as the paint step, so a custom layer's digit text
+// still paints through drawBarcode's rotate(-90) glyph pass exactly like the
+// template's — a known, accepted quirk inherited from the shared renderer
+// (see drawBarcode in pdf/build.ts and canvas/draw.ts), not something Task 3
+// changes.
+
+/** JsBarcode's UPC-A proportions (see layout.ts's UPC_UNITS), reused here as
+ *  ratios of the layer's own bar height so a custom symbol's digit band
+ *  scales with it instead of a fixed template constant. */
+const BARCODE_DIGIT_RATIO = 10 / 15; // fontSize : barH
+const BARCODE_GAP_RATIO = 4 / 15; // textMargin : barH
+/** Quiet-zone width in modules, matching JsBarcode's UPC-A/EAN-13 default —
+ *  where barcodeDigitsFor's leading/trailing digit sits, outside the guards. */
+const BARCODE_QUIET_MODULES = 8;
+
+/** The pattern's runs merged into rects at the layer's own moduleW/h — the
+ *  bar half of a custom barcode layer's geometry, mirroring barcodeGeometry's
+ *  run-merging but plain (no guard elongation: a free-floating layer has no
+ *  template-fixed digit column its guards need to clear). */
+function customBarcodeBars(
+  pattern: { modules: string }, x: number, yTop: number, h: number, moduleW: number,
+): BarcodeGeometry["bars"] {
+  const bars: BarcodeGeometry["bars"] = [];
+  const { modules } = pattern;
+  for (let i = 0; i < modules.length; ) {
+    if (modules[i] !== "1") { i++; continue; }
+    let j = i;
+    while (j < modules.length && modules[j] === "1") j++;
+    bars.push({ x: x + i * moduleW, yTop, w: (j - i) * moduleW, h });
+    i = j;
+  }
+  return bars;
+}
+
+/** A custom barcode layer's hit/drag box size — pattern length × moduleW
+ *  wide, `h` tall plus the digit band when shown — or null when its (raw,
+ *  possibly unexpanded — see CustomBarcodeLayer.value) payload fails the
+ *  symbology's own validator, so hittest/dragTarget2 and customBarcodeItem
+ *  below can't disagree about which layers are even present. Exported so
+ *  hittest.ts and elements.ts's dragTarget2 share this exact sizing instead
+ *  of re-deriving the digit-band math. */
+export function customBarcodeBox(
+  layer: CustomBarcodeLayer,
+): { w: number; h: number; pattern: ReturnType<typeof encodeFor> } | null {
+  if (!validateFor(layer.symbology, layer.value).ok) return null;
+  const pattern = encodeFor(layer.symbology, layer.value);
+  const showDigits = layer.showDigits ?? true;
+  const textSize = layer.h * BARCODE_DIGIT_RATIO;
+  const gap = layer.h * BARCODE_GAP_RATIO;
+  return {
+    w: pattern.modules.length * layer.moduleW,
+    h: layer.h + (showDigits ? gap + textSize : 0),
+    pattern,
+  };
+}
+
+/** A custom barcode layer's placed item, or null when its (raw, possibly
+ *  unexpanded — see CustomBarcodeLayer.value) payload fails the symbology's
+ *  own validator: an invalid payload emits nothing, never a garbage symbol. */
+export function customBarcodeItem(
+  layer: CustomBarcodeLayer, m: MeasureFace, guides: GuideLines,
+): PlacedBarcode | null {
+  const box = customBarcodeBox(layer);
+  if (!box) return null;
+  const { pattern } = box;
+  const showDigits = layer.showDigits ?? true;
+  const textSize = layer.h * BARCODE_DIGIT_RATIO;
+  const gap = layer.h * BARCODE_GAP_RATIO;
+  const x = anchoredX(layer.position, box.w, guides);
+  const yTop = anchoredY(layer.position, box.h, guides);
+  const bars = customBarcodeBars(pattern, x, yTop, layer.h, layer.moduleW);
+  const measure = (t: string) => m(t, textSize, "regular");
+  const digitsRaw = showDigits
+    ? barcodeDigitsFor(layer.symbology, layer.value, pattern.modules.length, BARCODE_QUIET_MODULES, measure)
+    : [];
+  // barcodeDigitsFor's `x` is a placeholder (see its own comment) — real x
+  // comes from this layer's own run origin plus the group's module center.
+  const digits = digitsRaw.map((d) => ({ ...d, x: x + d.center * layer.moduleW }));
+  const geo: BarcodeGeometry = { mod: layer.moduleW, bottom: yTop + layer.h, bars, digits };
+  const style = layer.style;
+  const S = style.stroke && style.stroke !== "none"
+    ? (style.strokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX : 0;
+  return {
+    kind: "barcode", id: layer.id, geo, S,
+    fill: style.fill, stroke: style.stroke ?? "none",
+    fillLayer: style.layer, strokeLayer: strokeLayerOf(style),
+    textSize,
+    digits: geo.digits.map((d) => ({ text: d.text, x: d.x, y: yTop + layer.h + gap, w: measure(d.text) })),
+    // Bars only, at S — see barcodeFootprint's own comment: it derives its
+    // digit-pill footprint from the template's fixed BARCODE.textSize, which
+    // does not apply to a custom layer's own textSize, so a digit footprint
+    // for a custom symbol is left for a later pass rather than computed wrong.
+    footprint: bars.map((b) => ({ x: b.x - S, yTop: b.yTop - S, w: b.w + 2 * S, h: b.h + 2 * S })),
+  };
+}
+
 /** Every display-list item of the label, in drawElements' order. Without
  *  `opts.assets` the list is text only — hittest's contract, and the numbers
  *  match what planLabel has always produced. With it, the laurel, QR, collab
@@ -459,7 +570,7 @@ export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {})
         baseline: anchoredY(layer.position, layer.size, guides) + layer.size,
         size: layer.size,
       }));
-    } else {
+    } else if (layer.type === "image") {
       // The loaded asset's aspect wins when it's available; otherwise fall
       // back to the layer's own stored aspect (captured at drop time) so the
       // rect — and with it selection/hit/drag — exists before (or without)
@@ -473,6 +584,28 @@ export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {})
         x: anchoredX(layer.position, layer.w, guides),
         y: anchoredY(layer.position, h, guides),
         w: layer.w, h,
+      });
+    } else if (layer.type === "barcode") {
+      const item = customBarcodeItem(layer, m, guides);
+      if (item) out.push(item);
+    } else {
+      // "qr" — plain stroke-underlay + fill `paths` items, exactly like the
+      // template QR (see above): no backend changes needed, `paths` is
+      // universal. EC level defaults to "M" for layers (P2) — the module-
+      // level qrShapes default of "L" stays the template QR's own default,
+      // unrelated to this layer type.
+      const shapes = qrShapes(layer.value, { style: layer.qrStyle, ecLevel: layer.ecLevel ?? "M" });
+      const at = { x: anchoredX(layer.position, layer.size, guides), y: anchoredY(layer.position, layer.size, guides) };
+      const style = layer.style;
+      if (style.stroke && style.stroke !== "none")
+        out.push({
+          kind: "paths", id: layer.id, ...at, stroke: null,
+          paths: [qrPath(shapes, layer.size, (style.strokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX)],
+          fill: style.stroke, layer: strokeLayerOf(style),
+        });
+      out.push({
+        kind: "paths", id: layer.id, ...at, stroke: null,
+        paths: [qrPath(shapes, layer.size)], fill: style.fill, layer: style.layer,
       });
     }
   }

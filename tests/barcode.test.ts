@@ -9,7 +9,7 @@ import type { PDFFont, PDFPage } from "pdf-lib";
 import type { LabelConfig } from "../src/types";
 import { drawBarcode } from "../src/pdf/build";
 import { barcodeItem, type MeasureFace } from "../src/plan";
-import { barcodeGeometry, barcodeStrokePt } from "../src/barcode";
+import { barcodeDigitsFor, barcodeGeometry, barcodeStrokePt } from "../src/barcode";
 import { encodeUpc, encodeEan13 } from "../src/upc";
 import { encodeCode128 } from "../src/code128";
 import { defaultConfig, parseConfigFile, toConfigFile } from "../src/defaults";
@@ -343,5 +343,26 @@ describe("shared barcode stroke resolver", () => {
     const maskRect = draw(cfg, "mask").rects[0]; // first bar's footprint rect
     expect(maskRect.width).toBeCloseTo(bars[0].width, 10);
     expect(maskRect.borderWidth).toBeCloseTo(2 * expected, 10);
+  });
+});
+
+// barcodeDigitsFor (P3) — generic per-symbology digit grouping for a custom
+// barcode layer's own EXPLICIT pattern; barcodeGeometry itself is untouched
+// (see its own comment) and keeps returning digits:[] for any pattern.
+describe("barcodeDigitsFor", () => {
+  it("upc-a: historical 4-group layout", () => {
+    const d = barcodeDigitsFor("upc-a", "850051366224", 95, 9, (t) => t.length * 4);
+    expect(d.map((g) => g.text)).toEqual(["8", "50051", "36622", "4"]);
+  });
+
+  it("ean-13 digits: leading digit + two centered sixes", () => {
+    const d = barcodeDigitsFor("ean-13", "4006381333931", 95, 9, (t) => t.length * 4);
+    expect(d.map((g) => g.text)).toEqual(["4", "006381", "333931"]);
+  });
+
+  it("code-128 digits: one group, centered", () => {
+    const d = barcodeDigitsFor("code-128", "LOLEV-123", 68, 10, (t) => t.length * 4);
+    expect(d).toHaveLength(1);
+    expect(d[0].text).toBe("LOLEV-123");
   });
 });

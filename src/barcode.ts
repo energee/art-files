@@ -6,8 +6,8 @@
 // means a code that no longer scans.
 import type { LabelConfig } from "./types";
 import * as L from "./layout";
-import { encodeUpc, encodeEan13, type UpcModules } from "./upc";
-import { encodeCode128 } from "./code128";
+import { encodeUpc, encodeEan13, validateUpc, validateEan13, type UpcModules } from "./upc";
+import { encodeCode128, validateCode128 } from "./code128";
 
 /** The three symbologies the model's "code" field kind can dispatch to.
  *  Re-declared (not imported) on FieldDecl in src/model/types.ts to avoid a
@@ -22,6 +22,66 @@ export function encodeFor(symbology: Symbology, value: string): UpcModules {
     case "ean-13": return encodeEan13(value);
     case "code-128": return encodeCode128(value);
   }
+}
+
+/** Validate `value` under the named symbology — the gate a custom barcode
+ *  layer's `value` must pass before `encodeFor` ever runs on it: an invalid
+ *  payload (e.g. a still-unexpanded format string, see CustomBarcodeLayer)
+ *  must never reach the encoders, which assume a validated string and would
+ *  otherwise happily emit a garbage pattern instead of failing loudly. */
+export function validateFor(
+  symbology: Symbology, value: string,
+): { ok: boolean; error?: string } {
+  switch (symbology) {
+    case "upc-a": return validateUpc(value);
+    case "ean-13": return validateEan13(value);
+    case "code-128": return validateCode128(value);
+  }
+}
+
+/** Human-readable digit groups for an EXPLICIT pattern (a custom barcode
+ *  layer's own geometry — never the template's, which stays governed by
+ *  barcodeGeometry's own UPC-A-specific layout and its digits:[] rule for any
+ *  supplied pattern). Per-symbology grouping (P3):
+ *  - upc-a: the historical 4-group layout — number-system digit outside the
+ *    left guard, two 5-digit groups centered under the left/right 35-module
+ *    halves, check digit outside the right guard.
+ *  - ean-13: the first digit (implied by parity, not drawn as bars) prints
+ *    outside the left guard; the remaining twelve digits split into the two
+ *    6-digit groups centered under the same two halves.
+ *  - code-128: no guard structure to split around, so the whole value prints
+ *    as one group centered under the symbol.
+ *  `modulesLen`/`quiet` are in MODULE units (not points): `quiet` is the
+ *  quiet-zone width a leading/trailing digit sits within, and `measure`'s
+ *  return is read the same way (module units) since this function has no
+ *  `mod` (points-per-module) to convert with — the caller, which does have
+ *  one, positions each group's actual x/y from `center` itself; the `x` this
+ *  function returns is a placeholder callers are expected to replace. The
+ *  27.5/67.5 half-centers are the guard layout both encodeUpc/encodeEan13
+ *  share (halves at modules [10,45) and [50,85) of a 95-module symbol), same
+ *  as barcodeGeometry's own numbers — not derived from `modulesLen`, since
+ *  UPC-A/EAN-13's guard positions are fixed regardless of the value encoded. */
+export function barcodeDigitsFor(
+  symbology: Symbology, value: string, modulesLen: number, quiet: number,
+  measure: (text: string) => number,
+): BarcodeGeometry["digits"] {
+  const place = (text: string, anchor: number, dir: -1 | 0 | 1) => ({
+    text, x: 0, center: anchor + (dir * measure(text)) / 2,
+  });
+  if (symbology === "code-128") return [place(value, modulesLen / 2, 0)];
+  if (symbology === "ean-13") {
+    return [
+      place(value.slice(0, 1), -quiet, 1),
+      place(value.slice(1, 7), 27.5, 0),
+      place(value.slice(7, 13), 67.5, 0),
+    ];
+  }
+  return [
+    place(value.slice(0, 1), -quiet, 1),
+    place(value.slice(1, 6), 27.5, 0),
+    place(value.slice(6, 11), 67.5, 0),
+    place(value.slice(11, 12), modulesLen + quiet, -1),
+  ];
 }
 
 /** The barcode's resolved outer-stroke ("halo") width, in points — the one

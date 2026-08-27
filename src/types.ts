@@ -180,7 +180,43 @@ export interface CustomImageLayer extends CustomLayerBase {
   style: Style;
 }
 
-export type CustomLayer = CustomTextLayer | CustomImageLayer;
+/** A custom barcode layer: an independent, freely-positioned symbol, styled
+ *  like the template barcode (fill/layer + stroke-as-halo) but sized by its
+ *  own moduleW/h rather than layout.ts's fixed BARCODE constants. `value` is
+ *  RAW like the other layers' payloads — see the comment on it below. */
+export interface CustomBarcodeLayer extends CustomLayerBase {
+  type: "barcode";
+  symbology: "upc-a" | "ean-13" | "code-128";
+  /** Payload — RAW: may be a format string over field values ("{upc}").
+   *  Expansion to the drawn value happens in expandCustomFormats (Task 5);
+   *  until Task 5 lands, planLabel draws the raw string when it encodes. An
+   *  unexpandable/invalid raw string simply fails the symbology's validator,
+   *  and the layer emits nothing rather than a garbage symbol. */
+  value: string;
+  /** Bar-area height in points. */
+  h: number;
+  /** Module width in points; run width follows the pattern length. */
+  moduleW: number;
+  /** Human-readable digits under the symbol (P3). Absent = true. */
+  showDigits?: boolean;
+  style: Style; // fill/layer + stroke-as-halo, like the template barcode
+}
+
+/** A custom QR layer: same freely-positioned model as the barcode above, but
+ *  its EC level defaults to "M" for layers (P2) — the module-level qrShapes
+ *  default of "L" stays the template QR's default, unrelated to this. */
+export interface CustomQrLayer extends CustomLayerBase {
+  type: "qr";
+  value: string; // payload, RAW like the barcode's
+  size: number; // side in points
+  qrStyle: "square" | "rounded" | "dots";
+  /** Error correction; ABSENT means "M" for layers (P2) — never L. */
+  ecLevel?: "L" | "M" | "Q" | "H";
+  style: Style;
+}
+
+export type CustomLayer =
+  | CustomTextLayer | CustomImageLayer | CustomBarcodeLayer | CustomQrLayer;
 
 export interface ConfigFile extends LabelConfig {
   version: 1;

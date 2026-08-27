@@ -8,7 +8,7 @@ import { parseDescription } from "./description";
 // Text boxes are derived from the same display list the renderers draw from,
 // so a hit box can't drift from the artwork.
 import {
-  collabCenterFrame, collabLeftFrame, labelGuides, planLabel,
+  collabCenterFrame, collabLeftFrame, customBarcodeBox, labelGuides, planLabel,
   type MeasureFace, type PlacedText, type CollabSlots,
 } from "./plan";
 import { anchoredX, anchoredY } from "./model/position";
@@ -183,7 +183,7 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
   for (const layer of cfg.customLayers ?? []) {
     if (layer.type === "text") {
       boxes.push(...textFor(layer.id));
-    } else {
+    } else if (layer.type === "image") {
       const guides = labelGuides();
       const h = layer.aspect ? layer.w / layer.aspect : layer.w;
       boxes.push({
@@ -193,6 +193,22 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
         y0: anchoredY(layer.position, h, guides),
         y1: anchoredY(layer.position, h, guides) + h,
       });
+    } else if (layer.type === "barcode") {
+      // Pattern length x moduleW wide, h tall (+ digit band when shown) —
+      // the same box customBarcodeItem draws from (see customBarcodeBox).
+      // No box at all for an invalid payload: nothing is drawn either.
+      const box = customBarcodeBox(layer);
+      if (!box) continue;
+      const guides = labelGuides();
+      const x0 = anchoredX(layer.position, box.w, guides);
+      const y0 = anchoredY(layer.position, box.h, guides);
+      boxes.push({ id: layer.id, x0, x1: x0 + box.w, y0, y1: y0 + box.h });
+    } else {
+      // "qr" — a plain size x size square, like the template QR's box.
+      const guides = labelGuides();
+      const x0 = anchoredX(layer.position, layer.size, guides);
+      const y0 = anchoredY(layer.position, layer.size, guides);
+      boxes.push({ id: layer.id, x0, x1: x0 + layer.size, y0, y1: y0 + layer.size });
     }
   }
   // Every box above is built from layout.ts's page-absolute constants, which
