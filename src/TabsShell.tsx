@@ -11,9 +11,10 @@ import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
 import {
-  DocumentEditor, LABEL_TYPES, isAbort, openPicker,
+  DocumentEditor,
   type DocumentMeta, type FileToOpen, type RenderSettings,
 } from "@/App";
+import { LABEL_TYPES, isAbort, openPicker } from "@/filePickers";
 import {
   activateTab, addTab, closeTab, initialTabs, routeFileOpen, updateTabMeta,
   type TabsState,

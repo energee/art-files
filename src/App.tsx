@@ -20,6 +20,7 @@ import type { Measure } from "@/hittest";
 import { defaultConfig, exportBaseName, parseConfigFile } from "@/defaults";
 import { strToU8 } from "fflate";
 import { LABEL_EXT, packLabel, unpackLabel } from "@/labelfile";
+import { LABEL_TYPES, isAbort, openPicker, savePicker, writeHandle } from "@/filePickers";
 import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import { makeHiddenPropsEqual } from "@/tabs";
@@ -110,32 +111,7 @@ function loadViewToggles(): { showRulers: boolean; showGuides: boolean; showBlee
   }
 }
 
-/** The .label file picker option, shared by open and save dialogs.
- *  Exported: TabsShell hosts File → Open now (an open must be able to
- *  target a new tab), and its picker must match Save's typing. */
-export const LABEL_TYPES = [
-  { description: "Label project", accept: { "application/zip": [LABEL_EXT] } },
-];
 const LABEL_FILTER = { name: "Label project", extensions: [LABEL_EXT.slice(1)] };
-
-// The File System Access surface, typed once — absent on Safari/Firefox, so
-// every caller branches on these and keeps a download/input fallback. The
-// fiddly parts (the window casts, the ArrayBuffer cast, abort detection)
-// live here so save/export/open can't drift apart.
-const savePicker = () => (window as {
-  showSaveFilePicker?: (opts: object) => Promise<FileSystemFileHandle>;
-}).showSaveFilePicker;
-export const openPicker = () => (window as {
-  showOpenFilePicker?: (opts: object) => Promise<FileSystemFileHandle[]>;
-}).showOpenFilePicker;
-/** A dismissed picker dialog — "no thanks", never an error. */
-export const isAbort = (err: unknown) =>
-  err instanceof DOMException && err.name === "AbortError";
-async function writeHandle(handle: FileSystemFileHandle, bytes: Uint8Array) {
-  const writable = await handle.createWritable();
-  await writable.write(bytes as unknown as ArrayBuffer);
-  await writable.close();
-}
 
 /** One spelling for the "which error do I show?" expression the open paths
  *  share. */
