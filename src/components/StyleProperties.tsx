@@ -12,7 +12,7 @@
 import { Bold, WholeWord, X } from "lucide-react";
 import type { LabelConfig, Style, StyledLine } from "@/types";
 import {
-  SHIPPED, applyStyle, editableText, elementById, isDefaultStyle,
+  SHIPPED, applyStyle, editableText, elementById, isCustomId, isDefaultStyle,
   type ElementId, type LabelElement,
 } from "@/elements";
 import { DOC_LAYER_LABELS, LAYER_ICONS, isElementId, type LayerId } from "@/components/layers";
@@ -473,6 +473,13 @@ function Content(props: {
       // Fixed template art/text: nothing to edit beyond style — say so
       // rather than rendering an empty section.
       return <p className="text-[11px] text-muted-foreground">Fixed template art — nothing to edit.</p>;
+    default:
+      // Custom master-variation layers (Task 3 wires their real content
+      // editing — text/image pickers, asset drop). For now the Style
+      // section below still applies via elementById's generic fallback.
+      if (isCustomId(id))
+        return <p className="text-[11px] text-muted-foreground">Custom layer — content editing coming soon.</p>;
+      return null;
   }
 }
 

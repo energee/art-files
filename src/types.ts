@@ -1,7 +1,11 @@
 // types.ts — the label config data model. This is also the schema of the
-// Save/Load JSON: a LabelConfig serializes as-is (plus {version: 1}).
+// Save/Load JSON: a LabelConfig serializes as-is (plus {version: 1}). Still
+// version 1: `customLayers` (master-variation free-floating text/image
+// layers) is additive — absent on every pre-existing file, which loads as
+// "no custom layers" with no migration needed.
 
 import type { FontFamilyId } from "./fontCatalog";
+import type { LayerPosition } from "./model/position";
 
 /** Fill color drawn in the art PDF: a "#rrggbb" hex string, or "none"
  *  meaning no ink (draws white; stock/white ink shows through). */
@@ -130,7 +134,44 @@ export interface LabelConfig {
   /** Label typeface, one of fontCatalog's families. Absent = "poppins" —
    *  the fallback every pre-0.1.22 file relies on (see fontFamilyOf). */
   fontFamily?: FontFamilyId;
+  /** Free-floating layers added on a master variation: extra text lines or
+   *  small images positioned by anchor rather than by the fixed layout.
+   *  Absent = none, which is every file saved before this feature. */
+  customLayers?: CustomLayer[];
 }
+
+/** Shared shape of every custom layer: identity, display name, and anchored
+ *  position. `id` is `custom-${string}` (see isCustomId in elements.ts) so
+ *  it can never collide with a fixed ElementId. */
+export interface CustomLayerBase {
+  /** Unique per layer, e.g. "custom-a1b2c3". */
+  id: `custom-${string}`;
+  /** Shown in the layers panel. */
+  name: string;
+  position: LayerPosition;
+  locked?: boolean;
+}
+
+/** A custom line of text, styled like any other StyledLine. */
+export interface CustomTextLayer extends CustomLayerBase {
+  type: "text";
+  line: StyledLine;
+  /** Type size in points. */
+  size: number;
+}
+
+/** A custom image layer: an SVG/raster asset tinted like the collab logos. */
+export interface CustomImageLayer extends CustomLayerBase {
+  type: "image";
+  /** Asset key into the plan's custom images (wired in Task 3). */
+  asset: string;
+  /** Box width in points; height follows the image's aspect. */
+  w: number;
+  /** Fill/layer for SVG tint and white-ink behavior. */
+  style: Style;
+}
+
+export type CustomLayer = CustomTextLayer | CustomImageLayer;
 
 export interface ConfigFile extends LabelConfig {
   version: 1;

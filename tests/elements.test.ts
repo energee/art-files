@@ -195,8 +195,13 @@ describe("inline editable text", () => {
   it("round-trips every editable element's text through the config", () => {
     const cfg = defaultConfig();
     for (const [id, spec] of Object.entries(editableText)) {
-      spec.set(cfg, `edited ${id}`);
-      expect(spec.get(cfg)).toBe(`edited ${id}`);
+      // editableText's index type now includes ElementId's `custom-${string}`
+      // arm, which TS treats as an index signature (value type T | undefined)
+      // rather than a finite set of known-present keys — but the entries
+      // actually iterated here are only the fixed keys the object literal
+      // defines, so they are always present.
+      spec!.set(cfg, `edited ${id}`);
+      expect(spec!.get(cfg)).toBe(`edited ${id}`);
     }
     // The accessors hit the real backing fields, flat and styled alike.
     expect(cfg.beerName).toBe("edited name");

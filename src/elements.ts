@@ -26,7 +26,15 @@ export type ElementId =
   | "name" | "styleLine" | "abv" | "description"
   | "volume" | "wordmark" | "logo" | "handleAddress" | "warning" | "storeCold"
   | "qr" | "barcode"
-  | "collabLead" | "collabLeft" | "collabCenter";
+  | "collabLead" | "collabLeft" | "collabCenter"
+  | `custom-${string}`;
+
+/** True when `id` names a master-variation custom layer rather than one of
+ *  the fixed elements above. Every exhaustive switch/lookup over ElementId
+ *  must check this first and branch to generic custom-layer handling —
+ *  ELEMENTS has no entry for these ids. */
+export const isCustomId = (id: ElementId): id is `custom-${string}` =>
+  id.startsWith("custom-");
 
 export interface LabelElement {
   id: ElementId;
@@ -180,7 +188,26 @@ export const editableText: Partial<Record<ElementId, EditableText>> = {
   storeCold: { get: (c) => c.storeCold.text, set: (c, t) => { c.storeCold.text = t; }, rotated: true },
 };
 
+/** A blank style for the generic fallback below — a custom layer's real
+ *  style lives on its CustomLayer entry (line/style in types.ts), which
+ *  elementById cannot reach (it only gets the id, not the config); Task 3
+ *  wires the panels that read/write it directly. This is only a safe
+ *  placeholder so exhaustive registry lookups never throw on a custom id. */
+const BLANK_STYLE: Style = { fill: "none", layer: "white" };
+
+/** Generic registry entry for any `custom-${string}` id — no ELEMENTS row
+ *  backs these (they are user-added, not part of the fixed template), so
+ *  this stands in wherever code looks an element up by id alone. No bold
+ *  toggle and no letter-spacing capability by default; label falls back to
+ *  the id itself since elementById has no config to read the layer's name
+ *  from (callers with the config should prefer that name directly). */
+const customFallback = (id: `custom-${string}`): LabelElement => ({
+  id, label: id, group: "beer", hasBold: false, isText: false, allowNone: true,
+  style: () => BLANK_STYLE,
+});
+
 export function elementById(id: ElementId): LabelElement {
+  if (isCustomId(id)) return customFallback(id);
   const e = ELEMENTS.find((x) => x.id === id);
   if (!e) throw new Error(`Unknown element: ${id}`);
   return e;
