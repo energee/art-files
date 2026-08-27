@@ -31,9 +31,9 @@ import {
 import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import {
-  addVariant, applyDesignEdit, applyLayerEdit, bridgeCollabOverride, composeConfig,
-  configDiff, expandCustomFormats, overriddenPaths, resetOverride, toggleVariant,
-  valuesFromConfig, visibleFieldsOf,
+  addField, addVariant, applyDesignEdit, applyLayerEdit, bridgeCollabOverride, composeConfig,
+  configDiff, expandCustomFormats, overriddenPaths, removeField, renameField, resetOverride,
+  toggleVariant, valuesFromConfig, visibleFieldsOf,
   type EditTarget,
 } from "@/model/document";
 import { parseLabelFile } from "@/model/labelfile";
@@ -422,6 +422,38 @@ export function layerEditDoc(
     ([k, v]) => (current as Record<string, unknown>)[k] === v);
   if (noop) return doc;
   return { ...doc, master: applyLayerEdit(doc.master, at, layerId, patch) };
+}
+
+/** The pure doc transition behind Design mode's "Make fillable" (addField):
+ *  declare a field at the (clamped) editing target. Fields carry no
+ *  LabelConfig diff of their own — unlike designEditDoc/resetOverrideDoc,
+ *  cfg needs no recompose — so this is layerEditDoc's shape: a new master,
+ *  or `doc` itself (addField's own identity contract) when `decl.path` is
+ *  already declared at this target. Module-level and exported for the same
+ *  reason as its siblings: testable without mounting the editor. */
+export function addFieldDoc(doc: Doc, target: EditTarget, decl: FieldDecl): Doc {
+  const at = clampTarget(doc.master, target);
+  const master = addField(doc.master, at, decl);
+  return master === doc.master ? doc : { ...doc, master };
+}
+
+/** The pure doc transition behind TargetFields' inline rename, offered once
+ *  a field is unlocked (see EditingTarget.tsx's TargetFields — "no read-only
+ *  fields"). Same no-cfg-recompose shape as addFieldDoc; `doc` itself when
+ *  renameField is a no-op (id not declared at this target, or already
+ *  called `label`). */
+export function renameFieldDoc(doc: Doc, target: EditTarget, fieldId: string, label: string): Doc {
+  const at = clampTarget(doc.master, target);
+  const master = renameField(doc.master, at, fieldId, label);
+  return master === doc.master ? doc : { ...doc, master };
+}
+
+/** The pure doc transition behind TargetFields' remove, offered once a field
+ *  is unlocked — same shape/no-op contract as renameFieldDoc above. */
+export function removeFieldDoc(doc: Doc, target: EditTarget, fieldId: string): Doc {
+  const at = clampTarget(doc.master, target);
+  const master = removeField(doc.master, at, fieldId);
+  return master === doc.master ? doc : { ...doc, master };
 }
 
 /** The pure doc transition behind a per-PROPERTY RESET (the inspector's
@@ -1054,6 +1086,45 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (next === doc) return;
     markDirty();
     setDoc((d) => (d === doc ? next : resetOverrideDoc(d, editTarget, path)));
+  };
+
+  /** The dot-paths the current editing target already declares a field
+   *  over — what MakeFillable (StyleProperties.tsx) checks to decide
+   *  whether the selected layer still needs a button, and what addField
+   *  itself checks (fieldsAt in model/document.ts). Computed the same way
+   *  here so the UI's "already fillable" read can't drift from the model's
+   *  own no-op rule. */
+  const targetFieldPaths = useMemo(() => {
+    const own = editTarget === "master"
+      ? master.fields
+      : master.variants.find((v) => v.id === editTarget.variant)?.fields ?? [];
+    return new Set(own.map((f) => f.path));
+  }, [master, editTarget]);
+
+  /** Design mode's "Make fillable" (addFieldDoc): declare a field for the
+   *  selected layer at the current editing target — one undoable step, like
+   *  every other design edit here. */
+  const makeFillable = (decl: FieldDecl) => {
+    const next = addFieldDoc(doc, editTarget, decl);
+    if (next === doc) return; // already fillable — see targetFieldPaths
+    markDirty();
+    setDoc((d) => (d === doc ? next : addFieldDoc(d, editTarget, decl)));
+  };
+
+  /** TargetFields' inline rename (unlocked rows only) — renameFieldDoc. */
+  const renameTargetField = (fieldId: string, label: string) => {
+    const next = renameFieldDoc(doc, editTarget, fieldId, label);
+    if (next === doc) return;
+    markDirty();
+    setDoc((d) => (d === doc ? next : renameFieldDoc(d, editTarget, fieldId, label)));
+  };
+
+  /** TargetFields' remove (unlocked rows only) — removeFieldDoc. */
+  const removeTargetField = (fieldId: string) => {
+    const next = removeFieldDoc(doc, editTarget, fieldId);
+    if (next === doc) return;
+    markDirty();
+    setDoc((d) => (d === doc ? next : removeFieldDoc(d, editTarget, fieldId)));
   };
 
   /** The Editing selector's "New variant…": addVariantDoc (the pure
@@ -2410,7 +2481,8 @@ export const DocumentEditor = memo(function DocumentEditor({
                     onToggleHidden={toggleHidden} selected={selected} onSelect={pick}
                     onAddLayer={addCustomLayer} onMoveCustomLayer={moveCustomLayer}
                     onLayerEdit={layerEdit} rows={panelLayerRows} />
-                  <TargetFields master={master} target={editTarget} />
+                  <TargetFields master={master} target={editTarget}
+                    onRenameField={renameTargetField} onRemoveField={removeTargetField} />
                 </>
               : <FieldList master={master} enabledVariants={enabledVariants} cfg={cfg}
                   onValue={onFieldValue} onVariant={setVariant} />}
@@ -2785,6 +2857,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 settings={docSettings}
                 fields={visibleFields} preview={stringValues}
                 overridden={overridden} onResetOverride={resetVariantOverride}
+                declaredPaths={targetFieldPaths} onMakeFillable={makeFillable}
                 onClose={clearSelection} />
             )}
           </SheetContent>

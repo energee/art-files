@@ -339,6 +339,70 @@ export function resetOverride(master: Master, target: EditTarget, path: string):
   return { ...master, variants };
 }
 
+/** The fields a `target` currently declares on its own — the master's own
+ *  list for "master", a variant's own list (never the master's too) for a
+ *  variant. Mirrors TargetFields' scoping (EditingTarget.tsx) so the model's
+ *  duplicate-path check and the UI's "already fillable" check can't drift
+ *  apart. Undefined when `target` names a variant the master doesn't
+ *  declare. */
+function fieldsAt(master: Master, target: EditTarget): FieldDecl[] | undefined {
+  if (target === "master") return master.fields;
+  return master.variants.find((v) => v.id === target.variant)?.fields;
+}
+
+/** Declare a field for a layer at `target` (the master, or one of its
+ *  variants) — Design mode's "Make fillable" (spec: a selected layer becomes
+ *  something a filler can fill). The caller supplies the WHOLE FieldDecl,
+ *  path and kind included: those are inferred from the layer's registry
+ *  entry in the UI (src/elements.ts's editableText/FLAT), which this pure
+ *  model must not import (see this file's header). Returns a NEW master —
+ *  never mutates `master` — or `master` itself, unchanged, when `target`
+ *  already has a field bound to `decl.path` (declaring the same content
+ *  fillable twice) or names a variant the master doesn't declare. "Already
+ *  has" is scoped to `target`'s own list (fieldsAt above) — a field the
+ *  MASTER already declares does not block a VARIANT from also declaring one
+ *  over the same path (and vice versa): each target's field list is its own
+ *  fillable surface, the same scoping TargetFields renders. */
+export function addField(master: Master, target: EditTarget, decl: FieldDecl): Master {
+  const existing = fieldsAt(master, target);
+  if (!existing) return master; // target names a variant that doesn't exist
+  if (existing.some((f) => f.path === decl.path)) return master;
+  if (target === "master") return { ...master, fields: [...master.fields, decl] };
+  const variants = master.variants.map((v) =>
+    v.id === target.variant ? { ...v, fields: [...v.fields, decl] } : v);
+  return { ...master, variants };
+}
+
+/** Rename one field's label at `target`, in place in its declared list — the
+ *  inline edit TargetFields offers once a field is unlocked (spec: "no
+ *  read-only fields" — a field ships locked, but never permanently frozen).
+ *  Returns a new master, or `master` itself when the id isn't declared at
+ *  `target` or is already called `label`. */
+export function renameField(
+  master: Master, target: EditTarget, fieldId: string, label: string,
+): Master {
+  const existing = fieldsAt(master, target);
+  const cur = existing?.find((f) => f.id === fieldId);
+  if (!cur || cur.label === label) return master;
+  if (target === "master")
+    return { ...master, fields: master.fields.map((f) => (f.id === fieldId ? { ...f, label } : f)) };
+  const variants = master.variants.map((v) =>
+    v.id === target.variant ? { ...v, fields: v.fields.map((f) => (f.id === fieldId ? { ...f, label } : f)) } : v);
+  return { ...master, variants };
+}
+
+/** Drop one field from `target`'s declared list — TargetFields' remove,
+ *  offered once a field is unlocked, same gate as renameField above. Returns
+ *  a new master, or `master` itself when the id isn't declared at `target`. */
+export function removeField(master: Master, target: EditTarget, fieldId: string): Master {
+  const existing = fieldsAt(master, target);
+  if (!existing?.some((f) => f.id === fieldId)) return master;
+  if (target === "master") return { ...master, fields: master.fields.filter((f) => f.id !== fieldId) };
+  const variants = master.variants.map((v) =>
+    v.id === target.variant ? { ...v, fields: v.fields.filter((f) => f.id !== fieldId) } : v);
+  return { ...master, variants };
+}
+
 const slugify = (name: string): string =>
   name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 

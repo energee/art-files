@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  addVariant, applyDesignEdit, applyLayerEdit, composeConfig,
+  addField, addVariant, applyDesignEdit, applyLayerEdit, composeConfig,
   overriddenPaths, resetOverride,
 } from "../src/model/document";
 import { lolevMaster } from "../src/model/lolev";
@@ -118,5 +118,21 @@ describe("overriddenPaths for the inspector's badges", () => {
     const paths = overriddenPaths(m, { variant: "collab" });
     expect(paths.has("nameStyle.fill")).toBe(true);
     expect(paths.has("nameStyle.strokeWidth")).toBe(true);
+  });
+});
+
+// Task 5: "Make fillable" from a selection.
+describe("addField", () => {
+  it("addField declares a field on the master and refuses a duplicate path", () => {
+    const decl = { id: "volume", label: "Volume", kind: "text" as const, path: "volume.text" };
+    const m = addField(lolevMaster(), "master", decl);
+    expect(m.fields.map((f) => f.id)).toContain("volume");
+    expect(addField(m, "master", { ...decl, id: "volume2" })).toBe(m);
+  });
+  it("addField on a variant declares it there, not on the master", () => {
+    const m = addField(lolevMaster(), { variant: "collab" },
+      { id: "partner", label: "Partner", kind: "text", path: "collabLead.text" });
+    expect(m.fields.map((f) => f.id)).not.toContain("partner");
+    expect(m.variants[0].fields.map((f) => f.id)).toContain("partner");
   });
 });

@@ -9,6 +9,7 @@
 // edits the whole selection at once, blanking any field they disagree about.
 // Selection itself lives in App (see selection.ts), driven by the layers
 // panel and the preview; this component only receives the chosen LayerIds.
+import { useState } from "react";
 import { Bold, WholeWord, X } from "lucide-react";
 import type {
   CustomLayer, LabelConfig, Style, StyledLine,
@@ -18,7 +19,7 @@ import {
   type ElementId, type LabelElement,
 } from "@/elements";
 import { minModuleWarning } from "@/model/fields";
-import type { FieldDecl } from "@/model/types";
+import type { FieldDecl, FieldKind } from "@/model/types";
 import { FormatBuilder } from "./FormatBuilder";
 import { DOC_LAYER_LABELS, LAYER_ICONS, isElementId, type LayerId } from "@/components/layers";
 import {
@@ -131,6 +132,98 @@ export function OverrideBadge(props: {
       aria-label={`Reset ${props.label} to the master`}
       onClick={() => props.onReset(path)}
     />
+  );
+}
+
+// --- Task 5: "Make fillable" from a selection ------------------------------
+// Turns a selected layer's raw content into a declared field (spec:
+// model/document.ts's addField) — the inspector-side half; App wires the
+// button's `onMakeFillable` to addFieldDoc and computes `declaredPaths`.
+
+/** The dot-path a FIXED (non-custom) element's raw content lives at, when it
+ *  has one, and the FieldKind it becomes. Kept in sync BY HAND with two
+ *  things: editableText's domain (elements.ts) for every "text" entry here —
+ *  each path must read back exactly what that element's own
+ *  `editableText[id].get(cfg)` returns — and lolevMaster's own shipped field
+ *  declarations (model/lolev.ts), which hardcode these same path strings for
+ *  the master's built-in fields (the "Plan-1 bridge" FieldDecl.path's own
+ *  doc comment describes). No entry = no config-backed content path, so
+ *  MakeFillable renders no button: the laurel and the fixed wordmark (as the
+ *  brief calls out), warning and collabLead (fixed template text), and the
+ *  two collab image slots (their art is a runtime File, not a LabelConfig
+ *  field). qr is deliberately absent too — its payload is DERIVED from the
+ *  beer name (see Content's "qr" case above), not stored, so there is
+ *  nothing for a field to bind to. barcode is the one "code" kind: its UPC
+ *  digits are a plain scalar (`upc`), the same field lolevMaster ships. */
+const FILLABLE: Partial<Record<ElementId, { path: string; kind: FieldKind }>> = {
+  name: { path: "beerName", kind: "text" },
+  styleLine: { path: "styleLine.text", kind: "text" },
+  abv: { path: "abv", kind: "text" },
+  description: { path: "description", kind: "text" },
+  volume: { path: "volume.text", kind: "text" },
+  handleAddress: { path: "handleAddress.text", kind: "text" },
+  storeCold: { path: "storeCold.text", kind: "text" },
+  barcode: { path: "upc", kind: "code" },
+};
+
+/** "Make fillable" for one selected layer: a button that mints a FieldDecl
+ *  (id fresh, label defaulting to the layer's own name and editable inline
+ *  before commit — Enter/the Add button commits, Escape cancels) and hands
+ *  it to `onMakeFillable`. Renders nothing when `id` has no content path
+ *  (FILLABLE) or `declaredPaths` already covers it — App computes that set
+ *  the same way addField's own no-op check does (model/document.ts's
+ *  fieldsAt), so the button can't outlive the field it would duplicate.
+ *  Exported and mountable on its own, like OverrideBadge above, so its test
+ *  doesn't need to stand up the whole Inspector. */
+export function MakeFillable(props: {
+  id: ElementId;
+  declaredPaths: ReadonlySet<string>;
+  onMakeFillable: (decl: FieldDecl) => void;
+}): React.JSX.Element | null {
+  const [naming, setNaming] = useState(false);
+  const [draft, setDraft] = useState("");
+  const info = FILLABLE[props.id];
+  if (!info || props.declaredPaths.has(info.path)) return null;
+  const defaultLabel = elementById(props.id).label;
+  const commit = () => {
+    const label = draft.trim() || defaultLabel;
+    props.onMakeFillable({
+      id: `field-${crypto.randomUUID().slice(0, 8)}`,
+      label, kind: info.kind, path: info.path,
+      ...(info.kind === "code" ? { symbology: "upc-a" as const } : {}),
+    });
+    setNaming(false);
+    setDraft("");
+  };
+  if (naming) {
+    return (
+      <div className="flex items-center gap-1">
+        <Input
+          id="make-fillable-name" autoFocus className="h-6 flex-1 text-xs"
+          value={draft} placeholder={defaultLabel}
+          aria-label="Field name"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); commit(); }
+            else if (e.key === "Escape") { e.preventDefault(); setNaming(false); setDraft(""); }
+          }}
+        />
+        <Button
+          id="make-fillable-commit" variant="ghost" size="sm" className="h-6 px-2 text-[11px]"
+          onClick={commit}
+        >
+          Add
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <Button
+      id="make-fillable" variant="ghost" size="sm" className="h-6 px-2 text-[11px]"
+      onClick={() => { setDraft(defaultLabel); setNaming(true); }}
+    >
+      Make fillable
+    </Button>
   );
 }
 
@@ -1038,6 +1131,11 @@ export function Inspector(props: {
    *  only ever mounts in Design mode. */
   overridden: ReadonlySet<string>;
   onResetOverride: (path: string) => void;
+  /** Task 5: the current editing target's already-declared field paths
+   *  (App's targetFieldPaths) and "Make fillable"'s commit — threaded to
+   *  MakeFillable below. */
+  declaredPaths: ReadonlySet<string>;
+  onMakeFillable: (decl: FieldDecl) => void;
   /** Clears the selection, which closes the inspector sheet. */
   onClose: () => void;
 }): React.JSX.Element {
@@ -1134,6 +1232,13 @@ export function Inspector(props: {
           <Content id={id} cfg={props.cfg} errors={props.errors} update={props.update}
             files={props.files} settings={props.settings}
             fields={props.fields} preview={props.preview} />
+          {/* Task 5: turn this layer's raw content into a field a filler can
+              fill. Fixed (non-custom) elements only — MakeFillable itself
+              renders nothing for an id with no content path or one already
+              declared (FILLABLE / declaredPaths). */}
+          {isEl && !isCustomId(id) && (
+            <MakeFillable id={id} declaredPaths={props.declaredPaths} onMakeFillable={props.onMakeFillable} />
+          )}
         </>
       )}
 
