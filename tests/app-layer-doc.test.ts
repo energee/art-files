@@ -1,6 +1,6 @@
 // app-layer-doc.test.ts — the pure doc transitions behind the four "Add
 // layer" buttons and the layers panel's custom-row reorder chevrons
-// (App.tsx's addLayerDoc / moveLayerDoc, Task 5b). Same shape as
+// (src/model/doc.ts's addLayerDoc / moveLayerDoc, Task 5b). Same shape as
 // design-routing.test.ts's coverage of designEditDoc/layerEditDoc/etc.: these
 // are user-facing controls, so the routing they exercise (Add layer lands on
 // the master or the editing variant, never in a per-label cfg.customLayers
@@ -9,7 +9,7 @@
 // that routing regresses, without mounting the whole editor.
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { addLayerDoc, type Doc, materializedLayerEditDoc, moveLayerDoc } from "../src/App";
+import { addLayerDoc, type Doc, materializedLayerEditDoc, moveLayerDoc } from "../src/model/doc";
 import { buildSkip } from "../src/model/skip";
 import { composeConfig } from "../src/model/document";
 import { resolve } from "../src/model/resolve";

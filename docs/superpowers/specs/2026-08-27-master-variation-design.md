@@ -6,6 +6,18 @@ Amended: 2026-08-27 (after Plan 5a shipped) — a variant is presented as a name
 group of fields and layers rather than as a diff; `collabEnabled` is deleted
 from `LabelConfig` and Collab becomes an ordinary variant carrying three
 fields. See "Variant (embedded in master)", "UI", and "Migration".
+Amended: 2026-08-27 (final review, two ruled deviations from the section
+above) — the shipped Collab variant carries **two** fields, not three:
+`collabLead` was dropped because nothing reads `collabLead.text` (the
+lead-in is fixed template art, drawn from `L.COLLAB_LEAD.lines`), and a real
+text field there would need a variable line count that MOVES the partner
+logo, since `collabLeftFlow()` derives the left logo's top edge from
+`lines.length`. And the variant carries **no** `logo.offsetY` override
+(`overrides: {}`), not "the logo nudge becomes an ordinary override on the
+variant": the shipped nudge is 0, so an explicit override would preserve
+nothing while shadowing a designer's master-level nudge on exactly the
+labels the nudge serves — variant overrides merge on top of
+`master.defaults`. See "Migration".
 Approach: incremental re-layering (Approach 1) — the new model resolves down to
 the existing `LabelConfig` shape; renderers, PDF/PSD builders, and the white-ink
 pipeline are untouched at first and migrate piecemeal.
@@ -361,13 +373,21 @@ the model restructure.
 - **Collab → shipped variant:** partner slots and the logo-nudge gate are
   re-expressed as a "Collab" variant on the migrated Lolev master, and
   `collabEnabled` is **deleted from `LabelConfig`** — there is no collab
-  boolean left anywhere in the model or the UI. The variant carries three
-  fields: `collabLead` (text), `collabLeft` and `collabCenter` (image). Its
-  three layers are gated exactly like any other variant's, through the
-  resolver's disabled-layer set that `planLabel`, the PDF builder and the
-  hit-tester already consult. The logo nudge becomes an ordinary override on
-  the variant (`logo.offsetY`), so it arrives with the variant instead of
-  being gated by a flag; the master's default is 0.
+  boolean left anywhere in the model or the UI. The variant carries **two**
+  fields: `collabLeft` and `collabCenter` (image). `collabLead` is deliberately
+  NOT a field: nothing reads `collabLead.text`, the lead-in is drawn from the
+  fixed `L.COLLAB_LEAD.lines`, and a real text field there would need a
+  variable line count that MOVES the partner logo, since `collabLeftFlow()`
+  derives the left logo's top edge from `lines.length`. Its three layers are
+  gated exactly like any other variant's, through the resolver's
+  disabled-layer set that `planLabel`, the PDF builder and the hit-tester
+  already consult. The variant carries **no** `logo.offsetY` override
+  (`overrides: {}`) — NOT "the logo nudge becomes an ordinary override on the
+  variant" as a first draft of this migration had it: the shipped nudge is 0,
+  so an explicit override would preserve nothing while shadowing a designer's
+  master-level nudge on exactly the labels the nudge serves, since variant
+  overrides merge on top of `master.defaults`. The laurel's stack nudge
+  (`logoNudge`) is unconditional now regardless of Collab.
 
   This is the one place the "renderers are untouched" rule is deliberately
   broken: `plan.ts`, `pdf/build.ts`, `hittest.ts` and `elements.ts` each lose

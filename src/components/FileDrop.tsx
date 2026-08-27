@@ -9,7 +9,9 @@ import { cn } from "@/lib/utils";
 // The classic light transparency checker, deliberately NOT theme-tinted: a
 // dark checker made black art invisible in the dark UI. Light grey + white
 // squares keep both black and white artwork visible, whatever the theme.
-const CHECKER =
+// Exported: FieldList's image-field wells (the collab logo slots, now
+// ordinary fields) reuse it for the same loaded-thumbnail presentation.
+export const CHECKER =
   "repeating-conic-gradient(#c9c9c9 0% 25%, #f2f2f2 0% 50%) 0 0 / 12px 12px";
 
 /** Marks a field drop target. AssetDropOverlay's window listener yields to

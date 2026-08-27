@@ -164,11 +164,12 @@ export function EditingTarget(props: {
   );
 }
 
-/** The fields the CURRENT target declares, read-only — name plus kind. The
- *  master's own when the target is the master, and a variant's own (never the
- *  master's too) when it isn't: this answers "what does the thing I am
- *  editing declare", not "what will a filler see". App renders it under the
- *  layers list; Fill mode's FieldList is what edits the values. */
+/** The fields the CURRENT target declares — name, kind, and, once unlocked
+ *  (see the file header: "No field here is read-only"), an inline rename and
+ *  remove. The master's own when the target is the master, and a variant's
+ *  own (never the master's too) when it isn't: this answers "what does the
+ *  thing I am editing declare", not "what will a filler see". App renders it
+ *  under the layers list; Fill mode's FieldList is what edits the values. */
 export function TargetFields(props: {
   master: Master;
   target: EditTarget;

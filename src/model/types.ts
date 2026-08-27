@@ -72,10 +72,10 @@ export interface MasterLayer {
 export interface Variant {
   id: string;
   name: string;
-  /** DeepPartial, not Partial: a variant overrides LEAVES (the Collab
-   *  variant's `logo.offsetY`, an authored `nameStyle.fill`), which is
-   *  exactly what resolve()'s deepMerge applies and what applyDesignEdit
-   *  records. */
+  /** DeepPartial, not Partial: a variant overrides LEAVES (an authored
+   *  `nameStyle.fill`, say), which is exactly what resolve()'s deepMerge
+   *  applies and what applyDesignEdit records. The shipped Collab variant
+   *  overrides nothing (`overrides: {}`) — see model/lolev.ts. */
   overrides: DeepPartial<LabelConfig>;
   layerOverrides: Record<string, Partial<MasterLayer>>;
   fields: FieldDecl[];

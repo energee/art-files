@@ -1,8 +1,8 @@
 // design-routing.test.ts — where an edit LANDS, per mode. App's `update`
 // routes Design-mode edits through designEditDoc (the master, or the editing
 // variant) and Fill-mode edits through labelEditDoc (this label's config);
-// both are exported from src/App.tsx precisely so the routing can be pinned
-// without mounting the whole editor.
+// both are exported from src/model/doc.ts precisely so the routing can be
+// pinned without mounting the whole editor.
 //
 // The mutation under test is the REAL drag mutation the preview's onNudge
 // hands to `update` — `dragTarget(...).set(...)` from src/elements.ts — not a
@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import {
   type Doc, addFieldDoc, addVariantDoc, clampTarget, designEditDoc, labelEditDoc, labelSnapshot,
   layerEditDoc, removeFieldDoc, resetOverrideDoc,
-} from "../src/App";
+} from "../src/model/doc";
 import { addVariant } from "../src/model/document";
 import { composeConfig, configDiff, valuesFromConfig } from "../src/model/document";
 import { lolevMaster } from "../src/model/lolev";

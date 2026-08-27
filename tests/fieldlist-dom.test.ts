@@ -147,5 +147,36 @@ describe("FieldList", () => {
       expect(onValue).toHaveBeenCalledWith(
         expect.objectContaining({ id: "collabCenter" }), "");
     });
+
+    // Final-review MUST-FIX: the well used to give NO sign a file had loaded
+    // beyond the "Clear" button appearing — a filler swapping two partner
+    // logos couldn't tell which slot held which. A loaded field now surfaces
+    // its filename and a thumbnail (imageFileOf, looked up off App's
+    // customImages store); an empty one shows neither.
+    it("shows the loaded file's name and thumbnail", () => {
+      const cfg = defaultConfig();
+      (cfg.collabCenter as { image?: string }).image = "asset-7";
+      renderList({
+        master: lolevMaster(), enabledVariants: ["collab"], cfg,
+        onValue: vi.fn(), onVariant: vi.fn(),
+        imageFileOf: (id) => id === "asset-7"
+          ? { name: "acme-logo.png", previewUrl: "blob:acme-logo" }
+          : undefined,
+      });
+      expect(container.textContent).toMatch(/acme-logo\.png/);
+      const thumb = container.querySelector("img");
+      expect(thumb).not.toBeNull();
+      expect(thumb!.getAttribute("src")).toBe("blob:acme-logo");
+    });
+
+    it("shows neither a name nor a thumbnail when no file is loaded", () => {
+      renderList({
+        master: lolevMaster(), enabledVariants: ["collab"], cfg: defaultConfig(),
+        onValue: vi.fn(), onVariant: vi.fn(),
+        imageFileOf: () => ({ name: "should-not-show.png", previewUrl: "blob:unused" }),
+      });
+      expect(container.textContent).not.toMatch(/should-not-show\.png/);
+      expect(container.querySelector("img")).toBeNull();
+    });
   });
 });

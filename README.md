@@ -51,9 +51,10 @@ field. Design doc:
 rewrite to React + Tailwind + shadcn/ui is documented in
 `docs/superpowers/specs/2026-08-02-shadcn-ui-rewrite-design.md`.
 
-Collab labels sit behind a **Collab** switch in the form — with it off nothing
-collab draws and its fields stay hidden, which is every non-collab release. On,
-it takes up to two logo uploads (SVG, PNG or JPG): the **left** one prints in
+Collab labels sit behind a **Collab** variant checkbox in the field list —
+with it off nothing collab draws and its fields stay hidden, which is every
+non-collab release. On, it takes up to two logo uploads (SVG, PNG or JPG): the
+**left** one prints in
 the left column under the description, below an automatic bold "A collaborative
 project with"; the **center** one prints under the laurel. Each scales to fit
 its slot, with a size knob (1 = fit), and each is a stylable element like any

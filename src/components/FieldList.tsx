@@ -7,15 +7,17 @@ import type { LabelConfig } from "@/types";
 import type { FieldDecl, FieldValue, Master } from "@/model/types";
 import { getPath, visibleFieldsOf } from "@/model/document";
 import { validateField } from "@/model/fields";
+import { CHECKER } from "@/components/FileDrop";
 
 /** One field's widget, keyed off `field.kind` (spec: FieldDecl — "what editor
  *  the filler gets"). Every widget is controlled off `cfg` via getPath and
  *  writes back only through `onValue` — no local state, so the field list and
  *  the canvas can never disagree about a value. */
-function FieldRow({ field, cfg, onValue, onImageFile }: {
+function FieldRow({ field, cfg, onValue, onImageFile, imageFileOf }: {
   field: FieldDecl; cfg: LabelConfig;
   onValue: (f: FieldDecl, v: FieldValue) => void;
   onImageFile: (file: File) => Promise<string>;
+  imageFileOf?: (assetId: string) => { name: string; previewUrl: string } | undefined;
 }) {
   const raw = getPath(cfg, field.path);
   const id = `field-${field.id}`;
@@ -37,19 +39,34 @@ function FieldRow({ field, cfg, onValue, onImageFile }: {
     // "" rather than deleting the key, so the field stays a declared,
     // overridable value like every other.
     const assetId = typeof raw === "string" ? raw : "";
+    // The loaded asset's filename + thumbnail, looked up off the same store
+    // custom image layers use (App's customImages) — matches how the
+    // deleted collab wells (FileDrop, see CHECKER) showed a loaded file:
+    // without this, "Clear" appearing was the ONLY sign anything had loaded,
+    // and a filler swapping two partner logos could not tell which slot held
+    // which.
+    const file = assetId ? imageFileOf?.(assetId) : undefined;
     return (
       <div className="space-y-1">
         <label htmlFor={id} className="text-sm">{field.label}</label>
         <div className="flex items-center gap-2">
-          <input id={id} type="file" className="w-full text-xs"
-            accept="image/svg+xml,image/png,image/jpeg"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              // Reset the input so re-picking the SAME file fires onChange
-              // again — otherwise a cleared field can't be refilled from it.
-              e.target.value = "";
-              if (file) void onImageFile(file).then((asset) => onValue(field, asset));
-            }} />
+          {file && (
+            <img src={file.previewUrl} alt=""
+              className="size-9 shrink-0 rounded-sm object-cover"
+              style={{ background: CHECKER }} />
+          )}
+          <div className="min-w-0 flex-1">
+            <input id={id} type="file" className="w-full text-xs"
+              accept="image/svg+xml,image/png,image/jpeg"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                // Reset the input so re-picking the SAME file fires onChange
+                // again — otherwise a cleared field can't be refilled from it.
+                e.target.value = "";
+                if (file) void onImageFile(file).then((asset) => onValue(field, asset));
+              }} />
+            {file && <div className="truncate text-xs text-muted-foreground">{file.name}</div>}
+          </div>
           {assetId && (
             <button id={`${id}-clear`} type="button"
               className="shrink-0 rounded border border-input px-2 py-0.5 text-xs"
@@ -89,7 +106,9 @@ function FieldRow({ field, cfg, onValue, onImageFile }: {
   );
 }
 
-export function FieldList({ master, enabledVariants, cfg, onValue, onVariant, onImageFile }: {
+export function FieldList({
+  master, enabledVariants, cfg, onValue, onVariant, onImageFile, imageFileOf,
+}: {
   master: Master;
   enabledVariants: string[];
   cfg: LabelConfig;
@@ -101,6 +120,11 @@ export function FieldList({ master, enabledVariants, cfg, onValue, onVariant, on
    *  writes as the field's value. App owns the store (the same one custom
    *  image layers use), so the widget itself never touches it. */
   onImageFile: (file: File) => Promise<string>;
+  /** Look up a loaded image field's filename + thumbnail off the same
+   *  per-id store `onImageFile` writes into. Optional: a caller with no
+   *  image fields to show (or a test exercising everything else) can omit
+   *  it, and a well with no match just shows the bare file input. */
+  imageFileOf?: (assetId: string) => { name: string; previewUrl: string } | undefined;
 }) {
   return (
     <div className="space-y-4 p-3">
@@ -113,7 +137,8 @@ export function FieldList({ master, enabledVariants, cfg, onValue, onVariant, on
         </div>
       ))}
       {visibleFieldsOf(master, enabledVariants).map((f) => (
-        <FieldRow key={f.id} field={f} cfg={cfg} onValue={onValue} onImageFile={onImageFile} />
+        <FieldRow key={f.id} field={f} cfg={cfg} onValue={onValue} onImageFile={onImageFile}
+          imageFileOf={imageFileOf} />
       ))}
     </div>
   );

@@ -28,7 +28,7 @@ export interface PanelRow {
   locked: boolean;
   /** The layer's own master-level enable (MasterLayer.enabled, as resolved
    *  for the current variants) — what the panel's enable control writes back
-   *  through applyLayerEdit. Distinct from `inactive`, which is ALSO false
+   *  through applyLayerEdit. Distinct from `inactive`, which is ALSO true
    *  when the layer is enabled but its owning variant is off: a row can be
    *  enabled and still not draw. Always true for a custom row, which has no
    *  master-level disable. */
