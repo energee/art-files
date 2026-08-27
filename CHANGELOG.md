@@ -3,6 +3,18 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.36] - 2026-08-27
+
+- The layers panel now lists the label's real layers in drawing order, in one
+  flat list, instead of the fixed Beer / Collab / Template groups. Each layer
+  is declared by the master, so a layer can be renamed, switched off, or
+  locked there rather than being hardwired into the app — the wordmark is now
+  "Brand", and the government warning ships locked. The collab block is no
+  longer a special section with its own switch: its three layers belong to the
+  Collab variant and appear when it is enabled, marked with a Collab badge
+  while it is off. Custom layers can be moved forward and backward in the
+  stack.
+
 ## [0.1.35] - 2026-08-27
 
 - "Variation" is now called **Variant** throughout — the Collab checkbox, the
