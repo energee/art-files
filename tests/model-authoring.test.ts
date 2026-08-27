@@ -82,6 +82,24 @@ describe("addVariant", () => {
   });
 });
 
+describe("applyDesignEdit / REMOVE markers (fix round 1)", () => {
+  it("actually unsets a previously-recorded default, not a silent no-op", () => {
+    const seeded = applyDesignEdit(lolevMaster(), "master", [], {}, (c) => { c.abv = "5"; });
+    expect(seeded.defaults).toEqual({ abv: "5" });
+    const m = applyDesignEdit(seeded, "master", [], {},
+      (c) => { delete (c as unknown as Record<string, unknown>).abv; });
+    expect(m.defaults).toEqual({});
+  });
+  it("prunes a nested object left empty by the unset, not just the leaf", () => {
+    const seeded = applyDesignEdit(lolevMaster(), "master", [], {},
+      (c) => { c.nameStyle.fill = "#112233"; });
+    expect(seeded.defaults).toEqual({ nameStyle: { fill: "#112233" } });
+    const m = applyDesignEdit(seeded, "master", [], {},
+      (c) => { delete (c.nameStyle as unknown as Record<string, unknown>).fill; });
+    expect(m.defaults.nameStyle).toBeUndefined();
+  });
+});
+
 describe(".master file", () => {
   it("round-trips through serialize/parse", () => {
     const m = applyDesignEdit(lolevMaster(), "master", [], {}, (c) => { c.abv = "6"; });

@@ -189,21 +189,36 @@ export type EditTarget = "master" | { variant: string };
  *  composeConfig — resolve() deepMerges master.defaults and variant.overrides
  *  directly (resolve.ts). A stored REMOVE marker would therefore leak into
  *  every resolved config as a literal `null` forever instead of an absent
- *  key. None of applyDesignEdit's callers ever delete a LabelConfig key
- *  (they only set fields), so a REMOVE marker here is not a real "unset"
- *  intent — it is dropped rather than recorded. */
-function dropRemovals(patch: DeepPartial<LabelConfig>): DeepPartial<LabelConfig> {
-  const walk = (v: unknown): unknown => {
-    if (!isPlain(v)) return v;
-    const out: Record<string, unknown> = {};
+ *  key — so REMOVE can never survive into the merged result. But dropping a
+ *  REMOVE leaf outright (rather than acting on it) would make an unset edit
+ *  a silent no-op: if `master.defaults.abv` already holds a prior value and
+ *  `mutate` deletes `abv` from the config, discarding the REMOVE marker
+ *  would leave that stale prior value in place forever with no error. So a
+ *  REMOVE marker is applied as a real deletion on the target object (via
+ *  deletePath, which also prunes any object left empty — the same pruning
+ *  resetOverride does), and only the REMOVE-free remainder of the diff is
+ *  deep-merged in. Net effect: master.defaults/overrides stay null-free
+ *  (the original requirement) AND an unset actually unsets. */
+function extractRemovals(
+  patch: DeepPartial<LabelConfig>,
+): { paths: string[]; rest: DeepPartial<LabelConfig> } {
+  const paths: string[] = [];
+  const walk = (v: unknown, prefix: string): void => {
+    if (!isPlain(v)) return;
     for (const k of Object.keys(v)) {
       const c = (v as Record<string, unknown>)[k];
-      if (c === REMOVE) continue;
-      out[k] = walk(c);
+      const p = prefix ? `${prefix}.${k}` : k;
+      if (c === REMOVE) paths.push(p);
+      else walk(c, p);
     }
-    return out;
   };
-  return walk(patch) as DeepPartial<LabelConfig>;
+  walk(patch, "");
+  // Reuse deletePath's own bottom-up pruning to strip each REMOVE leaf back
+  // out of a clone of the diff, so a fully-removed nested object (e.g. every
+  // key of `nameStyle` unset) doesn't survive as a stray `{}` in `rest`.
+  const rest = structuredClone(patch) as Record<string, unknown>;
+  for (const p of paths) deletePath(rest, p);
+  return { paths, rest: rest as DeepPartial<LabelConfig> };
 }
 
 /** Run an ordinary LabelConfig mutation as an AUTHORING edit: apply it to a
@@ -230,19 +245,24 @@ export function applyDesignEdit(
   const base = composeConfig(master, resolveEnabled, values, undefined).config;
   const next = structuredClone(base);
   mutate(next);
-  const d = dropRemovals(configDiff(base, next));
+  const d = configDiff(base, next);
   if (Object.keys(d).length === 0) return master; // memo/dirty-flag contract: identity, not a clone
+  const { paths: removals, rest } = extractRemovals(d);
   if (target === "master") {
     // Master.defaults is typed Partial<LabelConfig> (shallow) but in practice
     // stores arbitrarily deep patches — the same seam resolve.ts already
     // crosses via its own `master.defaults as DeepPartial<LabelConfig>` cast.
-    const defaults = deepMerge(master.defaults as DeepPartial<LabelConfig>, d) as Partial<LabelConfig>;
-    return { ...master, defaults };
+    const defaults = structuredClone(master.defaults) as Record<string, unknown>;
+    for (const p of removals) deletePath(defaults, p);
+    const merged = deepMerge(defaults as DeepPartial<LabelConfig>, rest) as Partial<LabelConfig>;
+    return { ...master, defaults: merged };
   }
   const variants = master.variants.map((v) => {
     if (v.id !== target.variant) return v;
-    const overrides = deepMerge(v.overrides as DeepPartial<LabelConfig>, d) as Partial<LabelConfig>;
-    return { ...v, overrides };
+    const overrides = structuredClone(v.overrides) as Record<string, unknown>;
+    for (const p of removals) deletePath(overrides, p);
+    const merged = deepMerge(overrides as DeepPartial<LabelConfig>, rest) as Partial<LabelConfig>;
+    return { ...v, overrides: merged };
   });
   return { ...master, variants };
 }
