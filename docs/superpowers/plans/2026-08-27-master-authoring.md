@@ -338,7 +338,7 @@ git commit -m "Inspector: badge a variant's overridden properties and reset one 
 
 Binding:
 - Save writes `serializeMaster(master)` through the same platform save path `.label` uses, then `rememberMaster(master, path)` and clears the master-dirty flag. The `.master` path is remembered exactly like `projectPath` / `projectHandle`; `Save Master` is disabled while clean and falls through to Save As when no path is known.
-- Open parses, registers, sets it as the document's master, and recomposes `cfg` — routing the label's current values through `rebind` so unmatched fields are reported, surfaced as `setLoadError("Note: " + …)` (advisory, never blocking).
+- Open parses, registers, sets it as the document's master, and recomposes `cfg` — routing the label's current values through `rebind`, which Task 4b makes non-destructive first.
 - The master-dirty dot shows in `EditingTarget`'s label (Task 2's `dirty` prop).
 
 - [ ] **Step 1: Write the failing test**
@@ -364,6 +364,93 @@ it("a saved master registers in the library index under its own id", () => {
 ```bash
 git add src/App.tsx src/masters.ts src/components/AppMenu.tsx tests/masters.test.ts
 git commit -m "Masters: save and open .master files, registering each in the library as it lands."
+```
+
+---
+
+### Task 4b: Non-destructive rebinding and the master picker
+
+**Files:**
+- Modify: `src/model/rebind.ts`
+- Modify: `src/model/types.ts` (`LabelFileV2` gains the dormant store)
+- Create: `src/components/MasterPicker.tsx`
+- Modify: `src/App.tsx`
+- Test: `tests/model-rebind.test.ts` (extend), `tests/masterpicker-dom.test.tsx` (create — copy `tests/fieldlist-dom.test.ts`'s setup)
+
+**Interfaces:**
+
+```ts
+// src/model/types.ts — LabelFileV2 gains:
+  /** Values and variant toggles that the CURRENT master does not declare,
+   *  kept verbatim so aiming a label at another master and back loses
+   *  nothing. Matching is by id, so a variant id the new master also
+   *  declares comes straight back off the bench. */
+  dormant?: { values: Record<string, FieldValue>; variants: string[] };
+
+// src/model/rebind.ts — same signature, non-destructive semantics:
+export function rebind(
+  label: LabelFileV2, target: Master,
+): { label: LabelFileV2; dropped: string[]; disabledVariants: string[] };
+```
+
+Binding semantics:
+- Before matching, fold any existing `dormant` back into the candidate pool: values = `{...dormant.values, ...label.values}` (live wins), variant ids = `[...dormant.variants, ...label.enabledVariants]` de-duplicated, preserving enable order with dormant ones first.
+- Match by id against the target's fields (its own plus its variants') and variant ids, exactly as today.
+- Unmatched values and variant ids go to the returned label's `dormant` instead of being discarded; `dropped` / `disabledVariants` still report them so the UI can say what went to the bench.
+- Round-trip property: `rebind(rebind(label, B).label, A).label` restores A's values and enabled variants. Pin this as a test.
+
+Master picker (spec: the preset bar becomes the master picker):
+- `MasterPicker` sits beside `EditingTarget` in Design mode: the current master's name, a dropdown listing every master in the library index by name, plus "Open Master…" and "Duplicate as new master…".
+- Choosing another master runs `rebind` and shows a **preview before committing** — a small inline confirm naming the counts and the ids ("3 values and 1 variant move to the bench — continue?"). This is the one confirmation the spec's no-dialogs rule permits, because a rebind is not a single undoable canvas act.
+- "Duplicate as new master…" clones the current master with a new id and name, registers it, and leaves the label bound to the clone — the app's answer to "start a new master" without a blank-slate wizard.
+
+- [ ] **Step 1: Write the failing tests**
+
+```ts
+// appended to tests/model-rebind.test.ts
+it("benches unmatched values and variants instead of dropping them", () => {
+  const other: Master = { ...lolevMaster(), id: "other", variants: [] };
+  const label = {
+    formatVersion: 2 as const, masterId: "lolev", enabledVariants: ["collab"],
+    values: { name: "Peregrine", nope: "gone" },
+  };
+  const r = rebind(label, other);
+  expect(r.disabledVariants).toEqual(["collab"]);
+  expect(r.dropped).toContain("nope");
+  expect(r.label.dormant!.variants).toContain("collab");
+  expect(r.label.dormant!.values.nope).toBe("gone");
+});
+it("rebinding home restores the benched values and variants", () => {
+  const other: Master = { ...lolevMaster(), id: "other", variants: [] };
+  const label = {
+    formatVersion: 2 as const, masterId: "lolev", enabledVariants: ["collab"],
+    values: { name: "Peregrine" },
+  };
+  const back = rebind(rebind(label, other).label, lolevMaster()).label;
+  expect(back.enabledVariants).toEqual(["collab"]);
+  expect(back.values.name).toBe("Peregrine");
+});
+```
+
+```tsx
+// tests/masterpicker-dom.test.tsx — copy the fieldlist-dom setup, then assert:
+//   1. the trigger shows the current master's name;
+//   2. choosing another library entry shows the preview line with the counts
+//      and does NOT call onMaster until "Continue" is pressed;
+//   3. "Duplicate as new master…" calls onDuplicate.
+```
+
+- [ ] **Step 2: Run to verify failure** — `dormant` missing.
+
+- [ ] **Step 3: Implement** the dormant store, `rebind`'s fold-and-bench, `MasterPicker`, and the App wiring (the picker's commit path replaces Task 4's bare Open-Master rebind call).
+
+- [ ] **Step 4: Gate** — `npx vitest run && npx tsc --noEmit` green.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/model/rebind.ts src/model/types.ts src/components/MasterPicker.tsx src/App.tsx tests/model-rebind.test.ts tests/masterpicker-dom.test.tsx
+git commit -m "Masters: pick another master from the library, benching what does not carry over instead of dropping it."
 ```
 
 ---
