@@ -176,4 +176,32 @@ describe("preview hit-testing", () => {
     expect(hitTest(cx, cy, measure, withCustom)).toBe("custom-a1b2c3");
     expect(hitTest(b.x0 - 5, cy, measure, withCustom)).not.toBe("custom-a1b2c3");
   });
+
+  // Regression: before the layer carried its own stored aspect, this box
+  // fell back to a square (h = w), which under-estimated a portrait asset's
+  // real height and left its bottom half unclickable.
+  it("boxes a custom image layer using its stored aspect, not a square fallback", () => {
+    const withCustom = {
+      ...cfg,
+      customLayers: [{
+        id: "custom-img1" as const,
+        name: "Custom Image",
+        type: "image" as const,
+        asset: "art1",
+        w: 40,
+        aspect: 0.5, // portrait: h = w / aspect = 80, twice the width
+        position: { anchor: "left" as const, vAnchor: "top" as const, offsetX: 0, offsetY: 0 },
+        style: { fill: "none" as const, layer: "white" as const },
+      }],
+    };
+    const b = boxOf("custom-img1", withCustom, measure)!;
+    expect(b).not.toBeNull();
+    expect(b.x1 - b.x0).toBeCloseTo(40);
+    expect(b.y1 - b.y0).toBeCloseTo(80);
+    const cy = (b.y0 + b.y1) / 2;
+    expect(hitTest((b.x0 + b.x1) / 2, cy, measure, withCustom)).toBe("custom-img1");
+    // Near the bottom of the tall box — a square fallback (h = w = 40) would
+    // have missed this point entirely.
+    expect(hitTest((b.x0 + b.x1) / 2, b.y1 - 1, measure, withCustom)).toBe("custom-img1");
+  });
 });

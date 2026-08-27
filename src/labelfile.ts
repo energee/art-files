@@ -15,21 +15,36 @@ import type { LabelFileV2 } from "@/model/types";
 export const LABEL_EXT = ".label";
 
 export type LabelAsset = { name: string; bytes: Uint8Array };
+/** A custom-layer image asset — same shape as LabelAsset, named separately
+ *  since it's stored one per assetId rather than one per fixed role. */
+export type CustomImageAsset = { name: string; bytes: Uint8Array };
 export type LabelAssets = {
   texture?: LabelAsset;
   mask?: LabelAsset;
   collabLeft?: LabelAsset;
   collabCenter?: LabelAsset;
+  /** Master-variation custom image layers' bytes, keyed by CustomImageLayer's
+   *  `asset` (the id minted at drop). Stored under `custom/<assetId>/<name>`
+   *  — a directory per id, since each custom layer owns exactly one file and
+   *  the id (not the filename) is the stable key. */
+  customImages?: Record<string, CustomImageAsset>;
 };
 
-/** ZIP directory name for each asset role. The original filename lives as
- *  the entry's basename, so a re-save round-trips it for free. */
-const ROLE_DIRS: Record<keyof LabelAssets, string> = {
+/** The fixed one-per-project asset roles — everything in LabelAssets except
+ *  customImages, which is dynamically keyed and packed/unpacked separately. */
+type FixedAssetRole = "texture" | "mask" | "collabLeft" | "collabCenter";
+
+/** ZIP directory name for each fixed asset role. The original filename lives
+ *  as the entry's basename, so a re-save round-trips it for free. */
+const ROLE_DIRS: Record<FixedAssetRole, string> = {
   texture: "texture",
   mask: "mask",
   collabLeft: "collab-left",
   collabCenter: "collab-center",
 };
+
+/** ZIP directory custom image assets live under: `custom/<assetId>/<name>`. */
+const CUSTOM_DIR = "custom";
 
 /** Pack a v1 label file: config.json (legacy writer kept for tests and Node
  *  harness until Plan 6). For new code, use packLabelV2. */
@@ -37,20 +52,24 @@ export function packLabel(config: LabelConfig, assets: LabelAssets): Uint8Array 
   const zip: Zippable = {
     "config.json": strToU8(JSON.stringify(toConfigFile(config), null, 2)),
   };
-  for (const [role, dir] of Object.entries(ROLE_DIRS) as [keyof LabelAssets, string][]) {
+  for (const [role, dir] of Object.entries(ROLE_DIRS) as [FixedAssetRole, string][]) {
     const a = assets[role];
     if (a) zip[`${dir}/${a.name}`] = [a.bytes, { level: 0 }];
   }
   return zipSync(zip);
 }
 
-/** Pack a v2 label file: label.json (LabelFileV2 JSON) plus assets. */
+/** Pack a v2 label file: label.json (LabelFileV2 JSON) plus assets, including
+ *  each custom image layer's bytes under `custom/<assetId>/<name>` (level 0,
+ *  same as every other image role — already-compressed PNG/JPG/SVG bytes). */
 export function packLabelV2(label: LabelFileV2, assets: LabelAssets): Uint8Array {
   const zip: Zippable = { "label.json": strToU8(serializeLabelFile(label)) };
-  for (const [role, dir] of Object.entries(ROLE_DIRS) as [keyof LabelAssets, string][]) {
+  for (const [role, dir] of Object.entries(ROLE_DIRS) as [FixedAssetRole, string][]) {
     const a = assets[role];
     if (a) zip[`${dir}/${a.name}`] = [a.bytes, { level: 0 }];
   }
+  for (const [id, a] of Object.entries(assets.customImages ?? {}))
+    zip[`${CUSTOM_DIR}/${id}/${a.name}`] = [a.bytes, { level: 0 }];
   return zipSync(zip);
 }
 
@@ -65,10 +84,18 @@ export function unpackLabel(bytes: Uint8Array): { config?: string; label?: strin
     throw new Error("Not a .label file: missing label.json/config.json");
   }
   const assets: LabelAssets = {};
-  for (const [role, dir] of Object.entries(ROLE_DIRS) as [keyof LabelAssets, string][]) {
+  for (const [role, dir] of Object.entries(ROLE_DIRS) as [FixedAssetRole, string][]) {
     const path = Object.keys(entries).find((p) => p.startsWith(`${dir}/`));
     if (path) assets[role] = { name: path.slice(dir.length + 1), bytes: entries[path] };
   }
+  // Custom image assets: one directory per assetId under custom/, each
+  // holding exactly one file (name is whatever comes after the id).
+  const customImages: Record<string, CustomImageAsset> = {};
+  for (const path of Object.keys(entries)) {
+    const m = /^custom\/([^/]+)\/(.+)$/.exec(path);
+    if (m) customImages[m[1]] = { name: m[2], bytes: entries[path] };
+  }
+  if (Object.keys(customImages).length) assets.customImages = customImages;
   return {
     config: configEntry ? strFromU8(configEntry) : undefined,
     label: labelEntry ? strFromU8(labelEntry) : undefined,

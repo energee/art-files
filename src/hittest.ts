@@ -175,21 +175,17 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
   // (planLabel emits them as ordinary PlacedText, keyed by the layer's own
   // id, and the grouping above builds boxes for every id present, not just
   // the fixed ones), so they Just Work off `textFor`. Image layers get no
-  // PlacedImage here — planLabel only emits one once its asset has loaded
+  // PlacedImage here — planLabel only emits one once it knows an aspect
   // (opts.assets, which this hit-test path never supplies) — so their box is
-  // computed directly from the anchor math, with a square fallback height
-  // (config only stores the box WIDTH; the real height follows the asset's
-  // aspect, unknown here). This only over-estimates for aspect >= 1 (a wide
-  // or square asset); a portrait asset is taller than it is wide, so the
-  // square box under-estimates its real height. Deferred: giving custom
-  // image layers a stored/known aspect so this box (and dragTarget2's,
-  // elements.ts) can be exact instead of squared.
+  // computed directly from the anchor math, using the layer's own stored
+  // `aspect` (captured at drop time; see CustomImageLayer). Absent on an
+  // older layer with no stored aspect: square fallback, as before.
   for (const layer of cfg.customLayers ?? []) {
     if (layer.type === "text") {
       boxes.push(...textFor(layer.id));
     } else {
       const guides = labelGuides();
-      const h = layer.w;
+      const h = layer.aspect ? layer.w / layer.aspect : layer.w;
       boxes.push({
         id: layer.id,
         x0: anchoredX(layer.position, layer.w, guides),

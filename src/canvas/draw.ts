@@ -42,6 +42,11 @@ export interface CanvasAssets {
   /** Raster collab logos, keyed to the PlacedImage ids. */
   collabLeft?: CanvasImageSource | null;
   collabCenter?: CanvasImageSource | null;
+  /** Decoded custom-layer image bytes, keyed by CustomImageLayer's `asset`
+   *  (PlacedImage.asset). A key absent, or explicitly null (decode failed or
+   *  hasn't finished), stays a no-op — the plan can place the rect from a
+   *  stored aspect alone before/without bytes ever loading. */
+  customImages?: Record<string, ImageBitmap | null>;
 }
 
 /** Everything a view needs to render label plates from the display list:
@@ -143,21 +148,31 @@ export function drawPlate(
       for (const p of paths) c.fill(p);
       c.restore();
     } else if (r.kind === "image") {
-      // Only the two collab slots resolve to a bitmap here. A custom-layer
-      // image (PlanAssets.custom only carries an aspect ratio, wired in Task
-      // 3) has no bitmap wired yet — actual asset-bytes wiring is deferred to
-      // the plan that adds image assets to the UI — so skip it on EITHER
-      // plate rather than mis-resolve to collabCenter's bitmap or throw.
-      if (r.id !== "collabLeft" && r.id !== "collabCenter") continue;
-      if (mode === "art") {
-        const img = r.id === "collabLeft" ? assets.collabLeft : assets.collabCenter;
-        // The plan only places an image the caller declared (PlanArt came
-        // from the same slot), so a missing bitmap is an assembly bug —
-        // fail fast rather than render a silently incomplete label.
-        if (!img) throw new Error(`Canvas asset missing for "${r.id}" — the plan placed it, so its bitmap must be supplied.`);
-        c.drawImage(img, r.x, r.y, r.w, r.h);
-      } else {
-        // Raster art prints on white ink: the mask paints its footprint blue.
+      if (r.id === "collabLeft" || r.id === "collabCenter") {
+        if (mode === "art") {
+          const img = r.id === "collabLeft" ? assets.collabLeft : assets.collabCenter;
+          // The plan only places an image the caller declared (PlanArt came
+          // from the same slot), so a missing bitmap is an assembly bug —
+          // fail fast rather than render a silently incomplete label.
+          if (!img) throw new Error(`Canvas asset missing for "${r.id}" — the plan placed it, so its bitmap must be supplied.`);
+          c.drawImage(img, r.x, r.y, r.w, r.h);
+        } else {
+          // Raster art prints on white ink: the mask paints its footprint blue.
+          c.fillStyle = L.MASK_BLUE_HEX;
+          c.fillRect(r.x, r.y, r.w, r.h);
+        }
+        continue;
+      }
+      // Custom-layer image: unlike collab, the plan can place this rect from
+      // a stored aspect alone (see plan.ts) before its bytes ever loaded, or
+      // when it never had any — so a missing bitmap stays a quiet no-op on
+      // EITHER plate rather than the collab slots' fail-fast, matching the
+      // plan's own missing-asset contract (and the byte-identity lock: no
+      // asset means no ink and no mask footprint).
+      const bmp = r.asset ? assets.customImages?.[r.asset] : null;
+      if (!bmp) continue;
+      if (mode === "art") c.drawImage(bmp, r.x, r.y, r.w, r.h);
+      else {
         c.fillStyle = L.MASK_BLUE_HEX;
         c.fillRect(r.x, r.y, r.w, r.h);
       }

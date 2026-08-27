@@ -2,11 +2,11 @@
 // CustomLayer (text/image) survives a JSON round-trip, and isCustomId
 // distinguishes custom layer ids from the fixed ElementId set.
 import { describe, expect, it } from "vitest";
-import type { CustomLayer, CustomTextLayer } from "@/types";
+import type { CustomImageLayer, CustomLayer, CustomTextLayer } from "@/types";
 import { defaultConfig } from "@/defaults";
 import { dragTarget2, isCustomId } from "@/elements";
 import { anchoredX, anchoredY } from "@/model/position";
-import { labelGuides } from "@/plan";
+import { labelGuides, planLabel, type PlacedImage } from "@/plan";
 
 describe("custom layer schema", () => {
   it("adds a custom text layer to LabelConfig and round-trips through JSON", () => {
@@ -30,6 +30,27 @@ describe("custom layer schema", () => {
   it("distinguishes custom ids from fixed element ids", () => {
     expect(isCustomId("custom-x")).toBe(true);
     expect(isCustomId("logo")).toBe(false);
+  });
+});
+
+describe("custom image layer — stored aspect fallback", () => {
+  it("planLabel emits `asset` and h = w / aspect from the layer's stored aspect, with no PlanAssets.custom", () => {
+    const cfg = defaultConfig();
+    const layer: CustomImageLayer = {
+      id: "custom-i9", name: "Custom Image", type: "image", asset: "art9", w: 80, aspect: 4,
+      position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
+      style: { fill: "none", layer: "white" },
+    };
+    cfg.customLayers = [layer];
+    const m = (text: string, size: number) => text.length * size;
+    // No opts.assets at all: the loaded-bytes path (PlanAssets.custom) is
+    // entirely absent, so this exercises the stored-aspect fallback alone.
+    const item = planLabel(cfg, m).find((r): r is PlacedImage => r.id === "custom-i9");
+    expect(item).toBeDefined();
+    if (item?.kind !== "image") throw new Error("expected an image item");
+    expect(item.asset).toBe("art9");
+    expect(item.w).toBe(80);
+    expect(item.h).toBeCloseTo(20); // 80 / 4
   });
 });
 

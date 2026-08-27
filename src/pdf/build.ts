@@ -62,9 +62,14 @@ export interface Assets {
    *  assignments (metallic knockouts, white-layer ink) draw on top of that. */
   maskPng?: Uint8Array;
   /** Custom image layers' intrinsic aspect ratio (w/h), keyed by CustomImageLayer's
-   *  `asset`. Used in the plan but not embedded in buildArtPdf/buildMaskPdf;
-   *  actual asset bytes are embedded separately (Task 3 deferred). */
+   *  `asset`. Feeds the plan's rect math; the actual bytes to embed live in
+   *  `customImages` below. */
   custom?: Record<string, { aspect: number }>;
+  /** Custom image layers' bytes, keyed by CustomImageLayer's `asset`. A key
+   *  absent (bytes not loaded, or an SVG source — raster embedding only for
+   *  now) leaves that layer's item a no-op on both plates, same contract as
+   *  a missing collab slot. */
+  customImages?: Record<string, CollabImage>;
   /** Elements the UI's layers-panel eye has hidden: skipped entirely — ink,
    *  stroke AND mask footprint. Distinct from fill "none", which is a live
    *  style meaning "no ink / knockout white". Session state, not config: a
@@ -278,6 +283,20 @@ async function drawElements(
     return { kind: "raster", w: emb.width, h: emb.height };
   };
 
+  // Custom-layer images: embed each layer's asset bytes up front, keyed by
+  // the layer's own id — same `embedded` map as the collab logos, so the
+  // walk below needs no special case. A missing asset (bytes not loaded, or
+  // an SVG source — this pipeline only embeds raster) stays a no-op: the
+  // plan can place the item from a stored aspect alone, matching the canvas
+  // backend's contract and the byte-identity lock.
+  for (const layer of cfg.customLayers ?? []) {
+    if (layer.type !== "image" || assets.hidden?.has(layer.id)) continue;
+    const img = assets.customImages?.[layer.asset];
+    if (!img || img.kind === "svg") continue;
+    const emb = img.kind === "png" ? await doc.embedPng(img.bytes) : await doc.embedJpg(img.bytes);
+    embedded.set(layer.id, emb);
+  }
+
   // The complete label, placed once by plan.ts in draw order — the same
   // list hittest groups its text boxes from — measured with the actual
   // embedded PDFFont widths so the built bytes place text exactly as before.
@@ -321,13 +340,13 @@ async function drawElements(
       }
       for (const d of r.paths) page.drawSvgPath(d, { ...at, color });
     } else if (r.kind === "image") {
-      // Custom-layer images: the plan can place one (PlanAssets.custom only
-      // carries an aspect ratio, wired in Task 3) with no embedded bytes
-      // behind it — actual asset-bytes wiring is deferred to the plan that
-      // adds image assets to the UI. Skip the whole item on EITHER plate
-      // rather than crash on `embedded.get(r.id)!` or draw a mask footprint
-      // for art that was never embedded — matching the plan's own
-      // missing-asset -> nothing contract in both modes.
+      // The plan can place an image item (collab or custom) whose bytes
+      // never made it into `embedded` — a custom layer's rect can come from
+      // a stored aspect alone (see plan.ts), with no bytes loaded yet, or
+      // ever. Skip the whole item on EITHER plate rather than crash on
+      // `embedded.get(r.id)!` or draw a mask footprint for art that was
+      // never embedded — matching the plan's own missing-asset -> nothing
+      // contract in both modes.
       if (!embedded.has(r.id)) continue;
       const rect = { x: r.x, y: y(r.y + r.h), width: r.w, height: r.h };
       if (mode === "art") page.drawImage(embedded.get(r.id)!, rect);

@@ -355,15 +355,11 @@ export function dragTarget2(
           return { w: customTextWidth(layer.line, layer.size, m), h: layer.size };
         }
         // Image layers keep only their box WIDTH in config (types.ts's
-        // CustomImageLayer.w); the drawn height follows the asset's own
-        // aspect, which dragTarget2 has no access to (planLabel needs the
-        // loaded PlanAssets for that, and this call has only cfg/slots). A
-        // square fallback only over-estimates the drag box for aspect >= 1
-        // (a wide or square asset); a portrait asset is taller than it is
-        // wide, so this under-estimates its real height. Deferred: giving
-        // custom image layers a stored/known aspect so this box (and
-        // hittest.ts's) can be exact instead of squared.
-        return { w: layer.w, h: layer.w };
+        // CustomImageLayer.w); the drawn height follows the layer's own
+        // stored `aspect` (captured at drop time), so the drag box is exact
+        // without needing the loaded PlanAssets this call has no access to.
+        // Absent on an older layer with no stored aspect: square fallback.
+        return { w: layer.w, h: layer.aspect ? layer.w / layer.aspect : layer.w };
       },
       set: (c, p) => {
         const l = c.customLayers?.find((x) => x.id === id);

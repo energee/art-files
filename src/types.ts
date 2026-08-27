@@ -167,10 +167,15 @@ export interface CustomTextLayer extends CustomLayerBase {
 /** A custom image layer: an SVG/raster asset tinted like the collab logos. */
 export interface CustomImageLayer extends CustomLayerBase {
   type: "image";
-  /** Asset key into the plan's custom images (wired in Task 3). */
+  /** Asset key into the plan's custom images (PlanAssets.custom / the app's
+   *  customImages state, keyed by the id minted at drop). */
   asset: string;
   /** Box width in points; height follows the image's aspect. */
   w: number;
+  /** Intrinsic aspect (w/h), captured at drop time so hit and drag boxes are
+   *  exact before (and independent of) asset decode. Absent on older layers:
+   *  square fallback, as before. */
+  aspect?: number;
   /** Fill/layer for SVG tint and white-ink behavior. */
   style: Style;
 }

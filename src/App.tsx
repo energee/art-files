@@ -34,6 +34,7 @@ import { setPath } from "@/model/resolve";
 import { makeHiddenPropsEqual } from "@/tabs";
 import { validateUpc } from "@/upc";
 import { EMBEDDABLE_RASTER, mimeFor, rasterKind, tintRgba } from "@/collab";
+import { parseLogo } from "@/logo";
 // The builders are imported dynamically at export time (see downloadPdfs /
 // exportPsd) so they stay out of the initial bundle; only their types are
 // needed up front.
@@ -94,6 +95,20 @@ type Loaded = { bytes: Uint8Array; previewBytes: Uint8Array; name: string; previ
 /** A loaded collab logo: what the renderer needs, plus what the drop zone
  *  shows. previewUrl is the raw file, so an SVG thumbnails as itself. */
 type CollabFile = { image: CollabImage; name: string; previewUrl: string };
+
+/** A loaded master-variation custom-image-layer asset: mirrors CollabFile,
+ *  plus the intrinsic aspect (w/h) stored back onto the layer (types.ts's
+ *  CustomImageLayer.aspect) so hit/drag boxes are exact before/without a
+ *  decoded bitmap. Keyed by the id minted at drop (mintCustomAssetId). */
+type CustomFile = { image: CollabImage; name: string; previewUrl: string; aspect: number };
+
+/** Mint a new custom-layer asset id. One spelling of the format, so every
+ *  call site — this file's open/restore path and the (later) drop-to-add UI
+ *  — mints ids a saved project's `CustomImageLayer.asset` can always resolve
+ *  against a customImages entry here, regardless of which added it. */
+export function mintCustomAssetId(): string {
+  return `custom-asset-${crypto.randomUUID().slice(0, 8)}`;
+}
 
 /** Chrome-level error, sized for the menu bar: the shadcn Alert (the app's
  *  one notification surface — see ui/alert.tsx) compacted to fit inline
@@ -205,6 +220,23 @@ async function readCollab(f: File): Promise<CollabFile> {
     ? { kind: "svg", svg: await f.text() }
     : { kind: rasterKind(f.name), bytes: new Uint8Array(await f.arrayBuffer()) };
   return { image, name: f.name, previewUrl: URL.createObjectURL(f) };
+}
+
+/** Read a custom-layer image asset: same shape as readCollab, plus the
+ *  intrinsic aspect (w/h) — an SVG's ink box (parseLogo, fit into 1x1 so the
+ *  returned w/h ratio IS the ink aspect), a raster's decoded bitmap size. */
+async function readCustomImage(f: File): Promise<CustomFile> {
+  const previewUrl = URL.createObjectURL(f);
+  if (mimeFor(f.name) === "image/svg+xml") {
+    const svg = await f.text();
+    const { w, h } = parseLogo(svg, 1, 1);
+    return { image: { kind: "svg", svg }, name: f.name, previewUrl, aspect: w / h };
+  }
+  const bytes = new Uint8Array(await f.arrayBuffer());
+  const bmp = await createImageBitmap(new Blob([bytes as unknown as BlobPart]));
+  const aspect = bmp.width / bmp.height;
+  bmp.close();
+  return { image: { kind: rasterKind(f.name), bytes }, name: f.name, previewUrl, aspect };
 }
 
 /** Longest preview-texture edge in px. Sized to the 3D label texture
@@ -440,6 +472,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   // build and the print export.
   const [collabLeft, setCollabLeft] = useState<CollabFile | null>(null);
   const [collabCenter, setCollabCenter] = useState<CollabFile | null>(null);
+  // Master-variation custom image layers' assets, keyed by CustomImageLayer's
+  // `asset` (the id minted at drop — see mintCustomAssetId). Like the collab
+  // logos, no preview/print split: these are small marks, not backgrounds.
+  const [customImages, setCustomImages] = useState<Record<string, CustomFile>>({});
   // Which collab slots hold art, for the preview's hit boxes. Memoized: it is
   // a dependency of the selection-outline memo, and a fresh object every
   // render would defeat it.
@@ -987,15 +1023,30 @@ export const DocumentEditor = memo(function DocumentEditor({
           decoded.push(bmp);
           return { art: { kind: "raster" as const, w: bmp.width, h: bmp.height }, image: bmp };
         };
+        // Custom-layer images decode alongside collab art: raster bytes
+        // become a bitmap for the canvas to draw; an SVG source stays
+        // undecoded (no bitmap-drawing path for it yet) and is simply a
+        // no-op on the canvas plate, same as a not-yet-loaded asset.
+        const customEntries = Object.entries(customImages);
+        const customBitmap = async (c: CustomFile) => {
+          if (c.image.kind === "svg") return null;
+          const bmp = await createImageBitmap(new Blob([c.image.bytes as BlobPart]));
+          decoded.push(bmp);
+          return bmp;
+        };
         let drawAssets: CanvasAssets;
         let left: Awaited<ReturnType<typeof slot>>, center: Awaited<ReturnType<typeof slot>>;
+        let customBitmaps: Record<string, ImageBitmap | null>;
         try {
           [left, center] = await Promise.all([slot(cl), slot(cc)]);
+          customBitmaps = Object.fromEntries(
+            await Promise.all(customEntries.map(async ([id, c]) => [id, await customBitmap(c)] as const)));
           const eyed = eyedAssets(true);
           drawAssets = {
             texture: await bitmap(eyed.texture?.bytes),
             maskImage: await bitmap(eyed.maskPng),
             collabLeft: left.image, collabCenter: center.image,
+            customImages: customBitmaps,
           };
         } catch (err) {
           // A later decode failed after an earlier one landed: close
@@ -1011,7 +1062,12 @@ export const DocumentEditor = memo(function DocumentEditor({
         }
         setCanvasAssets({
           m,
-          planAssets: { logoSvg, collabLeft: left.art, collabCenter: center.art },
+          planAssets: {
+            logoSvg, collabLeft: left.art, collabCenter: center.art,
+            // Real intrinsic aspects, not the layers' stored ones: this is
+            // the loaded-bytes path plan.ts prefers over CustomImageLayer.aspect.
+            custom: Object.fromEntries(customEntries.map(([id, c]) => [id, { aspect: c.aspect }])),
+          },
           drawAssets,
           fontCss: labelFontCss(family),
         });
@@ -1030,7 +1086,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // collabAssets() reads exactly these.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    texture, mask, collabLeft, collabCenter, hiddenLayers, family,
+    texture, mask, collabLeft, collabCenter, customImages, hiddenLayers, family,
     cfg.collabLeft.fill, cfg.collabLeft.tintRaster,
     cfg.collabCenter.fill, cfg.collabCenter.tintRaster,
     blocked, active,
@@ -1042,6 +1098,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const closeCanvasBitmaps = (a: CanvasAssets | null | undefined) => {
     if (!a) return;
     for (const b of [a.texture, a.maskImage, a.collabLeft, a.collabCenter]) {
+      if (b instanceof ImageBitmap) b.close();
+    }
+    for (const b of Object.values(a.customImages ?? {})) {
       if (b instanceof ImageBitmap) b.close();
     }
   };
@@ -1152,10 +1211,13 @@ export const DocumentEditor = memo(function DocumentEditor({
       // Exports honor the eye too: a hidden layer is "not on this label",
       // preview and deliverable alike. (PSDs still carry every layer — a
       // layered handoff is the place to keep them all.)
+      const customEntries = Object.entries(customImages);
       const assets: Assets = {
         fonts, logoSvg, ...(await collabAssets()),
         ...eyedAssets(false),
         hidden: hiddenLayers,
+        custom: Object.fromEntries(customEntries.map(([id, c]) => [id, { aspect: c.aspect }])),
+        customImages: Object.fromEntries(customEntries.map(([id, c]) => [id, c.image])),
       };
       // Both files build BEFORE the first dialog opens: the user shouldn't
       // sit in dialog #2 waiting on a build that could have run during
@@ -1235,6 +1297,14 @@ export const DocumentEditor = memo(function DocumentEditor({
     swapLoaded(setMask, null);
     swapLoaded(setCollabLeft, null);
     swapLoaded(setCollabCenter, null);
+    // A slot added later must be cleared here too, same rule as above — a
+    // Record rather than one T|null, so it goes through its own revoke loop
+    // instead of swapLoaded (the four calls above already mark the document
+    // dirty for this reset).
+    setCustomImages((old) => {
+      for (const c of Object.values(old)) URL.revokeObjectURL(c.previewUrl);
+      return {};
+    });
   }
 
   // (New Project is gone: ⌘N opens a new tab via the shell, and the old
@@ -1261,11 +1331,17 @@ export const DocumentEditor = memo(function DocumentEditor({
       enabledVariations, values,
       ...(Object.keys(overrides).length ? { overrides } : {}),
     };
+    const customImageEntries = Object.entries(customImages);
     const zip = packLabelV2(label, {
       texture: texture ? { name: texture.name, bytes: texture.bytes } : undefined,
       mask: mask ? { name: mask.name, bytes: mask.srcBytes } : undefined,
       collabLeft: collabAsset(collabLeft),
       collabCenter: collabAsset(collabCenter),
+      customImages: customImageEntries.length
+        ? Object.fromEntries(customImageEntries.map(([id, c]) => [
+            id, { name: c.name, bytes: c.image.kind === "svg" ? strToU8(c.image.svg) : c.image.bytes },
+          ]))
+        : undefined,
     });
     if (isTauri()) {
       const existingPath = as ? null : projectPath.current;
@@ -1397,13 +1473,21 @@ export const DocumentEditor = memo(function DocumentEditor({
       // browser types) worked.
       const toFile = (a: { name: string; bytes: Uint8Array }) =>
         new File([a.bytes as unknown as BlobPart], a.name, { type: mimeFor(a.name) });
-      const { texture: t, mask: m, collabLeft: l, collabCenter: c } = unpacked.assets;
+      const { texture: t, mask: m, collabLeft: l, collabCenter: c, customImages: ci } = unpacked.assets;
       // Awaited so the freshly opened document can be marked clean AFTER the
       // asset handlers' state writes — each of those marks it dirty again,
       // and the last write has to be this clean one.
       await Promise.all([
         t && onTexture(toFile(t)), m && onMask(toFile(m)),
         l && onCollab("left", toFile(l)), c && onCollab("center", toFile(c)),
+        // resetDocument (above) already cleared customImages to {}, so this
+        // is a full restore, not a merge — same contract as the other slots.
+        (async () => {
+          const entries = await Promise.all(
+            Object.entries(ci ?? {}).map(async ([id, a]) =>
+              [id, await readCustomImage(toFile(a))] as const));
+          if (entries.length) setCustomImages(Object.fromEntries(entries));
+        })(),
       ]);
       setDirty(false);
       setEdited(false); // a freshly opened document is untouched by definition

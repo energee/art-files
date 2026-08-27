@@ -74,6 +74,9 @@ export interface PlacedImage {
   readonly y: number;
   readonly w: number;
   readonly h: number;
+  /** Custom-layer asset key (CustomImageLayer.asset); absent for collab
+   *  slots. Backends look bytes up by it. */
+  readonly asset?: string;
 }
 
 /** The barcode as one item: shared geometry plus everything both plates
@@ -457,11 +460,16 @@ export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {})
         size: layer.size,
       }));
     } else {
-      const asset = A?.custom?.[layer.asset];
-      if (!asset) continue;
-      const h = layer.w / asset.aspect;
+      // The loaded asset's aspect wins when it's available; otherwise fall
+      // back to the layer's own stored aspect (captured at drop time) so the
+      // rect — and with it selection/hit/drag — exists before (or without)
+      // bytes ever loading. Backends resolve the bytes themselves by
+      // `asset`, and no-op when they have none.
+      const aspect = A?.custom?.[layer.asset]?.aspect ?? layer.aspect;
+      if (aspect === undefined) continue;
+      const h = layer.w / aspect;
       out.push({
-        kind: "image", id: layer.id,
+        kind: "image", id: layer.id, asset: layer.asset,
         x: anchoredX(layer.position, layer.w, guides),
         y: anchoredY(layer.position, h, guides),
         w: layer.w, h,

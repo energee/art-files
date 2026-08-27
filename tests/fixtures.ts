@@ -21,7 +21,12 @@ export const assets: Assets = {
     bold: readFileSync(asset("fonts/Poppins-Bold.ttf")),
   },
   logoSvg: readFileSync(asset("logo2025.svg"), "utf8"),
-  // Custom image assets for tests: aspect ratios only (bytes are wired in Task 3).
+  // Custom image assets for tests: aspect ratios only. Deliberately no
+  // `customImages` bytes here — the shared byte-identity-lock tests
+  // (pdf-build.test.ts, canvas-draw.test.ts) rely on this fixture having NO
+  // bytes for "art1" so a custom image layer with no asset loaded still
+  // builds byte-identical output; a test that needs real bytes supplies its
+  // own `customImages` entry locally instead of mutating this one.
   custom: {
     art1: { aspect: 1 },
   },

@@ -63,4 +63,20 @@ describe("label v2 zip", () => {
     expect(u.label).toBeUndefined();
     expect(JSON.parse(u.config!).version).toBe(1);
   });
+
+  it("round-trips custom image layer assets under custom/<assetId>/<name>", () => {
+    const bytes = packLabelV2(v2, {
+      customImages: { "custom-asset-x": { name: "mark.svg", bytes: new Uint8Array([60]) } },
+    });
+    const u = unpackLabel(bytes);
+    expect(u.assets.customImages).toEqual({
+      "custom-asset-x": { name: "mark.svg", bytes: new Uint8Array([60]) },
+    });
+  });
+
+  it("has no customImages key when none were packed", () => {
+    const bytes = packLabelV2(v2, {});
+    const u = unpackLabel(bytes);
+    expect(u.assets.customImages).toBeUndefined();
+  });
 });
