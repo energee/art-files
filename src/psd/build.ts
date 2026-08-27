@@ -41,7 +41,7 @@ import { FONT_FAMILIES, fontFamilyOf } from "../fontCatalog";
 import * as L from "../layout";
 import { parseDescription, parseInfoLine, parseRuns } from "../description";
 import { planLabel, type MeasureFace, type Placed, type PlacedBarcode } from "../plan";
-import { qrShapes, qrUrl } from "../qr";
+import { qrShapes, qrUrl, type QrShapes } from "../qr";
 import { strokeLayerOf } from "../strokes";
 import { warningMeasure, wrapWarning } from "../warning";
 
@@ -168,6 +168,76 @@ function circlePath(cx: number, cy: number, r: number): BezierPath {
     knot([cx + k, cy + r], [cx, cy + r], [cx - k, cy + r]),
     knot([cx - r, cy + k], [cx - r, cy], [cx - r, cy - k]),
   ]);
+}
+
+/** Axis-aligned rect, top-left (x,y), side `s`, with optional rounded
+ *  corners: `radius` <= 0 is a plain 4-knot rect (corner()); `radius` > 0
+ *  rounds each corner with a quarter-circle cubic using the same K handle
+ *  ratio circlePath uses, per corner rather than per full circle. Mirrors
+ *  qrPath's (../qr) `square()` SVG builder, restated as explicit knots:
+ *  8 knots in clockwise order, straight edges collapsed to the anchor
+ *  (corner()-style) and arc corners bulged by k = K * radius. */
+function squarePath(x: number, y: number, s: number, radius: number): BezierPath {
+  if (radius <= 0) return rectPath(x, y, s, s);
+  const r = Math.min(radius, s / 2);
+  const k = K * r;
+  return closed([
+    knot([x + r - k, y], [x + r, y], [x + r, y]),
+    knot([x + s - r, y], [x + s - r, y], [x + s - r + k, y]),
+    knot([x + s, y + r - k], [x + s, y + r], [x + s, y + r]),
+    knot([x + s, y + s - r], [x + s, y + s - r], [x + s, y + s - r + k]),
+    knot([x + s - r + k, y + s], [x + s - r, y + s], [x + s - r, y + s]),
+    knot([x + r, y + s], [x + r, y + s], [x + r - k, y + s]),
+    knot([x, y + s - r + k], [x, y + s - r], [x, y + s - r]),
+    knot([x, y + r], [x, y + r], [x, y + r - k]),
+  ]);
+}
+
+/** Convert QR module shapes (see ../qr) into bezier paths at a given
+ *  full-QR-square size, styled per `shapes.style` — the geometry `qrPath`
+ *  (../qr) draws as one flattened SVG path, restated as node-editable
+ *  bezier paths for the PSD's shape layer. Coordinates are in QR-local
+ *  space (unit coordinates scaled by `sizePx`, no page-position offset);
+ *  `codeLayers` translates the result to the QR's actual page position, so
+ *  this stays a pure size-only converter callers (and this test suite) can
+ *  exercise directly. Exported for the psd-build test suite and reuse.
+ *
+ *  Squares/rounded squares use qrPath's own `radius = 0.25 * moduleSize`
+ *  rule (plain rects for "square", quarter-arc-rounded rects for
+ *  "rounded"); the dots/finders branch is unchanged from before this
+ *  function existed. */
+export function qrBeziers(shapes: QrShapes, sizePx: number): BezierPath[] {
+  const ms = shapes.moduleSize * sizePx;
+  if (shapes.squares) {
+    const radius = shapes.style === "rounded" ? 0.25 * ms : 0;
+    return shapes.squares.map((sq) => squarePath(sq.x * sizePx, sq.y * sizePx, ms, radius));
+  }
+  return [
+    ...shapes.dots.map((d) => circlePath(d.cx * sizePx, d.cy * sizePx, ms * 0.5 * 0.92)),
+    // Three concentric circles per finder; even-odd turns the middle one
+    // into a hole and the innermost back into a dot, no winding tricks.
+    ...shapes.finders.flatMap((p) =>
+      [3.5 * ms * 0.95, 2.3 * ms, 1.4 * ms].map((r) => circlePath(p.cx * sizePx, p.cy * sizePx, r)),
+    ),
+  ];
+}
+
+/** Shift every point of a bezier path by a page-pixel offset. Used to move
+ *  qrBeziers' QR-local-space output to the QR's actual page position —
+ *  splitting position out of qrBeziers is what keeps it a clean size-only
+ *  converter. Exact: pos()/px() are both affine in their argument, so
+ *  translating the already-converted pixel points by px(offset) matches
+ *  converting `local + offset` directly in one pos() call (the offset here
+ *  never itself needs the page's BLEED_SHIFT — the size-only points already
+ *  carried it once, via knot()'s pos()). */
+function translatePath(path: BezierPath, dx: number, dy: number): BezierPath {
+  return {
+    ...path,
+    knots: path.knots.map((k) => ({
+      ...k,
+      points: k.points.map((v, i) => v + (i % 2 === 0 ? dx : dy)),
+    })),
+  };
 }
 
 /** Convert one normalized absolute SVG path (see ../logo) into bezier paths,
@@ -699,19 +769,12 @@ function codeLayers(cfg: LabelConfig, fk: FKFont, mode: PsdMode, plan: Placed[])
   // one opaque path), which needs qrShapes' structured module data, not the
   // flattened path.
   const q = qrShapes(qrUrl(displayName(cfg)));
-  const ms = q.moduleSize * L.QR.size;
-  const at = (u: number, axis: "x" | "y") =>
-    u * L.QR.size + (axis === "x" ? L.QR.x : L.QR.yTop);
-  const qrPaths: BezierPath[] = [
-    ...q.dots.map((d) => circlePath(at(d.cx, "x"), at(d.cy, "y"), ms * 0.5 * 0.92)),
-    // Three concentric circles per finder; even-odd turns the middle one
-    // into a hole and the innermost back into a dot, no winding tricks.
-    ...q.finders.flatMap((p) =>
-      [3.5 * ms * 0.95, 2.3 * ms, 1.4 * ms].map((r) =>
-        circlePath(at(p.cx, "x"), at(p.cy, "y"), r),
-      ),
-    ),
-  ];
+  // qrBeziers builds the shapes in QR-local space (unit coords * L.QR.size,
+  // no page offset); translate into the QR's actual page position here —
+  // the split is what keeps qrBeziers a pure, directly testable converter.
+  const qrPaths: BezierPath[] = qrBeziers(q, L.QR.size).map((p) =>
+    translatePath(p, px(L.QR.x), px(L.QR.yTop)),
+  );
 
   // The barcode's one planned item: geometry, resolved stroke width, digit
   // placements and the mask footprint all come from the shared plan, so this

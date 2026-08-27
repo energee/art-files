@@ -4,8 +4,9 @@
 // rendering mode, which has no PSD equivalent — a layer effect is the parallel).
 import { describe, expect, it } from "vitest";
 import { readPsd } from "ag-psd";
-import { buildPsd } from "../src/psd/build";
+import { buildPsd, qrBeziers } from "../src/psd/build";
 import { defaultConfig } from "../src/defaults";
+import { qrShapes } from "../src/qr";
 import { psdAssets as assets } from "./fixtures";
 
 /** Every layer in the document, groups flattened. Deliberately `any`: this
@@ -126,5 +127,22 @@ describe("psd build", () => {
       ]);
       expect([name, stroke?.size?.value]).toEqual([name, 15]);
     }
+  });
+});
+
+describe("PSD QR squares", () => {
+  it("square style emits one closed path per dark module", () => {
+    const s = qrShapes("proof", { style: "square" });
+    expect(qrBeziers(s, 100).length).toBe(s.squares!.length);
+  });
+
+  it("rounded style emits paths too", () => {
+    expect(qrBeziers(qrShapes("proof", { style: "rounded" }), 100).length).toBeGreaterThan(0);
+  });
+
+  it("dots style output is unchanged in shape count", () => {
+    const s = qrShapes("proof", { style: "dots" });
+    // dots: one circle per data dot + 3 per finder (outer ring, hole, center)
+    expect(qrBeziers(s, 100).length).toBe(s.dots.length + s.finders.length * 3);
   });
 });
