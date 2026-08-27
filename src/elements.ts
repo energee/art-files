@@ -320,8 +320,9 @@ function customTextWidth(line: StyledLine, size: number, m: MeasureFace): number
 /** Drag-to-move targets: either the legacy single-axis "offsetY" knob (the
  *  laurel/collab logos) or, for an unlocked custom layer, the full two-axis
  *  "position" form driven by model/position.ts's anchor+offset math. Null =
- *  not draggable right now: a locked custom layer, the laurel's offsetY off
- *  the collab switch, an empty collab slot, or an unknown custom id.
+ *  not draggable right now: a locked custom layer, a locked logo/collab
+ *  slot, the laurel's offsetY off the collab switch, an empty collab slot,
+ *  or an unknown custom id.
  *
  *  `m` (a text measurer) is only needed for a text custom layer's box() —
  *  every other branch ignores it, so callers that never touch a custom text
@@ -366,7 +367,8 @@ export function dragTarget2(
 /** Drag-to-move targets: the elements whose vertical position is a persisted
  *  config knob (see types.ts's Positioned). Null = not draggable right now —
  *  the laurel's offsetY only applies while collab is on (logoNudge's gate),
- *  and an empty collab slot draws nothing to drag. Horizontal position is
+ *  an empty collab slot draws nothing to drag, and a locked slot (Positioned.
+ *  locked) is frozen regardless of collab/asset state. Horizontal position is
  *  not a knob anywhere, so dragging is vertical by construction.
  *
  *  Kept as the underlying "offsetY" implementation dragTarget2 wraps for
@@ -376,11 +378,11 @@ export function dragTarget2(
 export function dragTarget(
   cfg: LabelConfig, slots: CollabSlots, id: ElementId,
 ): { get(): number; set(c: LabelConfig, v: number): void } | null {
-  if (id === "logo" && cfg.collabEnabled)
+  if (id === "logo" && cfg.collabEnabled && !cfg.logo.locked)
     return { get: () => cfg.logo.offsetY ?? 0, set: (c, v) => { c.logo.offsetY = v; } };
-  if (id === "collabLeft" && cfg.collabEnabled && slots.left)
+  if (id === "collabLeft" && cfg.collabEnabled && slots.left && !cfg.collabLeft.locked)
     return { get: () => cfg.collabLeft.offsetY ?? 0, set: (c, v) => { c.collabLeft.offsetY = v; } };
-  if (id === "collabCenter" && cfg.collabEnabled && slots.center)
+  if (id === "collabCenter" && cfg.collabEnabled && slots.center && !cfg.collabCenter.locked)
     return { get: () => cfg.collabCenter.offsetY ?? 0, set: (c, v) => { c.collabCenter.offsetY = v; } };
   return null;
 }

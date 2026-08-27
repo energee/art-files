@@ -110,4 +110,18 @@ describe("dragTarget2", () => {
     const cfg = defaultConfig();
     expect(dragTarget2(cfg, { left: false, center: false }, "logo")).toBeNull();
   });
+
+  it("returns null for a locked logo even with collab on", () => {
+    const cfg = defaultConfig();
+    cfg.collabEnabled = true;
+    cfg.logo.locked = true;
+    expect(dragTarget2(cfg, { left: false, center: false }, "logo")).toBeNull();
+  });
+
+  it("keeps the offsetY form for logo when unlocked, same as before", () => {
+    const cfg = defaultConfig();
+    cfg.collabEnabled = true;
+    const t = dragTarget2(cfg, { left: false, center: false }, "logo");
+    expect(t?.kind).toBe("offsetY");
+  });
 });

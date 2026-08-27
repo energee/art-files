@@ -168,16 +168,29 @@ function OffsetInput(props: {
  *  laurel to its laid-out spot while the value stays saved. */
 function StackNudge(props: { cfg: LabelConfig; update: Update }) {
   return (
-    <div className="flex items-center gap-1.5">
-      <Label className="text-xs text-muted-foreground">Stack nudge</Label>
-      <OffsetInput
-        value={props.cfg.logo.offsetY}
-        title="Move the laurel and the centre collab mark together, points (+ = down)"
-        onChange={(v) => props.update((c) => { c.logo.offsetY = v; })}
-      />
-      <span className="text-[11px] text-muted-foreground">
-        {props.cfg.collabEnabled ? "laurel + centre mark" : "applies while collab is on"}
-      </span>
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        <Label className="text-xs text-muted-foreground">Stack nudge</Label>
+        <OffsetInput
+          value={props.cfg.logo.offsetY}
+          title="Move the laurel and the centre collab mark together, points (+ = down)"
+          onChange={(v) => props.update((c) => { c.logo.offsetY = v; })}
+        />
+        <span className="text-[11px] text-muted-foreground">
+          {props.cfg.collabEnabled ? "laurel + centre mark" : "applies while collab is on"}
+        </span>
+      </div>
+      {/* Freezes the laurel where it sits: dragTarget/dragTarget2 return null
+          for "logo" while set, same as a locked custom layer. Shown always,
+          like tintRaster below, so it's discoverable before collab is on. */}
+      <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
+        <Switch
+          checked={!!props.cfg.logo.locked}
+          onCheckedChange={(on) =>
+            props.update((c) => { c.logo.locked = on === true; })}
+        />
+        lock position
+      </label>
     </div>
   );
 }
@@ -237,6 +250,18 @@ function CollabSlotContent(props: {
             props.update((cc) => { cc[props.id].tintRaster = on === true; })}
         />
         tint PNG
+      </label>
+      {/* Freezes this slot's own offsetY nudge: dragTarget/dragTarget2 return
+          null for this id while set. The centre slot's own lock is separate
+          from the laurel's (see StackNudge below), since its dragTarget
+          branch checks cfg.collabCenter.locked independently. */}
+      <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
+        <Switch
+          checked={!!slot.locked}
+          onCheckedChange={(on) =>
+            props.update((cc) => { cc[props.id].locked = on === true; })}
+        />
+        lock position
       </label>
       {!left && <StackNudge cfg={props.cfg} update={props.update} />}
     </div>

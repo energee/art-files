@@ -50,6 +50,10 @@ export interface Positioned {
    *  collabEnabled (see logoNudge in elements.ts) — the saved value is kept
    *  but ignored when the collab block is off. */
   offsetY?: number;
+  /** Freezes the element in place: dragTarget/dragTarget2 return null while
+   *  set, same as a locked custom layer (see CustomLayerBase.locked).
+   *  Absent = unlocked, so every pre-existing file is unaffected. */
+  locked?: boolean;
 }
 
 /** Styling for one collab-logo slot. The uploaded image itself is *not* part
