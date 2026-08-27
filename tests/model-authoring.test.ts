@@ -109,3 +109,14 @@ describe(".master file", () => {
     expect(() => parseMasterFile('{"formatVersion":9}')).toThrow();
   });
 });
+
+// Task 3: the dot-paths the inspector's overridden badges key off of.
+describe("overriddenPaths for the inspector's badges", () => {
+  it("style edits produce the dot-paths the inspector badges", () => {
+    const m = applyDesignEdit(lolevMaster(), { variant: "collab" }, [], {},
+      (c) => { c.nameStyle.fill = "#445566"; c.nameStyle.strokeWidth = 9; });
+    const paths = overriddenPaths(m, { variant: "collab" });
+    expect(paths.has("nameStyle.fill")).toBe(true);
+    expect(paths.has("nameStyle.strokeWidth")).toBe(true);
+  });
+});

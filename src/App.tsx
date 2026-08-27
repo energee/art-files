@@ -28,7 +28,8 @@ import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import {
   addVariant, applyDesignEdit, applyLayerEdit, bridgeCollabOverride, composeConfig,
-  configDiff, expandCustomFormats, toggleVariant, valuesFromConfig, visibleFieldsOf,
+  configDiff, expandCustomFormats, overriddenPaths, resetOverride, toggleVariant,
+  valuesFromConfig, visibleFieldsOf,
   type EditTarget,
 } from "@/model/document";
 import { parseLabelFile } from "@/model/labelfile";
@@ -406,6 +407,30 @@ export function layerEditDoc(
     ([k, v]) => (current as Record<string, unknown>)[k] === v);
   if (noop) return doc;
   return { ...doc, master: applyLayerEdit(doc.master, at, layerId, patch) };
+}
+
+/** The pure doc transition behind a per-PROPERTY RESET (the inspector's
+ *  overridden-property badges, Task 3): drop one dot-path from the editing
+ *  variant's overrides (resetOverride), restoring the master's value, with
+ *  cfg recomposed in the SAME history entry — the same shape as
+ *  designEditDoc above, except the mutation is resetOverride's path deletion
+ *  rather than an arbitrary LabelConfig edit, so the label's own deviations
+ *  survive the reset exactly as they survive any other design edit. A no-op
+ *  for the master target (resetOverride's own no-op — the master overrides
+ *  nothing, so no badge ever calls this against it) and returns `doc` itself
+ *  when the path wasn't actually overridden, matching designEditDoc's
+ *  identity contract (no history entry, no phantom dirty dot). */
+export function resetOverrideDoc(doc: Doc, target: EditTarget, path: string): Doc {
+  const at = clampTarget(doc.master, target);
+  const master = resetOverride(doc.master, at, path);
+  if (master === doc.master) return doc;
+  const values = valuesFromConfig(doc.master, doc.enabledVariants, doc.cfg);
+  const overrides = configDiff(
+    composeConfig(doc.master, doc.enabledVariants, values, undefined).config, doc.cfg);
+  const cfg = composeConfig(
+    master, doc.enabledVariants, values,
+    Object.keys(overrides).length ? overrides : undefined).config;
+  return { cfg, enabledVariants: doc.enabledVariants, master };
 }
 
 /** A file the shell wants this editor to open. seq is monotonic — a new
@@ -952,6 +977,26 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (next === doc) return; // already what the target stores — see layerEditDoc
     markDirty();
     setDoc((d) => (d === doc ? next : layerEditDoc(d, editTarget, layerId, patch)));
+  };
+
+  /** Every dot-path the current editing target overrides — what the
+   *  inspector's Style section badges (StyleProperties' OverrideBadge) and
+   *  offers to reset. Recomputed off `master`/`editTarget` every render, like
+   *  every other doc-derived value here; empty (and every badge un-rendered)
+   *  while editing the master, which overrides nothing by definition. */
+  const overridden = overriddenPaths(master, editTarget);
+
+  /** Per-PROPERTY reset (the inspector's overridden badges): drop one path
+   *  from the editing variant's overrides, restoring the master's value —
+   *  resetOverrideDoc, the same one-history-entry shape as `designEdit`
+   *  above. No-op for the master target: resetOverride itself is a no-op
+   *  there, and `overridden` is empty so no badge ever calls this against
+   *  it. */
+  const resetVariantOverride = (path: string) => {
+    const next = resetOverrideDoc(doc, editTarget, path);
+    if (next === doc) return;
+    markDirty();
+    setDoc((d) => (d === doc ? next : resetOverrideDoc(d, editTarget, path)));
   };
 
   /** The Editing selector's "New variant…": mint the variant, enable it (a
@@ -2447,6 +2492,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               <Inspector ids={selected} cfg={cfg} errors={errors} update={update} files={files}
                 settings={docSettings}
                 fields={visibleFields} preview={stringValues}
+                overridden={overridden} onResetOverride={resetVariantOverride}
                 onClose={clearSelection} />
             )}
           </SheetContent>

@@ -51,6 +51,87 @@ import { Toggle } from "@/components/ui/toggle";
 
 type Update = (fn: (c: LabelConfig) => void) => void;
 
+// --- Task 3: overridden-property badges -----------------------------------
+// A small dot beside a Style control, shown only while the current editing
+// target is a variant AND that variant's overrides (model/document.ts's
+// overriddenPaths) include the dot-path this control writes. Clicking it
+// calls resetOverride (via App's onResetOverride) for just that path,
+// restoring the master's value — the label's own deviations and every other
+// overridden property are untouched (App's resetOverrideDoc).
+
+/** The config field name(s) each Style control writes, mirroring
+ *  elements.ts's ELEMENTS/FLAT — the one place that already encodes each
+ *  element's config prefix. Nested-style elements keep their Style object at
+ *  `c.<prefix>`; the two codes (elements.ts's FLAT) store flat scalar fields
+ *  with no nesting — `qrFill`, `barcodeStrokeWidth`, etc., not `qr.fill`. */
+const STYLE_PREFIX: Partial<Record<ElementId, string>> = {
+  name: "nameStyle",
+  styleLine: "styleLine",
+  abv: "abvStyle",
+  description: "descStyle",
+  collabLead: "collabLead",
+  collabLeft: "collabLeft",
+  collabCenter: "collabCenter",
+  volume: "volume",
+  wordmark: "wordmark",
+  logo: "logo",
+  handleAddress: "handleAddress",
+  warning: "warning",
+  storeCold: "storeCold",
+};
+
+type StyleField = "fill" | "layer" | "stroke" | "strokeWidth" | "letterSpacing";
+
+/** Flat-field suffix for every StyleField EXCEPT letterSpacing — qr/barcode
+ *  have no config field for tracking at all (see stylePath), so that key is
+ *  deliberately absent rather than a value nothing ever reads. */
+const FLAT_SUFFIX: Record<Exclude<StyleField, "letterSpacing">, string> = {
+  fill: "Fill", layer: "Layer", stroke: "Stroke", strokeWidth: "StrokeWidth",
+};
+
+/** The dot-path one Style control writes, or null when it isn't derivable:
+ *  - a custom (`custom-${string}`) layer — its style lives at a
+ *    `customLayers` ARRAY index, and overriddenPaths' leafPaths treats an
+ *    array as one leaf (arrays count as leaves), not a per-field path, so
+ *    there is no per-property dot-path to badge. Custom layers keep their
+ *    own undo affordance ("Remove layer" — see CustomAdvanced) instead.
+ *  - `letterSpacing` on the two flat codes (qr/barcode): they are
+ *    isText: false (ELEMENTS), so the panel never offers tracking for them
+ *    and they have no config field for it at all.
+ *  Every other id/field combination is one of ELEMENTS' nested Style objects
+ *  or elements.ts's FLAT scalar fields, both covered above. */
+function stylePath(id: ElementId, field: StyleField): string | null {
+  if (isCustomId(id)) return null;
+  if (id === "qr" || id === "barcode") {
+    if (field === "letterSpacing") return null;
+    return `${id}${FLAT_SUFFIX[field]}`;
+  }
+  const prefix = STYLE_PREFIX[id];
+  return prefix ? `${prefix}.${field}` : null;
+}
+
+/** The badge itself: a small filled dot with a reset affordance, rendered
+ *  only when `path` is derivable AND currently overridden. `label` names the
+ *  control for the aria-label/title (e.g. "Fill", "Letter Spacing"). */
+function OverrideBadge(props: {
+  path: string | null;
+  overridden: ReadonlySet<string>;
+  label: string;
+  onReset: (path: string) => void;
+}) {
+  const { path } = props;
+  if (!path || !props.overridden.has(path)) return null;
+  return (
+    <button
+      type="button"
+      className="size-2 shrink-0 rounded-full bg-primary transition-transform hover:scale-125"
+      title={`Reset ${props.label} to the master`}
+      aria-label={`Reset ${props.label} to the master`}
+      onClick={() => props.onReset(path)}
+    />
+  );
+}
+
 /** A Settings knob STORED as a percentage (of `of` inches — the form
  *  canScene consumes) but SHOWN in inches, the unit a die-cut, a label and a
  *  press are specified in. One component for every such knob, so none can
@@ -742,9 +823,28 @@ function ElementStyle(props: {
   els: readonly LabelElement[];
   cfg: LabelConfig;
   update: Update;
+  /** The editing target's overridden dot-paths (App's `overriddenPaths`) and
+   *  the per-property reset (App's `resetVariantOverride`) — Task 3's
+   *  badges. Empty/no-op while editing the master, which overrides nothing.
+   */
+  overridden: ReadonlySet<string>;
+  onResetOverride: (path: string) => void;
 }) {
   const els = props.els;
   const el = els[0];
+  // Badges only make sense for a single selected element: a dot-path names
+  // ONE element's config field, and a multi-selection's fields already blank
+  // themselves (`mixed`) rather than claiming to speak for the group — a
+  // badge would have to do the same reasoning per-path with no clean way to
+  // show it. `singleId` is undefined for a multi-selection, so stylePath is
+  // never even called — every badge below renders nothing.
+  const singleId = els.length === 1 ? el.id : undefined;
+  const badge = (field: StyleField, label: string) => (
+    <OverrideBadge
+      path={singleId ? stylePath(singleId, field) : null}
+      overridden={props.overridden} label={label} onReset={props.onResetOverride}
+    />
+  );
   const styles = els.map((e) => e.style(props.cfg));
   // Each element's own shipped stroke colour, for the toggle below. "none"
   // would make switching it on a no-op, so fall back to the keyline black.
@@ -802,6 +902,7 @@ function ElementStyle(props: {
               allowNone={els.every((e) => e.allowNone)}
             />
           </div>
+          {badge("fill", "Fill")}
           {/* Same metallic toggle as the layer rows — plate choice is part
               of the ink, so it sits beside the color. Mixed plates read as
               off; pressing it puts the whole selection on one plate. */}
@@ -810,6 +911,7 @@ function ElementStyle(props: {
             onPressedChange={(on) => set({ layer: on ? "metallic" : "white" })}
             className="size-6 border border-input"
           />
+          {badge("layer", "Plate")}
         </div>
       </div>
 
@@ -841,12 +943,15 @@ function ElementStyle(props: {
             {anyText && (
               // Clamped both ends by ScrubField: tracking wide enough to
               // overrun the label reads as a broken line, not a style.
-              <div className="min-w-0 flex-1">
-                <ScrubField
-                  id={`${fid}-tracking`} label="Letter Spacing" icon={WholeWord} unit="pt"
-                  {...tracking} min={-2} max={20} step={0.01} dragStep={0.1}
-                  onChange={(v) => set({ letterSpacing: v })}
-                />
+              <div className="flex items-center gap-1.5">
+                <div className="min-w-0 flex-1">
+                  <ScrubField
+                    id={`${fid}-tracking`} label="Letter Spacing" icon={WholeWord} unit="pt"
+                    {...tracking} min={-2} max={20} step={0.01} dragStep={0.1}
+                    onChange={(v) => set({ letterSpacing: v })}
+                  />
+                </div>
+                {badge("letterSpacing", "Letter Spacing")}
               </div>
             )}
           </div>
@@ -881,6 +986,7 @@ function ElementStyle(props: {
                   onChange={(v) => set({ stroke: v })} allowNone={false}
                 />
               </div>
+              {badge("stroke", "Stroke Color")}
               <MetallicToggle
                 label="Stroke"
                 pressed={strokeMetallic}
@@ -891,11 +997,16 @@ function ElementStyle(props: {
             </div>
             {/* Clamped at 60px by ScrubField: wider strokes swallow the
                 letterforms long before the geometry breaks. */}
-            <ScrubField
-              id={`${fid}-stroke-width`} label="Width" unit="px"
-              {...strokeWidth} min={1} max={60} step={1}
-              onChange={(v) => set({ strokeWidth: v })}
-            />
+            <div className="flex items-center gap-1.5">
+              <div className="min-w-0 flex-1">
+                <ScrubField
+                  id={`${fid}-stroke-width`} label="Width" unit="px"
+                  {...strokeWidth} min={1} max={60} step={1}
+                  onChange={(v) => set({ strokeWidth: v })}
+                />
+              </div>
+              {badge("strokeWidth", "Stroke Width")}
+            </div>
           </>
         )}
       </div>
@@ -919,6 +1030,12 @@ export function Inspector(props: {
    *  its live preview. */
   fields: FieldDecl[];
   preview: Record<string, string>;
+  /** The editing target's overridden dot-paths and per-property reset —
+   *  Task 3's badges, threaded straight to ElementStyle. Always supplied by
+   *  App (empty set / no-op while editing the master), since the inspector
+   *  only ever mounts in Design mode. */
+  overridden: ReadonlySet<string>;
+  onResetOverride: (path: string) => void;
   /** Clears the selection, which closes the inspector sheet. */
   onClose: () => void;
 }): React.JSX.Element {
@@ -1021,7 +1138,12 @@ export function Inspector(props: {
       {/* Document layers (background/mask) carry no Style stack — they are
           file drops only, so the section is omitted rather than shown
           disabled. */}
-      {isEl && <ElementStyle els={els} cfg={props.cfg} update={props.update} />}
+      {isEl && (
+        <ElementStyle
+          els={els} cfg={props.cfg} update={props.update}
+          overridden={props.overridden} onResetOverride={props.onResetOverride}
+        />
+      )}
     </div>
   );
 }
