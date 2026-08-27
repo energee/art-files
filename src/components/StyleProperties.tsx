@@ -10,12 +10,21 @@
 // Selection itself lives in App (see selection.ts), driven by the layers
 // panel and the preview; this component only receives the chosen LayerIds.
 import { Bold, WholeWord, X } from "lucide-react";
-import type { LabelConfig, Style, StyledLine } from "@/types";
+import type {
+  CustomLayer, LabelConfig, Style, StyledLine,
+} from "@/types";
 import {
-  SHIPPED, applyStyle, editableText, elementById, isCustomId, isDefaultStyle,
+  SHIPPED, applyStyle, customElement, editableText, elementById, isCustomId, isDefaultStyle,
   type ElementId, type LabelElement,
 } from "@/elements";
+import { minModuleWarning } from "@/model/fields";
 import { DOC_LAYER_LABELS, LAYER_ICONS, isElementId, type LayerId } from "@/components/layers";
+import {
+  Collapsible, CollapsibleContent, CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { sharedValue } from "@/selection";
 import { displayName } from "@/defaults";
 import { strokeLayerOf } from "@/strokes";
@@ -285,6 +294,208 @@ function RichContent(props: { id: ElementId; cfg: LabelConfig; update: Update })
   );
 }
 
+/** A custom layer's name + lock row — every type gets both, but text/image
+ *  show them among their 3–5 essentials while barcode/qr (already full at
+ *  four essential fields) push them into the Advanced fold alongside
+ *  "Remove layer" (see Advanced below). One component either way, so the
+ *  two placements can't drift apart. */
+function NameLockRow(props: { id: `custom-${string}`; layer: CustomLayer; update: Update }) {
+  const set = (fn: (l: CustomLayer) => void) =>
+    props.update((c) => {
+      const l = c.customLayers?.find((x) => x.id === props.id);
+      if (l) fn(l);
+    });
+  return (
+    <>
+      <div className="flex items-center gap-1.5">
+        <Label htmlFor={`${props.id}-name`} className="text-xs text-muted-foreground">Name</Label>
+        <Input
+          id={`${props.id}-name`} className="h-6 flex-1 text-xs" value={props.layer.name}
+          onChange={(e) => { const v = e.target.value; set((l) => { l.name = v; }); }}
+        />
+      </div>
+      <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
+        <Switch
+          checked={!!props.layer.locked}
+          onCheckedChange={(on) => set((l) => { l.locked = on === true; })}
+        />
+        lock position
+      </label>
+    </>
+  );
+}
+
+/** The Advanced fold every custom layer's Content ends in: type-specific
+ *  extra knobs (moduleW, ecLevel — passed by the caller) plus name/lock for
+ *  barcode/qr (text/image show those among their essentials instead — see
+ *  NameLockRow) and, always last, "Remove layer" — the one delete affordance
+ *  for a custom layer, undoable like any other edit since it goes through
+ *  `update`. */
+function CustomAdvanced(props: {
+  id: `custom-${string}`; update: Update; children?: React.ReactNode;
+}) {
+  const remove = () =>
+    props.update((c) => { c.customLayers = c.customLayers?.filter((l) => l.id !== props.id); });
+  return (
+    <Collapsible>
+      <CollapsibleTrigger className="text-[11px] uppercase tracking-wider text-muted-foreground hover:text-foreground">
+        Advanced
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-2 pt-1.5">
+        {props.children}
+        <Button
+          variant="ghost" size="sm"
+          className="h-6 px-2 text-[11px] text-destructive hover:text-destructive"
+          onClick={remove}
+        >
+          Remove layer
+        </Button>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+/** One custom layer's Content body, per type — the brief's "3–5 essentials +
+ *  Advanced fold". The shared Style section below (ElementStyle, driven by
+ *  customElement) already carries fill/layer/stroke(-as-halo)/bold/tracking
+ *  for every type, so this only adds what's specific to the layer's kind:
+ *  its payload, its own size knobs, and (barcode/qr only) the Advanced-fold
+ *  extras moduleW/ecLevel. */
+function CustomLayerContentFor(props: { id: `custom-${string}`; cfg: LabelConfig; update: Update }) {
+  const { id, cfg, update } = props;
+  const layer = cfg.customLayers?.find((l) => l.id === id);
+  if (!layer) return null;
+  const set = (fn: (l: CustomLayer) => void) =>
+    update((c) => {
+      const l = c.customLayers?.find((x) => x.id === id);
+      if (l) fn(l);
+    });
+
+  if (layer.type === "text")
+    return (
+      <div className="space-y-2">
+        <Input
+          id={`${id}-text`} className="h-6 w-full text-xs" value={layer.line.text}
+          onChange={(e) => { const v = e.target.value; set((l) => { if (l.type === "text") l.line.text = v; }); }}
+        />
+        <ScrubField
+          id={`${id}-size`} label="Size" unit="pt" value={layer.size}
+          min={4} max={200} step={1} dragStep={1}
+          onChange={(v) => set((l) => { if (l.type === "text") l.size = v; })}
+        />
+        <NameLockRow id={id} layer={layer} update={update} />
+      </div>
+    );
+
+  if (layer.type === "image")
+    return (
+      <div className="space-y-2">
+        <ScrubField
+          id={`${id}-w`} label="Width" unit="pt" value={layer.w}
+          min={4} max={600} step={1} dragStep={1}
+          onChange={(v) => set((l) => { if (l.type === "image") l.w = v; })}
+        />
+        <NameLockRow id={id} layer={layer} update={update} />
+      </div>
+    );
+
+  if (layer.type === "barcode") {
+    const warning = minModuleWarning(layer.symbology, layer.moduleW);
+    return (
+      <div className="space-y-2">
+        <Input
+          id={`${id}-value`} className="h-6 w-full font-mono text-xs" value={layer.value}
+          onChange={(e) => { const v = e.target.value; set((l) => { if (l.type === "barcode") l.value = v; }); }}
+        />
+        <Select
+          value={layer.symbology}
+          onValueChange={(v) => set((l) => { if (l.type === "barcode" && v) l.symbology = v as typeof l.symbology; })}
+        >
+          <SelectTrigger size="sm" aria-label="Symbology" className="h-6 w-full text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="upc-a" className="text-xs">UPC-A</SelectItem>
+            <SelectItem value="ean-13" className="text-xs">EAN-13</SelectItem>
+            <SelectItem value="code-128" className="text-xs">Code 128</SelectItem>
+          </SelectContent>
+        </Select>
+        <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
+          <Switch
+            checked={layer.showDigits ?? true}
+            onCheckedChange={(on) => set((l) => { if (l.type === "barcode") l.showDigits = on === true; })}
+          />
+          show digits
+        </label>
+        <ScrubField
+          id={`${id}-h`} label="Height" unit="pt" value={layer.h}
+          min={4} max={200} step={1} dragStep={1}
+          onChange={(v) => set((l) => { if (l.type === "barcode") l.h = v; })}
+        />
+        <CustomAdvanced id={id} update={update}>
+          {/* min > 0, not 0: a typed/scrubbed zero would collapse the whole
+              symbol to nothing rather than reading as "very narrow". */}
+          <ScrubField
+            id={`${id}-modulew`} label="Module width" unit="pt" value={layer.moduleW}
+            min={0.01} max={10} step={0.01} dragStep={0.05}
+            onChange={(v) => set((l) => { if (l.type === "barcode") l.moduleW = v; })}
+          />
+          {warning && <p className="text-[11px] text-destructive">{warning}</p>}
+          <NameLockRow id={id} layer={layer} update={update} />
+        </CustomAdvanced>
+      </div>
+    );
+  }
+
+  // "qr"
+  return (
+    <div className="space-y-2">
+      <Input
+        id={`${id}-value`} className="h-6 w-full text-xs" value={layer.value}
+        onChange={(e) => { const v = e.target.value; set((l) => { if (l.type === "qr") l.value = v; }); }}
+      />
+      <Select
+        value={layer.qrStyle}
+        onValueChange={(v) => set((l) => { if (l.type === "qr" && v) l.qrStyle = v as typeof l.qrStyle; })}
+      >
+        <SelectTrigger size="sm" aria-label="QR style" className="h-6 w-full text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="square" className="text-xs">Square</SelectItem>
+          <SelectItem value="rounded" className="text-xs">Rounded</SelectItem>
+          <SelectItem value="dots" className="text-xs">Dots</SelectItem>
+        </SelectContent>
+      </Select>
+      <ScrubField
+        id={`${id}-size`} label="Size" unit="pt" value={layer.size}
+        min={4} max={200} step={1} dragStep={1}
+        onChange={(v) => set((l) => { if (l.type === "qr") l.size = v; })}
+      />
+      <CustomAdvanced id={id} update={update}>
+        <Select
+          // Absent means "M" for layers (P2) — shown as such rather than
+          // defaulting the control to a blank/first option that would read
+          // as "L", the module-level qrShapes default this is NOT.
+          value={layer.ecLevel ?? "M"}
+          onValueChange={(v) => set((l) => { if (l.type === "qr" && v) l.ecLevel = v as typeof l.ecLevel; })}
+        >
+          <SelectTrigger size="sm" aria-label="Error correction" className="h-6 w-full text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="L" className="text-xs">L</SelectItem>
+            <SelectItem value="M" className="text-xs">M (default)</SelectItem>
+            <SelectItem value="Q" className="text-xs">Q</SelectItem>
+            <SelectItem value="H" className="text-xs">H</SelectItem>
+          </SelectContent>
+        </Select>
+        <NameLockRow id={id} layer={layer} update={update} />
+      </CustomAdvanced>
+    </div>
+  );
+}
+
 /** The selected layer's Content section body, or null when the layer has
  *  nothing editable beyond style (wordmark, warning) — the caller shows a
  *  muted note instead. */
@@ -499,11 +710,13 @@ function Content(props: {
       // rather than rendering an empty section.
       return <p className="text-[11px] text-muted-foreground">Fixed template art — nothing to edit.</p>;
     default:
-      // Custom master-variation layers (Task 3 wires their real content
-      // editing — text/image pickers, asset drop). For now the Style
-      // section below still applies via elementById's generic fallback.
+      // Custom master-variation layers: per-type content (see
+      // CustomLayerContentFor above) — its own payload/size knobs, name and
+      // lock, and (barcode/qr) the Advanced fold's moduleW/ecLevel and
+      // "Remove layer". The shared Style section below still carries fill/
+      // layer/stroke/bold/tracking, driven by customElement.
       if (isCustomId(id))
-        return <p className="text-[11px] text-muted-foreground">Custom layer — content editing coming soon.</p>;
+        return <CustomLayerContentFor id={id} cfg={cfg} update={update} />;
       return null;
   }
 }
@@ -705,9 +918,31 @@ export function Inspector(props: {
   // document layer in (their panels edit files and document knobs, not
   // Styles), so `isEl` describes the whole selection.
   const isEl = isElementId(id);
-  const els = ids.filter(isElementId).map(elementById);
-  const label = isEl ? elementById(id).label : DOC_LAYER_LABELS[id];
-  const Icon = LAYER_ICONS[id];
+  const els = ids.filter(isElementId)
+    .map((eid) => (isCustomId(eid) ? customElement(props.cfg, eid) : elementById(eid)));
+  // `els[0]` IS the element for `id` whenever isEl: id === ids[0], and a
+  // selection is either all-elements or one lone document layer (App's
+  // resolveSelect never mixes the two — see the isEl comment above), so the
+  // filter above keeps it first.
+  const label = isEl ? els[0].label : DOC_LAYER_LABELS[id];
+  // Custom ids have no LAYER_ICONS entry (it's a fixed Record over the known
+  // ElementId literals) — borrow the matching fixed row's icon, same choice
+  // LayersPanel's rows make, so the inspector header and the layer row never
+  // disagree about what icon names a custom layer's kind.
+  const customLayerFor = props.cfg.customLayers?.find((l) => l.id === id);
+  const Icon = customLayerFor
+    ? customLayerFor.type === "image" ? LAYER_ICONS.collabLeft
+      : customLayerFor.type === "barcode" ? LAYER_ICONS.barcode
+      : customLayerFor.type === "qr" ? LAYER_ICONS.qr
+      : LAYER_ICONS.name
+    : LAYER_ICONS[id as Exclude<LayerId, `custom-${string}`>];
+
+  // Custom layers have no "shipped" appearance to compare against or restore
+  // (elementById's customFallback is a blind {fill:"none",layer:"white"}
+  // placeholder, not a real default) — Reset applies only to the fixed
+  // elements in the selection; a custom layer's own undo affordance is
+  // "Remove layer" (see CustomAdvanced above).
+  const resettableEls = els.filter((el) => !isCustomId(el.id));
 
   // Restores each selected element's shipped appearance — read from
   // defaultConfig(), not a hardcoded gold/metallic/none triple, so elements
@@ -718,7 +953,7 @@ export function Inspector(props: {
   // button that calls it only renders while something is dirty.
   const reset = () =>
     props.update((c) => {
-      for (const el of els) {
+      for (const el of resettableEls) {
         const d = el.style(SHIPPED);
         applyStyle(c, el.id, {
           fill: d.fill,
@@ -731,7 +966,7 @@ export function Inspector(props: {
         });
       }
     });
-  const dirty = els.some((el) => !isDefaultStyle(el.id, el.style(props.cfg)));
+  const dirty = resettableEls.some((el) => !isDefaultStyle(el.id, el.style(props.cfg)));
 
   return (
     <div className="space-y-1 p-3">

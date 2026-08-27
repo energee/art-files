@@ -58,6 +58,36 @@ describe("custom image layer — stored aspect fallback", () => {
   });
 });
 
+describe("custom image layer — SVG art plans as paths, not a rect", () => {
+  it("emits a `paths` item fitted to layer.w, styled from layer.style", () => {
+    const cfg = defaultConfig();
+    const layer: CustomImageLayer = {
+      id: "custom-svg1", name: "Custom Art", type: "image", asset: "art-svg", w: 40,
+      position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
+      style: { fill: "#112233", layer: "metallic" },
+    };
+    cfg.customLayers = [layer];
+    const m = (text: string, size: number) => text.length * size;
+    const svg = '<svg viewBox="0 0 10 10"><path d="M0 0 L10 0 L10 10 Z"/></svg>';
+    const items = planLabel(cfg, m, {
+      assets: {
+        logoSvg: svg,
+        custom: { "art-svg": { aspect: 1, art: { kind: "svg", svg } } },
+      },
+    });
+    const item = items.find((r) => r.id === "custom-svg1");
+    expect(item).toBeDefined();
+    expect(item?.kind).toBe("paths");
+    if (item?.kind !== "paths") throw new Error("expected a paths item");
+    expect(item.fill).toBe("#112233");
+    expect(item.layer).toBe("metallic");
+    expect(item.paths.length).toBeGreaterThan(0);
+    // Never both: an SVG custom image must not ALSO plan the rect `image`
+    // item its stored aspect would otherwise fall back to.
+    expect(items.some((r) => r.id === "custom-svg1" && r.kind === "image")).toBe(false);
+  });
+});
+
 describe("dragTarget2", () => {
   const textLayer: CustomTextLayer = {
     id: "custom-a1b2c3",

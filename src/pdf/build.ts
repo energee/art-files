@@ -61,10 +61,13 @@ export interface Assets {
    *  blue instead ("no mask" = "print as a white label"), and the per-element
    *  assignments (metallic knockouts, white-layer ink) draw on top of that. */
   maskPng?: Uint8Array;
-  /** Custom image layers' intrinsic aspect ratio (w/h), keyed by CustomImageLayer's
-   *  `asset`. Feeds the plan's rect math; the actual bytes to embed live in
-   *  `customImages` below. */
-  custom?: Record<string, { aspect: number }>;
+  /** Custom image layers' intrinsic aspect ratio (w/h) plus, once decoded,
+   *  the loaded art's own shape — same PlanAssets.custom shape planLabel
+   *  reads (see its own comment): an `art.kind === "svg"` entry switches
+   *  planLabel to an ink-tight `paths` fit instead of the rect this raster
+   *  path still uses. Feeds the plan's rect/paths math; raster bytes to embed
+   *  live in `customImages` below. */
+  custom?: Record<string, { aspect: number; art?: PlanArt }>;
   /** Custom image layers' bytes, keyed by CustomImageLayer's `asset`. A key
    *  absent (bytes not loaded, or an SVG source — raster embedding only for
    *  now) leaves that layer's item a no-op on both plates, same contract as

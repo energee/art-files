@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { ELEMENTS, applyStyle, dragTarget, editableText, elementById, isDefaultStyle } from "../src/elements";
+import {
+  ELEMENTS, applyStyle, customElement, dragTarget, editableText, elementById, isDefaultStyle,
+} from "../src/elements";
 import { defaultConfig } from "../src/defaults";
 import { GOLD } from "../src/layout";
-import type { CustomTextLayer } from "../src/types";
+import type {
+  CustomBarcodeLayer, CustomImageLayer, CustomQrLayer, CustomTextLayer,
+} from "../src/types";
 
 describe("element registry", () => {
   it("covers every stylable element exactly once", () => {
@@ -269,5 +273,83 @@ describe("dragTarget", () => {
     // A fresh elementById().style() call for either id must still read as
     // the untouched placeholder, not reflect the patch above.
     expect(elementById("custom-a").style(cfg)).toEqual({ fill: "none", layer: "white" });
+  });
+});
+
+describe("customElement", () => {
+  const pos = { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 } as const;
+
+  it("labels a custom row with the layer's own name", () => {
+    const cfg = defaultConfig();
+    const textLayer: CustomTextLayer = {
+      id: "custom-t1", name: "Tagline", type: "text", size: 12, position: pos,
+      line: { text: "hi", fill: "none", layer: "white" },
+    };
+    cfg.customLayers = [textLayer];
+    expect(customElement(cfg, "custom-t1").label).toBe("Tagline");
+  });
+
+  it("gives a custom text layer bold + tracking capability, images neither", () => {
+    const cfg = defaultConfig();
+    const textLayer: CustomTextLayer = {
+      id: "custom-t1", name: "Tagline", type: "text", size: 12, position: pos,
+      line: { text: "hi", fill: "none", layer: "white" },
+    };
+    const imageLayer: CustomImageLayer = {
+      id: "custom-i1", name: "Art", type: "image", asset: "a1", w: 40, position: pos,
+      style: { fill: "none", layer: "white" },
+    };
+    cfg.customLayers = [textLayer, imageLayer];
+    const text = customElement(cfg, "custom-t1");
+    expect(text.hasBold).toBe(true);
+    expect(text.isText).toBe(true);
+    expect(text.allowNone).toBe(true);
+    const image = customElement(cfg, "custom-i1");
+    expect(image.hasBold).toBe(false);
+    expect(image.isText).toBe(false);
+    expect(image.allowNone).toBe(true);
+  });
+
+  it("forbids no-ink on custom barcode/QR layers, same as the fixed codes", () => {
+    const cfg = defaultConfig();
+    const barcodeLayer: CustomBarcodeLayer = {
+      id: "custom-b1", name: "Code", type: "barcode", symbology: "code-128",
+      value: "X", h: 30, moduleW: 1, position: pos, style: { fill: "#000000", layer: "white" },
+    };
+    const qrLayer: CustomQrLayer = {
+      id: "custom-q1", name: "QR", type: "qr", value: "x", size: 40, qrStyle: "square",
+      position: pos, style: { fill: "#000000", layer: "white" },
+    };
+    cfg.customLayers = [barcodeLayer, qrLayer];
+    expect(customElement(cfg, "custom-b1").allowNone).toBe(false);
+    expect(customElement(cfg, "custom-q1").allowNone).toBe(false);
+  });
+
+  // Regression: applyStyle used to strip bold/tracking for EVERY custom id
+  // (elementById's customFallback always reports hasBold/isText false), so a
+  // custom text layer could never actually be made bold or tracked.
+  it("applyStyle lands bold + tracking on a custom TEXT layer", () => {
+    const cfg = defaultConfig();
+    const textLayer: CustomTextLayer = {
+      id: "custom-t1", name: "Tagline", type: "text", size: 12, position: pos,
+      line: { text: "hi", fill: "none", layer: "white" },
+    };
+    cfg.customLayers = [textLayer];
+    applyStyle(cfg, "custom-t1", { bold: true, letterSpacing: 1 });
+    expect(textLayer.line.bold).toBe(true);
+    expect(textLayer.line.letterSpacing).toBe(1);
+  });
+
+  it("applyStyle drops bold + tracking on a custom IMAGE layer", () => {
+    const cfg = defaultConfig();
+    const imageLayer: CustomImageLayer = {
+      id: "custom-i1", name: "Art", type: "image", asset: "a1", w: 40, position: pos,
+      style: { fill: "none", layer: "white" },
+    };
+    cfg.customLayers = [imageLayer];
+    applyStyle(cfg, "custom-i1", { bold: true, letterSpacing: 1, fill: "#123456" });
+    expect(imageLayer.style.fill).toBe("#123456");
+    expect("bold" in imageLayer.style).toBe(false);
+    expect("letterSpacing" in imageLayer.style).toBe(false);
   });
 });

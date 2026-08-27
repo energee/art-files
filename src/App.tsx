@@ -14,7 +14,10 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
-import type { CollabSlot, Fill, LabelConfig } from "@/types";
+import type {
+  CollabSlot, CustomBarcodeLayer, CustomImageLayer, CustomLayer, CustomQrLayer, CustomTextLayer,
+  Fill, LabelConfig,
+} from "@/types";
 import { dragTarget, dragTarget2, editableText, type ElementId } from "@/elements";
 import type { Measure } from "@/hittest";
 import { defaultConfig, exportBaseName, parseConfigFile } from "@/defaults";
@@ -411,7 +414,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   const pick = (id: LayerId | null, mods: SelectMods) =>
     id === null
       ? clearSelection()
-      : setSelection((s) => resolveSelect(s, id, mods, PANEL_ORDER));
+      : setSelection((s) => resolveSelect(
+          s, id, mods, [...PANEL_ORDER, ...(cfg.customLayers ?? []).map((l) => l.id)]));
   // The renderer elements of the selection, for the preview's outlines.
   // Memoized like collabSlots below and for the same reason: it is a
   // dependency of PreviewCompare's outline memo, and a fresh array every
@@ -770,6 +774,66 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  marks the document dirty. */
   const mutating = (fn: () => void) => () => { markDirty(); fn(); };
 
+  /** One spelling of a new custom layer's default anchored position — center
+   *  x, just under the top edge — shared by every "Add layer" type so a
+   *  freshly placed layer always lands somewhere visible on the label. */
+  const NEW_LAYER_POSITION = { anchor: "center", vAnchor: "top", offsetX: 0, offsetY: 24 } as const;
+
+  /** Design-mode "Add layer": mints the id, appends the layer through
+   *  `update` (one undo step) and selects it — the spec's "placed
+   *  immediately, configure after". Text/barcode/QR default styles borrow the
+   *  matching template element's CURRENT style/ink, so a fresh layer starts
+   *  in the label's own palette rather than a hardcoded black. Image is
+   *  file-pick FIRST (see the hidden input below and addCustomImageLayer):
+   *  there is nothing to place until an asset exists. */
+  function addCustomLayer(type: "text" | "image" | "barcode" | "qr") {
+    if (type === "image") { customImageInput.current?.click(); return; }
+    const id = `custom-${crypto.randomUUID().slice(0, 8)}` as const;
+    const layer: CustomTextLayer | CustomBarcodeLayer | CustomQrLayer =
+      type === "text"
+        ? {
+            id, name: "Text", type: "text", size: 12, position: NEW_LAYER_POSITION,
+            line: { text: "Text", fill: cfg.nameStyle.fill, layer: cfg.nameStyle.layer },
+          }
+        : type === "barcode"
+        ? {
+            id, name: "Barcode", type: "barcode", symbology: "code-128", value: "",
+            h: 40, moduleW: 1, position: NEW_LAYER_POSITION,
+            style: {
+              fill: cfg.barcodeFill, layer: cfg.barcodeLayer, stroke: cfg.barcodeStroke,
+              strokeLayer: cfg.barcodeStrokeLayer, strokeWidth: cfg.barcodeStrokeWidth,
+            },
+          }
+        : {
+            id, name: "QR", type: "qr", value: "", size: 40, qrStyle: "square",
+            position: NEW_LAYER_POSITION,
+            style: {
+              fill: cfg.qrFill, layer: cfg.qrLayer, stroke: cfg.qrStroke,
+              strokeLayer: cfg.qrStrokeLayer, strokeWidth: cfg.qrStrokeWidth,
+            },
+          };
+    update((c) => { c.customLayers = [...(c.customLayers ?? []), layer]; });
+    setSelection({ ids: [id], anchor: id });
+  }
+
+  /** The image half of addCustomLayer: picks the file first (customImageInput's
+   *  onChange below), reads it through the same pipeline the .label restore
+   *  path uses (readCustomImage + mintCustomAssetId), then appends the layer —
+   *  there is no sensible empty image layer to place before an asset exists. */
+  async function addCustomImageLayer(f: File) {
+    const assetId = mintCustomAssetId();
+    const file = await readCustomImage(f);
+    setCustomImages((old) => ({ ...old, [assetId]: file }));
+    const id = `custom-${crypto.randomUUID().slice(0, 8)}` as const;
+    const layer: CustomImageLayer = {
+      id, name: "Image", type: "image", asset: assetId, w: 60, aspect: file.aspect,
+      position: NEW_LAYER_POSITION, style: { fill: "none", layer: "white" },
+    };
+    update((c) => { c.customLayers = [...(c.customLayers ?? []), layer]; });
+    setSelection({ ids: [id], anchor: id });
+  }
+  const customImageInput = useRef<HTMLInputElement>(null);
+
   // FieldList's onValue: writes one field straight into the config via its
   // path. Coalescing mirrors onEditText's contract (see PreviewCompare's
   // onEditText below) — the first change to a field opens an undo step, the
@@ -1066,7 +1130,17 @@ export const DocumentEditor = memo(function DocumentEditor({
             logoSvg, collabLeft: left.art, collabCenter: center.art,
             // Real intrinsic aspects, not the layers' stored ones: this is
             // the loaded-bytes path plan.ts prefers over CustomImageLayer.aspect.
-            custom: Object.fromEntries(customEntries.map(([id, c]) => [id, { aspect: c.aspect }])),
+            // `art` carries the loaded shape too — an SVG source switches
+            // planLabel to its ink-tight `paths` fit (see plan.ts); a raster
+            // source needs none here, its bitmap already drives the canvas
+            // backend's own `customImages` lookup.
+            custom: Object.fromEntries(customEntries.map(([id, c]) => [
+              id,
+              {
+                aspect: c.aspect,
+                ...(c.image.kind === "svg" ? { art: { kind: "svg" as const, svg: c.image.svg } } : {}),
+              },
+            ])),
           },
           drawAssets,
           fontCss: labelFontCss(family),
@@ -1216,7 +1290,18 @@ export const DocumentEditor = memo(function DocumentEditor({
         fonts, logoSvg, ...(await collabAssets()),
         ...eyedAssets(false),
         hidden: hiddenLayers,
-        custom: Object.fromEntries(customEntries.map(([id, c]) => [id, { aspect: c.aspect }])),
+        // Same `art` addition as the preview assembly effect above: an SVG
+        // custom image has no raster bytes for `customImages` below to embed
+        // (drawElements' embed loop skips SVG sources), so without `art` it
+        // would still plan as an empty rect in the export PDFs even though
+        // the on-screen preview now draws it. See plan.ts's PlanAssets.custom.
+        custom: Object.fromEntries(customEntries.map(([id, c]) => [
+          id,
+          {
+            aspect: c.aspect,
+            ...(c.image.kind === "svg" ? { art: { kind: "svg" as const, svg: c.image.svg } } : {}),
+          },
+        ])),
         customImages: Object.fromEntries(customEntries.map(([id, c]) => [id, c.image])),
       };
       // Both files build BEFORE the first dialog opens: the user shouldn't
@@ -1726,8 +1811,9 @@ export const DocumentEditor = memo(function DocumentEditor({
                 Fill shows the label, the field list, and variation
                 checkboxes — no styling, no layers panel (spec: UI). */}
             {mode === "design"
-              ? <LayersPanel cfg={cfg} update={update} hidden={hiddenLayers}
-                  onToggleHidden={toggleHidden} selected={selected} onSelect={pick} />
+              ? <LayersPanel cfg={cfg} update={update} hidden={hiddenLayers} mode={mode}
+                  onToggleHidden={toggleHidden} selected={selected} onSelect={pick}
+                  onAddLayer={addCustomLayer} />
               : <FieldList master={master} enabledVariations={enabledVariations} cfg={cfg}
                   onValue={onFieldValue} onVariation={setVariation} />}
           </SidebarContent>
@@ -1783,6 +1869,17 @@ export const DocumentEditor = memo(function DocumentEditor({
           {(buildError || renderError) && <HeaderAlert>{buildError || renderError}</HeaderAlert>}
           <input ref={presetsInput} type="file" accept="application/json" hidden
             onChange={(e) => e.target.files?.[0] && void importPresets(e.target.files[0])} />
+          {/* "Add layer -> Image"'s file-pick-first step (see addCustomLayer):
+              a plain hidden input, same pattern as presetsInput above — no
+              drop zone needed since there is no layer yet to drop onto.
+              Cleared on every change so re-picking the same filename still
+              fires (native <input> dedupes identical values otherwise). */}
+          <input ref={customImageInput} type="file" accept="image/svg+xml,image/png,image/jpeg" hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f) void addCustomImageLayer(f);
+            }} />
         </header>
       {/* The workspace tab strip's slot, under the menubar (in the desktop
           build the menubar is native, so this is the window's top content

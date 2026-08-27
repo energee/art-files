@@ -216,6 +216,55 @@ export function elementById(id: ElementId): LabelElement {
   return e;
 }
 
+/** Capability row for one custom layer, read from the ACTUAL layer in `cfg`
+ *  — unlike elementById's customFallback above, which stays blind (no config
+ *  to read) for callers that only have an id. text layers take a bold toggle
+ *  and tracking like any glyph-drawing element; image/barcode/QR take
+ *  neither, matching the fixed logo/QR/barcode rows. allowNone follows the
+ *  same "must stay scannable" rule as the two fixed codes: false for
+ *  barcode/qr, true otherwise. label is the layer's own display name, so the
+ *  panel/inspector show what the user named it rather than its id.
+ *  A stale/vanished id (mid-delete) falls back to customFallback so callers
+ *  never crash on it. */
+export function customElement(cfg: LabelConfig, id: `custom-${string}`): LabelElement {
+  const layer = cfg.customLayers?.find((l) => l.id === id);
+  if (!layer) return customFallback(id);
+  const label = layer.name;
+  // A fresh find per style() call (not the closed-over `layer`), so a caller
+  // that mutates `c` and reads again — e.g. StyleProperties' multi-select
+  // loop — sees the current value, not the snapshot taken when this
+  // LabelElement was built. `.find`'s inline predicate can't narrow the
+  // union by itself (a compound `l.id === id && l.type === "text"` boolean
+  // doesn't propagate to `?.line`), so each accessor narrows on its own `l`.
+  if (layer.type === "text")
+    return {
+      id, label, group: "beer", hasBold: true, isText: true, allowNone: true,
+      style: (c) => {
+        const l = c.customLayers?.find((x) => x.id === id);
+        return l && l.type === "text" ? l.line : layer.line;
+      },
+    };
+  if (layer.type === "image")
+    return {
+      id, label, group: "beer", hasBold: false, isText: false, allowNone: true,
+      style: (c) => {
+        const l = c.customLayers?.find((x) => x.id === id);
+        return l && l.type === "image" ? l.style : layer.style;
+      },
+    };
+  // barcode / qr — an ink-less code isn't scannable, same rule as the fixed
+  // "barcode"/"qr" rows in ELEMENTS. Both carry a plain `style: Style` field
+  // (unlike text's StyledLine/image's tint Style), so no per-type narrowing
+  // is needed here beyond ruling text/image back out.
+  return {
+    id, label, group: "beer", hasBold: false, isText: false, allowNone: false,
+    style: (c) => {
+      const l = c.customLayers?.find((x) => x.id === id);
+      return l && l.type !== "text" && l.type !== "image" ? l.style : layer.style;
+    },
+  };
+}
+
 /** Apply a style patch to whichever config fields back `id`. Widened to
  *  Partial<StyledLine> (rather than Partial<Style>) so a single patch can
  *  also carry `bold`, which lives on StyledLine, not Style. Two things this
@@ -243,7 +292,12 @@ export function elementById(id: ElementId): LabelElement {
  *  tracking and Reset's unconditional `letterSpacing: undefined` is a no-op
  *  for them. */
 export function applyStyle(c: LabelConfig, id: ElementId, patch: Partial<StyledLine>): void {
-  const el = elementById(id);
+  // Custom ids read their capabilities off the actual layer (customElement)
+  // rather than elementById's blind customFallback — otherwise a custom TEXT
+  // layer's bold/tracking would be stripped below before ever reaching the
+  // isCustomId routing further down, since customFallback always reports
+  // hasBold/isText false.
+  const el = isCustomId(id) ? customElement(c, id) : elementById(id);
   if (!el.hasBold && "bold" in patch) {
     const { bold: _bold, ...rest } = patch;
     patch = rest;

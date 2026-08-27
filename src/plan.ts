@@ -124,10 +124,16 @@ export interface PlanAssets {
   logoSvg: string;
   collabLeft?: PlanArt | null;
   collabCenter?: PlanArt | null;
-  /** Custom image layers' intrinsic aspect (w/h), keyed by CustomImageLayer's
-   *  `asset`. A layer whose key is absent here emits nothing (collab-art
-   *  contract) — the asset hasn't loaded/isn't supplied. */
-  custom?: Record<string, { aspect: number }>;
+  /** Custom image layers' loaded state, keyed by CustomImageLayer's `asset`.
+   *  A layer whose key is absent here emits nothing (collab-art contract) —
+   *  the asset hasn't loaded/isn't supplied. `aspect` is the intrinsic w/h,
+   *  used by every custom image (raster or SVG-before-load) to size its box.
+   *  `art` carries the loaded bytes' own shape: absent (not yet decoded) or
+   *  `{kind:"raster"}` places the stored rect as before; `{kind:"svg"}`
+   *  switches the item to an ink-tight `paths` fit (see planLabel below) —
+   *  same "collab pattern" as collabItems, since an SVG custom image drawn as
+   *  a rect never had bytes to embed and so never actually drew. */
+  custom?: Record<string, { aspect: number; art?: PlanArt }>;
 }
 
 /** The guide lines a custom layer's anchor resolves against: the label's
@@ -580,20 +586,38 @@ export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {})
         size: layer.size,
       }));
     } else if (layer.type === "image") {
-      // The loaded asset's aspect wins when it's available; otherwise fall
-      // back to the layer's own stored aspect (captured at drop time) so the
-      // rect — and with it selection/hit/drag — exists before (or without)
-      // bytes ever loading. Backends resolve the bytes themselves by
-      // `asset`, and no-op when they have none.
-      const aspect = A?.custom?.[layer.asset]?.aspect ?? layer.aspect;
-      if (aspect === undefined) continue;
-      const h = layer.w / aspect;
-      out.push({
-        kind: "image", id: layer.id, asset: layer.asset,
-        x: anchoredX(layer.position, layer.w, guides),
-        y: anchoredY(layer.position, h, guides),
-        w: layer.w, h,
-      });
+      const entry = A?.custom?.[layer.asset];
+      if (entry?.art?.kind === "svg") {
+        // SVG custom art has no raster bytes to embed (see the "image" arm
+        // below and its backends' no-op guard for an SVG asset) — it plans
+        // as a `paths` item instead, ink-tight fitted to the layer's own box
+        // width, exactly like collabItems' SVG branch. `paths` items are
+        // backend-generic (pdf/build.ts and canvas/draw.ts already draw any
+        // `paths` item, no id-specific handling), so this needs no backend
+        // work — only planLabel's placement changes.
+        const a = parseLogo(entry.art.svg, layer.w);
+        out.push({
+          kind: "paths", id: layer.id, paths: a.paths,
+          x: anchoredX(layer.position, a.w, guides),
+          y: anchoredY(layer.position, a.h, guides),
+          fill: layer.style.fill, layer: layer.style.layer, stroke: strokeSpec(layer.style),
+        });
+      } else {
+        // The loaded asset's aspect wins when it's available; otherwise fall
+        // back to the layer's own stored aspect (captured at drop time) so
+        // the rect — and with it selection/hit/drag — exists before (or
+        // without) bytes ever loading. Backends resolve the bytes themselves
+        // by `asset`, and no-op when they have none.
+        const aspect = entry?.aspect ?? layer.aspect;
+        if (aspect === undefined) continue;
+        const h = layer.w / aspect;
+        out.push({
+          kind: "image", id: layer.id, asset: layer.asset,
+          x: anchoredX(layer.position, layer.w, guides),
+          y: anchoredY(layer.position, h, guides),
+          w: layer.w, h,
+        });
+      }
     } else if (layer.type === "barcode") {
       const item = customBarcodeItem(layer, m, guides);
       if (item) out.push(item);

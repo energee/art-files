@@ -11,13 +11,18 @@
 // layers-ui spec's stacking (Barcode before QR); every element row has
 // an eye (hiding is a temporary skip, unlike the ink-less styling allowNone
 // forbids), the document layers go without for now.
-import { ChevronDown, Eye, EyeOff, Info } from "lucide-react";
+import { Barcode, ChevronDown, Eye, EyeOff, Image, Info, Lock, Plus, QrCode, Type } from "lucide-react";
 import type { LabelConfig, StyledLine } from "@/types";
-import { applyStyle, elementById, type ElementId } from "@/elements";
+import {
+  applyStyle, customElement, elementById, type LabelElement,
+} from "@/elements";
 import { cn } from "@/lib/utils";
 import { MetallicToggle } from "./MetallicToggle";
 import { strokeLayerOf } from "@/strokes";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import {
   SidebarGroup,
@@ -33,6 +38,17 @@ import {
   isElementId, isHideable, type HideableLayerId, type LayerId,
 } from "./layers";
 import { modsOf, type SelectMods } from "@/selection";
+
+/** "Add layer" menu icon per custom layer type — the layers panel's rows
+ *  share the fixed elements' icons (Type for every text row), so these are
+ *  chosen from the same set: Barcode/QrCode from LAYER_ICONS' own choices,
+ *  Type for text, Image for image. */
+const ADD_LAYER_TYPES: { type: "text" | "image" | "barcode" | "qr"; label: string; Icon: typeof Type }[] = [
+  { type: "text", label: "Text", Icon: Type },
+  { type: "image", label: "Image", Icon: Image },
+  { type: "barcode", label: "Barcode", Icon: Barcode },
+  { type: "qr", label: "QR", Icon: QrCode },
+];
 
 /** Tiny color chip for the style summary; "none" renders as a hatch-free
  *  outline so "no ink" is visibly different from black. The border is a
@@ -53,8 +69,7 @@ function Chip({ color }: { color: string }) {
  *  always, stroke/tracking/bold only while they're actually in effect.
  *  Read-only — editing lives in the inspector; this is the at-a-glance view
  *  behind the row's chevron. */
-function StyleSummary({ id, cfg }: { id: ElementId; cfg: LabelConfig }) {
-  const el = elementById(id);
+function StyleSummary({ el, cfg }: { el: LabelElement; cfg: LabelConfig }) {
   const s = el.style(cfg);
   const bold = el.hasBold && ((s as StyledLine).bold ?? false);
   const strokeOn = !!s.stroke && s.stroke !== "none";
@@ -107,8 +122,18 @@ function LayerRow({
   selected: readonly LayerId[];
   onSelect: (id: LayerId, mods: SelectMods) => void;
 }) {
-  const Icon = LAYER_ICONS[id];
-  const el = isElementId(id) ? elementById(id) : null;
+  const customLayer = cfg.customLayers?.find((l) => l.id === id);
+  // Every text layer (fixed or custom) shares the one Type icon; a custom
+  // image/barcode/QR layer borrows its matching fixed row's icon rather than
+  // adding a second icon table custom rows would have to stay in sync with.
+  const Icon = customLayer
+    ? customLayer.type === "image" ? LAYER_ICONS.collabLeft
+      : customLayer.type === "barcode" ? LAYER_ICONS.barcode
+      : customLayer.type === "qr" ? LAYER_ICONS.qr
+      : LAYER_ICONS.name
+    : LAYER_ICONS[id as Exclude<LayerId, `custom-${string}`>];
+  const el = isElementId(id)
+    ? (customLayer ? customElement(cfg, id as `custom-${string}`) : elementById(id)) : null;
   const label = el ? el.label : DOC_LAYER_LABELS[id as keyof typeof DOC_LAYER_LABELS];
   const hideable = isHideable(id);
   const hidden = hideable && hiddenSet.has(id);
@@ -203,6 +228,31 @@ function LayerRow({
           {/* Applied-styles accordion, element rows only — the document
               layers have no styles. A read-only digest; editing stays in
               the inspector. */}
+          {/* Lock badge, custom rows only — the fixed elements have no
+              analogous "freeze in place" flag on the layer itself (the
+              logo/collab slots' lock lives in the inspector's StackNudge/
+              CollabSlotContent, not the row). Lit while locked, same idiom as
+              the eye. */}
+          {customLayer && (
+            <button
+              type="button"
+              onClick={(e) => {
+                stop(e);
+                update((c) => {
+                  const l = c.customLayers?.find((x) => x.id === id);
+                  if (l) l.locked = !l.locked;
+                });
+              }}
+              aria-label={customLayer.locked ? `Unlock ${label}` : `Lock ${label}`}
+              aria-pressed={!!customLayer.locked}
+              className={cn(
+                "grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70 hover:text-sidebar-foreground [&>svg]:size-3",
+                !customLayer.locked && "opacity-40 hover:opacity-100",
+              )}
+            >
+              <Lock />
+            </button>
+          )}
           {el !== null && (
             <CollapsibleTrigger
               aria-label={`${label} styles`}
@@ -216,7 +266,7 @@ function LayerRow({
         {el !== null && (
           <CollapsibleContent>
             <div className="ml-[1.4rem] border-l border-sidebar-border py-1.5 pl-3 pr-1">
-              <StyleSummary id={el.id} cfg={cfg} />
+              <StyleSummary el={el} cfg={cfg} />
             </div>
           </CollapsibleContent>
         )}
@@ -235,7 +285,13 @@ export function LayersPanel(props: {
   /** Every selected layer, in click order — see selection.ts. */
   selected: readonly LayerId[];
   onSelect: (id: LayerId, mods: SelectMods) => void;
+  /** Design/Fill — the "Add layer" menu is Design-only (spec: UI); App only
+   *  mounts this panel in Design mode already, so this gate is belt-and-
+   *  suspenders against the panel ever being reused in Fill. */
+  mode: "design" | "fill";
+  onAddLayer: (type: "text" | "image" | "barcode" | "qr") => void;
 }): React.JSX.Element {
+  const customLayers = props.cfg.customLayers ?? [];
   return (
     <>
       {/* The two modifier gestures, said once at the top of the list — but
@@ -290,6 +346,50 @@ export function LayersPanel(props: {
           </SidebarGroupContent>
         </SidebarGroup>
       ))}
+      {/* Master-variation layers, in stored order — a "Custom" group of its
+          own rather than folded into "Beer", since these are per-LABEL, not
+          even per-beer: a one-off addition to a single variation, not
+          something every release of the same beer carries. Design-only,
+          matching the "Add layer" menu below it. */}
+      {props.mode === "design" && (
+        <SidebarGroup>
+          <SidebarGroupLabel className="justify-between">
+            <span>Custom</span>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label="Add layer"
+                    className="flex items-center gap-0.5 rounded-sm px-1 text-[11px] text-sidebar-foreground/70 hover:text-sidebar-foreground"
+                  >
+                    <Plus className="size-3" /> Add layer
+                  </button>
+                }
+              />
+              <DropdownMenuContent align="end">
+                {ADD_LAYER_TYPES.map(({ type, label, Icon }) => (
+                  <DropdownMenuItem key={type} onClick={() => props.onAddLayer(type)}>
+                    <Icon className="size-3.5" /> {label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {customLayers.length === 0 && (
+                <p className="px-2 py-1.5 text-[11px] text-sidebar-foreground/50">
+                  No custom layers — add one above.
+                </p>
+              )}
+              {customLayers.map((l) => (
+                <LayerRow key={l.id} id={l.id} {...props} />
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      )}
     </>
   );
 }
