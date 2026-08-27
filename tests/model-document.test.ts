@@ -144,3 +144,17 @@ describe("expandCustomFormats", () => {
     expect(out).toBe(cfg);
   });
 });
+
+describe("layer policy passthrough", () => {
+  it("a label-level lock override beats the master's locked layer", () => {
+    const m = lolevMaster();
+    m.layers.find((l) => l.id === "logo")!.locked = true;
+    const { config } = composeConfig(m, [], {}, { logo: { locked: false } });
+    expect(config.logo.locked).toBe(false);
+  });
+  it("composeConfig passes layers and disabledLayers through", () => {
+    const r = composeConfig(lolevMaster(), [], {}, undefined);
+    expect(r.layers.map((l) => l.id)).toContain("barcode");
+    expect(r.disabledLayers.has("collabLead")).toBe(true);
+  });
+});

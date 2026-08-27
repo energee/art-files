@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolve } from "../src/model/resolve";
 import type { Master } from "../src/model/types";
+import { lolevMaster } from "../src/model/lolev";
 
 const master: Master = {
   formatVersion: 1, id: "m1", name: "Test",
@@ -73,5 +74,34 @@ describe("resolve", () => {
       { id: "featured", label: "Featured", kind: "toggle", path: "collabEnabled" }] };
     const r = resolve(m, [], { featured: true });
     expect(r.config.collabEnabled).toBe(true);
+  });
+});
+
+describe("layer policy", () => {
+  it("lists every layer in draw order and skips the off-variant ones", () => {
+    const r = resolve(lolevMaster(), [], {});
+    expect(r.layers[0].id).toBe("volume");
+    expect(r.layers.at(-1)!.id).toBe("barcode");
+    expect([...r.disabledLayers].sort())
+      .toEqual(["collabCenter", "collabLead", "collabLeft"]);
+  });
+  it("enabling the collab variant lets its layers draw", () => {
+    expect(resolve(lolevMaster(), ["collab"], {}).disabledLayers.size).toBe(0);
+  });
+  it("a master-disabled layer never draws", () => {
+    const m = lolevMaster();
+    m.layers.find((l) => l.id === "qr")!.enabled = false;
+    expect(resolve(m, ["collab"], {}).disabledLayers.has("qr")).toBe(true);
+  });
+  it("a variant's layerOverrides patch the layer only while it is enabled", () => {
+    const m = lolevMaster();
+    m.variants[0].layerOverrides = { qr: { enabled: false } };
+    expect(resolve(m, ["collab"], {}).disabledLayers.has("qr")).toBe(true);
+    expect(resolve(m, [], {}).disabledLayers.has("qr")).toBe(false);
+  });
+  it("a locked layer stamps the config's Positioned lock", () => {
+    const m = lolevMaster();
+    m.layers.find((l) => l.id === "logo")!.locked = true;
+    expect(resolve(m, [], {}).config.logo.locked).toBe(true);
   });
 });

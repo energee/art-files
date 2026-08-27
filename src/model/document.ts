@@ -3,7 +3,7 @@
 // are the boundary: values/diff OUT of cfg at save time, compose INTO cfg at
 // open/toggle time (spec: Resolution; Migration — label-level overrides).
 import type { LabelConfig } from "../types";
-import type { FieldDecl, FieldValue, Master } from "./types";
+import type { FieldDecl, FieldValue, Master, MasterLayer } from "./types";
 import { deepMerge, type DeepPartial } from "./merge";
 import { resolve } from "./resolve";
 import { expandFormat, fieldRefs } from "./format";
@@ -121,10 +121,13 @@ function stripRemovals(config: LabelConfig, patch: DeepPartial<LabelConfig>): La
 export function composeConfig(
   master: Master, enabledVariants: string[],
   values: Record<string, FieldValue>, overrides: DeepPartial<LabelConfig> | undefined,
-): { config: LabelConfig; errors: Record<string, string>; warnings: string[] } {
+): {
+  config: LabelConfig; errors: Record<string, string>; warnings: string[];
+  disabledLayers: Set<string>; layers: MasterLayer[];
+} {
   const r = resolve(master, enabledVariants, values);
   const config = overrides ? stripRemovals(deepMerge(r.config, overrides), overrides) : r.config;
-  return { config, errors: r.errors, warnings: r.warnings };
+  return { config, errors: r.errors, warnings: r.warnings, disabledLayers: r.disabledLayers, layers: r.layers };
 }
 
 /** Re-compose the live config around a variant toggle, preserving the
