@@ -27,4 +27,9 @@ describe("parseMaster", () => {
     expect(() => parseMaster({ ...minimal, variations: [v, v] }))
       .toThrow(/duplicate/i);
   });
+  it("rejects a field with an unknown kind", () => {
+    const f = { id: "weird", label: "Weird", kind: "date", path: "x" };
+    expect(() => parseMaster({ ...minimal, fields: [f] }))
+      .toThrow(/kind/i);
+  });
 });

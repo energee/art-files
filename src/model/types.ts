@@ -81,9 +81,11 @@ export function parseMaster(json: unknown): Master {
     if (seen.has(v.id)) fail(`duplicate variation id "${v.id}"`);
     seen.add(v.id);
   }
+  const kinds = new Set<FieldKind>(["text", "number", "image", "code", "select", "toggle"]);
   const fids = new Set<string>();
   for (const f of [...fields, ...variations.flatMap((v) => v.fields ?? [])]) {
     if (!f.id || !f.kind || !f.path) fail(`field "${f.id ?? "?"}" missing id/kind/path`);
+    if (!kinds.has(f.kind)) fail(`field "${f.id}" has unknown kind "${f.kind}"`);
     if (fids.has(f.id)) fail(`duplicate field id "${f.id}"`);
     fids.add(f.id);
   }

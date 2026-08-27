@@ -42,6 +42,7 @@ export function resolve(
     if (f.format) {
       const { text, missing } = expandFormat(f.format, strings);
       if (missing.length === 0) setPath(out, f.path, text);
+      else warnings.push(`Field "${f.id}" format is missing: ${missing.join(", ")}.`);
     } else if (strings[f.id] !== undefined) {
       const v = values[f.id];
       setPath(out, f.path, f.kind === "toggle" ? v === true : strings[f.id]);

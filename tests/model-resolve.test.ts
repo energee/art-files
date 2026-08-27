@@ -16,6 +16,7 @@ const master: Master = {
     { id: "collab", name: "Collab", overrides: { collabEnabled: true }, layerOverrides: {},
       fields: [{ id: "partner", label: "Partner logo", kind: "image", path: "collabLeft.asset" }] },
     { id: "loud", name: "Loud", overrides: { abv: "9" }, layerOverrides: {}, fields: [] },
+    { id: "loud2", name: "Loud2", overrides: { abv: "12" }, layerOverrides: {}, fields: [] },
   ],
 };
 
@@ -28,6 +29,9 @@ describe("resolve", () => {
   it("applies enabled variations in order, last wins", () => {
     expect(resolve(master, ["collab"], {}).config.collabEnabled).toBe(true);
     expect(resolve(master, ["loud"], {}).config.abv).toBe("9");
+    // both variations override abv — the last-enabled one must win
+    expect(resolve(master, ["loud", "loud2"], {}).config.abv).toBe("12");
+    expect(resolve(master, ["loud2", "loud"], {}).config.abv).toBe("9");
   });
   it("exposes variation fields only when enabled", () => {
     expect(resolve(master, [], {}).visibleFields.map((f) => f.id)).not.toContain("partner");
@@ -55,5 +59,18 @@ describe("resolve", () => {
       { id: "qr", label: "QR", kind: "text", path: "qrPayload", format: "https://x.co/{name|slug}" }] };
     const r = resolve(m, [], { name: "Hazy IPA" });
     expect((r.config as unknown as Record<string, unknown>).qrPayload).toBe("https://x.co/hazy-ipa");
+  });
+  it("warns and skips the write when a format field's refs are missing", () => {
+    const m: Master = { ...master, fields: [...master.fields,
+      { id: "qr", label: "QR", kind: "text", path: "qrPayload", format: "https://x.co/{name|slug}" }] };
+    const r = resolve(m, [], {});
+    expect((r.config as unknown as Record<string, unknown>).qrPayload).toBeUndefined();
+    expect(r.warnings.join(" ")).toMatch(/qr/i);
+  });
+  it("writes a toggle field's boolean value to its path", () => {
+    const m: Master = { ...master, fields: [...master.fields,
+      { id: "featured", label: "Featured", kind: "toggle", path: "collabEnabled" }] };
+    const r = resolve(m, [], { featured: true });
+    expect(r.config.collabEnabled).toBe(true);
   });
 });

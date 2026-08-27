@@ -35,5 +35,7 @@ export function validateField(decl: FieldDecl, value: FieldValue): Result {
         ? ok : err(`Must be one of: ${decl.options?.join(", ") ?? ""}.`);
     case "toggle":
       return typeof value === "boolean" ? ok : err("Expected on/off.");
+    default:
+      return err(`Unknown field kind "${decl.kind}".`);
   }
 }

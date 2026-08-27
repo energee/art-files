@@ -21,4 +21,11 @@ describe("deepMerge", () => {
     const once = deepMerge(base, { a: 2 });
     expect(deepMerge(once, { a: 3 }).a).toBe(3);
   });
+  it("does not alias a patch sub-object the base lacks", () => {
+    const noStyle: { a: number; extra?: { fill: string } } = { a: 1 };
+    const patch = { extra: { fill: "#000" } };
+    const merged = deepMerge(noStyle, patch);
+    merged.extra!.fill = "#fff";
+    expect(patch.extra.fill).toBe("#000");
+  });
 });
