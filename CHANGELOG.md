@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.29] - 2026-08-27
+
+- More groundwork for masters and variations: EAN-13 and Code 128 barcode
+  encoders (verified against the published symbol tables), a barcode
+  geometry that can draw any symbology, QR style options (square, rounded,
+  or the current dots look) with a selectable error-correction level, and
+  validation for the new code types. Nothing in the app calls any of it
+  yet — no visible or behavioral change in this release.
+
 ## [0.1.28] - 2026-08-27
 
 - Groundwork for masters and variations: a new internal data model that can
