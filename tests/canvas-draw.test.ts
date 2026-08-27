@@ -78,16 +78,30 @@ describe("drawPlate", () => {
     expect(img).toBeLessThan(firstText);
   });
 
-  it("strokes a stroked text run before filling it", () => {
+  it("bridges the cavities, then strokes, then fills a stroked text run", () => {
     const { ctx, log } = fakeCtx();
     // Force a stroke on the volume line so the rule is exercised.
     const stroked = planLabel(
       { ...cfg, volume: { ...cfg.volume, stroke: "#112233" } }, m, { assets: { logoSvg } });
     drawPlate(ctx, stroked, {}, "art", FONT);
     const s = log.findIndex((c) => c.op === "strokeText");
-    const f = log.findIndex((c) => c.op === "fillText");
     expect(s).toBeGreaterThan(-1);
-    expect(s).toBeLessThan(f);
+    // The fillStyle in force at call `i` — scanned backwards rather than
+    // sliced and reversed, so it reads as "the last one set before here".
+    const inkAt = (i: number) => {
+      for (let j = i - 1; j >= 0; j--) {
+        if (log[j].op === "set:fillStyle") return log[j].args[0];
+      }
+    };
+    // The cavity bridge fills glyph copies in the STROKE colour ahead of the
+    // stroke (see bridgeOffsets); the element's own ink is the fill after it.
+    const bridge = log.findIndex((c) => c.op === "fillText");
+    expect(bridge).toBeGreaterThan(-1);
+    expect(bridge).toBeLessThan(s);
+    expect(inkAt(bridge)).toBe("#112233");
+    const ink = log.findIndex((c, i) => c.op === "fillText" && i > s);
+    expect(ink).toBeGreaterThan(-1);
+    expect(inkAt(ink)).toBe(cfg.volume.fill);
   });
 
   it("rotates rotated runs a quarter turn counter-clockwise", () => {
@@ -185,13 +199,20 @@ describe("drawPlate", () => {
     // pre-loop translate (BLEED_SHIFT) so the background isn't mistaken for
     // barcode ink.
     const itemLog = log.slice(log.findIndex((x) => x.op === "translate") + 1);
+    // Ink begins at the switch to the item's own fill colour: the digits'
+    // cavity bridge paints fillText in the STROKE colour before that, and
+    // those copies belong to the halo pass, not the ink one.
+    const inkStart = itemLog.findIndex(
+      (x) => x.op === "set:fillStyle" && x.args[0] === item.fill);
+    expect(inkStart).toBeGreaterThan(-1);
     const halo = itemLog
       .map((x, i) => (x.op === "strokeRect" || x.op === "strokeText" ? i : -1))
       .filter((i) => i >= 0);
     const ink = itemLog
-      .map((x, i) => (x.op === "fillRect" || x.op === "fillText" ? i : -1))
+      .map((x, i) => (i > inkStart && (x.op === "fillRect" || x.op === "fillText") ? i : -1))
       .filter((i) => i >= 0);
     expect(halo.length).toBeGreaterThan(0);
+    expect(ink.length).toBeGreaterThan(0);
     expect(Math.max(...halo)).toBeLessThan(Math.min(...ink));
   });
 });
