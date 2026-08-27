@@ -380,7 +380,7 @@ export function LayersPanel(props: {
             <SidebarMenu>
               {customLayers.length === 0 && (
                 <p className="px-2 py-1.5 text-[11px] text-sidebar-foreground/50">
-                  No custom layers — add one above.
+                  No custom layers
                 </p>
               )}
               {customLayers.map((l) => (

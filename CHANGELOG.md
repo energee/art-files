@@ -3,6 +3,10 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.34] - 2026-08-27
+
+- The layers panel's empty Custom group now reads just "No custom layers".
+
 ## [0.1.33] - 2026-08-27
 
 - The Design/Fill control moved from the top menubar row to the right end of
