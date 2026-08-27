@@ -259,6 +259,64 @@ simplify, then simplify again).
   configuration; Design mode is where you make it yours. It is a well-made
   default file, not a special mechanism.
 
+## Compliance: field-level validation via rule packs
+
+Validation is declarative data, not engine code. A **rule pack** is a JSON
+file of checks a master opts into (`rulePacks: ["ttb-malt-beverage"]`); the
+engine knows only check *types*, so new jurisdictions/categories are data.
+Packs declare their own `name`, `description`, `version`, citation base, and
+the regulation revision date they were checked against — the UI is fully
+data-driven and shows that date.
+
+Check types:
+
+- `exactText` — verbatim-mandated text (the government warning, with
+  "GOVERNMENT WARNING" caps + bold); diffed against the statute string.
+- `minTypeSize` — physical type minimums in mm, stepped by container volume.
+  The resolver knows label dimensions + pt sizes, so true mm is computable —
+  the thing generic label tools can't check.
+- `maxCharsPerInch` — legibility density caps, from existing text metrics.
+- `present` — required layers exist and are enabled (warning, class
+  designation, net contents, name & address, ABV where required).
+- `pattern` — statement formats (ABV "X% alc/vol" variants, net contents
+  wording); the `format`-string mechanism makes these nearly self-enforcing.
+- `vocabulary` — class/type designation must include a recognized class
+  ("beer", "ale", "lager", "malt liquor", …) plus a rewrite dictionary for
+  known traps: geographic style names ("Kölsch" → suggest "Kolsch-style ale"),
+  abbreviation expansions ("IPA" → "India Pale Ale"). Suggestions cite their
+  CFR section.
+
+Execution: the validator runs on the **resolved** config (variations and
+format strings included). Output is advisory, never blocking — COLA approval
+is a human process; our job is "you'll bounce, here's why, here's the fix."
+Each finding: severity, plain-English sentence, citation, and a one-click fix
+where possible ("Insert exact warning text", "Set to 2.1mm").
+
+Management UI (no pack manager to learn):
+
+- Design mode has one **Compliance card**: a checklist of available packs,
+  each one toggle + one-line description. All-or-nothing per pack — no
+  per-rule cherry-picking (that is the footgun packs exist to prevent).
+- Escape hatch: individual findings can be **dismissed with a reason**,
+  per-label, recorded in the `.label`, visibly badged as dismissed.
+- A status chip in both modes (green check / "3 issues"); clicking a finding
+  selects the offending layer. Inline badges on offending layers.
+- Export with open findings shows the list once with "Export anyway" — never
+  blocks.
+- Shipped packs are bundled files; "Import pack…" adds third-party or updated
+  packs (file-open, appears in the checklist). No pack-authoring UI.
+
+Shipped pack: a best-attempt **`ttb-malt-beverage`** pack, with all numbers
+verified against the current eCFR text of 27 CFR Parts 7 and 16 during
+implementation (never from memory), stamped with the revision date checked.
+The compliance card carries a standing note that this is authoring
+assistance, not legal advice or a substitute for COLA approval.
+
+Consequences elsewhere in the design: the starter master's warning layer
+ships `exactText`-bound and locked (correct by default), and `select` fields
+are the natural home for class designation (the designer offers only
+compliant choices).
+
 ## Rename: Label Lab → Proof
 
 The product is renamed **Proof** (print-proofing connotation; trademark/domain
