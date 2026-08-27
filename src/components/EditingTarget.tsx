@@ -5,11 +5,15 @@
 // model/document.ts's EditTarget / applyDesignEdit). App routes every Design
 // edit through the target this picks (see App.tsx's `designEdit`).
 //
-// It also scopes the sidebar: under the picker sits a READ-ONLY list of the
-// fields the current target declares — the master's own, or just the
-// variant's. That list is deliberately not FieldList: Design mode *declares*
-// fields, Fill mode *fills* them, and the two share nothing but the word.
-// Task 5's "Make fillable" appends to exactly this list.
+// It also scopes the sidebar. The second export here, TargetFields, is the
+// READ-ONLY list of the fields the current target declares — the master's
+// own, or just the variant's. It lives in this file because it is part of the
+// selector's job, but it is a separate element so App can put it where the
+// spec says it goes: master picker, Editing selector, layers, then the fields
+// of the current target only, then the inspector. That list is deliberately
+// not FieldList: Design mode *declares* fields, Fill mode *fills* them, and
+// the two share nothing but the word. Task 5's "Make fillable" appends to
+// exactly this list.
 //
 // The dropdown is a plain disclosure button rather than the shadcn
 // DropdownMenu the layers panel uses: this menu's items are the document's
@@ -45,7 +49,6 @@ export function EditingTarget(props: {
   const label = props.target === "master"
     ? "Master"
     : variant?.name ?? props.target.variant;
-  const fields = props.target === "master" ? props.master.fields : variant?.fields ?? [];
 
   const closeNaming = () => { setNaming(false); setDraft(""); };
   const commitNaming = () => {
@@ -145,27 +148,43 @@ export function EditingTarget(props: {
           )}
         </div>
       )}
+    </div>
+  );
+}
 
-      {/* The current target's declared fields — read-only here; Fill mode's
-          FieldList is what edits their values. */}
-      <div id="editing-target-fields" className="mt-2 px-2">
-        <p className="pb-1 text-[11px] uppercase tracking-wide text-sidebar-foreground/50">Fields</p>
-        {fields.length === 0 ? (
-          <p className="text-[11px] text-sidebar-foreground/60">
-            No fields yet — select a layer and choose Make fillable.
-          </p>
-        ) : (
-          <ul className="space-y-0.5">
-            {fields.map((f) => (
-              <li key={f.id} className="flex items-center gap-1.5 text-[11px] text-sidebar-foreground/85">
-                <span>{f.label}</span>
-                <span className="text-sidebar-foreground/40">·</span>
-                <span className="capitalize text-sidebar-foreground/60">{f.kind}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+/** The fields the CURRENT target declares, read-only — name plus kind. The
+ *  master's own when the target is the master, and a variant's own (never the
+ *  master's too) when it isn't: this answers "what does the thing I am
+ *  editing declare", not "what will a filler see". App renders it under the
+ *  layers list; Fill mode's FieldList is what edits the values. */
+export function TargetFields(props: {
+  master: Master;
+  target: EditTarget;
+}): React.JSX.Element {
+  // A local, not props.target: TS can't hold the narrowing across the
+  // callback below.
+  const target = props.target;
+  const fields = target === "master"
+    ? props.master.fields
+    : props.master.variants.find((v) => v.id === target.variant)?.fields ?? [];
+  return (
+    <div id="editing-target-fields" className="px-4 py-2">
+      <p className="pb-1 text-[11px] uppercase tracking-wide text-sidebar-foreground/50">Fields</p>
+      {fields.length === 0 ? (
+        <p className="text-[11px] text-sidebar-foreground/60">
+          No fields yet — select a layer and choose Make fillable.
+        </p>
+      ) : (
+        <ul className="space-y-0.5">
+          {fields.map((f) => (
+            <li key={f.id} className="flex items-center gap-1.5 text-[11px] text-sidebar-foreground/85">
+              <span>{f.label}</span>
+              <span className="text-sidebar-foreground/40">·</span>
+              <span className="capitalize text-sidebar-foreground/60">{f.kind}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

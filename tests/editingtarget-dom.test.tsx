@@ -8,7 +8,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EditingTarget } from "../src/components/EditingTarget";
+import { EditingTarget, TargetFields } from "../src/components/EditingTarget";
 import { lolevMaster } from "../src/model/lolev";
 import type { Master } from "../src/model/types";
 
@@ -38,6 +38,13 @@ function renderTarget(props: Partial<Parameters<typeof EditingTarget>[0]> = {}) 
   };
   act(() => { root.render(createElement(EditingTarget, full)); });
   return full;
+}
+
+/** TargetFields is its own export so App can render it UNDER the layers list,
+ *  where the spec puts the current target's fields — see EditingTarget.tsx's
+ *  header. Same file, same data, separate element. */
+function renderFields(props: Parameters<typeof TargetFields>[0]) {
+  act(() => { root.render(createElement(TargetFields, props)); });
 }
 
 const trigger = () => container.querySelector("#editing-target") as HTMLButtonElement;
@@ -119,13 +126,13 @@ describe("EditingTarget", () => {
   });
 
   it("scopes the field list to the current target", () => {
-    renderTarget({ master: masterWithCollabField() });
+    renderFields({ master: masterWithCollabField(), target: "master" });
     const fields = container.querySelector("#editing-target-fields")!;
     for (const label of ["Beer name", "Style", "ABV", "Description", "UPC"]) {
       expect(fields.textContent).toContain(label);
     }
 
-    renderTarget({ master: masterWithCollabField(), target: { variant: "collab" } });
+    renderFields({ master: masterWithCollabField(), target: { variant: "collab" } });
     const variantFields = container.querySelector("#editing-target-fields")!;
     expect(variantFields.textContent).toContain("Pairing");
     for (const label of ["Beer name", "ABV", "UPC"]) {
@@ -134,7 +141,7 @@ describe("EditingTarget", () => {
   });
 
   it("tells an empty target how to declare its first field", () => {
-    renderTarget({ target: { variant: "collab" } });
+    renderFields({ master: lolevMaster(), target: { variant: "collab" } });
     expect(container.querySelector("#editing-target-fields")!.textContent)
       .toContain("No fields yet — select a layer and choose Make fillable.");
   });

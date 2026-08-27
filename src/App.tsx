@@ -55,7 +55,7 @@ import {
   Inspector, type CollabFiles, type DocSettings, type InspectorFiles,
 } from "@/components/StyleProperties";
 import { LayersPanel } from "@/components/LayersPanel";
-import { EditingTarget } from "@/components/EditingTarget";
+import { EditingTarget, TargetFields } from "@/components/EditingTarget";
 import { FieldList } from "@/components/FieldList";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
 import {
@@ -332,7 +332,42 @@ function download(url: string, name: string) {
  *  produced — and, since Design mode authors the master rather than the label
  *  (see `designEdit`), so a design edit's new master and the config it
  *  recomposed undo as ONE step instead of drifting apart. */
-type Doc = { cfg: LabelConfig; enabledVariants: string[]; master: Master };
+export type Doc = { cfg: LabelConfig; enabledVariants: string[]; master: Master };
+
+/** The pure doc transition behind a per-LABEL edit: mutate this document's
+ *  own config and nothing else. Exactly what every edit did before Design
+ *  mode learned to author masters, and still the whole story in Fill mode.
+ *  Module-level and exported so the routing has a test (tests/
+ *  design-routing.test.ts) without mounting the whole editor. */
+export function labelEditDoc(doc: Doc, mutate: (c: LabelConfig) => void): Doc {
+  const cfg = structuredClone(doc.cfg);
+  mutate(cfg);
+  return { ...doc, cfg };
+}
+
+/** The pure doc transition behind a DESIGN edit: run the same LabelConfig
+ *  mutation, but record its diff on the master (or the editing variant)
+ *  instead of this label — see applyDesignEdit in model/document.ts. The
+ *  label's own deviations are diffed off the OLD master's compose and
+ *  re-applied on top of the new one, so authoring the master never silently
+ *  discards them; cfg is recomposed here rather than in a later step, so the
+ *  new master and the config it produced land in ONE history entry and undo
+ *  together. Returns `doc` itself when the mutation changed nothing (the
+ *  identity applyDesignEdit promises) — no history entry, no phantom dirty
+ *  dot. */
+export function designEditDoc(
+  doc: Doc, target: EditTarget, mutate: (c: LabelConfig) => void,
+): Doc {
+  const values = valuesFromConfig(doc.master, doc.enabledVariants, doc.cfg);
+  const master = applyDesignEdit(doc.master, target, doc.enabledVariants, values, mutate);
+  if (master === doc.master) return doc;
+  const overrides = configDiff(
+    composeConfig(doc.master, doc.enabledVariants, values, undefined).config, doc.cfg);
+  const cfg = composeConfig(
+    master, doc.enabledVariants, values,
+    Object.keys(overrides).length ? overrides : undefined).config;
+  return { cfg, enabledVariants: doc.enabledVariants, master };
+}
 
 /** A file the shell wants this editor to open. seq is monotonic — a new
  *  value triggers the open, so a re-render can never re-open. Exactly one
@@ -827,40 +862,22 @@ export const DocumentEditor = memo(function DocumentEditor({
     localStorage.setItem(VIEW_KEY, JSON.stringify({ showRulers, showGuides, showBleed: bleed }));
   }, [showRulers, showGuides, bleed]);
 
-  /** A per-LABEL edit: mutate this document's own config, exactly as every
-   *  edit did before Design mode learned to author masters. Still the whole
-   *  story in Fill mode, and the path the two label-fact exceptions below
-   *  (onFieldValue, onNudge*) take in BOTH modes. */
+  /** A per-LABEL edit (labelEditDoc): this document's config only. Still the
+   *  whole story in Fill mode, and the path the ONE label-fact exception
+   *  below — field-value writes — takes in both modes. */
   const labelEdit = (fn: (c: LabelConfig) => void, coalesce?: boolean) => {
     markDirty(); // every config edit passes through here — see `dirty`
-    setDoc((d) => {
-      const n = structuredClone(d.cfg);
-      fn(n);
-      return { ...d, cfg: n };
-    }, coalesce);
+    setDoc((d) => labelEditDoc(d, fn), coalesce);
   };
 
-  /** A DESIGN edit: run the same LabelConfig mutation, but record its diff on
-   *  the master (or the editing variant) instead of this label — see
-   *  applyDesignEdit in model/document.ts. The label's own deviations are
-   *  diffed off the OLD master first and re-applied on top of the new one, so
-   *  authoring the master never silently discards them; cfg is recomposed in
-   *  the SAME history entry as the new master, so the preview updates now and
-   *  undo restores both together. An edit that changed nothing returns the
-   *  master by identity — no history entry, and no phantom dirty dot. */
+  /** A DESIGN edit (designEditDoc): the same mutation, recorded on the master
+   *  or the editing variant, with cfg recomposed in the SAME history entry.
+   *  `coalesce` rides straight through to the history stack, so a gesture
+   *  that emits many updates (a drag, an inline text session) still lands as
+   *  one undo step — see useHistory's `pushed`. */
   const designEdit = (fn: (c: LabelConfig) => void, coalesce?: boolean) => {
     markDirty();
-    setDoc((d) => {
-      const values = valuesFromConfig(d.master, d.enabledVariants, d.cfg);
-      const nextMaster = applyDesignEdit(d.master, editingTarget, d.enabledVariants, values, fn);
-      if (nextMaster === d.master) return d;
-      const overrides = configDiff(
-        composeConfig(d.master, d.enabledVariants, values, undefined).config, d.cfg);
-      const config = composeConfig(
-        nextMaster, d.enabledVariants, values,
-        Object.keys(overrides).length ? overrides : undefined).config;
-      return { cfg: config, enabledVariants: d.enabledVariants, master: nextMaster };
-    }, coalesce);
+    setDoc((d) => designEditDoc(d, editingTarget, fn), coalesce);
   };
 
   /** THE routing rule, in one branch so no call site has to know about it:
@@ -982,6 +999,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     lastFieldRef.current = field.id;
     // labelEdit, not update: a field's VALUE is a label fact — this beer's
     // name — never a master default, so it stays per-label in both modes.
+    // The one such exception: everything else edited in Design mode, drags
+    // included, is a master or variant edit (plan: Global Constraints).
     labelEdit((c) => setPath(c as unknown as Record<string, unknown>, field.path,
       field.kind === "toggle" ? value === true : String(value)), !first);
   };
@@ -1995,9 +2014,10 @@ export const DocumentEditor = memo(function DocumentEditor({
             for just the rows where the two differ. */}
         <Sidebar collapsible="offcanvas">
           <SidebarContent>
-            {/* Design shows the Editing selector (which the whole sidebar is
-                scoped by — see EditingTarget) over the layers panel (style,
-                order, visibility); Fill shows the label, the field list, and
+            {/* Design's sidebar, scoped by the selector and in the spec's
+                order: the Editing selector, the layers list, then the fields
+                of the CURRENT target only (the inspector is the right-hand
+                column below). Fill shows the label, the field list, and
                 variant checkboxes — no styling, no layers panel (spec: UI). */}
             {mode === "design"
               ? <>
@@ -2008,6 +2028,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                     onToggleHidden={toggleHidden} selected={selected} onSelect={pick}
                     onAddLayer={addCustomLayer} onMoveCustomLayer={moveCustomLayer}
                     onLayerEdit={layerEdit} rows={panelLayerRows} />
+                  <TargetFields master={master} target={editingTarget} />
                 </>
               : <FieldList master={master} enabledVariants={enabledVariants} cfg={cfg}
                   onValue={onFieldValue} onVariant={setVariant} />}
@@ -2133,18 +2154,20 @@ export const DocumentEditor = memo(function DocumentEditor({
               // Drag-to-move: first move opens the step, the rest coalesce —
               // one undo per drag, mirroring the text-edit session above.
               onNudge={(id, offsetY, first) => {
-                // labelEdit, not update: where this label's art actually sits
-                // is a label fact — a nudge answers "on THIS can", not "on
-                // every can" — so a drag stays per-label in both modes.
-                labelEdit((c) => { dragTarget(c, collabSlots, id)?.set(c, offsetY); }, !first);
+                // `update`, so the drag follows the mode: moving a layer in
+                // Design mode is AUTHORING (it lands on the master or the
+                // editing variant), and a drag is a label fact only in Fill
+                // mode, where it nudges this one can. `!first` still folds
+                // the whole drag into one undo step through either path.
+                update((c) => { dragTarget(c, collabSlots, id)?.set(c, offsetY); }, !first);
               }}
               // Two-axis drag for an unlocked custom layer (dragTarget2's
               // "position" form) — same fold-into-one-undo-step contract as
               // onNudge above, sharing its onNudgeCancel.
               onNudgePosition={(id, position, first) => {
-                // labelEdit for the same reason as onNudge above: a dragged
-                // position is a label fact, in both modes.
-                labelEdit((c) => {
+                // `update` for the same reason as onNudge above: authoring in
+                // Design mode, a label fact in Fill mode.
+                update((c) => {
                   const t = dragTarget2(c, collabSlots, id);
                   if (t?.kind === "position") t.set(c, position);
                 }, !first);
