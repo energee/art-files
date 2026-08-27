@@ -8,6 +8,7 @@
 // bytes place text exactly as before, the UI passes the fonts.ts canvas
 // metrics — the same split hittest always had.
 import type { CollabSlot, Fill, Style, StyledLine, LabelConfig } from "./types";
+import { anchoredX, anchoredY, type GuideLines } from "./model/position";
 import { logoNudge, type ElementId } from "./elements";
 import { parseRuns } from "./description";
 import { strokeLayerOf } from "./strokes";
@@ -112,6 +113,23 @@ export interface PlanAssets {
   logoSvg: string;
   collabLeft?: PlanArt | null;
   collabCenter?: PlanArt | null;
+  /** Custom image layers' intrinsic aspect (w/h), keyed by CustomImageLayer's
+   *  `asset`. A layer whose key is absent here emits nothing (collab-art
+   *  contract) — the asset hasn't loaded/isn't supplied. */
+  custom?: Record<string, { aspect: number }>;
+}
+
+/** The guide lines a custom layer's anchor resolves against: the label's
+ *  safe-area edges (L.SAFE), center = the midpoint of left/right. The ONE
+ *  place this is computed — Task 4's drag-to-position math (model/position.ts)
+ *  uses the same GuideLines shape, so a custom layer's plotted position and
+ *  its drag guides can never disagree. */
+export function labelGuides(): GuideLines {
+  return {
+    left: L.SAFE.left, right: L.SAFE.right,
+    center: (L.SAFE.left + L.SAFE.right) / 2,
+    top: L.SAFE.top, bottom: L.SAFE.bottom,
+  };
 }
 
 /** The element's outer stroke as data (width in points). Null when off —
@@ -420,6 +438,36 @@ export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {})
   }
 
   if (A && !skip("barcode")) out.push(barcodeItem(cfg, m));
+
+  // Master-variation custom layers — appended last so they draw on top of
+  // every fixed element, in the order they're stored. Absent/empty
+  // customLayers is a no-op: nothing appends, so the plan is byte-for-byte
+  // the pre-feature list (the regression lock plan.test.ts checks).
+  for (const layer of cfg.customLayers ?? []) {
+    if (skip(layer.id)) continue;
+    const guides = labelGuides();
+    if (layer.type === "text") {
+      const runs = parseRuns(layer.line);
+      const faceOf = (r: StyledLine): Face => (r.bold ? "semibold" : "regular");
+      const tracking = layer.line.letterSpacing ?? 0;
+      const tw = L.runsWidth(runs, (r) => m(r.text, layer.size, faceOf(r)), tracking);
+      out.push(...lineRuns(layer.id, layer.line, m, {
+        x: anchoredX(layer.position, tw, guides),
+        baseline: anchoredY(layer.position, layer.size, guides) + layer.size,
+        size: layer.size,
+      }));
+    } else {
+      const asset = A?.custom?.[layer.asset];
+      if (!asset) continue;
+      const h = layer.w / asset.aspect;
+      out.push({
+        kind: "image", id: layer.id,
+        x: anchoredX(layer.position, layer.w, guides),
+        y: anchoredY(layer.position, h, guides),
+        w: layer.w, h,
+      });
+    }
+  }
 
   return out;
 }

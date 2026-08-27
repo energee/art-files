@@ -60,7 +60,7 @@ export const DEFAULT_MARGIN_PT = 24.12; // 0.335in
  *  position below is an expression of. Frozen at the measured bleed like
  *  CENTER_X, deliberately not ART.x/y: positions are page-absolute at
  *  MEASURED_BLEED and BLEED_SHIFT re-bases them at the output boundaries. */
-const SAFE = {
+export const SAFE = {
   left: MEASURED_BLEED + DEFAULT_MARGIN_PT,
   right: MEASURED_BLEED + TRIM.w - DEFAULT_MARGIN_PT,
   top: MEASURED_BLEED + DEFAULT_MARGIN_PT,

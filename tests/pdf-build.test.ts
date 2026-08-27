@@ -215,3 +215,23 @@ describe("Assets.hidden — the layers-panel eye", () => {
     expect(await countImageXObjects(hidden)).toBe(baseline);
   });
 });
+
+describe("Master-variation custom layers", () => {
+  it("a custom text layer draws through the shared display list", async () => {
+    const showOps = (s: string) => (s.match(/\bTj\b/g) ?? []).length;
+    const cfg = defaultConfig();
+    const withLayer = {
+      ...cfg,
+      customLayers: [{
+        id: "custom-t1" as const, name: "Custom", type: "text" as const, size: 12,
+        position: { anchor: "left" as const, vAnchor: "top" as const, offsetX: 0, offsetY: 0 },
+        line: { text: "HELLO", fill: "#000000" as const, layer: "metallic" as const },
+      }],
+    };
+    const plain = await buildArtPdf(cfg, assets);
+    const withLayerBytes = await buildArtPdf(withLayer, assets);
+    expect(withLayerBytes.length).not.toBe(plain.length);
+    expect(showOps(await contentStreamText(withLayerBytes)))
+      .toBeGreaterThan(showOps(await contentStreamText(plain)));
+  });
+});
