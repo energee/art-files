@@ -202,9 +202,8 @@ function drawText(ctx: Ctx, r: PlacedText, mode: Mode, fontCss: string, ring: Ri
     // Bridge the cavities first, in the stroke's own ink, then stroke over
     // them: the copies sit inside the true envelope, so the stroke keeps the
     // outer edge.
-    ctx.fillStyle = ink;
+    ctx.fillStyle = ctx.strokeStyle = ink;
     for (const { dx, dy } of ring(r.stroke.w)) paint("fillText", dx, dy);
-    ctx.strokeStyle = ink;
     ctx.lineWidth = 2 * r.stroke.w; // outer half is the w-wide stroke; fill covers the inner
     paint("strokeText");
   }
@@ -217,9 +216,11 @@ function drawText(ctx: Ctx, r: PlacedText, mode: Mode, fontCss: string, ring: Ri
 /** Both plates of the barcode — the same paint logic as pdf/build.ts's
  *  drawBarcode, from the same item. */
 function drawBarcode(ctx: Ctx, item: PlacedBarcode, mode: Mode, fontCss: string, ring: Ring) {
-  // One ring for the whole barcode: every digit strokes at the same width.
-  const bridge = item.S > 0 ? ring(item.S) : [];
-  const digit = (d: { text: string; x: number; y: number }, paint: "fill" | "stroke") => {
+  const digit = (
+    d: { text: string; x: number; y: number },
+    paint: "fill" | "stroke",
+    bridge: { dx: number; dy: number }[] = [],
+  ) => {
     ctx.save();
     ctx.translate(d.x, d.y);
     ctx.rotate(-Math.PI / 2);
@@ -265,7 +266,9 @@ function drawBarcode(ctx: Ctx, item: PlacedBarcode, mode: Mode, fontCss: string,
     // EVERY stroke shape before ANY fill — interleaving distorts module
     // widths until the code stops decoding (see pdf/build.ts).
     for (const b of bars) ctx.strokeRect(b.x, b.yTop, b.w, b.h);
-    for (const d of item.digits) digit(d, "stroke");
+    // One ring for the whole barcode: every digit strokes at the same width.
+    const bridge = ring(item.S);
+    for (const d of item.digits) digit(d, "stroke", bridge);
   }
   ctx.fillStyle = cssFill(item.fill);
   for (const b of bars) ctx.fillRect(b.x, b.yTop, b.w, b.h);

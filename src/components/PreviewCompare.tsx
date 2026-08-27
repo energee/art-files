@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/resizable";
 import {
   ART, DESC, FONT_ASC, FONT_DESC, GOLD, HANDLE_ADDR, PAGE, PREVIEW_MAX_W,
-  PREVIEW_RASTER_MAX_EDGE, previewRasterScale,
+  PREVIEW_RASTER_MAX_EDGE, previewRasterScale, trackedWidth,
 } from "@/layout";
 import type { LabelConfig, Style, StyledLine } from "@/types";
 import {
@@ -814,14 +814,15 @@ export const PreviewCompare = forwardRef<
         const size = em / (FONT_ASC + FONT_DESC);
         // A suffixed field (the ABV's unit tail) has to END where its glyphs
         // end, so the redrawn tail lands where the render will put it: the
-        // same Measure the canvas draws and hit-tests with, plus the tracking
-        // CSS adds after every glyph (which the ink measure excludes), plus
-        // 2px of caret room. Every other field keeps the full box — shrinking
-        // those to their glyphs would only shrink the click target.
+        // same Measure and trackedWidth the canvas draws and hit-tests with,
+        // plus the one trailing gap CSS letter-spacing adds after the last
+        // glyph (which the ink measure excludes), plus 2px of caret room.
+        // Every other field keeps the full box — shrinking those to their
+        // glyphs would only shrink the click target.
         const typed = spec.get(cfg);
+        const ls = st.letterSpacing ?? 0;
         const fieldWidth = spec.suffix
-          ? `calc(${cqh(measure(typed, size, !!st.bold)
-              + (st.letterSpacing ?? 0) * typed.length)} + 2px)`
+          ? `calc(${cqh(trackedWidth(measure(typed, size, !!st.bold), typed, ls) + ls)} + 2px)`
           : "100%";
         return (
           <div
@@ -868,7 +869,7 @@ export const PreviewCompare = forwardRef<
             >
               <input
                 autoFocus
-                value={spec.get(cfg)}
+                value={typed}
                 aria-label={label}
                 // Caret at the end, no select-all: a highlighted block over
                 // the artwork reads as a smudge, and typing usually appends.

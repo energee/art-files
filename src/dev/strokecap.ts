@@ -12,7 +12,7 @@ import { planLabel } from "../plan";
 import { drawPlate } from "../canvas/draw";
 import { labelFontCss, loadLabelFont, loadLabelFaces } from "../fonts";
 import { defaultConfig } from "../defaults";
-import { boxesFor, type Measure } from "../hittest";
+import { boxesFor } from "../hittest";
 import { BLEED_SHIFT, PAGE, previewRasterScale } from "../layout";
 import logoSvg from "../assets/logo2025.svg?raw";
 
@@ -42,14 +42,17 @@ declare global {
 
 const b64 = (bytes: Uint8Array) => {
   let s = "";
-  for (const b of bytes) s += String.fromCharCode(b);
+  // Chunked: one fromCharCode call per 32k slice, not one append per byte.
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(s);
 };
 
 async function run() {
   const report = document.getElementById("report")!;
-  const [fonts, mf] = await Promise.all([loadFonts(), loadLabelFaces()]);
-  await loadLabelFont();
+  // loadLabelFont's return IS the hit-test Measure (bold measures the
+  // SemiBold face — the convention lives in fonts.ts, not here).
+  const [fonts, mf, measure] = await Promise.all([loadFonts(), loadLabelFaces(), loadLabelFont()]);
   const cfg = defaultConfig();
   cfg.abv = "8.5";
   const plan = planLabel(cfg, mf, { assets: { logoSvg } });
@@ -70,7 +73,6 @@ async function run() {
   // descent, so this page has no box maths of its own to drift. Vector items
   // like the laurel come along for free: their strokes go through the same
   // stroker, so the same cavity question applies to their leaf tips.
-  const measure: Measure = (t, s, bold) => mf(t, s, bold ? "semibold" : "regular");
   const ids = [...new Set(plan.map((r) => r.id))];
   const crops: Record<string, Crop> = {};
   for (const b of boxesFor(ids, cfg, measure)) {
