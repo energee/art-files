@@ -10,8 +10,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LayersPanel } from "../src/components/LayersPanel";
 import { SidebarProvider } from "../src/components/ui/sidebar";
 import { lolevMaster } from "../src/model/lolev";
-import { composeConfig } from "../src/model/document";
+import { addLayer, composeConfig } from "../src/model/document";
 import { panelRows } from "../src/model/panel";
+import type { CustomLayer } from "../src/types";
 
 // React only honours act() when the environment opts in (see
 // tests/fieldlist-dom.test.ts for the same line).
@@ -99,6 +100,67 @@ describe("LayersPanel", () => {
     expect(leadRow).toBeDefined();
     expect(leadRow!.textContent).toContain("Collab");
     expect(leadRow!.querySelector(".opacity-50")).not.toBeNull();
+  });
+});
+
+// Task 5b fix round 1 (Important): a materialized custom row's Lock must
+// route through onMaterializedLayerEdit (MasterLayer.locked), never through
+// `update` (which used to diff the whole cfg.customLayers array wholesale
+// into master.defaults.customLayers and get silently reverted on the next
+// resolve). A LEGACY per-label custom row — no MasterLayer backing it —
+// must keep using `update`, exactly as before this fix.
+describe("LayersPanel Lock button (Task 5b fix round 1)", () => {
+  function twoLockableCustomRowsProps() {
+    const props = shippedProps();
+    const master = addLayer(lolevMaster(), "master",
+      { id: "custom-a", name: "Materialized", enabled: true, kind: "text" },
+      {
+        type: "text", size: 10,
+        position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
+        line: { text: "m", fill: "#000000", layer: "white" },
+      });
+    const r = composeConfig(master, [], {}, undefined);
+    const legacy: CustomLayer = {
+      id: "custom-b", name: "Legacy", type: "text", size: 10,
+      position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
+      line: { text: "l", fill: "#000000", layer: "white" },
+    };
+    const cfg = { ...r.config, customLayers: [...(r.config.customLayers ?? []), legacy] };
+    const rows = panelRows(master, r.layers, r.disabledLayers, cfg);
+    return { ...props, cfg, rows, master };
+  }
+
+  function rowFor(name: string) {
+    return Array.from(container.querySelectorAll("li"))
+      .find((li) => li.textContent?.includes(name))!;
+  }
+
+  it("a materialized row's Lock calls onMaterializedLayerEdit, not update or onLayerEdit", () => {
+    const props = twoLockableCustomRowsProps();
+    const onLayerEdit = vi.fn();
+    const onMaterializedLayerEdit = vi.fn();
+    renderPanel({ ...props, onLayerEdit, onMaterializedLayerEdit });
+    const row = rowFor("Materialized");
+    act(() => {
+      (row.querySelector('[aria-label="Lock Materialized"]') as HTMLButtonElement).click();
+    });
+    expect(onMaterializedLayerEdit).toHaveBeenCalledWith("custom-a", { locked: true });
+    expect(onLayerEdit).not.toHaveBeenCalled();
+    expect(props.update).not.toHaveBeenCalled();
+  });
+
+  it("a legacy row's Lock still calls update, not onMaterializedLayerEdit", () => {
+    const props = twoLockableCustomRowsProps();
+    const onLayerEdit = vi.fn();
+    const onMaterializedLayerEdit = vi.fn();
+    renderPanel({ ...props, onLayerEdit, onMaterializedLayerEdit });
+    const row = rowFor("Legacy");
+    act(() => {
+      (row.querySelector('[aria-label="Lock Legacy"]') as HTMLButtonElement).click();
+    });
+    expect(props.update).toHaveBeenCalledTimes(1);
+    expect(onMaterializedLayerEdit).not.toHaveBeenCalled();
+    expect(onLayerEdit).not.toHaveBeenCalled();
   });
 });
 

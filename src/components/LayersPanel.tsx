@@ -128,11 +128,11 @@ function StyleSummary({ el, cfg }: { el: LabelElement; cfg: LabelConfig }) {
  *  Document group builds one inline with a plain lookup name and never
  *  inactive/badged). */
 type Row = Pick<PanelRow, "id" | "name">
-  & Partial<Pick<PanelRow, "variantName" | "inactive" | "locked" | "enabled">>;
+  & Partial<Pick<PanelRow, "variantName" | "inactive" | "locked" | "enabled" | "materialized">>;
 
 function LayerRow({
   row, cfg, update, hidden: hiddenSet, onToggleHidden, selected, onSelect,
-  mode, reorder, onLayerEdit,
+  mode, reorder, onLayerEdit, onMaterializedLayerEdit,
 }: {
   row: Row;
   cfg: LabelConfig;
@@ -150,6 +150,14 @@ function LayerRow({
    *  means read-only policy — the lock shows as a badge and the name can't
    *  be renamed, which is what Fill mode and the panel's own tests get. */
   onLayerEdit?: (layerId: string, patch: Partial<MasterLayer>) => void;
+  /** A MATERIALIZED custom row's policy write (fix round 1: Lock) — App's
+   *  materializedLayerEdit → applyMaterializedLayerEdit, id-search based
+   *  rather than editing-target based (see that function's doc comment).
+   *  Given only alongside `onLayerEdit` (both come from the same Design-mode
+   *  gate); a LEGACY custom row (`row.materialized === false`) never uses
+   *  this — its lock keeps going through `update`, same as before this
+   *  fix. */
+  onMaterializedLayerEdit?: (layerId: string, patch: Partial<MasterLayer>) => void;
   /** Front/back position within the custom-layer stack, present only for a
    *  custom row (undefined for master and Document rows, which get no
    *  reorder control at all). */
@@ -334,15 +342,26 @@ function LayerRow({
               <Power />
             </button>
           )}
-          {/* Lock. Custom rows write `locked` into their own cfg layer (a
-              per-label fact). A MASTER row's lock is master policy (spec:
-              Lock, stamped in the master file) and goes through onLayerEdit
-              instead — interactive while that prop is given (Design mode),
-              and a read-only badge without it, which is all a locked master
-              layer could show before. Lit while locked, same idiom as the
-              eye. (The logo/collab slots' own lock still lives in the
-              inspector's StackNudge/CollabSlotContent, not the row.) */}
-          {customLayer ? (
+          {/* Lock. THREE cases, in order:
+              1. A LEGACY custom row (`custom` but not `materialized`) — its
+                 identity lives purely in `cfg.customLayers`, a per-label
+                 fact, so `locked` stays a direct `update` write into its own
+                 cfg entry, same as before Task 5b's fix round 1.
+              2. A MATERIALIZED custom row, or a MASTER row — both now carry
+                 real MasterLayer policy (Task 5b: `addLayer` gives a
+                 materialized row a `layers` entry exactly like a built-in
+                 one), so both route through the SAME idiom: interactive
+                 while the matching callback is given (Design mode), a
+                 read-only badge without it. Materialized rows use
+                 onMaterializedLayerEdit (id-search based — see its own doc
+                 comment on why not onLayerEdit); master rows use onLayerEdit
+                 (editing-target based, unchanged).
+              3. Neither callback, but still locked: the read-only badge
+                 (Fill mode, or the panel's own tests).
+              Lit while locked, same idiom as the eye. (The logo/collab
+              slots' own lock still lives in the inspector's StackNudge/
+              CollabSlotContent, not the row.) */}
+          {customLayer && !row.materialized ? (
             <button
               type="button"
               onClick={(e) => {
@@ -361,13 +380,18 @@ function LayerRow({
             >
               <Lock />
             </button>
-          ) : onLayerEdit ? (
-            // A master row in Design mode: lock is editable now, recorded on
-            // the master (or the editing variant) rather than in the config —
-            // same idiom as the custom toggle above, different destination.
+          ) : (customLayer && row.materialized ? onMaterializedLayerEdit : onLayerEdit) ? (
+            // A master row, or a materialized custom row, in Design mode:
+            // lock is editable now, recorded on the master (or the editing/
+            // owning variant) rather than in the config — same idiom as the
+            // legacy custom toggle above, different destination.
             <button
               type="button"
-              onClick={(e) => { stop(e); onLayerEdit(row.id, { locked: !row.locked }); }}
+              onClick={(e) => {
+                stop(e);
+                (customLayer && row.materialized ? onMaterializedLayerEdit! : onLayerEdit!)(
+                  row.id, { locked: !row.locked });
+              }}
               aria-label={row.locked ? `Unlock ${label}` : `Lock ${label}`}
               aria-pressed={!!row.locked}
               className={cn(
@@ -456,6 +480,12 @@ export function LayersPanel(props: {
    *  policy is read-only. The eye is deliberately not routed here: hiding is
    *  session-only and never recorded (see this file's header). */
   onLayerEdit?: (layerId: string, patch: Partial<MasterLayer>) => void;
+  /** A MATERIALIZED custom row's policy write (fix round 1: Lock) — App's
+   *  materializedLayerEdit → applyMaterializedLayerEdit, id-search based, NOT
+   *  editing-target based like onLayerEdit above (see LayerRow's own doc
+   *  comment on this prop for why the two can't share one path). A LEGACY
+   *  custom row (no MasterLayer backing it) never uses this. */
+  onMaterializedLayerEdit?: (layerId: string, patch: Partial<MasterLayer>) => void;
   /** The master's layers flat, in draw order, then any custom layers — see
    *  model/panel.ts's panelRows. App computes this against the live master/
    *  variants/config so the panel never has to re-derive it. */
@@ -524,24 +554,34 @@ export function LayersPanel(props: {
         <SidebarGroupContent>
           <SidebarMenu>
             {props.rows.map((row) => (
-              // onLayerEdit for master rows only. A custom (kind-bearing) row
-              // DOES have a MasterLayer entry now (Task 5b: addLayer records
-              // it into master.layers, or the editing variant's own layers)
-              // — but this row still reads it off `cfg.customLayers`, which
-              // is exactly what it should be: resolve() materializes the
-              // MasterLayer's styling back into that array (model/resolve.ts),
-              // so the row's icon/style-summary logic didn't have to change
-              // at all. `custom: true` rows still route through `update` for
-              // their name/lock, same as before Task 5b — Add layer and the
-              // reorder chevrons below are the two writes this task moved
-              // onto master.layers proper (App's addCustomLayer/
-              // addCustomImageLayer/moveCustomLayer, via addLayerDoc/
-              // moveLayerDoc); a custom row's Lock button stays a `update`
-              // write into `cfg.customLayers[i].locked` for now — re-pointing
-              // it onto MasterLayer.locked (like enable/rename already are
-              // for master rows) is follow-up work, not this task's.
+              // onLayerEdit for master rows only (row.custom === false). A
+              // custom row still reads its display data off `cfg.customLayers`
+              // — that's unchanged, and correct: resolve() materializes a
+              // MATERIALIZED layer's MasterLayer styling back into that same
+              // array (model/resolve.ts), so the row's icon/style-summary
+              // logic never had to know the difference. But `row.materialized`
+              // (Task 5b fix round 1) DOES split custom rows' policy writes in
+              // two: a materialized row (`custom` AND `materialized` —
+              // Design mode's "Add layer" put a real MasterLayer entry into
+              // `master.layers` or a variant's own `layers`) gets
+              // onMaterializedLayerEdit, LayerRow's id-search-based
+              // counterpart to onLayerEdit (App's materializedLayerEdit →
+              // applyMaterializedLayerEdit — NOT onLayerEdit itself, whose
+              // editing-target-based `applyLayerEdit` can silently drop a
+              // policy write for a layer owned by a variant that isn't
+              // currently selected, or one that lives in a variant's own
+              // `layers` rather than `master.layers` at all — see that
+              // function's doc comment). A LEGACY custom row (per-label only,
+              // no MasterLayer backing it — e.g. a pre-Task-5b .label file's
+              // own `customLayers`) gets neither: its policy stays a
+              // `update` write into `cfg.customLayers[i]`, exactly as before
+              // this task existed. Add layer and reorder (onAddLayer/
+              // onMoveCustomLayer above) always land on master.layers proper
+              // regardless of this split — only an EXISTING legacy row's own
+              // policy still goes the old way.
               <LayerRow key={row.id} row={row} {...rowProps} reorder={reorderFor(row)}
-                onLayerEdit={row.custom ? undefined : props.onLayerEdit} />
+                onLayerEdit={row.custom ? undefined : props.onLayerEdit}
+                onMaterializedLayerEdit={props.onMaterializedLayerEdit} />
             ))}
           </SidebarMenu>
         </SidebarGroupContent>

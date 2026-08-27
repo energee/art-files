@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  addField, addLayer, addVariant, applyDesignEdit, applyLayerEdit, composeConfig, moveLayer,
-  overriddenPaths, resetOverride,
+  addField, addLayer, addVariant, applyDesignEdit, applyLayerEdit, applyMaterializedLayerEdit,
+  composeConfig, moveLayer, overriddenPaths, resetOverride,
 } from "../src/model/document";
+import { resolve } from "../src/model/resolve";
 import { lolevMaster } from "../src/model/lolev";
 import { parseMasterFile, serializeMaster } from "../src/model/masterfile";
 
@@ -215,5 +216,74 @@ describe("moveLayer", () => {
     const moved = moveLayer(m, "custom-b", -1);
     expect(moved.variants[0].layers!.map((l) => l.id)).toEqual(["custom-b", "custom-a"]);
     expect(moved.layers.some((l) => l.id === "custom-a" || l.id === "custom-b")).toBe(false);
+  });
+});
+
+// Task 5b fix round 1 (Important): a materialized custom row's Lock must
+// land on MasterLayer.locked, where resolve() actually reads it — not on
+// cfg.customLayers, which resolve() unconditionally OVERWRITES on the very
+// next materialize (the "silently reverts" half of the bug). Pinned at two
+// levels: applyMaterializedLayerEdit itself here, and the App-level
+// materializedLayerEditDoc round-trip through resolve() in
+// tests/app-layer-doc.test.ts.
+describe("applyMaterializedLayerEdit", () => {
+  const layer = { id: "custom-a", name: "Text", enabled: true, kind: "text" as const };
+  const style = { type: "text", size: 12, line: { text: "Hi", fill: "#000", layer: "white" } };
+
+  it("patches a materialized layer's own entry in master.layers, leaving master.defaults untouched", () => {
+    const m = addLayer(lolevMaster(), "master", layer, style);
+    const locked = applyMaterializedLayerEdit(m, "custom-a", { locked: true });
+    expect(locked.layers.find((l) => l.id === "custom-a")!.locked).toBe(true);
+    // The style recorded by addLayer is untouched — only the layer's own
+    // policy entry changed.
+    expect((locked.defaults as unknown as Record<string, unknown>)["custom-a"]).toEqual(style);
+    expect((locked.defaults as unknown as Record<string, unknown>).customLayers).toBeUndefined();
+  });
+
+  it("never mutates the master it was given", () => {
+    const m = addLayer(lolevMaster(), "master", layer, style);
+    applyMaterializedLayerEdit(m, "custom-a", { locked: true });
+    expect(m.layers.find((l) => l.id === "custom-a")!.locked).toBeUndefined();
+  });
+
+  it("is a no-op (identity) when the patch is already what's stored", () => {
+    const m = addLayer(lolevMaster(), "master", layer, style);
+    const locked = applyMaterializedLayerEdit(m, "custom-a", { locked: true });
+    expect(applyMaterializedLayerEdit(locked, "custom-a", { locked: true })).toBe(locked);
+  });
+
+  it("patches the entry in the OWNING VARIANT's own layers, not master.layers — applyLayerEdit's layerOverrides can't reach it", () => {
+    const m = addLayer(lolevMaster(), { variant: "collab" }, layer, style);
+    // applyLayerEdit's variant branch only ever writes layerOverrides, which
+    // resolve() applies to `master.layers` BEFORE appending a variant's own
+    // `layers` — so it can never reach an entry that lives in `v.layers` in
+    // the first place. This is exactly the bug: confirm it here so a future
+    // "just use applyLayerEdit" fix stays caught.
+    const viaLayerOverrides = applyLayerEdit(m, { variant: "collab" }, "custom-a", { locked: true });
+    expect(resolve(viaLayerOverrides, ["collab"], {}).config.customLayers?.[0].locked).toBeUndefined();
+
+    const locked = applyMaterializedLayerEdit(m, "custom-a", { locked: true });
+    expect(locked.variants[0].layers!.find((l) => l.id === "custom-a")!.locked).toBe(true);
+    expect(locked.layers.some((l) => l.id === "custom-a")).toBe(false);
+  });
+
+  it("returns the master unchanged for an id that isn't a kind-bearing layer anywhere", () => {
+    const m = lolevMaster();
+    expect(applyMaterializedLayerEdit(m, "qr", { locked: true })).toBe(m); // built-in — no kind
+    expect(applyMaterializedLayerEdit(m, "no-such-id", { locked: true })).toBe(m);
+  });
+});
+
+describe("resolve: a locked materialized layer survives recompose (Task 5b fix round 1)", () => {
+  it("stays locked across repeated resolve() calls, unlike a value living only in cfg.customLayers", () => {
+    const layer = { id: "custom-a", name: "Text", enabled: true, kind: "text" as const };
+    const style = { type: "text", size: 12, line: { text: "Hi", fill: "#000", layer: "white" } };
+    let m = addLayer(lolevMaster(), "master", layer, style);
+    m = applyMaterializedLayerEdit(m, "custom-a", { locked: true });
+    // Two independent resolve() calls, as undo/redo or a reopen would do —
+    // the lock has to come from master.layers each time, not survive by
+    // accident because the same in-memory config object was reused.
+    expect(resolve(m, [], {}).config.customLayers?.[0]).toMatchObject({ id: "custom-a", locked: true });
+    expect(resolve(m, [], {}).config.customLayers?.[0]).toMatchObject({ id: "custom-a", locked: true });
   });
 });

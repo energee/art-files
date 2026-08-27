@@ -31,10 +31,10 @@ import {
 import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import {
-  addField, addLayer, addVariant, applyDesignEdit, applyLayerEdit, bridgeCollabOverride,
-  composeConfig, configDiff, declaredFieldPaths, expandCustomFormats, fieldsAt, getPath,
-  moveLayer, overriddenPaths, removeField, renameField, resetOverride, toggleVariant,
-  valuesFromConfig, visibleFieldsOf, type EditTarget,
+  addField, addLayer, addVariant, applyDesignEdit, applyLayerEdit, applyMaterializedLayerEdit,
+  bridgeCollabOverride, composeConfig, configDiff, declaredFieldPaths, expandCustomFormats,
+  fieldsAt, getPath, moveLayer, overriddenPaths, removeField, renameField, resetOverride,
+  toggleVariant, valuesFromConfig, visibleFieldsOf, type EditTarget,
 } from "@/model/document";
 import { parseLabelFile } from "@/model/labelfile";
 import { MASTER_EXT, parseMasterFile, serializeMaster } from "@/model/masterfile";
@@ -484,6 +484,33 @@ export function addLayerDoc(
  *  isn't `kind`-bearing, or it's already at that end of its custom range. */
 export function moveLayerDoc(doc: Doc, layerId: string, delta: -1 | 1): Doc {
   const master = moveLayer(doc.master, layerId, delta);
+  if (master === doc.master) return doc;
+  const values = valuesFromConfig(doc.master, doc.enabledVariants, doc.cfg);
+  const overrides = configDiff(
+    composeConfig(doc.master, doc.enabledVariants, values, undefined).config, doc.cfg);
+  const cfg = composeConfig(
+    master, doc.enabledVariants, values,
+    Object.keys(overrides).length ? overrides : undefined).config;
+  return { cfg, enabledVariants: doc.enabledVariants, master, dormant: doc.dormant };
+}
+
+/** The pure doc transition behind a MATERIALIZED custom row's policy edit
+ *  (fix round 1: currently just Lock) — applyMaterializedLayerEdit, id-search
+ *  based rather than editing-target based. NOT layerEditDoc/layerEdit: those
+ *  resolve ownership through the currently CLAMPED editing target, which is
+ *  wrong here — a materialized row's owner (the master, or whichever variant
+ *  addLayer targeted) is fixed at add time, and can legitimately differ from
+ *  whatever the editing-target selector shows while the row is still visible
+ *  (its own owning variant just has to be enabled, not selected). Recomposes
+ *  cfg in the same history entry, same shape as moveLayerDoc — a lock toggle
+ *  changes `MasterLayer.locked`, which resolve()'s materialization stamps
+ *  straight onto the CustomLayer it builds. `doc` itself
+ *  (applyMaterializedLayerEdit's own identity contract) when the patch is
+ *  already what's stored. */
+export function materializedLayerEditDoc(
+  doc: Doc, layerId: string, patch: Partial<MasterLayer>,
+): Doc {
+  const master = applyMaterializedLayerEdit(doc.master, layerId, patch);
   if (master === doc.master) return doc;
   const values = valuesFromConfig(doc.master, doc.enabledVariants, doc.cfg);
   const overrides = configDiff(
@@ -1146,6 +1173,19 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (next === doc) return; // already what the target stores — see layerEditDoc
     markDirty();
     setDoc((d) => (d === doc ? next : layerEditDoc(d, editTarget, layerId, patch)));
+  };
+
+  /** A MATERIALIZED custom row's policy edit (fix round 1: Lock) —
+   *  materializedLayerEditDoc, id-search based (see its own doc comment).
+   *  Deliberately NOT `layerEdit` above: that resolves ownership through the
+   *  currently selected editTarget, which would patch the wrong thing (or
+   *  silently nothing) for a materialized layer owned by a variant that
+   *  isn't the one currently selected in the editing-target picker. */
+  const materializedLayerEdit = (layerId: string, patch: Partial<MasterLayer>) => {
+    const next = materializedLayerEditDoc(doc, layerId, patch);
+    if (next === doc) return;
+    markDirty();
+    setDoc((d) => (d === doc ? next : materializedLayerEditDoc(d, layerId, patch)));
   };
 
   /** Every dot-path the current editing target overrides — what the
@@ -2573,7 +2613,8 @@ export const DocumentEditor = memo(function DocumentEditor({
                   <LayersPanel cfg={cfg} update={update} hidden={hiddenLayers} mode={mode}
                     onToggleHidden={toggleHidden} selected={selected} onSelect={pick}
                     onAddLayer={addCustomLayer} onMoveCustomLayer={moveCustomLayer}
-                    onLayerEdit={layerEdit} rows={panelLayerRows} />
+                    onLayerEdit={layerEdit} onMaterializedLayerEdit={materializedLayerEdit}
+                    rows={panelLayerRows} />
                   <TargetFields master={master} target={editTarget}
                     onRenameField={renameTargetField} onRemoveField={removeTargetField} />
                 </>

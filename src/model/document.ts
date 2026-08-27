@@ -494,6 +494,44 @@ export function moveLayer(master: Master, layerId: string, delta: -1 | 1): Maste
   return master;
 }
 
+/** Patch one MATERIALIZED (`kind`-bearing) layer's own entry directly,
+ *  wherever `addLayer` put it — `master.layers`, or the owning variant's OWN
+ *  `layers` (the Variant.layers appended-layer path, not `layerOverrides`).
+ *  This is `applyLayerEdit`'s counterpart for a layer whose identity IS a
+ *  `layers` entry rather than a built-in resolve() always finds in
+ *  `master.layers` first: `applyLayerEdit`'s variant branch always writes
+ *  into `layerOverrides`, which resolve() only ever applies to a layer it
+ *  already found in `master.layers`, BEFORE a variant's own `layers` are
+ *  appended (see resolve.ts) — it can never reach an entry that lives in
+ *  `v.layers` itself, so using it here would silently drop the edit for any
+ *  materialized layer added to a variant (fix round 1, Important). Search
+ *  by id alone, not by the current editing target, on purpose: a
+ *  materialized row's owner is fixed at add time, not by whatever the
+ *  editing-target selector happens to show right now — the same reasoning
+ *  moveLayer already follows. Returns `master` unchanged when `layerId`
+ *  isn't a `kind`-bearing layer anywhere, or the patch is already what it
+ *  stores. */
+export function applyMaterializedLayerEdit(
+  master: Master, layerId: string, patch: Partial<MasterLayer>,
+): Master {
+  const isNoop = (l: MasterLayer) =>
+    Object.entries(patch).every(
+      ([k, v]) => (l as unknown as Record<string, unknown>)[k] === v);
+  const mi = master.layers.findIndex((l) => l.id === layerId && l.kind !== undefined);
+  if (mi !== -1) {
+    if (isNoop(master.layers[mi])) return master;
+    return { ...master, layers: master.layers.map((l, i) => (i === mi ? { ...l, ...patch } : l)) };
+  }
+  for (const v of master.variants) {
+    const vi = (v.layers ?? []).findIndex((l) => l.id === layerId && l.kind !== undefined);
+    if (vi === -1) continue;
+    if (isNoop(v.layers![vi])) return master;
+    const layers = v.layers!.map((l, i) => (i === vi ? { ...l, ...patch } : l));
+    return { ...master, variants: master.variants.map((x) => (x.id === v.id ? { ...x, layers } : x)) };
+  }
+  return master;
+}
+
 /** Add a variant and return the new master. Ids are slugged from `name`
  *  and de-duplicated with a numeric suffix, so the caller only supplies a
  *  human name (spec: inline creation, no dialogs). */

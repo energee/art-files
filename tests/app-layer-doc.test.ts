@@ -9,8 +9,9 @@
 // that routing regresses, without mounting the whole editor.
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { addLayerDoc, type Doc, moveLayerDoc } from "../src/App";
+import { addLayerDoc, type Doc, materializedLayerEditDoc, moveLayerDoc } from "../src/App";
 import { composeConfig } from "../src/model/document";
+import { resolve } from "../src/model/resolve";
 import { lolevMaster } from "../src/model/lolev";
 import type { MasterLayer } from "../src/model/types";
 
@@ -77,5 +78,47 @@ describe("moveLayerDoc", () => {
     const doc = withTwoCustomLayers();
     expect(moveLayerDoc(doc, "custom-a", -1)).toBe(doc);
     expect(moveLayerDoc(doc, "custom-b", 1)).toBe(doc);
+  });
+});
+
+// Task 5b fix round 1 (Important): the layers panel's Lock button, for a
+// MATERIALIZED custom row, used to route through `update` → designEdit,
+// which diffs the mutated cfg against a recomposed base — since arrays are
+// leaves to configDiff/deepMerge, that diff was the WHOLE customLayers
+// array, recorded wholesale into master.defaults.customLayers. The real
+// lock state (MasterLayer.locked) never moved, so resolve()'s
+// unconditional overwrite of config.customLayers whenever a kind-bearing
+// layer materializes silently reverted the toggle on the very next
+// recompose. materializedLayerEditDoc fixes this by patching
+// MasterLayer.locked directly (applyMaterializedLayerEdit, id-search
+// based) instead of mutating cfg.customLayers.
+describe("materializedLayerEditDoc (Task 5b fix round 1)", () => {
+  it("locking a materialized custom layer sets MasterLayer.locked and leaves master.defaults.customLayers undefined", () => {
+    const doc = addLayerDoc(docOn(), "master", textLayer("custom-a", "Text"), textStyle("Hi"));
+    const locked = materializedLayerEditDoc(doc, "custom-a", { locked: true });
+    expect(locked.master.layers.find((l) => l.id === "custom-a")!.locked).toBe(true);
+    expect((locked.master.defaults as unknown as Record<string, unknown>).customLayers).toBeUndefined();
+    expect(locked.cfg.customLayers?.[0]).toMatchObject({ id: "custom-a", locked: true });
+  });
+
+  // The half of the bug that silently reverted: prove the lock is read back
+  // out of a FRESH resolve() against the mutated master, not carried by
+  // accident in the doc's existing `cfg` object — this is what "survives a
+  // recompose" (undo/redo, any other edit, reopening the file) actually
+  // means.
+  it("the lock survives an independent recompose, not just the one doc transition produced", () => {
+    const doc = addLayerDoc(docOn(), "master", textLayer("custom-a", "Text"), textStyle("Hi"));
+    const locked = materializedLayerEditDoc(doc, "custom-a", { locked: true });
+    const recomposed = resolve(locked.master, locked.enabledVariants, {});
+    expect(recomposed.config.customLayers?.[0]).toMatchObject({ id: "custom-a", locked: true });
+    // And again — two independent resolves, same answer both times.
+    expect(resolve(locked.master, locked.enabledVariants, {}).config.customLayers?.[0].locked)
+      .toBe(true);
+  });
+
+  it("is a no-op (identity) when the patch is already what's stored", () => {
+    const doc = addLayerDoc(docOn(), "master", textLayer("custom-a", "Text"), textStyle("Hi"));
+    const locked = materializedLayerEditDoc(doc, "custom-a", { locked: true });
+    expect(materializedLayerEditDoc(locked, "custom-a", { locked: true })).toBe(locked);
   });
 });

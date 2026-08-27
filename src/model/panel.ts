@@ -16,6 +16,15 @@ export interface PanelRow {
   /** A per-label custom layer rather than a master layer: the only rows that
    *  can be reordered or removed. */
   custom: boolean;
+  /** Only meaningful when `custom` is true: whether this row's identity
+   *  lives on the master (or a variant) as a `kind`-bearing MasterLayer —
+   *  Design mode's "Add layer" (Task 5b) — rather than purely on the
+   *  label's own `cfg.customLayers` (a legacy per-label layer, or one
+   *  restored from a pre-Task-5b .label file). Lock routes through
+   *  `onMaterializedLayerEdit` when true, `update` (a per-label write) when
+   *  false — see LayersPanel.tsx's LayerRow. Always false for a master
+   *  row. */
+  materialized: boolean;
   locked: boolean;
   /** The layer's own master-level enable (MasterLayer.enabled, as resolved
    *  for the current variants) — what the panel's enable control writes back
@@ -43,14 +52,25 @@ export function panelRows(
       ? master.variants.find((v) => v.id === l.variant)?.name : undefined,
     inactive: disabledLayers.has(l.id),
     custom: false,
+    materialized: false,
     locked: !!l.locked,
     enabled: l.enabled,
   }));
+  // Every `kind`-bearing layer's id, wherever addLayer put it (the master's
+  // own `layers`, or any variant's) — resolve() already filtered these OUT
+  // of `layers` above (no phantom master row), but a custom row still needs
+  // to know its id is one of them, to route policy (fix round 1: Lock)
+  // through the master rather than through `cfg.customLayers` like a
+  // genuinely per-label layer.
+  const materializedIds = new Set<string>();
+  for (const l of master.layers) if (l.kind) materializedIds.add(l.id);
+  for (const v of master.variants) for (const l of v.layers ?? []) if (l.kind) materializedIds.add(l.id);
   const customRows: PanelRow[] = (cfg.customLayers ?? []).map((l) => ({
     id: l.id,
     name: l.name,
     inactive: false,
     custom: true,
+    materialized: materializedIds.has(l.id),
     locked: !!l.locked,
     enabled: true,
   }));
