@@ -3,6 +3,18 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.30] - 2026-08-27
+
+- Custom text and image layers: a label file can now carry extra layers that
+  draw in the 2D preview and both print PDFs, positioned by left/center/right
+  and top/bottom anchors so alignment survives content changes. Drag them
+  anywhere on the label; dragging near a safe-area guide snaps to it (and
+  the highlight shows which guide engaged). A new Lock toggle on movable
+  elements — including the laurel and collab logos — makes them inert to
+  dragging. There is no UI to add custom layers yet, so existing labels are
+  unaffected; custom image layers position but do not paint until image
+  assets are wired up in a later release.
+
 ## [0.1.29] - 2026-08-27
 
 - More groundwork for masters and variations: EAN-13 and Code 128 barcode
