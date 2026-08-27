@@ -18,6 +18,7 @@ const master: Master = {
     { id: "loud", name: "Loud", overrides: { abv: "9" }, layerOverrides: {}, fields: [] },
     { id: "loud2", name: "Loud2", overrides: { abv: "12" }, layerOverrides: {}, fields: [] },
   ],
+  layers: [],
 };
 
 describe("resolve", () => {

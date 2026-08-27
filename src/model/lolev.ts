@@ -36,5 +36,28 @@ export function lolevMaster(): Master {
     variants: [
       { id: "collab", name: "Collab", overrides: { collabEnabled: true }, layerOverrides: {}, fields: [] },
     ],
+    // Draw order per planLabel (src/plan.ts) — read top-to-bottom, not the
+    // registry order in src/elements.ts. Names reuse ELEMENTS' labels
+    // except the wordmark, renamed to "Brand" per the spec. The three collab
+    // layers are tagged `variant: "collab"` rather than living in the
+    // variant's own layer list (see MasterLayer.variant's doc). The warning
+    // ships locked: it is correct-by-default and fillers must not move it.
+    layers: [
+      { id: "volume", name: "Volume", enabled: true },
+      { id: "abv", name: "ABV", enabled: true },
+      { id: "description", name: "Description", enabled: true },
+      { id: "collabLead", name: "Lead-In", enabled: true, variant: "collab" },
+      { id: "collabLeft", name: "Text Logo", enabled: true, variant: "collab" },
+      { id: "wordmark", name: "Brand", enabled: true },
+      { id: "logo", name: "Logo", enabled: true },
+      { id: "collabCenter", name: "Graphic Logo", enabled: true, variant: "collab" },
+      { id: "name", name: "Name", enabled: true },
+      { id: "styleLine", name: "Style", enabled: true },
+      { id: "handleAddress", name: "Info", enabled: true },
+      { id: "warning", name: "Warning", enabled: true, locked: true },
+      { id: "storeCold", name: "Store cold", enabled: true },
+      { id: "qr", name: "QR", enabled: true },
+      { id: "barcode", name: "Barcode", enabled: true },
+    ],
   };
 }

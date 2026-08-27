@@ -8,6 +8,7 @@ const target: Master = {
   defaults: {}, guides: { left: 24.12, center: "auto", right: 24.12, top: 24.12, bottom: 24.12 },
   fields: [{ id: "name", label: "Name", kind: "text", path: "beerName" }],
   variants: [{ id: "collab", name: "Collab", overrides: {}, layerOverrides: {}, fields: [] }],
+  layers: [],
 };
 
 const label: LabelFileV2 = {

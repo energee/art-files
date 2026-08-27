@@ -5,7 +5,7 @@ const minimal = {
   formatVersion: 1, id: "m1", name: "Test",
   physical: { labelWidthIn: 8.125, labelHeightIn: 3.625, bleedIn: 0.125, canDiameterIn: 2.6 },
   defaults: {}, guides: { left: 24.12, center: "auto", right: 24.12, top: 24.12, bottom: 24.12 },
-  fields: [], variants: [],
+  fields: [], variants: [], layers: [],
 };
 
 describe("parseMaster", () => {

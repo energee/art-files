@@ -33,12 +33,38 @@ export interface Guides {
   top: number | null; bottom: number | null;   // null = guide removed
 }
 
+/** One layer on the master: identity and POLICY only — never style or
+ *  content (those stay in `defaults`, which resolves into LabelConfig).
+ *  Built-in `id`s are the renderer's own element ids (see src/elements.ts's
+ *  ElementId: "name" | "styleLine" | "abv" | "description" | "volume" |
+ *  "wordmark" | "logo" | "handleAddress" | "warning" | "storeCold" | "qr" |
+ *  "barcode" | "collabLead" | "collabLeft" | "collabCenter"), re-declared
+ *  here rather than imported so the pure model never depends on the UI
+ *  registry — keep the two in sync. */
+export interface MasterLayer {
+  id: string;
+  /** Shown in the layers panel. */
+  name: string;
+  /** Master-level disable: the layer never draws on any label. */
+  enabled: boolean;
+  /** Fillers cannot move it (spec: Lock). Absent = unlocked. */
+  locked?: boolean;
+  /** Which variant owns this layer; absent = the master owns it. A layer
+   *  owned by a disabled variant does not draw. This is how the collab
+   *  block stops being a special case: its three layers are ordinary master
+   *  layers tagged `variant: "collab"`. Deliberate extension of the spec's
+   *  `variant.layers` (which stays, for layers a variant APPENDS): the
+   *  collab layers sit at fixed positions in the draw order, which an
+   *  appended list cannot express. */
+  variant?: string;
+}
+
 /** A pure diff on the master — never a copy. */
 export interface Variant {
   id: string;
   name: string;
   overrides: Partial<LabelConfig>;
-  layerOverrides: Record<string, unknown>;   // used from Plan 2 on
+  layerOverrides: Record<string, Partial<MasterLayer>>;
   fields: FieldDecl[];
 }
 
@@ -51,6 +77,8 @@ export interface Master {
   guides: Guides;
   fields: FieldDecl[];
   variants: Variant[];
+  /** Every layer, in DRAW ORDER (the order planLabel emits them). */
+  layers: MasterLayer[];
 }
 
 /** The new .label payload: IDs and values only — no layout, no styling. */
@@ -97,6 +125,18 @@ export function parseMaster(json: unknown): Master {
       fail(`field "${f.id}" has unknown symbology "${f.symbology}"`);
     if (fids.has(f.id)) fail(`duplicate field id "${f.id}"`);
     fids.add(f.id);
+  }
+  const layers = m.layers ?? fail("missing layers");
+  if (!Array.isArray(layers)) fail("layers must be an array");
+  const lids = new Set<string>();
+  for (const l of layers) {
+    if (!l.id || typeof l.id !== "string") fail(`layer missing id`);
+    if (!l.name || typeof l.name !== "string") fail(`layer "${l.id}" missing name`);
+    if (typeof l.enabled !== "boolean") fail(`layer "${l.id}" missing enabled`);
+    if (lids.has(l.id)) fail(`duplicate layer id "${l.id}"`);
+    lids.add(l.id);
+    if (l.variant !== undefined && !seen.has(l.variant))
+      fail(`layer "${l.id}" names undeclared variant "${l.variant}"`);
   }
   return m;
 }
