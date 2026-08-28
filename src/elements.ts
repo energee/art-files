@@ -5,7 +5,7 @@ import type { LabelConfig, Style, StyledLine } from "./types";
 import type { CollabSlots, Face, MeasureFace } from "./plan";
 import {
   CUSTOM_BARCODE_DIGIT_GAP_RATIO, CUSTOM_BARCODE_DIGIT_SIZE_RATIO,
-  encodeFor, validateFor,
+  encodeFor, quietModulesFor, validateFor,
 } from "./barcode";
 import { DESC, FONT_ASC, FONT_DESC, HANDLE_ADDR, runsWidth } from "./layout";
 import { defaultConfig } from "./defaults";
@@ -381,14 +381,14 @@ function customTextWidth(line: StyledLine, size: number, m: MeasureFace): number
   return runsWidth(runs, (r) => m(r.text, size, faceOf(r)), line.letterSpacing ?? 0);
 }
 
-/** A custom barcode layer's drag box size — pattern length x moduleW wide, h
- *  tall plus the digit band when shown — null for a payload that fails its
- *  symbology's validator (no box, matching planLabel's emits-nothing rule).
+/** A custom barcode layer's drag box size — the symbol plus both quiet zones
+ *  x moduleW wide, h tall plus the digit band when shown — null for a payload
+ *  that fails its symbology's validator (no box, matching planLabel's emits-nothing rule).
  *  A local copy of plan.ts's customBarcodeBox FUNCTION (same reasoning as
  *  customTextWidth above: a runtime value-import back into plan.ts would
  *  make the two modules mutually dependent, since plan.ts already imports
  *  this file for logoNudge/ElementId) — but the digit-size/gap RATIOS
- *  themselves are shared, imported from barcode.ts (which both plan.ts and
+ *  themselves are shared — along with quietModulesFor — imported from barcode.ts (which both plan.ts and
  *  this file already import at runtime), so this box and plan.ts's
  *  customBarcodeItem can't drift apart on the two numbers that matter. */
 function customBarcodeDragBox(layer: {
@@ -401,7 +401,9 @@ function customBarcodeDragBox(layer: {
   const textSize = layer.h * CUSTOM_BARCODE_DIGIT_SIZE_RATIO;
   const gap = layer.h * CUSTOM_BARCODE_DIGIT_GAP_RATIO;
   return {
-    w: pattern.modules.length * layer.moduleW,
+    // Symbol plus BOTH quiet zones, matching customBarcodeBox — the UPC-A/
+    // EAN-13 edge digits print out there, so a symbol-only box missed them.
+    w: (pattern.modules.length + 2 * quietModulesFor(layer.symbology)) * layer.moduleW,
     h: layer.h + (showDigits ? gap + textSize : 0),
   };
 }

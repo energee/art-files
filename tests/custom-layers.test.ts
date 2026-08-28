@@ -269,15 +269,15 @@ describe("custom barcode layer", () => {
     const guides = labelGuides();
     const textSize = ean13Base.h * (10 / 15); // layer.h * fontSize:barH ratio, matching plan.ts
     const ptsWidth = m("4", textSize); // leading digit's measured width in points
-    const QUIET_MODULES = 8; // matches plan.ts's BARCODE_QUIET_MODULES
-
     for (const moduleW of [1, 2]) {
       const item = build(moduleW);
       const lead = item.digits[0];
       expect(lead.text).toBe("4");
-      // anchor (in points) legitimately scales with moduleW; the measure/2
-      // term must not — it's a fixed points offset either way.
-      const expectedX = guides.left - QUIET_MODULES * moduleW + ptsWidth / 2;
+      // The layer's box now includes the quiet zone the leading digit sits in
+      // (see customBarcodeBox), so the -quiet module anchor lands exactly on
+      // the box's own left edge whatever moduleW is; the measure/2 term must
+      // still not scale — it's a fixed points offset either way.
+      const expectedX = guides.left + ptsWidth / 2;
       expect(lead.x).toBeCloseTo(expectedX, 10);
     }
   });

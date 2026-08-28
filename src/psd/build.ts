@@ -959,6 +959,14 @@ function buildCustomLayers(
       const imgItem = plan.find((p): p is Extract<Placed, { kind: "image" }> =>
         p.kind === "image" && p.id === layer.id);
       if (!imgItem) continue;
+      // Missing bytes is a no-op on EITHER plate — checked BEFORE the mask
+      // branch below, matching pdf/build.ts's drawElements and canvas/draw.ts,
+      // which both skip the whole item in both modes. The rect can come from
+      // a stored aspect alone with no asset loaded (see plan.ts); painting its
+      // mask footprint anyway laid solid white ink under art the art plate
+      // never prints.
+      const pixels = assets.customImages?.[layer.asset];
+      if (!pixels) continue;
       if (mode === "mask") {
         // Raster art prints on white ink: the mask paints its footprint
         // blue regardless of the layer's own fill/layer assignment — the
@@ -968,8 +976,6 @@ function buildCustomLayers(
         ));
         continue;
       }
-      const pixels = assets.customImages?.[layer.asset];
-      if (!pixels) continue;
       const left = Math.round(pos(imgItem.x));
       const top = Math.round(pos(imgItem.y));
       const w = Math.max(1, Math.round(px(imgItem.w)));

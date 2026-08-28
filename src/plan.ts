@@ -23,7 +23,7 @@ import { qrPath, qrShapes, qrUrl } from "./qr";
 import {
   barcodeDigitsFor, barcodeFootprint, barcodeGeometry, barcodeStrokePt,
   CUSTOM_BARCODE_DIGIT_GAP_RATIO, CUSTOM_BARCODE_DIGIT_SIZE_RATIO,
-  encodeFor, validateFor, type BarcodeGeometry,
+  encodeFor, quietModulesFor, validateFor, type BarcodeGeometry,
 } from "./barcode";
 
 export type Face = "regular" | "semibold" | "bold";
@@ -360,10 +360,6 @@ export function barcodeItem(cfg: LabelConfig, m: MeasureFace): PlacedBarcode {
 // barcodeLayer in psd/build.ts) draw each orientation correctly instead of
 // unconditionally rotating every digit glyph.
 
-/** Quiet-zone width in modules, matching JsBarcode's UPC-A/EAN-13 default —
- *  where barcodeDigitsFor's leading/trailing digit sits, outside the guards. */
-const BARCODE_QUIET_MODULES = 8;
-
 /** The pattern's runs merged into rects at the layer's own moduleW/h — the
  *  bar half of a custom barcode layer's geometry, mirroring barcodeGeometry's
  *  run-merging but plain (no guard elongation: a free-floating layer has no
@@ -383,8 +379,9 @@ function customBarcodeBars(
   return bars;
 }
 
-/** A custom barcode layer's hit/drag box size — pattern length × moduleW
- *  wide, `h` tall plus the digit band when shown — or null when its (raw,
+/** A custom barcode layer's hit/drag box size — the symbol plus BOTH quiet
+ *  zones (quietModulesFor; zero for code-128) wide, `h` tall plus the digit
+ *  band when shown — or null when its (raw,
  *  possibly unexpanded — see CustomBarcodeLayer.value) payload fails the
  *  symbology's own validator, so hittest/dragTarget2 and customBarcodeItem
  *  below can't disagree about which layers are even present. Exported so
@@ -397,15 +394,23 @@ function customBarcodeBars(
  *  aren't shared. */
 export function customBarcodeBox(
   layer: CustomBarcodeLayer,
-): { w: number; h: number; pattern: ReturnType<typeof encodeFor> } | null {
+): { w: number; h: number; quiet: number; pattern: ReturnType<typeof encodeFor> } | null {
   if (!validateFor(layer.symbology, layer.value).ok) return null;
   const pattern = encodeFor(layer.symbology, layer.value);
   const showDigits = layer.showDigits ?? true;
   const textSize = layer.h * CUSTOM_BARCODE_DIGIT_SIZE_RATIO;
   const gap = layer.h * CUSTOM_BARCODE_DIGIT_GAP_RATIO;
+  // The box spans the quiet zone on BOTH sides, not just the printed symbol:
+  // barcodeDigitsFor puts the UPC-A/EAN-13 leading digit at -quiet and the
+  // UPC-A check digit at modulesLen + quiet, so a symbol-only box left both
+  // outside it — a right-anchored UPC-A pushed its check digit past the trim
+  // and the hit/drag box missed both edge digits. `quiet` is in modules and is
+  // 0 for code-128, whose single centred caption needs no zone.
+  const quiet = quietModulesFor(layer.symbology);
   return {
-    w: pattern.modules.length * layer.moduleW,
+    w: (pattern.modules.length + 2 * quiet) * layer.moduleW,
     h: layer.h + (showDigits ? gap + textSize : 0),
+    quiet,
     pattern,
   };
 }
@@ -418,13 +423,17 @@ export function customBarcodeItem(
 ): PlacedBarcode | null {
   const box = customBarcodeBox(layer);
   if (!box) return null;
-  const { pattern } = box;
+  const { pattern, quiet } = box;
   const showDigits = layer.showDigits ?? true;
   const textSize = layer.h * CUSTOM_BARCODE_DIGIT_SIZE_RATIO;
   const gap = layer.h * CUSTOM_BARCODE_DIGIT_GAP_RATIO;
   const x = anchoredX(layer.position, box.w, guides);
   const yTop = anchoredY(layer.position, box.h, guides);
-  const bars = customBarcodeBars(pattern, x, yTop, layer.h, layer.moduleW);
+  // Module 0 sits one quiet zone in from the box's left edge (the zone is
+  // blank by definition, but the leading digit prints in it — see
+  // customBarcodeBox), so every module coordinate below measures from here.
+  const runX = x + quiet * layer.moduleW;
+  const bars = customBarcodeBars(pattern, runX, yTop, layer.h, layer.moduleW);
   const measure = (t: string) => m(t, textSize, "regular");
   // barcodeDigitsFor's `measure` must return MODULE units (see its own
   // comment) since it has no `mod` to convert with — `measure` above is in
@@ -434,19 +443,28 @@ export function customBarcodeItem(
   // (dir 0) never combine measure with the anchor, so they were unaffected.
   const digitsRaw = showDigits
     ? barcodeDigitsFor(
-        layer.symbology, layer.value, pattern.modules.length, BARCODE_QUIET_MODULES,
+        layer.symbology, layer.value, pattern.modules.length, quiet,
         (t) => measure(t) / layer.moduleW,
       )
     : [];
   // barcodeDigitsFor's `x` is a placeholder (see its own comment) — real x
   // comes from this layer's own run origin plus the group's module center.
-  const geoDigits = digitsRaw.map((d) => ({ ...d, x: x + d.center * layer.moduleW }));
+  const geoDigits = digitsRaw.map((d) => ({ ...d, x: runX + d.center * layer.moduleW }));
   const geo: BarcodeGeometry = { mod: layer.moduleW, bottom: yTop + layer.h, bars, digits: geoDigits };
   const style = layer.style;
   const S = style.stroke && style.stroke !== "none"
     ? (style.strokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX : 0;
+  // `y` is the alphabetic BASELINE — that is what all three renderers pass to
+  // their text call — so it sits at the BOTTOM of the reserved digit band, not
+  // its top: `+ textSize` is the last term. Full textSize (the em box) rather
+  // than a cap height, because customBarcodeBox reserves exactly `gap +
+  // textSize` below the bars; putting the baseline one em down makes that band
+  // the glyphs' own em box, so the box and the ink describe the same
+  // rectangle. Digits have no descenders, so nothing spills below it. Without
+  // the term the glyph box climbed back over the bottom of the bars while the
+  // reserved band printed empty.
   const digits = geoDigits.map((d) => ({
-    text: d.text, x: d.x, y: yTop + layer.h + gap, w: measure(d.text),
+    text: d.text, x: d.x, y: yTop + layer.h + gap + textSize, w: measure(d.text),
   }));
   // Bars, plus one white-ink pill per digit group — unlike barcodeFootprint
   // (whose pill formula assumes the template's ROTATED layout, see its own
@@ -454,16 +472,20 @@ export function customBarcodeItem(
   // width (x = d.x ± w/2, matching how the item is actually drawn — see
   // PlacedBarcode.rotated) and the font box around its baseline (FONT_ASC
   // above, FONT_DESC below, at this item's own textSize — not the template's
-  // fixed BARCODE.textSize). Both bars and pills are outset by the halo S,
-  // same contract as the template's footprint.
+  // fixed BARCODE.textSize). These are BASE ink, NOT pre-outset by the halo S
+  // — the same contract as the template's `barcodeFootprint(geo, 0, measure)`,
+  // and the one every consumer already assumes: pdf/build.ts draws a centred
+  // 2*S border on them, canvas/draw.ts strokes at lineWidth 2*outset, and
+  // psd/build.ts applies an outside stroke of px(S). Outsetting here too
+  // double-counted the halo on all three plates.
   const barFootprint = bars.map((b) => ({
-    x: b.x - S, yTop: b.yTop - S, w: b.w + 2 * S, h: b.h + 2 * S,
+    x: b.x, yTop: b.yTop, w: b.w, h: b.h,
   }));
   const digitFootprint = digits.map((d) => {
-    const x0 = d.x - d.w / 2 - S;
-    const x1 = d.x + d.w / 2 + S;
-    const y0 = d.y - L.FONT_ASC * textSize - S;
-    const y1 = d.y + L.FONT_DESC * textSize + S;
+    const x0 = d.x - d.w / 2;
+    const x1 = d.x + d.w / 2;
+    const y0 = d.y - L.FONT_ASC * textSize;
+    const y1 = d.y + L.FONT_DESC * textSize;
     return { x: x0, yTop: y0, w: x1 - x0, h: y1 - y0 };
   });
   return {

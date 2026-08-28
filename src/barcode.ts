@@ -34,6 +34,22 @@ export function encodeFor(symbology: Symbology, value: string): UpcModules {
 export const CUSTOM_BARCODE_DIGIT_SIZE_RATIO = 10 / 15; // fontSize : barH
 export const CUSTOM_BARCODE_DIGIT_GAP_RATIO = 4 / 15; // textMargin : barH
 
+/** Quiet-zone width in modules, matching JsBarcode's UPC-A/EAN-13 default —
+ *  where barcodeDigitsFor's leading/trailing digit sits, outside the guards. */
+export const BARCODE_QUIET_MODULES = 8;
+
+/** The quiet zone `symbology` reserves on EACH side of its symbol, in modules.
+ *  UPC-A and EAN-13 print their edge digits out there, so a custom layer's
+ *  reported box must include both zones or those digits fall outside it (and
+ *  a right-anchored symbol pushes its check digit past the trim). Code 128
+ *  has no such digit, so its box is the bare symbol. The ONE place this rule
+ *  lives: plan.ts's customBarcodeBox/customBarcodeItem and elements.ts's
+ *  customBarcodeDragBox all call it, so the plotted geometry and the hit/drag
+ *  box cannot disagree about where a custom barcode's edges are. */
+export function quietModulesFor(symbology: Symbology): number {
+  return symbology === "code-128" ? 0 : BARCODE_QUIET_MODULES;
+}
+
 /** Validate `value` under the named symbology — the gate a custom barcode
  *  layer's `value` must pass before `encodeFor` ever runs on it: an invalid
  *  payload (e.g. a still-unexpanded format string, see CustomBarcodeLayer)
