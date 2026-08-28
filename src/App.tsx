@@ -487,10 +487,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     () => composeConfig(master, enabledVariants, {}, undefined),
     [master, enabledVariants],
   );
-  // The layers panel's rows — the master's layers flat, in draw order, then
-  // any custom layers (model/panel.ts's panelRows). Also the shift-range
-  // order `pick` resolves against below, so the panel's visible rows and the
-  // selection rules can never disagree about what "next row" means.
+  // The layers panel's rows — flat, front to back: any custom layers, then
+  // the master's layers in reverse draw order (model/panel.ts's panelRows).
+  // Also the shift-range order `pick` resolves against below, so the panel's
+  // visible rows and the selection rules can never disagree about what
+  // "next row" means.
   const panelLayerRows = useMemo(
     () => panelRows(master, masterLayers, disabledLayers, cfg),
     [master, masterLayers, disabledLayers, cfg],

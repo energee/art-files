@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LayersPanel } from "../src/components/LayersPanel";
 import { SidebarProvider } from "../src/components/ui/sidebar";
 import { lolevMaster } from "../src/model/lolev";
-import { addLayer, composeConfig } from "../src/model/document";
+import { addLayer, composeConfig, moveLayer } from "../src/model/document";
 import { panelRows } from "../src/model/panel";
 import type { CustomLayer } from "../src/types";
 
@@ -284,6 +284,47 @@ describe("LayersPanel reorder chevrons", () => {
       expect(row.querySelector(`[aria-label="Bring ${name} forward"]`))
         .toHaveProperty("disabled", true);
     }
+  });
+
+  // The panel flip's own contract (see model/panel.ts's panelRows doc
+  // comment): the panel now lists front to back, so the up chevron ("Bring
+  // forward") must move a row UP the visible list, not down — end to end,
+  // through the real moveLayer, not just the mocked onMoveCustomLayer call
+  // the earlier test above checks.
+  it("clicking Bring forward moves the row up in panelRows' output, and disables itself once frontmost", () => {
+    let master = lolevMaster();
+    master = addLayer(master, "master", textLayer("custom-a", "First"), textStyle("First"));
+    master = addLayer(master, "master", textLayer("custom-b", "Second"), textStyle("Second"));
+    const rowsOf = (m: typeof master) => {
+      const r = composeConfig(m, [], {}, undefined);
+      return panelRows(m, r.layers, r.disabledLayers, r.config);
+    };
+    const before = rowsOf(master).map((r) => r.id);
+    const aBefore = before.indexOf("custom-a");
+    // custom-a was added first, so it's backmost — added later means drawn
+    // later means frontmost (see plan.ts) — and sits BELOW custom-b (added
+    // second, frontmost) in the front-to-back panel list.
+    expect(aBefore).toBeGreaterThan(before.indexOf("custom-b"));
+
+    const props = {
+      ...shippedProps(),
+      cfg: composeConfig(master, [], {}, undefined).config,
+      rows: rowsOf(master),
+      onMoveCustomLayer: (id: string, delta: -1 | 1) => { master = moveLayer(master, id, delta); },
+    };
+    renderPanel(props);
+    act(() => {
+      (rowFor("First").querySelector('[aria-label="Bring First forward"]') as HTMLButtonElement).click();
+    });
+
+    const after = rowsOf(master).map((r) => r.id);
+    expect(after.indexOf("custom-a")).toBeLessThan(aBefore); // moved UP the list
+
+    renderPanel({ ...props, rows: rowsOf(master) });
+    expect(rowFor("First").querySelector('[aria-label="Bring First forward"]'))
+      .toHaveProperty("disabled", true); // now frontmost: up arrow disabled
+    expect(rowFor("Second").querySelector('[aria-label="Send Second backward"]'))
+      .toHaveProperty("disabled", true); // now backmost: down arrow disabled
   });
 
   // The other half of finding 14: a LEGACY per-label custom layer has no

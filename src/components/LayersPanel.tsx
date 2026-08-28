@@ -1,9 +1,10 @@
 // LayersPanel.tsx — the Figma-style layer list that fills the left sidebar.
-// One "Layers" group, flat, in the master's draw order (see model/panel.ts's
-// panelRows — App computes the rows and hands them down as `props.rows`):
-// every master layer, a variant-owned one badged with its variant's name and
-// dimmed while that variant is off, and any per-label custom layers appended
-// at the end. A separate "Document" group holds the UI-level background/mask/
+// One "Layers" group, flat, FRONT TO BACK (see model/panel.ts's panelRows —
+// App computes the rows and hands them down as `props.rows`): any per-label
+// custom layers first (frontmost, since plan.ts always draws them in front
+// of every master layer), then every master layer in reverse draw order — a
+// variant-owned one badged with its variant's name and dimmed while that
+// variant is off. A separate "Document" group holds the UI-level background/mask/
 // settings layers (from ./layers, which carry file drops or document knobs
 // rather than Styles) — unchanged. Rows select into the same LayerId
 // selection the preview's click-to-select uses — multi-select, so a row
@@ -520,13 +521,19 @@ export function LayersPanel(props: {
   // "send backward", not a stronger version of it. A row with no group (a
   // LEGACY per-label custom layer, which has nothing on the master to move)
   // gets no chevrons at all rather than two dead ones.
+  // `props.rows` is panelRows' output, listed FRONT TO BACK — so `group[0]`
+  // is the frontmost member of this row's own reorder group and the last
+  // entry is the backmost. atFront/atBack read straight off that: the up
+  // arrow (Bring forward, moveLayer(+1)) is disabled at index 0, the down
+  // arrow (Send backward, moveLayer(-1)) at the last index — matching what
+  // the click actually does, not the pre-flip back-to-front indexing.
   const reorderFor = (row: PanelRow) => {
     if (!row.custom || row.reorderGroup === undefined) return undefined;
     const group = props.rows.filter((r) => r.reorderGroup === row.reorderGroup).map((r) => r.id);
     const i = group.indexOf(row.id);
     return {
-      atBack: i <= 0,
-      atFront: i === group.length - 1,
+      atFront: i <= 0,
+      atBack: i === group.length - 1,
       onMove: (delta: -1 | 1) => props.onMoveCustomLayer(row.id, delta),
     };
   };
@@ -541,11 +548,11 @@ export function LayersPanel(props: {
           ⇧ click for a range · ⌘ click to add
         </p>
       )}
-      {/* One flat group, in the master's draw order — no more Beer/Collab/
-          Template split. A variant-owned row carries its badge and dims
-          itself (see LayerRow); custom layers ride along at the end, in
-          stored order (panelRows' contract), so "Add layer" belongs on
-          THIS group's header now rather than a separate "Custom" one. */}
+      {/* One flat group, front to back — no more Beer/Collab/Template split.
+          A variant-owned row carries its badge and dims itself (see
+          LayerRow); custom layers ride along at the top, frontmost first
+          (panelRows' contract), so "Add layer" belongs on THIS group's
+          header now rather than a separate "Custom" one. */}
       <SidebarGroup>
         <SidebarGroupLabel className="justify-between">
           <span>Layers</span>

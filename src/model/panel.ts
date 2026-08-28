@@ -46,11 +46,16 @@ export interface PanelRow {
   enabled: boolean;
 }
 
-/** The resolved master layers, in draw order, then `cfg.customLayers` in
- *  stored order — one flat list, so the panel's rows and the shift-range
- *  selection order (App reads `panelRows(...).map(r => r.id)`) can't drift
- *  apart. Custom rows are never inactive: a label-level layer either exists
- *  or it doesn't, there is no variant to gate it off. */
+/** The panel's rows FRONT TO BACK — `cfg.customLayers` (reversed to stored
+ *  order last-to-first, since plan.ts always draws them after every master
+ *  layer, in stored order, so the LAST custom layer is frontmost), then the
+ *  resolved master layers in reverse draw order. One flat list, so the
+ *  panel's rows and the shift-range selection order (App reads
+ *  `panelRows(...).map(r => r.id)`) can't drift apart; reversing draw order
+ *  changes what that selection order visits, but it still walks the rows in
+ *  the order the panel shows them, which is the point. Custom rows are never
+ *  inactive: a label-level layer either exists or it doesn't, there is no
+ *  variant to gate it off. */
 export function panelRows(
   master: Master, layers: MasterLayer[], disabledLayers: ReadonlySet<string>,
   cfg: LabelConfig,
@@ -90,5 +95,10 @@ export function panelRows(
     locked: !!l.locked,
     enabled: true,
   }));
-  return [...masterRows, ...customRows];
+  // plan.ts (~line 626) always draws cfg.customLayers after every master
+  // layer, so the flat back-to-front draw order is masterRows then
+  // customRows; the panel lists front-to-back, so reverse it here rather
+  // than interleaving — there is nothing to interleave, custom layers are
+  // always in front of every master layer.
+  return [...masterRows, ...customRows].reverse();
 }

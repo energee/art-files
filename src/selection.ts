@@ -31,10 +31,10 @@ export const EMPTY_SELECTION: Selection = { ids: [], anchor: null };
 
 /** Resolve a row click against the current selection.
  *
- *  `order` is the panel's row order (the master's layers in draw order, then
- *  its custom layers — see model/panel.ts's panelRows) — the order a
- *  shift-range is read in, so a range crosses the panel's rows the way the
- *  visible list does.
+ *  `order` is the panel's row order (front to back: its custom layers, then
+ *  the master's layers in reverse draw order — see model/panel.ts's
+ *  panelRows) — the order a shift-range is read in, so a range crosses the
+ *  panel's rows the way the visible list does.
  *
  *  The document layers (Background, Mask, Settings) are single-select: they
  *  carry file drops and document knobs rather than a Style, so mixing one

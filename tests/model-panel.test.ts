@@ -10,8 +10,8 @@ const rowsFor = (enabled: string[]) => {
 };
 
 describe("panelRows", () => {
-  it("lists master layers flat, in draw order", () => {
-    expect(rowsFor([]).map((r) => r.id).slice(0, 3)).toEqual(["volume", "abv", "description"]);
+  it("lists master layers flat, front to back (reverse draw order)", () => {
+    expect(rowsFor([]).map((r) => r.id).slice(0, 3)).toEqual(["barcode", "qr", "storeCold"]);
   });
   it("marks collab rows inactive and badged while the variant is off", () => {
     const lead = rowsFor([]).find((r) => r.id === "collabLead")!;
@@ -19,7 +19,7 @@ describe("panelRows", () => {
     expect(lead.variantName).toBe("Collab");
     expect(rowsFor(["collab"]).find((r) => r.id === "collabLead")!.inactive).toBe(false);
   });
-  it("appends custom layers, flagged and never inactive", () => {
+  it("lists custom layers first, flagged and never inactive (they're always frontmost)", () => {
     const m = lolevMaster();
     const r = composeConfig(m, [], {}, undefined);
     const cfg = structuredClone(r.config);
@@ -29,7 +29,7 @@ describe("panelRows", () => {
       line: { text: "hi", fill: "#000000", layer: "white" },
     }];
     const rows = panelRows(m, r.layers, r.disabledLayers, cfg);
-    expect(rows.at(-1)).toMatchObject({ id: "custom-a", name: "Note", custom: true, inactive: false });
+    expect(rows[0]).toMatchObject({ id: "custom-a", name: "Note", custom: true, inactive: false });
   });
   it("reports the master's lock on a row", () => {
     const m = lolevMaster();

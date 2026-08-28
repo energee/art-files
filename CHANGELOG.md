@@ -49,6 +49,11 @@ binary-impacting change gets its own version before it is merged.
 - Fixed: replacing a field image left the old one behind, growing every
   `.label` saved afterwards; and dropping a damaged image failed silently
   instead of reporting the error.
+- The layers panel now lists front to back — the layer you'd click on top
+  sits at the top of the list — instead of back to front. The up arrow on a
+  custom layer now moves its row up the list as well as forward, and the
+  down arrow moves it down as well as back, so the arrows finally point the
+  way the rows move.
 
 ## [0.1.36] - 2026-08-27
 
