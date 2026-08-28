@@ -23,6 +23,32 @@ binary-impacting change gets its own version before it is merged.
   switch on and off from the same checkbox every variant gets. The lead-in
   line above them stays fixed template art. Labels saved with the old collab
   switch open with the variant already on and look exactly as they did.
+- Fixed: a layer added in Design mode could not really be edited. Dragging,
+  restyling, renaming, locking or deleting one appeared to work and then
+  silently reverted, and deleting was impossible — the layer came straight
+  back. Reorder arrows could also be shown for moves that did nothing.
+- Fixed: edits to the built-in Lolev master were lost when a label was
+  reopened, even after saving the master to a `.master` file. A saved master
+  on disk now wins over the built-in one, as it always should have.
+- Fixed: editing a beer name, ABV or other fillable text directly on the
+  canvas in Design mode reverted, and wrote that one label's text into the
+  master, where every other label would have inherited it.
+- Fixed: a duplicated master could not be saved, and a label pointing at one
+  could not be reopened afterwards.
+- Fixed: opening a `.master` whose variant added an unrecognised layer crashed
+  the whole sidebar.
+- Fixed: custom barcodes printed wrong. The human-readable digits overprinted
+  the bottom of the bars instead of sitting in the space reserved below them,
+  the white-ink plate extended twice as far past the ink as intended, and a
+  UPC-A or EAN-13's outer digits were not counted in its width — so a
+  right-aligned one could push its check digit off the trim edge. Custom
+  barcode layers on existing labels shift as a result; Code 128 is unaffected.
+- Fixed: a custom image layer whose artwork had not loaded still stamped a
+  solid white-ink rectangle into the exported PSD, under artwork that never
+  printed.
+- Fixed: replacing a field image left the old one behind, growing every
+  `.label` saved afterwards; and dropping a damaged image failed silently
+  instead of reporting the error.
 
 ## [0.1.36] - 2026-08-27
 
