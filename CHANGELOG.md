@@ -54,6 +54,9 @@ binary-impacting change gets its own version before it is merged.
   custom layer now moves its row up the list as well as forward, and the
   down arrow moves it down as well as back, so the arrows finally point the
   way the rows move.
+- A custom layer's name can now be renamed right in the layers panel —
+  double-click it, same as a built-in layer — instead of only from the Name
+  field in the inspector.
 
 ## [0.1.36] - 2026-08-27
 

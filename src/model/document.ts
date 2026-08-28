@@ -649,9 +649,9 @@ export function removeLayer(master: Master, layerId: string): Master {
 }
 
 /** Rename one MATERIALIZED layer — the inspector's Name input (StyleProperties'
- *  NameLockRow), which is the only rename path a custom row has (the layers
- *  panel deliberately refuses inline rename for custom rows). The name is
- *  MasterLayer identity, not style: resolve() re-stamps it onto the
+ *  NameLockRow) and the layers panel's own inline rename (LayersPanel's
+ *  LayerRow, routed through onMaterializedLayerEdit) both land here. The
+ *  name is MasterLayer identity, not style: resolve() re-stamps it onto the
  *  CustomLayer it materializes, so writing it into `cfg.customLayers` would
  *  be recomposed away. Returns `master` unchanged when the id isn't
  *  materialized anywhere, or already carries that name. */

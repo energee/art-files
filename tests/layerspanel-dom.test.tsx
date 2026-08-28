@@ -346,3 +346,113 @@ describe("LayersPanel reorder chevrons", () => {
     expect(row.querySelector('[aria-label="Bring Legacy forward"]')).toBeNull();
   });
 });
+
+// Custom rows now get the SAME inline rename master rows already had:
+// double-click the name for an input, Enter/blur commits, Escape cancels.
+// The routing differs by row kind — a MATERIALIZED row must go through
+// onMaterializedLayerEdit (MasterLayer.name — the master-side path
+// renameLayer/routeCustomLayers use), never a raw `update` write into
+// `cfg.customLayers` (resolve() rebuilds that array from the master every
+// render, so a name written there would be recomposed away); a LEGACY
+// per-label row keeps writing the label through `update`, exactly as the
+// inspector's Name field does for it today.
+describe("LayersPanel inline rename on custom rows", () => {
+  function twoRenamableCustomRowsProps() {
+    const props = shippedProps();
+    const master = addLayer(lolevMaster(), "master",
+      { id: "custom-a", name: "Materialized", enabled: true, kind: "text" },
+      {
+        type: "text", size: 10,
+        position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
+        line: { text: "m", fill: "#000000", layer: "white" },
+      });
+    const r = composeConfig(master, [], {}, undefined);
+    const legacy: CustomLayer = {
+      id: "custom-b", name: "Legacy", type: "text", size: 10,
+      position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
+      line: { text: "l", fill: "#000000", layer: "white" },
+    };
+    const cfg = { ...r.config, customLayers: [...(r.config.customLayers ?? []), legacy] };
+    const rows = panelRows(master, r.layers, r.disabledLayers, cfg);
+    return { ...props, cfg, rows, master };
+  }
+
+  function rowFor(name: string) {
+    return Array.from(container.querySelectorAll("li"))
+      .find((li) => li.textContent?.includes(name))!;
+  }
+
+  function dblclick(el: Element) {
+    act(() => { el.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); });
+  }
+
+  function keydown(el: Element, key: string) {
+    act(() => { el.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true })); });
+  }
+
+  it("double-click starts the rename on a custom row", () => {
+    const props = twoRenamableCustomRowsProps();
+    renderPanel({ ...props, onLayerEdit: vi.fn(), onMaterializedLayerEdit: vi.fn() });
+    const row = rowFor("Legacy");
+    expect(row.querySelector('input[aria-label="Rename Legacy"]')).toBeNull();
+    dblclick(row.querySelector("span")!);
+    expect(row.querySelector('input[aria-label="Rename Legacy"]')).not.toBeNull();
+  });
+
+  it("a materialized row's rename commits through onMaterializedLayerEdit, never update", () => {
+    const props = twoRenamableCustomRowsProps();
+    const onLayerEdit = vi.fn();
+    const onMaterializedLayerEdit = vi.fn();
+    renderPanel({ ...props, onLayerEdit, onMaterializedLayerEdit });
+    const row = rowFor("Materialized");
+    dblclick(row.querySelector("span")!);
+    const input = row.querySelector('input[aria-label="Rename Materialized"]') as HTMLInputElement;
+    expect(input).not.toBeNull();
+    input.value = "Renamed";
+    keydown(input, "Enter");
+    expect(onMaterializedLayerEdit).toHaveBeenCalledWith("custom-a", { name: "Renamed" });
+    expect(onLayerEdit).not.toHaveBeenCalled();
+    expect(props.update).not.toHaveBeenCalled();
+    // The input is gone once committed.
+    expect(row.querySelector('input[aria-label="Rename Materialized"]')).toBeNull();
+  });
+
+  it("a legacy row's rename still commits through update, never onMaterializedLayerEdit", () => {
+    const props = twoRenamableCustomRowsProps();
+    const onLayerEdit = vi.fn();
+    const onMaterializedLayerEdit = vi.fn();
+    renderPanel({ ...props, onLayerEdit, onMaterializedLayerEdit });
+    const row = rowFor("Legacy");
+    dblclick(row.querySelector("span")!);
+    const input = row.querySelector('input[aria-label="Rename Legacy"]') as HTMLInputElement;
+    expect(input).not.toBeNull();
+    input.value = "Renamed Legacy";
+    keydown(input, "Enter");
+    expect(props.update).toHaveBeenCalledTimes(1);
+    expect(onMaterializedLayerEdit).not.toHaveBeenCalled();
+    expect(onLayerEdit).not.toHaveBeenCalled();
+    // Confirm `update`'s mutator actually renamed the legacy entry, and
+    // named it — not routed to the master's customLayers as a whole-array
+    // replacement.
+    const mutate = props.update.mock.calls[0][0] as (c: typeof props.cfg) => void;
+    const draft = { ...props.cfg, customLayers: props.cfg.customLayers!.map((l) => ({ ...l })) };
+    mutate(draft);
+    expect(draft.customLayers!.find((l) => l.id === "custom-b")?.name).toBe("Renamed Legacy");
+  });
+
+  it("Escape cancels the rename without committing", () => {
+    const props = twoRenamableCustomRowsProps();
+    const onLayerEdit = vi.fn();
+    const onMaterializedLayerEdit = vi.fn();
+    renderPanel({ ...props, onLayerEdit, onMaterializedLayerEdit });
+    const row = rowFor("Materialized");
+    dblclick(row.querySelector("span")!);
+    const input = row.querySelector('input[aria-label="Rename Materialized"]') as HTMLInputElement;
+    input.value = "Should Not Stick";
+    keydown(input, "Escape");
+    expect(onMaterializedLayerEdit).not.toHaveBeenCalled();
+    expect(props.update).not.toHaveBeenCalled();
+    expect(row.querySelector('input[aria-label="Rename Materialized"]')).toBeNull();
+    expect(row.textContent).toContain("Materialized");
+  });
+});

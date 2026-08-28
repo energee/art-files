@@ -217,14 +217,35 @@ function LayerRow({
   // than a phantom column under controls they don't have.
   const stop = (e: React.MouseEvent) => e.stopPropagation();
   const isSelected = selected.includes(id);
-  // Inline rename, master rows only: double-click the name for an input,
-  // Enter/blur commits through onLayerEdit, Esc cancels. A layer's name is
-  // master POLICY (MasterLayer.name), not label content — which is exactly
-  // why it can't ride `update` the way the metallic toggle does.
+  // Inline rename, every row kind: double-click the name for an input,
+  // Enter/blur commits, Esc cancels — same interaction, three destinations:
+  //   · A master row's name is master POLICY (MasterLayer.name), not label
+  //     content, so it can't ride `update` the way the metallic toggle
+  //     does — it goes through onLayerEdit, gated on Design mode exactly
+  //     like the enable/lock controls above.
+  //   · A MATERIALIZED custom row carries the same MasterLayer identity, so
+  //     it uses onMaterializedLayerEdit (id-search based, same reasoning as
+  //     its Lock a few lines down) — NEVER a raw `update` write into
+  //     `cfg.customLayers`: resolve() rebuilds that array from the master
+  //     every render, so a name written there would be recomposed away.
+  //   · A LEGACY per-label custom row has no MasterLayer backing it, so its
+  //     name stays a direct `update` write into its own `cfg.customLayers`
+  //     entry, same as its Lock and exactly what the inspector's Name field
+  //     (StyleProperties' NameLockRow) does for it today.
+  const canRename = customLayer
+    ? (row.materialized ? !!onMaterializedLayerEdit : mode === "design")
+    : !!onLayerEdit;
   const [renaming, setRenaming] = useState(false);
   const commitRename = (value: string) => {
     const name = value.trim();
-    if (name && name !== label) onLayerEdit?.(row.id, { name });
+    if (name && name !== label) {
+      if (!customLayer) onLayerEdit?.(row.id, { name });
+      else if (row.materialized) onMaterializedLayerEdit?.(row.id, { name });
+      else update((c) => {
+        const l = c.customLayers?.find((x) => x.id === id);
+        if (l) l.name = name;
+      });
+    }
     setRenaming(false);
   };
   return (
@@ -300,7 +321,7 @@ function LayerRow({
                 className="min-w-0 flex-1 rounded-sm border border-sidebar-border bg-transparent px-1 text-xs outline-none"
               />
             ) : (
-              <span onDoubleClick={() => onLayerEdit && setRenaming(true)}>{label}</span>
+              <span onDoubleClick={() => canRename && setRenaming(true)}>{label}</span>
             )}
             {/* A variant-owned row's badge — small and muted, after the
                 name, so a Collab (or future variant) row still reads as
