@@ -73,4 +73,27 @@ describe("master library index", () => {
     vi.doUnmock("@tauri-apps/api/core");
     vi.doUnmock("@/files");
   });
+
+  // Minor (Wave B fix round): the file at the index's path parses fine, but
+  // holds a DIFFERENT master's id than requested — a stale index entry
+  // (moved/reused path) or a corrupt hint. readMasterAt's own `m.id === id`
+  // check must reject it rather than handing back the wrong master.
+  it("a file that parses but whose id doesn't match the requested id is rejected, not returned", async () => {
+    vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+    const wrongMaster = { ...lolevMaster(), id: "master-someone-else" };
+    vi.doMock("@/files", () => ({
+      readNativeFile: async () => new TextEncoder().encode(JSON.stringify(wrongMaster)),
+    }));
+    const mod = await import("../src/masters");
+    // Index entry claims to hold "master-requested", but the file at its
+    // path is actually "master-someone-else".
+    localStorage.setItem("labellab.masters", JSON.stringify({
+      "master-requested": { name: "Stale", path: "/tmp/stale.master", lastSeen: new Date().toISOString() },
+    }));
+    expect(await mod.resolveMasterById("master-requested")).toBeNull();
+    // Same mismatch via the hint path (no index entry at all).
+    expect(await mod.resolveMasterById("master-requested", "/tmp/stale.master")).toBeNull();
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/files");
+  });
 });

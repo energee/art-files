@@ -338,3 +338,56 @@ export function rebindDoc(doc: Doc, target: Master): { doc: Doc; notes: string[]
     notes.push(`${disabledVariants.length} variant${disabledVariants.length === 1 ? "" : "s"} benched`);
   return { doc: nextDoc, notes };
 }
+
+/** A functional setDoc — the same contract React's setState (and
+ *  useHistory's `set`) accept: an updater over whatever the CURRENT doc
+ *  actually is, not necessarily the one a caller captured earlier. Typed
+ *  here (not imported from React) so this file stays free of React, per its
+ *  own header. */
+export type SetDoc = (updater: (d: Doc) => Doc) => void;
+
+/** The impure-but-React-free core of App.tsx's commitRebind (findings #15,
+ *  #18 — extracted so both are directly testable without mounting the app:
+ *  tests/app-commit-rebind.test.ts drives this function itself, not a
+ *  reimplementation of it).
+ *
+ *  Guards its `setDoc` updater exactly like every other edit path in
+ *  App.tsx (`d === doc ? probe : recompute(d)`) so a doc change landing
+ *  during a caller's `await` (the file picker, `file.text()`) is recomputed
+ *  against instead of clobbered by the precomputed `probe` (finding #18).
+ *
+ *  `clean` (default true) decides whether `pristineMaster.current` adopts
+ *  `target` as the new clean baseline: true for File → Open Master and the
+ *  library picker's Continue, both of which bind onto a master that already
+ *  matches what's on disk; false for Duplicate as new master, whose clone
+ *  has never been saved — leaving pristineMaster at its prior baseline
+ *  keeps the clone reading dirty, so Save Master stays enabled instead of a
+ *  project save writing a masterId that's in no index (finding #15).
+ *
+ *  Returns the rebind's `notes` (App.tsx's caller reports them through
+ *  setLoadError) computed against the doc THIS call sees — same best-effort
+ *  contract as `markDirty` in every other guarded site: React's setState
+ *  updater runs deferred, so there is no way to synchronously read back
+ *  whichever doc the updater actually recomputed against inside this same
+ *  call. A concurrent edit landing mid-await is vanishingly rare and, per
+ *  the guard above, never lost — at worst its notes lag one recompute. */
+export function commitRebindCore(
+  doc: Doc, target: Master, setDoc: SetDoc,
+  pristineMaster: { current: Master }, clean = true,
+): { notes: string[] } {
+  const probe = rebindDoc(doc, target);
+  setDoc((d) => (d === doc ? probe.doc : rebindDoc(d, target).doc));
+  if (clean) pristineMaster.current = target;
+  return { notes: probe.notes };
+}
+
+/** The impure-but-React-free core of App.tsx's addAndSelectVariant (finding
+ *  #18) — same stale-doc guard as commitRebindCore above, extracted for the
+ *  same reason: tests/app-commit-rebind.test.ts drives this directly. */
+export function addAndSelectVariantCore(
+  doc: Doc, name: string, setDoc: SetDoc,
+): { id: string } {
+  const probe = addVariantDoc(doc, name);
+  setDoc((d) => (d === doc ? probe.doc : addVariantDoc(d, name).doc));
+  return { id: probe.id };
+}

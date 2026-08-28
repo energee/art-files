@@ -35,9 +35,9 @@ import {
   valuesFromConfig, visibleFieldsOf, type EditTarget,
 } from "@/model/document";
 import {
-  addFieldDoc, addLayerDoc, addVariantDoc, clampTarget, designEditDoc, labelEditDoc,
-  labelSnapshot, layerEditDoc, materializedLayerEditDoc, moveLayerDoc, rebindDoc,
-  removeFieldDoc, renameFieldDoc, resetOverrideDoc, type Doc,
+  addAndSelectVariantCore, addFieldDoc, addLayerDoc, clampTarget, commitRebindCore,
+  designEditDoc, labelEditDoc, labelSnapshot, layerEditDoc, materializedLayerEditDoc,
+  moveLayerDoc, removeFieldDoc, renameFieldDoc, resetOverrideDoc, type Doc,
 } from "@/model/doc";
 import { parseLabelFile } from "@/model/labelfile";
 import { buildSkip } from "@/model/skip";
@@ -1006,10 +1006,9 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  transition above), then select the new variant as the target so the
    *  next edit lands in it — all one undoable step. */
   const addAndSelectVariant = (name: string) => {
-    const probe = addVariantDoc(doc, name);
+    const { id } = addAndSelectVariantCore(doc, name, setDoc);
     markDirty();
-    setDoc((d) => (d === doc ? probe.doc : addVariantDoc(d, name).doc));
-    setEditingTarget({ variant: probe.id });
+    setEditingTarget({ variant: id });
   };
   /** Wrap a config mutation that bypasses `update` (undo/redo) so it still
    *  marks the document dirty. */
@@ -1932,18 +1931,16 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  written to disk, so leaving pristineMaster at its old baseline keeps it
    *  reading dirty — otherwise Save Master stays disabled and a project save
    *  writes a masterId that's in no index, which fails to reopen (finding
-   *  #15). The transition is computed against the doc THIS render sees, and
-   *  recomputed inside the updater if handed a different doc than the one
-   *  probed — same guard as designEdit/layerEdit — so an edit made while an
-   *  `await` (the file picker, `file.text()`) was in flight can't be
-   *  clobbered by a stale precomputed value (finding #18). */
+   *  #15). The React-free core (commitRebindCore, model/doc.ts) owns the
+   *  transition itself — the stale-doc guard (finding #18) and the `clean`
+   *  decision both live there, tested directly in
+   *  tests/app-commit-rebind.test.ts — this wrapper is only the UI-only
+   *  side effects the core has no business knowing about. */
   function commitRebind(target: Master, clean = true) {
-    const probe = rebindDoc(doc, target);
-    setDoc((d) => (d === doc ? probe.doc : rebindDoc(d, target).doc));
-    if (clean) pristineMaster.current = target; // freshly bound onto a saved master: clean by definition
+    const { notes } = commitRebindCore(doc, target, setDoc, pristineMaster, clean);
     setEditingTarget("master"); // the old target may not exist on the new master (clampTarget also guards this)
     markDirty(); // the label now names a different master — a real, unsaved change
-    setLoadError(probe.notes.length ? "Note: " + probe.notes.join(" · ") : "");
+    setLoadError(notes.length ? "Note: " + notes.join(" · ") : "");
   }
 
   /** File → Open Master…: register the newly opened master in the library

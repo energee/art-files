@@ -1,15 +1,18 @@
-// app-commit-rebind.test.ts — pins the two algorithmic contracts App.tsx's
-// commitRebind/addAndSelectVariant now rely on (findings #15 and #18 from
-// the master-authoring review). Both bugs live in App.tsx glue (a ref
-// baseline, a stale-closure setDoc argument) that this repo's convention
-// doesn't mount a DOM harness for (see design-routing.test.ts/
-// app-layer-doc.test.ts: App-level routing is pinned by exercising the pure
-// Doc transitions the glue calls, not by mounting App itself). These tests
-// do the same: they exercise rebindDoc/addVariantDoc directly and assert the
-// exact invariant commitRebind's fixed shape depends on, so a regression in
-// either invariant fails here even without a full app mount.
+// app-commit-rebind.test.ts — findings #15 and #18 from the master-authoring
+// review, both in App.tsx's commitRebind/duplicateMaster/addAndSelectVariant.
+// Round 1 of this test only exercised rebindDoc/addVariantDoc directly and
+// asserted invariants about them in isolation — it never called the actual
+// buggy code, so reverting either fix left it green. Fixed by hoisting the
+// impure-but-React-free CORE of each App.tsx function into
+// commitRebindCore/addAndSelectVariantCore (src/model/doc.ts), parameterized
+// over `doc` and a functional `setDoc`, the same seam every other Doc
+// transition in this repo already uses for testability. These tests drive
+// those cores directly — the exact functions App.tsx's wrappers call — with
+// a trivial fake `setDoc` standing in for React's state setter.
 import { describe, expect, it } from "vitest";
-import { addVariantDoc, type Doc, rebindDoc } from "../src/model/doc";
+import {
+  addAndSelectVariantCore, commitRebindCore, designEditDoc, type Doc, type SetDoc,
+} from "../src/model/doc";
 import { composeConfig } from "../src/model/document";
 import { lolevMaster } from "../src/model/lolev";
 import type { Master } from "../src/model/types";
@@ -20,62 +23,76 @@ function plainDoc(): Doc {
   return { cfg, enabledVariants: [], master };
 }
 
-// Finding #18: commitRebind (and addAndSelectVariant) must recompute their
-// transition against the CURRENT doc when it differs from the one probed
-// before an intervening `await` — never apply a precomputed value that was
-// captured against a stale doc. This mirrors the exact guard both now use:
-// `setDoc((d) => (d === doc ? probe : recompute(d)))`.
-describe("commitRebind/addAndSelectVariant's stale-doc guard", () => {
-  it("rebindDoc: recomputing against a doc that changed during an await preserves the concurrent edit", () => {
-    const doc = plainDoc();
+/** A trivial store + functional setDoc, the same contract React's setState
+ *  (and useHistory's `set`) give a caller: the updater always sees whatever
+ *  the store's doc actually is AT THE TIME IT RUNS, applied synchronously
+ *  here purely so a test can inspect the result immediately after. */
+function fakeStore(doc: Doc): { get: () => Doc; setDoc: SetDoc } {
+  let current = doc;
+  return { get: () => current, setDoc: (fn) => { current = fn(current); } };
+}
+
+describe("commitRebindCore's stale-doc guard (finding #18)", () => {
+  it("a doc change landing between the probe and the commit (an intervening `await`) is not clobbered", () => {
+    const captured = plainDoc(); // what the caller (commitRebind) sees before its `await`
+    const store = fakeStore(captured);
+    // The await: a concurrent edit lands in the store while the file picker
+    // (or file.text()) is in flight — captured no longer matches store.get().
+    store.setDoc((d) => designEditDoc(d, "master", (c) => { c.abv = "9.9"; }));
+    expect(store.get()).not.toBe(captured); // the race actually happened
+
     const target: Master = { ...lolevMaster(), id: "master-other", name: "Other" };
-    // What the picker/Open-Master flow precomputes before its `await`.
-    const probe = rebindDoc(doc, target);
-    // An edit lands on `doc` while the await (file pick / file.text()) is in
-    // flight — the bug: applying `probe.doc` unconditionally would silently
-    // drop this.
-    const concurrent: Doc = { ...doc, cfg: { ...doc.cfg, abv: "9.9" } };
-    // The buggy shape App used to have: setDoc(nextDoc) — always the stale probe.
-    const buggy = probe.doc;
-    expect(buggy.cfg.abv).not.toBe("9.9"); // proves the bug: the concurrent edit is gone
-    // The fixed shape: recompute against the doc actually current when the
-    // updater runs.
-    const fixed = concurrent === doc ? probe.doc : rebindDoc(concurrent, target).doc;
-    expect(fixed.cfg.abv).toBe("9.9"); // the concurrent edit survives
+    commitRebindCore(captured, target, store.setDoc, { current: captured.master });
+
+    expect(store.get().master.id).toBe("master-other"); // the rebind itself landed
+    expect(store.get().cfg.abv).toBe("9.9"); // AND the concurrent edit survived
   });
 
-  it("addVariantDoc: recomputing against a doc that changed during a batch still selects the variant it actually created", () => {
+  it("with no concurrent edit, the probe applies as-is", () => {
     const doc = plainDoc();
-    const probe = addVariantDoc(doc, "Winter");
-    const concurrent: Doc = { ...doc, cfg: { ...doc.cfg, abv: "9.9" } };
-    const fixed = concurrent === doc ? probe : addVariantDoc(concurrent, "Winter");
-    expect(fixed.doc.master.variants.some((v) => v.id === fixed.id)).toBe(true);
-    expect(fixed.doc.cfg.abv).toBe("9.9"); // the concurrent edit survives the recompute too
+    const store = fakeStore(doc);
+    const target: Master = { ...lolevMaster(), id: "master-other", name: "Other" };
+    commitRebindCore(doc, target, store.setDoc, { current: doc.master });
+    expect(store.get().master.id).toBe("master-other");
   });
 });
 
-// Finding #15: a freshly duplicated, never-saved master must read DIRTY
-// against its pristine baseline, so File → Save Master stays enabled and a
-// project save never writes a masterId absent from every index. commitRebind
-// takes a `clean` flag for exactly this: Duplicate passes `clean=false`, so
-// the baseline is left at whatever it already was (a master that is NOT the
-// new clone the doc now points at) — reproduced here directly with Master
-// identity, the same comparison App's `masterDirty = doc.master !==
-// pristineMaster.current` makes.
-describe("a duplicated master's dirty baseline", () => {
-  it("stays dirty: the clone is never adopted as the clean baseline", () => {
-    const before = lolevMaster();
-    const clone: Master = { ...before, id: "master-abc123", name: "Copy" };
-    const pristineMasterBaseline = before; // clean=false: baseline untouched by the rebind
-    const dirtyAgainstBaseline = clone !== pristineMasterBaseline;
-    expect(dirtyAgainstBaseline).toBe(true);
+describe("addAndSelectVariantCore's stale-doc guard (finding #18)", () => {
+  it("a doc change landing before the commit is not clobbered, and the created variant still exists", () => {
+    const captured = plainDoc();
+    const store = fakeStore(captured);
+    store.setDoc((d) => designEditDoc(d, "master", (c) => { c.abv = "9.9"; }));
+    expect(store.get()).not.toBe(captured);
+
+    const { id } = addAndSelectVariantCore(captured, "Winter", store.setDoc);
+
+    expect(store.get().master.variants.some((v) => v.id === id)).toBe(true);
+    expect(store.get().cfg.abv).toBe("9.9");
+  });
+});
+
+describe("commitRebindCore's `clean` flag (finding #15)", () => {
+  it("Duplicate as new master (clean=false): pristineMaster stays at its old baseline, so the clone reads dirty", () => {
+    const doc = plainDoc();
+    const store = fakeStore(doc);
+    const clone: Master = { ...doc.master, id: "master-abc123", name: "Copy" };
+    const pristineMaster = { current: doc.master };
+
+    commitRebindCore(doc, clone, store.setDoc, pristineMaster, false);
+
+    expect(store.get().master.id).toBe("master-abc123"); // the doc points at the clone
+    expect(store.get().master).not.toBe(pristineMaster.current); // masterDirty === true
   });
 
-  it("contrasts with an ordinary Open/pick rebind, which DOES read clean", () => {
-    const before = lolevMaster();
-    const opened: Master = { ...before, id: "master-xyz789", name: "Opened" };
-    const pristineMasterBaseline = opened; // clean=true (the default): baseline moves to the opened master
-    const dirtyAgainstBaseline = opened !== pristineMasterBaseline;
-    expect(dirtyAgainstBaseline).toBe(false);
+  it("Open Master / the library picker's Continue (clean=true, the default): pristineMaster adopts the target, so it reads clean", () => {
+    const doc = plainDoc();
+    const store = fakeStore(doc);
+    const opened: Master = { ...doc.master, id: "master-xyz789", name: "Opened" };
+    const pristineMaster = { current: doc.master };
+
+    commitRebindCore(doc, opened, store.setDoc, pristineMaster);
+
+    expect(store.get().master.id).toBe("master-xyz789");
+    expect(store.get().master).toBe(pristineMaster.current); // masterDirty === false
   });
 });
