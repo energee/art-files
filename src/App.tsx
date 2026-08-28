@@ -982,10 +982,10 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  transition above), then select the new variant as the target so the
    *  next edit lands in it — all one undoable step. */
   const addAndSelectVariant = (name: string) => {
-    const { doc: next, id } = addVariantDoc(doc, name);
+    const probe = addVariantDoc(doc, name);
     markDirty();
-    setDoc(() => next);
-    setEditingTarget({ variant: id });
+    setDoc((d) => (d === doc ? probe.doc : addVariantDoc(d, name).doc));
+    setEditingTarget({ variant: probe.id });
   };
   /** Wrap a config mutation that bypasses `update` (undo/redo) so it still
    *  marks the document dirty. */
@@ -1864,13 +1864,26 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  what benching looks like. Whatever the rebind can't match goes onto
    *  the new doc's `dormant` (never dropped) and is also reported as an
    *  advisory note in the same slot a lossy compose uses. */
-  function commitRebind(target: Master) {
-    const { doc: nextDoc, notes } = rebindDoc(doc, target);
-    pristineMaster.current = target; // freshly bound: clean by definition
+  /** `clean` (default true): whether the freshly bound master should read as
+   *  clean against pristineMaster's baseline. True for Open Master / the
+   *  library picker's Continue — both bind onto a master that already
+   *  matches what's on disk (or the shipped fixture), so there is nothing to
+   *  save. False for Duplicate as new master: the clone has never been
+   *  written to disk, so leaving pristineMaster at its old baseline keeps it
+   *  reading dirty — otherwise Save Master stays disabled and a project save
+   *  writes a masterId that's in no index, which fails to reopen (finding
+   *  #15). The transition is computed against the doc THIS render sees, and
+   *  recomputed inside the updater if handed a different doc than the one
+   *  probed — same guard as designEdit/layerEdit — so an edit made while an
+   *  `await` (the file picker, `file.text()`) was in flight can't be
+   *  clobbered by a stale precomputed value (finding #18). */
+  function commitRebind(target: Master, clean = true) {
+    const probe = rebindDoc(doc, target);
+    setDoc((d) => (d === doc ? probe.doc : rebindDoc(d, target).doc));
+    if (clean) pristineMaster.current = target; // freshly bound onto a saved master: clean by definition
     setEditingTarget("master"); // the old target may not exist on the new master (clampTarget also guards this)
-    setDoc(nextDoc);
     markDirty(); // the label now names a different master — a real, unsaved change
-    setLoadError(notes.length ? "Note: " + notes.join(" · ") : "");
+    setLoadError(probe.notes.length ? "Note: " + probe.notes.join(" · ") : "");
   }
 
   /** File → Open Master…: register the newly opened master in the library
@@ -1906,7 +1919,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const clone: Master = { ...master, id: `master-${crypto.randomUUID().slice(0, 8)}`, name };
     masterFileHandle.current = null;
     masterFilePath.current = null;
-    commitRebind(clone);
+    commitRebind(clone, false); // never-saved clone: must read dirty so Save Master is live (finding #15)
   }
 
   /** MasterPicker's library listing: the shipped Lolev master plus every

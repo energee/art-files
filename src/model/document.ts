@@ -231,10 +231,45 @@ function extractRemovals(
   return { paths, rest: rest as DeepPartial<LabelConfig> };
 }
 
+/** Pulls every path in `fieldPaths` out of `patch` (a config diff) into its
+ *  own patch, leaving the rest behind. A field-bound layer's CONTENT is
+ *  label data, not a master default (finding #5): editing it in Design mode
+ *  must never land in master.defaults/a variant's overrides, however it
+ *  reaches applyDesignEdit's ordinary LabelConfig `mutate`. ANY field
+ *  declared anywhere on the master counts (declaredFieldPaths), not just
+ *  currently-visible ones — a field's content is label data regardless of
+ *  whether it happens to be visible right now. */
+function extractFieldPatch(
+  patch: DeepPartial<LabelConfig>, fieldPaths: Set<string>,
+): { fieldPatch: DeepPartial<LabelConfig>; rest: DeepPartial<LabelConfig> } {
+  const rest = structuredClone(patch) as Record<string, unknown>;
+  const fieldPatch: Record<string, unknown> = {};
+  for (const p of fieldPaths) {
+    const v = getPath(patch, p);
+    if (v === undefined) continue;
+    setPath(fieldPatch, p, v);
+    deletePath(rest, p);
+  }
+  return { fieldPatch: fieldPatch as DeepPartial<LabelConfig>, rest: rest as DeepPartial<LabelConfig> };
+}
+
+/** Dot-path write, the mirror of getPath above (and of resolve.ts's own
+ *  setPath, which this file can't import without a cycle). */
+function setPath(obj: Record<string, unknown>, path: string, value: unknown): void {
+  const keys = path.split(".");
+  let at = obj;
+  for (const k of keys.slice(0, -1)) at = (at[k] ??= {}) as Record<string, unknown>;
+  at[keys[keys.length - 1]] = value;
+}
+
 /** Run an ordinary LabelConfig mutation as an AUTHORING edit: apply it to a
  *  freshly resolved base, diff, and record the diff at `target`. Returns a
  *  NEW master — never mutates the one passed in — so it drops straight into
- *  the app's history stack.
+ *  the app's history stack — plus `fieldPatch`, the slice of the diff that
+ *  landed on a declared field's path instead: label content, deliberately
+ *  NOT folded into `master`, for the caller (designEditDoc) to merge onto
+ *  `doc.cfg` itself so it survives the edit instead of reverting on the next
+ *  recompose (finding #5). Empty when the edit touched no field-bound path.
  *
  *  This is the whole semantic flip in one function: every existing editor
  *  (applyStyle, the inspector's fields, drag, lock) keeps mutating a
@@ -243,7 +278,7 @@ export function applyDesignEdit(
   master: Master, target: EditTarget, enabledVariants: string[],
   values: Record<string, FieldValue>,
   mutate: (cfg: LabelConfig) => void,
-): Master {
+): { master: Master; fieldPatch: DeepPartial<LabelConfig> } {
   const variantId = target === "master" ? undefined : target.variant;
   // Editing a variant resolves its base WITH that variant enabled —
   // otherwise the diff would re-record everything the variant already
@@ -255,8 +290,10 @@ export function applyDesignEdit(
   const base = composeConfig(master, resolveEnabled, values, undefined).config;
   const next = structuredClone(base);
   mutate(next);
-  const d = configDiff(base, next);
-  if (Object.keys(d).length === 0) return master; // memo/dirty-flag contract: identity, not a clone
+  const rawDiff = configDiff(base, next);
+  if (Object.keys(rawDiff).length === 0) return { master, fieldPatch: {} }; // memo/dirty-flag contract: identity, not a clone
+  const { fieldPatch, rest: d } = extractFieldPatch(rawDiff, declaredFieldPaths(master));
+  if (Object.keys(d).length === 0) return { master, fieldPatch }; // wholly field content — nothing for defaults/overrides
   // resolve() OWNS `config.customLayers` for every materialized layer, so a
   // whole-array diff recorded at `defaults.customLayers` would be recomposed
   // away and left behind as junk (fix round 2, findings 1–4). Decompose it
@@ -269,7 +306,7 @@ export function applyDesignEdit(
   const at = routed.master; // master + whatever layer identity/removal routing recorded
   // The whole edit was layer identity or removal — already recorded on `at`,
   // nothing left for defaults/overrides.
-  if (Object.keys(routed.diff).length === 0) return at;
+  if (Object.keys(routed.diff).length === 0) return { master: at, fieldPatch };
   const { paths: removals, rest } = extractRemovals(routed.diff);
   if (target === "master") {
     // Master.defaults is typed Partial<LabelConfig> (shallow) but in practice
@@ -278,7 +315,7 @@ export function applyDesignEdit(
     const defaults = structuredClone(at.defaults) as Record<string, unknown>;
     for (const p of removals) deletePath(defaults, p);
     const merged = deepMerge(defaults as DeepPartial<LabelConfig>, rest) as Partial<LabelConfig>;
-    return { ...at, defaults: merged };
+    return { master: { ...at, defaults: merged }, fieldPatch };
   }
   const variants = at.variants.map((v) => {
     if (v.id !== target.variant) return v;
@@ -287,7 +324,7 @@ export function applyDesignEdit(
     const merged = deepMerge(overrides as DeepPartial<LabelConfig>, rest) as Partial<LabelConfig>;
     return { ...v, overrides: merged };
   });
-  return { ...at, variants };
+  return { master: { ...at, variants }, fieldPatch };
 }
 
 /** Patch one layer's policy (name/enabled/locked) at `target`: the master's

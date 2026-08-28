@@ -23,6 +23,7 @@ import {
 } from "@/model/document";
 import { setPath } from "@/model/resolve";
 import { rebind } from "@/model/rebind";
+import { deepMerge } from "@/model/merge";
 
 /** The undoable half of one document: the live config, which of its master's
  *  variants are enabled, and the master itself. All three travel together
@@ -99,9 +100,16 @@ export function designEditDoc(
 ): Doc {
   const at = clampTarget(doc.master, target);
   const values = valuesFromConfig(doc.master, doc.enabledVariants, doc.cfg);
-  const master = applyDesignEdit(doc.master, at, doc.enabledVariants, values, mutate);
-  if (master === doc.master) return doc;
-  return recompose(doc, master);
+  const { master, fieldPatch } = applyDesignEdit(doc.master, at, doc.enabledVariants, values, mutate);
+  const touchedField = Object.keys(fieldPatch).length > 0;
+  if (master === doc.master && !touchedField) return doc;
+  // A field-bound layer's edited CONTENT (fieldPatch) is label data, never a
+  // master default (finding #5) — merge it straight onto `doc.cfg` here,
+  // BEFORE recompose derives `values` from it, so the new content survives
+  // recompose's values-from-cfg round trip instead of being overwritten by
+  // the pre-edit value composeConfig would otherwise re-apply from `values`.
+  const cfg = touchedField ? deepMerge(doc.cfg, fieldPatch) as LabelConfig : doc.cfg;
+  return recompose({ ...doc, cfg }, master);
 }
 
 /** The pure doc transition behind a layer POLICY edit (rename / enable /

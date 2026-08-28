@@ -12,7 +12,7 @@ const configOf = (m = lolevMaster(), enabled: string[] = []) =>
 
 describe("applyDesignEdit", () => {
   it("records a style edit into master.defaults, not the label", () => {
-    const m = applyDesignEdit(lolevMaster(), "master", [], {},
+    const { master: m } = applyDesignEdit(lolevMaster(), "master", [], {},
       (c) => { c.nameStyle.fill = "#112233"; });
     expect(m.defaults).toEqual({ nameStyle: { fill: "#112233" } });
     expect(configOf(m).nameStyle.fill).toBe("#112233");
@@ -24,10 +24,10 @@ describe("applyDesignEdit", () => {
   });
   it("returns the same master by identity when nothing changed", () => {
     const before = lolevMaster();
-    expect(applyDesignEdit(before, "master", [], {}, () => {})).toBe(before);
+    expect(applyDesignEdit(before, "master", [], {}, () => {}).master).toBe(before);
   });
   it("records into a variant's overrides when that is the target", () => {
-    const m = applyDesignEdit(lolevMaster(), { variant: "collab" }, [], {},
+    const { master: m } = applyDesignEdit(lolevMaster(), { variant: "collab" }, [], {},
       (c) => { c.nameStyle.fill = "#445566"; });
     expect(m.defaults).toEqual({});
     expect(m.variants[0].overrides).toMatchObject({ nameStyle: { fill: "#445566" } });
@@ -38,12 +38,22 @@ describe("applyDesignEdit", () => {
     // The shipped Collab variant overrides nothing (see lolev.ts), so this
     // seeds an override first: a second, unrelated edit must add its own
     // leaf and leave the first exactly as it was.
-    const seeded = applyDesignEdit(lolevMaster(), { variant: "collab" }, [], {},
+    const { master: seeded } = applyDesignEdit(lolevMaster(), { variant: "collab" }, [], {},
       (c) => { c.nameStyle.fill = "#445566"; });
-    const m = applyDesignEdit(seeded, { variant: "collab" }, [], {},
-      (c) => { c.abv = "7"; });
-    expect(m.variants[0].overrides.abv).toBe("7");
+    const { master: m } = applyDesignEdit(seeded, { variant: "collab" }, [], {},
+      (c) => { c.abvStyle.fill = "#778899"; });
+    expect(m.variants[0].overrides.abvStyle).toEqual({ fill: "#778899" });
     expect(m.variants[0].overrides.nameStyle).toEqual({ fill: "#445566" });
+  });
+  // Finding #5: a field-bound layer's edited CONTENT is label data, not a
+  // master default — applyDesignEdit must exclude it from what it records,
+  // and hand it back separately as `fieldPatch`.
+  it("excludes a declared field's own path from master.defaults, and reports it as fieldPatch", () => {
+    const declared = addField(lolevMaster(), "master", { id: "abv", path: "abv", kind: "text", label: "ABV" });
+    const { master: m, fieldPatch } = applyDesignEdit(declared, "master", [], {},
+      (c) => { c.abv = "ZZZ-CHANGED"; });
+    expect(m.defaults.abv).toBeUndefined();
+    expect(fieldPatch).toEqual({ abv: "ZZZ-CHANGED" });
   });
 });
 
@@ -62,13 +72,15 @@ describe("applyLayerEdit", () => {
 
 describe("overriddenPaths / resetOverride", () => {
   it("reports a variant's overridden leaves and resets one", () => {
-    let m = applyDesignEdit(lolevMaster(), { variant: "collab" }, [], {},
-      (c) => { c.nameStyle.fill = "#445566"; c.abv = "7"; });
+    // abv is a declared field (lolev.ts): its CONTENT is label data (finding
+    // #5), so this exercises two ordinary style leaves instead.
+    let { master: m } = applyDesignEdit(lolevMaster(), { variant: "collab" }, [], {},
+      (c) => { c.nameStyle.fill = "#445566"; c.abvStyle.fill = "#778899"; });
     const target = { variant: "collab" } as const;
     expect(overriddenPaths(m, target))
-      .toEqual(new Set(["nameStyle.fill", "abv"]));
+      .toEqual(new Set(["nameStyle.fill", "abvStyle.fill"]));
     m = resetOverride(m, target, "nameStyle.fill");
-    expect(overriddenPaths(m, target)).toEqual(new Set(["abv"]));
+    expect(overriddenPaths(m, target)).toEqual(new Set(["abvStyle.fill"]));
     expect(m.variants[0].overrides.nameStyle).toBeUndefined();
   });
   it("the master overrides nothing", () => {
@@ -88,17 +100,19 @@ describe("addVariant", () => {
 
 describe("applyDesignEdit / REMOVE markers (fix round 1)", () => {
   it("actually unsets a previously-recorded default, not a silent no-op", () => {
-    const seeded = applyDesignEdit(lolevMaster(), "master", [], {}, (c) => { c.abv = "5"; });
-    expect(seeded.defaults).toEqual({ abv: "5" });
-    const m = applyDesignEdit(seeded, "master", [], {},
-      (c) => { delete (c as unknown as Record<string, unknown>).abv; });
+    // abv is a declared field (lolev.ts): its own path is excluded from
+    // defaults (finding #5), so this exercises abvStyle.fill instead.
+    const { master: seeded } = applyDesignEdit(lolevMaster(), "master", [], {}, (c) => { c.abvStyle.fill = "#112233"; });
+    expect(seeded.defaults).toEqual({ abvStyle: { fill: "#112233" } });
+    const { master: m } = applyDesignEdit(seeded, "master", [], {},
+      (c) => { delete (c.abvStyle as unknown as Record<string, unknown>).fill; });
     expect(m.defaults).toEqual({});
   });
   it("prunes a nested object left empty by the unset, not just the leaf", () => {
-    const seeded = applyDesignEdit(lolevMaster(), "master", [], {},
+    const { master: seeded } = applyDesignEdit(lolevMaster(), "master", [], {},
       (c) => { c.nameStyle.fill = "#112233"; });
     expect(seeded.defaults).toEqual({ nameStyle: { fill: "#112233" } });
-    const m = applyDesignEdit(seeded, "master", [], {},
+    const { master: m } = applyDesignEdit(seeded, "master", [], {},
       (c) => { delete (c.nameStyle as unknown as Record<string, unknown>).fill; });
     expect(m.defaults.nameStyle).toBeUndefined();
   });
@@ -106,7 +120,7 @@ describe("applyDesignEdit / REMOVE markers (fix round 1)", () => {
 
 describe(".master file", () => {
   it("round-trips through serialize/parse", () => {
-    const m = applyDesignEdit(lolevMaster(), "master", [], {}, (c) => { c.abv = "6"; });
+    const { master: m } = applyDesignEdit(lolevMaster(), "master", [], {}, (c) => { c.nameStyle.fill = "#112233"; });
     expect(parseMasterFile(serializeMaster(m))).toEqual(m);
   });
   it("rejects a file that is not a master", () => {
@@ -117,7 +131,7 @@ describe(".master file", () => {
 // Task 3: the dot-paths the inspector's overridden badges key off of.
 describe("overriddenPaths for the inspector's badges", () => {
   it("style edits produce the dot-paths the inspector badges", () => {
-    const m = applyDesignEdit(lolevMaster(), { variant: "collab" }, [], {},
+    const { master: m } = applyDesignEdit(lolevMaster(), { variant: "collab" }, [], {},
       (c) => { c.nameStyle.fill = "#445566"; c.nameStyle.strokeWidth = 9; });
     const paths = overriddenPaths(m, { variant: "collab" });
     expect(paths.has("nameStyle.fill")).toBe(true);

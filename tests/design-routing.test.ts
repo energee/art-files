@@ -109,6 +109,29 @@ describe("drag routing by mode", () => {
   });
 });
 
+// Finding #5: an on-canvas text edit of a field-bound layer (beerName, a
+// declared field on the shipped master — see lolev.ts) in Design mode used
+// to revert, AND permanently pollute master.defaults with the edited text —
+// recompose recomputed `values` from the PRE-edit cfg while resolve()
+// applies field values after defaults, and applyDesignEdit recorded the
+// field's own content onto master.defaults like any other style leaf. A
+// field-bound layer's CONTENT is label data, never a master default.
+describe("Design mode: editing a field-bound layer's own content", () => {
+  const setBeerName = (text: string) => (c: LabelConfig) => { c.beerName = text; };
+
+  it("keeps the edit — no revert", () => {
+    const doc = plainDoc();
+    const next = designEditDoc(doc, "master", setBeerName("ZZZ-CHANGED"));
+    expect(next.cfg.beerName).toBe("ZZZ-CHANGED");
+  });
+
+  it("never lands the field's content in master.defaults", () => {
+    const doc = plainDoc();
+    const next = designEditDoc(doc, "master", setBeerName("ZZZ-CHANGED"));
+    expect(next.master.defaults.beerName).toBeUndefined();
+  });
+});
+
 // I1: the Editing selector is UI state outside history while the variants it
 // names ride IN history, so the two can disagree. Without clampTarget,
 // applyDesignEdit maps over `variants`, matches nothing, and returns a

@@ -44,4 +44,33 @@ describe("master library index", () => {
     rememberMaster(m, "/tmp/lolev.master");
     expect(masterIndex()[m.id]).toMatchObject({ name: "Lolev", path: "/tmp/lolev.master" });
   });
+
+  // Finding #6: a registered .master on disk whose id is the shipped id must
+  // win over the built-in fixture — resolveMasterById must consult the
+  // index/hint BEFORE falling back to lolevMaster().
+  it("a registered .master on disk for the shipped id wins over the built-in fixture", async () => {
+    vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+    const edited = { ...lolevMaster(), defaults: { ...lolevMaster().defaults, beerName: "ZZZ-EDITED" } };
+    vi.doMock("@/files", () => ({
+      readNativeFile: async () => new TextEncoder().encode(JSON.stringify(edited)),
+    }));
+    const mod = await import("../src/masters");
+    mod.rememberMaster(edited, "/tmp/lolev.master");
+    const resolved = await mod.resolveMasterById(mod.SHIPPED_MASTER_ID);
+    expect(resolved?.defaults.beerName).toBe("ZZZ-EDITED");
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/files");
+  });
+
+  it("an empty/broken index still yields the built-in fixture for the shipped id", async () => {
+    vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+    vi.doMock("@/files", () => ({
+      readNativeFile: async () => { throw new Error("not found"); },
+    }));
+    const mod = await import("../src/masters");
+    const resolved = await mod.resolveMasterById(mod.SHIPPED_MASTER_ID);
+    expect(resolved).toEqual(lolevMaster());
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/files");
+  });
 });
