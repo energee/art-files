@@ -25,6 +25,17 @@ export interface PanelRow {
    *  false — see LayersPanel.tsx's LayerRow. Always false for a master
    *  row. */
   materialized: boolean;
+  /** Which list this row's reorder chevrons may move it within — "master"
+   *  for a layer on `master.layers`, the variant's id for one on that
+   *  variant's own `layers`. Undefined when the row cannot be reordered at
+   *  all: a master row (fixed draw order) or a LEGACY custom row (nothing on
+   *  the master to move — `moveLayer` only ever swaps two `kind`-bearing
+   *  entries of ONE list). The panel derives atBack/atFront from the rows
+   *  sharing this value, so an arrow is enabled exactly when `moveLayer` can
+   *  act on it (fix round 2, finding 14 — the arrows used to be derived from
+   *  the whole flat custom list and rendered enabled for moves that were
+   *  silent no-ops). */
+  reorderGroup?: string;
   locked: boolean;
   /** The layer's own master-level enable (MasterLayer.enabled, as resolved
    *  for the current variants) — what the panel's enable control writes back
@@ -61,16 +72,21 @@ export function panelRows(
   // of `layers` above (no phantom master row), but a custom row still needs
   // to know its id is one of them, to route policy (fix round 1: Lock)
   // through the master rather than through `cfg.customLayers` like a
-  // genuinely per-label layer.
-  const materializedIds = new Set<string>();
-  for (const l of master.layers) if (l.kind) materializedIds.add(l.id);
-  for (const v of master.variants) for (const l of v.layers ?? []) if (l.kind) materializedIds.add(l.id);
+  // genuinely per-label layer. Mirrors model/document.ts's
+  // materializedLayerIds, computed inline here because the rows need the
+  // OWNER, not just membership.
+  // …and, for the ones that are, WHICH list owns them, since that is the only
+  // list `moveLayer` will reorder within (see PanelRow.reorderGroup).
+  const owner = new Map<string, string>();
+  for (const l of master.layers) if (l.kind) owner.set(l.id, "master");
+  for (const v of master.variants) for (const l of v.layers ?? []) if (l.kind) owner.set(l.id, v.id);
   const customRows: PanelRow[] = (cfg.customLayers ?? []).map((l) => ({
     id: l.id,
     name: l.name,
     inactive: false,
     custom: true,
-    materialized: materializedIds.has(l.id),
+    materialized: owner.has(l.id),
+    reorderGroup: owner.get(l.id),
     locked: !!l.locked,
     enabled: true,
   }));

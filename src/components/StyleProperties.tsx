@@ -91,11 +91,17 @@ const FLAT_SUFFIX: Record<Exclude<StyleField, "letterSpacing">, string> = {
 };
 
 /** The dot-path one Style control writes, or null when it isn't derivable:
- *  - a custom (`custom-${string}`) layer — its style lives at a
- *    `customLayers` ARRAY index, and overriddenPaths' leafPaths treats an
+ *  - a custom (`custom-${string}`) layer — every control still MUTATES it at
+ *    a `customLayers` ARRAY index, and overriddenPaths' leafPaths treats an
  *    array as one leaf (arrays count as leaves), not a per-field path, so
- *    there is no per-property dot-path to badge. Custom layers keep their
- *    own undo affordance ("Remove layer" — see CustomAdvanced) instead.
+ *    there is no per-property dot-path to badge. (A MATERIALIZED layer's
+ *    edit is in fact re-routed to `defaults[layerId]` / `overrides[layerId]`
+ *    after the fact — model/document.ts's routeCustomLayers — so a
+ *    per-property badge could be derived there one day; it isn't today,
+ *    because the mutation this function is asked about is still the array
+ *    write, and a LEGACY layer genuinely has no such path.) Custom layers
+ *    keep their own undo affordance ("Remove layer" — see CustomAdvanced)
+ *    instead.
  *  - `letterSpacing` on the two flat codes (qr/barcode): they are
  *    isText: false (ELEMENTS), so the panel never offers tracking for them
  *    and they have no config field for it at all.
@@ -457,7 +463,18 @@ function RichContent(props: { id: ElementId; cfg: LabelConfig; update: Update })
  *  show them among their 3–5 essentials while barcode/qr (already full at
  *  four essential fields) push them into the Advanced fold alongside
  *  "Remove layer" (see Advanced below). One component either way, so the
- *  two placements can't drift apart. */
+ *  two placements can't drift apart.
+ *
+ *  Both write through `update` like every other control here, and both are
+ *  MasterLayer IDENTITY rather than style — the name and the lock are
+ *  re-stamped onto the CustomLayer by resolve()'s materialization on every
+ *  recompose. Writing them into `cfg.customLayers` would therefore be
+ *  recomposed away for a materialized layer; `update` → designEdit →
+ *  applyDesignEdit re-routes them to `renameLayer` /
+ *  `applyMaterializedLayerEdit` (model/document.ts's routeCustomLayers), and
+ *  leaves a LEGACY per-label layer's own array entry alone. Nothing to
+ *  discriminate here: the routing is one seam in the model, not a branch per
+ *  call site. */
 function NameLockRow(props: { id: `custom-${string}`; layer: CustomLayer; update: Update }) {
   const set = (fn: (l: CustomLayer) => void) =>
     props.update((c) => {
@@ -489,7 +506,12 @@ function NameLockRow(props: { id: `custom-${string}`; layer: CustomLayer; update
  *  barcode/qr (text/image show those among their essentials instead — see
  *  NameLockRow) and, always last, "Remove layer" — the one delete affordance
  *  for a custom layer, undoable like any other edit since it goes through
- *  `update`. */
+ *  `update`. For a MATERIALIZED layer the array filter below is re-routed to
+ *  `removeLayer` (model/document.ts's routeCustomLayers), which drops both
+ *  the MasterLayer entry and its stored style at the owner; without that the
+ *  filtered array was recomposed away and the layer reappeared at once. A
+ *  LEGACY per-label layer is genuinely just an array entry and the filter
+ *  stands as written. */
 function CustomAdvanced(props: {
   id: `custom-${string}`; update: Update; children?: React.ReactNode;
 }) {

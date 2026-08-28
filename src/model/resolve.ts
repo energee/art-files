@@ -91,8 +91,23 @@ export function resolve(
       ...(style as object), id: l.id, name: l.name, type: l.kind, locked: l.locked,
     } as CustomLayer);
   }
+  // Materialized layers OWN the head of `config.customLayers`, in master draw
+  // order — but they no longer erase whatever `master.defaults.customLayers`
+  // (or a variant's `overrides.customLayers`) already carried. A LEGACY
+  // per-master custom layer — one stored as a raw `customLayers` entry rather
+  // than as a `kind`-bearing MasterLayer — survives, appended AFTER the
+  // materialized ones so a label-local addition draws in front (spec fix
+  // round 2, finding 10: the wholesale overwrite silently swallowed them).
+  // Any legacy entry whose id IS materialized is dropped rather than merged:
+  // that shape can only come from the pre-fix bug, where a Design-mode edit
+  // recorded a stale whole-array snapshot into `defaults.customLayers` that
+  // resolve() then ignored. Filtering it out here makes such a saved master
+  // self-heal instead of resurrecting the stale copy.
   if (materialized.length) {
-    (config as unknown as { customLayers: CustomLayer[] }).customLayers = materialized;
+    const own = (config as unknown as { customLayers?: CustomLayer[] }).customLayers ?? [];
+    const ids = new Set(materialized.map((l) => l.id));
+    (config as unknown as { customLayers: CustomLayer[] }).customLayers =
+      [...materialized, ...own.filter((l) => !ids.has(l.id))];
   }
   const errors: Record<string, string> = {};
   const strings: Record<string, string> = {};

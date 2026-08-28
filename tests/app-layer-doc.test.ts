@@ -9,11 +9,14 @@
 // that routing regresses, without mounting the whole editor.
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { addLayerDoc, type Doc, materializedLayerEditDoc, moveLayerDoc } from "../src/model/doc";
+import {
+  addLayerDoc, designEditDoc, type Doc, materializedLayerEditDoc, moveLayerDoc,
+} from "../src/model/doc";
 import { buildSkip } from "../src/model/skip";
 import { composeConfig } from "../src/model/document";
 import { resolve } from "../src/model/resolve";
 import { lolevMaster } from "../src/model/lolev";
+import type { CustomLayer } from "../src/types";
 import type { MasterLayer } from "../src/model/types";
 
 function docOn(enabledVariants: string[] = []): Doc {
@@ -121,6 +124,153 @@ describe("materializedLayerEditDoc (Task 5b fix round 1)", () => {
     const doc = addLayerDoc(docOn(), "master", textLayer("custom-a", "Text"), textStyle("Hi"));
     const locked = materializedLayerEditDoc(doc, "custom-a", { locked: true });
     expect(materializedLayerEditDoc(locked, "custom-a", { locked: true })).toBe(locked);
+  });
+});
+
+// Task 5b fix round 2: resolve() OWNS `config.customLayers` for every
+// MATERIALIZED layer — it rebuilds the array from `master.layers` +
+// `defaults[layerId]` on every recompose — but four UI paths still wrote to
+// that array as ordinary per-label state (drag/restyle, Remove layer, the
+// Name input, the inspector's lock Switch). Since configDiff treats an array
+// as ONE leaf, each of those recorded a stale whole-array snapshot at
+// `master.defaults.customLayers`, which resolve() then ignored and
+// overwrote: the edit was recomposed away and the junk accumulated in the
+// saved `.master`. The fix decomposes that array diff once, at the seam
+// (model/document.ts's routeCustomLayers), so every one of those editors
+// keeps mutating a plain LabelConfig through `update` and the write lands
+// where resolve() reads it back. Each test below is one of the reviewer's
+// own repro shapes, and each fails without that routing.
+describe("designEditDoc on a MATERIALIZED custom layer (fix round 2)", () => {
+  const withLayer = (): Doc =>
+    addLayerDoc(docOn(), "master", textLayer("custom-a", "Text"), textStyle("Hi"));
+  const defaultsOf = (d: Doc) => d.master.defaults as unknown as Record<string, any>;
+  /** What a FRESH resolve against the doc's master says — the half the bug
+   *  reverted. `doc.cfg` alone proves nothing: it can carry the edit by
+   *  accident and still lose it on the next recompose. */
+  const fresh = (d: Doc) => resolve(d.master, d.enabledVariants, {}).config.customLayers;
+
+  // Finding 2 (Critical): drag to offsetY 99.
+  it("a drag records position on defaults[layerId], not a whole-array defaults.customLayers", () => {
+    const doc = withLayer();
+    expect(doc.cfg.customLayers![0].position.offsetY).toBe(24);
+    const next = designEditDoc(doc, "master", (c) => {
+      c.customLayers!.find((l) => l.id === "custom-a")!.position.offsetY = 99;
+    });
+    expect(next.cfg.customLayers![0].position.offsetY).toBe(99);
+    expect(fresh(next)![0].position.offsetY).toBe(99);
+    expect(defaultsOf(next).customLayers).toBeUndefined();
+    expect(defaultsOf(next)["custom-a"].position.offsetY).toBe(99);
+  });
+
+  // Finding 2, the restyle half: the same seam, through applyStyle's write.
+  it("a restyle records the style on defaults[layerId] and survives a recompose", () => {
+    const next = designEditDoc(withLayer(), "master", (c) => {
+      const l = c.customLayers!.find((x) => x.id === "custom-a")!;
+      if (l.type === "text") l.line.fill = "#ff0000";
+    });
+    expect(fresh(next)![0]).toMatchObject({ line: { fill: "#ff0000" } });
+    expect(defaultsOf(next).customLayers).toBeUndefined();
+  });
+
+  // Finding 3 (Critical): "Remove layer" — the ONLY delete affordance.
+  it("Remove layer deletes the MasterLayer and its stored style, and it stays deleted", () => {
+    const next = designEditDoc(withLayer(), "master", (c) => {
+      c.customLayers = c.customLayers!.filter((l) => l.id !== "custom-a");
+    });
+    expect(next.master.layers.some((l) => l.id === "custom-a")).toBe(false);
+    expect(defaultsOf(next)["custom-a"]).toBeUndefined();
+    expect(defaultsOf(next).customLayers).toBeUndefined();
+    expect(next.cfg.customLayers ?? []).toEqual([]);
+    expect(fresh(next)).toBeUndefined();
+  });
+
+  it("Remove layer reaches a layer a VARIANT owns, wherever addLayer put it", () => {
+    const doc = addLayerDoc(docOn(["collab"]), { variant: "collab" },
+      textLayer("custom-a", "Text"), textStyle("Hi"));
+    const next = designEditDoc(doc, { variant: "collab" }, (c) => {
+      c.customLayers = c.customLayers!.filter((l) => l.id !== "custom-a");
+    });
+    const v = next.master.variants.find((x) => x.id === "collab")!;
+    expect(v.layers ?? []).toEqual([]);
+    expect((v.overrides as Record<string, unknown>)["custom-a"]).toBeUndefined();
+    expect(next.cfg.customLayers ?? []).toEqual([]);
+  });
+
+  // Finding 4 (High): the Name input — the only rename path a custom row has.
+  it("the Name input renames the MasterLayer, and the rename survives a recompose", () => {
+    const next = designEditDoc(withLayer(), "master", (c) => {
+      c.customLayers!.find((l) => l.id === "custom-a")!.name = "Renamed";
+    });
+    expect(next.master.layers.find((l) => l.id === "custom-a")!.name).toBe("Renamed");
+    expect(fresh(next)![0].name).toBe("Renamed");
+    expect(defaultsOf(next).customLayers).toBeUndefined();
+    expect(defaultsOf(next)["custom-a"]?.name).toBeUndefined();
+  });
+
+  // Finding 4, the lock Switch in the same inspector row (the layers panel's
+  // Lock already goes through materializedLayerEditDoc — fix round 1).
+  it("the inspector's lock Switch sets MasterLayer.locked, not a cfg array entry", () => {
+    const locked = designEditDoc(withLayer(), "master", (c) => {
+      c.customLayers!.find((l) => l.id === "custom-a")!.locked = true;
+    });
+    expect(locked.master.layers.find((l) => l.id === "custom-a")!.locked).toBe(true);
+    expect(fresh(locked)![0].locked).toBe(true);
+    expect(defaultsOf(locked).customLayers).toBeUndefined();
+    const unlocked = designEditDoc(locked, "master", (c) => {
+      c.customLayers!.find((l) => l.id === "custom-a")!.locked = false;
+    });
+    expect(fresh(unlocked)![0].locked).toBe(false);
+  });
+
+  it("is still a no-op (identity) when the mutation changes nothing", () => {
+    const doc = withLayer();
+    expect(designEditDoc(doc, "master", (c) => {
+      c.customLayers!.find((l) => l.id === "custom-a")!.position.offsetY = 24;
+    })).toBe(doc);
+  });
+});
+
+// A LEGACY custom layer — one that lives in a `customLayers` array with no
+// `kind`-bearing MasterLayer behind it — must keep behaving exactly as it did
+// before the routing above existed: it is ordinary config, and its edits stay
+// in the array. The routing must not swallow it, and (finding 10) resolve()'s
+// materialization must not swallow it either.
+describe("legacy (non-materialized) custom layers (fix round 2)", () => {
+  const legacy = (text: string): CustomLayer => ({
+    id: "custom-legacy", name: "Legacy", type: "text", size: 10,
+    position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 8 },
+    line: { text, fill: "#000000", layer: "white" },
+  } as CustomLayer);
+
+  it("a design edit to a legacy master layer still records it in defaults.customLayers", () => {
+    const master = lolevMaster();
+    (master.defaults as Record<string, unknown>).customLayers = [legacy("one")];
+    let doc: Doc = { cfg: composeConfig(master, [], {}, undefined).config, enabledVariants: [], master };
+    doc = addLayerDoc(doc, "master", textLayer("custom-a", "Text"), textStyle("Hi"));
+    const next = designEditDoc(doc, "master", (c) => {
+      const l = c.customLayers!.find((x) => x.id === "custom-legacy")!;
+      if (l.type === "text") l.line.text = "two";
+    });
+    const stored = (next.master.defaults as Record<string, unknown>).customLayers as CustomLayer[];
+    // Only the legacy layer — the materialized one no longer rides along as
+    // a stale snapshot — and the edit is really there.
+    expect(stored.map((l) => l.id)).toEqual(["custom-legacy"]);
+    expect((stored[0] as { line: { text: string } }).line.text).toBe("two");
+    const composed = resolve(next.master, [], {}).config.customLayers!;
+    expect(composed.map((l) => l.id)).toEqual(["custom-a", "custom-legacy"]);
+    expect((composed[1] as { line: { text: string } }).line.text).toBe("two");
+  });
+
+  // Finding 10 (Medium): composeConfig's deepMerge replaced `customLayers`
+  // wholesale, so a label carrying its OWN legacy array swallowed the
+  // master's materialized layers — a newly added design layer never rendered
+  // even though the master and the dirty flag both recorded it.
+  it("a label's own legacy customLayers override no longer swallows a new design layer", () => {
+    const base = docOn();
+    const doc: Doc = { ...base, cfg: { ...base.cfg, customLayers: [legacy("mine")] } };
+    const next = addLayerDoc(doc, "master", textLayer("custom-a", "Text"), textStyle("Hi"));
+    expect(next.master.layers.some((l) => l.id === "custom-a")).toBe(true);
+    expect(next.cfg.customLayers!.map((l) => l.id)).toEqual(["custom-a", "custom-legacy"]);
   });
 });
 

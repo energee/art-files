@@ -158,9 +158,12 @@ function LayerRow({
    *  this — its lock keeps going through `update`, same as before this
    *  fix. */
   onMaterializedLayerEdit?: (layerId: string, patch: Partial<MasterLayer>) => void;
-  /** Front/back position within the custom-layer stack, present only for a
-   *  custom row (undefined for master and Document rows, which get no
-   *  reorder control at all). */
+  /** Front/back position within the row's OWN reorder group (the master's
+   *  `layers`, or one variant's) — present only for a MATERIALIZED custom
+   *  row. Undefined for master and Document rows (fixed draw order) and for a
+   *  LEGACY custom row, which has no master entry `moveLayer` could move:
+   *  those get no reorder control at all rather than two dead arrows (fix
+   *  round 2, finding 14 — see LayersPanel's reorderFor). */
   reorder?: { atFront: boolean; atBack: boolean; onMove: (delta: -1 | 1) => void };
 }) {
   const id = row.id as LayerId;
@@ -471,8 +474,12 @@ export function LayersPanel(props: {
    *  suspenders against the panel ever being reused in Fill. */
   mode: "design" | "fill";
   onAddLayer: (type: "text" | "image" | "barcode" | "qr") => void;
-  /** Front/back reorder within `cfg.customLayers` — App's moveCustomLayer,
-   *  one undoable splice. Custom rows only; master draw order is fixed. */
+  /** Front/back reorder of a MATERIALIZED custom layer within its own
+   *  `layers` list — App's moveCustomLayer → moveLayerDoc → moveLayer, one
+   *  undoable swap, which is what a custom layer's z-order IS now that
+   *  resolve() materializes `cfg.customLayers` in that list's order. Master
+   *  rows' draw order is fixed, and a legacy per-label row has no entry to
+   *  move (see reorderFor). */
   onMoveCustomLayer: (id: string, delta: -1 | 1) => void;
   /** Layer POLICY writes (rename / enable / lock) at the current editing
    *  target — App's layerEdit → applyLayerEdit, recorded on the master or the
@@ -496,16 +503,26 @@ export function LayersPanel(props: {
     onToggleHidden: props.onToggleHidden, selected: props.selected, onSelect: props.onSelect,
     mode: props.mode,
   };
-  // Position within the custom-layer stack alone (not the whole rows list) —
-  // reorder is scoped to custom rows, so "at the end" must mean the last
-  // custom row, not the last row overall.
-  const customIds = props.rows.filter((r) => r.custom).map((r) => r.id);
+  // Position within the row's OWN reorder group (PanelRow.reorderGroup: the
+  // master's `layers`, or one variant's own `layers`) — not the whole flat
+  // custom list. App's onMoveCustomLayer → moveLayer only ever swaps two
+  // `kind`-bearing entries of ONE list, so deriving atBack/atFront from the
+  // flat list rendered both arrows enabled for a row that was already at the
+  // end of its own list, and both clicks were silent no-ops (fix round 2,
+  // finding 14). Scoping the arrows here, rather than teaching moveLayer to
+  // move across owners, is the deliberate choice: a cross-owner move would
+  // change which master/variant OWNS the layer — i.e. whether it draws at
+  // all, for a variant that is off — which is a different operation from
+  // "send backward", not a stronger version of it. A row with no group (a
+  // LEGACY per-label custom layer, which has nothing on the master to move)
+  // gets no chevrons at all rather than two dead ones.
   const reorderFor = (row: PanelRow) => {
-    if (!row.custom) return undefined;
-    const i = customIds.indexOf(row.id);
+    if (!row.custom || row.reorderGroup === undefined) return undefined;
+    const group = props.rows.filter((r) => r.reorderGroup === row.reorderGroup).map((r) => r.id);
+    const i = group.indexOf(row.id);
     return {
       atBack: i <= 0,
-      atFront: i === customIds.length - 1,
+      atFront: i === group.length - 1,
       onMove: (delta: -1 | 1) => props.onMoveCustomLayer(row.id, delta),
     };
   };

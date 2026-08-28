@@ -169,27 +169,40 @@ describe("LayersPanel Lock button (Task 5b fix round 1)", () => {
 // custom-layer loop) — so the FIRST stored custom row is backmost ("Send
 // backward" disabled there) and the LAST is frontmost ("Bring forward"
 // disabled there).
+//
+// Fix round 2 (finding 14): "first"/"last" mean first and last of the row's
+// OWN reorder group — the list App's onMoveCustomLayer → moveLayer can
+// actually swap within — not of the flat panel list. The layers here are
+// therefore MATERIALIZED (added to the master with addLayer), which is what
+// "Add layer" produces; the two cases the flat derivation got wrong get
+// their own tests below.
 describe("LayersPanel reorder chevrons", () => {
-  function twoCustomLayerProps() {
-    const props = shippedProps();
-    const customLayers: import("../src/types").CustomLayer[] = [
-      {
-        id: "custom-a", name: "First", type: "text", size: 10,
-        position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
-        line: { text: "one", fill: "#000000", layer: "white" },
-      },
-      {
-        id: "custom-b", name: "Second", type: "text", size: 10,
-        position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
-        line: { text: "two", fill: "#000000", layer: "white" },
-      },
-    ];
-    const cfg = { ...props.cfg, customLayers };
-    const master = lolevMaster();
-    const r = composeConfig(master, [], {}, undefined);
-    const rows = panelRows(master, r.layers, r.disabledLayers, cfg);
-    return { ...props, cfg, rows };
+  const textLayer = (id: string, name: string) =>
+    ({ id, name, enabled: true, kind: "text" as const });
+  const textStyle = (text: string) => ({
+    type: "text", size: 10,
+    position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
+    line: { text, fill: "#000000", layer: "white" },
+  });
+
+  /** Panel props for a master carrying `layers` as materialized custom
+   *  layers at the given targets, with `enabled` variants on. */
+  function propsFor(
+    layers: { id: string; name: string; target: "master" | { variant: string } }[],
+    enabled: string[] = [],
+  ) {
+    let master = lolevMaster();
+    for (const l of layers)
+      master = addLayer(master, l.target, textLayer(l.id, l.name), textStyle(l.name));
+    const r = composeConfig(master, enabled, {}, undefined);
+    const rows = panelRows(master, r.layers, r.disabledLayers, r.config);
+    return { ...shippedProps(), cfg: r.config, rows };
   }
+
+  const twoCustomLayerProps = () => propsFor([
+    { id: "custom-a", name: "First", target: "master" },
+    { id: "custom-b", name: "Second", target: "master" },
+  ]);
 
   function rowFor(name: string) {
     return Array.from(container.querySelectorAll("li"))
@@ -232,5 +245,44 @@ describe("LayersPanel reorder chevrons", () => {
       (second.querySelector('[aria-label="Send Second backward"]') as HTMLButtonElement).click();
     });
     expect(props.onMoveCustomLayer).toHaveBeenCalledWith("custom-b", -1);
+  });
+
+  // Fix round 2, finding 14 (the repro the reviewer gave): one custom layer
+  // on the master and one on an ENABLED variant. Both rows sit in the one
+  // flat panel list, so the old flat derivation enabled Bring-forward on the
+  // master's row and Send-backward on the variant's — and both clicks were
+  // silent no-ops, because moveLayer only ever swaps within ONE list, and
+  // each layer is alone in its own. Every arrow must now be disabled.
+  it("scopes atBack/atFront to the owning list, not the flat panel list", () => {
+    renderPanel(propsFor([
+      { id: "custom-a", name: "OnMaster", target: "master" },
+      { id: "custom-b", name: "OnVariant", target: { variant: "collab" } },
+    ], ["collab"]));
+    for (const name of ["OnMaster", "OnVariant"]) {
+      const row = rowFor(name);
+      expect(row.querySelector(`[aria-label="Send ${name} backward"]`))
+        .toHaveProperty("disabled", true);
+      expect(row.querySelector(`[aria-label="Bring ${name} forward"]`))
+        .toHaveProperty("disabled", true);
+    }
+  });
+
+  // The other half of finding 14: a LEGACY per-label custom layer has no
+  // MasterLayer entry at all, so moveLayer can never move it. It used to
+  // render two enabled arrows that did nothing; it now renders none.
+  it("offers no chevrons at all on a legacy per-label custom row", () => {
+    const props = shippedProps();
+    const legacy: CustomLayer = {
+      id: "custom-legacy", name: "Legacy", type: "text", size: 10,
+      position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
+      line: { text: "x", fill: "#000000", layer: "white" },
+    };
+    const master = lolevMaster();
+    const cfg = { ...props.cfg, customLayers: [legacy] };
+    const r = composeConfig(master, [], {}, undefined);
+    renderPanel({ ...props, cfg, rows: panelRows(master, r.layers, r.disabledLayers, cfg) });
+    const row = rowFor("Legacy");
+    expect(row.querySelector('[aria-label="Send Legacy backward"]')).toBeNull();
+    expect(row.querySelector('[aria-label="Bring Legacy forward"]')).toBeNull();
   });
 });

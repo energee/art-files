@@ -889,7 +889,12 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  two modes' whole difference). Everything that edits the document —
    *  the inspector, the layers panel, Add layer, the style controls — keeps
    *  calling `update` and keeps mutating a plain LabelConfig; only where the
-   *  resulting diff is recorded changes. */
+   *  resulting diff is recorded changes. That includes every edit to a
+   *  MATERIALIZED custom layer (drag, restyle, Name, lock, Remove): the
+   *  mutation is still an ordinary `cfg.customLayers` write, and
+   *  applyDesignEdit decomposes the resulting whole-array diff into the
+   *  master-side writes that actually stick — see model/document.ts's
+   *  routeCustomLayers. No call site here has to know the difference. */
   const update = (fn: (c: LabelConfig) => void, coalesce?: boolean) =>
     mode === "design" ? designEdit(fn, coalesce) : labelEdit(fn, coalesce);
 

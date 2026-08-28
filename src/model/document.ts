@@ -2,7 +2,7 @@
 // the master model. cfg stays the app's single live document; these functions
 // are the boundary: values/diff OUT of cfg at save time, compose INTO cfg at
 // open/toggle time (spec: Resolution; Migration — label-level overrides).
-import type { LabelConfig } from "../types";
+import type { CustomLayer, LabelConfig } from "../types";
 import type { FieldDecl, FieldValue, Master, MasterLayer, Variant } from "./types";
 import { deepMerge, type DeepPartial } from "./merge";
 import { resolve } from "./resolve";
@@ -84,23 +84,28 @@ const REMOVE: null = null;
  *  resurrect it from the master/defaults on reopen (see REMOVE above).
  *  {} = no deviations. */
 export function configDiff(base: LabelConfig, cfg: LabelConfig): DeepPartial<LabelConfig> {
-  const walk = (b: unknown, c: unknown, cHasKey: boolean): unknown => {
-    if (!cHasKey) return REMOVE;
-    if (isPlain(b) && isPlain(c)) {
-      const out: Record<string, unknown> = {};
-      for (const k of Object.keys(b)) {
-        const d = walk(b[k], c[k], k in c);
-        if (d !== undefined) out[k] = d;
-      }
-      for (const k of Object.keys(c)) {
-        if (k in b) continue;
-        out[k] = c[k];
-      }
-      return Object.keys(out).length ? out : undefined;
+  return (diffValue(base, cfg, true) ?? {}) as DeepPartial<LabelConfig>;
+}
+
+/** configDiff's engine, over any two plain values rather than two whole
+ *  LabelConfigs — `undefined` when they match. Split out so the custom-layer
+ *  routing below (routeCustomLayers) can diff ONE materialized layer's stored
+ *  style with exactly the same plain-vs-leaf rules the config diff uses. */
+function diffValue(b: unknown, c: unknown, cHasKey: boolean): unknown {
+  if (!cHasKey) return REMOVE;
+  if (isPlain(b) && isPlain(c)) {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(b)) {
+      const d = diffValue(b[k], c[k], k in c);
+      if (d !== undefined) out[k] = d;
     }
-    return JSON.stringify(b) === JSON.stringify(c) ? undefined : c;
-  };
-  return (walk(base, cfg, true) ?? {}) as DeepPartial<LabelConfig>;
+    for (const k of Object.keys(c)) {
+      if (k in b) continue;
+      out[k] = c[k];
+    }
+    return Object.keys(out).length ? out : undefined;
+  }
+  return JSON.stringify(b) === JSON.stringify(c) ? undefined : c;
 }
 
 /** Deletes every REMOVE-marked key `patch` carries, deep, after the merge
@@ -127,6 +132,34 @@ export function composeConfig(
 } {
   const r = resolve(master, enabledVariants, values);
   const config = overrides ? stripRemovals(deepMerge(r.config, overrides), overrides) : r.config;
+  // deepMerge replaces an array WHOLESALE (merge.ts), so a label carrying its
+  // own `customLayers` override used to swallow the master's materialized
+  // array outright: a layer added to the master after that override was
+  // recorded never rendered (fix round 2, finding 10). The deliberate rule
+  // now is MERGE BY ID, chosen over "prefer one side with a warning" because
+  // both sides are legitimate and neither is a subset of the other — the
+  // resolved side is the master's authored draw order, the override side is
+  // this label's own deviations from it plus any purely per-label layer:
+  //   · an override entry whose id IS materialized is a per-label deviation
+  //     on that layer (a filler's nudge) and is deep-merged ONTO it, keeping
+  //     the master's draw position;
+  //   · an override entry with an unmatched id is a per-label (legacy) layer
+  //     and is appended, in its stored order, after the materialized ones;
+  //   · a materialized layer the override array simply omits still renders —
+  //     omission is not a per-label delete (there is no such concept: the
+  //     inspector's Remove now goes to the master, see routeCustomLayers).
+  const ownLayers = (overrides as { customLayers?: CustomLayer[] } | undefined)?.customLayers;
+  if (Array.isArray(ownLayers)) {
+    const byId = new Map(ownLayers.map((l) => [l.id, l]));
+    const resolved = r.config.customLayers ?? [];
+    config.customLayers = [
+      ...resolved.map((l) => {
+        const own = byId.get(l.id);
+        return own ? deepMerge(l, own as DeepPartial<CustomLayer>) : l;
+      }),
+      ...ownLayers.filter((l) => !resolved.some((x) => x.id === l.id)),
+    ];
+  }
   return { config, errors: r.errors, warnings: r.warnings, disabledLayers: r.disabledLayers, layers: r.layers };
 }
 
@@ -224,24 +257,37 @@ export function applyDesignEdit(
   mutate(next);
   const d = configDiff(base, next);
   if (Object.keys(d).length === 0) return master; // memo/dirty-flag contract: identity, not a clone
-  const { paths: removals, rest } = extractRemovals(d);
+  // resolve() OWNS `config.customLayers` for every materialized layer, so a
+  // whole-array diff recorded at `defaults.customLayers` would be recomposed
+  // away and left behind as junk (fix round 2, findings 1–4). Decompose it
+  // here — once, at the seam — instead of at each of the four call sites:
+  // every custom-layer editor (drag, applyStyle, the inspector's payload
+  // fields, Name, Lock, Remove) mutates the array and reaches this one
+  // function through `update`, and several of them live in src/elements.ts,
+  // which the pure model may not reach into anyway.
+  const routed = routeCustomLayers(master, base, next, d);
+  const at = routed.master; // master + whatever layer identity/removal routing recorded
+  // The whole edit was layer identity or removal — already recorded on `at`,
+  // nothing left for defaults/overrides.
+  if (Object.keys(routed.diff).length === 0) return at;
+  const { paths: removals, rest } = extractRemovals(routed.diff);
   if (target === "master") {
     // Master.defaults is typed Partial<LabelConfig> (shallow) but in practice
     // stores arbitrarily deep patches — the same seam resolve.ts already
     // crosses via its own `master.defaults as DeepPartial<LabelConfig>` cast.
-    const defaults = structuredClone(master.defaults) as Record<string, unknown>;
+    const defaults = structuredClone(at.defaults) as Record<string, unknown>;
     for (const p of removals) deletePath(defaults, p);
     const merged = deepMerge(defaults as DeepPartial<LabelConfig>, rest) as Partial<LabelConfig>;
-    return { ...master, defaults: merged };
+    return { ...at, defaults: merged };
   }
-  const variants = master.variants.map((v) => {
+  const variants = at.variants.map((v) => {
     if (v.id !== target.variant) return v;
     const overrides = structuredClone(v.overrides) as Record<string, unknown>;
     for (const p of removals) deletePath(overrides, p);
     const merged = deepMerge(overrides as DeepPartial<LabelConfig>, rest) as Partial<LabelConfig>;
     return { ...v, overrides: merged };
   });
-  return { ...master, variants };
+  return { ...at, variants };
 }
 
 /** Patch one layer's policy (name/enabled/locked) at `target`: the master's
@@ -507,6 +553,137 @@ export function applyMaterializedLayerEdit(
     return { ...master, variants: master.variants.map((x) => (x.id === v.id ? { ...x, layers } : x)) };
   }
   return master;
+}
+
+/** Every `kind`-bearing (MATERIALIZED) layer's id, wherever `addLayer` put
+ *  it — `master.layers`, or any variant's own `layers`. This is THE
+ *  discriminator between a materialized custom layer, whose identity, policy
+ *  and style live on the master and whose `config.customLayers` entry is
+ *  rebuilt by resolve() on every recompose, and a LEGACY per-label custom
+ *  layer, which lives only in a `customLayers` array and is still edited as
+ *  ordinary config. `PanelRow.materialized` (model/panel.ts) is this same set,
+ *  read once per row. */
+export function materializedLayerIds(master: Master): Set<string> {
+  const out = new Set<string>();
+  for (const l of master.layers) if (l.kind) out.add(l.id);
+  for (const v of master.variants) for (const l of v.layers ?? []) if (l.kind) out.add(l.id);
+  return out;
+}
+
+/** Delete one MATERIALIZED layer from the master — the inspector's "Remove
+ *  layer" (StyleProperties' CustomAdvanced), which is the ONLY delete
+ *  affordance a custom layer has. Removes BOTH halves of what `addLayer`
+ *  wrote: the `layers` entry carrying its identity and the stored style at
+ *  the same owner's `defaults[layerId]` / `overrides[layerId]`, plus any
+ *  variant `layerOverrides[layerId]` that patched it. Owner is found by id
+ *  search, not by the current editing target — same reasoning as
+ *  `applyMaterializedLayerEdit`: a materialized layer's owner is fixed at add
+ *  time. Returns a NEW master, or `master` itself when `layerId` isn't a
+ *  `kind`-bearing layer anywhere (a LEGACY per-label layer is not this
+ *  function's business — its removal stays an ordinary `customLayers` array
+ *  edit). */
+export function removeLayer(master: Master, layerId: string): Master {
+  const dropOverride = (v: Variant): Variant =>
+    layerId in v.layerOverrides
+      ? { ...v, layerOverrides: Object.fromEntries(
+          Object.entries(v.layerOverrides).filter(([k]) => k !== layerId)) }
+      : v;
+  const without = (o: object): Partial<LabelConfig> =>
+    Object.fromEntries(Object.entries(o).filter(([k]) => k !== layerId)) as Partial<LabelConfig>;
+  if (master.layers.some((l) => l.id === layerId && l.kind !== undefined)) {
+    return {
+      ...master,
+      layers: master.layers.filter((l) => l.id !== layerId),
+      defaults: without(master.defaults),
+      variants: master.variants.map(dropOverride),
+    };
+  }
+  for (const v of master.variants) {
+    if (!(v.layers ?? []).some((l) => l.id === layerId && l.kind !== undefined)) continue;
+    return {
+      ...master,
+      variants: master.variants.map((x) => (x.id === v.id
+        ? dropOverride({ ...x, layers: x.layers!.filter((l) => l.id !== layerId),
+            overrides: without(x.overrides) })
+        : dropOverride(x))),
+    };
+  }
+  return master;
+}
+
+/** Rename one MATERIALIZED layer — the inspector's Name input (StyleProperties'
+ *  NameLockRow), which is the only rename path a custom row has (the layers
+ *  panel deliberately refuses inline rename for custom rows). The name is
+ *  MasterLayer identity, not style: resolve() re-stamps it onto the
+ *  CustomLayer it materializes, so writing it into `cfg.customLayers` would
+ *  be recomposed away. Returns `master` unchanged when the id isn't
+ *  materialized anywhere, or already carries that name. */
+export function renameLayer(master: Master, layerId: string, name: string): Master {
+  return applyMaterializedLayerEdit(master, layerId, { name });
+}
+
+/** The identity/style keys resolve() STAMPS onto every materialized
+ *  CustomLayer from its MasterLayer (see resolve.ts). They are layer
+ *  identity, never stored style, so they must be stripped before diffing one
+ *  materialized layer's style — otherwise a rename would also be recorded as
+ *  a style deviation at `defaults[layerId].name` and win over the rename. */
+const STAMPED_KEYS = ["id", "name", "type", "locked"];
+const stylePart = (l: CustomLayer): Record<string, unknown> =>
+  Object.fromEntries(
+    Object.entries(l as unknown as Record<string, unknown>)
+      .filter(([k]) => !STAMPED_KEYS.includes(k)));
+
+/** Decompose a design edit's whole-array `customLayers` diff into writes that
+ *  actually stick. THE fix for the seam this file and resolve.ts share:
+ *  resolve() rebuilds `config.customLayers` for every materialized layer on
+ *  every recompose, while `configDiff` treats an array as one leaf — so an
+ *  edit recorded as `defaults.customLayers` is both recomposed away AND left
+ *  behind as a stale snapshot in the saved `.master`.
+ *
+ *  Given the edit's before/after configs and its diff, returns the master
+ *  with every MATERIALIZED layer's identity change already applied
+ *  (`renameLayer` / `applyMaterializedLayerEdit` for lock / `removeLayer`)
+ *  and a diff in which the array leaf has been replaced by:
+ *    · `defaults[layerId]` (or the editing variant's `overrides[layerId]` —
+ *      the caller's own target decides) per-layer STYLE patches, the exact
+ *      key `addLayer` stores a layer's style at and `resolve()` reads it back
+ *      from, so drag and every style/payload control land where they resolve;
+ *    · a `customLayers` array holding the LEGACY (non-materialized) layers
+ *      only, and only when those actually changed — a legacy layer is still
+ *      pure config, exactly as before this fix, and the materialized entries
+ *      no longer ride along as junk.
+ *  Identity contract: returns the same `master` and the same `d` when the
+ *  diff carries no `customLayers` key at all. */
+function routeCustomLayers(
+  master: Master, base: LabelConfig, next: LabelConfig, d: DeepPartial<LabelConfig>,
+): { master: Master; diff: DeepPartial<LabelConfig> } {
+  const dd = d as unknown as Record<string, unknown>;
+  if (!("customLayers" in dd)) return { master, diff: d };
+  const ids = materializedLayerIds(master);
+  const baseArr = base.customLayers ?? [];
+  // A REMOVE marker means the key itself is gone from `next` — no layers left.
+  const nextArr = dd.customLayers === REMOVE ? [] : (next.customLayers ?? []);
+  const out: Record<string, unknown> = { ...dd };
+  delete out.customLayers;
+  let m = master;
+  const nextIds = new Set(nextArr.map((l) => l.id));
+  for (const b of baseArr) {
+    if (ids.has(b.id) && !nextIds.has(b.id)) m = removeLayer(m, b.id);
+  }
+  for (const n of nextArr) {
+    if (!ids.has(n.id)) continue;
+    const b = baseArr.find((x) => x.id === n.id);
+    if (!b) continue; // a materialized id absent from `base`: only addLayer mints those
+    if (n.name !== b.name) m = renameLayer(m, n.id, n.name);
+    if (!!n.locked !== !!b.locked) m = applyMaterializedLayerEdit(m, n.id, { locked: n.locked });
+    const style = diffValue(stylePart(b), stylePart(n), true);
+    if (style === undefined) continue;
+    out[n.id] = isPlain(out[n.id]) && isPlain(style) ? deepMerge(out[n.id], style) : style;
+  }
+  const legacy = (arr: CustomLayer[]) => arr.filter((l) => !ids.has(l.id));
+  if (JSON.stringify(legacy(baseArr)) !== JSON.stringify(legacy(nextArr)))
+    out.customLayers = legacy(nextArr);
+  return { master: m, diff: out as DeepPartial<LabelConfig> };
 }
 
 /** Add a variant and return the new master. Ids are slugged from `name`

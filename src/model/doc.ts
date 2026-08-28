@@ -185,7 +185,8 @@ export function moveLayerDoc(doc: Doc, layerId: string, delta: -1 | 1): Doc {
 }
 
 /** The pure doc transition behind a MATERIALIZED custom row's policy edit
- *  (fix round 1: currently just Lock) — applyMaterializedLayerEdit, id-search
+ *  made from the LAYERS PANEL (currently just its Lock button) —
+ *  applyMaterializedLayerEdit, id-search
  *  based rather than editing-target based. NOT layerEditDoc/layerEdit: those
  *  resolve ownership through the currently CLAMPED editing target, which is
  *  wrong here — a materialized row's owner (the master, or whichever variant
@@ -196,7 +197,14 @@ export function moveLayerDoc(doc: Doc, layerId: string, delta: -1 | 1): Doc {
  *  changes `MasterLayer.locked`, which resolve()'s materialization stamps
  *  straight onto the CustomLayer it builds. `doc` itself
  *  (applyMaterializedLayerEdit's own identity contract) when the patch is
- *  already what's stored. */
+ *  already what's stored.
+ *
+ *  The INSPECTOR's own Name/lock/Remove controls do NOT come through here:
+ *  they mutate `cfg.customLayers` like every other style control and reach
+ *  the same master-side operations through designEditDoc's routing
+ *  (model/document.ts's routeCustomLayers). The panel's Lock keeps its own
+ *  entry point because it has no LabelConfig mutation to route — it patches
+ *  policy directly. */
 export function materializedLayerEditDoc(
   doc: Doc, layerId: string, patch: Partial<MasterLayer>,
 ): Doc {
