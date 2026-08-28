@@ -164,6 +164,25 @@ describe("LayersPanel Lock button (Task 5b fix round 1)", () => {
   });
 });
 
+// Finding #7 (HIGH): a MasterLayer.id is an unvalidated string, so a variant
+// can append a Variant.layers row whose id is neither a doc layer id nor a
+// known ELEMENTS/custom-* id. elementById(id) used to throw for that id and
+// crash the whole sidebar. Craft such a row directly (panelRows only ever
+// forwards MasterLayer.id verbatim, so this is exactly what it would produce)
+// and confirm the row renders instead of throwing.
+describe("LayersPanel with an id absent from ELEMENTS (finding #7)", () => {
+  it("renders the row instead of throwing", () => {
+    const props = shippedProps();
+    const unknownRow = {
+      id: "not-a-real-element", name: "Mystery Layer", inactive: false,
+      custom: false, materialized: false, locked: false, enabled: true,
+    };
+    expect(() => renderPanel({ ...props, rows: [...props.rows, unknownRow] }))
+      .not.toThrow();
+    expect(container.textContent).toContain("Mystery Layer");
+  });
+});
+
 // I4: reorder chevrons, custom rows only. plan.ts appends customLayers in
 // stored order and draws later entries on top (see its comment above the
 // custom-layer loop) — so the FIRST stored custom row is backmost ("Send

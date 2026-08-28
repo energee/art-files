@@ -46,7 +46,7 @@ import {
 } from "@/components/ui/sidebar";
 import {
   DOC_LAYER_LABELS, DOC_LAYERS, LAYER_ICONS,
-  isElementId, isHideable, type HideableLayerId, type LayerId,
+  isElementId, isHideable, isKnownElementId, type HideableLayerId, type LayerId,
 } from "./layers";
 import { modsOf, type SelectMods } from "@/selection";
 
@@ -181,7 +181,11 @@ function LayerRow({
     // LayerId nor a `custom-*` layer; rendering `<undefined />` throws, so
     // this can't silently fall through to that.
     : (LAYER_ICONS[id as Exclude<LayerId, `custom-${string}`>] ?? Type);
-  const el = isElementId(id)
+  // isKnownElementId, not isElementId: a variant can append a Variant.layers
+  // row whose id is neither a doc layer nor a known ELEMENTS/custom id
+  // (finding #7) — elementById throws for that, so this row simply has no
+  // element behind it (no metallic toggle) rather than crashing the sidebar.
+  const el = isKnownElementId(id)
     ? (customLayer ? customElement(cfg, id as `custom-${string}`) : elementById(id)) : null;
   // The row's own name, not elementById's — a renamed layer (a custom row,
   // or a future master edit) shows what the user or the master call it.

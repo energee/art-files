@@ -31,7 +31,7 @@ import {
 import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import {
-  composeConfig, declaredFieldPaths, expandCustomFormats, overriddenPaths, toggleVariant,
+  composeConfig, declaredFieldPaths, expandCustomFormats, getPath, overriddenPaths, toggleVariant,
   valuesFromConfig, visibleFieldsOf, type EditTarget,
 } from "@/model/document";
 import {
@@ -125,6 +125,30 @@ type CustomFile = { image: CollabImage; name: string; previewUrl: string; aspect
  *  against a customImages entry here, regardless of which added it. */
 export function mintCustomAssetId(): string {
   return `custom-asset-${crypto.randomUUID().slice(0, 8)}`;
+}
+
+/** True while `assetId` is still reachable from `cfg` — either an image
+ *  field's value (checked across EVERY declared field, master and every
+ *  variant, not just the currently visible ones: a variant disabled right
+ *  now can still hold a stale-but-live reference in cfg) or a custom image
+ *  layer's `asset`. Finding #16: onFieldImageFile used to mint a fresh asset
+ *  id on replace/clear without ever checking whether the old one was still
+ *  in use, so a shared asset — the same logo dropped into two fields, or a
+ *  custom layer built from a field's art — is exactly the case a naive
+ *  "release the old id" would corrupt; this is the check that makes the
+ *  release in onFieldImageFile (and the field Clear button) safe. */
+//  `excludePath`, when given, skips that one field path — the field that is
+//  ABOUT to be overwritten with a fresh asset id still holds the OLD id in
+//  `cfg` at release time (the write happens after this check), so without
+//  the exclusion every field's own replace would read as "still referenced
+//  by itself" and never release anything.
+export function assetStillReferenced(
+  master: Master, cfg: LabelConfig, assetId: string, excludePath?: string,
+): boolean {
+  const allFields = [...master.fields, ...master.variants.flatMap((v) => v.fields)];
+  if (allFields.some((f) =>
+    f.kind === "image" && f.path !== excludePath && getPath(cfg, f.path) === assetId)) return true;
+  return (cfg.customLayers ?? []).some((l) => l.type === "image" && l.asset === assetId);
 }
 
 /** Chrome-level error, sized for the menu bar: the shadcn Alert (the app's
@@ -1233,14 +1257,50 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  per-id image store and hand back the minted asset id, which the row then
    *  writes as the field's value. Same pipeline addCustomImageLayer and the
    *  .label restore path use, so a collab logo and a custom image layer's art
-   *  are stored, saved and reloaded identically. */
-  async function onFieldImageFile(f: File): Promise<string> {
+   *  are stored, saved and reloaded identically.
+   *  Finding #16: also releases `field`'s PREVIOUS asset id, so replacing a
+   *  field image N times doesn't leave N orphans behind (leaked object URLs,
+   *  re-decoded on every preview rebuild, re-embedded into every export).
+   *  Guarded by assetStillReferenced — the same art can be shared by two
+   *  fields (or a custom layer built from a field's asset), and only the
+   *  reference this field itself was about to drop makes it safe to delete. */
+  async function onFieldImageFile(f: File, field: FieldDecl): Promise<string> {
+    const previousAssetId = getPath(cfg, field.path);
     const assetId = mintCustomAssetId();
     const file = await readCustomImage(f);
-    setCustomImages((old) => ({ ...old, [assetId]: file }));
+    setCustomImages((old) => {
+      const next = { ...old, [assetId]: file };
+      if (
+        typeof previousAssetId === "string" && previousAssetId &&
+        !assetStillReferenced(doc.master, cfg, previousAssetId, field.path)
+      ) {
+        const prev = next[previousAssetId];
+        if (prev) URL.revokeObjectURL(prev.previewUrl);
+        delete next[previousAssetId];
+      }
+      return next;
+    });
     markDirty();
     return assetId;
   }
+
+  /** The Clear half of finding #16: Clear writes "" straight through
+   *  onValue and never goes through onFieldImageFile, so the field's asset
+   *  id has no other release path. Same assetStillReferenced guard. */
+  function onFieldImageClear(field: FieldDecl) {
+    const assetId = getPath(cfg, field.path);
+    if (typeof assetId !== "string" || !assetId) return;
+    if (assetStillReferenced(doc.master, cfg, assetId, field.path)) return;
+    setCustomImages((old) => {
+      const entry = old[assetId];
+      if (!entry) return old;
+      URL.revokeObjectURL(entry.previewUrl);
+      const next = { ...old };
+      delete next[assetId];
+      return next;
+    });
+  }
+
   /** Everything file-shaped the inspector edits: the Document layers' drops.
    *  (The collab logos left this prop when they became image fields.) */
   const docSettings: DocSettings = {
@@ -2377,7 +2437,8 @@ export const DocumentEditor = memo(function DocumentEditor({
                 </>
               : <FieldList master={master} enabledVariants={enabledVariants} cfg={cfg}
                   onValue={onFieldValue} onVariant={setVariant}
-                  onImageFile={onFieldImageFile}
+                  onImageFile={onFieldImageFile} onImageClear={onFieldImageClear}
+                  onImageError={(err) => setBuildError(`Could not load image: ${errMsg(err)}`)}
                   imageFileOf={(id) => customImages[id]} />}
           </SidebarContent>
         </Sidebar>

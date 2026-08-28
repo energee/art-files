@@ -29,12 +29,17 @@ afterEach(() => {
   container.remove();
 });
 
-function renderList(props: Omit<Parameters<typeof FieldList>[0], "onImageFile"> & {
-  onImageFile?: Parameters<typeof FieldList>[0]["onImageFile"];
-}) {
+type FieldListProps = Parameters<typeof FieldList>[0];
+function renderList(
+  props: Omit<FieldListProps, "onImageFile" | "onImageClear" | "onImageError">
+    & Partial<Pick<FieldListProps, "onImageFile" | "onImageClear" | "onImageError">>,
+) {
   act(() => {
     root.render(createElement(FieldList, {
-      onImageFile: vi.fn(async () => "asset-x"), ...props,
+      onImageFile: vi.fn(async () => "asset-x"),
+      onImageClear: vi.fn(),
+      onImageError: vi.fn(),
+      ...props,
     }));
   });
 }
@@ -128,22 +133,44 @@ describe("FieldList", () => {
       const file = png();
       drop(container.querySelector("#field-collabLeft")!, file);
       await act(async () => {});
-      expect(onImageFile).toHaveBeenCalledWith(file);
+      expect(onImageFile).toHaveBeenCalledWith(file, expect.objectContaining({ id: "collabLeft" }));
       expect(onValue).toHaveBeenCalledWith(
         expect.objectContaining({ id: "collabLeft" }), "asset-42");
     });
 
-    it("clears back to no asset", () => {
+    // Finding #17: dropping a corrupt raster makes onImageFile's promise
+    // reject (createImageBitmap failing) AFTER the file input's value is
+    // already reset — the row's onChange used to fire this with no .catch at
+    // all, so the rejection went nowhere but an unhandled-rejection warning
+    // and the user saw nothing happen. It must now reach onImageError.
+    it("surfaces an onImageFile rejection through onImageError, not an unhandled rejection", async () => {
       const onValue = vi.fn();
+      const onImageError = vi.fn();
+      const boom = new Error("could not decode image");
+      const onImageFile = vi.fn(async () => { throw boom; });
+      renderList({
+        master: lolevMaster(), enabledVariants: ["collab"], cfg: defaultConfig(),
+        onValue, onVariant: vi.fn(), onImageFile, onImageError,
+      });
+      drop(container.querySelector("#field-collabLeft")!, png());
+      await act(async () => {});
+      expect(onImageError).toHaveBeenCalledWith(boom);
+      expect(onValue).not.toHaveBeenCalled();
+    });
+
+    it("clears back to no asset, releasing the old asset id (finding #16)", () => {
+      const onValue = vi.fn();
+      const onImageClear = vi.fn();
       const cfg = defaultConfig();
       (cfg.collabCenter as { image?: string }).image = "asset-7";
       renderList({
         master: lolevMaster(), enabledVariants: ["collab"], cfg,
-        onValue, onVariant: vi.fn(),
+        onValue, onVariant: vi.fn(), onImageClear,
       });
       const clear = container.querySelector("#field-collabCenter-clear") as HTMLButtonElement;
       expect(clear).not.toBeNull();
       act(() => { clear.click(); });
+      expect(onImageClear).toHaveBeenCalledWith(expect.objectContaining({ id: "collabCenter" }));
       expect(onValue).toHaveBeenCalledWith(
         expect.objectContaining({ id: "collabCenter" }), "");
     });

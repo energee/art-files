@@ -7,7 +7,7 @@ import {
   Barcode, Handshake, Hexagon, Image, ImagePlus, QrCode, Scan,
   Settings, Type, type LucideIcon,
 } from "lucide-react";
-import type { ElementId } from "@/elements";
+import { ELEMENTS, isCustomId, type ElementId } from "@/elements";
 
 export type LayerId = ElementId | "background" | "mask" | "settings";
 
@@ -47,6 +47,16 @@ export const DOC_LAYER_LABELS: Record<DocLayerId, string> = {
 
 export function isElementId(id: LayerId): id is ElementId {
   return !(id in DOC_LAYER_LABELS);
+}
+
+/** True when `id` is an ElementId elementById/customElement can actually
+ *  resolve — a fixed ELEMENTS row or a `custom-${string}` id. MasterLayer.id
+ *  is an unvalidated string, so a variant can append a `layers` row whose id
+ *  is neither a doc layer nor a known element (finding #7): isElementId alone
+ *  would wave that case through and elementById would throw. Callers that
+ *  need a real LabelElement should gate on this instead of isElementId. */
+export function isKnownElementId(id: LayerId): id is ElementId {
+  return isElementId(id) && (isCustomId(id) || ELEMENTS.some((e) => e.id === id));
 }
 
 /** Layers the panel's eye can hide: every renderer element plus the texture

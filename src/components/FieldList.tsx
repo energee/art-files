@@ -13,10 +13,18 @@ import { CHECKER } from "@/components/FileDrop";
  *  the filler gets"). Every widget is controlled off `cfg` via getPath and
  *  writes back only through `onValue` — no local state, so the field list and
  *  the canvas can never disagree about a value. */
-function FieldRow({ field, cfg, onValue, onImageFile, imageFileOf }: {
+function FieldRow({ field, cfg, onValue, onImageFile, onImageClear, onImageError, imageFileOf }: {
   field: FieldDecl; cfg: LabelConfig;
   onValue: (f: FieldDecl, v: FieldValue) => void;
-  onImageFile: (file: File) => Promise<string>;
+  onImageFile: (file: File, field: FieldDecl) => Promise<string>;
+  /** Release the field's current asset id (finding #16) before it is
+   *  overwritten by "" — Clear never goes through onImageFile, so without
+   *  this the old entry has no path to release at all. */
+  onImageClear: (field: FieldDecl) => void;
+  /** Finding #17: onImageFile can reject (a corrupt raster fails
+   *  createImageBitmap) — surfaced through App's existing header-error
+   *  channel, same as every other asset path (onTexture/onMask/importPresets). */
+  onImageError: (err: unknown) => void;
   imageFileOf?: (assetId: string) => { name: string; previewUrl: string } | undefined;
 }) {
   const raw = getPath(cfg, field.path);
@@ -63,14 +71,17 @@ function FieldRow({ field, cfg, onValue, onImageFile, imageFileOf }: {
                 // Reset the input so re-picking the SAME file fires onChange
                 // again — otherwise a cleared field can't be refilled from it.
                 e.target.value = "";
-                if (file) void onImageFile(file).then((asset) => onValue(field, asset));
+                if (file) {
+                  void onImageFile(file, field).then((asset) => onValue(field, asset))
+                    .catch(onImageError);
+                }
               }} />
             {file && <div className="truncate text-xs text-muted-foreground">{file.name}</div>}
           </div>
           {assetId && (
             <button id={`${id}-clear`} type="button"
               className="shrink-0 rounded border border-input px-2 py-0.5 text-xs"
-              onClick={() => onValue(field, "")}>Clear</button>
+              onClick={() => { onImageClear(field); onValue(field, ""); }}>Clear</button>
           )}
         </div>
       </div>
@@ -107,7 +118,8 @@ function FieldRow({ field, cfg, onValue, onImageFile, imageFileOf }: {
 }
 
 export function FieldList({
-  master, enabledVariants, cfg, onValue, onVariant, onImageFile, imageFileOf,
+  master, enabledVariants, cfg, onValue, onVariant, onImageFile, onImageClear, onImageError,
+  imageFileOf,
 }: {
   master: Master;
   enabledVariants: string[];
@@ -118,8 +130,17 @@ export function FieldList({
   /** An image field's well: read the dropped file into the label's per-id
    *  image store and resolve to the minted asset id, which the row then
    *  writes as the field's value. App owns the store (the same one custom
-   *  image layers use), so the widget itself never touches it. */
-  onImageFile: (file: File) => Promise<string>;
+   *  image layers use), so the widget itself never touches it. The field
+   *  itself is passed through (not just the file) so App can look up and
+   *  release its previous asset id once the replacement is in — finding #16. */
+  onImageFile: (file: File, field: FieldDecl) => Promise<string>;
+  /** Release an image field's asset id on Clear — finding #16's other half,
+   *  since Clear writes "" straight through onValue and never touches
+   *  onImageFile. */
+  onImageClear: (field: FieldDecl) => void;
+  /** Surfaces an onImageFile rejection (finding #17) through App's existing
+   *  header-error channel. */
+  onImageError: (err: unknown) => void;
   /** Look up a loaded image field's filename + thumbnail off the same
    *  per-id store `onImageFile` writes into. Optional: a caller with no
    *  image fields to show (or a test exercising everything else) can omit
@@ -138,6 +159,7 @@ export function FieldList({
       ))}
       {visibleFieldsOf(master, enabledVariants).map((f) => (
         <FieldRow key={f.id} field={f} cfg={cfg} onValue={onValue} onImageFile={onImageFile}
+          onImageClear={onImageClear} onImageError={onImageError}
           imageFileOf={imageFileOf} />
       ))}
     </div>

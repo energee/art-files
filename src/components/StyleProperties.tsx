@@ -10,7 +10,7 @@
 // Selection itself lives in App (see selection.ts), driven by the layers
 // panel and the preview; this component only receives the chosen LayerIds.
 import { useState } from "react";
-import { Bold, WholeWord, X } from "lucide-react";
+import { Bold, Type, WholeWord, X } from "lucide-react";
 import type {
   CustomLayer, LabelConfig, Style, StyledLine,
 } from "@/types";
@@ -21,7 +21,9 @@ import {
 import { minModuleWarning } from "@/model/fields";
 import type { FieldDecl, FieldKind } from "@/model/types";
 import { FormatBuilder } from "./FormatBuilder";
-import { DOC_LAYER_LABELS, LAYER_ICONS, isElementId, type LayerId } from "@/components/layers";
+import {
+  DOC_LAYER_LABELS, LAYER_ICONS, isKnownElementId, type LayerId,
+} from "@/components/layers";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
@@ -1148,25 +1150,34 @@ export function Inspector(props: {
   // A multi-selection is elements only — App's resolveSelect never mixes a
   // document layer in (their panels edit files and document knobs, not
   // Styles), so `isEl` describes the whole selection.
-  const isEl = isElementId(id);
-  const els = ids.filter(isElementId)
+  // isKnownElementId, not isElementId: a variant can append a Variant.layers
+  // row whose id is neither a doc layer nor a known ELEMENTS/custom id
+  // (finding #7) — elementById throws for that. Such an id is treated like a
+  // document layer below (no Style stack, a generic label/icon) rather than
+  // crashing the inspector.
+  const isEl = isKnownElementId(id);
+  const els = ids.filter(isKnownElementId)
     .map((eid) => (isCustomId(eid) ? customElement(props.cfg, eid) : elementById(eid)));
   // `els[0]` IS the element for `id` whenever isEl: id === ids[0], and a
-  // selection is either all-elements or one lone document layer (App's
-  // resolveSelect never mixes the two — see the isEl comment above), so the
-  // filter above keeps it first.
-  const label = isEl ? els[0].label : DOC_LAYER_LABELS[id];
+  // selection is either all-elements or one lone document/unknown layer (App's
+  // resolveSelect never mixes elements with a document layer — see the isEl
+  // comment above), so the filter above keeps it first.
+  // Fallback to the raw id for a row DOC_LAYER_LABELS has no entry for either
+  // (an unknown MasterLayer.id) — a legible id beats a blank header.
+  const label = isEl ? els[0].label : (DOC_LAYER_LABELS[id as keyof typeof DOC_LAYER_LABELS] ?? id);
   // Custom ids have no LAYER_ICONS entry (it's a fixed Record over the known
   // ElementId literals) — borrow the matching fixed row's icon, same choice
   // LayersPanel's rows make, so the inspector header and the layer row never
-  // disagree about what icon names a custom layer's kind.
+  // disagree about what icon names a custom layer's kind. Falls back to the
+  // generic Type icon for an id LAYER_ICONS has no entry for (same fallback
+  // LayersPanel's row Icon uses) rather than rendering an undefined component.
   const customLayerFor = props.cfg.customLayers?.find((l) => l.id === id);
   const Icon = customLayerFor
     ? customLayerFor.type === "image" ? LAYER_ICONS.collabLeft
       : customLayerFor.type === "barcode" ? LAYER_ICONS.barcode
       : customLayerFor.type === "qr" ? LAYER_ICONS.qr
       : LAYER_ICONS.name
-    : LAYER_ICONS[id as Exclude<LayerId, `custom-${string}`>];
+    : (LAYER_ICONS[id as Exclude<LayerId, `custom-${string}`>] ?? Type);
 
   // Custom layers have no "shipped" appearance to compare against or restore
   // (elementById's customFallback is a blind {fill:"none",layer:"white"}
