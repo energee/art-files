@@ -19,7 +19,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("master library index", () => {
   it("resolves the shipped master with an empty index", async () => {
-    expect(await resolveMasterById(SHIPPED_MASTER_ID)).toEqual(lolevMaster());
+    expect(await resolveMasterById(SHIPPED_MASTER_ID)).toEqual({ master: lolevMaster(), assets: {} });
   });
   it("remembers and lists a master", () => {
     rememberMaster(lolevMaster(), "/tmp/lolev.master");
@@ -57,7 +57,9 @@ describe("master library index", () => {
     const mod = await import("../src/masters");
     mod.rememberMaster(edited, "/tmp/lolev.master");
     const resolved = await mod.resolveMasterById(mod.SHIPPED_MASTER_ID);
-    expect(resolved?.defaults.beerName).toBe("ZZZ-EDITED");
+    // Legacy JSON bytes resolve through unpackMaster's '{' sniff, asset-less.
+    expect(resolved?.master.defaults.beerName).toBe("ZZZ-EDITED");
+    expect(resolved?.assets).toEqual({});
     vi.doUnmock("@tauri-apps/api/core");
     vi.doUnmock("@/files");
   });
@@ -69,7 +71,7 @@ describe("master library index", () => {
     }));
     const mod = await import("../src/masters");
     const resolved = await mod.resolveMasterById(mod.SHIPPED_MASTER_ID);
-    expect(resolved).toEqual(lolevMaster());
+    expect(resolved).toEqual({ master: lolevMaster(), assets: {} });
     vi.doUnmock("@tauri-apps/api/core");
     vi.doUnmock("@/files");
   });

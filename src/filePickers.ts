@@ -21,10 +21,11 @@ export const LABEL_TYPES = [
 /** LABEL_TYPES' Tauri-native twin, for the desktop save dialog. */
 export const LABEL_FILTER = { name: LABEL_DESC, extensions: [LABEL_EXT.slice(1)] };
 
-/** The .master file picker option — masterfile.ts's pretty-printed JSON, not
- *  a zip like .label. Shared by Save Master / Save Master As / Open Master. */
+/** The .master file picker option — a ZIP like .label since the 2026-08-29
+ *  spec amendment (legacy JSON-only files still open by extension).
+ *  Shared by Save Master / Save Master As / Open Master. */
 export const MASTER_TYPES = [
-  { description: MASTER_DESC, accept: { "application/json": [MASTER_EXT] } },
+  { description: MASTER_DESC, accept: { "application/zip": [MASTER_EXT] } },
 ];
 /** MASTER_TYPES' Tauri-native twin, for the desktop save dialog. */
 export const MASTER_FILTER = { name: MASTER_DESC, extensions: [MASTER_EXT.slice(1)] };

@@ -41,7 +41,7 @@ import {
 } from "@/model/doc";
 import { parseLabelFile } from "@/model/labelfile";
 import { buildSkip } from "@/model/skip";
-import { MASTER_EXT, parseMasterFile, serializeMaster } from "@/model/masterfile";
+import { MASTER_EXT, packMaster, unpackMaster, type MasterAssets } from "@/model/masterfile";
 import { lolevMaster } from "@/model/lolev";
 import { SHIPPED_MASTER_ID, masterIndex, rememberMaster, resolveMasterById } from "@/masters";
 import type { FieldDecl, FieldValue, LabelFileV2, Master, MasterLayer } from "@/model/types";
@@ -1832,8 +1832,33 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  was just written — the SAME identity-comparison mechanism the dot
    *  already uses, not a second flag (see masterDirty/repaintMasterDirty).
    *  `as` forces the picker even with a known file, same as saveProject's. */
+  /** The template assets a Save Master captures: the loaded texture/mask
+   *  (the art being authored IS the template art) plus the bytes of every
+   *  image asset a master-owned image layer references — variant/label image
+   *  FIELD values stay label deltas and are never packed here. */
+  function masterAssetBundle(): MasterAssets {
+    const imageAssetIds = master.layers
+      .filter((l) => l.kind === "image")
+      .map((l) => (master.defaults as Record<string, { asset?: string } | undefined>)[l.id]?.asset)
+      .filter((id): id is string => !!id);
+    const customOut: NonNullable<MasterAssets["customImages"]> = {};
+    for (const id of imageAssetIds) {
+      const c = customImages[id];
+      if (!c) continue;
+      customOut[id] = {
+        name: c.name,
+        bytes: c.image.kind === "svg" ? strToU8(c.image.svg) : c.image.bytes,
+      };
+    }
+    return {
+      texture: texture ? { name: texture.name, bytes: texture.bytes } : undefined,
+      mask: mask ? { name: mask.name, bytes: mask.srcBytes } : undefined,
+      ...(Object.keys(customOut).length ? { customImages: customOut } : {}),
+    };
+  }
+
   async function saveMaster(as = false): Promise<boolean> {
-    const bytes = strToU8(serializeMaster(master));
+    const bytes = packMaster(master, masterAssetBundle());
     const suggested = machineName(master.name) || "master";
     const clean = () => {
       pristineMaster.current = master;
@@ -1884,7 +1909,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     }
     const name = suggested + MASTER_EXT;
     startSaveBatch();
-    saveBytes(bytes, name, "application/json");
+    saveBytes(bytes, name, "application/zip");
     rememberMaster(master, name);
     clean();
     return true;
@@ -1895,13 +1920,37 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  file must never half-apply. Null return means "already reported,
    *  nothing else to do"; success is handed to applyOpenedMaster below,
    *  which is the only thing allowed to touch `doc`. */
-  function tryParseMaster(text: string): Master | null {
+  function tryParseMaster(bytes: Uint8Array): { master: Master; assets: MasterAssets } | null {
     try {
-      return parseMasterFile(text);
+      return unpackMaster(bytes); // ZIP or legacy JSON — see masterfile.ts
     } catch (err) {
       setLoadError(`Could not open master: ${errMsg(err)}`);
       return null;
     }
+  }
+
+  /** Adopt a master's template assets under the label-delta rule: art the
+   *  label already loaded wins — only EMPTY slots fall back to the master's,
+   *  and custom image bytes fill in only for ids the store doesn't hold.
+   *  So re-aiming a label at a master never clobbers its own art, while a
+   *  fresh document gets the template art with nothing dropped. */
+  async function adoptMasterAssets(a: MasterAssets): Promise<void> {
+    const toFile = (x: { name: string; bytes: Uint8Array }) =>
+      new File([x.bytes as unknown as BlobPart], x.name, { type: mimeFor(x.name) });
+    await Promise.all([
+      !texture && a.texture ? onTexture(toFile(a.texture)) : null,
+      !mask && a.mask ? onMask(toFile(a.mask)) : null,
+      (async () => {
+        const missing = Object.entries(a.customImages ?? {})
+          .filter(([id]) => !customImages[id]);
+        if (!missing.length) return;
+        const entries = await Promise.all(missing.map(async ([id, x]) =>
+          [id, await readCustomImage(toFile(x))] as const));
+        setCustomImages((prev) => ({
+          ...Object.fromEntries(entries.filter(([id]) => !prev[id])), ...prev,
+        }));
+      })(),
+    ]);
   }
 
   /** Re-aim THIS document at `target` — the live label (labelSnapshot,
@@ -1951,6 +2000,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     masterFileHandle.current = null;
     masterFilePath.current = isTauri() ? masterIndex()[target.id]?.path ?? null : null;
     commitRebind(target);
+    // Template assets ride along under the label-delta rule (art already
+    // loaded wins). A second read of a small file on a rare user action —
+    // not worth threading assets through the picker's resolve plumbing.
+    void resolveMasterById(target.id).then((r) => r && adoptMasterAssets(r.assets));
   }
 
   /** MasterPicker's "Duplicate as new master…": clone the current master
@@ -1999,11 +2052,12 @@ export const DocumentEditor = memo(function DocumentEditor({
     try {
       const [handle] = await pick({ types: MASTER_TYPES });
       const file = await handle.getFile();
-      const m = tryParseMaster(await file.text());
-      if (!m) return;
+      const r = tryParseMaster(new Uint8Array(await file.arrayBuffer()));
+      if (!r) return;
       masterFileHandle.current = handle;
       masterFilePath.current = null;
-      applyOpenedMaster(m, file.name);
+      applyOpenedMaster(r.master, file.name);
+      await adoptMasterAssets(r.assets);
     } catch (err) {
       if (!isAbort(err)) setLoadError(`Could not open master: ${errMsg(err)}`);
     }
@@ -2053,6 +2107,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     try {
       const unpacked = unpackLabel(f.bytes);
       let warnings: string[] = [];
+      // The resolved master's template assets — the fallback for any role
+      // the label doesn't embed itself (label-delta rule: the label's own
+      // embedded assets always win). Legacy v1 labels resolve no master and
+      // keep carrying their own art, unchanged.
+      let masterAssets: MasterAssets = {};
       // Legacy fixed collab ZIP roles (collab-left/ and collab-center/): they
       // stay READABLE for files saved before the slots became image fields,
       // and are never written again. Restoring one means minting an id for it
@@ -2076,7 +2135,9 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (unpacked.label) {
         const parsed = parseLabelFile(JSON.parse(unpacked.label));
         if ("legacy" in parsed) throw new Error("label.json is not a v2 label");
-        const m = await resolveMasterById(parsed.masterId, parsed.masterHint);
+        const resolved = await resolveMasterById(parsed.masterId, parsed.masterHint);
+        const m = resolved?.master ?? null;
+        masterAssets = resolved?.assets ?? {};
         if (!m) {
           setLoadError(
             `Could not find master "${parsed.masterId}"` +
@@ -2111,7 +2172,12 @@ export const DocumentEditor = memo(function DocumentEditor({
       // browser types) worked.
       const toFile = (a: { name: string; bytes: Uint8Array }) =>
         new File([a.bytes as unknown as BlobPart], a.name, { type: mimeFor(a.name) });
-      const { texture: t, mask: m, customImages: ci } = unpacked.assets;
+      // Label-delta rule: the label's own embedded role wins; a missing one
+      // falls back to the master's template asset. Custom image bytes merge
+      // the same way, per id (spread order: master first, label last).
+      const t = unpacked.assets.texture ?? masterAssets.texture;
+      const m = unpacked.assets.mask ?? masterAssets.mask;
+      const ci = { ...masterAssets.customImages, ...unpacked.assets.customImages };
       // Awaited so the freshly opened document can be marked clean AFTER the
       // asset handlers' state writes — each of those marks it dirty again,
       // and the last write has to be this clean one.
@@ -2419,7 +2485,8 @@ export const DocumentEditor = memo(function DocumentEditor({
             {mode === "design"
               ? <>
                   <MasterPicker master={master} label={labelSnapshot(doc)}
-                    library={libraryEntries()} resolve={resolveMasterById}
+                    library={libraryEntries()}
+                    resolve={async (id) => (await resolveMasterById(id))?.master ?? null}
                     onMaster={pickLibraryMaster} onOpenMaster={() => void openMasterPicker()}
                     onDuplicate={duplicateMaster} />
                   <EditingTarget master={master} target={editTarget}
@@ -2495,12 +2562,13 @@ export const DocumentEditor = memo(function DocumentEditor({
               const f = e.target.files?.[0];
               e.target.value = "";
               if (!f) return;
-              void f.text().then((text) => {
-                const m = tryParseMaster(text);
-                if (!m) return;
+              void f.arrayBuffer().then(async (buf) => {
+                const r = tryParseMaster(new Uint8Array(buf));
+                if (!r) return;
                 masterFileHandle.current = null;
                 masterFilePath.current = null;
-                applyOpenedMaster(m, f.name);
+                applyOpenedMaster(r.master, f.name);
+                await adoptMasterAssets(r.assets);
               });
             }} />
         </header>

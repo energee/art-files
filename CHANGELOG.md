@@ -3,6 +3,14 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.40] - 2026-08-29
+
+- A saved `.master` now carries its template art: the texture, the metallic
+  mask, and any master-owned image layers' files travel inside the master, so
+  a new label from a master needs nothing re-dropped. Labels keep their own
+  embedded art when they have it (a label's art always wins), and `.master`
+  files saved by earlier versions still open unchanged.
+
 ## [0.1.39] - 2026-08-29
 
 - PSD exports now include the Collab partner art: a "Collab" layer group with
