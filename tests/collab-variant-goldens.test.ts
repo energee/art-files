@@ -17,10 +17,11 @@
 // + mask, OFF and ON) really do differ between the two states, so a
 // regression in the PDF collab path fails here. The two PSD digests are
 // byte-identical to each other (same hash, same 882336-byte length, OFF and
-// ON) — buildPsd draws no collab art and is handed no collab assets
-// (`psdAssets` above carries none), so the PSD assertions pin the PSD
-// against unrelated drift but would NOT catch a collab regression in the PSD
-// path. Kept anyway, deliberately: they still guard the PSD builder itself.
+// ON) — this suite hands buildPsd no collab assets (`psdAssets` carries
+// none), and an absent slot plans nothing, so these PSD assertions pin the
+// PSD against unrelated drift AND prove the empty-slot no-op, but do not
+// exercise collab art in the PSD. The real collab-art PSD guard is
+// tests/psd-collab.test.ts, which builds WITH partner art in both slots.
 //
 // A digest that moves is NOT a golden to regenerate: for the PDF digests it
 // is proof that dropping `cfg.collabEnabled &&` from the renderers changed

@@ -2248,12 +2248,22 @@ export const DocumentEditor = memo(function DocumentEditor({
           return [id, await rasterPixelsNatural(c.image.bytes)] as const;
         }),
       )).filter((e): e is readonly [string, NonNullable<PsdAssets["customImages"]>[string]] => e !== null);
+      // Collab slots ride the same collabAssets() the PDF export uses (so
+      // disabled-slot nulling and raster tinting apply identically); a
+      // raster decodes to natural-size RGBA, an SVG passes through as paths.
+      const { collabLeft: cl, collabCenter: cc } = await collabAssets();
+      const psdCollab = async (img: typeof cl): Promise<PsdAssets["collabLeft"]> =>
+        !img ? undefined
+          : img.kind === "svg" ? { kind: "svg", svg: img.svg }
+            : { kind: "raster", ...(await rasterPixelsNatural(img.bytes)) };
       const assets: PsdAssets = {
         fonts, logoSvg,
         texture: await rasterPixels(texture?.bytes),
         mask: await rasterPixels(mask?.bytes),
         custom,
         customImages: Object.fromEntries(customImageEntries),
+        collabLeft: await psdCollab(cl),
+        collabCenter: await psdCollab(cc),
       };
       // Built before any dialog, same reasoning as the PDF exports above.
       const [artPsd, maskPsd] = await Promise.all([

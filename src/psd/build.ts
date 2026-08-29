@@ -80,7 +80,21 @@ export interface PsdAssets {
    *  no pixels); a missing entry for a raster one is the same "asset bytes
    *  not loaded yet" no-op every other backend honors. */
   customImages?: Record<string, { data: Uint8Array; width: number; height: number }>;
+  /** A collab slot's partner art. SVG plans as ink-tight vector paths (like
+   *  the logo — no pixels needed); raster carries decoded RGBA at NATURAL
+   *  size (the builder resamples to the placed rect, like `customImages`).
+   *  Absent = slot empty: the plan emits nothing for it, the same collab-art
+   *  contract every other backend honors. */
+  collabLeft?: PsdCollabArt;
+  collabCenter?: PsdCollabArt;
 }
+
+/** Collab art as the PSD needs it — the PlanArt split (svg = paths, raster =
+ *  fitted rect) with the raster's decoded pixels riding along, since PSD
+ *  layers hold pixels rather than embedded PNG bytes. */
+export type PsdCollabArt =
+  | { kind: "svg"; svg: string }
+  | { kind: "raster"; data: Uint8Array; width: number; height: number };
 
 /** Which deliverable to build: the art PSD, or the white-ink mask plate.
  *  Mask mode mirrors buildMaskPdf: fills and strokes each repaint from their
@@ -597,13 +611,21 @@ function buildLayers(
   const textLayer = makeTextLayer(FONT_FAMILIES[fontFamilyOf(cfg)].ps);
 
   // Text + laurel + barcode placement, from the same display list every other
-  // backend consumes. The PSD draws no collab art, so no collab assets go in —
-  // the plan simply plans none.
+  // backend consumes — collab slots included, when their art was handed in
+  // (an absent slot plans nothing, the shared collab-art contract).
   const pdfMeasure: MeasureFace = (t, size, face) =>
     (face === "bold" ? f.bold : face === "semibold" ? f.semibold : f.regular)
       .widthOfTextAtSize(t, size);
+  const planArtOf = (a?: PsdCollabArt) =>
+    a === undefined ? undefined
+      : a.kind === "svg" ? { kind: "svg" as const, svg: a.svg }
+        : { kind: "raster" as const, w: a.width, h: a.height };
   const plan = planLabel(cfg, pdfMeasure, {
-    assets: { logoSvg: assets.logoSvg, custom: assets.custom },
+    assets: {
+      logoSvg: assets.logoSvg, custom: assets.custom,
+      collabLeft: planArtOf(assets.collabLeft),
+      collabCenter: planArtOf(assets.collabCenter),
+    },
   });
   const planned = <K extends Placed["kind"]>(id: string, kind: K) =>
     plan.filter((p): p is Extract<Placed, { kind: K }> => p.kind === kind && p.id === id);
@@ -696,6 +718,57 @@ function buildLayers(
       }),
     );
   groups.push({ name: "Left column", opened: false, children: left });
+
+  // Collab ------------------------------------------------------------------
+  // Between the left column and the center, matching the PDF's draw order
+  // (description → lead-in → left art → wordmark). Only when a slot holds
+  // art: an absent slot plans nothing, so a collab-less build stays
+  // byte-identical to before this group existed — the byte goldens in
+  // collab-variant-goldens.test.ts are the guard.
+  const collabArtLayer = (name: string, id: ElementId, art: PsdCollabArt): Layer | null => {
+    const pathsItem = planned(id, "paths")[0];
+    if (pathsItem)
+      return shapeLayer(
+        name, pathsItem.paths.flatMap((d) => svgToPaths(d, pathsItem.x, pathsItem.y)),
+        paint(mode, pathsItem.fill, pathsItem.layer),
+        pathsItem.stroke ? strokePaint(mode, pathsItem.stroke.fill, pathsItem.stroke.layer) : undefined,
+        pathsItem.stroke?.w,
+      );
+    const imgItem = planned(id, "image")[0];
+    if (!imgItem || art.kind !== "raster") return null;
+    // Raster art prints on white ink: the mask paints the fitted rect blue —
+    // the same rule custom raster images and the mask PDF apply.
+    if (mode === "mask")
+      return shapeLayer(name, [rectPath(imgItem.x, imgItem.y, imgItem.w, imgItem.h)], MASK_BLUE);
+    const leftPx = Math.round(pos(imgItem.x));
+    const topPx = Math.round(pos(imgItem.y));
+    const w = Math.max(1, Math.round(px(imgItem.w)));
+    const h = Math.max(1, Math.round(px(imgItem.h)));
+    return {
+      name, left: leftPx, top: topPx, right: leftPx + w, bottom: topPx + h,
+      imageData: { data: resizeRGBA(art, w, h), width: w, height: h },
+    };
+  };
+  const collab: Layer[] = [];
+  if (assets.collabLeft) {
+    // The lead-in rides with the left slot (plan.ts's own gate: it only
+    // introduces a left logo), one editable type layer like the description.
+    const flow = L.collabLeftFlow(desc.lines.length);
+    collab.push(textLayer("Collab lead-in", L.COLLAB_LEAD.lines.join("\n"), {
+      x: L.COLLAB_LEAD.x, baseline: flow.leadBaselines[0], size: L.COLLAB_LEAD.size,
+      fill: P(cfg.collabLead), face: "bold", tracking: cfg.collabLead.letterSpacing,
+      leading: L.COLLAB_LEAD.leading,
+      stroke: cfg.collabLead.stroke, strokeLayer: cfg.collabLead.strokeLayer,
+      strokeWidth: cfg.collabLead.strokeWidth, mode,
+    }));
+    const l = collabArtLayer("Collab left logo", "collabLeft", assets.collabLeft);
+    if (l) collab.push(l);
+  }
+  if (assets.collabCenter) {
+    const c = collabArtLayer("Collab center logo", "collabCenter", assets.collabCenter);
+    if (c) collab.push(c);
+  }
+  if (collab.length) groups.push({ name: "Collab", opened: false, children: collab });
 
   // Center column ----------------------------------------------------------
   // x for each centred line comes from textX (see its definition above): the

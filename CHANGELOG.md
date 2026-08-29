@@ -3,6 +3,13 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.39] - 2026-08-29
+
+- PSD exports now include the Collab partner art: a "Collab" layer group with
+  the lead-in text and both partner logos, on the art plate and (as a
+  white-ink footprint) on the mask plate. Previously the exported PSD of a
+  Collab label silently omitted the partner logos entirely.
+
 ## [0.1.38] - 2026-08-28
 
 - Fill mode no longer shows variant checkboxes. Labels that already have a

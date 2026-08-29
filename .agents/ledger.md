@@ -234,6 +234,12 @@ no status, no attempts, no delta.
 - attempts: 0/3
 - notes: any migration goes per element behind its existing byte-identity golden; delete a built-in branch only after that element's parity holds; never one motion. No generic `flow` constraint in the schema — if description/warning/collab migrate, try resolver-computed offsets first and only revisit a constraint then. Draw-order guard: one golden with a custom layer behind a built-in, PDF only (backends share planLabel's ordering). Seam risk: four prior fix rounds (dc492aa, 91f02fb, a368d76, 48ca845) were all master/label ownership-seam bugs — every seam-touching task lands with a doc.ts-level test, not just render goldens. Full v1 scope: the 2026-08-29 amendment block in docs/superpowers/specs/2026-08-27-master-variation-design.md.
 
+## 2026-08-29 psd-collab-art
+- finding: [user request, v1 step 1 of the 2026-08-29 spec amendment] the exported PSD of a Collab label omitted the partner art entirely — PsdAssets had no collab slots and buildPsd's plan was handed none, which is also why the collab-variant-goldens PSD digests were identical ON and OFF (a vacuous guard, per that file's own comment)
+- status: done
+- attempts: 1/3
+- delta: PsdAssets gains optional collabLeft/collabCenter (PsdCollabArt: svg string, or natural-size RGBA the builder resamples like customImages); buildPsd hands their PlanArt to planLabel and emits a "Collab" group (lead-in type layer + both logo layers) between Left column and Center, matching PDF draw order — svg slots as shape layers with the plan item's fill/stroke, raster slots as resampled pixel layers on the art plate and a MASK_BLUE footprint rect on the mask plate (the custom-raster rule); App.tsx's exportPsd feeds the slots through the same collabAssets() as the PDF export, so disabled-slot nulling and raster tinting apply identically. New tests/psd-collab.test.ts (4 tests) is the real regression guard: both slots land with names/bounds, mask footprints present, no assets → no group (byte identity still pinned by the untouched collab-variant-goldens hashes), left-alone brings the lead-in. Stale vacuity comment in collab-variant-goldens.test.ts updated. 662/662 tests, tsc clean, cargo check clean; v0.1.39 (binary-impacting: PSD export content)
+
 ## 2026-08-28 remove-fill-variant-checkboxes
 - finding: [user request] src/components/FieldList.tsx:152 — Fill mode exposed a Collab checkbox the user did not want
 - status: done
