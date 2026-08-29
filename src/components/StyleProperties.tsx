@@ -773,8 +773,7 @@ function Content(props: {
         </p>
       );
     case "collabLead":
-      // The lead-in's text is fixed template art, and enabling Collab is the
-      // variant checkbox in Fill mode — nothing to edit here.
+      // The lead-in's text is fixed template art — nothing to edit here.
       return <p className="text-[11px] text-muted-foreground">Fixed template art — nothing to edit.</p>;
     case "collabLeft":
     case "collabCenter":

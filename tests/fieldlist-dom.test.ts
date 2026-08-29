@@ -8,6 +8,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FieldList } from "../src/components/FieldList";
+import { visibleFieldsOf } from "../src/model/document";
 import { lolevMaster } from "../src/model/lolev";
 import { defaultConfig } from "../src/defaults";
 
@@ -64,41 +65,38 @@ function change(el: Element, value: string) {
   });
 }
 
+const lolevFields = (enabledVariants: string[] = []) =>
+  visibleFieldsOf(lolevMaster(), enabledVariants);
+
 describe("FieldList", () => {
-  it("lists the master's fields with current values", () => {
+  it("lists the master's fields with current values and no variant controls", () => {
     const cfg = defaultConfig();
     cfg.beerName = "Peregrine";
     renderList({
-      master: lolevMaster(), enabledVariants: [], cfg,
-      onValue: vi.fn(), onVariant: vi.fn(),
+      fields: lolevFields(), cfg,
+      onValue: vi.fn(),
     });
     const nameInput = container.querySelector("#field-name") as HTMLInputElement;
     expect(nameInput.value).toBe("Peregrine");
-    const collabCheckbox = container.querySelector("#variant-collab") as HTMLInputElement;
-    expect(collabCheckbox.checked).toBe(false);
+    expect(container.querySelector("#variant-collab")).toBeNull();
   });
 
-  it("edits write through onValue and variants through onVariant", () => {
+  it("edits write through onValue", () => {
     const onValue = vi.fn();
-    const onVariant = vi.fn();
     renderList({
-      master: lolevMaster(), enabledVariants: [], cfg: defaultConfig(),
-      onValue, onVariant,
+      fields: lolevFields(), cfg: defaultConfig(),
+      onValue,
     });
     change(container.querySelector("#field-name")!, "Kestrel");
     expect(onValue).toHaveBeenCalledWith(expect.objectContaining({ id: "name" }), "Kestrel");
-
-    const collabCheckbox = container.querySelector("#variant-collab") as HTMLInputElement;
-    act(() => { collabCheckbox.click(); });
-    expect(onVariant).toHaveBeenCalledWith("collab", true);
   });
 
   it("shows a validation error for a bad code value", () => {
     const cfg = defaultConfig();
     cfg.upc = "123";
     renderList({
-      master: lolevMaster(), enabledVariants: [], cfg,
-      onValue: vi.fn(), onVariant: vi.fn(),
+      fields: lolevFields(), cfg,
+      onValue: vi.fn(),
     });
     // Pinned to validateUpc's real message (src/upc.ts): `"${value}" is not
     // a valid UPC-A code (12 digits).`
@@ -114,8 +112,8 @@ describe("FieldList", () => {
 
     it("renders a real file well, not a Design-mode note", () => {
       renderList({
-        master: lolevMaster(), enabledVariants: ["collab"], cfg: defaultConfig(),
-        onValue: vi.fn(), onVariant: vi.fn(),
+        fields: lolevFields(["collab"]), cfg: defaultConfig(),
+        onValue: vi.fn(),
       });
       const well = container.querySelector("#field-collabLeft") as HTMLInputElement;
       expect(well).not.toBeNull();
@@ -127,8 +125,8 @@ describe("FieldList", () => {
       const onValue = vi.fn();
       const onImageFile = vi.fn(async () => "asset-42");
       renderList({
-        master: lolevMaster(), enabledVariants: ["collab"], cfg: defaultConfig(),
-        onValue, onVariant: vi.fn(), onImageFile,
+        fields: lolevFields(["collab"]), cfg: defaultConfig(),
+        onValue, onImageFile,
       });
       const file = png();
       drop(container.querySelector("#field-collabLeft")!, file);
@@ -149,8 +147,8 @@ describe("FieldList", () => {
       const boom = new Error("could not decode image");
       const onImageFile = vi.fn(async () => { throw boom; });
       renderList({
-        master: lolevMaster(), enabledVariants: ["collab"], cfg: defaultConfig(),
-        onValue, onVariant: vi.fn(), onImageFile, onImageError,
+        fields: lolevFields(["collab"]), cfg: defaultConfig(),
+        onValue, onImageFile, onImageError,
       });
       drop(container.querySelector("#field-collabLeft")!, png());
       await act(async () => {});
@@ -164,8 +162,8 @@ describe("FieldList", () => {
       const cfg = defaultConfig();
       (cfg.collabCenter as { image?: string }).image = "asset-7";
       renderList({
-        master: lolevMaster(), enabledVariants: ["collab"], cfg,
-        onValue, onVariant: vi.fn(), onImageClear,
+        fields: lolevFields(["collab"]), cfg,
+        onValue, onImageClear,
       });
       const clear = container.querySelector("#field-collabCenter-clear") as HTMLButtonElement;
       expect(clear).not.toBeNull();
@@ -184,8 +182,8 @@ describe("FieldList", () => {
       const cfg = defaultConfig();
       (cfg.collabCenter as { image?: string }).image = "asset-7";
       renderList({
-        master: lolevMaster(), enabledVariants: ["collab"], cfg,
-        onValue: vi.fn(), onVariant: vi.fn(),
+        fields: lolevFields(["collab"]), cfg,
+        onValue: vi.fn(),
         imageFileOf: (id) => id === "asset-7"
           ? { name: "acme-logo.png", previewUrl: "blob:acme-logo" }
           : undefined,
@@ -198,8 +196,8 @@ describe("FieldList", () => {
 
     it("shows neither a name nor a thumbnail when no file is loaded", () => {
       renderList({
-        master: lolevMaster(), enabledVariants: ["collab"], cfg: defaultConfig(),
-        onValue: vi.fn(), onVariant: vi.fn(),
+        fields: lolevFields(["collab"]), cfg: defaultConfig(),
+        onValue: vi.fn(),
         imageFileOf: () => ({ name: "should-not-show.png", previewUrl: "blob:unused" }),
       });
       expect(container.textContent).not.toMatch(/should-not-show\.png/);

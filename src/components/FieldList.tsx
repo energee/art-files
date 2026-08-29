@@ -1,11 +1,10 @@
-// FieldList.tsx — Fill mode's sidebar: variant checkboxes + one widget per
-// visible field, each writing through its FieldDecl.path (spec: UI — "Fill
-// shows the label, the field list, and variant checkboxes"). The canvas
-// remains the primary editing surface (click-to-select, in-place text edit);
-// this is the parallel path for fillers who never touch Design mode.
+// FieldList.tsx — Fill mode's sidebar: one widget per visible field, each
+// writing through its FieldDecl.path. The canvas remains the primary editing
+// surface (click-to-select, in-place text edit); this is the parallel path for
+// fillers who never touch Design mode.
 import type { LabelConfig } from "@/types";
-import type { FieldDecl, FieldValue, Master } from "@/model/types";
-import { getPath, visibleFieldsOf } from "@/model/document";
+import type { FieldDecl, FieldValue } from "@/model/types";
+import { getPath } from "@/model/document";
 import { validateField } from "@/model/fields";
 import { CHECKER } from "@/components/FileDrop";
 
@@ -118,15 +117,13 @@ function FieldRow({ field, cfg, onValue, onImageFile, onImageClear, onImageError
 }
 
 export function FieldList({
-  master, enabledVariants, cfg, onValue, onVariant, onImageFile, onImageClear, onImageError,
+  fields, cfg, onValue, onImageFile, onImageClear, onImageError,
   imageFileOf,
 }: {
-  master: Master;
-  enabledVariants: string[];
+  fields: FieldDecl[];
   cfg: LabelConfig;
   /** Write one field's value through its path (App routes through update()). */
   onValue: (field: FieldDecl, value: FieldValue) => void;
-  onVariant: (id: string, on: boolean) => void;
   /** An image field's well: read the dropped file into the label's per-id
    *  image store and resolve to the minted asset id, which the row then
    *  writes as the field's value. App owns the store (the same one custom
@@ -149,15 +146,7 @@ export function FieldList({
 }) {
   return (
     <div className="space-y-4 p-3">
-      {master.variants.map((v) => (
-        <div key={v.id} className="flex items-center gap-2">
-          <input type="checkbox" id={`variant-${v.id}`}
-            checked={enabledVariants.includes(v.id)}
-            onChange={(e) => onVariant(v.id, e.target.checked)} />
-          <label htmlFor={`variant-${v.id}`} className="text-sm font-medium">{v.name}</label>
-        </div>
-      ))}
-      {visibleFieldsOf(master, enabledVariants).map((f) => (
+      {fields.map((f) => (
         <FieldRow key={f.id} field={f} cfg={cfg} onValue={onValue} onImageFile={onImageFile}
           onImageClear={onImageClear} onImageError={onImageError}
           imageFileOf={imageFileOf} />

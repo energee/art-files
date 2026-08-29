@@ -31,7 +31,7 @@ import {
 import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import {
-  composeConfig, declaredFieldPaths, expandCustomFormats, getPath, overriddenPaths, toggleVariant,
+  composeConfig, declaredFieldPaths, expandCustomFormats, getPath, overriddenPaths,
   valuesFromConfig, visibleFieldsOf, type EditTarget,
 } from "@/model/document";
 import {
@@ -427,9 +427,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Config lives in a history stack, not plain useState — every edit that
   // goes through setDoc (i.e. all of them, see `update` below) is undoable.
   // enabledVariants rides along in the same history entry as cfg (not a
-  // separate useState): undoing a variant toggle has to restore BOTH the
-  // composed config AND the FieldList checkboxes that produced it, in one
-  // step, or the two fall out of sync (see toggleVariant in model/document).
+  // separate useState): opening, rebinding, or creating a variant must restore
+  // the composed config and its enabled set in one step.
   // No `dormant` in this initial Doc — deliberate: a brand-new document has
   // never been rebound, so it has nothing benched (resetDocument's later
   // resets are the same story, just after an Open rather than at mount).
@@ -531,14 +530,6 @@ export const DocumentEditor = memo(function DocumentEditor({
   // both the config and its history like `master` above — which mode you're
   // in isn't a document edit, and switching tabs shouldn't carry it along.
   const [mode, setMode] = useState<"design" | "fill">("fill");
-  /** Layers panel's variant checkboxes: recompose the whole config AND the
-   *  enabled set in one undoable step (see toggleVariant in model/document)
-   *  — so undo restores the checkbox along with the config it produced. */
-  const setVariant = (id: string, on: boolean) => {
-    const r = toggleVariant(master, cfg, enabledVariants, id, on);
-    markDirty();
-    setDoc((d) => ({ ...d, cfg: r.config, enabledVariants: r.enabled }));
-  };
   // Insertable refs for a custom barcode/qr layer's FormatBuilder (the
   // Inspector's fields prop) — the master's own fields plus whichever
   // variants are enabled, same set FieldList's sidebar shows.
@@ -2413,9 +2404,8 @@ export const DocumentEditor = memo(function DocumentEditor({
             {/* Design's sidebar, scoped by the selector and in the spec's
                 order: the master picker, the Editing selector, the layers
                 list, then the fields of the CURRENT target only (the
-                inspector is the right-hand column below). Fill shows the
-                label, the field list, and variant checkboxes — no styling,
-                no layers panel (spec: UI). */}
+                inspector is the right-hand column below). Fill shows only the
+                field list — no styling, variant controls, or layers panel. */}
             {mode === "design"
               ? <>
                   <MasterPicker master={master} label={labelSnapshot(doc)}
@@ -2433,8 +2423,8 @@ export const DocumentEditor = memo(function DocumentEditor({
                   <TargetFields master={master} target={editTarget}
                     onRenameField={renameTargetField} onRemoveField={removeTargetField} />
                 </>
-              : <FieldList master={master} enabledVariants={enabledVariants} cfg={cfg}
-                  onValue={onFieldValue} onVariant={setVariant}
+              : <FieldList fields={visibleFields} cfg={cfg}
+                  onValue={onFieldValue}
                   onImageFile={onFieldImageFile} onImageClear={onFieldImageClear}
                   onImageError={(err) => setBuildError(`Could not load image: ${errMsg(err)}`)}
                   imageFileOf={(id) => customImages[id]} />}

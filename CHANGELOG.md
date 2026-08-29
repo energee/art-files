@@ -3,6 +3,11 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.38] - 2026-08-28
+
+- Fill mode no longer shows variant checkboxes. Labels that already have a
+  variant enabled keep its fields, artwork, and saved values unchanged.
+
 ## [0.1.37] - 2026-08-27
 
 - Design mode now edits the master — the shared core every label inherits —

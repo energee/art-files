@@ -27,11 +27,11 @@ import { deepMerge } from "@/model/merge";
 
 /** The undoable half of one document: the live config, which of its master's
  *  variants are enabled, and the master itself. All three travel together
- *  through history (see useHistory<Doc> in App.tsx) so undoing a variant
- *  toggle restores the FieldList checkboxes in the same step as the config it
- *  produced — and, since Design mode authors the master rather than the label
- *  (see `designEditDoc`), so a design edit's new master and the config it
- *  recomposed undo as ONE step instead of drifting apart.
+ *  through history (see useHistory<Doc> in App.tsx) so enabled state cannot
+ *  drift from the config it produced — and, since Design mode authors the
+ *  master rather than the label (see `designEditDoc`), so a design edit's new
+ *  master and the config it recomposed undo as ONE step instead of drifting
+ *  apart.
  *
  *  `dormant` rides in Doc (not just the persisted LabelFileV2) so a LIVE
  *  session's chain of rebinds stays non-destructive too: picking master B
