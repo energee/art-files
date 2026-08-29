@@ -11,6 +11,7 @@
 import { useState } from "react";
 import { ChevronDown, Copy, FolderOpen } from "lucide-react";
 import { rebind } from "@/model/rebind";
+import type { MasterAssets } from "@/model/masterfile";
 import type { LabelFileV2, Master } from "@/model/types";
 import { cn } from "@/lib/utils";
 
@@ -38,12 +39,14 @@ export function MasterPicker(props: {
    *  argument, which exists for a DIFFERENT caller — openProject, resolving
    *  a `.label`'s masterHint when the index itself has nothing for that id
    *  yet (e.g. a file received from someone else). */
-  resolve: (id: string) => Promise<Master | null>;
+  resolve: (id: string) => Promise<{ master: Master; assets: MasterAssets } | null>;
   /** Commits a rebind onto `target` — called ONLY after the inline preview's
    *  "Continue" is pressed. The caller re-runs rebind itself against its own
    *  live document snapshot (App.tsx's commitRebind), so this never trusts a
-   *  rebind result computed against a possibly-stale `label` prop. */
-  onMaster: (target: Master) => void;
+   *  rebind result computed against a possibly-stale `label` prop. The
+   *  resolved template assets ride along so the caller adopts them without
+   *  a second file read. */
+  onMaster: (target: Master, assets: MasterAssets) => void;
   /** File → Open Master…, unchanged from Task 4. */
   onOpenMaster: () => void;
   /** Clones the current master under a fresh id with the given name, and
@@ -55,7 +58,7 @@ export function MasterPicker(props: {
   const [draft, setDraft] = useState("");
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<
-    { target: Master; dropped: string[]; disabledVariants: string[] } | null
+    { target: Master; assets: MasterAssets; dropped: string[]; disabledVariants: string[] } | null
   >(null);
   const [error, setError] = useState("");
 
@@ -76,16 +79,16 @@ export function MasterPicker(props: {
     if (id === props.master.id) { setOpen(false); return; }
     setError("");
     setResolvingId(id);
-    const target = await props.resolve(id);
+    const r = await props.resolve(id);
     setResolvingId(null);
-    if (!target) { setError(`Could not open master "${id}".`); return; }
-    const { dropped, disabledVariants } = rebind(props.label, target);
-    setPreview({ target, dropped, disabledVariants });
+    if (!r) { setError(`Could not open master "${id}".`); return; }
+    const { dropped, disabledVariants } = rebind(props.label, r.master);
+    setPreview({ target: r.master, assets: r.assets, dropped, disabledVariants });
   };
 
   const commit = () => {
     if (!preview) return;
-    props.onMaster(preview.target);
+    props.onMaster(preview.target, preview.assets);
     closeAll();
   };
 

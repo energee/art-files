@@ -11,14 +11,12 @@ import { buildPsd, type PsdAssets } from "../src/psd/build";
 import { resolve } from "../src/model/resolve";
 import { lolevMaster } from "../src/model/lolev";
 import * as L from "../src/layout";
-import { psdAssets } from "./fixtures";
+import { flatLayers, psdAssets } from "./fixtures";
 
-/** Every layer in the document, groups flattened (psd-build.test.ts's). */
-function flat(children: any[] = []): any[] {
-  return children.flatMap((l) => [l, ...flat(l.children ?? [])]);
-}
-const layer = (children: any[] = [], name: string) =>
-  flat(children).find((l) => l.name === name);
+// `any` return: assertions reach into ag-psd fields the published types
+// call optional (text runs, bounds); the walk itself is fixtures.ts's.
+const layer = (children: any[] = [], name: string): any =>
+  flatLayers(children).find((l) => l.name === name);
 
 const read = (bytes: Uint8Array) =>
   readPsd(Buffer.from(bytes).buffer as ArrayBuffer,

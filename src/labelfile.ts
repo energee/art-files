@@ -53,43 +53,22 @@ const ROLE_DIRS: Record<FixedAssetRole, string> = {
 /** ZIP directory custom image assets live under: `custom/<assetId>/<name>`. */
 const CUSTOM_DIR = "custom";
 
-/** Pack a v1 label file: config.json (legacy writer kept for tests and Node
- *  harness until Plan 6). For new code, use packLabelV2. */
-export function packLabel(config: LabelConfig, assets: LabelAssets): Uint8Array {
-  const zip: Zippable = {
-    "config.json": strToU8(JSON.stringify(toConfigFile(config), null, 2)),
-  };
-  for (const [role, dir] of Object.entries(ROLE_DIRS) as [FixedAssetRole, string][]) {
-    const a = assets[role];
-    if (a) zip[`${dir}/${a.name}`] = [a.bytes, { level: 0 }];
-  }
-  return zipSync(zip);
-}
-
-/** Pack a v2 label file: label.json (LabelFileV2 JSON) plus assets, including
- *  each custom image layer's bytes under `custom/<assetId>/<name>` (level 0,
- *  same as every other image role — already-compressed PNG/JPG/SVG bytes). */
-export function packLabelV2(label: LabelFileV2, assets: LabelAssets): Uint8Array {
-  const zip: Zippable = { "label.json": strToU8(serializeLabelFile(label)) };
+/** Write the asset roles and per-id custom images into `zip` — the ONE
+ *  spelling of the container's asset convention (role dirs, custom/<id>/,
+ *  level-0 image entries), shared by both .label packers and .master's
+ *  packMaster (model/masterfile.ts), so the two containers cannot drift. */
+export function packAssets(zip: Zippable, assets: LabelAssets): void {
   for (const [role, dir] of Object.entries(ROLE_DIRS) as [FixedAssetRole, string][]) {
     const a = assets[role];
     if (a) zip[`${dir}/${a.name}`] = [a.bytes, { level: 0 }];
   }
   for (const [id, a] of Object.entries(assets.customImages ?? {}))
     zip[`${CUSTOM_DIR}/${id}/${a.name}`] = [a.bytes, { level: 0 }];
-  return zipSync(zip);
 }
 
-/** Unpack a .label ZIP (either generation). Returns exactly one of config
- *  (v1, config.json) or label (v2, label.json) plus whichever assets the
- *  file holds. Throws a readable error when neither is present. */
-export function unpackLabel(bytes: Uint8Array): { config?: string; label?: string; assets: LabelAssets } {
-  const entries = unzipSync(bytes);
-  const configEntry = entries["config.json"];
-  const labelEntry = entries["label.json"];
-  if (!configEntry && !labelEntry) {
-    throw new Error("Not a .label file: missing label.json/config.json");
-  }
+/** The unpack half of packAssets: pull every asset role and per-id custom
+ *  image out of an unzipped entry map. Shared with unpackMaster. */
+export function extractAssets(entries: Record<string, Uint8Array>): LabelAssets {
   const assets: LabelAssets = {};
   for (const [role, dir] of Object.entries(ROLE_DIRS) as [FixedAssetRole, string][]) {
     const path = Object.keys(entries).find((p) => p.startsWith(`${dir}/`));
@@ -103,9 +82,41 @@ export function unpackLabel(bytes: Uint8Array): { config?: string; label?: strin
     if (m) customImages[m[1]] = { name: m[2], bytes: entries[path] };
   }
   if (Object.keys(customImages).length) assets.customImages = customImages;
+  return assets;
+}
+
+/** Pack a v1 label file: config.json (legacy writer kept for tests and Node
+ *  harness until Plan 6). For new code, use packLabelV2. */
+export function packLabel(config: LabelConfig, assets: LabelAssets): Uint8Array {
+  const zip: Zippable = {
+    "config.json": strToU8(JSON.stringify(toConfigFile(config), null, 2)),
+  };
+  packAssets(zip, assets);
+  return zipSync(zip);
+}
+
+/** Pack a v2 label file: label.json (LabelFileV2 JSON) plus assets, including
+ *  each custom image layer's bytes under `custom/<assetId>/<name>` (level 0,
+ *  same as every other image role — already-compressed PNG/JPG/SVG bytes). */
+export function packLabelV2(label: LabelFileV2, assets: LabelAssets): Uint8Array {
+  const zip: Zippable = { "label.json": strToU8(serializeLabelFile(label)) };
+  packAssets(zip, assets);
+  return zipSync(zip);
+}
+
+/** Unpack a .label ZIP (either generation). Returns exactly one of config
+ *  (v1, config.json) or label (v2, label.json) plus whichever assets the
+ *  file holds. Throws a readable error when neither is present. */
+export function unpackLabel(bytes: Uint8Array): { config?: string; label?: string; assets: LabelAssets } {
+  const entries = unzipSync(bytes);
+  const configEntry = entries["config.json"];
+  const labelEntry = entries["label.json"];
+  if (!configEntry && !labelEntry) {
+    throw new Error("Not a .label file: missing label.json/config.json");
+  }
   return {
     config: configEntry ? strFromU8(configEntry) : undefined,
     label: labelEntry ? strFromU8(labelEntry) : undefined,
-    assets,
+    assets: extractAssets(entries),
   };
 }

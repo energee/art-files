@@ -3,6 +3,13 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.41] - 2026-08-29
+
+- Internal cleanup of the new master-container and PSD collab code (shared
+  packing helpers, one raster-drawing rule, parallel export decodes). No
+  visible behavior change; picking a library master no longer reads its file
+  twice.
+
 ## [0.1.40] - 2026-08-29
 
 - A saved `.master` now carries its template art: the texture, the metallic

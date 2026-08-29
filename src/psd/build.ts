@@ -618,7 +618,7 @@ function buildLayers(
       .widthOfTextAtSize(t, size);
   const planArtOf = (a?: PsdCollabArt) =>
     a === undefined ? undefined
-      : a.kind === "svg" ? { kind: "svg" as const, svg: a.svg }
+      : a.kind === "svg" ? a // already PlanArt-shaped
         : { kind: "raster" as const, w: a.width, h: a.height };
   const plan = planLabel(cfg, pdfMeasure, {
     assets: {
@@ -736,18 +736,7 @@ function buildLayers(
       );
     const imgItem = planned(id, "image")[0];
     if (!imgItem || art.kind !== "raster") return null;
-    // Raster art prints on white ink: the mask paints the fitted rect blue —
-    // the same rule custom raster images and the mask PDF apply.
-    if (mode === "mask")
-      return shapeLayer(name, [rectPath(imgItem.x, imgItem.y, imgItem.w, imgItem.h)], MASK_BLUE);
-    const leftPx = Math.round(pos(imgItem.x));
-    const topPx = Math.round(pos(imgItem.y));
-    const w = Math.max(1, Math.round(px(imgItem.w)));
-    const h = Math.max(1, Math.round(px(imgItem.h)));
-    return {
-      name, left: leftPx, top: topPx, right: leftPx + w, bottom: topPx + h,
-      imageData: { data: resizeRGBA(art, w, h), width: w, height: h },
-    };
+    return rasterItemLayer(name, imgItem, art, mode);
   };
   const collab: Layer[] = [];
   if (assets.collabLeft) {
@@ -961,6 +950,28 @@ function codeLayers(cfg: LabelConfig, fk: FKFont, mode: PsdMode, plan: Placed[])
  *  neighbor keeps this dependency-free (no canvas, so it runs identically
  *  from the browser and scripts/generate.ts's Node CLI); export-resolution
  *  raster art at print DPI rarely benefits from a smoother filter. */
+/** A planned raster image as one PSD layer — the ONE spelling of the
+ *  raster-art rules, shared by custom image layers and the collab slots:
+ *  mask mode paints the fitted rect white-ink blue regardless of the
+ *  layer's own fill/layer assignment (raster art prints on white ink — the
+ *  same rule pdf/build.ts's drawElements applies), art mode resamples the
+ *  natural-size pixels to the placed box. */
+function rasterItemLayer(
+  name: string, item: { x: number; y: number; w: number; h: number },
+  pixels: { data: Uint8Array; width: number; height: number }, mode: PsdMode,
+): Layer {
+  if (mode === "mask")
+    return shapeLayer(name, [rectPath(item.x, item.y, item.w, item.h)], MASK_BLUE);
+  const left = Math.round(pos(item.x));
+  const top = Math.round(pos(item.y));
+  const w = Math.max(1, Math.round(px(item.w)));
+  const h = Math.max(1, Math.round(px(item.h)));
+  return {
+    name, left, top, right: left + w, bottom: top + h,
+    imageData: { data: resizeRGBA(pixels, w, h), width: w, height: h },
+  };
+}
+
 function resizeRGBA(
   src: { data: Uint8Array; width: number; height: number }, dstW: number, dstH: number,
 ): Uint8Array {
@@ -1040,23 +1051,7 @@ function buildCustomLayers(
       // never prints.
       const pixels = assets.customImages?.[layer.asset];
       if (!pixels) continue;
-      if (mode === "mask") {
-        // Raster art prints on white ink: the mask paints its footprint
-        // blue regardless of the layer's own fill/layer assignment — the
-        // same raster-collab rule pdf/build.ts's drawElements applies.
-        out.push(shapeLayer(
-          layer.name, [rectPath(imgItem.x, imgItem.y, imgItem.w, imgItem.h)], MASK_BLUE,
-        ));
-        continue;
-      }
-      const left = Math.round(pos(imgItem.x));
-      const top = Math.round(pos(imgItem.y));
-      const w = Math.max(1, Math.round(px(imgItem.w)));
-      const h = Math.max(1, Math.round(px(imgItem.h)));
-      out.push({
-        name: layer.name, left, top, right: left + w, bottom: top + h,
-        imageData: { data: resizeRGBA(pixels, w, h), width: w, height: h },
-      });
+      out.push(rasterItemLayer(layer.name, imgItem, pixels, mode));
     } else {
       // "qr" — same structured qrShapes -> qrBeziers conversion as the
       // template QR above, recomputed locally from the layer's own

@@ -46,7 +46,7 @@ function renderPicker(props: Partial<Parameters<typeof MasterPicker>[0]> = {}) {
   const full: Parameters<typeof MasterPicker>[0] = {
     master: lolevMaster(), label,
     library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery" } },
-    resolve: vi.fn().mockResolvedValue(otherMaster),
+    resolve: vi.fn().mockResolvedValue({ master: otherMaster, assets: {} }),
     onMaster: vi.fn(), onOpenMaster: vi.fn(), onDuplicate: vi.fn(),
     ...props,
   };
@@ -87,7 +87,7 @@ describe("MasterPicker", () => {
 
   it("previews the rebind and does not commit until Continue is pressed", async () => {
     const onMaster = vi.fn();
-    const resolve = vi.fn().mockResolvedValue(otherMaster);
+    const resolve = vi.fn().mockResolvedValue({ master: otherMaster, assets: {} });
     renderPicker({ onMaster, resolve });
     openMenu();
     await act(async () => {
@@ -104,7 +104,7 @@ describe("MasterPicker", () => {
     act(() => {
       (container.querySelector("#master-picker-continue") as HTMLButtonElement).click();
     });
-    expect(onMaster).toHaveBeenCalledWith(otherMaster);
+    expect(onMaster).toHaveBeenCalledWith(otherMaster, {});
   });
 
   it("calls onDuplicate with the typed name, and never touches onMaster", () => {

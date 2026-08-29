@@ -9,15 +9,12 @@ import { buildPsd, qrBeziers, type PsdAssets } from "../src/psd/build";
 import { defaultConfig } from "../src/defaults";
 import { qrShapes } from "../src/qr";
 import type { CustomBarcodeLayer, CustomImageLayer, CustomQrLayer, CustomTextLayer } from "../src/types";
-import { psdAssets as assets } from "./fixtures";
+import { flatLayers, psdAssets as assets } from "./fixtures";
 
-/** Every layer in the document, groups flattened. Deliberately `any`: this
- *  file's assertions reach deep into ag-psd's layer shape (text runs, vector
- *  fills, effects) where the published types are stricter than the data. */
-function flat(children: any[] = []): any[] {
-  return children.flatMap((l) => [l, ...flat(l.children ?? [])]);
-}
-
+// Deliberately `any`: this file's assertions reach deep into ag-psd's layer
+// shape (text runs, vector fills, effects) where the published types are
+// stricter than the data. The tree walk itself is fixtures.ts's flatLayers.
+const flat = (children: any[] = []): any[] => flatLayers(children);
 const names = (children: any[] = []) => flat(children).map((l) => l.name ?? "");
 const layer = (children: any[] = [], name: string) =>
   flat(children).find((l) => l.name === name);

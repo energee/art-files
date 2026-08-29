@@ -260,6 +260,14 @@ function tintedPngCached(bytes: Uint8Array, fill: Fill): Promise<Uint8Array> {
  *  anything else as raster bytes, plus the intrinsic aspect (w/h): an SVG's
  *  ink box (parseLogo, fit into 1x1 so the returned w/h ratio IS the ink
  *  aspect), a raster's decoded bitmap size. */
+/** A packed container asset as a typed File — the type matters: FileDrop
+ *  thumbnails are createObjectURL(file), and an <img> won't render a
+ *  typeless blob as SVG. One spelling for the label-open and master-adopt
+ *  paths. */
+function assetToFile(a: { name: string; bytes: Uint8Array }): File {
+  return new File([a.bytes as unknown as BlobPart], a.name, { type: mimeFor(a.name) });
+}
+
 async function readCustomImage(f: File): Promise<CustomFile> {
   const previewUrl = URL.createObjectURL(f);
   if (mimeFor(f.name) === "image/svg+xml") {
@@ -1757,14 +1765,14 @@ export const DocumentEditor = memo(function DocumentEditor({
     };
     const customImageEntries = Object.entries(customImages);
     const zip = packLabelV2(label, {
-      texture: texture ? { name: texture.name, bytes: texture.bytes } : undefined,
-      mask: mask ? { name: mask.name, bytes: mask.srcBytes } : undefined,
+      texture: textureAsset(),
+      mask: maskAsset(),
       // No collabLeft/collabCenter here: the fixed ZIP roles stay READABLE
       // for existing files (see labelfile.ts) and stop being written — a
       // collab logo is an ordinary entry in customImages now.
       customImages: customImageEntries.length
         ? Object.fromEntries(customImageEntries.map(([id, c]) => [
-            id, { name: c.name, bytes: c.image.kind === "svg" ? strToU8(c.image.svg) : c.image.bytes },
+            id, { name: c.name, bytes: imageAssetBytes(c) },
           ]))
         : undefined,
     });
@@ -1832,28 +1840,30 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  was just written — the SAME identity-comparison mechanism the dot
    *  already uses, not a second flag (see masterDirty/repaintMasterDirty).
    *  `as` forces the picker even with a known file, same as saveProject's. */
+  /** The texture/mask slots and a custom image's on-disk bytes, spelled ONCE
+   *  for both containers — saveProject (.label) and masterAssetBundle
+   *  (.master) pack through these, so the svg-vs-raster serialization rule
+   *  and the mask's srcBytes choice cannot drift between the two. */
+  const textureAsset = () => texture ? { name: texture.name, bytes: texture.bytes } : undefined;
+  const maskAsset = () => mask ? { name: mask.name, bytes: mask.srcBytes } : undefined;
+  const imageAssetBytes = (c: CustomFile) =>
+    c.image.kind === "svg" ? strToU8(c.image.svg) : c.image.bytes;
+
   /** The template assets a Save Master captures: the loaded texture/mask
    *  (the art being authored IS the template art) plus the bytes of every
    *  image asset a master-owned image layer references — variant/label image
    *  FIELD values stay label deltas and are never packed here. */
   function masterAssetBundle(): MasterAssets {
-    const imageAssetIds = master.layers
-      .filter((l) => l.kind === "image")
-      .map((l) => (master.defaults as Record<string, { asset?: string } | undefined>)[l.id]?.asset)
-      .filter((id): id is string => !!id);
     const customOut: NonNullable<MasterAssets["customImages"]> = {};
-    for (const id of imageAssetIds) {
-      const c = customImages[id];
-      if (!c) continue;
-      customOut[id] = {
-        name: c.name,
-        bytes: c.image.kind === "svg" ? strToU8(c.image.svg) : c.image.bytes,
-      };
+    for (const l of master.layers) {
+      if (l.kind !== "image") continue;
+      const id = (master.defaults as Record<string, { asset?: string } | undefined>)[l.id]?.asset;
+      const c = id ? customImages[id] : undefined;
+      if (id && c) customOut[id] = { name: c.name, bytes: imageAssetBytes(c) };
     }
     return {
-      texture: texture ? { name: texture.name, bytes: texture.bytes } : undefined,
-      mask: mask ? { name: mask.name, bytes: mask.srcBytes } : undefined,
-      ...(Object.keys(customOut).length ? { customImages: customOut } : {}),
+      texture: textureAsset(), mask: maskAsset(),
+      customImages: Object.keys(customOut).length ? customOut : undefined,
     };
   }
 
@@ -1935,20 +1945,17 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  So re-aiming a label at a master never clobbers its own art, while a
    *  fresh document gets the template art with nothing dropped. */
   async function adoptMasterAssets(a: MasterAssets): Promise<void> {
-    const toFile = (x: { name: string; bytes: Uint8Array }) =>
-      new File([x.bytes as unknown as BlobPart], x.name, { type: mimeFor(x.name) });
     await Promise.all([
-      !texture && a.texture ? onTexture(toFile(a.texture)) : null,
-      !mask && a.mask ? onMask(toFile(a.mask)) : null,
+      !texture && a.texture ? onTexture(assetToFile(a.texture)) : null,
+      !mask && a.mask ? onMask(assetToFile(a.mask)) : null,
       (async () => {
         const missing = Object.entries(a.customImages ?? {})
           .filter(([id]) => !customImages[id]);
         if (!missing.length) return;
         const entries = await Promise.all(missing.map(async ([id, x]) =>
-          [id, await readCustomImage(toFile(x))] as const));
-        setCustomImages((prev) => ({
-          ...Object.fromEntries(entries.filter(([id]) => !prev[id])), ...prev,
-        }));
+          [id, await readCustomImage(assetToFile(x))] as const));
+        // `...prev` last: an id that landed while we decoded still wins.
+        setCustomImages((prev) => ({ ...Object.fromEntries(entries), ...prev }));
       })(),
     ]);
   }
@@ -1996,14 +2003,13 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  picked master's known file identity the way resetDocument does for an
    *  Open, so a later Save Master writes back to the right file instead of
    *  prompting. */
-  function pickLibraryMaster(target: Master) {
+  function pickLibraryMaster(target: Master, assets: MasterAssets) {
     masterFileHandle.current = null;
     masterFilePath.current = isTauri() ? masterIndex()[target.id]?.path ?? null : null;
     commitRebind(target);
-    // Template assets ride along under the label-delta rule (art already
-    // loaded wins). A second read of a small file on a rare user action —
-    // not worth threading assets through the picker's resolve plumbing.
-    void resolveMasterById(target.id).then((r) => r && adoptMasterAssets(r.assets));
+    // Template assets from the picker's own resolve, adopted under the
+    // label-delta rule (art already loaded wins) — no second file read.
+    void adoptMasterAssets(assets);
   }
 
   /** MasterPicker's "Duplicate as new master…": clone the current master
@@ -2166,12 +2172,6 @@ export const DocumentEditor = memo(function DocumentEditor({
         adoptLegacyCollab(parsedCfg);
         resetDocument(parsedCfg, wasCollab ? ["collab"] : []);
       }
-      // The type matters: FileDrop thumbnails are createObjectURL(file), and
-      // an <img> won't render a typeless blob as SVG — logos restored from a
-      // project showed as broken images while fresh drops (whose File the
-      // browser types) worked.
-      const toFile = (a: { name: string; bytes: Uint8Array }) =>
-        new File([a.bytes as unknown as BlobPart], a.name, { type: mimeFor(a.name) });
       // Label-delta rule: the label's own embedded role wins; a missing one
       // falls back to the master's template asset. Custom image bytes merge
       // the same way, per id (spread order: master first, label last).
@@ -2182,7 +2182,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       // asset handlers' state writes — each of those marks it dirty again,
       // and the last write has to be this clean one.
       await Promise.all([
-        t && onTexture(toFile(t)), m && onMask(toFile(m)),
+        t && onTexture(assetToFile(t)), m && onMask(assetToFile(m)),
         // resetDocument (above) already cleared customImages to {}, so this
         // is a full restore, not a merge — same contract as the other slots.
         // Legacy collab roles ride in under the ids adoptLegacyCollab just
@@ -2190,7 +2190,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         (async () => {
           const entries = await Promise.all(
             Object.entries({ ...ci, ...legacyAssets }).map(async ([id, a]) =>
-              [id, await readCustomImage(toFile(a))] as const));
+              [id, await readCustomImage(assetToFile(a))] as const));
           if (entries.length) setCustomImages(Object.fromEntries(entries));
         })(),
       ]);
@@ -2322,14 +2322,19 @@ export const DocumentEditor = memo(function DocumentEditor({
         !img ? undefined
           : img.kind === "svg" ? { kind: "svg", svg: img.svg }
             : { kind: "raster", ...(await rasterPixelsNatural(img.bytes)) };
+      // Four independent decodes, in parallel — same pattern as the custom
+      // image entries above.
+      const [texturePx, maskPx, collabLeftPsd, collabCenterPsd] = await Promise.all([
+        rasterPixels(texture?.bytes), rasterPixels(mask?.bytes), psdCollab(cl), psdCollab(cc),
+      ]);
       const assets: PsdAssets = {
         fonts, logoSvg,
-        texture: await rasterPixels(texture?.bytes),
-        mask: await rasterPixels(mask?.bytes),
+        texture: texturePx,
+        mask: maskPx,
         custom,
         customImages: Object.fromEntries(customImageEntries),
-        collabLeft: await psdCollab(cl),
-        collabCenter: await psdCollab(cc),
+        collabLeft: collabLeftPsd,
+        collabCenter: collabCenterPsd,
       };
       // Built before any dialog, same reasoning as the PDF exports above.
       const [artPsd, maskPsd] = await Promise.all([
@@ -2485,8 +2490,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             {mode === "design"
               ? <>
                   <MasterPicker master={master} label={labelSnapshot(doc)}
-                    library={libraryEntries()}
-                    resolve={async (id) => (await resolveMasterById(id))?.master ?? null}
+                    library={libraryEntries()} resolve={resolveMasterById}
                     onMaster={pickLibraryMaster} onOpenMaster={() => void openMasterPicker()}
                     onDuplicate={duplicateMaster} />
                   <EditingTarget master={master} target={editTarget}
