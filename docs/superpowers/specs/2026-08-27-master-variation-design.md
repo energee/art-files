@@ -18,6 +18,69 @@ variant": the shipped nudge is 0, so an explicit override would preserve
 nothing while shadowing a designer's master-level nudge on exactly the
 labels the nudge serves — variant overrides merge on top of
 `master.defaults`. See "Migration".
+Amended: 2026-08-29 (plan pressure-test, REDUCTION mode) — v1 is re-scoped
+around user-visible capability; the engineering endgame is deferred:
+
+- **`.master` becomes a ZIP**, exactly the container `.label` already is:
+  `master.json` (the shape `parseMaster` validates) plus assets under the same
+  role/assetId directory scheme (`texture/<name>`, `mask/<name>`,
+  `custom/<assetId>/<name>`), built with the existing labelfile ZIP code.
+  Template art (texture, metallic mask) moves to the master; a label's own
+  embedded assets, when present, win over the master's — forever — so old
+  labels render unchanged. Legacy JSON-only `.master` files still open (`{`
+  sniff → JSON reader, `PK` → ZIP); both share `parseMaster`. Corrupt-archive
+  handling is one loud `fail()` — no validation layer beyond the parser.
+- **Rotation ships minimal**: `rotation: 0 | 90` on barcode and text layers
+  only (vertical codes and side text are the named needs). The property is an
+  enum so 180/270 and image/qr extend for free later, but their goldens, hit
+  boxes, and PSD geometry are NOT built until asked.
+- **No `flow` constraint in the schema.** The generic
+  "place after layer X with gap Y" idea is dropped: it would generalize
+  exactly two hardcoded relationships (collab lead → logo, description
+  stacking). If those migrations can express the relationship as resolver-
+  computed offsets, the constraint never becomes a schema concept; revisit
+  only at the moment the description/warning/collab elements migrate.
+- **Built-in → generic migration is opportunistic, not a phase.** Built-in
+  runtime branches (`plan.ts`, `elements.ts`, `hittest.ts`, `pdf/build.ts`,
+  `psd/build.ts`, `ElementId`) are golden-locked and invisible to users; an
+  element migrates only when keeping its branch blocks a user-facing change,
+  each behind its existing byte-identity golden, branch deletion last. It is
+  acceptable for some branches to never migrate. Tracked in
+  `.agents/ledger.md` (`builtin-to-generic-layer-migration`).
+- **v1 order**: (1) parity locks, including a Collab PSD golden that carries
+  REAL partner art (the current one is vacuous); (2) `.master` ZIP;
+  (3) master-ordered draw order — renderers interleave `customLayers` at
+  their `master.layers` position instead of appending on top, guarded by one
+  golden with a custom layer behind a built-in, asserted in PDF only (the
+  backends share `planLabel`'s ordering); (4) wire `master.guides` into the
+  existing `position.ts` anchor/snap math for drag and render, deleting the
+  hardcoded guide constants; (5) generic text multiline/wrap +
+  minimal rotation; (6) opportunistic per-element migration.
+- **Every text layer gets `align: "left" | "center" | "right" | "justify"`**
+  in its style — one property, uniformly, including single-line layers
+  (no-op until the box exceeds the line; `justify` on a last/only line
+  degrades to left, standard behavior, no special case). Align is how lines
+  sit INSIDE the layer's box; anchor stays what places the box on a guide —
+  the two never conflate, so snapping never changes how text reads. A
+  migrated built-in carries its current effective alignment explicitly, so
+  goldens stay byte-identical.
+- Field bindings stay path-based: for a materialized layer, styling lives at
+  `config[layerId]`, so `"<layerId>.text"` already IS a layer-property
+  binding. No new binding schema.
+- **Consistency debt folded into the steps that touch its area** (each is a
+  second way of doing something the plan has one way for):
+  - Step 2 (master ZIP): normalize legacy raw `defaults.customLayers` entries
+    into `kind`-bearing MasterLayers on master save, then delete resolve()'s
+    reconciliation block; decide the unused `Variant.layers` appended path —
+    use it from the starter master or delete it (YAGNI).
+  - Step 3/4: move `ElementId` into a small pure module both the renderer
+    registry and model import (the sync-by-comment in model/types.ts is a
+    drift landmine); make lock universal — every layer honors `locked`,
+    deleting resolve()'s hardcoded `LOCKABLE_IDS` set.
+  - Step 5: rename `useDescriptionField` → `useTextField` in the same commit
+    as its first non-description consumer; resolve the `model/doc.ts` vs
+    `model/document.ts` naming split in whichever step first touches both.
+
 Approach: incremental re-layering (Approach 1) — the new model resolves down to
 the existing `LabelConfig` shape; renderers, PDF/PSD builders, and the white-ink
 pipeline are untouched at first and migrate piecemeal.
@@ -259,9 +322,9 @@ simplify, then simplify again).
 
 - **Two hats, one app.** A prominent segmented control: **Design**
   (master-edit) / **Fill** (label-edit, the default). Fill shows the label,
-  the field list (each field with its kind's widget), and variant
-  checkboxes — no styling, no layers panel. Design reveals layers, properties,
-  guides, and field declarations.
+  and the field list (each field with its kind's widget) — no styling, variant
+  controls, or layers panel. Design reveals layers, properties, guides, and
+  field declarations.
 - **The canvas is the field list.** Double-click any text layer to edit in
   place (extends the description editor's behavior to all text). Filling a
   typical label = click name, type, click description, type. The sidebar is a
@@ -285,9 +348,9 @@ simplify, then simplify again).
   which is how a variant reads as a named group of fields rather than a diff.
   Deliberately not stacking every group's fields at once: it duplicates the
   selector and makes "where does this land?" ambiguous again.
-- **Fill mode is unscoped:** variant checkboxes, then every visible field
-  flat — the master's and every enabled variant's together. A filler does
-  not care which group a field came from.
+- **Fill mode is unscoped:** every visible field is flat — the master's and
+  every already-enabled variant's together. A filler does not care which
+  group a field came from.
 - **Per-layer properties:** 3–5 essential controls; the rest under one
   "Advanced" fold.
 - **Starter master:** the app ships one built-in master with the sensible

@@ -227,3 +227,15 @@ no status, no attempts, no delta.
 - status: done
 - attempts: 1/3
 - delta: happy-dom added as a devDependency (lighter than jsdom; its Selection/Range is all these need) and scoped with a per-file `// @vitest-environment happy-dom` docblock so the other 270 suites keep the faster node environment; new tests/description-editor-dom.test.ts (15 tests) pins the seedDom<->readLineEl inverse over plain / `_a_` / `**a**` / `**_a_**` / empty / header / multi-line input, both marker-erasure regressions (white base layer, bold line), and the toggle behaviours (collapsed caret unwraps its run, partial selection wraps then unwraps, a full-line selection falls through to the line flag). Toggles are driven through the real hook with React's own createRoot+act — no testing library, since every assertion is on the emitted markdown. seedDom/readLineEl exported for the suite only (no src/ importer). Mutation-checked: reverting each fix fails exactly its test (3 red). 285/285 tests, tsc clean, release gate passes at 0.1.25 (test + devDependency only, not binary-impacting)
+
+## 2026-08-29 builtin-to-generic-layer-migration
+- finding: [plan review, REDUCTION mode; over-engineering pass 2026-08-29] the master-variation refactor's endgame — delete built-in runtime branches (plan.ts / elements.ts / hittest.ts / pdf/build.ts / psd/build.ts / ElementId) once every element is a generic layer — is deferred out of v1 and OPPORTUNISTIC: an element migrates only when keeping its branch blocks a user-facing change; some branches may never migrate, and that is fine. v1 ships only user-visible capability (.master as ZIP with template assets, master-ordered draw order, guide wiring for position.ts, generic multiline/wrap/justify text, rotation 0|90 on barcode+text only, Collab-art PSD golden with real partner art)
+- status: open
+- attempts: 0/3
+- notes: any migration goes per element behind its existing byte-identity golden; delete a built-in branch only after that element's parity holds; never one motion. No generic `flow` constraint in the schema — if description/warning/collab migrate, try resolver-computed offsets first and only revisit a constraint then. Draw-order guard: one golden with a custom layer behind a built-in, PDF only (backends share planLabel's ordering). Seam risk: four prior fix rounds (dc492aa, 91f02fb, a368d76, 48ca845) were all master/label ownership-seam bugs — every seam-touching task lands with a doc.ts-level test, not just render goldens. Full v1 scope: the 2026-08-29 amendment block in docs/superpowers/specs/2026-08-27-master-variation-design.md.
+
+## 2026-08-28 remove-fill-variant-checkboxes
+- finding: [user request] src/components/FieldList.tsx:152 — Fill mode exposed a Collab checkbox the user did not want
+- status: done
+- attempts: 1/3
+- delta: Fill-mode variant controls 1 → 0; FieldList now receives App's already-resolved fields instead of recomputing them from two model props; already-enabled variants still resolve their fields and artwork; 658 tests, tsc, Vite build, Cargo check, and the 0.1.38 release gate pass
