@@ -11,7 +11,10 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 
-const AUTO_CHECK_DELAY_MS = 2_000;
+export const AUTO_CHECK_DELAY_MS = 2_000;
+// ponytail: quiet re-checks are focus-driven, not a timer — zero network while idle;
+// add a daily interval only if a never-blurred window turns out to miss releases.
+export const RECHECK_MIN_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 type CheckResult =
   | { kind: "available"; update: Update }
@@ -102,6 +105,7 @@ export function DesktopUpdater(props: {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const updateRef = useRef<Update | null>(null);
   const checkRef = useRef<Promise<CheckResult> | null>(null);
+  const lastQuietCheckRef = useRef(0);
   const mountedRef = useRef(true);
   const lastRequestRef = useRef(props.checkRequest);
 
@@ -154,14 +158,22 @@ export function DesktopUpdater(props: {
     };
   }, [dropUpdate]);
 
-  // A quiet launch check: available updates appear in the status bar. The short delay
-  // keeps updater network work out of the editor's first-paint path.
+  // Quiet checks: once shortly after launch (off the first-paint path) and again on
+  // window focus, throttled, so a long-running app still notices a release. Skipped
+  // while a fetched update awaits Install/Restart.
   useEffect(() => {
     if (!desktop) return;
-    const timer = window.setTimeout(() => {
+    const quietCheck = () => {
+      if (updateRef.current || Date.now() - lastQuietCheckRef.current < RECHECK_MIN_INTERVAL_MS) return;
+      lastQuietCheckRef.current = Date.now();
       void performCheck().then((result) => present(result, false));
-    }, AUTO_CHECK_DELAY_MS);
-    return () => window.clearTimeout(timer);
+    };
+    const timer = window.setTimeout(quietCheck, AUTO_CHECK_DELAY_MS);
+    window.addEventListener("focus", quietCheck);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("focus", quietCheck);
+    };
   }, [desktop, performCheck, present]);
 
   // macOS Label Lab menu → Check for Updates… requests a visible result even

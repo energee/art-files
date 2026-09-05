@@ -3,6 +3,12 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.56] - 2026-09-05
+
+- Label Lab now quietly re-checks for a new release whenever its window regains
+  focus, at most once every six hours, so an app left running for days notices
+  releases without a relaunch. Nothing is downloaded until you choose Install.
+
 ## [0.1.54] - 2026-09-05
 
 - Dragging a layer on the preview now moves every selected layer together.
