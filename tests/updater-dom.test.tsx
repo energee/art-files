@@ -47,3 +47,30 @@ it("quietly advertises updates, keeps Later discoverable, and reuses the update 
   }
   expect(update.close).toHaveBeenCalledTimes(1);
 });
+
+it("shows Up to date after the launch check and keeps it after closing a manual check", async () => {
+  vi.useFakeTimers();
+  mocks.invoke.mockResolvedValue(true);
+  mocks.check.mockResolvedValue(null);
+  const container = document.createElement("div");
+  const bar = document.createElement("div");
+  document.body.append(container, bar);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
+    expect(bar.textContent).toBe("");
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(bar.querySelector('[role="status"]')?.textContent).toBe("Up to date");
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={1} statusHost={bar} />));
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain("Label Lab is up to date");
+    const close = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Close")!;
+    await act(async () => close.click());
+    expect(bar.textContent).toBe("Up to date");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove(); bar.remove();
+    vi.useRealTimers();
+  }
+});

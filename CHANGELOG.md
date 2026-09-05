@@ -3,6 +3,11 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.50] - 2026-09-05
+
+- Show “Up to date” in the lower status bar after a successful update check,
+  including after closing the manual check dialog.
+
 ## [0.1.49] - 2026-09-05
 
 - Bind a layer to the top, left, right, or bottom of another layer. Bound layers
