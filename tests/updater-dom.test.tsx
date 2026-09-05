@@ -143,3 +143,43 @@ it("installs without relaunching, then offers Restart to finish from the status 
     vi.useRealTimers();
   }
 });
+
+it("a manual check during a download shows the download, and Restart Now reports a failed relaunch", async () => {
+  vi.useFakeTimers();
+  mocks.invoke.mockResolvedValue(true);
+  let finish!: () => void;
+  const update = {
+    version: "0.2.0", currentVersion: "0.1.0", body: "- Improved labels", close: vi.fn().mockResolvedValue(undefined),
+    downloadAndInstall: vi.fn(() => new Promise<void>((resolve) => { finish = resolve; })),
+  };
+  mocks.check.mockResolvedValue(update);
+  const container = document.createElement("div");
+  const bar = document.createElement("div");
+  document.body.append(container, bar);
+  const root = createRoot(container);
+  const button = (text: string) => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes(text))!;
+  const dialog = () => document.querySelector('[role="dialog"]')?.textContent ?? "";
+  try {
+    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    await act(async () => button("Update available").click());
+    await act(async () => button("Install").click());
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    // Check for Updates… while downloading: a titled dialog, not a blank one.
+    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={1} statusHost={bar} />));
+    expect(dialog()).toContain("Installing Label Lab 0.2.0");
+    await act(async () => button("Close").click());
+    expect(bar.textContent).toContain("Installing 0.2.0");
+    await act(async () => { finish(); });
+    expect(bar.textContent).toContain("Restart to finish · 0.2.0");
+    // A rejected relaunch surfaces as an error instead of an unhandled rejection.
+    mocks.invoke.mockRejectedValueOnce(new Error("no permission"));
+    await act(async () => button("Restart to finish").click());
+    await act(async () => button("Restart Now").click());
+    expect(dialog()).toContain("Could not restart: Error: no permission");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove(); bar.remove();
+    vi.useRealTimers();
+  }
+});

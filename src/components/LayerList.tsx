@@ -309,15 +309,19 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
   // Rows grouped by owning container (master, or the variant that added the
   // layer), in VISIBLE order (front first): a layer only reorders among its
   // peers. Computed once per rows change; the drag and the ⌥↑/⌥↓ ends read it.
+  // `variant` alone is not ownership: layerRows also sets it on a master
+  // layer an enabled variant overrides (with `overridden`), and such a layer
+  // still lives — and moves — in master.layers.
+  const ownerOf = (r: LayerRow) => (r.variant && !r.overridden ? r.variant.id : undefined);
   const peersOf = useMemo(() => {
     const groups = new Map<string | undefined, LayerRow[]>();
     for (let i = rows.length - 1; i >= 0; i--) {
       const r = rows[i];
-      const g = groups.get(r.variant?.id) ?? [];
-      groups.set(r.variant?.id, g);
+      const g = groups.get(ownerOf(r)) ?? [];
+      groups.set(ownerOf(r), g);
       g.push(r);
     }
-    return (row: LayerRow) => groups.get(row.variant?.id)!;
+    return (row: LayerRow) => groups.get(ownerOf(row))!;
   }, [rows]);
   const drag = useRef<{
     id: string; x: number; y: number; active: boolean; peers: LayerRow[]; from: number;
@@ -326,7 +330,10 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
   const [drop, setDrop] = useState<{ id: string; edge: "top" | "bottom"; delta: number } | null>(null);
   const dropRef = useRef<typeof drop>(null);
   const clearDrag = () => { drag.current = null; dropRef.current = null; setDrop(null); };
-  const dragHandlers = (row: LayerRow): React.HTMLAttributes<HTMLButtonElement> => ({
+  // Built once per rows/onReorder change (not per render): the handlers only
+  // touch refs and setDrop, so a keystroke elsewhere re-uses the same objects.
+  const dragHandlers = useMemo(() => {
+    const build = (row: LayerRow): React.HTMLAttributes<HTMLButtonElement> => ({
     onPointerDown: (e) => {
       if (e.button !== 0) return;
       suppressClick.current = false;
@@ -346,7 +353,7 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
       const target = rows.find((r) => r.layer.id === el?.dataset.layerId);
       let next: typeof drop = null;
       // Variant-added layers retain their owning variant; hidden rows keep their order.
-      if (target && el && target.variant?.id === row.variant?.id && target.layer.id !== source.id) {
+      if (target && el && ownerOf(target) === ownerOf(row) && target.layer.id !== source.id) {
         const { peers, from } = source;
         const to = peers.indexOf(target);
         const box = el.getBoundingClientRect();
@@ -379,7 +386,11 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
       if (suppressClick.current && e.detail > 0) { e.preventDefault(); e.stopPropagation(); }
       suppressClick.current = false;
     },
-  });
+    });
+    const byId = new Map(rows.map((r) => [r.layer.id, build(r)]));
+    return (row: LayerRow) => byId.get(row.layer.id)!;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, peersOf, props.onReorder]);
   const shown = (props.fillableOnly ? rows.filter((r) => !!r.layer.fillable) : rows)
     .slice().reverse();
   return (
