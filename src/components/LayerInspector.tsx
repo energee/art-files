@@ -27,8 +27,9 @@
 import { useState, type ReactNode } from "react";
 import {
   AlignCenterHorizontal, AlignCenterVertical, AlignEndVertical, AlignStartVertical, ArrowDownToLine, ArrowUpToLine,
-  Barcode, Image, Link2, Link2Off, QrCode, RotateCcw, TextAlignCenter, TextAlignEnd,
-  TextAlignJustify, TextAlignStart, Type, WholeWord, type LucideIcon,
+  Barcode, ChevronsUpDown, Heading1, Image, Link2, Link2Off, QrCode, RotateCcw,
+  TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart, Type, WholeWord,
+  type LucideIcon,
 } from "lucide-react";
 import { bindingOf, guideOf, uppercaseOf } from "@/model/layers";
 import type {
@@ -393,20 +394,6 @@ function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: string }) {
           onChange={(size) => set({ size })}
         />
       </Row>
-      <Row badge={badge(["leading"], "Leading")}>
-        <ScrubField
-          id={`${id}-leading`} label="Leading" unit="×" value={layer.leading ?? 1.2}
-          min={0.5} max={4} step={0.01} dragStep={0.05}
-          onChange={(leading) => set({ leading })}
-        />
-      </Row>
-      <Row badge={badge(["headerScale"], "Header scale")}>
-        <ScrubField
-          id={`${id}-header-scale`} label="Header scale" unit="×" value={layer.headerScale ?? 1}
-          min={0.5} max={4} step={0.01} dragStep={0.05}
-          onChange={(headerScale) => set({ headerScale })}
-        />
-      </Row>
       <Segmented
         label="Align" value={layer.align} options={ALIGNS}
         badge={badge(["align"], "Align")}
@@ -615,6 +602,25 @@ function StyleSection(props: Ctx & { layer: Layer }) {
       {layer.kind === "text" && (
         <div className="space-y-1">
           <Heading>Typography</Heading>
+          {/* Leading and Header scale are TextLayer fields, not Style ones —
+              they patch through `set`, not `setStyle`. They live here anyway
+              because a reader tuning type reaches for line height and
+              tracking together; `size` stays in Type, where it sits with the
+              geometry (align, wrap width) that resizes the layer's box. */}
+          <Row badge={badge(["leading"], "Leading")}>
+            <ScrubField
+              id={`${id}-leading`} label="Leading" icon={ChevronsUpDown} unit="×"
+              value={layer.leading ?? 1.2} min={0.5} max={4} step={0.01} dragStep={0.05}
+              onChange={(leading) => set({ leading })}
+            />
+          </Row>
+          <Row badge={badge(["headerScale"], "Header scale")}>
+            <ScrubField
+              id={`${id}-header-scale`} label="Header scale" icon={Heading1} unit="×"
+              value={layer.headerScale ?? 1} min={0.5} max={4} step={0.01} dragStep={0.05}
+              onChange={(headerScale) => set({ headerScale })}
+            />
+          </Row>
           {/* Clamped both ends by ScrubField: tracking wide enough to overrun
               the label reads as a broken line, not a style. */}
           <Row badge={badge(["style.letterSpacing"], "Letter Spacing")}>
