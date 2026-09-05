@@ -5,6 +5,8 @@ binary-impacting change gets its own version before it is merged.
 
 ## [0.1.52] - 2026-09-05
 
+- Show “Up-to-date” with a checked-box icon in the update status.
+
 - Make layer reordering smoother by updating its indicator only when the drop
   position changes. Moving guides reuses loaded images, and preview drawing,
   hit testing, and selection outlines share measured layer positions.

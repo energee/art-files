@@ -2,7 +2,7 @@
 // after the operator accepts the restart.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Download } from "lucide-react";
+import { Download, SquareCheck } from "lucide-react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { DownloadEvent, Update } from "@tauri-apps/plugin-updater";
 import { Button } from "@/components/ui/button";
@@ -210,7 +210,9 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number; st
   return (
     <>
       {desktop && props.statusHost && status.kind === "current" && createPortal(
-        <span role="status" className="px-2 text-xs text-muted-foreground">Up to date</span>,
+        <span role="status" className="inline-flex items-center gap-1.5 px-2 text-xs text-muted-foreground">
+          <SquareCheck className="size-3.5" aria-hidden="true" /> Up-to-date
+        </span>,
         props.statusHost,
       )}
       {desktop && props.statusHost && status.kind === "available" && createPortal(
