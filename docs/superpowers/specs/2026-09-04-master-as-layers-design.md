@@ -200,6 +200,47 @@ again as today. New regression tests: relative-position chain (a two-line
 vs three-line description moves the collab block), variant override of a
 position, variant-added layer, converter round-trips for master and label.
 
+## Removed (approved 2026-09-04 UX pass)
+
+Deleted, functionality covered elsewhere in this spec:
+
+- **Presets** (`presets.ts`, `presets.json`, PresetBar, PresetsDialog, the
+  three preset commands). A master is the saved style; a barcode value is a
+  fillable layer. If value history is wanted later it is a recent-values
+  dropdown on the code widget, not a library.
+- **Editing target selector** (EditingTarget.tsx, TargetFields). Where an
+  edit lands follows the layer: a layer present in a variant diff edits that
+  variant; a master layer edits the master. No global mode.
+- **Session unlock on shipped fields** and the locked-row rename/remove
+  mechanism. `fillable` is a toggle on the layer row; `locked` only
+  governs moving.
+- **"Make fillable" inspector button.** Same control as the row toggle.
+- **Stack nudge and collab slot nudges** (StackNudge, CollabSlotContent).
+  Every layer has a position; `below` binding covers the flow.
+- **"Edit as Markdown" escape hatch.** Markdown is the serialization, not a
+  user surface.
+
+Merged:
+
+- **Preview views: five → three.** Label (2D, with the existing art/mask
+  divider), Mask (divider at 100%), Can (with a 1 / 4 count for the pack
+  render). Commands `view-rendered` and `view-pack` go; shortcuts 1–3.
+- **Guide toggles: seven → two.** Rulers, Guides. Guides shows bleed,
+  margin, center and manual guides together; a manual guide deletes from an
+  × on hover. `clear-guides` and the per-kind toggles go.
+- **Design / Fill modes → one mode** with a "Fillable only" filter on the
+  Layers list. Fill-mode drag lock becomes `locked` on the layer.
+- **Eye and power → enabled only.** The session-only hidden set
+  (`hiddenLayers`) is deleted; hiding is `enabled: false`, recorded in the
+  master or variant being edited, undoable.
+
+Kept: workspace tabs, undo/redo, canvas in-place edit and drag, metallic
+toggle, 3D can, desktop updater, master picker.
+
+Deferred: inline inspector — a selected Layers row expands to show position,
+content and style, and the right-hand inspector goes away. Revisit after the
+cuts, only if the expanded row stays under one screen tall.
+
 ## Out of scope (v1)
 
 Horizontal/above/baseline binding; variant draw-order control; per-layer
@@ -213,8 +254,7 @@ fonts (see dynamic-fonts memory: route text through the one font gate);
 2. Renderer: generic text layer with `lines`, relative `y`, one path per
    kind in plan/hittest/pdf/psd. Re-baseline goldens layer by layer, then
    delete the built-in branches.
-3. UI: single Layers list, inspector position section with bind/unbind,
-   Fill mode from `fillable`, delete FieldList's FieldDecl plumbing and the
-   Document group.
+3. UI: single Layers list with the fillable filter, inspector position
+   section with bind/unbind, and every deletion/merge in "Removed".
 4. Ledger: close `builtin-to-generic-layer-migration`; add relative-position
    deferrals.
