@@ -3,6 +3,14 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.59] - 2026-09-05
+
+- The per-layer Fillable switch is gone. A master is the placeholder design;
+  everything you change while a label is open — text, images, codes,
+  position and style — is saved in that .label. Turn on “Edit master” in the
+  Layers header to change the master template itself. Existing labels open
+  unchanged.
+
 ## [0.1.57] - 2026-09-05
 
 - The inspector's Position section now has one control per axis: Horizontal
