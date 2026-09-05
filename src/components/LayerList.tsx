@@ -16,6 +16,7 @@
 // Props-only: no app state, no model imports beyond types. Every write goes
 // out through a callback — the caller decides where it lands (master or the
 // variant that owns the layer; spec: "Editing target selector" removed).
+import { gestureIds } from "@/selection";
 import {
   Barcode, Ellipsis, Image, ListFilter, Lock, PenLine, Plus, Power,
   QrCode, Scan, Type, type LucideIcon,
@@ -55,7 +56,7 @@ export interface LayerListProps {
    *  variant-added layers after them. The list renders them reversed, front
    *  to back, the way a layers panel reads. */
   rows: LayerRow[];
-  selected: ReadonlySet<string>;
+  selected: readonly string[];
   onSelect: (id: string, mods: SelectMods) => void;
   /** The three per-row switches. `enabled` off = the layer never draws
    *  (recorded, undoable — there is no session-only hide); `locked` = fillers
@@ -123,9 +124,12 @@ const chip = (pressed: boolean) => cn(
 
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
-function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, ...p }: {
+function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted, ...p }: {
   dragHandlers: React.HTMLAttributes<HTMLButtonElement>;
   dropEdge?: "top" | "bottom";
+  /** Part of the block an in-flight drag is carrying — every selected row
+   *  when a selected row is dragged — shown lifted so the group reads as one. */
+  lifted?: boolean;
   row: LayerRow;
   isSelected: boolean;
   /** Ends of the DRAW order, computed by the list over every row (not the
@@ -165,6 +169,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, ...p }:
 
   return (
     <SidebarMenuItem data-layer-id={id} className={cn("relative",
+      lifted && "opacity-50 ring-1 ring-sidebar-primary/60 rounded-md",
       dropEdge === "top" && "before:absolute before:inset-x-0 before:top-0 before:z-10 before:border-t-2 before:border-sidebar-primary",
       dropEdge === "bottom" && "after:absolute after:inset-x-0 after:bottom-0 after:z-10 after:border-b-2 after:border-sidebar-primary",
     )}>
@@ -329,7 +334,12 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
   const suppressClick = useRef(false);
   const [drop, setDrop] = useState<{ id: string; edge: "top" | "bottom"; delta: number } | null>(null);
   const dropRef = useRef<typeof drop>(null);
-  const clearDrag = () => { drag.current = null; dropRef.current = null; setDrop(null); };
+  // The id whose drag has crossed the threshold, for the lifted-row look.
+  const [dragging, setDragging] = useState<string | null>(null);
+  const clearDrag = () => { drag.current = null; dropRef.current = null; setDrop(null); setDragging(null); };
+  // The block that drag carries — the same rule the reorder itself applies.
+  const liftedIds = useMemo(
+    () => (dragging ? new Set(gestureIds(selected, dragging)) : null), [selected, dragging]);
   // Built once per rows/onReorder change (not per render): the handlers only
   // touch refs and setDrop, so a keystroke elsewhere re-uses the same objects.
   const dragHandlers = useMemo(() => {
@@ -348,6 +358,7 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
       const source = drag.current;
       if (!source) return;
       if (!source.active && Math.hypot(e.clientX - source.x, e.clientY - source.y) < 5) return;
+      if (!source.active) setDragging(source.id);
       source.active = true;
       const el = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("[data-layer-id]");
       const target = rows.find((r) => r.layer.id === el?.dataset.layerId);
@@ -464,11 +475,12 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
             <Row
               key={row.layer.id}
               row={row}
-              isSelected={selected.has(row.layer.id)}
+              isSelected={selected.includes(row.layer.id)}
               atFront={peersOf(row)[0] === row}
               atBack={peersOf(row).at(-1) === row}
               dragHandlers={dragHandlers(row)}
               dropEdge={drop?.id === row.layer.id ? drop.edge : undefined}
+              lifted={liftedIds?.has(row.layer.id)}
               onSelect={props.onSelect}
               onToggle={props.onToggle}
               onRename={props.onRename}
@@ -483,7 +495,7 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
           </p>
         )}
       </SidebarGroupContent>
-      {selected.size > 0 && (
+      {selected.length > 0 && (
         <p className="px-2 pt-1 text-center text-[11px] text-sidebar-foreground/50">
           ⇧ click for a range · ⌘ click to add
         </p>
