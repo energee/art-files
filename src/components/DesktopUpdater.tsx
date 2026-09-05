@@ -126,7 +126,7 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number; st
         body: result.update.body,
         date: result.update.date,
       });
-    } else if (manual) {
+    } else if (manual || result.kind === "current") {
       setStatus(result);
     } else if (result.kind === "error") {
       // Being offline at launch must not block label work. A manual check
@@ -167,7 +167,7 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number; st
   const dismiss = () => {
     if (status.kind === "downloading") return;
     setOpen(false);
-    if (status.kind !== "available") setStatus({ kind: "idle" });
+    if (status.kind !== "available" && status.kind !== "current") setStatus({ kind: "idle" });
   };
 
   const install = async () => {
@@ -209,6 +209,10 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number; st
 
   return (
     <>
+      {desktop && props.statusHost && status.kind === "current" && createPortal(
+        <span role="status" className="px-2 text-xs text-muted-foreground">Up to date</span>,
+        props.statusHost,
+      )}
       {desktop && props.statusHost && status.kind === "available" && createPortal(
         <span role="status">
           <Button variant="ghost" size="sm" className="h-6 gap-1.5 px-2 text-xs text-primary"

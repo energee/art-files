@@ -304,3 +304,9 @@ no status, no attempts, no delta.
 - attempts: 1/3
 - delta: shared measured placement supports four-side bindings and chains; inspector target/side/gap controls, signed drag gaps, axis-preserving side changes/unbind/removal; legacy below files remain compatible and reference/cycle validation stays enforced
 - evidence: 792/792 tests pass, including four-side growth/chains, editing, deletion, hit testing and inspector actions; production build and Cargo check pass; binary-impacting 0.1.49 metadata prepared with matching CHANGELOG; no release published; live browser verification unavailable in this environment
+
+## 2026-09-05 updater-current-status
+- finding: [user request] lower status bar is blank when the installed release is current
+- status: done
+- delta: retain successful automatic/manual current results and show Up to date in the active lower status bar, including after dialog dismissal
+- evidence: 4 updater tests pass; release metadata and diff checks pass for binary-impacting 0.1.50; matching CHANGELOG entry prepared
