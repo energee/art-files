@@ -21,6 +21,7 @@ import {
 } from "@/hittestLayers";
 import type { Face } from "@/plan";
 import { positionFromDrag, type GuideLines } from "@/model/position";
+import type { ResizeHandle } from "@/model/edit";
 import type { Layer, TextLayer, TextLine } from "@/model/layers";
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
@@ -36,12 +37,20 @@ import { modsOf, type SelectMods } from "@/selection";
 import { cn } from "@/lib/utils";
 
 /** The selection box's four corner ticks, each already placed. */
-const CORNER_CLASS = {
-  tl: "-top-[3px] -left-[3px]",
-  tr: "-top-[3px] -right-[3px]",
-  bl: "-bottom-[3px] -left-[3px]",
-  br: "-bottom-[3px] -right-[3px]",
-};
+/** The eight selection ticks, which double as resize handles. hx/hy name
+ *  the grabbed edge (-1 left/top, 0 not grabbed, 1 right/bottom); position
+ *  and cursor follow from them. */
+const HANDLES = ([-1, 0, 1] as const).flatMap((hy) => ([-1, 0, 1] as const)
+  .filter((hx) => hx || hy)
+  .map((hx) => ({
+    hx, hy,
+    at: `${hy < 0 ? "-top-[3px]" : hy > 0 ? "-bottom-[3px]" : "top-1/2 -translate-y-1/2"} ${
+      hx < 0 ? "-left-[3px]" : hx > 0 ? "-right-[3px]" : "left-1/2 -translate-x-1/2"}`,
+    cursor: !hx ? "cursor-ns-resize" : !hy ? "cursor-ew-resize" : hx === hy ? "cursor-nwse-resize" : "cursor-nesw-resize",
+  })));
+
+/** Pointer travel (px) before a press becomes a drag; below it is a click. */
+const DRAG_THRESHOLD_PX = 3;
 
 /** Breathing room between a layer's measured box and its selection
  *  outline, in screen px. */
@@ -316,6 +325,10 @@ export const PreviewCompare = forwardRef<
     /** Escape mid-drag: App undoes the drag's single step. Never called when
      *  the drag never crossed the threshold (a plain click). */
     onDragCancel: () => void;
+    /** Corner-handle resize, same session contract as onDrag: cumulative
+     *  page-space pointer deltas and the grabbed handle, `uniform` while shift is held, `first` on the
+     *  movement that opens the undo step. App applies resizeBy. */
+    onResize: (id: string, handle: ResizeHandle, dx: number, dy: number, uniform: boolean, first: boolean) => void;
     /** The layer currently being edited on the preview, null when idle.
      *  planLayers skips it (the render source's skip set) so the editor's
      *  live DOM text is the layer. */
@@ -338,7 +351,7 @@ export const PreviewCompare = forwardRef<
 >(function PreviewCompare(
   {
     canvasRender, layers, guides, selected, onPick, onEditText, onEditCancel, onDrag,
-    onDragCancel, onEditSession, onSplit, bleed, cornerRadiusPct, zoom, bleedIn, onRenderError,
+    onDragCancel, onResize, onEditSession, onSplit, bleed, cornerRadiusPct, zoom, bleedIn, onRenderError,
   },
   ref,
 ) {
@@ -486,17 +499,52 @@ export const PreviewCompare = forwardRef<
   // the guide-line highlight below — the drag math itself is App's (moveBy).
   const [snap, setSnap] = useState<"left" | "center" | "right" | null>(null);
 
+  /** Label points per CSS pixel for the page element, captured once per
+   *  gesture (the wrapper's aspect ratio is locked to the page). */
+  const pageScale = () => {
+    const r = pageElement.current!.getBoundingClientRect();
+    return { pxPerPtX: r.width / PAGE.w, pxPerPtY: r.height / PAGE.h };
+  };
+
+  // Drag-to-resize from any selection tick. Its own pointer session
+  // (capture on the tick) so it never competes with the move drag on the
+  // wrapper; the wrapper's move never starts because the tick stops
+  // pointerdown propagation.
+  const resize = useRef<{
+    id: string; handle: ResizeHandle; startClientX: number; startClientY: number;
+    pxPerPtX: number; pxPerPtY: number; started: boolean;
+  } | null>(null);
+  function onHandleDown(e: React.PointerEvent<HTMLSpanElement>, id: string, handle: ResizeHandle) {
+    if (e.button !== 0 || editing) return;
+    e.stopPropagation();
+    resize.current = { id, handle, startClientX: e.clientX, startClientY: e.clientY, ...pageScale(), started: false };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  function onHandleMove(e: React.PointerEvent<HTMLSpanElement>) {
+    const d = resize.current;
+    if (!d) return;
+    const dxPx = e.clientX - d.startClientX;
+    const dyPx = e.clientY - d.startClientY;
+    if (!d.started && Math.hypot(dxPx, dyPx) < DRAG_THRESHOLD_PX) return;
+    const first = !d.started;
+    d.started = true;
+    onResize(d.id, d.handle, dxPx / d.pxPerPtX, dyPx / d.pxPerPtY, e.shiftKey, first);
+  }
+  function onHandleUp(e: React.PointerEvent<HTMLSpanElement>) {
+    swallowClick.current = !!resize.current?.started;
+    resize.current = null;
+    e.stopPropagation();
+  }
+
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (e.button !== 0 || editing || !canvasRender) return;
     const id = hitOf(e);
     if (!id) return;
     const target = boxesById.get(id);
     if (!target || target.locked) return; // locked, or draws nothing
-    const r = e.currentTarget.getBoundingClientRect();
     drag.current = {
       id, startClientX: e.clientX, startClientY: e.clientY,
-      left: target.x - BLEED_SHIFT, w: target.w,
-      pxPerPtX: r.width / PAGE.w, pxPerPtY: r.height / PAGE.h, started: false,
+      left: target.x - BLEED_SHIFT, w: target.w, ...pageScale(), started: false,
     };
     e.currentTarget.setPointerCapture(e.pointerId);
   }
@@ -505,7 +553,7 @@ export const PreviewCompare = forwardRef<
     if (!d) return;
     const dxPx = e.clientX - d.startClientX;
     const dyPx = e.clientY - d.startClientY;
-    if (!d.started && Math.hypot(dxPx, dyPx) < 3) return; // plain click, no undo step
+    if (!d.started && Math.hypot(dxPx, dyPx) < DRAG_THRESHOLD_PX) return; // plain click, no undo step
     const first = !d.started;
     d.started = true;
     const dx = dxPx / d.pxPerPtX;
@@ -524,8 +572,8 @@ export const PreviewCompare = forwardRef<
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
-      if (drag.current?.started) onDragCancel();
-      drag.current = null;
+      if (drag.current?.started || resize.current?.started) onDragCancel();
+      drag.current = null; resize.current = null;
       setSnap(null);
     }
     document.addEventListener("keydown", onKeyDown);
@@ -690,10 +738,20 @@ export const PreviewCompare = forwardRef<
           className="pointer-events-none absolute outline-1 outline-sky-400 outline-solid [box-shadow:0_0_0_2px_rgba(0,0,0,0.45)]"
           style={pageBox(b.x, b.y, b.w, b.h, SEL_PAD)}
         >
-          {Object.entries(CORNER_CLASS).map(([c, at]) => (
+          {HANDLES.map((h) => (
+            // Every tick is a resize handle on an unlocked layer (shift =
+            // uniform); the grabbed edge follows the pointer and the
+            // opposite edge stays put. Locked layers keep inert ticks.
             <span
-              key={c}
-              className={`absolute size-1.5 rounded-[1px] border border-sky-400 bg-background ${at}`}
+              key={`${h.hx},${h.hy}`}
+              {...(b.locked ? {} : {
+                role: "slider", "aria-label": `Resize layer (${h.hx},${h.hy})`,
+                title: "Drag to resize (shift: keep proportions)",
+                onPointerDown: (e: React.PointerEvent<HTMLSpanElement>) => onHandleDown(e, b.id, h),
+                onPointerMove: onHandleMove, onPointerUp: onHandleUp, onPointerCancel: onHandleUp,
+              })}
+              className={`absolute size-2 rounded-[1px] border border-sky-400 bg-background ${h.at} ${
+                b.locked ? "" : `pointer-events-auto touch-none ${h.cursor}`}`}
             />
           ))}
         </div>

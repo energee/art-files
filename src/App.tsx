@@ -46,7 +46,7 @@ import type {
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, labelOverriddenPaths,
-  masterDiff, moveBy, moveLayers, overriddenPaths, patchLayer, patchLayerIn, removeLayer, setValue, toggleVariant,
+  masterDiff, moveBy, moveLayers, resizeBy, type ResizeHandle, overriddenPaths, patchLayer, patchLayerIn, removeLayer, setValue, toggleVariant,
   whereLayerLives,
 } from "@/model/edit";
 import { layerRows, variantChips } from "@/model/rows";
@@ -1020,12 +1020,16 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  rather than stacking on it, and the whole drag coalesces into one undo
    *  step. Horizontal snapping to the master's guides is moveBy's. When the
    *  grabbed layer is selected, every selected unlocked layer moves with it. */
+  /** Every layer's resolved box for the current draw list — one full place
+   *  pass, wanted only at gesture starts and unbinds, never per move. */
+  const boxesNow = (layers: Layer[] = drawLayers) =>
+    canvasAssets ? layerBoxes(layers, canvasAssets.m, canvasAssets.planAssets) : undefined;
   const dragBase = useRef<{ id: string; bases: { layer: Layer; w: number }[] } | null>(null);
   const onDrag = (id: string, dx: number, dy: number, first: boolean) => {
     if (first || dragBase.current?.id !== id) {
-      if (!canvasAssets) return;
+      const boxes = boxesNow();
+      if (!boxes) return;
       const ids = new Set(gestureIds(selected, id));
-      const boxes = layerBoxes(drawLayers, canvasAssets.m, canvasAssets.planAssets);
       const bases = drawLayers.filter((l) => ids.has(l.id) && !l.locked)
         .map((layer) => ({ layer, w: boxes.get(layer.id)?.w ?? 0 }));
       if (!bases.length) return;
@@ -1039,11 +1043,25 @@ export const DocumentEditor = memo(function DocumentEditor({
       .filter(([, p]) => Object.keys(p).length);
     if (entries.length) patchMany(entries, !first);
   };
+  /** Handle resize: like onDrag, the patch is resizeBy against the layer
+   *  and box captured at the gesture's start, coalesced into one undo step.
+   *  Only the grabbed layer resizes, never the group. */
+  const resizeBase = useRef<{ layer: Layer; box: { w: number; h: number } } | null>(null);
+  const onResize = (id: string, handle: ResizeHandle, dx: number, dy: number, uniform: boolean, first: boolean) => {
+    if (first) {
+      const layer = drawLayers.find((l) => l.id === id);
+      const box = boxesNow()?.get(id);
+      resizeBase.current = layer && box ? { layer, box } : null;
+    }
+    const base = resizeBase.current;
+    if (!base) return;
+    const p = resizeBy(base.layer, base.box, handle, dx, dy, uniform);
+    if (Object.keys(p).length) patch(id, p, !first);
+  };
   /** The inspector's Unbind: the bound layer's current resolved top, written
    *  as its numeric `y` — only the planner knows where the layer above ends. */
   const onUnbind = (id: string) => {
-    if (!canvasAssets) return;
-    const box = layerBoxes(rows.map((r) => r.layer), canvasAssets.m, canvasAssets.planAssets).get(id);
+    const box = boxesNow(rows.map((r) => r.layer))?.get(id);
     const layer = rowById.get(id)?.layer;
     if (box && layer) patch(id, unbindPatch(layer, box));
   };
@@ -1779,6 +1797,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               }}
               onEditCancel={mutating(undo)}
               onDrag={onDrag}
+              onResize={onResize}
               onDragCancel={mutating(undo)}
               onEditSession={setEditSession}
               onSplit={setSplit}
@@ -1909,19 +1928,8 @@ export const DocumentEditor = memo(function DocumentEditor({
                 onReset={resetOverride}
                 onUnbind={() => onUnbind(inspected.layer.id)}
                 onBind={(to, side) => {
-                  if (!canvasAssets) return;
-                  const box = layerBoxes(rows.map((r) => r.layer), canvasAssets.m, canvasAssets.planAssets).get(inspected.layer.id);
+                  const box = boxesNow(rows.map((r) => r.layer))?.get(inspected.layer.id);
                   if (box) patch(inspected.layer.id, bindingPatch(inspected.layer, to, side, box));
-                }}
-                onUnbindGuideY={() => {
-                  if (!canvasAssets) return;
-                  const box = layerBoxes(drawLayers, canvasAssets.m, canvasAssets.planAssets).get(inspected.layer.id);
-                  if (box) patch(inspected.layer.id, { y: box.y, vAnchor: "top", guideY: "none" });
-                }}
-                onUnbindX={() => {
-                  if (!canvasAssets) return;
-                  const box = layerBoxes(drawLayers, canvasAssets.m, canvasAssets.planAssets).get(inspected.layer.id);
-                  if (box) patch(inspected.layer.id, { x: box.x, anchor: "left", guideX: "none" });
                 }}
                 content={contentFor(inspected.layer)}
                 fontFamily={family} />
