@@ -3,7 +3,7 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
-## [0.1.55] - 2026-09-05
+## [0.1.57] - 2026-09-05
 
 - The inspector's Position section now has one control per axis: Horizontal
   guide (left / center / right) and Vertical guide (top / middle / bottom).
@@ -18,6 +18,12 @@ binary-impacting change gets its own version before it is merged.
   their proportions. QR codes always scale uniformly. Text layers resize
   their wrap width only, since type size is set in the inspector. Escape cancels a resize in
   progress, and the whole drag is one undo step.
+
+## [0.1.56] - 2026-09-05
+
+- Label Lab now quietly re-checks for a new release whenever its window regains
+  focus, at most once every six hours, so an app left running for days notices
+  releases without a relaunch. Nothing is downloaded until you choose Install.
 
 ## [0.1.54] - 2026-09-05
 
