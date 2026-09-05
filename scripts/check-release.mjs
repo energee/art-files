@@ -3,7 +3,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-import { releaseNotes } from "./release-notes.mjs";
+import { releaseNotes, unreleasedSections } from "./release-notes.mjs";
 
 const VERSION_FILES = [
   "package.json",
@@ -162,6 +162,16 @@ try {
   notesHeading = releaseNotes(version).heading;
 } catch (error) {
   abort(error.message);
+}
+// A branch ships one version: an intermediate section (say 0.1.51 on a branch
+// that bumps 0.1.50 -> 0.1.52) is skipped by release-notes.mjs and its notes
+// never reach the GitHub Release or the updater feed.
+const orphans = unreleasedSections(version, baseVersion);
+if (orphans.length > 0) {
+  abort(
+    `CHANGELOG.md has ${orphans.map((v) => `[${v}]`).join(", ")} newer than ${baseVersion} at ${baseRef} ` +
+    `but the release is ${version}; no release publishes those notes — fold them into [${version}]`,
+  );
 }
 console.log(`Release metadata check passed for ${version}.`);
 console.log(
