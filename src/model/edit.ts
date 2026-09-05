@@ -12,7 +12,7 @@
 // loader would reject.
 import type {
   BarcodeLayer, ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master, QrLayer,
-  RelativeY, TextLayer, Variant, BindingSide,
+  RelativeY, TextLayer, TextLine, Variant, BindingSide,
 } from "./layers";
 import type { Box } from "./place";
 import { bindingOf, guideOf, parseMaster, vAnchorOf } from "./layers";
@@ -452,6 +452,51 @@ export function clearLabelOverride(label: LabelFile, id: string, path?: string):
   const overrides = clearEntry(label.overrides ?? {}, id, path);
   const { overrides: _o, ...rest } = label;
   return Object.keys(overrides).length === 0 ? rest : { ...rest, overrides };
+}
+
+// --- One edit, one owner -----------------------------------------------------
+
+export interface Doc { master: Master; label: LabelFile }
+
+/** One edit to one layer: a design patch, or the layer's content. */
+export type DocEdit =
+  | { id: string; patch: LayerPatch }
+  | { id: string; kind: LayerKind; value: LayerValue };
+
+/** A layer's content as the design patch that sets it. */
+export const contentPatch = (kind: LayerKind, value: LayerValue): LayerPatch =>
+  kind === "text" ? { lines: value as TextLine[] }
+    : kind === "image" ? { asset: value as string } : { value: value as string };
+
+/** THE fill/design split. The master is the placeholder: while not editing
+ *  it, every edit lives in the .label (a patch in `overrides`, content in
+ *  `values`). With Edit master on, the edit changes the template — in the
+ *  last enabled variant that carries the layer, else the master — and
+ *  enabling a variant-owned layer turns that variant on for this label.
+ *  ponytail: values and overrides stay two stores; fold them when a second
+ *  reader of `values` appears. */
+export function applyDocEdit(doc: Doc, edit: DocEdit, editMaster: boolean): Doc {
+  const { master, label } = doc;
+  if (!editMaster) {
+    return "patch" in edit
+      ? { master, label: setLabelOverride(label, edit.id, edit.patch) }
+      : { master, label: setValue(label, edit.id, edit.value) };
+  }
+  const p = "patch" in edit ? edit.patch : contentPatch(edit.kind, edit.value);
+  const owner = master.layers.some((l) => l.id === edit.id) ? undefined
+    : master.variants.find((v) => edit.id in v.layers);
+  const nextLabel = p.enabled === true && owner && !label.enabledVariants.includes(owner.id)
+    ? toggleVariant(label, owner.id) : label;
+  // Last enabled variant carrying the layer wins (no findLast in this lib target).
+  let variant: string | undefined;
+  for (let i = nextLabel.enabledVariants.length - 1; i >= 0 && !variant; i--) {
+    const v = nextLabel.enabledVariants[i];
+    if (master.variants.some((x) => x.id === v && edit.id in x.layers)) variant = v;
+  }
+  return {
+    master: variant ? patchLayerIn(master, variant, edit.id, p) : patchLayer(master, edit.id, p),
+    label: nextLabel,
+  };
 }
 
 // --- Dirty check ------------------------------------------------------------

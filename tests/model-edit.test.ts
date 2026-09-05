@@ -6,10 +6,10 @@
 // input.
 import { describe, expect, it } from "vitest";
 import {
-  addLayer, addVariant, bindBelow, clearLabelOverride, clearOverride, clearValue,
+  addLayer, addVariant, applyDocEdit, bindBelow, clearLabelOverride, clearOverride, clearValue,
   masterDiff, mintLayerId, moveBy, moveLayers, overriddenPaths, removeLayer,
   removeVariant, renameVariant, setLabelOverride, setLayer, setLayerIn, setValue,
-  toggleVariant, unbind, whereLayerLives,
+  toggleVariant, unbind, whereLayerLives, type Doc,
 } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { parseMaster } from "../src/model/layers";
@@ -489,5 +489,40 @@ describe("resizeBy", () => {
   it("locked layers and empty boxes return {}", () => {
     expect(resizeBy(byId(lolevMaster(), "warning"), box, BR, 5, 5, false)).toEqual({});
     expect(resizeBy(byId(lolevMaster(), "qr"), { w: 0, h: 0 }, BR, 5, 5, false)).toEqual({});
+  });
+});
+
+describe("applyDocEdit", () => {
+  const doc = (): Doc => ({ master: lolevMaster(), label: { formatVersion: 3, masterId: "lolev", enabledVariants: [], values: {} } });
+  const name = (m: Master) => m.layers.find((l) => l.id === "name") as TextLayer;
+
+  it("a design patch lands in the label's overrides while not editing the master", () => {
+    const out = applyDocEdit(doc(), { id: "name", patch: { size: 30 } }, false);
+    expect(out.label.overrides).toEqual({ name: { size: 30 } });
+    expect(out.master).toEqual(lolevMaster());
+  });
+
+  it("a content value lands in the label's values while not editing the master", () => {
+    const out = applyDocEdit(doc(), { id: "name", kind: "text", value: "Pils" }, false);
+    expect(out.label.values).toEqual({ name: "Pils" });
+    expect(out.master).toEqual(lolevMaster());
+  });
+
+  it("with Edit master on, a design patch changes the master layer", () => {
+    const out = applyDocEdit(doc(), { id: "name", patch: { size: 30 } }, true);
+    expect(name(out.master).size).toBe(30);
+    expect(out.label.overrides).toBeUndefined();
+  });
+
+  it("with Edit master on, a content value becomes the master's placeholder", () => {
+    const out = applyDocEdit(doc(), { id: "name", kind: "text", value: [{ text: "Beer", fill: GOLD, layer: "metallic" }] }, true);
+    expect(name(out.master).lines[0].text).toBe("Beer");
+    expect(out.label.values).toEqual({});
+  });
+
+  it("with Edit master on, enabling a variant-carried layer lands in that variant and turns it on", () => {
+    const out = applyDocEdit(doc(), { id: "collabLeft", patch: { enabled: true } }, true);
+    expect(out.label.enabledVariants).toEqual(["collab"]);
+    expect(out.master.variants.find((v) => v.id === "collab")?.layers.collabLeft?.enabled).toBe(true);
   });
 });
