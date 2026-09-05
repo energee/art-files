@@ -1,0 +1,95 @@
+// src/model/resolveLayers.ts — the v3 resolver (spec 2026-09-04: Resolution).
+// master.layers → deep-merge each enabled variant's diff in enable order
+// (an id the master lacks appends a whole layer) → the label's overrides →
+// the label's values into fillable layers → format refs in barcode/qr
+// values expanded over the text layers' plain text → layers with
+// enabled === false dropped. Pure and synchronous. Relative `y` bindings
+// are NOT resolved here: that needs measured heights and is the renderer's
+// step. The layers come back in draw order, ready to measure and place.
+import type { Layer, LayerValue, Master, TextLayer, TextLine } from "./layers";
+import { deepMerge, type DeepPartial } from "./merge";
+import { validateField } from "./fields";
+import { expandFormat, fieldRefs } from "./format";
+import { parseRuns } from "../description";
+
+type Result = { layer: Layer } | { error: string };
+
+/** One value into one fillable layer, validated per kind. A string on a
+ *  text layer is one plain line in the layer's style — what the number and
+ *  code widgets write. */
+function applyValue(l: Layer, v: LayerValue): Result {
+  if (l.kind === "text") {
+    const lines = typeof v === "string" ? [{ text: v, fill: l.style.fill, layer: l.style.layer }] : v;
+    if (!Array.isArray(lines)) return { error: "Expected text." };
+    if (l.input) {
+      // ponytail: validateField still speaks FieldDecl; build one on the fly.
+      const r = validateField({ id: l.id, label: l.name, kind: l.input, path: "",
+        min: l.min, max: l.max, symbology: l.symbology }, plainText(lines));
+      if (!r.ok) return { error: r.error! };
+    }
+    return { layer: { ...l, lines } };
+  }
+  if (typeof v !== "string") return { error: l.kind === "image" ? "Expected an image." : "Expected a code value." };
+  if (l.kind === "image") return { layer: { ...l, asset: v } };
+  if (l.kind === "barcode") {
+    const r = validateField({ id: l.id, label: l.name, kind: "code", path: "", symbology: l.symbology }, v);
+    if (!r.ok) return { error: r.error! };
+  }
+  return { layer: { ...l, value: v } };
+}
+
+/** Lines as one plain string: runs joined with their markers stripped. */
+const plainText = (lines: TextLine[]): string =>
+  lines.map((l) => parseRuns(l).map((r) => r.text).join("")).join(" ");
+
+/** What a `{layerId}` ref in a barcode/qr value reads: the layer's plain
+ *  text, uppercased if the layer draws that way, or its placeholder while
+ *  blank (the old displayName rule, so a blank name still encodes "name"). */
+function refText(l: TextLayer): string {
+  const t = plainText(l.lines).trim() || l.placeholder || "";
+  return l.uppercase ? t.toUpperCase() : t;
+}
+
+export function resolveLayers(
+  master: Master, enabledVariants: string[], values: Record<string, LayerValue>,
+  overrides?: Record<string, DeepPartial<Layer>>,
+): { layers: Layer[]; warnings: string[]; errors: Record<string, string> } {
+  const warnings: string[] = [];
+  const errors: Record<string, string> = {};
+  let layers: Layer[] = master.layers.map((l) => structuredClone(l));
+  const patch = (id: string, p: DeepPartial<Layer>, ctx: string) => {
+    const i = layers.findIndex((l) => l.id === id);
+    if (i >= 0) layers[i] = deepMerge(layers[i], p);
+    else if (p.kind) layers.push(deepMerge({} as Layer, p)); // a whole added layer
+    else warnings.push(`${ctx} overrides unknown layer "${id}"; skipped.`);
+  };
+  for (const id of enabledVariants) {
+    const v = master.variants.find((x) => x.id === id);
+    if (!v) { warnings.push(`Unknown variant "${id}"; skipped.`); continue; }
+    for (const [lid, p] of Object.entries(v.layers)) patch(lid, p, `Variant "${id}"`);
+  }
+  for (const [id, p] of Object.entries(overrides ?? {})) patch(id, p, "Label");
+  for (const [id, v] of Object.entries(values)) {
+    const i = layers.findIndex((l) => l.id === id);
+    if (i < 0 || !layers[i].fillable) continue; // dormant, not an error
+    const r = applyValue(layers[i], v);
+    if ("error" in r) errors[id] = r.error;
+    else layers[i] = r.layer;
+  }
+  const texts: Record<string, string> = {};
+  for (const l of layers) if (l.kind === "text") texts[l.id] = refText(l);
+  layers = layers.map((l) => {
+    if ((l.kind !== "barcode" && l.kind !== "qr") || !fieldRefs(l.value).length) return l;
+    const { text, missing } = expandFormat(l.value, texts);
+    if (missing.length) warnings.push(`Layer "${l.id}" value refers to missing layers: ${missing.join(", ")}.`);
+    return { ...l, value: text };
+  });
+  return { layers: layers.filter((l) => l.enabled !== false), warnings, errors };
+}
+
+/** The Fill-mode list: fillable layers in draw order. */
+export const fillableLayers = (layers: Layer[]): Layer[] => layers.filter((l) => l.fillable);
+
+/** A layer's fillable content, in the shape a .label stores it. */
+export const valueOf = (layer: Layer): LayerValue =>
+  layer.kind === "text" ? layer.lines : layer.kind === "image" ? layer.asset : layer.value;
