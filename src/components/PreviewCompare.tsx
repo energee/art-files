@@ -15,9 +15,9 @@ import {
 import { createPortal } from "react-dom";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { drawPlate, type CanvasRenderSource } from "@/canvas/draw";
-import { facesOf, planLayers, type PlacedLayer } from "@/planLayers";
+import { facesOf, planLayerScene } from "@/planLayers";
 import {
-  boxesForLayers, dragTargetLayers, hitTestLayers, type LayerBox,
+  hitBoxesFromLayout, hitTestBoxes, type LayerBox,
 } from "@/hittestLayers";
 import type { Face } from "@/plan";
 import { positionFromDrag, type GuideLines } from "@/model/position";
@@ -364,18 +364,21 @@ export const PreviewCompare = forwardRef<
     getPageElement: () => pageElement.current,
   }), []);
 
-  // The display list, once per layers/source change; the paint effect and
-  // the 3D view's sibling (CanView) build the identical call. A throw here
+  // The display list and boxes, measured once per layers/source change. A throw here
   // (a bad binding, an unparsable payload) is caught by the paint effect
   // below, so the last frame stays up.
-  const plan = useMemo<PlacedLayer[] | Error | null>(() => {
+  const plan = useMemo<ReturnType<typeof planLayerScene> | Error | null>(() => {
     if (!canvasRender) return null;
     try {
-      return planLayers(layers, canvasRender.m, canvasRender.planAssets, { skip: canvasRender.skip });
+      return planLayerScene(layers, canvasRender.m, canvasRender.planAssets, { skip: canvasRender.skip });
     } catch (err) {
       return err instanceof Error ? err : new Error(String(err));
     }
   }, [layers, canvasRender]);
+
+  const hitBoxes = useMemo(() => plan && !(plan instanceof Error)
+    ? hitBoxesFromLayout(layers, plan.boxes) : [], [layers, plan]);
+  const boxesById = useMemo(() => new Map(hitBoxes.map((b) => [b.id, b])), [hitBoxes]);
 
   // The one render path: repaint both plates straight from the display list
   // on every change, on a rAF so a burst of keystrokes coalesces into one
@@ -401,7 +404,7 @@ export const PreviewCompare = forwardRef<
             canvas.width = w;
             canvas.height = h;
           }
-          drawPlate(canvas.getContext("2d")!, plan, canvasRender.drawAssets, mode, canvasRender.fontCss);
+          drawPlate(canvas.getContext("2d")!, plan.items, canvasRender.drawAssets, mode, canvasRender.fontCss);
         }
         onRenderError?.("");
       } catch (err) {
@@ -439,7 +442,7 @@ export const PreviewCompare = forwardRef<
     if (e.target instanceof Element && e.target.closest('[data-slot="resizable-handle"]')) return undefined;
     const p = pagePointOf(e);
     if (!p) return undefined;
-    return hitTestLayers(p.xPt, p.yPt, layers, canvasRender.m, canvasRender.planAssets);
+    return hitTestBoxes(p.xPt, p.yPt, hitBoxes);
   }
 
   function onClick(e: React.MouseEvent<HTMLDivElement>) {
@@ -479,12 +482,12 @@ export const PreviewCompare = forwardRef<
     if (e.button !== 0 || editing || !canvasRender) return;
     const id = hitOf(e);
     if (!id) return;
-    const target = dragTargetLayers(layers, id, canvasRender.m, canvasRender.planAssets);
-    if (!target) return; // locked, or draws nothing
+    const target = boxesById.get(id);
+    if (!target || target.locked) return; // locked, or draws nothing
     const r = e.currentTarget.getBoundingClientRect();
     drag.current = {
       id, startClientX: e.clientX, startClientY: e.clientY,
-      left: target.box.x - BLEED_SHIFT, w: target.box.w,
+      left: target.x - BLEED_SHIFT, w: target.w,
       pxPerPtX: r.width / PAGE.w, pxPerPtY: r.height / PAGE.h, started: false,
     };
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -550,7 +553,7 @@ export const PreviewCompare = forwardRef<
       // Anchor the pill over the layer's box, mapped page → viewport px off
       // the same rect the click math uses. Captured once, because the pill
       // portals to <body>: App's CSS zoom can't scale it there.
-      const b = boxesForLayers([id], layers, canvasRender.m, canvasRender.planAssets)[0];
+      const b = boxesById.get(id);
       if (!b) return;
       const r = e.currentTarget.getBoundingClientRect();
       const boxLeft = r.left + (b.x / PAGE.w) * r.width;
@@ -566,17 +569,11 @@ export const PreviewCompare = forwardRef<
     setEditing(id);
   }
 
-  // Every box this render needs — the selection outlines and the in-place
-  // session's own anchor — from ONE placement pass, in label-space points.
-  // Memoized because it re-plans every layer, and dragging the divider
-  // re-renders per pointer-move frame with none of these inputs changing.
+  // Selection changes reuse the scene's boxes; they never remeasure text or codes.
   const boxes = useMemo(
-    () => (canvasRender
-      ? boxesForLayers(
-          [...new Set(editing ? [...selected, editing] : selected)],
-          layers, canvasRender.m, canvasRender.planAssets)
-      : []),
-    [selected, editing, layers, canvasRender],
+    () => [...new Set(editing ? [...selected, editing] : selected)]
+      .map((id) => boxesById.get(id)).filter((b): b is LayerBox => !!b),
+    [selected, editing, boxesById],
   );
   const selBoxes = useMemo(
     () => boxes.filter((b) => selected.includes(b.id)),

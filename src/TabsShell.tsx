@@ -115,6 +115,9 @@ export default function TabsShell() {
   // renders it — only doClose reads it.
   const closingWindow = useRef(false);
   const [checkRequest, setCheckRequest] = useState(0);
+  // Set once an update is installed on disk: the app menu's Check for
+  // Updates… becomes Restart to Update (same click, DesktopUpdater decides).
+  const [updateInstalled, setUpdateInstalled] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   // A File → Open picker failure (not a cancel): no tab exists yet to show
   // it, so the strip does. Cleared by the next successful pick.
@@ -409,7 +412,8 @@ export default function TabsShell() {
                 onOpenProject={openProject}
                 onNewTab={newTab}
                 onCloseTab={e.onCloseTab}
-                onCheckForUpdates={checkForUpdates} />
+                onCheckForUpdates={checkForUpdates}
+                updateInstalled={updateInstalled} />
             </div>
         );
       })}
@@ -449,7 +453,8 @@ export default function TabsShell() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <DesktopUpdater dirty={anyUnsaved} checkRequest={checkRequest} statusHost={updateStatusHost} />
+      <DesktopUpdater dirty={anyUnsaved} checkRequest={checkRequest} statusHost={updateStatusHost}
+        onInstalled={() => setUpdateInstalled(true)} />
     </>
   );
 }

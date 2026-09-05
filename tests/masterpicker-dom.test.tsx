@@ -59,8 +59,8 @@ const openMenu = () => act(() => { trigger().click(); });
 /** The menu item (or any button) whose visible text STARTS with `text` — the
  *  library rows may append an ellipsis while resolving. */
 const itemStarting = (text: string) =>
-  Array.from(container.querySelectorAll("button"))
-    .find((b) => b.textContent?.trim().startsWith(text)) as HTMLButtonElement | undefined;
+  Array.from(document.querySelectorAll<HTMLElement>("button, [role=option]"))
+    .find((b) => (b.getAttribute("aria-label") ?? b.textContent)?.trim().startsWith(text)) as HTMLButtonElement | undefined;
 
 function type(el: Element, value: string) {
   const input = el as HTMLInputElement;
@@ -111,7 +111,6 @@ describe("MasterPicker", () => {
     const onDuplicate = vi.fn();
     const onMaster = vi.fn();
     renderPicker({ onDuplicate, onMaster });
-    openMenu();
     act(() => { itemStarting("Duplicate as new master")!.click(); });
     const input = container.querySelector("#master-picker-duplicate-name") as HTMLInputElement;
     expect(input).not.toBeNull();
@@ -124,7 +123,6 @@ describe("MasterPicker", () => {
   it("routes Open Master… to onOpenMaster", () => {
     const onOpenMaster = vi.fn();
     renderPicker({ onOpenMaster });
-    openMenu();
     act(() => { itemStarting("Open Master")!.click(); });
     expect(onOpenMaster).toHaveBeenCalled();
   });

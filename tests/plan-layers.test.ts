@@ -5,7 +5,7 @@
 // arithmetic, not a font fact.
 import { describe, expect, it } from "vitest";
 import {
-  planLayers, layerBoxes, DEFAULT_FACES, type PlacedPage,
+  planLayers, planLayerScene, layerBoxes, DEFAULT_FACES, type PlacedPage,
 } from "../src/planLayers";
 import { barcodeItem, customBarcodeItem } from "./legacy/plan";
 import { labelGuides, type MeasureFace, type PlacedBarcode, type PlacedImage, type PlacedPaths, type PlacedText,  } from "../src/plan";
@@ -284,4 +284,14 @@ it("uses authored guide positions in the shared plan and hit boxes", () => {
   expect(runs.at(-1)!.y + DESC * layer.size).toBeCloseTo(277);
   const moved = { ...input, guides: { top: 40, bottom: 260 } };
   expect(layerBoxes([layer], m, moved).get(layer.id)!.y).toBeCloseTo(box.y - 20);
+});
+
+it("shares measured boxes with drawing, including skipped layers and binding chains", () => {
+  const layers = [text({ id: "a", x: 10, y: 20, lines: [line("one"), line("two")] }),
+    text({ id: "b", x: 10, y: { below: "a", gap: 5 } })];
+  const scene = planLayerScene(layers, m, assets, { skip: new Set(["a"]) });
+  expect(scene.boxes.get("a")!.h).toBeGreaterThan(0);
+  expect(scene.boxes.get("b")!.y).toBeCloseTo(scene.boxes.get("a")!.y + scene.boxes.get("a")!.h + 5);
+  expect(scene.items).toEqual(planLayers(layers, m, assets, { skip: new Set(["a"]) }));
+  expect(scene.boxes).toEqual(layerBoxes(layers, m, assets));
 });

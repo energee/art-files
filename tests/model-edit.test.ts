@@ -190,6 +190,14 @@ describe("removeLayer", () => {
 });
 
 describe("moveLayer", () => {
+  it("moves several steps at once and clamps at the ends", () => {
+    const m = lolevMaster();
+    const ids = m.layers.map((l) => l.id);
+    const moved = moveLayer(m, ids[0], 2);
+    expect(moved.layers.map((l) => l.id)).toEqual([ids[1], ids[2], ids[0], ...ids.slice(3)]);
+    expect(moveLayer(m, ids[0], 99).layers.at(-1)!.id).toBe(ids[0]);
+    expect(moveLayer(m, ids[0], -3)).toBe(m);
+  });
   it("swaps a master layer with its neighbour in draw order", () => {
     const m = moveLayer(lolevMaster(), "logo", 1);
     const ids = m.layers.map((l) => l.id);

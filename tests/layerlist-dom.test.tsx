@@ -7,7 +7,7 @@
 // @testing-library/react in this repo, so this drives real DOM nodes through
 // react-dom/client + act, the same as that suite.
 // @vitest-environment happy-dom
-import { act, createElement } from "react";
+import { act, createElement, Profiler } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LayerList, type LayerListProps, type LayerRow, type VariantChip } from "../src/components/LayerList";
@@ -228,28 +228,38 @@ describe("LayerList", () => {
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
-  // Reorder arrows live on the selected row only. The list shows front to
-  // back, so ▲ = +1 (toward the front, later in draw order) and ▼ = -1; the
-  // ends of the DRAW order are read off every row, not the filtered view.
-  it("shows reorder arrows on the selected row, disabled at the ends of the draw order", () => {
-    const { rows } = lolevRows();
-    const master = rows.filter((r) => !r.variant);
-    let props = render(baseProps({ rows: master, variants: [], selected: new Set(["barcode"]) }));
+  it("drags across multiple rows in one reorder and removes the arrow buttons", () => {
+    const props = render(baseProps({ selected: new Set(["wordmark"]) }));
     expect(byLabel("Bring Brand forward")).toBeNull();
-    expect(byLabel("Bring Barcode forward")).toHaveProperty("disabled", true);
-    expect(byLabel("Send Barcode backward")).toHaveProperty("disabled", false);
-    click(byLabel("Send Barcode backward"));
-    expect(props.onReorder).toHaveBeenCalledWith("barcode", -1);
-
-    props = render(baseProps({ rows: master, variants: [], selected: new Set(["background"]) }));
-    expect(byLabel("Send Background backward")).toHaveProperty("disabled", true);
-    click(byLabel("Bring Background forward"));
-    expect(props.onReorder).toHaveBeenCalledWith("background", 1);
-
-    // Filtered view: Description is still mid-order, so both arrows work.
-    props = render(baseProps({ rows: master, variants: [], fillableOnly: true, selected: new Set(["description"]) }));
-    expect(byLabel("Bring Description forward")).toHaveProperty("disabled", false);
-    expect(byLabel("Send Description backward")).toHaveProperty("disabled", false);
+    const source = rowFor("wordmark").querySelector("button")!;
+    source.setPointerCapture = vi.fn();
+    const target = rowFor("barcode");
+    const hit = vi.spyOn(document, "elementFromPoint").mockReturnValue(target);
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue({ top: 20, height: 20 } as DOMRect);
+    const pointer = (type: string, y: number) => act(() => {
+      source.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, button: 0, clientY: y }));
+    });
+    try {
+      pointer("pointerdown", 100);
+      pointer("pointermove", 21);
+      expect(props.onReorder).not.toHaveBeenCalled();
+      pointer("pointerup", 21);
+      const peers = props.rows.filter((r) => !r.variant);
+      const distance = peers.findIndex((r) => r.layer.id === "barcode") - peers.findIndex((r) => r.layer.id === "wordmark");
+      expect(props.onReorder).toHaveBeenCalledTimes(1);
+      expect(props.onReorder).toHaveBeenCalledWith("wordmark", distance);
+      // A drop outside the owning variant and a cancelled drag are no-ops.
+      hit.mockReturnValue(rowFor("collabLeft"));
+      pointer("pointerdown", 100);
+      pointer("pointermove", 21);
+      pointer("pointerup", 21);
+      hit.mockReturnValue(target);
+      pointer("pointerdown", 100);
+      pointer("pointermove", 21);
+      pointer("pointercancel", 21);
+      pointer("pointerup", 21);
+      expect(props.onReorder).toHaveBeenCalledTimes(1);
+    } finally { vi.restoreAllMocks(); }
   });
 
   it("Delete and ⌥↑/⌥↓ on a selected row's button act on it; on an unselected row they do nothing", () => {
@@ -298,4 +308,26 @@ describe("LayerList", () => {
     }
     expect(container.querySelector('[role="img"]')?.getAttribute("aria-label")).toBe("Overridden by a variant");
   });
+});
+
+it("measures repeated pointer moves over the same drop position", () => {
+  const commits = vi.fn();
+  const props = baseProps();
+  act(() => root.render(createElement(SidebarProvider, null,
+    createElement(Profiler, { id: "layers", onRender: commits }, createElement(LayerList, props)))));
+  const source = rowFor("wordmark").querySelector("button")!;
+  source.setPointerCapture = vi.fn();
+  const target = rowFor("barcode");
+  vi.spyOn(document, "elementFromPoint").mockReturnValue(target);
+  vi.spyOn(target, "getBoundingClientRect").mockReturnValue({ top: 20, height: 20 } as DOMRect);
+  try {
+    act(() => source.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerId: 1, clientY: 100 })));
+    commits.mockClear();
+    const started = performance.now();
+    for (let n = 0; n < 100; n++) act(() => source.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true, pointerId: 1, clientY: 21 + n % 4,
+    })));
+    console.log("PERF layer drag", JSON.stringify({ moves: 100, commits: commits.mock.calls.length, ms: performance.now() - started }));
+    expect(commits.mock.calls.length).toBe(1);
+  } finally { vi.restoreAllMocks(); }
 });

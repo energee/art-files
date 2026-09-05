@@ -394,6 +394,8 @@ type DocumentEditorProps = {
   onNewTab: () => void;
   onCloseTab: () => void;
   onCheckForUpdates: () => void;
+  /** An update is installed and awaits a relaunch (relabels the app menu). */
+  updateInstalled?: boolean;
   /** Ref callback for the tab-strip host: the ACTIVE editor mounts an empty
    *  slot just under its menubar row and the shell portals the strip into it. */
   updateStatusHost?: (el: HTMLDivElement | null) => void;
@@ -406,7 +408,7 @@ type DocumentEditorProps = {
 // identity-stable props to inactive editors (see TabsShell's extrasFor).
 export const DocumentEditor = memo(function DocumentEditor({
   active, fileToOpen, onOpenSettled, onMeta, saveSlot, render, onRenderChange,
-  onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, tabStripHost, updateStatusHost,
+  onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, updateInstalled, tabStripHost, updateStatusHost,
 }: DocumentEditorProps) {
   // The document lives in a history stack, not plain useState — every edit
   // that goes through `edit` (all of them) is undoable, master and label
@@ -432,7 +434,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const chips = useMemo(() => variantChips(master, label), [master, label]);
   const [fillableOnly, setFillableOnly] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const guides = useMemo(() => guideLines(master), [master]);
+  const guides = useMemo(
+    () => guideLines({ physical: master.physical, guides: master.guides }),
+    [master.physical, master.guides]);
   const [texture, setTexture] = useState<(Loaded & { kind: "png" | "jpg" }) | null>(null);
   // srcBytes: the original upload — the bytes Save writes.
   const [mask, setMask] = useState<(Loaded & { error?: string; srcBytes: Uint8Array }) | null>(null);
@@ -906,9 +910,13 @@ export const DocumentEditor = memo(function DocumentEditor({
   // changes are rare and each re-assembly decodes every bitmap). Layer edits
   // deliberately DON'T re-run this: the layers flow into the views as a prop
   // and repaint with these same bitmaps.
-  const [canvasAssets, setCanvasAssets] = useState<{
+  const [decodedAssets, setDecodedAssets] = useState<{
     m: MeasureFace; planAssets: PlanAssets; drawAssets: CanvasAssets; fontCss: string;
   } | null>(null);
+  // Guide movement changes placement immediately, without decoding image bytes again.
+  const canvasAssets = useMemo(() => decodedAssets ? {
+    ...decodedAssets, planAssets: { ...decodedAssets.planAssets, guides },
+  } : null, [decodedAssets, guides]);
   const bgOn = pageOn("background"), maskOn = pageOn("mask");
   useEffect(() => {
     if (blocked || !active) return;
@@ -949,7 +957,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           closeCanvasBitmaps(drawAssets);
           return;
         }
-        setCanvasAssets({ m, planAssets: planAssetsOf(), drawAssets, fontCss: labelFontCss(family) });
+        setDecodedAssets({ m, planAssets: planAssetsOf(), drawAssets, fontCss: labelFontCss(family) });
         setBuildError("");
       })().catch((err) => {
         if (!cancelled) setBuildError(String(err));
@@ -959,7 +967,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // Asset inputs only — the layers reach this effect through tintKey and
     // the two page-art switches (see the comment above).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [texture, mask, customImages, family, tintKey, bgOn, maskOn, blocked, active, guides.top, guides.bottom, guides.left, guides.right]);
+  }, [texture, mask, customImages, family, tintKey, bgOn, maskOn, blocked, active]);
   // The bitmaps backing the CURRENTLY LIVE `canvasAssets` generation, closed
   // once the next generation has fully replaced them (bitmaps aren't GC'd
   // on their own). A bitmap can sit under two keys; close each once.
@@ -993,7 +1001,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Background tabs keep their state and asset bytes but not their decoded
   // render source: the ImageBitmaps are the heavy, cheaply-rebuildable part.
   useEffect(() => {
-    if (!active) setCanvasAssets(null);
+    if (!active) setDecodedAssets(null);
   }, [active]);
 
   /** Drag-to-move. PreviewCompare reports the cumulative delta from the
@@ -1687,7 +1695,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}
           {active && <AppMenu actions={commands} onNativeError={setBuildError}
-            onCheckForUpdates={onCheckForUpdates} checked={{
+            onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={{
             "view-label": viewMode === "2d" && split === 0,
             "view-mask": viewMode === "2d" && split === 100,
             "view-can": viewMode === "can",

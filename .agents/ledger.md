@@ -310,3 +310,31 @@ no status, no attempts, no delta.
 - status: done
 - delta: retain successful automatic/manual current results and show Up to date in the active lower status bar, including after dialog dismissal
 - evidence: 4 updater tests pass; release metadata and diff checks pass for binary-impacting 0.1.50; matching CHANGELOG entry prepared
+
+## 2026-09-05 sidebar-selection-controls
+- finding: [user request] move selection hint below layers, remove master divider, and use shadcn Select
+- status: done
+- delta: hint follows list; master picker uses existing shadcn Select, Button and Input; Open Master and Duplicate remain below selector; rebind confirmation retained
+- evidence: 15 layer-list and 4 master-picker DOM tests pass; TypeScript and 0.1.51 release metadata gate pass; changes local
+
+## 2026-09-05 release-build-performance
+- finding: [user request] optimize builds after Windows release 33962816055 took 6m 2s, including 3m 22s in Cargo despite a cache hit
+- status: done
+- delta: release Rust pinned to 1.98.1 (the compiler in that successful run); superseded PR test runs cancel while main/release jobs remain protected; release jobs emit and upload per-target Cargo timing HTML for 14 days
+- experiment: macOS arm64, rustc 1.97.1, existing 0.1.51 source/dist; initial dependency warm-up excluded (274 seconds). Alternating two default release app rebuilds and two with --config profile.release.package.label-lab.opt-level=1, touching src-tauri/src/main.rs before each; cargo build --manifest-path src-tauri/Cargo.toml --release --timings. Default: 71.55/81.96 seconds, 11262192 bytes. Candidate: 103.35/99.34 seconds, 13784848 bytes. Candidate averages 32% slower and is 22% larger; rejected, no profile change retained. Local results are not a Windows speedup claim; no startup comparison needed after rejection.
+- evidence: four measured release builds pass; Actionlint 1.7.12 validates both workflows (shellcheck unavailable); YAML parsing, diff check and 0.1.51 release gate pass. No workflow dispatched or release published. Existing sidebar edits preserved.
+- deferred: shared frontend build adds artifact transfer/dependency overhead for a small wall-clock saving; revisit if new timings show frontend dominating
+
+## 2026-09-05 draggable-layer-order
+- finding: [user request] replace per-row up/down buttons with drag reordering
+- status: done
+- delta: pointer dragging on layer names, 5px threshold, insertion line, cancellation and click suppression; one undoable App edit per drop; Alt+Up/Down retained and bounded by layer ownership; variant-added layers remain in their owning variant
+- evidence: 75 focused tests pass, including multi-row drop, cancelled/out-of-owner drops and keyboard controls; production build, diff check and 0.1.51 release gate pass; changes local, no live browser verification available
+
+## 2026-09-05 editor-performance
+- finding: [user request] execute all three identified editor optimizations and track before/after
+- status: done
+- delta: layer drag updates only when target/edge/distance changes; decoded assets are independent of guide coordinates, and guide positions update immediately; preview draw/selection/hit/drag/double-click consume one measured scene; existing display-list callers retain planLayers compatibility
+- measurement: happy-dom React Profiler, 100 individually flushed pointer moves over the same drop position: 100 commits before, 1 after (sample elapsed 916.75ms before, 28.46ms after; elapsed values are environment-sensitive, commit count is the regression gate). Five settled margin edits: 5 asset assemblies before, 0 after; same drawAssets object retained and guide coordinates change before the debounce interval. No real bitmap decode timing or desktop FPS claimed.
+- layout benchmark: npx tsx scripts/benchmark-layout.ts; real Poppins metrics, resolved Lolev layers, 10 warm-ups, 5 alternating batches of 100 preview+selection updates, separate vs shared layout. Isolated run before ms: 640.76,640.49,629.87,580.66,606.07; after: 442.17,394.27,391.78,351.06,357.76. Median 629.87 -> 391.78ms (37.8% less); font measurements 26700 -> 17400 per batch (34.8% fewer). Script and the separate-layout helpers (hitBoxesLayers, hitTestLayers, boxesForLayers, dragTargetLayers) were removed once the shared scene was adopted; re-create from git history to re-measure. These are headless CPU measurements, not interactive raster/GPU frame rates.
+- evidence: 796 full-suite tests and production build pass, including existing PDF/PSD regressions; final focused checks cover reused hit testing, shared boxes, skipped layers, live guide coordinates and asset reuse; 0.1.52 binary-impacting release metadata prepared; no release published

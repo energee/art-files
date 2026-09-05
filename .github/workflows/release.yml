@@ -69,8 +69,10 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev \
             libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
+          # Match the last successful release; upgrade deliberately to preserve caches.
+          toolchain: "1.98.1"
           targets: ${{ matrix.target }}
 
       - uses: swatinem/rust-cache@v2
@@ -101,7 +103,16 @@ jobs:
           generateReleaseNotes: false
           releaseDraft: false
           prerelease: false
-          args: --target ${{ matrix.target }} --config src-tauri/tauri.release.generated.conf.json
+          args: --target ${{ matrix.target }} --config src-tauri/tauri.release.generated.conf.json -- --timings
+
+      - name: Upload Rust build timings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-timings-${{ matrix.target }}
+          path: src-tauri/target/cargo-timings/*.html
+          if-no-files-found: ignore
+          retention-days: 14
 
   # The repo is private, so installed apps cannot read its release assets.
   # Copy just the update feed (latest.json + updater archives + signatures) to
