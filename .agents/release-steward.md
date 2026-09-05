@@ -27,7 +27,10 @@ handoff.
    `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`.
 3. Add a dated `CHANGELOG.md` section named for that exact version. Write concise,
    user-facing bullets about behavior, fixes, and any upgrade caveats; do not use a
-   list of filenames or internal implementation details as release notes.
+   list of filenames or internal implementation details as release notes. A branch
+   ships one version: if you bump again before merging, fold the earlier section into
+   the final one — the checker rejects any section newer than the base that is not the
+   current version, because `release-notes.mjs` publishes only the current one.
 4. Run `node scripts/check-release.mjs <base-ref>` along with the task's normal tests
    and build. A pre-push git hook (`.githooks/pre-push`, activated by `npm install`
    via the `prepare` script) runs the same check automatically, but do not rely on
