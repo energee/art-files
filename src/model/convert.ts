@@ -160,10 +160,11 @@ function applyPatch(layer: Layer, p: ElementPatch | undefined): Layer {
 }
 
 /** The label-side twin of applyPatch: only the keys the patch touched. A
- *  fillable text layer's lines are left to its value (which convertLabelV2
- *  styles with the same patch); a fixed text layer carries its restyled
- *  lines here, or the override would never reach the drawn runs. */
-function overrideFrom(base: Layer, p: ElementPatch): DeepPartial<Layer> {
+ *  text layer whose content the label supplies as a value (`filled`) leaves
+ *  its lines to that value (convertLabelV2 styles it with the same patch);
+ *  any other text layer carries its restyled lines here, or the override
+ *  would never reach the drawn runs. */
+function overrideFrom(base: Layer, p: ElementPatch, filled: boolean): DeepPartial<Layer> {
   const applied = applyPatch(base, p) as Layer & Record<string, unknown>;
   const o: Record<string, unknown> = {};
   if (p.style) o.style = p.style;
@@ -171,7 +172,7 @@ function overrideFrom(base: Layer, p: ElementPatch): DeepPartial<Layer> {
   if (p.locked !== undefined) o.locked = p.locked;
   if (base.kind === "text") {
     const restyled = p.style?.fill !== undefined || p.style?.layer !== undefined;
-    if (p.text !== undefined || p.bold !== undefined || (restyled && !base.fillable)) o.lines = applied.lines;
+    if (p.text !== undefined || p.bold !== undefined || (restyled && !filled)) o.lines = applied.lines;
   }
   for (const k of ["asset", "value", "scale", "tintRaster"] as const)
     if (p[k] !== undefined) o[k] = applied[k];
@@ -235,7 +236,7 @@ function customToLayer(
   }
 }
 
-// --- Fields → fillable ----------------------------------------------------
+// --- Fields → widgets -----------------------------------------------------
 
 function fieldLayerId(f: FieldDecl, ids: Set<string>): string | undefined {
   if (PATH_LAYER[f.path]) return PATH_LAYER[f.path];
@@ -244,11 +245,11 @@ function fieldLayerId(f: FieldDecl, ids: Set<string>): string | undefined {
   return ids.has(f.id) ? f.id : undefined;
 }
 
-/** What a FieldDecl adds to its layer: `fillable`, the Fill-mode widget hint
- *  for number/code text inputs, and a `{id}<literal>` format's literal as
- *  the suffix — v3 has no format strings, so any other format is dropped. */
-function fillableProps(f: FieldDecl, kind: Layer["kind"], warnings: string[]): Partial<TextLayer> {
-  const p: Partial<TextLayer> = { fillable: true };
+/** What a FieldDecl adds to its layer: the widget hint for number/code
+ *  text inputs, and a `{id}<literal>` format's literal as the suffix — v3
+ *  has no format strings, so any other format is dropped. */
+function widgetProps(f: FieldDecl, kind: Layer["kind"], warnings: string[]): Partial<TextLayer> {
+  const p: Partial<TextLayer> = {};
   if (kind === "text") {
     if (f.kind === "number") {
       p.input = "number";
@@ -304,7 +305,6 @@ export function convertMasterV1(old: MasterV1): { master: Master; warnings: stri
       layer = applyPatch(structuredClone(t), patches[l.id]);
       layer = { ...layer, name: l.name, enabled: l.enabled, ...(l.locked !== undefined ? { locked: l.locked } : {}) };
     }
-    delete layer.fillable; // fillable is what the FieldDecls say, below
     return layer;
   };
 
@@ -342,7 +342,7 @@ export function convertMasterV1(old: MasterV1): { master: Master; warnings: stri
       if (diff[id]) continue; // a variant-owned layer already took its patch
       const base = layers.find((l) => l.id === id);
       if (!base) { warnings.push(`Variant "${v.id}" styles unknown layer "${id}"; dropped.`); continue; }
-      diff[id] = overrideFrom(base, p);
+      diff[id] = overrideFrom(base, p, false);
     }
     for (const [id, p] of Object.entries(v.layerOverrides)) {
       const { name, enabled, locked } = p;
@@ -357,7 +357,7 @@ export function convertMasterV1(old: MasterV1): { master: Master; warnings: stri
   });
   for (const k of dp.unknown) if (!consumed.has(k)) warnings.push(`Master default "${k}" has no v3 home; dropped.`);
 
-  // Fields: each one marks its layer fillable (and its widget). A variant's
+  // Fields: each one sets its layer's widget. A variant's
   // field on a master layer records as a partial in that variant's diff.
   const layerIds = new Set([...layers.map((l) => l.id), ...variants.flatMap((v) => Object.keys(v.layers))]);
   const mark = (f: FieldDecl, owner: Variant | undefined) => {
@@ -367,7 +367,7 @@ export function convertMasterV1(old: MasterV1): { master: Master; warnings: stri
     const inOwner = owner?.layers[id];
     const target = (inOwner ?? inMaster) as Layer | undefined;
     const kind = (target ?? variants.flatMap((v) => Object.values(v.layers)).find((l) => l.id === id))?.kind ?? "text";
-    const props = fillableProps(f, kind as Layer["kind"], warnings);
+    const props = widgetProps(f, kind as Layer["kind"], warnings);
     if (owner && !inOwner) owner.layers[id] = { ...owner.layers[id], ...props } as DeepPartial<Layer>;
     else if (target) Object.assign(target, props);
     else { const v = variants.find((x) => x.layers[id]); Object.assign(v!.layers[id], props); }
@@ -404,10 +404,12 @@ export function convertLabelV2(old: LabelFileV2, master: Master): { label: Label
   const op = elementPatches((old.overrides ?? {}) as Record<string, unknown>);
   warnings.push(...op.warnings);
   const overrides: Record<string, DeepPartial<Layer>> = {};
+  // Layers the label fills by value: their lines come from the value below.
+  const filledIds = new Set(Object.keys(old.values).map((fid) => FIELD_RENAMES[fid] ?? fid));
   for (const [id, p] of Object.entries(op.byId)) {
     const base = layerIn(master, id);
     if (!base) { warnings.push(`Override for "${id}" matches no layer; dropped.`); continue; }
-    overrides[id] = overrideFrom(base, p);
+    overrides[id] = overrideFrom(base, p, filledIds.has(id));
   }
   // A per-label custom layer has no master row to override: it rides as a
   // whole layer, which resolveLayers appends (the old composeConfig rule).

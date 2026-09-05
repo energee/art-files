@@ -30,8 +30,8 @@ describe("convertMasterV1", () => {
     expect(master.layers.map((l) => l.id)).toEqual(want.layers.map((l) => l.id));
     for (const w of want.layers) {
       const got = layer(master.layers, w.id);
-      expect([got.kind, !!got.fillable, got.x, got.y, got.anchor, got.enabled, !!got.locked])
-        .toEqual([w.kind, !!w.fillable, w.x, w.y, w.anchor, w.enabled, !!w.locked]);
+      expect([got.kind, got.x, got.y, got.anchor, got.enabled, !!got.locked])
+        .toEqual([w.kind, w.x, w.y, w.anchor, w.enabled, !!w.locked]);
     }
     expect(master.layers).toEqual(want.layers);
     expect(master.variants.map((v) => v.id)).toEqual(["collab"]);
@@ -74,7 +74,7 @@ describe("convertMasterV1", () => {
     expect(master.fontFamily).toBe("poppins");
   });
 
-  it("carries policy (enabled, locked, names); fillable follows the FieldDecls", () => {
+  it("carries policy (enabled, locked, names); widgets follow the FieldDecls", () => {
     const old = lolevV1();
     old.layers = old.layers.map((l) =>
       l.id === "qr" ? { ...l, enabled: false, name: "Code" } : l.id === "logo" ? { ...l, locked: true } : l);
@@ -83,8 +83,7 @@ describe("convertMasterV1", () => {
     const qr = layer(master.layers, "qr");
     expect([qr.enabled, qr.name]).toEqual([false, "Code"]);
     expect(layer(master.layers, "logo").locked).toBe(true);
-    expect(layer(master.layers, "styleLine").fillable).toBeFalsy();
-    expect(layer(master.layers, "name").fillable).toBe(true);
+    expect(layer<TextLayer>(master.layers, "styleLine").input).toBeUndefined();
     const abv = layer<TextLayer>(master.layers, "abv");
     expect([abv.input, abv.min, abv.max]).toEqual(["number", 0, 20]);
   });
@@ -157,7 +156,7 @@ describe("convertMasterV1", () => {
     expect(diff.abv!.style!.fill).toBe("#00FF00");
     expect(diff.qr).toEqual({ enabled: false });
     const x = diff["custom-x"] as TextLayer;
-    expect([x.kind, x.fillable, x.lines[0].text, x.name]).toEqual(["text", true, "X", "Extra"]);
+    expect([x.kind, x.lines[0].text, x.name]).toEqual(["text", "X", "Extra"]);
     expect(() => parseMaster(master)).not.toThrow();
   });
 
@@ -210,7 +209,7 @@ describe("convertLabelV2", () => {
     expect(label.values.name).toEqual([{ text: "Peregrine", fill: "#FF0000", layer: "metallic" }]);
     expect(label.overrides!.logo).toEqual({ y: logoY() + 5 });
     expect(label.overrides!.qr).toEqual({ style: { fill: "#123456" } });
-    // A non-fillable text layer's restyle has to reach its lines (a run's
+    // A text layer the label gives no value must carry its restyled lines (a run's
     // own fill wins over the block style), so the override carries both.
     expect(label.overrides!.wordmark).toEqual({
       style: { fill: "#0000FF" },
