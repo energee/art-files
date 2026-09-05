@@ -26,11 +26,11 @@
 // so this file never builds a text editor of its own.
 import { useState, type ReactNode } from "react";
 import {
-  AlignCenterVertical, AlignEndVertical, AlignStartVertical, ArrowDownToLine, ArrowUpToLine,
+  AlignCenterHorizontal, AlignCenterVertical, AlignEndVertical, AlignStartVertical, ArrowDownToLine, ArrowUpToLine,
   Barcode, Image, Link2, Link2Off, QrCode, RotateCcw, TextAlignCenter, TextAlignEnd,
   TextAlignJustify, TextAlignStart, Type, WholeWord, type LucideIcon,
 } from "lucide-react";
-import { bindingOf } from "@/model/layers";
+import { bindingOf, guideOf } from "@/model/layers";
 import type {
   BindingSide, BarcodeLayer, ImageLayer, Layer, LayerKind, QrLayer, Symbology, TextLayer,
 } from "@/model/layers";
@@ -190,12 +190,12 @@ function SwitchRow(props: {
   );
 }
 
-/** A single-choice segmented control (anchor, edge, align). base-ui's
+/** A single-choice segmented control (guide, align; undefined = nothing chosen). base-ui's
  *  ToggleGroup reports a re-click of the pressed item as an empty value;
  *  that is ignored so the field never goes blank. */
 function Segmented<T extends string>(props: {
   label: string;
-  value: T;
+  value: T | undefined;
   options: readonly { value: T; label: string; icon: LucideIcon }[];
   badge?: ReactNode;
   onChange: (v: T) => void;
@@ -205,7 +205,7 @@ function Segmented<T extends string>(props: {
       <ToggleGroup
         aria-label={props.label}
         variant="outline" size="sm" spacing={0}
-        value={[props.value]}
+        value={props.value ? [props.value] : []}
         onValueChange={(v) => { const next = v[0] as T | undefined; if (next) props.onChange(next); }}
       >
         {props.options.map((o) => (
@@ -222,16 +222,20 @@ function Segmented<T extends string>(props: {
   );
 }
 
-const ANCHORS = [
-  { value: "left", label: "Anchor left", icon: AlignStartVertical },
-  { value: "center", label: "Anchor center", icon: AlignCenterVertical },
-  { value: "right", label: "Anchor right", icon: AlignEndVertical },
+/** One control per axis: picking a guide anchors that edge of the box ON the
+ *  guide (offset 0). Empty selection = a legacy layer placed by an absolute
+ *  x/y; choosing any guide converts it. */
+const H_GUIDES = [
+  { value: "left", label: "Anchor to left guide", icon: AlignStartVertical },
+  { value: "center", label: "Anchor to center guide", icon: AlignCenterVertical },
+  { value: "right", label: "Anchor to right guide", icon: AlignEndVertical },
 ] as const satisfies readonly { value: Anchor; label: string; icon: LucideIcon }[];
 
-const EDGES = [
-  { value: "top", label: "Y places the top edge", icon: ArrowUpToLine },
-  { value: "bottom", label: "Y places the bottom edge", icon: ArrowDownToLine },
-] as const;
+const V_GUIDES = [
+  { value: "top", label: "Anchor to top guide", icon: ArrowUpToLine },
+  { value: "middle", label: "Anchor to middle guide", icon: AlignCenterHorizontal },
+  { value: "bottom", label: "Anchor to bottom guide", icon: ArrowDownToLine },
+] as const satisfies readonly { value: NonNullable<Layer["guideY"]>; label: string; icon: LucideIcon }[];
 
 const ALIGNS = [
   { value: "left", label: "Align left", icon: TextAlignStart },
@@ -252,7 +256,7 @@ interface Ctx {
 }
 
 function Position(props: Ctx & {
-  layer: Layer; layerNames: readonly { id: string; name: string }[]; onUnbind: () => void; onUnbindGuideY?: () => void; onUnbindX?: () => void; onBind?: (to: string, side: BindingSide) => void;
+  layer: Layer; layerNames: readonly { id: string; name: string }[]; onUnbind: () => void; onBind?: (to: string, side: BindingSide) => void;
 }) {
   const { layer, set, badge } = props;
   const id = layer.id;
@@ -267,43 +271,33 @@ function Position(props: Ctx & {
       {!horizontal && <>
       <Row badge={badge(["x"], "X")}>
         <ScrubField
-          id={`${id}-x`} label={layer.guideX && layer.guideX !== "none" ? "X offset" : "X"} unit="pt" value={layer.x}
+          id={`${id}-x`} label={guideOf(layer.guideX) ? "X offset" : "X"} unit="pt" value={layer.x}
           min={-2000} max={2000} {...PT}
           onChange={(x) => set({ x })}
         />
       </Row>
       <Segmented
-        label="Horizontal guide" value={layer.guideX ?? "none"}
-        options={[{ value: "none", label: "Detach from horizontal guide", icon: Link2Off }, { value: "left", label: "Anchor to left guide", icon: AlignStartVertical }, { value: "right", label: "Anchor to right guide", icon: AlignEndVertical }]}
-        badge={badge(["guideX"], "Horizontal guide")}
-        onChange={(guideX) => guideX === "none" ? props.onUnbindX?.() : set({ guideX, x: 0, anchor: guideX })}
+        label="Horizontal guide" value={guideOf(layer.guideX)}
+        options={H_GUIDES}
+        badge={badge(["guideX", "anchor"], "Horizontal guide")}
+        onChange={(guideX) => set({ guideX, x: 0, anchor: guideX })}
       />
-      {(!layer.guideX || layer.guideX === "none") && <Segmented
-        label="Anchor" value={layer.anchor} options={ANCHORS}
-        badge={badge(["anchor"], "Anchor")}
-        onChange={(anchor) => set({ anchor })}
-      />}
       </>}
       {(!binding || horizontal) && typeof y === "number" && (
         <>
           <Row badge={badge(["y"], "Y")}>
             <ScrubField
-              id={`${id}-y`} label={layer.guideY && layer.guideY !== "none" ? "Offset" : "Y"} unit="pt" value={y}
+              id={`${id}-y`} label={guideOf(layer.guideY) ? "Y offset" : "Y"} unit="pt" value={y}
               min={-2000} max={2000} {...PT}
               onChange={(v) => set({ y: v })}
             />
           </Row>
           <Segmented
-            label="Guide" value={layer.guideY ?? "none"}
-            options={[{ value: "none", label: "Detach from guide", icon: Link2Off }, { value: "top", label: "Anchor to top guide", icon: ArrowUpToLine }, { value: "middle", label: "Anchor to middle guide", icon: AlignCenterVertical }, { value: "bottom", label: "Anchor to bottom guide", icon: ArrowDownToLine }]}
-            badge={badge(["guideY"], "Guide")}
-            onChange={(guideY) => guideY === "none" ? (props.onUnbindGuideY ?? props.onUnbind)() : set({ guideY, y: 0, vAnchor: guideY === "bottom" ? "bottom" : "top" })}
+            label="Vertical guide" value={guideOf(layer.guideY)}
+            options={V_GUIDES}
+            badge={badge(["guideY", "vAnchor"], "Vertical guide")}
+            onChange={(guideY) => set({ guideY, y: 0, vAnchor: guideY === "bottom" ? "bottom" : "top" })}
           />
-          {(!layer.guideY || layer.guideY === "none") && <Segmented
-            label="Edge" value={layer.vAnchor ?? "top"} options={EDGES}
-            badge={badge(["vAnchor"], "Edge")}
-            onChange={(vAnchor) => set({ vAnchor })}
-          />}
         </>
       )}
       {!binding ? (
@@ -697,7 +691,7 @@ export function LayerInspector(props: {
   onChange: (patch: DeepPartial<Layer>) => void;
   onReset: (path: string) => void;
   /** Unbind: the parent freezes the resolved coordinates before clearing the binding. */
-  onUnbind: () => void; onUnbindGuideY?: () => void; onUnbindX?: () => void; onBind?: (to: string, side: BindingSide) => void;
+  onUnbind: () => void; onBind?: (to: string, side: BindingSide) => void;
   /** The kind's content editor (rich text, image drop, code value), built by
    *  the parent and rendered under the header. */
   content?: ReactNode;
@@ -761,7 +755,7 @@ export function LayerInspector(props: {
         </div>
       )}
 
-      <Position layer={layer} layerNames={props.layerNames} onUnbind={props.onUnbind} onUnbindGuideY={props.onUnbindGuideY} onUnbindX={props.onUnbindX} onBind={props.onBind} {...ctx} />
+      <Position layer={layer} layerNames={props.layerNames} onUnbind={props.onUnbind} onBind={props.onBind} {...ctx} />
 
       {layer.kind === "text" && <TextGeometry layer={layer} fontFamily={props.fontFamily} {...ctx} />}
       {layer.kind === "image" && <ImageGeometry layer={layer} {...ctx} />}

@@ -12,14 +12,18 @@ export interface GuideLines {
   left: number; center: number; right: number; top: number; bottom: number;
 }
 
+/** How far along the box (0 = left/top edge, 0.5 = middle, 1 = right/bottom
+ *  edge) an anchor sits — the one place the anchor names become numbers. */
+export function anchorFraction(a: Anchor | "top" | "middle" | "bottom"): 0 | 0.5 | 1 {
+  return a === "left" || a === "top" ? 0 : a === "center" || a === "middle" ? 0.5 : 1;
+}
+
 export function anchoredX(p: LayerPosition, w: number, g: GuideLines): number {
-  if (p.anchor === "left") return g.left + p.offsetX;
-  if (p.anchor === "center") return g.center - w / 2 + p.offsetX;
-  return g.right - w + p.offsetX;
+  return g[p.anchor] - anchorFraction(p.anchor) * w + p.offsetX;
 }
 
 export function anchoredY(p: LayerPosition, h: number, g: GuideLines): number {
-  return p.vAnchor === "top" ? g.top + p.offsetY : g.bottom - h + p.offsetY;
+  return g[p.vAnchor] - anchorFraction(p.vAnchor) * h + p.offsetY;
 }
 
 export function positionFromDrag(

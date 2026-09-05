@@ -65,6 +65,7 @@ export const SAFE = {
   right: MEASURED_BLEED + TRIM.w - DEFAULT_MARGIN_PT,
   top: MEASURED_BLEED + DEFAULT_MARGIN_PT,
   bottom: MEASURED_BLEED + TRIM.h - DEFAULT_MARGIN_PT,
+  center: MEASURED_BLEED + TRIM.w / 2,
 };
 
 export const PAGE = { w: TRIM.w + 2 * BLEED, h: TRIM.h + 2 * BLEED };

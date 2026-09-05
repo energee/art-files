@@ -115,6 +115,15 @@ it("anchors left/right edges independently of vertical anchors as size and guide
   expect(resized.get("b")).toMatchObject({ x: 355, y: 236, w: 120, h: 60 });
 });
 
+it("a center horizontal guide keeps the box centered as it grows", () => {
+  const layers = [text({ id: "a", x: 4, y: 0, anchor: "center", guideX: "center", guideY: "top" })];
+  const g = { top: 20, bottom: 300, left: 30, center: 265, right: 500 };
+  const box = placeLayers(layers, () => ({ w: 100, h: 10 }), g).get("a")!;
+  expect(box.x + box.w / 2).toBe(269);
+  const grown = placeLayers(layers, () => ({ w: 200, h: 10 }), g).get("a")!;
+  expect(grown.x + grown.w / 2).toBe(269);
+});
+
 it("binds facing edges on all four sides and follows growing neighbors through chains", () => {
   const a = text({ id: "a", x: 200, y: 200, anchor: "center", vAnchor: "bottom" });
   const sides = ["top", "left", "right", "bottom"] as const;

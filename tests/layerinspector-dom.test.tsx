@@ -130,12 +130,6 @@ describe("LayerInspector position", () => {
     expect(onChange).toHaveBeenLastCalledWith({ y: 12 });
   });
 
-  it("the anchor segmented control emits { anchor }", () => {
-    const { onChange } = render(text());
-    click(byLabel("Anchor right")!);
-    expect(onChange).toHaveBeenLastCalledWith({ anchor: "right" });
-  });
-
   it("the rotation toggle emits { rotation: 90 } and back to 0", () => {
     const { onChange } = render(text());
     click(byLabel("Rotate 90°")!);
@@ -314,34 +308,21 @@ describe("LayerInspector override badges", () => {
   });
 });
 
-it("anchors to a guide and can detach without losing placement", () => {
+it("one control per axis: picking a guide anchors that edge on it with offset 0", () => {
   const { onChange } = render(text());
   click(byLabel("Anchor to middle guide")!);
   expect(onChange).toHaveBeenLastCalledWith({ guideY: "middle", y: 0, vAnchor: "top" });
   click(byLabel("Anchor to bottom guide")!);
   expect(onChange).toHaveBeenLastCalledWith({ guideY: "bottom", y: 0, vAnchor: "bottom" });
-  const { onUnbind } = render(text({ guideY: "bottom", y: -5, vAnchor: "bottom" }));
-  expect(byLabel("Y places the top edge")).toBeNull();
-  click(byLabel("Detach from guide")!);
-  expect(onUnbind).toHaveBeenCalledOnce();
-});
-
-it("offers left/right guide bindings and a detach action", () => {
-  const { onChange } = render(text());
   click(byLabel("Anchor to left guide")!);
   expect(onChange).toHaveBeenLastCalledWith({ guideX: "left", x: 0, anchor: "left" });
+  click(byLabel("Anchor to center guide")!);
+  expect(onChange).toHaveBeenLastCalledWith({ guideX: "center", x: 0, anchor: "center" });
   click(byLabel("Anchor to right guide")!);
   expect(onChange).toHaveBeenLastCalledWith({ guideX: "right", x: 0, anchor: "right" });
-  const onUnbindX = vi.fn();
-  render(text({ guideX: "right", x: -5 }), { onUnbindX });
-  click(byLabel("Detach from horizontal guide")!);
-  expect(onUnbindX).toHaveBeenCalledOnce();
-});
-
-it("detaches a vertical guide without clearing a horizontal layer binding", () => {
-  const onUnbindGuideY = vi.fn();
-  const { onUnbind } = render(text({ binding: { to: "description", side: "left", gap: 5 }, guideY: "top" }), { onUnbindGuideY });
-  click(byLabel("Detach from guide")!);
-  expect(onUnbindGuideY).toHaveBeenCalledOnce();
-  expect(onUnbind).not.toHaveBeenCalled();
+  // The old anchor / edge / detach controls are gone.
+  expect(byLabel("Anchor right")).toBeNull();
+  expect(byLabel("Y places the top edge")).toBeNull();
+  expect(byLabel("Detach from guide")).toBeNull();
+  expect(byLabel("Detach from horizontal guide")).toBeNull();
 });

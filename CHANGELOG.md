@@ -3,6 +3,22 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.57] - 2026-09-05
+
+- The inspector's Position section now has one control per axis: Horizontal
+  guide (left / center / right) and Vertical guide (top / middle / bottom).
+  Picking a guide snaps that edge of the layer onto it and turns X / Y into
+  offsets from the guide. The separate Anchor, Edge and Detach controls are
+  gone; a center guide is new. Layers positioned by an absolute X / Y still
+  load and draw exactly as before, showing no guide until one is chosen.
+
+- Layers can be resized on the preview from any corner or side of the
+  selection frame: the grabbed edge follows the pointer and the opposite
+  edge stays put. Images and barcodes stretch freely; hold shift to keep
+  their proportions. QR codes always scale uniformly. Text layers resize
+  their wrap width only, since type size is set in the inspector. Escape cancels a resize in
+  progress, and the whole drag is one undo step.
+
 ## [0.1.56] - 2026-09-05
 
 - Label Lab now quietly re-checks for a new release whenever its window regains
