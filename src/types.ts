@@ -31,6 +31,13 @@ export interface Style {
    *  to every text element; the logo and the two codes have no glyphs of
    *  their own to space (the barcode's digits are fixed geometry). */
   letterSpacing?: number;
+  /** Renders every run uppercase without touching the stored text, so a
+   *  filler still types (and the QR's {name|slug} still reads) the typed
+   *  case. Lives in Style — not on the text layer — because Style is the
+   *  master-sets-it / label-overrides-it channel: a master authors it, a
+   *  label turns it off through the ordinary `style.uppercase` override.
+   *  Text only; the codes and the logo have no glyphs of their own. */
+  uppercase?: boolean;
 }
 
 export interface StyledLine extends Style {
