@@ -69,7 +69,7 @@ export function pdfMeasure(): Promise<MeasureFace> {
 export interface LolevOpts {
   /** Variants to enable (e.g. ["collab"]). */
   variants?: string[];
-  /** Values into fillable layers, by layer id. */
+  /** Label values into layers, by layer id. */
   values?: Record<string, LayerValue>;
   /** Label-level overrides by layer id (also how a test sets the page
    *  assets: `{ background: { asset: "tex" } }`). */

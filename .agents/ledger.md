@@ -414,3 +414,11 @@ no status, no attempts, no delta.
 - status: open
 - attempts: 0/3
 - depends-on: native-desktop-files
+
+## 2026-09-05 label-owns-edits
+- finding: [KISS/med] src/model/layers.ts — the per-layer `fillable` flag decided by a hidden property whether an edit landed in the master or the .label
+- status: done
+- attempts: 1/3
+- delta: flag removed; the master is the placeholder and every edit (content, position, style, policy) lands in the .label through model/edit.ts applyDocEdit; the Layers header's Edit master toggle sends edits to the master (or the variant that adds the layer) instead; resolver fills any layer's value; plan in docs/plans/label-owns-edits.md
+- write-path: src/model, src/App.tsx, src/components/LayerList.tsx, src/components/LayerInspector.tsx, tests
+- acceptance: tests/model-edit.test.ts applyDocEdit; tests/app-v3-dom.test.tsx "edits land in the .label until Edit master is on"
