@@ -1,7 +1,8 @@
 // src/model/resolveLayers.ts — the v3 resolver (spec 2026-09-04: Resolution).
 // master.layers → deep-merge each enabled variant's diff in enable order
 // (an id the master lacks appends a whole layer) → the label's overrides →
-// the label's values into fillable layers → format refs in barcode/qr
+// the label's values into their layers (any id the master resolves) →
+// format refs in barcode/qr
 // values expanded over the text layers' plain text → layers with
 // enabled === false dropped. Pure and synchronous. Relative `y` bindings
 // are NOT resolved here: that needs measured heights and is the renderer's
@@ -14,7 +15,7 @@ import { parseRuns } from "../description";
 
 type Result = { layer: Layer } | { error: string };
 
-/** One value into one fillable layer, validated per kind. A string on a
+/** One value into one layer, validated per kind. A string on a
  *  text layer is one plain line in the layer's style — what the number and
  *  code widgets write. */
 function applyValue(l: Layer, v: LayerValue): Result {
@@ -79,7 +80,7 @@ export function resolveLayers(
   for (const [id, p] of Object.entries(overrides ?? {})) patch(id, p, "Label");
   for (const [id, v] of Object.entries(values)) {
     const i = layers.findIndex((l) => l.id === id);
-    if (i < 0 || !layers[i].fillable) continue; // dormant, not an error
+    if (i < 0) continue; // dormant, not an error
     const r = applyValue(layers[i], v);
     if ("error" in r) errors[id] = r.error;
     else layers[i] = r.layer;
@@ -95,9 +96,6 @@ export function resolveLayers(
   return { layers: opts.keepDisabled ? layers : layers.filter((l) => l.enabled !== false), warnings, errors };
 }
 
-/** The Fill-mode list: fillable layers in draw order. */
-export const fillableLayers = (layers: Layer[]): Layer[] => layers.filter((l) => l.fillable);
-
-/** A layer's fillable content, in the shape a .label stores it. */
+/** A layer's content, in the shape a .label stores it. */
 export const valueOf = (layer: Layer): LayerValue =>
   layer.kind === "text" ? layer.lines : layer.kind === "image" ? layer.asset : layer.value;

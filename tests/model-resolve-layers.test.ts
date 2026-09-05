@@ -1,10 +1,10 @@
 // model-resolve-layers.test.ts — the v3 resolver: master layers + enabled
-// variant diffs (enable order) + label overrides + fillable values → the
+// variant diffs (enable order) + label overrides + label values → the
 // layer list the renderer measures and places. No relative-y resolution
 // here (that needs measured heights); format refs in barcode/qr values
 // expand over the text layers' plain text.
 import { describe, expect, it } from "vitest";
-import { fillableLayers, resolveLayers, valueOf } from "../src/model/resolveLayers";
+import { resolveLayers, valueOf } from "../src/model/resolveLayers";
 import { lolevMaster } from "../src/model/lolevLayers";
 import type {
   BarcodeLayer, ImageLayer, Layer, QrLayer, TextLayer, TextLine,
@@ -125,10 +125,11 @@ describe("resolveLayers", () => {
     expect(r.errors.collabLeft).toMatch(/image/i);
   });
 
-  it("values for non-fillable or unknown layers are ignored", () => {
+  it("a value applies to any known layer; unknown ids are ignored", () => {
     const r = resolveLayers(lolevMaster(), [], { wordmark: [line("X")], nope: "x" });
     expect(r.errors).toEqual({});
-    expect(byId<TextLayer>(r.layers, "wordmark").lines).toEqual(byId<TextLayer>(lolevMaster().layers, "wordmark").lines);
+    expect(r.warnings).toEqual([]);
+    expect(byId<TextLayer>(r.layers, "wordmark").lines).toEqual([line("X")]);
   });
 
   it("the qr value expands {name|slug} from the filled name, markers stripped", () => {
@@ -161,12 +162,7 @@ describe("resolveLayers", () => {
   });
 });
 
-describe("fillableLayers / valueOf", () => {
-  it("lists the fillable layers in draw order", () => {
-    const r = resolveLayers(lolevMaster(), ["collab"], {});
-    expect(fillableLayers(r.layers).map((l) => l.id))
-      .toEqual(["abv", "description", "name", "styleLine", "barcode", "collabLeft", "collabCenter"]);
-  });
+describe("valueOf", () => {
   it("reads each kind's content", () => {
     const r = resolveLayers(lolevMaster(), ["collab"], { name: [line("P")], collabLeft: "a1" });
     expect(valueOf(byId(r.layers, "name"))).toEqual([line("P")]);
