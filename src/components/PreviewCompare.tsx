@@ -23,6 +23,7 @@ import type { Face } from "@/plan";
 import { positionFromDrag, type GuideLines } from "@/model/position";
 import type { ResizeHandle } from "@/model/edit";
 import type { Layer, TextLayer, TextLine } from "@/model/layers";
+import { uppercaseOf } from "@/model/layers";
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from "@/components/ui/resizable";
@@ -183,7 +184,7 @@ function InPlaceRichField(props: {
   );
   const { rootRef, caret, toggle, toggleHeader, fieldProps } = useTextField({
     lines: layer.lines, onChange: onApply, base: layer.style, multiline: true,
-    uppercase: layer.uppercase, paint,
+    uppercase: uppercaseOf(layer), paint,
   });
 
   // Focus with the caret at the end once on open — the hook's seed effect
@@ -658,6 +659,9 @@ export const PreviewCompare = forwardRef<
   return (
     <div
       ref={pageElement}
+      // The pasteboard around this sheet belongs to the pane, not to us: the
+      // pane's own click handler deselects when a click misses this box.
+      data-slot="label-sheet"
       className="relative m-auto w-full overflow-hidden border border-border bg-input"
       style={{
         // Width cap in the style object, not the class list, so the 3D scene
@@ -848,7 +852,7 @@ export const PreviewCompare = forwardRef<
                 style={{
                   width: fieldWidth,
                   textAlign: layer.align === "center" ? "center" : layer.align === "right" ? "right" : "left",
-                  textTransform: layer.uppercase ? "uppercase" : undefined,
+                  textTransform: uppercaseOf(layer) ? "uppercase" : undefined,
                 }}
               />
               {layer.suffix && (

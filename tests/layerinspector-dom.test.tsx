@@ -139,6 +139,13 @@ describe("LayerInspector position", () => {
     expect(onChange).toHaveBeenLastCalledWith({ rotation: 0 });
   });
 
+  it("offers no rotation toggle on an image layer — no backend rotates raster art", () => {
+    render(image());
+    expect(byLabel("Rotate 90°")).toBeNull();
+    render(qr());
+    expect(byLabel("Rotate 90°")).not.toBeNull();
+  });
+
   it.each(["top", "left", "right", "bottom"] as const)("binds to the %s of another layer", (side) => {
     const { onBind } = render(text());
     const trigger = Array.from(container.querySelectorAll("button"))
@@ -199,7 +206,7 @@ describe("LayerInspector geometry follows the kind", () => {
     click(byLabel("Align left")!);
     expect(onChange).toHaveBeenLastCalledWith({ align: "left" });
     click(byLabel("Uppercase")!);
-    expect(onChange).toHaveBeenLastCalledWith({ uppercase: true });
+    expect(onChange).toHaveBeenLastCalledWith({ style: { uppercase: true } });
   });
 
   it("text: a cleared wrap width emits { width: undefined }", () => {

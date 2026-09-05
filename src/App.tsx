@@ -43,6 +43,7 @@ import { useHistory } from "@/history";
 import type {
   ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master, TextLine,
 } from "@/model/layers";
+import { uppercaseOf } from "@/model/layers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, labelOverriddenPaths,
@@ -1662,7 +1663,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       return (
         <TextEditor id={id} label="Text" lines={layer.lines} base={layer.style}
           onChange={(lines) => setContent(layer, lines, true)}
-          multiline={true} uppercase={layer.uppercase} placeholder={layer.placeholder}
+          multiline={true} uppercase={uppercaseOf(layer)} placeholder={layer.placeholder}
           input={layer.input} min={layer.min} max={layer.max} symbology={layer.symbology}
           suffix={layer.suffix} />
       );
@@ -1685,16 +1686,46 @@ export const DocumentEditor = memo(function DocumentEditor({
         onFile={(f) => onLayerImage(layer, f).catch((err) => setBuildError(`Could not load image: ${errMsg(err)}`))}
         onClear={() => void onLayerImage(layer, null)} />;
     }
+    // A code layer edits its TEMPLATE (`format`, stashed by resolveLayers when
+    // the value carried {ref}s), never the expansion — typing into the
+    // expansion would bake today's beer name into the master. `value` is the
+    // template verbatim whenever there are no refs to expand.
+    const template = layer.format ?? layer.value;
+    // Every text layer is injectable: its id is the token, its name is the
+    // chip. Chips append, which is predictable without cursor tracking.
+    const tokens = rows
+      .map((r) => r.layer)
+      .filter((l) => l.kind === "text")
+      .map((l) => ({ id: l.id, name: l.name }));
     return (
       <div className="space-y-1">
         <Label htmlFor={id} className="text-xs text-muted-foreground">
-          {layer.kind === "barcode" ? "Code" : "Payload"}
+          {layer.kind === "barcode" ? "Code" : "Value"}
         </Label>
-        <Input id={id} className="h-7 font-mono text-xs" value={layer.value}
-          placeholder={layer.kind === "qr" ? "https://… or {name|slug}" : "digits"}
+        <Input id={id} className="h-7 font-mono text-xs" value={template}
+          placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : "digits"}
           aria-invalid={errors[layer.id] ? true : undefined}
           onChange={(e) => setContent(layer, e.target.value, true)} />
         {errors[layer.id] && <p className="text-xs text-destructive">{errors[layer.id]}</p>}
+        {layer.format !== undefined && (
+          <p className="truncate font-mono text-[11px] text-muted-foreground" title={layer.value}>
+            → {layer.value}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-1 pt-0.5">
+          <span className="text-[11px] text-muted-foreground">Insert:</span>
+          {tokens.map((t) => (
+            <button key={t.id} type="button" title={`{${t.id}}`}
+              className="rounded border border-input px-1 text-[11px] leading-4 text-muted-foreground hover:bg-accent"
+              onClick={() => setContent(layer, `${template}{${t.id}}`)}>
+              {t.name}
+            </button>
+          ))}
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          Add <code>|slug</code>, <code>|upper</code>, <code>|lower</code> or <code>|trim</code>
+          {" "}inside a token to transform it.
+        </p>
       </div>
     );
   }
@@ -1766,9 +1797,30 @@ export const DocumentEditor = memo(function DocumentEditor({
         <section className="flex min-w-0 flex-1 flex-col">
           <div
             ref={previewPane}
+            // The inspector sheet is non-modal and portals over the window,
+            // so nothing reflows for it on its own: give the pane a margin
+            // the width of the sheet while it is open and the label — which
+            // is `m-auto` inside — recentres itself in what is left. Keeping
+            // it a MARGIN rather than padding also keeps this element's
+            // rect equal to the visible area, which is what clampView pans
+            // against. Width must match SheetContent's w-[300px] below.
             className={cn("relative flex min-h-0 flex-1 overflow-hidden border-l border-sidebar-border",
+              "transition-[margin] duration-200",
+              active && inspected && "mr-[300px]",
               panning && "cursor-grabbing")}
             onContextMenu={(e) => viewMode === "2d" && e.preventDefault()}
+            // Clicking the pasteboard — the pane around the label sheet —
+            // deselects, which is what closes the inspector (its `open` is
+            // derived from the selection). The sheet's own misses already
+            // deselect via PreviewCompare's hit test; this covers the gap
+            // outside it. Panning is right-button only, so a left click here
+            // is never the tail of a drag.
+            onClick={(e) => {
+              if (viewMode !== "2d") return;
+              const t = e.target;
+              if (t instanceof Element
+                && !t.closest('[data-slot="label-sheet"],[data-slot="rulers"]')) clearSelection();
+            }}
             onPointerDown={onPanStart}
             onPointerMove={onPanMove}
             onPointerUp={onPanEnd}

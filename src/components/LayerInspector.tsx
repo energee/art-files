@@ -30,7 +30,7 @@ import {
   Barcode, Image, Link2, Link2Off, QrCode, RotateCcw, TextAlignCenter, TextAlignEnd,
   TextAlignJustify, TextAlignStart, Type, WholeWord, type LucideIcon,
 } from "lucide-react";
-import { bindingOf, guideOf } from "@/model/layers";
+import { bindingOf, guideOf, uppercaseOf } from "@/model/layers";
 import type {
   BindingSide, BarcodeLayer, ImageLayer, Layer, LayerKind, QrLayer, Symbology, TextLayer,
 } from "@/model/layers";
@@ -353,6 +353,11 @@ function Position(props: Ctx & {
           </Button>
         </>
       )}
+      {/* Image layers are the one kind no backend rotates: raster art places
+          as a bare rect with no transform, so honoring it would mean adding
+          one to all three backends. Hide the control rather than ship a
+          toggle that silently does nothing. */}
+      {layer.kind !== "image" && (
       <Field label="Rotation" badge={badge(["rotation"], "Rotation")}>
         <Toggle
           size="sm" variant="outline"
@@ -365,6 +370,7 @@ function Position(props: Ctx & {
           <RotateCcw className="size-3.5" /> 90°
         </Toggle>
       </Field>
+      )}
     </div>
   );
 }
@@ -411,11 +417,6 @@ function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: string }) {
         value={layer.width} min={1} max={2000} step={PT.step}
         badge={badge(["width"], "Wrap width")}
         onChange={(width) => set({ width })}
-      />
-      <SwitchRow
-        label="Uppercase" checked={!!layer.uppercase}
-        badge={badge(["uppercase"], "Uppercase")}
-        onChange={(uppercase) => set({ uppercase })}
       />
     </div>
   );
@@ -623,6 +624,14 @@ function StyleSection(props: Ctx & { layer: Layer }) {
               onChange={(letterSpacing) => setStyle({ letterSpacing })}
             />
           </Row>
+          {/* A display transform, not an edit: the stored text keeps its
+              typed case, which is what lets the QR's {name|slug} still read
+              it. Legacy masters author it one level up, hence uppercaseOf. */}
+          <SwitchRow
+            label="Uppercase" checked={uppercaseOf(layer)}
+            badge={badge(["style.uppercase", "uppercase"], "Uppercase")}
+            onChange={(uppercase) => setStyle({ uppercase })}
+          />
         </div>
       )}
 
@@ -711,13 +720,13 @@ export function LayerInspector(props: {
   const page = layer.kind === "image" && (layer.role === "background" || layer.role === "mask");
 
   return (
-    <div className="space-y-1 p-3">
-      <div className="flex items-center gap-1.5">
+    <div className="space-y-1 px-4 py-3">
+      <div className="flex items-center gap-2">
         <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <Input
           id={`${layer.id}-name`}
           aria-label="Layer name"
-          className="h-6 flex-1 text-xs font-medium"
+          className="h-7 flex-1 text-xs font-medium"
           value={nameText ?? layer.name}
           onChange={(e) => {
             const v = e.target.value;
@@ -727,25 +736,22 @@ export function LayerInspector(props: {
           onBlur={() => setNameText(null)}
         />
       </div>
-      <div className="flex items-center justify-between gap-2 pt-1">
-        <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
-          <Switch aria-label="Enabled" checked={layer.enabled}
+      {/* The three policy switches read as ordinary Fields (label left,
+          control right) like every other row in the panel — crowded onto one
+          line they looked like a toolbar, which they are not. */}
+      <div className="space-y-1.5 pt-2">
+        <Field id={`${layer.id}-enabled`} label="Enabled" badge={badge(["enabled"], "Enabled")}>
+          <Switch id={`${layer.id}-enabled`} aria-label="Enabled" checked={layer.enabled}
             onCheckedChange={(on) => set({ enabled: on === true })} />
-          Enabled
-          {badge(["enabled"], "Enabled")}
-        </label>
-        <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
-          <Switch aria-label="Locked" checked={!!layer.locked}
+        </Field>
+        <Field id={`${layer.id}-locked`} label="Locked" badge={badge(["locked"], "Locked")}>
+          <Switch id={`${layer.id}-locked`} aria-label="Locked" checked={!!layer.locked}
             onCheckedChange={(on) => set({ locked: on === true })} />
-          Locked
-          {badge(["locked"], "Locked")}
-        </label>
-        <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
-          <Switch aria-label="Fillable" checked={!!layer.fillable}
+        </Field>
+        <Field id={`${layer.id}-fillable`} label="Fillable" badge={badge(["fillable"], "Fillable")}>
+          <Switch id={`${layer.id}-fillable`} aria-label="Fillable" checked={!!layer.fillable}
             onCheckedChange={(on) => set({ fillable: on === true })} />
-          Fillable
-          {badge(["fillable"], "Fillable")}
-        </label>
+        </Field>
       </div>
 
       {props.content !== undefined && (
