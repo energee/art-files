@@ -7,6 +7,16 @@ binary-impacting change gets its own version before it is merged.
 
 - Show “Up-to-date” with a circular checkmark icon in the update status.
 
+- Polish the update dialog: show the version jump (current → new) under the
+  title, label the release notes “What's new”, and keep wrapped changelog
+  bullets on one item. Install closes the dialog and shows a spinner with the
+  download percentage in the lower status bar.
+
+- Install updates without an immediate restart: the status bar then offers
+  “Restart to finish”, and the macOS Label Lab menu's “Check for Updates…”
+  becomes “Restart to Update”. Windows still restarts during install, since its
+  installer closes the app.
+
 - Make layer reordering smoother by updating its indicator only when the drop
   position changes. Moving guides reuses loaded images, and preview drawing,
   hit testing, and selection outlines share measured layer positions.

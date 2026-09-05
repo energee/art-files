@@ -13,7 +13,8 @@ import type { Layer as PsdLayer } from "ag-psd";
 import type { Assets } from "../src/pdf/build";
 import type { PsdAssets } from "../src/psd/build";
 import type { MeasureFace, PlanAssets } from "../src/plan";
-import { planLayers, type PlacedLayer } from "../src/planLayers";
+import { layerBoxes, planLayers, type PlacedLayer } from "../src/planLayers";
+import { hitBoxesFromLayout, type LayerBox } from "../src/hittestLayers";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { resolveLayers } from "../src/model/resolveLayers";
 import type { Layer, LayerValue, Master } from "../src/model/layers";
@@ -132,4 +133,9 @@ export function configLayers(cfg: LabelConfig): Layer[] {
 
 export async function configPlan(cfg: LabelConfig): Promise<PlacedLayer[]> {
   return planLayers(configLayers(cfg), await pdfMeasure(), { logoSvg });
+}
+
+/** Test-side convenience: the hit box of one layer from a fresh layout. */
+export function boxOfLayer(id: string, layers: Layer[], m: MeasureFace, assets: PlanAssets): LayerBox | null {
+  return hitBoxesFromLayout(layers, layerBoxes(layers, m, assets)).find((b) => b.id === id) ?? null;
 }

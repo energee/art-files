@@ -1,12 +1,12 @@
-// DesktopUpdater.tsx — checks signed Tauri releases and installs one only
-// after the operator accepts the restart.
+// DesktopUpdater.tsx — checks signed Tauri releases, installs one in place
+// with progress in the status bar, and relaunches when the operator chooses
+// (Windows' installer closes the app itself, so it relaunches during install).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Download } from "lucide-react";
+import { Download, RotateCw } from "lucide-react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { DownloadEvent, Update } from "@tauri-apps/plugin-updater";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -22,10 +22,12 @@ type CheckResult =
 type Status =
   | { kind: "idle" }
   | { kind: "checking" }
-  | { kind: "available"; version: string; body?: string; date?: string }
+  | { kind: "available"; version: string; currentVersion: string; body?: string; date?: string }
   | { kind: "current" }
   | { kind: "disabled" }
   | { kind: "downloading"; version: string; downloaded: number; total?: number }
+  /** Installed on disk; the running process is still the old version until relaunch. */
+  | { kind: "installed"; version: string }
   | { kind: "error"; message: string };
 
 async function checkForUpdate(): Promise<CheckResult> {
@@ -41,43 +43,41 @@ async function checkForUpdate(): Promise<CheckResult> {
   }
 }
 
-// Release bodies arrive as markdown-ish text from the release feed. Classify
-// each line so the dialog can style headings and bullets without a markdown
-// dependency. ponytail: headings and bullets only; add a renderer if release
-// notes ever use links or emphasis.
+// Release bodies arrive as markdown-ish text from the release feed (the
+// CHANGELOG section, whose bullets wrap at 80 columns). Classify each line so
+// the dialog can style headings and bullets without a markdown dependency;
+// an indented line after a bullet is that bullet's continuation.
+// ponytail: headings and bullets only; add a renderer if release notes ever
+// use links or emphasis.
 const HEADING_RE = /^#{1,6}\s+(.*)/;
 const BULLET_RE = /^[-*]\s+(.*)/;
 
 export function releaseNoteLines(body: string) {
-  return body
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line): { kind: "heading" | "bullet" | "text"; text: string } => {
-      const heading = HEADING_RE.exec(line);
-      if (heading) return { kind: "heading", text: heading[1] };
-      const bullet = BULLET_RE.exec(line);
-      if (bullet) return { kind: "bullet", text: bullet[1] };
-      return { kind: "text", text: line };
-    });
+  const out: { kind: "heading" | "bullet" | "text"; text: string }[] = [];
+  for (const raw of body.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const heading = HEADING_RE.exec(line);
+    const bullet = BULLET_RE.exec(line);
+    const last = out.at(-1);
+    if (heading) out.push({ kind: "heading", text: heading[1] });
+    else if (bullet) out.push({ kind: "bullet", text: bullet[1] });
+    else if (last?.kind === "bullet" && /^\s/.test(raw)) last.text += ` ${line}`;
+    else out.push({ kind: "text", text: line });
+  }
+  return out;
 }
 
 const NOTE_CLASS = {
   heading: "pt-1.5 font-semibold first:pt-0",
-  bullet: "pl-3 text-muted-foreground before:mr-1.5 before:content-['•']",
+  bullet: "relative pl-3 text-muted-foreground before:absolute before:left-0 before:content-['•']",
   text: "text-muted-foreground",
 } as const;
 
-function formatMB(bytes: number) {
-  return `${(bytes / 1_048_576).toFixed(1)} MB`;
-}
-
-/** Percentage and human-readable label for the download in flight; undefined
- *  until the release's size is known. */
-function downloadProgress(downloaded: number, total?: number) {
-  if (!total) return undefined;
-  const pct = Math.min(100, Math.round(downloaded / total * 100));
-  return { pct, label: `${formatMB(downloaded)} of ${formatMB(total)} · ${pct}%` };
+/** Whole-number percent of the download in flight; undefined until the
+ *  release's size is known. */
+function downloadPct(downloaded: number, total?: number) {
+  return total ? Math.min(100, Math.round(downloaded / total * 100)) : undefined;
 }
 
 function releaseUpdate(update: Update) {
@@ -86,7 +86,17 @@ function releaseUpdate(update: Update) {
   });
 }
 
-export function DesktopUpdater(props: { dirty: boolean; checkRequest: number; statusHost?: HTMLElement | null }) {
+// Windows hands the download to the NSIS installer, which closes Label Lab
+// itself, so "install now, restart later" only exists on macOS and Linux.
+const INSTALL_EXITS_APP = /Windows/.test(navigator.userAgent);
+
+export function DesktopUpdater(props: {
+  dirty: boolean;
+  checkRequest: number;
+  statusHost?: HTMLElement | null;
+  /** Fires with the version once an update is installed and awaiting a relaunch. */
+  onInstalled?: () => void;
+}) {
   const desktop = isTauri();
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
@@ -123,6 +133,7 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number; st
       setStatus({
         kind: "available",
         version: result.update.version,
+        currentVersion: result.update.currentVersion,
         body: result.update.body,
         date: result.update.date,
       });
@@ -155,6 +166,8 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number; st
 
   // macOS Label Lab menu → Check for Updates… requests a visible result even
   // when the current version is already latest or this is a local build.
+  // Once an update is installed the same item reads "Restart to Update" and
+  // opens the restart confirmation instead (updateRef stays set until then).
   useEffect(() => {
     if (!desktop || props.checkRequest === lastRequestRef.current) return;
     lastRequestRef.current = props.checkRequest;
@@ -165,9 +178,8 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number; st
   }, [desktop, performCheck, present, props.checkRequest]);
 
   const dismiss = () => {
-    if (status.kind === "downloading") return;
     setOpen(false);
-    if (status.kind !== "available" && status.kind !== "current") setStatus({ kind: "idle" });
+    if (!["available", "current", "installed"].includes(status.kind)) setStatus({ kind: "idle" });
   };
 
   const install = async () => {
@@ -181,31 +193,37 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number; st
       if (event.event === "Progress") downloaded += event.data.chunkLength;
       if (event.event === "Finished" && total !== undefined) downloaded = total;
       // Chunk events arrive many times a second; re-render only when the
-      // visible percent moves so the bar's width transition can play out.
-      const pct = downloadProgress(downloaded, total)?.pct ?? -1;
+      // status-bar percentage actually changes.
+      const pct = downloadPct(downloaded, total) ?? -1;
       if (event.event === "Progress" && pct === shownPct) return;
       shownPct = pct;
       setStatus({ kind: "downloading", version: update.version, downloaded, total });
     };
     setStatus({ kind: "downloading", version: update.version, downloaded: 0 });
+    setOpen(false); // progress shows in the status bar; the dialog returns only on error
     try {
       await update.downloadAndInstall(showProgress, { timeout: 120_000 });
-      await invoke("relaunch_app");
+      if (INSTALL_EXITS_APP) { await invoke("relaunch_app"); return; }
+      setStatus({ kind: "installed", version: update.version });
+      props.onInstalled?.();
     } catch (error) {
       dropUpdate();
       setStatus({ kind: "error", message: `Could not install the update: ${String(error)}` });
+      setOpen(true);
     }
   };
 
-  const download = status.kind === "downloading"
-    ? downloadProgress(status.downloaded, status.total)
-    : undefined;
+  const pct = status.kind === "downloading" ? downloadPct(status.downloaded, status.total) : undefined;
+  // The two clickable status-bar states share one button; only icon and label differ.
+  const barAction = status.kind === "available" ? { Icon: Download, label: "Update available", version: status.version }
+    : status.kind === "installed" ? { Icon: RotateCw, label: "Restart to finish", version: status.version }
+    : null;
   const releasedOn = status.kind === "available" && status.date
     ? ` · Released ${new Date(status.date).toLocaleDateString(undefined, {
         month: "short", day: "numeric", year: "numeric",
       })}`
     : "";
-  const busy = status.kind === "checking" || status.kind === "downloading";
+  const busy = status.kind === "checking";
 
   return (
     <>
@@ -219,14 +237,21 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number; st
         </span>,
         props.statusHost,
       )}
-      {desktop && props.statusHost && status.kind === "available" && createPortal(
+      {desktop && props.statusHost && barAction && createPortal(
         <span role="status">
           <Button variant="ghost" size="sm" className="h-6 gap-1.5 px-2 text-xs text-primary"
             onClick={() => setOpen(true)}>
-            <Download data-icon="inline-start" aria-hidden="true" />
-            Update available · {status.version}
+            <barAction.Icon data-icon="inline-start" aria-hidden="true" />
+            {barAction.label} · {barAction.version}
           </Button>
         </span>, props.statusHost,
+      )}
+      {desktop && props.statusHost && status.kind === "downloading" && createPortal(
+        <span role="status" aria-live="polite" className="inline-flex items-center gap-2 px-2 text-xs text-muted-foreground">
+          <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" aria-hidden />
+          {pct === 100 ? "Finishing…" : `Installing ${status.version}${pct === undefined ? "…" : ` · ${pct}%`}`}
+        </span>,
+        props.statusHost,
       )}
     <Dialog open={open}
       onOpenChange={(open) => { if (!open && !busy) dismiss(); }}>
@@ -234,15 +259,15 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number; st
         <DialogHeader>
           <DialogTitle>
             {status.kind === "available" && "Update available"}
-            {status.kind === "downloading" && `Installing Label Lab ${status.version}`}
+            {status.kind === "installed" && "Restart to finish updating"}
             {status.kind === "checking" && "Checking for updates"}
             {status.kind === "current" && "Label Lab is up to date"}
             {status.kind === "disabled" && "Updates are not configured"}
             {status.kind === "error" && "Update failed"}
           </DialogTitle>
           <DialogDescription>
-            {status.kind === "available" && `Label Lab ${status.version}${releasedOn}`}
-            {status.kind === "downloading" && "Keep Label Lab open while the update downloads."}
+            {status.kind === "available" && `${status.currentVersion} → ${status.version}${releasedOn}`}
+            {status.kind === "installed" && `Label Lab ${status.version} is installed and starts the next time the app opens.`}
             {status.kind === "checking" && (
               <span className="flex items-center gap-2">
                 <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" aria-hidden />
@@ -256,31 +281,31 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number; st
         </DialogHeader>
 
         {status.kind === "available" && status.body && (
-          <div className="max-h-40 space-y-1 overflow-y-auto rounded-md bg-muted p-3 text-xs">
-            {releaseNoteLines(status.body).map((line, i) => (
-              <p key={i} className={NOTE_CLASS[line.kind]}>{line.text}</p>
-            ))}
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">What's new</p>
+            <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-md bg-muted p-3 text-xs">
+              {releaseNoteLines(status.body).map((line, i) => (
+                <p key={i} className={NOTE_CLASS[line.kind]}>{line.text}</p>
+              ))}
+            </div>
           </div>
         )}
-        {status.kind === "available" && props.dirty && (
+        {(status.kind === "installed" || (status.kind === "available" && INSTALL_EXITS_APP)) && props.dirty && (
           <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
-            This label has unsaved changes. Choose Later and save it before restarting if you want
-            to keep those changes.
+            This label has unsaved changes. Restarting discards them, so choose Later and save first.
           </p>
-        )}
-        {status.kind === "downloading" && (
-          <div className="space-y-2" aria-live="polite">
-            <Progress value={download?.pct ?? null} />
-            <p className="text-xs text-muted-foreground">
-              {download?.label ?? "Downloading…"}
-            </p>
-          </div>
         )}
 
         {status.kind === "available" && (
           <DialogFooter>
             <Button variant="outline" onClick={dismiss}>Later</Button>
-            <Button onClick={() => void install()}>Install and Restart</Button>
+            <Button onClick={() => void install()}>{INSTALL_EXITS_APP ? "Install and Restart" : "Install"}</Button>
+          </DialogFooter>
+        )}
+        {status.kind === "installed" && (
+          <DialogFooter>
+            <Button variant="outline" onClick={dismiss}>Later</Button>
+            <Button onClick={() => void invoke("relaunch_app")}>Restart Now</Button>
           </DialogFooter>
         )}
         {(status.kind === "current" || status.kind === "disabled" || status.kind === "error") && (

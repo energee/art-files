@@ -15,7 +15,8 @@ import { lolevMaster } from "../model/lolevLayers";
 import { drawPlate } from "../canvas/draw";
 import { labelFontCss, loadLabelFont, loadLabelFaces } from "../fonts";
 import { defaultConfig } from "../defaults";
-import { boxesForLayers } from "../hittestLayers";
+import { hitBoxesFromLayout } from "../hittestLayers";
+import { layerBoxes } from "../planLayers";
 import { PAGE, previewRasterScale } from "../layout";
 import logoSvg from "../assets/logo2025.svg?raw";
 
@@ -77,9 +78,10 @@ async function run() {
   // descent, so this page has no box maths of its own to drift. Vector items
   // like the laurel come along for free: their strokes go through the same
   // stroker, so the same cavity question applies to their leaf tips.
-  const ids = [...new Set(plan.map((r) => r.id))];
+  const ids = new Set(plan.map((r) => r.id));
   const crops: Record<string, Crop> = {};
-  for (const b of boxesForLayers(ids, layers, mf, { logoSvg })) {
+  for (const b of hitBoxesFromLayout(layers, layerBoxes(layers, mf, { logoSvg }))) {
+    if (!ids.has(b.id)) continue;
     crops[b.id] = {
       x: b.x - PAD, y: b.y - PAD,
       w: b.w + 2 * PAD, h: b.h + 2 * PAD,

@@ -394,6 +394,8 @@ type DocumentEditorProps = {
   onNewTab: () => void;
   onCloseTab: () => void;
   onCheckForUpdates: () => void;
+  /** An update is installed and awaits a relaunch (relabels the app menu). */
+  updateInstalled?: boolean;
   /** Ref callback for the tab-strip host: the ACTIVE editor mounts an empty
    *  slot just under its menubar row and the shell portals the strip into it. */
   updateStatusHost?: (el: HTMLDivElement | null) => void;
@@ -406,7 +408,7 @@ type DocumentEditorProps = {
 // identity-stable props to inactive editors (see TabsShell's extrasFor).
 export const DocumentEditor = memo(function DocumentEditor({
   active, fileToOpen, onOpenSettled, onMeta, saveSlot, render, onRenderChange,
-  onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, tabStripHost, updateStatusHost,
+  onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, updateInstalled, tabStripHost, updateStatusHost,
 }: DocumentEditorProps) {
   // The document lives in a history stack, not plain useState — every edit
   // that goes through `edit` (all of them) is undoable, master and label
@@ -432,7 +434,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const chips = useMemo(() => variantChips(master, label), [master, label]);
   const [fillableOnly, setFillableOnly] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const guides = useMemo(() => guideLines(master), [master]);
+  const guides = useMemo(
+    () => guideLines({ physical: master.physical, guides: master.guides }),
+    [master.physical, master.guides]);
   const [texture, setTexture] = useState<(Loaded & { kind: "png" | "jpg" }) | null>(null);
   // srcBytes: the original upload — the bytes Save writes.
   const [mask, setMask] = useState<(Loaded & { error?: string; srcBytes: Uint8Array }) | null>(null);
@@ -912,7 +916,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Guide movement changes placement immediately, without decoding image bytes again.
   const canvasAssets = useMemo(() => decodedAssets ? {
     ...decodedAssets, planAssets: { ...decodedAssets.planAssets, guides },
-  } : null, [decodedAssets, guides.top, guides.bottom, guides.left, guides.right, guides.center]);
+  } : null, [decodedAssets, guides]);
   const bgOn = pageOn("background"), maskOn = pageOn("mask");
   useEffect(() => {
     if (blocked || !active) return;
@@ -1679,10 +1683,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onSelect={(id, mods) => pick(id, { shift: mods.shift, toggle: mods.meta })}
               onToggle={(id, prop, value) => patch(id, { [prop]: value })}
               onRename={(id, name) => patch(id, { name })}
-              onReorder={(id, delta) => editMaster((m) => {
-                for (let n = 0; n < Math.abs(delta); n++) m = moveLayer(m, id, delta > 0 ? 1 : -1);
-                return m;
-              })}
+              onReorder={(id, delta) => editMaster((m) => moveLayer(m, id, delta))}
               onAdd={onAddLayer} onRemove={onRemoveLayer}
               fillableOnly={fillableOnly} onFillableOnly={setFillableOnly}
               variants={chips} onToggleVariant={(id) => editLabel((l) => toggleVariant(l, id))} />
@@ -1694,7 +1695,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}
           {active && <AppMenu actions={commands} onNativeError={setBuildError}
-            onCheckForUpdates={onCheckForUpdates} checked={{
+            onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={{
             "view-label": viewMode === "2d" && split === 0,
             "view-mask": viewMode === "2d" && split === 100,
             "view-can": viewMode === "can",

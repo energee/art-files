@@ -12,7 +12,7 @@ vi.mock("@tauri-apps/plugin-updater", () => ({ check: mocks.check }));
 it("quietly advertises updates, keeps Later discoverable, and reuses the update across status-bar hosts", async () => {
   vi.useFakeTimers();
   mocks.invoke.mockResolvedValue(true);
-  const update = { version: "0.2.0", body: "- Improved labels", close: vi.fn().mockResolvedValue(undefined), downloadAndInstall: vi.fn() };
+  const update = { version: "0.2.0", currentVersion: "0.1.0", body: "- Improved labels", close: vi.fn().mockResolvedValue(undefined), downloadAndInstall: vi.fn() };
   mocks.check.mockResolvedValue(update);
   const container = document.createElement("div");
   const bar = document.createElement("div");
@@ -30,7 +30,9 @@ it("quietly advertises updates, keeps Later discoverable, and reuses the update 
     expect(bar.textContent).toContain("Update available · 0.2.0");
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     await act(async () => button("Update available").click());
-    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("unsaved changes");
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("0.1.0 → 0.2.0");
+    // Installing no longer restarts, so the unsaved-changes warning waits for the restart step.
+    expect(document.querySelector('[role="dialog"]')?.textContent).not.toContain("unsaved changes");
     await act(async () => button("Later").click());
     expect(update.close).not.toHaveBeenCalled();
     expect(update.downloadAndInstall).not.toHaveBeenCalled();
@@ -68,6 +70,73 @@ it("shows Up-to-date after the launch check and keeps it after closing a manual 
     const close = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Close")!;
     await act(async () => close.click());
     expect(bar.textContent?.trim()).toBe("Up-to-date");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove(); bar.remove();
+    vi.useRealTimers();
+  }
+});
+
+it("moves download progress into the status bar once Install is chosen", async () => {
+  vi.useFakeTimers();
+  mocks.invoke.mockResolvedValue(true);
+  let report: ((e: { event: string; data: Record<string, number> }) => void) | undefined;
+  const update = {
+    version: "0.2.0", currentVersion: "0.1.0", body: "- Improved labels", close: vi.fn().mockResolvedValue(undefined),
+    downloadAndInstall: vi.fn((cb: typeof report) => { report = cb; return new Promise<void>(() => {}); }),
+  };
+  mocks.check.mockResolvedValue(update);
+  const container = document.createElement("div");
+  const bar = document.createElement("div");
+  document.body.append(container, bar);
+  const root = createRoot(container);
+  const button = (text: string) => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes(text))!;
+  try {
+    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    await act(async () => button("Update available").click());
+    await act(async () => button("Install").click());
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(bar.textContent).toContain("Installing 0.2.0");
+    await act(async () => { report!({ event: "Started", data: { contentLength: 200 } }); });
+    await act(async () => { report!({ event: "Progress", data: { chunkLength: 100 } }); });
+    expect(bar.textContent).toContain("50%");
+    await act(async () => { report!({ event: "Finished", data: {} }); });
+    expect(bar.textContent).toContain("Finishing…");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove(); bar.remove();
+    vi.useRealTimers();
+  }
+});
+
+it("installs without relaunching, then offers Restart to finish from the status bar", async () => {
+  vi.useFakeTimers();
+  mocks.invoke.mockResolvedValue(true);
+  const onInstalled = vi.fn();
+  const update = {
+    version: "0.2.0", currentVersion: "0.1.0", body: "- Improved labels", close: vi.fn().mockResolvedValue(undefined),
+    downloadAndInstall: vi.fn().mockResolvedValue(undefined),
+  };
+  mocks.check.mockResolvedValue(update);
+  const container = document.createElement("div");
+  const bar = document.createElement("div");
+  document.body.append(container, bar);
+  const root = createRoot(container);
+  const button = (text: string) => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes(text))!;
+  try {
+    await act(async () => root.render(
+      <DesktopUpdater dirty checkRequest={0} statusHost={bar} onInstalled={onInstalled} />));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    await act(async () => button("Update available").click());
+    await act(async () => button("Install").click());
+    expect(mocks.invoke).not.toHaveBeenCalledWith("relaunch_app");
+    expect(onInstalled).toHaveBeenCalledTimes(1);
+    expect(bar.textContent).toContain("Restart to finish · 0.2.0");
+    await act(async () => button("Restart to finish").click());
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("unsaved changes");
+    await act(async () => button("Restart Now").click());
+    expect(mocks.invoke).toHaveBeenCalledWith("relaunch_app");
   } finally {
     await act(async () => root.unmount());
     container.remove(); bar.remove();

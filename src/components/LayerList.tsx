@@ -20,7 +20,7 @@ import {
   Barcode, Ellipsis, Image, ListFilter, Lock, PenLine, Plus, Power,
   QrCode, Scan, Type, type LucideIcon,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { Layer, LayerKind } from "@/model/layers";
 import { cn } from "@/lib/utils";
 import {
@@ -306,7 +306,22 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, ...p }:
 
 export function LayerList(props: LayerListProps): React.JSX.Element {
   const { rows, selected } = props;
-  const drag = useRef<{ id: string; x: number; y: number; active: boolean } | null>(null);
+  // Rows grouped by owning container (master, or the variant that added the
+  // layer), in VISIBLE order (front first): a layer only reorders among its
+  // peers. Computed once per rows change; the drag and the ⌥↑/⌥↓ ends read it.
+  const peersOf = useMemo(() => {
+    const groups = new Map<string | undefined, LayerRow[]>();
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const r = rows[i];
+      const g = groups.get(r.variant?.id) ?? [];
+      groups.set(r.variant?.id, g);
+      g.push(r);
+    }
+    return (row: LayerRow) => groups.get(row.variant?.id)!;
+  }, [rows]);
+  const drag = useRef<{
+    id: string; x: number; y: number; active: boolean; peers: LayerRow[]; from: number;
+  } | null>(null);
   const suppressClick = useRef(false);
   const [drop, setDrop] = useState<{ id: string; edge: "top" | "bottom"; delta: number } | null>(null);
   const dropRef = useRef<typeof drop>(null);
@@ -315,7 +330,11 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
     onPointerDown: (e) => {
       if (e.button !== 0) return;
       suppressClick.current = false;
-      drag.current = { id: row.layer.id, x: e.clientX, y: e.clientY, active: false };
+      const peers = peersOf(row);
+      drag.current = {
+        id: row.layer.id, x: e.clientX, y: e.clientY, active: false,
+        peers, from: peers.indexOf(row),
+      };
       e.currentTarget.setPointerCapture(e.pointerId);
     },
     onPointerMove: (e) => {
@@ -328,9 +347,8 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
       let next: typeof drop = null;
       // Variant-added layers retain their owning variant; hidden rows keep their order.
       if (target && el && target.variant?.id === row.variant?.id && target.layer.id !== source.id) {
-        const peers = rows.filter((r) => r.variant?.id === row.variant?.id).slice().reverse();
-        const from = peers.findIndex((r) => r.layer.id === source.id);
-        const to = peers.findIndex((r) => r.layer.id === target.layer.id);
+        const { peers, from } = source;
+        const to = peers.indexOf(target);
         const box = el.getBoundingClientRect();
         const before = e.clientY < box.top + box.height / 2;
         const insertion = to + (before ? 0 : 1);
@@ -436,8 +454,8 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
               key={row.layer.id}
               row={row}
               isSelected={selected.has(row.layer.id)}
-              atFront={!rows.slice(rows.indexOf(row) + 1).some((r) => r.variant?.id === row.variant?.id)}
-              atBack={!rows.slice(0, rows.indexOf(row)).some((r) => r.variant?.id === row.variant?.id)}
+              atFront={peersOf(row)[0] === row}
+              atBack={peersOf(row).at(-1) === row}
               dragHandlers={dragHandlers(row)}
               dropEdge={drop?.id === row.layer.id ? drop.edge : undefined}
               onSelect={props.onSelect}

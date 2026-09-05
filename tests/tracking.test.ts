@@ -6,12 +6,11 @@
 // the whole point of the feature is that those four cannot disagree.
 import { describe, expect, it } from "vitest";
 import { buildArtPdf, buildMaskPdf } from "../src/pdf/build";
-import { boxOfLayer } from "../src/hittestLayers";
 import { parseDescription } from "../src/description";
 import { isDefaultStyle } from "./legacy/elements";
 import { defaultConfig } from "../src/defaults";
 import * as L from "../src/layout";
-import { assets, contentStreamText, measure, configPlan, configLayers, logoSvg } from "./fixtures";
+import { assets, boxOfLayer, contentStreamText, measure, configPlan, configLayers, logoSvg } from "./fixtures";
 
 /** Show-text operators in a content stream. A stroked line draws bridge
  *  copies plus its Tr-2 stroke pass under the fill copy, so it emits more of

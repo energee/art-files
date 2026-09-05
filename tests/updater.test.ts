@@ -14,6 +14,13 @@ describe("releaseNoteLines", () => {
     ]);
   });
 
+  it("folds a wrapped changelog bullet's indented continuation into the bullet", () => {
+    expect(releaseNoteLines("- Show status in the bar,\n  including after closing.\nPlain line.")).toEqual([
+      { kind: "bullet", text: "Show status in the bar, including after closing." },
+      { kind: "text", text: "Plain line." },
+    ]);
+  });
+
   it("does not treat bare punctuation as markup", () => {
     expect(releaseNoteLines("#hashtag\n*emphasis*")).toEqual([
       { kind: "text", text: "#hashtag" },

@@ -11,7 +11,6 @@
 // which is the whole reason not to re-derive twenty measured numbers by hand.
 import { afterEach, describe, expect, it } from "vitest";
 import * as L from "../src/layout";
-import { boxOfLayer } from "../src/hittestLayers";
 import { readPsd } from "ag-psd";
 import { buildMaskPdf } from "../src/pdf/build";
 import { buildPsd } from "../src/psd/build";
@@ -19,7 +18,7 @@ import { sizeLabel } from "../src/rulers";
 import {
   BLEED_STEP_IN, DEFAULT_RENDER, commitBleedIn, displayBleedIn,
 } from "../src/settings";
-import { assets, contentStreamText, flatLayers, measureBW, psdAssets, lolevLayers, lolevPlan, logoSvg } from "./fixtures";
+import { assets, boxOfLayer, contentStreamText, flatLayers, measureBW, psdAssets, lolevLayers, lolevPlan, logoSvg } from "./fixtures";
 
 /** A press-standard 1/8" bleed — nearly double the shipped one, so anything
  *  that quietly ignores the knob shows up as a large, obvious error rather

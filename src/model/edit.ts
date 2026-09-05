@@ -164,27 +164,36 @@ export function removeLayer(master: Master, id: string, boxes?: ReadonlyMap<stri
   return { ...master, layers, variants };
 }
 
-/** Moves the layer one step earlier (-1) or later (+1) in draw order: within
- *  master.layers, or within the adding variant's added-layer key order
- *  (override entries in the same diff are skipped over). Returns `master`
- *  itself when the move runs off either end. */
-export function moveLayer(master: Master, id: string, delta: -1 | 1): Master {
+/** `list` with the item at `at` moved `delta` places (clamped to the ends),
+ *  or null when it would land where it started. */
+function shifted<T>(list: readonly T[], at: number, delta: number): T[] | null {
+  const to = Math.max(0, Math.min(list.length - 1, at + delta));
+  if (to === at) return null;
+  const out = [...list];
+  out.splice(to, 0, ...out.splice(at, 1));
+  return out;
+}
+
+/** Moves the layer `delta` steps through draw order (negative = earlier,
+ *  positive = later): within master.layers, or within the adding variant's
+ *  added-layer key order (override entries in the same diff are skipped
+ *  over). The target index is clamped to the ends; a move that lands where
+ *  it started returns `master` itself. */
+export function moveLayer(master: Master, id: string, delta: number): Master {
   const where = whereLayerLives(master, id);
   if (where === "master") {
-    const at = master.layers.findIndex((l) => l.id === id);
-    const to = at + delta;
-    if (to < 0 || to >= master.layers.length) return master;
-    const layers = [...master.layers];
-    [layers[at], layers[to]] = [layers[to], layers[at]];
-    return { ...master, layers };
+    const layers = shifted(master.layers, master.layers.findIndex((l) => l.id === id), delta);
+    return layers ? { ...master, layers } : master;
   }
   const v = variantOf(master, where.variant);
   const masterIds = new Set(master.layers.map((l) => l.id));
   const keys = Object.keys(v.layers);
   const added = keys.filter((k) => !masterIds.has(k));
-  const swapWith = added[added.indexOf(id) + delta];
-  if (swapWith === undefined) return master;
-  const order = keys.map((k) => (k === id ? swapWith : k === swapWith ? id : k));
+  const reordered = shifted(added, added.indexOf(id), delta);
+  if (!reordered) return master;
+  // Added keys take their new order; override keys stay where they were.
+  let n = 0;
+  const order = keys.map((k) => (masterIds.has(k) ? k : reordered[n++]));
   return withVariant(master, v.id, (x) =>
     withEntries(x, Object.fromEntries(order.map((k) => [k, x.layers[k]]))));
 }

@@ -205,7 +205,7 @@ async function macApplicationMenu(
   }));
   const updater = await api.MenuItem.new({
     id: "check-for-updates",
-    text: "Check for Updates…",
+    text: UPDATE_ITEM_TEXT.check,
     action: checkForUpdates,
   });
   resources.push(updater);
@@ -253,12 +253,16 @@ async function nativeEntry(
   return item;
 }
 
+/** The macOS application-menu item's two labels, toggled by `updateInstalled`. */
+const UPDATE_ITEM_TEXT = { check: "Check for Updates…", restart: "Restart to Update" } as const;
+
 function useNativeMenu(
   desktop: boolean,
   commands: CommandIndex,
   checked: CheckedState,
   onError: (message: string) => void,
   onCheckForUpdates: () => void,
+  updateInstalled: boolean,
 ) {
   const commandsRef = useRef(commands);
   const checkedRef = useRef(checked);
@@ -336,6 +340,18 @@ function useNativeMenu(
     };
   }, [desktop]);
 
+  useEffect(() => {
+    const item = items?.get("check-for-updates");
+    if (!item) return; // non-macOS menus have no updater item
+    const text = updateInstalled ? UPDATE_ITEM_TEXT.restart : UPDATE_ITEM_TEXT.check;
+    if (appliedState.current.get("check-for-updates:text") === text) return;
+    appliedState.current.set("check-for-updates:text", text);
+    if (!updateInstalled) return; // the item is created with the check label
+    void item.setText(text).catch((error) => {
+      errorRef.current(`Could not update the native menu: ${String(error)}`);
+    });
+  }, [items, updateInstalled]);
+
   const snapshot = MENU_ACTIONS.map((entry) => ({
     id: entry.id,
     enabled: !commands[entry.id].disabled,
@@ -374,6 +390,8 @@ export function AppMenu(props: {
   checked: CheckedState;
   onNativeError: (message: string) => void;
   onCheckForUpdates: () => void;
+  /** Relabels Check for Updates… to Restart to Update. */
+  updateInstalled?: boolean;
 }) {
   const commands = Object.fromEntries(props.actions.map((command) => [command.id, command]));
   for (const entry of MENU_ACTIONS) {
@@ -387,6 +405,7 @@ export function AppMenu(props: {
     props.checked,
     props.onNativeError,
     props.onCheckForUpdates,
+    !!props.updateInstalled,
   );
   return desktop ? null : <WebMenu commands={commands} checked={props.checked} />;
 }
