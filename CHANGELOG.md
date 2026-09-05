@@ -3,6 +3,25 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.42] - 2026-09-04
+
+- Presets are gone: the saved beer-style and barcode lists, the "Saved
+  styles…" / "Saved barcodes…" pickers in the inspector, and File → View /
+  Import / Export Presets. A master is the saved style, and a barcode is
+  typed on its layer. Document Settings (corner radius, edge softness,
+  resolution, bleed) and saved color swatches now live in the app's own
+  per-machine storage; on the first launch after this update they start from
+  the defaults once.
+- The preview has three views instead of five: Label (1), Mask (2) and Can
+  (3). The separate Rendered flat-label view is gone, and the four-pack is a
+  1 / 4 count switch in the Can view's toolbar rather than a view of its own.
+- View has two toggles instead of seven: Rulers (R) and Guides (G). Guides
+  shows the trim line, the margin and center guides and the manual guides
+  together; the separate Bleed Lines, Margin / Center / Manual Guides and
+  Clear Manual Guides items are gone. A manual guide is removed with the ×
+  that appears in the ruler when you hover it (dragging it back onto the
+  ruler and Delete still work).
+
 ## [0.1.41] - 2026-08-29
 
 - Internal cleanup of the new master-container and PSD collab code (shared

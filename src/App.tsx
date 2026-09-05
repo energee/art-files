@@ -55,9 +55,8 @@ import { parseLogo } from "@/logo";
 // needed up front.
 import type { Assets, CollabImage } from "@/pdf/build";
 import type { PsdAssets } from "@/psd/build";
-// setBleed is aliased: `bleed` is already taken here by the show-bleed-lines
-// toggle, and the two are unrelated — one is a view option, the other the
-// document's actual geometry.
+// setBleed is aliased so the call site reads as what it writes: the
+// document's actual geometry (layout.ts), not a view option.
 import {
   ART, PAGE, PREVIEW_OVERSAMPLE, PSD_DOC, setBleed as setLayoutBleed, setOutputDpi,
 } from "@/layout";
@@ -158,17 +157,24 @@ function HeaderAlert({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Where the view toggles (rulers/guides/bleed lines) persist — localStorage,
- *  like every other per-operator setting (settings.ts, masters.ts). Defaults
- *  match the historical boot state (rulers/guides on, bleed lines off). */
+/** Where the two view toggles (rulers/guides) persist — localStorage, like
+ *  every other per-operator setting (settings.ts, masters.ts). Defaults match
+ *  the historical boot state (both on). Only the two known keys are read, so
+ *  an entry written by an earlier build (which also stored a bleed-lines
+ *  toggle) sheds its extras on the next write instead of leaking them in. */
 const VIEW_KEY = "lolev-view";
-function loadViewToggles(): { showRulers: boolean; showGuides: boolean; showBleed: boolean } {
-  const defaults = { showRulers: true, showGuides: true, showBleed: false };
+type ViewToggles = { showRulers: boolean; showGuides: boolean };
+function loadViewToggles(): ViewToggles {
+  const toggles: ViewToggles = { showRulers: true, showGuides: true };
   try {
-    return { ...defaults, ...JSON.parse(localStorage.getItem(VIEW_KEY) ?? "{}") };
+    const stored = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "{}") as Record<string, unknown>;
+    for (const k of Object.keys(toggles) as (keyof ViewToggles)[]) {
+      if (typeof stored[k] === "boolean") toggles[k] = stored[k];
+    }
   } catch {
-    return defaults; // a hand-mangled entry falls back rather than crashing boot
+    // a hand-mangled entry falls back to the defaults rather than crashing boot
   }
+  return toggles;
 }
 
 
@@ -835,21 +841,16 @@ export const DocumentEditor = memo(function DocumentEditor({
     });
   };
   const previewRef = useRef<PreviewCompareHandle>(null);
-  // Trim guide over the 2D preview at the art box, wherever the bleed knob
-  // currently puts it (ART.x/ART.y follow it). View-only — this toggle draws
-  // the line, it does not decide where the trim is; the exported PDFs are
-  // unaffected either way.
-  const [bleed, setBleed] = useState(() => loadViewToggles().showBleed);
   // Rulers and guides are view state, like hidden layer eyes: they assist the
   // operator but are not label content, so none enters config history/exports.
-  // Rulers, guides, and bleed lines DO persist across sessions — in
-  // localStorage, per operator (see loadViewToggles).
+  // Both DO persist across sessions — in localStorage, per operator (see
+  // loadViewToggles). Guides is ONE switch for every guide kind: the trim
+  // line at the art box (wherever the bleed knob puts it — the toggle draws
+  // the line, it does not decide where the trim is), the margin and center
+  // guides, and the manual ones; the exported PDFs see none of them.
   const [showRulers, setShowRulers] = useState(() => loadViewToggles().showRulers);
   const [rulerUnit, setRulerUnit] = useState<RulerUnit>("in");
   const [showGuides, setShowGuides] = useState(() => loadViewToggles().showGuides);
-  const [showMargins, setShowMargins] = useState(true);
-  const [showCenter, setShowCenter] = useState(true);
-  const [showManualGuides, setShowManualGuides] = useState(true);
   const [marginPt, setMarginPt] = useState(DEFAULT_MARGIN_PT);
   const [manualGuides, setManualGuides] = useState<ManualGuide[]>([]);
   const nextGuideId = useRef(1);
@@ -863,8 +864,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   // is cheap, there is no shared file to interleave with, and the states
   // initialize FROM storage so the first run writes back what it read.
   useEffect(() => {
-    localStorage.setItem(VIEW_KEY, JSON.stringify({ showRulers, showGuides, showBleed: bleed }));
-  }, [showRulers, showGuides, bleed]);
+    localStorage.setItem(VIEW_KEY, JSON.stringify({ showRulers, showGuides }));
+  }, [showRulers, showGuides]);
 
   /** A per-LABEL edit (labelEditDoc): this document's config only. Still the
    *  whole story in Fill mode, and the path the ONE label-fact exception
@@ -2342,12 +2343,10 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  list, while the key listener dispatches off `key`, so an action cannot
    *  be enabled in one surface while disabled in another. AppMenu owns one
    *  layout shared by its browser and native Tauri renderers. */
-  // The two conditions the view commands share, stated once: rulers and guides
-  // are 2D-only chrome, and the per-kind guide toggles are meaningless while
-  // the umbrella is off. Restated per entry, an eighth 2D command silently
-  // works in the 3D views the day someone forgets the clause.
+  // The condition the two view toggles share, stated once: rulers and guides
+  // are 2D-only chrome. Restated per entry, a third 2D command silently works
+  // in the Can view the day someone forgets the clause.
   const twoD = viewMode === "2d";
-  const guideEdit = twoD && showGuides;
   const commands: Command[] = [
     // Tab commands run in the shell: a new document is a new tab, and
     // closing goes through the shell's dirty-confirm flow. (⌘N/⌘W are
@@ -2388,22 +2387,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     { id: "view-label", label: "Preview: Label", key: "1", run: () => show2d("art") },
     { id: "view-mask", label: "Preview: Mask", key: "2", run: () => show2d("mask") },
     { id: "view-can", label: "Preview: Can", key: "3", run: () => setViewMode("can") },
-    // Bare B, not ⌘B — that one belongs to the sidebar toggle. Disabled
-    // outside the 2D view, where there is no trim guide to draw.
-    { id: "bleed", label: bleed ? "Hide bleed lines" : "Show bleed lines", key: "b",
-      disabled: !twoD, run: () => setBleed((b) => !b) },
+    // Bare R and G (Figma's), not ⌘-modified — ⌘B belongs to the sidebar
+    // toggle. Disabled outside the 2D view, the only place either overlay is
+    // drawn.
     { id: "rulers", label: showRulers ? "Hide rulers" : "Show rulers", key: "r",
       disabled: !twoD, run: () => setShowRulers((shown) => !shown) },
-    { id: "guides", label: showGuides ? "Hide guides" : "Show guides",
+    { id: "guides", label: showGuides ? "Hide guides" : "Show guides", key: "g",
       disabled: !twoD, run: () => setShowGuides((shown) => !shown) },
-    { id: "margin-guides", label: showMargins ? "Hide margin guides" : "Show margin guides",
-      disabled: !guideEdit, run: () => setShowMargins((shown) => !shown) },
-    { id: "center-guides", label: showCenter ? "Hide center guides" : "Show center guides",
-      disabled: !guideEdit, run: () => setShowCenter((shown) => !shown) },
-    { id: "manual-guides", label: showManualGuides ? "Hide manual guides" : "Show manual guides",
-      disabled: !guideEdit, run: () => setShowManualGuides((shown) => !shown) },
-    { id: "clear-guides", label: "Clear manual guides",
-      disabled: !guideEdit || manualGuides.length === 0, run: () => setManualGuides([]) },
     { id: "mode-design", label: "Design mode", run: () => setMode("design") },
     { id: "mode-fill", label: "Fill mode", run: () => setMode("fill") },
   ];
@@ -2476,12 +2466,8 @@ export const DocumentEditor = memo(function DocumentEditor({
             "view-label": viewMode === "2d" && split === 0,
             "view-mask": viewMode === "2d" && split === 100,
             "view-can": viewMode === "can",
-            bleed,
             rulers: showRulers,
             guides: showGuides,
-            "margin-guides": showMargins,
-            "center-guides": showCenter,
-            "manual-guides": showManualGuides,
           }} />}
           {/* Replaces the tooltip the old disabled Export button carried: a
               menu item can't explain its own disabled state, so the reason
@@ -2620,7 +2606,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               // editSession) so the editor's DOM text is the element.
               onEditSession={setEditSession}
               onSplit={setSplit}
-              bleed={bleed}
+              bleed={showGuides}
               // Same Settings knob the 3D die uses, so both previews cut alike.
               cornerRadiusPct={render.cornerRadius}
               zoom={zoom.z}
@@ -2655,12 +2641,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             {viewMode === "2d" && (
               <Rulers paneRef={previewPane} previewRef={previewRef} transform={zoom}
                 showRulers={showRulers} unit={rulerUnit} onUnitChange={setRulerUnit}
-                // ANDed here, not inside Rulers: the umbrella toggle is one
-                // rule over every guide kind, and it already decides the
-                // menu's disabled states through guideEdit above.
-                guidesEnabled={showGuides} showMargins={showGuides && showMargins}
-                showCenter={showGuides && showCenter}
-                showManual={showGuides && showManualGuides} marginPt={marginPt}
+                showGuides={showGuides} marginPt={marginPt}
                 onMarginChange={setMarginPt} manual={manualGuides}
                 onAddManual={addManualGuide} onMoveManual={moveManualGuide}
                 onRemoveManual={removeManualGuide} />

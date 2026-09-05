@@ -23,7 +23,7 @@ describe("native menu accelerators", () => {
 
   it("leaves bare-key bindings with the guarded webview listener", () => {
     expect(nativeAccelerator(command({ key: "1" }))).toBeUndefined();
-    expect(nativeAccelerator(command({ key: "b" }))).toBeUndefined();
+    expect(nativeAccelerator(command({ key: "g" }))).toBeUndefined();
   });
 });
 
@@ -41,16 +41,14 @@ describe("file menu", () => {
 });
 
 describe("view menu", () => {
-  it("offers exactly the three preview views, in key 1–3 order", () => {
+  it("offers the three preview views in key 1–3 order, then the two toggles", () => {
     const view = APP_MENUS.find((menu) => menu.id === "view-menu")!;
     const ids = view.items.flatMap((entry) =>
       entry.kind === "action" ? [entry.id] : []);
-    // The Rendered and Four-Pack views are gone: the four-pack is the Can
-    // view's 1 / 4 count (a toolbar control, not a menu entry).
-    expect(ids.slice(0, 3)).toEqual(["view-label", "view-mask", "view-can"]);
-    for (const gone of ["view-standard", "view-rendered", "view-pack"]) {
-      expect(ids).not.toContain(gone);
-    }
+    // The Rendered and Four-Pack views are gone (the four-pack is the Can
+    // view's 1 / 4 count, a toolbar control), and Guides is one switch over
+    // bleed, margin, center and manual guides — no per-kind items, no Clear.
+    expect(ids).toEqual(["view-label", "view-mask", "view-can", "rulers", "guides"]);
   });
 });
 

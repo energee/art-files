@@ -155,8 +155,8 @@ bottom of the frame, which is intended — the label is what is being
 looked at. The Can view shows one can or a 2x2 four-pack — the 1 / 4
 control in the preview toolbar. While a rebuild is in flight the stale
 render blurs, so what is on screen reads as being replaced rather than
-current. The 2D View menu also controls trim-relative rulers and preview-only
-guides. Ruler zero sits at the trimmed art's top-left (so bleed reads
+current. The 2D View menu also controls trim-relative rulers (<kbd>R</kbd>)
+and preview-only guides (<kbd>G</kbd>). Ruler zero sits at the trimmed art's top-left (so bleed reads
 negative). The full ruler-corner button displays the current unit and opens a
 popover that switches inches/points/600-DPI pixels and edits the safe margin
 inset. `npx tsx scripts/check-margins.mts` reports every rotated element's
@@ -165,10 +165,11 @@ span them exactly — it counts what `hittest.ts` does not (real glyph ink rathe
 than the em box, the per-run face, letter-spacing, and the outer stroke, which
 paints beyond the ink at both ends), which is what the layout was squared to.
 Locked margin and center guides derive
-from the 8x5in trim box; drag from either ruler to add a manual guide, drag one
-back into a ruler to remove it, press Delete while it is focused, or clear them
-from View. The Guides toggle hides or restores all guide types together without
-forgetting their individual settings. These are session-only overlays: they
+from the 8x5in trim box; drag from either ruler to add a manual guide, and
+remove one with the × that appears in the ruler when you hover it, by dragging
+it back into a ruler, or with Delete while it is focused. Guides is one switch:
+it shows and hides the trim line, the margin and center guides, and the manual
+guides together. These are session-only overlays: they
 never enter a config or export. Live previews build against a downscaled copy of the
 texture/mask (print-size images made every keystroke-triggered rebuild
 churn enough memory to crash the tab); downloads always rebuild at full

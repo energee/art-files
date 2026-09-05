@@ -374,7 +374,8 @@ export const PreviewCompare = forwardRef<
      *  divider rather than whichever menu item was picked last. */
     onSplit?: (pct: number) => void;
     /** Draw the trim guide at the edge of the art box — 38px of bleed at
-     *  600dpi on every side. Preview-only; never part of the PDFs. */
+     *  600dpi on every side. One of the overlays App's Guides toggle switches
+     *  together with the ruler guides. Preview-only; never part of the PDFs. */
     bleed?: boolean;
     /** Die-cut corner radius, % of the label's short side (the Settings
      *  layer's knob, shared with the 3D views). Rounds the sheet and the trim
