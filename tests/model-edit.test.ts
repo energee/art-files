@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addLayer, addVariant, bindBelow, clearLabelOverride, clearOverride, clearValue,
-  masterDiff, mintLayerId, moveBy, moveLayer, overriddenPaths, removeLayer,
+  masterDiff, mintLayerId, moveBy, moveLayers, overriddenPaths, removeLayer,
   removeVariant, renameVariant, setLabelOverride, setLayer, setLayerIn, setValue,
   toggleVariant, unbind, whereLayerLives,
 } from "../src/model/edit";
@@ -189,35 +189,54 @@ describe("removeLayer", () => {
   });
 });
 
-describe("moveLayer", () => {
+describe("moveLayers", () => {
+  it("carries every selected peer as one block, dragged layer landing where a solo move would", () => {
+    const m = lolevMaster();
+    const ids = m.layers.map((l) => l.id);
+    // Select #0 and #2, drag #0 down three steps: block lands after #3.
+    const moved = moveLayers(m, [ids[2], ids[0]], ids[0], 3);
+    expect(moved.layers.map((l) => l.id)).toEqual([ids[1], ids[3], ids[0], ids[2], ...ids.slice(4)]);
+    // Dragging the later one up one step keeps the block above its neighbour.
+    const up = moveLayers(m, [ids[0], ids[2]], ids[2], -1);
+    expect(up.layers.map((l) => l.id)).toEqual([ids[0], ids[2], ids[1], ...ids.slice(3)]);
+    expect(moveLayers(m, [ids[0], ids[1]], ids[0], -1)).toBe(m);
+  });
+  it("ignores selected layers that live in a different container", () => {
+    const m = lolevMaster();
+    const ids = m.layers.map((l) => l.id);
+    expect(moveLayers(m, [ids[0], "collabLead"], ids[0], 1)).toEqual(moveLayers(m, [ids[0]], ids[0], 1));
+  });
+});
+
+describe("moveLayers (single layer)", () => {
   it("moves several steps at once and clamps at the ends", () => {
     const m = lolevMaster();
     const ids = m.layers.map((l) => l.id);
-    const moved = moveLayer(m, ids[0], 2);
+    const moved = moveLayers(m, [ids[0]], ids[0], 2);
     expect(moved.layers.map((l) => l.id)).toEqual([ids[1], ids[2], ids[0], ...ids.slice(3)]);
-    expect(moveLayer(m, ids[0], 99).layers.at(-1)!.id).toBe(ids[0]);
-    expect(moveLayer(m, ids[0], -3)).toBe(m);
+    expect(moveLayers(m, [ids[0]], ids[0], 99).layers.at(-1)!.id).toBe(ids[0]);
+    expect(moveLayers(m, [ids[0]], ids[0], -3)).toBe(m);
   });
   it("swaps a master layer with its neighbour in draw order", () => {
-    const m = moveLayer(lolevMaster(), "logo", 1);
+    const m = moveLayers(lolevMaster(), ["logo"], "logo", 1);
     const ids = m.layers.map((l) => l.id);
     const was = lolevMaster().layers.map((l) => l.id);
     expect(ids[was.indexOf("logo")]).toBe("name");
     expect(ids[was.indexOf("logo") + 1]).toBe("logo");
   });
   it("reorders a variant-added layer within its diff's key order", () => {
-    const m = moveLayer(lolevMaster(), "collabCenter", -1);
+    const m = moveLayers(lolevMaster(), ["collabCenter"], "collabCenter", -1);
     expect(Object.keys(collab(m).layers)).toEqual(["collabLead", "collabCenter", "collabLeft"]);
   });
   it("skips over override entries when reordering added layers", () => {
     const m = setLayerIn(lolevMaster(), "collab", "logo", { y: 120 });
-    const moved = moveLayer(m, "collabCenter", -1);
+    const moved = moveLayers(m, ["collabCenter"], "collabCenter", -1);
     expect(Object.keys(collab(moved).layers)).toEqual(["collabLead", "collabCenter", "collabLeft", "logo"]);
   });
   it("returns the master unchanged at either end", () => {
     const m = lolevMaster();
-    expect(moveLayer(m, "background", -1)).toBe(m);
-    expect(moveLayer(m, "collabCenter", 1)).toBe(m);
+    expect(moveLayers(m, ["background"], "background", -1)).toBe(m);
+    expect(moveLayers(m, ["collabCenter"], "collabCenter", 1)).toBe(m);
   });
 });
 

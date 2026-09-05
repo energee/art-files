@@ -164,32 +164,41 @@ export function removeLayer(master: Master, id: string, boxes?: ReadonlyMap<stri
   return { ...master, layers, variants };
 }
 
-/** `list` with the item at `at` moved `delta` places (clamped to the ends),
- *  or null when it would land where it started. */
-function shifted<T>(list: readonly T[], at: number, delta: number): T[] | null {
+/** Moves `block` (the members of `list` whose id is in `ids`, keeping their
+ *  relative order) so the member at index `at` lands where a solo move of
+ *  `delta` would put it; the rest of the block packs around it. Null when
+ *  nothing changes. */
+function blockShifted<T>(list: readonly T[], ids: ReadonlySet<string>, idOf: (x: T) => string, at: number, delta: number): T[] | null {
   const to = Math.max(0, Math.min(list.length - 1, at + delta));
-  if (to === at) return null;
-  const out = [...list];
-  out.splice(to, 0, ...out.splice(at, 1));
-  return out;
+  const inBlock = (x: T) => ids.has(idOf(x));
+  /** Non-block items among the first `k`. */
+  const restBefore = (k: number) => list.slice(0, k).filter((x) => !inBlock(x)).length;
+  // The anchor lands after `to` itself when moving later.
+  const before = restBefore(to <= at ? to : to + 1);
+  if (before === restBefore(at)) return null;
+  const rest = list.filter((x) => !inBlock(x));
+  return [...rest.slice(0, before), ...list.filter(inBlock), ...rest.slice(before)];
 }
 
-/** Moves the layer `delta` steps through draw order (negative = earlier,
+/** Moves layer `id` `delta` steps through draw order (negative = earlier,
  *  positive = later): within master.layers, or within the adding variant's
  *  added-layer key order (override entries in the same diff are skipped
- *  over). The target index is clamped to the ends; a move that lands where
- *  it started returns `master` itself. */
-export function moveLayer(master: Master, id: string, delta: number): Master {
+ *  over). Every other id in `ids` that shares `id`'s container travels with
+ *  it as one block (relative order kept); ids elsewhere are ignored, since a
+ *  layer only reorders among its peers. The target index is clamped to the
+ *  ends; a move that lands where it started returns `master` itself. */
+export function moveLayers(master: Master, ids: readonly string[], id: string, delta: number): Master {
+  const block = new Set(ids);
   const where = whereLayerLives(master, id);
   if (where === "master") {
-    const layers = shifted(master.layers, master.layers.findIndex((l) => l.id === id), delta);
+    const layers = blockShifted(master.layers, block, (l) => l.id, master.layers.findIndex((l) => l.id === id), delta);
     return layers ? { ...master, layers } : master;
   }
   const v = variantOf(master, where.variant);
   const masterIds = new Set(master.layers.map((l) => l.id));
   const keys = Object.keys(v.layers);
   const added = keys.filter((k) => !masterIds.has(k));
-  const reordered = shifted(added, added.indexOf(id), delta);
+  const reordered = blockShifted(added, block, (k) => k, added.indexOf(id), delta);
   if (!reordered) return master;
   // Added keys take their new order; override keys stay where they were.
   let n = 0;
