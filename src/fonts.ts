@@ -10,7 +10,7 @@ import poppinsRegular from "./assets/fonts/Poppins-Regular.ttf?url";
 import poppinsSemiBold from "./assets/fonts/Poppins-SemiBold.ttf?url";
 import poppinsBold from "./assets/fonts/Poppins-Bold.ttf?url";
 import type { FontFamilyId } from "./fontCatalog";
-import type { Measure } from "./hittest";
+type Measure = (text: string, size: number, bold: boolean) => number;
 import type { MeasureFace } from "./plan";
 
 type Face = "regular" | "semibold" | "bold";

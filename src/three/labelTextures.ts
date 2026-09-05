@@ -6,7 +6,7 @@
 // under (see fonts.ts's gate); drawPlates just forwards it to drawPlate.
 import { drawPlate, type CanvasAssets } from "@/canvas/draw";
 
-import type { Placed } from "@/plan";
+import type { PlacedLayer } from "@/planLayers";
 import { PAGE } from "@/layout";
 
 /** Longest rendered edge in px. The label wraps most of the way around the
@@ -81,7 +81,7 @@ function deriveMetalness(
  *  the maps share the art's UV grid pixel-for-pixel. */
 export function drawPlates(
   // fontCss required for the same reason drawPlate's is — see its comment.
-  plan: readonly Placed[], assets: CanvasAssets, fontCss: string,
+  plan: readonly PlacedLayer[], assets: CanvasAssets, fontCss: string,
 ): { art: HTMLCanvasElement; mask: HTMLCanvasElement } {
   const s = Math.min(MAX_SCALE, MAX_EDGE / Math.max(PAGE.w, PAGE.h));
   const plate = (mode: "art" | "mask") => {

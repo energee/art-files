@@ -12,8 +12,7 @@ import { GOLD } from "@/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { usePresets } from "@/presets";
-import { addColor } from "@/presets";
+import { addColor, setSwatches, useSwatches } from "@/settings";
 
 /** "No ink" checkerboard chip background. */
 export const CHECKER =
@@ -48,15 +47,13 @@ export function ColorField(props: {
   const hex = props.value === "none" ? "#ffffff" : props.value;
   // Commit a picked color and drop any half-typed hex sitting in the Input.
   const apply = (v: string) => { setText(null); props.onChange(v as Fill); };
-  // Saved swatches live in presets.json, not on the element, so a color saved
+  // Saved swatches are this operator's, not the element's, so a color saved
   // here is offered by every other ColorField the moment it lands — all the
-  // fields read one shared library (see presets.ts).
-  const { presets, commit, error } = usePresets();
+  // fields read one shared list (see settings.ts).
+  const colors = useSwatches();
   // addColor owns the lowercase-canonicalization rule; "already saved" is just
   // "adding it changes nothing", so the two can't drift apart.
-  const saved = addColor(presets.colors, hex) === presets.colors;
-  const setColors = (colors: (current: string[]) => string[]) =>
-    commit((p) => ({ ...p, colors: colors(p.colors) }));
+  const saved = addColor(colors, hex) === colors;
   return (
     <div className="flex items-center gap-1">
       {props.allowNone !== false && (
@@ -109,7 +106,7 @@ export function ColorField(props: {
               affordance per chip would double the row's height for something
               used once in a while. */}
           <div className="mt-2 flex max-w-[200px] flex-wrap items-center gap-1">
-            {presets.colors.map((c) => (
+            {colors.map((c) => (
               <button
                 key={c}
                 type="button"
@@ -119,25 +116,24 @@ export function ColorField(props: {
                 style={{ background: c }}
                 onClick={(e) =>
                   e.shiftKey
-                    ? setColors((cs) => cs.filter((x) => x !== c))
+                    ? setSwatches((cs) => cs.filter((x) => x !== c))
                     : apply(c)
                 }
               />
             ))}
             {/* Disabled once this exact hex is saved: a second save is a no-op,
-                and a dead button says so up front (same rule as PresetBar). */}
+                and a dead button says so up front. */}
             <Button
               type="button"
               variant="ghost"
               size="sm"
               className="h-5 px-1.5 text-[11px]"
               disabled={saved}
-              onClick={() => setColors((cs) => addColor(cs, hex))}
+              onClick={() => setSwatches((cs) => addColor(cs, hex))}
             >
               {saved ? "Saved" : "Save"}
             </Button>
           </div>
-          {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
         </PopoverContent>
       </Popover>
       <Input

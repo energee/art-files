@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boxesOf, boxOf, hitTest } from "../src/hittest";
+import { boxesOf, boxOf, hitTest } from "./legacy/hittest";
 import { wrapWarning, warningColumnLen } from "../src/warning";
 import { defaultConfig } from "../src/defaults";
 import * as L from "../src/layout";
@@ -16,42 +16,43 @@ describe("preview hit-testing", () => {
     expect(hitTest(L.LOGO.cx, L.LOGO.cy, measure, cfg)).toBe("logo");
   });
 
-  it("boxes a collab slot only when the switch is on AND its art is loaded", () => {
+  it("boxes a collab slot only when its art is loaded", () => {
     const both = { left: true, center: true };
     const ids = (c: typeof cfg, slots = both) =>
       new Set(boxesOf(c, measure, slots).map((b) => b.id));
-    const on = { ...cfg, collabEnabled: true };
-    // Switch off, or slot empty: the renderers draw nothing there, so a box
-    // would swallow clicks meant for whatever is behind it.
-    expect(ids(cfg).has("collabLeft")).toBe(false);
-    expect(ids(on, { left: false, center: false }).has("collabLeft")).toBe(false);
+    // Slot empty: the renderers draw nothing there, so a box would swallow
+    // clicks meant for whatever is behind it. (On a non-collab label the app
+    // hands over no collab art at all, so both slots read empty — see
+    // App.tsx's collabFileOf.)
+    expect(ids(cfg, { left: false, center: false }).has("collabLeft")).toBe(false);
     // The lead-in only introduces the LEFT logo, and goes with it.
-    expect(ids(on, { left: false, center: true }).has("collabLead")).toBe(false);
+    expect(ids(cfg, { left: false, center: true }).has("collabLead")).toBe(false);
     for (const id of ["collabLead", "collabLeft", "collabCenter"] as const)
-      expect(ids(on).has(id)).toBe(true);
+      expect(ids(cfg).has(id)).toBe(true);
   });
 
   it("hits the collab logo slots inside their fit envelopes", () => {
-    const on = { ...cfg, collabEnabled: true };
     const both = { left: true, center: true };
-    const left = boxOf("collabLeft", on, measure, both)!;
-    expect(hitTest(left.x0 + 1, left.y0 + 1, measure, on, both)).toBe("collabLeft");
+    const left = boxOf("collabLeft", cfg, measure, both)!;
+    expect(hitTest(left.x0 + 1, left.y0 + 1, measure, cfg, both)).toBe("collabLeft");
     // The centre slot hangs off the laurel, so nudging the laurel carries it.
-    const nudged = { ...on, logo: { ...on.logo, offsetY: 10 } };
-    const before = boxOf("collabCenter", on, measure, both)!;
+    const nudged = { ...cfg, logo: { ...cfg.logo, offsetY: 10 } };
+    const before = boxOf("collabCenter", cfg, measure, both)!;
     const after = boxOf("collabCenter", nudged, measure, both)!;
     expect(after.y0 - before.y0).toBeCloseTo(10);
   });
 
-  it("ignores the saved stack nudge while collab is off", () => {
-    // The nudge exists to clear the centre collab mark, so with the switch
-    // off the laurel sits at its laid-out spot; the value stays in the
-    // config for the next collab release (see logoNudge).
-    const nudgedOff = { ...cfg, collabEnabled: false, logo: { ...cfg.logo, offsetY: 40 } };
+  it("moves the laurel box by the stack nudge, unconditionally", () => {
+    // The nudge exists to clear the centre collab mark, and it arrives with
+    // the Collab variant now rather than being gated by a flag: whatever
+    // offsetY the resolved config carries is what the box moves by, so the
+    // box can never disagree with the drawn laurel (see logoNudge).
     const plain = boxOf("logo", cfg, measure)!;
-    expect(boxOf("logo", nudgedOff, measure)!.y0).toBeCloseTo(plain.y0);
-    const nudgedOn = { ...nudgedOff, collabEnabled: true };
-    expect(boxOf("logo", nudgedOn, measure)!.y0 - plain.y0).toBeCloseTo(40);
+    const nudged = { ...cfg, logo: { ...cfg.logo, offsetY: 40 } };
+    expect(boxOf("logo", nudged, measure)!.y0 - plain.y0).toBeCloseTo(40);
+    // The shipped master's own logo declares no offsetY, so a non-collab
+    // label's laurel sits exactly where it is laid out.
+    expect(cfg.logo.offsetY ?? 0).toBe(0);
   });
 
   it("hits the QR inside its box", () => {
@@ -155,5 +156,53 @@ describe("preview hit-testing", () => {
     const headerBox = boxesOf(cfg, measureBW).find((b) => b.id === "description")!;
     const expected = measureBW("HOPS", L.DESC_HEADER.size, true);
     expect(headerBox.x1 - headerBox.x0).toBeCloseTo(expected, 5);
+  });
+
+  it("hits a custom text layer at its box center and misses just outside it", () => {
+    const withCustom = {
+      ...cfg,
+      customLayers: [{
+        id: "custom-a1b2c3" as const,
+        name: "Extra line",
+        type: "text" as const,
+        position: { anchor: "left" as const, vAnchor: "top" as const, offsetX: 0, offsetY: 0 },
+        line: { text: "Hello", fill: "#000000" as const, layer: "white" as const },
+        size: 12,
+      }],
+    };
+    const b = boxOf("custom-a1b2c3", withCustom, measure)!;
+    expect(b).not.toBeNull();
+    const cx = (b.x0 + b.x1) / 2;
+    const cy = (b.y0 + b.y1) / 2;
+    expect(hitTest(cx, cy, measure, withCustom)).toBe("custom-a1b2c3");
+    expect(hitTest(b.x0 - 5, cy, measure, withCustom)).not.toBe("custom-a1b2c3");
+  });
+
+  // Regression: before the layer carried its own stored aspect, this box
+  // fell back to a square (h = w), which under-estimated a portrait asset's
+  // real height and left its bottom half unclickable.
+  it("boxes a custom image layer using its stored aspect, not a square fallback", () => {
+    const withCustom = {
+      ...cfg,
+      customLayers: [{
+        id: "custom-img1" as const,
+        name: "Custom Image",
+        type: "image" as const,
+        asset: "art1",
+        w: 40,
+        aspect: 0.5, // portrait: h = w / aspect = 80, twice the width
+        position: { anchor: "left" as const, vAnchor: "top" as const, offsetX: 0, offsetY: 0 },
+        style: { fill: "none" as const, layer: "white" as const },
+      }],
+    };
+    const b = boxOf("custom-img1", withCustom, measure)!;
+    expect(b).not.toBeNull();
+    expect(b.x1 - b.x0).toBeCloseTo(40);
+    expect(b.y1 - b.y0).toBeCloseTo(80);
+    const cy = (b.y0 + b.y1) / 2;
+    expect(hitTest((b.x0 + b.x1) / 2, cy, measure, withCustom)).toBe("custom-img1");
+    // Near the bottom of the tall box — a square fallback (h = w = 40) would
+    // have missed this point entirely.
+    expect(hitTest((b.x0 + b.x1) / 2, b.y1 - 1, measure, withCustom)).toBe("custom-img1");
   });
 });

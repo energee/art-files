@@ -82,9 +82,10 @@ export function defaultConfig(): LabelConfig {
     qrStrokeWidth: KEYLINE.strokeWidth,
     qrLayer: "metallic",
     qrStrokeLayer: DEFAULT_STROKE_LAYER,
-    // Collab off by default: most releases are not collabs, and with the
-    // switch off none of these three are reachable from the form.
-    collabEnabled: false,
+    // The collab block's styling ships on every label; whether it DRAWS is
+    // the Collab variant's business (model/lolev.ts), not a flag here. Most
+    // releases are not collabs, so the variant is off and the resolver
+    // disables these three layers.
     collabLead: { fill: GOLD, layer: "metallic", strokeLayer: DEFAULT_STROKE_LAYER },
     // offsetY/tintRaster ship explicit rather than absent so the form's
     // number inputs and checkbox are controlled from the first render. The
@@ -127,6 +128,20 @@ export function defaultConfig(): LabelConfig {
 
 export function toConfigFile(c: LabelConfig): ConfigFile {
   return { version: 1, ...c };
+}
+
+/** Was this v1 config JSON saved as a collab? `collabEnabled` no longer
+ *  exists on LabelConfig — Collab is an ordinary master variant — so the
+ *  open path reads the saved flag from the raw JSON here and turns a `true`
+ *  into `enabledVariants: ["collab"]` (App.tsx's openProject). parseConfigFile
+ *  drops the key itself. Unparseable JSON is not this function's error to
+ *  report: parseConfigFile throws on it moments later. */
+export function legacyCollabEnabled(json: string): boolean {
+  try {
+    return (JSON.parse(json) as { collabEnabled?: unknown })?.collabEnabled === true;
+  } catch {
+    return false;
+  }
 }
 
 /** Parse a saved config JSON; throws with a readable message on mismatch.
@@ -180,8 +195,16 @@ export function parseConfigFile(json: string): LabelConfig {
     cfg.logo.stroke ??= "#1A1A1A";
     cfg.logo.strokeWidth ??= DEFAULT_STROKE_PX;
   }
-  // Configs saved before collab labels existed: not a collab, no collab art.
-  cfg.collabEnabled ??= false;
+  // `collabEnabled` was deleted from LabelConfig when Collab became an
+  // ordinary variant: a saved v1 flag is turned into enabledVariants:
+  // ["collab"] by the open path (see legacyCollabEnabled below, and
+  // App.tsx's openProject), and dropped from the config here. The laurel's
+  // stack nudge used to be gated on that flag and is applied unconditionally
+  // now (logoNudge), so a file that saved a nudge with collab OFF has to be
+  // zeroed or it would suddenly render nudged.
+  if (cfg.collabEnabled !== true && cfg.logo?.offsetY) cfg.logo.offsetY = 0;
+  delete cfg.collabEnabled;
+  // Configs saved before collab labels existed: no collab styling at all.
   cfg.collabLead ??= base.collabLead;
   cfg.collabLeft ??= base.collabLeft;
   cfg.collabCenter ??= base.collabCenter;

@@ -51,9 +51,10 @@ field. Design doc:
 rewrite to React + Tailwind + shadcn/ui is documented in
 `docs/superpowers/specs/2026-08-02-shadcn-ui-rewrite-design.md`.
 
-Collab labels sit behind a **Collab** switch in the form — with it off nothing
-collab draws and its fields stay hidden, which is every non-collab release. On,
-it takes up to two logo uploads (SVG, PNG or JPG): the **left** one prints in
+Collab labels sit behind a **Collab** variant checkbox in the field list —
+with it off nothing collab draws and its fields stay hidden, which is every
+non-collab release. On, it takes up to two logo uploads (SVG, PNG or JPG): the
+**left** one prints in
 the left column under the description, below an automatic bold "A collaborative
 project with"; the **center** one prints under the laurel. Each scales to fit
 its slot, with a size knob (1 = fit), and each is a stylable element like any
@@ -151,12 +152,11 @@ its label reads the same on-screen height as the 2D sheet, measured to
 the label's near face rather than the can's axis, so switching views
 changes the subject and not the scale. The can then runs off the top and
 bottom of the frame, which is intended — the label is what is being
-looked at. The flat view takes its height from the can's own label height
-too, rather than the constant it used to carry, so the Settings height
-knob moves all four views together. While a rebuild is in flight the stale
+looked at. The Can view shows one can or a 2x2 four-pack — the 1 / 4
+control in the preview toolbar. While a rebuild is in flight the stale
 render blurs, so what is on screen reads as being replaced rather than
-current. The 2D View menu also controls trim-relative rulers and preview-only
-guides. Ruler zero sits at the trimmed art's top-left (so bleed reads
+current. The 2D View menu also controls trim-relative rulers (<kbd>R</kbd>)
+and preview-only guides (<kbd>G</kbd>). Ruler zero sits at the trimmed art's top-left (so bleed reads
 negative). The full ruler-corner button displays the current unit and opens a
 popover that switches inches/points/600-DPI pixels and edits the safe margin
 inset. `npx tsx scripts/check-margins.mts` reports every rotated element's
@@ -165,10 +165,11 @@ span them exactly — it counts what `hittest.ts` does not (real glyph ink rathe
 than the em box, the per-run face, letter-spacing, and the outer stroke, which
 paints beyond the ink at both ends), which is what the layout was squared to.
 Locked margin and center guides derive
-from the 8x5in trim box; drag from either ruler to add a manual guide, drag one
-back into a ruler to remove it, press Delete while it is focused, or clear them
-from View. The Guides toggle hides or restores all guide types together without
-forgetting their individual settings. These are session-only overlays: they
+from the 8x5in trim box; drag from either ruler to add a manual guide, and
+remove one with the × that appears in the ruler when you hover it, by dragging
+it back into a ruler, or with Delete while it is focused. Guides is one switch:
+it shows and hides the trim line, the margin and center guides, and the manual
+guides together. These are session-only overlays: they
 never enter a config or export. Live previews build against a downscaled copy of the
 texture/mask (print-size images made every keystroke-triggered rebuild
 churn enough memory to crash the tab); downloads always rebuild at full
@@ -188,14 +189,16 @@ to a download; then Export PDF,
 Export Mask PDF, Export PSDs — see below; the both-PDFs-at-once action lives
 in the palette as "Export PDF + Mask PDF"),
 **Edit** (undo, redo), and
-**View** (Standard / Mask, which jump the divider to either end — the
-palette lists them as "Preview: Standard" / "Preview: Mask"). Export items disable while the label is invalid, and the
+**View** (Label / Mask, which jump the divider to either end, and Can, the
+3D render — keys 1–3; the palette lists them as "Preview: Label" /
+"Preview: Mask" / "Preview: Can"). Export items disable while the label is invalid, and the
 reason sits in the bar next to the menus. Press <kbd>⌘K</kbd> /
 <kbd>Ctrl+K</kbd> for a command palette covering the same actions.
 
 A tab strip under the menubar holds one tab per open project — each with its
-own undo history, unsaved-changes state, and save target, while presets and
-the Document Settings knobs are shared. Background tabs keep their state and
+own undo history, unsaved-changes state, and save target, while the Document
+Settings knobs and saved color swatches are shared (and persist per operator
+in the browser's storage). Background tabs keep their state and
 assets in memory but drop their rendered previews; switching back repaints
 through the normal debounced build. Closing the window with unsaved tabs
 walks each one through the same Save / Discard / Cancel prompt (the browser

@@ -11,16 +11,15 @@
 // which is the whole reason not to re-derive twenty measured numbers by hand.
 import { afterEach, describe, expect, it } from "vitest";
 import * as L from "../src/layout";
-import { boxOf } from "../src/hittest";
-import { defaultConfig } from "../src/defaults";
+import { boxOfLayer } from "../src/hittestLayers";
 import { readPsd } from "ag-psd";
 import { buildMaskPdf } from "../src/pdf/build";
 import { buildPsd } from "../src/psd/build";
 import { sizeLabel } from "../src/rulers";
 import {
   BLEED_STEP_IN, DEFAULT_RENDER, commitBleedIn, displayBleedIn,
-} from "../src/presets";
-import { assets, contentStreamText, flatLayers, measureBW, psdAssets } from "./fixtures";
+} from "../src/settings";
+import { assets, contentStreamText, flatLayers, measureBW, psdAssets, lolevLayers, lolevPlan, logoSvg } from "./fixtures";
 
 /** A press-standard 1/8" bleed — nearly double the shipped one, so anything
  *  that quietly ignores the knob shows up as a large, obvious error rather
@@ -47,7 +46,7 @@ describe("bleed — the shipped default", () => {
     // rulers.test.ts; the raw values above are the stricter statement anyway.
   });
 
-  it("ships the preset at a round 0.0635 even though it measured 4.56pt", () => {
+  it("ships the default at a round 0.0635 even though it measured 4.56pt", () => {
     // Two different numbers, deliberately. The positions were measured against
     // 4.56pt = 0.063333...in, which is what BLEED_SHIFT is computed from...
     expect(L.SHIPPED_BLEED_IN * 72).toBe(4.56);
@@ -62,15 +61,15 @@ describe("bleed — the shipped default", () => {
     expect(sizeLabel(L.PAGE.w, L.PAGE.h, "in")).toBe("8.127 × 5.127 in");
   });
 
-  it("moves nothing on the die by shipping that rounded preset", () => {
+  it("moves nothing on the die by shipping that rounded default", () => {
     // The safety argument for the line above, made by measurement rather than
     // assertion: the shift is applied uniformly at every output boundary, so
     // rounding the bleed grows the PAGE and leaves every element exactly where
     // it was relative to the TRIM — the edge the label is actually cut on.
     const at = (bleedIn: number) => {
       L.setBleed(bleedIn);
-      const b = boxOf("barcode", defaultConfig(), measureBW)!;
-      return { left: b.x0 - L.ART.x, top: b.y0 - L.ART.y };
+      const b = boxOfLayer("barcode", lolevLayers(), (t, s, f) => measureBW(t, s, f !== "regular"), { logoSvg })!;
+      return { left: b.x - L.ART.x, top: b.y - L.ART.y };
     };
     const measured = at(L.SHIPPED_BLEED_IN);
     const shipped = at(DEFAULT_RENDER.bleedIn);
@@ -102,7 +101,7 @@ describe("bleed — the shipped default", () => {
     // field can express echoes back unchanged anyway, so nothing is stuck.
     expect(commitBleedIn(0.125, 0.125)).toBe(0.125);
 
-    // The shipped preset must survive being TYPED, not just displayed. At a
+    // The shipped default must survive being TYPED, not just displayed. At a
     // 0.005 step ScrubField snapped every commit to three decimals, so 0.0635
     // became 0.064 the moment the field was touched — the page grew 0.072pt
     // and the field showed a bleed nobody chose. BLEED_STEP_IN is what stops
@@ -119,9 +118,9 @@ describe("bleed — the shipped default", () => {
     expect(commitBleedIn(0.0635, 0.0685)).toBe(0.0685);
   });
 
-  it("survives a JSON round-trip, since it is stored in presets.json", () => {
+  it("survives a JSON round-trip, since it is stored as JSON per operator", () => {
     // The default is a derived value (4.56/72), not a typed one, so it has to
-    // come back out of the presets file as the same double or the shipped
+    // come back out of storage as the same double or the shipped
     // label stops being byte-identical the first time settings are saved.
     const stored = JSON.parse(JSON.stringify({ bleedIn: L.SHIPPED_BLEED_IN })).bleedIn;
     expect(stored).toBe(L.SHIPPED_BLEED_IN);
@@ -161,9 +160,9 @@ describe("bleed — the shift mechanism", () => {
   // to end. Measured through hittest — a genuine output boundary, not a
   // recomputation of BLEED_SHIFT, so this cannot pass by restating the bug.
   const distancesFromTrim = (id: "barcode" | "wordmark" | "qr") => {
-    const box = boxOf(id, defaultConfig(), measureBW);
+    const box = boxOfLayer(id, lolevLayers(), (t, s, f) => measureBW(t, s, f !== "regular"), { logoSvg });
     if (!box) throw new Error(`no box for ${id}`);
-    return { left: box.x0 - L.ART.x, top: box.y0 - L.ART.y };
+    return { left: box.x - L.ART.x, top: box.y - L.ART.y };
   };
 
   it("keeps every element the same distance from the trim at either bleed", () => {
@@ -183,11 +182,11 @@ describe("bleed — the shift mechanism", () => {
   it("does move the elements relative to the PAGE, which is the point", () => {
     // Guards the inverse mistake: a boundary that ignored the knob entirely
     // would also keep trim distances equal — by never moving anything at all.
-    const before = boxOf("barcode", defaultConfig(), measureBW)!;
+    const before = boxOfLayer("barcode", lolevLayers(), (t, s, f) => measureBW(t, s, f !== "regular"), { logoSvg })!;
     L.setBleed(WIDE_IN);
-    const after = boxOf("barcode", defaultConfig(), measureBW)!;
-    expect(after.x0 - before.x0).toBeCloseTo(4.44, 10);
-    expect(after.y0 - before.y0).toBeCloseTo(4.44, 10);
+    const after = boxOfLayer("barcode", lolevLayers(), (t, s, f) => measureBW(t, s, f !== "regular"), { logoSvg })!;
+    expect(after.x - before.x).toBeCloseTo(4.44, 10);
+    expect(after.y - before.y).toBeCloseTo(4.44, 10);
   });
 });
 
@@ -201,10 +200,10 @@ describe("bleed — the PSD boundary", () => {
   const infoOriginPx = async (bleedIn: number) => {
     L.setBleed(bleedIn);
     const doc = readPsd(
-      Buffer.from(await buildPsd(defaultConfig(), psdAssets)).buffer as ArrayBuffer,
+      Buffer.from(await buildPsd(await lolevPlan(), psdAssets, "art", { layers: lolevLayers() })).buffer as ArrayBuffer,
       { skipCompositeImageData: true, skipLayerImageData: true, skipThumbnail: true },
     );
-    const t = flatLayers(doc.children).find((l) => l.name === "Info")?.text?.transform;
+    const t = flatLayers(doc.children).find((l) => l.name === "Info" && l.text)?.text?.transform;
     if (!t) throw new Error("Info layer has no text transform");
     // Slots 4 and 5 of the affine transform are the translation, in pixels at
     // OUTPUT_DPI. Measured from the TRIM, so the answer is bleed-independent.
@@ -229,7 +228,7 @@ describe("bleed — the PDF boundary", () => {
     // the label whenever the cut drifts. This is what the ordering inside
     // buildMaskPdf (flood, then shiftForBleed, then drawElements) protects.
     L.setBleed(WIDE_IN);
-    const text = await contentStreamText(await buildMaskPdf(defaultConfig(), assets));
+    const text = await contentStreamText(await buildMaskPdf(await lolevPlan(), assets));
     const flood = `0 0 m\n0 ${L.PAGE.h} l\n${L.PAGE.w} ${L.PAGE.h} l\n${L.PAGE.w} 0 l\nh\nf`;
     expect(text).toContain(flood);
     // The design after it is translated by the shift, exactly once.
@@ -245,7 +244,7 @@ describe("bleed — the PDF boundary", () => {
   });
 
   it("emits no transform at the shipped bleed, so the bytes are unchanged", async () => {
-    const text = await contentStreamText(await buildMaskPdf(defaultConfig(), assets));
+    const text = await contentStreamText(await buildMaskPdf(await lolevPlan(), assets));
     expect(text).not.toContain("1 0 0 1 4.44 -4.44 cm");
   });
 });

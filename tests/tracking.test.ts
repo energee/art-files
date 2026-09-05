@@ -6,12 +6,12 @@
 // the whole point of the feature is that those four cannot disagree.
 import { describe, expect, it } from "vitest";
 import { buildArtPdf, buildMaskPdf } from "../src/pdf/build";
-import { boxOf } from "../src/hittest";
+import { boxOfLayer } from "../src/hittestLayers";
 import { parseDescription } from "../src/description";
-import { isDefaultStyle } from "../src/elements";
+import { isDefaultStyle } from "./legacy/elements";
 import { defaultConfig } from "../src/defaults";
 import * as L from "../src/layout";
-import { assets, contentStreamText, measure } from "./fixtures";
+import { assets, contentStreamText, measure, configPlan, configLayers, logoSvg } from "./fixtures";
 
 /** Show-text operators in a content stream. A stroked line draws bridge
  *  copies plus its Tr-2 stroke pass under the fill copy, so it emits more of
@@ -56,12 +56,12 @@ describe("hit boxes follow the tracked width", () => {
     // The default name is blank (the renderer draws a placeholder), so give
     // the box real text to measure — gaps below count ITS glyphs.
     cfg.beerName = "LABRADORITE";
-    const plain = boxOf("name", cfg, measure)!;
+    const plain = boxOfLayer("name", configLayers(cfg), measure, { logoSvg })!;
     cfg.nameStyle.letterSpacing = 1.5;
-    const tracked = boxOf("name", cfg, measure)!;
+    const tracked = boxOfLayer("name", configLayers(cfg), measure, { logoSvg })!;
     const gaps = cfg.beerName.length - 1;
-    expect(tracked.x1 - tracked.x0).toBeCloseTo(plain.x1 - plain.x0 + 1.5 * gaps, 5);
-    expect((tracked.x0 + tracked.x1) / 2).toBeCloseTo(L.NAME.cx, 5);
+    expect(tracked.w).toBeCloseTo(plain.w + 1.5 * gaps, 5);
+    expect(tracked.x + tracked.w / 2).toBeCloseTo(L.NAME.cx, 5);
   });
 });
 
@@ -69,7 +69,7 @@ describe("the art PDF's character-spacing operator", () => {
   it("emits Tc for a tracked element and clears it again", async () => {
     const cfg = defaultConfig();
     cfg.nameStyle.letterSpacing = 0.4;
-    const text = await contentStreamText(await buildArtPdf(cfg, assets));
+    const text = await contentStreamText(await buildArtPdf(await configPlan(cfg), assets));
     expect(text).toContain("0.4 Tc");
     // Cleared after the draw: Tc is page-wide state, so a stray one would
     // silently space every element drawn after the name.
@@ -85,12 +85,12 @@ describe("the art PDF's character-spacing operator", () => {
     cfg.handleAddress.letterSpacing = 0;
     cfg.storeCold.letterSpacing = 0;
     cfg.warning.letterSpacing = 0;
-    const text = await contentStreamText(await buildArtPdf(cfg, assets));
+    const text = await contentStreamText(await buildArtPdf(await configPlan(cfg), assets));
     expect(text).not.toMatch(/\bTc\b/);
   });
 
   it("ships the two tracked elements at their defaults", async () => {
-    const text = await contentStreamText(await buildArtPdf(defaultConfig(), assets));
+    const text = await contentStreamText(await buildArtPdf(await configPlan(defaultConfig()), assets));
     expect(text).toContain("0.38 Tc"); // Info (handle / address)
     expect(text).toContain("1.25 Tc"); // store cold
   });
@@ -102,10 +102,10 @@ describe("the art PDF's character-spacing operator", () => {
 // bare one.
 describe("the Info line's shipped keyline", () => {
   it("draws a stroke around Info in the art PDF", async () => {
-    const stroked = await contentStreamText(await buildArtPdf(defaultConfig(), assets));
+    const stroked = await contentStreamText(await buildArtPdf(await configPlan(defaultConfig()), assets));
     const bare = defaultConfig();
     bare.handleAddress.stroke = "none";
-    const plain = await contentStreamText(await buildArtPdf(bare, assets));
+    const plain = await contentStreamText(await buildArtPdf(await configPlan(bare), assets));
     expect(showOps(stroked)).toBeGreaterThan(showOps(plain));
   });
 });
@@ -119,8 +119,8 @@ describe("the pdf.js text-stroke bridge", () => {
     wide.description = ".";
     wide.descStyle.strokeWidth = 15;
 
-    const narrowOps = showOps(await contentStreamText(await buildArtPdf(narrow, assets)));
-    const wideOps = showOps(await contentStreamText(await buildArtPdf(wide, assets)));
+    const narrowOps = showOps(await contentStreamText(await buildArtPdf(await configPlan(narrow), assets)));
+    const wideOps = showOps(await contentStreamText(await buildArtPdf(await configPlan(wide), assets)));
     expect(wideOps).toBeGreaterThan(narrowOps);
   });
 });
@@ -143,11 +143,11 @@ describe("the shipped keyline colour", () => {
   });
 
   it("draws the volume's stroke in that black on the art plate", async () => {
-    const text = await contentStreamText(await buildArtPdf(defaultConfig(), assets));
+    const text = await contentStreamText(await buildArtPdf(await configPlan(defaultConfig()), assets));
     expect(text).toContain("0 0 0 rg");
     const bare = defaultConfig();
     bare.volume.stroke = "none";
-    const plain = await contentStreamText(await buildArtPdf(bare, assets));
+    const plain = await contentStreamText(await buildArtPdf(await configPlan(bare), assets));
     expect(showOps(text)).toBeGreaterThan(showOps(plain));
   });
 });
@@ -162,8 +162,8 @@ describe("a stroke on the mask plate", () => {
       const bare = defaultConfig();
       bare.handleAddress.layer = layer;
       bare.handleAddress.stroke = "none";
-      const withRing = await contentStreamText(await buildMaskPdf(stroked, assets));
-      const without = await contentStreamText(await buildMaskPdf(bare, assets));
+      const withRing = await contentStreamText(await buildMaskPdf(await configPlan(stroked), assets));
+      const without = await contentStreamText(await buildMaskPdf(await configPlan(bare), assets));
       expect(showOps(withRing)).toBeGreaterThan(showOps(without));
     }
   });

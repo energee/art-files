@@ -8,8 +8,8 @@ import {
  *  bare key that fires it, `shortcut` the glyphs shown to the user — separate
  *  fields because ⌘Z is displayed here but handled by its own listener. */
 export interface Command {
-  /** Stable lookup key. A label can change with state (Show/Hide bleed
-   *  lines), so surfaces address a command by id, never by what it reads. */
+  /** Stable lookup key. A label can change with state (Show/Hide guides),
+   *  so surfaces address a command by id, never by what it reads. */
   id: string;
   label: string;
   run: () => void;

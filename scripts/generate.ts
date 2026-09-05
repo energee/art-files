@@ -5,6 +5,13 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
+import { PDFDocument } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
+import { convertConfigV1 } from "../src/model/convert";
+import { lolevMaster } from "../src/model/lolevLayers";
+import { resolveLayers } from "../src/model/resolveLayers";
+import { planLayers } from "../src/planLayers";
+import type { PlanAssets } from "../src/plan";
 import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "../src/pdf/build";
 import type { CollabSlot } from "../src/types";
 import { buildPsd, type PsdAssets } from "../src/psd/build";
@@ -55,27 +62,6 @@ if (!upc.ok) {
   process.exit(1);
 }
 
-// "none" skips the mask: the white-ink PDF then carries only the
-// per-element layer assignments.
-let maskPng: Uint8Array | undefined;
-let maskPixels: PsdAssets["mask"];
-if (maskPath !== "none") {
-  // Untouched, matching the app: the printer accepts these plates as-authored.
-  const bytes = readFileSync(maskPath);
-  const mask = PNG.sync.read(bytes);
-  maskPixels = {
-    data: new Uint8Array(mask.data.buffer, mask.data.byteOffset, mask.data.length),
-    width: mask.width, height: mask.height,
-  };
-  maskPng = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.length);
-}
-
-// Read once — both the PDF assets and the PSD's pixel decode use these bytes.
-const textureBytes = texturePath === "none" ? undefined : readFileSync(texturePath);
-
-// TTF basenames resolve through the catalog against cfg's family — Node-safe
-// (fontCatalog.ts has no ?url imports), so this harness never hardcodes
-// Poppins basenames the way the DOM/PDF gates would otherwise tempt.
 const fontFiles = FONT_FAMILIES[fontFamilyOf(cfg)].files;
 const assets: Assets = {
   fonts: {
@@ -83,45 +69,59 @@ const assets: Assets = {
     semibold: readFileSync(asset(`fonts/${fontFiles.semibold}`)),
     bold: readFileSync(asset(`fonts/${fontFiles.bold}`)),
   },
-  logoSvg: readFileSync(asset("logo2025.svg"), "utf8"),
-  collabLeft: collabImage(flag("collab-left"), cfg.collabLeft),
-  collabCenter: collabImage(flag("collab-center"), cfg.collabCenter),
-  // "none" skips the texture: the art PDF is then just the elements on
-  // bare stock (matches the app's pre-drop preview).
-  texture: textureBytes && {
-    bytes: textureBytes,
-    kind: rasterKind(texturePath),
-  },
-  maskPng,
+  images: {},
 };
-
-// The PSD's texture layer takes decoded pixels; buildPsd centres them. PNG
-// only — a JPG texture still reaches both PDFs, the PSD just ships without
-// the background layer (Node has no JPEG decoder here; the browser gets one
-// free from canvas).
-let texturePixels: PsdAssets["texture"];
-if (assets.texture?.kind === "png") {
-  const t = PNG.sync.read(textureBytes!);
-  texturePixels = {
-    data: new Uint8Array(t.data.buffer, t.data.byteOffset, t.data.length),
-    width: t.width,
-    height: t.height,
-  };
-} else if (assets.texture) {
-  console.warn("warning: JPG texture — PSD will omit the background layer");
+const psdAssets: PsdAssets = { fonts: assets.fonts, fontFamily: fontFamilyOf(cfg), images: {} };
+const planAssets: PlanAssets = { logoSvg: readFileSync(asset("logo2025.svg"), "utf8"), custom: {} };
+const metrics = await PDFDocument.create();
+metrics.registerFontkit(fontkit);
+const fonts = {
+  regular: await metrics.embedFont(assets.fonts.regular),
+  semibold: await metrics.embedFont(assets.fonts.semibold),
+  bold: await metrics.embedFont(assets.fonts.bold),
+};
+const left = flag("collab-left");
+const center = flag("collab-center");
+if (left) cfg.collabLeft.image = "collab-left";
+if (center) cfg.collabCenter.image = "collab-center";
+const converted = convertConfigV1(cfg, !!(left || center));
+const { label } = converted;
+const resolved = resolveLayers(lolevMaster(), label.enabledVariants, label.values, {
+  ...label.overrides,
+  background: { asset: texturePath === "none" ? "" : "texture" },
+  mask: { asset: maskPath === "none" ? "" : "mask" },
+});
+for (const warning of [...converted.warnings, ...resolved.warnings]) console.warn(warning);
+if (Object.keys(resolved.errors).length) throw new Error(Object.values(resolved.errors).join("\n"));
+for (const [id, img] of [
+  ["texture", texturePath === "none" ? null : { kind: rasterKind(texturePath), bytes: readFileSync(texturePath) }],
+  ["mask", maskPath === "none" ? null : { kind: "png", bytes: readFileSync(maskPath) }],
+  ["collab-left", collabImage(left, cfg.collabLeft)],
+  ["collab-center", collabImage(center, cfg.collabCenter)],
+] as [string, CollabImage | null][]) {
+  if (!img) continue;
+  assets.images![id] = img;
+  if (img.kind === "svg") {
+    planAssets.custom![id] = { aspect: 1, art: img };
+    continue;
+  }
+  const embedded = img.kind === "png" ? await metrics.embedPng(img.bytes) : await metrics.embedJpg(img.bytes);
+  planAssets.custom![id] = { aspect: embedded.width / embedded.height };
+  if (img.kind === "png") {
+    const png = PNG.sync.read(Buffer.from(img.bytes));
+    psdAssets.images![id] = { data: new Uint8Array(png.data), width: png.width, height: png.height };
+  } else {
+    console.warn(`warning: ${id} is JPEG — PSD will omit this raster layer`);
+  }
 }
+const layers = resolved.layers;
+const plan = planLayers(layers, (text, size, face) => fonts[face].widthOfTextAtSize(text, size), planAssets);
 
 mkdirSync(resolve(outDir), { recursive: true });
-const art = await buildArtPdf(cfg, assets);
-const maskPdf = await buildMaskPdf(cfg, assets);
-const psdAssets: PsdAssets = {
-  fonts: assets.fonts,
-  logoSvg: assets.logoSvg,
-  texture: texturePixels,
-  mask: maskPixels,
-};
-const psd = await buildPsd(cfg, psdAssets);
-const maskPsd = await buildPsd(cfg, psdAssets, "mask");
+const art = await buildArtPdf(plan, assets);
+const maskPdf = await buildMaskPdf(plan, assets);
+const psd = await buildPsd(plan, psdAssets, "art", { layers });
+const maskPsd = await buildPsd(plan, psdAssets, "mask", { layers });
 const artOut = join(outDir, `${cfg.beerName}.pdf`);
 const maskOut = join(outDir, `${cfg.beerName}-mask.pdf`);
 const psdOut = join(outDir, `${cfg.beerName}.psd`);

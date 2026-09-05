@@ -8,9 +8,11 @@ import { describe, expect, it } from "vitest";
 import type { PDFFont, PDFPage } from "pdf-lib";
 import type { LabelConfig } from "../src/types";
 import { drawBarcode } from "../src/pdf/build";
-import { barcodeItem, type MeasureFace } from "../src/plan";
-import { barcodeStrokePt } from "../src/barcode";
-import { encodeUpc } from "../src/upc";
+import { barcodeItem } from "./legacy/plan";
+import { type MeasureFace } from "../src/plan";
+import { barcodeDigitsFor, barcodeGeometry, barcodeStrokePt } from "../src/barcode";
+import { encodeUpc, encodeEan13 } from "../src/upc";
+import { encodeCode128 } from "../src/code128";
 import { defaultConfig, parseConfigFile, toConfigFile } from "../src/defaults";
 import { BARCODE as B, COLORS, FONT_ASC, FONT_DESC, PAGE, PX, parseHexFill } from "../src/layout";
 
@@ -272,6 +274,54 @@ describe("drawBarcode styling", () => {
   });
 });
 
+// The geometry entry point (barcodeGeometry) became symbology-agnostic: an
+// optional trailing `pattern` lets a caller supply any {modules, guards}
+// shape, while the default (no pattern) path must stay byte-identical to
+// today's UPC-A-only behavior.
+describe("barcodeGeometry pattern parameter", () => {
+  const measure = () => 10;
+
+  it("explicit UPC pattern matches the implicit default exactly", () => {
+    const implicit = barcodeGeometry(UPC, measure);
+    const explicit = barcodeGeometry(UPC, measure, encodeUpc(UPC));
+    // Controller ruling (fix round 1): the digit-layout gate is on
+    // `pattern === undefined`, uniformly — even an explicit `encodeUpc`
+    // pattern that reproduces the default path's bars gets `digits: []`,
+    // because gating on guard shape instead would silently apply UPC-A's
+    // 12-digit slicing to an explicit EAN-13 pattern (which shares UPC-A's
+    // guard shape). So this equality holds for everything EXCEPT `digits`;
+    // that field is asserted separately, and always empty on the explicit
+    // path.
+    const { digits: _implicitDigits, ...implicitRest } = implicit;
+    const { digits: _explicitDigits, ...explicitRest } = explicit;
+    expect(explicitRest).toEqual(implicitRest);
+    expect(implicit.digits.length).toBeGreaterThan(0);
+    expect(explicit.digits).toEqual([]);
+  });
+
+  it("an explicit EAN-13 pattern also gets empty digits, not UPC-A digit slicing", () => {
+    // EAN-13 shares UPC-A's guard shape ([0,10),[45,50),[85,95)), so a gate
+    // on guard presence would misfire here and slice the 13-digit value
+    // with UPC-A's 12-digit layout. The uniform "any explicit pattern gets
+    // empty digits" rule is what prevents that.
+    const geo = barcodeGeometry("4006381333931", measure, encodeEan13("4006381333931"));
+    expect(geo.digits).toEqual([]);
+    expect(geo.bars.length).toBeGreaterThan(0);
+    expect(geo.bars.some((b) => b.w === B.guardLen)).toBe(true);
+  });
+
+  it("a Code 128 pattern yields bars, no digits, uniform heights", () => {
+    const geo = barcodeGeometry("BEER-123", measure, encodeCode128("BEER-123"));
+    expect(geo.digits).toEqual([]);
+    expect(geo.bars.length).toBeGreaterThan(0);
+    // No guards on a Code 128 pattern, so every bar uses the plain bar
+    // length — none stretches to the tall guardLen used at UPC-A's guard
+    // groups.
+    const widths = new Set(geo.bars.map((b) => b.w));
+    expect(widths.size).toBe(1);
+  });
+});
+
 // The halo width is resolved once, in src/barcode.ts, and read by BOTH
 // deliverable builders (pdf/build.ts drawBarcode, psd/build.ts) — the
 // expression used to be duplicated verbatim in the two, where any drift
@@ -294,5 +344,26 @@ describe("shared barcode stroke resolver", () => {
     const maskRect = draw(cfg, "mask").rects[0]; // first bar's footprint rect
     expect(maskRect.width).toBeCloseTo(bars[0].width, 10);
     expect(maskRect.borderWidth).toBeCloseTo(2 * expected, 10);
+  });
+});
+
+// barcodeDigitsFor (P3) — generic per-symbology digit grouping for a custom
+// barcode layer's own EXPLICIT pattern; barcodeGeometry itself is untouched
+// (see its own comment) and keeps returning digits:[] for any pattern.
+describe("barcodeDigitsFor", () => {
+  it("upc-a: historical 4-group layout", () => {
+    const d = barcodeDigitsFor("upc-a", "850051366224", 95, 9, (t) => t.length * 4);
+    expect(d.map((g) => g.text)).toEqual(["8", "50051", "36622", "4"]);
+  });
+
+  it("ean-13 digits: leading digit + two centered sixes", () => {
+    const d = barcodeDigitsFor("ean-13", "4006381333931", 95, 9, (t) => t.length * 4);
+    expect(d.map((g) => g.text)).toEqual(["4", "006381", "333931"]);
+  });
+
+  it("code-128 digits: one group, centered", () => {
+    const d = barcodeDigitsFor("code-128", "LOLEV-123", 68, 10, (t) => t.length * 4);
+    expect(d).toHaveLength(1);
+    expect(d[0].text).toBe("LOLEV-123");
   });
 });

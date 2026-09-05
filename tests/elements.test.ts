@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { ELEMENTS, applyStyle, dragTarget, editableText, elementById, isDefaultStyle } from "../src/elements";
+import {
+  ELEMENTS, applyStyle, customElement, dragTarget, editableText, elementById, isDefaultStyle,
+} from "./legacy/elements";
 import { defaultConfig } from "../src/defaults";
 import { GOLD } from "../src/layout";
+import type {
+  CustomBarcodeLayer, CustomImageLayer, CustomQrLayer, CustomTextLayer,
+} from "../src/types";
 
 describe("element registry", () => {
   it("covers every stylable element exactly once", () => {
@@ -11,18 +16,6 @@ describe("element registry", () => {
     expect(ids).toContain("storeCold");
     expect(ids).toContain("qr");
     expect(ids).toContain("barcode");
-  });
-
-  it("splits per-beer fields from set-once template fields", () => {
-    const g = (id: string) => ELEMENTS.find((e) => e.id === id)!.group;
-    expect(g("name")).toBe("beer");
-    expect(g("styleLine")).toBe("beer");
-    // Both codes change per release (QR payload follows the name, UPC digits
-    // are per-beer), so neither belongs behind the brand-template disclosure.
-    expect(g("qr")).toBe("beer");
-    expect(g("barcode")).toBe("beer");
-    expect(g("wordmark")).toBe("template");
-    expect(g("storeCold")).toBe("template");
   });
 
   it("reads each element's live style out of the config", () => {
@@ -195,8 +188,13 @@ describe("inline editable text", () => {
   it("round-trips every editable element's text through the config", () => {
     const cfg = defaultConfig();
     for (const [id, spec] of Object.entries(editableText)) {
-      spec.set(cfg, `edited ${id}`);
-      expect(spec.get(cfg)).toBe(`edited ${id}`);
+      // editableText's index type now includes ElementId's `custom-${string}`
+      // arm, which TS treats as an index signature (value type T | undefined)
+      // rather than a finite set of known-present keys — but the entries
+      // actually iterated here are only the fixed keys the object literal
+      // defines, so they are always present.
+      spec!.set(cfg, `edited ${id}`);
+      expect(spec!.get(cfg)).toBe(`edited ${id}`);
     }
     // The accessors hit the real backing fields, flat and styled alike.
     expect(cfg.beerName).toBe("edited name");
@@ -211,12 +209,11 @@ describe("inline editable text", () => {
 });
 
 describe("dragTarget", () => {
-  it("logo drags only while collab is on (offsetY is ignored otherwise)", () => {
+  // The laurel's nudge applies unconditionally now (logoNudge), so dragging
+  // it always moves real ink — there is no collab gate left to fail.
+  it("logo drags whenever it is unlocked", () => {
     const cfg = defaultConfig();
     const slots = { left: false, center: false };
-    cfg.collabEnabled = false;
-    expect(dragTarget(cfg, slots, "logo")).toBeNull();
-    cfg.collabEnabled = true;
     const t = dragTarget(cfg, slots, "logo")!;
     expect(t.get()).toBe(cfg.logo.offsetY ?? 0);
     const next = structuredClone(cfg);
@@ -226,7 +223,6 @@ describe("dragTarget", () => {
 
   it("collab slots drag only when their art is loaded", () => {
     const cfg = defaultConfig();
-    cfg.collabEnabled = true;
     expect(dragTarget(cfg, { left: false, center: false }, "collabLeft")).toBeNull();
     const t = dragTarget(cfg, { left: true, center: false }, "collabLeft")!;
     const next = structuredClone(cfg);
@@ -236,8 +232,109 @@ describe("dragTarget", () => {
 
   it("everything else is not draggable", () => {
     const cfg = defaultConfig();
-    cfg.collabEnabled = true;
     for (const id of ["name", "description", "barcode", "qr", "warning"] as const)
       expect(dragTarget(cfg, { left: true, center: true }, id)).toBeNull();
+  });
+
+  it("writes a custom text layer's style patch into its own cfg entry, not a shared object", () => {
+    const cfg = defaultConfig();
+    const pos = { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 } as const;
+    const layerA: CustomTextLayer = {
+      id: "custom-a", name: "A", type: "text", size: 10, position: pos,
+      line: { text: "hello", fill: "none", layer: "white" },
+    };
+    const layerB: CustomTextLayer = {
+      id: "custom-b", name: "B", type: "text", size: 10, position: pos,
+      line: { text: "world", fill: "none", layer: "white" },
+    };
+    cfg.customLayers = [layerA, layerB];
+
+    applyStyle(cfg, "custom-a", { fill: "#ABCDEF" });
+
+    expect(layerA.line.fill).toBe("#ABCDEF");
+    // The second custom layer must be untouched — a shared BLANK_STYLE
+    // singleton would have leaked the write onto it too.
+    expect(layerB.line.fill).toBe("none");
+    // A fresh elementById().style() call for either id must still read as
+    // the untouched placeholder, not reflect the patch above.
+    expect(elementById("custom-a").style(cfg)).toEqual({ fill: "none", layer: "white" });
+  });
+});
+
+describe("customElement", () => {
+  const pos = { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 } as const;
+
+  it("labels a custom row with the layer's own name", () => {
+    const cfg = defaultConfig();
+    const textLayer: CustomTextLayer = {
+      id: "custom-t1", name: "Tagline", type: "text", size: 12, position: pos,
+      line: { text: "hi", fill: "none", layer: "white" },
+    };
+    cfg.customLayers = [textLayer];
+    expect(customElement(cfg, "custom-t1").label).toBe("Tagline");
+  });
+
+  it("gives a custom text layer bold + tracking capability, images neither", () => {
+    const cfg = defaultConfig();
+    const textLayer: CustomTextLayer = {
+      id: "custom-t1", name: "Tagline", type: "text", size: 12, position: pos,
+      line: { text: "hi", fill: "none", layer: "white" },
+    };
+    const imageLayer: CustomImageLayer = {
+      id: "custom-i1", name: "Art", type: "image", asset: "a1", w: 40, position: pos,
+      style: { fill: "none", layer: "white" },
+    };
+    cfg.customLayers = [textLayer, imageLayer];
+    const text = customElement(cfg, "custom-t1");
+    expect(text.hasBold).toBe(true);
+    expect(text.isText).toBe(true);
+    expect(text.allowNone).toBe(true);
+    const image = customElement(cfg, "custom-i1");
+    expect(image.hasBold).toBe(false);
+    expect(image.isText).toBe(false);
+    expect(image.allowNone).toBe(true);
+  });
+
+  it("forbids no-ink on custom barcode/QR layers, same as the fixed codes", () => {
+    const cfg = defaultConfig();
+    const barcodeLayer: CustomBarcodeLayer = {
+      id: "custom-b1", name: "Code", type: "barcode", symbology: "code-128",
+      value: "X", h: 30, moduleW: 1, position: pos, style: { fill: "#000000", layer: "white" },
+    };
+    const qrLayer: CustomQrLayer = {
+      id: "custom-q1", name: "QR", type: "qr", value: "x", size: 40, qrStyle: "square",
+      position: pos, style: { fill: "#000000", layer: "white" },
+    };
+    cfg.customLayers = [barcodeLayer, qrLayer];
+    expect(customElement(cfg, "custom-b1").allowNone).toBe(false);
+    expect(customElement(cfg, "custom-q1").allowNone).toBe(false);
+  });
+
+  // Regression: applyStyle used to strip bold/tracking for EVERY custom id
+  // (elementById's customFallback always reports hasBold/isText false), so a
+  // custom text layer could never actually be made bold or tracked.
+  it("applyStyle lands bold + tracking on a custom TEXT layer", () => {
+    const cfg = defaultConfig();
+    const textLayer: CustomTextLayer = {
+      id: "custom-t1", name: "Tagline", type: "text", size: 12, position: pos,
+      line: { text: "hi", fill: "none", layer: "white" },
+    };
+    cfg.customLayers = [textLayer];
+    applyStyle(cfg, "custom-t1", { bold: true, letterSpacing: 1 });
+    expect(textLayer.line.bold).toBe(true);
+    expect(textLayer.line.letterSpacing).toBe(1);
+  });
+
+  it("applyStyle drops bold + tracking on a custom IMAGE layer", () => {
+    const cfg = defaultConfig();
+    const imageLayer: CustomImageLayer = {
+      id: "custom-i1", name: "Art", type: "image", asset: "a1", w: 40, position: pos,
+      style: { fill: "none", layer: "white" },
+    };
+    cfg.customLayers = [imageLayer];
+    applyStyle(cfg, "custom-i1", { bold: true, letterSpacing: 1, fill: "#123456" });
+    expect(imageLayer.style.fill).toBe("#123456");
+    expect("bold" in imageLayer.style).toBe(false);
+    expect("letterSpacing" in imageLayer.style).toBe(false);
   });
 });

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { lineRuns, rotatedRuns, justifiedRotatedRuns, planLabel, barcodeItem, type MeasureFace, type PlacedText } from "../src/plan";
+import { planLabel, barcodeItem } from "./legacy/plan";
+import { lineRuns, rotatedRuns, justifiedRotatedRuns, labelGuides, type MeasureFace, type PlacedText, type PlacedImage } from "../src/plan";
 import * as L from "../src/layout";
 import { defaultConfig } from "../src/defaults";
 import { assets } from "./fixtures";
+import type { CustomTextLayer, CustomImageLayer } from "../src/types";
 
 // Deterministic fake metrics: 0.5pt per char per size unit, bold faces 10% wider.
 const m: MeasureFace = (text, size, face) =>
@@ -105,8 +107,7 @@ describe("planLabel", () => {
     // breaks the split fails this test instead of silently reordering the
     // PDF's left column.
     const LEFT = new Set(["volume", "abv", "description", "collabLead"]);
-    const on = { ...defaultConfig(), collabEnabled: true };
-    const ids = planLabel(on, m, { collab: { left: true, center: false } }).map((r) => r.id);
+    const ids = planLabel(defaultConfig(), m, { collab: { left: true, center: false } }).map((r) => r.id);
     const inLeft = ids.map((id) => LEFT.has(id));
     const split = inLeft.lastIndexOf(true);
     expect(split).toBeGreaterThanOrEqual(0);
@@ -116,7 +117,7 @@ describe("planLabel", () => {
 
   it("skip removes an element without moving its neighbours", () => {
     const all = planLabel(cfg, m);
-    const skipped = planLabel(cfg, m, { skip: new Set<import("../src/elements").ElementId>(["abv"]) });
+    const skipped = planLabel(cfg, m, { skip: new Set<import("./legacy/elements").ElementId>(["abv"]) });
     expect(skipped.some((r) => r.id === "abv")).toBe(false);
     const others = (rs: typeof all) => rs.filter((r) => r.id !== "abv");
     expect(others(skipped)).toEqual(others(all));
@@ -134,10 +135,10 @@ describe("planLabel", () => {
     expect(name.map((r) => r.text).join("")).toBe("HAZY");
   });
 
-  it("collabLead appears only with the switch on AND a left slot filled", () => {
-    const on = { ...defaultConfig(), collabEnabled: true };
-    expect(planLabel(on, m).some((r) => r.id === "collabLead")).toBe(false);
-    expect(planLabel(on, m, { collab: { left: true, center: false } })
+  it("collabLead appears only when a left slot is filled", () => {
+    const c = defaultConfig();
+    expect(planLabel(c, m).some((r) => r.id === "collabLead")).toBe(false);
+    expect(planLabel(c, m, { collab: { left: true, center: false } })
       .some((r) => r.id === "collabLead")).toBe(true);
   });
 
@@ -145,9 +146,9 @@ describe("planLabel", () => {
     // The PDF build drops a hidden logo's art so no bytes reach the file, but
     // the lead-in has its own eye — it must survive, or the export diverges
     // from the preview.
-    const on = { ...defaultConfig(), collabEnabled: true };
+    const c = defaultConfig();
     const { logoSvg } = assets;
-    const plan = planLabel(on, m, {
+    const plan = planLabel(c, m, {
       collab: { left: true, center: false },
       assets: { logoSvg, collabLeft: null, collabCenter: null },
     });
@@ -228,20 +229,18 @@ describe("planLabel collab images and barcode", () => {
 
   it("fits a raster centre logo into its envelope, centred on cx", () => {
     // 200x100 raster in a 36x36 envelope at scale 1: width-bound, s=0.18.
-    const c = { ...cfg, collabEnabled: true };
-    const item = planLabel(c, m, {
+    const item = planLabel(cfg, m, {
       assets: { ...assets, collabCenter: { kind: "raster" as const, w: 200, h: 100 } },
     }).find((r) => r.id === "collabCenter");
     expect(item).toBeDefined();
     if (item!.kind !== "image") throw new Error("expected an image item");
-    expect(item!.w).toBeCloseTo(L.COLLAB_CENTER.maxW * c.collabCenter.scale);
+    expect(item!.w).toBeCloseTo(L.COLLAB_CENTER.maxW * cfg.collabCenter.scale);
     expect(item!.h).toBeCloseTo(item!.w / 2);
     expect(item!.x).toBeCloseTo(L.COLLAB_CENTER.cx - item!.w / 2);
   });
 
   it("plans an svg left logo as paths at the flowed position", () => {
-    const c = { ...cfg, collabEnabled: true };
-    const item = planLabel(c, m, {
+    const item = planLabel(cfg, m, {
       assets: { ...assets, collabLeft: { kind: "svg" as const, svg: LOGO_SVG } },
     }).find((r) => r.id === "collabLeft");
     expect(item?.kind).toBe("paths");
@@ -271,5 +270,97 @@ describe("planLabel collab images and barcode", () => {
   it("the barcode is the plan's last item", () => {
     const list = planLabel(cfg, m, { assets });
     expect(list[list.length - 1].kind).toBe("barcode");
+  });
+});
+
+describe("labelGuides", () => {
+  it("returns SAFE's edges with center at their midpoint", () => {
+    const g = labelGuides();
+    expect(g).toEqual({
+      left: L.SAFE.left, right: L.SAFE.right,
+      top: L.SAFE.top, bottom: L.SAFE.bottom,
+      center: (L.SAFE.left + L.SAFE.right) / 2,
+    });
+  });
+});
+
+describe("planLabel with customLayers", () => {
+  const cfg = defaultConfig();
+
+  it("absent/empty customLayers produces a plan deep-equal to the no-layers plan", () => {
+    const base = planLabel(cfg, m);
+    expect(planLabel({ ...cfg, customLayers: [] }, m)).toEqual(base);
+    expect(planLabel({ ...cfg, customLayers: undefined }, m)).toEqual(base);
+  });
+
+  it("places a custom text layer anchored top-left, on top of the fixed elements", () => {
+    const layer: CustomTextLayer = {
+      id: "custom-t1", name: "Custom", type: "text", size: 12,
+      position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
+      line: { text: "HI", fill: "#000000", layer: "metallic" },
+    };
+    const list = planLabel({ ...cfg, customLayers: [layer] }, m);
+    const items = list.filter((r): r is PlacedText => r.id === "custom-t1");
+    expect(items).toHaveLength(1);
+    const [item] = items;
+    expect(item.kind).toBe("text");
+    const tw = m("HI", 12, "regular");
+    expect(item.x).toBeCloseTo(L.SAFE.left);
+    expect(item.y).toBeCloseTo(L.SAFE.top + 12);
+    expect(item.w).toBeCloseTo(tw);
+    // Drawn after every fixed element (on top).
+    expect(list[list.length - 1].id).toBe("custom-t1");
+  });
+
+  it("a center-anchored text layer re-centers around the measured width", () => {
+    const layer: CustomTextLayer = {
+      id: "custom-t2", name: "Custom", type: "text", size: 12,
+      position: { anchor: "center", vAnchor: "top", offsetX: 0, offsetY: 0 },
+      line: { text: "WIDER TEXT", fill: "#000000", layer: "metallic" },
+    };
+    const item = planLabel({ ...cfg, customLayers: [layer] }, m)
+      .find((r): r is PlacedText => r.id === "custom-t2")!;
+    const g = labelGuides();
+    const tw = m("WIDER TEXT", 12, "regular");
+    expect(item.x).toBeCloseTo(g.center - tw / 2);
+  });
+
+  it("places a custom image layer sized from the asset's aspect", () => {
+    const layer: CustomImageLayer = {
+      id: "custom-i1", name: "Custom Image", type: "image", asset: "art1", w: 100,
+      position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
+      style: { fill: "none", layer: "white" },
+    };
+    const item = planLabel(
+      { ...cfg, customLayers: [layer] }, m, { assets: { logoSvg: assets.logoSvg, custom: { art1: { aspect: 2 } } } },
+    ).find((r): r is PlacedImage => r.id === "custom-i1");
+    expect(item).toBeDefined();
+    if (item?.kind !== "image") throw new Error("expected an image item");
+    expect(item.w).toBe(100);
+    expect(item.h).toBeCloseTo(50);
+  });
+
+  it("emits nothing for a custom image layer whose asset key is missing", () => {
+    const layer: CustomImageLayer = {
+      id: "custom-i2", name: "Missing", type: "image", asset: "nope", w: 100,
+      position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
+      style: { fill: "none", layer: "white" },
+    };
+    const list = planLabel(
+      { ...cfg, customLayers: [layer] }, m, { assets: { logoSvg: assets.logoSvg, custom: {} } },
+    );
+    expect(list.some((r) => r.id === "custom-i2")).toBe(false);
+  });
+
+  it("PlanOpts.skip applies to custom ids like any other id", () => {
+    const layer: CustomTextLayer = {
+      id: "custom-t3", name: "Custom", type: "text", size: 12,
+      position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 },
+      line: { text: "HI", fill: "#000000", layer: "metallic" },
+    };
+    const list = planLabel({ ...cfg, customLayers: [layer] }, m, {
+      skip: new Set<import("./legacy/elements").ElementId>(["custom-t3"]),
+    });
+    expect(list.some((r) => r.id === "custom-t3")).toBe(false);
   });
 });

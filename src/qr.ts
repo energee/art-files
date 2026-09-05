@@ -1,6 +1,7 @@
 // qr.ts — pure QR geometry. Builds the module matrix with qrcode-generator
-// (ECC L, margin 0, matching the barcode-qr app) and emits styled shapes:
-// round data dots + circular finder rings, as seen on the Labradorite label.
+// (margin 0, matching the barcode-qr app) and emits styled shapes: either
+// round data dots + circular finder rings (the Labradorite label's "dots"
+// style, still the default) or plain/rounded module squares, per QrOptions.
 import qrcode from "qrcode-generator";
 
 /** Beer title -> machine name: lowercase, non-alphanumeric runs -> "-". */
@@ -12,35 +13,65 @@ export function qrUrl(beerName: string): string {
   return `https://lolev.beer/beer/${machineName(beerName)}`;
 }
 
+export interface QrOptions {
+  style?: "square" | "rounded" | "dots";
+  ecLevel?: "L" | "M" | "Q" | "H";
+}
+
 export interface QrShapes {
   count: number; // modules per side
-  /** Data module centers in unit space (0..1), excluding finder patterns. */
+  /** Data module centers in unit space (0..1), excluding finder patterns.
+   *  Populated only for the "dots" style. */
   dots: { cx: number; cy: number }[];
-  /** Finder pattern centers in unit space; drawn as ring + center dot. */
+  /** Finder pattern centers in unit space; drawn as ring + center dot.
+   *  Populated only for the "dots" style. */
   finders: { cx: number; cy: number }[];
+  /** Unit-space top-left corners of every dark module, finders INCLUDED —
+   *  populated only for the "square"/"rounded" styles, which paint every
+   *  dark module the same way instead of styling finders separately. */
+  squares?: { x: number; y: number }[];
   moduleSize: number; // unit-space module size (1/count)
+  /** Which style produced these shapes, so qrPath knows how to render them
+   *  without the caller re-passing options. */
+  style: "square" | "rounded" | "dots";
 }
 
 // Last-call memo: each preview rebuild asks for the same payload twice (art
 // then mask mode), and repeats it across rebuilds whenever the edit didn't
-// touch the beer name — the matrix encode is the expensive step.
-let lastShapes: { data: string; shapes: QrShapes } | null = null;
+// touch the beer name or options — the matrix encode is the expensive step.
+let lastShapes: { key: string; shapes: QrShapes } | null = null;
 
-export function qrShapes(data: string): QrShapes {
-  if (lastShapes?.data === data) return lastShapes.shapes;
-  const shapes = buildShapes(data);
-  lastShapes = { data, shapes };
+export function qrShapes(data: string, opts?: QrOptions): QrShapes {
+  const style = opts?.style ?? "dots";
+  const ecLevel = opts?.ecLevel ?? "L";
+  const key = `${data}|${style}|${ecLevel}`;
+  if (lastShapes?.key === key) return lastShapes.shapes;
+  const shapes = buildShapes(data, style, ecLevel);
+  lastShapes = { key, shapes };
   return shapes;
 }
 
-function buildShapes(data: string): QrShapes {
-  const qr = qrcode(0, "L");
+function buildShapes(
+  data: string,
+  style: "square" | "rounded" | "dots",
+  ecLevel: "L" | "M" | "Q" | "H",
+): QrShapes {
+  const qr = qrcode(0, ecLevel);
   qr.addData(data || " ");
   qr.make();
   const count = qr.getModuleCount();
   const ms = 1 / count;
   const inFinder = (r: number, c: number) =>
     (r < 7 && c < 7) || (r < 7 && c >= count - 7) || (r >= count - 7 && c < 7);
+
+  if (style !== "dots") {
+    const squares: { x: number; y: number }[] = [];
+    for (let r = 0; r < count; r++)
+      for (let c = 0; c < count; c++)
+        if (qr.isDark(r, c)) squares.push({ x: c * ms, y: r * ms });
+    return { count, dots: [], finders: [], squares, moduleSize: ms, style };
+  }
+
   const dots: { cx: number; cy: number }[] = [];
   for (let r = 0; r < count; r++)
     for (let c = 0; c < count; c++)
@@ -56,6 +87,7 @@ function buildShapes(data: string): QrShapes {
       { cx: f, cy: 1 - f },
     ],
     moduleSize: ms,
+    style,
   };
 }
 
@@ -70,11 +102,34 @@ function circle(cx: number, cy: number, r: number, ccw = false): string {
   );
 }
 
+/** SVG path for a square module at unit-space top-left (x,y), side `s`, grown
+ *  by `grow` on every edge; `radius` > 0 rounds the corners with arcs. */
+function square(x: number, y: number, s: number, grow: number, radius: number): string {
+  const x0 = x - grow, y0 = y - grow, side = s + 2 * grow;
+  if (radius <= 0) return `M ${x0} ${y0} h ${side} v ${side} h ${-side} Z`;
+  const r = Math.min(radius, side / 2);
+  return (
+    `M ${x0 + r} ${y0} ` +
+    `h ${side - 2 * r} a ${r} ${r} 0 0 1 ${r} ${r} ` +
+    `v ${side - 2 * r} a ${r} ${r} 0 0 1 ${-r} ${r} ` +
+    `h ${-(side - 2 * r)} a ${r} ${r} 0 0 1 ${-r} ${-r} ` +
+    `v ${-(side - 2 * r)} a ${r} ${r} 0 0 1 ${r} ${-r} Z`
+  );
+}
+
 /** One combined SVG path (nonzero fill) for the whole QR at a given size in
  *  points; suitable for pdf-lib drawSvgPath and for an <path> element. */
 export function qrPath(shapes: QrShapes, size: number, grow = 0): string {
   const parts: string[] = [];
   const ms = shapes.moduleSize * size;
+
+  if (shapes.squares) {
+    const radius = shapes.style === "rounded" ? 0.25 * ms : 0;
+    for (const sq of shapes.squares)
+      parts.push(square(sq.x * size, sq.y * size, ms, grow, radius));
+    return parts.join(" ");
+  }
+
   for (const d of shapes.dots)
     parts.push(circle(d.cx * size, d.cy * size, ms * 0.5 * 0.92 + grow));
   for (const f of shapes.finders) {

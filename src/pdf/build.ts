@@ -1,8 +1,14 @@
-// build.ts — builds the two deliverable PDFs with pdf-lib. drawElements walks
-// the plan (see ../plan) in draw order once per mode: in "art" mode elements
-// draw with their fill color over the texture; in "mask" mode metallic
-// elements knock out (white) and white-layer elements paint mask blue. Both
-// modes share the exact same geometry, so the pair stays registered.
+// build.ts — builds the two deliverable PDFs with pdf-lib from a DISPLAY LIST
+// (planLayers.ts's PlacedLayer[], which the caller plans from the resolved
+// v3 layers — App or scripts/generate.ts). drawItems walks the list in draw
+// order once per mode: in "art" mode elements draw with their fill color
+// over the background page art; in "mask" mode metallic elements knock out
+// (white) and white-layer elements paint mask blue. Both modes share the
+// exact same geometry, so the pair stays registered. The `page` items (the
+// background texture and the metallic mask) replace the texture/mask
+// handling this file used to own: the art plate draws the background
+// cover-fit, the mask plate draws the mask — each looked up by `asset`,
+// like every raster image.
 import {
   LineCapStyle,
   LineJoinStyle,
@@ -10,6 +16,8 @@ import {
   PDFFont,
   PDFPage,
   degrees,
+  popGraphicsState,
+  pushGraphicsState,
   rgb,
   setCharacterSpacing,
   setLineCap,
@@ -23,52 +31,31 @@ import {
   type Rotation,
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
-import type { Fill, LabelConfig } from "../types";
-import type { ElementId } from "../elements";
+import type { Fill } from "../types";
 import { bridgeOffsets } from "../strokes";
-import { displayName } from "../defaults";
-import {
-  planLabel,
-  type Face,
-  type MeasureFace,
-  type Mode,
-  type PlacedBarcode,
-  type PlacedText,
-  type PlanArt,
-} from "../plan";
+import { type Face, type Mode, type PlacedBarcode, type PlacedText } from "../plan";
+import type { PlacedLayer, PlacedPage } from "../planLayers";
 import * as L from "../layout";
 
-/** A collab brewery's logo: vector source (recolored by its slot's style, like
- *  the laurel) or raster bytes (drawn as-is, over white ink). */
+/** An image asset's source: vector text (already planned as `paths` items by
+ *  planLayers, so this backend never draws it) or raster bytes, embedded
+ *  as-is. The name predates the layer model: every raster image — collab
+ *  slots, custom art, the page texture and mask — is one of these now. */
 export type CollabImage =
   | { kind: "svg"; svg: string }
   | { kind: "png" | "jpg"; bytes: Uint8Array };
 
 export interface Assets {
   fonts: { regular: Uint8Array; semibold: Uint8Array; bold: Uint8Array };
-  /** Raw contents of logo2025.svg. */
-  logoSvg: string;
-  /** Collab logos. Ignored entirely unless cfg.collabEnabled; with the switch
-   *  on, a slot with no image draws nothing (and an empty left slot also
-   *  suppresses the "A collaborative project with" lead-in). */
-  collabLeft?: CollabImage | null;
-  collabCenter?: CollabImage | null;
-  /** Optional: without it the art PDF is just the elements on bare stock,
-   *  which is what the preview shows before a texture is dropped. */
-  texture?: { bytes: Uint8Array; kind: "png" | "jpg" };
-  /** Uploaded mask PNG, embedded as-authored (the printer accepts these
-   *  plates unrecolored). Optional: without it buildMaskPdf floods the whole page white-ink
-   *  blue instead ("no mask" = "print as a white label"), and the per-element
-   *  assignments (metallic knockouts, white-layer ink) draw on top of that. */
-  maskPng?: Uint8Array;
-  /** Elements the UI's layers-panel eye has hidden: skipped entirely — ink,
-   *  stroke AND mask footprint. Distinct from fill "none", which is a live
-   *  style meaning "no ink / knockout white". Session state, not config: a
-   *  saved label file never records a hidden layer. */
-  // Structural (`has` only), not ReadonlySet<ElementId>: the UI's hidden set
-  // also carries the texture/mask layer ids, which this build never asks
-  // about — App handles those by omitting the asset itself.
-  hidden?: { has(id: ElementId): boolean };
+  /** Raster bytes by asset id — the id every `image` and `page` item carries
+   *  in `asset`. A missing key (bytes not loaded, or an SVG source, which
+   *  planLayers already turned into paths) leaves that item a no-op on BOTH
+   *  plates: no ink, and no mask footprint for art the art plate never
+   *  prints. For the two page roles the fallbacks are the old ones — no
+   *  background bytes = bare stock, no mask bytes = the white-ink flood. */
+  images?: Record<string, CollabImage | null | undefined>;
+  /** The label's display name for the PDF's document title. */
+  title?: string;
 }
 
 interface Fonts {
@@ -76,6 +63,9 @@ interface Fonts {
   semibold: PDFFont;
   bold: PDFFont;
 }
+
+/** Pinned UTC timestamp for deterministic PDF output — identical input builds byte-identically. */
+const PDF_EPOCH = new Date("2000-01-01T00:00:00Z");
 
 const toRgb = (c: { r: number; g: number; b: number }) => rgb(c.r, c.g, c.b);
 
@@ -174,7 +164,6 @@ function withTracking(page: PDFPage, tracking: number | undefined, draw: () => v
  *  plan resolved geometry, colors-by-name and digit centring once; this only
  *  paints. */
 export function drawBarcode(page: PDFPage, fonts: Fonts, item: PlacedBarcode, mode: Mode) {
-  const B = L.BARCODE;
   const S = item.S;
   const geo = item.geo;
   // y() of a run's lowest module IS the rect's bottom edge in PDF space, so
@@ -182,10 +171,18 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, item: PlacedBarcode, mo
   const bars = geo.bars.map((b) => ({
     x: b.x, y: y(b.yTop + b.h), width: b.w, height: b.h,
   }));
-  // rotate(90) turns the glyph body toward -x, so `x` is the baseline and the
-  // digits grow back toward the bars from it; the plan already centred `y`.
-  const digits = item.digits.map((d) => ({ txt: d.text, x: d.x, y: y(d.y), w: d.w }));
-  const glyph = { size: item.textSize, font: fonts.regular, rotate: degrees(90) };
+  // Rotated (the template): rotate(90) turns the glyph body toward -x, so
+  // `x` is the baseline and the digits grow back toward the bars from it;
+  // the plan already centred `y`. Upright (every custom barcode layer, Task
+  // 3): ordinary horizontal drawText, so `x` needs the left edge — the plan
+  // hands back the run's CENTER (see PlacedBarcode's own doc) — and no
+  // rotation.
+  const digits = item.digits.map((d) => ({
+    txt: d.text, x: item.rotated ? d.x : d.x - d.w / 2, y: y(d.y), w: d.w,
+  }));
+  const glyph = item.rotated
+    ? { size: item.textSize, font: fonts.regular, rotate: degrees(90) }
+    : { size: item.textSize, font: fonts.regular };
 
   if (mode === "mask") {
     // Stroke and fill have independent mask plates. Paint the expanded stroke
@@ -245,50 +242,38 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, item: PlacedBarcode, mo
   for (const d of digits) page.drawText(d.txt, { ...glyph, x: d.x, y: d.y, color: ink });
 }
 
-async function drawElements(
-  doc: PDFDocument,
+/** Embedded raster XObjects by asset id, one embed per asset however many
+ *  items share it. Only rasters with bytes in `assets.images` embed — so a
+ *  missing asset never leaves an unreferenced XObject in the saved PDF. */
+type Embedded = Map<string, Awaited<ReturnType<PDFDocument["embedPng"]>>>;
+
+async function embedRasters(doc: PDFDocument, items: readonly PlacedLayer[], assets: Assets, mode: Mode): Promise<Embedded> {
+  const embedded: Embedded = new Map();
+  for (const r of items) {
+    if (r.kind !== "image" && r.kind !== "page") continue;
+    if (r.kind === "page" && !pageDrawsOn(r, mode)) continue;
+    const asset = r.asset;
+    const img = asset ? assets.images?.[asset] : null;
+    if (!asset || !img || img.kind === "svg" || embedded.has(asset)) continue;
+    embedded.set(asset, img.kind === "png" ? await doc.embedPng(img.bytes) : await doc.embedJpg(img.bytes));
+  }
+  return embedded;
+}
+
+/** Which plate a page item belongs to: the background texture is art-only,
+ *  the metallic mask is mask-only. */
+const pageDrawsOn = (p: PlacedPage, mode: Mode) =>
+  mode === "art" ? p.role === "background" : p.role === "mask";
+
+function drawItems(
   page: PDFPage,
   fonts: Fonts,
-  cfg: LabelConfig,
-  assets: Assets,
+  items: readonly PlacedLayer[],
+  embedded: Embedded,
   mode: Mode,
 ) {
   const faceFont = (f: Face) =>
     f === "bold" ? fonts.bold : f === "semibold" ? fonts.semibold : fonts.regular;
-  const pdfMeasure: MeasureFace = (t, size, f) => faceFont(f).widthOfTextAtSize(t, size);
-
-  // Raster collab logos embed first: the plan places by intrinsic pixel
-  // size, and the embedded image is what the art pass draws. Keyed by id so
-  // the walk below can find its bytes again.
-  const embedded = new Map<ElementId, Awaited<ReturnType<typeof doc.embedPng>>>();
-  const planArt = async (id: ElementId, img: CollabImage | null | undefined): Promise<PlanArt | null> => {
-    // Hidden means no ink AND no embedded bytes: a layer the UI's eye has
-    // hidden must not survive into the saved PDF even as an unreferenced
-    // XObject, so this early-return has to check the same skip set planLabel
-    // uses to omit the drawn item — bailing here keeps the raster off the
-    // page before doc.embedPng/embedJpg ever runs.
-    if (!img || !cfg.collabEnabled || assets.hidden?.has(id)) return null;
-    if (img.kind === "svg") return img;
-    const emb = img.kind === "png" ? await doc.embedPng(img.bytes) : await doc.embedJpg(img.bytes);
-    embedded.set(id, emb);
-    return { kind: "raster", w: emb.width, h: emb.height };
-  };
-
-  // The complete label, placed once by plan.ts in draw order — the same
-  // list hittest groups its text boxes from — measured with the actual
-  // embedded PDFFont widths so the built bytes place text exactly as before.
-  const plan = planLabel(cfg, pdfMeasure, {
-    skip: assets.hidden,
-    // Presence, not what planArt returned: a hidden logo yields no art (no
-    // embedded bytes) but still holds its slot, so the "A collaborative
-    // project with" lead-in stays — exactly what the preview draws.
-    collab: { left: !!assets.collabLeft, center: !!assets.collabCenter },
-    assets: {
-      logoSvg: assets.logoSvg,
-      collabLeft: await planArt("collabLeft", assets.collabLeft),
-      collabCenter: await planArt("collabCenter", assets.collabCenter),
-    },
-  });
 
   const drawText = (r: PlacedText) => {
     const color = mode === "art" ? fillColor(r.fill) : maskColor(r.layer);
@@ -302,7 +287,7 @@ async function drawElements(
       }));
   };
 
-  for (const r of plan) {
+  for (const r of items) {
     if (r.kind === "text") drawText(r);
     else if (r.kind === "paths") {
       const color = mode === "art" ? fillColor(r.fill) : maskColor(r.layer);
@@ -315,9 +300,22 @@ async function drawElements(
           page.drawSvgPath(d, { ...at, color: sc, borderColor: sc, borderWidth: 2 * r.stroke.w });
       }
       for (const d of r.paths) page.drawSvgPath(d, { ...at, color });
+    } else if (r.kind === "page") {
+      // Page art covers the PAGE and must not move with the design: it is
+      // drawn under the bleed shift the rest of the list sits in (see
+      // shiftForBleed), at the cover-fit rect planLayers computed.
+      if (!pageDrawsOn(r, mode) || !embedded.has(r.asset)) continue;
+      withoutBleedShift(page, () =>
+        page.drawImage(embedded.get(r.asset)!, { x: r.x, y: y(r.y + r.h), width: r.w, height: r.h }));
     } else if (r.kind === "image") {
+      // An image item whose bytes never made it into `embedded` (planLayers
+      // places a rect from a stored aspect alone, before/without bytes) is
+      // skipped on EITHER plate: no ink, and no mask footprint for art the
+      // art plate never prints.
+      const emb = r.asset ? embedded.get(r.asset) : undefined;
+      if (!emb) continue;
       const rect = { x: r.x, y: y(r.y + r.h), width: r.w, height: r.h };
-      if (mode === "art") page.drawImage(embedded.get(r.id)!, rect);
+      if (mode === "art") page.drawImage(emb, rect);
       // Raster art prints on white ink: the mask paints its footprint blue.
       else page.drawRectangle({ ...rect, color: toRgb(L.COLORS.maskBlue) });
     } else drawBarcode(page, fonts, r, mode);
@@ -326,6 +324,8 @@ async function drawElements(
 
 async function newDoc(assets: Assets): Promise<{ doc: PDFDocument; page: PDFPage; fonts: Fonts }> {
   const doc = await PDFDocument.create();
+  doc.setCreationDate(PDF_EPOCH);
+  doc.setModificationDate(PDF_EPOCH);
   doc.registerFontkit(fontkit);
   const fonts: Fonts = {
     regular: await doc.embedFont(assets.fonts.regular, { subset: true }),
@@ -343,61 +343,59 @@ async function newDoc(assets: Assets): Promise<{ doc: PDFDocument; page: PDFPage
 
 /** Move the DESIGN by the bleed shift, once, for the whole page.
  *
- *  layout.ts's positions are page-absolute at MEASURED_BLEED (see BLEED_SHIFT),
- *  so a changed bleed slides the page edge out from under them. One `cm` on the
+ *  Layer positions are page-absolute at MEASURED_BLEED (see BLEED_SHIFT), so
+ *  a changed bleed slides the page edge out from under them. One `cm` on the
  *  content stream puts them back — the alternative is adding the shift to the
  *  `y()` helper and to the x of every draw call in this file, forty-odd chances
  *  to miss one.
  *
- *  PDF space is y-up, so a downward shift is negative. It goes in AFTER the
- *  page-covering paints (the texture, the mask's flood coats) and BEFORE
- *  drawElements: those cover the page and must not move with the design.
+ *  PDF space is y-up, so a downward shift is negative. It goes in BEFORE the
+ *  items walk; the page-covering paints (the texture, the mask's coats) step
+ *  back out of it through withoutBleedShift, since they cover the page and
+ *  must not move with the design.
  *
  *  Emits nothing at the shipped bleed, so the built bytes are unchanged. */
 function shiftForBleed(page: PDFPage) {
   if (L.BLEED_SHIFT) page.pushOperators(translate(L.BLEED_SHIFT, -L.BLEED_SHIFT));
 }
 
-/** Cover-fit an embedded image over the full bleed page, centered. Delegates
- *  to L.coverFit, the geometry the canvas backend shares. */
-function coverPage(page: PDFPage, img: { width: number; height: number }) {
-  const r = L.coverFit(img.width, img.height);
-  return { x: r.x, y: r.y, width: r.w, height: r.h };
+/** Run `draw` in page space, undoing shiftForBleed for the duration. */
+function withoutBleedShift(page: PDFPage, draw: () => void) {
+  if (!L.BLEED_SHIFT) return draw();
+  page.pushOperators(pushGraphicsState(), translate(-L.BLEED_SHIFT, L.BLEED_SHIFT));
+  draw();
+  page.pushOperators(popGraphicsState());
 }
 
-export async function buildArtPdf(cfg: LabelConfig, assets: Assets): Promise<Uint8Array> {
+const hasPage = (items: readonly PlacedLayer[], embedded: Embedded, role: PlacedPage["role"]) =>
+  items.some((r) => r.kind === "page" && r.role === role && embedded.has(r.asset));
+
+/** The art plate: the background page item (when its bytes are loaded) under
+ *  every element in list order. Without a background the elements sit on
+ *  bare stock, which is what the preview shows before a texture is dropped. */
+export async function buildArtPdf(items: readonly PlacedLayer[], assets: Assets): Promise<Uint8Array> {
   const { doc, page, fonts } = await newDoc(assets);
-  if (assets.texture) {
-    const img =
-      assets.texture.kind === "png"
-        ? await doc.embedPng(assets.texture.bytes)
-        : await doc.embedJpg(assets.texture.bytes);
-    page.drawImage(img, coverPage(page, img));
-  }
+  const embedded = await embedRasters(doc, items, assets, "art");
   shiftForBleed(page);
-  await drawElements(doc, page, fonts, cfg, assets, "art");
-  doc.setTitle(`${displayName(cfg)} label art`);
+  drawItems(page, fonts, items, embedded, "art");
+  doc.setTitle(`${assets.title ?? "Label"} label art`);
   return doc.save();
 }
 
-export async function buildMaskPdf(cfg: LabelConfig, assets: Assets): Promise<Uint8Array> {
+/** The white-ink plate: a white page (knockout by default), then the mask
+ *  page item as-authored (the printer accepts these plates unrecolored) — or,
+ *  with no mask bytes, a flood of the whole plate with white ink ("no mask"
+ *  = "print as a white label") — then the elements knocking out or adding
+ *  ink on top. The flood MUST land before the elements so metallic knockouts
+ *  still win on top of it. */
+export async function buildMaskPdf(items: readonly PlacedLayer[], assets: Assets): Promise<Uint8Array> {
   const { doc, page, fonts } = await newDoc(assets);
-  // White page = knockout by default; the recolored mask paints the blue
-  // (white ink) regions, then elements knock out or add ink on top.
+  const embedded = await embedRasters(doc, items, assets, "mask");
   page.drawRectangle({ x: 0, y: 0, width: L.PAGE.w, height: L.PAGE.h, color: rgb(1, 1, 1) });
-  if (assets.maskPng) {
-    const img = await doc.embedPng(assets.maskPng);
-    page.drawImage(img, coverPage(page, img));
-  } else {
-    // No mask uploaded yet: flood the whole plate with white ink rather than
-    // leaving it knocked out. "No mask" means "print as a white label" —
-    // white ink everywhere, with only the metallic elements (drawn next, in
-    // drawElements) knocking back out to bare stock. This MUST land before
-    // drawElements so metallic knockouts still win on top of the flood.
+  if (!hasPage(items, embedded, "mask"))
     page.drawRectangle({ x: 0, y: 0, width: L.PAGE.w, height: L.PAGE.h, color: toRgb(L.COLORS.maskBlue) });
-  }
   shiftForBleed(page);
-  await drawElements(doc, page, fonts, cfg, assets, "mask");
-  doc.setTitle(`${displayName(cfg)} white-ink layer`);
+  drawItems(page, fonts, items, embedded, "mask");
+  doc.setTitle(`${assets.title ?? "Label"} white-ink layer`);
   return doc.save();
 }

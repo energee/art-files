@@ -1,21 +1,21 @@
 // tests/canvas-draw.test.ts — the canvas backend against a recording fake
 // ctx: Node has no 2D canvas, and what parity needs pinned here is the PAINT
 // PROTOCOL (order, colors, transforms), not rasterized pixels — the pixel
-// side is the parity page's job.
+// side is the parity page's job. Plans come from planLayers over the Lolev
+// master with deterministic fake metrics.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { drawPlate, type CanvasAssets } from "../src/canvas/draw";
-import { barcodeItem, lineRuns, planLabel, type MeasureFace } from "../src/plan";
-import { defaultConfig } from "../src/defaults";
+import { planLayers, type PlacedLayer } from "../src/planLayers";
+import type { MeasureFace, PlacedBarcode } from "../src/plan";
+import type { BarcodeLayer } from "../src/model/layers";
 import { MASK_BLUE_HEX, PAGE } from "../src/layout";
 import { labelFontCss } from "../src/fonts";
-import { assets as fixtureAssets } from "./fixtures";
+import { logoSvg, lolevLayers, type LolevOpts } from "./fixtures";
 
 // drawPlate requires the font family explicitly (no poppins default).
 const FONT = labelFontCss("poppins");
-
-// The shared fixture logo — fixtures.ts exists so every suite reads ONE copy.
-const logoSvg = fixtureAssets.logoSvg;
 const m: MeasureFace = (t, size) => t.length * size * 0.5;
+const GOLD = "#F3CD80";
 
 /** Records every call and property set, in order, so ordering rules
  *  (stroke-before-fill, background-before-elements) are assertable. */
@@ -52,46 +52,72 @@ beforeEach(() => {
 // throws mid-test. beforeEach re-stubs Path2D for the next one.
 afterEach(() => vi.unstubAllGlobals());
 
-const cfg = defaultConfig();
-const plan = () => planLabel(cfg, m, { assets: { logoSvg } });
+const plan = (opts: LolevOpts = {}): PlacedLayer[] =>
+  planLayers(lolevLayers(opts), m, { logoSvg, custom: opts.custom });
+/** Both page layers bound to assets "tex" / "msk". */
+const withPages: LolevOpts = {
+  overrides: { background: { asset: "tex" }, mask: { asset: "msk" } },
+  custom: { tex: { aspect: 1 }, msk: { aspect: 1 } },
+};
+const bitmap = { width: 100, height: 100 } as unknown as CanvasImageSource;
+/** Ops after drawPlate's one unconditional pre-loop translate (BLEED_SHIFT):
+ *  the items' own paint, without the plate's background fills. */
+const afterTranslate = (log: { op: string; args: unknown[] }[]) =>
+  log.slice(log.findIndex((x) => x.op === "translate") + 1);
 
 describe("drawPlate", () => {
-  it("mask mode with no mask image floods the plate white-ink blue first", () => {
-    const { ctx, log } = fakeCtx();
-    drawPlate(ctx, plan(), {}, "mask", FONT);
-    const rects = log.filter((c) => c.op === "fillRect");
-    // White base, then the blue flood, both before any element paints.
-    const firstText = log.findIndex((c) => c.op === "fillText");
-    const floodIdx = log.findIndex(
-      (c, i) => c.op === "set:fillStyle" && c.args[0] === MASK_BLUE_HEX && i < firstText);
-    expect(rects.length).toBeGreaterThanOrEqual(2);
-    expect(floodIdx).toBeGreaterThan(-1);
+  it("mask mode with no mask bitmap floods the plate white-ink blue first", () => {
+    for (const p of [plan(), plan(withPages)]) {
+      const { ctx, log } = fakeCtx();
+      drawPlate(ctx, p, {}, "mask", FONT);
+      const firstText = log.findIndex((c) => c.op === "fillText");
+      const floodIdx = log.findIndex(
+        (c, i) => c.op === "set:fillStyle" && c.args[0] === MASK_BLUE_HEX && i < firstText);
+      expect(log.filter((c) => c.op === "fillRect").length).toBeGreaterThanOrEqual(2);
+      expect(floodIdx).toBeGreaterThan(-1);
+    }
   });
 
-  it("art mode draws the texture cover-fit before any element", () => {
+  it("mask mode draws the mask page item instead of flooding when its bitmap is loaded", () => {
     const { ctx, log } = fakeCtx();
-    const texture = { width: 100, height: 100 } as unknown as CanvasAssets["texture"];
-    drawPlate(ctx, plan(), { texture }, "art", FONT);
-    const img = log.findIndex((c) => c.op === "drawImage");
+    drawPlate(ctx, plan(withPages), { images: { msk: bitmap } }, "mask", FONT);
     const firstText = log.findIndex((c) => c.op === "fillText");
-    expect(img).toBeGreaterThan(-1);
-    expect(img).toBeLessThan(firstText);
+    expect(log.findIndex((c) => c.op === "drawImage")).toBeLessThan(firstText);
+    expect(log.some((c, i) => c.op === "set:fillStyle" && c.args[0] === MASK_BLUE_HEX && i < log.findIndex((x) => x.op === "drawImage"))).toBe(false);
+  });
+
+  it("art mode draws the background page item before any element, and never the mask", () => {
+    const { ctx, log } = fakeCtx();
+    drawPlate(ctx, plan(withPages), { images: { tex: bitmap, msk: bitmap } }, "art", FONT);
+    const imgs = log.filter((c) => c.op === "drawImage");
+    expect(imgs).toHaveLength(1);
+    expect(log.findIndex((c) => c.op === "drawImage")).toBeLessThan(log.findIndex((c) => c.op === "fillText"));
+    // Cover-fit to the page width; a square bitmap overhangs top and bottom.
+    const [, x, y, w] = imgs[0].args as number[];
+    expect(x).toBe(0);
+    expect(y).toBeLessThan(0);
+    expect(w).toBeCloseTo(PAGE.w);
+  });
+
+  it("art mode with no background bitmap is bare stock: no drawImage", () => {
+    const { ctx, log } = fakeCtx();
+    drawPlate(ctx, plan(withPages), {}, "art", FONT);
+    expect(log.some((c) => c.op === "drawImage")).toBe(false);
   });
 
   it("bridges the cavities, then strokes, then fills a stroked text run", () => {
     const { ctx, log } = fakeCtx();
-    // Force a stroke on the volume line so the rule is exercised.
-    const stroked = planLabel(
-      { ...cfg, volume: { ...cfg.volume, stroke: "#112233" } }, m, { assets: { logoSvg } });
+    // Only the volume line, with a stroke forced on, so the rule is exercised
+    // unambiguously.
+    const stroked = plan({ overrides: { volume: { style: { stroke: "#112233" } } } })
+      .filter((r) => r.id === "volume");
     drawPlate(ctx, stroked, {}, "art", FONT);
     const s = log.findIndex((c) => c.op === "strokeText");
     expect(s).toBeGreaterThan(-1);
     // The fillStyle in force at call `i` — scanned backwards rather than
     // sliced and reversed, so it reads as "the last one set before here".
     const inkAt = (i: number) => {
-      for (let j = i - 1; j >= 0; j--) {
-        if (log[j].op === "set:fillStyle") return log[j].args[0];
-      }
+      for (let j = i - 1; j >= 0; j--) if (log[j].op === "set:fillStyle") return log[j].args[0];
     };
     // The cavity bridge fills glyph copies in the STROKE colour ahead of the
     // stroke (see bridgeOffsets); the element's own ink is the fill after it.
@@ -101,7 +127,7 @@ describe("drawPlate", () => {
     expect(inkAt(bridge)).toBe("#112233");
     const ink = log.findIndex((c, i) => c.op === "fillText" && i > s);
     expect(ink).toBeGreaterThan(-1);
-    expect(inkAt(ink)).toBe(cfg.volume.fill);
+    expect(inkAt(ink)).toBe(GOLD);
   });
 
   it("rotates rotated runs a quarter turn counter-clockwise", () => {
@@ -112,27 +138,33 @@ describe("drawPlate", () => {
     expect(rot!.args[0]).toBeCloseTo(-Math.PI / 2);
   });
 
-  it("paints a raster collab rect blue in mask mode, image in art mode", () => {
-    const c = { ...cfg, collabEnabled: true };
-    const p = planLabel(c, m, {
-      assets: { logoSvg, collabCenter: { kind: "raster", w: 10, h: 10 } },
-    });
+  it("paints a raster image rect blue in mask mode, the bitmap in art mode", () => {
+    const p = plan({
+      variants: ["collab"], overrides: { collabCenter: { asset: "c" } }, custom: { c: { aspect: 1 } },
+    }).filter((r) => r.id === "collabCenter");
+    expect(p).toHaveLength(1);
     const art = fakeCtx();
-    drawPlate(art.ctx, p, { collabCenter: {} as CanvasImageSource }, "art", FONT);
-    expect(art.log.filter((x) => x.op === "drawImage").length).toBeGreaterThan(0);
+    drawPlate(art.ctx, p, { images: { c: bitmap } }, "art", FONT);
+    expect(art.log.filter((x) => x.op === "drawImage")).toHaveLength(1);
     const mask = fakeCtx();
-    drawPlate(mask.ctx, p, {}, "mask", FONT);
-    // Mask never draws the image itself.
+    drawPlate(mask.ctx, p, { images: { c: bitmap } }, "mask", FONT);
+    // Mask never draws the image itself: one blue footprint rect.
     expect(mask.log.some((x) => x.op === "drawImage")).toBe(false);
+    const items = afterTranslate(mask.log);
+    expect(items.filter((x) => x.op === "fillRect")).toHaveLength(1);
+    expect(items.find((x) => x.op === "set:fillStyle")!.args[0]).toBe(MASK_BLUE_HEX);
   });
 
-  it("throws when an art-mode image item has no bitmap (assembly bug, not a blank)", () => {
-    const c = { ...cfg, collabEnabled: true };
-    const p = planLabel(c, m, {
-      assets: { logoSvg, collabCenter: { kind: "raster", w: 10, h: 10 } },
-    });
-    const { ctx } = fakeCtx();
-    expect(() => drawPlate(ctx, p, {}, "art", FONT)).toThrow(/collabCenter/);
+  it("an image item whose bitmap never loaded is a quiet no-op on either plate", () => {
+    const custom = { kind: "image" as const, id: "i1", asset: "missing", x: 10, y: 10, w: 20, h: 10 };
+    const art = fakeCtx();
+    expect(() => drawPlate(art.ctx, [custom], { images: { other: bitmap } }, "art", FONT)).not.toThrow();
+    expect(art.log.some((x) => x.op === "drawImage")).toBe(false);
+    const mask = fakeCtx();
+    expect(() => drawPlate(mask.ctx, [custom], {}, "mask", FONT)).not.toThrow();
+    // No blue footprint rect for the unloaded image (beyond the plate's own
+    // background fills, which happen before the item loop).
+    expect(afterTranslate(mask.log).some((x) => x.op === "fillRect")).toBe(false);
   });
 
   it("owns textAlign/textBaseline: pins both before any text paints", () => {
@@ -148,11 +180,8 @@ describe("drawPlate", () => {
   });
 
   it("strokes every laurel path before filling any (the laurel-branch rule)", () => {
-    // Force a stroke on the logo, then draw ONLY its items so the op stream
-    // is unambiguous.
-    const stroked = planLabel(
-      { ...cfg, logo: { ...cfg.logo, stroke: "#112233" } }, m, { assets: { logoSvg } },
-    ).filter((r) => r.id === "logo");
+    // Only the logo's items (it ships keylined), so the op stream is unambiguous.
+    const stroked = plan().filter((r) => r.id === "logo");
     const { ctx, log } = fakeCtx();
     drawPlate(ctx, stroked, {}, "art", FONT);
     const strokes = log.map((x, i) => (x.op === "stroke" ? i : -1)).filter((i) => i >= 0);
@@ -164,9 +193,6 @@ describe("drawPlate", () => {
 
   /** The pre-17.4 WKWebView path: those engines silently IGNORE
    *  ctx.letterSpacing, so drawText lays tracked runs out per glyph instead.
-   *  No developer ever executes this branch (every dev browser supports the
-   *  property), which is exactly why it needs pinning here.
-   *
    *  CANVAS_LETTER_SPACING is a module-level const evaluated at IMPORT time,
    *  and in Node it short-circuits to "supported" before probing anything —
    *  so the only way to flip it is to re-import draw.ts with a `document`
@@ -175,11 +201,11 @@ describe("drawPlate", () => {
     vi.resetModules();
     vi.stubGlobal("document", { createElement: () => ({ getContext: () => ({}) }) });
     const { drawPlate: drawUnsupported } = await import("../src/canvas/draw");
-    const runs = lineRuns(
-      "styleLine", { text: "IPA", fill: "#C8A951", layer: "metallic", letterSpacing: 4 },
-      m, { x: 100, baseline: 200, size: 10 },
-    );
-    expect(runs[0].tracking).toBe(4); // the fallback only engages on tracked runs
+    const runs = planLayers([{
+      id: "s", name: "S", kind: "text", enabled: true, x: 100, y: 200, anchor: "left", size: 10, align: "left",
+      lines: [{ text: "IPA", fill: GOLD, layer: "metallic" }], style: { fill: GOLD, layer: "metallic", letterSpacing: 4 },
+    }], m, { logoSvg });
+    expect(runs[0].kind === "text" && runs[0].tracking).toBe(4); // the fallback only engages on tracked runs
     const { ctx, log } = fakeCtx();
     drawUnsupported(ctx, runs, {}, "art", FONT);
     const glyphs = log.filter((x) => x.op === "fillText");
@@ -190,29 +216,44 @@ describe("drawPlate", () => {
   });
 
   it("paints every barcode halo shape before any ink shape", () => {
-    const item = barcodeItem(cfg, m);
-    expect(item.S).toBeGreaterThan(0); // default config ships the measured halo
+    const item = plan().find((r): r is PlacedBarcode => r.kind === "barcode")!;
+    expect(item.S).toBeGreaterThan(0); // the shipped master carries the halo
     const { ctx, log } = fakeCtx();
     drawPlate(ctx, [item], {}, "art", FONT);
-    // The plate's white background flood is also a fillRect, before the item
-    // loop even starts — scope to ops after drawPlate's one unconditional
-    // pre-loop translate (BLEED_SHIFT) so the background isn't mistaken for
-    // barcode ink.
-    const itemLog = log.slice(log.findIndex((x) => x.op === "translate") + 1);
+    const itemLog = afterTranslate(log);
     // Ink begins at the switch to the item's own fill colour: the digits'
     // cavity bridge paints fillText in the STROKE colour before that, and
     // those copies belong to the halo pass, not the ink one.
-    const inkStart = itemLog.findIndex(
-      (x) => x.op === "set:fillStyle" && x.args[0] === item.fill);
+    const inkStart = itemLog.findIndex((x) => x.op === "set:fillStyle" && x.args[0] === item.fill);
     expect(inkStart).toBeGreaterThan(-1);
-    const halo = itemLog
-      .map((x, i) => (x.op === "strokeRect" || x.op === "strokeText" ? i : -1))
-      .filter((i) => i >= 0);
-    const ink = itemLog
-      .map((x, i) => (i > inkStart && (x.op === "fillRect" || x.op === "fillText") ? i : -1))
-      .filter((i) => i >= 0);
+    const halo = itemLog.map((x, i) => (x.op === "strokeRect" || x.op === "strokeText" ? i : -1)).filter((i) => i >= 0);
+    const ink = itemLog.map((x, i) => (i > inkStart && (x.op === "fillRect" || x.op === "fillText") ? i : -1)).filter((i) => i >= 0);
     expect(halo.length).toBeGreaterThan(0);
     expect(ink.length).toBeGreaterThan(0);
     expect(Math.max(...halo)).toBeLessThan(Math.min(...ink));
+  });
+
+  it("draws an upright barcode layer's digits inside its own band, with no rotate call", () => {
+    const layer: BarcodeLayer = {
+      id: "bc1", name: "BC", kind: "barcode", enabled: true, x: 28.68, y: 28.68, anchor: "left",
+      symbology: "code-128", value: "LOLEV-123", h: 30, moduleW: 1, style: { fill: "#000000", layer: "white" },
+    };
+    const [item] = planLayers([layer], m, { logoSvg }) as PlacedBarcode[];
+    expect(item.rotated).toBe(false);
+    expect(item.digits.length).toBeGreaterThan(0);
+    const { ctx, log } = fakeCtx();
+    drawPlate(ctx, [item], {}, "art", FONT);
+    // No rotate() call at all: `rotated: false` means this backend skips the
+    // quarter-turn it applies to the template.
+    expect(log.some((x) => x.op === "rotate")).toBe(false);
+    // Every digit's translate() lands inside that digit's own footprint pill
+    // — the same band the white-ink plate reserves for it.
+    const pills = item.footprint.slice(item.geo.bars.length);
+    expect(pills.length).toBe(item.digits.length);
+    const translates = log.filter((x) => x.op === "translate").map((x) => x.args as [number, number]);
+    for (const pill of pills) {
+      expect(translates.some(([tx, ty]) =>
+        tx >= pill.x - 1e-6 && tx <= pill.x + pill.w + 1e-6 && ty >= pill.yTop - 1e-6 && ty <= pill.yTop + pill.h + 1e-6)).toBe(true);
+    }
   });
 });

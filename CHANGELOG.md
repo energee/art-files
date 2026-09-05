@@ -3,6 +3,238 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.49] - 2026-09-05
+
+- Bind a layer to the top, left, right, or bottom of another layer. Bound layers
+  follow their neighbor's size with an adjustable gap, including chained bindings.
+  Dragging adjusts the gap; switching sides, unbinding, and removing the neighbor
+  preserve the freed position. Existing “Bind below” files remain compatible.
+
+## [0.1.48] - 2026-09-05
+
+- Added left/right margin-guide bindings alongside top/middle/bottom. Horizontal
+  and vertical bindings work together, follow margin changes, and keep adjustable
+  offsets when dragged. Detaching preserves the layer's position.
+
+## [0.1.47] - 2026-09-04
+
+- Added a middle guide anchor: keep a layer vertically centered between the
+  top and bottom margin guides as its content grows, with an adjustable offset.
+
+## [0.1.46] - 2026-09-04
+
+- Anchor a layer's top or bottom edge to its margin guide from the inspector,
+  with an adjustable offset. Bottom-anchored text grows upward; dragging adjusts
+  the offset, and detaching preserves position.
+- Margin changes now save with the master and move guide-anchored layers in
+  preview and exports.
+
+## [0.1.45] - 2026-09-04
+
+- Turning on a dimmed variant layer now activates its variant instead of
+  accidentally disabling the layer and triggering a binding error. The power
+  button reflects whether the layer is actually enabled in the current variant;
+  undo restores both the variant and layer together.
+
+## [0.1.44] - 2026-09-04
+
+- Available desktop updates appear in the lower status bar without interrupting
+  work. Click the version to review release notes and install; choosing Later
+  keeps the update available from the bar, across tabs.
+
+## [0.1.43] - 2026-09-04
+
+- Masters now contain editable layers; variants store changes to those layers.
+  One Layers list with a Fillable filter replaces the separate editing modes,
+  Fields and Document panels. Every text layer supports rich multiline editing.
+- Position any unlocked layer, or bind it below another so it follows growing
+  text. Variant edits stay with the variant, including position changes.
+- Preview, PDF and PSD exports share layer placement. Existing master and label
+  files convert on open; newly saved files use format version 3.
+
+## [0.1.42] - 2026-09-04
+
+- Presets are gone: the saved beer-style and barcode lists, the "Saved
+  styles…" / "Saved barcodes…" pickers in the inspector, and File → View /
+  Import / Export Presets. A master is the saved style, and a barcode is
+  typed on its layer. Document Settings (corner radius, edge softness,
+  resolution, bleed) and saved color swatches now live in the app's own
+  per-machine storage; on the first launch after this update they start from
+  the defaults once.
+- The preview has three views instead of five: Label (1), Mask (2) and Can
+  (3). The separate Rendered flat-label view is gone, and the four-pack is a
+  1 / 4 count switch in the Can view's toolbar rather than a view of its own.
+- View has two toggles instead of seven: Rulers (R) and Guides (G). Guides
+  shows the trim line, the margin and center guides and the manual guides
+  together; the separate Bleed Lines, Margin / Center / Manual Guides and
+  Clear Manual Guides items are gone. A manual guide is removed with the ×
+  that appears in the ruler when you hover it (dragging it back onto the
+  ruler and Delete still work).
+
+## [0.1.41] - 2026-08-29
+
+- Internal cleanup of the new master-container and PSD collab code (shared
+  packing helpers, one raster-drawing rule, parallel export decodes). No
+  visible behavior change; picking a library master no longer reads its file
+  twice.
+
+## [0.1.40] - 2026-08-29
+
+- A saved `.master` now carries its template art: the texture, the metallic
+  mask, and any master-owned image layers' files travel inside the master, so
+  a new label from a master needs nothing re-dropped. Labels keep their own
+  embedded art when they have it (a label's art always wins), and `.master`
+  files saved by earlier versions still open unchanged.
+
+## [0.1.39] - 2026-08-29
+
+- PSD exports now include the Collab partner art: a "Collab" layer group with
+  the lead-in text and both partner logos, on the art plate and (as a
+  white-ink footprint) on the mask plate. Previously the exported PSD of a
+  Collab label silently omitted the partner logos entirely.
+
+## [0.1.38] - 2026-08-28
+
+- Fill mode no longer shows variant checkboxes. Labels that already have a
+  variant enabled keep its fields, artwork, and saved values unchanged.
+
+## [0.1.37] - 2026-08-27
+
+- Design mode now edits the master — the shared core every label inherits —
+  instead of the label in front of you. Restyle the name, move the QR, lock
+  the logo, switch a layer off: it applies to every label made from that
+  master from now on. For a one-off, pick or create a variant from the new
+  "Editing" selector in the Design sidebar and the change is recorded there
+  instead, ready to enable whenever you need it; properties a variant changes
+  are badged, and each can be reset back to the master. Masters save and open
+  as `.master` files and register themselves in the library, so a label can
+  find its master again — or be re-aimed at another one, with anything that
+  does not carry over kept on a bench rather than dropped. Any layer with
+  editable content can be made fillable from the inspector, and a layer added
+  in Design mode now belongs to the master rather than to the one label in
+  front of you.
+- Collab is no longer a special case. It is an ordinary variant carrying the
+  two partner logos, which you fill from the field list like anything else and
+  switch on and off from the same checkbox every variant gets. The lead-in
+  line above them stays fixed template art. Labels saved with the old collab
+  switch open with the variant already on and look exactly as they did.
+- Fixed: a layer added in Design mode could not really be edited. Dragging,
+  restyling, renaming, locking or deleting one appeared to work and then
+  silently reverted, and deleting was impossible — the layer came straight
+  back. Reorder arrows could also be shown for moves that did nothing.
+- Fixed: edits to the built-in Lolev master were lost when a label was
+  reopened, even after saving the master to a `.master` file. A saved master
+  on disk now wins over the built-in one, as it always should have.
+- Fixed: editing a beer name, ABV or other fillable text directly on the
+  canvas in Design mode reverted, and wrote that one label's text into the
+  master, where every other label would have inherited it.
+- Fixed: a duplicated master could not be saved, and a label pointing at one
+  could not be reopened afterwards.
+- Fixed: opening a `.master` whose variant added an unrecognised layer crashed
+  the whole sidebar.
+- Fixed: custom barcodes printed wrong. The human-readable digits overprinted
+  the bottom of the bars instead of sitting in the space reserved below them,
+  the white-ink plate extended twice as far past the ink as intended, and a
+  UPC-A or EAN-13's outer digits were not counted in its width — so a
+  right-aligned one could push its check digit off the trim edge. Custom
+  barcode layers on existing labels shift as a result; Code 128 is unaffected.
+- Fixed: a custom image layer whose artwork had not loaded still stamped a
+  solid white-ink rectangle into the exported PSD, under artwork that never
+  printed.
+- Fixed: replacing a field image left the old one behind, growing every
+  `.label` saved afterwards; and dropping a damaged image failed silently
+  instead of reporting the error.
+- The layers panel now lists front to back — the layer you'd click on top
+  sits at the top of the list — instead of back to front. The up arrow on a
+  custom layer now moves its row up the list as well as forward, and the
+  down arrow moves it down as well as back, so the arrows finally point the
+  way the rows move.
+- A custom layer's name can now be renamed right in the layers panel —
+  double-click it, same as a built-in layer — instead of only from the Name
+  field in the inspector.
+
+## [0.1.36] - 2026-08-27
+
+- The layers panel now lists the label's real layers in drawing order, in one
+  flat list, instead of the fixed Beer / Collab / Template groups. Each layer
+  is declared by the master, so a layer can be renamed, switched off, or
+  locked there rather than being hardwired into the app — the wordmark is now
+  "Brand", and the government warning ships locked. The collab block is no
+  longer a special section with its own switch: its three layers belong to the
+  Collab variant and appear when it is enabled, marked with a Collab badge
+  while it is off. Custom layers can be moved forward and backward in the
+  stack.
+
+## [0.1.35] - 2026-08-27
+
+- "Variation" is now called **Variant** throughout — the Collab checkbox, the
+  data model, and the `.label` file format, which stores the enabled variants
+  under a renamed key. A `.label` saved before this release still opens, but
+  its enabled variants are forgotten and need re-checking once. No other
+  behavior changed.
+
+## [0.1.34] - 2026-08-27
+
+- The layers panel's empty Custom group now reads just "No custom layers".
+
+## [0.1.33] - 2026-08-27
+
+- The Design/Fill control moved from the top menubar row to the right end of
+  the preview toolbar at the bottom of the window, beside the view readouts.
+  No behavior change — same two buttons, same keyboard/palette commands.
+
+## [0.1.32] - 2026-08-27
+
+- Design mode can now add layers: text, image, barcode (UPC-A, EAN-13,
+  Code 128, with human-readable digits and a show/hide knob), and QR
+  (square/rounded/dots; error correction defaults to M, with a warning when
+  a Code 128 module is set too narrow to scan). Barcode and QR payloads can
+  be built from label fields with a chip-based format editor and live
+  preview. Custom image layers now actually render — their bytes travel
+  inside the `.label` file — and the PSD exports carry every custom layer
+  plus the square/rounded QR styles they previously dropped. Custom text
+  layers support bold and letter-spacing; image hit areas now match portrait
+  artwork exactly.
+
+## [0.1.31] - 2026-08-27
+
+- Labels now run on a master + variations + values model. A new Design/Fill
+  control (Fill is the default) shows fillers just the label, a field list,
+  and variation checkboxes — the collab switch is now the shipped Collab
+  variation. Files save in a slimmer v2 `.label` format recording the master,
+  enabled variations, and values; existing `.label` files still open exactly
+  as before, and re-saving upgrades them. The app keeps a library index of
+  where `.master` files live; the Lolev master ships built in.
+
+## [0.1.30] - 2026-08-27
+
+- Custom text and image layers: a label file can now carry extra layers that
+  draw in the 2D preview and both print PDFs, positioned by left/center/right
+  and top/bottom anchors so alignment survives content changes. Drag them
+  anywhere on the label; dragging near a safe-area guide snaps to it (and
+  the highlight shows which guide engaged). A new Lock toggle on movable
+  elements — including the laurel and collab logos — makes them inert to
+  dragging. There is no UI to add custom layers yet, so existing labels are
+  unaffected; custom image layers position but do not paint until image
+  assets are wired up in a later release.
+
+## [0.1.29] - 2026-08-27
+
+- More groundwork for masters and variations: EAN-13 and Code 128 barcode
+  encoders (verified against the published symbol tables), a barcode
+  geometry that can draw any symbology, QR style options (square, rounded,
+  or the current dots look) with a selectable error-correction level, and
+  validation for the new code types. Nothing in the app calls any of it
+  yet — no visible or behavioral change in this release.
+
+## [0.1.28] - 2026-08-27
+
+- Groundwork for masters and variations: a new internal data model that can
+  describe a label template (master), stackable named overrides (variations),
+  fillable fields with validation, derived text like QR URLs, and a slimmer
+  `.label` format that can be re-aimed at a different master. Nothing in the
+  app uses it yet — no visible or behavioral change in this release.
+
 ## [0.1.27] - 2026-08-26
 
 - Wide keylines no longer eat small glyph features in the preview. A period,

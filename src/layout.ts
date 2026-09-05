@@ -6,7 +6,7 @@
 // It also states the PHYSICAL objects the label is made for — the label's own
 // size in inches and the can it wraps (see CAN_DIAM_IN) — because those are
 // facts about the product, not about any one renderer, and the inspector, the
-// preset defaults and the 3D scene all have to agree on them.
+// render-settings defaults and the 3D scene all have to agree on them.
 
 /** The die cut — the label that comes off the press, fixed at 8 x 5in. The
  *  PAGE around it grows and shrinks with the bleed knob; this never does. */
@@ -27,7 +27,7 @@ const MEASURED_BLEED = 4.56;
  *  the app ships with.
  *
  *  It is NOT 0.0635. That figure is (8.127 - 8) / 2, half the toolbar's ROUNDED
- *  readout; the page is 585.12pt = 8.126666...in. The preset does ship at the
+ *  readout; the page is 585.12pt = 8.126666...in. The default does ship at the
  *  round 0.0635 by decision (see DEFAULT_RENDER.bleedIn), which grows the page
  *  0.024pt and leaves BLEED_SHIFT at 0.012 — harmless, because the shift keeps
  *  every element the same distance from the TRIM. Keep the two apart: this
@@ -60,7 +60,7 @@ export const DEFAULT_MARGIN_PT = 24.12; // 0.335in
  *  position below is an expression of. Frozen at the measured bleed like
  *  CENTER_X, deliberately not ART.x/y: positions are page-absolute at
  *  MEASURED_BLEED and BLEED_SHIFT re-bases them at the output boundaries. */
-const SAFE = {
+export const SAFE = {
   left: MEASURED_BLEED + DEFAULT_MARGIN_PT,
   right: MEASURED_BLEED + TRIM.w - DEFAULT_MARGIN_PT,
   top: MEASURED_BLEED + DEFAULT_MARGIN_PT,

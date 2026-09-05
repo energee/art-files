@@ -44,6 +44,10 @@ export const APP_MENUS: SubmenuEntry[] = [
       { kind: "separator", id: "file-new" },
       { kind: "action", id: "project-save", text: "Save Project" },
       { kind: "action", id: "project-save-as", text: "Save Project As…" },
+      { kind: "separator", id: "file-master" },
+      { kind: "action", id: "master-open", text: "Open Master…" },
+      { kind: "action", id: "master-save", text: "Save Master" },
+      { kind: "action", id: "master-save-as", text: "Save Master As…" },
       { kind: "separator", id: "file-projects" },
       {
         kind: "submenu", id: "export-menu", text: "Export", items: [
@@ -56,16 +60,15 @@ export const APP_MENUS: SubmenuEntry[] = [
           { kind: "action", id: "export-psd-mask", text: "Export Mask PSD" },
         ],
       },
-      { kind: "separator", id: "file-presets" },
-      { kind: "action", id: "presets-view", text: "View Presets…" },
-      { kind: "action", id: "presets-import", text: "Import Presets…" },
-      { kind: "action", id: "presets-export", text: "Export Presets" },
     ],
   },
   {
     kind: "submenu", id: "edit-menu", text: "Edit", items: [
       { kind: "action", id: "undo", text: "Undo" },
       { kind: "action", id: "redo", text: "Redo" },
+      { kind: "separator", id: "edit-variants" },
+      { kind: "action", id: "variant-new", text: "New Variant" },
+      { kind: "action", id: "settings", text: "Settings…" },
       { kind: "predefined", item: "Separator" },
       { kind: "predefined", item: "Cut" },
       { kind: "predefined", item: "Copy" },
@@ -75,21 +78,12 @@ export const APP_MENUS: SubmenuEntry[] = [
   },
   {
     kind: "submenu", id: "view-menu", text: "View", items: [
-      { kind: "action", id: "view-standard", text: "Standard", check: true },
+      { kind: "action", id: "view-label", text: "Label", check: true },
       { kind: "action", id: "view-mask", text: "Mask", check: true },
-      { kind: "separator", id: "view-2d" },
-      { kind: "action", id: "view-rendered", text: "Rendered", check: true },
-      { kind: "action", id: "view-can", text: "Single Can", check: true },
-      { kind: "action", id: "view-pack", text: "Four-Pack", check: true },
+      { kind: "action", id: "view-can", text: "Can", check: true },
       { kind: "separator", id: "view-modes" },
-      { kind: "action", id: "bleed", text: "Bleed Lines", check: true },
       { kind: "action", id: "rulers", text: "Rulers", check: true },
-      { kind: "separator", id: "view-guides" },
       { kind: "action", id: "guides", text: "Guides", check: true },
-      { kind: "action", id: "margin-guides", text: "Margin Guides", check: true },
-      { kind: "action", id: "center-guides", text: "Center Guides", check: true },
-      { kind: "action", id: "manual-guides", text: "Manual Guides", check: true },
-      { kind: "action", id: "clear-guides", text: "Clear Manual Guides" },
     ],
   },
 ];
@@ -174,7 +168,7 @@ type NativeEntry = MenuItem | CheckMenuItem | PredefinedMenuItem | Submenu;
 type NativeAction = MenuItem | CheckMenuItem;
 
 /** Native menus must own modified accelerators so macOS can display them.
- *  Bare 1–5/B/R bindings deliberately stay in App's guarded key listener:
+ *  Bare 1–3/R/G bindings deliberately stay in App's guarded key listener:
  *  registering those with the OS would fire them while the user is typing. */
 export function nativeAccelerator(command: Command): string | undefined {
   const glyphs = shortcutOf(command);

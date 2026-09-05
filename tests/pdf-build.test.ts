@@ -1,22 +1,22 @@
-// pdf-build.test.ts — buildMaskPdf's page-level behavior that drawBarcode's
-// mocked-page harness (tests/barcode.test.ts) can't reach: buildMaskPdf is
-// async and needs real Assets (fonts, logo SVG), so this loads them from
-// disk like scripts/generate.ts does and inspects the actual PDF content
-// stream pdf-lib emits, rather than mocking PDFPage.
+// pdf-build.test.ts — buildArtPdf/buildMaskPdf's page-level behavior over a
+// display list (planLayers over the Lolev master, real Poppins metrics):
+// the no-mask flood, the page items' plate assignment, the stroke pass on
+// the live draw path, raster embedding by asset, and timestamp determinism.
+// Inspects the actual PDF content stream pdf-lib emits rather than mocking
+// PDFPage.
 import { describe, expect, it } from "vitest";
 import { PDFDocument, PDFName } from "pdf-lib";
-import { buildArtPdf, buildMaskPdf, type CollabImage } from "../src/pdf/build";
+import { buildArtPdf, buildMaskPdf } from "../src/pdf/build";
 import { warningColumnLen, warningMeasure, wrapWarning } from "../src/warning";
-import { defaultConfig } from "../src/defaults";
-import type { ElementId } from "../src/elements";
 import * as L from "../src/layout";
-import { assets, contentStreamText } from "./fixtures";
+import { assets, contentStreamText, lolevPlan, onePxPng } from "./fixtures";
 
 // Counts /Subtype /Image XObjects in a saved PDF's indirect object table —
-// the thing a hidden collab logo must NOT contribute, even though planLabel
-// already omits its drawn item. Counting XObjects (not grepping raw bytes
-// for a JPEG/PNG marker) survives pdf-lib's own re-compression of the
-// embedded stream.
+// the thing an image whose item is not in the list must NOT contribute.
+// Counting XObjects (not grepping raw bytes for a PNG marker) survives
+// pdf-lib's own re-compression of the embedded stream. A PNG with alpha
+// embeds as TWO (the image plus its SMask), so assertions compare counts
+// rather than pin one.
 async function countImageXObjects(bytes: Uint8Array): Promise<number> {
   const doc = await PDFDocument.load(bytes);
   let n = 0;
@@ -27,24 +27,8 @@ async function countImageXObjects(bytes: Uint8Array): Promise<number> {
   return n;
 }
 
-// Every text/image ElementId except one, so a test can hide the whole label
-// down to a single element and read its operators without the rest of the
-// page's ink interfering.
-const allBut = (id: ElementId): Set<ElementId> =>
-  new Set<ElementId>([
-    "name", "styleLine", "abv", "description", "volume", "wordmark", "logo",
-    "handleAddress", "warning", "storeCold", "qr", "barcode",
-    "collabLead", "collabLeft", "collabCenter",
-  ].filter((x) => x !== id) as ElementId[]);
-
-// A minimal embeddable 1x1 PNG, standing in for an uploaded mask — buildMaskPdf
-// only needs it to be embeddable, and using it here skips the page-covering
-// no-mask flood rect so its "rg" doesn't show up in the isolated element's
-// operator sequence below.
-const onePxPng = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-  "base64",
-);
+const png = { kind: "png" as const, bytes: onePxPng };
+const showOps = (s: string) => (s.match(/\bTj\b/g) ?? []).length;
 
 // The exact operator sequence pdf-lib emits for a full-bleed rect filled
 // mask blue — what page.drawRectangle({x:0, y:0, width:PAGE.w, height:PAGE.h,
@@ -56,72 +40,87 @@ const floodPath =
   "1 0 0 1 0 0 cm\n1 0 0 1 0 0 cm\n1 0 0 1 0 0 cm\n" +
   `0 0 m\n0 ${L.PAGE.h} l\n${L.PAGE.w} ${L.PAGE.h} l\n${L.PAGE.w} 0 l\nh\nf`;
 
-describe("buildMaskPdf — no-mask flood", () => {
-  it("floods the whole plate mask-blue when no maskPng is supplied", async () => {
-    const bytes = await buildMaskPdf(defaultConfig(), assets);
+/** The label with both page assets bound: the texture under id "tex", the
+ *  mask under "msk", each a 1x1 PNG (aspect 1). */
+const withPages = () => lolevPlan({
+  overrides: { background: { asset: "tex" }, mask: { asset: "msk" } },
+  custom: { tex: { aspect: 1 }, msk: { aspect: 1 } },
+});
+
+describe("page items — the texture and the mask", () => {
+  it("floods the whole mask plate mask-blue when no mask page item has bytes", async () => {
+    const bytes = await buildMaskPdf(await lolevPlan(), assets);
     expect(await contentStreamText(bytes)).toContain(floodPath);
+    // A mask item whose bytes never loaded is the same case.
+    const unloaded = await buildMaskPdf(await withPages(), assets);
+    expect(await contentStreamText(unloaded)).toContain(floodPath);
   });
 
-  it("does not flood when a maskPng is supplied", async () => {
-    // Minimal 1x1 PNG — buildMaskPdf only needs it to be embeddable.
-    const png = Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-      "base64",
-    );
-    const bytes = await buildMaskPdf(defaultConfig(), { ...assets, maskPng: png });
+  it("draws the mask instead of flooding when its bytes are supplied", async () => {
+    const bytes = await buildMaskPdf(await withPages(), { ...assets, images: { msk: png } });
     expect(await contentStreamText(bytes)).not.toContain(floodPath);
+    expect(await countImageXObjects(bytes)).toBeGreaterThan(0);
+  });
+
+  it("the art plate embeds the background only, the mask plate the mask only", async () => {
+    const items = await withPages();
+    const both = { ...assets, images: { tex: png, msk: png } };
+    const art = await buildArtPdf(items, both);
+    const mask = await buildMaskPdf(items, both);
+    const one = await countImageXObjects(await buildArtPdf(items, { ...assets, images: { tex: png } }));
+    expect(one).toBeGreaterThan(0);
+    expect(await countImageXObjects(art)).toBe(one);
+    expect(await countImageXObjects(mask)).toBe(one);
+    // The background covers the page: a square asset cover-fits to the
+    // page's width, centred, overhanging top and bottom.
+    const bg = items.find((r) => r.kind === "page" && r.role === "background")!;
+    if (bg.kind !== "page") throw new Error("Expected background page");
+    expect(bg.x).toBe(0);
+    expect(bg.w).toBeCloseTo(L.PAGE.w, 5);
+    expect(bg.h).toBeGreaterThanOrEqual(L.PAGE.h);
+    expect(bg.y).toBeCloseTo((L.PAGE.h - bg.h) / 2, 5);
+  });
+
+  it("art plate with no background bytes is bare stock: no image XObjects at all", async () => {
+    expect(await countImageXObjects(await buildArtPdf(await withPages(), assets))).toBe(0);
   });
 });
 
 // The rotated column's Tr-2 stroke technique (bridge copies + a stroke-color
 // fill pass, THEN the true fill on top — see strokedText's doc comment), on
-// the LIVE draw path: drawElements' plan-driven drawPlaced, not a
-// hand-rolled mocked-page harness. The multi-word maxLen-justification math
-// itself (what the old drawJustifiedRotated/drawRotated duo also computed)
-// is covered directly at the placement layer by tests/plan.test.ts's
-// "justifiedRotatedRuns" describe block (both the multi-word exact-maxLen
-// case and the single-word natural-length case) — this block only needs to
-// guard the part plan.ts does NOT touch: the actual paint order and the
-// mask's per-layer color resolution once pdf-lib draws it.
+// the LIVE draw path: drawItems, not a hand-rolled mocked-page harness.
 describe("the rotated column's stroke pass, on the live draw path", () => {
-  // Isolate storeCold (a rotated element) by hiding every other element, and
-  // supply a maskPng so buildMaskPdf skips its own page-covering flood rect
-  // — otherwise that flood's "rg" would land ahead of storeCold's in the
+  // Isolate storeCold (a rotated element) by planning only its items, and
+  // supply a mask so buildMaskPdf skips its own page-covering flood rect —
+  // otherwise that flood's "rg" would land ahead of storeCold's in the
   // stream and confuse the ordering check below. `rgOps` reads every
   // fill-color-setting "r g b rg" operator (NOT "RG", the separate stroke-
-  // paint operator) in emission order — exactly the color sequence
-  // strokedText's bridge copies + Tr-2 stroke pass + final fill pass draw.
+  // paint operator) in emission order.
   const rgOps = (stream: string) =>
     [...stream.matchAll(/(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) rg\b/g)]
       .map((m) => [Number(m[1]), Number(m[2]), Number(m[3])] as const);
+  const only = async (style: object) => (await lolevPlan({
+    overrides: { storeCold: { lines: [{ text: "INK", ...style }], style }, mask: { asset: "msk" } },
+    custom: { msk: { aspect: 1 } },
+  })).filter((r) => r.id === "storeCold" || r.kind === "page");
 
   it.each([
     {
       name: "white stroke around metallic fill",
-      style: {
-        fill: "#000000", layer: "metallic", stroke: "#000000",
-        strokeLayer: "white", strokeWidth: 15,
-      } as const,
+      style: { fill: "#000000", layer: "metallic", stroke: "#000000", strokeLayer: "white", strokeWidth: 15 } as const,
       stroke: [0, 156 / 255, 215 / 255], // maskColor("white") — L.COLORS.maskBlue
       fill: [1, 1, 1], // maskColor("metallic") — knockout white
     },
     {
       name: "metallic stroke around white fill",
-      style: {
-        fill: "#000000", layer: "white", stroke: "#000000",
-        strokeLayer: "metallic", strokeWidth: 15,
-      } as const,
+      style: { fill: "#000000", layer: "white", stroke: "#000000", strokeLayer: "metallic", strokeWidth: 15 } as const,
       stroke: [1, 1, 1],
       fill: [0, 156 / 255, 215 / 255],
     },
   ])("paints $name in stroke-then-fill order on the mask", async ({ style, stroke, fill }) => {
-    const cfg = defaultConfig();
-    cfg.storeCold = { text: "INK", ...style };
-    const bytes = await buildMaskPdf(cfg, {
-      ...assets, maskPng: onePxPng, hidden: allBut("storeCold"),
-    });
+    const bytes = await buildMaskPdf(await only(style), { ...assets, images: { msk: png } });
     // Drop the first match: buildMaskPdf's page-background rect (always
-    // white, unconditionally, before drawElements ever runs) is not part of
+    // white, unconditionally, before the items ever draw) is not part of
     // storeCold's own draw and isn't the ordering this test is about.
     const ops = rgOps(await contentStreamText(bytes)).slice(1);
     expect(ops.length).toBeGreaterThan(1);
@@ -130,13 +129,9 @@ describe("the rotated column's stroke pass, on the live draw path", () => {
   });
 
   it("paints the same stroke-then-fill order on the art plate", async () => {
-    const cfg = defaultConfig();
-    cfg.storeCold = {
-      text: "INK", fill: "#111111", layer: "metallic",
-      stroke: "#eeeeee", strokeLayer: "white", strokeWidth: 15,
-    };
-    const bytes = await buildArtPdf(cfg, { ...assets, hidden: allBut("storeCold") });
-    // No page-level background paint in art mode (no texture supplied), so
+    const style = { fill: "#111111", layer: "metallic", stroke: "#eeeeee", strokeLayer: "white", strokeWidth: 15 } as const;
+    const bytes = await buildArtPdf(await only(style), assets);
+    // No page-level background paint in art mode (no texture bytes), so
     // every "rg" here belongs to storeCold's own draw — nothing to drop.
     const ops = rgOps(await contentStreamText(bytes));
     expect(ops.length).toBeGreaterThan(1);
@@ -149,18 +144,11 @@ describe("the rotated column's stroke pass, on the live draw path", () => {
 
 // The real WARNING_TEXT, wrapped through the real wrapper, with a
 // deterministic stand-in font — every resulting column here is multi-word,
-// so every one must justify out to exactly maxLen. Exercises src/warning.ts
-// directly (the same module plan.ts's warning branch calls), independent of
-// drawRotated/drawJustifiedRotated — nothing here changed with their removal.
+// so every one must justify out to exactly maxLen.
 describe("warning wrapping invariants", () => {
-  const font = {
-    widthOfTextAtSize: (t: string, size: number) => t.length * size * 0.6,
-  };
+  const font = { widthOfTextAtSize: (t: string, size: number) => t.length * size * 0.6 };
 
   it("every real wrapped warning column measures exactly maxLen after justification", () => {
-    // Marker-aware, as every renderer measures now: WARNING_TEXT carries
-    // **bold** runs whose asterisks must not be counted as glyphs. This
-    // test's single stand-in measure stands in for both faces.
     const measure = warningMeasure((t) => font.widthOfTextAtSize(t, L.WARNING.size));
     const cols = wrapWarning(measure, L.WARNING.maxLen);
     expect(cols.length).toBeGreaterThan(1);
@@ -171,47 +159,67 @@ describe("warning wrapping invariants", () => {
   });
 });
 
-// The layers-panel eye: Assets.hidden skips an element outright — every
-// show-text/paint op it would emit, in BOTH modes — without moving anything
-// else. Distinct from fill "none", which still paints (knockout white).
-describe("Assets.hidden — the layers-panel eye", () => {
-  const showOps = (s: string) => (s.match(/\bTj\b/g) ?? []).length;
-
-  it("drops a hidden text element's show-text ops from the art plate", async () => {
-    const { buildArtPdf } = await import("../src/pdf/build");
-    const cfg = defaultConfig();
-    const plain = showOps(await contentStreamText(await buildArtPdf(cfg, assets)));
-    const hidden = showOps(await contentStreamText(
-      await buildArtPdf(cfg, { ...assets, hidden: new Set(["name", "storeCold"]) }),
-    ));
-    expect(hidden).toBeLessThan(plain);
+// Skipping is the caller's (planLayers' skip / a disabled layer): an item
+// absent from the list emits nothing — no ink, no stroke, no mask footprint,
+// and no embedded bytes either.
+describe("an item absent from the list", () => {
+  it("drops its show-text ops from both plates", async () => {
+    const all = await lolevPlan();
+    const some = all.filter((r) => r.id !== "name" && r.id !== "storeCold");
+    expect(showOps(await contentStreamText(await buildArtPdf(some, assets))))
+      .toBeLessThan(showOps(await contentStreamText(await buildArtPdf(all, assets))));
+    expect(showOps(await contentStreamText(await buildMaskPdf(some, assets))))
+      .toBeLessThan(showOps(await contentStreamText(await buildMaskPdf(all, assets))));
   });
 
-  it("drops the hidden element from the mask plate too", async () => {
-    const cfg = defaultConfig();
-    const plain = showOps(await contentStreamText(await buildMaskPdf(cfg, assets)));
-    const hidden = showOps(await contentStreamText(
-      await buildMaskPdf(cfg, { ...assets, hidden: new Set(["name", "storeCold"]) }),
-    ));
-    expect(hidden).toBeLessThan(plain);
+  it("does not embed a skipped image's raster bytes into the saved PDF", async () => {
+    const images = { left: png };
+    const collab = await lolevPlan({
+      variants: ["collab"], overrides: { collabLeft: { asset: "left" } }, custom: { left: { aspect: 1 } },
+    });
+    const visible = await buildArtPdf(collab, { ...assets, images });
+    const skipped = await buildArtPdf(collab.filter((r) => r.id !== "collabLeft"), { ...assets, images });
+    expect(await countImageXObjects(visible)).toBeGreaterThan(0);
+    expect(await countImageXObjects(skipped)).toBe(0);
+  });
+});
+
+describe("PDF timestamp determinism", () => {
+  const PDF_EPOCH = new Date("2000-01-01T00:00:00Z");
+
+  it("builds byte-identical output from the same list twice, on both plates", async () => {
+    const items = await lolevPlan();
+    expect(await buildArtPdf(items, assets)).toEqual(await buildArtPdf(items, assets));
+    expect(await buildMaskPdf(items, assets)).toEqual(await buildMaskPdf(items, assets));
   });
 
-  // Regression: a pre-refactor bug gated the whole collab-logo embed on
-  // !hide(id), but the refactored planArt embedded the raster bytes BEFORE
-  // consulting assets.hidden — so a hidden collab slot drew nothing (plan.ts
-  // correctly omitted the item) yet still left its image XObject sitting in
-  // the saved PDF. Hidden must mean no ink AND no embedded bytes.
-  it("does not embed a hidden collab logo's raster bytes into the saved PDF", async () => {
-    const cfg = defaultConfig();
-    cfg.collabEnabled = true;
-    const collabLeft: CollabImage = { kind: "png", bytes: onePxPng };
+  it("creation dates equal the pinned constant", async () => {
+    const items = await lolevPlan();
+    for (const bytes of [await buildArtPdf(items, assets), await buildMaskPdf(items, assets)])
+      expect((await PDFDocument.load(bytes)).getCreationDate()).toEqual(PDF_EPOCH);
+  });
+});
 
-    const noCollab = await buildArtPdf(cfg, assets);
-    const visible = await buildArtPdf(cfg, { ...assets, collabLeft });
-    const hidden = await buildArtPdf(cfg, { ...assets, collabLeft, hidden: new Set(["collabLeft"]) });
+describe("added layers", () => {
+  it("an added text layer draws through the shared display list", async () => {
+    const plain = await lolevPlan();
+    const withLayer = await lolevPlan({ extra: [{
+      id: "t1", name: "Custom", kind: "text", enabled: true, x: 30, y: 30, anchor: "left", size: 12,
+      align: "left", lines: [{ text: "HELLO", fill: "#000000", layer: "metallic" }],
+      style: { fill: "#000000", layer: "metallic" },
+    }] });
+    expect(showOps(await contentStreamText(await buildArtPdf(withLayer, assets))))
+      .toBeGreaterThan(showOps(await contentStreamText(await buildArtPdf(plain, assets))));
+  });
 
-    const baseline = await countImageXObjects(noCollab);
-    expect(await countImageXObjects(visible)).toBeGreaterThan(baseline);
-    expect(await countImageXObjects(hidden)).toBe(baseline);
+  it("an image layer whose bytes never loaded is a no-op on both plates", async () => {
+    const plain = await lolevPlan();
+    const withImage = await lolevPlan({ custom: { art1: { aspect: 1 } }, extra: [{
+      id: "i1", name: "Custom Image", kind: "image", enabled: true, x: 30, y: 30, anchor: "left",
+      w: 100, asset: "art1", style: { fill: "none", layer: "white" },
+    }] });
+    expect(withImage.some((r) => r.kind === "image" && r.id === "i1")).toBe(true); // placed…
+    expect(await buildArtPdf(withImage, assets)).toEqual(await buildArtPdf(plain, assets)); // …not drawn
+    expect(await buildMaskPdf(withImage, assets)).toEqual(await buildMaskPdf(plain, assets));
   });
 });

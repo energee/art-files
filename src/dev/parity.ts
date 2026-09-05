@@ -7,7 +7,10 @@
 import { buildArtPdf, buildMaskPdf, type Assets } from "../pdf/build";
 import { loadFonts } from "../pdf/fonts";
 import { renderPdfPage } from "../pdf/render";
-import { planLabel } from "../plan";
+import { planLayers } from "../planLayers";
+import { convertConfigV1 } from "../model/convert";
+import { resolveLayers } from "../model/resolveLayers";
+import { lolevMaster } from "../model/lolevLayers";
 import { drawPlate, type CanvasAssets } from "../canvas/draw";
 import { labelFontCss, loadLabelFont, loadLabelFaces } from "../fonts";
 import { defaultConfig } from "../defaults";
@@ -82,12 +85,16 @@ async function run() {
   const h = Math.round(PAGE.h * SCALE);
 
   for (const [name, cfg] of [["default", defaultConfig()], ["markers", markerConfig()]] as const) {
-    const pdfAssets: Assets = { fonts, logoSvg, texture: { bytes: texture.bytes, kind: "png" } };
-    const canvasAssets: CanvasAssets = { texture: texture.bitmap };
-    const plan = planLabel(cfg, mf, { assets: { logoSvg } });
+    const pdfAssets: Assets = { fonts, images: { texture: { bytes: texture.bytes, kind: "png" } } };
+    const canvasAssets: CanvasAssets = { images: { texture: texture.bitmap } };
+    const { label } = convertConfigV1(cfg, false);
+    const { layers } = resolveLayers(lolevMaster(), label.enabledVariants, label.values, {
+      ...label.overrides, background: { asset: "texture" },
+    });
+    const plan = planLayers(layers, mf, { logoSvg, custom: { texture: { aspect: 800 / 500 } } });
     for (const mode of ["art", "mask"] as const) {
       const pdfBytes = mode === "art"
-        ? await buildArtPdf(cfg, pdfAssets) : await buildMaskPdf(cfg, pdfAssets);
+        ? await buildArtPdf(plan, pdfAssets) : await buildMaskPdf(plan, pdfAssets);
       const pdfCanvas = document.createElement("canvas");
       await renderPdfPage(pdfBytes, { canvas: pdfCanvas, size: { width: w, height: h } });
       const ours = document.createElement("canvas");

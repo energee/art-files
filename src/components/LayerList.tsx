@@ -1,0 +1,431 @@
+// LayerList.tsx — the ONE Layers list of the master-as-layers redesign
+// (spec: docs/superpowers/specs/2026-09-04-master-as-layers-design.md, "UI"
+// and "Removed"). A flat list of the resolved layers, FRONT TO BACK (the
+// caller hands rows in draw order, back to front, and this component
+// reverses them), no Document group — background and mask are the two
+// bottom rows like any other. Each row: kind icon, name (double-click or the
+// row menu to rename inline), a variant badge when a variant ADDS the layer
+// (dimmed while that variant is off), an "overridden" dot when an enabled
+// variant overrides part of it, then the three per-layer switches — fillable
+// (absent on the background/mask rows: nothing to fill), power (`enabled`,
+// the only visibility switch — there is no session eye any more), lock —
+// plus front/back reorder arrows on the selected row and a "…" menu with
+// Rename / Remove. The header carries the title, the "Fillable only" filter
+// that replaced Fill mode, one chip per variant, and the "Add layer" menu.
+//
+// Props-only: no app state, no model imports beyond types. Every write goes
+// out through a callback — the caller decides where it lands (master or the
+// variant that owns the layer; spec: "Editing target selector" removed).
+import {
+  Barcode, ChevronDown, ChevronUp, Ellipsis, Image, ListFilter, Lock, PenLine, Plus, Power,
+  QrCode, Scan, Type, type LucideIcon,
+} from "lucide-react";
+import { useState } from "react";
+import type { Layer, LayerKind } from "@/model/layers";
+import { cn } from "@/lib/utils";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent,
+} from "@/components/ui/dropdown-menu";
+import {
+  SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
+
+/** A variant as the header chips and the row badges see it. */
+export interface VariantChip { id: string; name: string; enabled: boolean }
+
+export interface LayerRow {
+  /** The RESOLVED layer (every enabled variant's diff already merged in). */
+  layer: Layer;
+  /** Set when a variant ADDS this layer (an id the master lacks): the row
+   *  shows the variant's name as a badge and dims while it is off. */
+  variant?: VariantChip;
+  /** Some enabled variant overrides part of this master layer — the row
+   *  shows a small dot after the name. */
+  overridden?: boolean;
+}
+
+/** Click modifiers as the row reports them. `meta` is ⌘ on macOS and Ctrl
+ *  elsewhere (the toggle-select gesture) — the platform rule lives here so
+ *  the caller only ever sees one flag. */
+export interface SelectMods { shift: boolean; meta: boolean }
+
+export interface LayerListProps {
+  /** DRAW ORDER, back to front — exactly `Master.layers` plus any
+   *  variant-added layers after them. The list renders them reversed, front
+   *  to back, the way a layers panel reads. */
+  rows: LayerRow[];
+  selected: ReadonlySet<string>;
+  onSelect: (id: string, mods: SelectMods) => void;
+  /** The three per-row switches. `enabled` off = the layer never draws
+   *  (recorded, undoable — there is no session-only hide); `locked` = fillers
+   *  cannot move it; `fillable` = listed by the Fillable-only filter. */
+  onToggle: (id: string, prop: "enabled" | "locked" | "fillable", value: boolean) => void;
+  /** Inline rename committed (trimmed, non-empty, changed). */
+  onRename: (id: string, name: string) => void;
+  /** One step through the draw order: +1 = toward the FRONT (later in draw
+   *  order, UP the visible list), -1 = toward the back. Never called for a
+   *  step past either end. */
+  onReorder: (id: string, delta: -1 | 1) => void;
+  onAdd: (kind: LayerKind, variant?: string) => void;
+  /** The row menu's Remove, and the Delete/Backspace key on a selected row. */
+  onRemove: (id: string) => void;
+  /** The header filter: show only `fillable` layers (what a .label fills). */
+  fillableOnly: boolean;
+  onFillableOnly: (v: boolean) => void;
+  /** One header chip per variant; a chip toggles the variant on the label. */
+  variants: VariantChip[];
+  onToggleVariant: (id: string) => void;
+}
+
+/** "Add layer" menu entries — the same icons the rows use for each kind. */
+const ADD_LAYER_KINDS: { kind: LayerKind; label: string; Icon: LucideIcon }[] = [
+  { kind: "text", label: "Text", Icon: Type },
+  { kind: "image", label: "Image", Icon: Image },
+  { kind: "barcode", label: "Barcode", Icon: Barcode },
+  { kind: "qr", label: "QR", Icon: QrCode },
+];
+
+/** Per-kind icon; the two page-art roles get their own so the bottom rows
+ *  read as "the texture" and "the mask" rather than two more pictures. */
+function iconFor(layer: Layer): LucideIcon {
+  switch (layer.kind) {
+    case "text": return Type;
+    case "barcode": return Barcode;
+    case "qr": return QrCode;
+    case "image": return layer.role === "mask" ? Scan : Image;
+  }
+}
+
+/** The background texture and metallic mask are drawn by their roles, not
+ *  filled by a label — no fillable switch on those two rows. */
+const isPageArt = (layer: Layer) =>
+  layer.kind === "image" && (layer.role === "background" || layer.role === "mask");
+
+/** One small square control, the idiom every row switch shares: lit while
+ *  `lit`, faded (and brightening on hover) otherwise. */
+const control = (lit: boolean) => cn(
+  "grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70",
+  "hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+  "disabled:cursor-not-allowed disabled:opacity-20 [&>svg]:size-3",
+  !lit && "opacity-40 hover:opacity-100 focus-visible:opacity-100",
+);
+
+/** Header chip — the Fillable-only filter and the variant toggles share one
+ *  look: a small pill, filled while pressed. */
+const chip = (pressed: boolean) => cn(
+  "inline-flex h-5 shrink-0 items-center gap-1 rounded-full border px-1.5 text-[11px] leading-none",
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+  pressed
+    ? "border-sidebar-primary bg-sidebar-primary text-sidebar-primary-foreground"
+    : "border-sidebar-border text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+  "[&>svg]:size-3",
+);
+
+const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+
+function Row({ row, isSelected, atFront, atBack, ...p }: {
+  row: LayerRow;
+  isSelected: boolean;
+  /** Ends of the DRAW order, computed by the list over every row (not the
+   *  filtered view), so the arrows disable exactly where a step is a no-op. */
+  atFront: boolean;
+  atBack: boolean;
+} & Pick<LayerListProps, "onSelect" | "onToggle" | "onRename" | "onReorder" | "onRemove">) {
+  const { layer } = row;
+  const { id, name } = layer;
+  const Icon = iconFor(layer);
+  // Dimmed end to end when the layer isn't drawing: its own power is off, or
+  // the variant that adds it is off.
+  const inactive = !layer.enabled || (row.variant !== undefined && !row.variant.enabled);
+  const locked = !!layer.locked;
+  const fillable = !!layer.fillable;
+  const [renaming, setRenaming] = useState(false);
+
+  const commitRename = (value: string) => {
+    const next = value.trim();
+    if (next && next !== name) p.onRename(id, next);
+    setRenaming(false);
+  };
+
+  // Keyboard equivalents of the selected row's mouse-only affordances, on
+  // the row's focusable (the name button): Delete/Backspace = the menu's
+  // Remove, ⌥↑/⌥↓ = the reorder arrows. Gated on the row being selected, so
+  // the keys act on exactly the row those controls are showing for.
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (!isSelected) return;
+    if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault(); p.onRemove(id);
+    } else if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      const delta = e.key === "ArrowUp" ? 1 : -1;
+      if (delta === 1 ? !atFront : !atBack) { e.preventDefault(); p.onReorder(id, delta); }
+    }
+  };
+
+  return (
+    <SidebarMenuItem data-layer-id={id}>
+      {/* The whole row is the select target and carries the hover/selected
+          highlight end to end; every control inside stops propagation so
+          toggling a switch never changes the selection. The name button is
+          the row's one focusable, named control — Enter on it fires a click
+          that bubbles here the same way. */}
+      <div
+        onClick={(e) => p.onSelect(id, { shift: e.shiftKey, meta: e.metaKey || e.ctrlKey })}
+        className={cn(
+          "flex cursor-pointer items-center gap-0.5 rounded-md pr-1 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          isSelected && "bg-sidebar-accent text-sidebar-accent-foreground",
+          inactive && "opacity-50",
+        )}
+      >
+        <SidebarMenuButton
+          size="sm"
+          isActive={isSelected}
+          onKeyDown={onKeyDown}
+          className="min-w-0 flex-1 text-xs hover:bg-transparent"
+        >
+          <Icon />
+          {renaming ? (
+            <input
+              autoFocus
+              defaultValue={name}
+              aria-label={`Rename ${name}`}
+              onClick={stop}
+              onBlur={(e) => commitRename(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitRename(e.currentTarget.value);
+                else if (e.key === "Escape") setRenaming(false);
+                // The row's own shortcuts must not see a typed name.
+                e.stopPropagation();
+              }}
+              className="min-w-0 flex-1 rounded-sm border border-sidebar-border bg-transparent px-1 text-xs outline-none"
+            />
+          ) : (
+            <span className="min-w-0 flex-1 truncate" onDoubleClick={() => setRenaming(true)}>
+              {name}
+            </span>
+          )}
+          {row.variant && (
+            <span
+              title={row.variant.enabled
+                ? `Added by the ${row.variant.name} variant`
+                : `Added by the ${row.variant.name} variant (off)`}
+              className={cn(
+                "shrink-0 rounded-sm border border-sidebar-border px-1 text-[10px] leading-4",
+                row.variant.enabled ? "text-sidebar-foreground/70" : "text-sidebar-foreground/40",
+              )}
+            >
+              {row.variant.name}
+            </span>
+          )}
+          {row.overridden && (
+            <span
+              role="img"
+              aria-label="Overridden by a variant"
+              title="Overridden by a variant"
+              className="size-1.5 shrink-0 rounded-full bg-sidebar-primary"
+            />
+          )}
+        </SidebarMenuButton>
+
+        {/* Front/back reorder, the selected row only — a step at either end
+            of the draw order is disabled rather than a silent no-op. */}
+        {isSelected && (
+          <span className="flex shrink-0 items-center" onClick={stop}>
+            <button
+              type="button"
+              onClick={() => p.onReorder(id, 1)}
+              disabled={atFront}
+              aria-label={`Bring ${name} forward`}
+              title="Bring forward (⌥↑)"
+              className={control(false)}
+            >
+              <ChevronUp />
+            </button>
+            <button
+              type="button"
+              onClick={() => p.onReorder(id, -1)}
+              disabled={atBack}
+              aria-label={`Send ${name} backward`}
+              title="Send backward (⌥↓)"
+              className={control(false)}
+            >
+              <ChevronDown />
+            </button>
+          </span>
+        )}
+
+        {/* Row menu: the keyboard route to rename, and the one place to
+            remove. Faded until the row is hovered, focused or selected, but
+            always in the tab order — a focused trigger shows itself. */}
+        <span onClick={stop} className="contents">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label={`${name} actions`}
+                  className={cn(
+                    control(false),
+                    "opacity-0 group-hover/menu-item:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100",
+                    isSelected && "opacity-40",
+                  )}
+                >
+                  <Ellipsis />
+                </button>
+              }
+            />
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setRenaming(true)}>Rename</DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onClick={() => p.onRemove(id)}>Remove</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </span>
+
+        {/* The three switches, in one fixed cluster at the right edge so the
+            power and lock columns line up down the whole list. Fillable is
+            the leftmost, so the two page-art rows (which have none) leave a
+            gap there and nothing else moves. */}
+        {!isPageArt(layer) && (
+          <button
+            type="button"
+            onClick={(e) => { stop(e); p.onToggle(id, "fillable", !fillable); }}
+            aria-label={`${name}: fillable`}
+            aria-pressed={fillable}
+            title={fillable ? "Fillable — a label fills this layer" : "Not fillable — the master's content draws as is"}
+            className={control(fillable)}
+          >
+            <PenLine />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={(e) => { stop(e); p.onToggle(id, "enabled", inactive); }}
+          aria-label={`${name}: enabled`}
+          aria-pressed={!inactive}
+          // Lit while OFF: the exception is what needs pointing at, and the
+          // row is already dimmed around it.
+          title={inactive ? "Off — turn on to draw this layer and its variant" : "Enabled — turn off to stop it drawing"}
+          className={control(inactive)}
+        >
+          <Power />
+        </button>
+        <button
+          type="button"
+          onClick={(e) => { stop(e); p.onToggle(id, "locked", !locked); }}
+          aria-label={`${name}: locked`}
+          aria-pressed={locked}
+          title={locked ? "Locked — cannot be moved" : "Unlocked"}
+          className={control(locked)}
+        >
+          <Lock />
+        </button>
+      </div>
+    </SidebarMenuItem>
+  );
+}
+
+export function LayerList(props: LayerListProps): React.JSX.Element {
+  const { rows, selected } = props;
+  // Ends of the draw order come from EVERY row, so a filtered view can't
+  // make a middle row look like an end.
+  const frontId = rows.length ? rows[rows.length - 1].layer.id : undefined;
+  const backId = rows.length ? rows[0].layer.id : undefined;
+  const shown = (props.fillableOnly ? rows.filter((r) => !!r.layer.fillable) : rows)
+    .slice().reverse();
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel className="justify-between">
+        <span>Layers</span>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <button
+                type="button"
+                aria-label="Add layer"
+                className="flex items-center gap-0.5 rounded-sm px-1 text-[11px] text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+              >
+                <Plus className="size-3" /> Add layer
+              </button>
+            }
+          />
+          <DropdownMenuContent align="end">
+            {ADD_LAYER_KINDS.map(({ kind, label, Icon }) => (
+              <DropdownMenuItem key={kind} onClick={() => props.onAdd(kind)}>
+                <Icon className="size-3.5" /> {label}
+              </DropdownMenuItem>
+            ))}
+            {props.variants.map((variant) => (
+              <DropdownMenuSub key={variant.id}>
+                <DropdownMenuSubTrigger>{variant.name}</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {ADD_LAYER_KINDS.map(({ kind, label, Icon }) => (
+                    <DropdownMenuItem key={kind} onClick={() => props.onAdd(kind, variant.id)}>
+                      <Icon className="size-3.5" /> {label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarGroupLabel>
+
+      {/* Filter and variant chips on their own line: the sidebar is narrow,
+          and a label can carry several variants. */}
+      <div className="flex flex-wrap items-center gap-1 px-2 pb-1.5">
+        <button
+          type="button"
+          aria-pressed={props.fillableOnly}
+          onClick={() => props.onFillableOnly(!props.fillableOnly)}
+          title="Show only the layers a label fills"
+          className={chip(props.fillableOnly)}
+        >
+          <ListFilter /> Fillable only
+        </button>
+        {props.variants.map((v) => (
+          <button
+            key={v.id}
+            type="button"
+            aria-label={`${v.name} variant`}
+            aria-pressed={v.enabled}
+            onClick={() => props.onToggleVariant(v.id)}
+            title={v.enabled ? `${v.name} variant is on` : `${v.name} variant is off`}
+            className={chip(v.enabled)}
+          >
+            {v.name}
+          </button>
+        ))}
+      </div>
+
+      {selected.size > 0 && (
+        <p className="px-2 pb-1 text-center text-[11px] text-sidebar-foreground/50">
+          ⇧ click for a range · ⌘ click to add
+        </p>
+      )}
+
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {shown.map((row) => (
+            <Row
+              key={row.layer.id}
+              row={row}
+              isSelected={selected.has(row.layer.id)}
+              atFront={row.layer.id === frontId}
+              atBack={row.layer.id === backId}
+              onSelect={props.onSelect}
+              onToggle={props.onToggle}
+              onRename={props.onRename}
+              onReorder={props.onReorder}
+              onRemove={props.onRemove}
+            />
+          ))}
+        </SidebarMenu>
+        {shown.length === 0 && (
+          <p className="px-2 py-2 text-[11px] text-sidebar-foreground/50">
+            {props.fillableOnly ? "No fillable layers." : "No layers."}
+          </p>
+        )}
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}

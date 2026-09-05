@@ -1,7 +1,11 @@
 // types.ts — the label config data model. This is also the schema of the
-// Save/Load JSON: a LabelConfig serializes as-is (plus {version: 1}).
+// Save/Load JSON: a LabelConfig serializes as-is (plus {version: 1}). Still
+// version 1: `customLayers` (master-variant free-floating text/image
+// layers) is additive — absent on every pre-existing file, which loads as
+// "no custom layers" with no migration needed.
 
 import type { FontFamilyId } from "./fontCatalog";
+import type { LayerPosition } from "./model/position";
 
 /** Fill color drawn in the art PDF: a "#rrggbb" hex string, or "none"
  *  meaning no ink (draws white; stock/white ink shows through). */
@@ -42,16 +46,32 @@ export interface StyledLine extends Style {
  *  offsetY nudges that computed position, it does not replace it. */
 export interface Positioned {
   /** Vertical nudge in PDF points, positive = down. Absent/0 = as laid out.
-   *  For the laurel this is the "stack nudge", applied only while
-   *  collabEnabled (see logoNudge in elements.ts) — the saved value is kept
-   *  but ignored when the collab block is off. */
+   *  For the laurel this is the "stack nudge": it exists to clear the centre
+   *  collab mark. Applied UNCONDITIONALLY — logoNudge in elements.ts is just
+   *  `logo.offsetY ?? 0` — because it is a real position knob, not a
+   *  collab-only one: it ships absent (= 0), it is whatever the master or the
+   *  label has authored, and no variant overrides it (the Collab variant
+   *  deliberately declares no `logo` override, so a master-level nudge is not
+   *  stomped when Collab is enabled — see model/lolev.ts). */
   offsetY?: number;
+  /** Freezes the element in place: dragTarget/dragTarget2 return null while
+   *  set, same as a locked custom layer (see CustomLayerBase.locked).
+   *  Absent = unlocked, so every pre-existing file is unaffected. */
+  locked?: boolean;
 }
 
-/** Styling for one collab-logo slot. The uploaded image itself is *not* part
- *  of the config (it is supplied at build time via Assets, like the texture
- *  and mask) — only how it is drawn. */
+/** Styling for one collab-logo slot, plus the id of the art filling it. The
+ *  image BYTES are still not part of the config (they are supplied at build
+ *  time via Assets, like the texture and mask) — `image` is only the key
+ *  that says which stored asset this slot points at. */
 export interface CollabSlot extends Style, Positioned {
+  /** Asset id of the logo loaded into this slot, into the label's per-id
+   *  image store (`custom/<assetId>/<name>` in the .label ZIP — the same
+   *  store custom image layers use). This is the value of the Collab
+   *  variant's `collabLeft` / `collabCenter` image FIELD, written through
+   *  its path like any other field value. Absent or "" = no art loaded, and
+   *  the slot draws nothing even with the variant on. */
+  image?: string;
   /** Multiplier on the fit-to-box size: 1 = fill the slot box, 0.5 = half. */
   scale: number;
   /** Raster art only (PNG/JPG): repaint every non-transparent pixel in this
@@ -84,13 +104,14 @@ export interface LabelConfig {
   descStyle: Style;
   /** 12-digit UPC-A. */
   upc: string;
-  /** Collab labels: the master switch for the whole collab block. Off, nothing
-   *  collab draws and the form hides its fields, whatever art is loaded. On,
-   *  each slot draws only once its image is supplied in Assets: `collabLeft`
-   *  flows under the description below an automatic bold "A collaborative
-   *  project with" lead-in (styled by `collabLead`); `collabCenter` hangs
-   *  under the laurel. */
-  collabEnabled: boolean;
+  /** Collab labels. There is no master switch here any more: "Collab" is an
+   *  ordinary master VARIANT (see model/lolev.ts), and with it off the
+   *  resolver puts `collabLead` / `collabLeft` / `collabCenter` in its
+   *  disabled-layer set, which is what stops them drawing. With it on, each
+   *  slot draws only once its art is supplied in Assets: `collabLeft` flows
+   *  under the description below an automatic bold "A collaborative project
+   *  with" lead-in (styled by `collabLead`); `collabCenter` hangs under the
+   *  laurel. */
   collabLead: Style;
   collabLeft: CollabSlot;
   /** Its `offsetY` is deliberately unused: the centre mark hangs off the
@@ -130,7 +151,85 @@ export interface LabelConfig {
   /** Label typeface, one of fontCatalog's families. Absent = "poppins" —
    *  the fallback every pre-0.1.22 file relies on (see fontFamilyOf). */
   fontFamily?: FontFamilyId;
+  /** Free-floating layers added on a master variant: extra text lines or
+   *  small images positioned by anchor rather than by the fixed layout.
+   *  Absent = none, which is every file saved before this feature. */
+  customLayers?: CustomLayer[];
 }
+
+/** Shared shape of every custom layer: identity, display name, and anchored
+ *  position. `id` is `custom-${string}` (see isCustomId in elements.ts) so
+ *  it can never collide with a fixed ElementId. */
+export interface CustomLayerBase {
+  /** Unique per layer, e.g. "custom-a1b2c3". */
+  id: `custom-${string}`;
+  /** Shown in the layers panel. */
+  name: string;
+  position: LayerPosition;
+  locked?: boolean;
+}
+
+/** A custom line of text, styled like any other StyledLine. */
+export interface CustomTextLayer extends CustomLayerBase {
+  type: "text";
+  line: StyledLine;
+  /** Type size in points. */
+  size: number;
+}
+
+/** A custom image layer: an SVG/raster asset tinted like the collab logos. */
+export interface CustomImageLayer extends CustomLayerBase {
+  type: "image";
+  /** Asset key into the plan's custom images (PlanAssets.custom / the app's
+   *  customImages state, keyed by the id minted at drop). */
+  asset: string;
+  /** Box width in points; height follows the image's aspect. */
+  w: number;
+  /** Intrinsic aspect (w/h), captured at drop time so hit and drag boxes are
+   *  exact before (and independent of) asset decode. Absent on older layers:
+   *  square fallback, as before. */
+  aspect?: number;
+  /** Fill/layer for SVG tint and white-ink behavior. */
+  style: Style;
+}
+
+/** A custom barcode layer: an independent, freely-positioned symbol, styled
+ *  like the template barcode (fill/layer + stroke-as-halo) but sized by its
+ *  own moduleW/h rather than layout.ts's fixed BARCODE constants. `value` is
+ *  RAW like the other layers' payloads — see the comment on it below. */
+export interface CustomBarcodeLayer extends CustomLayerBase {
+  type: "barcode";
+  symbology: "upc-a" | "ean-13" | "code-128";
+  /** Payload — RAW: may be a format string over field values ("{upc}").
+   *  Expansion to the drawn value happens in expandCustomFormats (Task 5);
+   *  until Task 5 lands, planLabel draws the raw string when it encodes. An
+   *  unexpandable/invalid raw string simply fails the symbology's validator,
+   *  and the layer emits nothing rather than a garbage symbol. */
+  value: string;
+  /** Bar-area height in points. */
+  h: number;
+  /** Module width in points; run width follows the pattern length. */
+  moduleW: number;
+  /** Human-readable digits under the symbol (P3). Absent = true. */
+  showDigits?: boolean;
+  style: Style; // fill/layer + stroke-as-halo, like the template barcode
+}
+
+/** A custom QR layer: same freely-positioned model as the barcode above, but
+ *  its EC level defaults to "M" for layers (P2) — the module-level qrShapes
+ *  default of "L" stays the template QR's default, unrelated to this. */
+export interface CustomQrLayer extends CustomLayerBase {
+  type: "qr";
+  value: string; // payload, RAW like the barcode's
+  size: number; // side in points
+  qrStyle: "square" | "rounded" | "dots";
+  /** Error correction; ABSENT means "M" for layers (P2) — never L. */
+  ecLevel?: "L" | "M" | "Q" | "H";
+  style: Style;
+}
+
+export type CustomLayer =
+  | CustomTextLayer | CustomImageLayer | CustomBarcodeLayer | CustomQrLayer;
 
 export interface ConfigFile extends LabelConfig {
   version: 1;
