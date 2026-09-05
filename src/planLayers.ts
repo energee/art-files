@@ -13,6 +13,7 @@
 import type {
   BarcodeLayer, ImageLayer, Layer, QrLayer, TextLayer, TextLine,
 } from "./model/layers";
+import { uppercaseOf } from "./model/layers";
 import type { StyledLine } from "./types";
 import { placeLayers, type Box } from "./model/place";
 import { anchorFraction } from "./model/position";
@@ -82,7 +83,7 @@ function drawableLines(l: TextLayer): TextLine[] {
       : [{ fill: s.fill, layer: s.layer, text: l.suffix }];
   return lines.map((ln) => ({
     ...ln,
-    text: l.uppercase ? ln.text.toUpperCase() : ln.text,
+    text: uppercaseOf(l) ? ln.text.toUpperCase() : ln.text,
     bold: !!ln.bold || !!ln.header,
     stroke: s.stroke, strokeLayer: s.strokeLayer, strokeWidth: s.strokeWidth,
     letterSpacing: s.letterSpacing,
@@ -337,7 +338,7 @@ function prepareBarcode(l: BarcodeLayer, m: MeasureFace): Prepared | null {
 
 function prepareQr(l: QrLayer): Prepared {
   const id = l.id;
-  const shapes = qrShapes(l.value, { style: l.qrStyle, ecLevel: l.ecLevel ?? "L" });
+  const shapes = qrShapes(l.value, { style: l.qrStyle, ecLevel: l.ecLevel ?? "L", rotation: l.rotation });
   const style = l.style;
   return {
     size: { w: l.size, h: l.size },

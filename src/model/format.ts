@@ -1,8 +1,11 @@
 // Format strings for derived layer content: literal text with {fieldId} or
 // {fieldId|transform} refs over FIELD values only (never other layers, so cycles
 // are impossible by construction). Spec: "Format strings (derived content)".
+import { machineName } from "../qr";
+
 export const TRANSFORMS: Record<string, (s: string) => string> = {
-  slug: (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""),
+  // The one machine-name rule, shared with the export filename (defaults.ts).
+  slug: machineName,
   upper: (s) => s.toUpperCase(),
   lower: (s) => s.toLowerCase(),
   trim: (s) => s.trim(),

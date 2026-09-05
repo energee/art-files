@@ -16,6 +16,10 @@ export function qrUrl(beerName: string): string {
 export interface QrOptions {
   style?: "square" | "rounded" | "dots";
   ecLevel?: "L" | "M" | "Q" | "H";
+  /** Quarter turn counter-clockwise, matching LayerBase.rotation. Applied to
+   *  the unit-space shapes, so every backend (PDF, canvas, PSD) gets the
+   *  rotation for free out of qrPath — no placed-item transform anywhere. */
+  rotation?: 0 | 90;
 }
 
 export interface QrShapes {
@@ -44,11 +48,28 @@ let lastShapes: { key: string; shapes: QrShapes } | null = null;
 export function qrShapes(data: string, opts?: QrOptions): QrShapes {
   const style = opts?.style ?? "dots";
   const ecLevel = opts?.ecLevel ?? "L";
-  const key = `${data}|${style}|${ecLevel}`;
+  const rotation = opts?.rotation ?? 0;
+  const key = `${data}|${style}|${ecLevel}|${rotation}`;
   if (lastShapes?.key === key) return lastShapes.shapes;
-  const shapes = buildShapes(data, style, ecLevel);
+  const built = buildShapes(data, style, ecLevel);
+  const shapes = rotation === 90 ? rotate90(built) : built;
   lastShapes = { key, shapes };
   return shapes;
+}
+
+/** A quarter turn counter-clockwise in unit space (y grows down, so CCW on
+ *  screen sends a point to (y, 1 - x)). Centers map straight across; a
+ *  square is stored by its TOP-LEFT corner, so its rotated corner is one
+ *  module up from the mapped original. The matrix is square, so the box —
+ *  and therefore every caller's layout — is unchanged. */
+function rotate90(s: QrShapes): QrShapes {
+  const ms = s.moduleSize;
+  return {
+    ...s,
+    dots: s.dots.map((d) => ({ cx: d.cy, cy: 1 - d.cx })),
+    finders: s.finders.map((f) => ({ cx: f.cy, cy: 1 - f.cx })),
+    squares: s.squares?.map((q) => ({ x: q.y, y: 1 - q.x - ms })),
+  };
 }
 
 function buildShapes(
