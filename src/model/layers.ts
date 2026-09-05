@@ -89,6 +89,9 @@ export interface TextLayer extends LayerBase {
   placeholder?: string;
   /** Renders every run uppercase (the beer name). Absent = as typed. */
   uppercase?: boolean;
+  /** Which font weights the layer sets in: `base` for plain runs, `bold`
+   *  for **bold** runs. Absent = regular / semibold. */
+  faces?: { base: "regular" | "semibold" | "bold"; bold: "regular" | "semibold" | "bold" };
   /** Block style: base fill / plate, outer stroke, tracking. A run's own
    *  fill/layer/bold wins over it (parseRuns semantics). */
   style: Style;

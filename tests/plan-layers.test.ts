@@ -75,9 +75,9 @@ describe("planLayers text", () => {
 
   it("the faces hint sets the base weight; bold runs step up from it, capped at bold", () => {
     expect(DEFAULT_FACES).toEqual({ base: "regular", bold: "semibold" });
-    const bold = { ...text({ id: "n", x: 0, y: 0, lines: [line("HAZY")] }), faces: { base: "bold", bold: "bold" } };
+    const bold = { ...text({ id: "n", x: 0, y: 0, lines: [line("HAZY")] }), faces: { base: "bold", bold: "bold" } as const };
     expect((planLayers([bold], m, assets)[0] as PlacedText).face).toBe("bold");
-    const semi = { ...text({ id: "h", x: 0, y: 0, lines: [line("**@X** Y")] }), faces: { base: "semibold", bold: "bold" } };
+    const semi = { ...text({ id: "h", x: 0, y: 0, lines: [line("**@X** Y")] }), faces: { base: "semibold", bold: "bold" } as const };
     expect((planLayers([semi], m, assets) as PlacedText[]).map((r) => r.face)).toEqual(["bold", "semibold"]);
   });
 
