@@ -3,7 +3,7 @@
 //
 // A LAYER is the only unit. A master is its layers in draw order plus the
 // variants that diff them; a label is a master reference, the variants it
-// turned on, and the values filled into fillable layers. There is no
+// turned on, and the values and overrides it lays over them. There is no
 // separate field list, no defaults bag, no Document group: background and
 // mask are the two bottom image layers, and every built-in Lolev element is
 // an ordinary layer in model/lolevLayers.ts.
@@ -57,8 +57,6 @@ export interface LayerBase {
   enabled: boolean;
   /** Fillers cannot move it. Universal — every kind honors it. */
   locked?: boolean;
-  /** Listed in the Fillable filter; its content is what a .label fills. */
-  fillable?: boolean;
   /** Horizontal position in PDF points, measured from the page origin
    *  (bleed included, like layout.ts's constants), interpreted per `anchor`:
    *  left = the box's left edge, center = its center, right = its right
@@ -94,7 +92,7 @@ export interface TextLine extends StyledLine { header?: boolean }
 
 export interface TextLayer extends LayerBase {
   kind: "text";
-  /** The content. A fillable text layer's .label value is this array. */
+  /** The content. A .label value for this layer is this array. */
   lines: TextLine[];
   /** Type size in points. */
   size: number;
@@ -131,7 +129,7 @@ export interface ImageLayer extends LayerBase {
   kind: "image";
   /** Asset id into the master's or label's image store, or the bundled
    *  "builtin:logo" (the Lolev laurel SVG). "" = nothing loaded, draws
-   *  nothing. A fillable image layer's .label value is this string. */
+   *  nothing. A .label value for this layer is this string. */
   asset: string;
   /** Box width in points. */
   w: number;
@@ -155,7 +153,7 @@ export interface BarcodeLayer extends LayerBase {
   kind: "barcode";
   symbology: Symbology;
   /** Payload. May be a format string over text-layer ids ("{upc}"), see
-   *  model/format.ts. A fillable barcode layer's .label value is this. */
+   *  model/format.ts. A .label value for this layer is this. */
   value: string;
   /** Bar-area height in points. */
   h: number;
@@ -180,7 +178,7 @@ export interface QrLayer extends LayerBase {
 
 export type Layer = TextLayer | ImageLayer | BarcodeLayer | QrLayer;
 
-/** What a .label stores for a fillable layer: text lines, or an asset id /
+/** What a .label stores as a layer's content: text lines, or an asset id /
  *  code value. */
 export type LayerValue = TextLine[] | string;
 

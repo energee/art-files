@@ -94,10 +94,10 @@ describe("whereLayerLives", () => {
 
 describe("setLayer", () => {
   it("deep-merges into a master layer", () => {
-    const m = setLayer(lolevMaster(), "name", { size: 20, style: { fill: "#112233" }, fillable: false });
+    const m = setLayer(lolevMaster(), "name", { size: 20, style: { fill: "#112233" }, locked: true });
     const l = byId<TextLayer>(m, "name");
     expect(l.size).toBe(20);
-    expect(l.fillable).toBe(false);
+    expect(l.locked).toBe(true);
     expect(l.style).toEqual({ ...byId<TextLayer>(lolevMaster(), "name").style, fill: "#112233" });
     expect(l.lines).toEqual(byId<TextLayer>(lolevMaster(), "name").lines);
   });

@@ -210,7 +210,7 @@ export function moveLayers(master: Master, ids: readonly string[], id: string, d
 // --- Content, policy, position ---------------------------------------------
 
 /** THE write path for Design edits: deep-merges `patch` into the layer's own
- *  record (see withLayer). enabled/locked/fillable/name, position, style and
+ *  record (see withLayer). enabled/locked/name, position, style and
  *  content all come through here. A `y` patch replaces a number with a
  *  binding or back; a partial `{ y: { gap } }` keeps the binding's `below`. */
 export function setLayer(master: Master, id: string, patch: LayerPatch): Master {
