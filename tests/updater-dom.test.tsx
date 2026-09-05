@@ -1,13 +1,15 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { expect, it, vi } from "vitest";
-import { DesktopUpdater } from "../src/components/DesktopUpdater";
+import { beforeEach, expect, it, vi } from "vitest";
+import { AUTO_CHECK_DELAY_MS, DesktopUpdater, RECHECK_MIN_INTERVAL_MS } from "../src/components/DesktopUpdater";
 
 const mocks = vi.hoisted(() => ({ check: vi.fn(), invoke: vi.fn(), desktop: vi.fn(() => true) }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke, isTauri: mocks.desktop }));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: mocks.check }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+beforeEach(() => vi.clearAllMocks());
 
 it("quietly advertises updates, keeps Later discoverable, and reuses the update across status-bar hosts", async () => {
   vi.useFakeTimers();
@@ -93,7 +95,7 @@ it("moves download progress into the status bar once Install is chosen", async (
   const button = (text: string) => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes(text))!;
   try {
     await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
-    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(AUTO_CHECK_DELAY_MS); });
     await act(async () => button("Update available").click());
     await act(async () => button("Install").click());
     expect(document.querySelector('[role="dialog"]')).toBeNull();
@@ -161,7 +163,7 @@ it("a manual check during a download shows the download, and Restart Now reports
   const dialog = () => document.querySelector('[role="dialog"]')?.textContent ?? "";
   try {
     await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
-    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(AUTO_CHECK_DELAY_MS); });
     await act(async () => button("Update available").click());
     await act(async () => button("Install").click());
     expect(document.querySelector('[role="dialog"]')).toBeNull();
@@ -186,7 +188,6 @@ it("a manual check during a download shows the download, and Restart Now reports
 
 it("re-checks quietly when the window regains focus, at most once per throttle window", async () => {
   vi.useFakeTimers();
-  mocks.check.mockClear();
   mocks.invoke.mockResolvedValue(true);
   mocks.check.mockResolvedValue(null);
   const container = document.createElement("div");
@@ -195,13 +196,13 @@ it("re-checks quietly when the window regains focus, at most once per throttle w
   const root = createRoot(container);
   try {
     await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
-    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(AUTO_CHECK_DELAY_MS); });
     expect(mocks.check).toHaveBeenCalledTimes(1);
     // Focus right after launch is throttled.
     await act(async () => { window.dispatchEvent(new Event("focus")); });
     expect(mocks.check).toHaveBeenCalledTimes(1);
     // Focus after the throttle window runs one quiet check with no dialog.
-    await act(async () => { await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(RECHECK_MIN_INTERVAL_MS); });
     await act(async () => { window.dispatchEvent(new Event("focus")); });
     expect(mocks.check).toHaveBeenCalledTimes(2);
     expect(document.querySelector('[role="dialog"]')).toBeNull();
