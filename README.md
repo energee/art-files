@@ -152,9 +152,8 @@ its label reads the same on-screen height as the 2D sheet, measured to
 the label's near face rather than the can's axis, so switching views
 changes the subject and not the scale. The can then runs off the top and
 bottom of the frame, which is intended — the label is what is being
-looked at. The flat view takes its height from the can's own label height
-too, rather than the constant it used to carry, so the Settings height
-knob moves all four views together. While a rebuild is in flight the stale
+looked at. The Can view shows one can or a 2x2 four-pack — the 1 / 4
+control in the preview toolbar. While a rebuild is in flight the stale
 render blurs, so what is on screen reads as being replaced rather than
 current. The 2D View menu also controls trim-relative rulers and preview-only
 guides. Ruler zero sits at the trimmed art's top-left (so bleed reads
@@ -189,8 +188,9 @@ to a download; then Export PDF,
 Export Mask PDF, Export PSDs — see below; the both-PDFs-at-once action lives
 in the palette as "Export PDF + Mask PDF"),
 **Edit** (undo, redo), and
-**View** (Standard / Mask, which jump the divider to either end — the
-palette lists them as "Preview: Standard" / "Preview: Mask"). Export items disable while the label is invalid, and the
+**View** (Label / Mask, which jump the divider to either end, and Can, the
+3D render — keys 1–3; the palette lists them as "Preview: Label" /
+"Preview: Mask" / "Preview: Can"). Export items disable while the label is invalid, and the
 reason sits in the bar next to the menus. Press <kbd>⌘K</kbd> /
 <kbd>Ctrl+K</kbd> for a command palette covering the same actions.
 

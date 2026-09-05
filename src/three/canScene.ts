@@ -1,8 +1,8 @@
-// canScene.ts — vanilla three.js scene for the 3D label previews: a single
-// can, a 2x2 4-pack, and the flat label, with a per-pixel metallic-foil
-// effect driven by the white-ink mask. Ported (heavily trimmed) from the
-// captiva reference implementation's canScene.js — its timeline/export/
-// settings machinery is deliberately absent; only what the three view modes
+// canScene.ts — vanilla three.js scene for the 3D label preview: a single
+// can or a 2x2 4-pack, with a per-pixel metallic-foil effect driven by the
+// white-ink mask. Ported (heavily trimmed) from the captiva reference
+// implementation's canScene.js — its timeline/export/settings machinery and
+// its flat-label view are deliberately absent; only what the two counts
 // need survives. Rendering is on-demand: frames are drawn on controls
 // change, texture change, or resize, never in a free-running loop.
 import * as THREE from "three";
@@ -15,7 +15,8 @@ import {
   ART, LABEL_HEIGHT_RATIO, LABEL_WRAP_RATIO, PAGE, PREVIEW_MAX_W, PREVIEW_OVERSAMPLE, TRIM_UV,
 } from "@/layout";
 
-export type CanSceneMode = "can" | "pack" | "flat";
+/** How many cans the scene shows: one, or the 2x2 four-pack. */
+export type CanSceneMode = "can" | "pack";
 
 // ——— Tuning values, verbatim from captiva (sceneConstants.js + canScene.js) ———
 /** Camera azimuth that faces the label front (recomputed per wrap angle). */
@@ -64,10 +65,9 @@ const LAYER_DEPTH = 0.02;
 // repaints live with no listener and nothing to tell three.js about.
 // The HDRI stays lighting-only either way.
 
-/** Ambient intensity per view. The flat label is a single plane angled away
- *  from the key, so it needs the extra fill to read at true tone; the cans
- *  would only flatten under it. */
-const AMBIENT = { can: 0.4, flat: 1.5 };
+/** Ambient fill over the HDRI's image-based light. Low: a cylinder always
+ *  turns a band square into the key, and more fill would only flatten it. */
+const AMBIENT = 0.4;
 
 /** Same-size copy of a canvas with one CSS filter applied during the blit. */
 function filteredCopy(canvas: HTMLCanvasElement, filter: string): HTMLCanvasElement {
@@ -103,7 +103,8 @@ function roughnessCanvas(softMask: HTMLCanvasElement): HTMLCanvasElement {
 }
 
 /**
- * The three 3D views of the label. Owns a WebGLRenderer inside `container`;
+ * The 3D view of the label — one can, or the 2x2 four-pack. Owns a
+ * WebGLRenderer inside `container`;
  * call resize() when the container changes size, applyTextures() when the
  * label art changes, setMode() to switch views, dispose() on unmount.
  */
@@ -121,10 +122,6 @@ export class CanScene {
   private labelMaterial: THREE.MeshStandardMaterial | null = null;
   private cornerRadiusPct = DEFAULTS.cornerRadiusPct;
   private edgeSoftnessRatio = DEFAULTS.edgeSoftnessRatio;
-  private flatMesh: THREE.Mesh | null = null;
-  /** Opaque backing behind the flat plane so orbiting past 90° shows the
-   *  label's blank back (foil or matte stock) instead of mirrored art. */
-  private flatBackMesh: THREE.Mesh | null = null;
   private shadowMesh: THREE.Mesh | null = null;
   private packGroup: THREE.Group | null = null;
 
@@ -146,7 +143,7 @@ export class CanScene {
    *  reports against, kept current by setCameraSpherical. */
   private homeRadius = DEFAULT_ZOOM;
   /** How far the label's visible face sits in front of the orbit target — a
-   *  can radius for anything wrapped on the can, zero for the flat plane.
+   *  can radius, since the label is always wrapped on the can.
    *  Every conversion between camera distance and on-screen label size goes
    *  through it (getZoom, applyDolly, frameSize), because the face is what has
    *  to match the 2D sheet and the target is a radius behind it. Kept current
@@ -172,7 +169,7 @@ export class CanScene {
   /** Textures applied before the async GLTF load finished — replayed after. */
   private pendingTextures: LabelTextures | null = null;
   private disposed = false;
-  private ambient!: THREE.AmbientLight;
+
   private renderRequested = false;
   private raf: number | null = null;
 
@@ -226,14 +223,7 @@ export class CanScene {
 
   // Ambient + warm key + cool fill + white rim, captiva's positions/tints.
   private setupLights() {
-    // Flat fill over the HDRI's image-based light, held as a field because the
-    // flat view needs more of it than the cans do (see AMBIENT / setMode): a
-    // cylinder always turns a band square into the key, while the flat label
-    // is one plane tilted away from it, so the same rig leaves the plane lit
-    // only at a grazing angle and it reads grey. Ambient has no direction, so
-    // it is the one lever that lifts the plane without re-lighting the can.
-    this.ambient = new THREE.AmbientLight(0xffffff, AMBIENT.can);
-    this.scene.add(this.ambient);
+    this.scene.add(new THREE.AmbientLight(0xffffff, AMBIENT));
     const key = new THREE.DirectionalLight(0xfff8f0, 3.5);
     key.position.set(1.9, 1.8, 1.5);
     const fill = new THREE.DirectionalLight(0xf0f4ff, 0.8);
@@ -364,20 +354,6 @@ export class CanScene {
     this.labelMesh = null;
   }
 
-  private disposeFlatMesh() {
-    if (this.flatBackMesh) {
-      // Geometry and alphaMap are shared with flatMesh / the label material,
-      // which own their disposal — only the backing's own material is ours.
-      this.scene.remove(this.flatBackMesh);
-      (this.flatBackMesh.material as THREE.Material).dispose();
-      this.flatBackMesh = null;
-    }
-    if (!this.flatMesh) return;
-    this.scene.remove(this.flatMesh);
-    this.flatMesh.geometry.dispose();
-    this.flatMesh = null;
-  }
-
   /** Blurred copy of the metalness plate — the source for the metalness,
    *  roughness and bump maps (see DEFAULTS for why the blur exists). */
   private softMask(tex: LabelTextures): HTMLCanvasElement {
@@ -451,21 +427,17 @@ export class CanScene {
       m.needsUpdate = true;
     }
     if (radius) {
-      const map = this.createTexture(this.alphaCanvas(tex));
-      const back = this.flatBackMesh?.material as THREE.MeshStandardMaterial | undefined;
       this.labelMaterial.alphaMap?.dispose();
-      this.labelMaterial.alphaMap = map;
+      this.labelMaterial.alphaMap = this.createTexture(this.alphaCanvas(tex));
       this.labelMaterial.needsUpdate = true;
-      // The flat view's backing shares the front's die-cut silhouette.
-      if (back) { back.alphaMap = map; back.needsUpdate = true; }
     }
     this.requestRender();
   }
 
   /** The label's height in world units. One accessor rather than the same
-   *  product spelled out per reader, because the wrapped cylinder, the flat
-   *  plane and the framing distance all have to agree on it — that agreement
-   *  is what makes switching views unwrap the label instead of resizing it. */
+   *  product spelled out per reader, because the wrapped cylinder and the
+   *  framing distance have to agree on it — that agreement is what keeps
+   *  100% meaning the same on-screen label height as the 2D sheet. */
   private labelHeight() {
     return this.canHeight * LABEL_HEIGHT_RATIO;
   }
@@ -494,8 +466,8 @@ export class CanScene {
     this.labelMesh.rotation.y = wrapAngle / 2 + LABEL_BASE_ROTATION - LABEL_SEAM_OFFSET;
     this.frontAzimuth = wrapAngle + LABEL_BASE_ROTATION - LABEL_SEAM_OFFSET;
     this.scene.add(this.labelMesh);
-    // Caller re-frames: applyTextures does it once after the flat meshes are
-    // up, so the 4-pack isn't cloned twice per build.
+    // Caller re-frames: applyTextures does it once, so the 4-pack isn't
+    // cloned twice per build.
   }
 
   applyTextures(tex: LabelTextures) {
@@ -518,40 +490,6 @@ export class CanScene {
 
     this.rebuildLabelMesh();
 
-    // Flat plane shares the label material; its geometry tracks the aspect.
-    this.disposeFlatMesh();
-    // Height is the can's label height, not a constant of its own: the flat
-    // view is the same label taken off the can, so switching between the two
-    // should unwrap it, not resize it. (It was 0.08, hand-tuned to match the
-    // default knob — which then stopped matching the moment the knob moved.)
-    const flatHeight = this.labelHeight();
-    // The TRIM's aspect, not the plate's (tex.aspect is the full page): the
-    // maps are cropped to the trim, so a plane cut to the page's proportions
-    // would stretch the label to fill it.
-    const flatGeometry = new THREE.PlaneGeometry(flatHeight * (ART.w / ART.h), flatHeight);
-    this.flatMesh = new THREE.Mesh(flatGeometry, this.labelMaterial);
-    this.scene.add(this.flatMesh);
-
-    // Blank back of the stock, facing -z: metallic foil if the label uses any
-    // white-ink/metallic mask, otherwise plain white matte. Opaque, so it hides
-    // the shared DoubleSide art when the user orbits behind the plane. Shares
-    // the front's geometry and die-cut alphaMap; only the material differs.
-    const foil = tex.hasFoil;
-    this.flatBackMesh = new THREE.Mesh(
-      flatGeometry,
-      new THREE.MeshStandardMaterial({
-        color: foil ? 0xf7f9fb : 0xffffff,
-        metalness: foil ? 1.0 : 0.0,
-        roughness: foil ? 0.03 : 0.9,
-        envMapIntensity: foil ? 3.0 : 1.0,
-        transparent: true, alphaTest: 0.5,
-        alphaMap: this.labelMaterial.alphaMap,
-      }),
-    );
-    this.flatBackMesh.rotation.y = Math.PI;
-    this.flatBackMesh.position.z = -0.0005;
-    this.scene.add(this.flatBackMesh);
-
     // The opening view, once. frontAzimuth only becomes real after the first
     // cylinder exists, so the constructor's guess needs correcting — but only
     // that first time: later art changes must not yank a camera the operator
@@ -561,11 +499,11 @@ export class CanScene {
     this.applyMode(); // rebuild the pack against the new meshes
   }
 
-  /** Switch view. The one gesture that is allowed to move the camera: asking
-   *  for a different view IS asking to be shown it from the front. */
+  /** Switch between one can and the four-pack. The one gesture that is
+   *  allowed to move the camera: asking for a different count IS asking to
+   *  be shown it from the front. */
   setMode(mode: CanSceneMode) {
     this.mode = mode;
-    this.ambient.intensity = mode === "flat" ? AMBIENT.flat : AMBIENT.can;
     // Frame first: applyMode may build the 4-pack, which lays out against the
     // azimuth frameCamera settles on. Zoom and pan survive the switch (framing
     // re-applies both); only the orbit angle goes back to front-on.
@@ -590,8 +528,6 @@ export class CanScene {
     if (this.canModel) this.canModel.visible = canVisible;
     if (this.labelMesh) this.labelMesh.visible = canVisible;
     if (this.shadowMesh) this.shadowMesh.visible = canVisible;
-    if (this.flatMesh) this.flatMesh.visible = mode === "flat";
-    if (this.flatBackMesh) this.flatBackMesh.visible = mode === "flat";
 
     if (mode === "pack") this.buildPackGroup();
     this.requestRender();
@@ -608,14 +544,12 @@ export class CanScene {
     this.controls.target.set(0, 0, 0);
     this.framedAzimuth = this.frontAzimuth;
     // Wrapped label: its face is a radius nearer than the axis the camera
-    // targets. The flat plane below sits on the axis and takes no offset.
+    // targets.
     const { radius, offset } = this.homeDistance();
     // The 4-pack is the one view elevated enough to see over its front row;
-    // the flat plane faces straight down +z (orbit still available), and
-    // anything wrapped on a can faces the label's own azimuth.
+    // a single can faces the label's own azimuth.
     const phi = this.mode === "pack" ? FOUR_PACK_TILT : Math.PI / 2;
-    const azimuth = this.mode === "flat" ? 0 : this.frontAzimuth;
-    this.setCameraSpherical(radius, phi, azimuth, offset);
+    this.setCameraSpherical(radius, phi, this.frontAzimuth, offset);
     // Framing sets the 1x distance; the operator's zoom is then re-applied on
     // top of it, so switching views keeps the magnification and only the angle
     // goes back to front-on. It also survives the late first framing that
@@ -658,8 +592,8 @@ export class CanScene {
   }
 
   /** Camera distance at which the label reads the same height on screen as the
-   *  2D preview's sheet — which is what makes 100% mean one thing across all
-   *  four views. The 2D sheet is width-driven (it fills the pane up to
+   *  2D preview's sheet — which is what makes 100% mean one thing across
+   *  every view. The 2D sheet is width-driven (it fills the pane up to
    *  PREVIEW_MAX_W and takes its height from the page aspect), so its height is
    *  predictable from the pane this canvas now occupies; the rest is the
    *  perspective camera's own half-angle. The can then runs off the top and
@@ -667,10 +601,10 @@ export class CanScene {
    *  is what it happens to be wrapped around.
    *
    *  `surfaceOffset` is how far the label's visible face sits in FRONT of the
-   *  camera target — a radius, for anything wrapped on the can, and zero for
-   *  the flat plane that sits on the axis. Framing on the axis distance is what
-   *  a first cut does and it renders the can's label a few percent tall, since
-   *  perspective sizes the near face, not the centre line. */
+   *  camera target — a can radius, since the label is wrapped on the can.
+   *  Framing on the axis distance is what a first cut does and it renders the
+   *  can's label a few percent tall, since perspective sizes the near face,
+   *  not the centre line. */
   private framingDistance(surfaceOffset = 0) {
     const w = this.container.clientWidth, h = this.container.clientHeight;
     if (!w || !h) return DEFAULT_ZOOM; // pre-layout; setMode reframes later
@@ -690,10 +624,8 @@ export class CanScene {
     // target, returned alongside the distance because every conversion between
     // camera distance and on-screen label size needs it — not just the initial
     // framing. Measured with it dropped: a pan overshot the 2D pane by 15% at
-    // 100% and 35% at 200%, and a 250% zoom landed at 291%.
-    // The flat plane sits on the axis and takes no offset; a wrapped label's
-    // face is one can-radius nearer than the axis the camera targets.
-    if (this.mode === "flat") return { radius: this.framingDistance(), offset: 0 };
+    // 100% and 35% at 200%, and a 250% zoom landed at 291%. The wrapped
+    // label's face is one can-radius nearer than the axis the camera targets.
     // The 4-pack is the one view that can't hold label parity: four cans at
     // that size overflow the frame, so it keeps its composed pull-back off the
     // same base — the label tracks the others, just smaller by a fixed factor.
@@ -739,7 +671,7 @@ export class CanScene {
    *  and 2 means "twice as close" — the same thing the 2D pane's percentage
    *  means, rather than a raw camera distance in scene units. How far it can
    *  travel follows from OrbitControls' min/max distance and so differs per
-   *  mode: the flat view frames closer than the cans do. Internal: the host
+   *  count: the four-pack frames further back than one can. Internal: the host
    *  hears the number through onZoomChange rather than asking for it, so that
    *  every reader sees the same value from the same moment. */
   private getZoom() {
@@ -899,7 +831,6 @@ export class CanScene {
       this.labelMaterial.dispose();
     }
     this.disposeLabelMesh();
-    this.disposeFlatMesh();
     if (this.shadowMesh) {
       this.shadowMesh.geometry.dispose();
       const m = this.shadowMesh.material as THREE.MeshBasicMaterial;

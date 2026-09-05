@@ -334,19 +334,18 @@ const zoomAbout = (
   return clampView(r, z, ax - k * (ax - v.x), ay - k * (ay - v.y));
 };
 
-/** The five preview views in keys-1–5 order: status-bar label, the command
+/** The three preview views in keys-1–3 order: status-bar label, the command
  *  id that shows it, and the state that means "this one is current". One
  *  list, so the readout, the click-to-cycle, and the commands can't disagree
- *  about what the views are or where each sits in the cycle. Standard's
+ *  about what the views are or where each sits in the cycle. Label's
  *  predicate absorbs a mid-split compare (split < 100), so cycling from a
- *  compare lands on Mask. */
-type ViewMode = "2d" | "can" | "pack" | "flat";
+ *  compare lands on Mask. The Can view's 1 / 4 count is a property of that
+ *  view (see `cans`), not a fourth entry here. */
+type ViewMode = "2d" | "can";
 const VIEW_CYCLE: { label: string; id: string; at: (m: ViewMode, split: number) => boolean }[] = [
-  { label: "Standard", id: "view-standard", at: (m, s) => m === "2d" && s < 100 },
+  { label: "Label", id: "view-label", at: (m, s) => m === "2d" && s < 100 },
   { label: "Mask", id: "view-mask", at: (m, s) => m === "2d" && s === 100 },
-  { label: "Rendered", id: "view-rendered", at: (m) => m === "flat" },
-  { label: "Single Can", id: "view-can", at: (m) => m === "can" },
-  { label: "Four-Pack", id: "view-pack", at: (m) => m === "pack" },
+  { label: "Can", id: "view-can", at: (m) => m === "can" },
 ];
 
 function download(url: string, name: string) {
@@ -613,10 +612,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Divider position reported by PreviewCompare (% of width showing
   // white-ink), so the View menu can check off whichever end it sits at.
   const [split, setSplit] = useState(0);
-  // "2d" = the canvas-backend compare view; the rest are CanView's three.js
-  // modes. The 2D preview stays mounted (hidden) so its rendered canvases and
-  // divider position survive a round-trip through the 3D views.
-  const [viewMode, setViewMode] = useState<"2d" | "can" | "pack" | "flat">("2d");
+  // "2d" = the canvas-backend compare view; "can" = CanView's three.js
+  // scene. The 2D preview stays mounted (hidden) so its rendered canvases and
+  // divider position survive a round-trip through the 3D view.
+  const [viewMode, setViewMode] = useState<ViewMode>("2d");
+  // How many cans the 3D view shows — one, or the 2x2 four-pack. A count on
+  // the Can view rather than a view of its own, so the View menu and keys
+  // 1–3 stay Label / Mask / Can; the toolbar's 1 / 4 control sets it.
+  const [cans, setCans] = useState<1 | 4>(1);
   // Preview pane zoom: scale `z` about the pane's top-left, then offset by
   // (x, y) screen px. z === 1 is the fitted view, and the clamp in the wheel
   // handler pins the offset to 0 there, so unzoomed is exactly as before.
@@ -669,7 +672,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       // How far the transformed sheet's centre sits from the pane's centre,
       // as a fraction of the VISIBLE frame. Do not divide this by zoom: the
       // 3D camera's pan uses its current projected frame too, so doing that
-      // made a 2D pan arrive 1/z as far away in Rendered.
+      // made a 2D pan arrive 1/z as far away in the Can view.
       pan: {
         x: (r.width * (1 - zoom.z) / 2 - zoom.x) / r.width,
         y: (r.height * (1 - zoom.z) / 2 - zoom.y) / r.height,
@@ -730,7 +733,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // listener, not one per tab.
 
   // Wheel-to-zoom, scoped to the preview pane, matching what OrbitControls
-  // gives the 3D views so one set of habits works in all four: wheel (or a
+  // gives the 3D view so one set of habits works in every view: wheel (or a
   // two-finger scroll) dollies, right-drag pans, and the context menu is out of
   // the way. Every wheel event zooms, ctrlKey or not — a trackpad pinch reports
   // ctrlKey and a scroll doesn't, but OrbitControls dollies on both, so
@@ -2382,11 +2385,9 @@ export const DocumentEditor = memo(function DocumentEditor({
     // any future command that changes the config outside `update`.
     { id: "undo", label: "Undo", shortcut: "⌘Z", disabled: !canUndo, run: mutating(undo) },
     { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: !canRedo, run: mutating(redo) },
-    { id: "view-standard", label: "Preview: Standard", key: "1", run: () => show2d("art") },
+    { id: "view-label", label: "Preview: Label", key: "1", run: () => show2d("art") },
     { id: "view-mask", label: "Preview: Mask", key: "2", run: () => show2d("mask") },
-    { id: "view-rendered", label: "Preview: Rendered", key: "3", run: () => setViewMode("flat") },
-    { id: "view-can", label: "Preview: Single Can", key: "4", run: () => setViewMode("can") },
-    { id: "view-pack", label: "Preview: Four-Pack", key: "5", run: () => setViewMode("pack") },
+    { id: "view-can", label: "Preview: Can", key: "3", run: () => setViewMode("can") },
     // Bare B, not ⌘B — that one belongs to the sidebar toggle. Disabled
     // outside the 2D view, where there is no trim guide to draw.
     { id: "bleed", label: bleed ? "Hide bleed lines" : "Show bleed lines", key: "b",
@@ -2472,11 +2473,9 @@ export const DocumentEditor = memo(function DocumentEditor({
               installs the one native application menu, a singleton. */}
           {active && <AppMenu actions={commands} onNativeError={setBuildError}
             onCheckForUpdates={onCheckForUpdates} checked={{
-            "view-standard": viewMode === "2d" && split === 0,
+            "view-label": viewMode === "2d" && split === 0,
             "view-mask": viewMode === "2d" && split === 100,
-            "view-rendered": viewMode === "flat",
             "view-can": viewMode === "can",
-            "view-pack": viewMode === "pack",
             bleed,
             rulers: showRulers,
             guides: showGuides,
@@ -2648,7 +2647,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                   setCamZoomPct(Math.round(z * 100));
                 }}
                 cfg={displayCfg} source={canvasSource} bleedIn={render.bleedIn}
-                mode={viewMode} cornerRadiusPct={render.cornerRadius}
+                mode={cans === 4 ? "pack" : "can"} cornerRadiusPct={render.cornerRadius}
                 edgeSoftnessPct={render.edgeSoftness}
                 onRenderError={setRenderError} />
             )}
@@ -2731,7 +2730,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             <span className="text-xs text-muted-foreground">%</span>
             {/* What the press receives, next to how magnified you are looking
                 at it. Both are facts about the deliverable rather than the
-                view, so they read the same in all four modes — unlike the
+                view, so they read the same in every view — unlike the
                 zoom to their left. */}
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
             {/* The TRIM, not the page: this is the die-cut size the label is
@@ -2757,14 +2756,36 @@ export const DocumentEditor = memo(function DocumentEditor({
             {/* Which preview is on screen — the menubar's View names. In 2D
                 the split decides: all-mask, all-art, or a live compare.
                 Clicking advances to the next view through the SAME commands
-                keys 1–5 run, so this can't drift from the menu (a mid-split
-                Compare counts as Standard, so it advances to Mask). */}
+                keys 1–3 run, so this can't drift from the menu (a mid-split
+                Compare counts as Label, so it advances to Mask). */}
             <button
               onClick={() => byId(VIEW_CYCLE[(viewIndex + 1) % VIEW_CYCLE.length].id).run()}
-              title="Current preview view — click for the next (View menu, keys 1–5)"
+              title="Current preview view — click for the next (View menu, keys 1–3)"
               className="shrink-0 rounded px-1 py-0.5 text-xs whitespace-nowrap text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
               View Mode: {viewLabel}
             </button>
+            {/* Can view only: how many cans the scene shows, one or the 2x2
+                four-pack. A count on the view rather than a view of its own
+                (see `cans`), so it sits beside the view readout it qualifies
+                instead of in the View menu. aria-pressed per button, like the
+                Design/Fill control at the right. */}
+            {viewMode === "can" && (
+              <div role="group" aria-label="Cans shown"
+                className="ml-2 flex shrink-0 overflow-hidden rounded border border-border">
+                {([1, 4] as const).map((n) => (
+                  <button key={n} type="button" aria-pressed={cans === n}
+                    title={n === 1 ? "One can" : "Four-pack"}
+                    onClick={() => setCans(n)}
+                    className={`px-2 py-0.5 text-xs tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      cans === n
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+                    }`}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+            )}
             {/* Design/Fill segmented control, pinned to the toolbar's right
                 end — the mode is a property of how you're working, like the
                 view readouts beside it, not a command (so not in the menus).

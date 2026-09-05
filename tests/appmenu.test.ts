@@ -40,6 +40,20 @@ describe("file menu", () => {
   });
 });
 
+describe("view menu", () => {
+  it("offers exactly the three preview views, in key 1–3 order", () => {
+    const view = APP_MENUS.find((menu) => menu.id === "view-menu")!;
+    const ids = view.items.flatMap((entry) =>
+      entry.kind === "action" ? [entry.id] : []);
+    // The Rendered and Four-Pack views are gone: the four-pack is the Can
+    // view's 1 / 4 count (a toolbar control, not a menu entry).
+    expect(ids.slice(0, 3)).toEqual(["view-label", "view-mask", "view-can"]);
+    for (const gone of ["view-standard", "view-rendered", "view-pack"]) {
+      expect(ids).not.toContain(gone);
+    }
+  });
+});
+
 describe("native text editing menu", () => {
   it("installs every standard role needed for clipboard editing", () => {
     const edit = APP_MENUS.find((menu) => menu.id === "edit-menu")!;

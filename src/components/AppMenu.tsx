@@ -75,12 +75,9 @@ export const APP_MENUS: SubmenuEntry[] = [
   },
   {
     kind: "submenu", id: "view-menu", text: "View", items: [
-      { kind: "action", id: "view-standard", text: "Standard", check: true },
+      { kind: "action", id: "view-label", text: "Label", check: true },
       { kind: "action", id: "view-mask", text: "Mask", check: true },
-      { kind: "separator", id: "view-2d" },
-      { kind: "action", id: "view-rendered", text: "Rendered", check: true },
-      { kind: "action", id: "view-can", text: "Single Can", check: true },
-      { kind: "action", id: "view-pack", text: "Four-Pack", check: true },
+      { kind: "action", id: "view-can", text: "Can", check: true },
       { kind: "separator", id: "view-modes" },
       { kind: "action", id: "bleed", text: "Bleed Lines", check: true },
       { kind: "action", id: "rulers", text: "Rulers", check: true },
@@ -174,7 +171,7 @@ type NativeEntry = MenuItem | CheckMenuItem | PredefinedMenuItem | Submenu;
 type NativeAction = MenuItem | CheckMenuItem;
 
 /** Native menus must own modified accelerators so macOS can display them.
- *  Bare 1–5/B/R bindings deliberately stay in App's guarded key listener:
+ *  Bare 1–3/B/R bindings deliberately stay in App's guarded key listener:
  *  registering those with the OS would fire them while the user is typing. */
 export function nativeAccelerator(command: Command): string | undefined {
   const glyphs = shortcutOf(command);
