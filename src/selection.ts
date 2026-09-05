@@ -30,6 +30,12 @@ export interface Selection {
 
 export const EMPTY_SELECTION: Selection = { ids: [], anchor: null };
 
+/** What a gesture (canvas drag, row reorder) on layer `id` acts on: the whole
+ *  selection when `id` is in it, else just that layer — the same rule on
+ *  both surfaces. */
+export const gestureIds = (selected: readonly string[], id: string): readonly string[] =>
+  selected.includes(id) ? selected : [id];
+
 /** Resolve a row click against the current selection. `order` is the
  *  list's row order (front to back) — the order a shift-range is read in, so
  *  a range crosses the rows the way the visible list does. */

@@ -3,6 +3,19 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.54] - 2026-09-05
+
+- Dragging a layer on the preview now moves every selected layer together.
+  Only the grabbed layer snaps to guides; the others follow it exactly, so the
+  group keeps its shape. Locked layers stay put.
+
+- Dragging a selected row in the Layers list (or ⌥↑/⌥↓ on it) reorders every
+  selected layer together as one block, keeping their relative order.
+
+- A multi-selection shows a dashed group frame with a layer count on the
+  preview, and every row in the group lifts while one of them is dragged in
+  the Layers list, so moving several layers reads as one gesture.
+
 ## [0.1.53] - 2026-09-05
 
 - Choosing “Check for Updates…” while an update is downloading now shows the

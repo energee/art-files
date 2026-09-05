@@ -52,7 +52,7 @@ function baseProps(over: Partial<LayerListProps> = {}): LayerListProps {
   const { rows, variants } = lolevRows();
   return {
     rows,
-    selected: new Set<string>(),
+    selected: [],
     onSelect: vi.fn(),
     onToggle: vi.fn(),
     onRename: vi.fn(),
@@ -229,7 +229,7 @@ describe("LayerList", () => {
   });
 
   it("drags across multiple rows in one reorder and removes the arrow buttons", () => {
-    const props = render(baseProps({ selected: new Set(["wordmark"]) }));
+    const props = render(baseProps({ selected: ["wordmark"] }));
     expect(byLabel("Bring Brand forward")).toBeNull();
     const source = rowFor("wordmark").querySelector("button")!;
     source.setPointerCapture = vi.fn();
@@ -263,7 +263,7 @@ describe("LayerList", () => {
   });
 
   it("Delete and ⌥↑/⌥↓ on a selected row's button act on it; on an unselected row they do nothing", () => {
-    const props = render(baseProps({ selected: new Set(["wordmark"]) }));
+    const props = render(baseProps({ selected: ["wordmark"] }));
     const selectedButton = rowFor("wordmark").querySelector("button")!;
     keydown(selectedButton, "Delete");
     expect(props.onRemove).toHaveBeenCalledWith("wordmark");
@@ -296,7 +296,7 @@ describe("LayerList", () => {
   it("every interactive control has an accessible name (a11y lens)", () => {
     // A selected row shows the most controls (reorder arrows included) and
     // an overridden master row adds the dot.
-    const props = baseProps({ selected: new Set(["wordmark"]) });
+    const props = baseProps({ selected: ["wordmark"] });
     props.rows = props.rows.map((r) => r.layer.id === "logo" ? { ...r, overridden: true } : r);
     render(props);
     const controls = Array.from(container.querySelectorAll('button, input, [role="img"]'));
@@ -340,7 +340,7 @@ describe("ownership vs override", () => {
     const [collab] = variants;
     const overridden = rows.map((r) =>
       r.layer.id === "wordmark" ? { ...r, variant: collab, overridden: true } : r);
-    const props = render(baseProps({ rows: overridden, variants, selected: new Set(["wordmark"]) }));
+    const props = render(baseProps({ rows: overridden, variants, selected: ["wordmark"] }));
     const button = rowFor("wordmark").querySelector("button")!;
     keydown(button, "ArrowUp", { altKey: true });
     keydown(button, "ArrowDown", { altKey: true });

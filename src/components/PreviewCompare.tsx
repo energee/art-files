@@ -46,6 +46,8 @@ const CORNER_CLASS = {
 /** Breathing room between a layer's measured box and its selection
  *  outline, in screen px. */
 const SEL_PAD = 4;
+/** The multi-selection group frame sits outside the per-layer rings. */
+const GROUP_PAD = SEL_PAD * 3;
 
 /** Drag snap distance to a guide, in label points. */
 const SNAP_PT = 6;
@@ -307,8 +309,9 @@ export const PreviewCompare = forwardRef<
     /** Drag-to-move: called on every pointermove past the 3px threshold with
      *  the CUMULATIVE delta from the drag's start, in label points, `first`
      *  true on the movement that crosses the threshold — App applies moveBy
-     *  against the layer as it was at the start and folds the drag into one
-     *  undo step (see onEditText). */
+     *  against the layer as it was at the start (and every other selected
+     *  layer, if `id` is selected) and folds the drag into one undo step
+     *  (see onEditText). */
     onDrag: (id: string, dx: number, dy: number, first: boolean) => void;
     /** Escape mid-drag: App undoes the drag's single step. Never called when
      *  the drag never crossed the threshold (a plain click). */
@@ -445,7 +448,12 @@ export const PreviewCompare = forwardRef<
     return hitTestBoxes(p.xPt, p.yPt, hitBoxes);
   }
 
+  // A finished drag still fires a click at pointerup; swallow it so moving a
+  // multi-selection can't collapse the selection to the grabbed layer.
+  // (LayerList's suppressClick is the same guard for row reorders.)
+  const swallowClick = useRef(false);
   function onClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (swallowClick.current) { swallowClick.current = false; return; }
     const id = hitOf(e);
     if (id !== undefined) onPick(id, modsOf(e));
   }
@@ -506,7 +514,10 @@ export const PreviewCompare = forwardRef<
     setSnap(positionFromDrag(d.left + dx, 0, d.w, 0, guides, SNAP_PT).snappedX);
     onDrag(d.id, dx, dy, first);
   }
-  function onPointerUp() { drag.current = null; setSnap(null); }
+  function onPointerUp() {
+    swallowClick.current = !!drag.current?.started;
+    drag.current = null; setSnap(null);
+  }
 
   // Escape mid-drag: undo the single step the drag opened and drop the
   // in-flight session so a further pointermove can't resume it.
@@ -579,6 +590,17 @@ export const PreviewCompare = forwardRef<
     () => boxes.filter((b) => selected.includes(b.id)),
     [boxes, selected],
   );
+  // A multi-selection's union box: the dashed group frame below, so a group
+  // drag reads as one thing moving rather than several outlines drifting.
+  const groupBox = useMemo(() => {
+    if (selBoxes.length < 2) return null;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const b of selBoxes) {
+      x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y);
+      x1 = Math.max(x1, b.x + b.w); y1 = Math.max(y1, b.y + b.h);
+    }
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  }, [selBoxes]);
   const editBox = useMemo(
     () => boxes.find((b) => b.id === editing) ?? null,
     [boxes, editing],
@@ -648,6 +670,16 @@ export const PreviewCompare = forwardRef<
           className="pointer-events-none absolute inset-y-0 w-px bg-sky-400"
           style={pageBox(guides[snap] + BLEED_SHIFT, 0, 0, PAGE.h)}
         />
+      )}
+      {groupBox && (
+        <div
+          className="pointer-events-none absolute border border-dashed border-sky-400"
+          style={pageBox(groupBox.x, groupBox.y, groupBox.w, groupBox.h, GROUP_PAD)}
+        >
+          <span className="absolute -top-5 left-0 rounded-sm bg-sky-400 px-1 text-[10px] font-medium leading-4 text-black">
+            {selBoxes.length} layers
+          </span>
+        </div>
       )}
       {selBoxes.map((b) => (
         // Figma's selection read: a 1px accent stroke with a dark outer halo

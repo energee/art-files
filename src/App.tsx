@@ -46,7 +46,7 @@ import type {
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, labelOverriddenPaths,
-  masterDiff, moveBy, moveLayer, overriddenPaths, patchLayer, patchLayerIn, removeLayer, setValue, toggleVariant,
+  masterDiff, moveBy, moveLayers, overriddenPaths, patchLayer, patchLayerIn, removeLayer, setValue, toggleVariant,
   whereLayerLives,
 } from "@/model/edit";
 import { layerRows, variantChips } from "@/model/rows";
@@ -81,7 +81,7 @@ import { MasterPicker } from "@/components/MasterPicker";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
 import type { RenderSettings } from "@/settings";
 import {
-  EMPTY_SELECTION, resolveSelect, type Selection,
+  EMPTY_SELECTION, gestureIds, resolveSelect, type Selection,
 } from "@/selection";
 import { CommandMenu, type Command } from "@/components/CommandMenu";
 import { AppMenu } from "@/components/AppMenu";
@@ -646,17 +646,27 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  the content of a non-fillable layer: lands in the master, or in the
    *  variant that adds the layer (edit.ts's patchLayer → setLayer). */
   const patch = (id: string, p: DeepPartial<Layer>, coalesce?: boolean) =>
-    edit((d) => {
-      const owner = d.master.variants.find((v) => id in v.layers
-        && !d.master.layers.some((l) => l.id === id));
-      const nextLabel = p.enabled === true && owner && !d.label.enabledVariants.includes(owner.id)
-        ? toggleVariant(d.label, owner.id) : d.label;
-      const variant = [...nextLabel.enabledVariants].reverse().find((v) =>
-        d.master.variants.some((x) => x.id === v && id in x.layers));
-      return {
-        master: variant ? patchLayerIn(d.master, variant, id, p) : patchLayer(d.master, id, p),
-        label: nextLabel,
-      };
+    patchMany([[id, p]], coalesce);
+  /** patch for several layers in ONE doc edit (one clone, one undo entry) —
+   *  a group drag patches every selected layer per pointermove. */
+  const patchMany = (entries: [string, DeepPartial<Layer>][], coalesce?: boolean) =>
+    edit((d0) => {
+      const masterIds = new Set(d0.master.layers.map((l) => l.id));
+      return entries.reduce((d, [id, p]) => {
+        const owner = masterIds.has(id) ? undefined : d.master.variants.find((v) => id in v.layers);
+        const nextLabel = p.enabled === true && owner && !d.label.enabledVariants.includes(owner.id)
+          ? toggleVariant(d.label, owner.id) : d.label;
+        // Last enabled variant carrying the layer wins (no findLast in this lib target).
+        let variant: string | undefined;
+        for (let i = nextLabel.enabledVariants.length - 1; i >= 0 && !variant; i--) {
+          const v = nextLabel.enabledVariants[i];
+          if (d.master.variants.some((x) => x.id === v && id in x.layers)) variant = v;
+        }
+        return {
+          master: variant ? patchLayerIn(d.master, variant, id, p) : patchLayer(d.master, id, p),
+          label: nextLabel,
+        };
+      }, d0);
     }, coalesce);
   /** A layer's CONTENT: a FILL value into the label when the layer is
    *  fillable (this beer's name, this collab's logo), the master's own
@@ -1008,18 +1018,26 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  drag's start; the patch is moveBy against the layer AS IT WAS at the
    *  start (kept in a ref for the gesture), so every move replaces the last
    *  rather than stacking on it, and the whole drag coalesces into one undo
-   *  step. Horizontal snapping to the master's guides is moveBy's. */
-  const dragBase = useRef<{ layer: Layer; w: number } | null>(null);
+   *  step. Horizontal snapping to the master's guides is moveBy's. When the
+   *  grabbed layer is selected, every selected unlocked layer moves with it. */
+  const dragBase = useRef<{ id: string; bases: { layer: Layer; w: number }[] } | null>(null);
   const onDrag = (id: string, dx: number, dy: number, first: boolean) => {
-    if (first || dragBase.current?.layer.id !== id) {
-      const layer = drawLayers.find((l) => l.id === id);
-      if (!layer || !canvasAssets) return;
-      const box = layerBoxes(drawLayers, canvasAssets.m, canvasAssets.planAssets).get(id);
-      dragBase.current = { layer, w: box?.w ?? 0 };
+    if (first || dragBase.current?.id !== id) {
+      if (!canvasAssets) return;
+      const ids = new Set(gestureIds(selected, id));
+      const boxes = layerBoxes(drawLayers, canvasAssets.m, canvasAssets.planAssets);
+      const bases = drawLayers.filter((l) => ids.has(l.id) && !l.locked)
+        .map((layer) => ({ layer, w: boxes.get(layer.id)?.w ?? 0 }));
+      if (!bases.length) return;
+      dragBase.current = { id, bases };
     }
-    const { layer, w } = dragBase.current;
-    const p = moveBy(layer, dx, dy, guides, 6, w);
-    if (Object.keys(p).length) patch(id, p, !first);
+    // ponytail: only the grabbed layer snaps to guides; the rest follow the
+    // raw delta so the group keeps its shape. Snap the group's bounds if
+    // that ever matters.
+    const entries = dragBase.current.bases
+      .map(({ layer, w }): [string, DeepPartial<Layer>] => [layer.id, moveBy(layer, dx, dy, guides, layer.id === id ? 6 : 0, w)])
+      .filter(([, p]) => Object.keys(p).length);
+    if (entries.length) patchMany(entries, !first);
   };
   /** The inspector's Unbind: the bound layer's current resolved top, written
    *  as its numeric `y` — only the planner knows where the layer above ends. */
@@ -1679,11 +1697,11 @@ export const DocumentEditor = memo(function DocumentEditor({
               library={libraryEntries()} resolve={resolveMasterById}
               onMaster={pickLibraryMaster} onOpenMaster={() => void openMasterPicker()}
               onDuplicate={duplicateMaster} />
-            <LayerList rows={rows} selected={new Set(selected)}
+            <LayerList rows={rows} selected={selected}
               onSelect={(id, mods) => pick(id, { shift: mods.shift, toggle: mods.meta })}
               onToggle={(id, prop, value) => patch(id, { [prop]: value })}
               onRename={(id, name) => patch(id, { name })}
-              onReorder={(id, delta) => editMaster((m) => moveLayer(m, id, delta))}
+              onReorder={(id, delta) => editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta))}
               onAdd={onAddLayer} onRemove={onRemoveLayer}
               fillableOnly={fillableOnly} onFillableOnly={setFillableOnly}
               variants={chips} onToggleVariant={(id) => editLabel((l) => toggleVariant(l, id))} />
