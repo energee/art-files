@@ -3,6 +3,22 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.53] - 2026-09-05
+
+- Choosing “Check for Updates…” while an update is downloading now shows the
+  download's progress instead of an empty dialog, and “Restart Now” reports a
+  failed restart instead of doing nothing.
+
+- Layers a variant changes (the ones marked with a dot) reorder among the
+  master's layers again, by drag and by Alt+Up/Down; they had been grouped with
+  the variant's own added layers.
+
+- Also in this release, previously shipped but unlisted: drag layer names to
+  reorder them with a drop-position indicator (keyboard reordering remains
+  available with Alt+Up/Down); the range/add selection hint sits below the layer
+  list, the divider below the master selector is gone, and the master selector
+  is the standard shadcn Select with Open Master and Duplicate actions below it.
+
 ## [0.1.52] - 2026-09-05
 
 - Show “Up-to-date” with a circular checkmark icon in the update status.
@@ -20,15 +36,6 @@ binary-impacting change gets its own version before it is merged.
 - Make layer reordering smoother by updating its indicator only when the drop
   position changes. Moving guides reuses loaded images, and preview drawing,
   hit testing, and selection outlines share measured layer positions.
-
-## [0.1.51] - 2026-09-05
-
-- Drag layer names to reorder them with a drop-position indicator; keyboard
-  reordering remains available with Alt+Up/Down.
-
-- Move the range/add selection hint below the layer list and remove the divider
-  below the master selector. Use the standard shadcn Select for choosing masters,
-  with Open Master and Duplicate actions below it.
 
 ## [0.1.50] - 2026-09-05
 

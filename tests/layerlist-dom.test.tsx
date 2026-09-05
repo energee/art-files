@@ -331,3 +331,21 @@ it("measures repeated pointer moves over the same drop position", () => {
     expect(commits.mock.calls.length).toBe(1);
   } finally { vi.restoreAllMocks(); }
 });
+
+describe("ownership vs override", () => {
+  it("a master layer an enabled variant overrides still reorders among master rows", () => {
+    // layerRows sets `variant` on an overridden master layer too; that must
+    // not move it into the variant's peer group (ultrareview finding, 2026-09-05).
+    const { rows, variants } = lolevRows(true);
+    const [collab] = variants;
+    const overridden = rows.map((r) =>
+      r.layer.id === "wordmark" ? { ...r, variant: collab, overridden: true } : r);
+    const props = render(baseProps({ rows: overridden, variants, selected: new Set(["wordmark"]) }));
+    const button = rowFor("wordmark").querySelector("button")!;
+    keydown(button, "ArrowUp", { altKey: true });
+    keydown(button, "ArrowDown", { altKey: true });
+    // wordmark is neither front nor back of the master group, so both fire.
+    expect(props.onReorder).toHaveBeenCalledWith("wordmark", 1);
+    expect(props.onReorder).toHaveBeenCalledWith("wordmark", -1);
+  });
+});

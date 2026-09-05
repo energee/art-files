@@ -179,7 +179,7 @@ export function DesktopUpdater(props: {
 
   const dismiss = () => {
     setOpen(false);
-    if (!["available", "current", "installed"].includes(status.kind)) setStatus({ kind: "idle" });
+    if (!["available", "current", "installed", "downloading"].includes(status.kind)) setStatus({ kind: "idle" });
   };
 
   const install = async () => {
@@ -260,6 +260,7 @@ export function DesktopUpdater(props: {
           <DialogTitle>
             {status.kind === "available" && "Update available"}
             {status.kind === "installed" && "Restart to finish updating"}
+            {status.kind === "downloading" && `Installing Label Lab ${status.version}`}
             {status.kind === "checking" && "Checking for updates"}
             {status.kind === "current" && "Label Lab is up to date"}
             {status.kind === "disabled" && "Updates are not configured"}
@@ -268,6 +269,7 @@ export function DesktopUpdater(props: {
           <DialogDescription>
             {status.kind === "available" && `${status.currentVersion} → ${status.version}${releasedOn}`}
             {status.kind === "installed" && `Label Lab ${status.version} is installed and starts the next time the app opens.`}
+            {status.kind === "downloading" && "The download is in progress; the status bar shows how far along it is."}
             {status.kind === "checking" && (
               <span className="flex items-center gap-2">
                 <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" aria-hidden />
@@ -305,10 +307,12 @@ export function DesktopUpdater(props: {
         {status.kind === "installed" && (
           <DialogFooter>
             <Button variant="outline" onClick={dismiss}>Later</Button>
-            <Button onClick={() => void invoke("relaunch_app")}>Restart Now</Button>
+            <Button onClick={() => void invoke("relaunch_app").catch((error: unknown) => {
+              setStatus({ kind: "error", message: `Could not restart: ${String(error)}` });
+            })}>Restart Now</Button>
           </DialogFooter>
         )}
-        {(status.kind === "current" || status.kind === "disabled" || status.kind === "error") && (
+        {(status.kind === "current" || status.kind === "disabled" || status.kind === "error" || status.kind === "downloading") && (
           <DialogFooter>
             <Button onClick={dismiss}>Close</Button>
           </DialogFooter>
