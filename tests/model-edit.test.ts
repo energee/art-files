@@ -14,7 +14,7 @@ import {
 import { lolevMaster } from "../src/model/lolevLayers";
 import { parseMaster } from "../src/model/layers";
 import type {
-  ImageLayer, LabelFile, Layer, Master, RelativeY, TextLayer,
+  BarcodeLayer, ImageLayer, LabelFile, Layer, Master, QrLayer, RelativeY, TextLayer,
 } from "../src/model/layers";
 import type { GuideLines } from "../src/model/position";
 import { CENTER_X, GOLD } from "../src/layout";
@@ -442,4 +442,52 @@ it("deleting a binding target detaches its dependent at its measured position", 
   expect(() => parseMaster(removed)).not.toThrow();
   expect(() => removeLayer(changed, "volume")).toThrow(/without the position/);
   expect(byId(changed, "name").binding).not.toBeNull();
+});
+
+import { resizeBy, type ResizeHandle } from "../src/model/edit";
+describe("resizeBy", () => {
+  const box = { w: 100, h: 50 };
+  const BR: ResizeHandle = { hx: 1, hy: 1 }, TL: ResizeHandle = { hx: -1, hy: -1 };
+  const L: ResizeHandle = { hx: -1, hy: 0 }, B: ResizeHandle = { hx: 0, hy: 1 };
+  const img = () => ({ ...byId<ImageLayer>(lolevMaster(), "logo"), w: 40, h: 20, x: 300, y: 100, anchor: "left" as const, guideY: undefined, vAnchor: undefined });
+  it("text changes wrap width only; vertical handles do nothing", () => {
+    const t = { ...byId<TextLayer>(lolevMaster(), "description"), width: 200 };
+    expect(resizeBy(t, box, BR, 10, 30, false)).toEqual({ width: 210 });
+    expect(resizeBy({ ...t, width: undefined }, box, BR, 10, 30, false)).toEqual({ width: 110 });
+    expect(resizeBy(t, box, B, 10, 30, false)).toEqual({});
+  });
+  it("a rotated text layer takes the page's vertical delta as its width", () => {
+    const t = byId<TextLayer>(lolevMaster(), "warning");
+    expect(t.rotation).toBe(90);
+    // Bottom-anchored: y IS the bottom edge, so it follows the grabbed edge.
+    expect(resizeBy({ ...t, locked: false, width: 200 }, { w: 20, h: 300 }, BR, 5, 30, false)).toEqual({ width: 230, y: (t.y as number) + 30 });
+  });
+  it("image stretches freely, shift keeps it uniform, no h keeps aspect", () => {
+    expect(resizeBy(img(), box, BR, 100, 0, false)).toEqual({ w: 80, h: 20 });
+    expect(resizeBy(img(), box, BR, 100, 0, true)).toEqual({ w: 80, h: 40 });
+    expect(resizeBy({ ...img(), h: undefined }, box, B, 0, 50, false)).toEqual({ w: 80 });
+  });
+  it("qr is always uniform; barcode scales bars and modules", () => {
+    const q = byId<QrLayer>(lolevMaster(), "qr");
+    expect(resizeBy({ ...q, size: 30, anchor: "left", vAnchor: undefined, guideY: undefined }, box, BR, 50, 0, false)).toEqual({ size: 45 });
+    const b = { ...byId<BarcodeLayer>(lolevMaster(), "barcode"), h: 40, moduleW: 1, rotation: 0 as const, vAnchor: undefined };
+    expect(resizeBy(b, box, BR, 100, 50, false)).toEqual({ h: 80, moduleW: 2 });
+  });
+  it("the opposite edge stays put from any handle, per anchor", () => {
+    // Left handle dragged 20pt right: box shrinks by 20 and its left edge moves right.
+    expect(resizeBy(img(), box, L, 20, 0, false)).toEqual({ w: 32, h: 20, x: 320 });
+    expect(resizeBy({ ...img(), anchor: "center" }, box, L, 20, 0, false)).toEqual({ w: 32, h: 20, x: 310 });
+    expect(resizeBy({ ...img(), anchor: "right" }, box, L, 20, 0, false)).toEqual({ w: 32, h: 20 });
+    // Top-left corner, bottom-anchored: y (the bottom edge) never moves.
+    expect(resizeBy({ ...img(), vAnchor: "bottom" }, box, TL, -10, -10, false)).toEqual({ w: 44, h: 24, x: 290 });
+    expect(resizeBy(img(), box, TL, -10, -10, false)).toEqual({ w: 44, h: 24, x: 290, y: 90 });
+  });
+  it("a bound axis sizes but keeps its binding", () => {
+    const l = { ...img(), binding: { to: "name", side: "right" as const, gap: 4 } };
+    expect(resizeBy(l, box, L, 20, 0, false)).toEqual({ w: 32, h: 20 });
+  });
+  it("locked layers and empty boxes return {}", () => {
+    expect(resizeBy(byId(lolevMaster(), "warning"), box, BR, 5, 5, false)).toEqual({});
+    expect(resizeBy(byId(lolevMaster(), "qr"), { w: 0, h: 0 }, BR, 5, 5, false)).toEqual({});
+  });
 });

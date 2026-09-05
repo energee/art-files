@@ -15,9 +15,9 @@ import type {
   RelativeY, TextLayer, Variant, BindingSide,
 } from "./layers";
 import type { Box } from "./place";
-import { bindingOf, parseMaster } from "./layers";
+import { bindingOf, guideOf, parseMaster } from "./layers";
 import { deepMerge, type DeepPartial } from "./merge";
-import { positionFromDrag, type GuideLines } from "./position";
+import { anchorFraction, positionFromDrag, type GuideLines } from "./position";
 import { CENTER_X, GOLD } from "../layout";
 import { KEYLINE } from "../defaults";
 import { DEFAULT_STROKE_LAYER } from "../strokes";
@@ -386,9 +386,9 @@ export function moveBy(
     const delta = horizontal ? dx : dy;
     patch.binding = { ...binding, gap: binding.gap + (binding.side === "left" || binding.side === "top" ? -delta : delta) };
   }
-  if (dx !== 0 && !horizontal && layer.guideX && layer.guideX !== "none") patch.x = layer.x + dx;
+  if (dx !== 0 && !horizontal && guideOf(layer.guideX)) patch.x = layer.x + dx;
   else if (dx !== 0 && !horizontal) {
-    const left = layer.anchor === "left" ? layer.x : layer.anchor === "center" ? layer.x - w / 2 : layer.x - w;
+    const left = layer.x - anchorFraction(layer.anchor) * w;
     const { position } = positionFromDrag(left + dx, 0, w, 0, guides, snap);
     patch.anchor = position.anchor;
     patch.x = guides[position.anchor] + position.offsetX;
@@ -472,4 +472,57 @@ function deepEqual(a: unknown, b: unknown): boolean {
  *  keys is ignored; order of layers (draw order) is not. */
 export function masterDiff(base: Master, edited: Master): boolean {
   return !deepEqual(base, edited);
+}
+
+/** Which handle a resize drag grabbed: -1 = left/top edge, 0 = the axis is
+ *  not grabbed (a side handle), 1 = right/bottom edge. */
+export interface ResizeHandle { hx: -1 | 0 | 1; hy: -1 | 0 | 1 }
+
+/** The resize patch for a drag on any of the eight selection handles. `dx`/`dy` are the pointer's page-space
+ *  deltas; the grabbed edge follows the pointer and the opposite edge stays
+ *  put, whatever the layer's anchor (the anchor only decides how that
+ *  translates into x/y — a center-anchored box dragged by its left edge
+ *  shifts x by half). A bound axis keeps its binding and only sizes. Image
+ *  and barcode stretch freely unless `uniform` (shift), which applies the
+ *  grabbed axis's factor to both; QR, and an image without `h`, are always
+ *  uniform. Text resizes only its wrap width — type size stays the
+ *  inspector's — so for text only the width axis (page-vertical when rotated)
+ *  does anything. Locked layers and degenerate boxes return {}. */
+export function resizeBy(
+  layer: Layer, box: { w: number; h: number }, handle: ResizeHandle, dx: number, dy: number, uniform: boolean,
+): LayerPatch {
+  if (layer.locked || box.w <= 0 || box.h <= 0) return {};
+  const rot = layer.rotation === 90;
+  // Page-space box deltas, clamped so a box never inverts.
+  let dw = handle.hx === 0 ? 0 : Math.max(handle.hx * dx, 0.05 * box.w - box.w);
+  let dh = handle.hy === 0 ? 0 : Math.max(handle.hy * dy, 0.05 * box.h - box.h);
+  const lockAspect = uniform || layer.kind === "qr" || (layer.kind === "image" && layer.h == null);
+  if (lockAspect) {
+    // The grabbed axis drives; a corner drives by the larger relative pull.
+    const byW = handle.hy === 0 || (handle.hx !== 0 && Math.abs(dw) / box.w >= Math.abs(dh) / box.h);
+    if (byW) dh = box.h * (dw / box.w); else dw = box.w * (dh / box.h);
+  }
+  // Text: only the width axis exists (page-vertical when rotated).
+  if (layer.kind === "text") { if (rot) dw = 0; else dh = 0; }
+  if (!dw && !dh) return {};
+  // Layer-space size deltas.
+  const [lw, lh] = rot ? [dh, dw] : [dw, dh];
+  const [bw, bh] = rot ? [box.h, box.w] : [box.w, box.h];
+  const sx = (bw + lw) / bw, sy = (bh + lh) / bh;
+  const patch: Record<string, unknown> = {};
+  switch (layer.kind) {
+    case "text": patch.width = Math.max((layer.width ?? bw) + lw, 1); break;
+    case "qr": patch.size = layer.size * sx; break;
+    case "barcode": patch.h = layer.h * sy; patch.moduleW = layer.moduleW * sx; break;
+    case "image": patch.w = layer.w * sx; if (layer.h != null) patch.h = layer.h * sy; break;
+  }
+  // Keep the opposite edge still: the anchored point moves by the grabbed
+  // edge's shift (left/top handle only) plus its share of the size change.
+  const b = bindingOf(layer);
+  const shift = (grabbedNeg: boolean, frac: number, d: number) => (grabbedNeg ? -1 : 0) * d + frac * d;
+  const ax = shift(handle.hx === -1, anchorFraction(layer.anchor), dw);
+  const ay = shift(handle.hy === -1, anchorFraction(guideOf(layer.guideY) ?? layer.vAnchor ?? "top"), dh);
+  if (ax && !(b?.side === "left" || b?.side === "right")) patch.x = layer.x + ax;
+  if (ay && typeof layer.y === "number" && !(b?.side === "top" || b?.side === "bottom")) patch.y = layer.y + ay;
+  return patch as LayerPatch;
 }
