@@ -25,6 +25,22 @@ export function releaseNotes(version, changelog = readFileSync("CHANGELOG.md", "
   return { heading: `## [${version}] - ${match[1]}`, body };
 }
 
+/** Changelog versions newer than `baseVersion` that are not `version`. A
+ *  branch publishes exactly one section (the current version's); any other
+ *  section it introduces is never read by release.yml, so its notes vanish.
+ *  Pure so check-release.mjs and the tests share one rule. */
+export function unreleasedSections(version, baseVersion, changelog = readFileSync("CHANGELOG.md", "utf8")) {
+  const parts = (v) => v.split(".").map(Number);
+  const newer = (a, b) => {
+    const [x, y] = [parts(a), parts(b)];
+    for (let i = 0; i < 3; i += 1) if (x[i] !== y[i]) return x[i] > y[i];
+    return false;
+  };
+  return [...changelog.matchAll(/^## \[(\d+\.\d+\.\d+)\]/gm)]
+    .map((m) => m[1])
+    .filter((v) => v !== version && newer(v, baseVersion));
+}
+
 function currentVersion() {
   return JSON.parse(readFileSync("package.json", "utf8")).version;
 }
