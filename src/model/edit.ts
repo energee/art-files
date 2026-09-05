@@ -15,7 +15,7 @@ import type {
   RelativeY, TextLayer, Variant, BindingSide,
 } from "./layers";
 import type { Box } from "./place";
-import { bindingOf, guideOf, parseMaster } from "./layers";
+import { bindingOf, guideOf, parseMaster, vAnchorOf } from "./layers";
 import { deepMerge, type DeepPartial } from "./merge";
 import { anchorFraction, positionFromDrag, type GuideLines } from "./position";
 import { CENTER_X, GOLD } from "../layout";
@@ -478,8 +478,8 @@ export function masterDiff(base: Master, edited: Master): boolean {
  *  not grabbed (a side handle), 1 = right/bottom edge. */
 export interface ResizeHandle { hx: -1 | 0 | 1; hy: -1 | 0 | 1 }
 
-/** The resize patch for a drag on any of the eight selection handles. `dx`/`dy` are the pointer's page-space
- *  deltas; the grabbed edge follows the pointer and the opposite edge stays
+/** The resize patch for a drag on any of the eight selection handles.
+ *  `dx`/`dy` are the pointer's page-space deltas; the grabbed edge follows the pointer and the opposite edge stays
  *  put, whatever the layer's anchor (the anchor only decides how that
  *  translates into x/y — a center-anchored box dragged by its left edge
  *  shifts x by half). A bound axis keeps its binding and only sizes. Image
@@ -509,20 +509,21 @@ export function resizeBy(
   const [lw, lh] = rot ? [dh, dw] : [dw, dh];
   const [bw, bh] = rot ? [box.h, box.w] : [box.w, box.h];
   const sx = (bw + lw) / bw, sy = (bh + lh) / bh;
-  const patch: Record<string, unknown> = {};
-  switch (layer.kind) {
-    case "text": patch.width = Math.max((layer.width ?? bw) + lw, 1); break;
-    case "qr": patch.size = layer.size * sx; break;
-    case "barcode": patch.h = layer.h * sy; patch.moduleW = layer.moduleW * sx; break;
-    case "image": patch.w = layer.w * sx; if (layer.h != null) patch.h = layer.h * sy; break;
-  }
-  // Keep the opposite edge still: the anchored point moves by the grabbed
-  // edge's shift (left/top handle only) plus its share of the size change.
+  const size = ((): LayerPatch => {
+    switch (layer.kind) {
+      case "text": return { width: Math.max((layer.width ?? bw) + lw, 1) };
+      case "qr": return { size: layer.size * sx };
+      case "barcode": return { h: layer.h * sy, moduleW: layer.moduleW * sx };
+      case "image": return { w: layer.w * sx, ...(layer.h != null ? { h: layer.h * sy } : {}) };
+    }
+  })();
+  // Keep the opposite edge still: the anchored point moves by its share of
+  // the size change, minus the whole change when the left/top edge was grabbed.
   const b = bindingOf(layer);
-  const shift = (grabbedNeg: boolean, frac: number, d: number) => (grabbedNeg ? -1 : 0) * d + frac * d;
-  const ax = shift(handle.hx === -1, anchorFraction(layer.anchor), dw);
-  const ay = shift(handle.hy === -1, anchorFraction(guideOf(layer.guideY) ?? layer.vAnchor ?? "top"), dh);
-  if (ax && !(b?.side === "left" || b?.side === "right")) patch.x = layer.x + ax;
-  if (ay && typeof layer.y === "number" && !(b?.side === "top" || b?.side === "bottom")) patch.y = layer.y + ay;
-  return patch as LayerPatch;
+  const ax = dw * (anchorFraction(layer.anchor) - (handle.hx === -1 ? 1 : 0));
+  const ay = dh * (anchorFraction(vAnchorOf(layer)) - (handle.hy === -1 ? 1 : 0));
+  const pos: LayerPatch = {};
+  if (ax && !(b?.side === "left" || b?.side === "right")) pos.x = layer.x + ax;
+  if (ay && typeof layer.y === "number" && !(b?.side === "top" || b?.side === "bottom")) pos.y = layer.y + ay;
+  return { ...size, ...pos };
 }

@@ -33,6 +33,13 @@ export function guideOf<G extends string>(g: G | "none" | undefined): Exclude<G,
   return g && g !== "none" ? g as Exclude<G, "none"> : undefined;
 }
 
+/** The edge a layer's numeric y places: its vertical guide when it has one
+ *  (the guide names the edge), else its vAnchor, else the top. The ONE
+ *  precedence rule, shared by placement and resize. */
+export function vAnchorOf(l: { guideY?: LayerBase["guideY"]; vAnchor?: LayerBase["vAnchor"] }): "top" | "middle" | "bottom" {
+  return guideOf(l.guideY) ?? l.vAnchor ?? "top";
+}
+
 /** Legacy below bindings and new edge bindings share one placement path. */
 export function bindingOf(layer: { binding?: LayerBinding | null; y?: unknown }): LayerBinding | undefined {
   if (layer.binding) return layer.binding;
@@ -239,7 +246,7 @@ function validateLayer(l: Layer, ctx: string): void {
     fail(`${ctx} layer "${l.id}" has invalid guideX`);
   if (l.guideY !== undefined && !["none", "top", "middle", "bottom"].includes(l.guideY))
     fail(`${ctx} layer "${l.id}" has invalid guideY`);
-  if (l.guideY && l.guideY !== "none" && typeof y !== "number")
+  if (guideOf(l.guideY) && typeof y !== "number")
     fail(`${ctx} layer "${l.id}" cannot bind to both a guide and a layer`);
   if (l.binding != null) {
     const b = l.binding;
@@ -248,7 +255,7 @@ function validateLayer(l: Layer, ctx: string): void {
       fail(`${ctx} layer "${l.id}" has invalid binding`);
     if (typeof y !== "number") fail(`${ctx} layer "${l.id}" has two layer bindings`);
     const guide = b.side === "left" || b.side === "right" ? l.guideX : l.guideY;
-    if (guide && guide !== "none") fail(`${ctx} layer "${l.id}" cannot bind to both a guide and a layer on the same axis`);
+    if (guideOf(guide)) fail(`${ctx} layer "${l.id}" cannot bind to both a guide and a layer on the same axis`);
   }
   if (l.rotation !== undefined && l.rotation !== 0 && l.rotation !== 90)
     fail(`${ctx} layer "${l.id}" has invalid rotation`);

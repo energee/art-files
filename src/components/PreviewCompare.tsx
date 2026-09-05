@@ -42,12 +42,13 @@ import { cn } from "@/lib/utils";
  *  and cursor follow from them. */
 const HANDLES = ([-1, 0, 1] as const).flatMap((hy) => ([-1, 0, 1] as const)
   .filter((hx) => hx || hy)
-  .map((hx) => ({
-    hx, hy,
-    at: `${hy < 0 ? "-top-[3px]" : hy > 0 ? "-bottom-[3px]" : "top-1/2 -translate-y-1/2"} ${
-      hx < 0 ? "-left-[3px]" : hx > 0 ? "-right-[3px]" : "left-1/2 -translate-x-1/2"}`,
-    cursor: !hx ? "cursor-ns-resize" : !hy ? "cursor-ew-resize" : hx === hy ? "cursor-nwse-resize" : "cursor-nesw-resize",
-  })));
+  .map((hx) => {
+    const at = `${hy < 0 ? "-top-[3px]" : hy > 0 ? "-bottom-[3px]" : "top-1/2 -translate-y-1/2"} ${
+      hx < 0 ? "-left-[3px]" : hx > 0 ? "-right-[3px]" : "left-1/2 -translate-x-1/2"}`;
+    const cursor = !hx ? "cursor-ns-resize" : !hy ? "cursor-ew-resize" : hx === hy ? "cursor-nwse-resize" : "cursor-nesw-resize";
+    const base = `absolute size-2 rounded-[1px] border border-sky-400 bg-background ${at}`;
+    return { handle: { hx, hy } as ResizeHandle, key: `${hx},${hy}`, cls: `${base} pointer-events-auto touch-none ${cursor}`, clsLocked: base };
+  }));
 
 /** Pointer travel (px) before a press becomes a drag; below it is a click. */
 const DRAG_THRESHOLD_PX = 3;
@@ -515,7 +516,7 @@ export const PreviewCompare = forwardRef<
     pxPerPtX: number; pxPerPtY: number; started: boolean;
   } | null>(null);
   function onHandleDown(e: React.PointerEvent<HTMLSpanElement>, id: string, handle: ResizeHandle) {
-    if (e.button !== 0 || editing) return;
+    if (e.button !== 0 || editing || boxesById.get(id)?.locked) return;
     e.stopPropagation();
     resize.current = { id, handle, startClientX: e.clientX, startClientY: e.clientY, ...pageScale(), started: false };
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -739,19 +740,15 @@ export const PreviewCompare = forwardRef<
           style={pageBox(b.x, b.y, b.w, b.h, SEL_PAD)}
         >
           {HANDLES.map((h) => (
-            // Every tick is a resize handle on an unlocked layer (shift =
-            // uniform); the grabbed edge follows the pointer and the
-            // opposite edge stays put. Locked layers keep inert ticks.
+            // Every tick is a resize handle (shift = uniform); the grabbed
+            // edge follows the pointer and the opposite edge stays put.
+            // Locked layers keep inert ticks; onHandleDown re-checks the lock.
             <span
-              key={`${h.hx},${h.hy}`}
-              {...(b.locked ? {} : {
-                role: "slider", "aria-label": `Resize layer (${h.hx},${h.hy})`,
-                title: "Drag to resize (shift: keep proportions)",
-                onPointerDown: (e: React.PointerEvent<HTMLSpanElement>) => onHandleDown(e, b.id, h),
-                onPointerMove: onHandleMove, onPointerUp: onHandleUp, onPointerCancel: onHandleUp,
-              })}
-              className={`absolute size-2 rounded-[1px] border border-sky-400 bg-background ${h.at} ${
-                b.locked ? "" : `pointer-events-auto touch-none ${h.cursor}`}`}
+              key={h.key} role="slider" aria-label={`Resize layer (${h.key})`}
+              title="Drag to resize (shift: keep proportions)"
+              className={b.locked ? h.clsLocked : h.cls}
+              onPointerDown={(e) => onHandleDown(e, b.id, h.handle)}
+              onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}
             />
           ))}
         </div>

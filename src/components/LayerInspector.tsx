@@ -235,7 +235,7 @@ const V_GUIDES = [
   { value: "top", label: "Anchor to top guide", icon: ArrowUpToLine },
   { value: "middle", label: "Anchor to middle guide", icon: AlignCenterHorizontal },
   { value: "bottom", label: "Anchor to bottom guide", icon: ArrowDownToLine },
-] as const;
+] as const satisfies readonly { value: NonNullable<Layer["guideY"]>; label: string; icon: LucideIcon }[];
 
 const ALIGNS = [
   { value: "left", label: "Align left", icon: TextAlignStart },

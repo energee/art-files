@@ -688,8 +688,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     setSelection({ ids: [id], anchor: id });
   }
   function onRemoveLayer(id: string) {
-    editMaster((m) => removeLayer(m, id, canvasAssets
-      ? layerBoxes(rows.map((r) => r.layer), canvasAssets.m, canvasAssets.planAssets) : undefined));
+    editMaster((m) => removeLayer(m, id, rowBoxes()));
     setSelection((s) => s.ids.includes(id)
       ? { ids: s.ids.filter((x) => x !== id), anchor: s.anchor === id ? null : s.anchor } : s);
   }
@@ -1024,6 +1023,9 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  pass, wanted only at gesture starts and unbinds, never per move. */
   const boxesNow = (layers: Layer[] = drawLayers) =>
     canvasAssets ? layerBoxes(layers, canvasAssets.m, canvasAssets.planAssets) : undefined;
+  /** The same over every listed row (disabled layers included) — what the
+   *  inspector's bind/unbind actions want. */
+  const rowBoxes = () => boxesNow(rows.map((r) => r.layer));
   const dragBase = useRef<{ id: string; bases: { layer: Layer; w: number }[] } | null>(null);
   const onDrag = (id: string, dx: number, dy: number, first: boolean) => {
     if (first || dragBase.current?.id !== id) {
@@ -1061,7 +1063,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** The inspector's Unbind: the bound layer's current resolved top, written
    *  as its numeric `y` — only the planner knows where the layer above ends. */
   const onUnbind = (id: string) => {
-    const box = boxesNow(rows.map((r) => r.layer))?.get(id);
+    const box = rowBoxes()?.get(id);
     const layer = rowById.get(id)?.layer;
     if (box && layer) patch(id, unbindPatch(layer, box));
   };
@@ -1928,7 +1930,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 onReset={resetOverride}
                 onUnbind={() => onUnbind(inspected.layer.id)}
                 onBind={(to, side) => {
-                  const box = boxesNow(rows.map((r) => r.layer))?.get(inspected.layer.id);
+                  const box = rowBoxes()?.get(inspected.layer.id);
                   if (box) patch(inspected.layer.id, bindingPatch(inspected.layer, to, side, box));
                 }}
                 content={contentFor(inspected.layer)}

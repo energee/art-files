@@ -15,6 +15,7 @@ import type {
 } from "./model/layers";
 import type { StyledLine } from "./types";
 import { placeLayers, type Box } from "./model/place";
+import { anchorFraction } from "./model/position";
 import {
   justifiedRotatedRuns, rotatedRuns, strokeSpec,
   type Face, type MeasureFace, type Placed, type PlacedBarcode, type PlacedText, type PlanAssets,
@@ -220,8 +221,7 @@ function prepareImage(l: ImageLayer, assets: PlanAssets): Prepared | null {
   const scale = l.scale ?? 1;
   const maxW = l.w * scale;
   const maxH = (l.h ?? l.w / entry.aspect) * scale;
-  const placeX = (box: Box, w: number) =>
-    l.anchor === "center" ? box.x + (box.w - w) / 2 : l.anchor === "right" ? box.x + box.w - w : box.x;
+  const placeX = (box: Box, w: number) => box.x + anchorFraction(l.anchor) * (box.w - w);
   const size = { w: maxW, h: maxH };
   if (entry.art?.kind === "svg") {
     const a = parseLogo(entry.art.svg, maxW, maxH);
