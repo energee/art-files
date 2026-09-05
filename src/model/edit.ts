@@ -472,21 +472,25 @@ export const contentPatch = (kind: LayerKind, value: LayerValue): LayerPatch =>
  *  it, every edit lives in the .label (a patch in `overrides`, content in
  *  `values`). With Edit master on, the edit changes the template — in the
  *  last enabled variant that carries the layer, else the master — and
- *  enabling a variant-owned layer turns that variant on for this label.
+ *  enabling a variant-owned layer turns that variant on for this label in
+ *  both cases.
  *  ponytail: values and overrides stay two stores; fold them when a second
  *  reader of `values` appears. */
 export function applyDocEdit(doc: Doc, edit: DocEdit, editMaster: boolean): Doc {
-  const { master, label } = doc;
+  const { master } = doc;
+  const p = "patch" in edit ? edit.patch : contentPatch(edit.kind, edit.value);
+  // Switching on a layer only an OFF variant adds turns that variant on for
+  // this label first — either way, or the layer would stay invisible.
+  const owner = master.layers.some((l) => l.id === edit.id) ? undefined
+    : master.variants.find((v) => edit.id in v.layers);
+  const label = p.enabled === true && owner && !doc.label.enabledVariants.includes(owner.id)
+    ? toggleVariant(doc.label, owner.id) : doc.label;
   if (!editMaster) {
     return "patch" in edit
       ? { master, label: setLabelOverride(label, edit.id, edit.patch) }
       : { master, label: setValue(label, edit.id, edit.value) };
   }
-  const p = "patch" in edit ? edit.patch : contentPatch(edit.kind, edit.value);
-  const owner = master.layers.some((l) => l.id === edit.id) ? undefined
-    : master.variants.find((v) => edit.id in v.layers);
-  const nextLabel = p.enabled === true && owner && !label.enabledVariants.includes(owner.id)
-    ? toggleVariant(label, owner.id) : label;
+  const nextLabel = label;
   // Last enabled variant carrying the layer wins (no findLast in this lib target).
   let variant: string | undefined;
   for (let i = nextLabel.enabledVariants.length - 1; i >= 0 && !variant; i--) {

@@ -9,13 +9,12 @@
 // layers (page art bound to the loaded texture/mask slots, see withPageArt)
 // → planLayers' display list → drawPlate on the 2D preview and the 3D can,
 // buildArtPdf / buildMaskPdf / buildPsd on export. There is ONE mode (spec
-// 2026-09-04: Removed): the Layers list (LayerList) with its Fillable-only
-// filter replaces Fill mode, the inspector (LayerInspector) edits the
-// selected layer, and every edit lands where the layer lives — a Design
-// edit (position, style, policy, non-fillable content) in the master or the
-// variant that adds the layer (model/edit.ts's routing rule), a FILL value
-// (a fillable layer's text lines / image asset / code value) in the label.
-// Master and label edits share one undo stack.
+// 2026-09-04: Removed): the Layers list (LayerList) lists every layer, the
+// inspector (LayerInspector) edits the selected one, and the master is the
+// placeholder — every edit (content, position, style, policy) lands in the
+// .label (model/edit.ts applyDocEdit) until the list's Edit master toggle is
+// on, when the same edit changes the master or the variant that adds the
+// layer. Master and label edits share one undo stack.
 //
 // TabsShell mounts one DocumentEditor per workspace tab and hides the
 // inactive ones, so anything here that registers window/document-level
@@ -45,7 +44,7 @@ import type {
 } from "@/model/layers";
 import type { DeepPartial } from "@/model/merge";
 import {
-  addLayer, addVariant, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, labelOverriddenPaths,
+  addLayer, addVariant, applyDocEdit, assetReferenced, type Doc, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, labelOverriddenPaths,
   masterDiff, moveBy, moveLayers, resizeBy, type ResizeHandle, overriddenPaths, patchLayer, patchLayerIn, removeLayer, setValue, toggleVariant,
   whereLayerLives,
 } from "@/model/edit";
@@ -117,7 +116,7 @@ type Loaded = {
 };
 
 /** One loaded per-id image asset: an image layer's art (a collab logo is
- *  one, filling a fillable image layer). `image` is what the renderer needs;
+ *  one, a label's value for an image layer). `image` is what the renderer needs;
  *  previewUrl is the raw file, so an SVG thumbnails as itself; `aspect` is
  *  the intrinsic w/h the planner sizes the box by before/without a decoded
  *  bitmap. Keyed by the id minted at drop (mintCustomAssetId). */
@@ -125,7 +124,6 @@ type CustomFile = { image: CollabImage; name: string; previewUrl: string; aspect
 
 /** The document: the master being authored and the label filling it. One
  *  history entry holds both, so a master edit and a value edit undo alike. */
-type Doc = { master: Master; label: LabelFile };
 
 /** The asset ids the two page-art layers resolve to while the texture / mask
  *  slots hold art. The slots are fixed roles in both containers
@@ -167,12 +165,6 @@ function titleOf(layers: Layer[]): string {
   const name = layers.find((l) => l.id === "name");
   return name?.kind === "text" ? plainText(name.lines) : "";
 }
-
-/** A fillable layer's content, in the shape a .label stores it — for the
- *  content slot's writes; the master's own content patch otherwise. */
-const contentPatch = (kind: LayerKind, value: LayerValue): DeepPartial<Layer> =>
-  kind === "text" ? { lines: value as TextLine[] }
-    : kind === "image" ? { asset: value as string } : { value: value as string };
 
 /** Chrome-level error, sized for the menu bar: the shadcn Alert (the app's
  *  one notification surface — see ui/alert.tsx) compacted to fit inline
@@ -432,7 +424,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const { rows, errors, warnings: resolveWarnings } = useMemo(() => layerRows(master, label), [master, label]);
   const rowById = useMemo(() => new Map(rows.map((r) => [r.layer.id, r])), [rows]);
   const chips = useMemo(() => variantChips(master, label), [master, label]);
-  const [fillableOnly, setFillableOnly] = useState(false);
+  /** The Layers header's Edit master toggle: edits change the template
+   *  instead of this label (see applyDocEdit). Off on every open. */
+  const [editingMaster, setEditingMaster] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const guides = useMemo(
     () => guideLines({ physical: master.physical, guides: master.guides }),
@@ -441,7 +435,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // srcBytes: the original upload — the bytes Save writes.
   const [mask, setMask] = useState<(Loaded & { error?: string; srcBytes: Uint8Array }) | null>(null);
   // Every per-id image asset this document carries: image layers' art,
-  // collab logos included (a fillable image layer's value is a key here).
+  // collab logos included (a label's image value is a key here).
   const [customImages, setCustomImages] = useState<Record<string, CustomFile>>({});
   // The layers that DRAW: enabled, values applied, page art bound to the
   // loaded slots. What the preview, the hit boxes, the drag targets and the
@@ -642,39 +636,19 @@ export const DocumentEditor = memo(function DocumentEditor({
     edit((d) => ({ ...d, master: fn(d.master) }), coalesce);
   const editLabel = (fn: (l: LabelFile) => LabelFile, coalesce?: boolean) =>
     edit((d) => ({ ...d, label: fn(d.label) }), coalesce);
-  /** A DESIGN edit on one layer — position, style, policy, geometry, and
-   *  the content of a non-fillable layer: lands in the master, or in the
-   *  variant that adds the layer (edit.ts's patchLayer → setLayer). */
+  /** One layer edit → this .label, or the master (or the variant that adds
+   *  the layer) while Edit master is on. model/edit.ts's applyDocEdit is the
+   *  one place that split is decided. */
   const patch = (id: string, p: DeepPartial<Layer>, coalesce?: boolean) =>
     patchMany([[id, p]], coalesce);
   /** patch for several layers in ONE doc edit (one clone, one undo entry) —
    *  a group drag patches every selected layer per pointermove. */
   const patchMany = (entries: [string, DeepPartial<Layer>][], coalesce?: boolean) =>
-    edit((d0) => {
-      const masterIds = new Set(d0.master.layers.map((l) => l.id));
-      return entries.reduce((d, [id, p]) => {
-        const owner = masterIds.has(id) ? undefined : d.master.variants.find((v) => id in v.layers);
-        const nextLabel = p.enabled === true && owner && !d.label.enabledVariants.includes(owner.id)
-          ? toggleVariant(d.label, owner.id) : d.label;
-        // Last enabled variant carrying the layer wins (no findLast in this lib target).
-        let variant: string | undefined;
-        for (let i = nextLabel.enabledVariants.length - 1; i >= 0 && !variant; i--) {
-          const v = nextLabel.enabledVariants[i];
-          if (d.master.variants.some((x) => x.id === v && id in x.layers)) variant = v;
-        }
-        return {
-          master: variant ? patchLayerIn(d.master, variant, id, p) : patchLayer(d.master, id, p),
-          label: nextLabel,
-        };
-      }, d0);
-    }, coalesce);
-  /** A layer's CONTENT: a FILL value into the label when the layer is
-   *  fillable (this beer's name, this collab's logo), the master's own
-   *  default otherwise — the one place the fill/design split is decided. */
+    edit((d0) => entries.reduce((d, [id, p]) => applyDocEdit(d, { id, patch: p }, editingMaster), d0), coalesce);
+  /** A layer's CONTENT — this label's value, or the master's placeholder
+   *  while Edit master is on. */
   const setContent = (layer: Layer, value: LayerValue, coalesce?: boolean) =>
-    layer.fillable
-      ? editLabel((l) => setValue(l, layer.id, value), coalesce)
-      : patch(layer.id, contentPatch(layer.kind, value), coalesce);
+    edit((d) => applyDocEdit(d, { id: layer.id, kind: layer.kind, value }, editingMaster), coalesce);
   /** Wrap a mutation that bypasses `edit` (undo/redo) so it still marks
    *  the document dirty. */
   const mutating = (fn: () => void) => () => { markDirty(); fn(); };
@@ -863,9 +837,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       setCustomImages((old) => ({ ...old, [assetId]: file }));
     }
     setContent(layer, assetId);
-    const after: Doc = layer.fillable
-      ? { master, label: setValue(label, layer.id, assetId) }
-      : { master: patchLayer(master, layer.id, { asset: assetId }), label };
+    const after = applyDocEdit({ master, label }, { id: layer.id, kind: "image", value: assetId }, editingMaster);
     if (previous && previous !== assetId) releaseAsset(previous, after);
   }
 
@@ -1263,12 +1235,12 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** The template assets a Save Master captures: the loaded texture/mask
    *  (the art being authored IS the template art) plus the bytes of every
-   *  image asset a master-owned image layer references — a variant's or
-   *  the label's FILL values stay label deltas. */
+   *  image asset the master's or a variant's image layer references — the
+   *  label's own values and overrides stay label deltas. */
   function masterAssetBundle(): MasterAssets {
     const ids = master.layers.flatMap((l) => l.kind === "image" && l.asset ? [l.asset] : []);
     for (const v of master.variants)
-      for (const e of Object.values(v.layers)) if (e.kind === "image" && e.asset && !e.fillable) ids.push(e.asset);
+      for (const e of Object.values(v.layers)) if (e.kind === "image" && e.asset) ids.push(e.asset);
     return { texture: textureAsset(), mask: maskAsset(), customImages: imageBundle(ids) };
   }
 
@@ -1654,8 +1626,9 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** The inspector's content slot for the selected layer: the rich text
    *  field (or number/code box) for text, the image well for images, the
-   *  payload box for barcode/QR — each writing through setContent so a
-   *  fillable layer's content is this label's and any other's the master's. */
+   *  payload box for barcode/QR — each writing through setContent, so the
+   *  content is this label's, or the master's placeholder while Edit master
+   *  is on. */
   function contentFor(layer: Layer): React.ReactNode {
     const id = `${layer.id}-content`;
     if (layer.kind === "text") {
@@ -1723,7 +1696,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onRename={(id, name) => patch(id, { name })}
               onReorder={(id, delta) => editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta))}
               onAdd={onAddLayer} onRemove={onRemoveLayer}
-              fillableOnly={fillableOnly} onFillableOnly={setFillableOnly}
+              editMaster={editingMaster} onEditMaster={setEditingMaster}
               variants={chips} onToggleVariant={(id) => editLabel((l) => toggleVariant(l, id))} />
           </SidebarContent>
         </Sidebar>

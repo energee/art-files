@@ -59,8 +59,8 @@ function baseProps(over: Partial<LayerListProps> = {}): LayerListProps {
     onReorder: vi.fn(),
     onAdd: vi.fn(),
     onRemove: vi.fn(),
-    fillableOnly: false,
-    onFillableOnly: vi.fn(),
+    editMaster: false,
+    onEditMaster: vi.fn(),
     variants,
     onToggleVariant: vi.fn(),
     ...over,
@@ -109,14 +109,6 @@ describe("LayerList", () => {
     expect(container.querySelector('[aria-label^="Hide "]')).toBeNull();
   });
 
-  it("Fillable only hides every row whose layer is not fillable", () => {
-    const props = render(baseProps({ fillableOnly: true }));
-    const fillable = props.rows.filter((r) => r.layer.fillable).map((r) => r.layer.id).reverse();
-    expect(fillable).toContain("name");
-    expect(fillable).not.toContain("wordmark");
-    expect(rowIds()).toEqual(fillable);
-  });
-
   it("the power switch reports onToggle enabled, and a disabled layer renders dimmed", () => {
     const props = render(baseProps());
     const power = byLabel("Brand: enabled");
@@ -135,12 +127,10 @@ describe("LayerList", () => {
     expect(rowFor("name").querySelector(".opacity-50")).toBeNull();
   });
 
-  it("lock and fillable switches report onToggle with the flipped value", () => {
+  it("the lock switch reports onToggle with the flipped value", () => {
     const props = render(baseProps());
     click(byLabel("Brand: locked"));
     expect(props.onToggle).toHaveBeenCalledWith("wordmark", "locked", true);
-    click(byLabel("ABV: fillable"));
-    expect(props.onToggle).toHaveBeenCalledWith("abv", "fillable", false);
   });
 
   it("badges a variant-added row with the variant's name and dims it while the variant is off", () => {
@@ -158,12 +148,11 @@ describe("LayerList", () => {
     expect(rowFor("wordmark").textContent).not.toContain("Collab");
   });
 
-  it("the background and mask rows have no fillable switch; every other row does", () => {
+  it("no row has a fillable switch; every row has power and lock", () => {
     render(baseProps());
-    expect(byLabel("Background: fillable")).toBeNull();
-    expect(byLabel("Metallic mask: fillable")).toBeNull();
+    expect(container.querySelectorAll('[aria-label$=": fillable"]')).toHaveLength(0);
     expect(byLabel("Background: enabled")).not.toBeNull();
-    expect(byLabel("Brand: fillable")).not.toBeNull();
+    expect(byLabel("Brand: locked")).not.toBeNull();
   });
 
   it("clicking a row selects it with the modifier keys", () => {
@@ -279,13 +268,12 @@ describe("LayerList", () => {
     expect(props.onReorder).toHaveBeenCalledTimes(2);
   });
 
-  it("header chips: Fillable only and one toggle per variant", () => {
+  it("header chips: Edit master and one toggle per variant", () => {
     const props = render(baseProps());
-    const filter = Array.from(container.querySelectorAll("button"))
-      .find((b) => b.textContent?.trim() === "Fillable only")!;
-    expect(filter.getAttribute("aria-pressed")).toBe("false");
-    click(filter);
-    expect(props.onFillableOnly).toHaveBeenCalledWith(true);
+    const toggle = byLabel("Edit master")!;
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    click(toggle);
+    expect(props.onEditMaster).toHaveBeenCalledWith(true);
 
     const chip = byLabel("Collab variant");
     expect(chip.getAttribute("aria-pressed")).toBe("false");
@@ -306,7 +294,7 @@ describe("LayerList", () => {
         ?? el.textContent?.trim();
       expect(name, `${el.tagName} ${el.className}`).toBeTruthy();
     }
-    expect(container.querySelector('[role="img"]')?.getAttribute("aria-label")).toBe("Overridden by a variant");
+    expect(container.querySelector('[role="img"]')?.getAttribute("aria-label")).toBe("Overridden");
   });
 });
 

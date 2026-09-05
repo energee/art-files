@@ -1,7 +1,7 @@
 // LayerInspector.tsx — the right-hand inspector for ONE resolved v3 layer
 // (spec: docs/superpowers/specs/2026-09-04-master-as-layers-design.md, "UI"
 // and "Relative position"). Sections, top to bottom: header (kind icon,
-// inline rename, enabled/locked/fillable), the parent's content editor,
+// inline rename, enabled/locked), the parent's content editor,
 // Position (free coordinates or a binding to another layer's edge, with
 // a gap; rotation 0/90), kind-specific Geometry, and Style.
 //
@@ -20,9 +20,9 @@
 //
 // Replaces StyleProperties.tsx's Inspector, which edited LabelConfig fields
 // through elements.ts. Per the spec's Removed section there is no stack
-// nudge, no collab slot nudge, no "Make fillable" button and no presets:
-// every layer has a position, `below` covers the flow, and fillable is a
-// switch. The text/image/code content editor is the parent's (`content`),
+// nudge, no collab slot nudge and no presets: every layer has a position
+// and `below` covers the flow. The text/image/code content editor is the
+// parent's (`content`),
 // so this file never builds a text editor of its own.
 import { useState, type ReactNode } from "react";
 import {
@@ -739,12 +739,6 @@ export function LayerInspector(props: {
             onCheckedChange={(on) => set({ locked: on === true })} />
           Locked
           {badge(["locked"], "Locked")}
-        </label>
-        <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
-          <Switch aria-label="Fillable" checked={!!layer.fillable}
-            onCheckedChange={(on) => set({ fillable: on === true })} />
-          Fillable
-          {badge(["fillable"], "Fillable")}
         </label>
       </div>
 

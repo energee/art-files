@@ -100,14 +100,12 @@ describe("LayerInspector header", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("toggles enabled / locked / fillable as top-level patches", () => {
+  it("toggles enabled / locked as top-level patches", () => {
     const { onChange } = render(text());
     click(byLabel("Enabled")!);
     expect(onChange).toHaveBeenLastCalledWith({ enabled: false });
     click(byLabel("Locked")!);
     expect(onChange).toHaveBeenLastCalledWith({ locked: true });
-    click(byLabel("Fillable")!);
-    expect(onChange).toHaveBeenLastCalledWith({ fillable: true });
   });
 
   it("renders the parent's content editor under a Content heading", () => {

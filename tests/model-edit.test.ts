@@ -520,6 +520,13 @@ describe("applyDocEdit", () => {
     expect(out.label.values).toEqual({});
   });
 
+  it("enabling a variant-carried layer as a label override still turns the variant on", () => {
+    const out = applyDocEdit(doc(), { id: "collabLeft", patch: { enabled: true } }, false);
+    expect(out.label.enabledVariants).toEqual(["collab"]);
+    expect(out.label.overrides).toEqual({ collabLeft: { enabled: true } });
+    expect(out.master).toEqual(lolevMaster());
+  });
+
   it("with Edit master on, enabling a variant-carried layer lands in that variant and turns it on", () => {
     const out = applyDocEdit(doc(), { id: "collabLeft", patch: { enabled: true } }, true);
     expect(out.label.enabledVariants).toEqual(["collab"]);

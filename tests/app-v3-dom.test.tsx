@@ -99,3 +99,38 @@ it("measures asset assembly while moving margin guides", async () => {
     await act(async () => root.unmount()); container.remove(); vi.useRealTimers();
   }
 });
+
+it("edits land in the .label until Edit master is on", async () => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(createElement(DocumentEditor, {
+        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
+        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+      }));
+    });
+    const row = (id: string) => container.querySelector(`[data-layer-id="${id}"]`)!;
+    const lock = (id: string) => row(id).querySelector('button[aria-label$=": locked"]') as HTMLButtonElement;
+    const dot = (id: string) => row(id).querySelector('[role="img"][aria-label="Overridden"]');
+    // Edit master off: locking Name is a label override, so the row shows the dot.
+    expect(dot("name")).toBeNull();
+    await act(async () => lock("name").click());
+    expect(lock("name").getAttribute("aria-pressed")).toBe("true");
+    expect(dot("name")).not.toBeNull();
+    // Edit master on: the same switch on another layer changes the master, no dot.
+    const chip = container.querySelector('button[aria-label="Edit master"]') as HTMLButtonElement;
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+    await act(async () => chip.click());
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
+    await act(async () => lock("wordmark").click());
+    expect(lock("wordmark").getAttribute("aria-pressed")).toBe("true");
+    expect(dot("wordmark")).toBeNull();
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
