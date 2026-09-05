@@ -338,3 +338,79 @@ no status, no attempts, no delta.
 - measurement: happy-dom React Profiler, 100 individually flushed pointer moves over the same drop position: 100 commits before, 1 after (sample elapsed 916.75ms before, 28.46ms after; elapsed values are environment-sensitive, commit count is the regression gate). Five settled margin edits: 5 asset assemblies before, 0 after; same drawAssets object retained and guide coordinates change before the debounce interval. No real bitmap decode timing or desktop FPS claimed.
 - layout benchmark: npx tsx scripts/benchmark-layout.ts; real Poppins metrics, resolved Lolev layers, 10 warm-ups, 5 alternating batches of 100 preview+selection updates, separate vs shared layout. Isolated run before ms: 640.76,640.49,629.87,580.66,606.07; after: 442.17,394.27,391.78,351.06,357.76. Median 629.87 -> 391.78ms (37.8% less); font measurements 26700 -> 17400 per batch (34.8% fewer). Script and the separate-layout helpers (hitBoxesLayers, hitTestLayers, boxesForLayers, dragTargetLayers) were removed once the shared scene was adopted; re-create from git history to re-measure. These are headless CPU measurements, not interactive raster/GPU frame rates.
 - evidence: 796 full-suite tests and production build pass, including existing PDF/PSD regressions; final focused checks cover reused hit testing, shared boxes, skipped layers, live guide coordinates and asset reuse; 0.1.52 binary-impacting release metadata prepared; no release published
+
+## 2026-09-05 native-desktop-files
+- finding: [Fail fast/high] src/masters.ts:40, src/App.tsx:1114,1441,1720 — custom masters cannot resolve on desktop; masterHint reads are uncontained; export prompts twice; the platform save is spelled three times
+- status: open
+- attempts: 0/3
+- id: native-desktop-files
+- depends-on: none
+- read-path: src/files.ts
+- read-path: src/masters.ts
+- read-path: src/App.tsx
+- read-path: src-tauri/src/main.rs
+- read-path: src-tauri/capabilities/default.json
+- write-path: src/files.ts
+- write-path: src/masters.ts
+- write-path: src/App.tsx
+- write-path: src/model/fields.ts
+- write-path: src/model
+- write-path: src-tauri/src/main.rs
+- write-path: src-tauri/capabilities/default.json
+- write-path: tests
+- acceptance: a .label whose masterHint escapes both roots opens to a named error plus a picker with no fs read; Export PDFs asks once and writes both plates or nothing; Open Master remembers a real path on desktop
+- observed-at: 35bac01
+
+## 2026-09-05 restrictive-csp
+- finding: [security/med] src-tauri/tauri.conf.json:28 — app.security.csp is null
+- status: open
+- attempts: 0/3
+- id: restrictive-csp
+- depends-on: native-desktop-files
+- read-path: src-tauri/tauri.conf.json
+- write-path: src-tauri/tauri.conf.json
+- acceptance: preview, workers and updater work under a CSP allowing self, blob:, worker-src blob:, ipc:
+
+## 2026-09-05 masters-library-list
+- finding: [KISS/med] src/masters.ts:20 — localStorage index is a single point of failure; a Rust list_masters over the library folder retires it and drives New Label from Master
+- status: open
+- attempts: 0/3
+- id: masters-library-list
+- depends-on: native-desktop-files
+- read-path: src/masters.ts
+- write-path: src/masters.ts
+- write-path: src-tauri/src/main.rs
+- acceptance: a .master copied into the library folder appears in New Label from Master with no registration step
+
+## 2026-09-05 updater-failure-tests
+- finding: [tests/med] src/components/DesktopUpdater.tsx:142-145,203-211 — check() and downloadAndInstall() rejections untested
+- status: open
+- attempts: 0/3
+- id: updater-failure-tests
+- depends-on: none
+- read-path: src/components/DesktopUpdater.tsx
+- write-path: tests
+- acceptance: DOM tests assert the silent-log path and the "Could not install the update" reopen
+
+## 2026-09-05 legacy-oracle-deletion
+- finding: [YAGNI/med] tests/legacy/plan.ts:1 — 1,220-line pre-v3 layout oracle and 8 suites
+- status: parked(context)
+- attempts: 0/3
+- ruling: still the pixel-parity check for plan.ts; unparks when master-as-layers (2026-09-04 spec) replaces plan.ts
+
+## 2026-09-05 eslint-react-hooks
+- finding: [evidence/high] package.json — no ESLint; 12 eslint-disable comments unverified
+- status: open
+- attempts: 0/3
+- id: eslint-react-hooks
+- depends-on: none
+- read-path: package.json
+- write-path: package.json
+- write-path: .github/workflows/ci.yml
+- acceptance: `npm run lint` passes in CI with react-hooks and jsx-a11y enabled
+
+## 2026-09-05 vision-items
+- finding: [UX/low] five delight items, each under 30 minutes: Reveal in Finder after export; drop a .master onto the window to register it; Recent Masters submenu; greyed Export explains itself via one shared gate and a tooltip; non-destructive dismissable warning alert (top-ten #10)
+- status: open
+- attempts: 0/3
+- depends-on: native-desktop-files
