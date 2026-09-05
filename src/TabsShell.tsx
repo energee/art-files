@@ -4,23 +4,20 @@
 // The shell owns everything that outlives or spans documents: the tab list
 // (src/tabs.ts), OS file-open routing, the File → Open picker (an open must
 // be able to target a new tab), the dirty-close confirm flow, shared render
-// settings (adopted from and persisted to the presets library), the desktop
-// updater, and window title/close integration.
+// settings (persisted per operator — see settings.ts), the desktop updater,
+// and window title/close integration.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
-import {
-  DocumentEditor,
-  type DocumentMeta, type FileToOpen, type RenderSettings,
-} from "@/App";
+import { DocumentEditor, type DocumentMeta, type FileToOpen } from "@/App";
 import { LABEL_TYPES, isAbort, openPicker } from "@/filePickers";
 import {
   activateTab, addTab, closeTab, initialTabs, routeFileOpen, updateTabMeta,
   type TabsState,
 } from "@/tabs";
 import { LABEL_EXT } from "@/labelfile";
-import { DEFAULT_RENDER, mutatePresets, usePresets } from "@/presets";
+import { loadRenderSettings, saveRenderSettings, type RenderSettings } from "@/settings";
 import { DesktopUpdater } from "@/components/DesktopUpdater";
 import { Button } from "@/components/ui/button";
 import {
@@ -137,32 +134,14 @@ export default function TabsShell() {
   }, []);
 
   // Render settings (Document Settings knobs): shared across tabs — they
-  // describe the press's die and stock, not one label. Adopted from the
-  // presets library once loaded, then debounced back into it. Lifted here
-  // so per-editor copies can't diverge and stomp the shared layout globals
-  // (see App.tsx's RenderSettings note).
-  const { presets, loaded: presetsLoaded } = usePresets();
-  const [render, setRender] = useState<RenderSettings>(DEFAULT_RENDER);
-  const adopted = useRef(false);
-  useEffect(() => {
-    if (adopted.current || !presetsLoaded) return;
-    adopted.current = true;
-    setRender(presets.render);
-  }, [presetsLoaded, presets.render]);
-  // The pending debounced write, exposed so the desktop close paths can
-  // flush it — destroy() (and a native close) would otherwise land before
-  // the timer and silently revert a just-changed Document Settings knob.
-  const renderFlush = useRef<(() => Promise<unknown>) | null>(null);
-  useEffect(() => {
-    if (!adopted.current) return;
-    const write = () => {
-      renderFlush.current = null;
-      return mutatePresets((p) => ({ ...p, render }));
-    };
-    renderFlush.current = write;
-    const t = setTimeout(() => void write(), 500);
-    return () => clearTimeout(t);
-  }, [render]);
+  // describe the press's die and stock, not one label. Read from this
+  // operator's saved settings at boot and written straight back on every
+  // change: localStorage is synchronous and cheap, so there is no debounce
+  // and nothing for the window-close paths to flush. Lifted here so
+  // per-editor copies can't diverge and stomp the shared layout globals (see
+  // App.tsx's RenderSettings note).
+  const [render, setRender] = useState<RenderSettings>(loadRenderSettings);
+  useEffect(() => { saveRenderSettings(render); }, [render]);
 
   // ---- open routing ----
 
@@ -262,12 +241,7 @@ export default function TabsShell() {
         apply((s) => activateTab(s, next.id));
         setConfirmClose(next.id);
       } else {
-        // Flush any pending Document Settings write first: destroy() skips
-        // onCloseRequested and would land before the 500ms debounce.
-        void currentWindow().then(async (w) => {
-          await renderFlush.current?.();
-          void w.destroy();
-        });
+        void currentWindow().then((w) => void w.destroy());
       }
     }
   };
@@ -316,15 +290,7 @@ export default function TabsShell() {
     const stopping = currentWindow().then((w) =>
       w.onCloseRequested((event) => {
         const first = stateRef.current.tabs.find(unsaved);
-        if (!first) {
-          // Nothing unsaved — close proceeds, unless a debounced Document
-          // Settings write is pending: hold the close, flush, then destroy.
-          if (renderFlush.current) {
-            event.preventDefault();
-            void renderFlush.current().finally(() => void w.destroy());
-          }
-          return;
-        }
+        if (!first) return; // nothing unsaved — the close proceeds
         event.preventDefault();
         closingWindow.current = true;
         apply((s) => activateTab(s, first.id));

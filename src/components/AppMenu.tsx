@@ -60,10 +60,6 @@ export const APP_MENUS: SubmenuEntry[] = [
           { kind: "action", id: "export-psd-mask", text: "Export Mask PSD" },
         ],
       },
-      { kind: "separator", id: "file-presets" },
-      { kind: "action", id: "presets-view", text: "View Presets…" },
-      { kind: "action", id: "presets-import", text: "Import Presets…" },
-      { kind: "action", id: "presets-export", text: "Export Presets" },
     ],
   },
   {

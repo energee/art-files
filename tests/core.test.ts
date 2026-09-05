@@ -14,7 +14,7 @@ import {
   PREVIEW_RASTER_MAX_EDGE, PREVIEW_RASTER_MAX_SCALE,
   collabLeftFlow, PAGE, parseHexFill, PREVIEW_MAX_W, previewRasterScale,
 } from "../src/layout";
-import { addColor } from "../src/presets";
+import { addColor } from "../src/settings";
 
 describe("preview raster scale", () => {
   it("tracks zoom and display density up to the 600-DPI memory ceiling", () => {
@@ -28,7 +28,7 @@ describe("preview raster scale", () => {
   });
 });
 
-describe("color presets", () => {
+describe("color swatches", () => {
   it("appends a new hex, lowercased", () => {
     expect(addColor(["#111111"], "#B58B3C")).toEqual(["#111111", "#b58b3c"]);
   });

@@ -144,7 +144,7 @@
 }
 
 /* No native number spinners. Every numeric field here is a ScrubField, which
-   already offers drag, type, arrow keys and a presets chevron — the browser's
+   already offers drag, type, arrow keys and a chevron — the browser's
    stepper is a fifth affordance crowding the same box, and it collides with
    the chevron. Arrow-key stepping is unaffected. */
 input[type="number"] {

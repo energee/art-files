@@ -5,7 +5,7 @@
 // shipped id; the built-in Lolev fixture is used only as a last-resort
 // fallback when nothing on disk resolves, guaranteeing a fresh install with
 // an empty index still works. localStorage (per-operator app state, like the
-// view toggles), not presets.json: the index describes this machine's
+// view toggles and settings.ts): the index describes this machine's
 // filesystem.
 import { isTauri } from "@tauri-apps/api/core";
 import type { Master } from "@/model/types";

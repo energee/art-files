@@ -65,7 +65,7 @@ const cornerRadius = (r: number, w: number, h: number): React.CSSProperties => (
 });
 
 /** The die-cut radius in label-space points. The knob is a share of the
- *  label's short side (see presets.ts), and the label is the trimmed piece —
+ *  label's short side (see settings.ts), and the label is the trimmed piece —
  *  so it measures against ART, not the bleed-inclusive page, and matches the
  *  same computation the 3D die uses in canScene. */
 const dieRadius = (pct: number) => (pct / 100) * Math.min(ART.w, ART.h);

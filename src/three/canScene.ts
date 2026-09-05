@@ -10,7 +10,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RGBELoader } from "three/addons/loaders/RGBELoader.js";
 import type { LabelTextures } from "./labelTextures";
-import { DEFAULT_RENDER } from "@/presets";
+import { DEFAULT_RENDER } from "@/settings";
 import {
   ART, LABEL_HEIGHT_RATIO, LABEL_WRAP_RATIO, PAGE, PREVIEW_MAX_W, PREVIEW_OVERSAMPLE, TRIM_UV,
 } from "@/layout";
@@ -41,7 +41,7 @@ const FOUR_PACK_ZOOM = 2.1;
 const FOUR_PACK_TILT = Math.PI * 0.34;
 /** The Settings knobs' starting values, until CanView pushes the saved ones
  *  in. Read from DEFAULT_RENDER rather than restated here, so the scene, the
- *  inspector and presets.json cannot ship three different "defaults"; the
+ *  inspector and the saved settings cannot ship three different "defaults"; the
  *  /100 is the percent-to-ratio conversion this class works in.
  *
  *  The blur (edgeSoftnessRatio) is a fraction of mask width — it softens the

@@ -9,8 +9,8 @@ A change is **binary-impacting** when an installed Label Lab application must be
 rebuilt for a user to receive it. This includes changes to:
 
 - application code or bundled assets under `src/`, `public/`, or `src-tauri/`;
-- `index.html`, `presets.json`, build configuration, or runtime dependencies and
-  their lockfiles; and
+- `index.html`, build configuration, or runtime dependencies and their
+  lockfiles; and
 - updater configuration or another input that is compiled or packaged into the app.
 
 Documentation, tests, agent memory, CI-only configuration, and release notes do not

@@ -1,7 +1,7 @@
 // MasterPicker.tsx — the head of the Design sidebar, above EditingTarget:
 // the current master's name, a dropdown listing every master this machine
 // knows (the library index — masters.ts), "Open Master…", and "Duplicate as
-// new master…" (spec: the preset bar becomes the master picker). Picking
+// new master…" (spec: the master picker is where a saved style is chosen). Picking
 // another library master previews the rebind (model/rebind.ts) — the counts
 // of what would move to the bench — before committing: the one confirmation
 // the spec's no-dialogs rule permits, because a rebind is not a single

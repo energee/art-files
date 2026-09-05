@@ -22,7 +22,7 @@ function FieldRow({ field, cfg, onValue, onImageFile, onImageClear, onImageError
   onImageClear: (field: FieldDecl) => void;
   /** Finding #17: onImageFile can reject (a corrupt raster fails
    *  createImageBitmap) — surfaced through App's existing header-error
-   *  channel, same as every other asset path (onTexture/onMask/importPresets). */
+   *  channel, same as every other asset path (onTexture/onMask). */
   onImageError: (err: unknown) => void;
   imageFileOf?: (assetId: string) => { name: string; previewUrl: string } | undefined;
 }) {

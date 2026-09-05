@@ -18,7 +18,6 @@ const BINARY_FILES = new Set([
   "package.json",
   "package-lock.json",
   "pnpm-lock.yaml",
-  "presets.json",
   "scripts/configure-updater.mjs",
   "tsconfig.json",
   "vite.config.ts",

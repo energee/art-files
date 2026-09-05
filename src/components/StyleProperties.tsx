@@ -39,12 +39,11 @@ import { DescriptionEditor } from "./DescriptionEditor";
 import { FileDrop } from "./FileDrop";
 import { MetallicToggle } from "./MetallicToggle";
 import { ThemeSwitch } from "./ThemeSwitch";
-import { BarcodePresetBar, BeerStylePresetBar } from "./PresetBar";
 import { machineName, qrUrl } from "@/qr";
 import {
   DEFAULT_STROKE_PX, LABEL_SHORT_IN, LABEL_WIDE_IN,
 } from "@/layout";
-import { BLEED_DRAG_STEP_IN, BLEED_STEP_IN, displayBleedIn } from "@/presets";
+import { BLEED_DRAG_STEP_IN, BLEED_STEP_IN, displayBleedIn } from "@/settings";
 import { decimalsOf } from "@/numeric";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -252,9 +251,8 @@ export function MakeFillable(props: {
  *  Both directions round to the field's precision. The inches are rounded
  *  because a percentage converted to inches is a long float
  *  (0.12816666666666668) that says nothing at a 0.005 step; the percentage is
- *  rounded because it is what lands in presets.json, a file kept in git
- *  precisely so it can be read and diffed — one drag should not write
- *  82.06785137318255 into it. */
+ *  rounded because it is what gets stored (see settings.ts) — one drag should
+ *  not persist 82.06785137318255. */
 function InchField(props: {
   id: string; label: string;
   /** What the stored percentage is a percentage OF, in inches. */
@@ -284,9 +282,9 @@ function InchField(props: {
 // from Fill mode's field list, so the inspector keeps only their styling.)
 
 /** Document-presentation knobs the Settings layer edits — 3D view options
- *  that live in App and persist to presets.json, not in the saved label
- *  config. Each is a percentage of a different thing (see RenderSettings for
- *  the list) and each is shown in inches by an InchField. */
+ *  that live in the shell and persist per operator (settings.ts), not in the
+ *  saved label config. Each is a percentage of a different thing (see
+ *  RenderSettings for the list) and each is shown in inches by an InchField. */
 export interface DocSettings {
   cornerRadius: number;
   onCornerRadius: (v: number) => void;
@@ -708,24 +706,13 @@ function Content(props: {
       // when ELEMENTS marks hasBold, the same guarantee the Style section's
       // cast relies on.
       return (
-        <div className="space-y-1">
-          <Input
-            id={machineName(elementById(id).label)}
-            className="h-6 w-full text-xs"
-            value={(elementById(id).style(cfg) as StyledLine).text}
-            onChange={(e) =>
-              update((c) => { (elementById(id).style(c) as StyledLine).text = e.target.value; })}
-          />
-          {/* Beer styles repeat across labels, so the Style line — and only
-              it — carries a preset library (see presets.json). */}
-          {id === "styleLine" && (
-            <BeerStylePresetBar
-              current={(elementById(id).style(cfg) as StyledLine).text}
-              onApply={(text) =>
-                update((c) => { (elementById(id).style(c) as StyledLine).text = text; })}
-            />
-          )}
-        </div>
+        <Input
+          id={machineName(elementById(id).label)}
+          className="h-6 w-full text-xs"
+          value={(elementById(id).style(cfg) as StyledLine).text}
+          onChange={(e) =>
+            update((c) => { (elementById(id).style(c) as StyledLine).text = e.target.value; })}
+        />
       );
     case "abv":
       // Free text, not a number input: the stored value is the bare figure
@@ -751,12 +738,6 @@ function Content(props: {
             onChange={(e) => update((c) => { c.upc = e.target.value.trim(); })}
           />
           {errors.upc && <p className="text-xs text-destructive">{errors.upc}</p>}
-          {/* Barcodes get reused across beers, so they live in presets.json
-              rather than being retyped from a label proof each time. */}
-          <BarcodePresetBar
-            upc={cfg.upc}
-            onApply={(upc) => update((c) => { c.upc = upc; })}
-          />
         </div>
       );
     case "qr":
@@ -817,7 +798,7 @@ function Content(props: {
       // how much of the can it covers. The print PDFs are untouched — the
       // physical label is cut and sized at the press, not rendered.
       // Every knob reads in inches (see InchField); each stays a percentage
-      // in presets.json and in canScene, which is what those consume.
+      // in storage and in canScene, which is what those consume.
       return (
         <div className="space-y-2">
           {/* Die-cut corner radius, off the label's short side. */}
@@ -874,8 +855,8 @@ function Content(props: {
             onChange={settings.onBleedIn}
           />
           {/* An app preference, not a document one — it lives here because
-              Settings is the only preferences surface the app has, and it is
-              deliberately not saved with the presets. */}
+              Settings is the only preferences surface the app has; it is
+              stored on its own (see theme.ts), not with the render knobs. */}
           <div className="flex items-center justify-between gap-2">
             <Label className="text-xs text-muted-foreground">Appearance</Label>
             <ThemeSwitch />

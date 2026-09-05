@@ -195,8 +195,9 @@ reason sits in the bar next to the menus. Press <kbd>⌘K</kbd> /
 <kbd>Ctrl+K</kbd> for a command palette covering the same actions.
 
 A tab strip under the menubar holds one tab per open project — each with its
-own undo history, unsaved-changes state, and save target, while presets and
-the Document Settings knobs are shared. Background tabs keep their state and
+own undo history, unsaved-changes state, and save target, while the Document
+Settings knobs and saved color swatches are shared (and persist per operator
+in the browser's storage). Background tabs keep their state and
 assets in memory but drop their rendered previews; switching back repaints
 through the normal debounced build. Closing the window with unsaved tabs
 walks each one through the same Save / Discard / Cancel prompt (the browser

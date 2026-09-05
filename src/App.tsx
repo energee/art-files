@@ -69,10 +69,7 @@ import { EditingTarget, TargetFields } from "@/components/EditingTarget";
 import { MasterPicker } from "@/components/MasterPicker";
 import { FieldList } from "@/components/FieldList";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
-import {
-  commitBleedIn, loadPresets, mutatePresets, normalizePresets, usePresets,
-  type Presets,
-} from "@/presets";
+import { commitBleedIn, type RenderSettings } from "@/settings";
 import { isElementId, type HideableLayerId, type LayerId } from "@/components/layers";
 import { panelRows } from "@/model/panel";
 import {
@@ -80,7 +77,6 @@ import {
 } from "@/selection";
 import { CommandMenu, type Command } from "@/components/CommandMenu";
 import { AppMenu } from "@/components/AppMenu";
-import { PresetsDialog } from "@/components/PresetsDialog";
 import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
 import { Rulers } from "@/components/Rulers";
 import { CanView, type CanViewHandle } from "@/components/CanView";
@@ -163,9 +159,8 @@ function HeaderAlert({ children }: { children: React.ReactNode }) {
 }
 
 /** Where the view toggles (rulers/guides/bleed lines) persist — localStorage,
- *  deliberately NOT presets.json: per-operator UI state in the git-tracked
- *  library dirtied the repo on every View-menu click. Defaults match the
- *  historical boot state (rulers/guides on, bleed lines off). */
+ *  like every other per-operator setting (settings.ts, masters.ts). Defaults
+ *  match the historical boot state (rulers/guides on, bleed lines off). */
 const VIEW_KEY = "lolev-view";
 function loadViewToggles(): { showRulers: boolean; showGuides: boolean; showBleed: boolean } {
   const defaults = { showRulers: true, showGuides: true, showBleed: false };
@@ -389,12 +384,6 @@ export type DocumentMeta = {
   filePath: string | null;
 };
 
-/** The Document Settings knobs (DPI/bleed/corner/edge) — shell-owned:
- *  they describe the press's die and stock, not one label, and per-editor
- *  copies would let a hidden tab stomp the shared layout globals with
- *  stale values during its renders. */
-export type RenderSettings = Presets["render"];
-
 type DocumentEditorProps = {
   active: boolean;
   fileToOpen: FileToOpen | null;
@@ -407,6 +396,10 @@ type DocumentEditorProps = {
    *  resolves false when the user cancels the save dialog (the shell's
    *  close-tab flow keeps the tab open on false). */
   saveSlot: { current: (() => Promise<boolean>) | null };
+  /** The Document Settings knobs (DPI/bleed/corner/edge) — shell-owned:
+   *  they describe the press's die and stock, not one label, and per-editor
+   *  copies would let a hidden tab stomp the shared layout globals with
+   *  stale values during its renders. */
   render: RenderSettings;
   onRenderChange: (render: RenderSettings) => void;
   onOpenProject: () => void;
@@ -713,32 +706,25 @@ export const DocumentEditor = memo(function DocumentEditor({
     } else canView.current?.setZoom(z);
   };
   // Document Settings layer's knobs: 3D-view presentation only (die-cut
-  // corner radius, label height on the can, foil-edge blur). The print PDFs
-  // and saved configs never see them; they persist in presets.json, since
-  // they describe the press's die and stock rather than one label.
-  // Owned by TabsShell (see RenderSettings) and debounced into the shared
-  // library there; this editor only reads the prop and calls onRenderChange.
-  const { presets, error: presetsError } = usePresets();
-  // Published to layout.ts during render rather than from an effect: the
-  // toolbar's px readout and the rulers read OUTPUT_DPI while rendering, so an
-  // effect would leave them a frame behind the knob. Idempotent — it writes
-  // three numbers and reads nothing.
-  // Published during render, not from an effect: the rulers and the toolbar's
-  // size readout read PAGE and OUTPUT_DPI while rendering, so an effect would
-  // leave them a frame behind the knob. Both are idempotent scalar writes.
+  // corner radius, foil-edge blur) plus DPI and bleed. The print PDFs and
+  // saved configs never see them; they persist per operator (settings.ts),
+  // since they describe the press's die and stock rather than one label.
+  // Owned by TabsShell (see RenderSettings) and persisted there; this editor
+  // only reads the prop and calls onRenderChange.
   //
-  // `render` is a prop: TabsShell owns adoption from and persistence to the
-  // presets library. ACTIVE editor only: a hidden editor's memo bail freezes
-  // its `render` prop (makeHiddenPropsEqual skips it while hidden), so a
-  // hidden render — e.g. from a presets-store update — would stomp the
-  // shared globals with stale DPI/bleed. It rewrites them on activation.
+  // Published to layout.ts during render, not from an effect: the rulers and
+  // the toolbar's size readout read PAGE and OUTPUT_DPI while rendering, so an
+  // effect would leave them a frame behind the knob. Both are idempotent
+  // scalar writes.
+  //
+  // ACTIVE editor only: a hidden editor's memo bail freezes its `render` prop
+  // (makeHiddenPropsEqual skips it while hidden), so a hidden render would
+  // stomp the shared globals with stale DPI/bleed. It rewrites them on
+  // activation.
   if (active) {
     setLayoutBleed(render.bleedIn);
     setOutputDpi(render.dpi);
   }
-  useEffect(() => {
-    if (presetsError) setLoadError(`presets save failed: ${presetsError}`);
-  }, [presetsError]);
 
   // The app-wide context-menu blocker lives in TabsShell now — one window
   // listener, not one per tab.
@@ -845,9 +831,6 @@ export const DocumentEditor = memo(function DocumentEditor({
       else previewRef.current?.showMask();
     });
   };
-  const presetsInput = useRef<HTMLInputElement>(null);
-  // The read-only "View presets" dialog (File menu / ⌘K).
-  const [presetsOpen, setPresetsOpen] = useState(false);
   const previewRef = useRef<PreviewCompareHandle>(null);
   // Trim guide over the 2D preview at the art box, wherever the bleed knob
   // currently puts it (ART.x/ART.y follow it). View-only — this toggle draws
@@ -857,8 +840,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Rulers and guides are view state, like hidden layer eyes: they assist the
   // operator but are not label content, so none enters config history/exports.
   // Rulers, guides, and bleed lines DO persist across sessions — in
-  // localStorage (per-operator UI state), NOT presets.json: writing them to
-  // the git-tracked library dirtied the repo on every View-menu click.
+  // localStorage, per operator (see loadViewToggles).
   const [showRulers, setShowRulers] = useState(() => loadViewToggles().showRulers);
   const [rulerUnit, setRulerUnit] = useState<RulerUnit>("in");
   const [showGuides, setShowGuides] = useState(() => loadViewToggles().showGuides);
@@ -1313,7 +1295,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // commitBleedIn, not a plain write: the field can only show 0.063 for the
     // shipped 0.063333..., so a commit that just echoes the display must leave
     // the stored value alone. Skipping onRenderChange on an echo is
-    // load-bearing — no re-render, no preview rebuild, no presets.json write.
+    // load-bearing — no re-render, no preview rebuild, no settings write.
     onBleedIn: (v) => {
       const bleedIn = commitBleedIn(render.bleedIn, v);
       if (bleedIn !== render.bleedIn) onRenderChange({ ...render, bleedIn });
@@ -1665,9 +1647,9 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  renders anything directly. */
   const masterFileHandle = useRef<FileSystemFileHandle | null>(null);
   const masterFilePath = useRef<string | null>(null);
-  // Open Master's hidden-input fallback — same role as presetsInput/
-  // customImageInput below: a picker-less browser (or, today, Tauri — see
-  // openMasterPicker) clicks this instead.
+  // Open Master's hidden-input fallback — same role as customImageInput
+  // below: a picker-less browser (or, today, Tauri — see openMasterPicker)
+  // clicks this instead.
   const masterInput = useRef<HTMLInputElement>(null);
   /** Whether the document differs from the last saved/opened project —
    *  File → Save disables while clean. Marked at three sites: `update` (all
@@ -2353,34 +2335,6 @@ export const DocumentEditor = memo(function DocumentEditor({
     }
   }
 
-  /** Hand the whole preset library to someone who doesn't have the repo. The
-   *  file itself is the record (see presets.ts); this is a copy of it. */
-  async function exportPresets() {
-    try {
-      const body = JSON.stringify(await loadPresets(), null, 2);
-      const url = blobUrl(strToU8(body), "application/json");
-      download(url, "presets.json");
-      URL.revokeObjectURL(url);
-      setLoadError("");
-    } catch (err) {
-      setLoadError(String(err));
-    }
-  }
-
-  /** Replace the library wholesale from a file. Parsed before it is sent so a
-   *  wrong file can't overwrite good presets with junk. */
-  async function importPresets(f: File) {
-    try {
-      const raw = JSON.parse(await f.text()) as Partial<Presets>;
-      // Through the store, not savePresets: an import replaces the library,
-      // and every panel showing it has to follow.
-      await mutatePresets(() => normalizePresets(raw));
-      setLoadError("");
-    } catch (err) {
-      setLoadError(`presets import failed: ${String(err)}`);
-    }
-  }
-
   /** Every command the app exposes, once. The palette and AppMenu read this
    *  list, while the key listener dispatches off `key`, so an action cannot
    *  be enabled in one surface while disabled in another. AppMenu owns one
@@ -2428,9 +2382,6 @@ export const DocumentEditor = memo(function DocumentEditor({
     // any future command that changes the config outside `update`.
     { id: "undo", label: "Undo", shortcut: "⌘Z", disabled: !canUndo, run: mutating(undo) },
     { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: !canRedo, run: mutating(redo) },
-    { id: "presets-view", label: "View presets", run: () => setPresetsOpen(true) },
-    { id: "presets-export", label: "Export presets", run: () => void exportPresets() },
-    { id: "presets-import", label: "Import presets", run: () => presetsInput.current?.click() },
     { id: "view-standard", label: "Preview: Standard", key: "1", run: () => show2d("art") },
     { id: "view-mask", label: "Preview: Mask", key: "2", run: () => show2d("mask") },
     { id: "view-rendered", label: "Preview: Rendered", key: "3", run: () => setViewMode("flat") },
@@ -2537,17 +2488,15 @@ export const DocumentEditor = memo(function DocumentEditor({
               menu item can't explain its own disabled state, so the reason
               sits in the bar itself. */}
           {blocked && <HeaderAlert>{blockedWhy}</HeaderAlert>}
-          {/* Preset import/export failures: the bar is the one chrome that
-              always shows regardless of selection. */}
+          {/* Open/asset failures: the bar is the one chrome that always
+              shows regardless of selection. */}
           {loadError && <HeaderAlert>{loadError}</HeaderAlert>}
           {/* Build failures sit here too rather than in their own strip above
               the preview — one place for chrome-level errors, and the strip
               was 20px reserved for a row that is empty almost always. */}
           {(buildError || renderError) && <HeaderAlert>{buildError || renderError}</HeaderAlert>}
-          <input ref={presetsInput} type="file" accept="application/json" hidden
-            onChange={(e) => e.target.files?.[0] && void importPresets(e.target.files[0])} />
           {/* "Add layer -> Image"'s file-pick-first step (see addCustomLayer):
-              a plain hidden input, same pattern as presetsInput above — no
+              a plain hidden input, same pattern as masterInput below — no
               drop zone needed since there is no layer yet to drop onto.
               Cleared on every change so re-picking the same filename still
               fires (native <input> dedupes identical values otherwise). */}
@@ -2895,8 +2844,6 @@ export const DocumentEditor = memo(function DocumentEditor({
           onTexture={(f) => void onTexture(f)}
           onMask={(f) => void onMask(f)} />}
         {active && <CommandMenu actions={commands} />}
-        {/* Same portal reasoning as the Sheet above. */}
-        <PresetsDialog open={active && presetsOpen} onOpenChange={setPresetsOpen} presets={presets} />
       </div>
         </SidebarInset>
       </SidebarProvider>

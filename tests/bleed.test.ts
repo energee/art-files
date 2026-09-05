@@ -19,7 +19,7 @@ import { buildPsd } from "../src/psd/build";
 import { sizeLabel } from "../src/rulers";
 import {
   BLEED_STEP_IN, DEFAULT_RENDER, commitBleedIn, displayBleedIn,
-} from "../src/presets";
+} from "../src/settings";
 import { assets, contentStreamText, flatLayers, measureBW, psdAssets } from "./fixtures";
 
 /** A press-standard 1/8" bleed — nearly double the shipped one, so anything
@@ -47,7 +47,7 @@ describe("bleed — the shipped default", () => {
     // rulers.test.ts; the raw values above are the stricter statement anyway.
   });
 
-  it("ships the preset at a round 0.0635 even though it measured 4.56pt", () => {
+  it("ships the default at a round 0.0635 even though it measured 4.56pt", () => {
     // Two different numbers, deliberately. The positions were measured against
     // 4.56pt = 0.063333...in, which is what BLEED_SHIFT is computed from...
     expect(L.SHIPPED_BLEED_IN * 72).toBe(4.56);
@@ -62,7 +62,7 @@ describe("bleed — the shipped default", () => {
     expect(sizeLabel(L.PAGE.w, L.PAGE.h, "in")).toBe("8.127 × 5.127 in");
   });
 
-  it("moves nothing on the die by shipping that rounded preset", () => {
+  it("moves nothing on the die by shipping that rounded default", () => {
     // The safety argument for the line above, made by measurement rather than
     // assertion: the shift is applied uniformly at every output boundary, so
     // rounding the bleed grows the PAGE and leaves every element exactly where
@@ -102,7 +102,7 @@ describe("bleed — the shipped default", () => {
     // field can express echoes back unchanged anyway, so nothing is stuck.
     expect(commitBleedIn(0.125, 0.125)).toBe(0.125);
 
-    // The shipped preset must survive being TYPED, not just displayed. At a
+    // The shipped default must survive being TYPED, not just displayed. At a
     // 0.005 step ScrubField snapped every commit to three decimals, so 0.0635
     // became 0.064 the moment the field was touched — the page grew 0.072pt
     // and the field showed a bleed nobody chose. BLEED_STEP_IN is what stops
@@ -119,9 +119,9 @@ describe("bleed — the shipped default", () => {
     expect(commitBleedIn(0.0635, 0.0685)).toBe(0.0685);
   });
 
-  it("survives a JSON round-trip, since it is stored in presets.json", () => {
+  it("survives a JSON round-trip, since it is stored as JSON per operator", () => {
     // The default is a derived value (4.56/72), not a typed one, so it has to
-    // come back out of the presets file as the same double or the shipped
+    // come back out of storage as the same double or the shipped
     // label stops being byte-identical the first time settings are saved.
     const stored = JSON.parse(JSON.stringify({ bleedIn: L.SHIPPED_BLEED_IN })).bleedIn;
     expect(stored).toBe(L.SHIPPED_BLEED_IN);
