@@ -183,3 +183,34 @@ it("a manual check during a download shows the download, and Restart Now reports
     vi.useRealTimers();
   }
 });
+
+it("re-checks quietly when the window regains focus, at most once per throttle window", async () => {
+  vi.useFakeTimers();
+  mocks.check.mockClear();
+  mocks.invoke.mockResolvedValue(true);
+  mocks.check.mockResolvedValue(null);
+  const container = document.createElement("div");
+  const bar = document.createElement("div");
+  document.body.append(container, bar);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(mocks.check).toHaveBeenCalledTimes(1);
+    // Focus right after launch is throttled.
+    await act(async () => { window.dispatchEvent(new Event("focus")); });
+    expect(mocks.check).toHaveBeenCalledTimes(1);
+    // Focus after the throttle window runs one quiet check with no dialog.
+    await act(async () => { await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000); });
+    await act(async () => { window.dispatchEvent(new Event("focus")); });
+    expect(mocks.check).toHaveBeenCalledTimes(2);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    // A second focus inside the window stays quiet.
+    await act(async () => { window.dispatchEvent(new Event("focus")); });
+    expect(mocks.check).toHaveBeenCalledTimes(2);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove(); bar.remove();
+    vi.useRealTimers();
+  }
+});

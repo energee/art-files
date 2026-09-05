@@ -12,6 +12,10 @@ import {
 } from "@/components/ui/dialog";
 
 const AUTO_CHECK_DELAY_MS = 2_000;
+// Quiet re-checks run when the window regains focus, but no more often than this.
+// ponytail: focus-driven instead of a timer — zero network while idle; add a daily
+// interval only if a never-blurred window turns out to miss releases.
+const RECHECK_MIN_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 type CheckResult =
   | { kind: "available"; update: Update }
@@ -155,13 +159,23 @@ export function DesktopUpdater(props: {
   }, [dropUpdate]);
 
   // A quiet launch check: available updates appear in the status bar. The short delay
-  // keeps updater network work out of the editor's first-paint path.
+  // keeps updater network work out of the editor's first-paint path. The same quiet
+  // check repeats when the window regains focus (throttled), so a long-running app
+  // still notices a release; an already-fetched update is kept, not re-fetched.
   useEffect(() => {
     if (!desktop) return;
-    const timer = window.setTimeout(() => {
+    let last = 0;
+    const quietCheck = () => {
+      if (updateRef.current || Date.now() - last < RECHECK_MIN_INTERVAL_MS) return;
+      last = Date.now();
       void performCheck().then((result) => present(result, false));
-    }, AUTO_CHECK_DELAY_MS);
-    return () => window.clearTimeout(timer);
+    };
+    const timer = window.setTimeout(quietCheck, AUTO_CHECK_DELAY_MS);
+    window.addEventListener("focus", quietCheck);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("focus", quietCheck);
+    };
   }, [desktop, performCheck, present]);
 
   // macOS Label Lab menu → Check for Updates… requests a visible result even
