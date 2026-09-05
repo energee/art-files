@@ -1,0 +1,365 @@
+// src/model/edit.ts — the pure editing operations on the v3 model (spec:
+// docs/superpowers/specs/2026-09-04-master-as-layers-design.md, "UI" and
+// "Removed"). Every function returns a new object and never mutates its
+// input, so App can keep undo snapshots by reference.
+//
+// The one routing rule: WHERE AN EDIT LANDS FOLLOWS THE LAYER. A layer a
+// variant's diff ADDS (an id master.layers lacks) is edited in that diff; a
+// master layer is edited in master.layers. There is no editing-target
+// selector. A variant overriding a MASTER layer (Collab moving the logo) is
+// the one explicit case, `setLayerIn`. Bindings (`y: { below, gap }`) are
+// validated through parseMaster so Design mode can never save a master the
+// loader would reject.
+import type {
+  BarcodeLayer, ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master, QrLayer,
+  RelativeY, TextLayer, Variant,
+} from "./layers";
+import { parseMaster } from "./layers";
+import { deepMerge, type DeepPartial } from "./merge";
+import { positionFromDrag, type GuideLines } from "./position";
+import { CENTER_X, GOLD } from "../layout";
+import { KEYLINE } from "../defaults";
+import { DEFAULT_STROKE_LAYER } from "../strokes";
+
+type LayerPatch = DeepPartial<Layer>;
+/** A variant's diff entry: a whole layer (variant-added) or a partial
+ *  override of a master layer. Same static shape either way. */
+type Entry = DeepPartial<Layer>;
+
+const isPlain = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+const isBound = (y: unknown): y is RelativeY => isPlain(y) && typeof y.below === "string";
+
+function variantOf(master: Master, id: string): Variant {
+  const v = master.variants.find((x) => x.id === id);
+  if (!v) throw new Error(`Unknown variant "${id}"`);
+  return v;
+}
+
+const withVariant = (master: Master, id: string, fn: (v: Variant) => Variant): Master =>
+  ({ ...master, variants: master.variants.map((v) => (v.id === id ? fn(v) : v)) });
+
+const withEntries = (v: Variant, layers: Record<string, Entry>): Variant => ({ ...v, layers });
+
+/** Drops `key` from a record without touching the original. */
+const without = <T,>(o: Record<string, T>, key: string): Record<string, T> =>
+  Object.fromEntries(Object.entries(o).filter(([k]) => k !== key));
+
+// --- Ids and defaults -------------------------------------------------------
+
+export function mintLayerId(kind: LayerKind, taken: Set<string>): string {
+  for (;;) {
+    const hex = Math.floor(Math.random() * 0x1000000).toString(16).padStart(6, "0");
+    const id = `${kind}-${hex}`;
+    if (!taken.has(id)) return id;
+  }
+}
+
+const GOLD_METAL = { fill: GOLD, layer: "metallic" } as const;
+const KEYLINED = { ...GOLD_METAL, ...KEYLINE } as const;
+
+/** A sensible starting layer per kind, dropped at the center guide 100pt
+ *  down. Styles mirror lolevLayers' defaults so a new layer looks like it
+ *  belongs. */
+function defaultLayer(kind: LayerKind, id: string): Layer {
+  const base = { id, enabled: true, x: CENTER_X, anchor: "center" as const, y: 100 };
+  switch (kind) {
+    case "text": {
+      const l: TextLayer = { ...base, kind, name: "Text", size: 12, align: "left",
+        lines: [{ text: "", ...GOLD_METAL }], style: KEYLINED };
+      return l;
+    }
+    case "image": {
+      const l: ImageLayer = { ...base, kind, name: "Image", asset: "", w: 60,
+        style: { ...GOLD_METAL, strokeLayer: DEFAULT_STROKE_LAYER } };
+      return l;
+    }
+    case "barcode": {
+      const l: BarcodeLayer = { ...base, kind, name: "Barcode", symbology: "upc-a", value: "",
+        moduleW: 1, h: 15, style: KEYLINED };
+      return l;
+    }
+    case "qr": {
+      const l: QrLayer = { ...base, kind, name: "QR", value: "", size: 40, qrStyle: "square",
+        style: KEYLINED };
+      return l;
+    }
+  }
+}
+
+function allIds(master: Master): Set<string> {
+  const ids = new Set(master.layers.map((l) => l.id));
+  for (const v of master.variants) for (const k of Object.keys(v.layers)) ids.add(k);
+  return ids;
+}
+
+// --- Layer lifecycle --------------------------------------------------------
+
+/** Adds a default layer of `kind`. With `variant`, the complete layer goes
+ *  into that variant's diff (it exists only while the variant is on);
+ *  otherwise it joins master.layers at the end, or right after `after`. */
+export function addLayer(
+  master: Master, kind: LayerKind, opts: { variant?: string; after?: string } = {},
+): { master: Master; id: string } {
+  const id = mintLayerId(kind, allIds(master));
+  const layer = defaultLayer(kind, id);
+  if (opts.variant !== undefined) {
+    variantOf(master, opts.variant);
+    return { id, master: withVariant(master, opts.variant, (v) => withEntries(v, { ...v.layers, [id]: layer })) };
+  }
+  const at = opts.after === undefined ? -1 : master.layers.findIndex((l) => l.id === opts.after);
+  const layers = [...master.layers];
+  layers.splice(at === -1 ? layers.length : at + 1, 0, layer);
+  return { id, master: { ...master, layers } };
+}
+
+/** Which record owns the layer: a variant if its diff ADDS the id (the
+ *  master lacks it), else the master. Throws for an id nobody has. */
+export function whereLayerLives(master: Master, id: string): "master" | { variant: string } {
+  if (master.layers.some((l) => l.id === id)) return "master";
+  const v = master.variants.find((x) => id in x.layers);
+  if (!v) throw new Error(`Unknown layer "${id}"`);
+  return { variant: v.id };
+}
+
+/** Rewrites the layer's own record — master.layers entry or the adding
+ *  variant's diff entry — through `fn`. The one place the routing rule is
+ *  spelled out. */
+function withLayer(master: Master, id: string, fn: (l: Entry) => Entry): Master {
+  const where = whereLayerLives(master, id);
+  if (where === "master") {
+    return { ...master, layers: master.layers.map((l) => (l.id === id ? (fn(l) as Layer) : l)) };
+  }
+  return withVariant(master, where.variant, (v) =>
+    withEntries(v, { ...v.layers, [id]: fn(v.layers[id]) }));
+}
+
+/** Rebinds every `below: id` reference in a list of records to `y`. */
+const repoint = <T extends { y?: unknown }>(l: T, id: string, y: Layer["y"]): T =>
+  isBound(l.y) && l.y.below === id ? { ...l, y: structuredClone(y) } : l;
+
+/** Removes the layer from wherever it lives, strips every variant's entry
+ *  for it, and re-points any layer bound below it onto the removed layer's
+ *  own `y` — the layer beneath takes the vacated slot — so no binding
+ *  dangles. */
+export function removeLayer(master: Master, id: string): Master {
+  const where = whereLayerLives(master, id);
+  const removed = where === "master"
+    ? master.layers.find((l) => l.id === id)!
+    : variantOf(master, where.variant).layers[id];
+  const y = removed.y as Layer["y"];
+  const layers = master.layers.filter((l) => l.id !== id).map((l) => repoint(l, id, y));
+  const variants = master.variants.map((v) => withEntries(v,
+    Object.fromEntries(Object.entries(without(v.layers, id)).map(([k, e]) => [k, repoint(e, id, y)]))));
+  return { ...master, layers, variants };
+}
+
+/** Moves the layer one step earlier (-1) or later (+1) in draw order: within
+ *  master.layers, or within the adding variant's added-layer key order
+ *  (override entries in the same diff are skipped over). Returns `master`
+ *  itself when the move runs off either end. */
+export function moveLayer(master: Master, id: string, delta: -1 | 1): Master {
+  const where = whereLayerLives(master, id);
+  if (where === "master") {
+    const at = master.layers.findIndex((l) => l.id === id);
+    const to = at + delta;
+    if (to < 0 || to >= master.layers.length) return master;
+    const layers = [...master.layers];
+    [layers[at], layers[to]] = [layers[to], layers[at]];
+    return { ...master, layers };
+  }
+  const v = variantOf(master, where.variant);
+  const masterIds = new Set(master.layers.map((l) => l.id));
+  const keys = Object.keys(v.layers);
+  const added = keys.filter((k) => !masterIds.has(k));
+  const swapWith = added[added.indexOf(id) + delta];
+  if (swapWith === undefined) return master;
+  const order = keys.map((k) => (k === id ? swapWith : k === swapWith ? id : k));
+  return withVariant(master, v.id, (x) =>
+    withEntries(x, Object.fromEntries(order.map((k) => [k, x.layers[k]]))));
+}
+
+// --- Content, policy, position ---------------------------------------------
+
+/** THE write path for Design edits: deep-merges `patch` into the layer's own
+ *  record (see withLayer). enabled/locked/fillable/name, position, style and
+ *  content all come through here. A `y` patch replaces a number with a
+ *  binding or back; a partial `{ y: { gap } }` keeps the binding's `below`. */
+export function setLayer(master: Master, id: string, patch: LayerPatch): Master {
+  return withLayer(master, id, (l) => deepMerge(l, patch as DeepPartial<Entry>));
+}
+
+/** A variant's override of a MASTER layer (Collab moving the logo). The
+ *  layer must be one the master has, or one this variant already carries. */
+export function setLayerIn(master: Master, variant: string, id: string, patch: LayerPatch): Master {
+  const v = variantOf(master, variant);
+  if (!master.layers.some((l) => l.id === id) && !(id in v.layers))
+    throw new Error(`Layer "${id}" is not a master layer; setLayer edits a variant-added layer in place`);
+  return withVariant(master, variant, (x) =>
+    withEntries(x, { ...x.layers, [id]: deepMerge(x.layers[id] ?? {}, patch as DeepPartial<Entry>) }));
+}
+
+/** Deletes one dot-path in place, pruning any object left empty above it.
+ *  No-op when the path doesn't resolve. */
+function deletePath(obj: Record<string, unknown>, path: string): void {
+  const keys = path.split(".");
+  const chain: Record<string, unknown>[] = [obj];
+  for (let i = 0; i < keys.length - 1; i++) {
+    const at = chain[i][keys[i]];
+    if (!isPlain(at)) return;
+    chain.push(at);
+  }
+  delete chain[chain.length - 1][keys[keys.length - 1]];
+  for (let i = chain.length - 1; i > 0; i--) {
+    if (Object.keys(chain[i]).length === 0) delete chain[i - 1][keys[i - 1]];
+  }
+}
+
+/** `entries` minus one override: the whole entry for `id`, or one dotted
+ *  path inside it (the entry goes too once it is empty). */
+function clearEntry(entries: Record<string, Entry>, id: string, path?: string): Record<string, Entry> {
+  if (path === undefined || !(id in entries)) return without(entries, id);
+  const entry = structuredClone(entries[id]) as Record<string, unknown>;
+  deletePath(entry, path);
+  return Object.keys(entry).length === 0 ? without(entries, id) : { ...entries, [id]: entry as Entry };
+}
+
+/** Removes a variant's override of a master layer (whole entry, or one
+ *  dotted path within it). Refuses a layer the variant ADDED — that is a
+ *  whole layer, not an override, and removeLayer's job. */
+export function clearOverride(master: Master, variant: string, id: string, path?: string): Master {
+  variantOf(master, variant);
+  if (!master.layers.some((l) => l.id === id))
+    throw new Error(`Layer "${id}" is added by variant "${variant}", not overridden; use removeLayer`);
+  return withVariant(master, variant, (v) => withEntries(v, clearEntry(v.layers, id, path)));
+}
+
+/** Flattens to dotted leaf paths; arrays count as leaves (a `lines` override
+ *  is one edit, not one per run). */
+function leafPaths(obj: unknown, prefix: string, out: Set<string>): void {
+  if (!isPlain(obj)) { if (prefix) out.add(prefix); return; }
+  for (const k of Object.keys(obj)) leafPaths(obj[k], prefix ? `${prefix}.${k}` : k, out);
+}
+
+/** Dotted leaf paths the variant overrides on a master layer — the
+ *  inspector's override badge. Empty for a layer the variant added (it IS
+ *  the layer, it overrides nothing). */
+export function overriddenPaths(master: Master, variant: string, id: string): Set<string> {
+  const out = new Set<string>();
+  if (!master.layers.some((l) => l.id === id)) return out;
+  leafPaths(variantOf(master, variant).layers[id], "", out);
+  return out;
+}
+
+/** Binds the layer's top edge below another layer's bottom. `vAnchor` is
+ *  dropped (meaningless on a bound layer). Throws parseMaster's error for a
+ *  binding the loader would reject (cycle, missing layer, a master layer
+ *  below a variant-only one). */
+export function bindBelow(master: Master, id: string, below: string, gap: number): Master {
+  return parseMaster(withLayer(master, id, ({ vAnchor: _v, ...l }) => ({ ...l, y: { below, gap } })));
+}
+
+/** Writes the resolved top edge as a plain `y` (the inspector's "Unbind"),
+ *  clearing `vAnchor` to top. Re-validated like bindBelow. */
+export function unbind(master: Master, id: string, computedTopY: number): Master {
+  return parseMaster(withLayer(master, id, ({ vAnchor: _v, ...l }) => ({ ...l, y: computedTopY })));
+}
+
+/** The drag patch. Horizontal: positionFromDrag's snap rule on the layer's
+ *  box (`w` wide; 0 = snap the anchor point itself) — a drop within `snap`
+ *  of a guide sets that anchor and lands x ON the guide, a free drop keeps
+ *  the nearest anchor with the exact dropped x. Vertical: a bound layer
+ *  moves its `gap` and keeps its binding; an unbound one moves `y`
+ *  (bottom-anchored layers included — `y` is their bottom edge, still += dy).
+ *  Locked layers return {}. Axes with no movement are left out of the patch. */
+export function moveBy(
+  layer: Layer, dx: number, dy: number, guides: GuideLines, snap: number, w = 0,
+): LayerPatch {
+  if (layer.locked) return {};
+  const patch: LayerPatch = {};
+  if (dx !== 0) {
+    const left = layer.anchor === "left" ? layer.x : layer.anchor === "center" ? layer.x - w / 2 : layer.x - w;
+    const { position } = positionFromDrag(left + dx, 0, w, 0, guides, snap);
+    patch.anchor = position.anchor;
+    patch.x = guides[position.anchor] + position.offsetX;
+  }
+  if (dy !== 0) {
+    patch.y = isBound(layer.y) ? { below: layer.y.below, gap: layer.y.gap + dy } : layer.y + dy;
+  }
+  return patch;
+}
+
+// --- Variants ---------------------------------------------------------------
+
+const slugify = (name: string): string =>
+  name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+/** Enable order is significant (later variants win on overlap): enabling
+ *  appends, disabling removes in place. */
+export function toggleVariant(label: LabelFile, id: string): LabelFile {
+  const on = label.enabledVariants.includes(id);
+  const enabledVariants = on ? label.enabledVariants.filter((x) => x !== id) : [...label.enabledVariants, id];
+  return { ...label, enabledVariants };
+}
+
+export function addVariant(master: Master, name: string): { master: Master; id: string } {
+  const stem = slugify(name) || "variant";
+  const ids = new Set(master.variants.map((v) => v.id));
+  let id = stem;
+  for (let n = 2; ids.has(id); n++) id = `${stem}-${n}`;
+  return { id, master: { ...master, variants: [...master.variants, { id, name, layers: {} }] } };
+}
+
+export function removeVariant(master: Master, id: string): Master {
+  variantOf(master, id);
+  return { ...master, variants: master.variants.filter((v) => v.id !== id) };
+}
+
+export function renameVariant(master: Master, id: string, name: string): Master {
+  variantOf(master, id);
+  return withVariant(master, id, (v) => ({ ...v, name }));
+}
+
+// --- Label ------------------------------------------------------------------
+
+export function setValue(label: LabelFile, id: string, value: LayerValue): LabelFile {
+  return { ...label, values: { ...label.values, [id]: structuredClone(value) } };
+}
+
+export function clearValue(label: LabelFile, id: string): LabelFile {
+  return { ...label, values: without(label.values, id) };
+}
+
+/** A label-level deviation from the resolved master (the .label `overrides`). */
+export function setLabelOverride(label: LabelFile, id: string, patch: LayerPatch): LabelFile {
+  const overrides = label.overrides ?? {};
+  return { ...label, overrides: { ...overrides, [id]: deepMerge(overrides[id] ?? {}, patch as DeepPartial<Entry>) } };
+}
+
+/** Drops a label override (whole entry or one dotted path); the `overrides`
+ *  key itself goes once nothing is left, so a clean label has none. */
+export function clearLabelOverride(label: LabelFile, id: string, path?: string): LabelFile {
+  const overrides = clearEntry(label.overrides ?? {}, id, path);
+  const { overrides: _o, ...rest } = label;
+  return Object.keys(overrides).length === 0 ? rest : { ...rest, overrides };
+}
+
+// --- Dirty check ------------------------------------------------------------
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length
+      && a.every((x, i) => deepEqual(x, b[i]));
+  }
+  if (!isPlain(a) || !isPlain(b)) return false;
+  const ka = Object.keys(a).filter((k) => a[k] !== undefined);
+  const kb = Object.keys(b).filter((k) => b[k] !== undefined);
+  return ka.length === kb.length && ka.every((k) => deepEqual(a[k], b[k]));
+}
+
+/** Is `edited` different from `base` — the master's dirty flag. Order of
+ *  keys is ignored; order of layers (draw order) is not. */
+export function masterDiff(base: Master, edited: Master): boolean {
+  return !deepEqual(base, edited);
+}
