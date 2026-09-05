@@ -3,6 +3,21 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.52] - 2026-09-05
+
+- Make layer reordering smoother by updating its indicator only when the drop
+  position changes. Moving guides reuses loaded images, and preview drawing,
+  hit testing, and selection outlines share measured layer positions.
+
+## [0.1.51] - 2026-09-05
+
+- Drag layer names to reorder them with a drop-position indicator; keyboard
+  reordering remains available with Alt+Up/Down.
+
+- Move the range/add selection hint below the layer list and remove the divider
+  below the master selector. Use the standard shadcn Select for choosing masters,
+  with Open Master and Duplicate actions below it.
+
 ## [0.1.50] - 2026-09-05
 
 - Show “Up to date” in the lower status bar after a successful update check,

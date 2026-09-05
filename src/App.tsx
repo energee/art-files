@@ -906,9 +906,13 @@ export const DocumentEditor = memo(function DocumentEditor({
   // changes are rare and each re-assembly decodes every bitmap). Layer edits
   // deliberately DON'T re-run this: the layers flow into the views as a prop
   // and repaint with these same bitmaps.
-  const [canvasAssets, setCanvasAssets] = useState<{
+  const [decodedAssets, setDecodedAssets] = useState<{
     m: MeasureFace; planAssets: PlanAssets; drawAssets: CanvasAssets; fontCss: string;
   } | null>(null);
+  // Guide movement changes placement immediately, without decoding image bytes again.
+  const canvasAssets = useMemo(() => decodedAssets ? {
+    ...decodedAssets, planAssets: { ...decodedAssets.planAssets, guides },
+  } : null, [decodedAssets, guides.top, guides.bottom, guides.left, guides.right, guides.center]);
   const bgOn = pageOn("background"), maskOn = pageOn("mask");
   useEffect(() => {
     if (blocked || !active) return;
@@ -949,7 +953,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           closeCanvasBitmaps(drawAssets);
           return;
         }
-        setCanvasAssets({ m, planAssets: planAssetsOf(), drawAssets, fontCss: labelFontCss(family) });
+        setDecodedAssets({ m, planAssets: planAssetsOf(), drawAssets, fontCss: labelFontCss(family) });
         setBuildError("");
       })().catch((err) => {
         if (!cancelled) setBuildError(String(err));
@@ -959,7 +963,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // Asset inputs only — the layers reach this effect through tintKey and
     // the two page-art switches (see the comment above).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [texture, mask, customImages, family, tintKey, bgOn, maskOn, blocked, active, guides.top, guides.bottom, guides.left, guides.right]);
+  }, [texture, mask, customImages, family, tintKey, bgOn, maskOn, blocked, active]);
   // The bitmaps backing the CURRENTLY LIVE `canvasAssets` generation, closed
   // once the next generation has fully replaced them (bitmaps aren't GC'd
   // on their own). A bitmap can sit under two keys; close each once.
@@ -993,7 +997,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Background tabs keep their state and asset bytes but not their decoded
   // render source: the ImageBitmaps are the heavy, cheaply-rebuildable part.
   useEffect(() => {
-    if (!active) setCanvasAssets(null);
+    if (!active) setDecodedAssets(null);
   }, [active]);
 
   /** Drag-to-move. PreviewCompare reports the cumulative delta from the
@@ -1675,7 +1679,10 @@ export const DocumentEditor = memo(function DocumentEditor({
               onSelect={(id, mods) => pick(id, { shift: mods.shift, toggle: mods.meta })}
               onToggle={(id, prop, value) => patch(id, { [prop]: value })}
               onRename={(id, name) => patch(id, { name })}
-              onReorder={(id, delta) => editMaster((m) => moveLayer(m, id, delta))}
+              onReorder={(id, delta) => editMaster((m) => {
+                for (let n = 0; n < Math.abs(delta); n++) m = moveLayer(m, id, delta > 0 ? 1 : -1);
+                return m;
+              })}
               onAdd={onAddLayer} onRemove={onRemoveLayer}
               fillableOnly={fillableOnly} onFillableOnly={setFillableOnly}
               variants={chips} onToggleVariant={(id) => editLabel((l) => toggleVariant(l, id))} />

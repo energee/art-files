@@ -389,9 +389,9 @@ export interface PlanLayersOpts {
 }
 
 /** The complete display list, in array (draw) order. */
-export function planLayers(
+export function planLayerScene(
   layers: Layer[], m: MeasureFace, assets: PlanAssets, opts: PlanLayersOpts = {},
-): PlacedLayer[] {
+): { items: PlacedLayer[]; boxes: Map<string, Box> } {
   const { prepared, boxes } = layout(layers, m, assets);
   const out: PlacedLayer[] = [];
   for (const l of layers) {
@@ -399,5 +399,12 @@ export function planLayers(
     const p = prepared.get(l.id);
     if (p) out.push(...p.emit(boxes.get(l.id)!));
   }
-  return out;
+  return { items: out, boxes };
+}
+
+/** Display-list-only callers use the same measured scene as the preview. */
+export function planLayers(
+  layers: Layer[], m: MeasureFace, assets: PlanAssets, opts: PlanLayersOpts = {},
+): PlacedLayer[] {
+  return planLayerScene(layers, m, assets, opts).items;
 }

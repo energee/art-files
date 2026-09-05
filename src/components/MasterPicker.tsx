@@ -1,7 +1,6 @@
 // MasterPicker.tsx — the head of the sidebar, above the Layers list: the
-// current master's name, a dropdown listing every master this machine knows
-// (the library index — masters.ts), "Open Master…", and "Duplicate as new
-// master…" (spec: the master picker is where a saved style is chosen).
+// a Select listing known masters (the library index — masters.ts), with
+// Open Master and Duplicate actions below it.
 // Picking another library master previews the rebind (model/rebindLayers.ts)
 // — the counts of what would move to the bench — before committing: the one
 // confirmation the spec's no-dialogs rule permits, because a rebind is not a
@@ -9,11 +8,13 @@
 // clone starts out layer-for-layer identical to what it was cloned from, so
 // nothing is ever benched by it.
 import { useState } from "react";
-import { ChevronDown, Copy, FolderOpen } from "lucide-react";
+import { Copy, FolderOpen } from "lucide-react";
 import { rebindLabel } from "@/model/rebindLayers";
 import type { MasterAssets } from "@/model/files";
 import type { LabelFile, Master } from "@/model/layers";
-import { cn } from "@/lib/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 /** One dropdown row — just enough to render and pick. The full Master is
  *  resolved lazily (see `resolve`), only once something is actually picked,
@@ -52,7 +53,6 @@ export function MasterPicker(props: {
    *  rebinds this document onto the clone. */
   onDuplicate: (name: string) => void;
 }): React.JSX.Element {
-  const [open, setOpen] = useState(false);
   const [naming, setNaming] = useState(false);
   const [draft, setDraft] = useState("");
   const [resolvingId, setResolvingId] = useState<string | null>(null);
@@ -62,7 +62,6 @@ export function MasterPicker(props: {
   const [error, setError] = useState("");
 
   const closeAll = () => {
-    setOpen(false);
     setNaming(false);
     setDraft("");
     setPreview(null);
@@ -70,12 +69,9 @@ export function MasterPicker(props: {
     setError("");
   };
 
-  /** A library row was clicked: resolve it, then compute the rebind preview
-   *  — never commits by itself. Picking the already-bound master is a no-op
-   *  close, matching EditingTarget's own "picking the current target closes
-   *  the menu" feel. */
+  /** Resolve the selected master and preview the rebind before committing. */
   const pickEntry = async (id: string) => {
-    if (id === props.master.id) { setOpen(false); return; }
+    if (id === props.master.id) return;
     setError("");
     setResolvingId(id);
     const r = await props.resolve(id);
@@ -99,78 +95,45 @@ export function MasterPicker(props: {
     closeAll();
   };
 
-  const item = "flex w-full cursor-pointer items-center gap-1.5 rounded-sm px-2 py-1 text-left text-xs text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground disabled:cursor-default disabled:opacity-60";
-
   return (
-    <div className="border-b border-sidebar-border px-2 py-2">
-      <button
-        id="master-picker"
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => (open ? closeAll() : setOpen(true))}
-        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-      >
-        <span className="text-sidebar-foreground/60">Master:</span>
-        <span className="font-medium">{props.master.name}</span>
-        <ChevronDown className="ml-auto size-3.5 shrink-0 opacity-60" />
-      </button>
-
+    <div className="px-2 py-2">
+      <Select value={props.master.id} disabled={resolvingId !== null}
+        onValueChange={(id) => { if (id) { closeAll(); void pickEntry(id); } }}>
+        <SelectTrigger id="master-picker" aria-label="Master" size="sm" className="w-full">
+          <span className="text-muted-foreground">Master:</span>
+          <SelectValue>{props.master.name}</SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {!props.library[props.master.id] && (
+            <SelectItem value={props.master.id}>{props.master.name}</SelectItem>
+          )}
+          {Object.entries(props.library).map(([id, entry]) => (
+            <SelectItem key={id} value={id}>{entry.name}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <div className="mt-1 flex gap-1">
+        <Button variant="ghost" size="sm" onClick={() => { closeAll(); props.onOpenMaster(); }}>
+          <FolderOpen data-icon="inline-start" /> Open Master…
+        </Button>
+        <Button variant="ghost" size="icon-sm" aria-label="Duplicate as new master…"
+          title="Duplicate as new master…"
+          onClick={() => { closeAll(); setNaming(true); setDraft(`${props.master.name} copy`); }}>
+          <Copy />
+        </Button>
+      </div>
+      {naming && (
+        <Input id="master-picker-duplicate-name" autoFocus value={draft}
+          placeholder="Master name" aria-label="New master name"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); commitNaming(); }
+            else if (e.key === "Escape") { e.preventDefault(); closeNaming(); }
+          }} />
+      )}
+      {resolvingId && <p role="status" className="mt-1 text-xs text-muted-foreground">Opening master…</p>}
       {error && (
         <p id="master-picker-error" className="mt-1 px-1 text-[11px] text-destructive">{error}</p>
-      )}
-
-      {open && !preview && (
-        <div role="menu" className="mt-1 rounded-md border border-sidebar-border p-1">
-          {Object.entries(props.library).map(([id, entry]) => (
-            <button
-              key={id}
-              type="button"
-              role="menuitem"
-              disabled={resolvingId === id}
-              onClick={() => void pickEntry(id)}
-              className={cn(item, id === props.master.id && "bg-sidebar-accent text-sidebar-accent-foreground")}
-            >
-              {entry.name}{resolvingId === id ? "…" : ""}
-            </button>
-          ))}
-          <button
-            type="button" role="menuitem"
-            onClick={() => { closeAll(); props.onOpenMaster(); }}
-            className={cn(item, "text-sidebar-foreground/70")}
-          >
-            <FolderOpen className="size-3" />
-            Open Master…
-          </button>
-          {/* Inline creation, same shape as EditingTarget's "New variant…":
-              the item swaps itself for a text input — Enter commits, Esc
-              cancels (spec: no dialogs). Pre-filled so accepting the default
-              needs only Enter. */}
-          {naming ? (
-            <input
-              id="master-picker-duplicate-name"
-              autoFocus
-              value={draft}
-              placeholder="Master name"
-              aria-label="New master name"
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") { e.preventDefault(); commitNaming(); }
-                else if (e.key === "Escape") { e.preventDefault(); closeNaming(); }
-              }}
-              className="mt-0.5 w-full rounded-sm border border-sidebar-border bg-transparent px-2 py-1 text-xs text-sidebar-foreground outline-none"
-            />
-          ) : (
-            <button
-              type="button" role="menuitem"
-              onClick={() => { setNaming(true); setDraft(`${props.master.name} copy`); }}
-              className={cn(item, "text-sidebar-foreground/70")}
-            >
-              <Copy className="size-3" />
-              Duplicate as new master…
-            </button>
-          )}
-        </div>
       )}
 
       {preview && (

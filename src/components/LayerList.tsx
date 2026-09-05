@@ -9,7 +9,7 @@
 // variant overrides part of it, then the three per-layer switches — fillable
 // (absent on the background/mask rows: nothing to fill), power (`enabled`,
 // the only visibility switch — there is no session eye any more), lock —
-// plus front/back reorder arrows on the selected row and a "…" menu with
+// plus drag reordering and a "…" menu with
 // Rename / Remove. The header carries the title, the "Fillable only" filter
 // that replaced Fill mode, one chip per variant, and the "Add layer" menu.
 //
@@ -17,10 +17,10 @@
 // out through a callback — the caller decides where it lands (master or the
 // variant that owns the layer; spec: "Editing target selector" removed).
 import {
-  Barcode, ChevronDown, ChevronUp, Ellipsis, Image, ListFilter, Lock, PenLine, Plus, Power,
+  Barcode, Ellipsis, Image, ListFilter, Lock, PenLine, Plus, Power,
   QrCode, Scan, Type, type LucideIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Layer, LayerKind } from "@/model/layers";
 import { cn } from "@/lib/utils";
 import {
@@ -63,10 +63,9 @@ export interface LayerListProps {
   onToggle: (id: string, prop: "enabled" | "locked" | "fillable", value: boolean) => void;
   /** Inline rename committed (trimmed, non-empty, changed). */
   onRename: (id: string, name: string) => void;
-  /** One step through the draw order: +1 = toward the FRONT (later in draw
-   *  order, UP the visible list), -1 = toward the back. Never called for a
-   *  step past either end. */
-  onReorder: (id: string, delta: -1 | 1) => void;
+  /** Distance through the owning container’s draw order: positive = toward
+   *  the front (up the visible list), negative = toward the back. */
+  onReorder: (id: string, delta: number) => void;
   onAdd: (kind: LayerKind, variant?: string) => void;
   /** The row menu's Remove, and the Delete/Backspace key on a selected row. */
   onRemove: (id: string) => void;
@@ -124,11 +123,13 @@ const chip = (pressed: boolean) => cn(
 
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
-function Row({ row, isSelected, atFront, atBack, ...p }: {
+function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, ...p }: {
+  dragHandlers: React.HTMLAttributes<HTMLButtonElement>;
+  dropEdge?: "top" | "bottom";
   row: LayerRow;
   isSelected: boolean;
   /** Ends of the DRAW order, computed by the list over every row (not the
-   *  filtered view), so the arrows disable exactly where a step is a no-op. */
+   *  filtered view), so keyboard reordering stops at the owning container’s ends. */
   atFront: boolean;
   atBack: boolean;
 } & Pick<LayerListProps, "onSelect" | "onToggle" | "onRename" | "onReorder" | "onRemove">) {
@@ -150,7 +151,7 @@ function Row({ row, isSelected, atFront, atBack, ...p }: {
 
   // Keyboard equivalents of the selected row's mouse-only affordances, on
   // the row's focusable (the name button): Delete/Backspace = the menu's
-  // Remove, ⌥↑/⌥↓ = the reorder arrows. Gated on the row being selected, so
+  // Remove, ⌥↑/⌥↓ = one reorder step. Gated on the row being selected, so
   // the keys act on exactly the row those controls are showing for.
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!isSelected) return;
@@ -163,7 +164,10 @@ function Row({ row, isSelected, atFront, atBack, ...p }: {
   };
 
   return (
-    <SidebarMenuItem data-layer-id={id}>
+    <SidebarMenuItem data-layer-id={id} className={cn("relative",
+      dropEdge === "top" && "before:absolute before:inset-x-0 before:top-0 before:z-10 before:border-t-2 before:border-sidebar-primary",
+      dropEdge === "bottom" && "after:absolute after:inset-x-0 after:bottom-0 after:z-10 after:border-b-2 after:border-sidebar-primary",
+    )}>
       {/* The whole row is the select target and carries the hover/selected
           highlight end to end; every control inside stops propagation so
           toggling a switch never changes the selection. The name button is
@@ -180,8 +184,11 @@ function Row({ row, isSelected, atFront, atBack, ...p }: {
         <SidebarMenuButton
           size="sm"
           isActive={isSelected}
-          onKeyDown={onKeyDown}
-          className="min-w-0 flex-1 text-xs hover:bg-transparent"
+          {...(!renaming ? dragHandlers : {})}
+          onKeyDown={(e) => { dragHandlers.onKeyDown?.(e); if (!e.defaultPrevented) onKeyDown(e); }}
+          aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+          title="Drag to reorder · Alt+↑/↓"
+          className="min-w-0 flex-1 touch-none cursor-grab text-xs hover:bg-transparent active:cursor-grabbing"
         >
           <Icon />
           {renaming ? (
@@ -226,33 +233,6 @@ function Row({ row, isSelected, atFront, atBack, ...p }: {
             />
           )}
         </SidebarMenuButton>
-
-        {/* Front/back reorder, the selected row only — a step at either end
-            of the draw order is disabled rather than a silent no-op. */}
-        {isSelected && (
-          <span className="flex shrink-0 items-center" onClick={stop}>
-            <button
-              type="button"
-              onClick={() => p.onReorder(id, 1)}
-              disabled={atFront}
-              aria-label={`Bring ${name} forward`}
-              title="Bring forward (⌥↑)"
-              className={control(false)}
-            >
-              <ChevronUp />
-            </button>
-            <button
-              type="button"
-              onClick={() => p.onReorder(id, -1)}
-              disabled={atBack}
-              aria-label={`Send ${name} backward`}
-              title="Send backward (⌥↓)"
-              className={control(false)}
-            >
-              <ChevronDown />
-            </button>
-          </span>
-        )}
 
         {/* Row menu: the keyboard route to rename, and the one place to
             remove. Faded until the row is hovered, focused or selected, but
@@ -326,10 +306,62 @@ function Row({ row, isSelected, atFront, atBack, ...p }: {
 
 export function LayerList(props: LayerListProps): React.JSX.Element {
   const { rows, selected } = props;
-  // Ends of the draw order come from EVERY row, so a filtered view can't
-  // make a middle row look like an end.
-  const frontId = rows.length ? rows[rows.length - 1].layer.id : undefined;
-  const backId = rows.length ? rows[0].layer.id : undefined;
+  const drag = useRef<{ id: string; x: number; y: number; active: boolean } | null>(null);
+  const suppressClick = useRef(false);
+  const [drop, setDrop] = useState<{ id: string; edge: "top" | "bottom"; delta: number } | null>(null);
+  const dropRef = useRef<typeof drop>(null);
+  const clearDrag = () => { drag.current = null; dropRef.current = null; setDrop(null); };
+  const dragHandlers = (row: LayerRow): React.HTMLAttributes<HTMLButtonElement> => ({
+    onPointerDown: (e) => {
+      if (e.button !== 0) return;
+      suppressClick.current = false;
+      drag.current = { id: row.layer.id, x: e.clientX, y: e.clientY, active: false };
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    onPointerMove: (e) => {
+      const source = drag.current;
+      if (!source) return;
+      if (!source.active && Math.hypot(e.clientX - source.x, e.clientY - source.y) < 5) return;
+      source.active = true;
+      const el = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("[data-layer-id]");
+      const target = rows.find((r) => r.layer.id === el?.dataset.layerId);
+      let next: typeof drop = null;
+      // Variant-added layers retain their owning variant; hidden rows keep their order.
+      if (target && el && target.variant?.id === row.variant?.id && target.layer.id !== source.id) {
+        const peers = rows.filter((r) => r.variant?.id === row.variant?.id).slice().reverse();
+        const from = peers.findIndex((r) => r.layer.id === source.id);
+        const to = peers.findIndex((r) => r.layer.id === target.layer.id);
+        const box = el.getBoundingClientRect();
+        const before = e.clientY < box.top + box.height / 2;
+        const insertion = to + (before ? 0 : 1);
+        const delta = from - (insertion - (from < insertion ? 1 : 0));
+        if (delta) next = { id: target.layer.id, edge: before ? "top" : "bottom", delta };
+      }
+      const previous = dropRef.current;
+      if (previous?.id !== next?.id || previous?.edge !== next?.edge || previous?.delta !== next?.delta) {
+        dropRef.current = next;
+        setDrop(next);
+      }
+    },
+    onPointerUp: () => {
+      if (drag.current?.active) {
+        suppressClick.current = true;
+        if (dropRef.current) props.onReorder(drag.current.id, dropRef.current.delta);
+      }
+      clearDrag();
+    },
+    onKeyDown: (e) => {
+      if (e.key === "Escape" && drag.current) {
+        e.preventDefault(); suppressClick.current = true; clearDrag();
+      }
+    },
+    onPointerCancel: clearDrag,
+    onLostPointerCapture: clearDrag,
+    onClickCapture: (e) => {
+      if (suppressClick.current && e.detail > 0) { e.preventDefault(); e.stopPropagation(); }
+      suppressClick.current = false;
+    },
+  });
   const shown = (props.fillableOnly ? rows.filter((r) => !!r.layer.fillable) : rows)
     .slice().reverse();
   return (
@@ -397,12 +429,6 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
         ))}
       </div>
 
-      {selected.size > 0 && (
-        <p className="px-2 pb-1 text-center text-[11px] text-sidebar-foreground/50">
-          ⇧ click for a range · ⌘ click to add
-        </p>
-      )}
-
       <SidebarGroupContent>
         <SidebarMenu>
           {shown.map((row) => (
@@ -410,8 +436,10 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
               key={row.layer.id}
               row={row}
               isSelected={selected.has(row.layer.id)}
-              atFront={row.layer.id === frontId}
-              atBack={row.layer.id === backId}
+              atFront={!rows.slice(rows.indexOf(row) + 1).some((r) => r.variant?.id === row.variant?.id)}
+              atBack={!rows.slice(0, rows.indexOf(row)).some((r) => r.variant?.id === row.variant?.id)}
+              dragHandlers={dragHandlers(row)}
+              dropEdge={drop?.id === row.layer.id ? drop.edge : undefined}
               onSelect={props.onSelect}
               onToggle={props.onToggle}
               onRename={props.onRename}
@@ -426,6 +454,12 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
           </p>
         )}
       </SidebarGroupContent>
+      {selected.size > 0 && (
+        <p className="px-2 pt-1 text-center text-[11px] text-sidebar-foreground/50">
+          ⇧ click for a range · ⌘ click to add
+        </p>
+      )}
+
     </SidebarGroup>
   );
 }

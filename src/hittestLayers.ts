@@ -6,6 +6,7 @@
 // the current bleed. Lock is universal: a locked layer is never a drag
 // target, whatever its kind.
 import type { Layer } from "./model/layers";
+import type { Box } from "./model/place";
 import { layerBoxes } from "./planLayers";
 import type { MeasureFace, PlanAssets } from "./plan";
 import type { DeepPartial } from "./model/merge";
@@ -23,7 +24,11 @@ export interface LayerBox {
  *  rather than select the page. A layer that draws nothing (empty asset,
  *  invalid payload) has a zero box and is omitted too. */
 export function hitBoxesLayers(layers: Layer[], m: MeasureFace, assets: PlanAssets): LayerBox[] {
-  const boxes = layerBoxes(layers, m, assets);
+  return hitBoxesFromLayout(layers, layerBoxes(layers, m, assets));
+}
+
+/** Reuse an already measured scene for preview selection and pointer hits. */
+export function hitBoxesFromLayout(layers: Layer[], boxes: ReadonlyMap<string, Box>): LayerBox[] {
   const out: LayerBox[] = [];
   for (const l of layers) {
     if (l.kind === "image" && (l.role === "background" || l.role === "mask")) continue;
@@ -40,7 +45,10 @@ export function hitBoxesLayers(layers: Layer[], m: MeasureFace, assets: PlanAsse
 export function hitTestLayers(
   xPt: number, yPt: number, layers: Layer[], m: MeasureFace, assets: PlanAssets,
 ): string | null {
-  const boxes = hitBoxesLayers(layers, m, assets);
+  return hitTestBoxes(xPt, yPt, hitBoxesLayers(layers, m, assets));
+}
+
+export function hitTestBoxes(xPt: number, yPt: number, boxes: readonly LayerBox[]): string | null {
   for (let i = boxes.length - 1; i >= 0; i--) {
     const b = boxes[i];
     if (xPt >= b.x && xPt <= b.x + b.w && yPt >= b.y && yPt <= b.y + b.h) return b.id;
