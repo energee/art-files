@@ -20,6 +20,11 @@ const FONT_ASC = 1.05;
 const GOLD_METAL = { fill: GOLD, layer: "metallic" } as const;
 const KEYLINED = { ...GOLD_METAL, ...KEYLINE } as const;
 const top = (baseline: number, size: number) => baseline - FONT_ASC * size;
+/** A rotated column's box LEFT edge from its baseline's x: the glyphs' "up"
+ *  points left under the quarter turn, so the ascender sits one FONT_ASC
+ *  to the left of the baseline line (hittest.ts's rotated box) — the same
+ *  arithmetic as `top`, on the other axis. */
+const left = top;
 
 const text = (l: Omit<TextLayer, "kind" | "enabled" | "align" | "style"> &
   Partial<Pick<TextLayer, "enabled" | "align" | "style">>): TextLayer => ({
@@ -74,17 +79,19 @@ export function lolevMaster(): Master {
         size: 12.18, align: "center", fillable: true, placeholder: "Style",
         lines: [{ text: "", ...GOLD_METAL }] }),
       // Right column: rotated 90° CCW, reading bottom-to-top, each run's
-      // bottom pinned one stroke inside the bottom margin.
-      text({ id: "handleAddress", name: "Info", x: 474.58, anchor: "left", y: 339.58,
+      // bottom pinned one stroke inside the bottom margin. `x` is the box's
+      // left edge (LayerBase.x), so each is layout.ts's baseline x (474.58 /
+      // 488.18 / 556.30) less one ascender — see `left`.
+      text({ id: "handleAddress", name: "Info", x: left(474.58, 12.91), anchor: "left", y: 339.58,
         vAnchor: "bottom", rotation: 90, size: 12.91,
         style: { ...KEYLINED, letterSpacing: 0.38 },
         lines: [{ text: "**@LOLEVBEER** 5247 BUTLER ST, PITTSBURGH, PA", ...GOLD_METAL }] }),
-      text({ id: "warning", name: "Warning", x: 488.18, anchor: "left", y: 338.64,
+      text({ id: "warning", name: "Warning", x: left(488.18, 8.2), anchor: "left", y: 338.64,
         vAnchor: "bottom", rotation: 90, size: 8.2, leading: 10 / 8.2, align: "justify",
         width: TRIM.h - 2 * DEFAULT_MARGIN_PT - 2 * DEFAULT_STROKE_PX * PX, locked: true,
         style: { ...KEYLINED, letterSpacing: WARNING_TRACKING },
         lines: [{ text: WARNING_TEXT, ...GOLD_METAL }] }),
-      text({ id: "storeCold", name: "Store cold", x: 556.30, anchor: "left", y: 163.15,
+      text({ id: "storeCold", name: "Store cold", x: left(556.30, 20.15), anchor: "left", y: 163.15,
         vAnchor: "bottom", rotation: 90, size: 20.15,
         style: { ...GOLD_METAL, strokeLayer: DEFAULT_STROKE_LAYER, letterSpacing: 1.25 },
         lines: [{ text: "STORE COLD", ...GOLD_METAL, bold: true }] }),
