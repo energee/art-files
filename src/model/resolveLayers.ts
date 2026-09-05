@@ -50,9 +50,17 @@ function refText(l: TextLayer): string {
   return l.uppercase ? t.toUpperCase() : t;
 }
 
+export interface ResolveOpts {
+  /** Keep `enabled: false` layers in the list (the Layers list shows them
+   *  dimmed, the inspector edits them); the renderer's callers leave this
+   *  off and get only what draws. */
+  keepDisabled?: boolean;
+}
+
 export function resolveLayers(
   master: Master, enabledVariants: string[], values: Record<string, LayerValue>,
   overrides?: Record<string, DeepPartial<Layer>>,
+  opts: ResolveOpts = {},
 ): { layers: Layer[]; warnings: string[]; errors: Record<string, string> } {
   const warnings: string[] = [];
   const errors: Record<string, string> = {};
@@ -84,7 +92,7 @@ export function resolveLayers(
     if (missing.length) warnings.push(`Layer "${l.id}" value refers to missing layers: ${missing.join(", ")}.`);
     return { ...l, value: text };
   });
-  return { layers: layers.filter((l) => l.enabled !== false), warnings, errors };
+  return { layers: opts.keepDisabled ? layers : layers.filter((l) => l.enabled !== false), warnings, errors };
 }
 
 /** The Fill-mode list: fillable layers in draw order. */

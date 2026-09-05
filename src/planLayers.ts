@@ -19,7 +19,6 @@ import {
   justifiedRotatedRuns, rotatedRuns, strokeSpec,
   type Face, type MeasureFace, type Placed, type PlacedBarcode, type PlacedText, type PlanAssets,
 } from "./plan";
-import type { ElementId } from "./elements";
 import { parseRuns } from "./description";
 import { strokeLayerOf } from "./strokes";
 import { parseLogo } from "./logo";
@@ -40,7 +39,7 @@ import * as L from "./layout";
  *  mask. */
 export interface PlacedPage {
   readonly kind: "page";
-  readonly id: ElementId;
+  readonly id: string;
   readonly role: "background" | "mask";
   readonly asset: string;
   readonly x: number;
@@ -51,22 +50,10 @@ export interface PlacedPage {
 
 export type PlacedLayer = Placed | PlacedPage;
 
-/** The face pair a text layer draws with: `base` for plain runs, `bold` for
- *  runs a **bold** marker or the header flag lifts. The description's
- *  regular/semibold pair is the default; the Lolev name/wordmark set in
- *  Bold and the rotated Info line in SemiBold with a Bold handle need their
- *  own pair (the shape elements.ts's EditableText.rich.faces already uses).
- *  ponytail: TextLayer has no such field yet, so it is read off the layer as
- *  an optional `faces` the parser passes through untouched; when layers.ts
- *  grows the field this cast goes. */
+/** Plain and bold run faces; the master owns the family. */
 export interface TextFaces { base: Face; bold: Face }
 export const DEFAULT_FACES: TextFaces = { base: "regular", bold: "semibold" };
-export const facesOf = (l: TextLayer): TextFaces =>
-  (l as TextLayer & { faces?: TextFaces }).faces ?? DEFAULT_FACES;
-
-// ponytail: ElementId's literal union dies with the built-in branches; until
-// then a layer id is cast through it so backends keyed on ElementId compile.
-const eid = (id: string) => id as ElementId;
+export const facesOf = (l: TextLayer): TextFaces => l.faces ?? DEFAULT_FACES;
 
 const ASC = L.FONT_ASC;
 const DESC = L.FONT_DESC;
@@ -123,7 +110,7 @@ function wrap(lines: TextLine[], widthOf: (ln: TextLine) => number, width?: numb
 /** One unrotated line as placed runs from `x` — lineRuns' walk with the
  *  layer's face pair instead of its forced-face / bold-means-semibold rule. */
 function lineAt(
-  id: ElementId, line: StyledLine, m: MeasureFace, faceOf: (r: StyledLine) => Face,
+  id: string, line: StyledLine, m: MeasureFace, faceOf: (r: StyledLine) => Face,
   x: number, baseline: number, size: number,
 ): PlacedText[] {
   const runs = parseRuns(line);
@@ -142,7 +129,7 @@ function lineAt(
 }
 
 function prepareText(l: TextLayer, m: MeasureFace): Prepared {
-  const id = eid(l.id);
+  const id = l.id;
   const faces = facesOf(l);
   const faceOf = (r: StyledLine): Face => (r.bold ? faces.bold : faces.base);
   const tracking = l.style.letterSpacing ?? 0;
@@ -206,7 +193,7 @@ function prepareText(l: TextLayer, m: MeasureFace): Prepared {
 // --- image ----------------------------------------------------------------
 
 function prepareImage(l: ImageLayer, assets: PlanAssets): Prepared | null {
-  const id = eid(l.id);
+  const id = l.id;
   if (!l.asset) return null;
   if (l.role === "background" || l.role === "mask") {
     const entry = assets.custom?.[l.asset];
@@ -262,7 +249,7 @@ function prepareImage(l: ImageLayer, assets: PlanAssets): Prepared | null {
  *  guards run long through the digit band. */
 function prepareBarcode(l: BarcodeLayer, m: MeasureFace): Prepared | null {
   if (!validateFor(l.symbology, l.value).ok) return null;
-  const id = eid(l.id);
+  const id = l.id;
   const { modules, guards } = encodeFor(l.symbology, l.value);
   const inGuard = (i: number) => guards.some(([a, b]) => i >= a && i < b);
   const mod = l.moduleW;
@@ -349,7 +336,7 @@ function prepareBarcode(l: BarcodeLayer, m: MeasureFace): Prepared | null {
 // --- qr -------------------------------------------------------------------
 
 function prepareQr(l: QrLayer): Prepared {
-  const id = eid(l.id);
+  const id = l.id;
   const shapes = qrShapes(l.value, { style: l.qrStyle, ecLevel: l.ecLevel ?? "L" });
   const style = l.style;
   return {
@@ -384,7 +371,7 @@ function prepare(l: Layer, m: MeasureFace, assets: PlanAssets): Prepared | null 
 
 function layout(layers: Layer[], m: MeasureFace, assets: PlanAssets) {
   const prepared = new Map(layers.map((l) => [l.id, prepare(l, m, assets)]));
-  const boxes = placeLayers(layers, (l) => prepared.get(l.id)?.size ?? { w: 0, h: 0 });
+  const boxes = placeLayers(layers, (l) => prepared.get(l.id)?.size ?? { w: 0, h: 0 }, assets.guides);
   return { prepared, boxes };
 }
 

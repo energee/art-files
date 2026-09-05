@@ -14,7 +14,7 @@
 import type { Style, StyledLine } from "../types";
 import type { Anchor } from "./position";
 import type { FontFamilyId } from "../fontCatalog";
-import type { DeepPartial } from "./merge";
+import { deepMerge, type DeepPartial } from "./merge";
 
 export type Symbology = "upc-a" | "ean-13" | "code-128";
 export type LayerKind = "text" | "image" | "barcode" | "qr";
@@ -24,6 +24,16 @@ export type LayerKind = "text" | "image" | "barcode" | "qr";
  *  dependency order; a cycle or a reference to a missing/disabled layer is
  *  a load-time fail() on the master (only Design mode can create one). */
 export interface RelativeY { below: string; gap: number }
+export type BindingSide = "top" | "left" | "right" | "bottom";
+export interface LayerBinding { to: string; side: BindingSide; gap: number }
+
+/** Legacy below bindings and new edge bindings share one placement path. */
+export function bindingOf(layer: { binding?: LayerBinding | null; y?: unknown }): LayerBinding | undefined {
+  if (layer.binding) return layer.binding;
+  const y = layer.y as RelativeY | undefined;
+  return y && typeof y === "object" && typeof y.below === "string"
+    ? { to: y.below, side: "bottom", gap: y.gap } : undefined;
+}
 
 export interface LayerBase {
   id: string;
@@ -41,6 +51,8 @@ export interface LayerBase {
    *  left = the box's left edge, center = its center, right = its right
    *  edge. */
   x: number;
+  /** Positions the facing edge outside another layer; positive gap separates them. */
+  binding?: LayerBinding | null;
   anchor: Anchor;
   /** TOP edge of the layer's box in PDF points from the page origin, or a
    *  binding to another layer. For text the box top is the first line's
@@ -52,6 +64,10 @@ export interface LayerBase {
    *  right-hand column hangs from the bottom margin. Ignored when `y` is a
    *  binding (a bound layer's top follows the layer above). */
   vAnchor?: "top" | "bottom";
+  /** Numeric x is an offset from a horizontal margin guide. */
+  guideX?: "none" | "left" | "right";
+  /** Numeric y is an offset from this margin guide; none keeps absolute y. */
+  guideY?: "none" | "top" | "middle" | "bottom";
   /** 90 = rotated counter-clockwise, reading bottom-to-top (the Lolev
    *  right-hand column). Absent = 0. */
   rotation?: 0 | 90;
@@ -201,6 +217,7 @@ const SYMBOLOGIES = new Set<Symbology>(["upc-a", "ean-13", "code-128"]);
 const ANCHORS = new Set<Anchor>(["left", "center", "right"]);
 
 function validateLayer(l: Layer, ctx: string): void {
+  if (!l || typeof l !== "object") fail(`${ctx} layer is not an object`);
   if (!l.id || typeof l.id !== "string") fail(`${ctx} layer missing id`);
   if (!l.name || typeof l.name !== "string") fail(`${ctx} layer "${l.id}" missing name`);
   if (!KINDS.has(l.kind)) fail(`${ctx} layer "${l.id}" has unknown kind "${l.kind}"`);
@@ -211,6 +228,21 @@ function validateLayer(l: Layer, ctx: string): void {
   const relOk = !!y && typeof y === "object"
     && typeof (y as RelativeY).below === "string" && typeof (y as RelativeY).gap === "number";
   if (typeof y !== "number" && !relOk) fail(`${ctx} layer "${l.id}" has invalid y`);
+  if (l.guideX !== undefined && !["none", "left", "right"].includes(l.guideX))
+    fail(`${ctx} layer "${l.id}" has invalid guideX`);
+  if (l.guideY !== undefined && !["none", "top", "middle", "bottom"].includes(l.guideY))
+    fail(`${ctx} layer "${l.id}" has invalid guideY`);
+  if (l.guideY && l.guideY !== "none" && typeof y !== "number")
+    fail(`${ctx} layer "${l.id}" cannot bind to both a guide and a layer`);
+  if (l.binding != null) {
+    const b = l.binding;
+    if (!b || typeof b !== "object" || typeof b.to !== "string" || !b.to
+      || !["top", "left", "right", "bottom"].includes(b.side) || !Number.isFinite(b.gap))
+      fail(`${ctx} layer "${l.id}" has invalid binding`);
+    if (typeof y !== "number") fail(`${ctx} layer "${l.id}" has two layer bindings`);
+    const guide = b.side === "left" || b.side === "right" ? l.guideX : l.guideY;
+    if (guide && guide !== "none") fail(`${ctx} layer "${l.id}" cannot bind to both a guide and a layer on the same axis`);
+  }
   if (l.rotation !== undefined && l.rotation !== 0 && l.rotation !== 90)
     fail(`${ctx} layer "${l.id}" has invalid rotation`);
   if (l.kind === "text") {
@@ -236,17 +268,20 @@ function validateLayer(l: Layer, ctx: string): void {
 /** Every `below` reference must name a layer in the list, and the graph
  *  must be acyclic. Runs over the master's own layers and again per variant
  *  with that variant's diff merged in. */
-function validateBindings(layers: { id: string; y: number | RelativeY }[], ctx: string): void {
+function validateBindings(layers: Layer[], ctx: string): void {
   const byId = new Map(layers.map((l) => [l.id, l]));
   for (const l of layers) {
     const seen = new Set<string>([l.id]);
     let at = l;
-    while (typeof at.y === "object") {
-      const next = byId.get(at.y.below);
-      if (!next) fail(`${ctx} layer "${at.id}" is bound below missing layer "${at.y.below}"`);
-      if (seen.has(next.id)) fail(`${ctx} layer "${l.id}" has a cyclic y binding`);
+    let binding = bindingOf(at);
+    while (binding) {
+      const next = byId.get(binding.to);
+      if (!next) fail(`${ctx} layer "${at.id}" is bound to missing layer "${binding.to}"`);
+      if (l.enabled && !next.enabled) fail(`${ctx} layer "${l.id}" is bound to disabled layer "${next.id}"`);
+      if (seen.has(next.id)) fail(`${ctx} layer "${l.id}" has a cyclic binding`);
       seen.add(next.id);
       at = next;
+      binding = bindingOf(at);
     }
   }
 }
@@ -277,17 +312,16 @@ export function parseMaster(json: unknown): Master {
     if (vids.has(v.id)) fail(`duplicate variant id "${v.id}"`);
     vids.add(v.id);
     if (!v.layers || typeof v.layers !== "object") fail(`variant "${v.id}" missing layers`);
-    const merged: { id: string; y: number | RelativeY }[] = m.layers.map((l) => ({ id: l.id, y: l.y }));
+    const merged = m.layers.map((l) => structuredClone(l));
     for (const [id, patch] of Object.entries(v.layers)) {
-      if (ids.has(id)) {
-        if (patch.y !== undefined) {
-          const i = merged.findIndex((l) => l.id === id);
-          merged[i] = { id, y: patch.y as number | RelativeY };
-        }
-        continue;
-      }
-      validateLayer({ ...(patch as Layer), id }, `variant "${v.id}"`);
-      merged.push({ id, y: patch.y as number | RelativeY });
+      if (!patch || typeof patch !== "object" || Array.isArray(patch))
+        fail(`variant "${v.id}" has invalid layer patch "${id}"`);
+      const i = merged.findIndex((l) => l.id === id);
+      const layer = i >= 0 ? deepMerge(merged[i], patch) : { ...patch, id } as Layer;
+      if (layer.id !== id) fail(`variant "${v.id}" cannot change layer id "${id}"`);
+      validateLayer(layer, `variant "${v.id}"`);
+      if (i >= 0) merged[i] = layer;
+      else merged.push(layer);
     }
     validateBindings(merged, `variant "${v.id}"`);
   }

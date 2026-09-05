@@ -8,9 +8,9 @@
 // view toggles and settings.ts): the index describes this machine's
 // filesystem.
 import { isTauri } from "@tauri-apps/api/core";
-import type { Master } from "@/model/types";
-import { lolevMaster } from "@/model/lolev";
-import { unpackMaster, type MasterAssets } from "@/model/masterfile";
+import type { Master } from "@/model/layers";
+import { lolevMaster } from "@/model/lolevLayers";
+import { unpackMaster, type MasterAssets } from "@/model/files";
 import { readNativeFile } from "@/files";
 
 export const SHIPPED_MASTER_ID = lolevMaster().id;
@@ -33,7 +33,8 @@ export function rememberMaster(m: Master, path: string): void {
 }
 
 /** A resolved master with its template assets — what unpackMaster returns
- *  (a legacy JSON master resolves with empty assets). */
+ *  (a legacy JSON master resolves with empty assets; a v1 file is converted
+ *  on the way in, see model/files.ts). */
 export type ResolvedMaster = { master: Master; assets: MasterAssets };
 
 async function readMasterAt(path: string): Promise<ResolvedMaster | null> {

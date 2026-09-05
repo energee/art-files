@@ -66,6 +66,9 @@ export const APP_MENUS: SubmenuEntry[] = [
     kind: "submenu", id: "edit-menu", text: "Edit", items: [
       { kind: "action", id: "undo", text: "Undo" },
       { kind: "action", id: "redo", text: "Redo" },
+      { kind: "separator", id: "edit-variants" },
+      { kind: "action", id: "variant-new", text: "New Variant" },
+      { kind: "action", id: "settings", text: "Settings…" },
       { kind: "predefined", item: "Separator" },
       { kind: "predefined", item: "Cut" },
       { kind: "predefined", item: "Copy" },

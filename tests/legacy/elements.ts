@@ -1,17 +1,19 @@
+// Test-only pre-v3 layout oracle.
 // elements.ts — the one registry of stylable label elements. The form and
 // the preview both read it, so they cannot disagree about what exists or
 // which config field backs it.
-import type { LabelConfig, Style, StyledLine } from "./types";
-import type { CollabSlots, Face, MeasureFace } from "./plan";
+import type { LabelConfig, Style, StyledLine } from "../../src/types";
+import type { CollabSlots } from "./plan";
+import type { Face, MeasureFace } from "../../src/plan";
 import {
   CUSTOM_BARCODE_DIGIT_GAP_RATIO, CUSTOM_BARCODE_DIGIT_SIZE_RATIO,
   encodeFor, quietModulesFor, validateFor,
-} from "./barcode";
-import { DESC, FONT_ASC, FONT_DESC, HANDLE_ADDR, runsWidth } from "./layout";
-import { defaultConfig } from "./defaults";
-import { strokeLayerOf } from "./strokes";
-import { parseRuns } from "./description";
-import type { LayerPosition } from "./model/position";
+} from "../../src/barcode";
+import { DESC, FONT_ASC, FONT_DESC, HANDLE_ADDR, runsWidth } from "../../src/layout";
+import { defaultConfig } from "../../src/defaults";
+import { strokeLayerOf } from "../../src/strokes";
+import { parseRuns } from "../../src/description";
+import type { LayerPosition } from "../../src/model/position";
 
 /** The shipped config, for reading any element's factory style. Built once:
  *  defaultConfig() allocates a whole config (description lines included), and

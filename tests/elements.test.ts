@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ELEMENTS, applyStyle, customElement, dragTarget, editableText, elementById, isDefaultStyle,
-} from "../src/elements";
+} from "./legacy/elements";
 import { defaultConfig } from "../src/defaults";
 import { GOLD } from "../src/layout";
 import type {

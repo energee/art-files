@@ -1,18 +1,19 @@
+// Test-only pre-v3 layout oracle.
 // hittest.ts — maps a point in label space (points, top-left origin) to the
 // element under it, so clicking the preview can select that element. Boxes
 // mirror what the PDF renderer draws; Poppins' font box is 1.05em above the
 // baseline and 0.35em below (measured with pdftotext -bbox).
-import type { LabelConfig } from "./types";
+import type { LabelConfig } from "../../src/types";
 import { logoNudge, type ElementId } from "./elements";
-import { parseDescription } from "./description";
+import { parseDescription } from "../../src/description";
 // Text boxes are derived from the same display list the renderers draw from,
 // so a hit box can't drift from the artwork.
 import {
-  collabCenterFrame, collabLeftFrame, customBarcodeBox, labelGuides, planLabel,
-  type MeasureFace, type PlacedText, type CollabSlots,
+  collabCenterFrame, collabLeftFrame, customBarcodeBox, planLabel, type CollabSlots,
 } from "./plan";
-import { anchoredX, anchoredY } from "./model/position";
-import * as L from "./layout";
+import { labelGuides, type MeasureFace, type PlacedText } from "../../src/plan";
+import { anchoredX, anchoredY } from "../../src/model/position";
+import * as L from "../../src/layout";
 
 export type Measure = (text: string, size: number, bold: boolean) => number;
 export interface Box { x0: number; y0: number; x1: number; y1: number; id: ElementId }
@@ -67,7 +68,8 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
     if (g) g.push(r); else groups.set(key, [r]);
   }
   for (const runs of groups.values()) {
-    const { id, rotated, size } = runs[0];
+    const { rotated, size } = runs[0];
+    const id = runs[0].id as ElementId;
     textBoxes.push(rotated
       ? {
           id, x0: runs[0].x - ASC * size, x1: runs[0].x + DESC * size,

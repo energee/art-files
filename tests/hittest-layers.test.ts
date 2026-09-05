@@ -78,3 +78,10 @@ describe("dragTargetLayers", () => {
     expect(t.moved(3, 4)).toEqual({ x: 13, y: { below: "a", gap: 9 } });
   });
 });
+
+it("hit boxes and drag gaps follow a right-bound neighbor", () => {
+  const list = [text({ id: "a", x: 10, y: 20 }), text({ id: "b", x: 0, y: 50, binding: { to: "a", side: "right", gap: 5 } })];
+  const target = dragTargetLayers(list, "b", m, assets)!;
+  expect(target.box.x).toBe(35);
+  expect(target.moved(4, 3)).toEqual({ y: 53, binding: { to: "a", side: "right", gap: 9 } });
+});

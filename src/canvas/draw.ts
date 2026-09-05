@@ -1,5 +1,6 @@
-// draw.ts — the canvas backend: walks the display list (plan.ts) and paints
-// one plate into a 2D context. Same Mode semantics as pdf/build.ts — art
+// draw.ts — the canvas backend: walks the display list (planLayers.ts's
+// PlacedLayer[], planned by the caller from the resolved v3 layers) and
+// paints one plate into a 2D context. Same Mode semantics as pdf/build.ts — art
 // paints fills over the texture, mask paints knockout white / white-ink blue
 // — but no y-flip (canvas and the plan are both top-left origin). Text
 // strokes DO carry the same cavity bridge the PDF backend uses; Skia
@@ -9,12 +10,10 @@
 // same family as the `fontCss` passed in, so that CSS family resolves — a
 // missing face would silently measure wrong, which is exactly what the gate
 // exists to prevent.
-import {
-  planLabel, type Mode, type MeasureFace, type Placed, type PlacedBarcode, type PlacedText,
-  type PlanAssets,
-} from "../plan";
-import type { Fill, LabelConfig, Style } from "../types";
-import type { ElementId } from "../elements";
+import { type Mode, type MeasureFace, type PlacedBarcode, type PlacedText, type PlanAssets } from "../plan";
+import { planLayers, type PlacedLayer, type PlacedPage } from "../planLayers";
+import type { Layer } from "../model/layers";
+import type { Fill, Style } from "../types";
 import { bridgeOffsets } from "../strokes";
 import { FACE_WEIGHT } from "../fonts";
 import * as L from "../layout";
@@ -35,18 +34,14 @@ const CANVAS_LETTER_SPACING =
   || "letterSpacing" in (document.createElement("canvas").getContext("2d") ?? {});
 
 export interface CanvasAssets {
-  /** Art plate background, cover-fitted; absent = bare stock (white). */
-  texture?: (CanvasImageSource & { width: number; height: number }) | null;
-  /** Uploaded mask, drawn as-authored; absent = flood white-ink blue. */
-  maskImage?: (CanvasImageSource & { width: number; height: number }) | null;
-  /** Raster collab logos, keyed to the PlacedImage ids. */
-  collabLeft?: CanvasImageSource | null;
-  collabCenter?: CanvasImageSource | null;
-  /** Decoded custom-layer image bytes, keyed by CustomImageLayer's `asset`
-   *  (PlacedImage.asset). A key absent, or explicitly null (decode failed or
-   *  hasn't finished), stays a no-op — the plan can place the rect from a
-   *  stored aspect alone before/without bytes ever loading. */
-  customImages?: Record<string, ImageBitmap | null>;
+  /** Decoded bitmaps by asset id — the id every `image` and `page` item
+   *  carries in `asset`: collab slots, custom art, the background texture and
+   *  the metallic mask alike. A key absent, or explicitly null (decode failed
+   *  or hasn't finished), stays a no-op — the plan places a rect from a
+   *  stored aspect alone before/without bytes ever loading. The page roles
+   *  fall back as before: no background bitmap = bare stock, no mask bitmap
+   *  = the white-ink flood. */
+  images?: Record<string, CanvasImageSource | null | undefined>;
 }
 
 /** Everything a view needs to render label plates from the display list:
@@ -56,17 +51,19 @@ export interface CanvasRenderSource {
   m: MeasureFace;
   planAssets: PlanAssets;
   drawAssets: CanvasAssets;
-  skip: { has(id: ElementId): boolean };
+  skip: { has(id: string): boolean };
   /** The registered CSS font-family for this source's family (labelFontCss
-   *  of fontFamilyOf(cfg)) — the same string the faces were loaded under, so
-   *  drawPlate's text/barcode calls resolve the right glyphs. */
+   *  of the master's fontFamily) — the same string the faces were loaded
+   *  under, so drawPlate's text/barcode calls resolve the right glyphs. */
   fontCss: string;
 }
 
 /** The one spelling of "plan from a render source" — PreviewCompare and the
- *  3D texture path both build the identical call (Phase-3 deferred minor). */
-export const planFrom = (cfg: LabelConfig, s: CanvasRenderSource): Placed[] =>
-  planLabel(cfg, s.m, { skip: s.skip, assets: s.planAssets });
+ *  3D texture path both build the identical call. `layers` are the RESOLVED
+ *  layers (resolveLayers' output: variants merged, values filled, disabled
+ *  layers dropped). */
+export const planFrom = (layers: Layer[], s: CanvasRenderSource): PlacedLayer[] =>
+  planLayers(layers, s.m, s.planAssets, { skip: s.skip });
 
 /** Art-mode CSS color for a Fill — "none" is no ink, i.e. white, the same
  *  rule as pdf/build.ts's fillColor via parseHexFill. */
@@ -75,13 +72,19 @@ const cssFill = (fill: Fill) => (fill === "none" ? "#FFFFFF" : fill);
 const cssMask = (layer: Style["layer"]) =>
   layer === "metallic" ? "#FFFFFF" : L.MASK_BLUE_HEX;
 
+/** Which plate a page item belongs to: the background texture is art-only,
+ *  the metallic mask is mask-only. */
+const pageDrawsOn = (p: PlacedPage, mode: Mode) =>
+  mode === "art" ? p.role === "background" : p.role === "mask";
+
 /** Paint one plate from the plan. The canvas's pixel size sets the scale
- *  (width / PAGE.w); the caller sizes it. Backgrounds paint before the
- *  BLEED_SHIFT translate, exactly like shiftForBleed in the PDF: they cover
- *  the page and must not move with the design. */
+ *  (width / PAGE.w); the caller sizes it. Page items (the texture, the mask)
+ *  paint outside the BLEED_SHIFT translate, exactly like the PDF's
+ *  withoutBleedShift: they cover the page and must not move with the
+ *  design. */
 export function drawPlate(
   ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
-  plan: readonly Placed[],
+  plan: readonly PlacedLayer[],
   assets: CanvasAssets,
   mode: Mode,
   // Required, no poppins default: a caller that forgot to thread the
@@ -104,15 +107,10 @@ export function drawPlate(
   // Plate background — mirrors buildArtPdf / buildMaskPdf.
   c.fillStyle = "#FFFFFF";
   c.fillRect(0, 0, L.PAGE.w, L.PAGE.h);
-  const cover = (img: CanvasImageSource & { width: number; height: number }) => {
-    const r = L.coverFit(img.width, img.height);
-    c.drawImage(img, r.x, r.y, r.w, r.h);
-  };
-  if (mode === "art") {
-    if (assets.texture) cover(assets.texture);
-  } else if (assets.maskImage) cover(assets.maskImage);
-  else {
-    // No mask uploaded: flood white ink ("print as a white label"); metallic
+  const bitmapOf = (asset: string) => assets.images?.[asset] ?? null;
+  const hasMask = plan.some((r) => r.kind === "page" && r.role === "mask" && bitmapOf(r.asset));
+  if (mode === "mask" && !hasMask) {
+    // No mask loaded: flood white ink ("print as a white label"); metallic
     // elements knock back out on top.
     c.fillStyle = L.MASK_BLUE_HEX;
     c.fillRect(0, 0, L.PAGE.w, L.PAGE.h);
@@ -147,32 +145,26 @@ export function drawPlate(
       c.fillStyle = mode === "art" ? cssFill(r.fill) : cssMask(r.layer);
       for (const p of paths) c.fill(p);
       c.restore();
+    } else if (r.kind === "page") {
+      // Page art (the texture on the art plate, the mask on the mask plate)
+      // at planLayers' cover-fit rect, in PAGE space — outside the bleed
+      // shift, like the PDF's withoutBleedShift.
+      const bmp = pageDrawsOn(r, mode) ? bitmapOf(r.asset) : null;
+      if (!bmp) continue;
+      c.save();
+      c.translate(-L.BLEED_SHIFT, -L.BLEED_SHIFT);
+      c.drawImage(bmp, r.x, r.y, r.w, r.h);
+      c.restore();
     } else if (r.kind === "image") {
-      if (r.id === "collabLeft" || r.id === "collabCenter") {
-        if (mode === "art") {
-          const img = r.id === "collabLeft" ? assets.collabLeft : assets.collabCenter;
-          // The plan only places an image the caller declared (PlanArt came
-          // from the same slot), so a missing bitmap is an assembly bug —
-          // fail fast rather than render a silently incomplete label.
-          if (!img) throw new Error(`Canvas asset missing for "${r.id}" — the plan placed it, so its bitmap must be supplied.`);
-          c.drawImage(img, r.x, r.y, r.w, r.h);
-        } else {
-          // Raster art prints on white ink: the mask paints its footprint blue.
-          c.fillStyle = L.MASK_BLUE_HEX;
-          c.fillRect(r.x, r.y, r.w, r.h);
-        }
-        continue;
-      }
-      // Custom-layer image: unlike collab, the plan can place this rect from
-      // a stored aspect alone (see plan.ts) before its bytes ever loaded, or
-      // when it never had any — so a missing bitmap stays a quiet no-op on
-      // EITHER plate rather than the collab slots' fail-fast, matching the
-      // plan's own missing-asset contract (and the byte-identity lock: no
-      // asset means no ink and no mask footprint).
-      const bmp = r.asset ? assets.customImages?.[r.asset] : null;
+      // The plan places this rect from a stored aspect alone before its
+      // bytes ever loaded, or when it never had any — so a missing bitmap
+      // stays a quiet no-op on EITHER plate, matching the plan's own
+      // missing-asset contract: no asset means no ink and no mask footprint.
+      const bmp = r.asset ? bitmapOf(r.asset) : null;
       if (!bmp) continue;
       if (mode === "art") c.drawImage(bmp, r.x, r.y, r.w, r.h);
       else {
+        // Raster art prints on white ink: the mask paints its footprint blue.
         c.fillStyle = L.MASK_BLUE_HEX;
         c.fillRect(r.x, r.y, r.w, r.h);
       }

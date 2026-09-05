@@ -1,18 +1,18 @@
-// MasterPicker.tsx — the head of the Design sidebar, above EditingTarget:
-// the current master's name, a dropdown listing every master this machine
-// knows (the library index — masters.ts), "Open Master…", and "Duplicate as
-// new master…" (spec: the master picker is where a saved style is chosen). Picking
-// another library master previews the rebind (model/rebind.ts) — the counts
-// of what would move to the bench — before committing: the one confirmation
-// the spec's no-dialogs rule permits, because a rebind is not a single
-// undoable canvas act (Task 4b brief). "Duplicate as new master…" needs no
-// preview: a clone starts out field-for-field identical to what it was
-// cloned from, so nothing is ever benched by it.
+// MasterPicker.tsx — the head of the sidebar, above the Layers list: the
+// current master's name, a dropdown listing every master this machine knows
+// (the library index — masters.ts), "Open Master…", and "Duplicate as new
+// master…" (spec: the master picker is where a saved style is chosen).
+// Picking another library master previews the rebind (model/rebindLayers.ts)
+// — the counts of what would move to the bench — before committing: the one
+// confirmation the spec's no-dialogs rule permits, because a rebind is not a
+// single undoable canvas act. "Duplicate as new master…" needs no preview: a
+// clone starts out layer-for-layer identical to what it was cloned from, so
+// nothing is ever benched by it.
 import { useState } from "react";
 import { ChevronDown, Copy, FolderOpen } from "lucide-react";
-import { rebind } from "@/model/rebind";
-import type { MasterAssets } from "@/model/masterfile";
-import type { LabelFileV2, Master } from "@/model/types";
+import { rebindLabel } from "@/model/rebindLayers";
+import type { MasterAssets } from "@/model/files";
+import type { LabelFile, Master } from "@/model/layers";
 import { cn } from "@/lib/utils";
 
 /** One dropdown row — just enough to render and pick. The full Master is
@@ -24,10 +24,9 @@ export type LibraryEntry = { name: string };
 export function MasterPicker(props: {
   /** The master currently bound to this document. */
   master: Master;
-  /** The document's current values/enabled-variants/dormant, expressed as a
-   *  label — what the preview's rebind runs against. Same shape App builds
-   *  for its own commit (labelSnapshot in App.tsx). */
-  label: LabelFileV2;
+  /** The document's label — values, enabled variants, dormant bench — which
+   *  is what the preview's rebind runs against. */
+  label: LabelFile;
   /** Library listing: every master this machine knows about, id -> name
    *  (masters.ts's masterIndex() plus the shipped master). */
   library: Record<string, LibraryEntry>;
@@ -47,7 +46,7 @@ export function MasterPicker(props: {
    *  resolved template assets ride along so the caller adopts them without
    *  a second file read. */
   onMaster: (target: Master, assets: MasterAssets) => void;
-  /** File → Open Master…, unchanged from Task 4. */
+  /** File → Open Master…. */
   onOpenMaster: () => void;
   /** Clones the current master under a fresh id with the given name, and
    *  rebinds this document onto the clone. */
@@ -82,8 +81,8 @@ export function MasterPicker(props: {
     const r = await props.resolve(id);
     setResolvingId(null);
     if (!r) { setError(`Could not open master "${id}".`); return; }
-    const { dropped, disabledVariants } = rebind(props.label, r.master);
-    setPreview({ target: r.master, assets: r.assets, dropped, disabledVariants });
+    const { dropped } = rebindLabel(props.label, props.master, r.master);
+    setPreview({ target: r.master, assets: r.assets, dropped: dropped.values, disabledVariants: dropped.variants });
   };
 
   const commit = () => {

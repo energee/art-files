@@ -21,6 +21,8 @@ import { extractAssets, packAssets, type LabelAssets } from "../labelfile";
  *  .label roles. A label's own embedded art always wins over the master's. */
 export type MasterAssets = Pick<LabelAssets, "texture" | "mask" | "customImages">;
 
+export const MASTER_EXT = ".master";
+
 // --- .master --------------------------------------------------------------
 
 export function serializeMaster(m: Master): string {

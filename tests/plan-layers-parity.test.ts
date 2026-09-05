@@ -34,7 +34,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { PDFDocument } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
-import { planLabel, type MeasureFace, type Placed, type PlacedText, type PlacedBarcode, type PlacedPaths, type PlacedImage } from "../src/plan";
+import { planLabel } from "./legacy/plan";
+import { type MeasureFace, type Placed, type PlacedText, type PlacedBarcode, type PlacedPaths, type PlacedImage } from "../src/plan";
 import { planLayers, type PlacedLayer, type TextFaces } from "../src/planLayers";
 import { lolevMaster } from "../src/model/lolevLayers";
 import type { Layer, QrLayer, TextLayer, TextLine } from "../src/model/layers";

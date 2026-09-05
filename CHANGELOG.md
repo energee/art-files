@@ -3,6 +3,55 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.49] - 2026-09-05
+
+- Bind a layer to the top, left, right, or bottom of another layer. Bound layers
+  follow their neighbor's size with an adjustable gap, including chained bindings.
+  Dragging adjusts the gap; switching sides, unbinding, and removing the neighbor
+  preserve the freed position. Existing “Bind below” files remain compatible.
+
+## [0.1.48] - 2026-09-05
+
+- Added left/right margin-guide bindings alongside top/middle/bottom. Horizontal
+  and vertical bindings work together, follow margin changes, and keep adjustable
+  offsets when dragged. Detaching preserves the layer's position.
+
+## [0.1.47] - 2026-09-04
+
+- Added a middle guide anchor: keep a layer vertically centered between the
+  top and bottom margin guides as its content grows, with an adjustable offset.
+
+## [0.1.46] - 2026-09-04
+
+- Anchor a layer's top or bottom edge to its margin guide from the inspector,
+  with an adjustable offset. Bottom-anchored text grows upward; dragging adjusts
+  the offset, and detaching preserves position.
+- Margin changes now save with the master and move guide-anchored layers in
+  preview and exports.
+
+## [0.1.45] - 2026-09-04
+
+- Turning on a dimmed variant layer now activates its variant instead of
+  accidentally disabling the layer and triggering a binding error. The power
+  button reflects whether the layer is actually enabled in the current variant;
+  undo restores both the variant and layer together.
+
+## [0.1.44] - 2026-09-04
+
+- Available desktop updates appear in the lower status bar without interrupting
+  work. Click the version to review release notes and install; choosing Later
+  keeps the update available from the bar, across tabs.
+
+## [0.1.43] - 2026-09-04
+
+- Masters now contain editable layers; variants store changes to those layers.
+  One Layers list with a Fillable filter replaces the separate editing modes,
+  Fields and Document panels. Every text layer supports rich multiline editing.
+- Position any unlocked layer, or bind it below another so it follows growing
+  text. Variant edits stay with the variant, including position changes.
+- Preview, PDF and PSD exports share layer placement. Existing master and label
+  files convert on open; newly saved files use format version 3.
+
 ## [0.1.42] - 2026-09-04
 
 - Presets are gone: the saved beer-style and barcode lists, the "Saved

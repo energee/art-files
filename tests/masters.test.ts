@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { masterIndex, rememberMaster, resolveMasterById, SHIPPED_MASTER_ID } from "../src/masters";
-import { lolevMaster } from "../src/model/lolev";
-import { parseMasterFile, serializeMaster } from "../src/model/masterfile";
+import { lolevMaster } from "../src/model/lolevLayers";
+import { parseMasterJson, serializeMaster } from "../src/model/files";
 
 const stored = new Map<string, string>();
 const fakeLocalStorage = {
@@ -40,7 +40,7 @@ describe("master library index", () => {
   // Task 4 is App.tsx's save/open wiring, which has no automated harness
   // (see task-4-report.md).
   it("a saved master registers in the library index under its own id", () => {
-    const m = parseMasterFile(serializeMaster(lolevMaster()));
+    const m = parseMasterJson(JSON.parse(serializeMaster(lolevMaster()))).master;
     rememberMaster(m, "/tmp/lolev.master");
     expect(masterIndex()[m.id]).toMatchObject({ name: "Lolev", path: "/tmp/lolev.master" });
   });
@@ -50,7 +50,8 @@ describe("master library index", () => {
   // index/hint BEFORE falling back to lolevMaster().
   it("a registered .master on disk for the shipped id wins over the built-in fixture", async () => {
     vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
-    const edited = { ...lolevMaster(), defaults: { ...lolevMaster().defaults, beerName: "ZZZ-EDITED" } };
+    const edited = lolevMaster();
+    edited.name = "ZZZ-EDITED";
     vi.doMock("@/files", () => ({
       readNativeFile: async () => new TextEncoder().encode(JSON.stringify(edited)),
     }));
@@ -58,7 +59,7 @@ describe("master library index", () => {
     mod.rememberMaster(edited, "/tmp/lolev.master");
     const resolved = await mod.resolveMasterById(mod.SHIPPED_MASTER_ID);
     // Legacy JSON bytes resolve through unpackMaster's '{' sniff, asset-less.
-    expect(resolved?.master.defaults.beerName).toBe("ZZZ-EDITED");
+    expect(resolved?.master.name).toBe("ZZZ-EDITED");
     expect(resolved?.assets).toEqual({});
     vi.doUnmock("@tauri-apps/api/core");
     vi.doUnmock("@/files");

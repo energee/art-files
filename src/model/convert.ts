@@ -16,6 +16,7 @@ import type {
   Guides, LabelFile, Layer, LayerValue, Master, RelativeY, TextLayer, TextLine, Variant,
 } from "./layers";
 import type { DeepPartial } from "./merge";
+import type { GuideLines } from "./position";
 import type { FontFamilyId } from "../fontCatalog";
 import { lolevMaster } from "./lolevLayers";
 import { parseDescription } from "../description";
@@ -179,10 +180,10 @@ function overrideFrom(base: Layer, p: ElementPatch): DeepPartial<Layer> {
 
 // --- Custom (kind-bearing) layers -----------------------------------------
 
-/** The guide lines an old anchored position resolved against, from the
- *  master's own physical size and guides (page-absolute points, bleed
- *  included — the same frame plan.ts's labelGuides computed for Lolev). */
-function guideLines(m: { physical: Master["physical"]; guides: Guides }) {
+/** The guide lines a master's anchored positions resolve against, from its
+ *  own physical size and guides (page-absolute points, bleed included). Used
+ *  by the converters here and by App's drag snapping (moveBy). */
+export function guideLines(m: { physical: Master["physical"]; guides: Guides }): GuideLines {
   const bleed = m.physical.bleedIn * 72;
   const w = m.physical.labelWidthIn * 72;
   const h = m.physical.labelHeightIn * 72;

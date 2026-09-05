@@ -330,6 +330,7 @@ export default function TabsShell() {
   // the ×.
   // The active editor mounts the slot div and hands it up through this
   // stable ref callback; null while no editor is active (startup teardown).
+  const [updateStatusHost, setUpdateStatusHost] = useState<HTMLDivElement | null>(null);
   const [stripHost, setStripHost] = useState<HTMLDivElement | null>(null);
   const tabStripHost = useCallback((el: HTMLDivElement | null) => setStripHost(el), []);
   // useMemo so the strip element is rebuilt only when its content changes,
@@ -397,6 +398,7 @@ export default function TabsShell() {
                   active one when its own keystroke retitles its tab. */}
               <DocumentEditor
                 tabStripHost={tabStripHost}
+                updateStatusHost={setUpdateStatusHost}
                 active={isActive}
                 fileToOpen={pending[t.id] ?? null}
                 onOpenSettled={e.onOpenSettled}
@@ -447,7 +449,7 @@ export default function TabsShell() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <DesktopUpdater dirty={anyUnsaved} checkRequest={checkRequest} />
+      <DesktopUpdater dirty={anyUnsaved} checkRequest={checkRequest} statusHost={updateStatusHost} />
     </>
   );
 }

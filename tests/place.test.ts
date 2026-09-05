@@ -81,3 +81,55 @@ describe("placeLayers", () => {
     ], sizeOf)).toThrow(/cycl/i);
   });
 });
+
+it("guide anchors follow margins and keep the bottom fixed as a layer grows", () => {
+  const layers = [text({ id: "a", x: 0, y: 3, guideY: "top" }), text({ id: "b", x: 0, y: -4, guideY: "bottom" })];
+  const first = placeLayers(layers, sizeOf, { top: 20, bottom: 300 });
+  expect(first.get("a")!.y).toBe(23);
+  expect(first.get("b")!.y + first.get("b")!.h).toBe(296);
+  const grown = placeLayers(layers, () => ({ w: 100, h: 60 }), { top: 30, bottom: 290 });
+  expect(grown.get("a")!.y).toBe(33);
+  expect(grown.get("b")!.y).toBe(226);
+  expect(layers[1].y).toBe(-4);
+});
+
+it("middle anchors keep the layer centered between guides as height and margins change", () => {
+  const layer = text({ id: "a", x: 0, y: 5, guideY: "middle" });
+  const first = placeLayers([layer], sizeOf, { top: 20, bottom: 300 }).get("a")!;
+  expect(first.y).toBe(155);
+  const grown = placeLayers([layer], () => ({ w: 100, h: 60 }), { top: 40, bottom: 320 }).get("a")!;
+  expect(grown.y).toBe(155);
+  expect(grown.y + grown.h / 2).toBe(185);
+});
+
+it("anchors left/right edges independently of vertical anchors as size and guides change", () => {
+  const layers = [
+    text({ id: "a", x: 3, y: 2, guideX: "left", guideY: "top" }),
+    text({ id: "b", x: -5, y: -4, guideX: "right", guideY: "bottom" }),
+  ];
+  const first = placeLayers(layers, sizeOf, { top: 20, bottom: 300, left: 30, right: 500 });
+  expect(first.get("a")!.x).toBe(33);
+  expect(first.get("b")!.x + first.get("b")!.w).toBe(495);
+  const resized = placeLayers(layers, () => ({ w: 120, h: 60 }), { top: 20, bottom: 300, left: 40, right: 480 });
+  expect(resized.get("a")!.x).toBe(43);
+  expect(resized.get("b")).toMatchObject({ x: 355, y: 236, w: 120, h: 60 });
+});
+
+it("binds facing edges on all four sides and follows growing neighbors through chains", () => {
+  const a = text({ id: "a", x: 200, y: 200, anchor: "center", vAnchor: "bottom" });
+  const sides = ["top", "left", "right", "bottom"] as const;
+  const layers = [a, ...sides.map((side) => text({ id: side, x: 10, y: 15, binding: { to: "a", side, gap: 5 } }))];
+  const measure = (l: Layer) => l.id === "a" ? { w: 100, h: 40 } : { w: 20, h: 10 };
+  const first = placeLayers(layers, measure);
+  expect(first.get("top")).toMatchObject({ x: 10, y: 145 });
+  expect(first.get("bottom")).toMatchObject({ x: 10, y: 205 });
+  expect(first.get("left")).toMatchObject({ x: 125, y: 15 });
+  expect(first.get("right")).toMatchObject({ x: 255, y: 15 });
+  const grown = placeLayers(layers, (l) => l.id === "a" ? { w: 140, h: 80 } : measure(l));
+  expect(grown.get("top")!.y).toBe(105);
+  expect(grown.get("left")!.x).toBe(105);
+  expect(grown.get("right")!.x).toBe(275);
+  expect(grown.get("bottom")!.y).toBe(205);
+  const chain = text({ id: "chain", x: 0, y: 0, binding: { to: "right", side: "right", gap: 3 } });
+  expect(placeLayers([chain, ...layers], measure).get("chain")!.x).toBe(278);
+});

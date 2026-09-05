@@ -33,4 +33,40 @@ describe("v3 master model", () => {
     m.variants[0].layers.extra = { name: "Extra" };
     expect(() => parseMaster(m)).toThrow(/unknown kind/);
   });
+  it("rejects enabled layers bound below disabled targets", () => {
+    const m = lolevMaster();
+    m.layers.find((l) => l.id === "description")!.enabled = false;
+    expect(() => parseMaster(m)).toThrow(/disabled layer "description"/);
+  });
+  it("validates variant overrides as complete resolved layers", () => {
+    const m = lolevMaster();
+    Object.assign(m.variants[0].layers, { logo: { y: { gap: 2 } } });
+    expect(() => parseMaster(m)).toThrow(/invalid y/);
+    m.variants[0].layers.logo = { kind: "text" };
+    expect(() => parseMaster(m)).toThrow(/missing lines/);
+  });
+
+});
+
+it("round-trips guide anchors and rejects simultaneous guide/layer binding", () => {
+  const m = lolevMaster();
+  m.layers[2] = { ...m.layers[2], guideY: "middle", y: -6 };
+  expect(parseMaster(JSON.parse(JSON.stringify(m))).layers[2]).toMatchObject({ guideY: "middle", y: -6 });
+  m.layers[2].y = { below: "description", gap: 0 };
+  expect(() => parseMaster(m)).toThrow(/both a guide and a layer/);
+});
+
+it("validates mixed-axis binding chains, references and persistence", () => {
+  const m = lolevMaster();
+  const a = m.layers.find((l) => l.id === "name")!;
+  const b = m.layers.find((l) => l.id === "volume")!;
+  a.binding = { to: b.id, side: "right", gap: 8 };
+  expect(parseMaster(JSON.parse(JSON.stringify(m))).layers.find((l) => l.id === a.id)!.binding).toEqual(a.binding);
+  b.binding = { to: a.id, side: "top", gap: 0 };
+  expect(() => parseMaster(m)).toThrow(/cyclic/);
+  b.binding = null;
+  a.binding.to = "missing";
+  expect(() => parseMaster(m)).toThrow(/missing layer/);
+  a.binding = { to: b.id, side: "right", gap: NaN };
+  expect(() => parseMaster(m)).toThrow(/invalid binding/);
 });

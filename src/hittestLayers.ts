@@ -5,9 +5,10 @@
 // applied at the end so the outlines land on the art the preview draws at
 // the current bleed. Lock is universal: a locked layer is never a drag
 // target, whatever its kind.
-import type { Layer, RelativeY } from "./model/layers";
+import type { Layer } from "./model/layers";
 import { layerBoxes } from "./planLayers";
 import type { MeasureFace, PlanAssets } from "./plan";
+import type { DeepPartial } from "./model/merge";
 import * as L from "./layout";
 
 export interface LayerBox {
@@ -71,7 +72,7 @@ export function boxOfLayer(
  *  patch on the master, the variant, or the label's overrides. */
 export function dragTargetLayers(
   layers: Layer[], id: string, m: MeasureFace, assets: PlanAssets,
-): { box: LayerBox; moved(dx: number, dy: number): { x: number; y: number | RelativeY } } | null {
+): { box: LayerBox; moved(dx: number, dy: number): DeepPartial<Layer> } | null {
   const layer = layers.find((l) => l.id === id);
   if (!layer || layer.locked) return null;
   const box = boxOfLayer(id, layers, m, assets);
@@ -79,9 +80,14 @@ export function dragTargetLayers(
   const y = layer.y;
   return {
     box,
-    moved: (dx, dy) => ({
-      x: layer.x + dx,
-      y: typeof y === "number" ? y + dy : { below: y.below, gap: y.gap + dy },
-    }),
+    moved: (dx, dy) => {
+      const b = layer.binding;
+      const horizontal = b?.side === "left" || b?.side === "right";
+      return {
+        ...(!horizontal ? { x: layer.x + dx } : {}),
+        ...(!b || horizontal ? { y: typeof y === "number" ? y + dy : { below: y.below, gap: y.gap + dy } } : {}),
+        ...(b ? { binding: { ...b, gap: b.gap + ((horizontal ? dx : dy) * (b.side === "top" || b.side === "left" ? -1 : 1)) } } : {}),
+      };
+    },
   };
 }

@@ -24,7 +24,7 @@ import { useState } from "react";
 import type { Layer, LayerKind } from "@/model/layers";
 import { cn } from "@/lib/utils";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import {
   SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton,
@@ -67,7 +67,7 @@ export interface LayerListProps {
    *  order, UP the visible list), -1 = toward the back. Never called for a
    *  step past either end. */
   onReorder: (id: string, delta: -1 | 1) => void;
-  onAdd: (kind: LayerKind) => void;
+  onAdd: (kind: LayerKind, variant?: string) => void;
   /** The row menu's Remove, and the Delete/Backspace key on a selected row. */
   onRemove: (id: string) => void;
   /** The header filter: show only `fillable` layers (what a .label fills). */
@@ -299,13 +299,13 @@ function Row({ row, isSelected, atFront, atBack, ...p }: {
         )}
         <button
           type="button"
-          onClick={(e) => { stop(e); p.onToggle(id, "enabled", !layer.enabled); }}
+          onClick={(e) => { stop(e); p.onToggle(id, "enabled", inactive); }}
           aria-label={`${name}: enabled`}
-          aria-pressed={layer.enabled}
+          aria-pressed={!inactive}
           // Lit while OFF: the exception is what needs pointing at, and the
           // row is already dimmed around it.
-          title={layer.enabled ? "Enabled — turn off to stop it drawing" : "Off — not drawn"}
-          className={control(!layer.enabled)}
+          title={inactive ? "Off — turn on to draw this layer and its variant" : "Enabled — turn off to stop it drawing"}
+          className={control(inactive)}
         >
           <Power />
         </button>
@@ -353,6 +353,18 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
               <DropdownMenuItem key={kind} onClick={() => props.onAdd(kind)}>
                 <Icon className="size-3.5" /> {label}
               </DropdownMenuItem>
+            ))}
+            {props.variants.map((variant) => (
+              <DropdownMenuSub key={variant.id}>
+                <DropdownMenuSubTrigger>{variant.name}</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {ADD_LAYER_KINDS.map(({ kind, label, Icon }) => (
+                    <DropdownMenuItem key={kind} onClick={() => props.onAdd(kind, variant.id)}>
+                      <Icon className="size-3.5" /> {label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
             ))}
           </DropdownMenuContent>
         </DropdownMenu>

@@ -324,3 +324,95 @@ describe("masterDiff", () => {
     expect(masterDiff(m, spun)).toBe(false);
   });
 });
+
+// --- App write-path helpers -------------------------------------------------
+import { assetReferenced, labelOverriddenPaths, patchLayer, patchLayerIn, unsetLayerKeys } from "../src/model/edit";
+
+describe("patchLayer (inspector write path)", () => {
+  it("merges defined keys and DELETES own-property undefineds", () => {
+    const m = lolevMaster();
+    const w = patchLayer(m, "warning", { width: undefined, size: 9 });
+    const l = w.layers.find((x) => x.id === "warning")!;
+    expect(l.kind === "text" && l.size).toBe(9);
+    expect("width" in l).toBe(false);
+    // unchanged input
+    expect("width" in m.layers.find((x) => x.id === "warning")!).toBe(true);
+  });
+  it("unsetLayerKeys reaches a variant-added layer's diff entry", () => {
+    const m = unsetLayerKeys(lolevMaster(), "collabLeft", ["h"]);
+    expect("h" in m.variants[0].layers.collabLeft).toBe(false);
+  });
+});
+
+describe("labelOverriddenPaths / assetReferenced", () => {
+  const label = { formatVersion: 3 as const, masterId: "lolev", enabledVariants: [], values: { collabLeft: "a1" },
+    overrides: { name: { style: { fill: "#000000" as const }, x: 3 } } };
+  it("flattens the label's overrides to leaf paths", () => {
+    expect([...labelOverriddenPaths(label, "name")].sort()).toEqual(["style.fill", "x"]);
+    expect(labelOverriddenPaths(label, "logo").size).toBe(0);
+  });
+  it("finds an asset in values, the master, a variant diff, or an override", () => {
+    const m = lolevMaster();
+    expect(assetReferenced(m, label, "a1")).toBe(true);
+    expect(assetReferenced(m, label, "a2")).toBe(false);
+    m.variants[0].layers.collabCenter = { ...m.variants[0].layers.collabCenter, asset: "a2" };
+    expect(assetReferenced(m, label, "a2")).toBe(true);
+    expect(assetReferenced(m, { ...label, overrides: { logo: { asset: "a3" } } }, "a3")).toBe(true);
+  });
+});
+
+describe("validated inspector patches", () => {
+  it("rejects disabling a binding target without changing the master", () => {
+    const m = lolevMaster();
+    expect(() => patchLayer(m, "description", { enabled: false })).toThrow(/disabled layer/);
+    expect(byId(m, "description").enabled).toBe(true);
+  });
+  it("edits and clears variant overrides without changing master defaults", () => {
+    const m = lolevMaster();
+    const changed = patchLayerIn(m, "collab", "warning", { width: 200 });
+    expect(collab(changed).layers.warning).toMatchObject({ width: 200 });
+    expect(collab(m).layers.warning).toBeUndefined();
+    const cleared = patchLayerIn(changed, "collab", "warning", { width: undefined });
+    expect(collab(cleared).layers.warning).not.toHaveProperty("width");
+    expect(collab(changed).layers.warning).toMatchObject({ width: 200 });
+  });
+});
+
+it("dragging horizontally adjusts a guide offset without replacing the guide anchor", () => {
+  const layer = { ...byId(lolevMaster(), "name"), guideX: "right" as const, x: -5 };
+  expect(moveBy({ ...layer, locked: false }, 3, 0, guides, 6, 100)).toEqual({ x: -2 });
+});
+
+import { bindingPatch, unbindPatch } from "../src/model/edit";
+
+it("switches binding axes and detaches at the measured position", () => {
+  const m = lolevMaster();
+  const layer = collab(m).layers.collabLeft as ImageLayer;
+  const box = { x: 30, y: 140, w: 40, h: 20 };
+  const patch = bindingPatch(layer, "logo", "left", box);
+  const changed = patchLayer(m, layer.id, patch);
+  const bound = collab(changed).layers.collabLeft as ImageLayer;
+  expect(bound).toMatchObject({ x: 30, y: 140, binding: { to: "logo", side: "left" } });
+  const moved = { x: 80, y: 140, w: 40, h: 20 };
+  expect(unbindPatch(bound, moved)).toEqual({ binding: null, x: 80, anchor: "left", guideX: "none" });
+  expect(bindingPatch(bound, "logo", "top", moved)).toMatchObject({ x: 80, y: 140, binding: { to: "logo", side: "top" } });
+});
+
+it.each(["top", "left", "right", "bottom"] as const)("dragging a %s binding edits its signed gap and preserves the free axis", (side) => {
+  const l = { ...byId(lolevMaster(), "volume"), binding: { to: "logo", side, gap: 10 }, locked: false };
+  const patch = moveBy(l, 3, 4, guides, 0, 10);
+  expect(patch.binding).toEqual({ to: "logo", side, gap: ({ top: 6, left: 7, right: 13, bottom: 14 })[side] });
+  if (side === "top" || side === "bottom") expect(patch).not.toHaveProperty("y");
+  else expect(patch).toMatchObject({ y: (l.y as number) + 4 });
+});
+
+it("deleting a binding target detaches its dependent at its measured position", () => {
+  const m = lolevMaster();
+  const changed = patchLayer(m, "name", { binding: { to: "volume", side: "right", gap: 4 } });
+  const boxes = new Map([["name", { x: 123, y: 45, w: 80, h: 20 }]]);
+  const removed = removeLayer(changed, "volume", boxes);
+  expect(byId(removed, "name")).toMatchObject({ x: 123, binding: null, anchor: "left" });
+  expect(() => parseMaster(removed)).not.toThrow();
+  expect(() => removeLayer(changed, "volume")).toThrow(/without the position/);
+  expect(byId(changed, "name").binding).not.toBeNull();
+});

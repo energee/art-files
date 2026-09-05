@@ -207,6 +207,17 @@ describe("LayerList", () => {
     expect(props.onAdd).toHaveBeenCalledWith("text");
   });
 
+  it("adds a layer directly to a variant without an editing mode", async () => {
+    const props = render(baseProps());
+    await openMenu(byLabel("Add layer"));
+    const variant = menuItem("Collab");
+    await act(async () => { variant.click(); await Promise.resolve(); });
+    const textItems = Array.from(document.querySelectorAll('[role="menuitem"]'))
+      .filter((el) => el.textContent?.trim() === "Text");
+    await act(async () => { (textItems.at(-1) as HTMLElement).click(); });
+    expect(props.onAdd).toHaveBeenCalledWith("text", "collab");
+  });
+
   it("the row menu's Remove calls onRemove", async () => {
     const props = render(baseProps());
     await openMenu(byLabel("Brand actions"));

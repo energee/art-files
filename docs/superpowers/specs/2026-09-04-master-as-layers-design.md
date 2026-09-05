@@ -258,3 +258,31 @@ fonts (see dynamic-fonts memory: route text through the one font gate);
    section with bind/unbind, and every deletion/merge in "Removed".
 4. Ledger: close `builtin-to-generic-layer-migration`; add relative-position
    deferrals.
+
+## Top and bottom guide anchors (2026-09-04 follow-up)
+
+Layers may set `guideY: "top" | "bottom"` with numeric `y` as a signed
+offset in points. Top anchors the top edge; bottom anchors the bottom edge,
+so multiline text grows upward. `guideY: "none"` uses absolute placement.
+Guide anchors and below-layer bindings are mutually exclusive. The inspector
+can detach without moving the layer; dragging adjusts the offset. Margin
+changes persist in the master and move anchored layers in preview and exports.
+
+Middle guide anchor follow-up: `guideY: "middle"` anchors the layer's vertical
+center to the midpoint of the top/bottom margin guides, plus numeric `y` offset.
+
+Four margin-guide edges (2026-09-05): `guideX: "left" | "right"` uses numeric
+`x` as signed offset, independent of `guideY`; `none` restores absolute x.
+The inspector exposes horizontal bindings and detaches without moving the layer.
+
+
+### Follow-up: four-side layer bindings (2026-09-05)
+
+Supersedes the deferred horizontal/above layer-binding scope. A layer may set
+`binding: { to: layerId, side: "top" | "left" | "right" | "bottom", gap: number }`.
+The facing edges are separated by the gap; positive gaps move outward. The other
+axis retains its position or guide anchor. Measured size changes propagate through
+binding chains in the shared preview/export planner. Legacy `y: { below, gap }`
+continues to mean a bottom binding. Missing/disabled targets and cycles are rejected.
+Dragging changes the signed gap on the bound axis. Switching axes or unbinding
+freezes the resolved coordinate of the newly free axis.

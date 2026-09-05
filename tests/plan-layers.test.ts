@@ -7,10 +7,8 @@ import { describe, expect, it } from "vitest";
 import {
   planLayers, layerBoxes, DEFAULT_FACES, type PlacedPage,
 } from "../src/planLayers";
-import {
-  barcodeItem, customBarcodeItem, labelGuides, type MeasureFace, type PlacedBarcode,
-  type PlacedImage, type PlacedPaths, type PlacedText,
-} from "../src/plan";
+import { barcodeItem, customBarcodeItem } from "./legacy/plan";
+import { labelGuides, type MeasureFace, type PlacedBarcode, type PlacedImage, type PlacedPaths, type PlacedText,  } from "../src/plan";
 import type {
   BarcodeLayer, ImageLayer, Layer, QrLayer, TextLayer, TextLine,
 } from "../src/model/layers";
@@ -275,4 +273,15 @@ describe("planLayers order and binding", () => {
     const skipped = planLayers(layers, m, assets, { skip: new Set(["a"]) });
     expect(skipped).toEqual(all.filter((r) => (r.id as string) !== "a"));
   });
+});
+
+it("uses authored guide positions in the shared plan and hit boxes", () => {
+  const layer = text({ id: "anchored", x: 10, y: -3, guideY: "bottom", lines: [line("one"), line("two")] });
+  const input = { ...assets, guides: { top: 30, bottom: 280 } };
+  const box = layerBoxes([layer], m, input).get(layer.id)!;
+  const runs = texts(planLayers([layer], m, input), layer.id);
+  expect(box.y + box.h).toBeCloseTo(277);
+  expect(runs.at(-1)!.y + DESC * layer.size).toBeCloseTo(277);
+  const moved = { ...input, guides: { top: 40, bottom: 260 } };
+  expect(layerBoxes([layer], m, moved).get(layer.id)!.y).toBeCloseTo(box.y - 20);
 });

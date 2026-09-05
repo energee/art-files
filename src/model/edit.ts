@@ -12,9 +12,10 @@
 // loader would reject.
 import type {
   BarcodeLayer, ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master, QrLayer,
-  RelativeY, TextLayer, Variant,
+  RelativeY, TextLayer, Variant, BindingSide,
 } from "./layers";
-import { parseMaster } from "./layers";
+import type { Box } from "./place";
+import { bindingOf, parseMaster } from "./layers";
 import { deepMerge, type DeepPartial } from "./merge";
 import { positionFromDrag, type GuideLines } from "./position";
 import { CENTER_X, GOLD } from "../layout";
@@ -142,15 +143,24 @@ const repoint = <T extends { y?: unknown }>(l: T, id: string, y: Layer["y"]): T 
  *  for it, and re-points any layer bound below it onto the removed layer's
  *  own `y` — the layer beneath takes the vacated slot — so no binding
  *  dangles. */
-export function removeLayer(master: Master, id: string): Master {
+export function removeLayer(master: Master, id: string, boxes?: ReadonlyMap<string, Box>): Master {
   const where = whereLayerLives(master, id);
   const removed = where === "master"
     ? master.layers.find((l) => l.id === id)!
     : variantOf(master, where.variant).layers[id];
   const y = removed.y as Layer["y"];
-  const layers = master.layers.filter((l) => l.id !== id).map((l) => repoint(l, id, y));
+  const detach = <T extends Entry>(entry: T, key: string): T => {
+    if (entry.binding?.to !== id) return repoint(entry, id, y);
+    const box = boxes?.get(key);
+    if (!box) throw new Error(`Cannot remove "${id}" without the position of bound layer "${key}"`);
+    const b = entry.binding;
+    return { ...entry, ...(b.side === "left" || b.side === "right"
+      ? { binding: null, x: box.x, anchor: "left", guideX: "none" }
+      : { binding: null, y: box.y, vAnchor: "top", guideY: "none" }) };
+  };
+  const layers = master.layers.filter((l) => l.id !== id).map((l) => detach(l, l.id));
   const variants = master.variants.map((v) => withEntries(v,
-    Object.fromEntries(Object.entries(without(v.layers, id)).map(([k, e]) => [k, repoint(e, id, y)]))));
+    Object.fromEntries(Object.entries(without(v.layers, id)).map(([k, e]) => [k, detach(e, k)]))));
   return { ...master, layers, variants };
 }
 
@@ -189,6 +199,31 @@ export function setLayer(master: Master, id: string, patch: LayerPatch): Master 
   return withLayer(master, id, (l) => deepMerge(l, patch as DeepPartial<Entry>));
 }
 
+/** Deletes own keys from the layer's own record (master.layers entry or the
+ *  adding variant's diff entry): the write path for an inspector patch that
+ *  carries `{ width: undefined }` to CLEAR an optional field, which deepMerge
+ *  would otherwise skip. Only top-level keys; the inspector clears nothing
+ *  deeper. */
+export function unsetLayerKeys(master: Master, id: string, keys: readonly string[]): Master {
+  return withLayer(master, id, (l) => {
+    const out = { ...l } as Record<string, unknown>;
+    for (const k of keys) delete out[k];
+    return out as Entry;
+  });
+}
+
+/** setLayer plus the inspector's clear rule: an own-property `undefined` in
+ *  `patch` DELETES that key from the layer's record instead of being skipped
+ *  (LayerInspector emits `{ width: undefined }`, `{ h: undefined }`). The one
+ *  write path App uses for every inspector / list / drag patch. */
+export function patchLayer(master: Master, id: string, patch: LayerPatch): Master {
+  const p = patch as Record<string, unknown>;
+  const unset = Object.keys(p).filter((k) => p[k] === undefined);
+  const kept = Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)) as LayerPatch;
+  const next = Object.keys(kept).length ? setLayer(master, id, kept) : master;
+  return parseMaster(unset.length ? unsetLayerKeys(next, id, unset) : next);
+}
+
 /** A variant's override of a MASTER layer (Collab moving the logo). The
  *  layer must be one the master has, or one this variant already carries. */
 export function setLayerIn(master: Master, variant: string, id: string, patch: LayerPatch): Master {
@@ -197,6 +232,16 @@ export function setLayerIn(master: Master, variant: string, id: string, patch: L
     throw new Error(`Layer "${id}" is not a master layer; setLayer edits a variant-added layer in place`);
   return withVariant(master, variant, (x) =>
     withEntries(x, { ...x.layers, [id]: deepMerge(x.layers[id] ?? {}, patch as DeepPartial<Entry>) }));
+}
+
+/** Variant-targeted inspector edits use the same optional-key clear rule. */
+export function patchLayerIn(master: Master, variant: string, id: string, patch: LayerPatch): Master {
+  const next = setLayerIn(master, variant, id, patch);
+  const entry = variantOf(next, variant).layers[id] as Record<string, unknown>;
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) delete entry[key];
+  }
+  return parseMaster(next);
 }
 
 /** Deletes one dot-path in place, pruning any object left empty above it.
@@ -251,18 +296,58 @@ export function overriddenPaths(master: Master, variant: string, id: string): Se
   return out;
 }
 
+/** Dotted leaf paths the label's own `overrides` set on a layer — the
+ *  inspector badge's second source, beside the enabled variants'. */
+export function labelOverriddenPaths(label: LabelFile, id: string): Set<string> {
+  const out = new Set<string>();
+  leafPaths(label.overrides?.[id], "", out);
+  return out;
+}
+
+/** Is an image asset id still reachable from the document: an image layer's
+ *  `asset` in the master, any variant's diff or the label's overrides, or a
+ *  label value. What App checks before releasing a replaced/cleared asset's
+ *  bytes — the same art can be shared by two layers. */
+export function assetReferenced(master: Master, label: LabelFile, assetId: string): boolean {
+  const uses = (e: DeepPartial<Layer> | undefined) => !!e && (e as { asset?: string }).asset === assetId;
+  if (master.layers.some(uses)) return true;
+  if (master.variants.some((v) => Object.values(v.layers).some(uses))) return true;
+  if (Object.values(label.overrides ?? {}).some(uses)) return true;
+  return Object.values(label.values).some((v) => v === assetId);
+}
+
 /** Binds the layer's top edge below another layer's bottom. `vAnchor` is
  *  dropped (meaningless on a bound layer). Throws parseMaster's error for a
  *  binding the loader would reject (cycle, missing layer, a master layer
  *  below a variant-only one). */
 export function bindBelow(master: Master, id: string, below: string, gap: number): Master {
-  return parseMaster(withLayer(master, id, ({ vAnchor: _v, ...l }) => ({ ...l, y: { below, gap } })));
+  return parseMaster(withLayer(master, id, ({ vAnchor: _v, ...l }) => ({ ...l, y: { below, gap }, guideY: "none", binding: null })));
 }
 
 /** Writes the resolved top edge as a plain `y` (the inspector's "Unbind"),
  *  clearing `vAnchor` to top. Re-validated like bindBelow. */
 export function unbind(master: Master, id: string, computedTopY: number): Master {
-  return parseMaster(withLayer(master, id, ({ vAnchor: _v, ...l }) => ({ ...l, y: computedTopY })));
+  return parseMaster(withLayer(master, id, ({ vAnchor: _v, ...l }) => ({ ...l, y: computedTopY, guideY: "none", binding: null })));
+}
+
+/** Detach only the bound axis, preserving its current measured position. */
+export function unbindPatch(layer: Layer, box: Box): LayerPatch {
+  const b = bindingOf(layer);
+  return b?.side === "left" || b?.side === "right"
+    ? { binding: null, x: box.x, anchor: "left", guideX: "none" }
+    : { binding: null, y: box.y, vAnchor: "top", guideY: "none" };
+}
+
+/** Switch sides without moving the newly free axis or retaining a conflicting guide. */
+export function bindingPatch(layer: Layer, to: string, side: BindingSide, box: Box): LayerPatch {
+  const old = bindingOf(layer);
+  return {
+    ...(old ? unbindPatch(layer, box) : {}),
+    ...(side === "left" || side === "right"
+      ? { x: box.x, anchor: "left", guideX: "none" } as const
+      : { y: box.y, vAnchor: "top", guideY: "none" } as const),
+    binding: { to, side, gap: old?.gap ?? 0 },
+  };
 }
 
 /** The drag patch. Horizontal: positionFromDrag's snap rule on the layer's
@@ -277,13 +362,20 @@ export function moveBy(
 ): LayerPatch {
   if (layer.locked) return {};
   const patch: LayerPatch = {};
-  if (dx !== 0) {
+  const binding = layer.binding;
+  const horizontal = binding?.side === "left" || binding?.side === "right";
+  if (binding && (horizontal ? dx !== 0 : dy !== 0)) {
+    const delta = horizontal ? dx : dy;
+    patch.binding = { ...binding, gap: binding.gap + (binding.side === "left" || binding.side === "top" ? -delta : delta) };
+  }
+  if (dx !== 0 && !horizontal && layer.guideX && layer.guideX !== "none") patch.x = layer.x + dx;
+  else if (dx !== 0 && !horizontal) {
     const left = layer.anchor === "left" ? layer.x : layer.anchor === "center" ? layer.x - w / 2 : layer.x - w;
     const { position } = positionFromDrag(left + dx, 0, w, 0, guides, snap);
     patch.anchor = position.anchor;
     patch.x = guides[position.anchor] + position.offsetX;
   }
-  if (dy !== 0) {
+  if (dy !== 0 && (!binding || horizontal)) {
     patch.y = isBound(layer.y) ? { below: layer.y.below, gap: layer.y.gap + dy } : layer.y + dy;
   }
   return patch;

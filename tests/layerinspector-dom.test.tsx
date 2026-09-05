@@ -61,7 +61,7 @@ const NAMES = [
 function render(layer: Layer, over: Partial<Parameters<typeof LayerInspector>[0]> = {}) {
   const props: Parameters<typeof LayerInspector>[0] = {
     layer, layerNames: NAMES, overridden: new Set(),
-    onChange: vi.fn(), onReset: vi.fn(), onUnbind: vi.fn(),
+    onChange: vi.fn(), onReset: vi.fn(), onUnbind: vi.fn(), onBind: vi.fn(),
     ...over,
   };
   act(() => { root.render(createElement(LayerInspector, props)); });
@@ -145,18 +145,36 @@ describe("LayerInspector position", () => {
     expect(onChange).toHaveBeenLastCalledWith({ rotation: 0 });
   });
 
-  it('choosing "Bind below Description" emits { y: { below: "description", gap: 0 } }', () => {
-    const { onChange } = render(text());
+  it.each(["top", "left", "right", "bottom"] as const)("binds to the %s of another layer", (side) => {
+    const { onBind } = render(text());
     const trigger = Array.from(container.querySelectorAll("button"))
-      .find((b) => b.textContent?.includes("Bind below"))!;
-    expect(trigger).toBeDefined();
+      .find((b) => b.textContent?.includes("Bind to layer"))!;
     click(trigger);
-    const item = byLabel("Bind below Description");
-    expect(item).not.toBeNull();
-    // The layer itself is never offered as its own anchor.
-    expect(byLabel("Bind below Name")).toBeNull();
-    click(item!);
-    expect(onChange).toHaveBeenLastCalledWith({ y: { below: "description", gap: 0 } });
+    expect(byLabel("Bind to Name")).toBeNull();
+    click(byLabel("Bind to Description")!);
+    click(byLabel(`Bind to ${side} of Description`)!);
+    expect(onBind).toHaveBeenCalledWith("description", side);
+  });
+
+  it.each(["top", "left", "right", "bottom"] as const)("edits a %s binding and leaves the other axis usable", (side) => {
+    const binding = { to: "description", side, gap: 4 };
+    const { onChange, onBind } = render(text({ binding }));
+    const horizontal = side === "left" || side === "right";
+    expect(!!$("#name-x")).toBe(!horizontal);
+    expect(!!$("#name-y")).toBe(horizontal);
+    type($("#name-gap")!, "9");
+    expect(onChange).toHaveBeenLastCalledWith({ binding: { ...binding, gap: 9 } });
+    const select = byLabel("Binding side") as HTMLSelectElement;
+    act(() => { select.value = "right"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(onBind).toHaveBeenLastCalledWith("description", "right");
+  });
+
+  it("migrates a legacy below binding when its side changes", () => {
+    const { onBind } = render(text({ y: { below: "description", gap: 5 } }));
+    const select = byLabel("Binding side") as HTMLSelectElement;
+    expect(select.value).toBe("bottom");
+    act(() => { select.value = "left"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(onBind).toHaveBeenCalledWith("description", "left");
   });
 
   it("a bound layer shows the bound name and gap, and Unbind calls onUnbind", () => {
@@ -294,4 +312,36 @@ describe("LayerInspector override badges", () => {
     click(byLabel("Reset Gap to the master")!);
     expect(onReset).toHaveBeenCalledWith("y.gap");
   });
+});
+
+it("anchors to a guide and can detach without losing placement", () => {
+  const { onChange } = render(text());
+  click(byLabel("Anchor to middle guide")!);
+  expect(onChange).toHaveBeenLastCalledWith({ guideY: "middle", y: 0, vAnchor: "top" });
+  click(byLabel("Anchor to bottom guide")!);
+  expect(onChange).toHaveBeenLastCalledWith({ guideY: "bottom", y: 0, vAnchor: "bottom" });
+  const { onUnbind } = render(text({ guideY: "bottom", y: -5, vAnchor: "bottom" }));
+  expect(byLabel("Y places the top edge")).toBeNull();
+  click(byLabel("Detach from guide")!);
+  expect(onUnbind).toHaveBeenCalledOnce();
+});
+
+it("offers left/right guide bindings and a detach action", () => {
+  const { onChange } = render(text());
+  click(byLabel("Anchor to left guide")!);
+  expect(onChange).toHaveBeenLastCalledWith({ guideX: "left", x: 0, anchor: "left" });
+  click(byLabel("Anchor to right guide")!);
+  expect(onChange).toHaveBeenLastCalledWith({ guideX: "right", x: 0, anchor: "right" });
+  const onUnbindX = vi.fn();
+  render(text({ guideX: "right", x: -5 }), { onUnbindX });
+  click(byLabel("Detach from horizontal guide")!);
+  expect(onUnbindX).toHaveBeenCalledOnce();
+});
+
+it("detaches a vertical guide without clearing a horizontal layer binding", () => {
+  const onUnbindGuideY = vi.fn();
+  const { onUnbind } = render(text({ binding: { to: "description", side: "left", gap: 5 }, guideY: "top" }), { onUnbindGuideY });
+  click(byLabel("Detach from guide")!);
+  expect(onUnbindGuideY).toHaveBeenCalledOnce();
+  expect(onUnbind).not.toHaveBeenCalled();
 });

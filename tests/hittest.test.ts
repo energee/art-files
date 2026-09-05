@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boxesOf, boxOf, hitTest } from "../src/hittest";
+import { boxesOf, boxOf, hitTest } from "./legacy/hittest";
 import { wrapWarning, warningColumnLen } from "../src/warning";
 import { defaultConfig } from "../src/defaults";
 import * as L from "../src/layout";

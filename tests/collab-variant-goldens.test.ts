@@ -1,101 +1,84 @@
-// collab-variant-goldens.test.ts — the byte-identity gate for Task 5c, which
-// deletes `LabelConfig.collabEnabled` and lets the Collab variant's own
-// disabled-layer set do the suppressing instead.
+// collab-variant-goldens.test.ts — the byte-identity gate for the shipped
+// Lolev label in the only two states the product ships, Collab OFF and ON,
+// each pinning all three deliverables: the art PDF, the mask PDF and the
+// PSD. PDF timestamps are pinned (PDF_EPOCH in src/pdf/build.ts), so
+// identical input builds byte-identical output and a sha256 IS byte
+// identity.
 //
-// These digests were taken BEFORE that change, against the shipped Lolev
-// master, in both of the only two states the product ships:
-//   OFF — resolve(lolevMaster(), [], {}): the collab flag false, the three
-//         collab layers in `disabledLayers`, and BOTH logo slots nonetheless
-//         loaded (the hard case: art in hand that must not draw).
-//   ON  — resolve(lolevMaster(), ["collab"], {}): the flag true, no layer
-//         disabled, both slots loaded and drawing.
-// Each state pins all three deliverables: the art PDF, the mask PDF and the
-// PSD. PDF timestamps are pinned (PDF_EPOCH in src/pdf/build.ts), so identical
-// input builds byte-identical output and a sha256 IS byte identity.
+// RE-BASELINED 2026-09-04 for the master-as-layers switch (spec: Goldens):
+// the backends now draw a display list planned by planLayers over
+// model/lolevLayers' data instead of a LabelConfig through layout.ts. The
+// 600 DPI raster diffs against the previous goldens are committed beside
+// this file as tests/goldens/collab-{off,on}-{art,mask}.diff.png; the only
+// changed pixels (99275 art / 53661 mask, identical OFF and ON) are the
+// warning's LAST column, which the old renderer justified to the full
+// column length and the generic text path leaves at its natural length
+// (spec: "justify on a last/only line degrades to left"). Nothing else
+// moved — the collab block included.
 //
-// Only HALF this guard is load-bearing for collab: the four PDF digests (art
-// + mask, OFF and ON) really do differ between the two states, so a
-// regression in the PDF collab path fails here. The two PSD digests are
-// byte-identical to each other (same hash, same 882336-byte length, OFF and
-// ON) — this suite hands buildPsd no collab assets (`psdAssets` carries
-// none), and an absent slot plans nothing, so these PSD assertions pin the
-// PSD against unrelated drift AND prove the empty-slot no-op, but do not
-// exercise collab art in the PSD. The real collab-art PSD guard is
-// tests/psd-collab.test.ts, which builds WITH partner art in both slots.
+//   OFF — the collab variant off: its three layers are not in the resolved
+//         list at all, so BOTH slot assets being loaded (the hard case: art
+//         in hand that must not draw) changes nothing.
+//   ON  — the variant on, both slots bound to a 1x1 PNG and drawing.
 //
-// A digest that moves is NOT a golden to regenerate: for the PDF digests it
-// is proof that dropping `cfg.collabEnabled &&` from the renderers changed
-// what prints; for the PSD digests it is proof something unrelated to collab
-// changed the PSD. Either way, stop and report it instead.
+// Only HALF this guard is load-bearing for collab: the four PDF digests
+// really do differ between the two states. The PSD digests pin the PSD
+// against unrelated drift (PSD raster review remains pending; see goldens/README.md) and prove the empty-slot rule (the PSD build here
+// gets no pixels for the slots, so ON adds only the lead-in group); the
+// real collab-art PSD guard is tests/psd-collab.test.ts.
+//
+// A digest that moves is NOT a golden to regenerate outside an approved
+// rendering change: it is proof that what prints changed. Stop and report
+// it, or re-baseline per docs/goldens.md with a reviewed diff PNG.
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "../src/pdf/build";
+import { buildArtPdf, buildMaskPdf, type Assets } from "../src/pdf/build";
 import { buildPsd } from "../src/psd/build";
-import { resolve } from "../src/model/resolve";
-import { lolevMaster } from "../src/model/lolev";
-import type { ElementId } from "../src/elements";
-import { assets as pdfFixture, psdAssets } from "./fixtures";
+import { assets as pdfFixture, lolevLayers, lolevPlan, onePxPng, psdAssets, type LolevOpts } from "./fixtures";
 
 const hash = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 
-/** A minimal embeddable 1x1 PNG standing in for a partner's logo — the point
- *  is that art IS loaded in both slots, not what it depicts. */
-const onePxPng = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-  "base64",
-);
-const partnerLogo: CollabImage = { kind: "png", bytes: onePxPng };
-
-/** The shipped master resolved with `variants` enabled, handed to a builder
- *  exactly as the app hands it over: the resolved config plus the resolver's
- *  own disabled-layer set as the renderers' skip set. */
-function shipped(variants: string[]) {
-  const r = resolve(lolevMaster(), variants, {});
-  const hidden = r.disabledLayers as ReadonlySet<string> as { has(id: ElementId): boolean };
-  const assets: Assets = {
-    ...pdfFixture, collabLeft: partnerLogo, collabCenter: partnerLogo, hidden,
+/** The shipped master with `variants` enabled and both slots bound to a
+ *  loaded 1x1 PNG, handed to the builders exactly as the app hands them. */
+async function shipped(variants: string[]) {
+  const opts: LolevOpts = {
+    variants,
+    overrides: { collabLeft: { asset: "left" }, collabCenter: { asset: "center" } },
+    custom: { left: { aspect: 1 }, center: { aspect: 1 } },
   };
-  return { cfg: r.config, assets };
+  const png = { kind: "png" as const, bytes: onePxPng };
+  const assets: Assets = { ...pdfFixture, images: { left: png, center: png } };
+  const items = await lolevPlan(opts);
+  const layers = lolevLayers(opts);
+  return {
+    art: await buildArtPdf(items, assets),
+    mask: await buildMaskPdf(items, assets),
+    psd: await buildPsd(items, psdAssets, "art", { layers }),
+  };
 }
 
+const digests = (r: Awaited<ReturnType<typeof shipped>>) => ({
+  art: hash(r.art), artLen: r.art.length,
+  mask: hash(r.mask), maskLen: r.mask.length,
+  psd: hash(r.psd), psdLen: r.psd.length,
+});
+
 describe("collab byte-identity goldens — Collab variant OFF, both slots loaded", () => {
-  it("art PDF, mask PDF and PSD are byte-for-byte what they were before Task 5c", async () => {
-    const { cfg, assets } = shipped([]);
-    const art = await buildArtPdf(cfg, assets);
-    const mask = await buildMaskPdf(cfg, assets);
-    const psd = await buildPsd(cfg, psdAssets);
-    expect({
-      art: hash(art), artLen: art.length,
-      mask: hash(mask), maskLen: mask.length,
-      psd: hash(psd), psdLen: psd.length,
-    }).toEqual({
-      art: "1aa544e8fbc112411f62a1d4c3eec067e0a5fcf2e09c87d08dd1a9146829d7f1",
-      artLen: 62878,
-      mask: "51f02240022ce0b20343cfc334d92109b0e726a36c2a347d5c91339f16a24ac4",
-      maskLen: 61928,
-      psd: "5421f3775cc47dbf3d272b374b63b5b84eddf0ce11b43240868402f19b6ea445",
-      psdLen: 882336,
+  it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
+    expect(digests(await shipped([]))).toEqual({
+      art: "80217f6667bd2fc46774441e69968fca664c67b5d7938a7fad30fe3fc7d65c29", artLen: 57916,
+      mask: "663472fc6d93ba8d9ed76f3834543c6520bf9a8d4378656abd071afb81de7e4d", maskLen: 57090,
+      psd: "f470f1ac36c161adfd5868a042ed5718528904d4fe3241695584191e9701bec7", psdLen: 1155342,
     });
   });
 });
 
 describe("collab byte-identity goldens — Collab variant ON, both slots loaded", () => {
-  it("art PDF, mask PDF and PSD are byte-for-byte what they were before Task 5c", async () => {
-    const { cfg, assets } = shipped(["collab"]);
-    const art = await buildArtPdf(cfg, assets);
-    const mask = await buildMaskPdf(cfg, assets);
-    const psd = await buildPsd(cfg, psdAssets);
-    expect({
-      art: hash(art), artLen: art.length,
-      mask: hash(mask), maskLen: mask.length,
-      psd: hash(psd), psdLen: psd.length,
-    }).toEqual({
-      art: "11eb6ce3fda3c53dda13b54a8320af388d3570aeb0bc0b2a64e83d2e38295944",
-      artLen: 64642,
-      mask: "498fb178bf480d7e294527e6cb45bd657d031552e180584d6554e7923021f833",
-      maskLen: 63654,
-      psd: "5421f3775cc47dbf3d272b374b63b5b84eddf0ce11b43240868402f19b6ea445",
-      psdLen: 882336,
+  it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
+    expect(digests(await shipped(["collab"]))).toEqual({
+      art: "9cfe5396f8ee63918d539e943fce1b0f3efdd75fc71fefcd785a10f7a4130984", artLen: 59799,
+      mask: "bc6b233b530e7b04e5b45fbc984d89edb698ab683816741dd7f1196685a57a96", maskLen: 58946,
+      psd: "608dc03ddd85c41b6618b2121ee40a8faea3d72b1f5ba222f1d64b3051ef557c", psdLen: 1165362,
     });
   });
 });

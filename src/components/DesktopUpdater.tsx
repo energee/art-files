@@ -1,6 +1,8 @@
 // DesktopUpdater.tsx — checks signed Tauri releases and installs one only
 // after the operator accepts the restart.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Download } from "lucide-react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { DownloadEvent, Update } from "@tauri-apps/plugin-updater";
 import { Button } from "@/components/ui/button";
@@ -84,8 +86,9 @@ function releaseUpdate(update: Update) {
   });
 }
 
-export function DesktopUpdater(props: { dirty: boolean; checkRequest: number }) {
+export function DesktopUpdater(props: { dirty: boolean; checkRequest: number; statusHost?: HTMLElement | null }) {
   const desktop = isTauri();
+  const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const updateRef = useRef<Update | null>(null);
   const checkRef = useRef<Promise<CheckResult> | null>(null);
@@ -113,6 +116,7 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number }) 
       if (result.kind === "available") releaseUpdate(result.update);
       return;
     }
+    if (manual) setOpen(true);
     if (result.kind === "available") {
       if (updateRef.current && updateRef.current !== result.update) dropUpdate();
       updateRef.current = result.update;
@@ -139,7 +143,7 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number }) 
     };
   }, [dropUpdate]);
 
-  // A quiet launch check: only an available update opens UI. The short delay
+  // A quiet launch check: available updates appear in the status bar. The short delay
   // keeps updater network work out of the editor's first-paint path.
   useEffect(() => {
     if (!desktop) return;
@@ -154,14 +158,16 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number }) 
   useEffect(() => {
     if (!desktop || props.checkRequest === lastRequestRef.current) return;
     lastRequestRef.current = props.checkRequest;
+    setOpen(true);
+    if (updateRef.current) return;
     setStatus({ kind: "checking" });
     void performCheck().then((result) => present(result, true));
   }, [desktop, performCheck, present, props.checkRequest]);
 
   const dismiss = () => {
     if (status.kind === "downloading") return;
-    dropUpdate();
-    setStatus({ kind: "idle" });
+    setOpen(false);
+    if (status.kind !== "available") setStatus({ kind: "idle" });
   };
 
   const install = async () => {
@@ -202,7 +208,17 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number }) 
   const busy = status.kind === "checking" || status.kind === "downloading";
 
   return (
-    <Dialog open={status.kind !== "idle"}
+    <>
+      {desktop && props.statusHost && status.kind === "available" && createPortal(
+        <span role="status">
+          <Button variant="ghost" size="sm" className="h-6 gap-1.5 px-2 text-xs text-primary"
+            onClick={() => setOpen(true)}>
+            <Download data-icon="inline-start" aria-hidden="true" />
+            Update available · {status.version}
+          </Button>
+        </span>, props.statusHost,
+      )}
+    <Dialog open={open}
       onOpenChange={(open) => { if (!open && !busy) dismiss(); }}>
       <DialogContent showCloseButton={!busy}>
         <DialogHeader>
@@ -264,5 +280,6 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number }) 
         )}
       </DialogContent>
     </Dialog>
+    </>
   );
 }

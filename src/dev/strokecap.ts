@@ -8,12 +8,15 @@
 // npm run strokecap. Results land on window.__cap for a driver to read.
 import { buildArtPdf } from "../pdf/build";
 import { loadFonts } from "../pdf/fonts";
-import { planLabel } from "../plan";
+import { planLayers } from "../planLayers";
+import { convertConfigV1 } from "../model/convert";
+import { resolveLayers } from "../model/resolveLayers";
+import { lolevMaster } from "../model/lolevLayers";
 import { drawPlate } from "../canvas/draw";
 import { labelFontCss, loadLabelFont, loadLabelFaces } from "../fonts";
 import { defaultConfig } from "../defaults";
-import { boxesFor } from "../hittest";
-import { BLEED_SHIFT, PAGE, previewRasterScale } from "../layout";
+import { boxesForLayers } from "../hittestLayers";
+import { PAGE, previewRasterScale } from "../layout";
 import logoSvg from "../assets/logo2025.svg?raw";
 
 const SCALE = 8; // raster px per pt
@@ -50,12 +53,13 @@ const b64 = (bytes: Uint8Array) => {
 
 async function run() {
   const report = document.getElementById("report")!;
-  // loadLabelFont's return IS the hit-test Measure (bold measures the
-  // SemiBold face — the convention lives in fonts.ts, not here).
-  const [fonts, mf, measure] = await Promise.all([loadFonts(), loadLabelFaces(), loadLabelFont()]);
+  // Register browser faces before drawing; placement uses face-aware metrics.
+  const [fonts, mf] = await Promise.all([loadFonts(), loadLabelFaces(), loadLabelFont()]);
   const cfg = defaultConfig();
   cfg.abv = "8.5";
-  const plan = planLabel(cfg, mf, { assets: { logoSvg } });
+  const { label } = convertConfigV1(cfg, false);
+  const { layers } = resolveLayers(lolevMaster(), label.enabledVariants, label.values, label.overrides);
+  const plan = planLayers(layers, mf, { logoSvg });
 
   // One spelling of "the art plate at density s", so the magnified capture
   // and the preview-density one can only differ by their density.
@@ -75,14 +79,14 @@ async function run() {
   // stroker, so the same cavity question applies to their leaf tips.
   const ids = [...new Set(plan.map((r) => r.id))];
   const crops: Record<string, Crop> = {};
-  for (const b of boxesFor(ids, cfg, measure)) {
+  for (const b of boxesForLayers(ids, layers, mf, { logoSvg })) {
     crops[b.id] = {
-      x: b.x0 + BLEED_SHIFT - PAD, y: b.y0 + BLEED_SHIFT - PAD,
-      w: b.x1 - b.x0 + 2 * PAD, h: b.y1 - b.y0 + 2 * PAD,
+      x: b.x - PAD, y: b.y - PAD,
+      w: b.w + 2 * PAD, h: b.h + 2 * PAD,
     };
   }
 
-  const pdfBytes = await buildArtPdf(cfg, { fonts, logoSvg });
+  const pdfBytes = await buildArtPdf(plan, { fonts });
   window.__cap = {
     scale: SCALE,
     previewScale: PREVIEW_SCALE,

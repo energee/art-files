@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { lineRuns, rotatedRuns, justifiedRotatedRuns, planLabel, barcodeItem, labelGuides, type MeasureFace, type PlacedText, type PlacedImage } from "../src/plan";
+import { planLabel, barcodeItem } from "./legacy/plan";
+import { lineRuns, rotatedRuns, justifiedRotatedRuns, labelGuides, type MeasureFace, type PlacedText, type PlacedImage } from "../src/plan";
 import * as L from "../src/layout";
 import { defaultConfig } from "../src/defaults";
 import { assets } from "./fixtures";
@@ -116,7 +117,7 @@ describe("planLabel", () => {
 
   it("skip removes an element without moving its neighbours", () => {
     const all = planLabel(cfg, m);
-    const skipped = planLabel(cfg, m, { skip: new Set<import("../src/elements").ElementId>(["abv"]) });
+    const skipped = planLabel(cfg, m, { skip: new Set<import("./legacy/elements").ElementId>(["abv"]) });
     expect(skipped.some((r) => r.id === "abv")).toBe(false);
     const others = (rs: typeof all) => rs.filter((r) => r.id !== "abv");
     expect(others(skipped)).toEqual(others(all));
@@ -358,7 +359,7 @@ describe("planLabel with customLayers", () => {
       line: { text: "HI", fill: "#000000", layer: "metallic" },
     };
     const list = planLabel({ ...cfg, customLayers: [layer] }, m, {
-      skip: new Set<import("../src/elements").ElementId>(["custom-t3"]),
+      skip: new Set<import("./legacy/elements").ElementId>(["custom-t3"]),
     });
     expect(list.some((r) => r.id === "custom-t3")).toBe(false);
   });

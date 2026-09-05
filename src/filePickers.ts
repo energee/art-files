@@ -7,7 +7,7 @@
 // module exports only React components and Fast Refresh keeps working (a
 // mixed export forces Vite into full-reload HMR).
 import { LABEL_EXT } from "@/labelfile";
-import { MASTER_EXT } from "@/model/masterfile";
+import { MASTER_EXT } from "@/model/files";
 
 /** One spelling of the dialog's file-type name, so the browser picker and
  *  the Tauri-native dialog can't drift apart. */

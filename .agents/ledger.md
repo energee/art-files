@@ -230,9 +230,11 @@ no status, no attempts, no delta.
 
 ## 2026-08-29 builtin-to-generic-layer-migration
 - finding: [plan review, REDUCTION mode; over-engineering pass 2026-08-29] the master-variation refactor's endgame — delete built-in runtime branches (plan.ts / elements.ts / hittest.ts / pdf/build.ts / psd/build.ts / ElementId) once every element is a generic layer — is deferred out of v1 and OPPORTUNISTIC: an element migrates only when keeping its branch blocks a user-facing change; some branches may never migrate, and that is fine. v1 ships only user-visible capability (.master as ZIP with template assets, master-ordered draw order, guide wiring for position.ts, generic multiline/wrap/justify text, rotation 0|90 on barcode+text only, Collab-art PSD golden with real partner art)
-- status: open
-- attempts: 0/3
+- status: done
+- attempts: 1/3
 - notes: any migration goes per element behind its existing byte-identity golden; delete a built-in branch only after that element's parity holds; never one motion. No generic `flow` constraint in the schema — if description/warning/collab migrate, try resolver-computed offsets first and only revisit a constraint then. Draw-order guard: one golden with a custom layer behind a built-in, PDF only (backends share planLabel's ordering). Seam risk: four prior fix rounds (dc492aa, 91f02fb, a368d76, 48ca845) were all master/label ownership-seam bugs — every seam-touching task lands with a doc.ts-level test, not just render goldens. Full v1 scope: the 2026-08-29 amendment block in docs/superpowers/specs/2026-08-27-master-variation-design.md.
+
+- delta: superseded by approved 2026-09-04 master-as-layers design; all runtime renderers and App use generic v3 layers, old placement oracle retained only under tests/legacy. Model/converter/UI/export checks pass; separate PSD visual acceptance remains recorded below.
 
 ## 2026-08-29 master-zip-container
 - finding: [v1 step 2 of the 2026-08-29 spec amendment] .master was JSON-only and could not carry template art — texture and metallic mask rode in every .label instead, so "new label from master" required re-dropping the same files and cross-business masters were impossible
@@ -251,3 +253,54 @@ no status, no attempts, no delta.
 - status: done
 - attempts: 1/3
 - delta: Fill-mode variant controls 1 → 0; FieldList now receives App's already-resolved fields instead of recomputing them from two model props; already-enabled variants still resolve their fields and artwork; 658 tests, tsc, Vite build, Cargo check, and the 0.1.38 release gate pass
+
+## 2026-09-04 master-as-layers-session-resume
+- finding: [user request] Claude session 0bff2b49-40ae-4dac-b567-b62a13afff54 stopped at its session limit during v3 App/backend integration
+- status: in-progress
+- attempts: 1/3
+- delta: unfinished App/backend contracts integrated; unified Layers list, rich multiline editors, variant-targeted edits, binding validation, Settings, PDF/PSD/canvas shared placement, legacy CLI conversion and four-format generation completed; version 0.1.43 prepared
+- evidence: 765/765 tests across 60 suites, production build (including TypeScript), Cargo check, diff check and 0.1.43 release metadata gate pass; CLI generated all four exports with and without art; App DOM test exercises selection, content edit and undo
+- ruling: remaining visual acceptance requires live browser access and Photoshop-rendered old/new PSD rasters; CUA returned no browser available, and ag-psd does not render editable text/vector/effects composites. PDF 600-DPI diff review is complete in tests/goldens/README.md. No release published.
+- notes: horizontal/above/baseline binding and variant draw order remain deferred per approved spec; relative below bindings and chains implemented
+
+## 2026-09-04 status-bar-update-availability
+- finding: [user request] DesktopUpdater discarded available releases on Later, leaving no persistent update entry in the editor view
+- status: done
+- attempts: 1/3
+- delta: quiet launch checks now show an Update available/version button in the active editor's lower bar; clicking opens existing notes/install dialog, Later retains the release, tab changes move the indicator, unmount releases its resource
+- evidence: updater parser/DOM and App DOM checks 4/4 pass; production build, Cargo check, diff check and 0.1.44 release metadata gate pass. Live browser verification unavailable in this session; no real update installed or published.
+
+## 2026-09-04 inactive-variant-power-toggle
+- finding: [user report] a dimmed Collab lead-in appeared off while its power button toggled the intrinsic enabled=true to false, breaking collabLeft's binding
+- status: done
+- attempts: 1/3
+- delta: row power uses effective visibility; shared App patch path activates the owning variant when enabling its layer, recording both changes in one undo step; binding validation preserved
+- evidence: App regression reproduced false effective power state before fix; 76 scoped tests pass after fix, production build, Cargo check, diff check and 0.1.45 release gate pass; no release published
+
+## 2026-09-04 vertical-guide-anchors
+- finding: [user request] layers could bind below neighbors or use absolute edges but could not remain anchored to top/bottom margin guides
+- status: done
+- attempts: 1/3
+- delta: guideY top/bottom plus signed y offset feeds shared placement; inspector selects/detaches anchors, bottom text grows upward, drag retains anchor; margin changes now persist with master and reach preview/export planning
+- evidence: 770/770 tests, production build, Cargo check, diff check and 0.1.46 release gate pass; regressions cover changing guides, text growth, shared-plan positions, file round-trip and inspector actions; no release published
+
+## 2026-09-04 middle-guide-anchor
+- finding: [user request] add middle alongside top/bottom guide anchors
+- status: done
+- attempts: 1/3
+- delta: middle anchors a layer's vertical center between its top/bottom margin guides plus signed offset; inspector exposes the option and master parsing preserves it
+- evidence: 66 scoped tests, production build, Cargo check, diff check and 0.1.47 release gate pass; tests cover growth, guide movement, round-trip and inspector selection; no release published
+
+## 2026-09-05 horizontal-guide-bindings
+- finding: [user request, interpreted in ongoing margin-guide context] bind to top, left, right or bottom
+- status: done
+- attempts: 1/3
+- delta: left/right guideX bindings combine with guideY; horizontal drag adjusts offset, detach preserves position, in-place text uses its resolved box; existing middle anchor retained
+- evidence: 113 scoped tests, production build, Cargo check, diff check and 0.1.48 release metadata gate pass; no release published
+
+## 2026-09-05 four-side-layer-bindings
+- finding: [user clarification] bind to another layer's top/left/right/bottom, following its growth; the preceding horizontal-guide interpretation did not satisfy this request
+- status: done
+- attempts: 1/3
+- delta: shared measured placement supports four-side bindings and chains; inspector target/side/gap controls, signed drag gaps, axis-preserving side changes/unbind/removal; legacy below files remain compatible and reference/cycle validation stays enforced
+- evidence: 792/792 tests pass, including four-side growth/chains, editing, deletion, hit testing and inspector actions; production build and Cargo check pass; binary-impacting 0.1.49 metadata prepared with matching CHANGELOG; no release published; live browser verification unavailable in this environment

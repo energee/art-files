@@ -1,8 +1,8 @@
 // masterpicker-dom.test.tsx — DOM behavior of MasterPicker
 // (src/components/MasterPicker.tsx): the Design sidebar's "Master: Lolev ▾"
 // selector. Choosing another library master previews the rebind
-// (model/rebind.ts) — the counts of what would move to the bench — and must
-// NOT call onMaster until the inline "Continue" is pressed (Task 4b brief).
+// (model/rebindLayers.ts) — the counts of what would move to the bench — and
+// must NOT call onMaster until the inline "Continue" is pressed.
 // Scoped to a DOM environment per-file, matching tests/fieldlist-dom.test.ts's
 // setup — no @testing-library/react in this repo, so this drives real DOM
 // nodes through react-dom/client + act, the same as that suite.
@@ -11,8 +11,8 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MasterPicker } from "../src/components/MasterPicker";
-import { lolevMaster } from "../src/model/lolev";
-import type { LabelFileV2, Master } from "../src/model/types";
+import { lolevMaster } from "../src/model/lolevLayers";
+import type { LabelFile, Master } from "../src/model/layers";
 
 // React only honours act() when the environment opts in (see
 // fieldlist-dom.test.ts for the same line).
@@ -37,9 +37,9 @@ afterEach(() => {
  *  preview for the assertion below. */
 const otherMaster: Master = { ...lolevMaster(), id: "other", name: "Other Brewery", variants: [] };
 
-const label: LabelFileV2 = {
-  formatVersion: 2, masterId: "lolev", enabledVariants: ["collab"],
-  values: { name: "Peregrine" },
+const label: LabelFile = {
+  formatVersion: 3, masterId: "lolev", enabledVariants: ["collab"],
+  values: { name: [{ text: "Peregrine", fill: "#F3CD80", layer: "metallic" }] },
 };
 
 function renderPicker(props: Partial<Parameters<typeof MasterPicker>[0]> = {}) {

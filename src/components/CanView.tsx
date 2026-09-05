@@ -1,6 +1,6 @@
 // CanView.tsx — React wrapper around the vanilla-three CanScene: mounts the
 // scene once into a fill-parent div, rebuilds the label textures from the
-// canvas backend's plates whenever the render source or config changes
+// canvas backend's plates whenever the render source or layers change
 // (debounced — see the rebuild effect), switches view modes, and tears
 // everything down on unmount.
 import {
@@ -8,8 +8,9 @@ import {
 } from "react";
 import { CanScene, type CanSceneMode } from "@/three/canScene";
 import { drawPlates, buildLabelTextures } from "@/three/labelTextures";
-import { planFrom, type CanvasRenderSource } from "@/canvas/draw";
-import type { LabelConfig } from "@/types";
+import type { CanvasRenderSource } from "@/canvas/draw";
+import { planLayers } from "@/planLayers";
+import type { Layer } from "@/model/layers";
 import { cn } from "@/lib/utils";
 
 export interface CanViewHandle {
@@ -25,7 +26,9 @@ export const CanView = forwardRef<CanViewHandle, {
   cornerRadiusPct: number;
   /** Foil-mask blur, % of label width (Settings layer). */
   edgeSoftnessPct: number;
-  cfg: LabelConfig;
+  /** The resolved layers that draw, in draw order (the same list the 2D
+   *  preview plans from). */
+  layers: Layer[];
   /** The render source: fonts + decoded bitmaps for drawPlate, assembled
    *  from the display list. Null means "not ready yet". */
   source: CanvasRenderSource | null;
@@ -47,7 +50,7 @@ export const CanView = forwardRef<CanViewHandle, {
    *  with only a console.warn. */
   onRenderError: (message: string) => void;
 }>(function CanView({
-  cfg, source, bleedIn, mode, cornerRadiusPct,
+  layers, source, bleedIn, mode, cornerRadiusPct,
   edgeSoftnessPct, onZoom, initialView, onRenderError,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -107,7 +110,7 @@ export const CanView = forwardRef<CanViewHandle, {
     const timer = setTimeout(() => {
       done = true;
       try {
-        const plan = planFrom(cfg, source);
+        const plan = planLayers(layers, source.m, source.planAssets, { skip: source.skip });
         sceneRef.current?.applyTextures(
           buildLabelTextures(drawPlates(plan, source.drawAssets, source.fontCss)));
         onRenderError("");
@@ -121,7 +124,7 @@ export const CanView = forwardRef<CanViewHandle, {
     return () => { clearTimeout(timer); if (!done) setLoading(false); };
     // onRenderError is a useState setter in App — identity-stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, cfg, bleedIn]);
+  }, [source, layers, bleedIn]);
 
   useEffect(() => {
     sceneRef.current?.setMode(mode);

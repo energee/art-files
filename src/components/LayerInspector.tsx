@@ -2,8 +2,8 @@
 // (spec: docs/superpowers/specs/2026-09-04-master-as-layers-design.md, "UI"
 // and "Relative position"). Sections, top to bottom: header (kind icon,
 // inline rename, enabled/locked/fillable), the parent's content editor,
-// Position (x + anchor; y as a number with the edge it places, or a `below`
-// binding with its gap; rotation 0/90), kind-specific Geometry, and Style.
+// Position (free coordinates or a binding to another layer's edge, with
+// a gap; rotation 0/90), kind-specific Geometry, and Style.
 //
 // Every control is controlled from `layer` and writes ONLY through
 // `onChange` with a minimal DeepPartial<Layer> patch ({ x }, { y: 12 },
@@ -30,8 +30,9 @@ import {
   Barcode, Image, Link2, Link2Off, QrCode, RotateCcw, TextAlignCenter, TextAlignEnd,
   TextAlignJustify, TextAlignStart, Type, WholeWord, type LucideIcon,
 } from "lucide-react";
+import { bindingOf } from "@/model/layers";
 import type {
-  BarcodeLayer, ImageLayer, Layer, LayerKind, QrLayer, Symbology, TextLayer,
+  BindingSide, BarcodeLayer, ImageLayer, Layer, LayerKind, QrLayer, Symbology, TextLayer,
 } from "@/model/layers";
 import type { DeepPartial } from "@/model/merge";
 import type { Anchor } from "@/model/position";
@@ -42,6 +43,7 @@ import { minModuleWarning } from "@/model/fields";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
@@ -250,85 +252,107 @@ interface Ctx {
 }
 
 function Position(props: Ctx & {
-  layer: Layer; layerNames: readonly { id: string; name: string }[]; onUnbind: () => void;
+  layer: Layer; layerNames: readonly { id: string; name: string }[]; onUnbind: () => void; onUnbindGuideY?: () => void; onUnbindX?: () => void; onBind?: (to: string, side: BindingSide) => void;
 }) {
   const { layer, set, badge } = props;
   const id = layer.id;
   const y = layer.y;
+  const binding = bindingOf(layer);
+  const horizontal = binding?.side === "left" || binding?.side === "right";
   const others = props.layerNames.filter((n) => n.id !== id);
   const nameOf = (lid: string) => props.layerNames.find((n) => n.id === lid)?.name ?? lid;
   return (
     <div className="space-y-1.5">
       <Heading>Position</Heading>
+      {!horizontal && <>
       <Row badge={badge(["x"], "X")}>
         <ScrubField
-          id={`${id}-x`} label="X" unit="pt" value={layer.x}
+          id={`${id}-x`} label={layer.guideX && layer.guideX !== "none" ? "X offset" : "X"} unit="pt" value={layer.x}
           min={-2000} max={2000} {...PT}
           onChange={(x) => set({ x })}
         />
       </Row>
       <Segmented
+        label="Horizontal guide" value={layer.guideX ?? "none"}
+        options={[{ value: "none", label: "Detach from horizontal guide", icon: Link2Off }, { value: "left", label: "Anchor to left guide", icon: AlignStartVertical }, { value: "right", label: "Anchor to right guide", icon: AlignEndVertical }]}
+        badge={badge(["guideX"], "Horizontal guide")}
+        onChange={(guideX) => guideX === "none" ? props.onUnbindX?.() : set({ guideX, x: 0, anchor: guideX })}
+      />
+      {(!layer.guideX || layer.guideX === "none") && <Segmented
         label="Anchor" value={layer.anchor} options={ANCHORS}
         badge={badge(["anchor"], "Anchor")}
         onChange={(anchor) => set({ anchor })}
-      />
-      {typeof y === "number" ? (
+      />}
+      </>}
+      {(!binding || horizontal) && typeof y === "number" && (
         <>
           <Row badge={badge(["y"], "Y")}>
             <ScrubField
-              id={`${id}-y`} label="Y" unit="pt" value={y}
+              id={`${id}-y`} label={layer.guideY && layer.guideY !== "none" ? "Offset" : "Y"} unit="pt" value={y}
               min={-2000} max={2000} {...PT}
               onChange={(v) => set({ y: v })}
             />
           </Row>
           <Segmented
+            label="Guide" value={layer.guideY ?? "none"}
+            options={[{ value: "none", label: "Detach from guide", icon: Link2Off }, { value: "top", label: "Anchor to top guide", icon: ArrowUpToLine }, { value: "middle", label: "Anchor to middle guide", icon: AlignCenterVertical }, { value: "bottom", label: "Anchor to bottom guide", icon: ArrowDownToLine }]}
+            badge={badge(["guideY"], "Guide")}
+            onChange={(guideY) => guideY === "none" ? (props.onUnbindGuideY ?? props.onUnbind)() : set({ guideY, y: 0, vAnchor: guideY === "bottom" ? "bottom" : "top" })}
+          />
+          {(!layer.guideY || layer.guideY === "none") && <Segmented
             label="Edge" value={layer.vAnchor ?? "top"} options={EDGES}
             badge={badge(["vAnchor"], "Edge")}
             onChange={(vAnchor) => set({ vAnchor })}
-          />
-          {/* Binding starts at gap 0 — the layer jumps to sit flush under the
-              one it follows, and the Gap field then opens it up. A menu, not
-              a Select: it is an action that replaces the Y field, not a value
-              the field holds. */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button variant="outline" size="xs" className="w-full" disabled={others.length === 0}>
-                  <Link2 className="size-3" /> Bind below…
-                </Button>
-              }
-            />
-            <DropdownMenuContent align="start">
-              {others.map((n) => (
-                <DropdownMenuItem
-                  key={n.id}
-                  aria-label={`Bind below ${n.name}`}
-                  className="text-xs"
-                  onClick={() => set({ y: { below: n.id, gap: 0 } })}
-                >
-                  {n.name}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          />}
         </>
+      )}
+      {!binding ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger render={
+            <Button variant="outline" size="xs" className="w-full" disabled={!props.onBind || others.length === 0}>
+              <Link2 className="size-3" /> Bind to layer…
+            </Button>
+          } />
+          <DropdownMenuContent align="start">
+            {others.map((n) => (
+              <DropdownMenuSub key={n.id}>
+                <DropdownMenuSubTrigger aria-label={`Bind to ${n.name}`}>{n.name}</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {(["top", "left", "right", "bottom"] as const).map((side) => (
+                    <DropdownMenuItem key={side} aria-label={`Bind to ${side} of ${n.name}`}
+                      className="text-xs" onClick={() => props.onBind?.(n.id, side)}>
+                      {side[0].toUpperCase() + side.slice(1)}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       ) : (
         <>
-          <Field label="Below" badge={badge(["y.below", "y"], "Binding")}>
+          <Field label="Bound to" badge={badge(["binding", "y.below", "y"], "Binding")}>
             <span className="flex items-center gap-1 text-xs font-medium">
-              <Link2 className="size-3 text-muted-foreground" aria-hidden="true" />
-              {nameOf(y.below)}
+              <Link2 className="size-3 text-muted-foreground" aria-hidden="true" />{nameOf(binding.to)}
             </span>
           </Field>
-          {/* The whole binding is re-emitted, not `{ y: { gap } }`: a partial
-              RelativeY merged over a y the master has since made a number
-              would leave `{ gap }` alone as the value. */}
-          <Row badge={badge(["y.gap", "y"], "Gap")}>
-            <ScrubField
-              id={`${id}-gap`} label="Gap" unit="pt" value={y.gap}
+          <Field label="Side">
+            <select aria-label="Binding side" value={binding.side}
+              className="h-6 rounded border border-input bg-background px-1 text-xs"
+              onChange={(e) => {
+                const side = e.target.value as BindingSide;
+                props.onBind?.(binding.to, side);
+              }}>
+              {(["top", "left", "right", "bottom"] as const).map((side) =>
+                <option key={side} value={side}>{side}</option>)}
+            </select>
+          </Field>
+          <Row badge={badge(["binding.gap", "y.gap", "y"], "Gap")}>
+            <ScrubField id={`${id}-gap`} label="Gap" unit="pt" value={binding.gap}
               min={-500} max={500} {...PT}
-              onChange={(gap) => set({ y: { below: y.below, gap } })}
-            />
+              onChange={(gap) => layer.binding
+                ? set({ binding: { ...binding, gap } })
+                : set({ y: { below: binding.to, gap } })} />
           </Row>
           <Button variant="outline" size="xs" className="w-full" onClick={props.onUnbind}>
             <Link2Off className="size-3" /> Unbind
@@ -661,7 +685,7 @@ function StyleSection(props: Ctx & { layer: Layer }) {
 export function LayerInspector(props: {
   /** The resolved layer being edited. */
   layer: Layer;
-  /** Every layer's id and name, for the "Bind below…" picker (the layer
+  /** Every layer's id and name, for the "Bind to layer…" picker (the layer
    *  itself is filtered out here regardless). */
   layerNames: { id: string; name: string }[];
   /** Dotted paths, relative to the layer ("x", "style.fill", "y.gap"), that
@@ -672,9 +696,8 @@ export function LayerInspector(props: {
    *  lands. See the file header for the two patches that need care. */
   onChange: (patch: DeepPartial<Layer>) => void;
   onReset: (path: string) => void;
-  /** Unbind: the parent computes the bound layer's current top and writes
-   *  it as a numeric `y`. */
-  onUnbind: () => void;
+  /** Unbind: the parent freezes the resolved coordinates before clearing the binding. */
+  onUnbind: () => void; onUnbindGuideY?: () => void; onUnbindX?: () => void; onBind?: (to: string, side: BindingSide) => void;
   /** The kind's content editor (rich text, image drop, code value), built by
    *  the parent and rendered under the header. */
   content?: ReactNode;
@@ -738,7 +761,7 @@ export function LayerInspector(props: {
         </div>
       )}
 
-      <Position layer={layer} layerNames={props.layerNames} onUnbind={props.onUnbind} {...ctx} />
+      <Position layer={layer} layerNames={props.layerNames} onUnbind={props.onUnbind} onUnbindGuideY={props.onUnbindGuideY} onUnbindX={props.onUnbindX} onBind={props.onBind} {...ctx} />
 
       {layer.kind === "text" && <TextGeometry layer={layer} fontFamily={props.fontFamily} {...ctx} />}
       {layer.kind === "image" && <ImageGeometry layer={layer} {...ctx} />}

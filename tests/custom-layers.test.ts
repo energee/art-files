@@ -6,12 +6,10 @@ import type {
   CustomBarcodeLayer, CustomImageLayer, CustomLayer, CustomQrLayer, CustomTextLayer, LabelConfig,
 } from "@/types";
 import { defaultConfig } from "@/defaults";
-import { dragTarget2, isCustomId } from "@/elements";
+import { dragTarget2, isCustomId } from "./legacy/elements";
 import { anchoredX, anchoredY } from "@/model/position";
-import {
-  barcodeItem, labelGuides, planLabel,
-  type PlacedBarcode, type PlacedImage, type PlacedPaths,
-} from "@/plan";
+import { barcodeItem, planLabel } from "./legacy/plan";
+import { labelGuides, type PlacedBarcode, type PlacedImage, type PlacedPaths,  } from "../src/plan";
 import { minModuleWarning } from "@/model/fields";
 import { qrShapes, qrPath } from "@/qr";
 import { FONT_ASC, FONT_DESC } from "@/layout";
