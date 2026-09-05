@@ -2,7 +2,7 @@
 // after the operator accepts the restart.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Download, SquareCheck } from "lucide-react";
+import { Download } from "lucide-react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { DownloadEvent, Update } from "@tauri-apps/plugin-updater";
 import { Button } from "@/components/ui/button";
@@ -211,7 +211,11 @@ export function DesktopUpdater(props: { dirty: boolean; checkRequest: number; st
     <>
       {desktop && props.statusHost && status.kind === "current" && createPortal(
         <span role="status" className="inline-flex items-center gap-1.5 px-2 text-xs text-muted-foreground">
-          <SquareCheck className="size-3.5" aria-hidden="true" /> Up-to-date
+          {/* Hugeicons CheckmarkCircle02Icon (core-free-icons, MIT). */}
+          <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+            <path d="M22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12Z" />
+            <path d="M8 12.5L10.5 15L16 9" strokeLinecap="round" strokeLinejoin="round" />
+          </svg> Up-to-date
         </span>,
         props.statusHost,
       )}
