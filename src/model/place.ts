@@ -7,7 +7,8 @@
 // so the guards here are belt-and-braces that name what went wrong.
 // No measuring happens here — `sizeOf` returns the box AS IT SITS ON THE
 // PAGE (a rotated layer's caller has already swapped w/h).
-import { bindingOf, type Layer } from "./layers";
+import { bindingOf, guideOf, type Layer } from "./layers";
+import { anchorFraction } from "./position";
 import type { GuideLines } from "./position";
 import { SAFE } from "../layout";
 
@@ -15,7 +16,7 @@ export interface Box { x: number; y: number; w: number; h: number }
 
 export function placeLayers(
   layers: Layer[], sizeOf: (l: Layer) => { w: number; h: number },
-  guides: Pick<GuideLines, "top" | "bottom"> & Partial<Pick<GuideLines, "left" | "right">> = SAFE,
+  guides: Pick<GuideLines, "top" | "bottom"> & Partial<Pick<GuideLines, "left" | "center" | "right">> = SAFE,
 ): Map<string, Box> {
   const byId = new Map(layers.map((l) => [l.id, l]));
   const boxes = new Map<string, Box>();
@@ -26,15 +27,13 @@ export function placeLayers(
     if (visiting.has(l.id)) throw new Error(`Layer "${l.id}" has a cyclic binding`);
     visiting.add(l.id);
     const { w, h } = sizeOf(l);
-    const guideX = l.guideX && l.guideX !== "none" ? l.guideX : undefined;
-    const anchorX = guideX ?? l.anchor;
-    let x = l.x + (guideX ? (guides[guideX] ?? SAFE[guideX]) : 0)
-      - (anchorX === "right" ? w : anchorX === "center" ? w / 2 : 0);
+    const guideX = guideOf(l.guideX);
+    let x = l.x + (guideX ? (guides[guideX] ?? SAFE[guideX]) : 0) - anchorFraction(guideX ?? l.anchor) * w;
     let y = 0;
     if (typeof l.y === "number") {
-      const guide = l.guideY && l.guideY !== "none" ? l.guideY : undefined;
-      const anchor = guide === "middle" ? (guides.top + guides.bottom) / 2 : guide ? guides[guide] : 0;
-      y = l.y + anchor - (guide === "middle" ? h / 2 : (guide ?? l.vAnchor) === "bottom" ? h : 0);
+      const guide = guideOf(l.guideY);
+      const origin = guide === "middle" ? (guides.top + guides.bottom) / 2 : guide ? guides[guide] : 0;
+      y = l.y + origin - anchorFraction(guide ?? l.vAnchor ?? "top") * h;
     }
     const binding = bindingOf(l);
     if (binding) {

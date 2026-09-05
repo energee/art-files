@@ -27,6 +27,12 @@ export interface RelativeY { below: string; gap: number }
 export type BindingSide = "top" | "left" | "right" | "bottom";
 export interface LayerBinding { to: string; side: BindingSide; gap: number }
 
+/** The guide a layer's numeric x/y is measured from, or undefined for a
+ *  legacy absolute position ("none" and absent mean the same thing). */
+export function guideOf<G extends string>(g: G | "none" | undefined): Exclude<G, "none"> | undefined {
+  return g && g !== "none" ? g as Exclude<G, "none"> : undefined;
+}
+
 /** Legacy below bindings and new edge bindings share one placement path. */
 export function bindingOf(layer: { binding?: LayerBinding | null; y?: unknown }): LayerBinding | undefined {
   if (layer.binding) return layer.binding;
@@ -64,8 +70,9 @@ export interface LayerBase {
    *  right-hand column hangs from the bottom margin. Ignored when `y` is a
    *  binding (a bound layer's top follows the layer above). */
   vAnchor?: "top" | "bottom";
-  /** Numeric x is an offset from a horizontal margin guide. */
-  guideX?: "none" | "left" | "right";
+  /** Numeric x is an offset from a horizontal guide (`anchor` names the
+   *  same edge). none/absent = legacy absolute x. */
+  guideX?: "none" | "left" | "center" | "right";
   /** Numeric y is an offset from this margin guide; none keeps absolute y. */
   guideY?: "none" | "top" | "middle" | "bottom";
   /** 90 = rotated counter-clockwise, reading bottom-to-top (the Lolev
@@ -228,7 +235,7 @@ function validateLayer(l: Layer, ctx: string): void {
   const relOk = !!y && typeof y === "object"
     && typeof (y as RelativeY).below === "string" && typeof (y as RelativeY).gap === "number";
   if (typeof y !== "number" && !relOk) fail(`${ctx} layer "${l.id}" has invalid y`);
-  if (l.guideX !== undefined && !["none", "left", "right"].includes(l.guideX))
+  if (l.guideX !== undefined && !["none", "left", "center", "right"].includes(l.guideX))
     fail(`${ctx} layer "${l.id}" has invalid guideX`);
   if (l.guideY !== undefined && !["none", "top", "middle", "bottom"].includes(l.guideY))
     fail(`${ctx} layer "${l.id}" has invalid guideY`);
