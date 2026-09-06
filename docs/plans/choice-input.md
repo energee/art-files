@@ -5,9 +5,9 @@ Status: **PLAN — awaiting approval.** No implementation code yet.
 ## What it is
 
 A fill widget that offers a list and still takes anything typed. Style is the
-case that asked for it: most labels are one of a dozen styles, but the next one
-is always allowed to be new. Barcode's symbology is the same shape and already
-has a hand-rolled version of it.
+case that asked for it: most labels are one of a handful of styles, but the
+next one is always allowed to be new. The barcode is the same shape — eight
+tier UPCs you pick by name, and the occasional one-off typed in.
 
 ## Where the vocabulary came from
 
