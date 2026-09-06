@@ -49,7 +49,7 @@ function lolevRows(collabOn = false): { rows: LayerRow[]; variants: VariantChip[
 }
 
 function baseProps(over: Partial<LayerListProps> = {}): LayerListProps {
-  const { rows, variants } = lolevRows();
+  const { rows } = lolevRows();
   return {
     rows,
     selected: [],
@@ -61,8 +61,6 @@ function baseProps(over: Partial<LayerListProps> = {}): LayerListProps {
     onRemove: vi.fn(),
     changedOnly: false,
     onChangedOnly: vi.fn(),
-    variants,
-    onToggleVariant: vi.fn(),
     ...over,
   };
 }
@@ -148,7 +146,7 @@ describe("LayerList", () => {
     expect(lead.querySelector(".opacity-50")).not.toBeNull();
 
     const on = lolevRows(true);
-    render(baseProps({ rows: on.rows, variants: on.variants }));
+    render(baseProps({ rows: on.rows }));
     expect(rowFor("collabLead").textContent).toContain("Collab");
     expect(rowFor("collabLead").querySelector(".opacity-50")).toBeNull();
     // A master row never carries a badge.
@@ -203,15 +201,14 @@ describe("LayerList", () => {
     expect(props.onAdd).toHaveBeenCalledWith("text");
   });
 
-  it("adds a layer directly to a variant without an editing mode", async () => {
+  it("has one Add layer, which targets whatever version the Select names", async () => {
+    // It used to carry a submenu per variant. The master Select decides the
+    // working version now, and App routes the add there.
     const props = render(baseProps());
     await openMenu(byLabel("Add layer"));
-    const variant = menuItem("Collab");
-    await act(async () => { variant.click(); await Promise.resolve(); });
-    const textItems = Array.from(document.querySelectorAll('[role="menuitem"]'))
-      .filter((el) => el.textContent?.trim() === "Text");
-    await act(async () => { (textItems.at(-1) as HTMLElement).click(); });
-    expect(props.onAdd).toHaveBeenCalledWith("text", "collab");
+    expect(menuItem("Collab")).toBeUndefined();
+    await act(async () => { menuItem("Text")!.click(); });
+    expect(props.onAdd).toHaveBeenCalledWith("text");
   });
 
   it("the row menu's Remove calls onRemove", async () => {
@@ -283,10 +280,9 @@ describe("LayerList", () => {
     click(filter);
     expect(props.onChangedOnly).toHaveBeenCalledWith(true);
 
-    const chip = byLabel("Collab variant");
-    expect(chip.getAttribute("aria-pressed")).toBe("false");
-    click(chip);
-    expect(props.onToggleVariant).toHaveBeenCalledWith("collab");
+    // The variant chips are gone: the master Select names the version, and
+    // what it names is what the canvas draws.
+    expect(byLabel("Collab variant")).toBeNull();
   });
 
   it("every interactive control has an accessible name (a11y lens)", () => {
@@ -344,7 +340,7 @@ describe("ownership vs override", () => {
     const [collab] = variants;
     const overridden = rows.map((r) =>
       r.layer.id === "wordmark" ? { ...r, variant: collab, variantOverridden: collab } : r);
-    const props = render(baseProps({ rows: overridden, variants, selected: ["wordmark"] }));
+    const props = render(baseProps({ rows: overridden, selected: ["wordmark"] }));
     const button = rowFor("wordmark").querySelector("button")!;
     keydown(button, "ArrowUp", { altKey: true });
     keydown(button, "ArrowDown", { altKey: true });

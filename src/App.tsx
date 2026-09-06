@@ -48,10 +48,10 @@ import { uppercaseOf } from "@/model/layers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, labelOverriddenPaths,
-  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, showVersion, snappedDx, moveLayers, resizeBy, type ResizeHandle, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue, toggleVariant,
+  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, showVersion, snappedDx, moveLayers, resizeBy, type ResizeHandle, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue,
   whereLayerLives,
 } from "@/model/edit";
-import { layerRows, variantChips } from "@/model/rows";
+import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
 import { rebindLabel } from "@/model/rebindLayers";
 import {
@@ -424,16 +424,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   const pristineMaster = useRef(doc.master);
   // Bumped by every save/open so the memo below re-reads the ref.
   const [savedTick, repaintMasterDirty] = useState(0);
-  // THE WORKING VERSION: the variant a promotion would land in, or null for
-  // the base master (docs/plans/label-first-editing.md, Task 12). Enabling a
-  // variant shows that version; changing it means switching to it here, which
-  // is why this is App state and not `label.enabledVariants`. Read through the
-  // guard below so a version that stops existing — a rebind onto another
-  // master, an undone New Variant — falls back to the base rather than
-  // throwing on the next save.
-  const [workingVersion, setWorkingVersion] = useState<string | null>(null);
-  const version = workingVersion !== null
-    && master.variants.some((v) => v.id === workingVersion) ? workingVersion : null;
+  // THE WORKING VERSION: the variant the canvas is drawing, which is also the
+  // one a promotion lands in (docs/plans/label-first-editing.md, Task 12).
+  // It is READ OFF THE LABEL rather than held beside it: the master Select
+  // names one version and switching moves `enabledVariants` (showVersion), so
+  // the label already records the answer — and undo restores the version along
+  // with the variant that created it. Last enabled wins, the same rule
+  // resolveLayers and the row badges use.
+  const version = label.enabledVariants.at(-1) ?? null;
   /** Which save the review dialog is standing in front of, or null. */
   const [pendingSave, setPendingSave] = useState<{ as: boolean } | null>(null);
   // What a Save Master would write: the structural and fill-contract edits
@@ -468,7 +466,6 @@ export const DocumentEditor = memo(function DocumentEditor({
   // resolve per master/label change; the inspector reads the same rows.
   const { rows, errors, warnings: resolveWarnings } = useMemo(() => layerRows(master, label), [master, label]);
   const rowById = useMemo(() => new Map(rows.map((r) => [r.layer.id, r])), [rows]);
-  const chips = useMemo(() => variantChips(master, label), [master, label]);
   const [changedOnly, setChangedOnly] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const guides = useMemo(
@@ -699,7 +696,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Add layer: a default layer of `kind` at the end of the master's draw
    *  order, selected. An image layer starts empty; its inspector well loads
    *  the art. */
-  function onAddLayer(kind: LayerKind, variant?: string) {
+  /** Add layer, into the version the master Select names: a variant while one
+   *  is switched to, the base master otherwise. */
+  function onAddLayer(kind: LayerKind) {
+    const variant = version ?? undefined;
     const { master: next, id } = addLayer(master, kind, { variant });
     edit((d) => ({ ...d, master: d.master === master ? next : addLayer(d.master, kind, { variant }).master }));
     setSelection({ ids: [id], anchor: id });
@@ -714,7 +714,6 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  version and that is the one you see — switching to a variant shows it,
    *  and going back to the base hides it again (edit.ts's showVersion). */
   function switchVersion(id: string | null) {
-    setWorkingVersion(id);
     editLabel((l) => showVersion(l, version, id));
   }
 
@@ -729,7 +728,6 @@ export const DocumentEditor = memo(function DocumentEditor({
     const { master: m, id } = addVariant(master, name);
     // Switched to, like any other version: the new one is what you see.
     edit((d) => ({ master: m, label: showVersion(d.label, version, id) }));
-    setWorkingVersion(id); // you made it to change it
   }
 
   /** The dot-paths deviating from the master on the inspected layer, kept
@@ -1847,7 +1845,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onReorder={(id, delta) => editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta))}
               onAdd={onAddLayer} onRemove={onRemoveLayer}
               changedOnly={changedOnly} onChangedOnly={setChangedOnly}
-              variants={chips} onToggleVariant={(id) => editLabel((l) => toggleVariant(l, id))} />
+              />
           </SidebarContent>
         </Sidebar>
         <SidebarInset className="flex h-full flex-col overflow-hidden">

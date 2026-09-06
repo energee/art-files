@@ -25,7 +25,7 @@ import { useMemo, useRef, useState } from "react";
 import type { Layer, LayerKind } from "@/model/layers";
 import { cn } from "@/lib/utils";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton,
@@ -71,7 +71,10 @@ export interface LayerListProps {
   /** Distance through the owning container’s draw order: positive = toward
    *  the front (up the visible list), negative = toward the back. */
   onReorder: (id: string, delta: number) => void;
-  onAdd: (kind: LayerKind, variant?: string) => void;
+  /** Adds to the version the master Select names — a variant when one is
+   *  switched to, the base master otherwise. It used to offer a submenu per
+   *  variant; the Select decides now, so there is one Add layer. */
+  onAdd: (kind: LayerKind) => void;
   /** The row menu's Remove, and the Delete/Backspace key on a selected row. */
   onRemove: (id: string) => void;
   /** The header filter: show only layers THIS label has changed — a fill
@@ -79,9 +82,6 @@ export interface LayerListProps {
    *  change?" is the question worth filtering on. */
   changedOnly: boolean;
   onChangedOnly: (v: boolean) => void;
-  /** One header chip per variant; a chip toggles the variant on the label. */
-  variants: VariantChip[];
-  onToggleVariant: (id: string) => void;
 }
 
 /** "Add layer" menu entries — the same icons the rows use for each kind. */
@@ -425,24 +425,13 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
                 <Icon className="size-3.5" /> {label}
               </DropdownMenuItem>
             ))}
-            {props.variants.map((variant) => (
-              <DropdownMenuSub key={variant.id}>
-                <DropdownMenuSubTrigger>{variant.name}</DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  {ADD_LAYER_KINDS.map(({ kind, label, Icon }) => (
-                    <DropdownMenuItem key={kind} onClick={() => props.onAdd(kind, variant.id)}>
-                      <Icon className="size-3.5" /> {label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-            ))}
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarGroupLabel>
 
-      {/* Filter and variant chips on their own line: the sidebar is narrow,
-          and a label can carry several variants. */}
+      {/* The one filter, on its own line: the sidebar is narrow. Variants used
+          to sit here as toggle chips; they live in the master Select now,
+          which names the version the canvas is drawing. */}
       <div className="flex flex-wrap items-center gap-1 px-2 pb-1.5">
         <button
           type="button"
@@ -453,19 +442,6 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
         >
           <ListFilter /> Changed
         </button>
-        {props.variants.map((v) => (
-          <button
-            key={v.id}
-            type="button"
-            aria-label={`${v.name} variant`}
-            aria-pressed={v.enabled}
-            onClick={() => props.onToggleVariant(v.id)}
-            title={v.enabled ? `${v.name} variant is on` : `${v.name} variant is off`}
-            className={chip(v.enabled)}
-          >
-            {v.name}
-          </button>
-        ))}
       </div>
 
       <SidebarGroupContent>
