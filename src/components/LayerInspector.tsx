@@ -109,28 +109,55 @@ function Field(props: { id?: string; label: string; badge?: ReactNode; children:
   );
 }
 
-/** The override badge: a small filled dot beside a control whose dotted
- *  path a variant/label override wins on, and a reset for just that path.
- *  `paths` are checked in order and the first overridden one is what Reset
- *  restores — a bound y is written as one object but a parent's leaf-path
- *  walk may report it as "y", "y.below" or "y.gap". Same aria-label idiom as
- *  StyleProperties' OverrideBadge so the two are interchangeable to a user. */
+/** Which source a deviation from the master came from, and every dot-path
+ *  each one covers. A VARIANT's paths live in the master file and apply to
+ *  every label with that variant on; the LABEL's are this label's alone. */
+export interface Overridden {
+  variant: ReadonlySet<string>;
+  label: ReadonlySet<string>;
+  /** The enabled variant whose change is showing, for the badge's title. */
+  variantName?: string;
+}
+
+/** The override badge — up to TWO marks beside a control, one per source: a
+ *  filled dot for a variant, a ring for this label, matching the Layers list.
+ *  Each resets only its own source, so clearing your own edit can never
+ *  rewrite the shipped variant (which is what one merged badge used to do).
+ *
+ *  `paths` are checked in order and the first hit is what Reset restores — a
+ *  bound y is written as one object but a parent's leaf-path walk may report
+ *  it as "y", "y.below" or "y.gap". */
 function Badge(props: {
   paths: readonly string[];
-  overridden: ReadonlySet<string>;
+  overridden: Overridden;
   label: string;
-  onReset: (path: string) => void;
+  onReset: (path: string, source: "variant" | "label") => void;
 }) {
-  const path = props.paths.find((p) => props.overridden.has(p));
-  if (!path) return null;
+  const variantPath = props.paths.find((p) => props.overridden.variant.has(p));
+  const labelPath = props.paths.find((p) => props.overridden.label.has(p));
+  if (!variantPath && !labelPath) return null;
+  const who = props.overridden.variantName ?? "A variant";
   return (
-    <button
-      type="button"
-      className="size-2 shrink-0 rounded-full bg-primary transition-transform hover:scale-125"
-      title={`Reset ${props.label} to the master`}
-      aria-label={`Reset ${props.label} to the master`}
-      onClick={() => props.onReset(path)}
-    />
+    <span className="flex shrink-0 items-center gap-1">
+      {variantPath && (
+        <button
+          type="button"
+          className="size-2 shrink-0 rounded-full bg-primary transition-transform hover:scale-125"
+          title={`${who} sets ${props.label} — reset it in the master`}
+          aria-label={`Reset ${props.label} to the master`}
+          onClick={() => props.onReset(variantPath, "variant")}
+        />
+      )}
+      {labelPath && (
+        <button
+          type="button"
+          className="size-2 shrink-0 rounded-full border border-primary transition-transform hover:scale-125"
+          title={`This label sets ${props.label} — reset it to the master`}
+          aria-label={`Reset ${props.label} to this label's master value`}
+          onClick={() => props.onReset(labelPath, "label")}
+        />
+      )}
+    </span>
   );
 }
 
@@ -806,11 +833,11 @@ export function LayerInspector(props: {
   /** Dotted paths, relative to the layer ("x", "style.fill", "y.gap"), that
    *  a variant/label override currently wins on → a reset badge beside the
    *  control that writes that path. */
-  overridden: Set<string>;
+  overridden: Overridden;
   /** Every edit is one minimal partial patch; the parent decides where it
    *  lands. See the file header for the two patches that need care. */
   onChange: (patch: DeepPartial<Layer>) => void;
-  onReset: (path: string) => void;
+  onReset: (path: string, source: "variant" | "label") => void;
   /** Unbind: the parent freezes the resolved coordinates before clearing the binding. */
   onUnbind: () => void; onBind?: (to: string, side: BindingSide) => void;
   /** The kind's content editor (rich text, image drop, code value), built by

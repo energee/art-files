@@ -290,10 +290,13 @@ describe("LayerList", () => {
   });
 
   it("every interactive control has an accessible name (a11y lens)", () => {
-    // A selected row shows the most controls (reorder arrows included) and
-    // an overridden master row adds the dot.
+    // A selected row shows the most controls (reorder arrows included); a row
+    // a variant changes and one this label changed add their two marks.
     const props = baseProps({ selected: ["wordmark"] });
-    props.rows = props.rows.map((r) => r.layer.id === "logo" ? { ...r, overridden: true } : r);
+    const collab = { id: "collab", name: "Collab", enabled: true };
+    props.rows = props.rows.map((r) =>
+      r.layer.id === "logo" ? { ...r, variantOverridden: collab }
+        : r.layer.id === "name" ? { ...r, changed: true } : r);
     render(props);
     const controls = Array.from(container.querySelectorAll('button, input, [role="img"]'));
     expect(controls.length).toBeGreaterThan(20);
@@ -302,7 +305,12 @@ describe("LayerList", () => {
         ?? el.textContent?.trim();
       expect(name, `${el.tagName} ${el.className}`).toBeTruthy();
     }
-    expect(container.querySelector('[role="img"]')?.getAttribute("aria-label")).toBe("Overridden by a variant");
+    // The two provenance marks name their source; the old single dot claimed
+    // "Overridden by a variant" for a label edit too.
+    const marks = Array.from(container.querySelectorAll('[role="img"]'))
+      .map((el) => el.getAttribute("aria-label"));
+    expect(marks).toContain("Collab changes this layer");
+    expect(marks).toContain("Changed in this label");
   });
 });
 
@@ -335,7 +343,7 @@ describe("ownership vs override", () => {
     const { rows, variants } = lolevRows(true);
     const [collab] = variants;
     const overridden = rows.map((r) =>
-      r.layer.id === "wordmark" ? { ...r, variant: collab, overridden: true } : r);
+      r.layer.id === "wordmark" ? { ...r, variant: collab, variantOverridden: collab } : r);
     const props = render(baseProps({ rows: overridden, variants, selected: ["wordmark"] }));
     const button = rowFor("wordmark").querySelector("button")!;
     keydown(button, "ArrowUp", { altKey: true });
