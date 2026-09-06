@@ -331,3 +331,31 @@ after A. Task 12 extends the dialog, so it follows Task 7.
   means nudging layers, then promoting those nudges through the save review.
   That is the intended flow, but it is the one place authoring costs an extra
   step versus today, and worth watching once it ships.
+
+---
+
+## Follow-ups from the cleanup review (2026-09-05)
+
+Found by `/simplify` over Tasks 6–12, deliberately NOT fixed there — each needs
+its own change and, for the first two, its own failing test first.
+
+1. **`moveBy`'s carried-layer test is one hop deep.** A selection of A and C,
+   where C is bound to B and B to A, still moves C twice: `moving` only asks
+   whether C's own anchor is in the selection. The transitive closure belongs
+   next to `placeLayers` (`model/place.ts`), which already walks the binding
+   graph in dependency order — `carriedBy(layers, ids)` there, and a group
+   verb (`dragPatches`) in edit.ts, would let `moveBy` go back to being about
+   one layer.
+2. **`MasterChange` has no scope.** A variant row overloads `layerId` to hold
+   a VARIANT id, and a variant's override of layer X is indistinguishable from
+   a base edit to X — so `MasterSaveReview`'s grouping merges them under one
+   heading. Add `scope: "master" | { variant: string }` (the vocabulary
+   `whereLayerLives` already uses) and key `rowId`/grouping on it.
+3. **The working version lives outside the history atom.** `workingVersion` is
+   derived from `master` but is not in `useHistory`'s `Doc`, so undoing a New
+   Variant leaves it pointing at a dead id; today a read-time guard masks that.
+   Carrying it on `Doc` would also make undo restore the version alongside the
+   variant that created it.
+4. **Save As zips twice when the fork is renamed.** `saveNativeFile` takes
+   bytes before it knows the destination. Splitting it into "pick a path" and
+   "write bytes" would let the name be applied before the single pack.

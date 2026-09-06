@@ -17,6 +17,8 @@ import type {
 import type { Box } from "./place";
 import { bindingOf, guideOf, parseMaster, vAnchorOf } from "./layers";
 import { deepMerge, type DeepPartial } from "./merge";
+import { getPath } from "./document";
+import { setPath } from "./resolve";
 import { anchoredX, anchorFraction, positionFromDrag, type GuideLines } from "./position";
 import { CENTER_X, GOLD } from "../layout";
 import { KEYLINE } from "../defaults";
@@ -568,8 +570,11 @@ function deepEqual(a: unknown, b: unknown): boolean {
   return ka.length === kb.length && ka.every((k) => deepEqual(a[k], b[k]));
 }
 
-/** Is `edited` different from `base` — the master's dirty flag. Order of
- *  keys is ignored; order of layers (draw order) is not. */
+/** Is `edited` different from `base` — the cheap half of the master's dirty
+ *  flag, and all App needs on the edit path. masterChanges answers the same
+ *  question itemised, but walks every layer and every variant diff to do it,
+ *  which is too much to run per pointermove. Order of keys is ignored; order
+ *  of layers (draw order) is not. */
 export function masterDiff(base: Master, edited: Master): boolean {
   return !deepEqual(base, edited);
 }
@@ -588,9 +593,6 @@ export interface MasterChange {
   to?: unknown;
 }
 
-const atPath = (obj: unknown, path: string): unknown =>
-  path.split(".").reduce<unknown>((o, k) => (isPlain(o) ? o[k] : undefined), obj);
-
 /** Every leaf path where `a` and `b` differ, `name` excluded (a rename is its
  *  own entry) — the same flattening the override badges use, so an array-valued
  *  key like `lines` counts as one change. */
@@ -598,7 +600,7 @@ function changedPaths(a: unknown, b: unknown): string[] {
   const paths = new Set<string>();
   leafPaths(a, "", paths);
   leafPaths(b, "", paths);
-  return [...paths].filter((p) => p !== "name" && !deepEqual(atPath(a, p), atPath(b, p)));
+  return [...paths].filter((p) => p !== "name" && !deepEqual(getPath(a, p), getPath(b, p)));
 }
 
 /** What saving this master would write, itemised for review: the structural
@@ -641,7 +643,7 @@ export function masterChanges(
       out.push({ kind: "renamed", layerId: l.id, layerName: l.name, from: was.name, to: l.name });
     for (const path of changedPaths(was, l))
       out.push({ kind: "property", layerId: l.id, layerName: l.name, path,
-                 from: atPath(was, path), to: atPath(l, path) });
+                 from: getPath(was, path), to: getPath(l, path) });
   }
 
   // The variants live in the same .master file, so an edit inside one is just
@@ -671,7 +673,7 @@ export function masterChanges(
       }
       for (const path of changedPaths(before ?? {}, entry))
         out.push({ kind: "property", layerId: id, layerName: nameOf(id, entry), path,
-                   from: atPath(before, path), to: atPath(entry, path) });
+                   from: getPath(before, path), to: getPath(entry, path) });
     }
   }
 
@@ -689,8 +691,8 @@ export function masterChanges(
     const paths = new Set<string>();
     leafPaths(entry, "", paths);
     for (const path of paths) {
-      const to = atPath(entry, path);
-      const from = atPath(l, path);
+      const to = getPath(entry, path);
+      const from = getPath(l, path);
       if (deepEqual(from, to)) continue;
       out.push({ kind: "promote", layerId: id, layerName: l.name, path, from, to });
     }
@@ -713,14 +715,15 @@ export function applyPromotions(
 ): { master: Master; label: LabelFile } {
   return promote.reduce((acc, c) => {
     if (c.kind !== "promote" || c.path === undefined) return acc;
-    const keys = c.path.split(".");
-    const patch = keys.reduceRight<unknown>(
-      (v, k, i) => ({ [k]: i === 0 && v === null ? undefined : v }), c.to,
-    ) as LayerPatch;
+    // An own-property `undefined` is patchLayer's "delete this key"; null is
+    // setLabelOverride's wire spelling of the same thing, and only ever sits
+    // at the top level (see there), so only a top-level null converts.
+    const patch: Record<string, unknown> = {};
+    setPath(patch, c.path, c.to === null && !c.path.includes(".") ? undefined : c.to);
     return {
       master: target === undefined
-        ? patchLayer(acc.master, c.layerId, patch)
-        : patchLayerIn(acc.master, target, c.layerId, patch),
+        ? patchLayer(acc.master, c.layerId, patch as LayerPatch)
+        : patchLayerIn(acc.master, target, c.layerId, patch as LayerPatch),
       label: clearLabelOverride(acc.label, c.layerId, c.path),
     };
   }, { master, label });
