@@ -10,13 +10,18 @@
 // this document onto it and actually writes the file — the old "Duplicate as
 // new master…" did all of that except the writing.
 //
-// New Variant sits at the foot of the same menu: a variant is an alternative
-// version of the template, so "which version" and "another version, please"
-// are the same question the Select already asks. It is an ACTION, not a
-// library row — NEW_VARIANT is a sentinel value onValueChange intercepts
-// before any rebind is considered. The variant TOGGLES still live on the
-// chips in LayerList; folding those in is Task 12, which turns them from
-// multi-select into switching to one version.
+// The menu answers one question — WHICH VERSION AM I EDITING — in three
+// registers (docs/plans/label-first-editing.md, Task 12):
+//   * the current master's variants, listed under it as versions of it.
+//     Picking one switches to it, which is what makes a promotion land in
+//     `variants.<id>.layers` instead of the base master. Merely enabling a
+//     variant (the chips in LayerList) shows that version; it does not make
+//     it the one you are changing.
+//   * the other masters in the library, which are a REBIND and go through the
+//     bench preview below.
+//   * New Variant, an action at the foot.
+// Only the middle one resolves a file, so the two sentinels are intercepted
+// in onValueChange before any rebind is considered.
 import { useState } from "react";
 import { rebindLabel } from "@/model/rebindLayers";
 import type { MasterAssets } from "@/model/files";
@@ -25,9 +30,10 @@ import {
   Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 
-/** The menu's one non-library row (see the header note). No master can carry
- *  this id — mintLayerId-style ids are all `master-…`. */
+/** The menu's non-library rows (see the header note). No master id can
+ *  collide with either — a minted one is always `master-…`. */
 const NEW_VARIANT = "__new-variant";
+const VERSION = "__version:";
 
 /** One dropdown row — just enough to render and pick. The full Master is
  *  resolved lazily (see `resolve`), only once something is actually picked,
@@ -60,6 +66,10 @@ export function MasterPicker(props: {
    *  resolved template assets ride along so the caller adopts them without
    *  a second file read. */
   onMaster: (target: Master, assets: MasterAssets) => void;
+  /** The variant being edited, or null for the base master. */
+  version: string | null;
+  /** Switch the working version. Null is the base master. */
+  onVersion: (id: string | null) => void;
   /** Edit → New Variant: adds an empty variant to this master and switches it
    *  on for this label. */
   onNewVariant: () => void;
@@ -88,6 +98,12 @@ export function MasterPicker(props: {
     setPreview({ target: r.master, assets: r.assets, dropped: dropped.values, disabledVariants: dropped.variants });
   };
 
+  /** "Lolev" on the base version, "Lolev / Collab" while editing one. */
+  const versionName = props.master.variants.find((v) => v.id === props.version)?.name;
+  const editing = versionName ? `${props.master.name} / ${versionName}` : props.master.name;
+  /** Every OTHER master in the library — this one already heads the menu. */
+  const others = Object.entries(props.library).filter(([id]) => id !== props.master.id);
+
   const commit = () => {
     if (!preview) return;
     props.onMaster(preview.target, preview.assets);
@@ -96,22 +112,30 @@ export function MasterPicker(props: {
 
   return (
     <div className="px-2 py-2">
-      <Select value={props.master.id} disabled={resolvingId !== null}
+      <Select
+        value={props.version === null ? props.master.id : VERSION + props.version}
+        disabled={resolvingId !== null}
         onValueChange={(id) => {
           if (!id) return;
           closeAll();
           if (id === NEW_VARIANT) { props.onNewVariant(); return; }
+          if (id.startsWith(VERSION)) { props.onVersion(id.slice(VERSION.length)); return; }
+          // The current master's own row means "the base version", not a
+          // rebind onto itself.
+          if (id === props.master.id) { props.onVersion(null); return; }
           void pickEntry(id);
         }}>
         <SelectTrigger id="master-picker" aria-label="Master" size="sm" className="w-full">
           <span className="text-muted-foreground">Master:</span>
-          <SelectValue>{props.master.name}</SelectValue>
+          <SelectValue>{editing}</SelectValue>
         </SelectTrigger>
         <SelectContent>
-          {!props.library[props.master.id] && (
-            <SelectItem value={props.master.id}>{props.master.name}</SelectItem>
-          )}
-          {Object.entries(props.library).map(([id, entry]) => (
+          <SelectItem value={props.master.id}>{props.master.name}</SelectItem>
+          {props.master.variants.map((v) => (
+            <SelectItem key={v.id} value={VERSION + v.id} className="pl-7">{v.name}</SelectItem>
+          ))}
+          {others.length > 0 && <SelectSeparator />}
+          {others.map(([id, entry]) => (
             <SelectItem key={id} value={id}>{entry.name}</SelectItem>
           ))}
           <SelectSeparator />
