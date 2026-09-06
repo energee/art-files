@@ -1,8 +1,7 @@
 // masterpicker-dom.test.tsx — DOM behavior of MasterPicker
 // (src/components/MasterPicker.tsx): the Design sidebar's "Master: Lolev ▾"
-// selector. Choosing another library master previews the rebind
-// (model/rebindLayers.ts) — the counts of what would move to the bench — and
-// must NOT call onMaster until the inline "Continue" is pressed.
+// selector. It lists only THIS master, its variants and New Variant — no
+// library, no rebind preview (that moved to File → Open Master, App.tsx).
 // Scoped to a DOM environment per-file, matching tests/fieldlist-dom.test.ts's
 // setup — no @testing-library/react in this repo, so this drives real DOM
 // nodes through react-dom/client + act, the same as that suite.
@@ -12,11 +11,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MasterPicker } from "../src/components/MasterPicker";
 import { lolevMaster } from "../src/model/lolevLayers";
-import type { LabelFile, Master } from "../src/model/layers";
-
-// React only honours act() when the environment opts in (see
-// fieldlist-dom.test.ts for the same line).
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let container: HTMLDivElement;
 let root: Root;
@@ -32,22 +26,13 @@ afterEach(() => {
   container.remove();
 });
 
-/** A different brewery's master: no variants, so binding onto it always
- *  benches the shipped master's "collab" variant — a guaranteed non-empty
- *  preview for the assertion below. */
-const otherMaster: Master = { ...lolevMaster(), id: "other", name: "Other Brewery", variants: [] };
-
-const label: LabelFile = {
-  formatVersion: 3, masterId: "lolev", enabledVariants: ["collab"],
-  values: { name: [{ text: "Peregrine", fill: "#F3CD80", layer: "metallic" }] },
-};
+// React only honours act() when the environment opts in (see
+// fieldlist-dom.test.ts for the same line).
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 function renderPicker(props: Partial<Parameters<typeof MasterPicker>[0]> = {}) {
   const full: Parameters<typeof MasterPicker>[0] = {
-    master: lolevMaster(), label,
-    library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery" } },
-    resolve: vi.fn().mockResolvedValue({ master: otherMaster, assets: {} }),
-    onMaster: vi.fn(), onNewVariant: vi.fn(), version: null, onVersion: vi.fn(),
+    master: lolevMaster(), onNewVariant: vi.fn(), version: null, onVersion: vi.fn(),
     ...props,
   };
   act(() => { root.render(createElement(MasterPicker, full)); });
@@ -56,28 +41,9 @@ function renderPicker(props: Partial<Parameters<typeof MasterPicker>[0]> = {}) {
 
 const trigger = () => container.querySelector("#master-picker") as HTMLButtonElement;
 const openMenu = () => act(() => { trigger().click(); });
-/** The menu item (or any button) whose visible text STARTS with `text` — the
- *  library rows may append an ellipsis while resolving. */
 const itemStarting = (text: string) =>
   Array.from(document.querySelectorAll<HTMLElement>("button, [role=option]"))
     .find((b) => (b.getAttribute("aria-label") ?? b.textContent)?.trim().startsWith(text)) as HTMLButtonElement | undefined;
-
-function type(el: Element, value: string) {
-  const input = el as HTMLInputElement;
-  const setter = Object.getOwnPropertyDescriptor(
-    Object.getPrototypeOf(input), "value",
-  )!.set!;
-  act(() => {
-    setter.call(input, value);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  });
-}
-
-function press(el: Element, key: string) {
-  act(() => {
-    el.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
-  });
-}
 
 describe("MasterPicker", () => {
   it("names the current master on the trigger", () => {
@@ -85,69 +51,44 @@ describe("MasterPicker", () => {
     expect(trigger().textContent).toContain("Lolev");
   });
 
-  it("previews the rebind and does not commit until Continue is pressed", async () => {
-    const onMaster = vi.fn();
-    const resolve = vi.fn().mockResolvedValue({ master: otherMaster, assets: {} });
-    renderPicker({ onMaster, resolve });
-    openMenu();
-    await act(async () => {
-      itemStarting("Other Brewery")!.click();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(resolve).toHaveBeenCalledWith("other");
-    const preview = container.querySelector("#master-picker-preview");
-    expect(preview).not.toBeNull();
-    expect(preview!.textContent).toContain("variant");
-    expect(onMaster).not.toHaveBeenCalled();
-
-    act(() => {
-      (container.querySelector("#master-picker-continue") as HTMLButtonElement).click();
-    });
-    expect(onMaster).toHaveBeenCalledWith(otherMaster, {});
-  });
-
-  it("lists the current master's variants as versions of it", () => {
-    const onVersion = vi.fn();
-    const resolve = vi.fn();
-    renderPicker({ onVersion, resolve });
-    openMenu();
-    act(() => { itemStarting("Collab")!.click(); });
-    expect(onVersion).toHaveBeenCalledWith("collab");
-    // Switching version is not a rebind — nothing is resolved or benched.
-    expect(resolve).not.toHaveBeenCalled();
-  });
-
   it("names the version being edited on the trigger", () => {
     renderPicker({ version: "collab" });
     expect(trigger().textContent).toContain("Collab");
   });
 
-  it("switches back to the base master without rebinding onto itself", () => {
+  it("renders the master, its variants and New Variant — nothing else", () => {
+    renderPicker();
+    openMenu();
+    const options = document.querySelectorAll("[role=option]");
+    // lolevMaster() has exactly one variant ("collab"): master + variant +
+    // New Variant = 3 rows. No library rows, ever.
+    expect(options.length).toBe(3);
+    expect(itemStarting("Lolev")).toBeDefined();
+    expect(itemStarting("Collab")).toBeDefined();
+    expect(itemStarting("New Variant")).toBeDefined();
+  });
+
+  it("picking a variant calls onVersion with its id", () => {
     const onVersion = vi.fn();
-    const resolve = vi.fn();
-    renderPicker({ version: "collab", onVersion, resolve });
+    renderPicker({ onVersion });
+    openMenu();
+    act(() => { itemStarting("Collab")!.click(); });
+    expect(onVersion).toHaveBeenCalledWith("collab");
+  });
+
+  it("picking the master row calls onVersion(null)", () => {
+    const onVersion = vi.fn();
+    renderPicker({ version: "collab", onVersion });
     openMenu();
     act(() => { itemStarting("Lolev")!.click(); });
     expect(onVersion).toHaveBeenCalledWith(null);
-    expect(resolve).not.toHaveBeenCalled();
   });
 
-  it("creates a variant from the foot of the menu, without picking a master", () => {
+  it("picking New Variant calls onNewVariant", () => {
     const onNewVariant = vi.fn();
-    const onMaster = vi.fn();
-    const resolve = vi.fn();
-    renderPicker({ onNewVariant, onMaster, resolve });
+    renderPicker({ onNewVariant });
     openMenu();
     act(() => { itemStarting("New Variant")!.click(); });
     expect(onNewVariant).toHaveBeenCalled();
-    expect(resolve).not.toHaveBeenCalled();
-    expect(onMaster).not.toHaveBeenCalled();
-  });
-
-  it("offers nothing but the library — file verbs live in the File menu", () => {
-    renderPicker();
-    expect(itemStarting("Open Master")).toBeUndefined();
-    expect(itemStarting("Duplicate as new master")).toBeUndefined();
   });
 });

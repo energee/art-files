@@ -25,7 +25,10 @@
 // filePath } upward through onMeta; the shell owns tabs, file-open routing,
 // render settings, and the updater.
 import { RenderSettings as RenderSettingsFields } from "@/components/RenderSettings";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { MasterSaveReview } from "@/components/MasterSaveReview";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
@@ -59,7 +62,7 @@ import {
   type MasterAssets,
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
-import { SHIPPED_MASTER_ID, masterIndex, rememberMaster, resolveMasterById } from "@/masters";
+import { masterIndex, rememberMaster, resolveMasterById } from "@/masters";
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import { planLayers } from "@/planLayers";
 import { makeHiddenPropsEqual } from "@/tabs";
@@ -433,6 +436,16 @@ export const DocumentEditor = memo(function DocumentEditor({
   const version = label.enabledVariants.at(-1) ?? null;
   /** Which save the review dialog is standing in front of, or null. */
   const [pendingSave, setPendingSave] = useState<{ as: boolean } | null>(null);
+  /** File → Open Master…: the confirm dialog standing in front of a rebind
+   *  onto a just-opened master (see previewOpenedMaster below), or null. The
+   *  sidebar picker used to preview this inline for a library pick; the
+   *  library rows are gone (docs/plans/template-switch.md, Task 10) and Open
+   *  Master is now the only door onto a different master, so this is the
+   *  only place that preview needs to live. */
+  const [masterOpenPreview, setMasterOpenPreview] = useState<{
+    master: Master; assets: MasterAssets; path: string; handle: FileSystemFileHandle | null;
+    dropped: { values: string[]; variants: string[] };
+  } | null>(null);
   // What a Save Master would write: the structural and fill-contract edits
   // already in the master. Itemised ONLY while the dialog is up — every
   // property edit is a label override now, so this memo's inputs change on
@@ -1452,27 +1465,45 @@ export const DocumentEditor = memo(function DocumentEditor({
     setLoadError(notes.length ? "Note: " + notes.join(" · ") : "");
   }
 
-  /** File → Open Master…: register the newly opened master in the library
-   *  index, then commitRebind onto it. */
-  function applyOpenedMaster(m: Master, path: string) {
-    rememberMaster(m, path);
-    commitRebind(m);
+  /** File → Open Master…: preview the rebind (model/rebindLayers.ts) — the
+   *  counts of what would move to the bench — before committing. This is
+   *  the one confirmation the spec's no-dialogs rule permits, because a
+   *  rebind is not a single undoable canvas act; MasterPicker's sidebar used
+   *  to ask it inline for a library pick, but the library rows are gone
+   *  (docs/plans/template-switch.md, Task 10) and Open Master is the only
+   *  door onto a different master now, so the question moved here. */
+  function previewOpenedMaster(m: Master, assets: MasterAssets, path: string, handle: FileSystemFileHandle | null) {
+    const { dropped } = rebindLabel(label, master, m);
+    setMasterOpenPreview({ master: m, assets, path, handle, dropped });
   }
 
-  /** MasterPicker's library pick (the preview's Continue). */
-  function pickLibraryMaster(target: Master, assets: MasterAssets) {
-    masterFileHandle.current = null;
-    masterFilePath.current = isTauri() ? masterIndex()[target.id]?.path ?? null : null;
-    commitRebind(target);
-    void adoptMasterAssets(assets);
+  /** The preview's Continue: register the newly opened master in the
+   *  library index, adopt its assets and commitRebind onto it — the
+   *  library-pick and file-open paths used to do this separately
+   *  (pickLibraryMaster / applyOpenedMaster); both flow through here now. */
+  function confirmOpenedMaster() {
+    const p = masterOpenPreview;
+    if (!p) return;
+    setMasterOpenPreview(null);
+    masterFileHandle.current = p.handle;
+    masterFilePath.current = null;
+    rememberMaster(p.master, p.path);
+    commitRebind(p.master);
+    void adoptMasterAssets(p.assets);
   }
 
-  /** MasterPicker's library listing: the shipped master plus every master
-   *  the index remembers, id → name only (resolved lazily on pick). */
-  function libraryEntries(): Record<string, { name: string }> {
-    const entries: Record<string, { name: string }> = { [SHIPPED_MASTER_ID]: { name: lolevMaster().name } };
-    for (const [id, e] of Object.entries(masterIndex())) entries[id] = { name: e.name };
-    return entries;
+  /** The preview's confirm line — "3 values and 1 variant move to the bench
+   *  — continue?" — with the singular/plural wording handled once here so
+   *  it can't drift from the counts driving it. An exact-match rebind
+   *  (nothing benched) reads as a plain "switch to" line instead. */
+  function rebindPreviewLine(name: string, dropped: { values: string[]; variants: string[] }): string {
+    const parts: string[] = [];
+    if (dropped.values.length)
+      parts.push(`${dropped.values.length} value${dropped.values.length === 1 ? "" : "s"}`);
+    if (dropped.variants.length)
+      parts.push(`${dropped.variants.length} variant${dropped.variants.length === 1 ? "" : "s"}`);
+    if (!parts.length) return `Switch to "${name}" — continue?`;
+    return `${parts.join(" and ")} move to the bench — continue?`;
   }
 
   /** File → Open Master…: FS-Access picker where available, hidden-input
@@ -1485,10 +1516,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       const file = await handle.getFile();
       const r = tryParseMaster(new Uint8Array(await file.arrayBuffer()));
       if (!r) return;
-      masterFileHandle.current = handle;
-      masterFilePath.current = null;
-      applyOpenedMaster(r.master, file.name);
-      await adoptMasterAssets(r.assets);
+      previewOpenedMaster(r.master, r.assets, file.name, handle);
     } catch (err) {
       if (!isAbort(err)) setLoadError(`Could not open master: ${errMsg(err)}`);
     }
@@ -1828,15 +1856,27 @@ export const DocumentEditor = memo(function DocumentEditor({
             void saveMaster(as);
           }} />
       )}
+      {masterOpenPreview && (
+        <Dialog open onOpenChange={(open) => { if (!open) setMasterOpenPreview(null); }}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogTitle>Open Master</DialogTitle>
+            <DialogDescription>
+              {rebindPreviewLine(masterOpenPreview.master.name, masterOpenPreview.dropped)}
+            </DialogDescription>
+            <DialogFooter>
+              <Button variant="ghost" size="sm" onClick={() => setMasterOpenPreview(null)}>Cancel</Button>
+              <Button size="sm" onClick={confirmOpenedMaster}>Continue</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
           preview center, inspector sheet right. */}
       <SidebarProvider hotkey={active} className="min-h-0 h-full">
         <Sidebar collapsible="offcanvas">
           <SidebarContent>
             {/* The master picker, then the ONE Layers list (spec: UI). */}
-            <MasterPicker master={master} label={label}
-              library={libraryEntries()} resolve={resolveMasterById}
-              onMaster={pickLibraryMaster} onNewVariant={onNewVariant}
+            <MasterPicker master={master} onNewVariant={onNewVariant}
               version={version} onVersion={switchVersion} />
             <LayerList rows={rows} selected={selected}
               onSelect={(id, mods) => pick(id, { shift: mods.shift, toggle: mods.meta })}
@@ -1874,10 +1914,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               void f.arrayBuffer().then(async (buf) => {
                 const r = tryParseMaster(new Uint8Array(buf));
                 if (!r) return;
-                masterFileHandle.current = null;
-                masterFilePath.current = null;
-                applyOpenedMaster(r.master, f.name);
-                await adoptMasterAssets(r.assets);
+                previewOpenedMaster(r.master, r.assets, f.name, null);
               });
             }} />
         </header>
