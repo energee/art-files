@@ -519,9 +519,14 @@ export interface Doc { master: Master; label: LabelFile }
  *  They cannot be per-label — a label overriding its own placeholder or its
  *  own allowed range is meaningless — so they are authored on the master like
  *  structure is, and the Save Master review lists them as such. Everything
- *  else about a layer is the label's to override. */
+ *  else about a layer is the label's to override.
+ *
+ *  `choices` and `title` are here for the same reason: the vocabulary a filler
+ *  picks from, and the caption it is picked under, describe the slot rather
+ *  than one label's answer to it (docs/plans/choice-input.md). */
 export const MASTER_PATHS: ReadonlySet<string> =
-  new Set(["placeholder", "input", "min", "max", "symbology", "suffix"]);
+  new Set(["placeholder", "input", "min", "max", "symbology", "suffix",
+    "choices", "title"]);
 
 /** THE ROUTING RULE (docs/plans/label-first-editing.md): a property edit is a
  *  LABEL override, never a master edit — except the fill contract above. The
@@ -559,11 +564,42 @@ export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
   }, doc);
 }
 
+/** The text a LayerValue draws: a plain string as itself, styled runs joined,
+ *  since the vocabulary stores what appears on the label, not how it is set. */
+const drawnText = (value: LayerValue): string =>
+  typeof value === "string" ? value : value.map((r) => r.text).join("");
+
+/** Teaches a layer's fill vocabulary a value it does not already offer
+ *  (docs/plans/choice-input.md). Returns the master UNCHANGED — by identity,
+ *  so callers make no history entry — when the value is blank, already
+ *  offered, or the layer does not exist.
+ *
+ *  Matching is on `value`, what the label draws, never on a choice's `title`:
+ *  typing the words that happen to be a title means a different value than the
+ *  one that title stands for. */
+export function learnChoice(master: Master, id: string, text: string): Master {
+  const value = text.trim();
+  const layer = master.layers.find((l) => l.id === id);
+  if (!value || !layer || layer.choices?.some((c) => c.value === value)) return master;
+  return patchLayer(master, id, { choices: [...(layer.choices ?? []), { value }] });
+}
+
 /** A layer's CONTENT — this beer's name, this collab's logo, this label's
  *  barcode. Always a label value, for ANY layer: the `fillable` flag that
- *  used to gate this is gone, so every content-bearing layer is fillable. */
+ *  used to gate this is gone, so every content-bearing layer is fillable.
+ *
+ *  The one thing it also writes is the MASTER's vocabulary, when the layer has
+ *  one: a value nobody authored joins `choices`, so the next label opens with
+ *  it offered. That is the fill contract's rule (MASTER_PATHS above) rather
+ *  than an exception to routing — the vocabulary declares what a filler may
+ *  put in a layer, which is master data — and the Save Master review is what
+ *  stands between it and the file. */
 export function setContentIn(doc: Doc, id: string, value: LayerValue): Doc {
-  return { master: doc.master, label: setValue(doc.label, id, value) };
+  return {
+    master: doc.master.layers.some((l) => l.id === id && l.choices)
+      ? learnChoice(doc.master, id, drawnText(value)) : doc.master,
+    label: setValue(doc.label, id, value),
+  };
 }
 
 /** Drops a label override (whole entry or one dotted path); the `overrides`
