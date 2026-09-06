@@ -48,7 +48,7 @@ import { uppercaseOf } from "@/model/layers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, snappedDx, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue,
+  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, showVersion, snappedDx, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
