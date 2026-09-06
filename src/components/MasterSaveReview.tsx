@@ -157,7 +157,7 @@ export function MasterSaveReview(props: {
                     checked={c.kind !== "promote" || ticked.has(row)}
                     onCheckedChange={() => toggle(row)} />
                   <span className={c.kind === "promote" ? ""
-                    : c.kind === "removed" ? "text-destructive" : "text-muted-foreground"}>
+                    : c.kind === "removed" ? "text-destructive-text" : "text-muted-foreground"}>
                     {rowText(c)}
                   </span>
                 </label>

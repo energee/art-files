@@ -221,6 +221,27 @@ describe("LayerList", () => {
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
+  it("colours Remove destructive, not a solid fill (docs/plans/template-switch.md, Task 3)", async () => {
+    render(baseProps());
+    await openMenu(byLabel("Brand actions"));
+    const item = menuItem("Remove");
+    expect(item.className).toContain("destructive-text");
+  });
+
+  it("colours the overridden/changed marks info, not primary (docs/plans/template-switch.md, Task 3)", () => {
+    const collab = { id: "collab", name: "Collab", enabled: true };
+    const props = baseProps();
+    props.rows = props.rows.map((r) =>
+      r.layer.id === "logo" ? { ...r, variantOverridden: collab }
+        : r.layer.id === "name" ? { ...r, changed: true } : r);
+    render(props);
+    const marks = Array.from(container.querySelectorAll('[role="img"]')) as HTMLElement[];
+    const overridden = marks.find((el) => el.getAttribute("aria-label") === "Collab changes this layer")!;
+    const changed = marks.find((el) => el.getAttribute("aria-label") === "Changed in this label")!;
+    expect(overridden.className).toContain("text-info-text");
+    expect(changed.className).toContain("text-info-text");
+  });
+
   it("drags across multiple rows in one reorder and removes the arrow buttons", () => {
     const props = render(baseProps({ selected: ["wordmark"] }));
     expect(byLabel("Bring Brand forward")).toBeNull();

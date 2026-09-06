@@ -239,7 +239,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
               role="img"
               aria-label={`${row.variantOverridden.name} changes this layer`}
               title={`${row.variantOverridden.name} changes this layer — resetting edits the master file`}
-              className="size-1.5 shrink-0 rounded-full bg-sidebar-primary"
+              className="size-1.5 shrink-0 rounded-full bg-current text-info-text"
             />
           )}
           {row.changed && (
@@ -247,7 +247,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
               role="img"
               aria-label="Changed in this label"
               title="Changed in this label"
-              className="size-1.5 shrink-0 rounded-full border border-sidebar-primary"
+              className="size-1.5 shrink-0 rounded-full border border-current text-info-text"
             />
           )}
         </SidebarMenuButton>
@@ -274,7 +274,13 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             />
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => setRenaming(true)}>Rename</DropdownMenuItem>
-              <DropdownMenuItem variant="destructive" onClick={() => p.onRemove(id)}>Remove</DropdownMenuItem>
+              <DropdownMenuItem
+                variant="destructive"
+                className="data-[variant=destructive]:text-destructive-text data-[variant=destructive]:focus:text-destructive-text"
+                onClick={() => p.onRemove(id)}
+              >
+                Remove
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </span>
