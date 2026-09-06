@@ -47,7 +47,7 @@ import { uppercaseOf } from "@/model/layers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, labelOverriddenPaths,
-  masterDiff, moveBy, moveLayers, resizeBy, type ResizeHandle, overriddenPaths, patchLayer, patchLayerIn, removeLayer, setValue, toggleVariant,
+  masterDiff, moveBy, moveLayers, resizeBy, type ResizeHandle, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue, toggleVariant,
   whereLayerLives,
 } from "@/model/edit";
 import { layerRows, variantChips } from "@/model/rows";
@@ -643,39 +643,19 @@ export const DocumentEditor = memo(function DocumentEditor({
     edit((d) => ({ ...d, master: fn(d.master) }), coalesce);
   const editLabel = (fn: (l: LabelFile) => LabelFile, coalesce?: boolean) =>
     edit((d) => ({ ...d, label: fn(d.label) }), coalesce);
-  /** A DESIGN edit on one layer — position, style, policy, geometry, and
-   *  the content of a non-fillable layer: lands in the master, or in the
-   *  variant that adds the layer (edit.ts's patchLayer → setLayer). */
+  /** A DESIGN edit on one layer — position, style, policy, geometry: lands in
+   *  the LABEL as an override, never in the master. The master is the template
+   *  and changes only through the reviewed Save Master (see edit.ts's
+   *  patchLayers for the rule). */
   const patch = (id: string, p: DeepPartial<Layer>, coalesce?: boolean) =>
     patchMany([[id, p]], coalesce);
   /** patch for several layers in ONE doc edit (one clone, one undo entry) —
    *  a group drag patches every selected layer per pointermove. */
   const patchMany = (entries: [string, DeepPartial<Layer>][], coalesce?: boolean) =>
-    edit((d0) => {
-      const masterIds = new Set(d0.master.layers.map((l) => l.id));
-      return entries.reduce((d, [id, p]) => {
-        const owner = masterIds.has(id) ? undefined : d.master.variants.find((v) => id in v.layers);
-        const nextLabel = p.enabled === true && owner && !d.label.enabledVariants.includes(owner.id)
-          ? toggleVariant(d.label, owner.id) : d.label;
-        // Last enabled variant carrying the layer wins (no findLast in this lib target).
-        let variant: string | undefined;
-        for (let i = nextLabel.enabledVariants.length - 1; i >= 0 && !variant; i--) {
-          const v = nextLabel.enabledVariants[i];
-          if (d.master.variants.some((x) => x.id === v && id in x.layers)) variant = v;
-        }
-        return {
-          master: variant ? patchLayerIn(d.master, variant, id, p) : patchLayer(d.master, id, p),
-          label: nextLabel,
-        };
-      }, d0);
-    }, coalesce);
-  /** A layer's CONTENT: a FILL value into the label when the layer is
-   *  fillable (this beer's name, this collab's logo), the master's own
-   *  default otherwise — the one place the fill/design split is decided. */
+    edit((d) => patchLayers(d, entries), coalesce);
+  /** A layer's CONTENT: always a fill value into the label, for any layer. */
   const setContent = (layer: Layer, value: LayerValue, coalesce?: boolean) =>
-    layer.fillable
-      ? editLabel((l) => setValue(l, layer.id, value), coalesce)
-      : patch(layer.id, contentPatch(layer.kind, value), coalesce);
+    edit((d) => setContentIn(d, layer.id, value), coalesce);
   /** Wrap a mutation that bypasses `edit` (undo/redo) so it still marks
    *  the document dirty. */
   const mutating = (fn: () => void) => () => { markDirty(); fn(); };
@@ -864,9 +844,9 @@ export const DocumentEditor = memo(function DocumentEditor({
       setCustomImages((old) => ({ ...old, [assetId]: file }));
     }
     setContent(layer, assetId);
-    const after: Doc = layer.fillable
-      ? { master, label: setValue(label, layer.id, assetId) }
-      : { master: patchLayer(master, layer.id, { asset: assetId }), label };
+    // The doc as it will be after that edit lands — releaseAsset must see the
+    // NEW state to decide whether the old asset is still referenced.
+    const after: Doc = setContentIn({ master, label }, layer.id, assetId);
     if (previous && previous !== assetId) releaseAsset(previous, after);
   }
 

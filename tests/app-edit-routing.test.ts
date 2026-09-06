@@ -1,0 +1,82 @@
+// app-edit-routing.test.ts — the master/label split (docs/plans/
+// label-first-editing.md, Phase A). Every property edit lands in the LABEL as
+// an override and the master stays identical to the template; content lands in
+// label.values for ANY layer, with no `fillable` gate. The routing is a pure
+// model function (edit.ts's patchLayers / setContentIn) so it can be tested
+// without mounting App — App's `patch` / `patchMany` / `setContent` are thin
+// wrappers over it.
+import { describe, expect, it } from "vitest";
+import { patchLayers, setContentIn, type Doc } from "../src/model/edit";
+import { lolevMaster } from "../src/model/lolevLayers";
+import { resolveLayers } from "../src/model/resolveLayers";
+import type { LabelFile, Master, TextLayer } from "../src/model/layers";
+import { GOLD } from "../src/layout";
+
+const line = (text: string) => ({ text, fill: GOLD, layer: "metallic" } as const);
+const newLabel = (master: Master): LabelFile =>
+  ({ formatVersion: 3, masterId: master.id, enabledVariants: [], values: {} });
+const doc = (): Doc => { const m = lolevMaster(); return { master: m, label: newLabel(m) }; };
+const byId = <T = unknown>(d: Doc, id: string) =>
+  resolveLayers(d.master, d.label.enabledVariants, d.label.values, d.label.overrides,
+    { keepDisabled: true }).layers.find((l) => l.id === id) as T;
+
+describe("property patches route to the label", () => {
+  it("a position patch leaves the master identical to the template", () => {
+    const d = patchLayers(doc(), [["name", { x: 300 }]]);
+    expect(d.master).toEqual(lolevMaster());
+    expect(d.label.overrides?.name).toEqual({ x: 300 });
+    expect(byId<TextLayer>(d, "name").x).toBe(300);
+  });
+
+  it("patches several layers in one edit and merges into an existing override", () => {
+    let d = patchLayers(doc(), [["name", { x: 300 }], ["styleLine", { size: 20 }]]);
+    d = patchLayers(d, [["name", { y: 12 }]]);
+    expect(d.master).toEqual(lolevMaster());
+    expect(d.label.overrides?.name).toEqual({ x: 300, y: 12 });
+    expect(d.label.overrides?.styleLine).toEqual({ size: 20 });
+  });
+
+  it("a nested style patch merges without dropping the master's other style keys", () => {
+    const d = patchLayers(doc(), [["name", { style: { fill: "#FF0000" } }]]);
+    const master = lolevMaster().layers.find((l) => l.id === "name") as TextLayer;
+    expect(d.master).toEqual(lolevMaster());
+    expect(byId<TextLayer>(d, "name").style)
+      .toEqual({ ...master.style, fill: "#FF0000" });
+  });
+
+  it("clears an optional field the master set — the inspector's `undefined` rule", () => {
+    // The master gives the description a wrap width; the label sets it back to
+    // "none". `undefined` cannot survive JSON, so the override stores null and
+    // the resolver treats null as "unset this key".
+    const base = doc();
+    base.master = {
+      ...base.master,
+      layers: base.master.layers.map((l) => (l.id === "description" ? { ...l, width: 200 } : l)),
+    };
+    const d = patchLayers(base, [["description", { width: undefined }]]);
+    expect(d.label.overrides?.description).toEqual({ width: null });
+    expect(byId<TextLayer>(d, "description").width).toBeUndefined();
+    expect(JSON.parse(JSON.stringify(d.label)).overrides.description).toEqual({ width: null });
+  });
+
+  it("enabling a variant-owned layer switches its variant on, in the label", () => {
+    const d = patchLayers(doc(), [["collabLeft", { enabled: true }]]);
+    expect(d.label.enabledVariants).toContain("collab");
+    expect(d.master).toEqual(lolevMaster());
+  });
+});
+
+describe("content routes to the label for any layer", () => {
+  it("fills a layer the master never marked fillable", () => {
+    const d = setContentIn(doc(), "warning", [line("Drink responsibly")]);
+    expect(d.master).toEqual(lolevMaster());
+    expect(d.label.values.warning).toEqual([line("Drink responsibly")]);
+    expect(byId<TextLayer>(d, "warning").lines).toEqual([line("Drink responsibly")]);
+  });
+
+  it("fills a code layer's value into the label, not the master", () => {
+    const d = setContentIn(doc(), "barcode", "036000291452");
+    expect(d.master).toEqual(lolevMaster());
+    expect(d.label.values.barcode).toBe("036000291452");
+  });
+});
