@@ -31,6 +31,7 @@ import {
   type Rotation,
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
+import type { FontFamilyId } from "../fontCatalog";
 import type { Fill } from "../types";
 import { bridgeOffsets } from "../strokes";
 import { type Face, type Mode, type PlacedBarcode, type PlacedText } from "../plan";
@@ -47,6 +48,7 @@ export type CollabImage =
 
 export interface Assets {
   fonts: { regular: Uint8Array; semibold: Uint8Array; bold: Uint8Array };
+  fontFamilies?: Partial<Record<FontFamilyId, Assets["fonts"]>>;
   /** Raster bytes by asset id — the id every `image` and `page` item carries
    *  in `asset`. A missing key (bytes not loaded, or an SVG source, which
    *  planLayers already turned into paths) leaves that item a no-op on BOTH
@@ -62,6 +64,7 @@ interface Fonts {
   regular: PDFFont;
   semibold: PDFFont;
   bold: PDFFont;
+  families?: Partial<Record<FontFamilyId, Fonts>>;
 }
 
 /** Pinned UTC timestamp for deterministic PDF output — identical input builds byte-identically. */
@@ -272,8 +275,11 @@ function drawItems(
   embedded: Embedded,
   mode: Mode,
 ) {
-  const faceFont = (f: Face) =>
-    f === "bold" ? fonts.bold : f === "semibold" ? fonts.semibold : fonts.regular;
+  const faceFont = (f: Face, family?: FontFamilyId) => {
+    const selected = family ? fonts.families?.[family] : fonts;
+    if (!selected) throw new Error(`Missing PDF font family: ${family}`);
+    return selected[f];
+  };
 
   const drawText = (r: PlacedText) => {
     const color = mode === "art" ? fillColor(r.fill) : maskColor(r.layer);
@@ -282,7 +288,7 @@ function drawItems(
       : null;
     withTracking(page, r.tracking || undefined, () =>
       strokedText(page, stroke, r.text, {
-        x: r.x, y: y(r.y), size: r.size, font: faceFont(r.face), color,
+        x: r.x, y: y(r.y), size: r.size, font: faceFont(r.face, r.fontFamily), color,
         ...(r.rotated ? { rotate: degrees(90) } : {}),
       }));
   };
@@ -327,11 +333,15 @@ async function newDoc(assets: Assets): Promise<{ doc: PDFDocument; page: PDFPage
   doc.setCreationDate(PDF_EPOCH);
   doc.setModificationDate(PDF_EPOCH);
   doc.registerFontkit(fontkit);
-  const fonts: Fonts = {
-    regular: await doc.embedFont(assets.fonts.regular, { subset: true }),
-    semibold: await doc.embedFont(assets.fonts.semibold, { subset: true }),
-    bold: await doc.embedFont(assets.fonts.bold, { subset: true }),
-  };
+  const embed = async (bytes: Assets["fonts"]): Promise<Fonts> => ({
+    regular: await doc.embedFont(bytes.regular, { subset: true }),
+    semibold: await doc.embedFont(bytes.semibold, { subset: true }),
+    bold: await doc.embedFont(bytes.bold, { subset: true }),
+  });
+  const fonts = await embed(assets.fonts);
+  for (const [family, bytes] of Object.entries(assets.fontFamilies ?? {})) {
+    (fonts.families ??= {})[family as FontFamilyId] = bytes === assets.fonts ? fonts : await embed(bytes);
+  }
   const page = doc.addPage([L.PAGE.w, L.PAGE.h]);
   // Round every stroke join and cap for the whole page. pdf-lib has no
   // per-draw option for this, so it goes in as a graphics-state operator up

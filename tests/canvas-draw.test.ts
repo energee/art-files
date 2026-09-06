@@ -257,3 +257,11 @@ describe("drawPlate", () => {
     }
   });
 });
+
+it("draws a text layer in its own font while other layers inherit the default", () => {
+  const { ctx, log } = fakeCtx();
+  drawPlate(ctx, plan({ overrides: { warning: { fontFamily: "barlow-condensed" } } }), {}, "art", FONT);
+  const fonts = log.filter((op) => op.op === "set:font").map((op) => String(op.args[0]));
+  expect(fonts.some((font) => font.endsWith("LabelFont-barlow-condensed"))).toBe(true);
+  expect(fonts.some((font) => font.endsWith("LabelFont-poppins"))).toBe(true);
+});

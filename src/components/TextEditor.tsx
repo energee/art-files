@@ -23,7 +23,7 @@
 // the renderers would draw it. There is no escape for a literal pair; adding
 // one would change the run grammar both renderers parse.
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Bold, Droplet, Heading as HeaderIcon } from "lucide-react";
+import { CaseUpper, Bold, Droplet, Heading as HeaderIcon } from "lucide-react";
 import type { Style } from "@/types";
 import type { Choice, Symbology, TextLine } from "@/model/layers";
 import { validateField } from "@/model/fields";
@@ -531,6 +531,8 @@ export function TextToolbarButtons(props: {
   /** Hidden on a single-line layer: one drawn line has nowhere for a header
    *  to render differently. */
   showHeader?: boolean;
+  uppercase?: boolean;
+  onUppercase?: (uppercase: boolean) => void;
 }) {
   const { caret, toggle, toggleHeader, showHeader = true } = props;
   return (
@@ -543,6 +545,12 @@ export function TextToolbarButtons(props: {
       <ToolbarToggle label="Toggle bold" tip="Bold" pressed={caret.bold} onPress={() => toggle("bold")}>
         <Bold />
       </ToolbarToggle>
+      {props.onUppercase && (
+        <ToolbarToggle label="Toggle uppercase" tip="Uppercase entire text layer"
+          pressed={props.uppercase ?? false} onPress={() => props.onUppercase!(!props.uppercase)}>
+          <CaseUpper />
+        </ToolbarToggle>
+      )}
       {/* White ink is a print layer (a separate underlay plate), not a text
           colour, hence the explicit label — Droplet alone reads ambiguously
           next to a colour swatch. */}
@@ -571,6 +579,7 @@ export interface TextEditorProps {
    *  swallows Enter, and emits one line. */
   multiline: boolean;
   uppercase?: boolean;
+  onUppercase?: (uppercase: boolean) => void;
   /** TextLayer.input: "number" and "code" swap the rich field for a plain
    *  box that writes one plain line; absent = the rich editor. */
   input?: "number" | "code";
@@ -779,9 +788,10 @@ function RichField(props: TextEditorProps) {
       <div className="flex h-7 items-center justify-between gap-1">
         <Label htmlFor={id} className={LABEL_CLASS}>{title ?? label}</Label>
         <div className="flex gap-1">
-          {focused && (
+          {(focused || props.onUppercase) && (
             <TextToolbarButtons
               caret={caret} toggle={toggle} toggleHeader={toggleHeader} showHeader={multiline}
+              uppercase={uppercase} onUppercase={props.onUppercase}
             />
           )}
         </div>

@@ -8,10 +8,10 @@
 // the old editor is deleted): happy-dom per-file, react-dom/client + act,
 // no testing library — every assertion is on the emitted lines or the DOM.
 // @vitest-environment happy-dom
-import { act, createElement, type ReactNode } from "react";
+import { act, createElement, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TextEditor, useTextField } from "../src/components/TextEditor";
+import { TextEditor, TextToolbarButtons, useTextField } from "../src/components/TextEditor";
 import { TooltipProvider } from "../src/components/ui/tooltip";
 import type { TextLine } from "../src/model/layers";
 import { GOLD } from "../src/layout";
@@ -474,4 +474,48 @@ it("shows the whole list when a filled field is opened", () => {
   const box = container.querySelector("#layer") as HTMLInputElement;
   act(() => { box.focus(); });
   expect(document.querySelectorAll("[data-choice]")).toHaveLength(2);
+});
+
+
+it("toggles uppercase display from the WYSIWYG toolbar without rewriting text", () => {
+  const lines = [line("Mixed case")];
+  const onChange = vi.fn();
+  function Harness() {
+    const [uppercase, setUppercase] = useState(false);
+    const field = useTextField({ lines, base, multiline: true, uppercase, onChange });
+    return createElement(TooltipProvider, null,
+      createElement("div", field.fieldProps),
+      createElement(TextToolbarButtons, {
+        caret: field.caret, toggle: field.toggle, toggleHeader: field.toggleHeader,
+        uppercase, onUppercase: setUppercase,
+      }));
+  }
+  act(() => { root.render(createElement(Harness)); });
+  const button = container.querySelector('[aria-label="Toggle uppercase"]') as HTMLElement;
+  const field = container.querySelector('[contenteditable="true"]') as HTMLElement;
+  expect(button.getAttribute("aria-pressed")).toBe("false");
+  act(() => { button.click(); });
+  expect(button.getAttribute("aria-pressed")).toBe("true");
+  expect(field.style.textTransform).toBe("uppercase");
+  expect(field.textContent).toBe("Mixed case");
+  act(() => { button.click(); });
+  expect(button.getAttribute("aria-pressed")).toBe("false");
+  expect(field.style.textTransform).toBe("");
+  expect(field.textContent).toBe("Mixed case");
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+
+it("shows uppercase in the sidebar warning field before focus and emits a style toggle", () => {
+  const onUppercase = vi.fn(), onChange = vi.fn();
+  act(() => { root.render(createElement(TooltipProvider, null,
+    createElement(TextEditor, {
+      id: "warning", label: "Text", lines: [line("Government warning")], base,
+      multiline: true, uppercase: false, onUppercase, onChange,
+    }))); });
+  const button = container.querySelector('[aria-label="Toggle uppercase"]') as HTMLElement;
+  expect(button).not.toBeNull();
+  act(() => { button.click(); });
+  expect(onUppercase).toHaveBeenCalledWith(true);
+  expect(onChange).not.toHaveBeenCalled();
 });

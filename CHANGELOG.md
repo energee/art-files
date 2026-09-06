@@ -3,6 +3,25 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.61] - 2026-09-06
+
+### Changed
+
+- Show estimated characters per inch for the densest line of text at print size.
+
+- Toggle uppercase for an entire text layer from the sidebar or on-canvas editing toolbar without losing its original capitalization.
+
+- Choose Poppins or Barlow Condensed per text layer, with matching preview, printed-height measurements and exports.
+
+- Set a minimum printed character height in millimeters and see the tallest letter or numeral, measured from the export fonts without decorative outlines. Point-size editing remains available.
+
+- Choose millimeters or points for inspector positions and dimensions; font sizes remain in points.
+
+- Display numeric controls at their editing precision, avoiding long decimal tails on imported text sizes.
+
+- Group typography controls together in the right sidebar and move template field settings into an expandable section after appearance controls.
+- Clarify spacing labels, keep field guidance visible, and enlarge override reset targets for easier use.
+
 ## [0.1.60] - 2026-09-06
 
 ### Added
@@ -35,6 +54,8 @@ binary-impacting change gets its own version before it is merged.
   inspector. Dragging a guide or removing one does not.
 
 ### Changed
+
+- Toggle uppercase for an entire text layer from the sidebar or on-canvas editing toolbar without losing its original capitalization.
 
 - **A QR code is edited as a link, not a template.** The inspector now asks
   for the URL and which field follows it, and makes that field safe for a

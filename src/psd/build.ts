@@ -600,7 +600,6 @@ function buildLayers(
   items: readonly PlacedLayer[], assets: PsdAssets, fk: FKFont, mode: PsdMode, opts: PsdOpts,
 ): Layer[] {
   const groups: Layer[] = [];
-  const ps = FONT_FAMILIES[assets.fontFamily ?? "poppins"].ps;
   const byId = new Map((opts.layers ?? []).map((l) => [l.id, l]));
   const nameOf = (id: string) => byId.get(id)?.name ?? id;
   const pixelsOf = (asset: string | undefined) => (asset ? assets.images?.[asset] : null) ?? null;
@@ -625,6 +624,7 @@ function buildLayers(
     const children: Layer[] = [];
     const texts = its.filter((r): r is PlacedText => r.kind === "text");
     if (texts.length) {
+      const ps = FONT_FAMILIES[texts[0].fontFamily ?? assets.fontFamily ?? "poppins"].ps;
       if (layer?.kind === "text" && layer.align === "justify") {
         // Photoshop point text cannot reproduce variable word gaps. Keep the
         // planned runs as editable type layers so export placement is exact.

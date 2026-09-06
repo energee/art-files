@@ -32,7 +32,7 @@ import {
   PREVIEW_RASTER_MAX_EDGE, previewRasterScale, trackedWidth,
 } from "@/layout";
 import type { Style } from "@/types";
-import { FACE_WEIGHT } from "@/fonts";
+import { FACE_WEIGHT, labelFontCss } from "@/fonts";
 import { TextToolbarButtons, useTextField, type LinePaint } from "@/components/TextEditor";
 import { modsOf, type SelectMods } from "@/selection";
 import { cn } from "@/lib/utils";
@@ -163,6 +163,7 @@ function InPlaceRichField(props: {
   /** Pill position, viewport px, captured once at open. */
   toolbarPos: { left: number; top: number };
   onApply: (lines: TextLine[]) => void;
+  onUppercase: (uppercase: boolean) => void;
   /** Ends the session: Escape asks to undo it (`cancel`). */
   onClose: (cancel: boolean) => void;
   /** Click-away guards — the field wrapper and the portaled pill both count
@@ -265,7 +266,8 @@ function InPlaceRichField(props: {
           className="fixed z-50 flex items-center gap-1 rounded-lg border border-border bg-background p-1 shadow-md"
           style={toolbarPos}
         >
-          <TextToolbarButtons caret={caret} toggle={toggle} toggleHeader={toggleHeader} />
+          <TextToolbarButtons caret={caret} toggle={toggle} toggleHeader={toggleHeader}
+            uppercase={uppercaseOf(layer)} onUppercase={props.onUppercase} />
         </div>,
         document.body,
       )}
@@ -314,6 +316,7 @@ export const PreviewCompare = forwardRef<
      *  new lines. `first` is true on the session's opening keystroke; App
      *  uses it to fold the whole session into one undo step. */
     onEditText: (id: string, lines: TextLine[], first: boolean) => void;
+    onEditUppercase: (id: string, uppercase: boolean, first: boolean) => void;
     /** Escape mid-session: App undoes the session's single step. Never
      *  called when nothing was typed. */
     onEditCancel: () => void;
@@ -352,7 +355,7 @@ export const PreviewCompare = forwardRef<
   }
 >(function PreviewCompare(
   {
-    canvasRender, layers, guides, selected, onPick, onEditText, onEditCancel, onDrag,
+    canvasRender, layers, guides, selected, onPick, onEditText, onEditUppercase, onEditCancel, onDrag,
     onDragCancel, onResize, onEditSession, onSplit, bleed, cornerRadiusPct, zoom, bleedIn, onRenderError,
   },
   ref,
@@ -619,10 +622,9 @@ export const PreviewCompare = forwardRef<
       const r = e.currentTarget.getBoundingClientRect();
       const boxLeft = r.left + (b.x / PAGE.w) * r.width;
       const boxTop = r.top + (b.y / PAGE.h) * r.height;
-      // ponytail: fixed clamps sized to the three-toggle pill (~140x40px)
-      // instead of measuring it — measure toolbarRef if its content grows.
+      // ponytail: fixed clamp for four toggles; measure if the toolbar grows.
       setToolbarPos({
-        left: Math.max(8, Math.min(boxLeft, window.innerWidth - 148)),
+        left: Math.max(8, Math.min(boxLeft, window.innerWidth - 188)),
         top: Math.max(8, boxTop - 48),
       });
     }
@@ -778,10 +780,14 @@ export const PreviewCompare = forwardRef<
           return (
             <InPlaceRichField
               layer={layer}
-              fontCss={canvasRender.fontCss}
+              fontCss={layer.fontFamily ? labelFontCss(layer.fontFamily) : canvasRender.fontCss}
               box={b}
               toolbarPos={toolbarPos}
               onApply={apply}
+              onUppercase={(uppercase) => {
+                onEditUppercase(editing, uppercase, !edited.current);
+                edited.current = true;
+              }}
               onClose={close}
               fieldRef={sessionRef}
               toolbarRef={toolbarRef}
@@ -798,7 +804,7 @@ export const PreviewCompare = forwardRef<
         // same measure the canvas draws with, plus the one trailing gap CSS
         // letter-spacing adds after the last glyph, plus 2px of caret room.
         const fieldWidth = layer.suffix
-          ? `calc(${cqh(trackedWidth(canvasRender.m(typed, size, faces.base), typed, ls) + ls)} + 2px)`
+          ? `calc(${cqh(trackedWidth(canvasRender.m(typed, size, faces.base, layer.fontFamily), typed, ls) + ls)} + 2px)`
           : "100%";
         return (
           <div
@@ -808,7 +814,7 @@ export const PreviewCompare = forwardRef<
               ...pageBox(b.x, b.y, b.w, b.h, SEL_PAD),
               fontSize: cqh(size),
               lineHeight: 1,
-              fontFamily: canvasRender.fontCss,
+              fontFamily: layer.fontFamily ? labelFontCss(layer.fontFamily) : canvasRender.fontCss,
               fontWeight: FACE_WEIGHT[faces.base],
               letterSpacing: cqh(ls),
               color: inkOf(st),

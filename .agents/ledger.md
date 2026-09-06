@@ -414,3 +414,56 @@ no status, no attempts, no delta.
 - status: open
 - attempts: 0/3
 - depends-on: native-desktop-files
+
+## 2026-09-06 right-sidebar-ux
+- finding: [UX/low] src/components/LayerInspector.tsx — typography split across sections, template authoring interrupts appearance edits, hints disappear when filled, reset targets only 8px
+- status: done
+- delta: unified typography before position; template fields retained under a native disclosure at the bottom; sentence-case headings, persistent associated hints, and 24px reset targets; all model patches and controls retained
+- evidence: 45 inspector DOM tests and production build pass; browser screenshot reviewed and mouse expansion/Enter collapse verified; binary-impacting 0.1.61 metadata and CHANGELOG heading validated; no release published
+- notes: UX assessment follows grouping, recognition and progressive disclosure principles (https://www.nngroup.com/articles/ten-usability-heuristics/); no user study or measured task-time improvement claimed
+
+## 2026-09-06 numeric-display-precision
+- finding: [user report] ScrubField rendered raw imported floating-point precision in text sizes
+- status: done
+- delta: shared numeric display rounds to the existing step precision; viewing does not write geometry, and typing drafts remain unchanged
+- evidence: imported 15.829999923706056 displays 15.83 without onChange; 46 inspector tests, production build, diff and 0.1.61 release metadata checks pass; changelog folded into this branch's version
+
+## 2026-09-06 inspector-millimeters
+- finding: [user request] offer millimeters for position and dimensions while retaining point typography
+- status: done
+- delta: mm/pt selector retained across layer selection; mm defaults with 0.01 display/edit precision, converted back to the existing point geometry; optional dimension clearing and validation bounds retained; font size/tracking remain pt
+- evidence: 52 focused inspector/App checks and production build pass; browser confirms mm dimensional labels and pt font size; binary-impacting change folded into 0.1.61 CHANGELOG, synchronized release gate and diff check pass; no release published
+
+## 2026-09-06 printed-character-height
+- finding: [user request] font points do not report the actual printed heights of letters/numerals
+- status: done
+- delta: editable minimum height plus tallest-character readout from export font glyph outlines and the shared text plan; heading/face/case/placeholder/suffix handling retained; size adjustments round upward and keep 1–300pt bounds; punctuation and decorative strokes excluded; lazy font loading with inline failure/empty states
+- evidence: 958 full-suite tests and production build pass; release metadata gate for binary-impacting 0.1.61 and diff check pass. Browser verified user's Info selection at 8.13pt, min 2.00mm, max 2.11mm; existing 15px design stroke explains an additional 1.27mm visible envelope. No user data modified during inspection, no release published.
+- notes: measurement helper, not a TTB certification; checking type size does not validate content, contrast, character density, or physical printer scaling
+
+## 2026-09-06 per-layer-font-control
+
+- finding: [user request] warning typography needs a narrower font without changing the rest of the label
+- status: implemented in enhance/right-sidebar
+- delta: per-text-layer Default/Poppins/Barlow Condensed selector; bundled regular/semibold/bold faces and public OFL license; family-aware measurement, canvas/in-place editing, PDF embedding and PSD type names; existing override/reset persistence; unknown persisted families rejected
+- evidence: 964 tests pass; focused 53 selector/export/persistence checks pass after final selector display correction; production build passes, with the existing large-chunk advisory. Binary-impacting 0.1.61, CHANGELOG heading and synchronized release metadata pass. Browser control disconnected and native computer-use permission was unavailable, so live visual inspection of this addition could not be completed. No user label data changed, no release published.
+
+## 2026-09-06 wysiwyg-uppercase
+
+- status: implemented in enhance/right-sidebar
+- delta: uppercase toggle in the on-canvas rich-text toolbar uses the existing style.uppercase setting and joins the same undo/cancel session as text edits; original text case retained; floating toolbar clamp expanded for its fourth toggle
+- evidence: 39 focused text-editor/App tests pass, including reversible uppercase display without content mutation; production build and binary-impacting 0.1.61 release gate pass (CHANGELOG updated). Live visual inspection remains unavailable due to computer-use access. No release published.
+
+## 2026-09-06 sidebar-uppercase-followup
+
+- status: fixed in enhance/right-sidebar
+- root cause: uppercase was wired only to the floating canvas toolbar, not the sidebar TextEditor used for the warning
+- delta: connect the shared uppercase control to the sidebar layer patch; keep that toolbar visible before focus
+- evidence: 40 focused editor/App tests pass, including the unfocused warning field; production build, diff check and binary-impacting 0.1.61 release gate pass; CHANGELOG updated. No release published.
+
+## 2026-09-06 characters-per-inch
+
+- status: implemented in enhance/right-sidebar
+- delta: print-size CPI readout beside character heights, using the highest line-average count divided by occupied run width; excludes whitespace from character count but retains its width and justified gaps; supports rotated text, font/size/case/spacing/wrap changes
+- scope: explicitly labeled estimate/highest line average, not a sliding one-inch maximum or compliance verdict. TTB 16.22 defines letters, numbers and marks but retrieved guidance did not establish an averaging protocol.
+- evidence: 9 focused real-font/geometry/DOM tests pass, including half-inch count, justified gaps, rotation, densest line, inverse size scaling and invalid widths; production build, diff and binary-impacting 0.1.61 release gate pass. No release published.

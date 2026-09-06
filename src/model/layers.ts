@@ -13,7 +13,7 @@
 // DOM, no rendering. Converters for v1/v2 files live in model/convert.ts.
 import type { Style, StyledLine } from "../types";
 import type { Anchor } from "./position";
-import type { FontFamilyId } from "../fontCatalog";
+import { FONT_FAMILIES, type FontFamilyId } from "../fontCatalog";
 import { deepMerge, type DeepPartial } from "./merge";
 
 export type Symbology = "upc-a" | "ean-13" | "code-128";
@@ -122,6 +122,8 @@ export function uppercaseOf(l: { style?: Style; uppercase?: boolean }): boolean 
 export interface TextLine extends StyledLine { header?: boolean }
 
 export interface TextLayer extends LayerBase {
+  /** Omitted = inherit the master font. */
+  fontFamily?: FontFamilyId;
   kind: "text";
   /** The content. A text layer's .label value is this array. */
   lines: TextLine[];
@@ -241,7 +243,7 @@ export interface Master {
   name: string;
   physical: { labelWidthIn: number; labelHeightIn: number; bleedIn: number; canDiameterIn: number };
   guides: Guides;
-  /** One typeface for the whole label — the single font gate. Absent =
+  /** Default typeface, inherited by layers without a font override. Absent =
    *  "poppins". */
   fontFamily?: FontFamilyId;
   /** DRAW ORDER, back to front. */
@@ -296,6 +298,8 @@ function validateLayer(l: Layer, ctx: string): void {
   if (l.rotation !== undefined && l.rotation !== 0 && l.rotation !== 90)
     fail(`${ctx} layer "${l.id}" has invalid rotation`);
   if (l.kind === "text") {
+    if (l.fontFamily !== undefined && !Object.hasOwn(FONT_FAMILIES, l.fontFamily))
+      fail(`text layer "${l.id}" has unknown font family "${l.fontFamily}"`);
     if (!Array.isArray(l.lines)) fail(`text layer "${l.id}" missing lines`);
     if (typeof l.size !== "number") fail(`text layer "${l.id}" missing size`);
     if (!["left", "center", "right", "justify"].includes(l.align)) fail(`text layer "${l.id}" has invalid align`);

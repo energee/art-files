@@ -108,7 +108,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { loadLabelFaces, labelFontCss } from "@/fonts";
-import { fontFamilyOf } from "@/fontCatalog";
+import { fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
 import { loadFonts } from "@/pdf/fonts";
 import type { MeasureFace, PlanAssets } from "@/plan";
 import type { CanvasAssets, CanvasRenderSource } from "@/canvas/draw";
@@ -644,6 +644,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Rulers and guides are view state: they assist the operator but are not
   // label content, so none enters history/exports. Both persist per operator.
   const [showRulers, setShowRulers] = useState(() => loadViewToggles().showRulers);
+  const [dimensionUnit, setDimensionUnit] = useState<"mm" | "pt">("mm");
   const [rulerUnit, setRulerUnit] = useState<RulerUnit>("in");
   const [showGuides, setShowGuides] = useState(() => loadViewToggles().showGuides);
   const marginPt = master.guides.top ?? DEFAULT_MARGIN_PT;
@@ -1184,9 +1185,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** The full-resolution display list for an export: the same layers the
    *  preview draws, planned with the canvas measure (fonts.ts — the one
    *  font gate) and the full-size asset descriptors. */
-  async function exportPlan(): Promise<{ plan: PlacedLayer[]; images: Record<string, CollabImage> }> {
+  async function exportPlan(): Promise<{ plan: PlacedLayer[]; images: Record<string, CollabImage>; fontFamilies: Assets["fontFamilies"] }> {
     const m = await loadLabelFaces(family);
-    return { plan: planLayers(drawLayers, m, planAssetsOf()), images: await imageAssets() };
+    const plan = planLayers(drawLayers, m, planAssetsOf());
+    const families = new Set(plan.flatMap((run) => run.kind === "text" && run.fontFamily ? [run.fontFamily] : []));
+    const fontFamilies = Object.fromEntries(await Promise.all(
+      [...families].map(async (id: FontFamilyId) => [id, await loadFonts(id)]),
+    ));
+    return { plan, images: await imageAssets(), fontFamilies };
   }
 
   /** Downloads rebuild from the full-resolution assets on demand — the
@@ -1196,12 +1202,12 @@ export const DocumentEditor = memo(function DocumentEditor({
     setBuilding(true);
     startSaveBatch();
     try {
-      const [{ buildArtPdf, buildMaskPdf }, fonts, { plan, images }] = await Promise.all([
+      const [{ buildArtPdf, buildMaskPdf }, fonts, { plan, images, fontFamilies }] = await Promise.all([
         import("@/pdf/build"), loadFonts(family), exportPlan(),
       ]);
       const art = pageArt(false);
       const assets: Assets = {
-        fonts, title,
+        fonts, fontFamilies, title,
         images: {
           ...images,
           ...(art.texture ? { [PAGE_ART_ID.background]: art.texture } : {}),
@@ -1761,6 +1767,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         <TextEditor id={id} label="Text" lines={layer.lines} base={layer.style}
           onChange={(lines) => setContent(layer, lines, true)}
           multiline={true} uppercase={uppercaseOf(layer)}
+          onUppercase={(uppercase) => patch(layer.id, { style: { uppercase } })}
           input={layer.input} min={layer.min} max={layer.max} symbology={layer.symbology}
           suffix={layer.suffix} choices={layer.choices} title={layer.title} />
       );
@@ -1994,6 +2001,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onPick={pick}
               // Live per-keystroke updates so the canvas render IS the edit
               // feedback, folded into one undo step per session.
+              onEditUppercase={(id, uppercase, first) => patch(id, { style: { uppercase } }, !first)}
               onEditText={(id, lines, first) => {
                 const layer = drawLayers.find((l) => l.id === id);
                 if (layer) setContent(layer, lines, !first);
@@ -2125,6 +2133,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             className="w-[300px] gap-0 overflow-y-auto border-l-0! bg-sidebar p-0 sm:max-w-[300px]">
             {inspected && (
               <LayerInspector key={inspected.layer.id} layer={inspected.layer}
+                unit={dimensionUnit} onUnitChange={setDimensionUnit}
                 layerNames={rows.map((r) => ({ id: r.layer.id, name: r.layer.name }))}
                 overridden={overridden}
                 onChange={(p) => patch(inspected.layer.id, p)}

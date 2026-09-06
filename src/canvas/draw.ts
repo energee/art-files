@@ -15,7 +15,7 @@ import { planLayers, type PlacedLayer, type PlacedPage } from "../planLayers";
 import type { Layer } from "../model/layers";
 import type { Fill, Style } from "../types";
 import { bridgeOffsets } from "../strokes";
-import { FACE_WEIGHT } from "../fonts";
+import { FACE_WEIGHT, labelFontCss } from "../fonts";
 import * as L from "../layout";
 
 // TypeScript note: some lib.dom versions lack `letterSpacing` on the 2D
@@ -180,7 +180,7 @@ export function drawPlate(
 type Ring = (w: number) => { dx: number; dy: number }[];
 
 function drawText(ctx: Ctx, r: PlacedText, mode: Mode, fontCss: string, ring: Ring) {
-  ctx.font = `${FACE_WEIGHT[r.face]} ${r.size}px ${fontCss}`;
+  ctx.font = `${FACE_WEIGHT[r.face]} ${r.size}px ${r.fontFamily ? labelFontCss(r.fontFamily) : fontCss}`;
   // Tracking in points: under the pt-scaled transform, user-space px ARE
   // points. Canvas letterSpacing also gaps after the final glyph, but that
   // is advance, not ink — run positions come from the plan, so it cannot

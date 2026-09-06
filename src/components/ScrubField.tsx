@@ -93,11 +93,9 @@ export function ScrubField(props: {
           max={props.max}
           step={props.step}
           className="h-6 text-xs"
-          // Renders exactly what it was handed. A caller converting from
-          // another unit rounds before passing it in (see InchField), so the
-          // rounding lands on the value that gets STORED rather than only on
-          // the one displayed.
-          value={text ?? (props.mixed ? "" : props.value)}
+          // Match editing precision without mutating imported geometry on render.
+          // Keep the draft untouched until blur so typing remains uninterrupted.
+          value={text ?? (props.mixed ? "" : Number(props.value.toFixed(decimals(props.step))))}
           placeholder={props.mixed ? "Mixed" : undefined}
           onChange={(e) => {
             setText(e.target.value);
