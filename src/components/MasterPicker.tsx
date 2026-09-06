@@ -13,7 +13,7 @@
 // The menu answers one question — WHICH VERSION AM I EDITING — in three
 // registers (docs/plans/label-first-editing.md, Task 12):
 //   * the current master's variants, listed under it as versions of it.
-//     Picking one switches to it, which is what makes a promotion land in
+//     Picking one switches to it, which is what makes Add Layer add into
 //     `variants.<id>.layers` instead of the base master. Merely enabling a
 //     variant (the chips in LayerList) shows that version; it does not make
 //     it the one you are changing.

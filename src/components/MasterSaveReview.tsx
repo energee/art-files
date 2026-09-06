@@ -2,31 +2,19 @@
 // (docs/plans/label-first-editing.md, Task 7). The master never changes
 // implicitly: every Save Master shows what it is about to write first.
 //
-// Two kinds of row, and the difference is the whole point:
-//   * STRUCTURAL and fill-contract rows (added / removed / moved / renamed /
-//     property) are already in the edited master. They are checked and
-//     DISABLED — unchecking one would be an undo, which is Cmd-Z's job, not a
-//     save option.
-//   * PROMOTE rows are the label's own overrides, offered for folding into the
-//     template. Off by default, because a label's nudge is the label's until
-//     someone says otherwise. This dialog is the only promotion path — the
-//     inspector's override badge resets, it never promotes.
-//
-// Presentational: it reports which promote rows were ticked and lets the
-// caller do the writing (edit.ts's applyPromotions).
-import { useMemo, useState } from "react";
+// A read-only list of the structural and fill-contract rows (added / removed
+// / moved / renamed / property) already sitting in the edited master, plus
+// Save / Cancel. (2026-09-06: this used to also list the label's own
+// overrides, offered as ticked-off checkboxes to fold into the template —
+// removed by docs/plans/template-switch.md, which makes "put this label's
+// tweak in the template" a mode switch instead. See
+// docs/plans/label-first-editing.md's Tasks 6/7 for the history.)
+import { useMemo } from "react";
 import type { MasterChange } from "@/model/edit";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle,
 } from "@/components/ui/dialog";
-
-/** Stable per-row key, also the `data-row` the tests drive — base-ui mints
- *  its own `id` on a Checkbox, so the row's identity rides on a data
- *  attribute instead. */
-const rowId = (c: MasterChange) =>
-  `${c.kind}-${c.layerId}${c.path === undefined ? "" : `-${c.path}`}`;
 
 /** An unset value reads as an em dash, not "undefined" — `null` is
  *  setLabelOverride's wire spelling of "unset this key". */
@@ -47,7 +35,7 @@ const entryName = (v: unknown): string =>
  *  count and the ONE entry that came or went, not as its JSON. leafPaths
  *  treats an array as a single leaf, so a vocabulary arrives here whole: eight
  *  tier objects stringified is not something anyone can review, and the review
- *  is the only thing between a learned value and the template
+ *  is the only thing standing between a learned value and the template
  *  (docs/plans/choice-input.md, Task 7).
  *
  *  More than one difference falls back to the counts alone: naming two of five
@@ -64,10 +52,9 @@ function listText(from: readonly unknown[], to: readonly unknown[]): string {
   return counts;
 }
 
-/** What the row says happened, in the reviewer's terms rather than the
- *  model's. Structural rows are a sentence; a property or promote row is a
- *  path and a before/after, set in mono because that is literally what they
- *  are — a key path and its values. */
+/** What the row says happened: structural rows are a sentence; a property
+ *  row is a path and a before/after, set in mono because that is literally
+ *  what they are — a key path and its values. */
 function rowText(c: MasterChange): React.ReactNode {
   switch (c.kind) {
     case "added": return "Added to the master";
@@ -98,17 +85,9 @@ export function MasterSaveReview(props: {
   open: boolean;
   /** edit.ts's masterChanges() for this save. */
   changes: readonly MasterChange[];
-  /** The variant a promotion would be written into, named — undefined for the
-   *  base master. Shown because promotion is otherwise invisible: the same
-   *  tick writes `master.layers` or `variants.collab.layers` depending on the
-   *  version you switched to (Task 12). */
-  target?: string;
   onCancel: () => void;
-  /** The ticked `promote` rows, in the order they were listed. */
-  onConfirm: (promote: MasterChange[]) => void;
+  onConfirm: () => void;
 }): React.JSX.Element {
-  const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
-
   // Layer order as `changes` first mentions each layer, so the dialog reads in
   // the same order masterChanges walked the master.
   const groups = useMemo(() => {
@@ -121,15 +100,6 @@ export function MasterSaveReview(props: {
     return [...by.values()];
   }, [props.changes]);
 
-  const confirm = () =>
-    props.onConfirm(props.changes.filter((c) => c.kind === "promote" && ticked.has(rowId(c))));
-
-  const toggle = (id: string) => setTicked((prev) => {
-    const next = new Set(prev);
-    if (!next.delete(id)) next.add(id);
-    return next;
-  });
-
   return (
     <Dialog open={props.open} onOpenChange={(open) => { if (!open) props.onCancel(); }}>
       <DialogContent className="sm:max-w-lg">
@@ -137,28 +107,20 @@ export function MasterSaveReview(props: {
         <DialogDescription>
           {props.changes.length === 0
             ? "Nothing has changed in the master."
-            : props.target === undefined
-              ? "These changes will be written to the template. Tick a label override to fold it in too."
-              : `These changes will be written to the template. Ticked overrides go into the ${props.target} version.`}
+            : "These changes will be written to the template."}
         </DialogDescription>
         <div className="max-h-80 overflow-y-auto text-sm">
           {groups.map((g) => (
             <div key={g.rows[0].layerId} className="mt-2 first:mt-0">
               <p className="text-xs font-medium text-muted-foreground">{g.name}</p>
               {g.rows.map((c) => {
-                const row = rowId(c);
+                const row = `${c.kind}-${c.layerId}${c.path === undefined ? "" : `-${c.path}`}`;
                 return (
-                <label key={row} className="mt-1 flex items-center gap-2">
-                  <Checkbox
-                    data-row={row}
-                    disabled={c.kind !== "promote"}
-                    checked={c.kind !== "promote" || ticked.has(row)}
-                    onCheckedChange={() => toggle(row)} />
-                  <span className={c.kind === "promote" ? ""
-                    : c.kind === "removed" ? "text-destructive" : "text-muted-foreground"}>
+                <p key={row} className="mt-1 flex items-center gap-2">
+                  <span className={c.kind === "removed" ? "text-destructive" : "text-muted-foreground"}>
                     {rowText(c)}
                   </span>
-                </label>
+                </p>
                 );
               })}
             </div>
@@ -166,7 +128,7 @@ export function MasterSaveReview(props: {
         </div>
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={props.onCancel}>Cancel</Button>
-          <Button size="sm" onClick={confirm}>Save Master</Button>
+          <Button size="sm" onClick={props.onConfirm}>Save Master</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

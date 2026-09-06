@@ -48,7 +48,7 @@ import { uppercaseOf } from "@/model/layers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, labelOverriddenPaths,
-  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, showVersion, snappedDx, moveLayers, resizeBy, type ResizeHandle, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue,
+  masterChanges, masterDiff, moveBy, showVersion, snappedDx, moveLayers, resizeBy, type ResizeHandle, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue,
   whereLayerLives,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
@@ -424,37 +424,31 @@ export const DocumentEditor = memo(function DocumentEditor({
   const pristineMaster = useRef(doc.master);
   // Bumped by every save/open so the memo below re-reads the ref.
   const [savedTick, repaintMasterDirty] = useState(0);
-  // THE WORKING VERSION: the variant the canvas is drawing, which is also the
-  // one a promotion lands in (docs/plans/label-first-editing.md, Task 12).
-  // It is READ OFF THE LABEL rather than held beside it: the master Select
-  // names one version and switching moves `enabledVariants` (showVersion), so
-  // the label already records the answer — and undo restores the version along
-  // with the variant that created it. Last enabled wins, the same rule
-  // resolveLayers and the row badges use.
+  // THE WORKING VERSION: the variant the canvas is drawing. It is READ OFF
+  // THE LABEL rather than held beside it: the master Select names one version
+  // and switching moves `enabledVariants` (showVersion), so the label already
+  // records the answer — and undo restores the version along with the variant
+  // that created it. Last enabled wins, the same rule resolveLayers and the
+  // row badges use.
   const version = label.enabledVariants.at(-1) ?? null;
   /** Which save the review dialog is standing in front of, or null. */
   const [pendingSave, setPendingSave] = useState<{ as: boolean } | null>(null);
   // What a Save Master would write: the structural and fill-contract edits
-  // already in the master, plus this label's overrides offered for promotion.
-  // Itemised ONLY while the dialog is up — every property edit is a label
-  // override now, so this memo's inputs change on every pointermove of a drag,
-  // and walking the whole master and its variants at pointer rate to answer
-  // "is anything dirty" was most of a drag's work.
+  // already in the master. Itemised ONLY while the dialog is up — every
+  // property edit is a label override now, so this memo's inputs change on
+  // every pointermove of a drag, and walking the whole master and its
+  // variants at pointer rate to answer "is anything dirty" was most of a
+  // drag's work.
   const masterChangeList = useMemo(
-    () => (pendingSave
-      ? masterChanges(pristineMaster.current, master, label, version ?? undefined) : []),
+    () => (pendingSave ? masterChanges(pristineMaster.current, master) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- savedTick re-reads the ref
-    [pendingSave, master, label, version, savedTick]);
-  // The dirty flag is the cheap superset of the same question: the template
-  // moved, or the label holds an override that a save could offer to promote.
-  // It can light Save Master for an override that happens to equal what the
-  // master already says — the review then opens with nothing in it, which is
-  // the honest answer to "what would this save write?".
+    [pendingSave, master, savedTick]);
+  // The dirty flag is the cheap superset of the same question: has the
+  // template moved since the last open/save.
   const masterDirty = useMemo(
-    () => masterDiff(pristineMaster.current, master)
-      || Object.keys(label.overrides ?? {}).length > 0,
+    () => masterDiff(pristineMaster.current, master),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- savedTick re-reads the ref
-    [master, label.overrides, savedTick]);
+    [master, savedTick]);
 
   // Which layers the inspector shows — Figma's model: an ordered selection
   // plus an anchor a shift-range extends from, driven by the Layers list or
@@ -709,8 +703,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     setSelection((s) => s.ids.includes(id)
       ? { ids: s.ids.filter((x) => x !== id), anchor: s.anchor === id ? null : s.anchor } : s);
   }
-  /** Switch the working version: what the canvas draws, and what a promotion
-   *  in the Save Master review would be written into. The Select names one
+  /** Switch the working version: what the canvas draws. The Select names one
    *  version and that is the one you see — switching to a variant shows it,
    *  and going back to the base hides it again (edit.ts's showVersion). */
   function switchVersion(id: string | null) {
@@ -1321,8 +1314,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   }
 
   /** File → Save Master / Save Master As…, always downstream of the review
-   *  dialog (MasterSaveReview), which is where `promote` comes from: the label
-   *  overrides the reviewer ticked to fold into the template.
+   *  dialog (MasterSaveReview), which shows exactly what this writes before it
+   *  writes it.
    *
    *  Save As also FORKS — a fresh master id, the document rebound onto it, and
    *  the file written. That is what "Duplicate as new master…" used to do
@@ -1331,11 +1324,10 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  packMaster goes through the same three-way platform save path as
    *  saveProject, then registers the file in the library index and moves the
    *  master-dirty baseline. */
-  async function saveMaster(as = false, promote: readonly MasterChange[] = []): Promise<boolean> {
-    const promoted = applyPromotions(master, label, promote, version ?? undefined);
+  async function saveMaster(as = false): Promise<boolean> {
     const forked = as
-      ? { ...promoted.master, id: `master-${crypto.randomUUID().slice(0, 8)}` }
-      : promoted.master;
+      ? { ...master, id: `master-${crypto.randomUUID().slice(0, 8)}` }
+      : master;
     const assets = masterAssetBundle();
     const suggested = machineName(forked.name) || "master";
     /** A fork takes its display name from the file it was saved as — without
@@ -1351,10 +1343,10 @@ export const DocumentEditor = memo(function DocumentEditor({
         ? { ...forked, name: base } : forked;
     };
     /** Adopt `m` as the saved master: the document's, the library's, and the
-     *  baseline the next review diffs against. A plain save with nothing
-     *  promoted is a no-op edit and pushes no history entry. */
+     *  baseline the next review diffs against. A plain save leaves both
+     *  unchanged and is a no-op edit that pushes no history entry. */
     const commit = (m: Master, where: string) => {
-      edit(() => ({ master: m, label: promoted.label }));
+      edit(() => ({ master: m, label }));
       rememberMaster(m, where);
       pristineMaster.current = m;
       repaintMasterDirty((n) => n + 1);
@@ -1829,12 +1821,11 @@ export const DocumentEditor = memo(function DocumentEditor({
       </Dialog>
       {pendingSave && (
         <MasterSaveReview open changes={masterChangeList}
-          target={master.variants.find((v) => v.id === version)?.name}
           onCancel={() => setPendingSave(null)}
-          onConfirm={(promote) => {
+          onConfirm={() => {
             const { as } = pendingSave;
             setPendingSave(null);
-            void saveMaster(as, promote);
+            void saveMaster(as);
           }} />
       )}
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),

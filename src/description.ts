@@ -10,7 +10,7 @@
 // A body line that would itself be emitted first (a header-less block whose
 // opening line reads e.g. "#3 Citra") is written escaped as `\#3 Citra` and
 // unescaped on the way back in, so it round-trips as a body line instead of
-// being promoted to the header on the next parse. That escape is the format's
+// becoming the header on the next parse. That escape is the format's
 // only one: `\` is literal everywhere else, including before a `#` that is
 // not at the start of a line.
 // Inline spans: `**bold**` and `_white ink_` also apply to a RUN inside a

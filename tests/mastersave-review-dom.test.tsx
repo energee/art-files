@@ -1,11 +1,15 @@
 // mastersave-review-dom.test.tsx — DOM behavior of MasterSaveReview
 // (src/components/MasterSaveReview.tsx): the dialog standing between an edit
 // and the template (docs/plans/label-first-editing.md, Task 7). It renders
-// masterChanges() grouped by layer — structural rows checked and disabled
-// (they are ALREADY in the master; unchecking one is an undo, not a save
-// option), promote rows off by default — and hands back exactly the promote
-// rows that were ticked. Same react-dom/client + act harness as
-// masterpicker-dom.test.tsx; no @testing-library/react in this repo.
+// masterChanges() as a read-only list grouped by layer, plus Save / Cancel.
+// Same react-dom/client + act harness as masterpicker-dom.test.tsx; no
+// @testing-library/react in this repo.
+//
+// (2026-09-06: this dialog used to also render a checkbox per row — checked
+// and disabled for structural rows, off by default for a label override the
+// reviewer could tick to fold into the template — removed by
+// docs/plans/template-switch.md along with applyPromotions; see
+// docs/plans/label-first-editing.md's Tasks 6/7 for the history.)
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -32,8 +36,6 @@ afterEach(() => {
 const changes: MasterChange[] = [
   { kind: "renamed", layerId: "name", layerName: "Beer name", from: "Name", to: "Beer name" },
   { kind: "property", layerId: "styleLine", layerName: "Style", path: "placeholder", from: "Style", to: "Sub-style" },
-  { kind: "promote", layerId: "name", layerName: "Beer name", path: "x", from: 100, to: 300 },
-  { kind: "promote", layerId: "name", layerName: "Beer name", path: "style.fill", from: "#F3CD80", to: "#FF0000" },
 ];
 
 function render(props: Partial<Parameters<typeof MasterSaveReview>[0]> = {}) {
@@ -46,36 +48,22 @@ function render(props: Partial<Parameters<typeof MasterSaveReview>[0]> = {}) {
 
 const boxes = () =>
   Array.from(document.querySelectorAll<HTMLElement>("[role=checkbox]"));
-// Rows are found by `data-row`, not `id`: base-ui's Checkbox mints its own
-// id, and a dotted path like `style.fill` would parse as id-plus-class anyway.
-const box = (row: string) => document.querySelector<HTMLElement>(`[data-row="${row}"]`)!;
-/** base-ui backs each Checkbox with a hidden native input and listens there;
- *  a click on the visible span is not a real pointer interaction in happy-dom. */
-const tick = (row: string) =>
-  act(() => { box(row).closest("label")!.querySelector("input")!.click(); });
 const button = (text: string) =>
   Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
     .find((b) => b.textContent?.trim() === text)!;
 
 describe("MasterSaveReview", () => {
+  it("renders no checkboxes", () => {
+    render();
+    expect(boxes()).toHaveLength(0);
+  });
+
   it("lists every change under its layer", () => {
     render();
     const text = document.body.textContent ?? "";
     expect(text).toContain("Beer name");
     expect(text).toContain("Style");
     expect(text).toContain("placeholder");
-    expect(text).toContain("style.fill");
-    expect(boxes()).toHaveLength(4);
-  });
-
-  it("checks and locks the structural rows, and leaves promotions off", () => {
-    render();
-    expect(box("renamed-name").getAttribute("aria-checked")).toBe("true");
-    expect(box("renamed-name").getAttribute("aria-disabled")).toBe("true");
-    expect(box("promote-name-x").getAttribute("aria-disabled")).toBeNull();
-    expect(box("property-styleLine-placeholder").getAttribute("aria-checked")).toBe("true");
-    expect(box("promote-name-x").getAttribute("aria-checked")).toBe("false");
-    expect(box("promote-name-style.fill").getAttribute("aria-checked")).toBe("false");
   });
 
   it("cancelling confirms nothing", () => {
@@ -85,17 +73,10 @@ describe("MasterSaveReview", () => {
     expect(p.onConfirm).not.toHaveBeenCalled();
   });
 
-  it("confirms with exactly the promotions that were ticked", () => {
+  it("confirms on Save Master", () => {
     const p = render();
-    tick("promote-name-style.fill");
     act(() => { button("Save Master").click(); });
-    expect(p.onConfirm).toHaveBeenCalledWith([changes[3]]);
-  });
-
-  it("a structural-only save confirms with no promotions", () => {
-    const p = render({ changes: changes.slice(0, 2) });
-    act(() => { button("Save Master").click(); });
-    expect(p.onConfirm).toHaveBeenCalledWith([]);
+    expect(p.onConfirm).toHaveBeenCalled();
   });
 });
 

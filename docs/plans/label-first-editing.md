@@ -73,6 +73,14 @@ authoring a master is structure + placeholders and needs no label content.
 
 ## Decided (Task 6)
 
+> **2026-09-06: promotion (this section, and Tasks 6/7/12 below) was removed
+> by `docs/plans/template-switch.md`'s Task 9.** The Template mode it adds
+> replaces "fold a label's nudge into the template" with "switch to Template
+> and make the change there" — so the review dialog is read-only now, and
+> `applyPromotions` and the `target` argument of `masterChanges` are gone.
+> This section is kept as a record of what was built and later removed, not
+> as a description of the current app.
+
 The review dialog is also the **promotion path**: it lists the label's current
 overrides alongside the structural edits, and folding one in writes it to
 `master.layers` and drops it from `label.overrides`. Without this there is no
