@@ -319,6 +319,98 @@ it("Template mode with no version routes a position edit to the master, not labe
   }
 });
 
+// docs/plans/template-switch.md, Task 6 — the canvas and frame follow the
+// mode. The 2D preview is fully mocked out in this suite (PreviewCompare
+// above renders null), so the drawn text is read off the same evidence
+// test 1 above uses: the inspector's TextEditor field, whose `lines` prop
+// IS the resolved layer App feeds it (layerRows(master, label|templateLabel)
+// — no separate canvas-only path to lose sync with).
+it("Template mode swaps the canvas for the master's placeholder, This label restores the value, and the switch adds no history entry", async () => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(createElement(DocumentEditor, {
+        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
+        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+      }));
+    });
+    await openInspector(container, "name");
+    const editor = document.querySelector('[contenteditable="true"]') as HTMLElement;
+    await act(async () => {
+      editor.innerHTML = "<div>Peregrine</div>";
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(editor.textContent).toContain("Peregrine");
+
+    await act(async () => { editingItem(container, "Template").click(); });
+    // The field re-syncs from `lines` only while unfocused (TextEditor.tsx);
+    // blur it first, the same as a real mode switch would (focus moves to
+    // the toggle button).
+    await act(async () => { editor.blur(); });
+    expect(editor.textContent).not.toContain("Peregrine");
+    // "Name" is the master's placeholder for this layer (lolevLayers.ts) —
+    // shown as the decorative aria-hidden span TextEditor positions over an
+    // empty field, not baked into the contenteditable's own text.
+    expect(editor.previousElementSibling?.getAttribute("aria-hidden")).toBe("true");
+    expect(editor.previousElementSibling?.textContent).toBe("Name");
+
+    await act(async () => { editingItem(container, "This label").click(); });
+    await act(async () => { editor.blur(); });
+    expect(editor.textContent).toContain("Peregrine");
+
+    // The two mode switches went through plain useState, not `edit`/setDoc —
+    // one Undo removes exactly the Peregrine content edit, proving neither
+    // switch pushed a history entry of its own.
+    await act(async () => {
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
+    });
+    expect(editor.textContent).not.toContain("Peregrine");
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+  }
+});
+
+it("template mode marks the workspace root and the bottom strip counts unsaved template changes", async () => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(createElement(DocumentEditor, {
+        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
+        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+      }));
+    });
+    const root_ = container.querySelector('[data-slot="sidebar-wrapper"]') as HTMLElement;
+    expect(root_).not.toBeNull();
+    expect(root_.getAttribute("data-mode")).toBe("label");
+    expect(container.textContent).not.toContain("Editing template");
+
+    await openInspector(container, "name");
+    await act(async () => { editingItem(container, "Template").click(); });
+    expect(root_.getAttribute("data-mode")).toBe("template");
+    // Nothing changed in the master yet: no count.
+    expect(container.textContent).toContain("Editing template Lolev");
+    expect(container.textContent).not.toContain("unsaved template change");
+
+    // One property edit lands in the master (no version picked — see the
+    // "no version" routing test above) and the strip's count follows it.
+    await typeXField("300");
+    expect(container.textContent).toContain("Editing template Lolev · 1 unsaved template change");
+    expect(container.textContent).not.toContain("changes"); // singular
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+  }
+});
+
 it("Template mode with a version selected routes a position edit to that variant's diff", async () => {
   const container = document.createElement("div");
   document.body.appendChild(container);

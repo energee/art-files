@@ -464,15 +464,16 @@ export const DocumentEditor = memo(function DocumentEditor({
     dropped: { values: string[]; variants: string[] };
   } | null>(null);
   // What a Save Master would write: the structural and fill-contract edits
-  // already in the master. Itemised ONLY while the dialog is up — every
-  // property edit is a label override now, so this memo's inputs change on
-  // every pointermove of a drag, and walking the whole master and its
-  // variants at pointer rate to answer "is anything dirty" was most of a
-  // drag's work.
+  // already in the master. Itemised while the dialog is up OR while
+  // template mode is showing its own count in the bottom strip (Task 6) —
+  // every property edit is a label override now, so this memo's inputs
+  // change on every pointermove of a drag, and walking the whole master and
+  // its variants at pointer rate to answer "is anything dirty" was most of
+  // a drag's work.
   const masterChangeList = useMemo(
-    () => (pendingSave ? masterChanges(pristineMaster.current, master) : []),
+    () => (pendingSave || mode === "template" ? masterChanges(pristineMaster.current, master) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- savedTick re-reads the ref
-    [pendingSave, master, savedTick]);
+    [pendingSave, mode, master, savedTick]);
   // The dirty flag is the cheap superset of the same question: has the
   // template moved since the last open/save.
   const masterDirty = useMemo(
@@ -485,10 +486,26 @@ export const DocumentEditor = memo(function DocumentEditor({
   // PreviewCompare's click-to-select (selection.ts).
   const [selection, setSelection] = useState<Selection>(EMPTY_SELECTION);
   const selected = selection.ids;
+  // Task 6 (docs/plans/template-switch.md): in template mode the canvas
+  // draws the TEMPLATE, not this label — resolve with no values and no
+  // overrides, keeping `enabledVariants` so the picked version still shows.
+  // A text layer with no placeholder would then draw nothing (a blank
+  // master field is otherwise findable only in the list); fill its name in
+  // instead, dimmed by the renderer the same way a placeholder is (Risks).
+  // ponytail: only master.layers are covered — a variant that ADDS a
+  // placeholder-less text layer (e.g. Collab's lead-in) keeps drawing blank
+  // in template mode until someone asks for that too.
+  const templateLabel = useMemo((): LabelFile => {
+    if (mode !== "template") return label;
+    const values: Record<string, LayerValue> = {};
+    for (const l of master.layers) if (l.kind === "text" && !l.placeholder) values[l.id] = l.name;
+    return { ...label, values, overrides: undefined };
+  }, [mode, label, master]);
   // The Layers list's rows: every resolved layer (values applied, disabled
   // kept) in draw order, plus the layers an off variant would add. One
   // resolve per master/label change; the inspector reads the same rows.
-  const { rows, errors, warnings: resolveWarnings } = useMemo(() => layerRows(master, label), [master, label]);
+  const { rows, errors, warnings: resolveWarnings } = useMemo(
+    () => layerRows(master, templateLabel), [master, templateLabel]);
   const rowById = useMemo(() => new Map(rows.map((r) => [r.layer.id, r])), [rows]);
   const [changedOnly, setChangedOnly] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1897,7 +1914,14 @@ export const DocumentEditor = memo(function DocumentEditor({
       )}
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
           preview center, inspector sheet right. */}
-      <SidebarProvider hotkey={active} className="min-h-0 h-full">
+      {/* Task 6 (docs/plans/template-switch.md): the workspace root carries
+          the mode so the whole frame — not just MasterPicker's own switch —
+          can style off it; template mode gets the attention-coloured inset
+          ring the plan's colour scheme reserves for it. */}
+      <SidebarProvider hotkey={active} data-mode={mode} className={cn(
+        "min-h-0 h-full",
+        "data-[mode=template]:ring-2 data-[mode=template]:ring-inset data-[mode=template]:ring-attention",
+      )}>
         <Sidebar collapsible="offcanvas">
           <SidebarContent>
             {/* The master picker, then the ONE Layers list (spec: UI). */}
@@ -2056,8 +2080,22 @@ export const DocumentEditor = memo(function DocumentEditor({
               </div>
             )}
           </div>
-          {/* Preview toolbar, in every view. */}
+          {/* Preview toolbar, in every view. Template mode prepends what Save
+              Master would write (Task 6); label mode's content is unchanged. */}
           <div className="flex h-8 shrink-0 items-center overflow-x-auto border-t border-border bg-sidebar px-2">
+            {mode === "template" && (() => {
+              const versionName = master.variants.find((v) => v.id === version)?.name;
+              const n = masterChangeList.length;
+              return (
+                <span className={cn(
+                  "mr-2 shrink-0 rounded px-1.5 py-0.5 text-xs whitespace-nowrap",
+                  n > 0 ? "bg-warning-soft text-warning-text" : "text-muted-foreground",
+                )}>
+                  Editing template {versionName ? `${master.name} / ${versionName}` : master.name}
+                  {n > 0 && ` · ${n} unsaved template change${n === 1 ? "" : "s"}`}
+                </span>
+              );
+            })()}
             <input
               value={zoomDraft ?? String(shownZoomPct)}
               onChange={(e) => setZoomDraft(e.target.value)}
