@@ -128,6 +128,14 @@ export function MasterSaveReview(props: {
   const confirm = () =>
     props.onConfirm(props.changes.filter((c) => c.kind === "promote" && ticked.has(rowId(c))));
 
+  // Every promotable row, in list order — what the "all overrides" tick
+  // covers. The structural rows are not offered: they are already in the
+  // master and their checkboxes are disabled.
+  const promotable = useMemo(
+    () => props.changes.filter((c) => c.kind === "promote").map(rowId),
+    [props.changes]);
+  const allTicked = promotable.length > 0 && promotable.every((id) => ticked.has(id));
+
   const toggle = (id: string) => setTicked((prev) => {
     const next = new Set(prev);
     if (!next.delete(id)) next.add(id);
@@ -145,6 +153,15 @@ export function MasterSaveReview(props: {
               ? "These changes will be written to the template. Tick a label override to fold it in too."
               : `These changes will be written to the template. Ticked overrides go into the ${props.target} version.`}
         </DialogDescription>
+        {promotable.length > 1 && (
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              data-row="all"
+              checked={allTicked}
+              onCheckedChange={() => setTicked(allTicked ? new Set() : new Set(promotable))} />
+            <span>Promote all {promotable.length} overrides</span>
+          </label>
+        )}
         <div className="max-h-80 overflow-y-auto text-sm">
           {groups.map((g) => (
             <div key={g.rows[0].layerId} className="mt-2 first:mt-0">

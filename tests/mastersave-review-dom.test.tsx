@@ -65,7 +65,7 @@ describe("MasterSaveReview", () => {
     expect(text).toContain("Style");
     expect(text).toContain("placeholder");
     expect(text).toContain("style.fill");
-    expect(boxes()).toHaveLength(4);
+    expect(boxes()).toHaveLength(5); // 4 rows + the "promote all" tick
   });
 
   // A layer can hold BOTH an override and a fill value on the same path
@@ -78,7 +78,7 @@ describe("MasterSaveReview", () => {
         source: "value" },
     ];
     const props = render({ changes: same });
-    expect(boxes()).toHaveLength(2);
+    expect(boxes()).toHaveLength(3); // 2 rows + the "promote all" tick
     tick("promote-name-lines-value");
     act(() => { button("Save Master").click(); });
     expect(props.onConfirm).toHaveBeenCalledWith([same[1]]);
@@ -92,6 +92,24 @@ describe("MasterSaveReview", () => {
     expect(box("property-styleLine-placeholder").getAttribute("aria-checked")).toBe("true");
     expect(box("promote-name-x").getAttribute("aria-checked")).toBe("false");
     expect(box("promote-name-style.fill").getAttribute("aria-checked")).toBe("false");
+  });
+
+  // Reviewing a long delta one tick at a time is the common case for a
+  // wholesale "make the label the template" save.
+  it("ticks and unticks every promotion at once", () => {
+    const p = render();
+    tick("all");
+    expect(box("promote-name-x").getAttribute("aria-checked")).toBe("true");
+    expect(box("promote-name-style.fill").getAttribute("aria-checked")).toBe("true");
+    tick("all");
+    expect(box("promote-name-x").getAttribute("aria-checked")).toBe("false");
+    act(() => { button("Save Master").click(); });
+    expect(p.onConfirm).toHaveBeenCalledWith([]);
+  });
+
+  it("offers no all-tick when there is nothing to promote", () => {
+    render({ changes: changes.slice(0, 2) });
+    expect(document.querySelector("[data-row=all]")).toBeNull();
   });
 
   it("cancelling confirms nothing", () => {

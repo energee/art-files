@@ -4,7 +4,7 @@
 // same selection — it moves its own `gap` AND follows the layer it hangs from,
 // so it travelled twice as far as the pointer.
 import { describe, expect, it } from "vitest";
-import { moveBy, snappedDx } from "../src/model/edit";
+import { moveBy, snapDelta, snappedDx } from "../src/model/edit";
 import { layerBoxes } from "../src/planLayers";
 import type { Layer, TextLayer, TextLine } from "../src/model/layers";
 import type { MeasureFace } from "../src/plan";
@@ -94,5 +94,25 @@ describe("snapping a group", () => {
 
   it("is the raw delta when nothing is in range", () => {
     expect(snappedDx({ x: 60, w: 20 }, 40, guides, 6)).toBe(40);
+  });
+});
+
+// Sketch/Photoshop-style snapping: the candidate lines are not only the
+// master's guides — the edges and middles of the layers that stay put are
+// lines too, on both axes.
+describe("snapping to other layers", () => {
+  const lines = [40, 55, 70]; // a static layer: left 40, middle 55, right 70
+
+  it("snaps the dragged edge to a neighbour's edge", () => {
+    // Box 20 wide at 0, dragged 48: right edge at 68, 2 short of the
+    // neighbour's right edge — nothing else is nearer.
+    expect(snapDelta({ min: 0, size: 20 }, 48, lines, 6)).toEqual({ delta: 50, line: 70 });
+    // Dragged 38: the LEFT edge is 2 from the neighbour's left, and that beats
+    // the right edge's 3 from the middle.
+    expect(snapDelta({ min: 0, size: 20 }, 38, lines, 6)).toEqual({ delta: 40, line: 40 });
+  });
+
+  it("takes the nearest line and leaves out-of-range drags alone", () => {
+    expect(snapDelta({ min: 0, size: 20 }, 100, lines, 6)).toEqual({ delta: 100, line: null });
   });
 });

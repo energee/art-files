@@ -91,10 +91,15 @@ export function Rulers(props: {
   onAddManual: (axis: GuideAxis, point: number) => void;
   onMoveManual: (id: number, point: number) => void;
   onRemoveManual: (id: number) => void;
+  /** Where a dragged guide should actually land: App snaps it to the layers,
+   *  the master's guides and the other manual guides. Identity when nothing
+   *  is in range. */
+  onSnapGuide?: (axis: GuideAxis, point: number, id?: number) => number;
 }) {
   const {
     paneRef, previewRef, transform, showRulers, unit, onUnitChange, showGuides,
     marginPt, onMarginChange, manual, onAddManual, onMoveManual, onRemoveManual,
+    onSnapGuide,
   } = props;
   const [geometry, setGeometry] = useState<Geometry | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
@@ -201,7 +206,8 @@ export function Rulers(props: {
 
   function moveDrag(event: PointerEvent<HTMLElement>) {
     if (!drag) return;
-    setDrag({ ...drag, point: pointAt(drag.axis, event) });
+    const point = pointAt(drag.axis, event);
+    setDrag({ ...drag, point: onSnapGuide?.(drag.axis, point, drag.id) ?? point });
   }
 
   function endDrag(event: PointerEvent<HTMLElement>) {
