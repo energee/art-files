@@ -13,25 +13,6 @@ binary-impacting change gets its own version before it is merged.
   both light and dark.
 - **A variant is marked with an icon** in the version menu instead of an
   indent, so it reads as a version of the master above it.
-
-### Changed
-
-- **A QR code is edited as a link, not a template.** The inspector now asks
-  for the URL and which field follows it, and makes that field safe for a
-  link automatically — lowercased, with spaces and punctuation turned into
-  dashes. Barcodes lose the token chips and the transform hint that came
-  with the old template box.
-- **Text fields are readable again.** The description field no longer paints
-  a layer's artwork colours into the input, where gold and white were hard
-  to read and white ink was invisible outright. White ink now shows as a
-  dotted underline. Colours still appear on the label preview.
-- **A layer's placeholder is drawn on the label only.** The field beside it
-  no longer repeats it.
-
-## [0.1.59] - 2026-09-06
-
-### Added
-
 - **Save Master now shows what it is about to write.** Every save opens a
   review listing each change: renames, added and removed layers, reordering,
   fill-contract edits, and edits made inside a variant. Cancelling writes
@@ -46,17 +27,26 @@ binary-impacting change gets its own version before it is merged.
   Save Master review shows before it reaches the file.
 - The Layer inspector authors that list: a Title caption for the field, and
   the choices themselves.
-- The QR and barcode Value box now edits the URL *template*, not the text it
-  expands to. Click a field name under the box to inject it as a token, and
-  the resolved value is previewed beneath. Tokens accept `|slug`, `|upper`,
-  `|lower` and `|trim` — so the Lolev QR is an ordinary editable setting
-  (`https://lolev.beer/beer/{name|slug}`) rather than a hardcoded URL.
+- A QR or barcode value follows a field instead of being fixed text, so the
+  Lolev QR is an ordinary editable setting rather than a hardcoded URL. (How
+  that is authored changed again below — see the link editor.)
 - Rotation now works on QR layers, matching text and barcodes.
 - Clicking the pasteboard around the label deselects, which closes the
   inspector. Dragging a guide or removing one does not.
 
 ### Changed
 
+- **A QR code is edited as a link, not a template.** The inspector now asks
+  for the URL and which field follows it, and makes that field safe for a
+  link automatically — lowercased, with spaces and punctuation turned into
+  dashes. Barcodes lose the token chips and the transform hint that came
+  with the old template box.
+- **Text fields are readable again.** The description field no longer paints
+  a layer's artwork colours into the input, where gold and white were hard
+  to read and white ink was invisible outright. White ink now shows as a
+  dotted underline. Colours still appear on the label preview.
+- **A layer's placeholder is drawn on the label only.** The field beside it
+  no longer repeats it.
 - **The master Select is now the version picker.** Variants are listed under
   their master, and the one you switch to is the one the canvas draws and the
   one a promotion is written into. The variant chips beside the Layers filter
