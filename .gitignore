@@ -8,4 +8,7 @@ out/
 # repo. Same reason as the line above — a worktree here is a second copy of
 # the tree, which git would otherwise offer to commit into this one.
 .claude/
+# UI mockups an agent renders while working out a design. Throwaway by
+# nature — the design that survives lands in the components, not here.
+.agents/mockups/
 src-tauri/tauri.release.generated.conf.json
