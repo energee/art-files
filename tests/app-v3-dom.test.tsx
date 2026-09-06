@@ -375,7 +375,7 @@ it("Template mode swaps the canvas for the master's placeholder, This label rest
   }
 });
 
-it("template mode marks the workspace root and the bottom strip counts unsaved template changes", async () => {
+it("template mode marks the workspace root and the bottom strip flags unsaved template changes", async () => {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -396,15 +396,16 @@ it("template mode marks the workspace root and the bottom strip counts unsaved t
     await openInspector(container, "name");
     await act(async () => { editingItem(container, "Template").click(); });
     expect(root_.getAttribute("data-mode")).toBe("template");
-    // Nothing changed in the master yet: no count.
+    // Nothing changed in the master yet: no "unsaved" flag.
     expect(container.textContent).toContain("Editing template Lolev");
     expect(container.textContent).not.toContain("unsaved template change");
 
     // One property edit lands in the master (no version picked — see the
-    // "no version" routing test above) and the strip's count follows it.
+    // "no version" routing test above) and the strip's flag follows it —
+    // masterDirty, not a per-drag itemised count (review finding: itemising
+    // on every pointermove during a drag was the bug).
     await typeXField("300");
-    expect(container.textContent).toContain("Editing template Lolev · 1 unsaved template change");
-    expect(container.textContent).not.toContain("changes"); // singular
+    expect(container.textContent).toContain("Editing template Lolev · unsaved template changes");
   } finally {
     await act(async () => { root.unmount(); });
     container.remove();

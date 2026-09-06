@@ -464,16 +464,17 @@ export const DocumentEditor = memo(function DocumentEditor({
     dropped: { values: string[]; variants: string[] };
   } | null>(null);
   // What a Save Master would write: the structural and fill-contract edits
-  // already in the master. Itemised while the dialog is up OR while
-  // template mode is showing its own count in the bottom strip (Task 6) —
-  // every property edit is a label override now, so this memo's inputs
-  // change on every pointermove of a drag, and walking the whole master and
-  // its variants at pointer rate to answer "is anything dirty" was most of
-  // a drag's work.
+  // already in the master. Itemised ONLY while the dialog is up — every
+  // property edit is a label override now, so this memo's inputs change on
+  // every pointermove of a drag, and walking the whole master and its
+  // variants at pointer rate to answer "is anything dirty" was most of a
+  // drag's work. The bottom strip's template-mode count (Task 6) reads
+  // `masterDirty` below instead — a full itemisation on every drag pointermove
+  // just to show a strip count was the bug review caught here.
   const masterChangeList = useMemo(
-    () => (pendingSave || mode === "template" ? masterChanges(pristineMaster.current, master) : []),
+    () => (pendingSave ? masterChanges(pristineMaster.current, master) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- savedTick re-reads the ref
-    [pendingSave, mode, master, savedTick]);
+    [pendingSave, master, savedTick]);
   // The dirty flag is the cheap superset of the same question: has the
   // template moved since the last open/save.
   const masterDirty = useMemo(
@@ -489,18 +490,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Task 6 (docs/plans/template-switch.md): in template mode the canvas
   // draws the TEMPLATE, not this label — resolve with no values and no
   // overrides, keeping `enabledVariants` so the picked version still shows.
-  // A text layer with no placeholder would then draw nothing (a blank
-  // master field is otherwise findable only in the list); fill its name in
-  // instead, dimmed by the renderer the same way a placeholder is (Risks).
-  // ponytail: only master.layers are covered — a variant that ADDS a
-  // placeholder-less text layer (e.g. Collab's lead-in) keeps drawing blank
-  // in template mode until someone asks for that too.
-  const templateLabel = useMemo((): LabelFile => {
-    if (mode !== "template") return label;
-    const values: Record<string, LayerValue> = {};
-    for (const l of master.layers) if (l.kind === "text" && !l.placeholder) values[l.id] = l.name;
-    return { ...label, values, overrides: undefined };
-  }, [mode, label, master]);
+  // ponytail: a text layer with both no placeholder AND blank lines draws
+  // nothing in template mode — reachable only from the list. Add a
+  // dimmed-name fallback in the renderer (not here) if that ever bites.
+  const templateLabel = useMemo((): LabelFile =>
+    mode === "template" ? { ...label, values: {}, overrides: undefined } : label,
+  [mode, label]);
   // The Layers list's rows: every resolved layer (values applied, disabled
   // kept) in draw order, plus the layers an off variant would add. One
   // resolve per master/label change; the inspector reads the same rows.
@@ -2085,14 +2080,13 @@ export const DocumentEditor = memo(function DocumentEditor({
           <div className="flex h-8 shrink-0 items-center overflow-x-auto border-t border-border bg-sidebar px-2">
             {mode === "template" && (() => {
               const versionName = master.variants.find((v) => v.id === version)?.name;
-              const n = masterChangeList.length;
               return (
                 <span className={cn(
                   "mr-2 shrink-0 rounded px-1.5 py-0.5 text-xs whitespace-nowrap",
-                  n > 0 ? "bg-warning-soft text-warning-text" : "text-muted-foreground",
+                  masterDirty ? "bg-warning-soft text-warning-text" : "text-muted-foreground",
                 )}>
                   Editing template {versionName ? `${master.name} / ${versionName}` : master.name}
-                  {n > 0 && ` · ${n} unsaved template change${n === 1 ? "" : "s"}`}
+                  {masterDirty && " · unsaved template changes"}
                 </span>
               );
             })()}
