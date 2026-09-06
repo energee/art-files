@@ -24,7 +24,7 @@ const guides = { left: 0, center: 100, right: 200, top: 0, bottom: 400 };
  *  every patch computed against the layers AS THEY WERE at the drag's start. */
 const dragged = (layers: Layer[], ids: string[], dx: number, dy: number): Layer[] =>
   layers.map((l) => (ids.includes(l.id)
-    ? deepMerge(l, moveBy(l, dx, dy, guides, 0, 0, new Set(ids))) as Layer : l));
+    ? deepMerge(l, moveBy(l, dx, dy, new Set(ids))) as Layer : l));
 
 const tops = (layers: Layer[]) => {
   const boxes = layerBoxes(layers, m, assets);
@@ -86,7 +86,7 @@ describe("snapping a group", () => {
     const group = { x: 60, w: 110 };
     expect(snappedDx(group, -12, guides, 6)).toBe(-15);
     const after = lefts(layers.map((l) =>
-      deepMerge(l, moveBy(l, -15, 0, guides, 0, 20)) as Layer));
+      deepMerge(l, moveBy(l, -15, 0)) as Layer));
     expect(after.g).toBe(45);
     expect(after.f).toBe(135);
     expect((after.g + after.f + 20) / 2).toBe(guides.center); // group centred
