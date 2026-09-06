@@ -1,0 +1,67 @@
+// model-master-changes.test.ts — the itemised master diff behind the Save
+// Master review (docs/plans/label-first-editing.md, Task 6). `masterChanges`
+// answers "what is this save about to write?": the structural and fill-contract
+// edits already sitting in the edited master, plus the label's own overrides
+// offered for PROMOTION into the template. Pure — the dialog does the rendering.
+import { describe, expect, it } from "vitest";
+import { masterChanges, addLayer, moveLayers, patchLayer, removeLayer, setLabelOverride } from "../src/model/edit";
+import { lolevMaster } from "../src/model/lolevLayers";
+import type { LabelFile, Master } from "../src/model/layers";
+
+const newLabel = (master: Master): LabelFile =>
+  ({ formatVersion: 3, masterId: master.id, enabledVariants: [], values: {} });
+
+describe("masterChanges", () => {
+  it("an untouched master with a clean label yields nothing", () => {
+    const m = lolevMaster();
+    expect(masterChanges(m, m, newLabel(m))).toEqual([]);
+  });
+
+  it("reports a rename and a property edit as two entries", () => {
+    const base = lolevMaster();
+    const was = base.layers.find((l) => l.id === "name") as { name: string };
+    let edited = patchLayer(base, "name", { name: "Beer name" });
+    edited = patchLayer(edited, "styleLine", { x: 42 });
+    expect(masterChanges(base, edited, newLabel(base))).toEqual([
+      { kind: "renamed", layerId: "name", layerName: "Beer name", from: was.name, to: "Beer name" },
+      { kind: "property", layerId: "styleLine", layerName: "Style", path: "x",
+        from: (base.layers.find((l) => l.id === "styleLine") as { x: number }).x, to: 42 },
+    ]);
+  });
+
+  it("reports an added, a removed and a reordered layer", () => {
+    const base = lolevMaster();
+    const added = addLayer(base, "text");
+    const edited = removeLayer(added.master, "styleLine");
+    const kinds = masterChanges(base, edited, newLabel(base)).map((c) => `${c.kind}:${c.layerId}`);
+    expect(kinds).toContain(`added:${added.id}`);
+    expect(kinds).toContain("removed:styleLine");
+
+    const moved = moveLayers(base, ["name"], "name", 1);
+    expect(masterChanges(base, moved, newLabel(base)).some((c) => c.kind === "moved")).toBe(true);
+  });
+
+  it("offers each label override as a promote entry, with the master's current value", () => {
+    const base = lolevMaster();
+    const label = setLabelOverride(newLabel(base), "name", { x: 300, style: { fill: "#FF0000" } });
+    const cur = base.layers.find((l) => l.id === "name") as { name: string; x: number; style: { fill: string } };
+    expect(masterChanges(base, base, label)).toEqual([
+      { kind: "promote", layerId: "name", layerName: cur.name, path: "x", from: cur.x, to: 300 },
+      { kind: "promote", layerId: "name", layerName: cur.name, path: "style.fill",
+        from: cur.style.fill, to: "#FF0000" },
+    ]);
+  });
+
+  it("skips an override that already matches the master", () => {
+    const base = lolevMaster();
+    const cur = base.layers.find((l) => l.id === "name") as { x: number };
+    const label = setLabelOverride(newLabel(base), "name", { x: cur.x });
+    expect(masterChanges(base, base, label)).toEqual([]);
+  });
+
+  it("ignores an override for a layer the master no longer has", () => {
+    const base = lolevMaster();
+    const label = setLabelOverride(newLabel(base), "ghost", { x: 1 });
+    expect(masterChanges(base, base, label)).toEqual([]);
+  });
+});

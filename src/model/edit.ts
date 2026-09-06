@@ -540,6 +540,83 @@ export function masterDiff(base: Master, edited: Master): boolean {
   return !deepEqual(base, edited);
 }
 
+/** One line in the Save Master review: a change the save is about to write.
+ *  `promote` is the odd one — it is not in `edited` yet, it is a label
+ *  override the reviewer may fold into the template (the ONLY promotion path;
+ *  the inspector's override badge resets, it does not promote). */
+export interface MasterChange {
+  kind: "added" | "removed" | "moved" | "renamed" | "property" | "promote";
+  layerId: string;
+  layerName: string;
+  /** Dotted leaf path, for `property` and `promote` only. */
+  path?: string;
+  from?: unknown;
+  to?: unknown;
+}
+
+const atPath = (obj: unknown, path: string): unknown =>
+  path.split(".").reduce<unknown>((o, k) => (isPlain(o) ? o[k] : undefined), obj);
+
+/** Every leaf path where `a` and `b` differ, `name` excluded (a rename is its
+ *  own entry) — the same flattening the override badges use, so an array-valued
+ *  key like `lines` counts as one change. */
+function changedPaths(a: unknown, b: unknown): string[] {
+  const paths = new Set<string>();
+  leafPaths(a, "", paths);
+  leafPaths(b, "", paths);
+  return [...paths].filter((p) => p !== "name" && !deepEqual(atPath(a, p), atPath(b, p)));
+}
+
+/** What saving this master would write, itemised for review: the structural
+ *  and fill-contract edits already in `edited`, then the label's overrides
+ *  offered for promotion into the template. Pure and synchronous — the dialog
+ *  renders it (docs/plans/label-first-editing.md, Task 6). */
+export function masterChanges(base: Master, edited: Master, label: LabelFile): MasterChange[] {
+  const baseById = new Map(base.layers.map((l) => [l.id, l]));
+  const editedById = new Map(edited.layers.map((l) => [l.id, l]));
+  const out: MasterChange[] = [];
+
+  for (const l of base.layers)
+    if (!editedById.has(l.id)) out.push({ kind: "removed", layerId: l.id, layerName: l.name });
+  for (const l of edited.layers)
+    if (!baseById.has(l.id)) out.push({ kind: "added", layerId: l.id, layerName: l.name });
+
+  // Draw order, comparing only the layers both have: a layer whose position
+  // among the survivors changed was reordered, not merely displaced by a
+  // neighbour's add or remove.
+  const commonBase = base.layers.filter((l) => editedById.has(l.id)).map((l) => l.id);
+  const commonEdited = edited.layers.filter((l) => baseById.has(l.id)).map((l) => l.id);
+  for (const [i, id] of commonEdited.entries())
+    if (commonBase[i] !== id) {
+      const l = editedById.get(id)!;
+      out.push({ kind: "moved", layerId: id, layerName: l.name });
+    }
+
+  for (const l of edited.layers) {
+    const was = baseById.get(l.id);
+    if (!was) continue;
+    if (was.name !== l.name)
+      out.push({ kind: "renamed", layerId: l.id, layerName: l.name, from: was.name, to: l.name });
+    for (const path of changedPaths(was, l))
+      out.push({ kind: "property", layerId: l.id, layerName: l.name, path,
+                 from: atPath(was, path), to: atPath(l, path) });
+  }
+
+  for (const [id, entry] of Object.entries(label.overrides ?? {})) {
+    const l = editedById.get(id);
+    if (!l) continue; // an override of a layer this master no longer has
+    const paths = new Set<string>();
+    leafPaths(entry, "", paths);
+    for (const path of paths) {
+      const to = atPath(entry, path);
+      const from = atPath(l, path);
+      if (deepEqual(from, to)) continue;
+      out.push({ kind: "promote", layerId: id, layerName: l.name, path, from, to });
+    }
+  }
+  return out;
+}
+
 /** Which handle a resize drag grabbed: -1 = left/top edge, 0 = the axis is
  *  not grabbed (a side handle), 1 = right/bottom edge. */
 export interface ResizeHandle { hx: -1 | 0 | 1; hy: -1 | 0 | 1 }

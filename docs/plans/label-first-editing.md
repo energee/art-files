@@ -71,7 +71,7 @@ It has **no UI** — every `placeholder` hit in `LayerInspector.tsx` is an
 unrelated prop on a numeric field. Task 10 gives it one. Once it is editable,
 authoring a master is structure + placeholders and needs no label content.
 
-## Assumption to confirm (Task 6)
+## Decided (Task 6)
 
 The review dialog is also the **promotion path**: it lists the label's current
 overrides alongside the structural edits, and folding one in writes it to
@@ -79,8 +79,10 @@ overrides alongside the structural edits, and folding one in writes it to
 way to reposition a layer in the template at all, so some promotion path is
 required — this is the cheapest one, since the dialog exists anyway.
 
-If promotion should instead live on the inspector's override badge ("Save this
-property to master"), Task 6 changes and Tasks 7–8 are unaffected.
+**Confirmed 2026-09-05: the review dialog is the only promotion path.** The
+inspector's override badge resets an override; it does not promote one. One
+write path, and promotion is always seen next to everything else the save will
+write.
 
 ---
 
