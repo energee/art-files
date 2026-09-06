@@ -48,7 +48,7 @@ import { uppercaseOf } from "@/model/layers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, showVersion, snappedDx, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue,
+  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, snappedDx, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -736,13 +736,30 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  fresh empty variant, switched on for this label
    *  and offers its own Add layer submenu. Named
    *  "Variant N"; rename is a master-file edit for now. */
-  function onNewVariant() {
+  /** Returns the minted id so the picker can open its rename box on the new
+   *  row — MasterPicker.onNewVariant is typed `() => string` for that. */
+  function onNewVariant(): string {
     const name = `Variant ${master.variants.length + 1}`;
     // Minted outside the edit so the id is in hand for the version switch —
     // `edit`'s callback stays a pure Doc → Doc.
     const { master: m, id } = addVariant(master, name);
     // Switched to, like any other version: the new one is what you see.
     edit((d) => ({ master: m, label: showVersion(d.label, version, id) }));
+    return id;
+  }
+
+  /** Inline rename of a variant, from the picker. A master-file edit. */
+  function onRenameVersion(id: string, name: string) {
+    editMaster((m) => renameVariant(m, id, name));
+  }
+
+  /** Delete a variant and stop showing it. One undoable edit, so it needs no
+   *  confirm of its own. */
+  function onRemoveVersion(id: string) {
+    edit((d) => ({
+      master: removeVariant(d.master, id),
+      label: showVersion(d.label, version === id ? id : version, null),
+    }));
   }
 
   /** The dot-paths deviating from the master on the inspected layer, kept
@@ -1879,6 +1896,8 @@ export const DocumentEditor = memo(function DocumentEditor({
             <MasterPicker master={master} label={label}
               library={libraryEntries()} resolve={resolveMasterById}
               onMaster={pickLibraryMaster} onNewVariant={onNewVariant}
+              onRenameVersion={onRenameVersion} onRemoveVersion={onRemoveVersion}
+              onSaveMaster={() => setPendingSave({ as: false })} masterDirty={masterDirty}
               version={version} onVersion={switchVersion} />
             <LayerList rows={rows} selected={selected}
               onSelect={(id, mods) => pick(id, { shift: mods.shift, toggle: mods.meta })}

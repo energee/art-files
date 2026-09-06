@@ -3,6 +3,31 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.60] - 2026-09-06
+
+### Added
+
+- **A new colour scheme.** Warm neutrals with six accents — purple, pink,
+  orange, yellow, green and cyan — each with a tint for small text and one
+  for row backgrounds. Every committed pair is checked for AA contrast in
+  both light and dark.
+- **A variant is marked with an icon** in the version menu instead of an
+  indent, so it reads as a version of the master above it.
+
+### Changed
+
+- **A QR code is edited as a link, not a template.** The inspector now asks
+  for the URL and which field follows it, and makes that field safe for a
+  link automatically — lowercased, with spaces and punctuation turned into
+  dashes. Barcodes lose the token chips and the transform hint that came
+  with the old template box.
+- **Text fields are readable again.** The description field no longer paints
+  a layer's artwork colours into the input, where gold and white were hard
+  to read and white ink was invisible outright. White ink now shows as a
+  dotted underline. Colours still appear on the label preview.
+- **A layer's placeholder is drawn on the label only.** The field beside it
+  no longer repeats it.
+
 ## [0.1.59] - 2026-09-06
 
 ### Added
