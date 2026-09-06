@@ -34,18 +34,21 @@ it("selects a v3 text layer, edits its content through the inspector, and undoes
       }));
     });
     expect(container.querySelector("#master-picker")?.textContent).toContain("Lolev");
-    const variant = container.querySelector('[aria-label="Collab variant"]')!;
+    // Switching a variant-added layer ON enables the variant that owns it —
+    // read off the master Select, which names the version being shown now that
+    // the variant chips are gone.
+    const picker = () => container.querySelector("#master-picker")!.textContent ?? "";
     const leadPower = container.querySelector('[data-layer-id="collabLead"] button[aria-label$=": enabled"]') as HTMLButtonElement;
-    expect(variant.getAttribute("aria-pressed")).toBe("false");
+    expect(picker()).not.toContain("Collab");
     expect(leadPower.getAttribute("aria-pressed")).toBe("false");
     await act(async () => leadPower.click());
-    expect(variant.getAttribute("aria-pressed")).toBe("true");
+    expect(picker()).toContain("Collab");
     expect(leadPower.getAttribute("aria-pressed")).toBe("true");
     expect(container.textContent).not.toContain("Invalid master file");
     await act(async () => {
       document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
     });
-    expect(variant.getAttribute("aria-pressed")).toBe("false");
+    expect(picker()).not.toContain("Collab");
     const row = container.querySelector('[data-layer-id="name"]');
     expect(row).not.toBeNull();
     await act(async () => {

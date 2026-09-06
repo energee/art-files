@@ -275,7 +275,14 @@ the time.
   of the rest** (2026-09-05, at the user's ask) — it is an action row at the
   foot of the menu, and it left the Edit menubar (the command stays registered,
   so the command palette still has it).
-- **As built (2026-09-05):** the Select is the VERSION picker — the master, its
+- **As built (2026-09-05, after two rounds of feedback):** the Select is the
+  ONLY version control — the variant chips are gone, and so is the per-variant
+  "Add layer" submenu (an add goes to the version the Select names). With the
+  chips went App's `workingVersion` state: the version is read off the label as
+  `enabledVariants.at(-1)`, the same last-enabled-wins rule resolveLayers and
+  the row badges use, so undo restores the version along with the variant that
+  created it — which also settles follow-up 3 below.
+- **Superseded first cut:** the Select is the VERSION picker — the master, its
   variants indented under it, then the other library masters, then New Variant.
   Picking a version calls `onVersion`; only a library row is a rebind. The
   chips SURVIVE as the visibility control, and deliberately: `enabledVariants`
@@ -356,11 +363,8 @@ its own change and, for the first two, its own failing test first.
    a base edit to X — so `MasterSaveReview`'s grouping merges them under one
    heading. Add `scope: "master" | { variant: string }` (the vocabulary
    `whereLayerLives` already uses) and key `rowId`/grouping on it.
-3. **The working version lives outside the history atom.** `workingVersion` is
-   derived from `master` but is not in `useHistory`'s `Doc`, so undoing a New
-   Variant leaves it pointing at a dead id; today a read-time guard masks that.
-   Carrying it on `Doc` would also make undo restore the version alongside the
-   variant that created it.
+3. ~~**The working version lives outside the history atom.**~~ Done: the state
+   is gone, and the version is read off `label.enabledVariants`.
 4. **Save As zips twice when the fork is renamed.** `saveNativeFile` takes
    bytes before it knows the destination. Splitting it into "pick a path" and
    "write bytes" would let the name be applied before the single pack.
