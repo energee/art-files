@@ -98,3 +98,49 @@ describe("MasterSaveReview", () => {
     expect(p.onConfirm).toHaveBeenCalledWith([]);
   });
 });
+
+// docs/plans/choice-input.md, Task 7. A vocabulary is one leaf to leafPaths,
+// so it arrives as ONE row whose from/to are whole arrays. Stringifying eight
+// tier objects into a review row is unreadable, and the review is the only
+// thing standing between a learned value and the template — so the row has to
+// say what actually changed.
+describe("MasterSaveReview list rows", () => {
+  const tiers = [{ title: "Tier 1", value: "8500" }, { title: "Tier 2", value: "8600" }];
+  const row = (from: unknown, to: unknown): MasterChange =>
+    ({ kind: "property", layerId: "barcode", layerName: "Barcode", path: "choices", from, to });
+  const text = (from: unknown, to: unknown) => {
+    render({ changes: [row(from, to)] });
+    return document.body.textContent ?? "";
+  };
+
+  it("names what one edit added", () => {
+    expect(text(tiers, [...tiers, { value: "036000291452" }]))
+      .toContain('choices: 2 → 3 (+ "036000291452")');
+  });
+
+  it("names an entry by its title when it has one", () => {
+    expect(text(tiers, [...tiers, { title: "Tier 3", value: "8700" }]))
+      .toContain('(+ "Tier 3")');
+  });
+
+  it("names what was removed", () => {
+    expect(text(tiers, [tiers[0]])).toContain('choices: 2 → 1 (− "Tier 2")');
+  });
+
+  it("falls back to the counts when several things moved at once", () => {
+    const shuffled = [{ title: "Tier 9", value: "9" }, { title: "Tier 8", value: "8" }];
+    const out = text(tiers, shuffled);
+    expect(out).toContain("choices: 2 → 2");
+    expect(out).not.toContain("+");
+  });
+
+  it("reads a list of plain strings too", () => {
+    expect(text(["a"], ["a", "b"])).toContain('(+ "b")');
+  });
+
+  it("still spells out a value that is not a list", () => {
+    render({ changes: [{ kind: "property", layerId: "name", layerName: "Name",
+      path: "x", from: 148, to: 162 }] });
+    expect(document.body.textContent).toContain("x: 148 → 162");
+  });
+});

@@ -34,6 +34,36 @@ const val = (v: unknown) =>
   v === undefined || v === null ? "—"
     : typeof v === "object" ? JSON.stringify(v) : String(v);
 
+/** What one entry of a list is called: a Choice by its title, else its value,
+ *  a plain string as itself. */
+const entryName = (v: unknown): string =>
+  typeof v === "string" ? v
+    : v && typeof v === "object"
+      ? String((v as { title?: string; value?: unknown }).title
+        ?? (v as { value?: unknown }).value ?? JSON.stringify(v))
+      : String(v);
+
+/** A list-valued path — a fill vocabulary, a layer's lines — reads as its
+ *  count and the ONE entry that came or went, not as its JSON. leafPaths
+ *  treats an array as a single leaf, so a vocabulary arrives here whole: eight
+ *  tier objects stringified is not something anyone can review, and the review
+ *  is the only thing between a learned value and the template
+ *  (docs/plans/choice-input.md, Task 7).
+ *
+ *  More than one difference falls back to the counts alone: naming two of five
+ *  changes is worse than naming none, because it reads as the whole story. */
+function listText(from: readonly unknown[], to: readonly unknown[]): string {
+  const key = (v: unknown) => JSON.stringify(v);
+  const before = from.map(key);
+  const after = to.map(key);
+  const added = to.filter((v) => !before.includes(key(v)));
+  const removed = from.filter((v) => !after.includes(key(v)));
+  const counts = `${from.length} → ${to.length}`;
+  if (added.length === 1 && removed.length === 0) return `${counts} (+ "${entryName(added[0])}")`;
+  if (removed.length === 1 && added.length === 0) return `${counts} (− "${entryName(removed[0])}")`;
+  return counts;
+}
+
 /** What the row says happened, in the reviewer's terms rather than the
  *  model's. Structural rows are a sentence; a property or promote row is a
  *  path and a before/after, set in mono because that is literally what they
@@ -48,9 +78,17 @@ function rowText(c: MasterChange): React.ReactNode {
       <>
         <span className="font-mono text-[11.5px]">{c.path}</span>
         {": "}
-        <span className="font-mono text-[11.5px] tabular-nums">{val(c.from)}</span>
-        <span className="px-0.5 text-muted-foreground"> → </span>
-        <span className="font-mono text-[11.5px] tabular-nums">{val(c.to)}</span>
+        {Array.isArray(c.from) || Array.isArray(c.to) ? (
+          <span className="font-mono text-[11.5px] tabular-nums">
+            {listText(Array.isArray(c.from) ? c.from : [], Array.isArray(c.to) ? c.to : [])}
+          </span>
+        ) : (
+          <>
+            <span className="font-mono text-[11.5px] tabular-nums">{val(c.from)}</span>
+            <span className="px-0.5 text-muted-foreground"> → </span>
+            <span className="font-mono text-[11.5px] tabular-nums">{val(c.to)}</span>
+          </>
+        )}
       </>
     );
   }
