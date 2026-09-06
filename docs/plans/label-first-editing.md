@@ -187,6 +187,14 @@ Test file named first in each task; write it failing, then implement.
   both light it.
 - Accept: Save Master As… on an unchanged master with two label overrides
   still offers those two as promotable.
+- **Save Master As… absorbs "Duplicate as new master…"** (decided 2026-09-05):
+  it mints a fresh master id and rebinds the document onto the copy before
+  writing, which is what `duplicateMaster` (`App.tsx:1379`) does except that
+  it never writes the file. Delete `duplicateMaster`, MasterPicker's Duplicate
+  button and its inline naming `Input` — one verb that finishes the job.
+  Also delete MasterPicker's **Open Master…** button: `AppMenu.tsx:48` already
+  runs the same `openMasterPicker`. MasterPicker is then the Select plus its
+  rebind preview, nothing else.
 
 ### Phase B2 — the fill contract (parallel with C; depends on A)
 
@@ -256,6 +264,14 @@ the time.
 - Accept: with Collab merely enabled, promoting a nudge writes `master.layers`
   and leaves `variants` untouched; with Collab switched to, it writes
   `variants.collab.layers` and the base is untouched.
+- **The variant chips become part of the master Select** (decided 2026-09-05):
+  once a variant is a whole alternative version, "which version am I looking
+  at" is one question and the Select already asks it — variants nest under
+  their master, with **New Variant** as an item at its foot. `Edit → New
+  Variant` (`AppMenu.tsx:70`, `App.tsx:679`) and `variantChips`
+  (`App.tsx:435`, rendered at `:1745`) both fold into it. Deliberately not
+  done earlier: the chips are multi-select today, and this task is what turns
+  them into "switch to one version".
 
 ### Phase D — docs
 
