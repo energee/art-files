@@ -429,3 +429,14 @@ describe("TextEditor with a vocabulary", () => {
     expect(container.textContent).toMatch(/12 digits|invalid|check/i);
   });
 });
+
+// The flaw the App-level wiring found: a picker opened on a filled field
+// filtered itself down to the value already in the box, so a barcode showing
+// Tier 6 offered only Tier 6.
+it("shows the whole list when a filled field is opened", () => {
+  const CHOICES = [{ title: "Tier 1", value: "8500" }, { title: "Tier 6", value: "8600" }];
+  renderEditor({ lines: [line("8600")], choices: CHOICES });
+  const box = container.querySelector("#layer") as HTMLInputElement;
+  act(() => { box.focus(); });
+  expect(document.querySelectorAll("[data-choice]")).toHaveLength(2);
+});
