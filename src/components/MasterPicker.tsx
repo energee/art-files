@@ -9,11 +9,25 @@
 // the template is File → Save Master As…, which mints a new master id, rebinds
 // this document onto it and actually writes the file — the old "Duplicate as
 // new master…" did all of that except the writing.
+//
+// New Variant sits at the foot of the same menu: a variant is an alternative
+// version of the template, so "which version" and "another version, please"
+// are the same question the Select already asks. It is an ACTION, not a
+// library row — NEW_VARIANT is a sentinel value onValueChange intercepts
+// before any rebind is considered. The variant TOGGLES still live on the
+// chips in LayerList; folding those in is Task 12, which turns them from
+// multi-select into switching to one version.
 import { useState } from "react";
 import { rebindLabel } from "@/model/rebindLayers";
 import type { MasterAssets } from "@/model/files";
 import type { LabelFile, Master } from "@/model/layers";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+
+/** The menu's one non-library row (see the header note). No master can carry
+ *  this id — mintLayerId-style ids are all `master-…`. */
+const NEW_VARIANT = "__new-variant";
 
 /** One dropdown row — just enough to render and pick. The full Master is
  *  resolved lazily (see `resolve`), only once something is actually picked,
@@ -46,6 +60,9 @@ export function MasterPicker(props: {
    *  resolved template assets ride along so the caller adopts them without
    *  a second file read. */
   onMaster: (target: Master, assets: MasterAssets) => void;
+  /** Edit → New Variant: adds an empty variant to this master and switches it
+   *  on for this label. */
+  onNewVariant: () => void;
 }): React.JSX.Element {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<
@@ -80,7 +97,12 @@ export function MasterPicker(props: {
   return (
     <div className="px-2 py-2">
       <Select value={props.master.id} disabled={resolvingId !== null}
-        onValueChange={(id) => { if (id) { closeAll(); void pickEntry(id); } }}>
+        onValueChange={(id) => {
+          if (!id) return;
+          closeAll();
+          if (id === NEW_VARIANT) { props.onNewVariant(); return; }
+          void pickEntry(id);
+        }}>
         <SelectTrigger id="master-picker" aria-label="Master" size="sm" className="w-full">
           <span className="text-muted-foreground">Master:</span>
           <SelectValue>{props.master.name}</SelectValue>
@@ -92,6 +114,8 @@ export function MasterPicker(props: {
           {Object.entries(props.library).map(([id, entry]) => (
             <SelectItem key={id} value={id}>{entry.name}</SelectItem>
           ))}
+          <SelectSeparator />
+          <SelectItem value={NEW_VARIANT}>New Variant</SelectItem>
         </SelectContent>
       </Select>
       {resolvingId && <p role="status" className="mt-1 text-xs text-muted-foreground">Opening master…</p>}

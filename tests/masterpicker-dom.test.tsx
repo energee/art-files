@@ -47,7 +47,7 @@ function renderPicker(props: Partial<Parameters<typeof MasterPicker>[0]> = {}) {
     master: lolevMaster(), label,
     library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery" } },
     resolve: vi.fn().mockResolvedValue({ master: otherMaster, assets: {} }),
-    onMaster: vi.fn(),
+    onMaster: vi.fn(), onNewVariant: vi.fn(),
     ...props,
   };
   act(() => { root.render(createElement(MasterPicker, full)); });
@@ -105,6 +105,18 @@ describe("MasterPicker", () => {
       (container.querySelector("#master-picker-continue") as HTMLButtonElement).click();
     });
     expect(onMaster).toHaveBeenCalledWith(otherMaster, {});
+  });
+
+  it("creates a variant from the foot of the menu, without picking a master", () => {
+    const onNewVariant = vi.fn();
+    const onMaster = vi.fn();
+    const resolve = vi.fn();
+    renderPicker({ onNewVariant, onMaster, resolve });
+    openMenu();
+    act(() => { itemStarting("New Variant")!.click(); });
+    expect(onNewVariant).toHaveBeenCalled();
+    expect(resolve).not.toHaveBeenCalled();
+    expect(onMaster).not.toHaveBeenCalled();
   });
 
   it("offers nothing but the library — file verbs live in the File menu", () => {
