@@ -4,7 +4,7 @@
 // edits already sitting in the edited master, plus the label's own overrides
 // offered for PROMOTION into the template. Pure — the dialog does the rendering.
 import { describe, expect, it } from "vitest";
-import { applyPromotions, masterChanges, addLayer, addVariant, removeVariant, renameVariant, setLayerIn, moveLayers, patchLayer, removeLayer, setLabelOverride } from "../src/model/edit";
+import { applyPromotions, masterChanges, showVersion, addLayer, addVariant, removeVariant, renameVariant, setLayerIn, moveLayers, patchLayer, removeLayer, setLabelOverride } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
 import type { LabelFile, Master } from "../src/model/layers";
 
@@ -169,5 +169,37 @@ describe("changes inside the variants", () => {
       { kind: "property", layerId: "name", layerName: "Name", path: "x",
         from: undefined, to: 222 },
     ]);
+  });
+});
+
+// The master Select is a VERSION picker: what it names is what you see.
+// Switching to Collab shows Collab; going back to the base hides it again.
+// Leaving that to the chips meant switching back to the master still drew the
+// variant's layers, which is not what "back to Lolev" says.
+describe("showVersion", () => {
+  const base = lolevMaster();
+  const on = (ids: string[]): LabelFile => ({ ...newLabel(base), enabledVariants: ids });
+
+  it("turns the version you switch to on", () => {
+    expect(showVersion(on([]), null, "collab").enabledVariants).toEqual(["collab"]);
+  });
+
+  it("turns the version you switch away from off", () => {
+    expect(showVersion(on(["collab"]), "collab", null).enabledVariants).toEqual([]);
+  });
+
+  it("swaps one version for another", () => {
+    expect(showVersion(on(["collab"]), "collab", "barrel").enabledVariants).toEqual(["barrel"]);
+  });
+
+  it("leaves variants it was not switching between alone", () => {
+    // A label can still show more than one version at once — the chips say so,
+    // and this only moves the one being switched.
+    expect(showVersion(on(["other", "collab"]), "collab", null).enabledVariants).toEqual(["other"]);
+  });
+
+  it("is a no-op when the version does not change", () => {
+    const label = on(["collab"]);
+    expect(showVersion(label, "collab", "collab")).toBe(label);
   });
 });

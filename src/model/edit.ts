@@ -448,6 +448,24 @@ export function toggleVariant(label: LabelFile, id: string): LabelFile {
   return { ...label, enabledVariants };
 }
 
+/** Switching the WORKING VERSION, on the label: the version you switch to is
+ *  shown, the one you switch away from is hidden. The master Select names one
+ *  version, and what it names is what the canvas draws — leaving visibility to
+ *  the chips meant going back to the base still drew the variant's layers.
+ *
+ *  Only the two versions being switched between move. `enabledVariants` is
+ *  still a list, so a label that deliberately shows two at once keeps the
+ *  rest of them (the chips are how it says so). */
+export function showVersion(
+  label: LabelFile, from: string | null, to: string | null,
+): LabelFile {
+  if (from === to) return label;
+  let out = label;
+  if (from !== null && out.enabledVariants.includes(from)) out = toggleVariant(out, from);
+  if (to !== null && !out.enabledVariants.includes(to)) out = toggleVariant(out, to);
+  return out;
+}
+
 export function addVariant(master: Master, name: string): { master: Master; id: string } {
   const stem = slugify(name) || "variant";
   const ids = new Set(master.variants.map((v) => v.id));
