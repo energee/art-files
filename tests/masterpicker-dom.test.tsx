@@ -47,7 +47,7 @@ function renderPicker(props: Partial<Parameters<typeof MasterPicker>[0]> = {}) {
     master: lolevMaster(), label,
     library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery" } },
     resolve: vi.fn().mockResolvedValue({ master: otherMaster, assets: {} }),
-    onMaster: vi.fn(), onOpenMaster: vi.fn(), onDuplicate: vi.fn(),
+    onMaster: vi.fn(),
     ...props,
   };
   act(() => { root.render(createElement(MasterPicker, full)); });
@@ -107,23 +107,9 @@ describe("MasterPicker", () => {
     expect(onMaster).toHaveBeenCalledWith(otherMaster, {});
   });
 
-  it("calls onDuplicate with the typed name, and never touches onMaster", () => {
-    const onDuplicate = vi.fn();
-    const onMaster = vi.fn();
-    renderPicker({ onDuplicate, onMaster });
-    act(() => { itemStarting("Duplicate as new master")!.click(); });
-    const input = container.querySelector("#master-picker-duplicate-name") as HTMLInputElement;
-    expect(input).not.toBeNull();
-    type(input, "Lolev copy");
-    press(input, "Enter");
-    expect(onDuplicate).toHaveBeenCalledWith("Lolev copy");
-    expect(onMaster).not.toHaveBeenCalled();
-  });
-
-  it("routes Open Master… to onOpenMaster", () => {
-    const onOpenMaster = vi.fn();
-    renderPicker({ onOpenMaster });
-    act(() => { itemStarting("Open Master")!.click(); });
-    expect(onOpenMaster).toHaveBeenCalled();
+  it("offers nothing but the library — file verbs live in the File menu", () => {
+    renderPicker();
+    expect(itemStarting("Open Master")).toBeUndefined();
+    expect(itemStarting("Duplicate as new master")).toBeUndefined();
   });
 });

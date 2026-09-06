@@ -1,20 +1,19 @@
-// MasterPicker.tsx — the head of the sidebar, above the Layers list: the
-// a Select listing known masters (the library index — masters.ts), with
-// Open Master and Duplicate actions below it.
+// MasterPicker.tsx — the head of the sidebar, above the Layers list: a Select
+// listing known masters (the library index — masters.ts), and nothing else.
 // Picking another library master previews the rebind (model/rebindLayers.ts)
 // — the counts of what would move to the bench — before committing: the one
 // confirmation the spec's no-dialogs rule permits, because a rebind is not a
-// single undoable canvas act. "Duplicate as new master…" needs no preview: a
-// clone starts out layer-for-layer identical to what it was cloned from, so
-// nothing is ever benched by it.
+// single undoable canvas act.
+//
+// It carries no file verbs. Open Master… lives in the File menu, and forking
+// the template is File → Save Master As…, which mints a new master id, rebinds
+// this document onto it and actually writes the file — the old "Duplicate as
+// new master…" did all of that except the writing.
 import { useState } from "react";
-import { Copy, FolderOpen } from "lucide-react";
 import { rebindLabel } from "@/model/rebindLayers";
 import type { MasterAssets } from "@/model/files";
 import type { LabelFile, Master } from "@/model/layers";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 /** One dropdown row — just enough to render and pick. The full Master is
  *  resolved lazily (see `resolve`), only once something is actually picked,
@@ -47,14 +46,7 @@ export function MasterPicker(props: {
    *  resolved template assets ride along so the caller adopts them without
    *  a second file read. */
   onMaster: (target: Master, assets: MasterAssets) => void;
-  /** File → Open Master…. */
-  onOpenMaster: () => void;
-  /** Clones the current master under a fresh id with the given name, and
-   *  rebinds this document onto the clone. */
-  onDuplicate: (name: string) => void;
 }): React.JSX.Element {
-  const [naming, setNaming] = useState(false);
-  const [draft, setDraft] = useState("");
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<
     { target: Master; assets: MasterAssets; dropped: string[]; disabledVariants: string[] } | null
@@ -62,8 +54,6 @@ export function MasterPicker(props: {
   const [error, setError] = useState("");
 
   const closeAll = () => {
-    setNaming(false);
-    setDraft("");
     setPreview(null);
     setResolvingId(null);
     setError("");
@@ -87,14 +77,6 @@ export function MasterPicker(props: {
     closeAll();
   };
 
-  const closeNaming = () => { setNaming(false); setDraft(""); };
-  const commitNaming = () => {
-    const name = draft.trim();
-    if (!name) { closeNaming(); return; }
-    props.onDuplicate(name);
-    closeAll();
-  };
-
   return (
     <div className="px-2 py-2">
       <Select value={props.master.id} disabled={resolvingId !== null}
@@ -112,25 +94,6 @@ export function MasterPicker(props: {
           ))}
         </SelectContent>
       </Select>
-      <div className="mt-1 flex gap-1">
-        <Button variant="ghost" size="sm" onClick={() => { closeAll(); props.onOpenMaster(); }}>
-          <FolderOpen data-icon="inline-start" /> Open Master…
-        </Button>
-        <Button variant="ghost" size="icon-sm" aria-label="Duplicate as new master…"
-          title="Duplicate as new master…"
-          onClick={() => { closeAll(); setNaming(true); setDraft(`${props.master.name} copy`); }}>
-          <Copy />
-        </Button>
-      </div>
-      {naming && (
-        <Input id="master-picker-duplicate-name" autoFocus value={draft}
-          placeholder="Master name" aria-label="New master name"
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); commitNaming(); }
-            else if (e.key === "Escape") { e.preventDefault(); closeNaming(); }
-          }} />
-      )}
       {resolvingId && <p role="status" className="mt-1 text-xs text-muted-foreground">Opening master…</p>}
       {error && (
         <p id="master-picker-error" className="mt-1 px-1 text-[11px] text-destructive">{error}</p>
