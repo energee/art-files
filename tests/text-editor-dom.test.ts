@@ -265,11 +265,9 @@ describe("TextEditor", () => {
     expect(container.querySelector('[aria-label="Toggle header"]')).toBeNull();
   });
 
-  it("shows the placeholder only while the layer is empty", () => {
-    renderEditor({ lines: [line("")], placeholder: "Name" });
-    expect(container.textContent).toContain("Name");
-    renderEditor({ lines: [line("Peregrine")], placeholder: "Name" });
-    expect(container.textContent).not.toContain("Name");
+  it("never shows the layer's placeholder in the field; the canvas draws it", () => {
+    renderEditor({ lines: [line("")] });
+    expect(container.querySelector("[placeholder]")).toBeNull();
   });
 
   it("passes uppercase through to the field", () => {
@@ -282,13 +280,13 @@ describe("TextEditor", () => {
     it("renders a number box that writes one plain line, with the suffix shown after it", () => {
       const { onChange } = renderEditor({
         id: "abv", label: "ABV", lines: [line("")], multiline: false,
-        input: "number", min: 0, max: 20, suffix: "% alc by vol", placeholder: "#",
+        input: "number", min: 0, max: 20, suffix: "% alc by vol",
       });
       const box = container.querySelector("#abv") as HTMLInputElement;
       expect(box.type).toBe("number");
       expect(box.min).toBe("0");
       expect(box.max).toBe("20");
-      expect(box.placeholder).toBe("#");
+      expect(box.placeholder).toBe("");
       expect(container.textContent).toContain("% alc by vol");
       expect(container.querySelector('[role="textbox"]')).toBeNull();
       change(box, "6.5");

@@ -116,18 +116,21 @@ for (const header of [false, true]) {
         "font-heading leading-snug outline-none",
         header ? "text-sm" : "text-xs",
         bold && "font-semibold",
-        white && "text-white",
+        // White ink is shown as a dotted underline, never as white text: the
+        // artwork's own colors (gold, white) are unreadable against a form
+        // field, and white-on-white made the run vanish outright.
+        white && "underline decoration-dotted decoration-2 underline-offset-2",
       );
     }
   }
 }
 
-/** The sidebar's painter: class for size/weight/white, and the gold as an
- *  inline color straight from layout.ts's GOLD (a Tailwind arbitrary value
- *  could never reference the constant). */
+/** The sidebar's painter: a class, nothing else. Weight and the white-ink
+ *  marker only — the field keeps the form's own foreground color, because a
+ *  layer's artwork fill (gold on dark, white on white) is what made this
+ *  input hard to read. The preview, not the input, is where color belongs. */
 const paintSidebarLine: LinePaint = (el, l) => {
   el.className = LINE_CLASSES[`${+l.header}${+l.bold}${+l.white}`];
-  el.style.color = l.white ? "" : GOLD;
 };
 
 /** A line-div's or run-span's data-* flags. Missing data-* (a brand-new div
@@ -568,8 +571,6 @@ export interface TextEditorProps {
    *  swallows Enter, and emits one line. */
   multiline: boolean;
   uppercase?: boolean;
-  /** Shown while the layer is empty (TextLayer.placeholder). */
-  placeholder?: string;
   /** TextLayer.input: "number" and "code" swap the rich field for a plain
    *  box that writes one plain line; absent = the rich editor. */
   input?: "number" | "code";
@@ -618,6 +619,8 @@ export function ChoiceBox(props: {
   value: string;
   choices: Choice[];
   onCommit: (value: string) => void;
+  /** The box's own input hint (a barcode's "digits", a QR's example URL) —
+   *  NOT a layer's placeholder, which only the canvas draws. */
   placeholder?: string;
   invalid?: boolean;
   className?: string;
@@ -702,7 +705,7 @@ export function ChoiceBox(props: {
 /** The styled-text field's picker: ChoiceBox plus the caption, the suffix and
  *  the validation a plain field runs, writing one plain line back. */
 function ChoiceField(props: TextEditorProps & { choices: Choice[] }) {
-  const { id, label, title, lines, onChange, base, input, min, max, symbology, suffix, placeholder, choices } = props;
+  const { id, label, title, lines, onChange, base, input, min, max, symbology, suffix, choices } = props;
   const value = lines[0]?.text ?? "";
   // Only a layer that declares an input has anything to validate against; a
   // style is free text, and its vocabulary is a suggestion, not a rule.
@@ -715,7 +718,7 @@ function ChoiceField(props: TextEditorProps & { choices: Choice[] }) {
       <Label htmlFor={id} className={LABEL_CLASS}>{title ?? label}</Label>
       <div className="flex items-center gap-1.5">
         <ChoiceBox
-          id={id} value={value} choices={choices} placeholder={placeholder}
+          id={id} value={value} choices={choices}
           invalid={!check.ok}
           onCommit={(text) => onChange([{ ...base, text }])} />
         {suffix && <span className="shrink-0 text-xs text-muted-foreground">{suffix}</span>}
@@ -729,7 +732,7 @@ function ChoiceField(props: TextEditorProps & { choices: Choice[] }) {
  *  by model/fields.ts through a FieldDecl built from the layer's own hints
  *  so the code/number rules have one spelling. */
 function PlainField(props: TextEditorProps & { input: "number" | "code" }) {
-  const { id, label, lines, onChange, base, input, min, max, symbology, suffix, placeholder } = props;
+  const { id, label, lines, onChange, base, input, min, max, symbology, suffix } = props;
   const value = lines[0]?.text ?? "";
   // Blank is "not filled yet", not "invalid" — only judge a value that's there.
   const check: { ok: boolean; error?: string } = value === ""
@@ -746,7 +749,6 @@ function PlainField(props: TextEditorProps & { input: "number" | "code" }) {
           value={value}
           min={min}
           max={max}
-          placeholder={placeholder}
           aria-invalid={!check.ok || undefined}
           onChange={(e) => onChange([{ ...base, text: e.target.value }])}
         />
@@ -758,10 +760,9 @@ function PlainField(props: TextEditorProps & { input: "number" | "code" }) {
 }
 
 function RichField(props: TextEditorProps) {
-  const { id, label, lines, onChange, base, multiline, uppercase, placeholder } = props;
+  const { id, label, lines, onChange, base, multiline, uppercase } = props;
   const { focused, caret, toggle, toggleHeader, fieldProps } =
     useTextField({ lines, onChange, base, multiline, uppercase });
-  const empty = lines.every((l) => !l.text);
   return (
     <div className="space-y-1">
       {/* h-7, matching the size-sm toggles inside: a shorter row lets them
@@ -776,30 +777,16 @@ function RichField(props: TextEditorProps) {
           )}
         </div>
       </div>
-      <div className="relative">
-        {/* A contenteditable has no native placeholder; the layer's lines
-            say when it is empty, and the parent's round-trip clears this on
-            the first keystroke. Positioned to sit exactly where the first
-            line's text will. */}
-        {empty && placeholder && (
-          <span
-            aria-hidden
-            className="pointer-events-none absolute left-2.5 top-2 font-heading text-xs text-muted-foreground"
-          >
-            {placeholder}
-          </span>
+      <div
+        {...fieldProps}
+        id={id}
+        aria-label={label}
+        className={cn(
+          multiline ? "min-h-[8.5rem]" : "min-h-8",
+          "w-full space-y-0.5 rounded-lg border border-input bg-transparent px-2.5 py-2",
+          "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
         )}
-        <div
-          {...fieldProps}
-          id={id}
-          aria-label={label}
-          className={cn(
-            multiline ? "min-h-[8.5rem]" : "min-h-8",
-            "w-full space-y-0.5 rounded-lg border border-input bg-transparent px-2.5 py-2",
-            "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-          )}
-        />
-      </div>
+      />
     </div>
   );
 }

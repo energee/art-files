@@ -52,6 +52,7 @@ import {
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
+import { formatLink, parseLink } from "@/model/format";
 import { rebindLabel } from "@/model/rebindLayers";
 import {
   MASTER_EXT, masterNameFromFile, packLabel, packMaster, unpackLabel, unpackMaster,
@@ -100,6 +101,9 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -1741,7 +1745,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       return (
         <TextEditor id={id} label="Text" lines={layer.lines} base={layer.style}
           onChange={(lines) => setContent(layer, lines, true)}
-          multiline={true} uppercase={uppercaseOf(layer)} placeholder={layer.placeholder}
+          multiline={true} uppercase={uppercaseOf(layer)}
           input={layer.input} min={layer.min} max={layer.max} symbology={layer.symbology}
           suffix={layer.suffix} choices={layer.choices} title={layer.title} />
       );
@@ -1769,12 +1773,62 @@ export const DocumentEditor = memo(function DocumentEditor({
     // expansion would bake today's beer name into the master. `value` is the
     // template verbatim whenever there are no refs to expand.
     const template = layer.format ?? layer.value;
-    // Every text layer is injectable: its id is the token, its name is the
-    // chip. Chips append, which is predictable without cursor tracking.
-    const tokens = rows
-      .map((r) => r.layer)
-      .filter((l) => l.kind === "text")
-      .map((l) => ({ id: l.id, name: l.name }));
+    // The error line and the expansion preview are the same in both boxes
+    // below — one node, so a change to either reaches the QR field too.
+    const foot = (
+      <>
+        {errors[layer.id] && <p className="text-xs text-destructive-text">{errors[layer.id]}</p>}
+        {layer.format !== undefined && (
+          <p className="truncate font-mono text-[11px] text-muted-foreground" title={layer.value}>
+            → {layer.value}
+          </p>
+        )}
+      </>
+    );
+    // A QR is a link, not a format string: the literal prefix is the URL and
+    // the one trailing ref is ALWAYS slugified, so the only choice left is
+    // which text layer feeds it. Anything parseLink rejects (a hand-written
+    // multi-ref template) falls through to the raw box below.
+    const link = layer.kind === "qr" ? parseLink(template) : undefined;
+    if (link) {
+      // Every text layer can feed the link: its id is the ref, its name is
+      // what the picker shows.
+      const tokens = rows.flatMap((r) =>
+        r.layer.kind === "text" ? [{ id: r.layer.id, name: r.layer.name }] : []);
+      const src = link.id ?? "";
+      const write = (prefix: string, id: string) =>
+        setContent(layer, formatLink(prefix, id), true);
+      return (
+        <div className="space-y-1">
+          <Label htmlFor={id} className="text-xs text-muted-foreground">Link</Label>
+          <Input id={id} className="h-7 font-mono text-xs" value={link.prefix}
+            placeholder="https://lolev.beer/beer/"
+            aria-invalid={errors[layer.id] ? true : undefined}
+            onChange={(e) => write(e.target.value, src)} />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-muted-foreground">followed by</span>
+            <Select value={src || "none"} onValueChange={(v) => write(link.prefix, v === "none" ? "" : (v ?? ""))}>
+              <SelectTrigger id={`${id}-src`} size="sm" aria-label="Link suffix"
+                className="h-6 w-32 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none" className="text-xs">nothing</SelectItem>
+                {tokens.map((t) => (
+                  <SelectItem key={t.id} value={t.id} className="text-xs">{t.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {src && (
+            <p className="text-[11px] text-muted-foreground">
+              Made safe for a link: lowercased, spaces and punctuation become dashes.
+            </p>
+          )}
+          {foot}
+        </div>
+      );
+    }
     return (
       <div className="space-y-1">
         <Label htmlFor={id} className="text-xs text-muted-foreground">
@@ -1793,26 +1847,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             aria-invalid={errors[layer.id] ? true : undefined}
             onChange={(e) => setContent(layer, e.target.value, true)} />
         )}
-        {errors[layer.id] && <p className="text-xs text-destructive-text">{errors[layer.id]}</p>}
-        {layer.format !== undefined && (
-          <p className="truncate font-mono text-[11px] text-muted-foreground" title={layer.value}>
-            → {layer.value}
-          </p>
-        )}
-        <div className="flex flex-wrap gap-1 pt-0.5">
-          <span className="text-[11px] text-muted-foreground">Insert:</span>
-          {tokens.map((t) => (
-            <button key={t.id} type="button" title={`{${t.id}}`}
-              className="rounded border border-input px-1 text-[11px] leading-4 text-muted-foreground hover:bg-accent"
-              onClick={() => setContent(layer, `${template}{${t.id}}`)}>
-              {t.name}
-            </button>
-          ))}
-        </div>
-        <p className="text-[11px] text-muted-foreground">
-          Add <code>|slug</code>, <code>|upper</code>, <code>|lower</code> or <code>|trim</code>
-          {" "}inside a token to transform it.
-        </p>
+        {foot}
       </div>
     );
   }

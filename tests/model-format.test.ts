@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expandFormat, fieldRefs, segments } from "../src/model/format";
+import { expandFormat, fieldRefs, formatLink, parseLink, segments } from "../src/model/format";
 
 describe("expandFormat", () => {
   it("substitutes plain refs", () => {
@@ -45,5 +45,26 @@ describe("segments", () => {
   });
   it("returns an empty array for an empty string", () => {
     expect(segments("")).toEqual([]);
+  });
+});
+
+describe("parseLink", () => {
+  it("splits a link into its URL prefix and the one trailing ref", () => {
+    expect(parseLink("https://lolev.beer/beer/{name|slug}"))
+      .toEqual({ prefix: "https://lolev.beer/beer/", id: "name" });
+  });
+
+  it("reads a bare URL as a prefix with no ref", () => {
+    expect(parseLink("https://lolev.beer")).toEqual({ prefix: "https://lolev.beer", id: undefined });
+  });
+
+  it("rejects a template with a ref before the tail, so the raw box keeps it", () => {
+    expect(parseLink("{a}/x/{b}")).toBeUndefined();
+  });
+
+  it("round-trips through formatLink, always slugified", () => {
+    const l = parseLink("https://x/{name}")!;
+    expect(formatLink(l.prefix, l.id!)).toBe("https://x/{name|slug}");
+    expect(formatLink("https://x/", "")).toBe("https://x/");
   });
 });
