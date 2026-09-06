@@ -1078,8 +1078,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const moving = new Set(dragBase.current.bases.map(({ layer }) => layer.id));
     const gdx = snappedDx(dragBase.current.bounds, dx, guides, 6);
     const entries = dragBase.current.bases
-      .map(({ layer, w }): [string, DeepPartial<Layer>] =>
-        [layer.id, moveBy(layer, gdx, dy, guides, 0, w, moving)])
+      .map(({ layer }): [string, DeepPartial<Layer>] => [layer.id, moveBy(layer, gdx, dy, moving)])
       .filter(([, p]) => Object.keys(p).length);
     if (entries.length) patchMany(entries, !first);
   };

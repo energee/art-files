@@ -389,21 +389,28 @@ export function snappedDx(
   return anchoredX(position, box.w, guides) - box.x;
 }
 
-/** The drag patch. Horizontal: positionFromDrag's snap rule on the layer's
- *  box (`w` wide; 0 = snap the anchor point itself) — a drop within `snap`
- *  of a guide sets that anchor and lands x ON the guide, a free drop keeps
- *  the nearest anchor with the exact dropped x. Vertical: a bound layer
- *  moves its `gap` and keeps its binding; an unbound one moves `y`
- *  (bottom-anchored layers included — `y` is their bottom edge, still += dy).
- *  Locked layers return {}. Axes with no movement are left out of the patch.
+/** The drag patch. Horizontal: x moves by `dx`, in whatever terms the layer
+ *  already states it — an offset from a guide, or an absolute anchored at its
+ *  own edge. Vertical: a bound layer moves its `gap` and keeps its binding; an
+ *  unbound one moves `y` (bottom-anchored layers included — `y` is their
+ *  bottom edge, still += dy). Locked layers return {}. Axes with no movement
+ *  are left out of the patch.
+ *
+ *  It does NOT re-anchor. It used to run positionFromDrag on every move and
+ *  adopt whichever anchor came out nearest, which flipped a layer from centre-
+ *  to left- or right-anchored as it crossed roughly a quarter and two-thirds
+ *  of the way across the page — and since the flip re-reads x against a box
+ *  width assumed from the drag's start, any layer whose real box differs
+ *  (a rotated column, an image still measuring) jumped at exactly those two
+ *  places. Snapping does not need it either: snappedDx already lands the drag
+ *  on the guide, and `guideX` is the deliberate way to glue a layer to one.
  *
  *  `moving` is the rest of the dragged SELECTION. A layer bound to another
  *  layer in it already follows that layer, so moving its `gap` as well would
  *  carry it twice as far as the pointer — the axis it is bound on is left out
  *  of the patch instead, and the binding does the work. */
 export function moveBy(
-  layer: Layer, dx: number, dy: number, guides: GuideLines, snap: number, w = 0,
-  moving: ReadonlySet<string> = new Set(),
+  layer: Layer, dx: number, dy: number, moving: ReadonlySet<string> = new Set(),
 ): LayerPatch {
   if (layer.locked) return {};
   const patch: LayerPatch = {};
@@ -414,18 +421,12 @@ export function moveBy(
   const carried = !!anchoredTo && moving.has(anchoredTo.to);
   const carriedH = carried && (anchoredTo.side === "left" || anchoredTo.side === "right");
   const carriedV = carried && !carriedH;
-  if (carriedH) return moveBy({ ...layer, binding: null }, 0, dy, guides, snap, w, moving);
+  if (carriedH) return moveBy({ ...layer, binding: null }, 0, dy, moving);
   if (binding && !carriedV && (horizontal ? dx !== 0 : dy !== 0)) {
     const delta = horizontal ? dx : dy;
     patch.binding = { ...binding, gap: binding.gap + (binding.side === "left" || binding.side === "top" ? -delta : delta) };
   }
-  if (dx !== 0 && !horizontal && guideOf(layer.guideX)) patch.x = layer.x + dx;
-  else if (dx !== 0 && !horizontal) {
-    const left = layer.x - anchorFraction(layer.anchor) * w;
-    const { position } = positionFromDrag(left + dx, 0, w, 0, guides, snap);
-    patch.anchor = position.anchor;
-    patch.x = guides[position.anchor] + position.offsetX;
-  }
+  if (dx !== 0 && !horizontal) patch.x = layer.x + dx;
   if (dy !== 0 && !carriedV && (!binding || horizontal)) {
     patch.y = isBound(layer.y) ? { below: layer.y.below, gap: layer.y.gap + dy } : layer.y + dy;
   }
