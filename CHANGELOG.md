@@ -21,6 +21,14 @@ binary-impacting change gets its own version before it is merged.
   Save Master review shows before it reaches the file.
 - The Layer inspector authors that list: a Title caption for the field, and
   the choices themselves.
+- The QR and barcode Value box now edits the URL *template*, not the text it
+  expands to. Click a field name under the box to inject it as a token, and
+  the resolved value is previewed beneath. Tokens accept `|slug`, `|upper`,
+  `|lower` and `|trim` — so the Lolev QR is an ordinary editable setting
+  (`https://lolev.beer/beer/{name|slug}`) rather than a hardcoded URL.
+- Rotation now works on QR layers, matching text and barcodes.
+- Clicking the pasteboard around the label deselects, which closes the
+  inspector. Dragging a guide or removing one does not.
 
 ### Changed
 
@@ -34,6 +42,16 @@ binary-impacting change gets its own version before it is merged.
   are gone — the File menu already had the latter.
 - The Layers filter reads "Changed" and shows the layers this label has
   touched, replacing "Fillable only". Every layer is fillable now.
+- Uppercase moved from the text layer to its Style, alongside Letter Spacing.
+  A master authors it, a label turns it off through the ordinary style
+  override with a reset badge, and the stored text keeps its typed case — so
+  a name drawn as ULTRA JUICE still resolves `{name|slug}` to `ultra-juice`.
+  Masters authored before the move are read unchanged.
+- Opening the inspector no longer covers the artwork: the preview pane makes
+  room for the sheet and the label recentres in what is left.
+- The inspector's Enabled / Locked switches are ordinary labelled rows like
+  every other control, and the panel has roomier padding. (The Fillable switch
+  is gone entirely — see below.)
 
 ### Fixed
 
@@ -45,34 +63,6 @@ binary-impacting change gets its own version before it is merged.
   of the way over the label — a drag no longer re-anchors the layer to the
   nearest guide as it passes.
 - Switching from a variant back to the master hides that variant again.
-
-## [0.1.58] - 2026-09-05
-
-### Added
-
-- The QR and barcode Value box now edits the URL *template*, not the text it
-  expands to. Click a field name under the box to inject it as a token, and
-  the resolved value is previewed beneath. Tokens accept `|slug`, `|upper`,
-  `|lower` and `|trim` — so the Lolev QR is an ordinary editable setting
-  (`https://lolev.beer/beer/{name|slug}`) rather than a hardcoded URL.
-- Rotation now works on QR layers, matching text and barcodes.
-- Clicking the pasteboard around the label deselects, which closes the
-  inspector. Dragging a guide or removing one does not.
-
-### Changed
-
-- Uppercase moved from the text layer to its Style, alongside Letter Spacing.
-  A master authors it, a label turns it off through the ordinary style
-  override with a reset badge, and the stored text keeps its typed case — so
-  a name drawn as ULTRA JUICE still resolves `{name|slug}` to `ultra-juice`.
-  Masters authored before the move are read unchanged.
-- Opening the inspector no longer covers the artwork: the preview pane makes
-  room for the sheet and the label recentres in what is left.
-- The inspector's Enabled / Locked / Fillable switches are ordinary labelled
-  rows like every other control, and the panel has roomier padding.
-
-### Fixed
-
 - Editing a QR payload wrote the *expanded* URL back to the master, replacing
   the `{name|slug}` token with whatever beer name happened to be filled in.
   The template is now preserved separately from its expansion.
