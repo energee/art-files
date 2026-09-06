@@ -64,12 +64,12 @@ the Linear-indigo palette in `src/index.css`. Same `light-dark()` mechanism.
 | `--background` | `#fafaf7` | `#1b1c18` | page |
 | `--card` / `--sidebar` / `--popover` | `#ffffff` | `#22231f` | panels |
 | `--foreground` | `#1e1f1a` | `#edede6` | text |
-| `--primary` (purple) | `#6453b3` | `#ab9df2` | create, edit, finish — Save, Continue, the label-mode accent |
-| `--destructive` (pink) | `#b52d51` | `#ff6188` | remove, discard |
-| `--attention` (orange) | `#99451c` | `#fc9867` | **template mode**: the switch, frame, badges, verbs |
-| `--warning` (yellow) | `#755800` | `#ffd866` | unsaved-template-changes strip, validation warnings |
-| `--success` (green) | `#426526` | `#a9dc76` | confirmations, "current" |
-| `--info` (cyan) | `#236773` | `#78dce8` | override badges, learned choice |
+| `--primary` (purple) | `#7058be` | `#ab9df2` | create, edit, finish — Save, Continue, the label-mode accent |
+| `--destructive` (pink) | `#e14775` | `#ff6188` | remove, discard |
+| `--attention` (orange) | `#e16032` | `#fc9867` | **template mode**: the switch, frame, badges, verbs |
+| `--warning` (yellow) | `#cc7a0a` | `#ffd866` | unsaved-template-changes strip, validation warnings |
+| `--success` (green) | `#269d69` | `#a9dc76` | confirmations, "current" |
+| `--info` (cyan) | `#1c8ca8` | `#78dce8` | override badges, learned choice |
 
 Derived: `--muted`, `--border`, `--input`, `--field`, `--accent` keep their
 roles but are re-tinted warm (a grey with a bias toward `#edede6`/`#1e1f1a`,
