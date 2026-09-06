@@ -813,9 +813,9 @@ export function masterChanges(
   for (const [id, entry] of Object.entries(label.overrides ?? {})) {
     const l = resolvedLayer(id);
     if (!l) continue;
-    const paths = new Set<string>();
-    leafPaths(entry, "", paths);
-    for (const path of paths) {
+    // The same path set the badges use, so "the badge resets it" and "the
+    // review promotes it" can never disagree about what an override covers.
+    for (const path of labelOverriddenPaths(label, id)) {
       const to = getPath(entry, path);
       const from = getPath(l, path);
       if (deepEqual(from, to)) continue;

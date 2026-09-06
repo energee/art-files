@@ -18,7 +18,7 @@
 // variant that owns the layer; spec: "Editing target selector" removed).
 import { gestureIds } from "@/selection";
 import {
-  Barcode, Ellipsis, Image, ListFilter, Lock, PenLine, Plus, Power,
+  Barcode, Ellipsis, Image, ListFilter, Lock, Plus, Power,
   QrCode, Scan, Type, type LucideIcon,
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
@@ -112,8 +112,8 @@ const control = (lit: boolean) => cn(
   !lit && "opacity-40 hover:opacity-100 focus-visible:opacity-100",
 );
 
-/** Header chip — the Changed filter and the variant toggles share one
- *  look: a small pill, filled while pressed. */
+/** Header chip — the Changed filter's look: a small pill, filled while
+ *  pressed. */
 const chip = (pressed: boolean) => cn(
   "inline-flex h-5 shrink-0 items-center gap-1 rounded-full border px-1.5 text-[11px] leading-none",
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",

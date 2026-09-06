@@ -174,12 +174,6 @@ function titleOf(layers: Layer[]): string {
   return name?.kind === "text" ? plainText(name.lines) : "";
 }
 
-/** A layer's content, in the shape a MASTER patch wants it — the label-side
- *  spelling is the value itself (edit.ts's setContentIn). */
-const contentPatch = (kind: LayerKind, value: LayerValue): DeepPartial<Layer> =>
-  kind === "text" ? { lines: value as TextLine[] }
-    : kind === "image" ? { asset: value as string } : { value: value as string };
-
 /** Chrome-level error (or, with `tone="warning"`, a resolveLayers validation
  *  warning), sized for the menu bar: the shadcn Alert (the app's one
  *  notification surface — see ui/alert.tsx) compacted to fit inline beside
@@ -465,11 +459,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   // It can light Save Master for an override that happens to equal what the
   // master already says — the review then opens with nothing in it, which is
   // the honest answer to "what would this save write?".
-  const masterDirty = useMemo(
-    () => masterDiff(pristineMaster.current, master)
-      || Object.keys(label.overrides ?? {}).length > 0,
+  // Only the master compare is worth memoizing, and it depends on `master`
+  // alone — keeping `label.overrides` out of the deps stops a drag's
+  // per-pointermove override writes from re-walking the whole master.
+  const templateMoved = useMemo(
+    () => masterDiff(pristineMaster.current, master),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- savedTick re-reads the ref
-    [master, label.overrides, savedTick]);
+    [master, savedTick]);
+  const masterDirty = templateMoved || Object.keys(label.overrides ?? {}).length > 0;
 
   // Which layers the inspector shows — Figma's model: an ordered selection
   // plus an anchor a shift-range extends from, driven by the Layers list or
@@ -1410,9 +1407,10 @@ export const DocumentEditor = memo(function DocumentEditor({
         if (as || !masterFileHandle.current) {
           masterFileHandle.current = await pick({ suggestedName: suggested + MASTER_EXT, types: MASTER_TYPES });
         }
-        await writeHandle(masterFileHandle.current, packMaster(forked, assets));
+        // The handle's name is known BEFORE the write here (unlike the Tauri
+        // branch above), so a renamed fork packs and writes exactly once.
         const final = titled(masterFileHandle.current.name);
-        if (final !== forked) await writeHandle(masterFileHandle.current, packMaster(final, assets));
+        await writeHandle(masterFileHandle.current, packMaster(final, assets));
         commit(final, masterFileHandle.current.name);
         return true;
       } catch (err) {

@@ -45,18 +45,16 @@ export function layerRows(master: Master, label: LabelFile): {
   const masterIds = new Set(master.layers.map((l) => l.id));
   const chips = new Map(variantChips(master, label).map((c) => [c.id, c]));
   const adder = (id: string) => master.variants.find((v) => id in v.layers && !masterIds.has(id));
+  const byId = new Map(master.variants.map((v) => [v.id, v]));
+  // Last enabled variant wins, so walk them back to front.
+  const enabled = [...label.enabledVariants].reverse().map((id) => byId.get(id));
   const rows: LayerRow[] = resolved.layers.map((layer) => {
-    const v = [...label.enabledVariants].reverse()
-      .map((id) => master.variants.find((v) => v.id === id))
-      .find((v) => v && layer.id in v.layers) ?? adder(layer.id);
-    // Last enabled variant that touches this master layer — the one whose
-    // value actually wins, so it is the one worth naming.
-    const over = masterIds.has(layer.id)
-      ? [...label.enabledVariants].reverse()
-        .map((id) => master.variants.find((x) => x.id === id))
-        .find((x) => x && layer.id in x.layers)
-      : undefined;
-    const variantOverridden = over ? chips.get(over.id) : undefined;
+    // The last enabled variant that touches this layer — the one whose value
+    // actually wins, so it is the one worth naming.
+    const touching = enabled.find((v) => v && layer.id in v.layers);
+    const v = touching ?? adder(layer.id);
+    const variantOverridden = touching && masterIds.has(layer.id)
+      ? chips.get(touching.id) : undefined;
     const changed = label.values[layer.id] !== undefined || !!label.overrides?.[layer.id];
     return {
       layer, ...(v ? { variant: chips.get(v.id) } : {}),

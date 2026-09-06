@@ -35,7 +35,9 @@ import { bindingOf, guideOf, uppercaseOf } from "@/model/layers";
 import type {
   BindingSide, BarcodeLayer, Choice, ImageLayer, Layer, LayerKind, QrLayer, Symbology, TextLayer,
 } from "@/model/layers";
+import type { OverrideBadges as Overridden } from "@/model/edit";
 import type { DeepPartial } from "@/model/merge";
+import { cn } from "@/lib/utils";
 import type { Anchor } from "@/model/position";
 import type { Style } from "@/types";
 import { DEFAULT_STROKE_PX } from "@/layout";
@@ -109,16 +111,6 @@ function Field(props: { id?: string; label: string; badge?: ReactNode; children:
   );
 }
 
-/** Which source a deviation from the master came from, and every dot-path
- *  each one covers. A VARIANT's paths live in the master file and apply to
- *  every label with that variant on; the LABEL's are this label's alone. */
-export interface Overridden {
-  variant: ReadonlySet<string>;
-  label: ReadonlySet<string>;
-  /** The enabled variant whose change is showing, for the badge's title. */
-  variantName?: string;
-}
-
 /** The override badge — up to TWO marks beside a control, one per source: a
  *  filled dot for a variant, a ring for this label, matching the Layers list.
  *  Each resets only its own source, so clearing your own edit can never
@@ -133,30 +125,28 @@ function Badge(props: {
   label: string;
   onReset: (path: string, source: "variant" | "label") => void;
 }) {
-  const variantPath = props.paths.find((p) => props.overridden.variant.has(p));
-  const labelPath = props.paths.find((p) => props.overridden.label.has(p));
-  if (!variantPath && !labelPath) return null;
   const who = props.overridden.variantName ?? "A variant";
+  const marks = ([
+    { source: "variant", cls: "bg-current", title: `${who} sets ${props.label} — reset it in the master`,
+      aria: `Reset ${props.label} to the master`,
+      path: props.paths.find((p) => props.overridden.variant.has(p)) },
+    { source: "label", cls: "border border-current", title: `This label sets ${props.label} — reset it to the master`,
+      aria: `Reset ${props.label} to this label's master value`,
+      path: props.paths.find((p) => props.overridden.label.has(p)) },
+  ] as const).filter((m) => m.path);
+  if (!marks.length) return null;
   return (
     <span className="flex shrink-0 items-center gap-1">
-      {variantPath && (
+      {marks.map((m) => (
         <button
+          key={m.source}
           type="button"
-          className="size-2 shrink-0 rounded-full bg-current text-info-text transition-transform hover:scale-125"
-          title={`${who} sets ${props.label} — reset it in the master`}
-          aria-label={`Reset ${props.label} to the master`}
-          onClick={() => props.onReset(variantPath, "variant")}
+          className={cn("size-2 shrink-0 rounded-full text-info-text transition-transform hover:scale-125", m.cls)}
+          title={m.title}
+          aria-label={m.aria}
+          onClick={() => props.onReset(m.path!, m.source)}
         />
-      )}
-      {labelPath && (
-        <button
-          type="button"
-          className="size-2 shrink-0 rounded-full border border-current text-info-text transition-transform hover:scale-125"
-          title={`This label sets ${props.label} — reset it to the master`}
-          aria-label={`Reset ${props.label} to this label's master value`}
-          onClick={() => props.onReset(labelPath, "label")}
-        />
-      )}
+      ))}
     </span>
   );
 }
