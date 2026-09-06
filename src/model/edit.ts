@@ -19,6 +19,7 @@ import { bindingOf, guideOf, parseMaster, vAnchorOf } from "./layers";
 import { deepMerge, type DeepPartial } from "./merge";
 import { getPath } from "./document";
 import { setPath } from "./resolve";
+import { valueOf, valuePath, widenValue } from "./resolveLayers";
 import { anchoredX, anchorFraction, positionFromDrag, type GuideLines } from "./position";
 import { CENTER_X, GOLD } from "../layout";
 import { KEYLINE } from "../defaults";
@@ -583,9 +584,28 @@ export const MASTER_PATHS: ReadonlySet<string> =
  *  The one master-side effect kept: switching a layer ON that only exists
  *  while some variant is enabled also enables that variant. That is a label
  *  edit (`toggleVariant`), not a master one — without it the patch would set
- *  `enabled` on a layer that still does not resolve. */
+ *  `enabled` on a layer that still does not resolve.
+ *
+ *  A design patch on a layer this document does NOT resolve — one only a
+ *  disabled variant adds, which the list still shows as a row — is dropped.
+ *  Writing it would store an override resolveLayers can only warn about
+ *  ("Label overrides unknown layer …") while changing nothing on the canvas.
+ *  Dropping it makes the click an honest no-op: no edit, no history entry,
+ *  no warning. The fill contract still routes to the master, since those
+ *  fields live in the master file whether the variant is on or not. */
 export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
   const masterIds = new Set(doc.master.layers.map((l) => l.id));
+  /** Every layer id this document RESOLVES: the master's, plus those the
+   *  enabled variants add. Built once per call — patchLayers runs per
+   *  pointermove of a drag, and only the rare `enabled: true` branch below
+   *  can widen it (by switching a variant on), which re-reads it there. */
+  const resolvable = (label: LabelFile) => {
+    const ids = new Set(masterIds);
+    for (const v of doc.master.variants)
+      if (label.enabledVariants.includes(v.id)) for (const k of Object.keys(v.layers)) ids.add(k);
+    return ids;
+  };
+  let resolves = resolvable(doc.label);
   return entries.reduce((d, [id, patch]) => {
     const keys = Object.keys(patch);
     const contract = keys.filter((k) => MASTER_PATHS.has(k));
@@ -597,10 +617,13 @@ export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
     let label = d.label;
     if (patch.enabled === true && !masterIds.has(id)) {
       const owner = d.master.variants.find((v) => id in v.layers);
-      if (owner && !label.enabledVariants.includes(owner.id)) label = toggleVariant(label, owner.id);
+      if (owner && !label.enabledVariants.includes(owner.id)) {
+        label = toggleVariant(label, owner.id);
+        resolves = resolvable(label);
+      }
     }
-    if (rest.length) label = setLabelOverride(label, id, pick(rest));
-    return { master, label };
+    if (rest.length && resolves.has(id)) label = setLabelOverride(label, id, pick(rest));
+    return master === d.master && label === d.label ? d : { master, label };
   }, doc);
 }
 
@@ -685,6 +708,11 @@ export interface MasterChange {
   path?: string;
   from?: unknown;
   to?: unknown;
+  /** Which of the label's two stores a `promote` row came from. Absent is
+   *  `"override"` (design), the original and commonest source; `"value"` is
+   *  content. Both write one layer path; only the CLEAR differs, so
+   *  applyPromotions drops the right one instead of re-deriving the source. */
+  source?: "value";
 }
 
 /** Every leaf path where `a` and `b` differ, `name` excluded (a rename is its
@@ -774,13 +802,16 @@ export function masterChanges(
   // A promote row's "from" is what the TARGET version currently resolves to:
   // the master layer under the working variant's own diff, if there is one.
   const variant = target === undefined ? undefined : variantOf(edited, target);
-  for (const [id, entry] of Object.entries(label.overrides ?? {})) {
+  /** The layer as the TARGET version resolves it: the master layer under the
+   *  working variant's own diff, a layer the target ADDS, or — for neither —
+   *  undefined, an entry for a layer this version does not have at all. */
+  const resolvedLayer = (id: string): Layer | undefined => {
     const own = editedById.get(id);
     const diff = variant?.layers[id];
-    // A master layer under the target's diff, a layer the target ADDS, or —
-    // for neither — an override of a layer this version does not have at all.
-    const l = own ? (diff ? deepMerge(own, diff) as Layer : own)
-      : diff as Layer | undefined;
+    return own ? (diff ? deepMerge(own, diff) as Layer : own) : diff as Layer | undefined;
+  };
+  for (const [id, entry] of Object.entries(label.overrides ?? {})) {
+    const l = resolvedLayer(id);
     if (!l) continue;
     const paths = new Set<string>();
     leafPaths(entry, "", paths);
@@ -790,6 +821,20 @@ export function masterChanges(
       if (deepEqual(from, to)) continue;
       out.push({ kind: "promote", layerId: id, layerName: l.name, path, from, to });
     }
+  }
+
+  // Content is a promote row on the same footing: typing into a layer, or
+  // emptying one, deviates from the template exactly as an override does, and
+  // without this there is no way to change the master's own default text
+  // (the "HOPS" placeholder) from inside the app. A text value may arrive as
+  // a bare string; applyValue widens it to lines, so compare it widened.
+  for (const [id, v] of Object.entries(label.values)) {
+    const l = resolvedLayer(id);
+    if (!l) continue;
+    const from = valueOf(l);
+    const to = widenValue(l, v);
+    if (deepEqual(from, to)) continue;
+    out.push({ kind: "promote", layerId: id, layerName: l.name, path: valuePath(l), from, to, source: "value" });
   }
   return out;
 }
@@ -826,7 +871,9 @@ export function applyPromotions(
       master: target === undefined
         ? patchLayer(acc.master, c.layerId, patch as LayerPatch)
         : patchLayerIn(acc.master, target, c.layerId, patch as LayerPatch),
-      label: clearLabelOverride(acc.label, c.layerId, c.path),
+      label: c.source === "value"
+        ? clearValue(acc.label, c.layerId)
+        : clearLabelOverride(acc.label, c.layerId, c.path),
     };
   }, { master, label });
 }

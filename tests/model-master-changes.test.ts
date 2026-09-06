@@ -4,7 +4,7 @@
 // edits already sitting in the edited master, plus the label's own overrides
 // offered for PROMOTION into the template. Pure — the dialog does the rendering.
 import { describe, expect, it } from "vitest";
-import { applyPromotions, masterChanges, showVersion, addLayer, addVariant, removeVariant, renameVariant, setLayerIn, moveLayers, patchLayer, removeLayer, setLabelOverride } from "../src/model/edit";
+import { applyPromotions, masterChanges, setValue, showVersion, addLayer, addVariant, removeVariant, renameVariant, setLayerIn, moveLayers, patchLayer, removeLayer, setLabelOverride } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { resolveLayers } from "../src/model/resolveLayers";
 import type { LabelFile, Master } from "../src/model/layers";
@@ -68,6 +68,30 @@ describe("masterChanges", () => {
 });
 
 describe("applyPromotions", () => {
+  it("offers a filled value as a promote row on the layer's content path", () => {
+    const base = lolevMaster();
+    const label = setValue(newLabel(base), "description", []);
+    const row = masterChanges(base, base, label)
+      .find((c) => c.kind === "promote" && c.layerId === "description");
+    expect(row).toMatchObject({ path: "lines", to: [], source: "value" });
+  });
+
+  it("does not offer a value that already equals the template", () => {
+    const base = lolevMaster();
+    const cur = base.layers.find((l) => l.id === "description")!;
+    const label = setValue(newLabel(base), "description", structuredClone((cur as { lines: unknown }).lines) as never);
+    expect(masterChanges(base, base, label).some((c) => c.layerId === "description")).toBe(false);
+  });
+
+  it("promotes a value into the master and drops it from the label", () => {
+    const base = lolevMaster();
+    const label = setValue(newLabel(base), "description", []);
+    const promote = masterChanges(base, base, label).filter((c) => c.layerId === "description");
+    const r = applyPromotions(base, label, promote);
+    expect((r.master.layers.find((l) => l.id === "description") as { lines: unknown[] }).lines).toEqual([]);
+    expect(r.label.values.description).toBeUndefined();
+  });
+
   it("writes exactly the promoted paths into the master and drops them from the label", () => {
     const base = lolevMaster();
     const label = setLabelOverride(newLabel(base), "name", { x: 300, style: { fill: "#FF0000" } });

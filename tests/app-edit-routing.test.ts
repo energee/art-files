@@ -66,6 +66,18 @@ describe("property patches route to the label", () => {
     expect(d.label.enabledVariants).toContain("collab");
     expect(d.master).toEqual(lolevMaster());
   });
+
+  it("ignores a design patch on a layer only a DISABLED variant adds", () => {
+    const before = doc();
+    const after = patchLayers(before, [["collabLeft", { locked: true }]]);
+    expect(after).toBe(before);
+  });
+
+  it("still overrides that layer once its variant is on", () => {
+    const on = patchLayers(doc(), [["collabLeft", { enabled: true }]]);
+    const d = patchLayers(on, [["collabLeft", { locked: true }]]);
+    expect(d.label.overrides?.collabLeft).toMatchObject({ locked: true });
+  });
 });
 
 describe("the fill contract routes to the master", () => {

@@ -48,7 +48,7 @@ import { uppercaseOf } from "@/model/layers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, showVersion, snappedDx, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue,
+  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, snappedDx, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -451,9 +451,13 @@ export const DocumentEditor = memo(function DocumentEditor({
   // the honest answer to "what would this save write?".
   const masterDirty = useMemo(
     () => masterDiff(pristineMaster.current, master)
-      || Object.keys(label.overrides ?? {}).length > 0,
+      || Object.keys(label.overrides ?? {}).length > 0
+      // Content counts too: a filled or EMPTIED value is offered for
+      // promotion like any override (masterChanges), and clearing the
+      // master's own placeholder text has no other route into the template.
+      || Object.keys(label.values).length > 0,
     // eslint-disable-next-line react-hooks/exhaustive-deps -- savedTick re-reads the ref
-    [master, label.overrides, savedTick]);
+    [master, label.overrides, label.values, savedTick]);
 
   // Which layers the inspector shows — Figma's model: an ordered selection
   // plus an anchor a shift-range extends from, driven by the Layers list or
@@ -718,15 +722,25 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** The master Select's "New Variant" (and the command of the same name): a
    *  fresh empty variant, switched on for this label
-   *  and offers its own Add layer submenu. Named
-   *  "Variant N"; rename is a master-file edit for now. */
-  function onNewVariant() {
+   *  and offers its own Add layer submenu. Named "Variant N" to start;
+   *  the id is returned so the picker can open its inline rename on it. */
+  function onNewVariant(): string {
     const name = `Variant ${master.variants.length + 1}`;
     // Minted outside the edit so the id is in hand for the version switch —
     // `edit`'s callback stays a pure Doc → Doc.
     const { master: m, id } = addVariant(master, name);
     // Switched to, like any other version: the new one is what you see.
     edit((d) => ({ master: m, label: showVersion(d.label, version, id) }));
+    return id;
+  }
+  /** Inline rename of a variant, from the picker. A master-file edit. */
+  function onRenameVersion(id: string, name: string) {
+    editMaster((m) => renameVariant(m, id, name));
+  }
+  /** Delete a variant from the master and stop showing it. One undoable
+   *  edit, so it needs no confirm of its own. */
+  function onRemoveVersion(id: string) {
+    edit((d) => ({ master: removeVariant(d.master, id), label: showVersion(d.label, id, null) }));
   }
 
   /** The dot-paths deviating from the master on the inspected layer, kept
@@ -1832,6 +1846,8 @@ export const DocumentEditor = memo(function DocumentEditor({
             <MasterPicker master={master} label={label}
               library={libraryEntries()} resolve={resolveMasterById}
               onMaster={pickLibraryMaster} onNewVariant={onNewVariant}
+              onRenameVersion={onRenameVersion} onRemoveVersion={onRemoveVersion}
+              onSaveMaster={() => setPendingSave({ as: false })} masterDirty={masterDirty}
               version={version} onVersion={switchVersion} />
             <LayerList rows={rows} selected={selected}
               onSelect={(id, mods) => pick(id, { shift: mods.shift, toggle: mods.meta })}
