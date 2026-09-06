@@ -28,19 +28,31 @@ import {
 const rowId = (c: MasterChange) =>
   `${c.kind}-${c.layerId}${c.path === undefined ? "" : `-${c.path}`}`;
 
+/** An unset value reads as an em dash, not "undefined" — `null` is
+ *  setLabelOverride's wire spelling of "unset this key". */
+const val = (v: unknown) =>
+  v === undefined || v === null ? "—"
+    : typeof v === "object" ? JSON.stringify(v) : String(v);
+
 /** What the row says happened, in the reviewer's terms rather than the
- *  model's. `from`/`to` are rendered only where a before/after reads as
- *  information — a moved layer's indices would not. */
-function rowText(c: MasterChange): string {
-  const val = (v: unknown) =>
-    v === undefined || v === null ? "—"
-      : typeof v === "object" ? JSON.stringify(v) : String(v);
+ *  model's. Structural rows are a sentence; a property or promote row is a
+ *  path and a before/after, set in mono because that is literally what they
+ *  are — a key path and its values. */
+function rowText(c: MasterChange): React.ReactNode {
   switch (c.kind) {
     case "added": return "Added to the master";
     case "removed": return "Removed from the master";
     case "moved": return "Reordered";
     case "renamed": return `Renamed from "${String(c.from)}"`;
-    default: return `${c.path}: ${val(c.from)} → ${val(c.to)}`;
+    default: return (
+      <>
+        <span className="font-mono text-[11.5px]">{c.path}</span>
+        {": "}
+        <span className="font-mono text-[11.5px] tabular-nums">{val(c.from)}</span>
+        <span className="px-0.5 text-muted-foreground"> → </span>
+        <span className="font-mono text-[11.5px] tabular-nums">{val(c.to)}</span>
+      </>
+    );
   }
 }
 
@@ -95,7 +107,8 @@ export function MasterSaveReview(props: {
                     disabled={c.kind !== "promote"}
                     checked={c.kind !== "promote" || ticked.has(rowId(c))}
                     onCheckedChange={() => toggle(rowId(c))} />
-                  <span className={c.kind === "promote" ? "" : "text-muted-foreground"}>
+                  <span className={c.kind === "promote" ? ""
+                    : c.kind === "removed" ? "text-destructive" : "text-muted-foreground"}>
                     {rowText(c)}
                   </span>
                 </label>
