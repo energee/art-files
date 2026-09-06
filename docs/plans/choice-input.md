@@ -9,14 +9,37 @@ case that asked for it: most labels are one of a dozen styles, but the next one
 is always allowed to be new. Barcode's symbology is the same shape and already
 has a hand-rolled version of it.
 
-## Decisions taken (2026-09-05)
+## Where the vocabulary came from
 
-- **A fourth `input` mode, not a fifth `LayerKind`.** `input` is already the
-  fill-mode widget hint on a text layer (`layers.ts:118` — `number`, `code`).
-  `choice` joins it. Style stays a text layer, so placement, measurement,
-  rendering, hit boxes, PDF and PSD export are all untouched: this is a widget
-  change, not a layer type. A fifth kind would touch every one of those and
-  still draw as text.
+`presets.json`, deleted on 2026-09-04 (aafc163) when presets went away, held
+exactly this feature in its raw form:
+
+```json
+{ "styles": ["Ultra Hopped Ale", "Hazy India Pale Ale", "Hazy Pale Ale"],
+  "barcodes": [{ "name": "Tier 1", "upc": "850051366040" },
+               { "name": "Tier 2", "upc": "860009737631" }, … ] }
+```
+
+Two lists that had no home once a master became the saved style. `styles` is a
+list of plain values; `barcodes` is a list of `{ name, upc }` — a title and a
+value, which is where the `{ title?, value }` shape in this plan comes from
+rather than from a guess. Tier 1 is what you pick; `850051366040` is what gets
+drawn.
+
+## Decisions taken (2026-09-05, revised 2026-09-06)
+
+- **`choices` is not a new input mode — it is a key any fill input may carry.**
+  The first cut added `input: "choice"` beside `number` and `code`. The
+  barcode half of the request rules that out: a tier picker is a `code` input
+  (it still validates against `symbology`) AND a list of options. They are not
+  alternatives, so they cannot share one enum. `choices` becomes an
+  independent key: present = the fill widget is a picker that also takes
+  typing; absent = the widget it is today. `input` keeps deciding validation
+  and keyboard, `choices` decides whether there is a list. This is less code
+  than the fourth mode, not more, and it is the reason the plan changed.
+- **Not a fifth `LayerKind` either.** Style stays a text layer and a barcode
+  stays a barcode, so placement, measurement, rendering, hit boxes, PDF and
+  PSD export are all untouched: this is a widget change, not a layer type.
 - **Titles at both levels.** The layer gets an optional `title` — the caption
   the filler sees above the widget, when the layer's name is not what you want
   to say. Each choice is `{ title?, value }`: the title is what the list shows,
@@ -45,23 +68,37 @@ interface LayerBase {
   …
 }
 interface TextLayer {
-  input?: "number" | "code" | "choice";
-  /** `choice` inputs: the offered vocabulary. A filler may always type
-   *  something else, and what they type is appended here. */
+  input?: "number" | "code";          // unchanged — validation, not widget
+  /** The offered vocabulary, for ANY input. Present = the fill widget is a
+   *  picker that still takes typing; absent = today's widget. A filler may
+   *  always type something else, and what they type is appended here. */
   choices?: Choice[];
 }
 ```
+
+So the two cases in the request are one mechanism:
+
+| Layer | `input` | `choices` | Widget |
+| --- | --- | --- | --- |
+| Style | absent | the three styles | picker + free text |
+| Barcode | `code` | the eight tiers | picker + free text, UPC-validated |
 
 Fill mode, in the inspector's text field:
 
 ```
   Style                        ← layer.title ?? layer.name
-  [ Hazy IPA                ▾] ← type to filter, or pick
-    IPA
-    Hazy IPA (NEIPA)           ← title shown, "Hazy IPA" drawn
-    Stout
+  [ Hazy Pale Ale           ▾] ← type to filter, or pick
+    Ultra Hopped Ale
+    Hazy India Pale Ale
+    Hazy Pale Ale
     ─────────
     Use "Saison"               ← what a typed value offers
+
+  Barcode                      ← the same widget, code-validated
+  [ Tier 1                  ▾]
+    Tier 1                     ← title shown, 850051366040 drawn
+    Tier 2
+    …
 ```
 
 ## Two fill surfaces, one of them unchanged
@@ -82,16 +119,17 @@ Test file named first in each task; write it failing, then implement.
 
 ### Phase A — model (A1 gates everything)
 
-**1. `choice` in the model**
+**1. `choices` in the model**
 - Files: `src/model/layers.ts` (`Choice`, `LayerBase.title`,
-  `TextLayer.input`/`choices`, and `parseMaster`'s validation)
+  `TextLayer.choices`, and `parseMaster`'s validation)
 - Test: `tests/model-layers.test.ts` *(extend)*
-- Reject a `choices` entry with a blank/missing `value`; allow a missing
-  `title`. `choices` on a non-`choice` input is tolerated (authoring order),
-  the way `min`/`max` already are.
-- Accept: a `.master` with `input: "choice"` and three choices round-trips
-  through `serializeMaster`/`parseMaster` unchanged; one with `{ title: "x" }`
-  and no value fails to load with a named error.
+- `input` is NOT touched. Reject a `choices` entry with a blank/missing
+  `value`; allow a missing `title`. An empty `choices` array is the same as
+  absent, and normalises to absent on parse.
+- Accept: a `.master` with three choices round-trips through
+  `serializeMaster`/`parseMaster` unchanged; one with `{ title: "x" }` and no
+  value fails to load with a named error; a barcode layer carrying both
+  `input: "code"` and `choices` loads.
 
 **2. Learning a typed value**
 - Files: `src/model/edit.ts` (new `learnChoice`, beside `setContentIn`)
@@ -109,10 +147,10 @@ Test file named first in each task; write it failing, then implement.
   `master.layers`, not `label.overrides`; a patch mixing `choices` with `x`
   still splits, master and label each taking their half.
 
-**4. Filling a choice layer, and learning from it**
+**4. Filling from a list, and learning from it**
 - Files: `src/model/edit.ts` (`setContentIn`)
 - Test: `tests/model-choice.test.ts` *(extend)*
-- `setContentIn` on a `choice` layer writes the label value as today AND runs
+- `setContentIn` on a layer that HAS `choices` writes the label value as today AND runs
   `learnChoice` on the master. This is the one content edit that touches the
   master, and it is the fill contract's rule rather than an exception to
   routing: the vocabulary is master data.
@@ -135,8 +173,8 @@ Test file named first in each task; write it failing, then implement.
 **6. Authoring the vocabulary**
 - Files: `src/components/LayerInspector.tsx` (the "Fill contract" block)
 - Test: `tests/layerinspector-dom.test.tsx` *(extend)*
-- `Choice` joins the Input select. When it is chosen: a `Title` row, and a
-  choices editor — one row per choice (title, value, remove) plus "Add
+- The Input select is unchanged. Below it, for every input: a `Title` row and
+  a choices editor — one row per choice (title, value, remove) plus "Add
   choice". Reordering is out of scope; the list is short and append-only in
   practice.
 - Accept: adding a choice emits one `choices` patch carrying the whole array;
@@ -155,20 +193,24 @@ Test file named first in each task; write it failing, then implement.
 - Accept: learning one value shows a row naming that value; an unrelated
   array-valued path still renders as it does today.
 
-**8. Barcode symbology uses the same picker**
-- Files: `src/components/LayerInspector.tsx` (`SYMBOLOGIES` block)
-- Test: `tests/layerinspector-dom.test.tsx` *(extend)*
-- The symbology select is a fixed-vocabulary choice with no custom input —
-  the same component with `custom={false}`. Do this ONLY if it comes out
-  smaller than the Select it replaces; if it does not, drop the task and say
-  so. It is the "similar logic on barcode" from the request, and it is worth
-  nothing if it costs lines.
+**8. The barcode tier picker**
+- Files: none beyond Tasks 1-7 — this task is the PROOF that no barcode-only
+  code is needed
+- Test: `tests/text-editor-dom.test.ts` *(extend)*
+- A `code` layer carrying `choices` gets the picker AND keeps its symbology
+  validation: picking Tier 1 fills `850051366040` and the check passes; typing
+  a bad UPC still reports the same error it does today, and is not learned
+  while it is invalid.
+- Accept: no `if (kind === "barcode")` anywhere in the widget. If this task
+  needs one, Task 1's design is wrong and the plan should be revised, not
+  patched.
 
-**9. Seed the Lolev style layer**
+**9. Seed both lists from the deleted presets**
 - Files: `src/model/lolevLayers.ts`, docs sweep
 - Test: `tests/model-lolev.test.ts` *(extend)*
-- `styleLine` gets `input: "choice"` and the styles Lolev actually brews. Ask
-  for the list rather than inventing it.
+- `styleLine` gets the three styles; the barcode layer gets the eight tiers as
+  `{ title: "Tier N", value: upc }` — both verbatim from `presets.json` at
+  aafc163^, so nothing is invented and the lists that were lost come back.
 - Accept: the shipped master still loads, and its golden renders are
   byte-identical (choices change no geometry).
 
@@ -183,5 +225,7 @@ Test file named first in each task; write it failing, then implement.
   a content edit writes the master. It follows the fill-contract rule rather
   than breaking it, but it is worth watching: if a second case like it shows
   up, "the contract is master data" deserves its own note in `.agents/AGENTS.md`.
-- Task 8 is speculative until the component exists; Task 9 needs Lolev's real
-  style list from you.
+- The eight tier UPCs are real product codes. They are already public on the
+  cans and were already in the repo until aafc163, so restoring them changes
+  nothing about their exposure — but they are the one piece of this that is
+  business data rather than geometry.
