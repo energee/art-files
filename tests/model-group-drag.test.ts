@@ -73,23 +73,26 @@ describe("snapping a group", () => {
     return { g: boxes.get("g")!.x, f: boxes.get("f")!.x };
   };
 
-  it("lands the grabbed layer on the guide and carries the rest with it", () => {
+  it("centres one dragged layer on the guide", () => {
     // A 26pt drag puts the box's centre at 96, 4 short of the centre guide at
     // 100 — inside the 6pt threshold, so the drag really travels 30.
-    const dx = snappedDx(grabbed, 26, guides, 6, 20);
-    expect(dx).toBe(30);
+    expect(snappedDx({ x: 60, w: 20 }, 26, guides, 6)).toBe(30);
+  });
+
+  it("centres the SELECTION's bounds, not the layer that happens to be grabbed", () => {
+    // Grabbed 20 wide at 60, follower 20 wide at 150: the group spans 60..170,
+    // centre 115. Bringing that centre to the guide at 100 is a 15pt drag left
+    // — a snap the grabbed layer's own box (centre 70) would never ask for.
+    const group = { x: 60, w: 110 };
+    expect(snappedDx(group, -12, guides, 6)).toBe(-15);
     const after = lefts(layers.map((l) =>
-      deepMerge(l, moveBy(l, dx, 0, guides, 0, 20)) as Layer));
-    expect(after.g).toBe(90);                     // centred on the guide
-    expect(after.f - lefts(layers).f).toBe(30);   // and the group kept its shape
+      deepMerge(l, moveBy(l, -15, 0, guides, 0, 20)) as Layer));
+    expect(after.g).toBe(45);
+    expect(after.f).toBe(135);
+    expect((after.g + after.f + 20) / 2).toBe(guides.center); // group centred
   });
 
   it("is the raw delta when nothing is in range", () => {
-    expect(snappedDx(grabbed, 40, guides, 6, 20)).toBe(40);
-  });
-
-  it("is the raw delta for a guide-relative layer, which never re-anchors", () => {
-    const onGuide = text({ id: "g", x: 4, y: 20, guideX: "center" });
-    expect(snappedDx(onGuide, 7, guides, 6, 20)).toBe(7);
+    expect(snappedDx({ x: 60, w: 20 }, 40, guides, 6)).toBe(40);
   });
 });

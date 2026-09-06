@@ -74,7 +74,7 @@ import type { PsdAssets } from "@/psd/build";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
 import {
-  ART, PAGE, PREVIEW_OVERSAMPLE, PSD_DOC, setBleed as setLayoutBleed, setOutputDpi,
+  ART, BLEED_SHIFT, PAGE, PREVIEW_OVERSAMPLE, PSD_DOC, setBleed as setLayoutBleed, setOutputDpi,
 } from "@/layout";
 import { LayerList } from "@/components/LayerList";
 import { LayerInspector } from "@/components/LayerInspector";
@@ -1049,7 +1049,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** The same over every listed row (disabled layers included) — what the
    *  inspector's bind/unbind actions want. */
   const rowBoxes = () => boxesNow(rows.map((r) => r.layer));
-  const dragBase = useRef<{ id: string; bases: { layer: Layer; w: number }[] } | null>(null);
+  const dragBase = useRef<
+    { id: string; bases: { layer: Layer; w: number }[]; bounds: { x: number; w: number } } | null
+  >(null);
   const onDrag = (id: string, dx: number, dy: number, first: boolean) => {
     if (first || dragBase.current?.id !== id) {
       const boxes = boxesNow();
@@ -1058,17 +1060,23 @@ export const DocumentEditor = memo(function DocumentEditor({
       const bases = drawLayers.filter((l) => ids.has(l.id) && !l.locked)
         .map((layer) => ({ layer, w: boxes.get(layer.id)?.w ?? 0 }));
       if (!bases.length) return;
-      dragBase.current = { id, bases };
+      // The selection's own box, in the guides' space: layerBoxes measures in
+      // page space, which BLEED_SHIFT offsets from the coordinates layer.x and
+      // the guides are written in.
+      const spans = bases.map(({ layer, w }) =>
+        [(boxes.get(layer.id)?.x ?? layer.x) - BLEED_SHIFT, w] as const);
+      const x = Math.min(...spans.map(([left]) => left));
+      const right = Math.max(...spans.map(([left, w]) => left + w));
+      dragBase.current = { id, bases, bounds: { x, w: right - x } };
     }
-    // The grabbed layer decides where the drag lands — its snap to the
-    // master's guides becomes the distance EVERY selected layer travels, so
-    // the group keeps its shape instead of re-spacing itself each time the
-    // grabbed one crosses a guide.
+    // The SELECTION'S BOUNDS decide where the drag lands: one snap to the
+    // master's guides, applied as the distance every selected layer travels.
+    // Snapping the grabbed layer alone re-spaced the group every time it
+    // crossed a guide, and centred that layer rather than the thing on screen.
     // The set is moveBy's "already carried" test: a layer bound to another in
     // the same drag follows it, and must not move its own gap on top of that.
     const moving = new Set(dragBase.current.bases.map(({ layer }) => layer.id));
-    const grabbed = dragBase.current.bases.find(({ layer }) => layer.id === id);
-    const gdx = grabbed ? snappedDx(grabbed.layer, dx, guides, 6, grabbed.w) : dx;
+    const gdx = snappedDx(dragBase.current.bounds, dx, guides, 6);
     const entries = dragBase.current.bases
       .map(({ layer, w }): [string, DeepPartial<Layer>] =>
         [layer.id, moveBy(layer, gdx, dy, guides, 0, w, moving)])

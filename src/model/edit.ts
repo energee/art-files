@@ -368,24 +368,25 @@ export function bindingPatch(layer: Layer, to: string, side: BindingSide, box: B
   };
 }
 
-/** The horizontal distance a drag ACTUALLY travels once the grabbed layer has
- *  snapped: `dx` adjusted so the layer lands on a guide it came within `snap`
- *  of, and `dx` unchanged when nothing is in range or the layer is positioned
- *  from a guide already (those never re-anchor).
+/** The horizontal distance a drag ACTUALLY travels once it has snapped: `dx`
+ *  adjusted so `box` — the left edge and width of what is being dragged —
+ *  lands on a guide it came within `snap` of, and `dx` unchanged when nothing
+ *  is in range.
  *
- *  App computes this once, from the grabbed layer, and drags the WHOLE
- *  selection by it. Snapping only the grabbed layer re-spaced the group by up
- *  to `snap` every time it crossed a guide — a group either snaps together or
- *  not at all. Vertical movement has no snap, which is why only X drifted. */
+ *  App computes this ONCE, from the bounds of the whole selection, and drags
+ *  every selected layer by it. Two rules in one:
+ *    * a group snaps together or not at all. Snapping only the grabbed layer
+ *      re-spaced the selection by up to `snap` every time it crossed a guide.
+ *    * what snaps is the SELECTION's bounds, not whichever layer the pointer
+ *      happens to be on — "centre this on the label" is about the thing you
+ *      can see, and the grabbed layer is rarely centred within it.
+ *  Vertical movement has no snap, which is why only X ever drifted. */
 export function snappedDx(
-  layer: Layer, dx: number, guides: GuideLines, snap: number, w = 0,
+  box: { x: number; w: number }, dx: number, guides: GuideLines, snap: number,
 ): number {
-  if (layer.locked || dx === 0 || guideOf(layer.guideX)) return dx;
-  const binding = layer.binding;
-  if (binding?.side === "left" || binding?.side === "right") return dx;
-  const left = layer.x - anchorFraction(layer.anchor) * w;
-  const { position } = positionFromDrag(left + dx, 0, w, 0, guides, snap);
-  return anchoredX(position, w, guides) - left;
+  if (dx === 0) return dx;
+  const { position } = positionFromDrag(box.x + dx, 0, box.w, 0, guides, snap);
+  return anchoredX(position, box.w, guides) - box.x;
 }
 
 /** The drag patch. Horizontal: positionFromDrag's snap rule on the layer's
