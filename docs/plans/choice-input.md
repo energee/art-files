@@ -1,6 +1,7 @@
 # Choice input — a picker that learns
 
-Status: **PLAN — awaiting approval.** No implementation code yet.
+Status: **DONE** (2026-09-06). All nine tasks landed; Task 8 needed no code,
+which was its acceptance criterion.
 
 ## What it is
 
@@ -183,7 +184,7 @@ Test file named first in each task; write it failing, then implement.
 
 ### Phase C — the rest (depends on B)
 
-**7. The review reads a vocabulary change plainly**
+**7. The review reads a vocabulary change plainly** — *done*
 - Files: `src/components/MasterSaveReview.tsx` (`rowText`)
 - Test: `tests/mastersave-review-dom.test.tsx` *(extend)*
 - `masterChanges` already emits one `property` row for `choices` (an array is
