@@ -4,7 +4,7 @@
 // edits already sitting in the edited master, plus the label's own overrides
 // offered for PROMOTION into the template. Pure — the dialog does the rendering.
 import { describe, expect, it } from "vitest";
-import { applyPromotions, masterChanges, addLayer, setLayerIn, moveLayers, patchLayer, removeLayer, setLabelOverride } from "../src/model/edit";
+import { applyPromotions, masterChanges, addLayer, addVariant, removeVariant, renameVariant, setLayerIn, moveLayers, patchLayer, removeLayer, setLabelOverride } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
 import type { LabelFile, Master } from "../src/model/layers";
 
@@ -128,5 +128,46 @@ describe("a variant as the promotion target", () => {
     const r = applyPromotions(base, label, masterChanges(base, base, label), undefined);
     expect((r.master.layers.find((l) => l.id === "name") as { x: number }).x).toBe(300);
     expect(r.master.variants).toEqual(base.variants);
+  });
+});
+
+// The review is the ONLY thing between an edit and the template, and
+// `masterDirty` is now its length — so a change it cannot see is a change that
+// gets saved unannounced, or worse, cannot be saved at all because Save Master
+// never lights up. Variants live in the same .master file and count.
+describe("changes inside the variants", () => {
+  it("reports a new variant", () => {
+    const base = lolevMaster();
+    const { master: edited, id } = addVariant(base, "Barrel-aged");
+    expect(masterChanges(base, edited, newLabel(base)))
+      .toEqual([{ kind: "added", layerId: id, layerName: "Barrel-aged" }]);
+  });
+
+  it("reports a removed and a renamed variant", () => {
+    const base = lolevMaster();
+    expect(masterChanges(base, removeVariant(base, "collab"), newLabel(base)))
+      .toEqual([{ kind: "removed", layerId: "collab", layerName: "Collab" }]);
+    expect(masterChanges(base, renameVariant(base, "collab", "Collaboration"), newLabel(base)))
+      .toEqual([{ kind: "renamed", layerId: "collab", layerName: "Collaboration",
+        from: "Collab", to: "Collaboration" }]);
+  });
+
+  it("reports a fill-contract edit made inside a variant", () => {
+    const base = lolevMaster();
+    // collabLead is a layer the variant ADDS, so patchLayer writes the variant.
+    const edited = patchLayer(base, "collabLead", { placeholder: "Lead" });
+    expect(masterChanges(base, edited, newLabel(base))).toEqual([
+      { kind: "property", layerId: "collabLead", layerName: "Lead-in",
+        path: "placeholder", from: undefined, to: "Lead" },
+    ]);
+  });
+
+  it("reports a variant's override of a master layer", () => {
+    const base = lolevMaster();
+    const edited = setLayerIn(base, "collab", "name", { x: 222 });
+    expect(masterChanges(base, edited, newLabel(base))).toEqual([
+      { kind: "property", layerId: "name", layerName: "Name", path: "x",
+        from: undefined, to: 222 },
+    ]);
   });
 });

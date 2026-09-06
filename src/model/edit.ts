@@ -610,6 +610,37 @@ export function masterChanges(
                  from: atPath(was, path), to: atPath(l, path) });
   }
 
+  // The variants live in the same .master file, so an edit inside one is just
+  // as much a template change — and a patch on a variant-added layer lands
+  // there without the caller choosing it (see whereLayerLives). A change this
+  // list cannot see is one that saves unannounced, or cannot be saved at all:
+  // masterDirty is this list's length.
+  const baseVariants = new Map(base.variants.map((v) => [v.id, v]));
+  for (const v of base.variants)
+    if (!edited.variants.some((x) => x.id === v.id))
+      out.push({ kind: "removed", layerId: v.id, layerName: v.name });
+  for (const v of edited.variants) {
+    const was = baseVariants.get(v.id);
+    if (!was) { out.push({ kind: "added", layerId: v.id, layerName: v.name }); continue; }
+    if (was.name !== v.name)
+      out.push({ kind: "renamed", layerId: v.id, layerName: v.name, from: was.name, to: v.name });
+    const nameOf = (id: string, e: unknown) =>
+      (e as { name?: string }).name ?? editedById.get(id)?.name ?? id;
+    for (const id of Object.keys(was.layers))
+      if (!(id in v.layers))
+        out.push({ kind: "removed", layerId: id, layerName: nameOf(id, was.layers[id]) });
+    for (const [id, entry] of Object.entries(v.layers)) {
+      const before = was.layers[id];
+      if (before === undefined && !editedById.has(id)) {
+        out.push({ kind: "added", layerId: id, layerName: nameOf(id, entry) });
+        continue;
+      }
+      for (const path of changedPaths(before ?? {}, entry))
+        out.push({ kind: "property", layerId: id, layerName: nameOf(id, entry), path,
+                   from: atPath(before, path), to: atPath(entry, path) });
+    }
+  }
+
   // A promote row's "from" is what the TARGET version currently resolves to:
   // the master layer under the working variant's own diff, if there is one.
   const variant = target === undefined ? undefined : variantOf(edited, target);
