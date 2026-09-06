@@ -1,5 +1,6 @@
 // MasterPicker.tsx — the head of the sidebar, above the Layers list: a plain
-// Select of THIS master, its variants, and New Variant. Nothing else.
+// Select of THIS master, its variants, and New Variant, plus the mode switch
+// underneath — This label | Template (docs/plans/template-switch.md, Task 5).
 //
 // It carries no file verbs and no library. Switching to a DIFFERENT master
 // is File → Open Master… (App.tsx's openMasterPicker), which previews the
@@ -23,6 +24,8 @@
 import {
   Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import type { EditMode } from "@/model/edit";
 import type { Master } from "@/model/layers";
 
 /** The foot row's sentinel (see the header note). No variant id can collide
@@ -40,6 +43,10 @@ export function MasterPicker(props: {
   /** Edit → New Variant: adds an empty variant to this master and switches it
    *  on for this label. */
   onNewVariant: () => void;
+  /** Where an edit lands: this label's overrides, or the master/version
+   *  (docs/plans/template-switch.md). */
+  mode: EditMode;
+  onMode: (mode: EditMode) => void;
 }): React.JSX.Element {
   /** "Lolev" on the base version, "Lolev / Collab" while editing one. */
   const versionName = props.master.variants.find((v) => v.id === props.version)?.name;
@@ -69,6 +76,27 @@ export function MasterPicker(props: {
           <SelectItem value={NEW_VARIANT}>New Variant</SelectItem>
         </SelectContent>
       </Select>
+      {/* The switch: where does the next edit land. Single-select; base-ui
+       *  reports a re-click of the pressed item as an empty group value,
+       *  which is ignored so a mode is always set — same rule as
+       *  LayerInspector's Segmented. `data-mode` on the root lets the frame
+       *  (a later task) style off the mode without its own state. */}
+      <ToggleGroup
+        aria-label="Editing"
+        data-mode={props.mode}
+        variant="outline" size="sm"
+        className="mt-2 w-full"
+        value={[props.mode]}
+        onValueChange={(v) => { const next = v[0] as EditMode | undefined; if (next) props.onMode(next); }}
+      >
+        <ToggleGroupItem value="label" className="flex-1">This label</ToggleGroupItem>
+        <ToggleGroupItem
+          value="template"
+          className="flex-1 data-[state=on]:bg-attention data-[state=on]:text-primary-foreground aria-pressed:bg-attention aria-pressed:text-primary-foreground"
+        >
+          Template
+        </ToggleGroupItem>
+      </ToggleGroup>
     </div>
   );
 }

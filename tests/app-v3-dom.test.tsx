@@ -259,3 +259,97 @@ it("Open Master's Continue rebinds onto the opened master", async () => {
     container.remove();
   }
 });
+
+// docs/plans/template-switch.md, Task 5 — the mode switch under the master
+// picker. Whether a position edit lands in the label, the master, or a
+// picked version's diff is read off the SAME evidence LayerInspector's own
+// override badges use (App.tsx's `overridden`): a ring dot means the label
+// overrode it, a filled dot means the working variant did, neither means it
+// landed in the base master. See src/model/edit.ts's `editTarget`/`patchLayers`
+// for the routing this exercises end to end.
+function openInspector(container: HTMLElement, layerId: string) {
+  const row = container.querySelector(`[data-layer-id="${layerId}"]`)!;
+  return act(async () => {
+    (row.querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement).click();
+  });
+}
+
+function editingItem(container: HTMLElement, text: string) {
+  const group = container.querySelector('[aria-label="Editing"]') as HTMLElement;
+  return Array.from(group.querySelectorAll("button"))
+    .find((b) => b.textContent?.trim() === text) as HTMLButtonElement;
+}
+
+// A controlled number input needs the native value setter, not a bare
+// `.value =` — React's change-detection tracks the property through it, the
+// same helper layerinspector-dom.test.tsx's `type()` uses.
+async function typeXField(value: string) {
+  const field = document.querySelector("#name-x") as HTMLInputElement;
+  const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value")!.set!;
+  await act(async () => {
+    setter.call(field, value);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  return field;
+}
+
+it("Template mode with no version routes a position edit to the master, not label.overrides", async () => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(createElement(DocumentEditor, {
+        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
+        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+      }));
+    });
+    await openInspector(container, "name");
+    await act(async () => { editingItem(container, "Template").click(); });
+    const field = await typeXField("300");
+    expect(field.value).toBe("300");
+    // Neither override source fired: the edit went straight to the master.
+    expect(document.querySelector('[aria-label="Reset X to this label\'s master value"]')).toBeNull();
+    expect(document.querySelector('[aria-label="Reset X to the master"]')).toBeNull();
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+  }
+});
+
+it("Template mode with a version selected routes a position edit to that variant's diff", async () => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(createElement(DocumentEditor, {
+        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
+        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+      }));
+    });
+    // Switch the working version to Collab through the master picker Select
+    // (portalled to document.body — see masterpicker-dom.test.tsx).
+    await act(async () => { (container.querySelector("#master-picker") as HTMLButtonElement).click(); });
+    const collabOption = Array.from(document.querySelectorAll<HTMLElement>("[role=option]"))
+      .find((o) => o.textContent?.trim().startsWith("Collab"))!;
+    await act(async () => { collabOption.click(); });
+    expect(container.querySelector("#master-picker")?.textContent).toContain("Collab");
+
+    await openInspector(container, "name");
+    await act(async () => { editingItem(container, "Template").click(); });
+    const field = await typeXField("300");
+    expect(field.value).toBe("300");
+    // The variant (filled-dot) badge fires — Collab's diff took the edit —
+    // and the label's own (ring) badge does not.
+    expect(document.querySelector('[aria-label="Reset X to the master"]')).not.toBeNull();
+    expect(document.querySelector('[aria-label="Reset X to this label\'s master value"]')).toBeNull();
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+  }
+});

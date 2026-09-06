@@ -544,6 +544,21 @@ export const MASTER_PATHS: ReadonlySet<string> =
  *  touches the label. */
 export type EditTarget = "label" | "master" | { variant: string };
 
+/** The switch under the master picker (docs/plans/template-switch.md, Task
+ *  5): `"label"` is the default, everyday mode; `"template"` is the mode
+ *  that turns edits into draft changes to the master (or the picked
+ *  version), gated by the Save Master review. */
+export type EditMode = "label" | "template";
+
+/** Collapses the mode/version pair App holds into the `EditTarget`
+ *  `patchLayers` takes: label mode ignores `version` entirely; template
+ *  mode pins to the picked version's diff, or goes whole to the base master
+ *  when no version is picked. */
+export function editTarget(mode: EditMode, version: string | null): EditTarget {
+  if (mode === "label") return "label";
+  return version === null ? "master" : { variant: version };
+}
+
 /** `target === "master" | { variant }`: write `patch` into the master alone.
  *  A layer in `master.layers` goes through `patchLayer` (or, pinned to a
  *  variant, `patchLayerIn` for that variant — it starts the variant's diff

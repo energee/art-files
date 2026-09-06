@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addLayer, addVariant, bindBelow, clearLabelOverride, clearOverride, clearValue,
-  masterDiff, mintLayerId, moveBy, moveLayers, overriddenPaths, removeLayer,
+  editTarget, masterDiff, mintLayerId, moveBy, moveLayers, overriddenPaths, removeLayer,
   removeVariant, renameVariant, setLabelOverride, setLayer, setLayerIn, setValue,
   toggleVariant, unbind, whereLayerLives,
 } from "../src/model/edit";
@@ -484,5 +484,24 @@ describe("resizeBy", () => {
   it("locked layers and empty boxes return {}", () => {
     expect(resizeBy(byId(lolevMaster(), "warning"), box, BR, 5, 5, false)).toEqual({});
     expect(resizeBy(byId(lolevMaster(), "qr"), { w: 0, h: 0 }, BR, 5, 5, false)).toEqual({});
+  });
+});
+
+// docs/plans/template-switch.md, Task 5 — the mode/version pair collapses to
+// the EditTarget patchLayers takes: "label" mode never looks at version;
+// "template" mode with a version picked pins to that variant's diff;
+// "template" mode on the base master goes whole to "master".
+describe("editTarget", () => {
+  it("is \"label\" in label mode, whatever version is selected", () => {
+    expect(editTarget("label", null)).toBe("label");
+    expect(editTarget("label", "collab")).toBe("label");
+  });
+
+  it("is the picked variant in template mode with a version selected", () => {
+    expect(editTarget("template", "collab")).toEqual({ variant: "collab" });
+  });
+
+  it("is \"master\" in template mode with no version selected", () => {
+    expect(editTarget("template", null)).toBe("master");
   });
 });

@@ -33,6 +33,7 @@ afterEach(() => {
 function renderPicker(props: Partial<Parameters<typeof MasterPicker>[0]> = {}) {
   const full: Parameters<typeof MasterPicker>[0] = {
     master: lolevMaster(), onNewVariant: vi.fn(), version: null, onVersion: vi.fn(),
+    mode: "label", onMode: vi.fn(),
     ...props,
   };
   act(() => { root.render(createElement(MasterPicker, full)); });
@@ -90,5 +91,53 @@ describe("MasterPicker", () => {
     openMenu();
     act(() => { itemStarting("New Variant")!.click(); });
     expect(onNewVariant).toHaveBeenCalled();
+  });
+});
+
+// The switch (docs/plans/template-switch.md, Task 5): This label / Template,
+// under the Select. Single-select ToggleGroup; ignore a re-click of the
+// already-active item (base-ui reports that as an empty group value) so a
+// mode is always set — the same rule LayerInspector's Segmented follows.
+describe("the mode switch", () => {
+  const editingGroup = () => container.querySelector('[aria-label="Editing"]') as HTMLElement;
+  const item = (text: string) =>
+    Array.from(editingGroup().querySelectorAll("button"))
+      .find((b) => b.textContent?.trim() === text) as HTMLButtonElement;
+
+  it("renders both items", () => {
+    renderPicker();
+    expect(item("This label")).toBeDefined();
+    expect(item("Template")).toBeDefined();
+  });
+
+  it("reflects the label mode as pressed on \"This label\"", () => {
+    renderPicker({ mode: "label" });
+    expect(item("This label").getAttribute("aria-pressed")).toBe("true");
+    expect(item("Template").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("reflects template mode as pressed on \"Template\"", () => {
+    renderPicker({ mode: "template" });
+    expect(item("Template").getAttribute("aria-pressed")).toBe("true");
+    expect(item("This label").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("clicking Template calls onMode(\"template\")", () => {
+    const onMode = vi.fn();
+    renderPicker({ mode: "label", onMode });
+    act(() => { item("Template").click(); });
+    expect(onMode).toHaveBeenCalledWith("template");
+  });
+
+  it("clicking the active item does not call onMode", () => {
+    const onMode = vi.fn();
+    renderPicker({ mode: "label", onMode });
+    act(() => { item("This label").click(); });
+    expect(onMode).not.toHaveBeenCalled();
+  });
+
+  it("carries data-mode on the root, for later styling", () => {
+    renderPicker({ mode: "template" });
+    expect(editingGroup().getAttribute("data-mode")).toBe("template");
   });
 });

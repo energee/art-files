@@ -50,8 +50,8 @@ import type {
 import { uppercaseOf } from "@/model/layers";
 import type { DeepPartial } from "@/model/merge";
 import {
-  addLayer, addVariant, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, labelOverriddenPaths,
-  masterChanges, masterDiff, moveBy, showVersion, snappedDx, moveLayers, resizeBy, type ResizeHandle, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue,
+  addLayer, addVariant, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, editTarget, labelOverriddenPaths,
+  masterChanges, masterDiff, moveBy, showVersion, snappedDx, moveLayers, resizeBy, type ResizeHandle, type EditMode, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue,
   whereLayerLives,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
@@ -446,6 +446,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   // that created it. Last enabled wins, the same rule resolveLayers and the
   // row badges use.
   const version = label.enabledVariants.at(-1) ?? null;
+  /** THE SWITCH (docs/plans/template-switch.md, Task 5): where an edit
+   *  lands. Per tab, not persisted — a reopened project starts in label
+   *  mode. Collapsed with `version` into an `EditTarget` at the one
+   *  `patchLayers` call below (editTarget). */
+  const [mode, setMode] = useState<EditMode>("label");
   /** Which save the review dialog is standing in front of, or null. */
   const [pendingSave, setPendingSave] = useState<{ as: boolean } | null>(null);
   /** File → Open Master…: the confirm dialog standing in front of a rebind
@@ -704,7 +709,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** patch for several layers in ONE doc edit (one clone, one undo entry) —
    *  a group drag patches every selected layer per pointermove. */
   const patchMany = (entries: [string, DeepPartial<Layer>][], coalesce?: boolean) =>
-    edit((d) => patchLayers(d, entries), coalesce);
+    edit((d) => patchLayers(d, entries, editTarget(mode, version)), coalesce);
   /** A layer's CONTENT: always a fill value into the label, for any layer. */
   const setContent = (layer: Layer, value: LayerValue, coalesce?: boolean) =>
     edit((d) => setContentIn(d, layer.id, value), coalesce);
@@ -1897,7 +1902,8 @@ export const DocumentEditor = memo(function DocumentEditor({
           <SidebarContent>
             {/* The master picker, then the ONE Layers list (spec: UI). */}
             <MasterPicker master={master} onNewVariant={onNewVariant}
-              version={version} onVersion={switchVersion} />
+              version={version} onVersion={switchVersion}
+              mode={mode} onMode={setMode} />
             <LayerList rows={rows} selected={selected}
               onSelect={(id, mods) => pick(id, { shift: mods.shift, toggle: mods.meta })}
               onToggle={(id, prop, value) => patch(id, { [prop]: value })}
