@@ -720,7 +720,7 @@ function ChoiceField(props: TextEditorProps & { choices: Choice[] }) {
           onCommit={(text) => onChange([{ ...base, text }])} />
         {suffix && <span className="shrink-0 text-xs text-muted-foreground">{suffix}</span>}
       </div>
-      {!check.ok && <p className="text-xs text-destructive">{check.error}</p>}
+      {!check.ok && <p className="text-xs text-warning-text">{check.error}</p>}
     </div>
   );
 }
@@ -752,7 +752,7 @@ function PlainField(props: TextEditorProps & { input: "number" | "code" }) {
         />
         {suffix && <span className="shrink-0 text-xs text-muted-foreground">{suffix}</span>}
       </div>
-      {!check.ok && <p className="text-xs text-destructive">{check.error}</p>}
+      {!check.ok && <p className="text-xs text-warning-text">{check.error}</p>}
     </div>
   );
 }

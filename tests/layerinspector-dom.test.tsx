@@ -321,6 +321,12 @@ describe("LayerInspector override badges", () => {
     expect(onReset).toHaveBeenCalledWith("style.fill", "variant");
   });
 
+  it("colours the override mark info, not primary (docs/plans/template-switch.md, Task 3)", () => {
+    render(text(), { overridden: from(["style.fill"]) });
+    const badge = byLabel("Reset Fill to the master")!;
+    expect(badge.className).toContain("text-info-text");
+  });
+
   it("a bound y reports whichever leaf path the parent marked", () => {
     const { onReset } = render(
       text({ y: { below: "description", gap: 5 } }), { overridden: from(["y.gap"]) },

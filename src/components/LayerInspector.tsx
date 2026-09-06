@@ -142,7 +142,7 @@ function Badge(props: {
       {variantPath && (
         <button
           type="button"
-          className="size-2 shrink-0 rounded-full bg-primary transition-transform hover:scale-125"
+          className="size-2 shrink-0 rounded-full bg-current text-info-text transition-transform hover:scale-125"
           title={`${who} sets ${props.label} — reset it in the master`}
           aria-label={`Reset ${props.label} to the master`}
           onClick={() => props.onReset(variantPath, "variant")}
@@ -151,7 +151,7 @@ function Badge(props: {
       {labelPath && (
         <button
           type="button"
-          className="size-2 shrink-0 rounded-full border border-primary transition-transform hover:scale-125"
+          className="size-2 shrink-0 rounded-full border border-current text-info-text transition-transform hover:scale-125"
           title={`This label sets ${props.label} — reset it to the master`}
           aria-label={`Reset ${props.label} to this label's master value`}
           onClick={() => props.onReset(labelPath, "label")}
@@ -702,7 +702,7 @@ function BarcodeGeometry(props: Ctx & { layer: BarcodeLayer }) {
           onChange={(moduleW) => set({ moduleW })}
         />
       </Row>
-      {warning && <p className="text-[11px] text-destructive">{warning}</p>}
+      {warning && <p className="text-[11px] text-warning-text">{warning}</p>}
       <Row badge={badge(["h"], "Height")}>
         <ScrubField
           id={`${id}-h`} label="Height" unit="pt" value={layer.h}

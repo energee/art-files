@@ -117,7 +117,7 @@ export function MasterSaveReview(props: {
                 const row = `${c.kind}-${c.layerId}${c.path === undefined ? "" : `-${c.path}`}`;
                 return (
                 <p key={row} className="mt-1 flex items-center gap-2">
-                  <span className={c.kind === "removed" ? "text-destructive" : "text-muted-foreground"}>
+                  <span className={c.kind === "removed" ? "text-destructive-text" : "text-muted-foreground"}>
                     {rowText(c)}
                   </span>
                 </p>

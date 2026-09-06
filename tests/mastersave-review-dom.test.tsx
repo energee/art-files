@@ -78,6 +78,14 @@ describe("MasterSaveReview", () => {
     act(() => { button("Save Master").click(); });
     expect(p.onConfirm).toHaveBeenCalled();
   });
+
+  it("has exactly one primary action (docs/plans/template-switch.md, Task 3)", () => {
+    render();
+    const primary = Array.from(document.querySelectorAll<HTMLElement>("*"))
+      .filter((el) => (el.getAttribute("class") ?? "").split(" ").includes("bg-primary"));
+    expect(primary).toHaveLength(1);
+    expect(primary[0].textContent?.trim()).toBe("Save Master");
+  });
 });
 
 // docs/plans/choice-input.md, Task 7. A vocabulary is one leaf to leafPaths,

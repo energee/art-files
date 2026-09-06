@@ -180,13 +180,25 @@ const contentPatch = (kind: LayerKind, value: LayerValue): DeepPartial<Layer> =>
   kind === "text" ? { lines: value as TextLine[] }
     : kind === "image" ? { asset: value as string } : { value: value as string };
 
-/** Chrome-level error, sized for the menu bar: the shadcn Alert (the app's
- *  one notification surface — see ui/alert.tsx) compacted to fit inline
- *  beside the menus rather than as a full-width block. */
-function HeaderAlert({ children }: { children: React.ReactNode }) {
+/** Chrome-level error (or, with `tone="warning"`, a resolveLayers validation
+ *  warning), sized for the menu bar: the shadcn Alert (the app's one
+ *  notification surface — see ui/alert.tsx) compacted to fit inline beside
+ *  the menus rather than as a full-width block. A warning uses `variant`
+ *  "default" plus its own colour classes rather than the destructive variant,
+ *  which paints its descendant text through a selector on Alert itself that
+ *  a className override can't reach. */
+function HeaderAlert({ children, tone = "destructive" }: { children: React.ReactNode; tone?: "destructive" | "warning" }) {
   return (
-    <Alert variant="destructive" className="w-auto border-destructive/50 px-2 py-0.5">
-      <AlertDescription className="text-xs">{children}</AlertDescription>
+    <Alert
+      variant={tone === "warning" ? "default" : "destructive"}
+      className={cn(
+        "w-auto px-2 py-0.5",
+        tone === "warning" ? "border-warning/50 bg-warning-soft" : "border-destructive/50",
+      )}
+    >
+      <AlertDescription className={cn("text-xs", tone === "warning" && "text-warning-text")}>
+        {children}
+      </AlertDescription>
     </Alert>
   );
 }
@@ -1823,7 +1835,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             aria-invalid={errors[layer.id] ? true : undefined}
             onChange={(e) => setContent(layer, e.target.value, true)} />
         )}
-        {errors[layer.id] && <p className="text-xs text-destructive">{errors[layer.id]}</p>}
+        {errors[layer.id] && <p className="text-xs text-destructive-text">{errors[layer.id]}</p>}
         {layer.format !== undefined && (
           <p className="truncate font-mono text-[11px] text-muted-foreground" title={layer.value}>
             → {layer.value}
@@ -1912,7 +1924,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           {blocked && <HeaderAlert>{blockedWhy}</HeaderAlert>}
           {loadError && <HeaderAlert>{loadError}</HeaderAlert>}
           {(buildError || renderError) && <HeaderAlert>{buildError || renderError}</HeaderAlert>}
-          {resolveWarnings.length > 0 && <HeaderAlert>{resolveWarnings.join(" · ")}</HeaderAlert>}
+          {resolveWarnings.length > 0 && <HeaderAlert tone="warning">{resolveWarnings.join(" · ")}</HeaderAlert>}
           {/* Open Master's fallback — see masterInput/openMasterPicker. */}
           <input ref={masterInput} type="file" accept={MASTER_EXT} hidden
             onChange={(e) => {

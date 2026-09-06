@@ -78,7 +78,7 @@ export function FileDrop(props: {
         )}
         <input {...getInputProps()} />
       </div>
-      {props.error && <p className="mt-1 text-xs text-destructive">{props.error}</p>}
+      {props.error && <p className="mt-1 text-xs text-destructive-text">{props.error}</p>}
     </div>
   );
 }
