@@ -15,12 +15,19 @@ import { parseRuns } from "../description";
 
 type Result = { layer: Layer } | { error: string };
 
-/** One value into one layer, validated per kind. A string on a
- *  text layer is one plain line in the layer's style — what the number and
- *  code widgets write. */
+/** A stored value in the shape the LAYER holds it: a string on a text layer
+ *  is one plain line in the layer's style — what the number and code widgets
+ *  write. The inverse of `valueOf`, and the one spelling of the widening, so
+ *  the Save Master review diffs a value against exactly what the canvas would
+ *  resolve from it (edit.ts's masterChanges). */
+export const widenValue = (l: Layer, v: LayerValue): LayerValue =>
+  l.kind === "text" && typeof v === "string"
+    ? [{ text: v, fill: l.style.fill, layer: l.style.layer }] : v;
+
+/** One value into one layer, validated per kind. */
 function applyValue(l: Layer, v: LayerValue): Result {
   if (l.kind === "text") {
-    const lines = typeof v === "string" ? [{ text: v, fill: l.style.fill, layer: l.style.layer }] : v;
+    const lines = widenValue(l, v);
     if (!Array.isArray(lines)) return { error: "Expected text." };
     if (l.input) {
       // ponytail: validateField still speaks FieldDecl; build one on the fly.
@@ -127,3 +134,9 @@ export function resolveLayers(
 /** A layer's content, in the shape a .label stores it. */
 export const valueOf = (layer: Layer): LayerValue =>
   layer.kind === "text" ? layer.lines : layer.kind === "image" ? layer.asset : layer.value;
+
+/** The dotted path `valueOf` reads — what a value-sourced promote row in the
+ *  Save Master review writes into the master. Kept beside valueOf so the two
+ *  switches cannot drift. */
+export const valuePath = (layer: Layer): string =>
+  layer.kind === "text" ? "lines" : layer.kind === "image" ? "asset" : "value";

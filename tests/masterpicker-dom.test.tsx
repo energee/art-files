@@ -47,7 +47,8 @@ function renderPicker(props: Partial<Parameters<typeof MasterPicker>[0]> = {}) {
     master: lolevMaster(), label,
     library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery" } },
     resolve: vi.fn().mockResolvedValue({ master: otherMaster, assets: {} }),
-    onMaster: vi.fn(), onNewVariant: vi.fn(), version: null, onVersion: vi.fn(),
+    onMaster: vi.fn(), onNewVariant: vi.fn().mockReturnValue("variant-2"),
+    onRenameVersion: vi.fn(), onRemoveVersion: vi.fn(), onSaveMaster: vi.fn(), masterDirty: true, version: null, onVersion: vi.fn(),
     ...props,
   };
   act(() => { root.render(createElement(MasterPicker, full)); });
@@ -143,6 +144,39 @@ describe("MasterPicker", () => {
     expect(onNewVariant).toHaveBeenCalled();
     expect(resolve).not.toHaveBeenCalled();
     expect(onMaster).not.toHaveBeenCalled();
+  });
+
+  it("opens a name field on the new variant and commits the rename", () => {
+    const onRenameVersion = vi.fn();
+    renderPicker({ onRenameVersion });
+    openMenu();
+    act(() => { itemStarting("New Variant")!.click(); });
+    const input = container.querySelector('input[aria-label="Variant name"]') as HTMLInputElement;
+    expect(input).toBeTruthy();
+    input.value = "  Collab  ";
+    act(() => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    expect(onRenameVersion).toHaveBeenCalledWith("variant-2", "Collab");
+  });
+
+  it("deletes the variant being edited from the picker", () => {
+    const onRemoveVersion = vi.fn();
+    renderPicker({ version: "collab", onRemoveVersion });
+    act(() => { (container.querySelector("#variant-remove") as HTMLButtonElement).click(); });
+    expect(onRemoveVersion).toHaveBeenCalledWith("collab");
+  });
+
+  it("opens the Save Master review from the picker, for the named version", () => {
+    const onSaveMaster = vi.fn();
+    renderPicker({ version: "collab", onSaveMaster });
+    const save = container.querySelector("#variant-save") as HTMLButtonElement;
+    expect(save.textContent).toContain("Variant");
+    act(() => { save.click(); });
+    expect(onSaveMaster).toHaveBeenCalled();
+  });
+
+  it("cannot save when nothing would be written", () => {
+    renderPicker({ masterDirty: false });
+    expect((container.querySelector("#variant-save") as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("offers nothing but the library — file verbs live in the File menu", () => {

@@ -5,10 +5,14 @@
 // confirmation the spec's no-dialogs rule permits, because a rebind is not a
 // single undoable canvas act.
 //
-// It carries no file verbs. Open Master… lives in the File menu, and forking
-// the template is File → Save Master As…, which mints a new master id, rebinds
-// this document onto it and actually writes the file — the old "Duplicate as
-// new master…" did all of that except the writing.
+// The file verbs stay in the File menu — Open Master…, and forking the
+// template with File → Save Master As…, which mints a new master id, rebinds
+// this document onto it and actually writes the file (the old "Duplicate as
+// new master…" did all of that except the writing). The ONE exception is
+// "Save to Master…/Variant…" below: a save writes into whichever version this
+// Select names, so the picker is where you can see the target while choosing
+// to write it. It runs the File menu's own `master-save` command — same
+// review dialog, same dirty gate, no second path.
 //
 // The menu answers one question — WHICH VERSION AM I EDITING — in three
 // registers (docs/plans/label-first-editing.md, Task 12):
@@ -23,6 +27,7 @@
 // Only the middle one resolves a file, so the two sentinels are intercepted
 // in onValueChange before any rebind is considered.
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { rebindLabel } from "@/model/rebindLayers";
 import type { MasterAssets } from "@/model/files";
 import type { LabelFile, Master } from "@/model/layers";
@@ -70,15 +75,27 @@ export function MasterPicker(props: {
   version: string | null;
   /** Switch the working version. Null is the base master. */
   onVersion: (id: string | null) => void;
-  /** Edit → New Variant: adds an empty variant to this master and switches it
-   *  on for this label. */
-  onNewVariant: () => void;
+  /** Edit → New Variant: adds an empty variant to this master, switches it
+   *  on for this label, and returns its id so the inline name field can open
+   *  on it — the one moment a fresh variant is worth naming. */
+  onNewVariant: () => string;
+  /** Commits the inline rename of a variant (trimmed, non-empty). */
+  onRenameVersion: (id: string, name: string) => void;
+  /** Deletes a variant from the master. Undoable, so no confirm. */
+  onRemoveVersion: (id: string) => void;
+  /** File → Save Master, next to the version's own verbs: opens the review
+   *  that writes into whichever version the Select names. */
+  onSaveMaster: () => void;
+  /** Whether a save would have anything to write (App's masterDirty). */
+  masterDirty: boolean;
 }): React.JSX.Element {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<
     { target: Master; assets: MasterAssets; dropped: string[]; disabledVariants: string[] } | null
   >(null);
   const [error, setError] = useState("");
+  /** The variant whose name is being edited inline, or null. */
+  const [naming, setNaming] = useState<string | null>(null);
 
   const closeAll = () => {
     setPreview(null);
@@ -98,11 +115,23 @@ export function MasterPicker(props: {
     setPreview({ target: r.master, assets: r.assets, dropped: dropped.values, disabledVariants: dropped.variants });
   };
 
+  /** The working version, narrowed once so the verb buttons below need no
+   *  non-null assertion in their handlers. */
+  const version = props.version;
   /** "Lolev" on the base version, "Lolev / Collab" while editing one. */
-  const versionName = props.master.variants.find((v) => v.id === props.version)?.name;
+  const versionName = props.master.variants.find((v) => v.id === version)?.name;
   const editing = versionName ? `${props.master.name} / ${versionName}` : props.master.name;
   /** Every OTHER master in the library — this one already heads the menu. */
   const others = Object.entries(props.library).filter(([id]) => id !== props.master.id);
+
+  /** Enter or blur on the name field: a trimmed non-empty change lands, an
+   *  empty one just closes — the auto "Variant N" name stands. `id` comes
+   *  from the render that opened the field, so there is no null case. */
+  const commitName = (id: string, value: string) => {
+    const next = value.trim();
+    if (next) props.onRenameVersion(id, next);
+    setNaming(null);
+  };
 
   const commit = () => {
     if (!preview) return;
@@ -118,7 +147,7 @@ export function MasterPicker(props: {
         onValueChange={(id) => {
           if (!id) return;
           closeAll();
-          if (id === NEW_VARIANT) { props.onNewVariant(); return; }
+          if (id === NEW_VARIANT) { setNaming(props.onNewVariant()); return; }
           if (id.startsWith(VERSION)) { props.onVersion(id.slice(VERSION.length)); return; }
           // The current master's own row means "the base version", not a
           // rebind onto itself.
@@ -142,6 +171,41 @@ export function MasterPicker(props: {
           <SelectItem value={NEW_VARIANT}>New Variant</SelectItem>
         </SelectContent>
       </Select>
+      {naming !== null ? (
+        <input
+          autoFocus
+          aria-label="Variant name"
+          className="mt-1 w-full rounded-sm border border-sidebar-border bg-transparent px-2 py-1 text-xs"
+          defaultValue={props.master.variants.find((v) => v.id === naming)?.name ?? ""}
+          onBlur={(e) => commitName(naming, e.target.value)}
+          onKeyDown={(e) => {
+            // Keystrokes here are the field's alone — the sidebar's own
+            // shortcuts must not see them.
+            e.stopPropagation();
+            if (e.key === "Enter") commitName(naming, e.currentTarget.value);
+            if (e.key === "Escape") setNaming(null);
+          }}
+        />
+      ) : (
+        <div className="mt-1 flex gap-1.5">
+          {version !== null && (
+            <>
+              <Button type="button" id="variant-rename" size="xs" variant="ghost"
+                onClick={() => setNaming(version)}>
+                Rename
+              </Button>
+              <Button type="button" id="variant-remove" size="xs" variant="destructive"
+                onClick={() => props.onRemoveVersion(version)}>
+                Delete
+              </Button>
+            </>
+          )}
+          <Button type="button" id="variant-save" size="xs" variant="ghost"
+            disabled={!props.masterDirty} onClick={props.onSaveMaster}>
+            Save to {version === null ? "Master" : "Variant"}…
+          </Button>
+        </div>
+      )}
       {resolvingId && <p role="status" className="mt-1 text-xs text-muted-foreground">Opening master…</p>}
       {error && (
         <p id="master-picker-error" className="mt-1 px-1 text-[11px] text-destructive">{error}</p>

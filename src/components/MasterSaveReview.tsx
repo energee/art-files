@@ -7,10 +7,12 @@
 //     property) are already in the edited master. They are checked and
 //     DISABLED — unchecking one would be an undo, which is Cmd-Z's job, not a
 //     save option.
-//   * PROMOTE rows are the label's own overrides, offered for folding into the
-//     template. Off by default, because a label's nudge is the label's until
-//     someone says otherwise. This dialog is the only promotion path — the
-//     inspector's override badge resets, it never promotes.
+//   * PROMOTE rows are the label's own deviations — its overrides (design) and
+//     its values (content, on the layer's own `lines` / `asset` / `value`
+//     path) — offered for folding into the template. Off by default, because
+//     a label's nudge is the label's until someone says otherwise. This
+//     dialog is the only promotion path — the inspector's override badge
+//     resets, it never promotes.
 //
 // Presentational: it reports which promote rows were ticked and lets the
 // caller do the writing (edit.ts's applyPromotions).
