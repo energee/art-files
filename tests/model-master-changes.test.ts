@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { applyPromotions, masterChanges, showVersion, addLayer, addVariant, removeVariant, renameVariant, setLayerIn, moveLayers, patchLayer, removeLayer, setLabelOverride } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
+import { resolveLayers } from "../src/model/resolveLayers";
 import type { LabelFile, Master } from "../src/model/layers";
 
 const newLabel = (master: Master): LabelFile =>
@@ -201,5 +202,36 @@ describe("showVersion", () => {
   it("is a no-op when the version does not change", () => {
     const label = on(["collab"]);
     expect(showVersion(label, "collab", "collab")).toBe(label);
+  });
+});
+
+// --- A promoted CLEAR keeps its tombstone in a variant -----------------------
+// Deleting a key from a variant's diff means "inherit from the master", which
+// is the opposite of what clearing an inherited property asked for. Only the
+// base master, which owns the property outright, may clear by deletion.
+describe("promoting an explicit unset", () => {
+  const collabOn = (base: Master): LabelFile =>
+    ({ ...newLabel(base), enabledVariants: ["collab"] });
+
+  it("keeps a null tombstone when the target is a variant", () => {
+    const base = lolevMaster();
+    const had = (base.layers.find((l) => l.id === "warning") as { width: number }).width;
+    expect(typeof had).toBe("number");
+    const label = setLabelOverride(collabOn(base), "warning", { width: undefined });
+    expect(label.overrides?.warning).toEqual({ width: null });
+
+    const r = applyPromotions(base, label, masterChanges(base, base, label, "collab"), "collab");
+    expect(r.master.variants.find((v) => v.id === "collab")!.layers.warning).toEqual({ width: null });
+    expect((r.master.layers.find((l) => l.id === "warning") as { width: number }).width).toBe(had);
+    const seen = resolveLayers(r.master, ["collab"], {}, r.label.overrides, { keepDisabled: true })
+      .layers.find((l) => l.id === "warning") as { width?: number };
+    expect(seen.width).toBeUndefined();
+  });
+
+  it("still clears by deletion when the target is the base master", () => {
+    const base = lolevMaster();
+    const label = setLabelOverride(newLabel(base), "warning", { width: undefined });
+    const r = applyPromotions(base, label, masterChanges(base, base, label), undefined);
+    expect(r.master.layers.find((l) => l.id === "warning")).not.toHaveProperty("width");
   });
 });

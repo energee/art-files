@@ -400,14 +400,25 @@ describe("LayerInspector fill vocabulary", () => {
     });
   });
 
-  it("appends an empty choice, and drops the title when it is blanked", () => {
+  // An appended choice must arrive VALID: parseMaster rejects a blank value
+  // ("has a choice with no value") and App discards the whole edit, so an
+  // empty new row would never reach the screen to be typed into.
+  it("appends a usable choice, and drops the title when it is blanked", () => {
     const { onChange } = render(text({ choices: STYLES }));
     click(byLabel("Add choice")!);
-    expect(onChange).toHaveBeenLastCalledWith({ choices: [...STYLES, { value: "" }] });
+    expect(onChange).toHaveBeenLastCalledWith({ choices: [...STYLES, { value: "New choice" }] });
 
     type($("#name-choice-1-title") as HTMLInputElement, "");
     expect(onChange).toHaveBeenLastCalledWith({
       choices: [STYLES[0], { value: "Hazy India Pale Ale" }],
+    });
+  });
+
+  it("numbers each further choice so no two arrive with the same value", () => {
+    const { onChange } = render(text({ choices: [{ value: "New choice" }] }));
+    click(byLabel("Add choice")!);
+    expect(onChange).toHaveBeenLastCalledWith({
+      choices: [{ value: "New choice" }, { value: "New choice 2" }],
     });
   });
 
@@ -426,7 +437,7 @@ describe("LayerInspector fill vocabulary", () => {
     expect(($("#barcode-choice-0-title") as HTMLInputElement).value).toBe("Tier 1");
     click(byLabel("Add choice")!);
     expect(onChange).toHaveBeenLastCalledWith({
-      choices: [{ title: "Tier 1", value: "850051366040" }, { value: "" }],
+      choices: [{ title: "Tier 1", value: "850051366040" }, { value: "New choice" }],
     });
   });
 });

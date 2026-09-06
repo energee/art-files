@@ -324,6 +324,46 @@ export function labelOverriddenPaths(label: LabelFile, id: string): Set<string> 
   return out;
 }
 
+/** The reset badges for one inspected layer, kept APART by source: `variant`
+ *  paths live in the master file and apply to every label with that variant
+ *  on; `label` paths are this label's alone. Merged into one Set they made the
+ *  reset gesture ambiguous — the same click could clear your own edit or
+ *  rewrite the shipped variant — so the badge names its source and passes it
+ *  back to the reset. `variantName` names the variant so it can say whose.
+ *
+ *  A variant-ADDED layer has no variant-vs-master baseline to diff, so it
+ *  shows no variant badge; its LABEL overrides are still the label's own and
+ *  still resettable, exactly like a base layer's. Throws for an unknown id
+ *  (whereLayerLives), so callers pass a layer the document has. */
+export interface OverrideBadges {
+  variant: Set<string>;
+  label: Set<string>;
+  variantName?: string;
+}
+
+export function overrideBadges(master: Master, label: LabelFile, id: string): OverrideBadges {
+  const variant = new Set<string>();
+  let variantName: string | undefined;
+  if (whereLayerLives(master, id) === "master") {
+    for (const v of master.variants) {
+      if (!label.enabledVariants.includes(v.id)) continue;
+      for (const p of overriddenPaths(master, v.id, id)) { variant.add(p); variantName = v.name; }
+    }
+  }
+  return { variant, label: labelOverriddenPaths(label, id), variantName };
+}
+
+/** Rebinds the label onto `master`, which is what adopting a saved master
+ *  must do: Save Master As FORKS — the written template gets a fresh id — and
+ *  the open label has to follow it. Left behind, the label keeps pointing at
+ *  the master it was forked FROM, so saving the project persists that
+ *  reference and reopening loads the original template instead of the fork.
+ *  Returns the same object when it already points there, so a plain save
+ *  stays the no-op edit it was. */
+export function adoptMaster(label: LabelFile, master: Master): LabelFile {
+  return label.masterId === master.id ? label : { ...label, masterId: master.id };
+}
+
 /** Is an image asset id still reachable from the document: an image layer's
  *  `asset` in the master, any variant's diff or the label's overrides, or a
  *  label value. What App checks before releasing a replaced/cleared asset's
@@ -771,9 +811,17 @@ export function applyPromotions(
     if (c.kind !== "promote" || c.path === undefined) return acc;
     // An own-property `undefined` is patchLayer's "delete this key"; null is
     // setLabelOverride's wire spelling of the same thing, and only ever sits
-    // at the top level (see there), so only a top-level null converts.
+    // at the top level (see there).
+    //
+    // Which of the two a clear becomes depends on the TARGET. The base master
+    // owns the property outright, so deleting the key is the clear. A variant
+    // only holds a diff, where a missing key means "inherit from the master" —
+    // deleting there would hand back the very value the clear removed — so the
+    // variant keeps the null tombstone and resolveLayers' applyDiff strips the
+    // key after merging.
+    const clears = c.to === null && !c.path.includes(".");
     const patch: Record<string, unknown> = {};
-    setPath(patch, c.path, c.to === null && !c.path.includes(".") ? undefined : c.to);
+    setPath(patch, c.path, clears && target === undefined ? undefined : c.to);
     return {
       master: target === undefined
         ? patchLayer(acc.master, c.layerId, patch as LayerPatch)

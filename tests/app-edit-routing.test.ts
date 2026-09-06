@@ -6,7 +6,9 @@
 // without mounting App — App's `patch` / `patchMany` / `setContent` are thin
 // wrappers over it.
 import { describe, expect, it } from "vitest";
-import { patchLayers, setContentIn, type Doc } from "../src/model/edit";
+import {
+  adoptMaster, overrideBadges, patchLayers, setContentIn, setLabelOverride, setLayerIn, type Doc,
+} from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { resolveLayers } from "../src/model/resolveLayers";
 import type { LabelFile, Master, TextLayer } from "../src/model/layers";
@@ -141,5 +143,54 @@ describe("the vocabulary is part of the fill contract", () => {
     expect(d.label.overrides?.styleLine).toEqual({ x: 300 });
     expect((d.master.layers.find((l) => l.id === "styleLine") as { choices?: unknown }).choices)
       .toEqual(choices);
+  });
+});
+
+// --- Reset badges, split by source ------------------------------------------
+// The inspector shows two kinds of badge and they must stay apart: a `variant`
+// path lives in the master file and belongs to every label with that variant
+// on; a `label` path is this label's alone. A variant-ADDED layer has no
+// variant-vs-master baseline to diff, but a label can still override it, and
+// that override needs its reset badge like any other.
+describe("overrideBadges", () => {
+  const collabOn = (m: Master): LabelFile => ({ ...newLabel(m), enabledVariants: ["collab"] });
+
+  it("reports the label's own overrides on a variant-added layer", () => {
+    const m = lolevMaster();
+    const label = setLabelOverride(collabOn(m), "collabCenter", { x: 120 });
+    const b = overrideBadges(m, label, "collabCenter");
+    expect([...b.label]).toEqual(["x"]);
+    expect([...b.variant]).toEqual([]);
+    expect(b.variantName).toBeUndefined();
+  });
+
+  it("still splits variant and label paths on a master layer", () => {
+    const m = setLayerIn(lolevMaster(), "collab", "name", { x: 222 });
+    const label = setLabelOverride(collabOn(m), "name", { y: 9 });
+    const b = overrideBadges(m, label, "name");
+    expect([...b.variant]).toEqual(["x"]);
+    expect([...b.label]).toEqual(["y"]);
+    expect(b.variantName).toBe("Collab");
+  });
+
+  it("ignores a variant that is not switched on", () => {
+    const m = setLayerIn(lolevMaster(), "collab", "name", { x: 222 });
+    const b = overrideBadges(m, newLabel(m), "name");
+    expect([...b.variant]).toEqual([]);
+  });
+});
+
+// --- Save Master As forks, and the document must follow ---------------------
+describe("adoptMaster", () => {
+  it("rebinds the label onto a forked master's new id", () => {
+    const m = lolevMaster();
+    const forked = { ...m, id: "master-fork1" };
+    expect(adoptMaster(newLabel(m), forked).masterId).toBe("master-fork1");
+  });
+
+  it("returns the same label object when the id already matches", () => {
+    const m = lolevMaster();
+    const label = newLabel(m);
+    expect(adoptMaster(label, m)).toBe(label);
   });
 });

@@ -460,6 +460,15 @@ function Vocabulary(props: Ctx & { layer: Layer }) {
   /** Writes the list back, dropping the key entirely once it is empty so
    *  absent and [] stay one state (parseMaster normalises the same way). */
   const put = (next: Choice[]) => set({ choices: next.length ? next : undefined });
+  /** A new row must arrive with a VALID value. parseMaster rejects a blank one
+   *  ("has a choice with no value") and App drops the whole failed edit, so an
+   *  empty row would never survive the round trip to be typed into. Numbered
+   *  on collision, like addVariant's ids, so two clicks give two rows. */
+  const fresh = (): string => {
+    let value = "New choice";
+    for (let n = 2; choices.some((c) => c.value === value); n++) value = `New choice ${n}`;
+    return value;
+  };
   const edit = (i: number, patch: Partial<Choice>) =>
     put(choices.map((c, j) => {
       if (j !== i) return c;
@@ -504,7 +513,7 @@ function Vocabulary(props: Ctx & { layer: Layer }) {
           <button
             type="button" aria-label="Add choice"
             className="rounded-sm px-1.5 py-1 text-xs text-muted-foreground hover:bg-accent"
-            onClick={() => put([...choices, { value: "" }])}>
+            onClick={() => put([...choices, { value: fresh() }])}>
             + Add choice
           </button>
         </div>

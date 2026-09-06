@@ -70,6 +70,19 @@ binary-impacting change gets its own version before it is merged.
   honoured it.
 - The QR URL slug and the export filename now share one machine-name rule
   instead of two copies that could drift.
+- **Add choice** now adds a usable row. It used to submit a blank value, which
+  the master rejects, so the whole edit was discarded and no row ever appeared.
+  New rows arrive named "New choice", numbered when that name is taken.
+- **Save Master As** now rebinds the open label onto the fork it just wrote.
+  The label kept pointing at the master it was forked from, so saving the
+  project afterwards recorded the original and reopening loaded that template
+  instead of the fork.
+- Promoting a cleared property into a variant now keeps it cleared. Clearing a
+  wrap width on the label and promoting it into a variant restored the
+  template's width, because a missing key in a variant means "inherit".
+- A layer that a variant adds now shows reset badges for your own edits to it.
+  Resizing Collab's Graphic logo, for instance, created a label override with
+  no way to reset it from the inspector.
 
 ## [0.1.57] - 2026-09-05
 

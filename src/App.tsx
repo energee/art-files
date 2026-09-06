@@ -47,9 +47,8 @@ import type {
 import { uppercaseOf } from "@/model/layers";
 import type { DeepPartial } from "@/model/merge";
 import {
-  addLayer, addVariant, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, labelOverriddenPaths,
-  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, showVersion, snappedDx, moveLayers, resizeBy, type ResizeHandle, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue,
-  whereLayerLives,
+  addLayer, addVariant, adoptMaster, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
+  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, showVersion, snappedDx, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -731,25 +730,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   }
 
   /** The dot-paths deviating from the master on the inspected layer, kept
-   *  APART by source: `variant` paths live in the master file and apply to
-   *  every label with that variant on; `label` paths are this label's alone.
-   *  They used to be merged into one Set here and shown as one badge, which
-   *  made the reset gesture ambiguous — the same click could clear your own
-   *  edit or rewrite the shipped variant. `variantName` names the variant so
-   *  the badge can say whose change it is. */
-  const overridden = useMemo(() => {
-    const empty = { variant: new Set<string>(), label: new Set<string>() };
-    if (!inspected) return empty;
-    const id = inspected.layer.id;
-    if (whereLayerLives(master, id) !== "master") return empty;
-    const variant = new Set<string>();
-    let variantName: string | undefined;
-    for (const v of master.variants) {
-      if (!label.enabledVariants.includes(v.id)) continue;
-      for (const p of overriddenPaths(master, v.id, id)) { variant.add(p); variantName = v.name; }
-    }
-    return { variant, label: labelOverriddenPaths(label, id), variantName };
-  }, [inspected, master, label]);
+   *  APART by source — see overrideBadges, which holds the rule. */
+  const overridden = useMemo(() => (
+    inspected
+      ? overrideBadges(master, label, inspected.layer.id)
+      : { variant: new Set<string>(), label: new Set<string>() }
+  ), [inspected, master, label]);
   /** Per-property reset, targeted by SOURCE rather than by precedence: the
    *  badge says which one it clears and passes it here, so clearing a label
    *  edit can never silently rewrite a variant in the master file. */
@@ -1354,7 +1340,7 @@ export const DocumentEditor = memo(function DocumentEditor({
      *  baseline the next review diffs against. A plain save with nothing
      *  promoted is a no-op edit and pushes no history entry. */
     const commit = (m: Master, where: string) => {
-      edit(() => ({ master: m, label: promoted.label }));
+      edit(() => ({ master: m, label: adoptMaster(promoted.label, m) }));
       rememberMaster(m, where);
       pristineMaster.current = m;
       repaintMasterDirty((n) => n + 1);
