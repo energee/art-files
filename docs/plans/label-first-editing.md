@@ -204,6 +204,57 @@ Test file named first in each task; write it failing, then implement.
   `label.overrides` empty, and shows in the save review as a fill-contract
   change; editing the same layer's `x` still writes the label.
 
+### Phase B3 — variants are versions, not extras (depends on A)
+
+A variant is a whole ALTERNATIVE VERSION of the template that happens to be
+stored in the same `.master` file. `Variant.layers` being a `DeepPartial` diff
+is a compactness detail of the file format, not what a variant means:
+`resolveLayers` already merges master + variant into a complete layer set, so
+an enabled variant already resolves to a full template.
+
+The UI says the opposite. A variant that ADDS a layer gets a visible name
+badge, so variants look like a mechanism for bolting things on; a variant that
+CHANGES a master field — the Collab variant moving the logo — gets one
+anonymous dot. Since Phase A that dot is shared with label overrides, and its
+tooltip ("Overridden by a variant", `LayerList.tsx:234`) is simply wrong half
+the time.
+
+**11. Tell variant overrides and label overrides apart**
+- Files: `src/model/rows.ts` (split `overridden`), `src/components/LayerList.tsx`
+  (two marks), `src/App.tsx:689` (`overridden` set), `src/components/LayerInspector.tsx`
+  (`Badge`)
+- Test: `tests/layerlist-dom.test.tsx` *(extend)*, `tests/layerinspector-dom.test.tsx`
+  *(extend)*, `tests/model-rows.test.ts` *(extend)*
+- `LayerRow.overridden` becomes `variantOverridden` / `changed`; the row shows
+  a distinct mark per source, each with a true title ("Collab sets this" vs
+  "This label changed this").
+- `App.tsx:689` already computes the two path sets separately
+  (`overriddenPaths` for variants, `labelOverriddenPaths` for the label) and
+  then MERGES them into one `Set<string>`, discarding the distinction one line
+  before it is needed. Keep them apart and pass both to `Badge`.
+- Reset acts on the source you clicked, so the gesture stops being ambiguous.
+  Today `resetOverride` (`App.tsx:707`) clears the label's override if there is
+  one and otherwise edits the MASTER FILE to clear the variant's — same dot,
+  same click, different blast radius.
+- Accept: with Collab on and a label override on the same layer, the row shows
+  two marks and each reset touches only its own source.
+
+**12. Promotion targets the version you switched to**
+- Files: `src/components/MasterSaveReview.tsx` (target selector), `src/App.tsx`
+  (working-version state), `src/model/edit.ts` (`masterChanges` per target)
+- Test: `tests/mastersave-review-dom.test.tsx` *(extend)*
+- Enabling a variant chip means "show me this version". Changing that version
+  needs an explicit switch to it — the successor to the `"Editing: Master ▾ /
+  Collab"` selector described in
+  `docs/superpowers/plans/2026-08-27-master-authoring.md:691`, which was
+  removed when edits routed by where a layer lived.
+- Promotion therefore defaults to the BASE master; it writes into a variant
+  only while that variant is the working version. Task 6's `masterChanges`
+  takes the target so it can diff against the right baseline.
+- Accept: with Collab merely enabled, promoting a nudge writes `master.layers`
+  and leaves `variants` untouched; with Collab switched to, it writes
+  `variants.collab.layers` and the base is untouched.
+
 ### Phase D — docs
 
 **9. Update the docs the change invalidates**
@@ -221,14 +272,15 @@ Test file named first in each task; write it failing, then implement.
 ## Parallelism
 
 ```
-A1 → A2 → A3 ─┬─→ B4 → B5 ────────┐
-              ├─→ B2:10 ──────────┼─→ D9
-              └─→ C6 → C7 → C8 ───┘
+A1 → A2 → A3 ─┬─→ B4 → B5 ──────────────┐
+              ├─→ B2:10 ────────────────┤
+              ├─→ B3:11 ────────────────┼─→ D9
+              └─→ C6 → C7 → C8 → B3:12 ─┘
 ```
 
-Three independent tracks once Phase A lands. Task 10 defines `MASTER_PATHS`,
-which Task 6 reads to label review rows — if both run in parallel, land 10
-first or stub the constant.
+Task 10 defines `MASTER_PATHS`, which Task 6 reads to label review rows — land
+10 first or stub the constant. Task 11 is independent and can land any time
+after A. Task 12 extends the dialog, so it follows Task 7.
 
 ## Risks
 
