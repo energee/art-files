@@ -61,6 +61,7 @@ const NAMES = [
 function render(layer: Layer, over: Partial<Parameters<typeof LayerInspector>[0]> = {}) {
   const props: Parameters<typeof LayerInspector>[0] = {
     layer, layerNames: NAMES, overridden: { variant: new Set<string>(), label: new Set<string>() },
+    mode: "label",
     onChange: vi.fn(), onReset: vi.fn(), onUnbind: vi.fn(), onBind: vi.fn(),
     ...over,
   };
@@ -116,6 +117,41 @@ describe("LayerInspector header", () => {
   });
 });
 
+// Task 7 (docs/plans/template-switch.md): the inspector follows `mode`
+// regardless of what App passes for `content` — the parent stays dumb and
+// the inspector decides what a template edits.
+describe("LayerInspector mode", () => {
+  it("label mode shows Content and hides the fill contract / vocabulary", () => {
+    render(text({ choices: [{ value: "Ultra Hopped Ale" }] }), {
+      mode: "label", content: createElement("p", { id: "content-slot" }, "editor"),
+    });
+    expect($("#content-slot")).not.toBeNull();
+    expect($("#name-choice-0-value")).toBeNull();
+    expect($("#name-placeholder")).toBeNull();
+  });
+
+  it("template mode hides Content and shows the fill contract / vocabulary first", () => {
+    render(text({ choices: [{ value: "Ultra Hopped Ale" }] }), {
+      mode: "template", content: createElement("p", { id: "content-slot" }, "editor"),
+    });
+    expect($("#content-slot")).toBeNull();
+    expect(($("#name-choice-0-value") as HTMLInputElement).value).toBe("Ultra Hopped Ale");
+    expect($("#name-placeholder")).not.toBeNull();
+  });
+
+  it("template mode renders a barcode's Vocabulary though it has no fill contract", () => {
+    render(barcode({ choices: [{ value: "850051366040" }] }), { mode: "template" });
+    expect(($("#barcode-choice-0-value") as HTMLInputElement).value).toBe("850051366040");
+  });
+
+  it("labels the Position heading 'Default position' only in template mode", () => {
+    render(text(), { mode: "label" });
+    expect(container.textContent).not.toContain("Default position");
+    render(text(), { mode: "template" });
+    expect(container.textContent).toContain("Default position");
+  });
+});
+
 describe("LayerInspector position", () => {
   it("editing x emits { x }", () => {
     const { onChange } = render(text());
@@ -138,15 +174,15 @@ describe("LayerInspector position", () => {
     expect(onChange).toHaveBeenLastCalledWith({ rotation: 0 });
   });
 
-  it("edits the fill contract — placeholder always, range only for a number", () => {
-    const { onChange } = render(text({ placeholder: "Name" }));
+  it("edits the fill contract — placeholder always, range only for a number (template mode only)", () => {
+    const { onChange } = render(text({ placeholder: "Name" }), { mode: "template" });
     const box = $("#name-placeholder") as HTMLInputElement;
     expect(box.value).toBe("Name");
     type(box, "Beer name");
     expect(onChange).toHaveBeenLastCalledWith({ placeholder: "Beer name" });
     // Range is meaningless for rich text and hidden until the input is one.
     expect($("#name-min")).toBeNull();
-    render(text({ input: "number", min: 0, max: 20 }), { onChange });
+    render(text({ input: "number", min: 0, max: 20 }), { onChange, mode: "template" });
     expect(($("#name-min") as HTMLInputElement).value).toBe("0");
     expect($("#name-suffix")).not.toBeNull();
   });
@@ -308,50 +344,63 @@ describe("LayerInspector style", () => {
   });
 });
 
+// Task 7 (docs/plans/template-switch.md): the badge's SOURCE follows the
+// mode, not the layer. Label mode only ever shows this label's own
+// deviation (a filler cannot reset the template); template mode only ever
+// shows the enabled variant's deviation from the master, in the attention
+// colour, labelled "changed" — the label set is not this mode's concern.
 describe("LayerInspector override badges", () => {
   const from = (variant: string[], label: string[] = [], variantName?: string) =>
     ({ variant: new Set(variant), label: new Set(label), ...(variantName ? { variantName } : {}) });
 
-  it("shows a reset badge only for an overridden path and calls onReset with it", () => {
-    const { onReset } = render(text(), { overridden: from(["style.fill"]) });
-    expect(byLabel("Reset X to the master")).toBeNull();
-    const badge = byLabel("Reset Fill to the master");
+  it("label mode shows a reset badge only for this label's own override", () => {
+    const { onReset } = render(text(), { mode: "label", overridden: from([], ["style.fill"]) });
+    expect(byLabel("Reset X to this label's master value")).toBeNull();
+    const badge = byLabel("Reset Fill to this label's master value");
     expect(badge).not.toBeNull();
+    click(badge!);
+    expect(onReset).toHaveBeenCalledWith("style.fill", "label");
+  });
+
+  it("label mode colours the override mark info, not primary (Task 3)", () => {
+    render(text(), { mode: "label", overridden: from([], ["style.fill"]) });
+    const badge = byLabel("Reset Fill to this label's master value")!;
+    expect(badge.className).toContain("text-info-text");
+  });
+
+  it("label mode never shows a variant's change — a filler does not reset the template", () => {
+    render(text(), { mode: "label", overridden: from(["style.fill"]) });
+    expect(byLabel("Fill changed — reset to the master")).toBeNull();
+  });
+
+  it("template mode shows a changed badge only for the variant's deviation, in attention colour", () => {
+    const { onReset } = render(text(), { mode: "template", overridden: from(["style.fill"]) });
+    expect(byLabel("X changed — reset to the master")).toBeNull();
+    const badge = byLabel("Fill changed — reset to the master");
+    expect(badge).not.toBeNull();
+    expect(badge!.className).toContain("text-attention-text");
     click(badge!);
     expect(onReset).toHaveBeenCalledWith("style.fill", "variant");
   });
 
-  it("colours the override mark info, not primary (docs/plans/template-switch.md, Task 3)", () => {
-    render(text(), { overridden: from(["style.fill"]) });
-    const badge = byLabel("Reset Fill to the master")!;
-    expect(badge.className).toContain("text-info-text");
+  it("template mode never shows the label set — that is not this mode's concern", () => {
+    render(text(), { mode: "template", overridden: from([], ["style.fill"]) });
+    expect(byLabel("Fill changed — reset to the master")).toBeNull();
   });
 
-  it("a bound y reports whichever leaf path the parent marked", () => {
+  it("template mode names the variant in the badge's title", () => {
+    render(text(), { mode: "template", overridden: from(["style.fill"], [], "Collab") });
+    const badge = byLabel("Fill changed — reset to the master")!;
+    expect(badge.getAttribute("title")).toContain("Collab changed Fill");
+  });
+
+  it("a bound y in template mode reports whichever leaf path the parent marked", () => {
     const { onReset } = render(
-      text({ y: { below: "description", gap: 5 } }), { overridden: from(["y.gap"]) },
+      text({ y: { below: "description", gap: 5 } }),
+      { mode: "template", overridden: from(["y.gap"]) },
     );
-    click(byLabel("Reset Gap to the master")!);
+    click(byLabel("Gap changed — reset to the master")!);
     expect(onReset).toHaveBeenCalledWith("y.gap", "variant");
-  });
-
-  it("marks a variant's change and this label's separately, each resetting its own", () => {
-    // One merged badge used to mean the same click could clear your own edit
-    // or rewrite the shipped variant, depending on state you could not see.
-    const { onReset } = render(text(), { overridden: from(["style.fill"], ["style.fill"], "Collab") });
-    const variantMark = byLabel("Reset Fill to the master")!;
-    const labelMark = byLabel("Reset Fill to this label's master value")!;
-    expect(variantMark.getAttribute("title")).toContain("Collab sets Fill");
-    click(labelMark);
-    expect(onReset).toHaveBeenLastCalledWith("style.fill", "label");
-    click(variantMark);
-    expect(onReset).toHaveBeenLastCalledWith("style.fill", "variant");
-  });
-
-  it("a label-only change shows just the label mark", () => {
-    render(text(), { overridden: from([], ["x"]) });
-    expect(byLabel("Reset X to the master")).toBeNull();
-    expect(byLabel("Reset X to this label's master value")).not.toBeNull();
   });
 });
 
@@ -378,7 +427,9 @@ it("one control per axis: picking a guide anchors that edge on it with offset 0"
 // from: a caption for the field and the list itself. Both are fill-contract
 // keys, so they route to the master (MASTER_PATHS) — the inspector only has to
 // emit them, and it emits `choices` as the WHOLE array, which is also how the
-// override badge sees it (leafPaths treats an array as one leaf).
+// override badge sees it (leafPaths treats an array as one leaf). Master data,
+// so it is template mode only (docs/plans/template-switch.md, Task 7) — label
+// mode hides the whole section (LayerInspector mode tests, above).
 describe("LayerInspector fill vocabulary", () => {
   const STYLES = [
     { value: "Ultra Hopped Ale" },
@@ -386,20 +437,20 @@ describe("LayerInspector fill vocabulary", () => {
   ];
 
   it("captions the field through title", () => {
-    const { onChange } = render(text());
+    const { onChange } = render(text(), { mode: "template" });
     type($("#name-title") as HTMLInputElement, "Style");
     expect(onChange).toHaveBeenLastCalledWith({ title: "Style" });
   });
 
   it("lists each choice's title and value", () => {
-    render(text({ choices: STYLES }));
+    render(text({ choices: STYLES }), { mode: "template" });
     expect(($("#name-choice-0-value") as HTMLInputElement).value).toBe("Ultra Hopped Ale");
     expect(($("#name-choice-1-title") as HTMLInputElement).value).toBe("Hazy IPA");
     expect(($("#name-choice-1-value") as HTMLInputElement).value).toBe("Hazy India Pale Ale");
   });
 
   it("edits one choice and emits the whole list", () => {
-    const { onChange } = render(text({ choices: STYLES }));
+    const { onChange } = render(text({ choices: STYLES }), { mode: "template" });
     type($("#name-choice-0-value") as HTMLInputElement, "Pale Ale");
     expect(onChange).toHaveBeenLastCalledWith({
       choices: [{ value: "Pale Ale" }, STYLES[1]],
@@ -407,7 +458,7 @@ describe("LayerInspector fill vocabulary", () => {
   });
 
   it("appends an empty choice, and drops the title when it is blanked", () => {
-    const { onChange } = render(text({ choices: STYLES }));
+    const { onChange } = render(text({ choices: STYLES }), { mode: "template" });
     click(byLabel("Add choice")!);
     expect(onChange).toHaveBeenLastCalledWith({ choices: [...STYLES, { value: "" }] });
 
@@ -418,17 +469,17 @@ describe("LayerInspector fill vocabulary", () => {
   });
 
   it("removes a choice, and the last one takes the whole key with it", () => {
-    const { onChange } = render(text({ choices: STYLES }));
+    const { onChange } = render(text({ choices: STYLES }), { mode: "template" });
     click(byLabel("Remove choice 1")!);
     expect(onChange).toHaveBeenLastCalledWith({ choices: [STYLES[1]] });
 
-    const one = render(text({ choices: [STYLES[0]] }));
+    const one = render(text({ choices: [STYLES[0]] }), { mode: "template" });
     click(byLabel("Remove choice 1")!);
     expect(one.onChange).toHaveBeenLastCalledWith({ choices: undefined });
   });
 
   it("offers the same editor on a barcode, which has a value and no input", () => {
-    const { onChange } = render(barcode({ choices: [{ title: "Tier 1", value: "850051366040" }] }));
+    const { onChange } = render(barcode({ choices: [{ title: "Tier 1", value: "850051366040" }] }), { mode: "template" });
     expect(($("#barcode-choice-0-title") as HTMLInputElement).value).toBe("Tier 1");
     click(byLabel("Add choice")!);
     expect(onChange).toHaveBeenLastCalledWith({

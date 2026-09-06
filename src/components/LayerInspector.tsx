@@ -1,9 +1,18 @@
 // LayerInspector.tsx — the right-hand inspector for ONE resolved v3 layer
 // (spec: docs/superpowers/specs/2026-09-04-master-as-layers-design.md, "UI"
-// and "Relative position"). Sections, top to bottom: header (kind icon,
-// inline rename, enabled/locked), the parent's content editor,
+// and "Relative position"). Sections, top to bottom in LABEL mode: header
+// (kind icon, inline rename, enabled/locked), the parent's content editor,
 // Position (free coordinates or a binding to another layer's edge, with
-// a gap; rotation 0/90), kind-specific Geometry, and Style.
+// a gap; rotation 0/90), kind-specific Geometry, and Style. TEMPLATE mode
+// (the `mode` prop, docs/plans/template-switch.md, Task 7) reorders and
+// re-labels this for editing the master instead of this label: Content is
+// hidden (a template has no content, only placeholders), the fill contract /
+// Vocabulary lead the panel instead of trailing it (master data, hidden
+// entirely in label mode), and Position/Geometry/Style headings read
+// "Default X" (`headingFor`). The override badge (`Badge`) also follows
+// `mode`: label mode shows only this label's own deviation, template mode
+// only the enabled variant's deviation from the master, in the attention
+// colour, labelled "changed" — never both, and never the other mode's set.
 //
 // Every control is controlled from `layer` and writes ONLY through
 // `onChange` with a minimal DeepPartial<Layer> patch ({ x }, { y: 12 },
@@ -35,6 +44,7 @@ import { bindingOf, guideOf, uppercaseOf } from "@/model/layers";
 import type {
   BindingSide, BarcodeLayer, Choice, ImageLayer, Layer, LayerKind, QrLayer, Symbology, TextLayer,
 } from "@/model/layers";
+import type { EditMode } from "@/model/edit";
 import type { DeepPartial } from "@/model/merge";
 import type { Anchor } from "@/model/position";
 import type { Style } from "@/types";
@@ -84,6 +94,17 @@ function Heading(props: { children?: ReactNode }) {
   );
 }
 
+/** A section heading's text, mode-aware: template mode edits the master's
+ *  value rather than this label's, so Position/Geometry/Style read "Default
+ *  X" there (docs/plans/template-switch.md, Task 7) — an acronym like "QR"
+ *  is left alone rather than lower-cased into "qR". Field labels inside the
+ *  section are unaffected; only the section's own heading changes. */
+function headingFor(base: string, mode: EditMode): string {
+  if (mode !== "template") return base;
+  const lower = /^[A-Z]{2,}$/.test(base) ? base : base.charAt(0).toLowerCase() + base.slice(1);
+  return `Default ${lower}`;
+}
+
 /** A field with its (optional) override badge to the right, so the badge
  *  never widens the field's own row. */
 function Row(props: { badge?: ReactNode; children: ReactNode }) {
@@ -119,10 +140,13 @@ export interface Overridden {
   variantName?: string;
 }
 
-/** The override badge — up to TWO marks beside a control, one per source: a
- *  filled dot for a variant, a ring for this label, matching the Layers list.
- *  Each resets only its own source, so clearing your own edit can never
- *  rewrite the shipped variant (which is what one merged badge used to do).
+/** The override badge, ONE mark whose source follows `mode`
+ *  (docs/plans/template-switch.md, Task 7): label mode shows only this
+ *  label's own deviation (a filler cannot reset the template, so the
+ *  variant set is not shown here); template mode shows only the enabled
+ *  variant's deviation from the master, in the attention colour, labelled
+ *  "changed" (the label set is not this mode's concern). Each still resets
+ *  only its own source.
  *
  *  `paths` are checked in order and the first hit is what Reset restores — a
  *  bound y is written as one object but a parent's leaf-path walk may report
@@ -131,32 +155,36 @@ function Badge(props: {
   paths: readonly string[];
   overridden: Overridden;
   label: string;
+  mode: EditMode;
   onReset: (path: string, source: "variant" | "label") => void;
 }) {
   const variantPath = props.paths.find((p) => props.overridden.variant.has(p));
   const labelPath = props.paths.find((p) => props.overridden.label.has(p));
-  if (!variantPath && !labelPath) return null;
-  const who = props.overridden.variantName ?? "A variant";
-  return (
-    <span className="flex shrink-0 items-center gap-1">
-      {variantPath && (
+  if (props.mode === "template") {
+    if (!variantPath) return null;
+    const who = props.overridden.variantName ?? "A variant";
+    return (
+      <span className="flex shrink-0 items-center gap-1">
         <button
           type="button"
-          className="size-2 shrink-0 rounded-full bg-current text-info-text transition-transform hover:scale-125"
-          title={`${who} sets ${props.label} — reset it in the master`}
-          aria-label={`Reset ${props.label} to the master`}
+          className="size-2 shrink-0 rounded-full bg-current text-attention-text transition-transform hover:scale-125"
+          title={`${who} changed ${props.label} — reset it to the master`}
+          aria-label={`${props.label} changed — reset to the master`}
           onClick={() => props.onReset(variantPath, "variant")}
         />
-      )}
-      {labelPath && (
-        <button
-          type="button"
-          className="size-2 shrink-0 rounded-full border border-current text-info-text transition-transform hover:scale-125"
-          title={`This label sets ${props.label} — reset it to the master`}
-          aria-label={`Reset ${props.label} to this label's master value`}
-          onClick={() => props.onReset(labelPath, "label")}
-        />
-      )}
+      </span>
+    );
+  }
+  if (!labelPath) return null;
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      <button
+        type="button"
+        className="size-2 shrink-0 rounded-full border border-current text-info-text transition-transform hover:scale-125"
+        title={`This label sets ${props.label} — reset it to the master`}
+        aria-label={`Reset ${props.label} to this label's master value`}
+        onClick={() => props.onReset(labelPath, "label")}
+      />
     </span>
   );
 }
@@ -276,11 +304,13 @@ const SYMBOLOGIES: readonly { value: Symbology; label: string }[] = [
   { value: "upc-a", label: "UPC-A" }, { value: "ean-13", label: "EAN-13" }, { value: "code-128", label: "Code 128" },
 ];
 
-/** What every section receives: the layer, the one write, and the badge
- *  factory bound to this layer's overridden set. */
+/** What every section receives: the layer, the one write, the badge
+ *  factory bound to this layer's overridden set, and the mode (for the
+ *  section's own heading — see `headingFor`). */
 interface Ctx {
   set: (patch: Patch) => void;
   badge: (paths: readonly string[], label: string) => ReactNode;
+  mode: EditMode;
 }
 
 function Position(props: Ctx & {
@@ -295,7 +325,7 @@ function Position(props: Ctx & {
   const nameOf = (lid: string) => props.layerNames.find((n) => n.id === lid)?.name ?? lid;
   return (
     <div className="space-y-1.5">
-      <Heading>Position</Heading>
+      <Heading>{headingFor("Position", props.mode)}</Heading>
       {!horizontal && <>
       <Row badge={badge(["x"], "X")}>
         <ScrubField
@@ -408,7 +438,7 @@ function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: string }) {
   const id = layer.id;
   return (
     <div className="space-y-1.5">
-      <Heading>Type</Heading>
+      <Heading>{headingFor("Type", props.mode)}</Heading>
       {/* Display only: the typeface is the master's one font gate, chosen in
           the master picker / Settings, never per layer (dynamic-fonts). */}
       {props.fontFamily && (
@@ -577,7 +607,7 @@ function FillContract(props: Ctx & { layer: TextLayer }) {
           </Select>
         </Field>
       )}
-      <Vocabulary layer={layer} set={set} badge={badge} />
+      <Vocabulary layer={layer} set={set} badge={badge} mode={props.mode} />
       {/* Fixed text drawn after the filled value on the same line ("% alc by
           vol"); the filler never edits it. */}
       {layer.input !== undefined && (
@@ -632,13 +662,14 @@ function ImageGeometry(props: Ctx & { layer: ImageLayer }) {
       </Select>
     </Field>
   );
+  const heading = headingFor("Image", props.mode);
   // The page art (texture, metallic mask) covers the whole page: its box is
   // the page and it has no scale or tint to speak of — only how it meets
   // that box.
-  if (page) return <div className="space-y-1.5"><Heading>Image</Heading>{fit}</div>;
+  if (page) return <div className="space-y-1.5"><Heading>{heading}</Heading>{fit}</div>;
   return (
     <div className="space-y-1.5">
-      <Heading>Image</Heading>
+      <Heading>{heading}</Heading>
       <Row badge={badge(["w"], "Width")}>
         <ScrubField
           id={`${id}-w`} label="Width" unit="pt" value={layer.w}
@@ -677,7 +708,7 @@ function BarcodeGeometry(props: Ctx & { layer: BarcodeLayer }) {
   const warning = minModuleWarning(layer.symbology, layer.moduleW);
   return (
     <div className="space-y-1.5">
-      <Heading>Barcode</Heading>
+      <Heading>{headingFor("Barcode", props.mode)}</Heading>
       <Field id={`${id}-symbology`} label="Symbology" badge={badge(["symbology"], "Symbology")}>
         <Select
           value={layer.symbology}
@@ -724,7 +755,7 @@ function QrGeometry(props: Ctx & { layer: QrLayer }) {
   const id = layer.id;
   return (
     <div className="space-y-1.5">
-      <Heading>QR</Heading>
+      <Heading>{headingFor("QR", props.mode)}</Heading>
       <Row badge={badge(["size"], "Size")}>
         <ScrubField
           id={`${id}-size`} label="Size" unit="pt" value={layer.size}
@@ -773,7 +804,7 @@ function QrGeometry(props: Ctx & { layer: QrLayer }) {
  *  controls StyleProperties' ElementStyle offered, written as `style.*`
  *  patches. */
 function StyleSection(props: Ctx & { layer: Layer }) {
-  const { layer, set, badge } = props;
+  const { layer, set, badge, mode } = props;
   const id = layer.id;
   const style: Style = layer.style;
   const setStyle = (patch: DeepPartial<Style>) => set({ style: patch });
@@ -782,7 +813,7 @@ function StyleSection(props: Ctx & { layer: Layer }) {
   return (
     <div className="space-y-3">
       <div className="space-y-1">
-        <Heading>Color</Heading>
+        <Heading>{headingFor("Color", mode)}</Heading>
         <div className="flex items-center gap-1.5">
           <div className="min-w-0 flex-1">
             {/* "No ink" is only offered where it can't break the layer: a
@@ -804,7 +835,7 @@ function StyleSection(props: Ctx & { layer: Layer }) {
 
       {layer.kind === "text" && (
         <div className="space-y-1">
-          <Heading>Typography</Heading>
+          <Heading>{headingFor("Typography", mode)}</Heading>
           {/* Leading and Header scale are TextLayer fields, not Style ones —
               they patch through `set`, not `setStyle`. They live here anyway
               because a reader tuning type reaches for line height and
@@ -846,7 +877,7 @@ function StyleSection(props: Ctx & { layer: Layer }) {
 
       <div className="space-y-1">
         <div className="flex items-center justify-between">
-          <Heading>Stroke</Heading>
+          <Heading>{headingFor("Stroke", mode)}</Heading>
           <span className="flex items-center gap-1.5">
             <Switch
               aria-label="Outer stroke"
@@ -911,17 +942,25 @@ export function LayerInspector(props: {
   /** Unbind: the parent freezes the resolved coordinates before clearing the binding. */
   onUnbind: () => void; onBind?: (to: string, side: BindingSide) => void;
   /** The kind's content editor (rich text, image drop, code value), built by
-   *  the parent and rendered under the header. */
+   *  the parent and rendered under the header. Ignored in template mode
+   *  (App may keep passing it regardless; the inspector decides, so App
+   *  stays dumb about mode — docs/plans/template-switch.md, Task 7). */
   content?: ReactNode;
   /** The master's typeface, display only. */
   fontFamily?: string;
+  /** "label" (default everyday editing) or "template", which edits the
+   *  master (or the picked version) instead of this label: Content is
+   *  hidden, the fill contract / vocabulary move to the top, and the
+   *  override badge shows the variant-vs-master set instead of the label's
+   *  own (docs/plans/template-switch.md, Task 7). */
+  mode: EditMode;
 }) {
-  const { layer } = props;
+  const { layer, mode } = props;
   const set = (patch: Patch) => props.onChange(patch);
   const badge = (paths: readonly string[], label: string) => (
-    <Badge paths={paths} overridden={props.overridden} label={label} onReset={props.onReset} />
+    <Badge paths={paths} overridden={props.overridden} label={label} mode={mode} onReset={props.onReset} />
   );
-  const ctx: Ctx = { set, badge };
+  const ctx: Ctx = { set, badge, mode };
   // Local text so a name being retyped never commits as "" — a layer name
   // is required (parseMaster fails on an empty one).
   const [nameText, setNameText] = useState<string | null>(null);
@@ -959,22 +998,30 @@ export function LayerInspector(props: {
         </Field>
       </div>
 
-      {props.content !== undefined && (
+      {/* Content is this label's alone — a template has no content, only
+          placeholders (the fill contract). App may keep passing it either
+          way; the inspector is the one that decides by mode. */}
+      {mode === "label" && props.content !== undefined && (
         <div className="space-y-1.5">
           <Heading>Content</Heading>
           {props.content}
         </div>
       )}
 
+      {/* The fill contract / vocabulary are master data (MASTER_PATHS) — a
+          filler never edits its own contract, so label mode hides them
+          entirely; template mode leads the panel with them instead of
+          trailing, since that is the slot being authored. */}
+      {mode === "template" && layer.kind === "text" && <FillContract layer={layer} {...ctx} />}
+      {/* A barcode has no `input` to hang a contract off, but its tier list is
+          the same vocabulary a style has. */}
+      {mode === "template" && layer.kind === "barcode" && <Vocabulary layer={layer} {...ctx} />}
+
       <Position layer={layer} layerNames={props.layerNames} onUnbind={props.onUnbind} onBind={props.onBind} {...ctx} />
 
       {layer.kind === "text" && <TextGeometry layer={layer} fontFamily={props.fontFamily} {...ctx} />}
-      {layer.kind === "text" && <FillContract layer={layer} {...ctx} />}
       {layer.kind === "image" && <ImageGeometry layer={layer} {...ctx} />}
       {layer.kind === "barcode" && <BarcodeGeometry layer={layer} {...ctx} />}
-      {/* A barcode has no `input` to hang a contract off, but its tier list is
-          the same vocabulary a style has. */}
-      {layer.kind === "barcode" && <Vocabulary layer={layer} {...ctx} />}
       {layer.kind === "qr" && <QrGeometry layer={layer} {...ctx} />}
 
       {/* The page art has no ink of its own to colour or stroke — the

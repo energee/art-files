@@ -347,28 +347,25 @@ it("Template mode swaps the canvas for the master's placeholder, This label rest
     expect(editor.textContent).toContain("Peregrine");
 
     await act(async () => { editingItem(container, "Template").click(); });
-    // The field re-syncs from `lines` only while unfocused (TextEditor.tsx);
-    // blur it first, the same as a real mode switch would (focus moves to
-    // the toggle button).
-    await act(async () => { editor.blur(); });
-    expect(editor.textContent).not.toContain("Peregrine");
-    // "Name" is the master's placeholder for this layer (lolevLayers.ts) —
-    // shown as the decorative aria-hidden span TextEditor positions over an
-    // empty field, not baked into the contenteditable's own text.
-    expect(editor.previousElementSibling?.getAttribute("aria-hidden")).toBe("true");
-    expect(editor.previousElementSibling?.textContent).toBe("Name");
+    // Content is this label's alone — a template has no content, only
+    // placeholders (the fill contract) — so the inspector drops the content
+    // editor entirely in template mode (docs/plans/template-switch.md, Task
+    // 7), rather than showing it re-synced to some other value.
+    expect(document.querySelector('[contenteditable="true"]')).toBeNull();
 
     await act(async () => { editingItem(container, "This label").click(); });
-    await act(async () => { editor.blur(); });
-    expect(editor.textContent).toContain("Peregrine");
+    const restored = document.querySelector('[contenteditable="true"]') as HTMLElement;
+    expect(restored).not.toBeNull();
+    expect(restored.textContent).toContain("Peregrine");
 
     // The two mode switches went through plain useState, not `edit`/setDoc —
     // one Undo removes exactly the Peregrine content edit, proving neither
     // switch pushed a history entry of its own.
+    await act(async () => { restored.blur(); });
     await act(async () => {
       document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
     });
-    expect(editor.textContent).not.toContain("Peregrine");
+    expect(restored.textContent).not.toContain("Peregrine");
   } finally {
     await act(async () => { root.unmount(); });
     container.remove();
@@ -437,9 +434,10 @@ it("Template mode with a version selected routes a position edit to that variant
     await act(async () => { editingItem(container, "Template").click(); });
     const field = await typeXField("300");
     expect(field.value).toBe("300");
-    // The variant (filled-dot) badge fires — Collab's diff took the edit —
-    // and the label's own (ring) badge does not.
-    expect(document.querySelector('[aria-label="Reset X to the master"]')).not.toBeNull();
+    // The variant (filled-dot) "changed" badge fires — Collab's diff took the
+    // edit — template mode never shows the label set (LayerInspector.tsx's
+    // Badge, docs/plans/template-switch.md Task 7).
+    expect(document.querySelector('[aria-label="X changed — reset to the master"]')).not.toBeNull();
     expect(document.querySelector('[aria-label="Reset X to this label\'s master value"]')).toBeNull();
   } finally {
     await act(async () => { root.unmount(); });

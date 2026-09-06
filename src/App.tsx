@@ -2171,7 +2171,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                   if (box) patch(inspected.layer.id, bindingPatch(inspected.layer, to, side, box));
                 }}
                 content={contentFor(inspected.layer)}
-                fontFamily={family} />
+                fontFamily={family} mode={mode} />
             )}
           </SheetContent>
         </Sheet>
