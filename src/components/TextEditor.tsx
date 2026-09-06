@@ -585,7 +585,10 @@ export interface TextEditorProps {
    *  (docs/plans/choice-input.md). */
   choices?: Choice[];
   /** Caption for the field, when the layer's name is not what to say to
-   *  whoever is filling it (LayerBase.title). Absent = `label`. */
+   *  whoever is filling it (LayerBase.title). Absent = `label`. Honoured by
+   *  every field — the contract offers it on any text layer, so a plain
+   *  number box must not be the one that quietly ignores it. The aria name
+   *  stays `label`, which is the layer's identity. */
   title?: string;
 }
 
@@ -659,7 +662,15 @@ export function ChoiceBox(props: {
         placeholder={placeholder}
         aria-invalid={invalid || undefined}
         onFocus={() => setDraft(value)}
-        onBlur={() => { setDraft(null); setActive(-1); }}
+        // Blur COMMITS what was typed. Reverting to `value` instead lost the
+        // edit for anyone who clicked away rather than pressing Enter — the
+        // plain Input beside this one commits on every keystroke, so a
+        // vocabulary field must not be the one that silently forgets.
+        // Escape has already cleared the draft, so it still cancels.
+        onBlur={() => {
+          if (draft !== null && draft !== value) commit(draft.trim());
+          else { setDraft(null); setActive(-1); }
+        }}
         onChange={(e) => { setDraft(e.target.value); setActive(-1); }}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -732,7 +743,7 @@ function ChoiceField(props: TextEditorProps & { choices: Choice[] }) {
  *  by model/fields.ts through a FieldDecl built from the layer's own hints
  *  so the code/number rules have one spelling. */
 function PlainField(props: TextEditorProps & { input: "number" | "code" }) {
-  const { id, label, lines, onChange, base, input, min, max, symbology, suffix } = props;
+  const { id, label, title, lines, onChange, base, input, min, max, symbology, suffix } = props;
   const value = lines[0]?.text ?? "";
   // Blank is "not filled yet", not "invalid" — only judge a value that's there.
   const check: { ok: boolean; error?: string } = value === ""
@@ -740,7 +751,7 @@ function PlainField(props: TextEditorProps & { input: "number" | "code" }) {
     : validateField({ id, label, kind: input, path: id, min, max, symbology }, value);
   return (
     <div className="space-y-1">
-      <Label htmlFor={id} className={LABEL_CLASS}>{label}</Label>
+      <Label htmlFor={id} className={LABEL_CLASS}>{title ?? label}</Label>
       <div className="flex items-center gap-1.5">
         <Input
           id={id}
@@ -760,7 +771,7 @@ function PlainField(props: TextEditorProps & { input: "number" | "code" }) {
 }
 
 function RichField(props: TextEditorProps) {
-  const { id, label, lines, onChange, base, multiline, uppercase } = props;
+  const { id, label, title, lines, onChange, base, multiline, uppercase } = props;
   const { focused, caret, toggle, toggleHeader, fieldProps } =
     useTextField({ lines, onChange, base, multiline, uppercase });
   return (
@@ -768,7 +779,7 @@ function RichField(props: TextEditorProps) {
       {/* h-7, matching the size-sm toggles inside: a shorter row lets them
           overflow onto the field's outline below. */}
       <div className="flex h-7 items-center justify-between gap-1">
-        <Label htmlFor={id} className={LABEL_CLASS}>{label}</Label>
+        <Label htmlFor={id} className={LABEL_CLASS}>{title ?? label}</Label>
         <div className="flex gap-1">
           {focused && (
             <TextToolbarButtons

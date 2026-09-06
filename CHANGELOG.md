@@ -70,6 +70,18 @@ binary-impacting change gets its own version before it is merged.
 
 ### Fixed
 
+- A vocabulary field no longer forgets what you typed. Typing a barcode or a
+  style and then clicking away kept the old value — only Enter or picking from
+  the list committed it. Escape still cancels.
+- Switching on a layer that only a variant adds no longer moves the version
+  you are editing. The master Select silently retitled to that variant, and
+  the next Save Master wrote every promotion into it instead of the template.
+- A choice's value can be cleared and retyped. Emptying the box raised an
+  error in the menu bar that stayed up, and the text sprang back.
+- The Title you give a fill field is now shown above every field, not just the
+  ones offering a list.
+- Resizing a layer whose horizontal guide differs from its anchor keeps the
+  opposite edge still, as the vertical axis already did.
 - Dragging two layers at once no longer moves a layer bound to another one in
   the selection twice as far as the pointer.
 - A multi-layer drag now snaps as a group, on the selection's own bounds,

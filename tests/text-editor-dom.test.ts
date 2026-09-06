@@ -407,6 +407,27 @@ describe("TextEditor with a vocabulary", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  // The bug this covers: blur reverted to the prop value, so typing a tier
+  // code and clicking the canvas threw the edit away — while the plain box
+  // beside it commits on every keystroke.
+  it("commits what was typed when the field loses focus", () => {
+    const { onChange } = renderEditor({ lines: [], choices: STYLES });
+    const box = openList();
+    change(box, "Saison");
+    act(() => { box.blur(); });
+    expect(onChange).toHaveBeenLastCalledWith([{ ...base, text: "Saison" }]);
+  });
+
+  it("still cancels on Escape, even though blur commits", () => {
+    const { onChange } = renderEditor({ lines: [line("Hazy India Pale Ale")], choices: STYLES });
+    const box = openList();
+    change(box, "Sais");
+    onChange.mockClear();
+    key(box, "Escape");
+    act(() => { box.blur(); });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("captions the field with the layer's title when it has one", () => {
     renderEditor({ lines: [], choices: STYLES, label: "Style line", title: "Style" });
     expect(container.textContent).toContain("Style");
@@ -425,6 +446,22 @@ describe("TextEditor with a vocabulary", () => {
 
     renderEditor({ lines: [line("12345")], choices: TIERS, input: "code", symbology: "upc-a" });
     expect(container.textContent).toMatch(/12 digits|invalid|check/i);
+  });
+});
+
+// `title` is offered on every text layer by the fill contract, so every
+// widget has to honour it — the picker was the only one that did.
+describe("the layer's title captions every widget", () => {
+  it("captions a number box", () => {
+    renderEditor({ lines: [], label: "ABV line", title: "ABV", input: "number" });
+    expect(container.textContent).toContain("ABV");
+    expect(container.textContent).not.toContain("ABV line");
+  });
+
+  it("captions the rich field", () => {
+    renderEditor({ lines: [], label: "Description layer", title: "Tasting notes" });
+    expect(container.textContent).toContain("Tasting notes");
+    expect(container.textContent).not.toContain("Description layer");
   });
 });
 

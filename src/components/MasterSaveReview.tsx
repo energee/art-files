@@ -26,9 +26,14 @@ import {
 
 /** Stable per-row key, also the `data-row` the tests drive — base-ui mints
  *  its own `id` on a Checkbox, so the row's identity rides on a data
- *  attribute instead. */
+ *  attribute instead.
+ *
+ *  `source` is part of the key: an override and a fill value on the same
+ *  layer land on the same path ("lines" for text, "asset" for an image), and
+ *  without it one checkbox drove both rows. */
 const rowId = (c: MasterChange) =>
-  `${c.kind}-${c.layerId}${c.path === undefined ? "" : `-${c.path}`}`;
+  `${c.kind}-${c.layerId}${c.path === undefined ? "" : `-${c.path}`}`
+  + (c.source === undefined ? "" : `-${c.source}`);
 
 /** An unset value reads as an em dash, not "undefined" — `null` is
  *  setLabelOverride's wire spelling of "unset this key". */

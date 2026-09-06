@@ -406,6 +406,22 @@ describe("LayerInspector fill vocabulary", () => {
     });
   });
 
+  // Emptying the box to retype must not push a blank at the model: parseMaster
+  // refuses a choice with no value, App catches the throw into the menu-bar
+  // alert, and the field sprang back with a red banner that stayed up.
+  it("lets a value box go empty while retyping without emitting a blank", () => {
+    const { onChange } = render(text({ choices: STYLES }));
+    const box = $("#name-choice-0-value") as HTMLInputElement;
+    type(box, "");
+    expect(box.value).toBe("");
+    expect(box.getAttribute("aria-invalid")).toBe("true");
+    expect(onChange).not.toHaveBeenCalled();
+    type(box, "Pale Ale");
+    expect(onChange).toHaveBeenLastCalledWith({
+      choices: [{ value: "Pale Ale" }, STYLES[1]],
+    });
+  });
+
   // An appended choice must arrive VALID: parseMaster rejects a blank value
   // ("has a choice with no value") and App discards the whole edit, so an
   // empty new row would never reach the screen to be typed into.

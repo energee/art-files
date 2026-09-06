@@ -7,7 +7,8 @@
 // wrappers over it.
 import { describe, expect, it } from "vitest";
 import {
-  adoptMaster, overrideBadges, patchLayers, setContentIn, setLabelOverride, setLayerIn, type Doc,
+  adoptMaster, addVariant, overrideBadges, patchLayers, setContentIn, setLabelOverride,
+  setLayerIn, type Doc,
 } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { resolveLayers } from "../src/model/resolveLayers";
@@ -65,6 +66,18 @@ describe("property patches route to the label", () => {
     const d = patchLayers(doc(), [["collabLeft", { enabled: true }]]);
     expect(d.label.enabledVariants).toContain("collab");
     expect(d.master).toEqual(lolevMaster());
+  });
+
+  // The working version is the LAST enabled variant (App reads it off the
+  // label), so appending here silently retargeted the master Select and the
+  // next save's promotions at a variant the user only switched a layer on in.
+  it("enables that variant BENEATH the working version, leaving the target put", () => {
+    const { master: m, id: winter } = addVariant(lolevMaster(), "Winter");
+    const d = patchLayers(
+      { master: m, label: { ...newLabel(m), enabledVariants: [winter] } },
+      [["collabLeft", { enabled: true }]]);
+    expect(d.label.enabledVariants).toEqual(["collab", winter]);
+    expect(d.label.enabledVariants.at(-1)).toBe(winter);
   });
 
   it("ignores a design patch on a layer only a DISABLED variant adds", () => {

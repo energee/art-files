@@ -481,24 +481,10 @@ function Vocabulary(props: Ctx & { layer: Layer }) {
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Choices</Label>
           {choices.map((c, i) => (
-            <div key={i} className="flex items-center gap-1">
-              <Input
-                id={`${id}-choice-${i}-title`} className="h-6 w-20 text-xs"
-                value={c.title ?? ""} placeholder="Title"
-                aria-label={`Choice ${i + 1} title`}
-                onChange={(e) => edit(i, { title: e.target.value })} />
-              <Input
-                id={`${id}-choice-${i}-value`} className="h-6 flex-1 text-xs"
-                value={c.value} placeholder="Value"
-                aria-label={`Choice ${i + 1} value`}
-                onChange={(e) => edit(i, { value: e.target.value })} />
-              <button
-                type="button" aria-label={`Remove choice ${i + 1}`}
-                className="shrink-0 rounded-sm p-1 text-muted-foreground hover:bg-accent"
-                onClick={() => put(choices.filter((_, j) => j !== i))}>
-                <X className="size-3" />
-              </button>
-            </div>
+            <ChoiceRow
+              key={i} id={id} index={i} choice={c}
+              onEdit={(patch) => edit(i, patch)}
+              onRemove={() => put(choices.filter((_, j) => j !== i))} />
           ))}
           <button
             type="button" aria-label="Add choice"
@@ -509,6 +495,48 @@ function Vocabulary(props: Ctx & { layer: Layer }) {
         </div>
       </Row>
     </>
+  );
+}
+
+/** One row of the vocabulary editor. The VALUE box holds its own draft: a
+ *  choice with no value is invalid (parseMaster refuses it), so pushing an
+ *  emptied box straight at the model threw, App caught it into the menu-bar
+ *  alert, and the text sprang back with a red banner that stayed. The draft
+ *  lets the box go empty while you retype, commits as soon as there is
+ *  something to commit, and restores the last good value if you leave it
+ *  blank. Removing a choice is what the X is for. */
+function ChoiceRow(props: {
+  id: string; index: number; choice: Choice;
+  onEdit: (patch: Partial<Choice>) => void;
+  onRemove: () => void;
+}) {
+  const { id, index, choice, onEdit, onRemove } = props;
+  const [draft, setDraft] = useState<string | null>(null);
+  const blank = draft !== null && !draft.trim();
+  return (
+    <div className="flex items-center gap-1">
+      <Input
+        id={`${id}-choice-${index}-title`} className="h-6 w-20 text-xs"
+        value={choice.title ?? ""} placeholder="Title"
+        aria-label={`Choice ${index + 1} title`}
+        onChange={(e) => onEdit({ title: e.target.value })} />
+      <Input
+        id={`${id}-choice-${index}-value`} className="h-6 flex-1 text-xs"
+        value={draft ?? choice.value} placeholder="Value"
+        aria-label={`Choice ${index + 1} value`}
+        aria-invalid={blank || undefined}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          if (e.target.value.trim()) onEdit({ value: e.target.value });
+        }}
+        onBlur={() => setDraft(null)} />
+      <button
+        type="button" aria-label={`Remove choice ${index + 1}`}
+        className="shrink-0 rounded-sm p-1 text-muted-foreground hover:bg-accent"
+        onClick={onRemove}>
+        <X className="size-3" />
+      </button>
+    </div>
   );
 }
 

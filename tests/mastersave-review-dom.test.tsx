@@ -68,6 +68,22 @@ describe("MasterSaveReview", () => {
     expect(boxes()).toHaveLength(4);
   });
 
+  // A layer can hold BOTH an override and a fill value on the same path
+  // ("lines" for text), and the two promote rows collided on one key — so one
+  // checkbox drove both and React warned about duplicate children.
+  it("keeps an override and a fill value on the same path apart", () => {
+    const same: MasterChange[] = [
+      { kind: "promote", layerId: "name", layerName: "Beer name", path: "lines", from: 1, to: 2 },
+      { kind: "promote", layerId: "name", layerName: "Beer name", path: "lines", from: 3, to: 4,
+        source: "value" },
+    ];
+    const props = render({ changes: same });
+    expect(boxes()).toHaveLength(2);
+    tick("promote-name-lines-value");
+    act(() => { button("Save Master").click(); });
+    expect(props.onConfirm).toHaveBeenCalledWith([same[1]]);
+  });
+
   it("checks and locks the structural rows, and leaves promotions off", () => {
     render();
     expect(box("renamed-name").getAttribute("aria-checked")).toBe("true");

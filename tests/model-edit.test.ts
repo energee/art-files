@@ -477,6 +477,18 @@ describe("resizeBy", () => {
     expect(resizeBy({ ...img(), vAnchor: "bottom" }, box, TL, -10, -10, false)).toEqual({ w: 44, h: 24, x: 290 });
     expect(resizeBy(img(), box, TL, -10, -10, false)).toEqual({ w: 44, h: 24, x: 290, y: 90 });
   });
+  // place.ts positions x with `guideX ?? anchor`, so the compensation has to
+  // read the guide too — the y half always did (vAnchorOf).
+  it("reads the guide before the raw anchor, on both axes", () => {
+    const right = { ...img(), guideX: "right" as const };
+    expect(resizeBy(right, box, L, 20, 0, false)).toEqual({ w: 32, h: 20 });
+    const centre = { ...img(), guideX: "center" as const };
+    expect(resizeBy(centre, box, L, 20, 0, false)).toEqual({ w: 32, h: 20, x: 310 });
+    // "none" is not a guide: the raw anchor still decides.
+    expect(resizeBy({ ...img(), guideX: "none" as const }, box, L, 20, 0, false))
+      .toEqual({ w: 32, h: 20, x: 320 });
+  });
+
   it("a bound axis sizes but keeps its binding", () => {
     const l = { ...img(), binding: { to: "name", side: "right" as const, gap: 4 } };
     expect(resizeBy(l, box, L, 20, 0, false)).toEqual({ w: 32, h: 20 });

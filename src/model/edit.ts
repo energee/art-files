@@ -489,6 +489,22 @@ export function toggleVariant(label: LabelFile, id: string): LabelFile {
   return { ...label, enabledVariants };
 }
 
+/** Enables `id` WITHOUT making it the working version. App reads the working
+ *  version off the end of `enabledVariants`, so a plain `toggleVariant` here
+ *  would silently retarget the master Select — and the next Save Master's
+ *  promotions — at a variant the user only meant to switch a layer on inside.
+ *  Inserting it one from the end keeps the version the user chose, while the
+ *  newly enabled variant still wins over every variant below it.
+ *
+ *  With nothing enabled there is no version to protect: a layer that only a
+ *  variant adds cannot resolve while the base master is shown, so enabling it
+ *  necessarily moves the canvas to that variant. */
+export function enableBeneathVersion(label: LabelFile, id: string): LabelFile {
+  const on = label.enabledVariants;
+  if (on.includes(id)) return label;
+  return { ...label, enabledVariants: [...on.slice(0, -1), id, ...on.slice(-1)] };
+}
+
 /** Switching the WORKING VERSION, on the label: the version you switch to is
  *  shown, the one you switch away from is hidden. The master Select names one
  *  version, and what it names is what the canvas draws — leaving visibility to
@@ -583,8 +599,10 @@ export const MASTER_PATHS: ReadonlySet<string> =
  *
  *  The one master-side effect kept: switching a layer ON that only exists
  *  while some variant is enabled also enables that variant. That is a label
- *  edit (`toggleVariant`), not a master one — without it the patch would set
- *  `enabled` on a layer that still does not resolve.
+ *  edit (`enableBeneathVersion`), not a master one — without it the patch
+ *  would set `enabled` on a layer that still does not resolve. It enables
+ *  BENEATH the working version so the promote target does not move under
+ *  the user.
  *
  *  A design patch on a layer this document does NOT resolve — one only a
  *  disabled variant adds, which the list still shows as a row — is dropped.
@@ -618,7 +636,7 @@ export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
     if (patch.enabled === true && !masterIds.has(id)) {
       const owner = d.master.variants.find((v) => id in v.layers);
       if (owner && !label.enabledVariants.includes(owner.id)) {
-        label = toggleVariant(label, owner.id);
+        label = enableBeneathVersion(label, owner.id);
         resolves = resolvable(label);
       }
     }
@@ -923,8 +941,11 @@ export function resizeBy(
   })();
   // Keep the opposite edge still: the anchored point moves by its share of
   // the size change, minus the whole change when the left/top edge was grabbed.
+  // Both axes read the GUIDE first and fall back to the raw anchor, matching
+  // how place.ts positions them (anchorFraction(guideX ?? anchor)) — reading
+  // `anchor` alone here shifted a layer whose guideX disagreed with it.
   const b = bindingOf(layer);
-  const ax = dw * (anchorFraction(layer.anchor) - (handle.hx === -1 ? 1 : 0));
+  const ax = dw * (anchorFraction(guideOf(layer.guideX) ?? layer.anchor) - (handle.hx === -1 ? 1 : 0));
   const ay = dh * (anchorFraction(vAnchorOf(layer)) - (handle.hy === -1 ? 1 : 0));
   const pos: LayerPatch = {};
   if (ax && !(b?.side === "left" || b?.side === "right")) pos.x = layer.x + ax;
