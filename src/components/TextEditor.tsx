@@ -25,7 +25,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Bold, Droplet, Heading as HeaderIcon } from "lucide-react";
 import type { Style } from "@/types";
-import type { Symbology, TextLine } from "@/model/layers";
+import type { Choice, Symbology, TextLine } from "@/model/layers";
 import { validateField } from "@/model/fields";
 import { markRun, parseRuns } from "@/description";
 import { GOLD } from "@/layout";
@@ -578,15 +578,121 @@ export interface TextEditorProps {
   /** Static text shown after a number/code box (TextLayer.suffix); the
    *  renderer draws it after the value, and it is never edited here. */
   suffix?: string;
+  /** The layer's fill vocabulary. Present = a picker that offers these and
+   *  still takes anything typed. It rides ALONGSIDE `input` rather than being
+   *  one of its modes, so a barcode tier list keeps its code validation
+   *  (docs/plans/choice-input.md). */
+  choices?: Choice[];
+  /** Caption for the field, when the layer's name is not what to say to
+   *  whoever is filling it (LayerBase.title). Absent = `label`. */
+  title?: string;
 }
 
 /** The sidebar's field for a text layer: label, the inline toolbar row, and
  *  the widget the layer's `input` calls for. */
 export function TextEditor(props: TextEditorProps) {
+  if (props.choices?.length) return <ChoiceField {...props} choices={props.choices} />;
   return props.input ? <PlainField {...props} input={props.input} /> : <RichField {...props} />;
 }
 
 const LABEL_CLASS = "text-xs text-muted-foreground";
+
+/** A picker over the layer's vocabulary that is still a text box: the list
+ *  suggests, it never constrains (docs/plans/choice-input.md). Typing filters
+ *  on title and value alike; a value matching nothing offers itself, and
+ *  committing it teaches the master (edit.ts's setContentIn).
+ *
+ *  It runs the same validation a plain field does, off the same `input` —
+ *  which is the whole reason `choices` is not an input mode: a barcode tier
+ *  list is a vocabulary AND a code box, not a choice between them. */
+function ChoiceField(props: TextEditorProps & { choices: Choice[] }) {
+  const { id, label, title, lines, onChange, base, input, min, max, symbology, suffix, placeholder, choices } = props;
+  const value = lines[0]?.text ?? "";
+  const [draft, setDraft] = useState<string | null>(null);
+  const [active, setActive] = useState(-1);
+  const typed = draft ?? value;
+  const open = draft !== null;
+
+  const needle = typed.trim().toLowerCase();
+  const shown = needle
+    ? choices.filter((c) => `${c.title ?? ""} ${c.value}`.toLowerCase().includes(needle))
+    : choices;
+  // A typed value nobody offers is itself an option — the picker never blocks.
+  const novel = !!typed.trim() && !choices.some((c) => c.value === typed.trim());
+
+  // Only a layer that declares an input has anything to validate against; a
+  // style is free text, and its vocabulary is a suggestion, not a rule.
+  const check: { ok: boolean; error?: string } = value === "" || !input
+    ? { ok: true }
+    : validateField({ id, label, kind: input, path: id, min, max, symbology }, value);
+
+  const commit = (text: string) => {
+    setDraft(null);
+    setActive(-1);
+    onChange([{ ...base, text }]);
+  };
+
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={id} className={LABEL_CLASS}>{title ?? label}</Label>
+      <div className="relative">
+        <div className="flex items-center gap-1.5">
+          <Input
+            id={id}
+            className="h-7 text-xs"
+            role="combobox"
+            aria-expanded={open}
+            aria-autocomplete="list"
+            value={typed}
+            placeholder={placeholder}
+            aria-invalid={!check.ok || undefined}
+            onFocus={() => setDraft(value)}
+            onBlur={() => { setDraft(null); setActive(-1); }}
+            onChange={(e) => { setDraft(e.target.value); setActive(-1); }}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                const n = shown.length + (novel ? 1 : 0);
+                if (!n) return;
+                setActive((i) => (i + (e.key === "ArrowDown" ? 1 : n - 1)) % n);
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                commit(active >= 0 && active < shown.length ? shown[active].value : typed.trim());
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setDraft(null);
+                setActive(-1);
+              }
+            }} />
+          {suffix && <span className="shrink-0 text-xs text-muted-foreground">{suffix}</span>}
+        </div>
+        {open && (shown.length > 0 || novel) && (
+          <ul role="listbox" aria-label={`${title ?? label} choices`}
+            className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md">
+            {shown.map((c, i) => (
+              <li key={c.value} role="option" data-choice aria-selected={i === active}
+                // The list is dismissed by blur, so take the press before it.
+                onMouseDown={(e) => { e.preventDefault(); commit(c.value); }}
+                className={cn("cursor-default rounded-sm px-2 py-1 text-xs",
+                  i === active ? "bg-accent" : "hover:bg-accent")}>
+                {c.title ?? c.value}
+              </li>
+            ))}
+            {novel && (
+              <li key="__novel" role="option" data-novel aria-selected={active === shown.length}
+                onMouseDown={(e) => { e.preventDefault(); commit(typed.trim()); }}
+                className={cn("cursor-default rounded-sm px-2 py-1 text-xs text-muted-foreground",
+                  active === shown.length ? "bg-accent" : "hover:bg-accent")}>
+                Use “{typed.trim()}”
+              </li>
+            )}
+          </ul>
+        )}
+      </div>
+      {!check.ok && <p className="text-xs text-destructive">{check.error}</p>}
+    </div>
+  );
+}
 
 /** A number or code box: one plain line in, one plain line out, validated
  *  by model/fields.ts through a FieldDecl built from the layer's own hints

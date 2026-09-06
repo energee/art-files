@@ -160,7 +160,7 @@ Test file named first in each task; write it failing, then implement.
 
 ### Phase B — UI (depends on A; B5/B6 parallel)
 
-**5. The picker**
+**5. The picker** — *done*
 - Files: `src/components/TextEditor.tsx` (a `ChoiceField` beside `PlainField`)
 - Test: `tests/text-editor-dom.test.ts` *(extend)*
 - A text input with a listbox: typing filters, picking commits the choice's
@@ -193,7 +193,7 @@ Test file named first in each task; write it failing, then implement.
 - Accept: learning one value shows a row naming that value; an unrelated
   array-valued path still renders as it does today.
 
-**8. The barcode tier picker**
+**8. The barcode tier picker** — *done* (no barcode-specific code was needed; covered in the Task 5 suite)
 - Files: none beyond Tasks 1-7 — this task is the PROOF that no barcode-only
   code is needed
 - Test: `tests/text-editor-dom.test.ts` *(extend)*
