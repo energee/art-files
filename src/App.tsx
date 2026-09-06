@@ -78,7 +78,7 @@ import {
 } from "@/layout";
 import { LayerList } from "@/components/LayerList";
 import { LayerInspector } from "@/components/LayerInspector";
-import { TextEditor } from "@/components/TextEditor";
+import { ChoiceBox, TextEditor } from "@/components/TextEditor";
 import { FileDrop } from "@/components/FileDrop";
 import { MasterPicker } from "@/components/MasterPicker";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
@@ -1782,10 +1782,19 @@ export const DocumentEditor = memo(function DocumentEditor({
         <Label htmlFor={id} className="text-xs text-muted-foreground">
           {layer.kind === "barcode" ? "Code" : "Value"}
         </Label>
-        <Input id={id} className="h-7 font-mono text-xs" value={template}
-          placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : "digits"}
-          aria-invalid={errors[layer.id] ? true : undefined}
-          onChange={(e) => setContent(layer, e.target.value, true)} />
+        {/* A vocabulary makes this the same picker the styled fields use —
+            the barcode's tiers are filled HERE, not through TextEditor. */}
+        {layer.choices?.length ? (
+          <ChoiceBox id={id} className="h-7 font-mono text-xs" value={template}
+            choices={layer.choices} invalid={!!errors[layer.id]}
+            placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : "digits"}
+            onCommit={(v) => setContent(layer, v, true)} />
+        ) : (
+          <Input id={id} className="h-7 font-mono text-xs" value={template}
+            placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : "digits"}
+            aria-invalid={errors[layer.id] ? true : undefined}
+            onChange={(e) => setContent(layer, e.target.value, true)} />
+        )}
         {errors[layer.id] && <p className="text-xs text-destructive">{errors[layer.id]}</p>}
         {layer.format !== undefined && (
           <p className="truncate font-mono text-[11px] text-muted-foreground" title={layer.value}>

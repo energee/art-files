@@ -605,89 +605,120 @@ const LABEL_CLASS = "text-xs text-muted-foreground";
  *  It runs the same validation a plain field does, off the same `input` —
  *  which is the whole reason `choices` is not an input mode: a barcode tier
  *  list is a vocabulary AND a code box, not a choice between them. */
-function ChoiceField(props: TextEditorProps & { choices: Choice[] }) {
-  const { id, label, title, lines, onChange, base, input, min, max, symbology, suffix, placeholder, choices } = props;
-  const value = lines[0]?.text ?? "";
+/** THE PICKER: a text box over a fixed vocabulary that still takes anything
+ *  typed (docs/plans/choice-input.md). Typing filters on title and value
+ *  alike; a value nobody offers appears as its own row rather than being
+ *  refused, and committing it teaches the master (edit.ts's setContentIn).
+ *
+ *  Strings in, strings out, so it serves both fill surfaces: the styled-text
+ *  field below, and App's own code field, where a barcode's tiers are filled.
+ *  Neither knows what the other validates — this only picks. */
+export function ChoiceBox(props: {
+  id: string;
+  value: string;
+  choices: Choice[];
+  onCommit: (value: string) => void;
+  placeholder?: string;
+  invalid?: boolean;
+  className?: string;
+}) {
+  const { id, value, choices, onCommit, placeholder, invalid } = props;
   const [draft, setDraft] = useState<string | null>(null);
   const [active, setActive] = useState(-1);
   const typed = draft ?? value;
   const open = draft !== null;
 
-  const needle = typed.trim().toLowerCase();
+  // Filtering starts when you TYPE, not when you focus: opening a field that
+  // is already filled must show the whole list, not narrow it to the one
+  // entry already in the box.
+  const needle = draft !== null && draft !== value ? draft.trim().toLowerCase() : "";
   const shown = needle
     ? choices.filter((c) => `${c.title ?? ""} ${c.value}`.toLowerCase().includes(needle))
     : choices;
   // A typed value nobody offers is itself an option — the picker never blocks.
   const novel = !!typed.trim() && !choices.some((c) => c.value === typed.trim());
 
+  const commit = (text: string) => {
+    setDraft(null);
+    setActive(-1);
+    onCommit(text);
+  };
+
+  return (
+    <div className="relative flex-1">
+      <Input
+        id={id}
+        className={cn("h-7 text-xs", props.className)}
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
+        value={typed}
+        placeholder={placeholder}
+        aria-invalid={invalid || undefined}
+        onFocus={() => setDraft(value)}
+        onBlur={() => { setDraft(null); setActive(-1); }}
+        onChange={(e) => { setDraft(e.target.value); setActive(-1); }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            const n = shown.length + (novel ? 1 : 0);
+            if (!n) return;
+            setActive((i) => (i + (e.key === "ArrowDown" ? 1 : n - 1)) % n);
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            commit(active >= 0 && active < shown.length ? shown[active].value : typed.trim());
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            setDraft(null);
+            setActive(-1);
+          }
+        }} />
+      {open && (shown.length > 0 || novel) && (
+        <ul role="listbox" aria-label={`${id} choices`}
+          className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md">
+          {shown.map((c, i) => (
+            <li key={c.value} role="option" data-choice aria-selected={i === active}
+              // The list is dismissed by blur, so take the press before it.
+              onMouseDown={(e) => { e.preventDefault(); commit(c.value); }}
+              className={cn("cursor-default rounded-sm px-2 py-1 text-xs",
+                i === active ? "bg-accent" : "hover:bg-accent")}>
+              {c.title ?? c.value}
+            </li>
+          ))}
+          {novel && (
+            <li key="__novel" role="option" data-novel aria-selected={active === shown.length}
+              onMouseDown={(e) => { e.preventDefault(); commit(typed.trim()); }}
+              className={cn("cursor-default rounded-sm px-2 py-1 text-xs text-muted-foreground",
+                active === shown.length ? "bg-accent" : "hover:bg-accent")}>
+              Use “{typed.trim()}”
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** The styled-text field's picker: ChoiceBox plus the caption, the suffix and
+ *  the validation a plain field runs, writing one plain line back. */
+function ChoiceField(props: TextEditorProps & { choices: Choice[] }) {
+  const { id, label, title, lines, onChange, base, input, min, max, symbology, suffix, placeholder, choices } = props;
+  const value = lines[0]?.text ?? "";
   // Only a layer that declares an input has anything to validate against; a
   // style is free text, and its vocabulary is a suggestion, not a rule.
   const check: { ok: boolean; error?: string } = value === "" || !input
     ? { ok: true }
     : validateField({ id, label, kind: input, path: id, min, max, symbology }, value);
 
-  const commit = (text: string) => {
-    setDraft(null);
-    setActive(-1);
-    onChange([{ ...base, text }]);
-  };
-
   return (
     <div className="space-y-1">
       <Label htmlFor={id} className={LABEL_CLASS}>{title ?? label}</Label>
-      <div className="relative">
-        <div className="flex items-center gap-1.5">
-          <Input
-            id={id}
-            className="h-7 text-xs"
-            role="combobox"
-            aria-expanded={open}
-            aria-autocomplete="list"
-            value={typed}
-            placeholder={placeholder}
-            aria-invalid={!check.ok || undefined}
-            onFocus={() => setDraft(value)}
-            onBlur={() => { setDraft(null); setActive(-1); }}
-            onChange={(e) => { setDraft(e.target.value); setActive(-1); }}
-            onKeyDown={(e) => {
-              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-                e.preventDefault();
-                const n = shown.length + (novel ? 1 : 0);
-                if (!n) return;
-                setActive((i) => (i + (e.key === "ArrowDown" ? 1 : n - 1)) % n);
-              } else if (e.key === "Enter") {
-                e.preventDefault();
-                commit(active >= 0 && active < shown.length ? shown[active].value : typed.trim());
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                setDraft(null);
-                setActive(-1);
-              }
-            }} />
-          {suffix && <span className="shrink-0 text-xs text-muted-foreground">{suffix}</span>}
-        </div>
-        {open && (shown.length > 0 || novel) && (
-          <ul role="listbox" aria-label={`${title ?? label} choices`}
-            className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md">
-            {shown.map((c, i) => (
-              <li key={c.value} role="option" data-choice aria-selected={i === active}
-                // The list is dismissed by blur, so take the press before it.
-                onMouseDown={(e) => { e.preventDefault(); commit(c.value); }}
-                className={cn("cursor-default rounded-sm px-2 py-1 text-xs",
-                  i === active ? "bg-accent" : "hover:bg-accent")}>
-                {c.title ?? c.value}
-              </li>
-            ))}
-            {novel && (
-              <li key="__novel" role="option" data-novel aria-selected={active === shown.length}
-                onMouseDown={(e) => { e.preventDefault(); commit(typed.trim()); }}
-                className={cn("cursor-default rounded-sm px-2 py-1 text-xs text-muted-foreground",
-                  active === shown.length ? "bg-accent" : "hover:bg-accent")}>
-                Use “{typed.trim()}”
-              </li>
-            )}
-          </ul>
-        )}
+      <div className="flex items-center gap-1.5">
+        <ChoiceBox
+          id={id} value={value} choices={choices} placeholder={placeholder}
+          invalid={!check.ok}
+          onCommit={(text) => onChange([{ ...base, text }])} />
+        {suffix && <span className="shrink-0 text-xs text-muted-foreground">{suffix}</span>}
       </div>
       {!check.ok && <p className="text-xs text-destructive">{check.error}</p>}
     </div>

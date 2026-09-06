@@ -102,7 +102,16 @@ Fill mode, in the inspector's text field:
     …
 ```
 
-## Two fill surfaces, one of them unchanged
+## Three fill surfaces, two of them picking
+
+**Correction (2026-09-06):** there are three, not two. A barcode and a QR fill
+through App's OWN code field (`contentFor`), not through TextEditor at all, so
+wiring the picker into TextEditor left the tier list unreachable exactly where
+a tier is filled. The picker is `ChoiceBox` — strings in, strings out — and
+both fields use it; the styled field wraps it with its caption, suffix and
+validation.
+
+## The two TextEditor surfaces, one of them unchanged
 
 `TextEditor`'s `PlainField` (`TextEditor.tsx:595`) is the sidebar widget and is
 where the picker goes. `PreviewCompare`'s in-place canvas editor
