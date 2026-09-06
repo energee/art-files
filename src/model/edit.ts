@@ -374,15 +374,27 @@ export function bindingPatch(layer: Layer, to: string, side: BindingSide, box: B
  *  the nearest anchor with the exact dropped x. Vertical: a bound layer
  *  moves its `gap` and keeps its binding; an unbound one moves `y`
  *  (bottom-anchored layers included — `y` is their bottom edge, still += dy).
- *  Locked layers return {}. Axes with no movement are left out of the patch. */
+ *  Locked layers return {}. Axes with no movement are left out of the patch.
+ *
+ *  `moving` is the rest of the dragged SELECTION. A layer bound to another
+ *  layer in it already follows that layer, so moving its `gap` as well would
+ *  carry it twice as far as the pointer — the axis it is bound on is left out
+ *  of the patch instead, and the binding does the work. */
 export function moveBy(
   layer: Layer, dx: number, dy: number, guides: GuideLines, snap: number, w = 0,
+  moving: ReadonlySet<string> = new Set(),
 ): LayerPatch {
   if (layer.locked) return {};
   const patch: LayerPatch = {};
   const binding = layer.binding;
   const horizontal = binding?.side === "left" || binding?.side === "right";
-  if (binding && (horizontal ? dx !== 0 : dy !== 0)) {
+  // Legacy `y: { below }` binds vertically without a `binding` record.
+  const anchoredTo = bindingOf(layer);
+  const carried = !!anchoredTo && moving.has(anchoredTo.to);
+  const carriedH = carried && (anchoredTo.side === "left" || anchoredTo.side === "right");
+  const carriedV = carried && !carriedH;
+  if (carriedH) return moveBy({ ...layer, binding: null }, 0, dy, guides, snap, w, moving);
+  if (binding && !carriedV && (horizontal ? dx !== 0 : dy !== 0)) {
     const delta = horizontal ? dx : dy;
     patch.binding = { ...binding, gap: binding.gap + (binding.side === "left" || binding.side === "top" ? -delta : delta) };
   }
@@ -393,7 +405,7 @@ export function moveBy(
     patch.anchor = position.anchor;
     patch.x = guides[position.anchor] + position.offsetX;
   }
-  if (dy !== 0 && (!binding || horizontal)) {
+  if (dy !== 0 && !carriedV && (!binding || horizontal)) {
     patch.y = isBound(layer.y) ? { below: layer.y.below, gap: layer.y.gap + dy } : layer.y + dy;
   }
   return patch;
