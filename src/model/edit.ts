@@ -5,11 +5,17 @@
 //
 // The one routing rule: WHERE AN EDIT LANDS FOLLOWS THE LAYER. A layer a
 // variant's diff ADDS (an id master.layers lacks) is edited in that diff; a
-// master layer is edited in master.layers. There is no editing-target
-// selector. A variant overriding a MASTER layer (Collab moving the logo) is
-// the one explicit case, `setLayerIn`. Bindings (`y: { below, gap }`) are
-// validated through parseMaster so Design mode can never save a master the
-// loader would reject.
+// master layer is edited in master.layers. There is no per-layer editing-
+// target selector. A variant overriding a MASTER layer (Collab moving the
+// logo) is the one explicit case, `setLayerIn`. Bindings (`y: { below, gap }`)
+// are validated through parseMaster so Design mode can never save a master
+// the loader would reject.
+//
+// `patchLayers`' own `target` argument is a different, coarser thing: which
+// FILE an edit lands in at all — this label (the default) or the master
+// (Template mode, docs/plans/template-switch.md). It does not change the
+// per-layer rule above; in master mode every entry still follows a layer to
+// its own record, just inside the master instead of split against it.
 import type {
   BarcodeLayer, ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master, QrLayer,
   RelativeY, TextLayer, Variant, BindingSide,
@@ -527,12 +533,43 @@ export const MASTER_PATHS: ReadonlySet<string> =
   new Set(["placeholder", "input", "min", "max", "symbology", "suffix",
     "choices", "title"]);
 
+/** Where a `patchLayers` call lands: `"label"` (default) splits each entry
+ *  between the master's fill contract and the label's overrides, per the
+ *  routing rule below. `"master"` sends the WHOLE entry — contract or not —
+ *  to the master: `patchLayer` when the layer is in `master.layers`,
+ *  `patchLayerIn` for the variant that added it otherwise. `{ variant }`
+ *  is the same but pinned to one named variant's diff regardless of which
+ *  record the layer already lives in — Template mode editing a picked version
+ *  rather than the base (docs/plans/template-switch.md). Neither master form
+ *  touches the label. */
+export type EditTarget = "label" | "master" | { variant: string };
+
+/** `target === "master" | { variant }`: write `patch` into the master alone.
+ *  A layer in `master.layers` goes through `patchLayer` (or, pinned to a
+ *  variant, `patchLayerIn` for that variant — it starts the variant's diff
+ *  for a base layer it does not yet mention). A layer a variant added goes
+ *  through `patchLayerIn` for its OWNING variant, unless pinned, in which
+ *  case it goes to the pinned variant instead (that variant's diff, not the
+ *  layer's own). An id neither the master nor the pinned variant recognises
+ *  is left untouched, same as an id `whereLayerLives` would reject. */
+function patchMasterEntry(master: Master, id: string, patch: LayerPatch, target: "master" | { variant: string }): Master {
+  const inMaster = master.layers.some((l) => l.id === id);
+  if (typeof target === "object") {
+    const v = variantOf(master, target.variant);
+    return inMaster || id in v.layers ? patchLayerIn(master, target.variant, id, patch) : master;
+  }
+  if (inMaster) return patchLayer(master, id, patch);
+  const owner = master.variants.find((v) => id in v.layers);
+  return owner ? patchLayerIn(master, owner.id, id, patch) : master;
+}
+
 /** THE ROUTING RULE (docs/plans/label-first-editing.md): a property edit is a
  *  LABEL override, never a master edit — except the fill contract above. The
  *  master is the template and otherwise changes only through a reviewed save,
  *  so a patch does not write `master.layers`, not even for a layer a variant
  *  added: the label overrides that the same way it overrides a master layer
- *  (resolveLayers applies variants first, then the label).
+ *  (resolveLayers applies variants first, then the label). That is the
+ *  `"label"` target (the default); see `EditTarget` above for the others.
  *
  *  A patch carrying both — the inspector never emits one, but a caller may —
  *  is SPLIT, each half taking its own path, rather than sent whole to either.
@@ -542,8 +579,14 @@ export const MASTER_PATHS: ReadonlySet<string> =
  *  The one master-side effect kept: switching a layer ON that only exists
  *  while some variant is enabled also enables that variant. That is a label
  *  edit (`toggleVariant`), not a master one — without it the patch would set
- *  `enabled` on a layer that still does not resolve. */
-export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
+ *  `enabled` on a layer that still does not resolve. It only applies in
+ *  `"label"` mode: a master-targeted patch never touches the label, and
+ *  `label` is returned by the SAME object identity. */
+export function patchLayers(doc: Doc, entries: [string, LayerPatch][], target: EditTarget = "label"): Doc {
+  if (target !== "label") {
+    return { master: entries.reduce((m, [id, patch]) => patchMasterEntry(m, id, patch, target), doc.master),
+             label: doc.label };
+  }
   const masterIds = new Set(doc.master.layers.map((l) => l.id));
   return entries.reduce((d, [id, patch]) => {
     const keys = Object.keys(patch);

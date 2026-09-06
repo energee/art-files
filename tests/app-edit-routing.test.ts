@@ -143,3 +143,52 @@ describe("the vocabulary is part of the fill contract", () => {
       .toEqual(choices);
   });
 });
+
+// Task 4 of docs/plans/template-switch.md: a third `target` argument sends
+// the whole patch — contract or not — to the master (base or a variant's
+// diff) instead of splitting it between master and label.
+describe("patchLayers takes a target", () => {
+  it("\"master\" on a base layer writes master.layers and leaves the label untouched, by identity", () => {
+    const base = doc();
+    const d = patchLayers(base, [["name", { x: 5 }]], "master");
+    expect((d.master.layers.find((l) => l.id === "name") as TextLayer).x).toBe(5);
+    expect(d.label.overrides).toBeUndefined();
+    expect(d.label).toBe(base.label);
+  });
+
+  it("\"master\" on a variant-added layer writes that variant's diff, not the base", () => {
+    const d = patchLayers(doc(), [["collabLeft", { x: 5 }]], "master");
+    expect(d.master.variants.find((v) => v.id === "collab")!.layers.collabLeft).toMatchObject({ x: 5 });
+    expect(d.master.layers.some((l) => l.id === "collabLeft")).toBe(false);
+    expect(d.label.overrides).toBeUndefined();
+  });
+
+  it("\"master\" leaves an unknown id untouched", () => {
+    const base = doc();
+    const d = patchLayers(base, [["not-a-layer", { x: 5 }]], "master");
+    expect(d.master).toEqual(base.master);
+    expect(d.label).toBe(base.label);
+  });
+
+  it("\"master\" on a mixed patch writes both keys to the base layer", () => {
+    const d = patchLayers(doc(), [["name", { x: 5, placeholder: "p" }]], "master");
+    const name = d.master.layers.find((l) => l.id === "name") as TextLayer;
+    expect(name.x).toBe(5);
+    expect(name.placeholder).toBe("p");
+    expect(d.label.overrides).toBeUndefined();
+  });
+
+  it("{ variant } on a base layer writes the variant's diff and leaves the base and label untouched", () => {
+    const base = doc();
+    const d = patchLayers(base, [["name", { x: 5 }]], { variant: "collab" });
+    expect(d.master.variants.find((v) => v.id === "collab")!.layers.name).toMatchObject({ x: 5 });
+    expect(d.master.layers.find((l) => l.id === "name")).toEqual(base.master.layers.find((l) => l.id === "name"));
+    expect(d.label).toBe(base.label);
+  });
+
+  it("\"label\" behaves exactly as it does today", () => {
+    const d = patchLayers(doc(), [["name", { x: 300 }]], "label");
+    expect(d.master).toEqual(lolevMaster());
+    expect(d.label.overrides?.name).toEqual({ x: 300 });
+  });
+});
