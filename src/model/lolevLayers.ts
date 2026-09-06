@@ -8,7 +8,7 @@
 // while it is on, chained with `below` bindings exactly as collabLeftFlow /
 // collabCenterFrame chained them. Once the renderers draw from this data,
 // the layout constants and the built-in branches are deleted.
-import type { Master, TextLayer, ImageLayer } from "./layers";
+import type { Choice, Master, TextLayer, ImageLayer } from "./layers";
 import {
   CENTER_X, GOLD, LEFT_X, PAGE, WARNING_TRACKING, DEFAULT_STROKE_PX, PX,
   TRIM, DEFAULT_MARGIN_PT,
@@ -39,6 +39,31 @@ const image = (l: Omit<ImageLayer, "kind" | "enabled" | "style"> &
  *  the reference plate's 29.88pt). */
 const UPC_MOD = 29.88 / 29;
 
+/** The styles and barcode tiers Lolev prints, recovered verbatim from
+ *  presets.json — deleted 2026-09-04 (aafc163) when a master became the saved
+ *  style, which left these two lists with nowhere to live. They are the fill
+ *  vocabulary now (docs/plans/choice-input.md): the picker offers them and
+ *  still takes anything typed, and a typed value joins the list.
+ *
+ *  A tier is picked by name and draws its UPC — presets.json's `{ name, upc }`
+ *  is a Choice's `{ title, value }`, which is where that shape came from. */
+const LOLEV_STYLES: Choice[] = [
+  { value: "Ultra Hopped Ale" },
+  { value: "Hazy India Pale Ale" },
+  { value: "Hazy Pale Ale" },
+];
+
+const BARCODE_TIERS: Choice[] = [
+  { title: "Tier 1", value: "850051366040" },
+  { title: "Tier 2", value: "860009737631" },
+  { title: "Tier 3", value: "860009737617" },
+  { title: "Tier 4", value: "850051366156" },
+  { title: "Tier 5", value: "850051366170" },
+  { title: "Tier 6", value: "850051366224" },
+  { title: "Tier 7", value: "860009737655" },
+  { title: "Tier 8", value: "860009737600" },
+];
+
 export function lolevMaster(): Master {
   return {
     formatVersion: 3,
@@ -62,10 +87,10 @@ export function lolevMaster(): Master {
       text({ id: "volume", name: "Volume", x: LEFT_X, anchor: "left", y: top(35.49, 9), size: 9,
         lines: [{ text: "1 PINT", ...GOLD_METAL, bold: true }] }),
       text({ id: "abv", name: "ABV", x: LEFT_X, anchor: "left", y: top(46.29, 9), size: 9,
-        fillable: true, input: "number", min: 0, max: 20, placeholder: "#",
+        input: "number", min: 0, max: 20, placeholder: "#",
         suffix: "% alc by vol", lines: [{ text: "", ...GOLD_METAL }] }),
       text({ id: "description", name: "Description", x: LEFT_X, anchor: "left",
-        y: top(66.68, 9), size: 9, leading: 10.8 / 9, fillable: true,
+        y: top(66.68, 9), size: 9, leading: 10.8 / 9,
         lines: [{ text: "HOPS", ...GOLD_METAL, header: true }, { text: "...", ...GOLD_METAL }] }),
       // Center column.
       text({ id: "wordmark", name: "Brand", x: CENTER_X, anchor: "center", y: top(44.96, 22),
@@ -74,12 +99,12 @@ export function lolevMaster(): Master {
       image({ id: "logo", name: "Logo", asset: "builtin:logo", x: CENTER_X, anchor: "center",
         y: 183 - (33.5 * 525 / 480) / 2, w: 33.5, style: KEYLINED }),
       text({ id: "name", name: "Name", x: CENTER_X, anchor: "center", y: top(317.16, 15.83),
-        size: 15.83, align: "center", fillable: true, placeholder: "Name",
+        size: 15.83, align: "center", placeholder: "Name",
         style: { ...KEYLINED, uppercase: true },
         faces: { base: "bold", bold: "bold" },
         lines: [{ text: "", ...GOLD_METAL }] }),
       text({ id: "styleLine", name: "Style", x: CENTER_X, anchor: "center", y: top(337.30, 12.18),
-        size: 12.18, align: "center", fillable: true, placeholder: "Style",
+        size: 12.18, align: "center", placeholder: "Style", choices: LOLEV_STYLES,
         lines: [{ text: "", ...GOLD_METAL }] }),
       // Right column: rotated 90° CCW, reading bottom-to-top, each run's
       // bottom pinned one stroke inside the bottom margin. `x` is the box's
@@ -106,9 +131,9 @@ export function lolevMaster(): Master {
           strokeLayer: DEFAULT_STROKE_LAYER },
       },
       {
-        id: "barcode", name: "Barcode", kind: "barcode", enabled: true, fillable: true,
+        id: "barcode", name: "Barcode", kind: "barcode", enabled: true,
         x: 524.71, anchor: "left", y: 226.07, rotation: 90, symbology: "upc-a",
-        value: "850051366224", h: 15 * UPC_MOD, moduleW: UPC_MOD,
+        value: "850051366224", h: 15 * UPC_MOD, moduleW: UPC_MOD, choices: BARCODE_TIERS,
         style: { fill: "#1A1A1A", layer: "white", stroke: "#FFFFFF", strokeWidth: 20,
           strokeLayer: DEFAULT_STROKE_LAYER },
       },
@@ -126,10 +151,10 @@ export function lolevMaster(): Master {
             lines: [{ text: "A collaborative", ...GOLD_METAL, bold: true },
               { text: "project with", ...GOLD_METAL, bold: true }] }),
           // Logo top = lead's last baseline + 8 → 8 - descent(3.15).
-          collabLeft: image({ id: "collabLeft", name: "Text logo", asset: "", fillable: true,
+          collabLeft: image({ id: "collabLeft", name: "Text logo", asset: "",
             x: LEFT_X, anchor: "left", y: { below: "collabLead", gap: 8 - 0.35 * 9 },
             w: 70, h: 44, scale: 1, tintRaster: false }),
-          collabCenter: image({ id: "collabCenter", name: "Graphic logo", asset: "", fillable: true,
+          collabCenter: image({ id: "collabCenter", name: "Graphic logo", asset: "",
             x: CENTER_X, anchor: "center", y: { below: "logo", gap: 14 },
             w: 36, h: 36, scale: 1, tintRaster: false }),
         },

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 export const AUTO_CHECK_DELAY_MS = 2_000;
 // ponytail: quiet re-checks are focus-driven, not a timer — zero network while idle;
@@ -240,7 +241,7 @@ export function DesktopUpdater(props: {
   return (
     <>
       {desktop && props.statusHost && status.kind === "current" && createPortal(
-        <span role="status" className="inline-flex items-center gap-1.5 px-2 text-xs text-muted-foreground">
+        <span role="status" className="inline-flex items-center gap-1.5 px-2 text-xs text-success-text">
           {/* Hugeicons CheckmarkCircle02Icon (core-free-icons, MIT). */}
           <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
             <path d="M22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12Z" />
@@ -251,7 +252,12 @@ export function DesktopUpdater(props: {
       )}
       {desktop && props.statusHost && barAction && createPortal(
         <span role="status">
-          <Button variant="ghost" size="sm" className="h-6 gap-1.5 px-2 text-xs text-primary"
+          <Button
+            variant="ghost" size="sm"
+            className={cn(
+              "h-6 gap-1.5 px-2 text-xs",
+              status.kind === "installed" ? "text-success-text" : "text-info-text",
+            )}
             onClick={() => setOpen(true)}>
             <barAction.Icon data-icon="inline-start" aria-hidden="true" />
             {barAction.label} · {barAction.version}
@@ -278,7 +284,7 @@ export function DesktopUpdater(props: {
             {status.kind === "disabled" && "Updates are not configured"}
             {status.kind === "error" && "Update failed"}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className={status.kind === "error" ? "text-destructive-text" : undefined}>
             {status.kind === "available" && `${status.currentVersion} → ${status.version}${releasedOn}`}
             {status.kind === "installed" && `Label Lab ${status.version} is installed and starts the next time the app opens.`}
             {status.kind === "downloading" && "The download is in progress; the status bar shows how far along it is."}

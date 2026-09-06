@@ -3,7 +3,7 @@
 //
 // A LAYER is the only unit. A master is its layers in draw order plus the
 // variants that diff them; a label is a master reference, the variants it
-// turned on, and the values filled into fillable layers. There is no
+// turned on, and the values filled into its layers. There is no
 // separate field list, no defaults bag, no Document group: background and
 // mask are the two bottom image layers, and every built-in Lolev element is
 // an ordinary layer in model/lolevLayers.ts.
@@ -33,6 +33,14 @@ export function guideOf<G extends string>(g: G | "none" | undefined): Exclude<G,
   return g && g !== "none" ? g as Exclude<G, "none"> : undefined;
 }
 
+/** The edge a layer's numeric x places: its horizontal guide when it has one
+ *  (the guide names the edge), else its anchor. The ONE precedence rule,
+ *  shared by placement and resize — the y axis has had `vAnchorOf` all along,
+ *  and resize reading `anchor` raw instead is what made the two disagree. */
+export function hAnchorOf(l: { guideX?: LayerBase["guideX"]; anchor: Anchor }): Anchor {
+  return guideOf(l.guideX) ?? l.anchor;
+}
+
 /** The edge a layer's numeric y places: its vertical guide when it has one
  *  (the guide names the edge), else its vAnchor, else the top. The ONE
  *  precedence rule, shared by placement and resize. */
@@ -48,17 +56,30 @@ export function bindingOf(layer: { binding?: LayerBinding | null; y?: unknown })
     ? { to: y.below, side: "bottom", gap: y.gap } : undefined;
 }
 
+/** One offered value in a layer's fill vocabulary. `title` is what the picker
+ *  lists, `value` is what the label draws; absent title = show the value. The
+ *  shape comes from the deleted presets.json, whose barcode tiers were exactly
+ *  `{ name, upc }` (docs/plans/choice-input.md). */
+export interface Choice { title?: string; value: string }
+
 export interface LayerBase {
   id: string;
   /** Shown in the Layers list. */
   name: string;
+  /** Caption above the fill widget, when the layer's name is not what you
+   *  want to say to whoever is filling it. Absent = the name. */
+  title?: string;
+  /** The fill vocabulary. Present = the fill widget offers these AND still
+   *  takes anything typed, and a typed value is appended here (edit.ts's
+   *  learnChoice). Absent = today's widget. Deliberately NOT a mode of
+   *  `input`: a barcode tier picker is a list AND `code` validation, so the
+   *  two cannot share one enum. Empty means absent — parseMaster drops it. */
+  choices?: Choice[];
   kind: LayerKind;
   /** Off = never draws. The only visibility switch (no session "eye"). */
   enabled: boolean;
   /** Fillers cannot move it. Universal — every kind honors it. */
   locked?: boolean;
-  /** Listed in the Fillable filter; its content is what a .label fills. */
-  fillable?: boolean;
   /** Horizontal position in PDF points, measured from the page origin
    *  (bleed included, like layout.ts's constants), interpreted per `anchor`:
    *  left = the box's left edge, center = its center, right = its right
@@ -102,7 +123,7 @@ export interface TextLine extends StyledLine { header?: boolean }
 
 export interface TextLayer extends LayerBase {
   kind: "text";
-  /** The content. A fillable text layer's .label value is this array. */
+  /** The content. A text layer's .label value is this array. */
   lines: TextLine[];
   /** Type size in points. */
   size: number;
@@ -140,7 +161,7 @@ export interface ImageLayer extends LayerBase {
   kind: "image";
   /** Asset id into the master's or label's image store, or the bundled
    *  "builtin:logo" (the Lolev laurel SVG). "" = nothing loaded, draws
-   *  nothing. A fillable image layer's .label value is this string. */
+   *  nothing. An image layer's .label value is this string. */
   asset: string;
   /** Box width in points. */
   w: number;
@@ -164,7 +185,7 @@ export interface BarcodeLayer extends LayerBase {
   kind: "barcode";
   symbology: Symbology;
   /** Payload. May be a format string over text-layer ids ("{upc}"), see
-   *  model/format.ts. A fillable barcode layer's .label value is this. */
+   *  model/format.ts. A barcode layer's .label value is this. */
   value: string;
   /** Bar-area height in points. */
   h: number;
@@ -195,7 +216,7 @@ export interface QrLayer extends LayerBase {
 
 export type Layer = TextLayer | ImageLayer | BarcodeLayer | QrLayer;
 
-/** What a .label stores for a fillable layer: text lines, or an asset id /
+/** What a .label stores for a layer: text lines, or an asset id /
  *  code value. */
 export type LayerValue = TextLine[] | string;
 
@@ -291,6 +312,19 @@ function validateLayer(l: Layer, ctx: string): void {
     if (typeof l.value !== "string") fail(`qr layer "${l.id}" missing value`);
     if (typeof l.size !== "number") fail(`qr layer "${l.id}" missing size`);
   }
+  if (l.choices !== undefined) {
+    if (!Array.isArray(l.choices)) fail(`${ctx} layer "${l.id}" has invalid choices`);
+    for (const c of l.choices) {
+      if (!c || typeof c !== "object" || typeof c.value !== "string" || !c.value.trim())
+        fail(`${ctx} layer "${l.id}" has a choice with no value`);
+      if (c.title !== undefined && typeof c.title !== "string")
+        fail(`${ctx} layer "${l.id}" has a choice with an invalid title`);
+    }
+    // Absent and [] are one state, so nothing downstream has to test both.
+    if (l.choices.length === 0) delete (l as { choices?: Choice[] }).choices;
+  }
+  if (l.title !== undefined && typeof l.title !== "string")
+    fail(`${ctx} layer "${l.id}" has an invalid title`);
   if (!l.style || typeof l.style !== "object") fail(`${ctx} layer "${l.id}" missing style`);
 }
 

@@ -34,18 +34,21 @@ it("selects a v3 text layer, edits its content through the inspector, and undoes
       }));
     });
     expect(container.querySelector("#master-picker")?.textContent).toContain("Lolev");
-    const variant = container.querySelector('[aria-label="Collab variant"]')!;
+    // Switching a variant-added layer ON enables the variant that owns it —
+    // read off the master Select, which names the version being shown now that
+    // the variant chips are gone.
+    const picker = () => container.querySelector("#master-picker")!.textContent ?? "";
     const leadPower = container.querySelector('[data-layer-id="collabLead"] button[aria-label$=": enabled"]') as HTMLButtonElement;
-    expect(variant.getAttribute("aria-pressed")).toBe("false");
+    expect(picker()).not.toContain("Collab");
     expect(leadPower.getAttribute("aria-pressed")).toBe("false");
     await act(async () => leadPower.click());
-    expect(variant.getAttribute("aria-pressed")).toBe("true");
+    expect(picker()).toContain("Collab");
     expect(leadPower.getAttribute("aria-pressed")).toBe("true");
     expect(container.textContent).not.toContain("Invalid master file");
     await act(async () => {
       document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
     });
-    expect(variant.getAttribute("aria-pressed")).toBe("false");
+    expect(picker()).not.toContain("Collab");
     const row = container.querySelector('[data-layer-id="name"]');
     expect(row).not.toBeNull();
     await act(async () => {
@@ -97,5 +100,39 @@ it("measures asset assembly while moving margin guides", async () => {
     expect(perf.source!.planAssets.guides!.top).not.toBe(oldTop);
   } finally {
     await act(async () => root.unmount()); container.remove(); vi.useRealTimers();
+  }
+});
+
+// docs/plans/choice-input.md — the barcode and QR fill through App's own code
+// field, not TextEditor, so wiring the picker into TextEditor alone left the
+// tier list unreachable exactly where a tier is filled.
+it("offers the barcode's tiers in the field that fills it", async () => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(createElement(DocumentEditor, {
+        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
+        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+      }));
+    });
+    const row = container.querySelector('[data-layer-id="barcode"]')!;
+    await act(async () => {
+      (row.querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement).click();
+    });
+    // The inspector is a Sheet: it portals to document.body, not into the
+    // container the app was rendered into.
+    const field = document.querySelector("#barcode-content") as HTMLInputElement;
+    expect(field).not.toBeNull();
+    await act(async () => { field.focus(); });
+    const tiers = Array.from(document.querySelectorAll("[data-choice]")).map((o) => o.textContent?.trim());
+    expect(tiers).toContain("Tier 1");
+    expect(tiers).toHaveLength(8);
+  } finally {
+    act(() => { root.unmount(); });
+    container.remove();
   }
 });

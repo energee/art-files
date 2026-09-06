@@ -7,7 +7,7 @@
 // so the guards here are belt-and-braces that name what went wrong.
 // No measuring happens here — `sizeOf` returns the box AS IT SITS ON THE
 // PAGE (a rotated layer's caller has already swapped w/h).
-import { bindingOf, guideOf, vAnchorOf, type Layer } from "./layers";
+import { bindingOf, guideOf, hAnchorOf, vAnchorOf, type Layer } from "./layers";
 import { anchorFraction } from "./position";
 import type { GuideLines } from "./position";
 import { SAFE } from "../layout";
@@ -28,7 +28,7 @@ export function placeLayers(
     visiting.add(l.id);
     const { w, h } = sizeOf(l);
     const guideX = guideOf(l.guideX);
-    let x = l.x + (guideX ? (guides[guideX] ?? SAFE[guideX]) : 0) - anchorFraction(guideX ?? l.anchor) * w;
+    let x = l.x + (guideX ? (guides[guideX] ?? SAFE[guideX]) : 0) - anchorFraction(hAnchorOf(l)) * w;
     let y = 0;
     if (typeof l.y === "number") {
       const guide = guideOf(l.guideY);

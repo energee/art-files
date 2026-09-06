@@ -94,10 +94,10 @@ describe("whereLayerLives", () => {
 
 describe("setLayer", () => {
   it("deep-merges into a master layer", () => {
-    const m = setLayer(lolevMaster(), "name", { size: 20, style: { fill: "#112233" }, fillable: false });
+    const m = setLayer(lolevMaster(), "name", { size: 20, style: { fill: "#112233" }, locked: true });
     const l = byId<TextLayer>(m, "name");
     expect(l.size).toBe(20);
-    expect(l.fillable).toBe(false);
+    expect(l.locked).toBe(true);
     expect(l.style).toEqual({ ...byId<TextLayer>(lolevMaster(), "name").style, fill: "#112233" });
     expect(l.lines).toEqual(byId<TextLayer>(lolevMaster(), "name").lines);
   });
@@ -268,31 +268,26 @@ describe("moveBy", () => {
   const nameLayer = () => byId<TextLayer>(lolevMaster(), "name");
   it("on a bound layer changes gap only, keeping the binding", () => {
     const l = { ...collab(lolevMaster()).layers.collabLeft } as ImageLayer;
-    const patch = moveBy(l, 0, 5, guides, 4);
+    const patch = moveBy(l, 0, 5);
     const y = l.y as RelativeY;
     expect(patch).toEqual({ y: { below: "collabLead", gap: y.gap + 5 } });
   });
-  it("snaps to the center guide setting anchor center", () => {
+  it("moves x by dx and leaves the anchor alone", () => {
+    // It used to adopt the nearest guide's anchor on every move, which flipped
+    // a centred layer to left- or right-anchored partway across the page.
+    // Snapping lives in snappedDx now (tests/model-group-drag.test.ts).
     const l: TextLayer = { ...nameLayer(), x: CENTER_X - 10, anchor: "left" };
-    const patch = moveBy(l, 8, 0, guides, 4);
-    expect(patch).toEqual({ x: CENTER_X, anchor: "center" });
-  });
-  it("a free drop keeps the nearest anchor and reproduces the spot exactly", () => {
-    const patch = moveBy(nameLayer(), 12, 0, guides, 4);
-    expect(patch).toEqual({ x: CENTER_X + 12, anchor: "center" });
-  });
-  it("snaps a box edge, not just the anchor point, when a width is given", () => {
-    const l: TextLayer = { ...nameLayer(), x: guides.right - 60 - 2, anchor: "left" };
-    expect(moveBy(l, 0.5, 0, guides, 4, 60)).toEqual({ x: guides.right, anchor: "right" });
+    expect(moveBy(l, 8, 0)).toEqual({ x: CENTER_X - 2 });
+    expect(moveBy(nameLayer(), 12, 0)).toEqual({ x: CENTER_X + 12 });
   });
   it("moves an unbound y by dy, bottom-anchored layers included", () => {
-    expect(moveBy(nameLayer(), 0, -7, guides, 4)).toEqual({ y: (nameLayer().y as number) - 7 });
+    expect(moveBy(nameLayer(), 0, -7)).toEqual({ y: (nameLayer().y as number) - 7 });
     const store = byId<TextLayer>(lolevMaster(), "storeCold");
     expect(store.vAnchor).toBe("bottom");
-    expect(moveBy(store, 0, 2, guides, 4)).toEqual({ y: (store.y as number) + 2 });
+    expect(moveBy(store, 0, 2)).toEqual({ y: (store.y as number) + 2 });
   });
   it("returns an empty patch for a locked layer", () => {
-    expect(moveBy(byId(lolevMaster(), "warning"), 5, 5, guides, 4)).toEqual({});
+    expect(moveBy(byId(lolevMaster(), "warning"), 5, 5)).toEqual({});
   });
 });
 
@@ -407,7 +402,7 @@ describe("validated inspector patches", () => {
 
 it("dragging horizontally adjusts a guide offset without replacing the guide anchor", () => {
   const layer = { ...byId(lolevMaster(), "name"), guideX: "right" as const, x: -5 };
-  expect(moveBy({ ...layer, locked: false }, 3, 0, guides, 6, 100)).toEqual({ x: -2 });
+  expect(moveBy({ ...layer, locked: false }, 3, 0)).toEqual({ x: -2 });
 });
 
 import { bindingPatch, unbindPatch } from "../src/model/edit";
@@ -427,7 +422,7 @@ it("switches binding axes and detaches at the measured position", () => {
 
 it.each(["top", "left", "right", "bottom"] as const)("dragging a %s binding edits its signed gap and preserves the free axis", (side) => {
   const l = { ...byId(lolevMaster(), "volume"), binding: { to: "logo", side, gap: 10 }, locked: false };
-  const patch = moveBy(l, 3, 4, guides, 0, 10);
+  const patch = moveBy(l, 3, 4);
   expect(patch.binding).toEqual({ to: "logo", side, gap: ({ top: 6, left: 7, right: 13, bottom: 14 })[side] });
   if (side === "top" || side === "bottom") expect(patch).not.toHaveProperty("y");
   else expect(patch).toMatchObject({ y: (l.y as number) + 4 });
@@ -482,6 +477,18 @@ describe("resizeBy", () => {
     expect(resizeBy({ ...img(), vAnchor: "bottom" }, box, TL, -10, -10, false)).toEqual({ w: 44, h: 24, x: 290 });
     expect(resizeBy(img(), box, TL, -10, -10, false)).toEqual({ w: 44, h: 24, x: 290, y: 90 });
   });
+  // place.ts positions x with `guideX ?? anchor`, so the compensation has to
+  // read the guide too — the y half always did (vAnchorOf).
+  it("reads the guide before the raw anchor, on both axes", () => {
+    const right = { ...img(), guideX: "right" as const };
+    expect(resizeBy(right, box, L, 20, 0, false)).toEqual({ w: 32, h: 20 });
+    const centre = { ...img(), guideX: "center" as const };
+    expect(resizeBy(centre, box, L, 20, 0, false)).toEqual({ w: 32, h: 20, x: 310 });
+    // "none" is not a guide: the raw anchor still decides.
+    expect(resizeBy({ ...img(), guideX: "none" as const }, box, L, 20, 0, false))
+      .toEqual({ w: 32, h: 20, x: 320 });
+  });
+
   it("a bound axis sizes but keeps its binding", () => {
     const l = { ...img(), binding: { to: "name", side: "right" as const, gap: 4 } };
     expect(resizeBy(l, box, L, 20, 0, false)).toEqual({ w: 32, h: 20 });

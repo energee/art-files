@@ -1,9 +1,22 @@
-/* index.css — Tailwind v4 entry + Linear-neutral theme tokens.
+/* index.css — Tailwind v4 entry + warm-neutral theme tokens, six accents.
    Light and dark are one palette: every token is `light-dark(light, dark)`,
    resolved by the `color-scheme` on :root. `data-theme="light"|"dark"` pins
    it; no attribute at all follows the OS (see src/theme.ts). No .dark class is
    involved. tw-animate-css + shadcn/tailwind.css are required by the
-   base-nova (Base UI) component style. Headings use the bundled Poppins. */
+   base-nova (Base UI) component style. Headings use the bundled Poppins.
+   Colour scheme: docs/plans/template-switch.md ("The colour scheme"). Six
+   accents (primary/destructive/attention/warning/success/info) each carry a
+   raw token — fills, rings, dots, white-on-fill text, ≥3:1 on background and
+   card — and a `-text` token for coloured text on tints/plain surfaces
+   (`color-mix(in oklab, <accent> 65%, foreground)` in light, the raw accent
+   in dark; ≥4.5:1 on background, card AND the accent's own -soft tint
+   composited over either, in both schemes). 65% (not the 75% a plain
+   accent/foreground split would suggest) is the lightest mix that still
+   clears 4.5:1 against the -soft tint for every accent — warning is the
+   tightest at 65% (4.92:1 on -soft/background); 70% already dips warning to
+   4.54:1, still barely legal, so 65% is the safety margin, not the minimum.
+   Each accent also gets a `-soft` 14% tint for repeated-row-action fills.
+   tests/theme-contrast.test.ts asserts all of the above. */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -20,42 +33,76 @@
   /* Both schemes supported → light-dark() resolves, and native widgets
      (scrollbars, form controls) follow along. */
   color-scheme: light dark;
-  --background: light-dark(#f5f5f7, #0e0f11);
-  --foreground: light-dark(#17181b, #e2e3e5);
-  --muted: light-dark(#e7e8ec, #1e2024);
-  /* Contrast ratios below are against --background (#0e0f11 / #f5f5f7).
-     Secondary text: 7.8:1 dark, 6.4:1 light. Was #8b8e94 (5.9:1) — passing for
-     body copy, but nearly every label in this app sets at 11-12px, where 5.9
-     reads grey. */
-  --muted-foreground: light-dark(#5c6069, #a2a5ac);
-  /* Structural rules (separators, panel edges): ~1.7:1, deliberately quiet. */
-  --border: light-dark(#d3d5da, #3a3d43);
-  /* Field edges, ~1.4:1 — barely there. The border does not carry the
-     affordance at all: the fill rule below separates a field from the panel,
-     so the outline only has to close its shape. */
-  --input: light-dark(#dcdee3, #2b2e33);
+  --background: light-dark(#fafaf7, #1b1c18);
+  --foreground: light-dark(#1e1f1a, #edede6);
+  --muted: light-dark(#ece8df, #26261f);
+  /* Contrast ratios below are against --background (#1b1c18 / #fafaf7).
+     Secondary text: 6.83:1 dark, 5.70:1 light — both clear the 4.5:1 body-copy
+     minimum with room for this app's 11-12px labels. */
+  --muted-foreground: light-dark(#68675c, #b0aea2);
+  /* Structural rules (separators, panel edges): deliberately quiet, warm-grey
+     bias to match the neutrals above. */
+  --border: light-dark(#ddd8cc, #3a382e);
+  /* Field edges — barely there. The border does not carry the affordance at
+     all: the fill rule below separates a field from the panel, so the
+     outline only has to close its shape. */
+  --input: light-dark(#e6e1d3, #2c2a22);
   /* Field fill: one step AWAY from the canvas (lighter in dark, white in
      light), so a field reads as a raised surface you can type into rather than
      a hole. With --input pulled back to a hairline this is what marks a field
      at all. Set here because the components render bg-transparent and their
      dark: fallbacks never match (no .dark class — the theme is :root-only). */
-  --field: light-dark(#ffffff, #1c1e22);
-  --primary: light-dark(#5560c8, #6e79d6);      /* Linear-style muted indigo */
-  --primary-foreground: #ffffff;
-  --accent: light-dark(#e7e8ec, #23252a);
-  --accent-foreground: light-dark(#17181b, #e2e3e5);
-  --destructive: light-dark(#b23c3c, #d66e6e);
-  --ring: light-dark(#5560c8, #6e79d6);
-  /* The switch's checked track: royal blue in both schemes — the muted
-     primary reads too weakly as "on". */
-  --switch-on: #4169e1;
+  --field: light-dark(#ffffff, #262720);
+
+  /* Six accents. Raw tokens are for fills/rings/dots/white-on-fill text
+     (≥3:1 on background and card, ≥4.5:1 for --primary-foreground on
+     --primary); the light column alone only reaches 3.3-3.9:1 on white
+     (except primary), so coloured TEXT uses the `-text` variant below
+     instead, never the raw token. */
+  --primary: light-dark(#7058be, #ab9df2); /* create, edit, finish — Save, Continue, the label-mode accent */
+  --destructive: light-dark(#e14775, #ff6188); /* remove, discard */
+  --attention: light-dark(#e16032, #fc9867); /* template mode: the switch, frame, badges, verbs */
+  --warning: light-dark(#cc7a0a, #ffd866); /* unsaved-template-changes strip, validation warnings */
+  --success: light-dark(#269d69, #a9dc76); /* confirmations, "current" */
+  --info: light-dark(#1c8ca8, #78dce8); /* override badges, learned choice */
+  /* Coloured text on tints and small labels: darkened toward --foreground in
+     light (still legible on white AND on the accent's own -soft tint,
+     ≥4.5:1 either way — see the file header for why it's 65%, not 75%) and
+     simply the raw accent in dark (already ≥4.5:1 on -soft there too). */
+  --primary-text: light-dark(color-mix(in oklab, var(--primary) 65%, var(--foreground)), var(--primary));
+  --destructive-text: light-dark(color-mix(in oklab, var(--destructive) 65%, var(--foreground)), var(--destructive));
+  --attention-text: light-dark(color-mix(in oklab, var(--attention) 65%, var(--foreground)), var(--attention));
+  --warning-text: light-dark(color-mix(in oklab, var(--warning) 65%, var(--foreground)), var(--warning));
+  --success-text: light-dark(color-mix(in oklab, var(--success) 65%, var(--foreground)), var(--success));
+  --info-text: light-dark(color-mix(in oklab, var(--info) 65%, var(--foreground)), var(--info));
+  /* Repeated-row-action / tinted-panel fills: a soft 14% tint of the raw
+     accent, never used to carry text contrast on its own. */
+  --primary-soft: color-mix(in oklab, var(--primary) 14%, transparent);
+  --destructive-soft: color-mix(in oklab, var(--destructive) 14%, transparent);
+  --attention-soft: color-mix(in oklab, var(--attention) 14%, transparent);
+  --warning-soft: color-mix(in oklab, var(--warning) 14%, transparent);
+  --success-soft: color-mix(in oklab, var(--success) 14%, transparent);
+  --info-soft: color-mix(in oklab, var(--info) 14%, transparent);
+
+  /* White in light (5.5:1 on primary); dark mode's light-purple primary needs
+     a dark foreground instead (white only manages 2.4:1 there) — reuses the
+     light scheme's --foreground hex directly, not var(--foreground) (which
+     would resolve to the *dark*-scheme foreground and fail the same way). */
+  --primary-foreground: light-dark(#ffffff, #1e1f1a);
+  --accent: light-dark(#ece8df, #26261f);
+  --accent-foreground: light-dark(#1e1f1a, #edede6);
+  --ring: var(--primary);
+  /* The switch's checked track follows primary — purple reads as "on" at
+     full strength, unlike the previous palette's muted accent, so the old
+     brighter-blue special case for this token is gone. */
+  --switch-on: var(--primary);
   --radius: 0.375rem;
-  --popover: light-dark(#ffffff, #16171a);
-  --popover-foreground: light-dark(#17181b, #e2e3e5);
-  --secondary: light-dark(#e7e8ec, #23252a);
-  --secondary-foreground: light-dark(#17181b, #e2e3e5);
-  --card: light-dark(#ffffff, #16171a);
-  --card-foreground: light-dark(#17181b, #e2e3e5);
+  --popover: light-dark(#ffffff, #22231f);
+  --popover-foreground: light-dark(#1e1f1a, #edede6);
+  --secondary: light-dark(#ece8df, #26261f);
+  --secondary-foreground: light-dark(#1e1f1a, #edede6);
+  --card: light-dark(#ffffff, #22231f);
+  --card-foreground: light-dark(#1e1f1a, #edede6);
   /* Sidebar tokens the shadcn sidebar component styles against. Aliased to
      the existing surfaces (not a second palette): without these the
      bg-sidebar/border-sidebar-border utilities don't resolve and the
@@ -89,6 +136,22 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-attention: var(--attention);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
+  --color-info: var(--info);
+  --color-primary-text: var(--primary-text);
+  --color-destructive-text: var(--destructive-text);
+  --color-attention-text: var(--attention-text);
+  --color-warning-text: var(--warning-text);
+  --color-success-text: var(--success-text);
+  --color-info-text: var(--info-text);
+  --color-primary-soft: var(--primary-soft);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-attention-soft: var(--attention-soft);
+  --color-warning-soft: var(--warning-soft);
+  --color-success-soft: var(--success-soft);
+  --color-info-soft: var(--info-soft);
   --color-ring: var(--ring);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);

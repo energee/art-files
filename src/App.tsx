@@ -9,13 +9,13 @@
 // layers (page art bound to the loaded texture/mask slots, see withPageArt)
 // → planLayers' display list → drawPlate on the 2D preview and the 3D can,
 // buildArtPdf / buildMaskPdf / buildPsd on export. There is ONE mode (spec
-// 2026-09-04: Removed): the Layers list (LayerList) with its Fillable-only
-// filter replaces Fill mode, the inspector (LayerInspector) edits the
-// selected layer, and every edit lands where the layer lives — a Design
-// edit (position, style, policy, non-fillable content) in the master or the
-// variant that adds the layer (model/edit.ts's routing rule), a FILL value
-// (a fillable layer's text lines / image asset / code value) in the label.
-// Master and label edits share one undo stack.
+// 2026-09-04: Removed): the Layers list (LayerList) with its Changed filter
+// replaces Fill mode, and the inspector (LayerInspector) edits the selected
+// layer. Every edit lands in the LABEL — a property edit as an override, a
+// text/image/code edit as a fill value (model/edit.ts's patchLayers /
+// setContentIn). The master is the template and changes only through the
+// reviewed Save Master, so it never drifts under an operator filling a
+// label. Master and label edits share one undo stack.
 //
 // TabsShell mounts one DocumentEditor per workspace tab and hides the
 // inactive ones, so anything here that registers window/document-level
@@ -26,6 +26,7 @@
 // render settings, and the updater.
 import { RenderSettings as RenderSettingsFields } from "@/components/RenderSettings";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { MasterSaveReview } from "@/components/MasterSaveReview";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
@@ -46,15 +47,16 @@ import type {
 import { uppercaseOf } from "@/model/layers";
 import type { DeepPartial } from "@/model/merge";
 import {
-  addLayer, addVariant, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, labelOverriddenPaths,
-  masterDiff, moveBy, moveLayers, resizeBy, type ResizeHandle, overriddenPaths, patchLayer, patchLayerIn, removeLayer, setValue, toggleVariant,
-  whereLayerLives,
+  addLayer, addVariant, adoptMaster, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
+  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, snappedDx, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue,
 } from "@/model/edit";
-import { layerRows, variantChips } from "@/model/rows";
+import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
+import { formatLink, parseLink } from "@/model/format";
 import { rebindLabel } from "@/model/rebindLayers";
 import {
-  MASTER_EXT, packLabel, packMaster, unpackLabel, unpackMaster, type MasterAssets,
+  MASTER_EXT, masterNameFromFile, packLabel, packMaster, unpackLabel, unpackMaster,
+  type MasterAssets,
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
 import { SHIPPED_MASTER_ID, masterIndex, rememberMaster, resolveMasterById } from "@/masters";
@@ -72,11 +74,11 @@ import type { PsdAssets } from "@/psd/build";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
 import {
-  ART, PAGE, PREVIEW_OVERSAMPLE, PSD_DOC, setBleed as setLayoutBleed, setOutputDpi,
+  ART, BLEED_SHIFT, PAGE, PREVIEW_OVERSAMPLE, PSD_DOC, setBleed as setLayoutBleed, setOutputDpi,
 } from "@/layout";
 import { LayerList } from "@/components/LayerList";
 import { LayerInspector } from "@/components/LayerInspector";
-import { TextEditor } from "@/components/TextEditor";
+import { ChoiceBox, TextEditor } from "@/components/TextEditor";
 import { FileDrop } from "@/components/FileDrop";
 import { MasterPicker } from "@/components/MasterPicker";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
@@ -99,6 +101,9 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -118,7 +123,7 @@ type Loaded = {
 };
 
 /** One loaded per-id image asset: an image layer's art (a collab logo is
- *  one, filling a fillable image layer). `image` is what the renderer needs;
+ *  one, filling an image layer). `image` is what the renderer needs;
  *  previewUrl is the raw file, so an SVG thumbnails as itself; `aspect` is
  *  the intrinsic w/h the planner sizes the box by before/without a decoded
  *  bitmap. Keyed by the id minted at drop (mintCustomAssetId). */
@@ -169,19 +174,25 @@ function titleOf(layers: Layer[]): string {
   return name?.kind === "text" ? plainText(name.lines) : "";
 }
 
-/** A fillable layer's content, in the shape a .label stores it — for the
- *  content slot's writes; the master's own content patch otherwise. */
-const contentPatch = (kind: LayerKind, value: LayerValue): DeepPartial<Layer> =>
-  kind === "text" ? { lines: value as TextLine[] }
-    : kind === "image" ? { asset: value as string } : { value: value as string };
-
-/** Chrome-level error, sized for the menu bar: the shadcn Alert (the app's
- *  one notification surface — see ui/alert.tsx) compacted to fit inline
- *  beside the menus rather than as a full-width block. */
-function HeaderAlert({ children }: { children: React.ReactNode }) {
+/** Chrome-level error (or, with `tone="warning"`, a resolveLayers validation
+ *  warning), sized for the menu bar: the shadcn Alert (the app's one
+ *  notification surface — see ui/alert.tsx) compacted to fit inline beside
+ *  the menus rather than as a full-width block. A warning uses `variant`
+ *  "default" plus its own colour classes rather than the destructive variant,
+ *  which paints its descendant text through a selector on Alert itself that
+ *  a className override can't reach. */
+function HeaderAlert({ children, tone = "destructive" }: { children: React.ReactNode; tone?: "destructive" | "warning" }) {
   return (
-    <Alert variant="destructive" className="w-auto border-destructive/50 px-2 py-0.5">
-      <AlertDescription className="text-xs">{children}</AlertDescription>
+    <Alert
+      variant={tone === "warning" ? "default" : "destructive"}
+      className={cn(
+        "w-auto px-2 py-0.5",
+        tone === "warning" ? "border-warning/50 bg-warning-soft" : "border-destructive/50",
+      )}
+    >
+      <AlertDescription className={cn("text-xs", tone === "warning" && "text-warning-text")}>
+        {children}
+      </AlertDescription>
     </Alert>
   );
 }
@@ -418,10 +429,45 @@ export const DocumentEditor = memo(function DocumentEditor({
     useHistory<Doc>(() => { const m = lolevMaster(); return { master: m, label: newLabel(m) }; });
   const { master, label } = doc;
   // The master as of the last open/save — the baseline the "unsaved master
-  // edits" dot (Save Master) compares against, by content (masterDiff).
+  // edits" dot (Save Master) compares against, itemised by masterChanges.
   const pristineMaster = useRef(doc.master);
-  const [, repaintMasterDirty] = useState(0);
-  const masterDirty = masterDiff(pristineMaster.current, master);
+  // Bumped by every save/open so the memo below re-reads the ref.
+  const [savedTick, repaintMasterDirty] = useState(0);
+  // THE WORKING VERSION: the variant the canvas is drawing, which is also the
+  // one a promotion lands in (docs/plans/label-first-editing.md, Task 12).
+  // It is READ OFF THE LABEL rather than held beside it: the master Select
+  // names one version and switching moves `enabledVariants` (showVersion), so
+  // the label already records the answer — and undo restores the version along
+  // with the variant that created it. Last enabled wins, the same rule
+  // resolveLayers and the row badges use.
+  const version = label.enabledVariants.at(-1) ?? null;
+  /** Which save the review dialog is standing in front of, or null. */
+  const [pendingSave, setPendingSave] = useState<{ as: boolean } | null>(null);
+  // What a Save Master would write: the structural and fill-contract edits
+  // already in the master, plus this label's overrides offered for promotion.
+  // Itemised ONLY while the dialog is up — every property edit is a label
+  // override now, so this memo's inputs change on every pointermove of a drag,
+  // and walking the whole master and its variants at pointer rate to answer
+  // "is anything dirty" was most of a drag's work.
+  const masterChangeList = useMemo(
+    () => (pendingSave
+      ? masterChanges(pristineMaster.current, master, label, version ?? undefined) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- savedTick re-reads the ref
+    [pendingSave, master, label, version, savedTick]);
+  // The dirty flag is the cheap superset of the same question: the template
+  // moved, or the label holds an override that a save could offer to promote.
+  // It can light Save Master for an override that happens to equal what the
+  // master already says — the review then opens with nothing in it, which is
+  // the honest answer to "what would this save write?".
+  // Only the master compare is worth memoizing, and it depends on `master`
+  // alone — keeping `label.overrides` out of the deps stops a drag's
+  // per-pointermove override writes from re-walking the whole master.
+  const templateMoved = useMemo(
+    () => masterDiff(pristineMaster.current, master),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- savedTick re-reads the ref
+    [master, savedTick]);
+  const masterDirty = templateMoved || Object.keys(label.overrides ?? {}).length > 0;
+
   // Which layers the inspector shows — Figma's model: an ordered selection
   // plus an anchor a shift-range extends from, driven by the Layers list or
   // PreviewCompare's click-to-select (selection.ts).
@@ -432,8 +478,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // resolve per master/label change; the inspector reads the same rows.
   const { rows, errors, warnings: resolveWarnings } = useMemo(() => layerRows(master, label), [master, label]);
   const rowById = useMemo(() => new Map(rows.map((r) => [r.layer.id, r])), [rows]);
-  const chips = useMemo(() => variantChips(master, label), [master, label]);
-  const [fillableOnly, setFillableOnly] = useState(false);
+  const [changedOnly, setChangedOnly] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const guides = useMemo(
     () => guideLines({ physical: master.physical, guides: master.guides }),
@@ -442,7 +487,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // srcBytes: the original upload — the bytes Save writes.
   const [mask, setMask] = useState<(Loaded & { error?: string; srcBytes: Uint8Array }) | null>(null);
   // Every per-id image asset this document carries: image layers' art,
-  // collab logos included (a fillable image layer's value is a key here).
+  // collab logos included (an image layer's value is a key here).
   const [customImages, setCustomImages] = useState<Record<string, CustomFile>>({});
   // The layers that DRAW: enabled, values applied, page art bound to the
   // loaded slots. What the preview, the hit boxes, the drag targets and the
@@ -643,39 +688,19 @@ export const DocumentEditor = memo(function DocumentEditor({
     edit((d) => ({ ...d, master: fn(d.master) }), coalesce);
   const editLabel = (fn: (l: LabelFile) => LabelFile, coalesce?: boolean) =>
     edit((d) => ({ ...d, label: fn(d.label) }), coalesce);
-  /** A DESIGN edit on one layer — position, style, policy, geometry, and
-   *  the content of a non-fillable layer: lands in the master, or in the
-   *  variant that adds the layer (edit.ts's patchLayer → setLayer). */
+  /** A DESIGN edit on one layer — position, style, policy, geometry: lands in
+   *  the LABEL as an override, never in the master. The master is the template
+   *  and changes only through the reviewed Save Master (see edit.ts's
+   *  patchLayers for the rule). */
   const patch = (id: string, p: DeepPartial<Layer>, coalesce?: boolean) =>
     patchMany([[id, p]], coalesce);
   /** patch for several layers in ONE doc edit (one clone, one undo entry) —
    *  a group drag patches every selected layer per pointermove. */
   const patchMany = (entries: [string, DeepPartial<Layer>][], coalesce?: boolean) =>
-    edit((d0) => {
-      const masterIds = new Set(d0.master.layers.map((l) => l.id));
-      return entries.reduce((d, [id, p]) => {
-        const owner = masterIds.has(id) ? undefined : d.master.variants.find((v) => id in v.layers);
-        const nextLabel = p.enabled === true && owner && !d.label.enabledVariants.includes(owner.id)
-          ? toggleVariant(d.label, owner.id) : d.label;
-        // Last enabled variant carrying the layer wins (no findLast in this lib target).
-        let variant: string | undefined;
-        for (let i = nextLabel.enabledVariants.length - 1; i >= 0 && !variant; i--) {
-          const v = nextLabel.enabledVariants[i];
-          if (d.master.variants.some((x) => x.id === v && id in x.layers)) variant = v;
-        }
-        return {
-          master: variant ? patchLayerIn(d.master, variant, id, p) : patchLayer(d.master, id, p),
-          label: nextLabel,
-        };
-      }, d0);
-    }, coalesce);
-  /** A layer's CONTENT: a FILL value into the label when the layer is
-   *  fillable (this beer's name, this collab's logo), the master's own
-   *  default otherwise — the one place the fill/design split is decided. */
+    edit((d) => patchLayers(d, entries), coalesce);
+  /** A layer's CONTENT: always a fill value into the label, for any layer. */
   const setContent = (layer: Layer, value: LayerValue, coalesce?: boolean) =>
-    layer.fillable
-      ? editLabel((l) => setValue(l, layer.id, value), coalesce)
-      : patch(layer.id, contentPatch(layer.kind, value), coalesce);
+    edit((d) => setContentIn(d, layer.id, value), coalesce);
   /** Wrap a mutation that bypasses `edit` (undo/redo) so it still marks
    *  the document dirty. */
   const mutating = (fn: () => void) => () => { markDirty(); fn(); };
@@ -683,7 +708,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Add layer: a default layer of `kind` at the end of the master's draw
    *  order, selected. An image layer starts empty; its inspector well loads
    *  the art. */
-  function onAddLayer(kind: LayerKind, variant?: string) {
+  /** Add layer, into the version the master Select names: a variant while one
+   *  is switched to, the base master otherwise. */
+  function onAddLayer(kind: LayerKind) {
+    const variant = version ?? undefined;
     const { master: next, id } = addLayer(master, kind, { variant });
     edit((d) => ({ ...d, master: d.master === master ? next : addLayer(d.master, kind, { variant }).master }));
     setSelection({ ids: [id], anchor: id });
@@ -693,37 +721,58 @@ export const DocumentEditor = memo(function DocumentEditor({
     setSelection((s) => s.ids.includes(id)
       ? { ids: s.ids.filter((x) => x !== id), anchor: s.anchor === id ? null : s.anchor } : s);
   }
-  /** Edit → New Variant: a fresh empty variant, switched on for this label
-   *  and offers its own Add layer submenu. Named
-   *  "Variant N"; rename is a master-file edit for now. */
-  function onNewVariant() {
-    const name = `Variant ${master.variants.length + 1}`;
-    edit((d) => {
-      const { master: m, id } = addVariant(d.master, name);
-      return { master: m, label: toggleVariant(d.label, id) };
-    });
+  /** Switch the working version: what the canvas draws, and what a promotion
+   *  in the Save Master review would be written into. The Select names one
+   *  version and that is the one you see — switching to a variant shows it,
+   *  and going back to the base hides it again (edit.ts's showVersion). */
+  function switchVersion(id: string | null) {
+    editLabel((l) => showVersion(l, version, id));
   }
 
-  /** Every dot-path an enabled variant or the label overrides on the
-   *  inspected layer — what LayerInspector badges and offers to reset. */
-  const overridden = useMemo(() => {
-    const out = new Set<string>();
-    if (!inspected) return out;
-    const id = inspected.layer.id;
-    if (whereLayerLives(master, id) !== "master") return out;
-    for (const v of master.variants) {
-      if (!label.enabledVariants.includes(v.id)) continue;
-      for (const p of overriddenPaths(master, v.id, id)) out.add(p);
-    }
-    for (const p of labelOverriddenPaths(label, id)) out.add(p);
-    return out;
-  }, [inspected, master, label]);
-  /** Per-property reset: the label's own override first, then each enabled
-   *  variant's — restoring the master's value. */
-  const resetOverride = (path: string) => {
+  /** The master Select's "New Variant" (and the command of the same name): a
+   *  fresh empty variant, switched on for this label
+   *  and offers its own Add layer submenu. Named
+   *  "Variant N"; rename is a master-file edit for now. */
+  /** Returns the minted id so the picker can open its rename box on the new
+   *  row — MasterPicker.onNewVariant is typed `() => string` for that. */
+  function onNewVariant(): string {
+    const name = `Variant ${master.variants.length + 1}`;
+    // Minted outside the edit so the id is in hand for the version switch —
+    // `edit`'s callback stays a pure Doc → Doc.
+    const { master: m, id } = addVariant(master, name);
+    // Switched to, like any other version: the new one is what you see.
+    edit((d) => ({ master: m, label: showVersion(d.label, version, id) }));
+    return id;
+  }
+
+  /** Inline rename of a variant, from the picker. A master-file edit. */
+  function onRenameVersion(id: string, name: string) {
+    editMaster((m) => renameVariant(m, id, name));
+  }
+
+  /** Delete a variant and stop showing it. One undoable edit, so it needs no
+   *  confirm of its own. */
+  function onRemoveVersion(id: string) {
+    edit((d) => ({
+      master: removeVariant(d.master, id),
+      label: showVersion(d.label, version === id ? id : version, null),
+    }));
+  }
+
+  /** The dot-paths deviating from the master on the inspected layer, kept
+   *  APART by source — see overrideBadges, which holds the rule. */
+  const overridden = useMemo(() => (
+    inspected
+      ? overrideBadges(master, label, inspected.layer.id)
+      : { variant: new Set<string>(), label: new Set<string>() }
+  ), [inspected, master, label]);
+  /** Per-property reset, targeted by SOURCE rather than by precedence: the
+   *  badge says which one it clears and passes it here, so clearing a label
+   *  edit can never silently rewrite a variant in the master file. */
+  const resetOverride = (path: string, source: "variant" | "label") => {
     if (!inspected) return;
     const id = inspected.layer.id;
-    if (labelOverriddenPaths(label, id).has(path)) { editLabel((l) => clearLabelOverride(l, id, path)); return; }
+    if (source === "label") { editLabel((l) => clearLabelOverride(l, id, path)); return; }
     edit((d) => {
       let m = d.master;
       for (const v of m.variants) {
@@ -864,9 +913,9 @@ export const DocumentEditor = memo(function DocumentEditor({
       setCustomImages((old) => ({ ...old, [assetId]: file }));
     }
     setContent(layer, assetId);
-    const after: Doc = layer.fillable
-      ? { master, label: setValue(label, layer.id, assetId) }
-      : { master: patchLayer(master, layer.id, { asset: assetId }), label };
+    // The doc as it will be after that edit lands — releaseAsset must see the
+    // NEW state to decide whether the old asset is still referenced.
+    const after: Doc = setContentIn({ master, label }, layer.id, assetId);
     if (previous && previous !== assetId) releaseAsset(previous, after);
   }
 
@@ -1027,7 +1076,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** The same over every listed row (disabled layers included) — what the
    *  inspector's bind/unbind actions want. */
   const rowBoxes = () => boxesNow(rows.map((r) => r.layer));
-  const dragBase = useRef<{ id: string; bases: { layer: Layer; w: number }[] } | null>(null);
+  const dragBase = useRef<
+    { id: string; bases: { layer: Layer; w: number }[]; bounds: { x: number; w: number } } | null
+  >(null);
   const onDrag = (id: string, dx: number, dy: number, first: boolean) => {
     if (first || dragBase.current?.id !== id) {
       const boxes = boxesNow();
@@ -1036,13 +1087,25 @@ export const DocumentEditor = memo(function DocumentEditor({
       const bases = drawLayers.filter((l) => ids.has(l.id) && !l.locked)
         .map((layer) => ({ layer, w: boxes.get(layer.id)?.w ?? 0 }));
       if (!bases.length) return;
-      dragBase.current = { id, bases };
+      // The selection's own box, in the guides' space: layerBoxes measures in
+      // page space, which BLEED_SHIFT offsets from the coordinates layer.x and
+      // the guides are written in.
+      const span = bases.reduce((acc, { layer, w }) => {
+        const left = (boxes.get(layer.id)?.x ?? layer.x) - BLEED_SHIFT;
+        return { x: Math.min(acc.x, left), right: Math.max(acc.right, left + w) };
+      }, { x: Infinity, right: -Infinity });
+      dragBase.current = { id, bases, bounds: { x: span.x, w: span.right - span.x } };
     }
-    // ponytail: only the grabbed layer snaps to guides; the rest follow the
-    // raw delta so the group keeps its shape. Snap the group's bounds if
-    // that ever matters.
+    // The SELECTION'S BOUNDS decide where the drag lands: one snap to the
+    // master's guides, applied as the distance every selected layer travels.
+    // Snapping the grabbed layer alone re-spaced the group every time it
+    // crossed a guide, and centred that layer rather than the thing on screen.
+    // The set is moveBy's "already carried" test: a layer bound to another in
+    // the same drag follows it, and must not move its own gap on top of that.
+    const moving = new Set(dragBase.current.bases.map(({ layer }) => layer.id));
+    const gdx = snappedDx(dragBase.current.bounds, dx, guides, 6);
     const entries = dragBase.current.bases
-      .map(({ layer, w }): [string, DeepPartial<Layer>] => [layer.id, moveBy(layer, dx, dy, guides, layer.id === id ? 6 : 0, w)])
+      .map(({ layer }): [string, DeepPartial<Layer>] => [layer.id, moveBy(layer, gdx, dy, moving)])
       .filter(([, p]) => Object.keys(p).length);
     if (entries.length) patchMany(entries, !first);
   };
@@ -1269,27 +1332,67 @@ export const DocumentEditor = memo(function DocumentEditor({
   function masterAssetBundle(): MasterAssets {
     const ids = master.layers.flatMap((l) => l.kind === "image" && l.asset ? [l.asset] : []);
     for (const v of master.variants)
-      for (const e of Object.values(v.layers)) if (e.kind === "image" && e.asset && !e.fillable) ids.push(e.asset);
+      for (const e of Object.values(v.layers)) if (e.kind === "image" && e.asset) ids.push(e.asset);
     return { texture: textureAsset(), mask: maskAsset(), customImages: imageBundle(ids) };
   }
 
-  /** File → Save Master / Save Master As…: packMaster through the same
-   *  three-way platform save path as saveProject, then registers the file in
-   *  the library index and moves the master-dirty baseline. */
-  async function saveMaster(as = false): Promise<boolean> {
-    const bytes = packMaster(master, masterAssetBundle());
-    const suggested = machineName(master.name) || "master";
-    const clean = () => { pristineMaster.current = master; repaintMasterDirty((n) => n + 1); };
+  /** File → Save Master / Save Master As…, always downstream of the review
+   *  dialog (MasterSaveReview), which is where `promote` comes from: the label
+   *  overrides the reviewer ticked to fold into the template.
+   *
+   *  Save As also FORKS — a fresh master id, the document rebound onto it, and
+   *  the file written. That is what "Duplicate as new master…" used to do
+   *  except for the writing, so there is one verb for it now, not two.
+   *
+   *  packMaster goes through the same three-way platform save path as
+   *  saveProject, then registers the file in the library index and moves the
+   *  master-dirty baseline. */
+  async function saveMaster(as = false, promote: readonly MasterChange[] = []): Promise<boolean> {
+    const promoted = applyPromotions(master, label, promote, version ?? undefined);
+    const forked = as
+      ? { ...promoted.master, id: `master-${crypto.randomUUID().slice(0, 8)}` }
+      : promoted.master;
+    const assets = masterAssetBundle();
+    const suggested = machineName(forked.name) || "master";
+    /** A fork takes its display name from the file it was saved as — without
+     *  this the library would list two masters called "Lolev" and no way to
+     *  tell them apart (there is no master-name field anywhere in the UI).
+     *
+     *  Only a name the user actually TYPED counts: accepting the suggested
+     *  filename must not rename "Lolev" to its own slug, and that is also the
+     *  common case, which then costs no second write below. */
+    const titled = (file: string): Master => {
+      const base = masterNameFromFile(file);
+      return as && base && base !== suggested && base !== forked.name
+        ? { ...forked, name: base } : forked;
+    };
+    /** Adopt `m` as the saved master: the document's, the library's, and the
+     *  baseline the next review diffs against. A plain save with nothing
+     *  promoted is a no-op edit and pushes no history entry. */
+    const commit = (m: Master, where: string) => {
+      edit(() => ({ master: m, label: adoptMaster(promoted.label, m) }));
+      rememberMaster(m, where);
+      pristineMaster.current = m;
+      repaintMasterDirty((n) => n + 1);
+    };
     if (isTauri()) {
       const existingPath = as ? null : masterFilePath.current;
       try {
-        const path = await saveNativeFile(bytes, {
+        const path = await saveNativeFile(packMaster(forked, assets), {
           defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path: existingPath ?? undefined,
         });
         if (path === null) return false;
         masterFilePath.current = path;
-        rememberMaster(master, path);
-        clean();
+        const final = titled(path);
+        // ponytail: the name is only knowable after the picker returns, so a
+        // renamed fork rewrites the file it just wrote — same path, no second
+        // dialog, but a second zip of every asset. Split saveNativeFile into
+        // "pick a path" and "write bytes" if that ever bites.
+        if (final !== forked)
+          await saveNativeFile(packMaster(final, assets), {
+            defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path,
+          });
+        commit(final, path);
         setLoadError("");
         return true;
       } catch (err) {
@@ -1304,9 +1407,11 @@ export const DocumentEditor = memo(function DocumentEditor({
         if (as || !masterFileHandle.current) {
           masterFileHandle.current = await pick({ suggestedName: suggested + MASTER_EXT, types: MASTER_TYPES });
         }
-        await writeHandle(masterFileHandle.current, bytes);
-        rememberMaster(master, masterFileHandle.current.name);
-        clean();
+        // The handle's name is known BEFORE the write here (unlike the Tauri
+        // branch above), so a renamed fork packs and writes exactly once.
+        const final = titled(masterFileHandle.current.name);
+        await writeHandle(masterFileHandle.current, packMaster(final, assets));
+        commit(final, masterFileHandle.current.name);
         return true;
       } catch (err) {
         masterFileHandle.current = null;
@@ -1315,11 +1420,12 @@ export const DocumentEditor = memo(function DocumentEditor({
         return false;
       }
     }
+    // The download fallback names the file itself, so `titled` is a no-op
+    // here — it stays in the line so all three branches read the same way.
     const name = suggested + MASTER_EXT;
     startSaveBatch();
-    saveBytes(bytes, name, "application/zip");
-    rememberMaster(master, name);
-    clean();
+    saveBytes(packMaster(forked, assets), name, "application/zip");
+    commit(titled(name), name);
     return true;
   }
 
@@ -1384,16 +1490,6 @@ export const DocumentEditor = memo(function DocumentEditor({
     masterFilePath.current = isTauri() ? masterIndex()[target.id]?.path ?? null : null;
     commitRebind(target);
     void adoptMasterAssets(assets);
-  }
-
-  /** MasterPicker's "Duplicate as new master…": clone under a fresh id and
-   *  rebind straight onto the clone (nothing benches — it is identical). Not
-   *  registered in the index until Save Master writes it. */
-  function duplicateMaster(name: string) {
-    const clone: Master = { ...master, id: `master-${crypto.randomUUID().slice(0, 8)}`, name };
-    masterFileHandle.current = null;
-    masterFilePath.current = null;
-    commitRebind(clone, false);
   }
 
   /** MasterPicker's library listing: the shipped master plus every master
@@ -1622,8 +1718,9 @@ export const DocumentEditor = memo(function DocumentEditor({
     { id: "project-save-as", label: "Save Project As…", key: "s", mods: "⇧⌘",
       run: () => void saveProject(true) },
     { id: "master-open", label: "Open Master…", run: () => void openMasterPicker() },
-    { id: "master-save", label: "Save Master", disabled: !masterDirty, run: () => void saveMaster() },
-    { id: "master-save-as", label: "Save Master As…", run: () => void saveMaster(true) },
+    { id: "master-save", label: "Save Master", disabled: !masterDirty,
+      run: () => setPendingSave({ as: false }) },
+    { id: "master-save-as", label: "Save Master As…", run: () => setPendingSave({ as: true }) },
     { id: "export-both", label: "Export PDFs", key: "e", mods: "⌘",
       disabled: pdfExportBlocked, run: exportPdfs },
     { id: "export-art", label: "Export Artwork PDF", disabled: pdfExportBlocked, run: downloadArt },
@@ -1655,17 +1752,17 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** The inspector's content slot for the selected layer: the rich text
    *  field (or number/code box) for text, the image well for images, the
-   *  payload box for barcode/QR — each writing through setContent so a
-   *  fillable layer's content is this label's and any other's the master's. */
+   *  payload box for barcode/QR — each writing through setContent, so every
+   *  layer's content belongs to this label. */
   function contentFor(layer: Layer): React.ReactNode {
     const id = `${layer.id}-content`;
     if (layer.kind === "text") {
       return (
         <TextEditor id={id} label="Text" lines={layer.lines} base={layer.style}
           onChange={(lines) => setContent(layer, lines, true)}
-          multiline={true} uppercase={uppercaseOf(layer)} placeholder={layer.placeholder}
+          multiline={true} uppercase={uppercaseOf(layer)}
           input={layer.input} min={layer.min} max={layer.max} symbology={layer.symbology}
-          suffix={layer.suffix} />
+          suffix={layer.suffix} choices={layer.choices} title={layer.title} />
       );
     }
     if (layer.kind === "image") {
@@ -1691,41 +1788,81 @@ export const DocumentEditor = memo(function DocumentEditor({
     // expansion would bake today's beer name into the master. `value` is the
     // template verbatim whenever there are no refs to expand.
     const template = layer.format ?? layer.value;
-    // Every text layer is injectable: its id is the token, its name is the
-    // chip. Chips append, which is predictable without cursor tracking.
-    const tokens = rows
-      .map((r) => r.layer)
-      .filter((l) => l.kind === "text")
-      .map((l) => ({ id: l.id, name: l.name }));
-    return (
-      <div className="space-y-1">
-        <Label htmlFor={id} className="text-xs text-muted-foreground">
-          {layer.kind === "barcode" ? "Code" : "Value"}
-        </Label>
-        <Input id={id} className="h-7 font-mono text-xs" value={template}
-          placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : "digits"}
-          aria-invalid={errors[layer.id] ? true : undefined}
-          onChange={(e) => setContent(layer, e.target.value, true)} />
-        {errors[layer.id] && <p className="text-xs text-destructive">{errors[layer.id]}</p>}
+    // The error line and the expansion preview are the same in both boxes
+    // below — one node, so a change to either reaches the QR field too.
+    const foot = (
+      <>
+        {errors[layer.id] && <p className="text-xs text-destructive-text">{errors[layer.id]}</p>}
         {layer.format !== undefined && (
           <p className="truncate font-mono text-[11px] text-muted-foreground" title={layer.value}>
             → {layer.value}
           </p>
         )}
-        <div className="flex flex-wrap gap-1 pt-0.5">
-          <span className="text-[11px] text-muted-foreground">Insert:</span>
-          {tokens.map((t) => (
-            <button key={t.id} type="button" title={`{${t.id}}`}
-              className="rounded border border-input px-1 text-[11px] leading-4 text-muted-foreground hover:bg-accent"
-              onClick={() => setContent(layer, `${template}{${t.id}}`)}>
-              {t.name}
-            </button>
-          ))}
+      </>
+    );
+    // A QR is a link, not a format string: the literal prefix is the URL and
+    // the one trailing ref is ALWAYS slugified, so the only choice left is
+    // which text layer feeds it. Anything parseLink rejects (a hand-written
+    // multi-ref template) falls through to the raw box below.
+    const link = layer.kind === "qr" ? parseLink(template) : undefined;
+    if (link) {
+      // Every text layer can feed the link: its id is the ref, its name is
+      // what the picker shows.
+      const tokens = rows.flatMap((r) =>
+        r.layer.kind === "text" ? [{ id: r.layer.id, name: r.layer.name }] : []);
+      const src = link.id ?? "";
+      const write = (prefix: string, id: string) =>
+        setContent(layer, formatLink(prefix, id), true);
+      return (
+        <div className="space-y-1">
+          <Label htmlFor={id} className="text-xs text-muted-foreground">Link</Label>
+          <Input id={id} className="h-7 font-mono text-xs" value={link.prefix}
+            placeholder="https://lolev.beer/beer/"
+            aria-invalid={errors[layer.id] ? true : undefined}
+            onChange={(e) => write(e.target.value, src)} />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-muted-foreground">followed by</span>
+            <Select value={src || "none"} onValueChange={(v) => write(link.prefix, v === "none" ? "" : (v ?? ""))}>
+              <SelectTrigger id={`${id}-src`} size="sm" aria-label="Link suffix"
+                className="h-6 w-32 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none" className="text-xs">nothing</SelectItem>
+                {tokens.map((t) => (
+                  <SelectItem key={t.id} value={t.id} className="text-xs">{t.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {src && (
+            <p className="text-[11px] text-muted-foreground">
+              Made safe for a link: lowercased, spaces and punctuation become dashes.
+            </p>
+          )}
+          {foot}
         </div>
-        <p className="text-[11px] text-muted-foreground">
-          Add <code>|slug</code>, <code>|upper</code>, <code>|lower</code> or <code>|trim</code>
-          {" "}inside a token to transform it.
-        </p>
+      );
+    }
+    return (
+      <div className="space-y-1">
+        <Label htmlFor={id} className="text-xs text-muted-foreground">
+          {layer.kind === "barcode" ? "Code" : "Value"}
+        </Label>
+        {/* A vocabulary makes this the same picker the styled fields use —
+            the barcode's tiers are filled HERE, not through TextEditor. */}
+        {layer.choices?.length ? (
+          <ChoiceBox id={id} className="h-7 font-mono text-xs" value={template}
+            choices={layer.choices} invalid={!!errors[layer.id]}
+            placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : "digits"}
+            onCommit={(v) => setContent(layer, v, true)} />
+        ) : (
+          <Input id={id} className="h-7 font-mono text-xs" value={template}
+            placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : "digits"}
+            aria-invalid={errors[layer.id] ? true : undefined}
+            onChange={(e) => setContent(layer, e.target.value, true)} />
+        )}
+        {foot}
       </div>
     );
   }
@@ -1738,6 +1875,16 @@ export const DocumentEditor = memo(function DocumentEditor({
           <RenderSettingsFields value={render} onChange={onRenderChange} />
         </DialogContent>
       </Dialog>
+      {pendingSave && (
+        <MasterSaveReview open changes={masterChangeList}
+          target={master.variants.find((v) => v.id === version)?.name}
+          onCancel={() => setPendingSave(null)}
+          onConfirm={(promote) => {
+            const { as } = pendingSave;
+            setPendingSave(null);
+            void saveMaster(as, promote);
+          }} />
+      )}
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
           preview center, inspector sheet right. */}
       <SidebarProvider hotkey={active} className="min-h-0 h-full">
@@ -1746,16 +1893,18 @@ export const DocumentEditor = memo(function DocumentEditor({
             {/* The master picker, then the ONE Layers list (spec: UI). */}
             <MasterPicker master={master} label={label}
               library={libraryEntries()} resolve={resolveMasterById}
-              onMaster={pickLibraryMaster} onOpenMaster={() => void openMasterPicker()}
-              onDuplicate={duplicateMaster} />
+              onMaster={pickLibraryMaster} onNewVariant={onNewVariant}
+              onRenameVersion={onRenameVersion} onRemoveVersion={onRemoveVersion}
+              onSaveMaster={() => setPendingSave({ as: false })} masterDirty={masterDirty}
+              version={version} onVersion={switchVersion} />
             <LayerList rows={rows} selected={selected}
               onSelect={(id, mods) => pick(id, { shift: mods.shift, toggle: mods.meta })}
               onToggle={(id, prop, value) => patch(id, { [prop]: value })}
               onRename={(id, name) => patch(id, { name })}
               onReorder={(id, delta) => editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta))}
               onAdd={onAddLayer} onRemove={onRemoveLayer}
-              fillableOnly={fillableOnly} onFillableOnly={setFillableOnly}
-              variants={chips} onToggleVariant={(id) => editLabel((l) => toggleVariant(l, id))} />
+              changedOnly={changedOnly} onChangedOnly={setChangedOnly}
+              />
           </SidebarContent>
         </Sidebar>
         <SidebarInset className="flex h-full flex-col overflow-hidden">
@@ -1774,7 +1923,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           {blocked && <HeaderAlert>{blockedWhy}</HeaderAlert>}
           {loadError && <HeaderAlert>{loadError}</HeaderAlert>}
           {(buildError || renderError) && <HeaderAlert>{buildError || renderError}</HeaderAlert>}
-          {resolveWarnings.length > 0 && <HeaderAlert>{resolveWarnings.join(" · ")}</HeaderAlert>}
+          {resolveWarnings.length > 0 && <HeaderAlert tone="warning">{resolveWarnings.join(" · ")}</HeaderAlert>}
           {/* Open Master's fallback — see masterInput/openMasterPicker. */}
           <input ref={masterInput} type="file" accept={MASTER_EXT} hidden
             onChange={(e) => {

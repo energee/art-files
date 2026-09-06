@@ -3,21 +3,60 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
-## [0.1.58] - 2026-09-05
+## [0.1.60] - 2026-09-06
 
 ### Added
 
-- The QR and barcode Value box now edits the URL *template*, not the text it
-  expands to. Click a field name under the box to inject it as a token, and
-  the resolved value is previewed beneath. Tokens accept `|slug`, `|upper`,
-  `|lower` and `|trim` — so the Lolev QR is an ordinary editable setting
-  (`https://lolev.beer/beer/{name|slug}`) rather than a hardcoded URL.
+- **A new colour scheme.** Warm neutrals with six accents — purple, pink,
+  orange, yellow, green and cyan — each with a tint for small text and one
+  for row backgrounds. Every committed pair is checked for AA contrast in
+  both light and dark.
+- **A variant is marked with an icon** in the version menu instead of an
+  indent, so it reads as a version of the master above it.
+- **Save Master now shows what it is about to write.** Every save opens a
+  review listing each change: renames, added and removed layers, reordering,
+  fill-contract edits, and edits made inside a variant. Cancelling writes
+  nothing.
+- **Your own edits can be folded into the template from that review.** Moving,
+  restyling or resizing a layer is now this label's change, not the
+  template's — the review offers each one for promotion, unticked, and only
+  the ones you tick are written.
+- **Fill fields can offer a list.** The Style field offers Lolev's styles and
+  the Barcode field offers the eight tiers by name, filling their UPCs. Both
+  still take anything typed, and a value you type joins the list — which the
+  Save Master review shows before it reaches the file.
+- The Layer inspector authors that list: a Title caption for the field, and
+  the choices themselves.
+- A QR or barcode value follows a field instead of being fixed text, so the
+  Lolev QR is an ordinary editable setting rather than a hardcoded URL. (How
+  that is authored changed again below — see the link editor.)
 - Rotation now works on QR layers, matching text and barcodes.
 - Clicking the pasteboard around the label deselects, which closes the
   inspector. Dragging a guide or removing one does not.
 
 ### Changed
 
+- **A QR code is edited as a link, not a template.** The inspector now asks
+  for the URL and which field follows it, and makes that field safe for a
+  link automatically — lowercased, with spaces and punctuation turned into
+  dashes. Barcodes lose the token chips and the transform hint that came
+  with the old template box.
+- **Text fields are readable again.** The description field no longer paints
+  a layer's artwork colours into the input, where gold and white were hard
+  to read and white ink was invisible outright. White ink now shows as a
+  dotted underline. Colours still appear on the label preview.
+- **A layer's placeholder is drawn on the label only.** The field beside it
+  no longer repeats it.
+- **The master Select is now the version picker.** Variants are listed under
+  their master, and the one you switch to is the one the canvas draws and the
+  one a promotion is written into. The variant chips beside the Layers filter
+  are gone, and New Variant moved into that menu.
+- **Save Master As… now forks.** It mints a new master, rebinds the document
+  onto it and writes the file, taking its name from the file you save as. The
+  sidebar's "Duplicate as new master…" and its duplicate "Open Master…" button
+  are gone — the File menu already had the latter.
+- The Layers filter reads "Changed" and shows the layers this label has
+  touched, replacing "Fillable only". Every layer is fillable now.
 - Uppercase moved from the text layer to its Style, alongside Letter Spacing.
   A master authors it, a label turns it off through the ordinary style
   override with a reset badge, and the stored text keeps its typed case — so
@@ -25,11 +64,32 @@ binary-impacting change gets its own version before it is merged.
   Masters authored before the move are read unchanged.
 - Opening the inspector no longer covers the artwork: the preview pane makes
   room for the sheet and the label recentres in what is left.
-- The inspector's Enabled / Locked / Fillable switches are ordinary labelled
-  rows like every other control, and the panel has roomier padding.
+- The inspector's Enabled / Locked switches are ordinary labelled rows like
+  every other control, and the panel has roomier padding. (The Fillable switch
+  is gone entirely — see below.)
 
 ### Fixed
 
+- A vocabulary field no longer forgets what you typed. Typing a barcode or a
+  style and then clicking away kept the old value — only Enter or picking from
+  the list committed it. Escape still cancels.
+- Switching on a layer that only a variant adds no longer moves the version
+  you are editing. The master Select silently retitled to that variant, and
+  the next Save Master wrote every promotion into it instead of the template.
+- A choice's value can be cleared and retyped. Emptying the box raised an
+  error in the menu bar that stayed up, and the text sprang back.
+- The Title you give a fill field is now shown above every field, not just the
+  ones offering a list.
+- Resizing a layer whose horizontal guide differs from its anchor keeps the
+  opposite edge still, as the vertical axis already did.
+- Dragging two layers at once no longer moves a layer bound to another one in
+  the selection twice as far as the pointer.
+- A multi-layer drag now snaps as a group, on the selection's own bounds,
+  instead of re-spacing itself whenever the grabbed layer crossed a guide.
+- Layers no longer jump when dragged across roughly a quarter and two-thirds
+  of the way over the label — a drag no longer re-anchors the layer to the
+  nearest guide as it passes.
+- Switching from a variant back to the master hides that variant again.
 - Editing a QR payload wrote the *expanded* URL back to the master, replacing
   the `{name|slug}` token with whatever beer name happened to be filled in.
   The template is now preserved separately from its expansion.
@@ -37,6 +97,19 @@ binary-impacting change gets its own version before it is merged.
   honoured it.
 - The QR URL slug and the export filename now share one machine-name rule
   instead of two copies that could drift.
+- **Add choice** now adds a usable row. It used to submit a blank value, which
+  the master rejects, so the whole edit was discarded and no row ever appeared.
+  New rows arrive named "New choice", numbered when that name is taken.
+- **Save Master As** now rebinds the open label onto the fork it just wrote.
+  The label kept pointing at the master it was forked from, so saving the
+  project afterwards recorded the original and reopening loaded that template
+  instead of the fork.
+- Promoting a cleared property into a variant now keeps it cleared. Clearing a
+  wrap width on the label and promoting it into a variant restored the
+  template's width, because a missing key in a variant means "inherit".
+- A layer that a variant adds now shows reset badges for your own edits to it.
+  Resizing Collab's Graphic logo, for instance, created a label override with
+  no way to reset it from the inspector.
 
 ## [0.1.57] - 2026-09-05
 

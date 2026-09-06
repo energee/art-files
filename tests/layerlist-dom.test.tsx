@@ -49,7 +49,7 @@ function lolevRows(collabOn = false): { rows: LayerRow[]; variants: VariantChip[
 }
 
 function baseProps(over: Partial<LayerListProps> = {}): LayerListProps {
-  const { rows, variants } = lolevRows();
+  const { rows } = lolevRows();
   return {
     rows,
     selected: [],
@@ -59,10 +59,8 @@ function baseProps(over: Partial<LayerListProps> = {}): LayerListProps {
     onReorder: vi.fn(),
     onAdd: vi.fn(),
     onRemove: vi.fn(),
-    fillableOnly: false,
-    onFillableOnly: vi.fn(),
-    variants,
-    onToggleVariant: vi.fn(),
+    changedOnly: false,
+    onChangedOnly: vi.fn(),
     ...over,
   };
 }
@@ -109,12 +107,11 @@ describe("LayerList", () => {
     expect(container.querySelector('[aria-label^="Hide "]')).toBeNull();
   });
 
-  it("Fillable only hides every row whose layer is not fillable", () => {
-    const props = render(baseProps({ fillableOnly: true }));
-    const fillable = props.rows.filter((r) => r.layer.fillable).map((r) => r.layer.id).reverse();
-    expect(fillable).toContain("name");
-    expect(fillable).not.toContain("wordmark");
-    expect(rowIds()).toEqual(fillable);
+  it("Changed hides every row this label has not touched", () => {
+    const base = baseProps();
+    const rows = base.rows.map((r) => (r.layer.id === "name" ? { ...r, changed: true } : r));
+    render({ ...base, rows, changedOnly: true });
+    expect(rowIds()).toEqual(["name"]);
   });
 
   it("the power switch reports onToggle enabled, and a disabled layer renders dimmed", () => {
@@ -135,12 +132,10 @@ describe("LayerList", () => {
     expect(rowFor("name").querySelector(".opacity-50")).toBeNull();
   });
 
-  it("lock and fillable switches report onToggle with the flipped value", () => {
+  it("the lock switch reports onToggle with the flipped value", () => {
     const props = render(baseProps());
     click(byLabel("Brand: locked"));
     expect(props.onToggle).toHaveBeenCalledWith("wordmark", "locked", true);
-    click(byLabel("ABV: fillable"));
-    expect(props.onToggle).toHaveBeenCalledWith("abv", "fillable", false);
   });
 
   it("badges a variant-added row with the variant's name and dims it while the variant is off", () => {
@@ -151,19 +146,18 @@ describe("LayerList", () => {
     expect(lead.querySelector(".opacity-50")).not.toBeNull();
 
     const on = lolevRows(true);
-    render(baseProps({ rows: on.rows, variants: on.variants }));
+    render(baseProps({ rows: on.rows }));
     expect(rowFor("collabLead").textContent).toContain("Collab");
     expect(rowFor("collabLead").querySelector(".opacity-50")).toBeNull();
     // A master row never carries a badge.
     expect(rowFor("wordmark").textContent).not.toContain("Collab");
   });
 
-  it("the background and mask rows have no fillable switch; every other row does", () => {
+  it("no row carries a fillable switch any more — every layer is fillable", () => {
     render(baseProps());
-    expect(byLabel("Background: fillable")).toBeNull();
-    expect(byLabel("Metallic mask: fillable")).toBeNull();
+    expect(byLabel("Brand: fillable")).toBeNull();
+    expect(byLabel("ABV: fillable")).toBeNull();
     expect(byLabel("Background: enabled")).not.toBeNull();
-    expect(byLabel("Brand: fillable")).not.toBeNull();
   });
 
   it("clicking a row selects it with the modifier keys", () => {
@@ -207,15 +201,14 @@ describe("LayerList", () => {
     expect(props.onAdd).toHaveBeenCalledWith("text");
   });
 
-  it("adds a layer directly to a variant without an editing mode", async () => {
+  it("has one Add layer, which targets whatever version the Select names", async () => {
+    // It used to carry a submenu per variant. The master Select decides the
+    // working version now, and App routes the add there.
     const props = render(baseProps());
     await openMenu(byLabel("Add layer"));
-    const variant = menuItem("Collab");
-    await act(async () => { variant.click(); await Promise.resolve(); });
-    const textItems = Array.from(document.querySelectorAll('[role="menuitem"]'))
-      .filter((el) => el.textContent?.trim() === "Text");
-    await act(async () => { (textItems.at(-1) as HTMLElement).click(); });
-    expect(props.onAdd).toHaveBeenCalledWith("text", "collab");
+    expect(menuItem("Collab")).toBeUndefined();
+    await act(async () => { menuItem("Text")!.click(); });
+    expect(props.onAdd).toHaveBeenCalledWith("text");
   });
 
   it("the row menu's Remove calls onRemove", async () => {
@@ -226,6 +219,27 @@ describe("LayerList", () => {
     await act(async () => { item.click(); await Promise.resolve(); });
     expect(props.onRemove).toHaveBeenCalledWith("wordmark");
     expect(props.onSelect).not.toHaveBeenCalled();
+  });
+
+  it("colours Remove destructive, not a solid fill (docs/plans/template-switch.md, Task 3)", async () => {
+    render(baseProps());
+    await openMenu(byLabel("Brand actions"));
+    const item = menuItem("Remove");
+    expect(item.className).toContain("destructive-text");
+  });
+
+  it("colours the overridden/changed marks info, not primary (docs/plans/template-switch.md, Task 3)", () => {
+    const collab = { id: "collab", name: "Collab", enabled: true };
+    const props = baseProps();
+    props.rows = props.rows.map((r) =>
+      r.layer.id === "logo" ? { ...r, variantOverridden: collab }
+        : r.layer.id === "name" ? { ...r, changed: true } : r);
+    render(props);
+    const marks = Array.from(container.querySelectorAll('[role="img"]')) as HTMLElement[];
+    const overridden = marks.find((el) => el.getAttribute("aria-label") === "Collab changes this layer")!;
+    const changed = marks.find((el) => el.getAttribute("aria-label") === "Changed in this label")!;
+    expect(overridden.className).toContain("text-info-text");
+    expect(changed.className).toContain("text-info-text");
   });
 
   it("drags across multiple rows in one reorder and removes the arrow buttons", () => {
@@ -279,25 +293,27 @@ describe("LayerList", () => {
     expect(props.onReorder).toHaveBeenCalledTimes(2);
   });
 
-  it("header chips: Fillable only and one toggle per variant", () => {
+  it("header chips: Changed and one toggle per variant", () => {
     const props = render(baseProps());
     const filter = Array.from(container.querySelectorAll("button"))
-      .find((b) => b.textContent?.trim() === "Fillable only")!;
+      .find((b) => b.textContent?.trim() === "Changed")!;
     expect(filter.getAttribute("aria-pressed")).toBe("false");
     click(filter);
-    expect(props.onFillableOnly).toHaveBeenCalledWith(true);
+    expect(props.onChangedOnly).toHaveBeenCalledWith(true);
 
-    const chip = byLabel("Collab variant");
-    expect(chip.getAttribute("aria-pressed")).toBe("false");
-    click(chip);
-    expect(props.onToggleVariant).toHaveBeenCalledWith("collab");
+    // The variant chips are gone: the master Select names the version, and
+    // what it names is what the canvas draws.
+    expect(byLabel("Collab variant")).toBeNull();
   });
 
   it("every interactive control has an accessible name (a11y lens)", () => {
-    // A selected row shows the most controls (reorder arrows included) and
-    // an overridden master row adds the dot.
+    // A selected row shows the most controls (reorder arrows included); a row
+    // a variant changes and one this label changed add their two marks.
     const props = baseProps({ selected: ["wordmark"] });
-    props.rows = props.rows.map((r) => r.layer.id === "logo" ? { ...r, overridden: true } : r);
+    const collab = { id: "collab", name: "Collab", enabled: true };
+    props.rows = props.rows.map((r) =>
+      r.layer.id === "logo" ? { ...r, variantOverridden: collab }
+        : r.layer.id === "name" ? { ...r, changed: true } : r);
     render(props);
     const controls = Array.from(container.querySelectorAll('button, input, [role="img"]'));
     expect(controls.length).toBeGreaterThan(20);
@@ -306,7 +322,12 @@ describe("LayerList", () => {
         ?? el.textContent?.trim();
       expect(name, `${el.tagName} ${el.className}`).toBeTruthy();
     }
-    expect(container.querySelector('[role="img"]')?.getAttribute("aria-label")).toBe("Overridden by a variant");
+    // The two provenance marks name their source; the old single dot claimed
+    // "Overridden by a variant" for a label edit too.
+    const marks = Array.from(container.querySelectorAll('[role="img"]'))
+      .map((el) => el.getAttribute("aria-label"));
+    expect(marks).toContain("Collab changes this layer");
+    expect(marks).toContain("Changed in this label");
   });
 });
 
@@ -339,8 +360,8 @@ describe("ownership vs override", () => {
     const { rows, variants } = lolevRows(true);
     const [collab] = variants;
     const overridden = rows.map((r) =>
-      r.layer.id === "wordmark" ? { ...r, variant: collab, overridden: true } : r);
-    const props = render(baseProps({ rows: overridden, variants, selected: ["wordmark"] }));
+      r.layer.id === "wordmark" ? { ...r, variant: collab, variantOverridden: collab } : r);
+    const props = render(baseProps({ rows: overridden, selected: ["wordmark"] }));
     const button = rowFor("wordmark").querySelector("button")!;
     keydown(button, "ArrowUp", { altKey: true });
     keydown(button, "ArrowDown", { altKey: true });

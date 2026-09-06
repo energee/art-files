@@ -60,7 +60,7 @@ const NAMES = [
 
 function render(layer: Layer, over: Partial<Parameters<typeof LayerInspector>[0]> = {}) {
   const props: Parameters<typeof LayerInspector>[0] = {
-    layer, layerNames: NAMES, overridden: new Set(),
+    layer, layerNames: NAMES, overridden: { variant: new Set<string>(), label: new Set<string>() },
     onChange: vi.fn(), onReset: vi.fn(), onUnbind: vi.fn(), onBind: vi.fn(),
     ...over,
   };
@@ -100,14 +100,13 @@ describe("LayerInspector header", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("toggles enabled / locked / fillable as top-level patches", () => {
+  it("toggles enabled / locked as top-level patches", () => {
     const { onChange } = render(text());
     click(byLabel("Enabled")!);
     expect(onChange).toHaveBeenLastCalledWith({ enabled: false });
     click(byLabel("Locked")!);
     expect(onChange).toHaveBeenLastCalledWith({ locked: true });
-    click(byLabel("Fillable")!);
-    expect(onChange).toHaveBeenLastCalledWith({ fillable: true });
+    expect(byLabel("Fillable")).toBeNull();
   });
 
   it("renders the parent's content editor under a Content heading", () => {
@@ -137,6 +136,19 @@ describe("LayerInspector position", () => {
     render(text({ rotation: 90 }), { onChange });
     click(byLabel("Rotate 90°")!);
     expect(onChange).toHaveBeenLastCalledWith({ rotation: 0 });
+  });
+
+  it("edits the fill contract — placeholder always, range only for a number", () => {
+    const { onChange } = render(text({ placeholder: "Name" }));
+    const box = $("#name-placeholder") as HTMLInputElement;
+    expect(box.value).toBe("Name");
+    type(box, "Beer name");
+    expect(onChange).toHaveBeenLastCalledWith({ placeholder: "Beer name" });
+    // Range is meaningless for rich text and hidden until the input is one.
+    expect($("#name-min")).toBeNull();
+    render(text({ input: "number", min: 0, max: 20 }), { onChange });
+    expect(($("#name-min") as HTMLInputElement).value).toBe("0");
+    expect($("#name-suffix")).not.toBeNull();
   });
 
   it("offers no rotation toggle on an image layer — no backend rotates raster art", () => {
@@ -297,21 +309,49 @@ describe("LayerInspector style", () => {
 });
 
 describe("LayerInspector override badges", () => {
+  const from = (variant: string[], label: string[] = [], variantName?: string) =>
+    ({ variant: new Set(variant), label: new Set(label), ...(variantName ? { variantName } : {}) });
+
   it("shows a reset badge only for an overridden path and calls onReset with it", () => {
-    const { onReset } = render(text(), { overridden: new Set(["style.fill"]) });
+    const { onReset } = render(text(), { overridden: from(["style.fill"]) });
     expect(byLabel("Reset X to the master")).toBeNull();
     const badge = byLabel("Reset Fill to the master");
     expect(badge).not.toBeNull();
     click(badge!);
-    expect(onReset).toHaveBeenCalledWith("style.fill");
+    expect(onReset).toHaveBeenCalledWith("style.fill", "variant");
+  });
+
+  it("colours the override mark info, not primary (docs/plans/template-switch.md, Task 3)", () => {
+    render(text(), { overridden: from(["style.fill"]) });
+    const badge = byLabel("Reset Fill to the master")!;
+    expect(badge.className).toContain("text-info-text");
   });
 
   it("a bound y reports whichever leaf path the parent marked", () => {
     const { onReset } = render(
-      text({ y: { below: "description", gap: 5 } }), { overridden: new Set(["y.gap"]) },
+      text({ y: { below: "description", gap: 5 } }), { overridden: from(["y.gap"]) },
     );
     click(byLabel("Reset Gap to the master")!);
-    expect(onReset).toHaveBeenCalledWith("y.gap");
+    expect(onReset).toHaveBeenCalledWith("y.gap", "variant");
+  });
+
+  it("marks a variant's change and this label's separately, each resetting its own", () => {
+    // One merged badge used to mean the same click could clear your own edit
+    // or rewrite the shipped variant, depending on state you could not see.
+    const { onReset } = render(text(), { overridden: from(["style.fill"], ["style.fill"], "Collab") });
+    const variantMark = byLabel("Reset Fill to the master")!;
+    const labelMark = byLabel("Reset Fill to this label's master value")!;
+    expect(variantMark.getAttribute("title")).toContain("Collab sets Fill");
+    click(labelMark);
+    expect(onReset).toHaveBeenLastCalledWith("style.fill", "label");
+    click(variantMark);
+    expect(onReset).toHaveBeenLastCalledWith("style.fill", "variant");
+  });
+
+  it("a label-only change shows just the label mark", () => {
+    render(text(), { overridden: from([], ["x"]) });
+    expect(byLabel("Reset X to the master")).toBeNull();
+    expect(byLabel("Reset X to this label's master value")).not.toBeNull();
   });
 });
 
@@ -332,4 +372,94 @@ it("one control per axis: picking a guide anchors that edge on it with offset 0"
   expect(byLabel("Y places the top edge")).toBeNull();
   expect(byLabel("Detach from guide")).toBeNull();
   expect(byLabel("Detach from horizontal guide")).toBeNull();
+});
+
+// docs/plans/choice-input.md, Task 6. Authoring the vocabulary a filler picks
+// from: a caption for the field and the list itself. Both are fill-contract
+// keys, so they route to the master (MASTER_PATHS) — the inspector only has to
+// emit them, and it emits `choices` as the WHOLE array, which is also how the
+// override badge sees it (leafPaths treats an array as one leaf).
+describe("LayerInspector fill vocabulary", () => {
+  const STYLES = [
+    { value: "Ultra Hopped Ale" },
+    { title: "Hazy IPA", value: "Hazy India Pale Ale" },
+  ];
+
+  it("captions the field through title", () => {
+    const { onChange } = render(text());
+    type($("#name-title") as HTMLInputElement, "Style");
+    expect(onChange).toHaveBeenLastCalledWith({ title: "Style" });
+  });
+
+  it("lists each choice's title and value", () => {
+    render(text({ choices: STYLES }));
+    expect(($("#name-choice-0-value") as HTMLInputElement).value).toBe("Ultra Hopped Ale");
+    expect(($("#name-choice-1-title") as HTMLInputElement).value).toBe("Hazy IPA");
+    expect(($("#name-choice-1-value") as HTMLInputElement).value).toBe("Hazy India Pale Ale");
+  });
+
+  it("edits one choice and emits the whole list", () => {
+    const { onChange } = render(text({ choices: STYLES }));
+    type($("#name-choice-0-value") as HTMLInputElement, "Pale Ale");
+    expect(onChange).toHaveBeenLastCalledWith({
+      choices: [{ value: "Pale Ale" }, STYLES[1]],
+    });
+  });
+
+  // Emptying the box to retype must not push a blank at the model: parseMaster
+  // refuses a choice with no value, App catches the throw into the menu-bar
+  // alert, and the field sprang back with a red banner that stayed up.
+  it("lets a value box go empty while retyping without emitting a blank", () => {
+    const { onChange } = render(text({ choices: STYLES }));
+    const box = $("#name-choice-0-value") as HTMLInputElement;
+    type(box, "");
+    expect(box.value).toBe("");
+    expect(box.getAttribute("aria-invalid")).toBe("true");
+    expect(onChange).not.toHaveBeenCalled();
+    type(box, "Pale Ale");
+    expect(onChange).toHaveBeenLastCalledWith({
+      choices: [{ value: "Pale Ale" }, STYLES[1]],
+    });
+  });
+
+  // An appended choice must arrive VALID: parseMaster rejects a blank value
+  // ("has a choice with no value") and App discards the whole edit, so an
+  // empty new row would never reach the screen to be typed into.
+  it("appends a usable choice, and drops the title when it is blanked", () => {
+    const { onChange } = render(text({ choices: STYLES }));
+    click(byLabel("Add choice")!);
+    expect(onChange).toHaveBeenLastCalledWith({ choices: [...STYLES, { value: "New choice" }] });
+
+    type($("#name-choice-1-title") as HTMLInputElement, "");
+    expect(onChange).toHaveBeenLastCalledWith({
+      choices: [STYLES[0], { value: "Hazy India Pale Ale" }],
+    });
+  });
+
+  it("numbers each further choice so no two arrive with the same value", () => {
+    const { onChange } = render(text({ choices: [{ value: "New choice" }] }));
+    click(byLabel("Add choice")!);
+    expect(onChange).toHaveBeenLastCalledWith({
+      choices: [{ value: "New choice" }, { value: "New choice 2" }],
+    });
+  });
+
+  it("removes a choice, and the last one takes the whole key with it", () => {
+    const { onChange } = render(text({ choices: STYLES }));
+    click(byLabel("Remove choice 1")!);
+    expect(onChange).toHaveBeenLastCalledWith({ choices: [STYLES[1]] });
+
+    const one = render(text({ choices: [STYLES[0]] }));
+    click(byLabel("Remove choice 1")!);
+    expect(one.onChange).toHaveBeenLastCalledWith({ choices: undefined });
+  });
+
+  it("offers the same editor on a barcode, which has a value and no input", () => {
+    const { onChange } = render(barcode({ choices: [{ title: "Tier 1", value: "850051366040" }] }));
+    expect(($("#barcode-choice-0-title") as HTMLInputElement).value).toBe("Tier 1");
+    click(byLabel("Add choice")!);
+    expect(onChange).toHaveBeenLastCalledWith({
+      choices: [{ title: "Tier 1", value: "850051366040" }, { value: "New choice" }],
+    });
+  });
 });

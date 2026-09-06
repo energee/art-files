@@ -38,6 +38,16 @@ export function parseMasterJson(json: unknown): { master: Master; warnings: stri
   return { master: parseMaster(json), warnings: [] };
 }
 
+/** The display name a master forked by Save Master As… takes: the file the
+ *  user just named it, minus directories and extension. Without it the library
+ *  would list two masters called "Lolev" — there is no master-name field
+ *  anywhere in the UI to tell them apart afterwards. Empty for a path with no
+ *  usable basename, which the caller reads as "keep the name you had".
+ *  Accepts a POSIX path, a Windows path, or a bare file name. */
+export function masterNameFromFile(file: string): string {
+  return file.split(/[/\\]/).pop()?.replace(/\.[^.]+$/, "").trim() ?? "";
+}
+
 export function packMaster(m: Master, assets: MasterAssets): Uint8Array {
   const zip: Zippable = { "master.json": strToU8(serializeMaster(m)) };
   packAssets(zip, assets);

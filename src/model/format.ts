@@ -47,3 +47,21 @@ export function expandFormat(
   });
   return { text, missing };
 }
+
+/** A link-shaped format: literal prefix followed by ONE trailing ref, which
+ *  a QR always slugifies. Returns undefined for anything else (a hand-written
+ *  multi-ref template), which the caller falls back to a raw text box for.
+ *  Parsed through `segments` so the grammar stays owned by this file. */
+export function parseLink(fmt: string): { prefix: string; id?: string } | undefined {
+  const segs = segments(fmt);
+  const last = segs[segs.length - 1];
+  const head = last && "id" in last ? segs.slice(0, -1) : segs;
+  if (head.some((s) => !("lit" in s))) return undefined; // a ref before the tail
+  return { prefix: head.map((s) => ("lit" in s ? s.lit : "")).join(""),
+           id: last && "id" in last ? last.id : undefined };
+}
+
+/** parseLink's inverse. The ref is always slugified — a link that is not URL
+ *  safe is not a link. */
+export const formatLink = (prefix: string, id: string): string =>
+  id ? `${prefix}{${id}|slug}` : prefix;

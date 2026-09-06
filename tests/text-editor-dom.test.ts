@@ -265,11 +265,9 @@ describe("TextEditor", () => {
     expect(container.querySelector('[aria-label="Toggle header"]')).toBeNull();
   });
 
-  it("shows the placeholder only while the layer is empty", () => {
-    renderEditor({ lines: [line("")], placeholder: "Name" });
-    expect(container.textContent).toContain("Name");
-    renderEditor({ lines: [line("Peregrine")], placeholder: "Name" });
-    expect(container.textContent).not.toContain("Name");
+  it("never shows the layer's placeholder in the field; the canvas draws it", () => {
+    renderEditor({ lines: [line("")] });
+    expect(container.querySelector("[placeholder]")).toBeNull();
   });
 
   it("passes uppercase through to the field", () => {
@@ -282,13 +280,13 @@ describe("TextEditor", () => {
     it("renders a number box that writes one plain line, with the suffix shown after it", () => {
       const { onChange } = renderEditor({
         id: "abv", label: "ABV", lines: [line("")], multiline: false,
-        input: "number", min: 0, max: 20, suffix: "% alc by vol", placeholder: "#",
+        input: "number", min: 0, max: 20, suffix: "% alc by vol",
       });
       const box = container.querySelector("#abv") as HTMLInputElement;
       expect(box.type).toBe("number");
       expect(box.min).toBe("0");
       expect(box.max).toBe("20");
-      expect(box.placeholder).toBe("#");
+      expect(box.placeholder).toBe("");
       expect(container.textContent).toContain("% alc by vol");
       expect(container.querySelector('[role="textbox"]')).toBeNull();
       change(box, "6.5");
@@ -331,4 +329,149 @@ describe("TextEditor", () => {
       expect(container.textContent).not.toMatch(/digits/);
     });
   });
+});
+
+// docs/plans/choice-input.md, Task 5. `choices` is not an input mode: it rides
+// alongside whatever `input` says, so the same picker serves a style (no
+// input, rich text underneath) and a barcode tier (input "code", still
+// validated). It always takes typing — the list suggests, it never constrains.
+describe("TextEditor with a vocabulary", () => {
+  const STYLES = [
+    { value: "Ultra Hopped Ale" },
+    { title: "Hazy IPA", value: "Hazy India Pale Ale" },
+  ];
+  const TIERS = [
+    { title: "Tier 1", value: "850051366040" },
+    { title: "Tier 2", value: "860009737631" },
+  ];
+  /** The vocabulary's own rows; the "Use …" row is `[data-novel]`. */
+  const options = () =>
+    Array.from(document.querySelectorAll("[data-choice]")) as HTMLElement[];
+  const novel = () => document.querySelector("[data-novel]") as HTMLElement | null;
+  /** A real click sends mousedown first, which is what the list listens for —
+   *  it has to beat the input's blur, or the list is gone before the pick. */
+  const pick = (el: HTMLElement) =>
+    act(() => { el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })); });
+  const openList = (id = "layer") => {
+    const box = container.querySelector(`#${id}`) as HTMLInputElement;
+    act(() => { box.focus(); });
+    return box;
+  };
+  const key = (el: Element, k: string) =>
+    act(() => { el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true })); });
+
+  it("offers the list, showing each choice's title and drawing its value", () => {
+    const { onChange } = renderEditor({ lines: [], choices: STYLES });
+    openList();
+    expect(options().map((o) => o.textContent?.trim()))
+      .toEqual(["Ultra Hopped Ale", "Hazy IPA"]);
+    pick(options()[1]);
+    expect(onChange).toHaveBeenCalledWith([{ ...base, text: "Hazy India Pale Ale" }]);
+  });
+
+  it("filters as you type, matching title or value", () => {
+    renderEditor({ lines: [], choices: STYLES });
+    const box = openList();
+    change(box, "hazy");
+    expect(options().map((o) => o.textContent?.trim())).toEqual(["Hazy IPA"]);
+    change(box, "Ultra");
+    expect(options().map((o) => o.textContent?.trim())).toEqual(["Ultra Hopped Ale"]);
+  });
+
+  it("takes anything typed, and says so when it matches nothing", () => {
+    const { onChange } = renderEditor({ lines: [], choices: STYLES });
+    const box = openList();
+    change(box, "Saison");
+    expect(novel()?.textContent).toContain("Saison");
+    key(box, "Enter");
+    expect(onChange).toHaveBeenLastCalledWith([{ ...base, text: "Saison" }]);
+  });
+
+  it("moves through the list with the arrow keys and commits on Enter", () => {
+    const { onChange } = renderEditor({ lines: [], choices: STYLES });
+    const box = openList();
+    key(box, "ArrowDown");
+    key(box, "ArrowDown");
+    key(box, "Enter");
+    expect(onChange).toHaveBeenLastCalledWith([{ ...base, text: "Hazy India Pale Ale" }]);
+  });
+
+  it("closes on Escape without committing", () => {
+    const { onChange } = renderEditor({ lines: [], choices: STYLES });
+    const box = openList();
+    change(box, "Sais");
+    onChange.mockClear();
+    key(box, "Escape");
+    expect(options()).toHaveLength(0);
+    expect(novel()).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  // The bug this covers: blur reverted to the prop value, so typing a tier
+  // code and clicking the canvas threw the edit away — while the plain box
+  // beside it commits on every keystroke.
+  it("commits what was typed when the field loses focus", () => {
+    const { onChange } = renderEditor({ lines: [], choices: STYLES });
+    const box = openList();
+    change(box, "Saison");
+    act(() => { box.blur(); });
+    expect(onChange).toHaveBeenLastCalledWith([{ ...base, text: "Saison" }]);
+  });
+
+  it("still cancels on Escape, even though blur commits", () => {
+    const { onChange } = renderEditor({ lines: [line("Hazy India Pale Ale")], choices: STYLES });
+    const box = openList();
+    change(box, "Sais");
+    onChange.mockClear();
+    key(box, "Escape");
+    act(() => { box.blur(); });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("captions the field with the layer's title when it has one", () => {
+    renderEditor({ lines: [], choices: STYLES, label: "Style line", title: "Style" });
+    expect(container.textContent).toContain("Style");
+    expect(container.textContent).not.toContain("Style line");
+  });
+
+  // Task 8's acceptance: a barcode tier picker is the same widget, and the
+  // code validation it already had still runs. No barcode branch anywhere.
+  it("keeps code validation while offering tiers", () => {
+    const { onChange } = renderEditor({
+      lines: [], choices: TIERS, input: "code", symbology: "upc-a",
+    });
+    const box = openList();
+    pick(options()[0]);
+    expect(onChange).toHaveBeenCalledWith([{ ...base, text: "850051366040" }]);
+
+    renderEditor({ lines: [line("12345")], choices: TIERS, input: "code", symbology: "upc-a" });
+    expect(container.textContent).toMatch(/12 digits|invalid|check/i);
+  });
+});
+
+// `title` is offered on every text layer by the fill contract, so every
+// widget has to honour it — the picker was the only one that did.
+describe("the layer's title captions every widget", () => {
+  it("captions a number box", () => {
+    renderEditor({ lines: [], label: "ABV line", title: "ABV", input: "number" });
+    expect(container.textContent).toContain("ABV");
+    expect(container.textContent).not.toContain("ABV line");
+  });
+
+  it("captions the rich field", () => {
+    renderEditor({ lines: [], label: "Description layer", title: "Tasting notes" });
+    expect(container.textContent).toContain("Tasting notes");
+    expect(container.textContent).not.toContain("Description layer");
+  });
+});
+
+// The flaw the App-level wiring found: a picker opened on a filled field
+// filtered itself down to the value already in the box, so a barcode showing
+// Tier 6 offered only Tier 6.
+it("shows the whole list when a filled field is opened", () => {
+  const CHOICES = [{ title: "Tier 1", value: "8500" }, { title: "Tier 6", value: "8600" }];
+  renderEditor({ lines: [line("8600")], choices: CHOICES });
+  const box = container.querySelector("#layer") as HTMLInputElement;
+  act(() => { box.focus(); });
+  expect(document.querySelectorAll("[data-choice]")).toHaveLength(2);
 });

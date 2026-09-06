@@ -16,8 +16,17 @@ export interface LayerRow {
   layer: Layer;
   /** Set when a variant ADDS this layer (an id the master lacks). */
   variant?: VariantChip;
-  /** An enabled variant, or the label, overrides part of this master layer. */
-  overridden?: boolean;
+  /** An enabled VARIANT changes part of this master layer — the variant that
+   *  does, so the row can name it. A variant is a whole alternative version of
+   *  the template, not a bag of extra layers: it may move, recolour or retype
+   *  anything the master set (the Collab variant moves the logo). Kept apart
+   *  from `changed` because the two have different blast radii — resetting
+   *  this one edits the MASTER FILE. */
+  variantOverridden?: VariantChip;
+  /** THIS label changed the layer — a fill value or a label override. What
+   *  the list's "Changed" filter shows, and the successor to the Fillable
+   *  filter now that every layer is fillable. */
+  changed?: boolean;
 }
 
 export function variantChips(master: Master, label: LabelFile): VariantChip[] {
@@ -36,14 +45,21 @@ export function layerRows(master: Master, label: LabelFile): {
   const masterIds = new Set(master.layers.map((l) => l.id));
   const chips = new Map(variantChips(master, label).map((c) => [c.id, c]));
   const adder = (id: string) => master.variants.find((v) => id in v.layers && !masterIds.has(id));
+  const byId = new Map(master.variants.map((v) => [v.id, v]));
+  // Last enabled variant wins, so walk them back to front.
+  const enabled = [...label.enabledVariants].reverse().map((id) => byId.get(id));
   const rows: LayerRow[] = resolved.layers.map((layer) => {
-    const v = [...label.enabledVariants].reverse()
-      .map((id) => master.variants.find((v) => v.id === id))
-      .find((v) => v && layer.id in v.layers) ?? adder(layer.id);
-    const overridden = masterIds.has(layer.id) && (
-      master.variants.some((x) => label.enabledVariants.includes(x.id) && layer.id in x.layers)
-      || !!label.overrides?.[layer.id]);
-    return { layer, ...(v ? { variant: chips.get(v.id) } : {}), ...(overridden ? { overridden } : {}) };
+    // The last enabled variant that touches this layer — the one whose value
+    // actually wins, so it is the one worth naming.
+    const touching = enabled.find((v) => v && layer.id in v.layers);
+    const v = touching ?? adder(layer.id);
+    const variantOverridden = touching && masterIds.has(layer.id)
+      ? chips.get(touching.id) : undefined;
+    const changed = label.values[layer.id] !== undefined || !!label.overrides?.[layer.id];
+    return {
+      layer, ...(v ? { variant: chips.get(v.id) } : {}),
+      ...(variantOverridden ? { variantOverridden } : {}), ...(changed ? { changed } : {}),
+    };
   });
   // Layers only an OFF variant would add, raw from its diff.
   const shown = new Set(rows.map((r) => r.layer.id));

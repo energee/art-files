@@ -25,7 +25,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Bold, Droplet, Heading as HeaderIcon } from "lucide-react";
 import type { Style } from "@/types";
-import type { Symbology, TextLine } from "@/model/layers";
+import type { Choice, Symbology, TextLine } from "@/model/layers";
 import { validateField } from "@/model/fields";
 import { markRun, parseRuns } from "@/description";
 import { GOLD } from "@/layout";
@@ -116,18 +116,21 @@ for (const header of [false, true]) {
         "font-heading leading-snug outline-none",
         header ? "text-sm" : "text-xs",
         bold && "font-semibold",
-        white && "text-white",
+        // White ink is shown as a dotted underline, never as white text: the
+        // artwork's own colors (gold, white) are unreadable against a form
+        // field, and white-on-white made the run vanish outright.
+        white && "underline decoration-dotted decoration-2 underline-offset-2",
       );
     }
   }
 }
 
-/** The sidebar's painter: class for size/weight/white, and the gold as an
- *  inline color straight from layout.ts's GOLD (a Tailwind arbitrary value
- *  could never reference the constant). */
+/** The sidebar's painter: a class, nothing else. Weight and the white-ink
+ *  marker only — the field keeps the form's own foreground color, because a
+ *  layer's artwork fill (gold on dark, white on white) is what made this
+ *  input hard to read. The preview, not the input, is where color belongs. */
 const paintSidebarLine: LinePaint = (el, l) => {
   el.className = LINE_CLASSES[`${+l.header}${+l.bold}${+l.white}`];
-  el.style.color = l.white ? "" : GOLD;
 };
 
 /** A line-div's or run-span's data-* flags. Missing data-* (a brand-new div
@@ -568,8 +571,6 @@ export interface TextEditorProps {
    *  swallows Enter, and emits one line. */
   multiline: boolean;
   uppercase?: boolean;
-  /** Shown while the layer is empty (TextLayer.placeholder). */
-  placeholder?: string;
   /** TextLayer.input: "number" and "code" swap the rich field for a plain
    *  box that writes one plain line; absent = the rich editor. */
   input?: "number" | "code";
@@ -578,21 +579,169 @@ export interface TextEditorProps {
   /** Static text shown after a number/code box (TextLayer.suffix); the
    *  renderer draws it after the value, and it is never edited here. */
   suffix?: string;
+  /** The layer's fill vocabulary. Present = a picker that offers these and
+   *  still takes anything typed. It rides ALONGSIDE `input` rather than being
+   *  one of its modes, so a barcode tier list keeps its code validation
+   *  (docs/plans/choice-input.md). */
+  choices?: Choice[];
+  /** Caption for the field, when the layer's name is not what to say to
+   *  whoever is filling it (LayerBase.title). Absent = `label`. Honoured by
+   *  every field — the contract offers it on any text layer, so a plain
+   *  number box must not be the one that quietly ignores it. The aria name
+   *  stays `label`, which is the layer's identity. */
+  title?: string;
 }
 
 /** The sidebar's field for a text layer: label, the inline toolbar row, and
  *  the widget the layer's `input` calls for. */
 export function TextEditor(props: TextEditorProps) {
+  if (props.choices?.length) return <ChoiceField {...props} choices={props.choices} />;
   return props.input ? <PlainField {...props} input={props.input} /> : <RichField {...props} />;
 }
 
 const LABEL_CLASS = "text-xs text-muted-foreground";
 
+/** A picker over the layer's vocabulary that is still a text box: the list
+ *  suggests, it never constrains (docs/plans/choice-input.md). Typing filters
+ *  on title and value alike; a value matching nothing offers itself, and
+ *  committing it teaches the master (edit.ts's setContentIn).
+ *
+ *  It runs the same validation a plain field does, off the same `input` —
+ *  which is the whole reason `choices` is not an input mode: a barcode tier
+ *  list is a vocabulary AND a code box, not a choice between them. */
+/** THE PICKER: a text box over a fixed vocabulary that still takes anything
+ *  typed (docs/plans/choice-input.md). Typing filters on title and value
+ *  alike; a value nobody offers appears as its own row rather than being
+ *  refused, and committing it teaches the master (edit.ts's setContentIn).
+ *
+ *  Strings in, strings out, so it serves both fill surfaces: the styled-text
+ *  field below, and App's own code field, where a barcode's tiers are filled.
+ *  Neither knows what the other validates — this only picks. */
+export function ChoiceBox(props: {
+  id: string;
+  value: string;
+  choices: Choice[];
+  onCommit: (value: string) => void;
+  /** The box's own input hint (a barcode's "digits", a QR's example URL) —
+   *  NOT a layer's placeholder, which only the canvas draws. */
+  placeholder?: string;
+  invalid?: boolean;
+  className?: string;
+}) {
+  const { id, value, choices, onCommit, placeholder, invalid } = props;
+  const [draft, setDraft] = useState<string | null>(null);
+  const [active, setActive] = useState(-1);
+  const typed = draft ?? value;
+  const open = draft !== null;
+
+  // Filtering starts when you TYPE, not when you focus: opening a field that
+  // is already filled must show the whole list, not narrow it to the one
+  // entry already in the box.
+  const needle = draft !== null && draft !== value ? draft.trim().toLowerCase() : "";
+  const shown = needle
+    ? choices.filter((c) => `${c.title ?? ""} ${c.value}`.toLowerCase().includes(needle))
+    : choices;
+  // A typed value nobody offers is itself an option — the picker never blocks.
+  const novel = !!typed.trim() && !choices.some((c) => c.value === typed.trim());
+
+  const commit = (text: string) => {
+    setDraft(null);
+    setActive(-1);
+    onCommit(text);
+  };
+
+  return (
+    <div className="relative flex-1">
+      <Input
+        id={id}
+        className={cn("h-7 text-xs", props.className)}
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
+        value={typed}
+        placeholder={placeholder}
+        aria-invalid={invalid || undefined}
+        onFocus={() => setDraft(value)}
+        // Blur COMMITS what was typed — clicking away must not throw the edit
+        // out. Escape has already cleared the draft, so it still cancels.
+        onBlur={() => {
+          if (draft !== null && draft !== value) onCommit(draft.trim());
+          setDraft(null);
+          setActive(-1);
+        }}
+        onChange={(e) => { setDraft(e.target.value); setActive(-1); }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            const n = shown.length + (novel ? 1 : 0);
+            if (!n) return;
+            setActive((i) => (i + (e.key === "ArrowDown" ? 1 : n - 1)) % n);
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            commit(active >= 0 && active < shown.length ? shown[active].value : typed.trim());
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            setDraft(null);
+            setActive(-1);
+          }
+        }} />
+      {open && (shown.length > 0 || novel) && (
+        <ul role="listbox" aria-label={`${id} choices`}
+          className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md">
+          {shown.map((c, i) => (
+            <li key={c.value} role="option" data-choice aria-selected={i === active}
+              // The list is dismissed by blur, so take the press before it.
+              onMouseDown={(e) => { e.preventDefault(); commit(c.value); }}
+              className={cn("cursor-default rounded-sm px-2 py-1 text-xs",
+                i === active ? "bg-accent" : "hover:bg-accent")}>
+              {c.title ?? c.value}
+            </li>
+          ))}
+          {novel && (
+            <li key="__novel" role="option" data-novel aria-selected={active === shown.length}
+              onMouseDown={(e) => { e.preventDefault(); commit(typed.trim()); }}
+              className={cn("cursor-default rounded-sm px-2 py-1 text-xs text-muted-foreground",
+                active === shown.length ? "bg-accent" : "hover:bg-accent")}>
+              Use “{typed.trim()}”
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** The styled-text field's picker: ChoiceBox plus the caption, the suffix and
+ *  the validation a plain field runs, writing one plain line back. */
+function ChoiceField(props: TextEditorProps & { choices: Choice[] }) {
+  const { id, label, title, lines, onChange, base, input, min, max, symbology, suffix, choices } = props;
+  const value = lines[0]?.text ?? "";
+  // Only a layer that declares an input has anything to validate against; a
+  // style is free text, and its vocabulary is a suggestion, not a rule.
+  const check: { ok: boolean; error?: string } = value === "" || !input
+    ? { ok: true }
+    : validateField({ id, label, kind: input, path: id, min, max, symbology }, value);
+
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={id} className={LABEL_CLASS}>{title ?? label}</Label>
+      <div className="flex items-center gap-1.5">
+        <ChoiceBox
+          id={id} value={value} choices={choices}
+          invalid={!check.ok}
+          onCommit={(text) => onChange([{ ...base, text }])} />
+        {suffix && <span className="shrink-0 text-xs text-muted-foreground">{suffix}</span>}
+      </div>
+      {!check.ok && <p className="text-xs text-destructive-text">{check.error}</p>}
+    </div>
+  );
+}
+
 /** A number or code box: one plain line in, one plain line out, validated
  *  by model/fields.ts through a FieldDecl built from the layer's own hints
  *  so the code/number rules have one spelling. */
 function PlainField(props: TextEditorProps & { input: "number" | "code" }) {
-  const { id, label, lines, onChange, base, input, min, max, symbology, suffix, placeholder } = props;
+  const { id, label, title, lines, onChange, base, input, min, max, symbology, suffix } = props;
   const value = lines[0]?.text ?? "";
   // Blank is "not filled yet", not "invalid" — only judge a value that's there.
   const check: { ok: boolean; error?: string } = value === ""
@@ -600,7 +749,7 @@ function PlainField(props: TextEditorProps & { input: "number" | "code" }) {
     : validateField({ id, label, kind: input, path: id, min, max, symbology }, value);
   return (
     <div className="space-y-1">
-      <Label htmlFor={id} className={LABEL_CLASS}>{label}</Label>
+      <Label htmlFor={id} className={LABEL_CLASS}>{title ?? label}</Label>
       <div className="flex items-center gap-1.5">
         <Input
           id={id}
@@ -609,28 +758,26 @@ function PlainField(props: TextEditorProps & { input: "number" | "code" }) {
           value={value}
           min={min}
           max={max}
-          placeholder={placeholder}
           aria-invalid={!check.ok || undefined}
           onChange={(e) => onChange([{ ...base, text: e.target.value }])}
         />
         {suffix && <span className="shrink-0 text-xs text-muted-foreground">{suffix}</span>}
       </div>
-      {!check.ok && <p className="text-xs text-destructive">{check.error}</p>}
+      {!check.ok && <p className="text-xs text-destructive-text">{check.error}</p>}
     </div>
   );
 }
 
 function RichField(props: TextEditorProps) {
-  const { id, label, lines, onChange, base, multiline, uppercase, placeholder } = props;
+  const { id, label, title, lines, onChange, base, multiline, uppercase } = props;
   const { focused, caret, toggle, toggleHeader, fieldProps } =
     useTextField({ lines, onChange, base, multiline, uppercase });
-  const empty = lines.every((l) => !l.text);
   return (
     <div className="space-y-1">
       {/* h-7, matching the size-sm toggles inside: a shorter row lets them
           overflow onto the field's outline below. */}
       <div className="flex h-7 items-center justify-between gap-1">
-        <Label htmlFor={id} className={LABEL_CLASS}>{label}</Label>
+        <Label htmlFor={id} className={LABEL_CLASS}>{title ?? label}</Label>
         <div className="flex gap-1">
           {focused && (
             <TextToolbarButtons
@@ -639,30 +786,16 @@ function RichField(props: TextEditorProps) {
           )}
         </div>
       </div>
-      <div className="relative">
-        {/* A contenteditable has no native placeholder; the layer's lines
-            say when it is empty, and the parent's round-trip clears this on
-            the first keystroke. Positioned to sit exactly where the first
-            line's text will. */}
-        {empty && placeholder && (
-          <span
-            aria-hidden
-            className="pointer-events-none absolute left-2.5 top-2 font-heading text-xs text-muted-foreground"
-          >
-            {placeholder}
-          </span>
+      <div
+        {...fieldProps}
+        id={id}
+        aria-label={label}
+        className={cn(
+          multiline ? "min-h-[8.5rem]" : "min-h-8",
+          "w-full space-y-0.5 rounded-lg border border-input bg-transparent px-2.5 py-2",
+          "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
         )}
-        <div
-          {...fieldProps}
-          id={id}
-          aria-label={label}
-          className={cn(
-            multiline ? "min-h-[8.5rem]" : "min-h-8",
-            "w-full space-y-0.5 rounded-lg border border-input bg-transparent px-2.5 py-2",
-            "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-          )}
-        />
-      </div>
+      />
     </div>
   );
 }
