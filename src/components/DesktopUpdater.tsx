@@ -256,7 +256,7 @@ export function DesktopUpdater(props: {
             variant="ghost" size="sm"
             className={cn(
               "h-6 gap-1.5 px-2 text-xs",
-              status.kind === "installed" ? "text-success-text" : "text-warning-text",
+              status.kind === "installed" ? "text-success-text" : "text-info-text",
             )}
             onClick={() => setOpen(true)}>
             <barAction.Icon data-icon="inline-start" aria-hidden="true" />
