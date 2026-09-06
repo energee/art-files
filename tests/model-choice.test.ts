@@ -55,8 +55,9 @@ describe("learnChoice", () => {
   });
 
   it("starts a list on a layer that has none", () => {
-    const m = learnChoice(lolevMaster(), "styleLine", "Saison");
-    expect(choicesOf(m)).toEqual([{ value: "Saison" }]);
+    // `name` ships without a vocabulary; styleLine and barcode now ship with.
+    const m = learnChoice(lolevMaster(), "name", "Peregrine");
+    expect(choicesOf(m, "name")).toEqual([{ value: "Peregrine" }]);
   });
 
   it("leaves a layer it cannot find alone", () => {
@@ -96,6 +97,7 @@ describe("filling a layer that has a vocabulary", () => {
   });
 
   it("leaves a layer with no vocabulary exactly as it was", () => {
+    // Filling the beer name must never start a list of beer names.
     const before = doc(lolevMaster());
     const d = setContentIn(before, "name", [line("Peregrine")]);
     expect(d.master).toBe(before.master);
