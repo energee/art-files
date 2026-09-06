@@ -9,13 +9,13 @@
 // layers (page art bound to the loaded texture/mask slots, see withPageArt)
 // → planLayers' display list → drawPlate on the 2D preview and the 3D can,
 // buildArtPdf / buildMaskPdf / buildPsd on export. There is ONE mode (spec
-// 2026-09-04: Removed): the Layers list (LayerList) with its Fillable-only
-// filter replaces Fill mode, the inspector (LayerInspector) edits the
-// selected layer, and every edit lands where the layer lives — a Design
-// edit (position, style, policy, non-fillable content) in the master or the
-// variant that adds the layer (model/edit.ts's routing rule), a FILL value
-// (a fillable layer's text lines / image asset / code value) in the label.
-// Master and label edits share one undo stack.
+// 2026-09-04: Removed): the Layers list (LayerList) with its Changed filter
+// replaces Fill mode, and the inspector (LayerInspector) edits the selected
+// layer. Every edit lands in the LABEL — a property edit as an override, a
+// text/image/code edit as a fill value (model/edit.ts's patchLayers /
+// setContentIn). The master is the template and changes only through the
+// reviewed Save Master, so it never drifts under an operator filling a
+// label. Master and label edits share one undo stack.
 //
 // TabsShell mounts one DocumentEditor per workspace tab and hides the
 // inactive ones, so anything here that registers window/document-level
@@ -118,7 +118,7 @@ type Loaded = {
 };
 
 /** One loaded per-id image asset: an image layer's art (a collab logo is
- *  one, filling a fillable image layer). `image` is what the renderer needs;
+ *  one, filling an image layer). `image` is what the renderer needs;
  *  previewUrl is the raw file, so an SVG thumbnails as itself; `aspect` is
  *  the intrinsic w/h the planner sizes the box by before/without a decoded
  *  bitmap. Keyed by the id minted at drop (mintCustomAssetId). */
@@ -169,8 +169,8 @@ function titleOf(layers: Layer[]): string {
   return name?.kind === "text" ? plainText(name.lines) : "";
 }
 
-/** A fillable layer's content, in the shape a .label stores it — for the
- *  content slot's writes; the master's own content patch otherwise. */
+/** A layer's content, in the shape a MASTER patch wants it — the label-side
+ *  spelling is the value itself (edit.ts's setContentIn). */
 const contentPatch = (kind: LayerKind, value: LayerValue): DeepPartial<Layer> =>
   kind === "text" ? { lines: value as TextLine[] }
     : kind === "image" ? { asset: value as string } : { value: value as string };
@@ -433,7 +433,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   const { rows, errors, warnings: resolveWarnings } = useMemo(() => layerRows(master, label), [master, label]);
   const rowById = useMemo(() => new Map(rows.map((r) => [r.layer.id, r])), [rows]);
   const chips = useMemo(() => variantChips(master, label), [master, label]);
-  const [fillableOnly, setFillableOnly] = useState(false);
+  const [changedOnly, setChangedOnly] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const guides = useMemo(
     () => guideLines({ physical: master.physical, guides: master.guides }),
@@ -442,7 +442,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // srcBytes: the original upload — the bytes Save writes.
   const [mask, setMask] = useState<(Loaded & { error?: string; srcBytes: Uint8Array }) | null>(null);
   // Every per-id image asset this document carries: image layers' art,
-  // collab logos included (a fillable image layer's value is a key here).
+  // collab logos included (an image layer's value is a key here).
   const [customImages, setCustomImages] = useState<Record<string, CustomFile>>({});
   // The layers that DRAW: enabled, values applied, page art bound to the
   // loaded slots. What the preview, the hit boxes, the drag targets and the
@@ -1249,7 +1249,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   function masterAssetBundle(): MasterAssets {
     const ids = master.layers.flatMap((l) => l.kind === "image" && l.asset ? [l.asset] : []);
     for (const v of master.variants)
-      for (const e of Object.values(v.layers)) if (e.kind === "image" && e.asset && !e.fillable) ids.push(e.asset);
+      for (const e of Object.values(v.layers)) if (e.kind === "image" && e.asset) ids.push(e.asset);
     return { texture: textureAsset(), mask: maskAsset(), customImages: imageBundle(ids) };
   }
 
@@ -1635,8 +1635,8 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** The inspector's content slot for the selected layer: the rich text
    *  field (or number/code box) for text, the image well for images, the
-   *  payload box for barcode/QR — each writing through setContent so a
-   *  fillable layer's content is this label's and any other's the master's. */
+   *  payload box for barcode/QR — each writing through setContent, so every
+   *  layer's content belongs to this label. */
   function contentFor(layer: Layer): React.ReactNode {
     const id = `${layer.id}-content`;
     if (layer.kind === "text") {
@@ -1734,7 +1734,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onRename={(id, name) => patch(id, { name })}
               onReorder={(id, delta) => editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta))}
               onAdd={onAddLayer} onRemove={onRemoveLayer}
-              fillableOnly={fillableOnly} onFillableOnly={setFillableOnly}
+              changedOnly={changedOnly} onChangedOnly={setChangedOnly}
               variants={chips} onToggleVariant={(id) => editLabel((l) => toggleVariant(l, id))} />
           </SidebarContent>
         </Sidebar>

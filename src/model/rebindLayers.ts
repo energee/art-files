@@ -1,8 +1,8 @@
 // src/model/rebindLayers.ts — re-aim a v3 .label at a different master (the
 // cross-brewery collab flow), the successor to rebind.ts on the layer model.
-// Values match by LAYER id against what the target declares fillable — in
-// its own layers or in any variant's diff. NON-DESTRUCTIVE: anything the
-// target doesn't declare is REPORTED and benched on the label's `dormant`
+// Values match by LAYER id against the layers the target HAS — in its own
+// layers or in any variant's diff. NON-DESTRUCTIVE: anything the target does
+// not have is REPORTED and benched on the label's `dormant`
 // store, and anything already benched gets another shot at the new target,
 // so A→B→A loses nothing (spec: `.label` file — dormant).
 import type { LabelFile, Layer, LayerValue, Master } from "./layers";
@@ -13,14 +13,16 @@ function dedupe(ids: string[]): string[] {
   return ids.filter((id, i) => ids.indexOf(id) === i);
 }
 
-/** Layer kind by id, counting every variant's fillable entries: a variant-
- *  added layer, or an override that turns `fillable` on. */
-function fillableKinds(master: Master): Map<string, Layer["kind"] | undefined> {
+/** Layer kind by id for every layer the master can resolve — its own, plus
+ *  the ones a variant adds. Every such layer is fillable now that the
+ *  `fillable` flag is gone (docs/plans/label-first-editing.md), so having the
+ *  id is the whole test; the kind decides whether a value FITS. */
+function layerKinds(master: Master): Map<string, Layer["kind"] | undefined> {
   const kinds = new Map<string, Layer["kind"] | undefined>();
-  for (const l of master.layers) if (l.fillable) kinds.set(l.id, l.kind);
+  for (const l of master.layers) kinds.set(l.id, l.kind);
   for (const v of master.variants) {
     for (const [id, e] of Object.entries(v.layers) as [string, DeepPartial<Layer>][]) {
-      if (e.fillable) kinds.set(id, e.kind ?? master.layers.find((l) => l.id === id)?.kind);
+      if (!kinds.has(id)) kinds.set(id, e.kind ?? master.layers.find((l) => l.id === id)?.kind);
     }
   }
   return kinds;
@@ -41,7 +43,7 @@ export function rebindLabel(
   const candidateValues: Record<string, LayerValue> = { ...label.dormant?.values, ...label.values };
   const candidateVariants = dedupe([...(label.dormant?.variants ?? []), ...label.enabledVariants]);
 
-  const kinds = fillableKinds(to);
+  const kinds = layerKinds(to);
   const values: Record<string, LayerValue> = {};
   const dormantValues: Record<string, LayerValue> = {};
   for (const [id, v] of Object.entries(candidateValues)) {

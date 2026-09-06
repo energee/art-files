@@ -1,7 +1,7 @@
 // LayerInspector.tsx — the right-hand inspector for ONE resolved v3 layer
 // (spec: docs/superpowers/specs/2026-09-04-master-as-layers-design.md, "UI"
 // and "Relative position"). Sections, top to bottom: header (kind icon,
-// inline rename, enabled/locked/fillable), the parent's content editor,
+// inline rename, enabled/locked), the parent's content editor,
 // Position (free coordinates or a binding to another layer's edge, with
 // a gap; rotation 0/90), kind-specific Geometry, and Style.
 //
@@ -21,8 +21,8 @@
 // Replaces StyleProperties.tsx's Inspector, which edited LabelConfig fields
 // through elements.ts. Per the spec's Removed section there is no stack
 // nudge, no collab slot nudge, no "Make fillable" button and no presets:
-// every layer has a position, `below` covers the flow, and fillable is a
-// switch. The text/image/code content editor is the parent's (`content`),
+// every layer has a position, `below` covers the flow, and every layer is
+// fillable. The text/image/code content editor is the parent's (`content`),
 // so this file never builds a text editor of its own.
 import { useState, type ReactNode } from "react";
 import {
@@ -742,9 +742,9 @@ export function LayerInspector(props: {
           onBlur={() => setNameText(null)}
         />
       </div>
-      {/* The three policy switches read as ordinary Fields (label left,
-          control right) like every other row in the panel — crowded onto one
-          line they looked like a toolbar, which they are not. */}
+      {/* The two policy switches read as ordinary Fields (label left, control
+          right) like every other row in the panel — crowded onto one line they
+          looked like a toolbar, which they are not. */}
       <div className="space-y-1.5 pt-2">
         <Field id={`${layer.id}-enabled`} label="Enabled" badge={badge(["enabled"], "Enabled")}>
           <Switch id={`${layer.id}-enabled`} aria-label="Enabled" checked={layer.enabled}
@@ -753,10 +753,6 @@ export function LayerInspector(props: {
         <Field id={`${layer.id}-locked`} label="Locked" badge={badge(["locked"], "Locked")}>
           <Switch id={`${layer.id}-locked`} aria-label="Locked" checked={!!layer.locked}
             onCheckedChange={(on) => set({ locked: on === true })} />
-        </Field>
-        <Field id={`${layer.id}-fillable`} label="Fillable" badge={badge(["fillable"], "Fillable")}>
-          <Switch id={`${layer.id}-fillable`} aria-label="Fillable" checked={!!layer.fillable}
-            onCheckedChange={(on) => set({ fillable: on === true })} />
         </Field>
       </div>
 
