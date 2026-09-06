@@ -18,6 +18,10 @@ export interface LayerRow {
   variant?: VariantChip;
   /** An enabled variant, or the label, overrides part of this master layer. */
   overridden?: boolean;
+  /** THIS label changed the layer — a fill value or a label override. What
+   *  the list's "Changed" filter shows, and the successor to the Fillable
+   *  filter now that every layer is fillable. */
+  changed?: boolean;
 }
 
 export function variantChips(master: Master, label: LabelFile): VariantChip[] {
@@ -43,7 +47,11 @@ export function layerRows(master: Master, label: LabelFile): {
     const overridden = masterIds.has(layer.id) && (
       master.variants.some((x) => label.enabledVariants.includes(x.id) && layer.id in x.layers)
       || !!label.overrides?.[layer.id]);
-    return { layer, ...(v ? { variant: chips.get(v.id) } : {}), ...(overridden ? { overridden } : {}) };
+    const changed = label.values[layer.id] !== undefined || !!label.overrides?.[layer.id];
+    return {
+      layer, ...(v ? { variant: chips.get(v.id) } : {}),
+      ...(overridden ? { overridden } : {}), ...(changed ? { changed } : {}),
+    };
   });
   // Layers only an OFF variant would add, raw from its diff.
   const shown = new Set(rows.map((r) => r.layer.id));

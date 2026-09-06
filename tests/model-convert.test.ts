@@ -30,8 +30,8 @@ describe("convertMasterV1", () => {
     expect(master.layers.map((l) => l.id)).toEqual(want.layers.map((l) => l.id));
     for (const w of want.layers) {
       const got = layer(master.layers, w.id);
-      expect([got.kind, !!got.fillable, got.x, got.y, got.anchor, got.enabled, !!got.locked])
-        .toEqual([w.kind, !!w.fillable, w.x, w.y, w.anchor, w.enabled, !!w.locked]);
+      expect([got.kind, got.x, got.y, got.anchor, got.enabled, !!got.locked])
+        .toEqual([w.kind, w.x, w.y, w.anchor, w.enabled, !!w.locked]);
     }
     expect(master.layers).toEqual(want.layers);
     expect(master.variants.map((v) => v.id)).toEqual(["collab"]);
@@ -83,8 +83,6 @@ describe("convertMasterV1", () => {
     const qr = layer(master.layers, "qr");
     expect([qr.enabled, qr.name]).toEqual([false, "Code"]);
     expect(layer(master.layers, "logo").locked).toBe(true);
-    expect(layer(master.layers, "styleLine").fillable).toBeFalsy();
-    expect(layer(master.layers, "name").fillable).toBe(true);
     const abv = layer<TextLayer>(master.layers, "abv");
     expect([abv.input, abv.min, abv.max]).toEqual(["number", 0, 20]);
   });
@@ -157,7 +155,7 @@ describe("convertMasterV1", () => {
     expect(diff.abv!.style!.fill).toBe("#00FF00");
     expect(diff.qr).toEqual({ enabled: false });
     const x = diff["custom-x"] as TextLayer;
-    expect([x.kind, x.fillable, x.lines[0].text, x.name]).toEqual(["text", true, "X", "Extra"]);
+    expect([x.kind, x.lines[0].text, x.name]).toEqual(["text", "X", "Extra"]);
     expect(() => parseMaster(master)).not.toThrow();
   });
 

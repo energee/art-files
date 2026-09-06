@@ -6,11 +6,11 @@
 // bottom rows like any other. Each row: kind icon, name (double-click or the
 // row menu to rename inline), a variant badge when a variant ADDS the layer
 // (dimmed while that variant is off), an "overridden" dot when an enabled
-// variant overrides part of it, then the three per-layer switches — fillable
+// variant overrides part of it, then the two per-layer switches — enabled
 // (absent on the background/mask rows: nothing to fill), power (`enabled`,
 // the only visibility switch — there is no session eye any more), lock —
 // plus drag reordering and a "…" menu with
-// Rename / Remove. The header carries the title, the "Fillable only" filter
+// Rename / Remove. The header carries the title, the "Changed" filter
 // that replaced Fill mode, one chip per variant, and the "Add layer" menu.
 //
 // Props-only: no app state, no model imports beyond types. Every write goes
@@ -44,6 +44,9 @@ export interface LayerRow {
   /** Some enabled variant overrides part of this master layer — the row
    *  shows a small dot after the name. */
   overridden?: boolean;
+  /** THIS label changed the layer (a fill value or an override) — what the
+   *  header's "Changed" filter shows. */
+  changed?: boolean;
 }
 
 /** Click modifiers as the row reports them. `meta` is ⌘ on macOS and Ctrl
@@ -60,8 +63,8 @@ export interface LayerListProps {
   onSelect: (id: string, mods: SelectMods) => void;
   /** The three per-row switches. `enabled` off = the layer never draws
    *  (recorded, undoable — there is no session-only hide); `locked` = fillers
-   *  cannot move it; `fillable` = listed by the Fillable-only filter. */
-  onToggle: (id: string, prop: "enabled" | "locked" | "fillable", value: boolean) => void;
+   *  cannot move it. */
+  onToggle: (id: string, prop: "enabled" | "locked", value: boolean) => void;
   /** Inline rename committed (trimmed, non-empty, changed). */
   onRename: (id: string, name: string) => void;
   /** Distance through the owning container’s draw order: positive = toward
@@ -70,9 +73,11 @@ export interface LayerListProps {
   onAdd: (kind: LayerKind, variant?: string) => void;
   /** The row menu's Remove, and the Delete/Backspace key on a selected row. */
   onRemove: (id: string) => void;
-  /** The header filter: show only `fillable` layers (what a .label fills). */
-  fillableOnly: boolean;
-  onFillableOnly: (v: boolean) => void;
+  /** The header filter: show only layers THIS label has changed — a fill
+   *  value or an override. Every layer is fillable now, so "what did I
+   *  change?" is the question worth filtering on. */
+  changedOnly: boolean;
+  onChangedOnly: (v: boolean) => void;
   /** One header chip per variant; a chip toggles the variant on the label. */
   variants: VariantChip[];
   onToggleVariant: (id: string) => void;
@@ -97,11 +102,6 @@ function iconFor(layer: Layer): LucideIcon {
   }
 }
 
-/** The background texture and metallic mask are drawn by their roles, not
- *  filled by a label — no fillable switch on those two rows. */
-const isPageArt = (layer: Layer) =>
-  layer.kind === "image" && (layer.role === "background" || layer.role === "mask");
-
 /** One small square control, the idiom every row switch shares: lit while
  *  `lit`, faded (and brightening on hover) otherwise. */
 const control = (lit: boolean) => cn(
@@ -111,7 +111,7 @@ const control = (lit: boolean) => cn(
   !lit && "opacity-40 hover:opacity-100 focus-visible:opacity-100",
 );
 
-/** Header chip — the Fillable-only filter and the variant toggles share one
+/** Header chip — the Changed filter and the variant toggles share one
  *  look: a small pill, filled while pressed. */
 const chip = (pressed: boolean) => cn(
   "inline-flex h-5 shrink-0 items-center gap-1 rounded-full border px-1.5 text-[11px] leading-none",
@@ -144,7 +144,6 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   // the variant that adds it is off.
   const inactive = !layer.enabled || (row.variant !== undefined && !row.variant.enabled);
   const locked = !!layer.locked;
-  const fillable = !!layer.fillable;
   const [renaming, setRenaming] = useState(false);
 
   const commitRename = (value: string) => {
@@ -266,22 +265,8 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
           </DropdownMenu>
         </span>
 
-        {/* The three switches, in one fixed cluster at the right edge so the
-            power and lock columns line up down the whole list. Fillable is
-            the leftmost, so the two page-art rows (which have none) leave a
-            gap there and nothing else moves. */}
-        {!isPageArt(layer) && (
-          <button
-            type="button"
-            onClick={(e) => { stop(e); p.onToggle(id, "fillable", !fillable); }}
-            aria-label={`${name}: fillable`}
-            aria-pressed={fillable}
-            title={fillable ? "Fillable — a label fills this layer" : "Not fillable — the master's content draws as is"}
-            className={control(fillable)}
-          >
-            <PenLine />
-          </button>
-        )}
+        {/* The two switches, in one fixed cluster at the right edge so the
+            power and lock columns line up down the whole list. */}
         <button
           type="button"
           onClick={(e) => { stop(e); p.onToggle(id, "enabled", inactive); }}
@@ -402,7 +387,7 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
     return (row: LayerRow) => byId.get(row.layer.id)!;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, peersOf, props.onReorder]);
-  const shown = (props.fillableOnly ? rows.filter((r) => !!r.layer.fillable) : rows)
+  const shown = (props.changedOnly ? rows.filter((r) => !!r.changed) : rows)
     .slice().reverse();
   return (
     <SidebarGroup>
@@ -447,12 +432,12 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
       <div className="flex flex-wrap items-center gap-1 px-2 pb-1.5">
         <button
           type="button"
-          aria-pressed={props.fillableOnly}
-          onClick={() => props.onFillableOnly(!props.fillableOnly)}
+          aria-pressed={props.changedOnly}
+          onClick={() => props.onChangedOnly(!props.changedOnly)}
           title="Show only the layers a label fills"
-          className={chip(props.fillableOnly)}
+          className={chip(props.changedOnly)}
         >
-          <ListFilter /> Fillable only
+          <ListFilter /> Changed
         </button>
         {props.variants.map((v) => (
           <button
@@ -491,7 +476,7 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
         </SidebarMenu>
         {shown.length === 0 && (
           <p className="px-2 py-2 text-[11px] text-sidebar-foreground/50">
-            {props.fillableOnly ? "No fillable layers." : "No layers."}
+            {props.changedOnly ? "Nothing changed in this label yet." : "No layers."}
           </p>
         )}
       </SidebarGroupContent>

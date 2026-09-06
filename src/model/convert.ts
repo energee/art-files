@@ -159,11 +159,16 @@ function applyPatch(layer: Layer, p: ElementPatch | undefined): Layer {
   return out;
 }
 
-/** The label-side twin of applyPatch: only the keys the patch touched. A
- *  fillable text layer's lines are left to its value (which convertLabelV2
- *  styles with the same patch); a fixed text layer carries its restyled
- *  lines here, or the override would never reach the drawn runs. */
-function overrideFrom(base: Layer, p: ElementPatch): DeepPartial<Layer> {
+/** The label-side twin of applyPatch: only the keys the patch touched.
+ *
+ *  A restyle has to reach a text layer's LINES, because a run's own fill wins
+ *  over the block style — a `style.fill` override alone would never change
+ *  the drawn runs. Where the label carries a VALUE for the layer, that value
+ *  holds the restyled lines instead (convertLabelV2 styles it with the same
+ *  patch) and writing them here too would duplicate the content. `hasValue`
+ *  says which case this is; it used to be spelled `base.fillable`, which was
+ *  only ever a proxy for the same question. */
+function overrideFrom(base: Layer, p: ElementPatch, hasValue = false): DeepPartial<Layer> {
   const applied = applyPatch(base, p) as Layer & Record<string, unknown>;
   const o: Record<string, unknown> = {};
   if (p.style) o.style = p.style;
@@ -171,7 +176,7 @@ function overrideFrom(base: Layer, p: ElementPatch): DeepPartial<Layer> {
   if (p.locked !== undefined) o.locked = p.locked;
   if (base.kind === "text") {
     const restyled = p.style?.fill !== undefined || p.style?.layer !== undefined;
-    if (p.text !== undefined || p.bold !== undefined || (restyled && !base.fillable)) o.lines = applied.lines;
+    if (p.text !== undefined || p.bold !== undefined || (restyled && !hasValue)) o.lines = applied.lines;
   }
   for (const k of ["asset", "value", "scale", "tintRaster"] as const)
     if (p[k] !== undefined) o[k] = applied[k];
@@ -248,7 +253,7 @@ function fieldLayerId(f: FieldDecl, ids: Set<string>): string | undefined {
  *  for number/code text inputs, and a `{id}<literal>` format's literal as
  *  the suffix — v3 has no format strings, so any other format is dropped. */
 function fillableProps(f: FieldDecl, kind: Layer["kind"], warnings: string[]): Partial<TextLayer> {
-  const p: Partial<TextLayer> = { fillable: true };
+  const p: Partial<TextLayer> = {};
   if (kind === "text") {
     if (f.kind === "number") {
       p.input = "number";
@@ -304,7 +309,6 @@ export function convertMasterV1(old: MasterV1): { master: Master; warnings: stri
       layer = applyPatch(structuredClone(t), patches[l.id]);
       layer = { ...layer, name: l.name, enabled: l.enabled, ...(l.locked !== undefined ? { locked: l.locked } : {}) };
     }
-    delete layer.fillable; // fillable is what the FieldDecls say, below
     return layer;
   };
 
@@ -403,18 +407,9 @@ export function convertLabelV2(old: LabelFileV2, master: Master): { label: Label
   const g = guideLines(master);
   const op = elementPatches((old.overrides ?? {}) as Record<string, unknown>);
   warnings.push(...op.warnings);
-  const overrides: Record<string, DeepPartial<Layer>> = {};
-  for (const [id, p] of Object.entries(op.byId)) {
-    const base = layerIn(master, id);
-    if (!base) { warnings.push(`Override for "${id}" matches no layer; dropped.`); continue; }
-    overrides[id] = overrideFrom(base, p);
-  }
-  // A per-label custom layer has no master row to override: it rides as a
-  // whole layer, which resolveLayers appends (the old composeConfig rule).
-  for (const c of op.custom) overrides[c.id] = customToLayer(c.id, c.name, true, c.locked, c, c.type, g);
-  for (const k of op.unknown) warnings.push(`Override "${k}" has no v3 home; dropped.`);
-  if (op.fontFamily) warnings.push("fontFamily dropped: the font is a master setting.");
-
+  // Values first: an override only carries restyled LINES for a layer with no
+  // value of its own (see overrideFrom), so the values must be known before
+  // the overrides are built.
   const values: Record<string, LayerValue> = {};
   const dormant: Record<string, LayerValue> = {};
   const bench = (id: string, v: FieldValue) => {
@@ -428,6 +423,18 @@ export function convertLabelV2(old: LabelFileV2, master: Master): { label: Label
     const lv = toLayerValue(layer, v, op.byId[id], warnings);
     if (lv !== undefined) values[id] = lv;
   }
+
+  const overrides: Record<string, DeepPartial<Layer>> = {};
+  for (const [id, p] of Object.entries(op.byId)) {
+    const base = layerIn(master, id);
+    if (!base) { warnings.push(`Override for "${id}" matches no layer; dropped.`); continue; }
+    overrides[id] = overrideFrom(base, p, values[id] !== undefined);
+  }
+  // A per-label custom layer has no master row to override: it rides as a
+  // whole layer, which resolveLayers appends (the old composeConfig rule).
+  for (const c of op.custom) overrides[c.id] = customToLayer(c.id, c.name, true, c.locked, c, c.type, g);
+  for (const k of op.unknown) warnings.push(`Override "${k}" has no v3 home; dropped.`);
+  if (op.fontFamily) warnings.push("fontFamily dropped: the font is a master setting.");
   for (const [id, v] of Object.entries(old.dormant?.values ?? {})) bench(id, v);
   const dormantVariants = old.dormant?.variants ?? [];
   const label: LabelFile = {
