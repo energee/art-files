@@ -282,8 +282,13 @@ the time.
   is a list, so a label can show Collab and Barrel-aged at once, and collapsing
   that into a single-select would lose the capability. Switching to a variant
   turns it on (you cannot change what you cannot see); switching back to the
-  base leaves it on, since visibility is the label's business. The review
-  dialog names the target so a promotion is never silent about where it lands.
+  base HIDES it again (`showVersion`): the Select names one version, and what
+  it names is what the canvas draws. Leaving visibility to the chips alone was
+  wrong twice over — going back to the master still drew the variant's layers.
+  Only the two versions being switched between move, so a label that
+  deliberately shows two at once keeps the rest; the chips are how it says so.
+  The review dialog names the target so a promotion is never silent about
+  where it lands.
 
 ### Phase D — docs
 

@@ -48,7 +48,7 @@ import { uppercaseOf } from "@/model/layers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, labelOverriddenPaths,
-  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, snappedDx, moveLayers, resizeBy, type ResizeHandle, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue, toggleVariant,
+  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, showVersion, snappedDx, moveLayers, resizeBy, type ResizeHandle, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue, toggleVariant,
   whereLayerLives,
 } from "@/model/edit";
 import { layerRows, variantChips } from "@/model/rows";
@@ -709,14 +709,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     setSelection((s) => s.ids.includes(id)
       ? { ids: s.ids.filter((x) => x !== id), anchor: s.anchor === id ? null : s.anchor } : s);
   }
-  /** Switch the working version: what a promotion in the Save Master review
-   *  would be written into. Switching TO a variant also turns it on for this
-   *  label — you cannot sensibly change a version you cannot see. Switching
-   *  back to the base leaves it on: visibility is the label's business. */
+  /** Switch the working version: what the canvas draws, and what a promotion
+   *  in the Save Master review would be written into. The Select names one
+   *  version and that is the one you see — switching to a variant shows it,
+   *  and going back to the base hides it again (edit.ts's showVersion). */
   function switchVersion(id: string | null) {
     setWorkingVersion(id);
-    if (id !== null && !label.enabledVariants.includes(id))
-      editLabel((l) => toggleVariant(l, id));
+    editLabel((l) => showVersion(l, version, id));
   }
 
   /** The master Select's "New Variant" (and the command of the same name): a
@@ -728,7 +727,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     // Minted outside the edit so the id is in hand for the version switch —
     // `edit`'s callback stays a pure Doc → Doc.
     const { master: m, id } = addVariant(master, name);
-    edit((d) => ({ master: m, label: toggleVariant(d.label, id) }));
+    // Switched to, like any other version: the new one is what you see.
+    edit((d) => ({ master: m, label: showVersion(d.label, version, id) }));
     setWorkingVersion(id); // you made it to change it
   }
 
