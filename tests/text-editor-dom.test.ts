@@ -332,3 +332,100 @@ describe("TextEditor", () => {
     });
   });
 });
+
+// docs/plans/choice-input.md, Task 5. `choices` is not an input mode: it rides
+// alongside whatever `input` says, so the same picker serves a style (no
+// input, rich text underneath) and a barcode tier (input "code", still
+// validated). It always takes typing — the list suggests, it never constrains.
+describe("TextEditor with a vocabulary", () => {
+  const STYLES = [
+    { value: "Ultra Hopped Ale" },
+    { title: "Hazy IPA", value: "Hazy India Pale Ale" },
+  ];
+  const TIERS = [
+    { title: "Tier 1", value: "850051366040" },
+    { title: "Tier 2", value: "860009737631" },
+  ];
+  /** The vocabulary's own rows; the "Use …" row is `[data-novel]`. */
+  const options = () =>
+    Array.from(document.querySelectorAll("[data-choice]")) as HTMLElement[];
+  const novel = () => document.querySelector("[data-novel]") as HTMLElement | null;
+  /** A real click sends mousedown first, which is what the list listens for —
+   *  it has to beat the input's blur, or the list is gone before the pick. */
+  const pick = (el: HTMLElement) =>
+    act(() => { el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })); });
+  const openList = (id = "layer") => {
+    const box = container.querySelector(`#${id}`) as HTMLInputElement;
+    act(() => { box.focus(); });
+    return box;
+  };
+  const key = (el: Element, k: string) =>
+    act(() => { el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true })); });
+
+  it("offers the list, showing each choice's title and drawing its value", () => {
+    const { onChange } = renderEditor({ lines: [], choices: STYLES });
+    openList();
+    expect(options().map((o) => o.textContent?.trim()))
+      .toEqual(["Ultra Hopped Ale", "Hazy IPA"]);
+    pick(options()[1]);
+    expect(onChange).toHaveBeenCalledWith([{ ...base, text: "Hazy India Pale Ale" }]);
+  });
+
+  it("filters as you type, matching title or value", () => {
+    renderEditor({ lines: [], choices: STYLES });
+    const box = openList();
+    change(box, "hazy");
+    expect(options().map((o) => o.textContent?.trim())).toEqual(["Hazy IPA"]);
+    change(box, "Ultra");
+    expect(options().map((o) => o.textContent?.trim())).toEqual(["Ultra Hopped Ale"]);
+  });
+
+  it("takes anything typed, and says so when it matches nothing", () => {
+    const { onChange } = renderEditor({ lines: [], choices: STYLES });
+    const box = openList();
+    change(box, "Saison");
+    expect(novel()?.textContent).toContain("Saison");
+    key(box, "Enter");
+    expect(onChange).toHaveBeenLastCalledWith([{ ...base, text: "Saison" }]);
+  });
+
+  it("moves through the list with the arrow keys and commits on Enter", () => {
+    const { onChange } = renderEditor({ lines: [], choices: STYLES });
+    const box = openList();
+    key(box, "ArrowDown");
+    key(box, "ArrowDown");
+    key(box, "Enter");
+    expect(onChange).toHaveBeenLastCalledWith([{ ...base, text: "Hazy India Pale Ale" }]);
+  });
+
+  it("closes on Escape without committing", () => {
+    const { onChange } = renderEditor({ lines: [], choices: STYLES });
+    const box = openList();
+    change(box, "Sais");
+    onChange.mockClear();
+    key(box, "Escape");
+    expect(options()).toHaveLength(0);
+    expect(novel()).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("captions the field with the layer's title when it has one", () => {
+    renderEditor({ lines: [], choices: STYLES, label: "Style line", title: "Style" });
+    expect(container.textContent).toContain("Style");
+    expect(container.textContent).not.toContain("Style line");
+  });
+
+  // Task 8's acceptance: a barcode tier picker is the same widget, and the
+  // code validation it already had still runs. No barcode branch anywhere.
+  it("keeps code validation while offering tiers", () => {
+    const { onChange } = renderEditor({
+      lines: [], choices: TIERS, input: "code", symbology: "upc-a",
+    });
+    const box = openList();
+    pick(options()[0]);
+    expect(onChange).toHaveBeenCalledWith([{ ...base, text: "850051366040" }]);
+
+    renderEditor({ lines: [line("12345")], choices: TIERS, input: "code", symbology: "upc-a" });
+    expect(container.textContent).toMatch(/12 digits|invalid|check/i);
+  });
+});

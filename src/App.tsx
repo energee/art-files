@@ -1745,7 +1745,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           onChange={(lines) => setContent(layer, lines, true)}
           multiline={true} uppercase={uppercaseOf(layer)} placeholder={layer.placeholder}
           input={layer.input} min={layer.min} max={layer.max} symbology={layer.symbology}
-          suffix={layer.suffix} />
+          suffix={layer.suffix} choices={layer.choices} title={layer.title} />
       );
     }
     if (layer.kind === "image") {
