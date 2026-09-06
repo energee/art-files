@@ -3,6 +3,41 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.58] - 2026-09-05
+
+### Added
+
+- The QR and barcode Value box now edits the URL *template*, not the text it
+  expands to. Click a field name under the box to inject it as a token, and
+  the resolved value is previewed beneath. Tokens accept `|slug`, `|upper`,
+  `|lower` and `|trim` — so the Lolev QR is an ordinary editable setting
+  (`https://lolev.beer/beer/{name|slug}`) rather than a hardcoded URL.
+- Rotation now works on QR layers, matching text and barcodes.
+- Clicking the pasteboard around the label deselects, which closes the
+  inspector. Dragging a guide or removing one does not.
+
+### Changed
+
+- Uppercase moved from the text layer to its Style, alongside Letter Spacing.
+  A master authors it, a label turns it off through the ordinary style
+  override with a reset badge, and the stored text keeps its typed case — so
+  a name drawn as ULTRA JUICE still resolves `{name|slug}` to `ultra-juice`.
+  Masters authored before the move are read unchanged.
+- Opening the inspector no longer covers the artwork: the preview pane makes
+  room for the sheet and the label recentres in what is left.
+- The inspector's Enabled / Locked / Fillable switches are ordinary labelled
+  rows like every other control, and the panel has roomier padding.
+
+### Fixed
+
+- Editing a QR payload wrote the *expanded* URL back to the master, replacing
+  the `{name|slug}` token with whatever beer name happened to be filled in.
+  The template is now preserved separately from its expansion.
+- The Rotation toggle no longer appears on image layers, where no backend
+  honoured it.
+- The QR URL slug and the export filename now share one machine-name rule
+  instead of two copies that could drift.
+
 ## [0.1.57] - 2026-09-05
 
 - The inspector's Position section now has one control per axis: Horizontal

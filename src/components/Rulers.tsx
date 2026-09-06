@@ -237,7 +237,10 @@ export function Rulers(props: {
     : shownManual;
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
+    // The pane deselects on a click that misses the label sheet; this overlay
+    // sits in the pane but is NOT pasteboard — dragging out a guide or hitting
+    // a guide's remove button must not clear the selection.
+    <div data-slot="rulers" className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
       <svg width={geometry.width} height={geometry.height} className="absolute inset-0" aria-hidden="true">
         {/* Guides are painted before the opaque rulers so lines stop cleanly
             at their edges even when the transformed page sits underneath. */}

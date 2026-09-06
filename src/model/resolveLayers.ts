@@ -7,6 +7,7 @@
 // are NOT resolved here: that needs measured heights and is the renderer's
 // step. The layers come back in draw order, ready to measure and place.
 import type { Layer, LayerValue, Master, TextLayer, TextLine } from "./layers";
+import { uppercaseOf } from "./layers";
 import { deepMerge, type DeepPartial } from "./merge";
 import { validateField } from "./fields";
 import { expandFormat, fieldRefs } from "./format";
@@ -47,7 +48,7 @@ const plainText = (lines: TextLine[]): string =>
  *  blank (the old displayName rule, so a blank name still encodes "name"). */
 function refText(l: TextLayer): string {
   const t = plainText(l.lines).trim() || l.placeholder || "";
-  return l.uppercase ? t.toUpperCase() : t;
+  return uppercaseOf(l) ? t.toUpperCase() : t;
 }
 
 export interface ResolveOpts {
@@ -90,7 +91,9 @@ export function resolveLayers(
     if ((l.kind !== "barcode" && l.kind !== "qr") || !fieldRefs(l.value).length) return l;
     const { text, missing } = expandFormat(l.value, texts);
     if (missing.length) warnings.push(`Layer "${l.id}" value refers to missing layers: ${missing.join(", ")}.`);
-    return { ...l, value: text };
+    // Keep the template: the inspector edits `format`, everything downstream
+    // (renderers, PSD/PDF builders) reads the expanded `value`.
+    return { ...l, value: text, format: l.value };
   });
   return { layers: opts.keepDisabled ? layers : layers.filter((l) => l.enabled !== false), warnings, errors };
 }

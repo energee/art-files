@@ -87,6 +87,14 @@ export interface LayerBase {
   rotation?: 0 | 90;
 }
 
+/** Does this text layer draw in caps? `style.uppercase` is the authored
+ *  home; a layer-level `uppercase` is the legacy one, still honoured so old
+ *  masters render unchanged. `??` and not `||`, so a label override of
+ *  `style.uppercase: false` beats a legacy `uppercase: true`. */
+export function uppercaseOf(l: { style?: Style; uppercase?: boolean }): boolean {
+  return l.style?.uppercase ?? l.uppercase ?? false;
+}
+
 /** One line of a text layer: the description's per-run rich model, plus the
  *  header flag the description's `# ` line used to carry. Every run keeps
  *  its own fill / white-ink layer / bold, exactly as StyledLine does. */
@@ -117,7 +125,8 @@ export interface TextLayer extends LayerBase {
   suffix?: string;
   /** Fill-mode placeholder while the layer is empty (e.g. "Name"). */
   placeholder?: string;
-  /** Renders every run uppercase (the beer name). Absent = as typed. */
+  /** LEGACY home for `style.uppercase`, kept so masters authored before the
+   *  move keep rendering. Read it through uppercaseOf(), never directly. */
   uppercase?: boolean;
   /** Which font weights the layer sets in: `base` for plain runs, `bold`
    *  for **bold** runs. Absent = regular / semibold. */
@@ -163,6 +172,10 @@ export interface BarcodeLayer extends LayerBase {
   moduleW: number;
   /** Human-readable digits. Absent = true. */
   showDigits?: boolean;
+  /** Resolve-time only: the unexpanded `value` template, stashed by
+   *  resolveLayers when `value` carried {ref}s so the inspector can edit the
+   *  template instead of the expansion. Never authored, never persisted. */
+  format?: string;
   /** fill/plate + stroke-as-halo. */
   style: Style;
 }
@@ -172,6 +185,8 @@ export interface QrLayer extends LayerBase {
   /** Payload; format string over text-layer ids with format.ts transforms
    *  ("https://lolev.beer/beer/{name|slug}"). */
   value: string;
+  /** Resolve-time only: the unexpanded `value` template — see BarcodeLayer. */
+  format?: string;
   size: number;
   qrStyle: "square" | "rounded" | "dots";
   ecLevel?: "L" | "M" | "Q" | "H";

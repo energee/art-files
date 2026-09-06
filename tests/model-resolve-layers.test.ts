@@ -5,6 +5,7 @@
 // expand over the text layers' plain text.
 import { describe, expect, it } from "vitest";
 import { fillableLayers, resolveLayers, valueOf } from "../src/model/resolveLayers";
+import { uppercaseOf } from "../src/model/layers";
 import { lolevMaster } from "../src/model/lolevLayers";
 import type {
   BarcodeLayer, ImageLayer, Layer, QrLayer, TextLayer, TextLine,
@@ -19,7 +20,9 @@ const masterLogoY = () => byId(lolevMaster().layers, "logo").y;
  *  changes, its {name|slug} ref expanding through the blank name's
  *  placeholder ("Name" → "name"). */
 const bare = (): Layer[] => lolevMaster().layers.map((l) =>
-  l.id === "qr" ? { ...l, value: "https://lolev.beer/beer/name" } : l);
+  l.id === "qr"
+    ? { ...l, value: "https://lolev.beer/beer/name", format: "https://lolev.beer/beer/{name|slug}" }
+    : l);
 
 describe("resolveLayers", () => {
   it("Lolev alone is its own layers; collab on appends the three collab layers after them", () => {
@@ -139,6 +142,34 @@ describe("resolveLayers", () => {
   it("a blank name expands through its placeholder, like the old displayName", () => {
     const r = resolveLayers(lolevMaster(), [], {});
     expect(byId<QrLayer>(r.layers, "qr").value).toBe("https://lolev.beer/beer/name");
+  });
+
+  it("uppercase reads from style, falls back to the legacy layer flag, and a label can turn it off", () => {
+    const m = lolevMaster();
+    const name = byId<TextLayer>(m.layers, "name");
+    expect(name.style.uppercase).toBe(true);
+    // The master's own home: caps reach the QR ref as caps-then-slug.
+    expect(byId<QrLayer>(resolveLayers(m, [], { name: [line("Ultra Juice")] }).layers, "qr").value)
+      .toBe("https://lolev.beer/beer/ultra-juice");
+    // A label override of style.uppercase wins over the master.
+    const off = resolveLayers(m, [], {}, { name: { style: { uppercase: false } } });
+    expect(byId<TextLayer>(off.layers, "name").style.uppercase).toBe(false);
+    expect(uppercaseOf(byId<TextLayer>(off.layers, "name"))).toBe(false);
+    // A master authored before the move still draws in caps.
+    const legacy = lolevMaster();
+    const ln = byId<TextLayer>(legacy.layers, "name");
+    delete ln.style.uppercase;
+    ln.uppercase = true;
+    expect(uppercaseOf(byId<TextLayer>(resolveLayers(legacy, [], {}).layers, "name"))).toBe(true);
+  });
+
+  it("keeps the unexpanded template in `format` so an editor never round-trips the expansion", () => {
+    const r = resolveLayers(lolevMaster(), [], { name: [line("Ultra Juice")] });
+    const q = byId<QrLayer>(r.layers, "qr");
+    expect(q.value).toBe("https://lolev.beer/beer/ultra-juice");
+    expect(q.format).toBe("https://lolev.beer/beer/{name|slug}");
+    // A value with no refs needs no template: nothing to round-trip.
+    expect(byId<BarcodeLayer>(r.layers, "barcode").format).toBeUndefined();
   });
 
   it("a ref to a missing layer keeps its literal and warns", () => {

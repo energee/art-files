@@ -76,6 +76,24 @@ describe("qr", () => {
     expect(p).toMatch(/^M /);
     expect(new Set(p.match(/[A-Za-z]/g))).toEqual(new Set(["M", "a", "Z"]));
   });
+  it("rotation 90 is a quarter turn of the same square matrix", () => {
+    const a = qrShapes("https://lolev.beer/beer/x", { style: "dots" });
+    const b = qrShapes("https://lolev.beer/beer/x", { style: "dots", rotation: 90 });
+    const key = (p: { cx: number; cy: number }) => `${p.cx.toFixed(6)},${p.cy.toFixed(6)}`;
+    expect(b.count).toBe(a.count);
+    expect(b.dots).not.toEqual(a.dots);
+    expect(new Set(b.dots.map(key)))
+      .toEqual(new Set(a.dots.map((d) => key({ cx: d.cy, cy: 1 - d.cx }))));
+  });
+  it("rotated square modules stay inside the unit box", () => {
+    const b = qrShapes("x", { style: "square", rotation: 90 });
+    for (const q of b.squares!) {
+      expect(q.x).toBeGreaterThanOrEqual(-1e-9);
+      expect(q.y).toBeGreaterThanOrEqual(-1e-9);
+      expect(q.x + b.moduleSize).toBeLessThanOrEqual(1 + 1e-9);
+      expect(q.y + b.moduleSize).toBeLessThanOrEqual(1 + 1e-9);
+    }
+  });
 });
 
 
