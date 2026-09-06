@@ -3,6 +3,49 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.59] - 2026-09-06
+
+### Added
+
+- **Save Master now shows what it is about to write.** Every save opens a
+  review listing each change: renames, added and removed layers, reordering,
+  fill-contract edits, and edits made inside a variant. Cancelling writes
+  nothing.
+- **Your own edits can be folded into the template from that review.** Moving,
+  restyling or resizing a layer is now this label's change, not the
+  template's — the review offers each one for promotion, unticked, and only
+  the ones you tick are written.
+- **Fill fields can offer a list.** The Style field offers Lolev's styles and
+  the Barcode field offers the eight tiers by name, filling their UPCs. Both
+  still take anything typed, and a value you type joins the list — which the
+  Save Master review shows before it reaches the file.
+- The Layer inspector authors that list: a Title caption for the field, and
+  the choices themselves.
+
+### Changed
+
+- **The master Select is now the version picker.** Variants are listed under
+  their master, and the one you switch to is the one the canvas draws and the
+  one a promotion is written into. The variant chips beside the Layers filter
+  are gone, and New Variant moved into that menu.
+- **Save Master As… now forks.** It mints a new master, rebinds the document
+  onto it and writes the file, taking its name from the file you save as. The
+  sidebar's "Duplicate as new master…" and its duplicate "Open Master…" button
+  are gone — the File menu already had the latter.
+- The Layers filter reads "Changed" and shows the layers this label has
+  touched, replacing "Fillable only". Every layer is fillable now.
+
+### Fixed
+
+- Dragging two layers at once no longer moves a layer bound to another one in
+  the selection twice as far as the pointer.
+- A multi-layer drag now snaps as a group, on the selection's own bounds,
+  instead of re-spacing itself whenever the grabbed layer crossed a guide.
+- Layers no longer jump when dragged across roughly a quarter and two-thirds
+  of the way over the label — a drag no longer re-anchors the layer to the
+  nearest guide as it passes.
+- Switching from a variant back to the master hides that variant again.
+
 ## [0.1.58] - 2026-09-05
 
 ### Added
