@@ -9,8 +9,9 @@
 // variant overrides part of it, then the two per-layer switches — enabled
 // (absent on the background/mask rows: nothing to fill), power (`enabled`,
 // the only visibility switch — there is no session eye any more), lock —
-// plus, in template mode, drag reordering and a "…" menu with
-// Rename / Remove. The header carries the title, the "Add layer" menu
+// plus a "…" row menu with Rename (both modes — a label may rename its own
+// override of a layer) and Remove (template mode only, plus drag reordering
+// in that mode). The header carries the title, the "Add layer" menu
 // (template mode only) and, in label mode, the "Changed" filter that
 // replaced Fill mode. `mode` (docs/plans/template-switch.md, Task 8) gates
 // which of these a label may reach: Add layer, Remove, and reorder (drag and

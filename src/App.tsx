@@ -1540,7 +1540,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (dropped.variants.length)
       parts.push(`${dropped.variants.length} variant${dropped.variants.length === 1 ? "" : "s"}`);
     if (!parts.length) return `Switch to "${name}" — continue?`;
-    return `${parts.join(" and ")} move to the bench — continue?`;
+    // Singular only for a lone item ("1 value moves"); a count above 1, or
+    // a compound subject ("1 value and 1 variant"), takes the plural verb.
+    const singular = parts.length === 1 && dropped.values.length + dropped.variants.length === 1;
+    return `${parts.join(" and ")} ${singular ? "moves" : "move"} to the bench — continue?`;
   }
 
   /** File → Open Master…: FS-Access picker where available, hidden-input
@@ -1776,7 +1779,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     { id: "export-psd-mask", label: "Export Mask PSD", disabled: exportBlocked, run: () => void exportPsd("mask") },
     { id: "undo", label: "Undo", shortcut: "⌘Z", disabled: !canUndo, run: mutating(undo) },
     { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: !canRedo, run: mutating(redo) },
-    { id: "variant-new", label: "New Variant", run: onNewVariant },
+    // New Variant is template work too (docs/plans/template-switch.md
+    // review, "Controller ruling"): same disabled-not-hidden rule as the
+    // Master verbs above.
+    { id: "variant-new", label: "New Variant", disabled: mode !== "template", run: onNewVariant },
     { id: "settings", label: "Settings…", run: () => setSettingsOpen(true) },
     { id: "view-label", label: "Preview: Label", key: "1", run: () => show2d("art") },
     { id: "view-mask", label: "Preview: Mask", key: "2", run: () => show2d("mask") },
@@ -2039,6 +2045,12 @@ export const DocumentEditor = memo(function DocumentEditor({
               layers={drawLayers} guides={guides}
               selected={selected}
               onPick={pick}
+              // A template has no content, only placeholders — the canvas
+              // draws the master's placeholder view in template mode, so
+              // the in-place editor stays label-only (docs/plans/
+              // template-switch.md review: it was writing invisibly into
+              // label.values before this gate).
+              editText={mode === "label"}
               // Live per-keystroke updates so the canvas render IS the edit
               // feedback, folded into one undo step per session.
               onEditText={(id, lines, first) => {

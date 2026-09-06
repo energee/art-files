@@ -57,12 +57,25 @@ describe("MasterPicker", () => {
     expect(trigger().textContent).toContain("Collab");
   });
 
-  it("renders the master, its variants and New Variant — nothing else", () => {
-    renderPicker();
+  it("renders the master and its variants in label mode — New Variant is template-only", () => {
+    renderPicker({ mode: "label" });
     openMenu();
     const options = document.querySelectorAll("[role=option]");
-    // lolevMaster() has exactly one variant ("collab"): master + variant +
-    // New Variant = 3 rows. No library rows, ever.
+    // lolevMaster() has exactly one variant ("collab"): master + variant,
+    // no New Variant row and no library rows, ever (docs/plans/
+    // template-switch.md review: New Variant is template work, like every
+    // other master-shaping action).
+    expect(options.length).toBe(2);
+    expect(itemStarting("Lolev")).toBeDefined();
+    expect(itemStarting("Collab")).toBeDefined();
+    expect(itemStarting("New Variant")).toBeUndefined();
+  });
+
+  it("adds New Variant (and its separator) in template mode", () => {
+    renderPicker({ mode: "template" });
+    openMenu();
+    const options = document.querySelectorAll("[role=option]");
+    // Same master + variant as above, plus New Variant = 3 rows.
     expect(options.length).toBe(3);
     expect(itemStarting("Lolev")).toBeDefined();
     expect(itemStarting("Collab")).toBeDefined();
@@ -87,7 +100,7 @@ describe("MasterPicker", () => {
 
   it("picking New Variant calls onNewVariant", () => {
     const onNewVariant = vi.fn();
-    renderPicker({ onNewVariant });
+    renderPicker({ mode: "template", onNewVariant });
     openMenu();
     act(() => { itemStarting("New Variant")!.click(); });
     expect(onNewVariant).toHaveBeenCalled();
@@ -134,10 +147,5 @@ describe("the mode switch", () => {
     renderPicker({ mode: "label", onMode });
     act(() => { item("This label").click(); });
     expect(onMode).not.toHaveBeenCalled();
-  });
-
-  it("carries data-mode on the root, for later styling", () => {
-    renderPicker({ mode: "template" });
-    expect(editingGroup().getAttribute("data-mode")).toBe("template");
   });
 });

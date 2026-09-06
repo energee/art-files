@@ -72,18 +72,20 @@ export function MasterPicker(props: {
           {props.master.variants.map((v) => (
             <SelectItem key={v.id} value={VERSION + v.id} className="pl-7">{v.name}</SelectItem>
           ))}
-          <SelectSeparator />
-          <SelectItem value={NEW_VARIANT}>New Variant</SelectItem>
+          {props.mode === "template" && (
+            <>
+              <SelectSeparator />
+              <SelectItem value={NEW_VARIANT}>New Variant</SelectItem>
+            </>
+          )}
         </SelectContent>
       </Select>
       {/* The switch: where does the next edit land. Single-select; base-ui
        *  reports a re-click of the pressed item as an empty group value,
        *  which is ignored so a mode is always set — same rule as
-       *  LayerInspector's Segmented. `data-mode` on the root lets the frame
-       *  (a later task) style off the mode without its own state. */}
+       *  LayerInspector's Segmented. */}
       <ToggleGroup
         aria-label="Editing"
-        data-mode={props.mode}
         variant="outline" size="sm"
         className="mt-2 w-full"
         value={[props.mode]}
@@ -92,7 +94,7 @@ export function MasterPicker(props: {
         <ToggleGroupItem value="label" className="flex-1">This label</ToggleGroupItem>
         <ToggleGroupItem
           value="template"
-          className="flex-1 data-[state=on]:bg-attention data-[state=on]:text-primary-foreground aria-pressed:bg-attention aria-pressed:text-primary-foreground"
+          className="flex-1 aria-pressed:bg-attention aria-pressed:text-primary-foreground"
         >
           Template
         </ToggleGroupItem>

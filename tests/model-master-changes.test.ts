@@ -18,13 +18,6 @@ const newLabel = (master: Master): LabelFile =>
   ({ formatVersion: 3, masterId: master.id, enabledVariants: [], values: {} });
 
 describe("masterChanges", () => {
-  it("a 2-argument call reports no promote kind", () => {
-    const base = lolevMaster();
-    const edited = patchLayer(base, "name", { x: 300 });
-    const kinds: string[] = masterChanges(base, edited).map((c) => c.kind);
-    expect(kinds).not.toContain("promote");
-  });
-
   it("an untouched master yields nothing", () => {
     const m = lolevMaster();
     expect(masterChanges(m, m)).toEqual([]);

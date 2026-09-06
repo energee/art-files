@@ -10,8 +10,8 @@ binary-impacting change gets its own version before it is merged.
 - **A This label / Template switch under the master picker.** It answers
   where an edit lands. This label (the default) is exactly today's
   behaviour. Template turns the frame the template colour, draws the canvas
-  as placeholders, and routes every edit — content, position, style, and
-  layer add/remove/reorder — to the master (or to the variant the picker has
+  as placeholders, and routes every edit — position, style, and layer
+  add/remove/reorder — to the master (or to the variant the picker has
   selected), gated by the same Save Master review as before.
 - **Template mode has its own inspector.** Instead of content it shows the
   fill contract and vocabulary first, under "Default position" / "Default
@@ -26,8 +26,8 @@ binary-impacting change gets its own version before it is merged.
 
 - **The master picker lists only this master, its variants, and New
   Variant.** Switching to a different master entirely is now File → Open
-  Master, which previews the bench counts — how many labels are affected —
-  in a dialog before it rebinds the document.
+  Master, which previews the bench counts — how much of this label moves to
+  the bench — in a dialog before it rebinds the document.
 - **A new colour scheme.** Warm neutrals replace the previous cool-indigo
   palette. Six accents — purple (create/edit/finish), pink (remove/discard),
   orange (template mode), yellow (unsaved warnings), green (confirmations),
@@ -41,8 +41,8 @@ binary-impacting change gets its own version before it is merged.
 
 - **Promotion.** The checkboxes that let a label's own tweak be folded into
   the template from the Save Master review are gone, along with the "keep
-  this one-off" path they offered — see below. Making an edit template-wide
-  is now: switch to Template, make the change.
+  this one-off" path they offered. Making an edit template-wide is now:
+  switch to Template, make the change.
 
 ## [0.1.59] - 2026-09-06
 
@@ -55,7 +55,7 @@ binary-impacting change gets its own version before it is merged.
 - **Your own edits can be folded into the template from that review.** Moving,
   restyling or resizing a layer is now this label's change, not the
   template's — the review offers each one for promotion, unticked, and only
-  the ones you tick are written. (Promotion removed in 0.1.60 — see below.)
+  the ones you tick are written. (Promotion removed in 0.1.60 — see above.)
 - **Fill fields can offer a list.** The Style field offers Lolev's styles and
   the Barcode field offers the eight tiers by name, filling their UPCs. Both
   still take anything typed, and a value you type joins the list — which the

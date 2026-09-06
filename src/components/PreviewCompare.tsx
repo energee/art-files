@@ -310,6 +310,12 @@ export const PreviewCompare = forwardRef<
      *  the click's modifiers, so shift/⌘ on the canvas extend the selection
      *  exactly as they do in the Layers list. */
     onPick: (id: string | null, mods: SelectMods) => void;
+    /** Whether double-clicking a text layer may open the in-place editor.
+     *  False in template mode: a template has no content, only placeholders
+     *  (the fill contract) — the canvas draws the master's placeholder view,
+     *  so an editor opened over it would write into `label.values` with no
+     *  visible feedback (docs/plans/template-switch.md review). */
+    editText: boolean;
     /** Called on every keystroke of an in-place session with the layer's
      *  new lines. `first` is true on the session's opening keystroke; App
      *  uses it to fold the whole session into one undo step. */
@@ -352,7 +358,7 @@ export const PreviewCompare = forwardRef<
   }
 >(function PreviewCompare(
   {
-    canvasRender, layers, guides, selected, onPick, onEditText, onEditCancel, onDrag,
+    canvasRender, layers, guides, selected, onPick, editText, onEditText, onEditCancel, onDrag,
     onDragCancel, onResize, onEditSession, onSplit, bleed, cornerRadiusPct, zoom, bleedIn, onRenderError,
   },
   ref,
@@ -607,6 +613,7 @@ export const PreviewCompare = forwardRef<
   }, [editing]);
 
   function onDoubleClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (!editText) return;
     const id = hitOf(e);
     const layer = id ? layers.find((l) => l.id === id) : undefined;
     if (!id || !layer || layer.kind !== "text" || !canvasRender) return;

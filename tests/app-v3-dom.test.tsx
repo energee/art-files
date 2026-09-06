@@ -9,13 +9,14 @@ import { DEFAULT_RENDER } from "../src/settings";
 import { packMaster } from "../src/model/files";
 import { lolevMaster } from "../src/model/lolevLayers";
 
-vi.mock("../src/components/PreviewCompare", () => ({ PreviewCompare: (props: { canvasRender: import("../src/canvas/draw").CanvasRenderSource | null }) => { perf.source = props.canvasRender; return null; } }));
+vi.mock("../src/components/PreviewCompare", () => ({ PreviewCompare: (props: { canvasRender: import("../src/canvas/draw").CanvasRenderSource | null; editText: boolean }) => { perf.source = props.canvasRender; perf.editText = props.editText; return null; } }));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
-const perf = vi.hoisted(() => ({ fontLoads: 0, source: null as import("../src/canvas/draw").CanvasRenderSource | null, margin: null as null | ((n: number) => void) }));
+const perf = vi.hoisted(() => ({ fontLoads: 0, source: null as import("../src/canvas/draw").CanvasRenderSource | null, margin: null as null | ((n: number) => void), editText: true }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: (props: { onMarginChange: (n: number) => void }) => { perf.margin = props.onMarginChange; return null; } }));
 vi.mock("../src/fonts", () => ({
   loadLabelFaces: async () => { perf.fontLoads++; return (text: string, size: number) => text.length * size * 0.55; },
   labelFontCss: () => "sans-serif",
+  FACE_WEIGHT: { regular: 400, semibold: 600, bold: 700 },
 }));
 import { DocumentEditor } from "../src/App";
 
@@ -214,7 +215,7 @@ it("Open Master previews the bench count and Cancel leaves the document alone", 
     // The exact line, not just "a preview showed up" — this is the same
     // wording MasterPicker's now-deleted previewLine used, ported verbatim;
     // asserting it exactly catches the wording drifting silently.
-    expect(dialogContent()?.textContent).toContain("1 value move to the bench — continue?");
+    expect(dialogContent()?.textContent).toContain("1 value moves to the bench — continue?");
     expect(container.querySelector("#master-picker")?.textContent).toContain("Lolev");
 
     await act(async () => { dialogButton("Cancel")!.click(); });
@@ -372,6 +373,101 @@ it("Template mode swaps the canvas for the master's placeholder, This label rest
   }
 });
 
+// docs/plans/template-switch.md review finding: the in-place canvas editor
+// (PreviewCompare's double-click-to-edit) wasn't mode-gated — in template
+// mode the canvas draws the master's placeholder view, so opening it and
+// typing wrote into `label.values` via setContent with no visible feedback.
+// This suite mocks PreviewCompare (see top of file) for the DocumentEditor
+// tests above, so this one loads the REAL component with vi.importActual
+// and drives its own double-click handler directly, bypassing the mock —
+// the only way to exercise the fix at its source (App.tsx just forwards
+// `editText={mode === "label"}`, asserted separately below).
+it("PreviewCompare's in-place editor opens on double-click only when editText is true", async () => {
+  const { PreviewCompare } = await vi.importActual<
+    typeof import("../src/components/PreviewCompare")
+  >("../src/components/PreviewCompare");
+  const { PAGE } = await import("../src/layout");
+
+  // Deterministic measure, same shape as tests/hittest-layers.test.ts: no
+  // real font metrics needed for a hit test / open-or-not check.
+  const m = (text: string, size: number) => text.length * size * 0.5;
+  const layer = {
+    kind: "text" as const, id: "line1", name: "line1", enabled: true,
+    anchor: "left" as const, lines: [{ text: "ABCD", fill: "#000000", layer: "metallic" as const }],
+    size: 10, align: "left" as const,
+    style: { fill: "#000000", layer: "metallic" as const },
+    x: 10, y: 20,
+  };
+  const canvasRender = {
+    m, planAssets: { logoSvg: "" }, drawAssets: {}, skip: { has: () => false }, fontCss: "sans-serif",
+  };
+  const guides = { left: 0, center: PAGE.w / 2, right: PAGE.w, top: 0, bottom: PAGE.h };
+
+  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} unobserve() {} });
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+
+  async function render(editText: boolean, onEditText: () => void) {
+    await act(async () => {
+      root.render(createElement(PreviewCompare, {
+        canvasRender, layers: [layer], guides, selected: [],
+        onPick: vi.fn(), editText, onEditText, onEditCancel: vi.fn(),
+        onDrag: vi.fn(), onDragCancel: vi.fn(), onResize: vi.fn(),
+        onEditSession: vi.fn(), cornerRadiusPct: 0, zoom: 1, bleedIn: 0,
+        onRenderError: vi.fn(),
+      } as Parameters<typeof PreviewCompare>[0]));
+    });
+    const sheet = container.querySelector('[data-slot="label-sheet"]') as HTMLElement;
+    sheet.getBoundingClientRect = () => ({
+      x: 0, y: 0, left: 0, top: 0, right: PAGE.w, bottom: PAGE.h,
+      width: PAGE.w, height: PAGE.h, toJSON: () => ({}),
+    }) as DOMRect;
+    // The layer's box (x:10,y:20, "ABCD" at size 10 with the measure above)
+    // covers this point — see tests/hittest-layers.test.ts's identical setup.
+    await act(async () => {
+      sheet.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, clientX: 15, clientY: 25 }));
+    });
+    return container.querySelector('[contenteditable="true"]');
+  }
+
+  try {
+    const onEditTextTemplate = vi.fn();
+    expect(await render(false, onEditTextTemplate)).toBeNull();
+    expect(onEditTextTemplate).not.toHaveBeenCalled();
+
+    const onEditTextLabel = vi.fn();
+    expect(await render(true, onEditTextLabel)).not.toBeNull();
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("PreviewCompare receives editText wired to the edit mode: true in label mode, false in template mode", async () => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(createElement(DocumentEditor, {
+        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
+        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+      }));
+    });
+    expect(perf.editText).toBe(true);
+    await openInspector(container, "name");
+    await act(async () => { editingItem(container, "Template").click(); });
+    expect(perf.editText).toBe(false);
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+  }
+});
+
 it("template mode marks the workspace root and the bottom strip flags unsaved template changes", async () => {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -477,16 +573,18 @@ it("the sidebar footer has exactly one button, Save Label or Save Master by mode
   }
 });
 
-it("Save Master stays disabled in label mode even when masterDirty, and enables in template mode", async () => {
+it("Save Master and New Variant stay disabled in label mode even when masterDirty, and enable in template mode", async () => {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
   const openPalette = () => act(async () => {
     document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }));
   });
-  const saveMasterItem = () =>
+  const paletteItem = (label: string) =>
     Array.from(document.querySelectorAll("[cmdk-item]"))
-      .find((el) => el.textContent?.trim() === "Save Master") as HTMLElement;
+      .find((el) => el.textContent?.trim() === label) as HTMLElement;
+  const saveMasterItem = () => paletteItem("Save Master");
+  const newVariantItem = () => paletteItem("New Variant");
   try {
     await act(async () => {
       root.render(createElement(DocumentEditor, {
@@ -503,12 +601,16 @@ it("Save Master stays disabled in label mode even when masterDirty, and enables 
 
     await openPalette();
     expect(saveMasterItem().getAttribute("aria-disabled")).toBe("false");
+    expect(newVariantItem().getAttribute("aria-disabled")).toBe("false");
     await openPalette(); // close
 
     await act(async () => { editingItem(container, "This label").click(); });
     await openPalette();
-    // Still dirty, but label mode disables the master verb regardless.
+    // Still dirty, but label mode disables both master verbs regardless —
+    // New Variant is template work too (docs/plans/template-switch.md
+    // review, "Controller ruling").
     expect(saveMasterItem().getAttribute("aria-disabled")).toBe("true");
+    expect(newVariantItem().getAttribute("aria-disabled")).toBe("true");
   } finally {
     await act(async () => { root.unmount(); });
     container.remove();

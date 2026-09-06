@@ -15,7 +15,7 @@ Small: 26 files, ~4.1k lines including docs and bundled fonts.
 - Build: `npm run build`
 - Test: `npm test`
 - Typecheck: `npx tsc --noEmit`
-- Verified at: `3d77e1b` — the commit these commands were last *run* against.
+- Verified at: `558c21e` — the commit these commands were last *run* against.
   A command recorded here ran at that revision; it is not a promise about now. If one
   fails to run today, that is a finding, not a reason to guess a replacement.
 
