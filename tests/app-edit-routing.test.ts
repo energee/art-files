@@ -102,10 +102,21 @@ describe("content routes to the label for any layer", () => {
     expect(byId<TextLayer>(d, "warning").lines).toEqual([line("Drink responsibly")]);
   });
 
-  it("fills a code layer's value into the label, not the master", () => {
+  it("fills a code layer's value into the label, and teaches the master the code", () => {
+    // The barcode ships a tier vocabulary, so a UPC nobody listed joins it —
+    // the ONE thing a content edit writes to the master, and the Save Master
+    // review is what stands between it and the file (Task 4 of
+    // docs/plans/choice-input.md). Everything else about the master is
+    // untouched, which is what this file is really guarding.
     const d = setContentIn(doc(), "barcode", "036000291452");
-    expect(d.master).toEqual(lolevMaster());
     expect(d.label.values.barcode).toBe("036000291452");
+    const before = lolevMaster();
+    const learned = (id: string, m: Master) =>
+      (m.layers.find((l) => l.id === id) as { choices?: unknown[] }).choices;
+    expect(learned("barcode", d.master)).toEqual([
+      ...(learned("barcode", before) as unknown[]), { value: "036000291452" },
+    ]);
+    expect({ ...d.master, layers: undefined }).toEqual({ ...before, layers: undefined });
   });
 });
 

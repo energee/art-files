@@ -205,7 +205,7 @@ Test file named first in each task; write it failing, then implement.
   needs one, Task 1's design is wrong and the plan should be revised, not
   patched.
 
-**9. Seed both lists from the deleted presets**
+**9. Seed both lists from the deleted presets** — *done*
 - Files: `src/model/lolevLayers.ts`, docs sweep
 - Test: `tests/model-lolev.test.ts` *(extend)*
 - `styleLine` gets the three styles; the barcode layer gets the eight tiers as
