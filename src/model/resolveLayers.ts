@@ -51,6 +51,28 @@ function refText(l: TextLayer): string {
   return uppercaseOf(l) ? t.toUpperCase() : t;
 }
 
+/** A diff onto a layer: deepMerge, then honour `null` as "unset this key".
+ *  A label override spells a cleared optional field (wrap width back to none,
+ *  image height back to auto) as null, because deepMerge skips `undefined`
+ *  and JSON cannot store it — see setLabelOverride. Variant diffs never carry
+ *  null today, so this is a no-op for them. */
+function applyDiff<T extends object>(base: T, p: DeepPartial<T>): T {
+  const merged = deepMerge(base, p) as Record<string, unknown>;
+  stripNulls(merged, p as Record<string, unknown>);
+  return merged as T;
+}
+
+/** Delete every key the diff set to null, recursing only where the diff does
+ *  — an untouched subtree keeps whatever the master put there. */
+function stripNulls(out: Record<string, unknown>, diff: Record<string, unknown>): void {
+  for (const [k, v] of Object.entries(diff)) {
+    if (v === null) delete out[k];
+    else if (v && typeof v === "object" && !Array.isArray(v)
+      && out[k] && typeof out[k] === "object" && !Array.isArray(out[k]))
+      stripNulls(out[k] as Record<string, unknown>, v as Record<string, unknown>);
+  }
+}
+
 export interface ResolveOpts {
   /** Keep `enabled: false` layers in the list (the Layers list shows them
    *  dimmed, the inspector edits them); the renderer's callers leave this
@@ -68,8 +90,8 @@ export function resolveLayers(
   let layers: Layer[] = master.layers.map((l) => structuredClone(l));
   const patch = (id: string, p: DeepPartial<Layer>, ctx: string) => {
     const i = layers.findIndex((l) => l.id === id);
-    if (i >= 0) layers[i] = deepMerge(layers[i], p);
-    else if (p.kind) layers.push(deepMerge({} as Layer, p)); // a whole added layer
+    if (i >= 0) layers[i] = applyDiff(layers[i], p);
+    else if (p.kind) layers.push(applyDiff({} as Layer, p)); // a whole added layer
     else warnings.push(`${ctx} overrides unknown layer "${id}"; skipped.`);
   };
   for (const id of enabledVariants) {
@@ -80,7 +102,11 @@ export function resolveLayers(
   for (const [id, p] of Object.entries(overrides ?? {})) patch(id, p, "Label");
   for (const [id, v] of Object.entries(values)) {
     const i = layers.findIndex((l) => l.id === id);
-    if (i < 0 || !layers[i].fillable) continue; // dormant, not an error
+    // Any layer the master HAS can be filled — the `fillable` flag that used
+    // to gate this is gone (docs/plans/label-first-editing.md). A value for an
+    // id this master lacks stays dormant, not an error: it belongs to another
+    // master the label was rebound from.
+    if (i < 0) continue;
     const r = applyValue(layers[i], v);
     if ("error" in r) errors[id] = r.error;
     else layers[i] = r.layer;

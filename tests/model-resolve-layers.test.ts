@@ -128,10 +128,14 @@ describe("resolveLayers", () => {
     expect(r.errors.collabLeft).toMatch(/image/i);
   });
 
-  it("values for non-fillable or unknown layers are ignored", () => {
+  it("fills any layer the master has; a value for an unknown id stays dormant", () => {
+    // No `fillable` gate any more (docs/plans/label-first-editing.md): the
+    // wordmark fills like every other layer. An id this master lacks is not an
+    // error — it belongs to a master the label was rebound from.
     const r = resolveLayers(lolevMaster(), [], { wordmark: [line("X")], nope: "x" });
     expect(r.errors).toEqual({});
-    expect(byId<TextLayer>(r.layers, "wordmark").lines).toEqual(byId<TextLayer>(lolevMaster().layers, "wordmark").lines);
+    expect(byId<TextLayer>(r.layers, "wordmark").lines).toEqual([line("X")]);
+    expect(r.layers.some((l) => l.id === "nope")).toBe(false);
   });
 
   it("the qr value expands {name|slug} from the filled name, markers stripped", () => {

@@ -440,10 +440,57 @@ export function clearValue(label: LabelFile, id: string): LabelFile {
   return { ...label, values: without(label.values, id) };
 }
 
-/** A label-level deviation from the resolved master (the .label `overrides`). */
+/** A label-level deviation from the resolved master (the .label `overrides`).
+ *
+ *  An own-property `undefined` in `patch` is stored as `null`, the wire
+ *  spelling of "unset this key" (LayerInspector emits `{ width: undefined }`
+ *  to clear a wrap width). It cannot stay `undefined`: deepMerge skips
+ *  undefined, and JSON drops it, so the clear would be lost either at resolve
+ *  time or on save. resolveLayers deletes null-valued paths after merging —
+ *  see applyDiff there. This mirrors patchLayer's clear rule for the master. */
 export function setLabelOverride(label: LabelFile, id: string, patch: LayerPatch): LabelFile {
   const overrides = label.overrides ?? {};
-  return { ...label, overrides: { ...overrides, [id]: deepMerge(overrides[id] ?? {}, patch as DeepPartial<Entry>) } };
+  const p = patch as Record<string, unknown>;
+  const withNulls = Object.fromEntries(
+    Object.entries(p).map(([k, v]) => [k, v === undefined ? null : v]),
+  ) as DeepPartial<Entry>;
+  return { ...label, overrides: { ...overrides, [id]: deepMerge(overrides[id] ?? {}, withNulls) } };
+}
+
+/** The document the editor holds: a master and the label being filled on it.
+ *  Mirrors App's own `Doc`; declared here so the routing below is pure. */
+export interface Doc { master: Master; label: LabelFile }
+
+/** THE ROUTING RULE (docs/plans/label-first-editing.md): a property edit is a
+ *  LABEL override, never a master edit. The master is the template and only
+ *  changes through a reviewed save, so nothing here writes `master.layers` —
+ *  not even for a layer a variant added, which the label overrides the same
+ *  way it overrides a master layer (resolveLayers applies variants first,
+ *  then the label).
+ *
+ *  Several entries in one call so a group drag is one undo step.
+ *
+ *  The one master-side effect kept: switching a layer ON that only exists
+ *  while some variant is enabled also enables that variant. That is a label
+ *  edit (`toggleVariant`), not a master one — without it the patch would set
+ *  `enabled` on a layer that still does not resolve. */
+export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
+  const masterIds = new Set(doc.master.layers.map((l) => l.id));
+  return entries.reduce((d, [id, patch]) => {
+    let label = d.label;
+    if (patch.enabled === true && !masterIds.has(id)) {
+      const owner = d.master.variants.find((v) => id in v.layers);
+      if (owner && !label.enabledVariants.includes(owner.id)) label = toggleVariant(label, owner.id);
+    }
+    return { master: d.master, label: setLabelOverride(label, id, patch) };
+  }, doc);
+}
+
+/** A layer's CONTENT — this beer's name, this collab's logo, this label's
+ *  barcode. Always a label value, for ANY layer: the `fillable` flag that
+ *  used to gate this is gone, so every content-bearing layer is fillable. */
+export function setContentIn(doc: Doc, id: string, value: LayerValue): Doc {
+  return { master: doc.master, label: setValue(doc.label, id, value) };
 }
 
 /** Drops a label override (whole entry or one dotted path); the `overrides`
