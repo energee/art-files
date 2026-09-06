@@ -444,3 +444,73 @@ it("Template mode with a version selected routes a position edit to that variant
     container.remove();
   }
 });
+
+// docs/plans/template-switch.md, Task 8 — the sidebar footer's ONE save
+// button follows the mode; the menu/palette's master verbs stay disabled
+// outside template mode even while dirty, so the keyboard and the menu can
+// never disagree (App.tsx's `byId` wiring).
+it("the sidebar footer has exactly one button, Save Label or Save Master by mode", async () => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(createElement(DocumentEditor, {
+        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
+        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+      }));
+    });
+    const footerButtons = () =>
+      container.querySelector('[data-slot="sidebar-footer"]')!.querySelectorAll("button");
+    expect(footerButtons().length).toBe(1);
+    expect(footerButtons()[0].textContent?.trim()).toBe("Save Label");
+
+    await openInspector(container, "name");
+    await act(async () => { editingItem(container, "Template").click(); });
+    expect(footerButtons().length).toBe(1);
+    expect(footerButtons()[0].textContent?.trim()).toBe("Save Master");
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+  }
+});
+
+it("Save Master stays disabled in label mode even when masterDirty, and enables in template mode", async () => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  const openPalette = () => act(async () => {
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }));
+  });
+  const saveMasterItem = () =>
+    Array.from(document.querySelectorAll("[cmdk-item]"))
+      .find((el) => el.textContent?.trim() === "Save Master") as HTMLElement;
+  try {
+    await act(async () => {
+      root.render(createElement(DocumentEditor, {
+        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
+        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+      }));
+    });
+
+    await openInspector(container, "name");
+    await act(async () => { editingItem(container, "Template").click(); });
+    await typeXField("300"); // masterDirty, in template mode.
+
+    await openPalette();
+    expect(saveMasterItem().getAttribute("aria-disabled")).toBe("false");
+    await openPalette(); // close
+
+    await act(async () => { editingItem(container, "This label").click(); });
+    await openPalette();
+    // Still dirty, but label mode disables the master verb regardless.
+    expect(saveMasterItem().getAttribute("aria-disabled")).toBe("true");
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+  }
+});

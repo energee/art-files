@@ -9,9 +9,13 @@
 // variant overrides part of it, then the two per-layer switches — enabled
 // (absent on the background/mask rows: nothing to fill), power (`enabled`,
 // the only visibility switch — there is no session eye any more), lock —
-// plus drag reordering and a "…" menu with
-// Rename / Remove. The header carries the title, the "Changed" filter
-// that replaced Fill mode, one chip per variant, and the "Add layer" menu.
+// plus, in template mode, drag reordering and a "…" menu with
+// Rename / Remove. The header carries the title, the "Add layer" menu
+// (template mode only) and, in label mode, the "Changed" filter that
+// replaced Fill mode. `mode` (docs/plans/template-switch.md, Task 8) gates
+// which of these a label may reach: Add layer, Remove, and reorder (drag and
+// ⌥↑/⌥↓) reshape the master, so they show only in template mode; Changed
+// is what a label filled, so it shows only in label mode.
 //
 // Props-only: no app state, no model imports beyond types. Every write goes
 // out through a callback — the caller decides where it lands (master or the
@@ -23,6 +27,7 @@ import {
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import type { Layer, LayerKind } from "@/model/layers";
+import type { EditMode } from "@/model/edit";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -82,6 +87,13 @@ export interface LayerListProps {
    *  change?" is the question worth filtering on. */
   changedOnly: boolean;
   onChangedOnly: (v: boolean) => void;
+  /** Which verbs this list offers (docs/plans/template-switch.md, Task 8):
+   *  "label" shows the Changed filter, since that is what a label edits;
+   *  "template" shows Add layer, Remove and reorder (drag and ⌥↑/⌥↓), the
+   *  master-shaping verbs a label may not use. The caller still owns
+   *  `onAdd`/`onRemove`/`onReorder` and `changedOnly` — this only gates
+   *  which of them the list exposes. */
+  mode: EditMode;
 }
 
 /** "Add layer" menu entries — the same icons the rows use for each kind. */
@@ -125,7 +137,7 @@ const chip = (pressed: boolean) => cn(
 
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
-function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted, ...p }: {
+function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted, mode, ...p }: {
   dragHandlers: React.HTMLAttributes<HTMLButtonElement>;
   dropEdge?: "top" | "bottom";
   /** Part of the block an in-flight drag is carrying — every selected row
@@ -137,6 +149,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
    *  filtered view), so keyboard reordering stops at the owning container’s ends. */
   atFront: boolean;
   atBack: boolean;
+  mode: EditMode;
 } & Pick<LayerListProps, "onSelect" | "onToggle" | "onRename" | "onReorder" | "onRemove">) {
   const { layer } = row;
   const { id, name } = layer;
@@ -146,6 +159,9 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   const inactive = !layer.enabled || (row.variant !== undefined && !row.variant.enabled);
   const locked = !!layer.locked;
   const [renaming, setRenaming] = useState(false);
+  // Reorder and Remove are template-only verbs (docs/plans/template-switch.md,
+  // Task 8): a label may fill and toggle layers, but not reshape the master.
+  const canShape = mode === "template";
 
   const commitRename = (value: string) => {
     const next = value.trim();
@@ -158,7 +174,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   // Remove, ⌥↑/⌥↓ = one reorder step. Gated on the row being selected, so
   // the keys act on exactly the row those controls are showing for.
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (!isSelected) return;
+    if (!isSelected || !canShape) return;
     if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault(); p.onRemove(id);
     } else if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
@@ -189,11 +205,19 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
         <SidebarMenuButton
           size="sm"
           isActive={isSelected}
-          {...(!renaming ? dragHandlers : {})}
-          onKeyDown={(e) => { dragHandlers.onKeyDown?.(e); if (!e.defaultPrevented) onKeyDown(e); }}
-          aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-          title="Drag to reorder · Alt+↑/↓"
-          className="min-w-0 flex-1 touch-none cursor-grab text-xs hover:bg-transparent active:cursor-grabbing"
+          {...(canShape && !renaming ? dragHandlers : {})}
+          onKeyDown={(e) => {
+            if (canShape) dragHandlers.onKeyDown?.(e);
+            if (!e.defaultPrevented) onKeyDown(e);
+          }}
+          {...(canShape ? {
+            "aria-keyshortcuts": "Alt+ArrowUp Alt+ArrowDown",
+            title: "Drag to reorder · Alt+↑/↓",
+          } : {})}
+          className={cn(
+            "min-w-0 flex-1 text-xs",
+            canShape && "touch-none cursor-grab hover:bg-transparent active:cursor-grabbing",
+          )}
         >
           <Icon />
           {renaming ? (
@@ -274,13 +298,15 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             />
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => setRenaming(true)}>Rename</DropdownMenuItem>
-              <DropdownMenuItem
-                variant="destructive"
-                className="data-[variant=destructive]:text-destructive-text data-[variant=destructive]:focus:text-destructive-text"
-                onClick={() => p.onRemove(id)}
-              >
-                Remove
-              </DropdownMenuItem>
+              {canShape && (
+                <DropdownMenuItem
+                  variant="destructive"
+                  className="data-[variant=destructive]:text-destructive-text data-[variant=destructive]:focus:text-destructive-text"
+                  onClick={() => p.onRemove(id)}
+                >
+                  Remove
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </span>
@@ -413,42 +439,47 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
     <SidebarGroup>
       <SidebarGroupLabel className="justify-between">
         <span>Layers</span>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <button
-                type="button"
-                aria-label="Add layer"
-                className="flex items-center gap-0.5 rounded-sm px-1 text-[11px] text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-              >
-                <Plus className="size-3" /> Add layer
-              </button>
-            }
-          />
-          <DropdownMenuContent align="end">
-            {ADD_LAYER_KINDS.map(({ kind, label, Icon }) => (
-              <DropdownMenuItem key={kind} onClick={() => props.onAdd(kind)}>
-                <Icon className="size-3.5" /> {label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {props.mode === "template" && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label="Add layer"
+                  className="flex items-center gap-0.5 rounded-sm px-1 text-[11px] text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                >
+                  <Plus className="size-3" /> Add layer
+                </button>
+              }
+            />
+            <DropdownMenuContent align="end">
+              {ADD_LAYER_KINDS.map(({ kind, label, Icon }) => (
+                <DropdownMenuItem key={kind} onClick={() => props.onAdd(kind)}>
+                  <Icon className="size-3.5" /> {label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </SidebarGroupLabel>
 
       {/* The one filter, on its own line: the sidebar is narrow. Variants used
           to sit here as toggle chips; they live in the master Select now,
-          which names the version the canvas is drawing. */}
-      <div className="flex flex-wrap items-center gap-1 px-2 pb-1.5">
-        <button
-          type="button"
-          aria-pressed={props.changedOnly}
-          onClick={() => props.onChangedOnly(!props.changedOnly)}
-          title="Show only the layers a label fills"
-          className={chip(props.changedOnly)}
-        >
-          <ListFilter /> Changed
-        </button>
-      </div>
+          which names the version the canvas is drawing. Label-only (Task 8):
+          a template has nothing for a label to have "changed" yet. */}
+      {props.mode === "label" && (
+        <div className="flex flex-wrap items-center gap-1 px-2 pb-1.5">
+          <button
+            type="button"
+            aria-pressed={props.changedOnly}
+            onClick={() => props.onChangedOnly(!props.changedOnly)}
+            title="Show only the layers a label fills"
+            className={chip(props.changedOnly)}
+          >
+            <ListFilter /> Changed
+          </button>
+        </div>
+      )}
 
       <SidebarGroupContent>
         <SidebarMenu>
@@ -462,6 +493,7 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
               dragHandlers={dragHandlers(row)}
               dropEdge={drop?.id === row.layer.id ? drop.edge : undefined}
               lifted={liftedIds?.has(row.layer.id)}
+              mode={props.mode}
               onSelect={props.onSelect}
               onToggle={props.onToggle}
               onRename={props.onRename}

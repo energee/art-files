@@ -99,7 +99,7 @@ import {
   type GuideAxis, type ManualGuide, type RulerUnit,
 } from "@/rulers";
 import {
-  Sidebar, SidebarContent, SidebarInset, SidebarProvider, SidebarTrigger,
+  Sidebar, SidebarContent, SidebarFooter, SidebarInset, SidebarProvider, SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
@@ -1758,9 +1758,14 @@ export const DocumentEditor = memo(function DocumentEditor({
     { id: "project-save-as", label: "Save Project As…", key: "s", mods: "⇧⌘",
       run: () => void saveProject(true) },
     { id: "master-open", label: "Open Master…", run: () => void openMasterPicker() },
-    { id: "master-save", label: "Save Master", disabled: !masterDirty,
+    // Master verbs are disabled, not hidden, outside template mode
+    // (docs/plans/template-switch.md, "Decisions taken"): the menu and
+    // palette read this same list, so the keyboard and the menu can never
+    // disagree about whether they're reachable.
+    { id: "master-save", label: "Save Master", disabled: !masterDirty || mode !== "template",
       run: () => setPendingSave({ as: false }) },
-    { id: "master-save-as", label: "Save Master As…", run: () => setPendingSave({ as: true }) },
+    { id: "master-save-as", label: "Save Master As…", disabled: mode !== "template",
+      run: () => setPendingSave({ as: true }) },
     { id: "export-both", label: "Export PDFs", key: "e", mods: "⌘",
       disabled: pdfExportBlocked, run: exportPdfs },
     { id: "export-art", label: "Export Artwork PDF", disabled: pdfExportBlocked, run: downloadArt },
@@ -1923,15 +1928,34 @@ export const DocumentEditor = memo(function DocumentEditor({
             <MasterPicker master={master} onNewVariant={onNewVariant}
               version={version} onVersion={switchVersion}
               mode={mode} onMode={setMode} />
-            <LayerList rows={rows} selected={selected}
+            <LayerList rows={rows} selected={selected} mode={mode}
               onSelect={(id, mods) => pick(id, { shift: mods.shift, toggle: mods.meta })}
               onToggle={(id, prop, value) => patch(id, { [prop]: value })}
               onRename={(id, name) => patch(id, { name })}
               onReorder={(id, delta) => editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta))}
               onAdd={onAddLayer} onRemove={onRemoveLayer}
-              changedOnly={changedOnly} onChangedOnly={setChangedOnly}
+              // Task 8: the Changed filter is label-only, so a stale `true`
+              // from before a mode switch never hides template-mode rows.
+              changedOnly={mode === "label" && changedOnly} onChangedOnly={setChangedOnly}
               />
           </SidebarContent>
+          {/* One footer button, always (docs/plans/template-switch.md, Task
+              8, "One save button, always"): it runs the same command the
+              menu/palette expose under `project-save`/`master-save`, read
+              through `byId` so the two can never disagree. */}
+          <SidebarFooter className="border-t border-sidebar-border">
+            {mode === "label" ? (
+              <Button className="w-full" size="sm" disabled={byId("project-save").disabled}
+                onClick={byId("project-save").run}>
+                Save Label
+              </Button>
+            ) : (
+              <Button className="w-full" size="sm" disabled={byId("master-save").disabled}
+                onClick={byId("master-save").run}>
+                Save Master
+              </Button>
+            )}
+          </SidebarFooter>
         </Sidebar>
         <SidebarInset className="flex h-full flex-col overflow-hidden">
         <header className="flex items-center gap-3 bg-sidebar text-sidebar-foreground px-3 py-2">

@@ -61,6 +61,10 @@ function baseProps(over: Partial<LayerListProps> = {}): LayerListProps {
     onRemove: vi.fn(),
     changedOnly: false,
     onChangedOnly: vi.fn(),
+    // Add/Remove/Reorder are the exception (docs/plans/template-switch.md,
+    // Task 8), so template is the default here; the Changed-filter cases
+    // override to "label".
+    mode: "template",
     ...over,
   };
 }
@@ -108,10 +112,36 @@ describe("LayerList", () => {
   });
 
   it("Changed hides every row this label has not touched", () => {
-    const base = baseProps();
+    const base = baseProps({ mode: "label" });
     const rows = base.rows.map((r) => (r.layer.id === "name" ? { ...r, changed: true } : r));
     render({ ...base, rows, changedOnly: true });
     expect(rowIds()).toEqual(["name"]);
+  });
+
+  it("label mode: no Add layer, no Remove, the Changed chip stays (docs/plans/template-switch.md, Task 8)", async () => {
+    const props = render(baseProps({ mode: "label", selected: ["wordmark"] }));
+    expect(byLabel("Add layer")).toBeNull();
+    await openMenu(byLabel("Brand actions"));
+    expect(menuItem("Remove")).toBeUndefined();
+    expect(menuItem("Rename")).toBeDefined();
+    const filter = Array.from(container.querySelectorAll("button"))
+      .find((b) => b.textContent?.trim() === "Changed");
+    expect(filter).toBeDefined();
+    // No drag handle and no reorder/remove keyboard shortcuts either.
+    keydown(rowFor("wordmark").querySelector("button")!, "Delete");
+    expect(props.onRemove).not.toHaveBeenCalled();
+    keydown(rowFor("wordmark").querySelector("button")!, "ArrowUp", { altKey: true });
+    expect(props.onReorder).not.toHaveBeenCalled();
+  });
+
+  it("template mode: Add layer and Remove are shown, the Changed chip is gone (docs/plans/template-switch.md, Task 8)", async () => {
+    render(baseProps({ mode: "template", selected: ["wordmark"] }));
+    expect(byLabel("Add layer")).not.toBeNull();
+    await openMenu(byLabel("Brand actions"));
+    expect(menuItem("Remove")).toBeDefined();
+    const filter = Array.from(container.querySelectorAll("button"))
+      .find((b) => b.textContent?.trim() === "Changed");
+    expect(filter).toBeUndefined();
   });
 
   it("the power switch reports onToggle enabled, and a disabled layer renders dimmed", () => {
@@ -294,7 +324,7 @@ describe("LayerList", () => {
   });
 
   it("header chips: Changed and one toggle per variant", () => {
-    const props = render(baseProps());
+    const props = render(baseProps({ mode: "label" }));
     const filter = Array.from(container.querySelectorAll("button"))
       .find((b) => b.textContent?.trim() === "Changed")!;
     expect(filter.getAttribute("aria-pressed")).toBe("false");
