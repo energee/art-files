@@ -4,7 +4,7 @@
 // edits already sitting in the edited master, plus the label's own overrides
 // offered for PROMOTION into the template. Pure — the dialog does the rendering.
 import { describe, expect, it } from "vitest";
-import { masterChanges, addLayer, moveLayers, patchLayer, removeLayer, setLabelOverride } from "../src/model/edit";
+import { applyPromotions, masterChanges, addLayer, moveLayers, patchLayer, removeLayer, setLabelOverride } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
 import type { LabelFile, Master } from "../src/model/layers";
 
@@ -63,5 +63,32 @@ describe("masterChanges", () => {
     const base = lolevMaster();
     const label = setLabelOverride(newLabel(base), "ghost", { x: 1 });
     expect(masterChanges(base, base, label)).toEqual([]);
+  });
+});
+
+describe("applyPromotions", () => {
+  it("writes exactly the promoted paths into the master and drops them from the label", () => {
+    const base = lolevMaster();
+    const label = setLabelOverride(newLabel(base), "name", { x: 300, style: { fill: "#FF0000" } });
+    const promote = masterChanges(base, base, label).filter((c) => c.path === "x");
+    const r = applyPromotions(base, label, promote);
+    expect((r.master.layers.find((l) => l.id === "name") as { x: number }).x).toBe(300);
+    // The unpromoted one stays the label's own.
+    expect(r.label.overrides?.name).toEqual({ style: { fill: "#FF0000" } });
+  });
+
+  it("drops the overrides key entirely once nothing is left", () => {
+    const base = lolevMaster();
+    const label = setLabelOverride(newLabel(base), "name", { x: 300 });
+    const r = applyPromotions(base, label, masterChanges(base, base, label));
+    expect(r.label.overrides).toBeUndefined();
+  });
+
+  it("promoting nothing changes nothing", () => {
+    const base = lolevMaster();
+    const label = setLabelOverride(newLabel(base), "name", { x: 300 });
+    const r = applyPromotions(base, label, []);
+    expect(r.master).toEqual(base);
+    expect(r.label).toEqual(label);
   });
 });

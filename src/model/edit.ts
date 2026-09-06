@@ -617,6 +617,29 @@ export function masterChanges(base: Master, edited: Master, label: LabelFile): M
   return out;
 }
 
+/** Folds the reviewer's ticked `promote` rows into the master and drops them
+ *  from the label — the ONE promotion path (docs/plans/label-first-editing.md,
+ *  Task 6/7). Everything left in `label.overrides` stays this label's alone.
+ *
+ *  ponytail: a `null` value (setLabelOverride's wire spelling of "unset this
+ *  key") only unsets a TOP-LEVEL key, matching patchLayer's own clear rule —
+ *  the inspector clears nothing deeper. */
+export function applyPromotions(
+  master: Master, label: LabelFile, promote: readonly MasterChange[],
+): { master: Master; label: LabelFile } {
+  return promote.reduce((acc, c) => {
+    if (c.kind !== "promote" || c.path === undefined) return acc;
+    const keys = c.path.split(".");
+    const patch = keys.reduceRight<unknown>(
+      (v, k, i) => ({ [k]: i === 0 && v === null ? undefined : v }), c.to,
+    ) as LayerPatch;
+    return {
+      master: patchLayer(acc.master, c.layerId, patch),
+      label: clearLabelOverride(acc.label, c.layerId, c.path),
+    };
+  }, { master, label });
+}
+
 /** Which handle a resize drag grabbed: -1 = left/top edge, 0 = the axis is
  *  not grabbed (a side handle), 1 = right/bottom edge. */
 export interface ResizeHandle { hx: -1 | 0 | 1; hy: -1 | 0 | 1 }
