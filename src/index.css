@@ -8,10 +8,15 @@
    accents (primary/destructive/attention/warning/success/info) each carry a
    raw token — fills, rings, dots, white-on-fill text, ≥3:1 on background and
    card — and a `-text` token for coloured text on tints/plain surfaces
-   (`color-mix(in oklab, <accent> 75%, foreground)` in light, the raw accent
-   in dark; ≥4.5:1 on background and card in both schemes). Each also gets a
-   `-soft` 14% tint for repeated-row-action fills. tests/theme-contrast.test.ts
-   asserts all of the above. */
+   (`color-mix(in oklab, <accent> 65%, foreground)` in light, the raw accent
+   in dark; ≥4.5:1 on background, card AND the accent's own -soft tint
+   composited over either, in both schemes). 65% (not the 75% a plain
+   accent/foreground split would suggest) is the lightest mix that still
+   clears 4.5:1 against the -soft tint for every accent — warning is the
+   tightest at 65% (4.92:1 on -soft/background); 70% already dips warning to
+   4.54:1, still barely legal, so 65% is the safety margin, not the minimum.
+   Each accent also gets a `-soft` 14% tint for repeated-row-action fills.
+   tests/theme-contrast.test.ts asserts all of the above. */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -61,14 +66,15 @@
   --success: light-dark(#269d69, #a9dc76); /* confirmations, "current" */
   --info: light-dark(#1c8ca8, #78dce8); /* override badges, learned choice */
   /* Coloured text on tints and small labels: darkened toward --foreground in
-     light (still legible on white, ≥4.5:1 on background and card) and simply
-     the raw accent in dark (already ≥5.5:1 there). */
-  --primary-text: light-dark(color-mix(in oklab, var(--primary) 75%, var(--foreground)), var(--primary));
-  --destructive-text: light-dark(color-mix(in oklab, var(--destructive) 75%, var(--foreground)), var(--destructive));
-  --attention-text: light-dark(color-mix(in oklab, var(--attention) 75%, var(--foreground)), var(--attention));
-  --warning-text: light-dark(color-mix(in oklab, var(--warning) 75%, var(--foreground)), var(--warning));
-  --success-text: light-dark(color-mix(in oklab, var(--success) 75%, var(--foreground)), var(--success));
-  --info-text: light-dark(color-mix(in oklab, var(--info) 75%, var(--foreground)), var(--info));
+     light (still legible on white AND on the accent's own -soft tint,
+     ≥4.5:1 either way — see the file header for why it's 65%, not 75%) and
+     simply the raw accent in dark (already ≥4.5:1 on -soft there too). */
+  --primary-text: light-dark(color-mix(in oklab, var(--primary) 65%, var(--foreground)), var(--primary));
+  --destructive-text: light-dark(color-mix(in oklab, var(--destructive) 65%, var(--foreground)), var(--destructive));
+  --attention-text: light-dark(color-mix(in oklab, var(--attention) 65%, var(--foreground)), var(--attention));
+  --warning-text: light-dark(color-mix(in oklab, var(--warning) 65%, var(--foreground)), var(--warning));
+  --success-text: light-dark(color-mix(in oklab, var(--success) 65%, var(--foreground)), var(--success));
+  --info-text: light-dark(color-mix(in oklab, var(--info) 65%, var(--foreground)), var(--info));
   /* Repeated-row-action / tinted-panel fills: a soft 14% tint of the raw
      accent, never used to carry text contrast on its own. */
   --primary-soft: color-mix(in oklab, var(--primary) 14%, transparent);

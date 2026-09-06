@@ -166,6 +166,33 @@ function token(name: string, scheme: Scheme): string {
   return resolveValue(raw, scheme);
 }
 
+/** Standard (non-premultiplied, gamma-space) "over" compositing: how a
+ * browser paints a translucent `background-color` on top of a solid one. */
+function blendSrgb(hexFg: string, hexBg: string, alpha: number): string {
+  const fg = hexToRgb(hexFg);
+  const bg = hexToRgb(hexBg);
+  const composite = fg.map((v, i) => v * alpha + bg[i] * (1 - alpha)) as Rgb;
+  return toHex(composite);
+}
+
+/** Resolves `--<accent>-soft` (a `color-mix(in oklab, X pct%, transparent)`)
+ * to the solid colour it renders as once composited over `backdrop`. */
+function softComposite(accent: string, scheme: Scheme, backdrop: string): string {
+  const raw = decls.get(`--${accent}-soft`);
+  if (raw === undefined) throw new Error(`--${accent}-soft not declared in :root`);
+  const match = raw.trim().match(/^color-mix\(\s*in\s+oklab\s*,\s*(.*)\)$/s);
+  if (!match) throw new Error(`--${accent}-soft is not a color-mix(in oklab, ...) expression`);
+  const [first, second] = splitTopLevel(match[1]);
+  if (second.trim() !== "transparent") {
+    throw new Error(`--${accent}-soft's second color-mix argument is not "transparent"`);
+  }
+  const [colorExpr, pctStr] = first.trim().split(/\s+/);
+  const pct = Number(pctStr.replace("%", ""));
+  const accentHex = resolveValue(colorExpr, scheme);
+  const backdropHex = token(backdrop, scheme);
+  return blendSrgb(accentHex, backdropHex, pct / 100);
+}
+
 const SCHEMES: Scheme[] = ["light", "dark"];
 const ACCENTS = ["primary", "destructive", "attention", "warning", "success", "info"];
 
@@ -198,6 +225,15 @@ describe("theme tokens — WCAG AA contrast", () => {
       for (const bg of ["background", "card"]) {
         const ratio = contrast(token(`${accent}-text`, scheme), token(bg, scheme));
         expect(ratio, `--${accent}-text on --${bg} in ${scheme}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it.each(SCHEMES)("each accent's -text token on its own -soft tint, composited over background/card (%s)", (scheme) => {
+    for (const accent of ACCENTS) {
+      for (const bg of ["background", "card"]) {
+        const ratio = contrast(token(`${accent}-text`, scheme), softComposite(accent, scheme, bg));
+        expect(ratio, `--${accent}-text on --${accent}-soft over --${bg} in ${scheme}`).toBeGreaterThanOrEqual(4.5);
       }
     }
   });
