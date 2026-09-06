@@ -47,7 +47,7 @@ function renderPicker(props: Partial<Parameters<typeof MasterPicker>[0]> = {}) {
     master: lolevMaster(), label,
     library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery" } },
     resolve: vi.fn().mockResolvedValue({ master: otherMaster, assets: {} }),
-    onMaster: vi.fn(), onNewVariant: vi.fn(),
+    onMaster: vi.fn(), onNewVariant: vi.fn(), version: null, onVersion: vi.fn(),
     ...props,
   };
   act(() => { root.render(createElement(MasterPicker, full)); });
@@ -105,6 +105,32 @@ describe("MasterPicker", () => {
       (container.querySelector("#master-picker-continue") as HTMLButtonElement).click();
     });
     expect(onMaster).toHaveBeenCalledWith(otherMaster, {});
+  });
+
+  it("lists the current master's variants as versions of it", () => {
+    const onVersion = vi.fn();
+    const resolve = vi.fn();
+    renderPicker({ onVersion, resolve });
+    openMenu();
+    act(() => { itemStarting("Collab")!.click(); });
+    expect(onVersion).toHaveBeenCalledWith("collab");
+    // Switching version is not a rebind — nothing is resolved or benched.
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it("names the version being edited on the trigger", () => {
+    renderPicker({ version: "collab" });
+    expect(trigger().textContent).toContain("Collab");
+  });
+
+  it("switches back to the base master without rebinding onto itself", () => {
+    const onVersion = vi.fn();
+    const resolve = vi.fn();
+    renderPicker({ version: "collab", onVersion, resolve });
+    openMenu();
+    act(() => { itemStarting("Lolev")!.click(); });
+    expect(onVersion).toHaveBeenCalledWith(null);
+    expect(resolve).not.toHaveBeenCalled();
   });
 
   it("creates a variant from the foot of the menu, without picking a master", () => {

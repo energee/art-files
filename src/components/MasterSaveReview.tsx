@@ -60,6 +60,11 @@ export function MasterSaveReview(props: {
   open: boolean;
   /** edit.ts's masterChanges() for this save. */
   changes: readonly MasterChange[];
+  /** The variant a promotion would be written into, named — undefined for the
+   *  base master. Shown because promotion is otherwise invisible: the same
+   *  tick writes `master.layers` or `variants.collab.layers` depending on the
+   *  version you switched to (Task 12). */
+  target?: string;
   onCancel: () => void;
   /** The ticked `promote` rows, in the order they were listed. */
   onConfirm: (promote: MasterChange[]) => void;
@@ -94,7 +99,9 @@ export function MasterSaveReview(props: {
         <DialogDescription>
           {props.changes.length === 0
             ? "Nothing has changed in the master."
-            : "These changes will be written to the template. Tick a label override to fold it in too."}
+            : props.target === undefined
+              ? "These changes will be written to the template. Tick a label override to fold it in too."
+              : `These changes will be written to the template. Ticked overrides go into the ${props.target} version.`}
         </DialogDescription>
         <div className="max-h-80 overflow-y-auto text-sm">
           {groups.map((g) => (

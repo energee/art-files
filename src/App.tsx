@@ -424,14 +424,24 @@ export const DocumentEditor = memo(function DocumentEditor({
   const pristineMaster = useRef(doc.master);
   // Bumped by every save/open so the memo below re-reads the ref.
   const [savedTick, repaintMasterDirty] = useState(0);
+  // THE WORKING VERSION: the variant a promotion would land in, or null for
+  // the base master (docs/plans/label-first-editing.md, Task 12). Enabling a
+  // variant shows that version; changing it means switching to it here, which
+  // is why this is App state and not `label.enabledVariants`. Read through the
+  // guard below so a version that stops existing — a rebind onto another
+  // master, an undone New Variant — falls back to the base rather than
+  // throwing on the next save.
+  const [workingVersion, setWorkingVersion] = useState<string | null>(null);
+  const version = workingVersion !== null
+    && master.variants.some((v) => v.id === workingVersion) ? workingVersion : null;
   // What a Save Master would write: the structural and fill-contract edits
   // already in the master, plus this label's overrides offered for promotion.
   // Also the dirty flag — a promote-only state lights Save Master too, since
   // there IS something to review even when the template itself is untouched.
   const masterChangeList = useMemo(
-    () => masterChanges(pristineMaster.current, master, label),
+    () => masterChanges(pristineMaster.current, master, label, version ?? undefined),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- savedTick re-reads the ref
-    [master, label, savedTick]);
+    [master, label, version, savedTick]);
   const masterDirty = masterChangeList.length > 0;
   /** Which save the review dialog is standing in front of, or null. */
   const [pendingSave, setPendingSave] = useState<{ as: boolean } | null>(null);
@@ -686,16 +696,27 @@ export const DocumentEditor = memo(function DocumentEditor({
     setSelection((s) => s.ids.includes(id)
       ? { ids: s.ids.filter((x) => x !== id), anchor: s.anchor === id ? null : s.anchor } : s);
   }
+  /** Switch the working version: what a promotion in the Save Master review
+   *  would be written into. Switching TO a variant also turns it on for this
+   *  label — you cannot sensibly change a version you cannot see. Switching
+   *  back to the base leaves it on: visibility is the label's business. */
+  function switchVersion(id: string | null) {
+    setWorkingVersion(id);
+    if (id !== null && !label.enabledVariants.includes(id))
+      editLabel((l) => toggleVariant(l, id));
+  }
+
   /** The master Select's "New Variant" (and the command of the same name): a
    *  fresh empty variant, switched on for this label
    *  and offers its own Add layer submenu. Named
    *  "Variant N"; rename is a master-file edit for now. */
   function onNewVariant() {
     const name = `Variant ${master.variants.length + 1}`;
-    edit((d) => {
-      const { master: m, id } = addVariant(d.master, name);
-      return { master: m, label: toggleVariant(d.label, id) };
-    });
+    // Minted outside the edit so the id is in hand for the version switch —
+    // `edit`'s callback stays a pure Doc → Doc.
+    const { master: m, id } = addVariant(master, name);
+    edit((d) => ({ master: m, label: toggleVariant(d.label, id) }));
+    setWorkingVersion(id); // you made it to change it
   }
 
   /** The dot-paths deviating from the master on the inspected layer, kept
@@ -1286,7 +1307,7 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  saveProject, then registers the file in the library index and moves the
    *  master-dirty baseline. */
   async function saveMaster(as = false, promote: readonly MasterChange[] = []): Promise<boolean> {
-    const promoted = applyPromotions(master, label, promote);
+    const promoted = applyPromotions(master, label, promote, version ?? undefined);
     const forked = as
       ? { ...promoted.master, id: `master-${crypto.randomUUID().slice(0, 8)}` }
       : promoted.master;
@@ -1765,6 +1786,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       </Dialog>
       {pendingSave && (
         <MasterSaveReview open changes={masterChangeList}
+          target={master.variants.find((v) => v.id === version)?.name}
           onCancel={() => setPendingSave(null)}
           onConfirm={(promote) => {
             const { as } = pendingSave;
@@ -1780,7 +1802,8 @@ export const DocumentEditor = memo(function DocumentEditor({
             {/* The master picker, then the ONE Layers list (spec: UI). */}
             <MasterPicker master={master} label={label}
               library={libraryEntries()} resolve={resolveMasterById}
-              onMaster={pickLibraryMaster} onNewVariant={onNewVariant} />
+              onMaster={pickLibraryMaster} onNewVariant={onNewVariant}
+              version={version} onVersion={switchVersion} />
             <LayerList rows={rows} selected={selected}
               onSelect={(id, mods) => pick(id, { shift: mods.shift, toggle: mods.meta })}
               onToggle={(id, prop, value) => patch(id, { [prop]: value })}

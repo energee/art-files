@@ -249,7 +249,7 @@ the time.
 - Accept: with Collab on and a label override on the same layer, the row shows
   two marks and each reset touches only its own source.
 
-**12. Promotion targets the version you switched to**
+**12. Promotion targets the version you switched to** — *done*
 - Files: `src/components/MasterSaveReview.tsx` (target selector), `src/App.tsx`
   (working-version state), `src/model/edit.ts` (`masterChanges` per target)
 - Test: `tests/mastersave-review-dom.test.tsx` *(extend)*
@@ -274,8 +274,16 @@ the time.
   them into "switch to one version". **New Variant moved into the Select ahead
   of the rest** (2026-09-05, at the user's ask) — it is an action row at the
   foot of the menu, and it left the Edit menubar (the command stays registered,
-  so the command palette still has it). The variant TOGGLES are still chips
-  until this task converts them.
+  so the command palette still has it).
+- **As built (2026-09-05):** the Select is the VERSION picker — the master, its
+  variants indented under it, then the other library masters, then New Variant.
+  Picking a version calls `onVersion`; only a library row is a rebind. The
+  chips SURVIVE as the visibility control, and deliberately: `enabledVariants`
+  is a list, so a label can show Collab and Barrel-aged at once, and collapsing
+  that into a single-select would lose the capability. Switching to a variant
+  turns it on (you cannot change what you cannot see); switching back to the
+  base leaves it on, since visibility is the label's business. The review
+  dialog names the target so a promotion is never silent about where it lands.
 
 ### Phase D — docs
 

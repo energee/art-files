@@ -570,8 +570,16 @@ function changedPaths(a: unknown, b: unknown): string[] {
 /** What saving this master would write, itemised for review: the structural
  *  and fill-contract edits already in `edited`, then the label's overrides
  *  offered for promotion into the template. Pure and synchronous — the dialog
- *  renders it (docs/plans/label-first-editing.md, Task 6). */
-export function masterChanges(base: Master, edited: Master, label: LabelFile): MasterChange[] {
+ *  renders it (docs/plans/label-first-editing.md, Task 6).
+ *
+ *  `target` is the WORKING VERSION a promotion would land in (Task 12).
+ *  Undefined — the default — is the base master; a variant id means promote
+ *  rows are compared against, and written into, that variant's diff. Merely
+ *  ENABLING a variant does not make it the target: showing a version and
+ *  changing it are different acts. */
+export function masterChanges(
+  base: Master, edited: Master, label: LabelFile, target?: string,
+): MasterChange[] {
   const baseById = new Map(base.layers.map((l) => [l.id, l]));
   const editedById = new Map(edited.layers.map((l) => [l.id, l]));
   const out: MasterChange[] = [];
@@ -602,9 +610,17 @@ export function masterChanges(base: Master, edited: Master, label: LabelFile): M
                  from: atPath(was, path), to: atPath(l, path) });
   }
 
+  // A promote row's "from" is what the TARGET version currently resolves to:
+  // the master layer under the working variant's own diff, if there is one.
+  const variant = target === undefined ? undefined : variantOf(edited, target);
   for (const [id, entry] of Object.entries(label.overrides ?? {})) {
-    const l = editedById.get(id);
-    if (!l) continue; // an override of a layer this master no longer has
+    const own = editedById.get(id);
+    const diff = variant?.layers[id];
+    // A master layer under the target's diff, a layer the target ADDS, or —
+    // for neither — an override of a layer this version does not have at all.
+    const l = own ? (diff ? deepMerge(own, diff) as Layer : own)
+      : diff as Layer | undefined;
+    if (!l) continue;
     const paths = new Set<string>();
     leafPaths(entry, "", paths);
     for (const path of paths) {
@@ -621,11 +637,14 @@ export function masterChanges(base: Master, edited: Master, label: LabelFile): M
  *  from the label — the ONE promotion path (docs/plans/label-first-editing.md,
  *  Task 6/7). Everything left in `label.overrides` stays this label's alone.
  *
+ *  `target` is the working version, as in masterChanges: undefined writes the
+ *  base master, a variant id writes that variant's diff (Task 12).
+ *
  *  ponytail: a `null` value (setLabelOverride's wire spelling of "unset this
  *  key") only unsets a TOP-LEVEL key, matching patchLayer's own clear rule —
  *  the inspector clears nothing deeper. */
 export function applyPromotions(
-  master: Master, label: LabelFile, promote: readonly MasterChange[],
+  master: Master, label: LabelFile, promote: readonly MasterChange[], target?: string,
 ): { master: Master; label: LabelFile } {
   return promote.reduce((acc, c) => {
     if (c.kind !== "promote" || c.path === undefined) return acc;
@@ -634,7 +653,9 @@ export function applyPromotions(
       (v, k, i) => ({ [k]: i === 0 && v === null ? undefined : v }), c.to,
     ) as LayerPatch;
     return {
-      master: patchLayer(acc.master, c.layerId, patch),
+      master: target === undefined
+        ? patchLayer(acc.master, c.layerId, patch)
+        : patchLayerIn(acc.master, target, c.layerId, patch),
       label: clearLabelOverride(acc.label, c.layerId, c.path),
     };
   }, { master, label });

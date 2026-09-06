@@ -4,7 +4,7 @@
 // edits already sitting in the edited master, plus the label's own overrides
 // offered for PROMOTION into the template. Pure — the dialog does the rendering.
 import { describe, expect, it } from "vitest";
-import { applyPromotions, masterChanges, addLayer, moveLayers, patchLayer, removeLayer, setLabelOverride } from "../src/model/edit";
+import { applyPromotions, masterChanges, addLayer, setLayerIn, moveLayers, patchLayer, removeLayer, setLabelOverride } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
 import type { LabelFile, Master } from "../src/model/layers";
 
@@ -90,5 +90,43 @@ describe("applyPromotions", () => {
     const r = applyPromotions(base, label, []);
     expect(r.master).toEqual(base);
     expect(r.label).toEqual(label);
+  });
+});
+
+// --- Task 12: promotion targets the version you switched to ----------------
+// Enabling a variant means "show me this version". CHANGING it means switching
+// to it, which is a separate, explicit act — so promotion defaults to the base
+// master and only writes a variant while that variant is the working version.
+describe("a variant as the promotion target", () => {
+  const collabOn = (base: Master): LabelFile =>
+    ({ ...newLabel(base), enabledVariants: ["collab"] });
+
+  it("compares a promote row against the version it targets, not the base", () => {
+    // The shipped Collab variant only ADDS layers, so give it an override of
+    // a master layer to have two baselines to tell apart.
+    const base = setLayerIn(lolevMaster(), "collab", "name", { x: 222 });
+    const label = setLabelOverride(collabOn(base), "name", { x: 999 });
+    const from = (c: { from?: unknown }) => c.from;
+    expect(masterChanges(base, base, label).map(from))
+      .toEqual([(lolevMaster().layers.find((l) => l.id === "name") as { x: number }).x]);
+    expect(masterChanges(base, base, label, "collab").map(from)).toEqual([222]);
+  });
+
+  it("writes a promotion into the variant's diff, leaving the base master alone", () => {
+    const base = lolevMaster();
+    const label = setLabelOverride(collabOn(base), "name", { x: 300 });
+    const promote = masterChanges(base, base, label, "collab");
+    const r = applyPromotions(base, label, promote, "collab");
+    expect(r.master.layers).toEqual(base.layers);
+    expect((r.master.variants.find((v) => v.id === "collab")!.layers.name as { x: number }).x).toBe(300);
+    expect(r.label.overrides).toBeUndefined();
+  });
+
+  it("writes into the base master when no version is switched to", () => {
+    const base = lolevMaster();
+    const label = setLabelOverride(collabOn(base), "name", { x: 300 });
+    const r = applyPromotions(base, label, masterChanges(base, base, label), undefined);
+    expect((r.master.layers.find((l) => l.id === "name") as { x: number }).x).toBe(300);
+    expect(r.master.variants).toEqual(base.variants);
   });
 });
