@@ -4,7 +4,7 @@
 // same selection — it moves its own `gap` AND follows the layer it hangs from,
 // so it travelled twice as far as the pointer.
 import { describe, expect, it } from "vitest";
-import { moveBy } from "../src/model/edit";
+import { moveBy, snappedDx } from "../src/model/edit";
 import { layerBoxes } from "../src/planLayers";
 import type { Layer, TextLayer, TextLine } from "../src/model/layers";
 import type { MeasureFace } from "../src/plan";
@@ -57,5 +57,39 @@ describe("dragging a selection", () => {
     const after = tops(dragged(layers, ["b"], 0, 12));
     expect(after.b - before.b).toBe(12);
     expect(after.a).toBe(before.a);
+  });
+});
+
+// The pointer snaps to the master's guides, and in a GROUP drag that snap has
+// to move the whole selection or nothing: applying it to the grabbed layer
+// alone re-spaces the group by up to `snap` every time it crosses a guide,
+// which is what "the X axis is all over the place" looks like.
+describe("snapping a group", () => {
+  const grabbed = text({ id: "g", x: 60, y: 20 });      // 20 wide, left-anchored
+  const follower = text({ id: "f", x: 150, y: 60 });
+  const layers: Layer[] = [grabbed, follower];
+  const lefts = (ls: Layer[]) => {
+    const boxes = layerBoxes(ls, m, assets);
+    return { g: boxes.get("g")!.x, f: boxes.get("f")!.x };
+  };
+
+  it("lands the grabbed layer on the guide and carries the rest with it", () => {
+    // A 26pt drag puts the box's centre at 96, 4 short of the centre guide at
+    // 100 — inside the 6pt threshold, so the drag really travels 30.
+    const dx = snappedDx(grabbed, 26, guides, 6, 20);
+    expect(dx).toBe(30);
+    const after = lefts(layers.map((l) =>
+      deepMerge(l, moveBy(l, dx, 0, guides, 0, 20)) as Layer));
+    expect(after.g).toBe(90);                     // centred on the guide
+    expect(after.f - lefts(layers).f).toBe(30);   // and the group kept its shape
+  });
+
+  it("is the raw delta when nothing is in range", () => {
+    expect(snappedDx(grabbed, 40, guides, 6, 20)).toBe(40);
+  });
+
+  it("is the raw delta for a guide-relative layer, which never re-anchors", () => {
+    const onGuide = text({ id: "g", x: 4, y: 20, guideX: "center" });
+    expect(snappedDx(onGuide, 7, guides, 6, 20)).toBe(7);
   });
 });

@@ -48,7 +48,7 @@ import { uppercaseOf } from "@/model/layers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, labelOverriddenPaths,
-  applyPromotions, masterChanges, type MasterChange, moveBy, moveLayers, resizeBy, type ResizeHandle, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue, toggleVariant,
+  applyPromotions, masterChanges, type MasterChange, moveBy, snappedDx, moveLayers, resizeBy, type ResizeHandle, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue, toggleVariant,
   whereLayerLives,
 } from "@/model/edit";
 import { layerRows, variantChips } from "@/model/rows";
@@ -1060,15 +1060,18 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (!bases.length) return;
       dragBase.current = { id, bases };
     }
-    // ponytail: only the grabbed layer snaps to guides; the rest follow the
-    // raw delta so the group keeps its shape. Snap the group's bounds if
-    // that ever matters.
+    // The grabbed layer decides where the drag lands — its snap to the
+    // master's guides becomes the distance EVERY selected layer travels, so
+    // the group keeps its shape instead of re-spacing itself each time the
+    // grabbed one crosses a guide.
     // The set is moveBy's "already carried" test: a layer bound to another in
     // the same drag follows it, and must not move its own gap on top of that.
     const moving = new Set(dragBase.current.bases.map(({ layer }) => layer.id));
+    const grabbed = dragBase.current.bases.find(({ layer }) => layer.id === id);
+    const gdx = grabbed ? snappedDx(grabbed.layer, dx, guides, 6, grabbed.w) : dx;
     const entries = dragBase.current.bases
       .map(({ layer, w }): [string, DeepPartial<Layer>] =>
-        [layer.id, moveBy(layer, dx, dy, guides, layer.id === id ? 6 : 0, w, moving)])
+        [layer.id, moveBy(layer, gdx, dy, guides, 0, w, moving)])
       .filter(([, p]) => Object.keys(p).length);
     if (entries.length) patchMany(entries, !first);
   };
