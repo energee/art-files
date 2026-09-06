@@ -70,3 +70,46 @@ it("validates mixed-axis binding chains, references and persistence", () => {
   a.binding = { to: b.id, side: "right", gap: NaN };
   expect(() => parseMaster(m)).toThrow(/invalid binding/);
 });
+
+// docs/plans/choice-input.md, Task 1. `choices` is not an input MODE — it is a
+// key any fillable layer may carry, because the barcode case needs a list AND
+// `code` validation at once. It lives on LayerBase so the barcode kind, which
+// has its own `value` rather than an `input`, gets it too.
+describe("choices", () => {
+  const withLayer = (patch: Record<string, unknown>, id = "styleLine") => {
+    const m = lolevMaster();
+    return { ...m, layers: m.layers.map((l) => (l.id === id ? { ...l, ...patch } : l)) };
+  };
+  const styles = [
+    { value: "Ultra Hopped Ale" },
+    { title: "Hazy IPA", value: "Hazy India Pale Ale" },
+  ];
+
+  it("round-trips a vocabulary and a title", () => {
+    const m = withLayer({ choices: styles, title: "Style" });
+    const back = parseMaster(JSON.parse(JSON.stringify(m)));
+    const layer = back.layers.find((l) => l.id === "styleLine") as
+      { choices?: unknown; title?: string };
+    expect(layer.choices).toEqual(styles);
+    expect(layer.title).toBe("Style");
+  });
+
+  it("rides on a barcode layer, which has a value rather than an input", () => {
+    const m = withLayer({ choices: [{ title: "Tier 1", value: "850051366040" }] }, "barcode");
+    expect(() => parseMaster(JSON.parse(JSON.stringify(m)))).not.toThrow();
+  });
+
+  it("names the layer when a choice has no value to draw", () => {
+    expect(() => parseMaster(withLayer({ choices: [{ title: "Tier 1" }] })))
+      .toThrow(/styleLine.*choice/i);
+    expect(() => parseMaster(withLayer({ choices: [{ value: "  " }] })))
+      .toThrow(/styleLine.*choice/i);
+    expect(() => parseMaster(withLayer({ choices: "IPA" })))
+      .toThrow(/styleLine.*choices/i);
+  });
+
+  it("drops an empty list, so absent and [] are one state", () => {
+    const back = parseMaster(withLayer({ choices: [] }));
+    expect(back.layers.find((l) => l.id === "styleLine")).not.toHaveProperty("choices");
+  });
+});
