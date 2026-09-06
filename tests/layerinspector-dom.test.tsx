@@ -60,7 +60,7 @@ const NAMES = [
 
 function render(layer: Layer, over: Partial<Parameters<typeof LayerInspector>[0]> = {}) {
   const props: Parameters<typeof LayerInspector>[0] = {
-    layer, layerNames: NAMES, overridden: new Set(),
+    layer, layerNames: NAMES, overridden: { variant: new Set<string>(), label: new Set<string>() },
     onChange: vi.fn(), onReset: vi.fn(), onUnbind: vi.fn(), onBind: vi.fn(),
     ...over,
   };
@@ -309,21 +309,43 @@ describe("LayerInspector style", () => {
 });
 
 describe("LayerInspector override badges", () => {
+  const from = (variant: string[], label: string[] = [], variantName?: string) =>
+    ({ variant: new Set(variant), label: new Set(label), ...(variantName ? { variantName } : {}) });
+
   it("shows a reset badge only for an overridden path and calls onReset with it", () => {
-    const { onReset } = render(text(), { overridden: new Set(["style.fill"]) });
+    const { onReset } = render(text(), { overridden: from(["style.fill"]) });
     expect(byLabel("Reset X to the master")).toBeNull();
     const badge = byLabel("Reset Fill to the master");
     expect(badge).not.toBeNull();
     click(badge!);
-    expect(onReset).toHaveBeenCalledWith("style.fill");
+    expect(onReset).toHaveBeenCalledWith("style.fill", "variant");
   });
 
   it("a bound y reports whichever leaf path the parent marked", () => {
     const { onReset } = render(
-      text({ y: { below: "description", gap: 5 } }), { overridden: new Set(["y.gap"]) },
+      text({ y: { below: "description", gap: 5 } }), { overridden: from(["y.gap"]) },
     );
     click(byLabel("Reset Gap to the master")!);
-    expect(onReset).toHaveBeenCalledWith("y.gap");
+    expect(onReset).toHaveBeenCalledWith("y.gap", "variant");
+  });
+
+  it("marks a variant's change and this label's separately, each resetting its own", () => {
+    // One merged badge used to mean the same click could clear your own edit
+    // or rewrite the shipped variant, depending on state you could not see.
+    const { onReset } = render(text(), { overridden: from(["style.fill"], ["style.fill"], "Collab") });
+    const variantMark = byLabel("Reset Fill to the master")!;
+    const labelMark = byLabel("Reset Fill to this label's master value")!;
+    expect(variantMark.getAttribute("title")).toContain("Collab sets Fill");
+    click(labelMark);
+    expect(onReset).toHaveBeenLastCalledWith("style.fill", "label");
+    click(variantMark);
+    expect(onReset).toHaveBeenLastCalledWith("style.fill", "variant");
+  });
+
+  it("a label-only change shows just the label mark", () => {
+    render(text(), { overridden: from([], ["x"]) });
+    expect(byLabel("Reset X to the master")).toBeNull();
+    expect(byLabel("Reset X to this label's master value")).not.toBeNull();
   });
 });
 

@@ -684,26 +684,33 @@ export const DocumentEditor = memo(function DocumentEditor({
     });
   }
 
-  /** Every dot-path an enabled variant or the label overrides on the
-   *  inspected layer — what LayerInspector badges and offers to reset. */
+  /** The dot-paths deviating from the master on the inspected layer, kept
+   *  APART by source: `variant` paths live in the master file and apply to
+   *  every label with that variant on; `label` paths are this label's alone.
+   *  They used to be merged into one Set here and shown as one badge, which
+   *  made the reset gesture ambiguous — the same click could clear your own
+   *  edit or rewrite the shipped variant. `variantName` names the variant so
+   *  the badge can say whose change it is. */
   const overridden = useMemo(() => {
-    const out = new Set<string>();
-    if (!inspected) return out;
+    const empty = { variant: new Set<string>(), label: new Set<string>() };
+    if (!inspected) return empty;
     const id = inspected.layer.id;
-    if (whereLayerLives(master, id) !== "master") return out;
+    if (whereLayerLives(master, id) !== "master") return empty;
+    const variant = new Set<string>();
+    let variantName: string | undefined;
     for (const v of master.variants) {
       if (!label.enabledVariants.includes(v.id)) continue;
-      for (const p of overriddenPaths(master, v.id, id)) out.add(p);
+      for (const p of overriddenPaths(master, v.id, id)) { variant.add(p); variantName = v.name; }
     }
-    for (const p of labelOverriddenPaths(label, id)) out.add(p);
-    return out;
+    return { variant, label: labelOverriddenPaths(label, id), variantName };
   }, [inspected, master, label]);
-  /** Per-property reset: the label's own override first, then each enabled
-   *  variant's — restoring the master's value. */
-  const resetOverride = (path: string) => {
+  /** Per-property reset, targeted by SOURCE rather than by precedence: the
+   *  badge says which one it clears and passes it here, so clearing a label
+   *  edit can never silently rewrite a variant in the master file. */
+  const resetOverride = (path: string, source: "variant" | "label") => {
     if (!inspected) return;
     const id = inspected.layer.id;
-    if (labelOverriddenPaths(label, id).has(path)) { editLabel((l) => clearLabelOverride(l, id, path)); return; }
+    if (source === "label") { editLabel((l) => clearLabelOverride(l, id, path)); return; }
     edit((d) => {
       let m = d.master;
       for (const v of m.variants) {

@@ -5,7 +5,7 @@
 // reverses them), no Document group — background and mask are the two
 // bottom rows like any other. Each row: kind icon, name (double-click or the
 // row menu to rename inline), a variant badge when a variant ADDS the layer
-// (dimmed while that variant is off), an "overridden" dot when an enabled
+// (dimmed while that variant is off), a provenance mark when an enabled
 // variant overrides part of it, then the two per-layer switches — enabled
 // (absent on the background/mask rows: nothing to fill), power (`enabled`,
 // the only visibility switch — there is no session eye any more), lock —
@@ -41,9 +41,10 @@ export interface LayerRow {
   /** Set when a variant ADDS this layer (an id the master lacks): the row
    *  shows the variant's name as a badge and dims while it is off. */
   variant?: VariantChip;
-  /** Some enabled variant overrides part of this master layer — the row
-   *  shows a small dot after the name. */
-  overridden?: boolean;
+  /** An enabled VARIANT changes part of this master layer — the one that
+   *  does, so the mark can name it. Distinct from `changed` because resetting
+   *  it edits the MASTER FILE, not this label. */
+  variantOverridden?: VariantChip;
   /** THIS label changed the layer (a fill value or an override) — what the
    *  header's "Changed" filter shows. */
   changed?: boolean;
@@ -228,12 +229,25 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
               {row.variant.name}
             </span>
           )}
-          {row.overridden && (
+          {/* Two provenance marks, deliberately different shapes: a FILLED
+              dot for a variant (it lives in the master file and applies to
+              every label with that variant on) and a RING for this label's own
+              change. Same glyph for both is what made the old single dot
+              unreadable — and its title claimed "variant" either way. */}
+          {row.variantOverridden && (
             <span
               role="img"
-              aria-label="Overridden by a variant"
-              title="Overridden by a variant"
+              aria-label={`${row.variantOverridden.name} changes this layer`}
+              title={`${row.variantOverridden.name} changes this layer — resetting edits the master file`}
               className="size-1.5 shrink-0 rounded-full bg-sidebar-primary"
+            />
+          )}
+          {row.changed && (
+            <span
+              role="img"
+              aria-label="Changed in this label"
+              title="Changed in this label"
+              className="size-1.5 shrink-0 rounded-full border border-sidebar-primary"
             />
           )}
         </SidebarMenuButton>
@@ -300,9 +314,9 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
   // layer), in VISIBLE order (front first): a layer only reorders among its
   // peers. Computed once per rows change; the drag and the ⌥↑/⌥↓ ends read it.
   // `variant` alone is not ownership: layerRows also sets it on a master
-  // layer an enabled variant overrides (with `overridden`), and such a layer
-  // still lives — and moves — in master.layers.
-  const ownerOf = (r: LayerRow) => (r.variant && !r.overridden ? r.variant.id : undefined);
+  // layer an enabled variant overrides (with `variantOverridden`), and such a
+  // layer still lives — and moves — in master.layers.
+  const ownerOf = (r: LayerRow) => (r.variant && !r.variantOverridden ? r.variant.id : undefined);
   const peersOf = useMemo(() => {
     const groups = new Map<string | undefined, LayerRow[]>();
     for (let i = rows.length - 1; i >= 0; i--) {
