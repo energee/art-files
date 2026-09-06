@@ -43,16 +43,26 @@ deliberate: the switch needs a second accent, and the scheme supplies it.
 - **The canvas resolves with no values and no overrides** in template mode:
   `resolveLayers(master, enabledVariants, {}, {})`. That is what a placeholder
   render *is*; no renderer change.
-- **Promotion stays in the Save Master review.** The mockup's "Keep in
-  template" action on the override badge is a second route to the same place
-  and is deferred until the dialog proves insufficient.
+- **Promotion is removed.** With the switch, "I want the template to have
+  this label's tweak" is: flip to Template, make the change. That deletes the
+  promote rows and their checkboxes from the review, `applyPromotions`, the
+  `target` argument of `masterChanges`, and the variant-tombstone rule for
+  clears. The review becomes a read-only list of what Save Master will write,
+  with Save and Cancel. It is the biggest deletion available and it closes the
+  one path a label edit could reach the master by accident. (2026-09-06)
+- **The picker lists only this master and its versions.** Other library
+  masters are File → Open Master, which exists. The async resolve, the bench
+  preview and Continue leave the sidebar; the picker is a plain Select of the
+  base master, its variants, and New Variant. Switching templates is a rare
+  file operation and reads as one.
+- **One save button, always.** The sidebar footer shows one primary button
+  that follows the mode: Save Label (= Save Project) or Save Master. Save As
+  and New Variant stay in the menu and the picker.
 - **The mode is per tab and not persisted.** A reopened project starts in
   label mode. (`ponytail:` persist when someone asks.)
 - **Master verbs are disabled, not hidden, outside template mode.** Save
-  Master, Save Master As, New Variant stay in the menu and palette (the
-  `commands` list is read by both) with `disabled` set, so the keyboard and
-  the menu agree. The sidebar footer is the surface that *moves*: Save Project
-  in label mode; New Variant / Save As / Save Master in template mode.
+  Master and Save Master As stay in the menu and palette (the `commands` list
+  is read by both) with `disabled` set, so the keyboard and the menu agree.
 
 ## The colour scheme
 
@@ -170,19 +180,43 @@ Test file named first in each task; write it failing, then implement.
   field does not; in label mode the reverse.
 
 **8. Verbs and the layer list**
-- Files: `src/App.tsx` (`commands`: `master-save`, `master-save-as`,
-  `variant-new` gain `disabled: mode !== "template"`; the sidebar footer
-  renders by mode), `src/components/LayerList.tsx` (`onAdd`, `onRemove`,
-  `onReorder` rendered only when `mode === "template"`; the Changed filter is
-  label-only)
+- Files: `src/App.tsx` (`commands`: `master-save`, `master-save-as` gain
+  `disabled: mode !== "template"`; the sidebar footer is ONE primary button,
+  Save Label or Save Master by mode), `src/components/LayerList.tsx` (`onAdd`,
+  `onRemove`, `onReorder` rendered only when `mode === "template"`; the
+  Changed filter is label-only)
 - Test: `tests/layerlist-dom.test.tsx`, `tests/appmenu.test.ts` *(extend)*
 - Accept: in label mode the list has no Add layer row and no Remove item; in
   template mode it has both and the Changed chip is gone. Save Master is
-  disabled in the menu in label mode even when `masterDirty`.
+  disabled in the menu in label mode even when `masterDirty`. The footer
+  has exactly one button in either mode.
+
+**9. Delete promotion**
+- Files: `src/model/edit.ts` (`applyPromotions`, `masterChanges`' `target`
+  and its `promote` rows go; `MasterChange.kind` loses `"promote"`),
+  `src/components/MasterSaveReview.tsx` (no checkboxes; a read-only list with
+  Save / Cancel), `src/App.tsx` (`saveMaster(as)` no longer takes `promote`;
+  `masterDirty` no longer counts label overrides)
+- Test: `tests/model-master-changes.test.ts`, `tests/mastersave-review-dom.test.tsx`
+  *(shrink)* — the promote cases are deleted, not rewritten
+- Accept: `grep -rn "promot" src` is empty; the review renders no
+  `role="checkbox"`; a label with overrides and a clean master shows Save
+  Master disabled.
+
+**10. The picker lists this master only**
+- Files: `src/components/MasterPicker.tsx` (drop `library`, `resolve`,
+  `onMaster`, the preview and `previewLine`), `src/App.tsx` (the props go; the
+  rebind preview moves into `openMasterPicker`'s existing flow, which already
+  confirms through a dialog)
+- Test: `tests/masterpicker-dom.test.tsx` *(shrink)*
+- Accept: the picker renders the master, its variants and New Variant, and
+  nothing else; `grep -n "rebindLabel" src/components/MasterPicker.tsx` is
+  empty; File → Open Master… still previews the bench counts before
+  committing.
 
 ### Phase C — release
 
-**9. Version, changelog, docs**
+**11. Version, changelog, docs**
 - Files: the five version files (`package.json`, `package-lock.json`,
   `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`),
   `CHANGELOG.md`, `.agents/AGENTS.md` (one line: the contract is master data
@@ -193,12 +227,18 @@ Test file named first in each task; write it failing, then implement.
 
 ## Parallelism
 
-- A1 → A2 → A3 sequential. B4 → (B5, B7 parallel) → B6 → B8. A and B are
-  independent until B7 (which uses the semantic colours), so run A1–A2 and
-  B4–B5 concurrently.
+- A1 → A2 → A3 sequential. B4 → (B5, B7, B9, B10 parallel) → B6 → B8. A and
+  B are independent until B7 (which uses the semantic colours), so run A1–A2
+  and B4–B5 concurrently. B9 and B10 are deletions and touch different files
+  from B5–B7 except App.tsx; run them first so the switch lands on the
+  smaller App.
 
 ## Risks
 
+- **Losing promotion loses "keep this one-off".** A label tweak that should
+  become the default now needs re-doing in Template mode. For a position it is
+  one drag; for a vocabulary it is already master data. Acceptable; if it
+  bites, a per-badge "Copy to template" is the small way back, not the review.
 - **Two accents on one screen.** Purple (primary) and orange (template) both
   appear in template mode: the frame is orange, the one primary action (Save
   Master) is purple. The rule "action colour describes the action, not the
