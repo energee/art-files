@@ -33,6 +33,14 @@ export function guideOf<G extends string>(g: G | "none" | undefined): Exclude<G,
   return g && g !== "none" ? g as Exclude<G, "none"> : undefined;
 }
 
+/** The edge a layer's numeric x places: its horizontal guide when it has one
+ *  (the guide names the edge), else its anchor. The ONE precedence rule,
+ *  shared by placement and resize — the y axis has had `vAnchorOf` all along,
+ *  and resize reading `anchor` raw instead is what made the two disagree. */
+export function hAnchorOf(l: { guideX?: LayerBase["guideX"]; anchor: Anchor }): Anchor {
+  return guideOf(l.guideX) ?? l.anchor;
+}
+
 /** The edge a layer's numeric y places: its vertical guide when it has one
  *  (the guide names the edge), else its vAnchor, else the top. The ONE
  *  precedence rule, shared by placement and resize. */

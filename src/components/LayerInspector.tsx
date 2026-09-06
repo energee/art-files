@@ -498,21 +498,36 @@ function Vocabulary(props: Ctx & { layer: Layer }) {
   );
 }
 
-/** One row of the vocabulary editor. The VALUE box holds its own draft: a
- *  choice with no value is invalid (parseMaster refuses it), so pushing an
- *  emptied box straight at the model threw, App caught it into the menu-bar
- *  alert, and the text sprang back with a red banner that stayed. The draft
- *  lets the box go empty while you retype, commits as soon as there is
- *  something to commit, and restores the last good value if you leave it
- *  blank. Removing a choice is what the X is for. */
+/** A REQUIRED text box: one parseMaster refuses to leave empty (a layer name,
+ *  a choice's value). Pushing an emptied box straight at the model threw, App
+ *  caught it into the menu-bar alert, and the text sprang back with a banner
+ *  that stayed up. The draft lets the box go empty while you retype, commits
+ *  every keystroke that has something in it, and falls back to the last good
+ *  value when focus leaves. Deleting the row is the way to get rid of it.
+ *
+ *  Returns the Input props to spread, so no field can adopt half the rule. */
+function useRequiredText(value: string, commit: (v: string) => void) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return {
+    value: draft ?? value,
+    "aria-invalid": (draft !== null && !draft.trim()) || undefined,
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+      setDraft(e.target.value);
+      if (e.target.value.trim()) commit(e.target.value);
+    },
+    onBlur: () => setDraft(null),
+  };
+}
+
+/** One row of the vocabulary editor. Its value is required — see
+ *  useRequiredText — while the title is free to be blank. */
 function ChoiceRow(props: {
   id: string; index: number; choice: Choice;
   onEdit: (patch: Partial<Choice>) => void;
   onRemove: () => void;
 }) {
   const { id, index, choice, onEdit, onRemove } = props;
-  const [draft, setDraft] = useState<string | null>(null);
-  const blank = draft !== null && !draft.trim();
+  const valueProps = useRequiredText(choice.value, (v) => onEdit({ value: v }));
   return (
     <div className="flex items-center gap-1">
       <Input
@@ -522,14 +537,8 @@ function ChoiceRow(props: {
         onChange={(e) => onEdit({ title: e.target.value })} />
       <Input
         id={`${id}-choice-${index}-value`} className="h-6 flex-1 text-xs"
-        value={draft ?? choice.value} placeholder="Value"
-        aria-label={`Choice ${index + 1} value`}
-        aria-invalid={blank || undefined}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          if (e.target.value.trim()) onEdit({ value: e.target.value });
-        }}
-        onBlur={() => setDraft(null)} />
+        placeholder="Value" aria-label={`Choice ${index + 1} value`}
+        {...valueProps} />
       <button
         type="button" aria-label={`Remove choice ${index + 1}`}
         className="shrink-0 rounded-sm p-1 text-muted-foreground hover:bg-accent"
@@ -949,9 +958,9 @@ export function LayerInspector(props: {
     <Badge paths={paths} overridden={props.overridden} label={label} onReset={props.onReset} />
   );
   const ctx: Ctx = { set, badge };
-  // Local text so a name being retyped never commits as "" — a layer name
-  // is required (parseMaster fails on an empty one).
-  const [nameText, setNameText] = useState<string | null>(null);
+  // A layer name is required (parseMaster fails on an empty one), so it is
+  // typed through the same guard as a choice's value.
+  const nameProps = useRequiredText(layer.name, (v) => set({ name: v }));
   const Icon = KIND_ICONS[layer.kind];
   const page = layer.kind === "image" && (layer.role === "background" || layer.role === "mask");
 
@@ -963,13 +972,7 @@ export function LayerInspector(props: {
           id={`${layer.id}-name`}
           aria-label="Layer name"
           className="h-7 flex-1 text-xs font-medium"
-          value={nameText ?? layer.name}
-          onChange={(e) => {
-            const v = e.target.value;
-            setNameText(v);
-            if (v.trim()) set({ name: v });
-          }}
-          onBlur={() => setNameText(null)}
+          {...nameProps}
         />
       </div>
       {/* The two policy switches read as ordinary Fields (label left, control

@@ -662,14 +662,12 @@ export function ChoiceBox(props: {
         placeholder={placeholder}
         aria-invalid={invalid || undefined}
         onFocus={() => setDraft(value)}
-        // Blur COMMITS what was typed. Reverting to `value` instead lost the
-        // edit for anyone who clicked away rather than pressing Enter — the
-        // plain Input beside this one commits on every keystroke, so a
-        // vocabulary field must not be the one that silently forgets.
-        // Escape has already cleared the draft, so it still cancels.
+        // Blur COMMITS what was typed — clicking away must not throw the edit
+        // out. Escape has already cleared the draft, so it still cancels.
         onBlur={() => {
-          if (draft !== null && draft !== value) commit(draft.trim());
-          else { setDraft(null); setActive(-1); }
+          if (draft !== null && draft !== value) onCommit(draft.trim());
+          setDraft(null);
+          setActive(-1);
         }}
         onChange={(e) => { setDraft(e.target.value); setActive(-1); }}
         onKeyDown={(e) => {

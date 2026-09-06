@@ -15,7 +15,7 @@ import type {
   RelativeY, TextLayer, Variant, BindingSide,
 } from "./layers";
 import type { Box } from "./place";
-import { bindingOf, guideOf, parseMaster, vAnchorOf } from "./layers";
+import { bindingOf, hAnchorOf, parseMaster, vAnchorOf } from "./layers";
 import { deepMerge, type DeepPartial } from "./merge";
 import { getPath } from "./document";
 import { setPath } from "./resolve";
@@ -490,20 +490,16 @@ export function toggleVariant(label: LabelFile, id: string): LabelFile {
 }
 
 /** Enables `id` WITHOUT making it the working version. App reads the working
- *  version off the end of `enabledVariants`, so a plain `toggleVariant` here
- *  would silently retarget the master Select — and the next Save Master's
- *  promotions — at a variant the user only meant to switch a layer on inside.
- *  Inserting it one from the end keeps the version the user chose, while the
- *  newly enabled variant still wins over every variant below it.
- *
- *  With nothing enabled there is no version to protect: a layer that only a
- *  variant adds cannot resolve while the base master is shown, so enabling it
- *  necessarily moves the canvas to that variant. */
-export function enableBeneathVersion(label: LabelFile, id: string): LabelFile {
+ *  version off the END of `enabledVariants`, so appending here would silently
+ *  retarget the master Select — and the next Save Master's promotions — at a
+ *  variant the user only meant to switch a layer on inside. One from the end
+ *  keeps the chosen version while still winning over everything below it.
+ *  (With nothing enabled there is no version to protect, and the slice makes
+ *  it the only one.) */
+const enableBeneathVersion = (label: LabelFile, id: string): LabelFile => {
   const on = label.enabledVariants;
-  if (on.includes(id)) return label;
   return { ...label, enabledVariants: [...on.slice(0, -1), id, ...on.slice(-1)] };
-}
+};
 
 /** Switching the WORKING VERSION, on the label: the version you switch to is
  *  shown, the one you switch away from is hidden. The master Select names one
@@ -941,11 +937,10 @@ export function resizeBy(
   })();
   // Keep the opposite edge still: the anchored point moves by its share of
   // the size change, minus the whole change when the left/top edge was grabbed.
-  // Both axes read the GUIDE first and fall back to the raw anchor, matching
-  // how place.ts positions them (anchorFraction(guideX ?? anchor)) — reading
-  // `anchor` alone here shifted a layer whose guideX disagreed with it.
+  // Both axes read the guide before the raw anchor (hAnchorOf / vAnchorOf),
+  // the same rule place.ts positions them by.
   const b = bindingOf(layer);
-  const ax = dw * (anchorFraction(guideOf(layer.guideX) ?? layer.anchor) - (handle.hx === -1 ? 1 : 0));
+  const ax = dw * (anchorFraction(hAnchorOf(layer)) - (handle.hx === -1 ? 1 : 0));
   const ay = dh * (anchorFraction(vAnchorOf(layer)) - (handle.hy === -1 ? 1 : 0));
   const pos: LayerPatch = {};
   if (ax && !(b?.side === "left" || b?.side === "right")) pos.x = layer.x + ax;
