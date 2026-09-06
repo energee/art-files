@@ -271,7 +271,11 @@ the time.
   Variant` (`AppMenu.tsx:70`, `App.tsx:679`) and `variantChips`
   (`App.tsx:435`, rendered at `:1745`) both fold into it. Deliberately not
   done earlier: the chips are multi-select today, and this task is what turns
-  them into "switch to one version".
+  them into "switch to one version". **New Variant moved into the Select ahead
+  of the rest** (2026-09-05, at the user's ask) — it is an action row at the
+  foot of the menu, and it left the Edit menubar (the command stays registered,
+  so the command palette still has it). The variant TOGGLES are still chips
+  until this task converts them.
 
 ### Phase D — docs
 

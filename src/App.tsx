@@ -686,7 +686,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     setSelection((s) => s.ids.includes(id)
       ? { ids: s.ids.filter((x) => x !== id), anchor: s.anchor === id ? null : s.anchor } : s);
   }
-  /** Edit → New Variant: a fresh empty variant, switched on for this label
+  /** The master Select's "New Variant" (and the command of the same name): a
+   *  fresh empty variant, switched on for this label
    *  and offers its own Add layer submenu. Named
    *  "Variant N"; rename is a master-file edit for now. */
   function onNewVariant() {
@@ -1779,7 +1780,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             {/* The master picker, then the ONE Layers list (spec: UI). */}
             <MasterPicker master={master} label={label}
               library={libraryEntries()} resolve={resolveMasterById}
-              onMaster={pickLibraryMaster} />
+              onMaster={pickLibraryMaster} onNewVariant={onNewVariant} />
             <LayerList rows={rows} selected={selected}
               onSelect={(id, mods) => pick(id, { shift: mods.shift, toggle: mods.meta })}
               onToggle={(id, prop, value) => patch(id, { [prop]: value })}
