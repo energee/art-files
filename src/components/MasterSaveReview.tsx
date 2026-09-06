@@ -107,19 +107,22 @@ export function MasterSaveReview(props: {
           {groups.map((g) => (
             <div key={g.rows[0].layerId} className="mt-2 first:mt-0">
               <p className="text-xs font-medium text-muted-foreground">{g.name}</p>
-              {g.rows.map((c) => (
-                <label key={rowId(c)} className="mt-1 flex items-center gap-2">
+              {g.rows.map((c) => {
+                const row = rowId(c);
+                return (
+                <label key={row} className="mt-1 flex items-center gap-2">
                   <Checkbox
-                    data-row={rowId(c)}
+                    data-row={row}
                     disabled={c.kind !== "promote"}
-                    checked={c.kind !== "promote" || ticked.has(rowId(c))}
-                    onCheckedChange={() => toggle(rowId(c))} />
+                    checked={c.kind !== "promote" || ticked.has(row)}
+                    onCheckedChange={() => toggle(row)} />
                   <span className={c.kind === "promote" ? ""
                     : c.kind === "removed" ? "text-destructive" : "text-muted-foreground"}>
                     {rowText(c)}
                   </span>
                 </label>
-              ))}
+                );
+              })}
             </div>
           ))}
         </div>

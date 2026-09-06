@@ -48,7 +48,7 @@ import { uppercaseOf } from "@/model/layers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, labelOverriddenPaths,
-  applyPromotions, masterChanges, type MasterChange, moveBy, snappedDx, moveLayers, resizeBy, type ResizeHandle, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue, toggleVariant,
+  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, snappedDx, moveLayers, resizeBy, type ResizeHandle, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue, toggleVariant,
   whereLayerLives,
 } from "@/model/edit";
 import { layerRows, variantChips } from "@/model/rows";
@@ -434,17 +434,30 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [workingVersion, setWorkingVersion] = useState<string | null>(null);
   const version = workingVersion !== null
     && master.variants.some((v) => v.id === workingVersion) ? workingVersion : null;
-  // What a Save Master would write: the structural and fill-contract edits
-  // already in the master, plus this label's overrides offered for promotion.
-  // Also the dirty flag — a promote-only state lights Save Master too, since
-  // there IS something to review even when the template itself is untouched.
-  const masterChangeList = useMemo(
-    () => masterChanges(pristineMaster.current, master, label, version ?? undefined),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- savedTick re-reads the ref
-    [master, label, version, savedTick]);
-  const masterDirty = masterChangeList.length > 0;
   /** Which save the review dialog is standing in front of, or null. */
   const [pendingSave, setPendingSave] = useState<{ as: boolean } | null>(null);
+  // What a Save Master would write: the structural and fill-contract edits
+  // already in the master, plus this label's overrides offered for promotion.
+  // Itemised ONLY while the dialog is up — every property edit is a label
+  // override now, so this memo's inputs change on every pointermove of a drag,
+  // and walking the whole master and its variants at pointer rate to answer
+  // "is anything dirty" was most of a drag's work.
+  const masterChangeList = useMemo(
+    () => (pendingSave
+      ? masterChanges(pristineMaster.current, master, label, version ?? undefined) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- savedTick re-reads the ref
+    [pendingSave, master, label, version, savedTick]);
+  // The dirty flag is the cheap superset of the same question: the template
+  // moved, or the label holds an override that a save could offer to promote.
+  // It can light Save Master for an override that happens to equal what the
+  // master already says — the review then opens with nothing in it, which is
+  // the honest answer to "what would this save write?".
+  const masterDirty = useMemo(
+    () => masterDiff(pristineMaster.current, master)
+      || Object.keys(label.overrides ?? {}).length > 0,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- savedTick re-reads the ref
+    [master, label.overrides, savedTick]);
+
   // Which layers the inspector shows — Figma's model: an ordered selection
   // plus an anchor a shift-range extends from, driven by the Layers list or
   // PreviewCompare's click-to-select (selection.ts).
@@ -1063,11 +1076,11 @@ export const DocumentEditor = memo(function DocumentEditor({
       // The selection's own box, in the guides' space: layerBoxes measures in
       // page space, which BLEED_SHIFT offsets from the coordinates layer.x and
       // the guides are written in.
-      const spans = bases.map(({ layer, w }) =>
-        [(boxes.get(layer.id)?.x ?? layer.x) - BLEED_SHIFT, w] as const);
-      const x = Math.min(...spans.map(([left]) => left));
-      const right = Math.max(...spans.map(([left, w]) => left + w));
-      dragBase.current = { id, bases, bounds: { x, w: right - x } };
+      const span = bases.reduce((acc, { layer, w }) => {
+        const left = (boxes.get(layer.id)?.x ?? layer.x) - BLEED_SHIFT;
+        return { x: Math.min(acc.x, left), right: Math.max(acc.right, left + w) };
+      }, { x: Infinity, right: -Infinity });
+      dragBase.current = { id, bases, bounds: { x: span.x, w: span.right - span.x } };
     }
     // The SELECTION'S BOUNDS decide where the drag lands: one snap to the
     // master's guides, applied as the distance every selected layer travels.
@@ -1329,10 +1342,15 @@ export const DocumentEditor = memo(function DocumentEditor({
     const suggested = machineName(forked.name) || "master";
     /** A fork takes its display name from the file it was saved as — without
      *  this the library would list two masters called "Lolev" and no way to
-     *  tell them apart (there is no master-name field anywhere in the UI). */
+     *  tell them apart (there is no master-name field anywhere in the UI).
+     *
+     *  Only a name the user actually TYPED counts: accepting the suggested
+     *  filename must not rename "Lolev" to its own slug, and that is also the
+     *  common case, which then costs no second write below. */
     const titled = (file: string): Master => {
       const base = masterNameFromFile(file);
-      return as && base && base !== forked.name ? { ...forked, name: base } : forked;
+      return as && base && base !== suggested && base !== forked.name
+        ? { ...forked, name: base } : forked;
     };
     /** Adopt `m` as the saved master: the document's, the library's, and the
      *  baseline the next review diffs against. A plain save with nothing
@@ -1352,8 +1370,10 @@ export const DocumentEditor = memo(function DocumentEditor({
         if (path === null) return false;
         masterFilePath.current = path;
         const final = titled(path);
-        // The name is only knowable after the picker returns, so a renamed
-        // fork rewrites the file it just wrote — same path, no second dialog.
+        // ponytail: the name is only knowable after the picker returns, so a
+        // renamed fork rewrites the file it just wrote — same path, no second
+        // dialog, but a second zip of every asset. Split saveNativeFile into
+        // "pick a path" and "write bytes" if that ever bites.
         if (final !== forked)
           await saveNativeFile(packMaster(final, assets), {
             defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path,
@@ -1385,10 +1405,12 @@ export const DocumentEditor = memo(function DocumentEditor({
         return false;
       }
     }
+    // The download fallback names the file itself, so `titled` is a no-op
+    // here — it stays in the line so all three branches read the same way.
     const name = suggested + MASTER_EXT;
     startSaveBatch();
     saveBytes(packMaster(forked, assets), name, "application/zip");
-    commit(forked, name);
+    commit(titled(name), name);
     return true;
   }
 
