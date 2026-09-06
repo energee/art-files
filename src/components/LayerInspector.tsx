@@ -409,6 +409,112 @@ function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: string }) {
   );
 }
 
+/** The FILL CONTRACT — what a filler may put in this text layer. Authored on
+ *  the master, never overridden per label (edit.ts's MASTER_PATHS routes these
+ *  paths there), which is why it reads as its own section rather than sitting
+ *  among the Type controls: editing one changes the template for every label,
+ *  and the Save Master review will say so.
+ *
+ *  Every field here was already honoured by the renderer and the fill widgets
+ *  and authored by lolevLayers.ts; none of them had a control until now. */
+function FillContract(props: Ctx & { layer: TextLayer }) {
+  const { layer, set, badge } = props;
+  const id = layer.id;
+  const numeric = layer.input === "number";
+  return (
+    <div className="space-y-1.5">
+      <Heading>Fill contract</Heading>
+      <Row badge={badge(["placeholder"], "Placeholder")}>
+        <InputRow
+          id={`${id}-placeholder`} label="Placeholder" value={layer.placeholder ?? ""}
+          hint="Drawn while the layer is empty"
+          onChange={(v) => set({ placeholder: v || undefined })}
+        />
+      </Row>
+      <Field id={`${id}-input`} label="Input" badge={badge(["input"], "Input")}>
+        <Select
+          value={layer.input ?? "text"}
+          onValueChange={(v) => { if (v) set({ input: v === "text" ? undefined : v as TextLayer["input"] }); }}
+        >
+          <SelectTrigger id={`${id}-input`} size="sm" aria-label="Input" className="h-6 w-24 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="text" className="text-xs">Rich text</SelectItem>
+            <SelectItem value="number" className="text-xs">Number</SelectItem>
+            <SelectItem value="code" className="text-xs">Code</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>
+      {/* Range only bounds a number input; a code input is bounded by its
+          symbology instead. Neither is meaningful for rich text. */}
+      {numeric && (
+        <>
+          <BlankableField
+            id={`${id}-min`} label="Minimum" unit="" placeholder="none"
+            value={layer.min} min={-1e6} max={1e6} step={0.01}
+            badge={badge(["min"], "Minimum")}
+            onChange={(min) => set({ min })}
+          />
+          <BlankableField
+            id={`${id}-max`} label="Maximum" unit="" placeholder="none"
+            value={layer.max} min={-1e6} max={1e6} step={0.01}
+            badge={badge(["max"], "Maximum")}
+            onChange={(max) => set({ max })}
+          />
+        </>
+      )}
+      {layer.input === "code" && (
+        <Field id={`${id}-fill-symbology`} label="Symbology" badge={badge(["symbology"], "Symbology")}>
+          <Select
+            value={layer.symbology ?? "upc-a"}
+            onValueChange={(v) => { if (v) set({ symbology: v as Symbology }); }}
+          >
+            <SelectTrigger id={`${id}-fill-symbology`} size="sm" aria-label="Symbology" className="h-6 w-24 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SYMBOLOGIES.map((sym) => (
+                <SelectItem key={sym.value} value={sym.value} className="text-xs">{sym.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      )}
+      {/* Fixed text drawn after the filled value on the same line ("% alc by
+          vol"); the filler never edits it. */}
+      {layer.input !== undefined && (
+        <Row badge={badge(["suffix"], "Suffix")}>
+          <InputRow
+            id={`${id}-suffix`} label="Suffix" value={layer.suffix ?? ""}
+            hint="Drawn after the filled value"
+            onChange={(v) => set({ suffix: v || undefined })}
+          />
+        </Row>
+      )}
+    </div>
+  );
+}
+
+/** A labelled single-line text control, the Field idiom with the input on its
+ *  own row (a placeholder or suffix needs the width a right-hand control has
+ *  not got). */
+function InputRow(props: {
+  id: string; label: string; value: string; hint?: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={props.id} className="text-xs text-muted-foreground">{props.label}</Label>
+      <Input
+        id={props.id} className="h-6 text-xs" value={props.value}
+        placeholder={props.hint}
+        onChange={(e) => props.onChange(e.target.value)}
+      />
+    </div>
+  );
+}
+
 function ImageGeometry(props: Ctx & { layer: ImageLayer }) {
   const { layer, set, badge } = props;
   const id = layer.id;
@@ -766,6 +872,7 @@ export function LayerInspector(props: {
       <Position layer={layer} layerNames={props.layerNames} onUnbind={props.onUnbind} onBind={props.onBind} {...ctx} />
 
       {layer.kind === "text" && <TextGeometry layer={layer} fontFamily={props.fontFamily} {...ctx} />}
+      {layer.kind === "text" && <FillContract layer={layer} {...ctx} />}
       {layer.kind === "image" && <ImageGeometry layer={layer} {...ctx} />}
       {layer.kind === "barcode" && <BarcodeGeometry layer={layer} {...ctx} />}
       {layer.kind === "qr" && <QrGeometry layer={layer} {...ctx} />}
