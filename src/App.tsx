@@ -26,6 +26,7 @@
 // render settings, and the updater.
 import { RenderSettings as RenderSettingsFields } from "@/components/RenderSettings";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { MasterSaveReview } from "@/components/MasterSaveReview";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
@@ -47,14 +48,15 @@ import { uppercaseOf } from "@/model/layers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride, labelOverriddenPaths,
-  masterDiff, moveBy, moveLayers, resizeBy, type ResizeHandle, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue, toggleVariant,
+  applyPromotions, masterChanges, type MasterChange, moveBy, moveLayers, resizeBy, type ResizeHandle, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue, toggleVariant,
   whereLayerLives,
 } from "@/model/edit";
 import { layerRows, variantChips } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
 import { rebindLabel } from "@/model/rebindLayers";
 import {
-  MASTER_EXT, packLabel, packMaster, unpackLabel, unpackMaster, type MasterAssets,
+  MASTER_EXT, masterNameFromFile, packLabel, packMaster, unpackLabel, unpackMaster,
+  type MasterAssets,
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
 import { SHIPPED_MASTER_ID, masterIndex, rememberMaster, resolveMasterById } from "@/masters";
@@ -418,10 +420,21 @@ export const DocumentEditor = memo(function DocumentEditor({
     useHistory<Doc>(() => { const m = lolevMaster(); return { master: m, label: newLabel(m) }; });
   const { master, label } = doc;
   // The master as of the last open/save — the baseline the "unsaved master
-  // edits" dot (Save Master) compares against, by content (masterDiff).
+  // edits" dot (Save Master) compares against, itemised by masterChanges.
   const pristineMaster = useRef(doc.master);
-  const [, repaintMasterDirty] = useState(0);
-  const masterDirty = masterDiff(pristineMaster.current, master);
+  // Bumped by every save/open so the memo below re-reads the ref.
+  const [savedTick, repaintMasterDirty] = useState(0);
+  // What a Save Master would write: the structural and fill-contract edits
+  // already in the master, plus this label's overrides offered for promotion.
+  // Also the dirty flag — a promote-only state lights Save Master too, since
+  // there IS something to review even when the template itself is untouched.
+  const masterChangeList = useMemo(
+    () => masterChanges(pristineMaster.current, master, label),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- savedTick re-reads the ref
+    [master, label, savedTick]);
+  const masterDirty = masterChangeList.length > 0;
+  /** Which save the review dialog is standing in front of, or null. */
+  const [pendingSave, setPendingSave] = useState<{ as: boolean } | null>(null);
   // Which layers the inspector shows — Figma's model: an ordered selection
   // plus an anchor a shift-range extends from, driven by the Layers list or
   // PreviewCompare's click-to-select (selection.ts).
@@ -1260,23 +1273,56 @@ export const DocumentEditor = memo(function DocumentEditor({
     return { texture: textureAsset(), mask: maskAsset(), customImages: imageBundle(ids) };
   }
 
-  /** File → Save Master / Save Master As…: packMaster through the same
-   *  three-way platform save path as saveProject, then registers the file in
-   *  the library index and moves the master-dirty baseline. */
-  async function saveMaster(as = false): Promise<boolean> {
-    const bytes = packMaster(master, masterAssetBundle());
-    const suggested = machineName(master.name) || "master";
-    const clean = () => { pristineMaster.current = master; repaintMasterDirty((n) => n + 1); };
+  /** File → Save Master / Save Master As…, always downstream of the review
+   *  dialog (MasterSaveReview), which is where `promote` comes from: the label
+   *  overrides the reviewer ticked to fold into the template.
+   *
+   *  Save As also FORKS — a fresh master id, the document rebound onto it, and
+   *  the file written. That is what "Duplicate as new master…" used to do
+   *  except for the writing, so there is one verb for it now, not two.
+   *
+   *  packMaster goes through the same three-way platform save path as
+   *  saveProject, then registers the file in the library index and moves the
+   *  master-dirty baseline. */
+  async function saveMaster(as = false, promote: readonly MasterChange[] = []): Promise<boolean> {
+    const promoted = applyPromotions(master, label, promote);
+    const forked = as
+      ? { ...promoted.master, id: `master-${crypto.randomUUID().slice(0, 8)}` }
+      : promoted.master;
+    const assets = masterAssetBundle();
+    const suggested = machineName(forked.name) || "master";
+    /** A fork takes its display name from the file it was saved as — without
+     *  this the library would list two masters called "Lolev" and no way to
+     *  tell them apart (there is no master-name field anywhere in the UI). */
+    const titled = (file: string): Master => {
+      const base = masterNameFromFile(file);
+      return as && base && base !== forked.name ? { ...forked, name: base } : forked;
+    };
+    /** Adopt `m` as the saved master: the document's, the library's, and the
+     *  baseline the next review diffs against. A plain save with nothing
+     *  promoted is a no-op edit and pushes no history entry. */
+    const commit = (m: Master, where: string) => {
+      edit(() => ({ master: m, label: promoted.label }));
+      rememberMaster(m, where);
+      pristineMaster.current = m;
+      repaintMasterDirty((n) => n + 1);
+    };
     if (isTauri()) {
       const existingPath = as ? null : masterFilePath.current;
       try {
-        const path = await saveNativeFile(bytes, {
+        const path = await saveNativeFile(packMaster(forked, assets), {
           defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path: existingPath ?? undefined,
         });
         if (path === null) return false;
         masterFilePath.current = path;
-        rememberMaster(master, path);
-        clean();
+        const final = titled(path);
+        // The name is only knowable after the picker returns, so a renamed
+        // fork rewrites the file it just wrote — same path, no second dialog.
+        if (final !== forked)
+          await saveNativeFile(packMaster(final, assets), {
+            defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path,
+          });
+        commit(final, path);
         setLoadError("");
         return true;
       } catch (err) {
@@ -1291,9 +1337,10 @@ export const DocumentEditor = memo(function DocumentEditor({
         if (as || !masterFileHandle.current) {
           masterFileHandle.current = await pick({ suggestedName: suggested + MASTER_EXT, types: MASTER_TYPES });
         }
-        await writeHandle(masterFileHandle.current, bytes);
-        rememberMaster(master, masterFileHandle.current.name);
-        clean();
+        await writeHandle(masterFileHandle.current, packMaster(forked, assets));
+        const final = titled(masterFileHandle.current.name);
+        if (final !== forked) await writeHandle(masterFileHandle.current, packMaster(final, assets));
+        commit(final, masterFileHandle.current.name);
         return true;
       } catch (err) {
         masterFileHandle.current = null;
@@ -1304,9 +1351,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     }
     const name = suggested + MASTER_EXT;
     startSaveBatch();
-    saveBytes(bytes, name, "application/zip");
-    rememberMaster(master, name);
-    clean();
+    saveBytes(packMaster(forked, assets), name, "application/zip");
+    commit(forked, name);
     return true;
   }
 
@@ -1371,16 +1417,6 @@ export const DocumentEditor = memo(function DocumentEditor({
     masterFilePath.current = isTauri() ? masterIndex()[target.id]?.path ?? null : null;
     commitRebind(target);
     void adoptMasterAssets(assets);
-  }
-
-  /** MasterPicker's "Duplicate as new master…": clone under a fresh id and
-   *  rebind straight onto the clone (nothing benches — it is identical). Not
-   *  registered in the index until Save Master writes it. */
-  function duplicateMaster(name: string) {
-    const clone: Master = { ...master, id: `master-${crypto.randomUUID().slice(0, 8)}`, name };
-    masterFileHandle.current = null;
-    masterFilePath.current = null;
-    commitRebind(clone, false);
   }
 
   /** MasterPicker's library listing: the shipped master plus every master
@@ -1609,8 +1645,9 @@ export const DocumentEditor = memo(function DocumentEditor({
     { id: "project-save-as", label: "Save Project As…", key: "s", mods: "⇧⌘",
       run: () => void saveProject(true) },
     { id: "master-open", label: "Open Master…", run: () => void openMasterPicker() },
-    { id: "master-save", label: "Save Master", disabled: !masterDirty, run: () => void saveMaster() },
-    { id: "master-save-as", label: "Save Master As…", run: () => void saveMaster(true) },
+    { id: "master-save", label: "Save Master", disabled: !masterDirty,
+      run: () => setPendingSave({ as: false }) },
+    { id: "master-save-as", label: "Save Master As…", run: () => setPendingSave({ as: true }) },
     { id: "export-both", label: "Export PDFs", key: "e", mods: "⌘",
       disabled: pdfExportBlocked, run: exportPdfs },
     { id: "export-art", label: "Export Artwork PDF", disabled: pdfExportBlocked, run: downloadArt },
@@ -1725,6 +1762,15 @@ export const DocumentEditor = memo(function DocumentEditor({
           <RenderSettingsFields value={render} onChange={onRenderChange} />
         </DialogContent>
       </Dialog>
+      {pendingSave && (
+        <MasterSaveReview open changes={masterChangeList}
+          onCancel={() => setPendingSave(null)}
+          onConfirm={(promote) => {
+            const { as } = pendingSave;
+            setPendingSave(null);
+            void saveMaster(as, promote);
+          }} />
+      )}
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
           preview center, inspector sheet right. */}
       <SidebarProvider hotkey={active} className="min-h-0 h-full">
@@ -1733,8 +1779,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             {/* The master picker, then the ONE Layers list (spec: UI). */}
             <MasterPicker master={master} label={label}
               library={libraryEntries()} resolve={resolveMasterById}
-              onMaster={pickLibraryMaster} onOpenMaster={() => void openMasterPicker()}
-              onDuplicate={duplicateMaster} />
+              onMaster={pickLibraryMaster} />
             <LayerList rows={rows} selected={selected}
               onSelect={(id, mods) => pick(id, { shift: mods.shift, toggle: mods.meta })}
               onToggle={(id, prop, value) => patch(id, { [prop]: value })}

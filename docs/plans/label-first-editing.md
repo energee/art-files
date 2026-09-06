@@ -150,7 +150,7 @@ Test file named first in each task; write it failing, then implement.
 
 ### Phase C — the reviewed master save (depends on A; C6 gates C7/C8)
 
-**6. Itemised master diff**
+**6. Itemised master diff** — *done*
 - Files: `src/model/edit.ts` (new `masterChanges`, beside `masterDiff:473`)
 - Test: `tests/model-master-changes.test.ts` *(new)*
 - `masterChanges(base, edited, label)` returns a flat list of
@@ -164,7 +164,7 @@ Test file named first in each task; write it failing, then implement.
 - Accept: renaming a layer and nudging another yields exactly two entries with
   the right paths; an unchanged master yields `[]`.
 
-**7. The review dialog**
+**7. The review dialog** — *done*
 - Files: `src/components/MasterSaveReview.tsx` *(new)*, `src/App.tsx`
   (`saveMaster:1279`)
 - Test: `tests/mastersave-review-dom.test.tsx` *(new)*
@@ -177,7 +177,7 @@ Test file named first in each task; write it failing, then implement.
 - Accept: cancelling leaves master, label and `pristineMaster` untouched;
   confirming with one promote row checked moves exactly that path.
 
-**8. Wire the dialog into both save paths**
+**8. Wire the dialog into both save paths** — *done*
 - Files: `src/App.tsx` (`saveMaster`, commands `master-save` /
   `master-save-as` at `:1625-1626`)
 - Test: `tests/mastersave-review-dom.test.tsx` *(extend)*

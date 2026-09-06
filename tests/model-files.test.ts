@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { strToU8, zipSync } from "fflate";
 import {
-  packLabel, packMaster, parseLabel, serializeLabel, serializeMaster, unpackLabel, unpackMaster,
+  masterNameFromFile, packLabel, packMaster, parseLabel, serializeLabel, serializeMaster, unpackLabel, unpackMaster,
 } from "../src/model/files";
 import { lolevMaster as lolevV3 } from "../src/model/lolevLayers";
 import { lolevMaster as lolevV1 } from "../src/model/lolev";
@@ -111,5 +111,18 @@ describe(".label v3 container", () => {
 
   it("rejects a ZIP without label.json or config.json", () => {
     expect(() => unpackLabel(zipSync({ "readme.txt": strToU8("hi") }))).toThrow(/label\.json\/config\.json/);
+  });
+});
+
+describe("masterNameFromFile", () => {
+  it("takes the basename, without directories or extension", () => {
+    expect(masterNameFromFile("/Users/ted/Masters/Lolev Winter.master")).toBe("Lolev Winter");
+    expect(masterNameFromFile("C:\\Masters\\Lolev Winter.master")).toBe("Lolev Winter");
+    expect(masterNameFromFile("lolev-winter.master")).toBe("lolev-winter");
+  });
+
+  it("is empty when there is no usable name — the caller keeps the one it had", () => {
+    expect(masterNameFromFile("")).toBe("");
+    expect(masterNameFromFile("/Users/ted/Masters/")).toBe("");
   });
 });
