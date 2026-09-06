@@ -26,6 +26,7 @@
 //   * New Variant, an action at the foot.
 // Only the middle one resolves a file, so the two sentinels are intercepted
 // in onValueChange before any rebind is considered.
+import { CornerDownRight } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { rebindLabel } from "@/model/rebindLayers";
@@ -161,7 +162,11 @@ export function MasterPicker(props: {
         <SelectContent>
           <SelectItem value={props.master.id}>{props.master.name}</SelectItem>
           {props.master.variants.map((v) => (
-            <SelectItem key={v.id} value={VERSION + v.id} className="pl-7">{v.name}</SelectItem>
+            // The icon, not an indent, says "a version OF the row above".
+            <SelectItem key={v.id} value={VERSION + v.id}>
+              <CornerDownRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              {v.name}
+            </SelectItem>
           ))}
           {others.length > 0 && <SelectSeparator />}
           {others.map(([id, entry]) => (
