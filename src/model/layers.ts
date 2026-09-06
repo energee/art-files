@@ -48,10 +48,25 @@ export function bindingOf(layer: { binding?: LayerBinding | null; y?: unknown })
     ? { to: y.below, side: "bottom", gap: y.gap } : undefined;
 }
 
+/** One offered value in a layer's fill vocabulary. `title` is what the picker
+ *  lists, `value` is what the label draws; absent title = show the value. The
+ *  shape comes from the deleted presets.json, whose barcode tiers were exactly
+ *  `{ name, upc }` (docs/plans/choice-input.md). */
+export interface Choice { title?: string; value: string }
+
 export interface LayerBase {
   id: string;
   /** Shown in the Layers list. */
   name: string;
+  /** Caption above the fill widget, when the layer's name is not what you
+   *  want to say to whoever is filling it. Absent = the name. */
+  title?: string;
+  /** The fill vocabulary. Present = the fill widget offers these AND still
+   *  takes anything typed, and a typed value is appended here (edit.ts's
+   *  learnChoice). Absent = today's widget. Deliberately NOT a mode of
+   *  `input`: a barcode tier picker is a list AND `code` validation, so the
+   *  two cannot share one enum. Empty means absent — parseMaster drops it. */
+  choices?: Choice[];
   kind: LayerKind;
   /** Off = never draws. The only visibility switch (no session "eye"). */
   enabled: boolean;
@@ -289,6 +304,19 @@ function validateLayer(l: Layer, ctx: string): void {
     if (typeof l.value !== "string") fail(`qr layer "${l.id}" missing value`);
     if (typeof l.size !== "number") fail(`qr layer "${l.id}" missing size`);
   }
+  if (l.choices !== undefined) {
+    if (!Array.isArray(l.choices)) fail(`${ctx} layer "${l.id}" has invalid choices`);
+    for (const c of l.choices) {
+      if (!c || typeof c !== "object" || typeof c.value !== "string" || !c.value.trim())
+        fail(`${ctx} layer "${l.id}" has a choice with no value`);
+      if (c.title !== undefined && typeof c.title !== "string")
+        fail(`${ctx} layer "${l.id}" has a choice with an invalid title`);
+    }
+    // Absent and [] are one state, so nothing downstream has to test both.
+    if (l.choices.length === 0) delete (l as { choices?: Choice[] }).choices;
+  }
+  if (l.title !== undefined && typeof l.title !== "string")
+    fail(`${ctx} layer "${l.id}" has an invalid title`);
   if (!l.style || typeof l.style !== "object") fail(`${ctx} layer "${l.id}" missing style`);
 }
 
