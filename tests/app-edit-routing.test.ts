@@ -108,3 +108,27 @@ describe("content routes to the label for any layer", () => {
     expect(d.label.values.barcode).toBe("036000291452");
   });
 });
+
+// docs/plans/choice-input.md, Task 3. The vocabulary and the caption declare
+// what a filler may put in a layer, which is the fill contract's own
+// definition — so they route to the master like placeholder and symbology,
+// not into this label's overrides.
+describe("the vocabulary is part of the fill contract", () => {
+  const choices = [{ value: "Ultra Hopped Ale" }, { title: "Tier 1", value: "8500" }];
+
+  it("routes choices and title to the master", () => {
+    const d = patchLayers(doc(), [["styleLine", { choices, title: "Style" }]]);
+    expect(d.label.overrides).toBeUndefined();
+    const layer = d.master.layers.find((l) => l.id === "styleLine") as
+      { choices?: unknown; title?: string };
+    expect(layer.choices).toEqual(choices);
+    expect(layer.title).toBe("Style");
+  });
+
+  it("splits a patch that carries a vocabulary and a nudge", () => {
+    const d = patchLayers(doc(), [["styleLine", { choices, x: 300 }]]);
+    expect(d.label.overrides?.styleLine).toEqual({ x: 300 });
+    expect((d.master.layers.find((l) => l.id === "styleLine") as { choices?: unknown }).choices)
+      .toEqual(choices);
+  });
+});

@@ -119,7 +119,7 @@ Test file named first in each task; write it failing, then implement.
 
 ### Phase A — model (A1 gates everything)
 
-**1. `choices` in the model**
+**1. `choices` in the model** — *done*
 - Files: `src/model/layers.ts` (`Choice`, `LayerBase.title`,
   `TextLayer.choices`, and `parseMaster`'s validation)
 - Test: `tests/model-layers.test.ts` *(extend)*
@@ -131,7 +131,7 @@ Test file named first in each task; write it failing, then implement.
   value fails to load with a named error; a barcode layer carrying both
   `input: "code"` and `choices` loads.
 
-**2. Learning a typed value**
+**2. Learning a typed value** — *done*
 - Files: `src/model/edit.ts` (new `learnChoice`, beside `setContentIn`)
 - Test: `tests/model-choice.test.ts` *(new)*
 - `learnChoice(master, id, value)` appends `{ value }` to that layer's
@@ -140,14 +140,14 @@ Test file named first in each task; write it failing, then implement.
 - Accept: learning "Saison" twice yields one entry; learning a value that
   matches an existing choice's `title` but not its `value` still appends.
 
-**3. `choices` and `title` join the fill contract**
+**3. `choices` and `title` join the fill contract** — *done*
 - Files: `src/model/edit.ts` (`MASTER_PATHS`)
 - Test: `tests/app-edit-routing.test.ts` *(extend)*
 - Accept: `patchLayers(doc, [["styleLine", { choices: […] }]])` writes
   `master.layers`, not `label.overrides`; a patch mixing `choices` with `x`
   still splits, master and label each taking their half.
 
-**4. Filling from a list, and learning from it**
+**4. Filling from a list, and learning from it** — *done*
 - Files: `src/model/edit.ts` (`setContentIn`)
 - Test: `tests/model-choice.test.ts` *(extend)*
 - `setContentIn` on a layer that HAS `choices` writes the label value as today AND runs
