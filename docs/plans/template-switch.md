@@ -1,6 +1,6 @@
 # Template switch — this label, or the template
 
-Status: **PLAN** (2026-09-06). Branch `feat/template-switch`, stacked on
+Status: **DONE** (2026-09-06). Branch `feat/template-switch`, stacked on
 `feat/label-first-editing` (PR #52). Version 0.1.60.
 
 ## What it is
@@ -101,7 +101,7 @@ Test file named first in each task; write it failing, then implement.
 
 ### Phase A — theme (independent of B; A1 first because everything renders in it)
 
-**1. Tokens**
+**1. Tokens** *(done)*
 - Files: `src/index.css`
 - Test: `tests/theme-contrast.test.ts` *(new)* — parses the `:root` block,
   resolves each `light-dark()` pair, asserts WCAG AA (4.5:1) for every
@@ -110,7 +110,7 @@ Test file named first in each task; write it failing, then implement.
   on background and card; primary-foreground on primary.
 - Accept: the test passes for every pair; no component file changes.
 
-**2. Semantic utilities**
+**2. Semantic utilities** *(done)*
 - Files: `src/index.css` (`@theme inline` block)
 - Test: `tests/theme-contrast.test.ts` *(extend)* — the six accents and their
   `-soft` tints are exposed as `--color-*` so `text-attention`,
@@ -118,7 +118,7 @@ Test file named first in each task; write it failing, then implement.
 - Accept: `grep -c "color-attention\|color-warning\|color-success\|color-info"
   src/index.css` ≥ 8.
 
-**3. Recolour what already has a colour**
+**3. Recolour what already has a colour** *(done)*
 - Files: `src/components/LayerInspector.tsx` (Badge), `src/components/LayerList.tsx`
   (Changed chip, Overridden dot), `src/components/MasterSaveReview.tsx`,
   `src/components/MasterPicker.tsx` (error line), `src/App.tsx` (status strip)
@@ -130,7 +130,7 @@ Test file named first in each task; write it failing, then implement.
 
 ### Phase B — the switch (B4 gates B5–B8)
 
-**4. `patchLayers` takes a target**
+**4. `patchLayers` takes a target** *(done)*
 - Files: `src/model/edit.ts`
 - Test: `tests/app-edit-routing.test.ts` *(extend)*
 - `patchLayers(doc, entries, target: "label" | "master" = "label")`. With
@@ -144,7 +144,7 @@ Test file named first in each task; write it failing, then implement.
   on a variant-added layer writes `variants[v].layers[id].x`; with `"label"`
   every existing routing test passes unchanged.
 
-**5. Mode state and the switch**
+**5. Mode state and the switch** *(done)*
 - Files: `src/App.tsx` (`const [mode, setMode] = useState<"label"|"template">("label")`,
   passed to `patchLayers`), `src/components/MasterPicker.tsx` (a `Segmented`
   under the Select, `aria-label="Editing"`, values `This label` / `Template`;
@@ -154,7 +154,7 @@ Test file named first in each task; write it failing, then implement.
 - Accept: clicking Template calls `onMode("template")`; the trigger carries
   `data-mode` so the frame can style off it.
 
-**6. The frame and canvas in template mode**
+**6. The frame and canvas in template mode** *(done)*
 - Files: `src/App.tsx`
 - Test: `tests/app-v3-dom.test.tsx` *(extend)*
 - In template mode: the workspace root carries `data-mode="template"` and the
@@ -167,7 +167,7 @@ Test file named first in each task; write it failing, then implement.
   makes the canvas text node read the placeholder; switching back restores
   the value. No history entry is made by the switch itself.
 
-**7. The inspector in template mode**
+**7. The inspector in template mode** *(done)*
 - Files: `src/components/LayerInspector.tsx` (new prop `mode`), `src/App.tsx`
 - Test: `tests/layerinspector-dom.test.tsx` *(extend)*
 - `mode === "template"`: hide Content; show FillContract / Vocabulary at the
@@ -179,7 +179,7 @@ Test file named first in each task; write it failing, then implement.
 - Accept: in template mode `#styleLine-choice-0-value` exists and the content
   field does not; in label mode the reverse.
 
-**8. Verbs and the layer list**
+**8. Verbs and the layer list** *(done)*
 - Files: `src/App.tsx` (`commands`: `master-save`, `master-save-as` gain
   `disabled: mode !== "template"`; the sidebar footer is ONE primary button,
   Save Label or Save Master by mode), `src/components/LayerList.tsx` (`onAdd`,
@@ -191,7 +191,7 @@ Test file named first in each task; write it failing, then implement.
   disabled in the menu in label mode even when `masterDirty`. The footer
   has exactly one button in either mode.
 
-**9. Delete promotion**
+**9. Delete promotion** *(done)*
 - Files: `src/model/edit.ts` (`applyPromotions`, `masterChanges`' `target`
   and its `promote` rows go; `MasterChange.kind` loses `"promote"`),
   `src/components/MasterSaveReview.tsx` (no checkboxes; a read-only list with
@@ -203,7 +203,7 @@ Test file named first in each task; write it failing, then implement.
   `role="checkbox"`; a label with overrides and a clean master shows Save
   Master disabled.
 
-**10. The picker lists this master only**
+**10. The picker lists this master only** *(done)*
 - Files: `src/components/MasterPicker.tsx` (drop `library`, `resolve`,
   `onMaster`, the preview and `previewLine`), `src/App.tsx` (the props go; the
   rebind preview moves into `openMasterPicker`'s existing flow, which already
@@ -216,7 +216,7 @@ Test file named first in each task; write it failing, then implement.
 
 ### Phase C — release
 
-**11. Version, changelog, docs**
+**11. Version, changelog, docs** *(done)*
 - Files: the five version files (`package.json`, `package-lock.json`,
   `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`),
   `CHANGELOG.md`, `.agents/AGENTS.md` (one line: the contract is master data
@@ -249,3 +249,25 @@ Test file named first in each task; write it failing, then implement.
   to the layer name, dimmed, when `placeholder` is blank.
 - **Version numbers on stacked PRs.** #50 = 0.1.58, #52 = 0.1.59, this = 0.1.60,
   #51 also claims 0.1.59. Closing #51 resolves it; merging it would not.
+
+## Deviations
+
+- **Promotion deleted rather than kept.** Task 9's plan already called this
+  the biggest deletion available; it was taken as written, not softened into
+  a smaller change.
+- **The unsaved-template-changes strip shows no count.** It reads "Editing
+  template … · unsaved template changes" without the `masterChangeList.length`
+  N the task described — a perf ruling: computing that count on every
+  render outside `pendingSave` was judged not worth paying continuously.
+- **No name fallback for blank placeholders.** The Risks section proposed
+  falling back to the dimmed layer name when `placeholder` is blank; that
+  fallback was written and then deleted in review (Task 6 review fixes,
+  3b96911) rather than kept.
+- **`EditTarget` includes `{ variant }`.** The plan's Task 4 spec was
+  `"label" | "master"`; the shipped type is
+  `"label" | "master" | { variant: string }`, needed so a patch in template
+  mode on a picked variant writes into that variant rather than the base
+  master.
+- **No `Segmented` lift.** Task 5 proposed lifting `LayerInspector`'s
+  `Segmented` into `components/ui` for reuse in `MasterPicker`. It was not
+  lifted; `MasterPicker` renders its own control instead.

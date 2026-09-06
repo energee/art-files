@@ -1,5 +1,8 @@
 # Label-first editing — remove `fillable`, gate the master behind a reviewed save
 
+Successor: `docs/plans/template-switch.md` builds on this plan's routing rule
+and adds the This label / Template switch.
+
 Status: **PLAN — awaiting approval.** No implementation code yet.
 
 ## The problem

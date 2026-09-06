@@ -15,9 +15,14 @@ Small: 26 files, ~4.1k lines including docs and bundled fonts.
 - Build: `npm run build`
 - Test: `npm test`
 - Typecheck: `npx tsc --noEmit`
-- Verified at: `d10cddf` — the commit these commands were last *run* against.
+- Verified at: `3d77e1b` — the commit these commands were last *run* against.
   A command recorded here ran at that revision; it is not a promise about now. If one
   fails to run today, that is a finding, not a reason to guess a replacement.
+
+The fill contract (`MASTER_PATHS` in `src/model/edit.ts`) is master data, not a
+routing rule by itself — where an edit actually lands is decided by the edit
+mode, resolved to an `EditTarget` (`editTarget()` in `src/model/edit.ts`) and
+passed through `patchLayers`.
 
 ## Conventions
 
