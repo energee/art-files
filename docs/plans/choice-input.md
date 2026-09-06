@@ -170,7 +170,7 @@ Test file named first in each task; write it failing, then implement.
 - Accept: picking "Hazy IPA (NEIPA)" calls `onChange` with `Hazy IPA`; typing
   "Saison" and pressing Enter calls it with `Saison`.
 
-**6. Authoring the vocabulary**
+**6. Authoring the vocabulary** — *done*
 - Files: `src/components/LayerInspector.tsx` (the "Fill contract" block)
 - Test: `tests/layerinspector-dom.test.tsx` *(extend)*
 - The Input select is unchanged. Below it, for every input: a `Title` row and

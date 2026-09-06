@@ -28,12 +28,12 @@ import { useState, type ReactNode } from "react";
 import {
   AlignCenterHorizontal, AlignCenterVertical, AlignEndVertical, AlignStartVertical, ArrowDownToLine, ArrowUpToLine,
   Barcode, ChevronsUpDown, Heading1, Image, Link2, Link2Off, QrCode, RotateCcw,
-  TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart, Type, WholeWord,
+  TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart, Type, WholeWord, X,
   type LucideIcon,
 } from "lucide-react";
 import { bindingOf, guideOf, uppercaseOf } from "@/model/layers";
 import type {
-  BindingSide, BarcodeLayer, ImageLayer, Layer, LayerKind, QrLayer, Symbology, TextLayer,
+  BindingSide, BarcodeLayer, Choice, ImageLayer, Layer, LayerKind, QrLayer, Symbology, TextLayer,
 } from "@/model/layers";
 import type { DeepPartial } from "@/model/merge";
 import type { Anchor } from "@/model/position";
@@ -444,6 +444,75 @@ function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: string }) {
  *
  *  Every field here was already honoured by the renderer and the fill widgets
  *  and authored by lolevLayers.ts; none of them had a control until now. */
+/** Authoring the fill vocabulary: the caption a filler sees, and the list they
+ *  pick from (docs/plans/choice-input.md, Task 6). Both are fill-contract keys,
+ *  so `set` routes them to the master like `placeholder` does.
+ *
+ *  `choices` is emitted as the WHOLE array on every edit — it is one leaf to
+ *  leafPaths, so it is one override badge and one row in the Save Master
+ *  review, and a per-item patch would have neither. Not text-only: a barcode
+ *  carries a `value` rather than an `input`, and its tier list is the same
+ *  thing, so this renders for both. */
+function Vocabulary(props: Ctx & { layer: Layer }) {
+  const { layer, set, badge } = props;
+  const id = layer.id;
+  const choices = layer.choices ?? [];
+  /** Writes the list back, dropping the key entirely once it is empty so
+   *  absent and [] stay one state (parseMaster normalises the same way). */
+  const put = (next: Choice[]) => set({ choices: next.length ? next : undefined });
+  const edit = (i: number, patch: Partial<Choice>) =>
+    put(choices.map((c, j) => {
+      if (j !== i) return c;
+      const merged = { ...c, ...patch };
+      // A blanked title is no title, not an empty one.
+      if (!merged.title) delete merged.title;
+      return merged;
+    }));
+
+  return (
+    <>
+      <Row badge={badge(["title"], "Title")}>
+        <InputRow
+          id={`${id}-title`} label="Title" value={layer.title ?? ""}
+          hint="Caption above the fill field"
+          onChange={(v) => set({ title: v || undefined })}
+        />
+      </Row>
+      <Row badge={badge(["choices"], "Choices")}>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Choices</Label>
+          {choices.map((c, i) => (
+            <div key={i} className="flex items-center gap-1">
+              <Input
+                id={`${id}-choice-${i}-title`} className="h-6 w-20 text-xs"
+                value={c.title ?? ""} placeholder="Title"
+                aria-label={`Choice ${i + 1} title`}
+                onChange={(e) => edit(i, { title: e.target.value })} />
+              <Input
+                id={`${id}-choice-${i}-value`} className="h-6 flex-1 text-xs"
+                value={c.value} placeholder="Value"
+                aria-label={`Choice ${i + 1} value`}
+                onChange={(e) => edit(i, { value: e.target.value })} />
+              <button
+                type="button" aria-label={`Remove choice ${i + 1}`}
+                className="shrink-0 rounded-sm p-1 text-muted-foreground hover:bg-accent"
+                onClick={() => put(choices.filter((_, j) => j !== i))}>
+                <X className="size-3" />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button" aria-label="Add choice"
+            className="rounded-sm px-1.5 py-1 text-xs text-muted-foreground hover:bg-accent"
+            onClick={() => put([...choices, { value: "" }])}>
+            + Add choice
+          </button>
+        </div>
+      </Row>
+    </>
+  );
+}
+
 function FillContract(props: Ctx & { layer: TextLayer }) {
   const { layer, set, badge } = props;
   const id = layer.id;
@@ -508,6 +577,7 @@ function FillContract(props: Ctx & { layer: TextLayer }) {
           </Select>
         </Field>
       )}
+      <Vocabulary layer={layer} set={set} badge={badge} />
       {/* Fixed text drawn after the filled value on the same line ("% alc by
           vol"); the filler never edits it. */}
       {layer.input !== undefined && (
@@ -902,6 +972,9 @@ export function LayerInspector(props: {
       {layer.kind === "text" && <FillContract layer={layer} {...ctx} />}
       {layer.kind === "image" && <ImageGeometry layer={layer} {...ctx} />}
       {layer.kind === "barcode" && <BarcodeGeometry layer={layer} {...ctx} />}
+      {/* A barcode has no `input` to hang a contract off, but its tier list is
+          the same vocabulary a style has. */}
+      {layer.kind === "barcode" && <Vocabulary layer={layer} {...ctx} />}
       {layer.kind === "qr" && <QrGeometry layer={layer} {...ctx} />}
 
       {/* The page art has no ink of its own to colour or stroke — the

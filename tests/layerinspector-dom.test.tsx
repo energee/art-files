@@ -367,3 +367,66 @@ it("one control per axis: picking a guide anchors that edge on it with offset 0"
   expect(byLabel("Detach from guide")).toBeNull();
   expect(byLabel("Detach from horizontal guide")).toBeNull();
 });
+
+// docs/plans/choice-input.md, Task 6. Authoring the vocabulary a filler picks
+// from: a caption for the field and the list itself. Both are fill-contract
+// keys, so they route to the master (MASTER_PATHS) — the inspector only has to
+// emit them, and it emits `choices` as the WHOLE array, which is also how the
+// override badge sees it (leafPaths treats an array as one leaf).
+describe("LayerInspector fill vocabulary", () => {
+  const STYLES = [
+    { value: "Ultra Hopped Ale" },
+    { title: "Hazy IPA", value: "Hazy India Pale Ale" },
+  ];
+
+  it("captions the field through title", () => {
+    const { onChange } = render(text());
+    type($("#name-title") as HTMLInputElement, "Style");
+    expect(onChange).toHaveBeenLastCalledWith({ title: "Style" });
+  });
+
+  it("lists each choice's title and value", () => {
+    render(text({ choices: STYLES }));
+    expect(($("#name-choice-0-value") as HTMLInputElement).value).toBe("Ultra Hopped Ale");
+    expect(($("#name-choice-1-title") as HTMLInputElement).value).toBe("Hazy IPA");
+    expect(($("#name-choice-1-value") as HTMLInputElement).value).toBe("Hazy India Pale Ale");
+  });
+
+  it("edits one choice and emits the whole list", () => {
+    const { onChange } = render(text({ choices: STYLES }));
+    type($("#name-choice-0-value") as HTMLInputElement, "Pale Ale");
+    expect(onChange).toHaveBeenLastCalledWith({
+      choices: [{ value: "Pale Ale" }, STYLES[1]],
+    });
+  });
+
+  it("appends an empty choice, and drops the title when it is blanked", () => {
+    const { onChange } = render(text({ choices: STYLES }));
+    click(byLabel("Add choice")!);
+    expect(onChange).toHaveBeenLastCalledWith({ choices: [...STYLES, { value: "" }] });
+
+    type($("#name-choice-1-title") as HTMLInputElement, "");
+    expect(onChange).toHaveBeenLastCalledWith({
+      choices: [STYLES[0], { value: "Hazy India Pale Ale" }],
+    });
+  });
+
+  it("removes a choice, and the last one takes the whole key with it", () => {
+    const { onChange } = render(text({ choices: STYLES }));
+    click(byLabel("Remove choice 1")!);
+    expect(onChange).toHaveBeenLastCalledWith({ choices: [STYLES[1]] });
+
+    const one = render(text({ choices: [STYLES[0]] }));
+    click(byLabel("Remove choice 1")!);
+    expect(one.onChange).toHaveBeenLastCalledWith({ choices: undefined });
+  });
+
+  it("offers the same editor on a barcode, which has a value and no input", () => {
+    const { onChange } = render(barcode({ choices: [{ title: "Tier 1", value: "850051366040" }] }));
+    expect(($("#barcode-choice-0-title") as HTMLInputElement).value).toBe("Tier 1");
+    click(byLabel("Add choice")!);
+    expect(onChange).toHaveBeenLastCalledWith({
+      choices: [{ title: "Tier 1", value: "850051366040" }, { value: "" }],
+    });
+  });
+});
