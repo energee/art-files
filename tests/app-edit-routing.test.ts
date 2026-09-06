@@ -66,6 +66,34 @@ describe("property patches route to the label", () => {
   });
 });
 
+describe("the fill contract routes to the master", () => {
+  it("a placeholder edit writes the master, not an override", () => {
+    const d = patchLayers(doc(), [["name", { placeholder: "Beer name" }]]);
+    expect(d.label.overrides).toBeUndefined();
+    expect((d.master.layers.find((l) => l.id === "name") as TextLayer).placeholder)
+      .toBe("Beer name");
+  });
+
+  it("every fill-contract field takes the master path", () => {
+    let d = doc();
+    for (const p of [{ input: "number" as const }, { min: 1 }, { max: 9 },
+      { suffix: "% abv" }, { symbology: "ean-13" as const }, { placeholder: "x" }]) {
+      d = patchLayers(d, [["abv", p]]);
+    }
+    expect(d.label.overrides).toBeUndefined();
+    const abv = d.master.layers.find((l) => l.id === "abv") as TextLayer;
+    expect([abv.input, abv.min, abv.max, abv.suffix, abv.symbology, abv.placeholder])
+      .toEqual(["number", 1, 9, "% abv", "ean-13", "x"]);
+  });
+
+  it("splits a mixed patch: contract to the master, the rest to the label", () => {
+    const d = patchLayers(doc(), [["name", { placeholder: "Beer name", x: 300 }]]);
+    expect((d.master.layers.find((l) => l.id === "name") as TextLayer).placeholder)
+      .toBe("Beer name");
+    expect(d.label.overrides?.name).toEqual({ x: 300 });
+  });
+});
+
 describe("content routes to the label for any layer", () => {
   it("fills a layer the master never marked fillable", () => {
     const d = setContentIn(doc(), "warning", [line("Drink responsibly")]);

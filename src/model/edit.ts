@@ -461,12 +461,23 @@ export function setLabelOverride(label: LabelFile, id: string, patch: LayerPatch
  *  Mirrors App's own `Doc`; declared here so the routing below is pure. */
 export interface Doc { master: Master; label: LabelFile }
 
+/** The FILL CONTRACT: the keys that declare what a filler may put in a layer.
+ *  They cannot be per-label — a label overriding its own placeholder or its
+ *  own allowed range is meaningless — so they are authored on the master like
+ *  structure is, and the Save Master review lists them as such. Everything
+ *  else about a layer is the label's to override. */
+export const MASTER_PATHS: ReadonlySet<string> =
+  new Set(["placeholder", "input", "min", "max", "symbology", "suffix"]);
+
 /** THE ROUTING RULE (docs/plans/label-first-editing.md): a property edit is a
- *  LABEL override, never a master edit. The master is the template and only
- *  changes through a reviewed save, so nothing here writes `master.layers` —
- *  not even for a layer a variant added, which the label overrides the same
- *  way it overrides a master layer (resolveLayers applies variants first,
- *  then the label).
+ *  LABEL override, never a master edit — except the fill contract above. The
+ *  master is the template and otherwise changes only through a reviewed save,
+ *  so a patch does not write `master.layers`, not even for a layer a variant
+ *  added: the label overrides that the same way it overrides a master layer
+ *  (resolveLayers applies variants first, then the label).
+ *
+ *  A patch carrying both — the inspector never emits one, but a caller may —
+ *  is SPLIT, each half taking its own path, rather than sent whole to either.
  *
  *  Several entries in one call so a group drag is one undo step.
  *
@@ -477,12 +488,20 @@ export interface Doc { master: Master; label: LabelFile }
 export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
   const masterIds = new Set(doc.master.layers.map((l) => l.id));
   return entries.reduce((d, [id, patch]) => {
+    const keys = Object.keys(patch);
+    const contract = keys.filter((k) => MASTER_PATHS.has(k));
+    const rest = keys.filter((k) => !MASTER_PATHS.has(k));
+    const pick = (ks: string[]) =>
+      Object.fromEntries(ks.map((k) => [k, (patch as Record<string, unknown>)[k]])) as LayerPatch;
+
+    const master = contract.length ? patchLayer(d.master, id, pick(contract)) : d.master;
     let label = d.label;
     if (patch.enabled === true && !masterIds.has(id)) {
       const owner = d.master.variants.find((v) => id in v.layers);
       if (owner && !label.enabledVariants.includes(owner.id)) label = toggleVariant(label, owner.id);
     }
-    return { master: d.master, label: setLabelOverride(label, id, patch) };
+    if (rest.length) label = setLabelOverride(label, id, pick(rest));
+    return { master, label };
   }, doc);
 }
 

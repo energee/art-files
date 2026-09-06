@@ -138,6 +138,19 @@ describe("LayerInspector position", () => {
     expect(onChange).toHaveBeenLastCalledWith({ rotation: 0 });
   });
 
+  it("edits the fill contract — placeholder always, range only for a number", () => {
+    const { onChange } = render(text({ placeholder: "Name" }));
+    const box = $("#name-placeholder") as HTMLInputElement;
+    expect(box.value).toBe("Name");
+    type(box, "Beer name");
+    expect(onChange).toHaveBeenLastCalledWith({ placeholder: "Beer name" });
+    // Range is meaningless for rich text and hidden until the input is one.
+    expect($("#name-min")).toBeNull();
+    render(text({ input: "number", min: 0, max: 20 }), { onChange });
+    expect(($("#name-min") as HTMLInputElement).value).toBe("0");
+    expect($("#name-suffix")).not.toBeNull();
+  });
+
   it("offers no rotation toggle on an image layer — no backend rotates raster art", () => {
     render(image());
     expect(byLabel("Rotate 90°")).toBeNull();
