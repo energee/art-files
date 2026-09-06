@@ -17,7 +17,7 @@ import type {
 import type { Box } from "./place";
 import { bindingOf, guideOf, parseMaster, vAnchorOf } from "./layers";
 import { deepMerge, type DeepPartial } from "./merge";
-import { anchorFraction, positionFromDrag, type GuideLines } from "./position";
+import { anchoredX, anchorFraction, positionFromDrag, type GuideLines } from "./position";
 import { CENTER_X, GOLD } from "../layout";
 import { KEYLINE } from "../defaults";
 import { DEFAULT_STROKE_LAYER } from "../strokes";
@@ -366,6 +366,26 @@ export function bindingPatch(layer: Layer, to: string, side: BindingSide, box: B
       : { y: box.y, vAnchor: "top", guideY: "none" } as const),
     binding: { to, side, gap: old?.gap ?? 0 },
   };
+}
+
+/** The horizontal distance a drag ACTUALLY travels once the grabbed layer has
+ *  snapped: `dx` adjusted so the layer lands on a guide it came within `snap`
+ *  of, and `dx` unchanged when nothing is in range or the layer is positioned
+ *  from a guide already (those never re-anchor).
+ *
+ *  App computes this once, from the grabbed layer, and drags the WHOLE
+ *  selection by it. Snapping only the grabbed layer re-spaced the group by up
+ *  to `snap` every time it crossed a guide — a group either snaps together or
+ *  not at all. Vertical movement has no snap, which is why only X drifted. */
+export function snappedDx(
+  layer: Layer, dx: number, guides: GuideLines, snap: number, w = 0,
+): number {
+  if (layer.locked || dx === 0 || guideOf(layer.guideX)) return dx;
+  const binding = layer.binding;
+  if (binding?.side === "left" || binding?.side === "right") return dx;
+  const left = layer.x - anchorFraction(layer.anchor) * w;
+  const { position } = positionFromDrag(left + dx, 0, w, 0, guides, snap);
+  return anchoredX(position, w, guides) - left;
 }
 
 /** The drag patch. Horizontal: positionFromDrag's snap rule on the layer's
