@@ -1480,8 +1480,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** The preview's Continue: register the newly opened master in the
    *  library index, adopt its assets and commitRebind onto it — the
    *  library-pick and file-open paths used to do this separately
-   *  (pickLibraryMaster / applyOpenedMaster); both flow through here now. */
-  function confirmOpenedMaster() {
+   *  (pickLibraryMaster / applyOpenedMaster); both flow through here now.
+   *  Async, with its own try/catch, because this button click is now the
+   *  ONLY caller of adoptMasterAssets that isn't already inside
+   *  openMasterPicker's try/catch — a decode failure here must still reach
+   *  setLoadError instead of becoming an unhandled rejection. */
+  async function confirmOpenedMaster() {
     const p = masterOpenPreview;
     if (!p) return;
     setMasterOpenPreview(null);
@@ -1489,7 +1493,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     masterFilePath.current = null;
     rememberMaster(p.master, p.path);
     commitRebind(p.master);
-    void adoptMasterAssets(p.assets);
+    try {
+      await adoptMasterAssets(p.assets);
+    } catch (err) {
+      setLoadError(`Could not open master: ${errMsg(err)}`);
+    }
   }
 
   /** The preview's confirm line — "3 values and 1 variant move to the bench
@@ -1865,7 +1873,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             </DialogDescription>
             <DialogFooter>
               <Button variant="ghost" size="sm" onClick={() => setMasterOpenPreview(null)}>Cancel</Button>
-              <Button size="sm" onClick={confirmOpenedMaster}>Continue</Button>
+              <Button size="sm" onClick={() => void confirmOpenedMaster()}>Continue</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
