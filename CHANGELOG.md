@@ -3,6 +3,42 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.62] - 2026-09-06
+
+### Added
+
+- **Snapping to other layers, on both axes.** Dragging or resizing a layer now
+  lines it up with every other layer's edges and middle, not only with the
+  master's guides — and with the guides pulled off the rulers, which in turn
+  snap to the layers. A group still snaps as a group, on its own bounds.
+
+- **Alignment indicators.** The line a gesture caught is drawn from the layer
+  being moved to the far end of whatever it lined up with: fuchsia for another
+  layer, blue for a page guide. A badge alongside reads out the distance
+  travelled while moving, and the width and height while resizing.
+
+- **Arrow-key nudge.** Arrow keys move the selected layers one point, or ten
+  with Shift held. Inert while typing or while a menu is open.
+
+- **Promote every override at once.** Save Master's review offers a single tick
+  for all of a label's overrides instead of one per row.
+
+### Fixed
+
+- A master saved or opened in a browser is remembered, so reopening a label
+  finds the operator's own template instead of silently falling back to the
+  shipped one. The desktop application always read the file from disk and is
+  unaffected.
+
+- Millimetre fields no longer lose precision: a value typed back exactly as
+  shown now matches the template again, so its override can be cleared.
+
+- Keyboard shortcuts and the arrow keys stand aside while a menu, dialog or
+  dropdown is open, instead of acting on the label behind it.
+
+- Text run controls (Header, Bold, White ink) no longer appear before the text
+  is focused, where they could not act on anything.
+
 ## [0.1.61] - 2026-09-06
 
 ### Changed
