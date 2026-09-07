@@ -1,17 +1,21 @@
-// files.test.ts — Tauri native save dialog and path reuse.
+// files.test.ts — Tauri native save/open dialogs and path reuse.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const save = vi.fn();
+const open = vi.fn();
 const writeFile = vi.fn();
-vi.mock("@tauri-apps/plugin-dialog", () => ({ save }));
-vi.mock("@tauri-apps/plugin-fs", () => ({ writeFile }));
+const readFile = vi.fn();
+vi.mock("@tauri-apps/plugin-dialog", () => ({ save, open }));
+vi.mock("@tauri-apps/plugin-fs", () => ({ writeFile, readFile }));
 
-import { saveNativeFile } from "@/files";
+import { openNativeFile, saveNativeFile } from "@/files";
 
 describe("native file saving", () => {
   beforeEach(() => {
     save.mockReset();
+    open.mockReset();
     writeFile.mockReset();
+    readFile.mockReset();
   });
 
   it("opens a native Save As dialog and writes its selected path", async () => {
@@ -62,5 +66,29 @@ describe("native file saving", () => {
       defaultPath: "unwritable.label",
       filter: { name: "Label project", extensions: ["label"] },
     })).rejects.toThrow("permission denied");
+  });
+});
+
+describe("native file opening", () => {
+  beforeEach(() => {
+    open.mockReset();
+  });
+
+  it("opens a native Open dialog and returns the selected path", async () => {
+    open.mockResolvedValue("/masters/Mine.master");
+    await expect(openNativeFile({
+      filter: { name: "Label master", extensions: ["master"] },
+    })).resolves.toBe("/masters/Mine.master");
+    expect(open).toHaveBeenCalledWith({
+      multiple: false,
+      filters: [{ name: "Label master", extensions: ["master"] }],
+    });
+  });
+
+  it("treats a cancelled dialog as no open", async () => {
+    open.mockResolvedValue(null);
+    await expect(openNativeFile({
+      filter: { name: "Label master", extensions: ["master"] },
+    })).resolves.toBeNull();
   });
 });

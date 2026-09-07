@@ -71,7 +71,7 @@ export function MasterPicker(props: {
    *  rebind result computed against a possibly-stale `label` prop. The
    *  resolved template assets ride along so the caller adopts them without
    *  a second file read. */
-  onMaster: (target: Master, assets: MasterAssets) => void;
+  onMaster: (target: Master, assets: MasterAssets) => void | Promise<void>;
   /** The variant being edited, or null for the base master. */
   version: string | null;
   /** Switch the working version. Null is the base master. */
@@ -134,10 +134,14 @@ export function MasterPicker(props: {
     setNaming(null);
   };
 
-  const commit = () => {
+  const commit = async () => {
     if (!preview) return;
-    props.onMaster(preview.target, preview.assets);
-    closeAll();
+    try {
+      await props.onMaster(preview.target, preview.assets);
+      closeAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   return (
@@ -228,7 +232,7 @@ export function MasterPicker(props: {
               Cancel
             </button>
             <button
-              type="button" id="master-picker-continue" onClick={commit}
+              type="button" id="master-picker-continue" onClick={() => { void commit(); }}
               className="rounded-sm bg-sidebar-primary px-2 py-1 text-xs text-sidebar-primary-foreground hover:opacity-90"
             >
               Continue

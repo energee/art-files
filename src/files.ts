@@ -1,6 +1,7 @@
 // files.ts — native desktop file-dialog and file I/O boundary. All
 // @tauri-apps/plugin-* imports stay here so the app's native surface is
-// visible in one place.
+// visible in one place. Open and save both live here; the capability
+// scope allows reading .label and .master paths.
 
 export type NativeSaveOptions = {
   defaultPath: string;
@@ -33,8 +34,18 @@ export async function saveNativeFile(
 
 /** Read a file's bytes through Tauri's fs plugin — the read half of this
  *  boundary. The capability scope (src-tauri/capabilities/default.json)
- *  limits reads to .label paths, which is all the app ever reads by path. */
+ *  limits reads to .label and .master paths. */
 export async function readNativeFile(path: string): Promise<Uint8Array> {
   const { readFile } = await import("@tauri-apps/plugin-fs");
   return readFile(path);
+}
+
+/** Open a native file dialog and return the selected path. Null is an
+ *  ordinary cancellation, matching saveNativeFile. */
+export async function openNativeFile(
+  options: { filter: { name: string; extensions: string[] } },
+): Promise<string | null> {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const selected = await open({ multiple: false, filters: [options.filter] });
+  return typeof selected === "string" ? selected : null;
 }

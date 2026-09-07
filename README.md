@@ -253,6 +253,11 @@ the tab that already has that file open. On Linux the file association registers
 AppImage is desktop-integrated (e.g. via AppImageLauncher or Gear Lever);
 running `Label_Lab.AppImage path/to/file.label` works regardless.
 
+A new untitled document reopens the last master you applied (File → Open
+Master, Save Master, or the master picker) instead of always starting from
+the shipped Lolev template. The shipped template is the fallback when none
+has been applied yet.
+
 #### Automatic updates
 
 Published desktop builds check the latest GitHub Release shortly after launch.
