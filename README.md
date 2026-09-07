@@ -349,6 +349,7 @@ validated, read, and built whole before the first file is written, so a bad
 job anywhere leaves nothing on disk. `--asset background=` / `mask=` need a
 master with that role layer. `--values -` reads stdin; `--label run.label`
 uses a v3 project file; `--set name=X` overlays one value on every job.
+Exit codes: 0 wrote everything, 1 a job or input was rejected, 2 bad argv.
 
 The older texture/mask/config.json argv still works for golden re-baselines.
 

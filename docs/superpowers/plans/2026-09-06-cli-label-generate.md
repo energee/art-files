@@ -2,6 +2,14 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **As built (2026-09-07, PR #58):** landed with these deltas from the text below —
+> the library is `scripts/generate-lib.ts`, not `src/generate.ts` (keeps it out of the
+> desktop bundle); `FormatSet` is `"pdf" | "psd" | "all"`; the generate args carry a
+> `source: {kind:"values", path?} | {kind:"label", path}` union instead of
+> `valuesPath`/`labelPath`; a batch is validated, read and built whole before the
+> first write; job `overrides` are type-checked per field; `titleOf`/`exportBase`/
+> `PAGE_ART_ID` live in `src/model`. `tests/generate.test.ts` is the contract.
+
 **Goal:** Let a script generate print-ready label PDFs (and PSDs) from a `.master` file plus a JSON of layer values, using the same resolve → plan → build path the app already uses.
 
 **Architecture:** Extract a DOM-free `src/generate.ts` library (the generate component) that turns `(Master, values, assets)` into file bytes. Keep `scripts/generate.ts` as the `npm run generate` IO wrapper. Do not rewire `App.tsx` exports; the browser already has its own font/image loaders. No new npm dependencies — roll argv the way `scripts/golden-diff.mts` does.

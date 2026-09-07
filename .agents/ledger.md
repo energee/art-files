@@ -467,3 +467,11 @@ no status, no attempts, no delta.
 - delta: print-size CPI readout beside character heights, using the highest line-average count divided by occupied run width; excludes whitespace from character count but retains its width and justified gaps; supports rotated text, font/size/case/spacing/wrap changes
 - scope: explicitly labeled estimate/highest line average, not a sliding one-inch maximum or compliance verdict. TTB 16.22 defines letters, numbers and marks but retrieved guidance did not establish an averaging protocol.
 - evidence: 9 focused real-font/geometry/DOM tests pass, including half-inch count, justified gaps, rotation, densest line, inverse size scaling and invalid widths; production build, diff and binary-impacting 0.1.61 release gate pass. No release published.
+
+## 2026-09-07 cli-generate
+
+- status: implemented in feat/cli-generate (PR #58)
+- delta: `scripts/generate-lib.ts` (DOM-free argv/inspect/coerce/build, kept under scripts/ so it is not a desktop bundle input) with `scripts/generate.ts` as the fs wrapper; `.master` + values JSON (single job or batch, `--variant/--asset/--set/--format/--label`, `--inspect`), legacy argv retained; title/export-name rule and PAGE_ART_ID moved into src/model so app and CLI name exports identically
+- review follow-ups: page art on a master without that role layer is an error; a batch is validated, read and built whole before the first write; job overrides are type-checked per field against the target layer; FormatSet and the values/label source are closed unions
+- evidence: 1015 tests pass (41 in tests/generate.test.ts incl. --label, --set, exit 2, tint, new-form page art, legacy config + collab, half-write, mistyped override); tsc clean; goldens unchanged; 0.1.64 release metadata gate passes. No release published.
+- open: no non-default font-family test — the catalog ships only Poppins; add one when a second family lands
