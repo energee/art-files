@@ -177,7 +177,8 @@ resolution when clicked. Preview PDF generation runs in a lazy Web Worker,
 keeping pdf-lib/fontkit parsing and rendering off the UI thread; the
 full-resolution PDF and PSD renderers load only when their export actions are
 used. Every action lives in a menubar across the top of
-the window, above the sidebar/preview split: **File** (New Tab ⌘N; Open
+the window, above the sidebar/preview split, with a leading icon on each
+File and Edit item: **File** (New Tab ⌘N; Open
 Project… ⌘O — into the current tab if it's untouched, else a new one;
 Close Tab ⌘W — with a Save / Discard / Cancel prompt when the tab has
 unsaved work; Save Project ⌘S, Save Project As… ⇧⌘S — the whole label, including its
@@ -243,7 +244,7 @@ without security warnings requires authenticated Apple signing and
 notarization. The browser build keeps its in-window File/Edit/View menu; the
 desktop build removes that duplicate chrome and installs the same actions in
 the native menu — the macOS menu bar, or the window menu elsewhere —
-including live checkmarks and disabled states.
+including live checkmarks, disabled states, and File/Edit icons.
 
 Double-clicking a `.label` project opens it in Label Lab on every platform,
 including into an already-running window (macOS delivers this via Apple

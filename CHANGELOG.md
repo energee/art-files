@@ -3,6 +3,14 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.65] - 2026-09-07
+
+### Added
+
+- **Menu icons.** File and Edit items show a leading icon in the in-window
+  menubar, and the macOS application menu uses matching template images
+  where AppKit ships one.
+
 ## [0.1.64] - 2026-09-07
 
 ### Added
