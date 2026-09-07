@@ -186,7 +186,7 @@ function memIo() {
   return {
     files, stdout, stderr,
     run: (argv: string[], stdin?: string) => runGenerate({
-      argv, cwd: "/", stdin,
+      argv, cwd: "/", readStdin: () => stdin ?? "",
       readFile: (p) => {
         const b = files.get(p);
         if (!b) throw new Error(`ENOENT ${p}`);

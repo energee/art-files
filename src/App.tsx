@@ -42,9 +42,10 @@ import {
 import { readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import type {
-  ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master, TextLine,
+  ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master,
 } from "@/model/layers";
-import { uppercaseOf } from "@/model/layers";
+import { PAGE_ART_ID, uppercaseOf } from "@/model/layers";
+import { exportBase as exportBaseOf, titleOf } from "@/model/resolveLayers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
@@ -66,7 +67,6 @@ import { planLayers } from "@/planLayers";
 import { makeHiddenPropsEqual } from "@/tabs";
 import { EMBEDDABLE_RASTER, mimeFor, rasterKind, tintRgba } from "@/collab";
 import { parseLogo } from "@/logo";
-import { parseRuns } from "@/description";
 // The builders are imported dynamically at export time (see buildFull /
 // exportPsd) so they stay out of the initial bundle; only their types are
 // needed up front.
@@ -164,8 +164,6 @@ const WIDGET_OWNS_ARROWS = [
   '[data-slot="toggle-group"]',
 ].join(",");
 
-const PAGE_ART_ID = { background: "texture", mask: "mask" } as const;
-
 /** A fresh label on `master`: nothing filled, no variant on. */
 const newLabel = (master: Master): LabelFile =>
   ({ formatVersion: 3, masterId: master.id, enabledVariants: [], values: {} });
@@ -187,17 +185,6 @@ export function withPageArt(layers: Layer[], hasTexture: boolean, hasMask: boole
     const has = l.role === "background" ? hasTexture : hasMask;
     return { ...l, asset: has ? PAGE_ART_ID[l.role] : "" };
   });
-}
-
-/** A text layer's lines as one plain string (markers stripped). */
-const plainText = (lines: TextLine[]): string =>
-  lines.map((l) => parseRuns(l).map((r) => r.text).join("")).join(" ").trim();
-
-/** What the tab strip and export names call the document: the `name` text
- *  layer's filled text, if the master has one. */
-function titleOf(layers: Layer[]): string {
-  const name = layers.find((l) => l.id === "name");
-  return name?.kind === "text" ? plainText(name.lines) : "";
 }
 
 /** Chrome-level error (or, with `tone="warning"`, a resolveLayers validation
@@ -1369,7 +1356,7 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   // What the tab strip, window title and export names call this document.
   const title = titleOf(drawLayers) || "Untitled";
-  const exportBase = machineName(titleOf(drawLayers)) || "label";
+  const exportBase = exportBaseOf(drawLayers);
   useEffect(() => {
     onMeta({ title, dirty, edited, filePath });
     // eslint-disable-next-line react-hooks/exhaustive-deps
