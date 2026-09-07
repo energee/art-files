@@ -1,7 +1,11 @@
 // generate.test.ts — headless CLI: argv, value coercion, inspect, and
 // master+values builds. Pure against src/generate.ts; no process spawn.
+import { join } from "node:path";
+import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
-import { parseGenerateArgs, coerceValues, parseJobs, inspectMaster, assertVariants } from "../src/generate";
+import {
+  parseGenerateArgs, coerceValues, parseJobs, inspectMaster, assertVariants, buildLabel,
+} from "../src/generate";
 import { lolevMaster } from "../src/model/lolevLayers";
 
 describe("parseGenerateArgs", () => {
@@ -101,5 +105,40 @@ describe("inspectMaster", () => {
   it("assertVariants throws on typos", () => {
     expect(() => assertVariants(lolevMaster(), ["collab", "nope"]))
       .toThrow(/nope/);
+  });
+});
+
+const assetRoot = join(import.meta.dirname, "..", "src", "assets");
+const labradorite = () => coerceValues(
+  lolevMaster(), { name: "Labradorite", barcode: "850051366224" }, [],
+).values;
+
+describe("buildLabel", () => {
+  it("writes an art PDF whose stream contains the filled name", async () => {
+    const result = await buildLabel({
+      master: lolevMaster(),
+      masterAssets: {},
+      values: labradorite(),
+      enabledVariants: [],
+      extraImages: {},
+      format: { pdf: true, psd: false },
+      assetRoot,
+    });
+    expect(result.basename).toBe("labradorite");
+    const art = result.files.find((f) => f.name === "labradorite.pdf");
+    expect(art).toBeTruthy();
+    expect((await PDFDocument.load(art!.bytes)).getTitle()).toBe("Labradorite label art");
+  });
+
+  it("invalid UPC fails loudly", async () => {
+    await expect(buildLabel({
+      master: lolevMaster(),
+      masterAssets: {},
+      values: coerceValues(lolevMaster(), { name: "X", barcode: "123" }, []).values,
+      enabledVariants: [],
+      extraImages: {},
+      format: { pdf: true, psd: false },
+      assetRoot,
+    })).rejects.toThrow(/barcode/i);
   });
 });

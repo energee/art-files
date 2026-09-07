@@ -1,9 +1,22 @@
 // generate.ts — DOM-free headless generate: argv, inspect, coerce, build.
-import { parseDescription } from "./description";
-import type { FontFamilyId } from "./fontCatalog";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import fontkit from "@pdf-lib/fontkit";
+import { PDFDocument } from "pdf-lib";
+import { PNG } from "pngjs";
+import { rasterKind, tintRgba } from "./collab";
+import { parseDescription, parseRuns } from "./description";
+import { FONT_FAMILIES, type FontFamilyId } from "./fontCatalog";
+import { setBleed } from "./layout";
+import { guideLines } from "./model/convert";
 import type { MasterAssets } from "./model/files";
 import type { LabelFile, Layer, LayerKind, LayerValue, Master, TextLayer, TextLine } from "./model/layers";
-import { widenValue } from "./model/resolveLayers";
+import { resolveLayers, widenValue } from "./model/resolveLayers";
+import type { Face, PlanAssets } from "./plan";
+import { planLayers } from "./planLayers";
+import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "./pdf/build";
+import { buildPsd, type PsdAssets } from "./psd/build";
+import { machineName } from "./qr";
 import type { Style } from "./types";
 
 export const USAGE =
@@ -308,4 +321,153 @@ export function inspectMaster(master: Master): InspectReport {
 export function assertVariants(master: Master, ids: string[]): void {
   const unknown = ids.filter((id) => !master.variants.some((v) => v.id === id));
   if (unknown.length) throw new Error(`Unknown variant "${unknown.join('", "')}".`);
+}
+
+export interface GenerateFile { name: string; bytes: Uint8Array }
+
+export interface GenerateResult {
+  title: string;
+  basename: string;
+  warnings: string[];
+  files: GenerateFile[];
+}
+
+const plainText = (lines: TextLine[]): string =>
+  lines.map((l) => parseRuns(l).map((r) => r.text).join("")).join(" ").trim();
+
+function titleOf(layers: Layer[]): string {
+  const name = layers.find((l) => l.id === "name");
+  return name?.kind === "text" ? plainText(name.lines) : "";
+}
+
+function fontPack(assetRoot: string, id: FontFamilyId): Assets["fonts"] {
+  const files = FONT_FAMILIES[id].files;
+  const file = (n: string) => readFileSync(join(assetRoot, "fonts", n));
+  return { regular: file(files.regular), semibold: file(files.semibold), bold: file(files.bold) };
+}
+
+function asImage(name: string, bytes: Uint8Array): CollabImage {
+  if (/\.svg$/i.test(name)) return { kind: "svg", svg: new TextDecoder().decode(bytes) };
+  return { kind: rasterKind(name), bytes };
+}
+
+function pageFile(
+  assets: MasterAssets, extra: GenerateInput["extraImages"], role: "background" | "mask",
+): { name: string; bytes: Uint8Array } | undefined {
+  if (extra[role]) return extra[role];
+  return role === "background" ? assets.texture : assets.mask;
+}
+
+/** Resolve a master + values into print bytes (PDF and/or PSD). */
+export async function buildLabel(input: GenerateInput): Promise<GenerateResult> {
+  assertVariants(input.master, input.enabledVariants);
+  setBleed(input.master.physical.bleedIn);
+  const warnings: string[] = [];
+  const overrides: NonNullable<LabelFile["overrides"]> = { ...input.overrides };
+  const tex = pageFile(input.masterAssets, input.extraImages, "background");
+  const mask = pageFile(input.masterAssets, input.extraImages, "mask");
+  overrides.background = { ...overrides.background, asset: tex ? PAGE_ART_ID.background : "" };
+  overrides.mask = { ...overrides.mask, asset: mask ? PAGE_ART_ID.mask : "" };
+
+  for (const layerId of Object.keys(input.extraImages)) {
+    if (layerId === "background" || layerId === "mask") continue;
+    overrides[layerId] = { ...overrides[layerId], asset: `cli-${layerId}` };
+  }
+
+  const resolved = resolveLayers(input.master, input.enabledVariants, input.values, overrides);
+  warnings.push(...resolved.warnings);
+  if (Object.keys(resolved.errors).length)
+    throw new Error(Object.entries(resolved.errors).map(([id, e]) => `${id}: ${e}`).join("\n"));
+
+  const title = titleOf(resolved.layers);
+  const basename = machineName(title) || "label";
+  const defaultFamily: FontFamilyId = input.master.fontFamily ?? "poppins";
+  const needed = new Set<FontFamilyId>([defaultFamily]);
+  for (const l of resolved.layers)
+    if (l.kind === "text" && l.fontFamily) needed.add(l.fontFamily);
+
+  const logoSvg = readFileSync(join(input.assetRoot, "logo2025.svg"), "utf8");
+  const fonts = fontPack(input.assetRoot, defaultFamily);
+  const fontFamilies: NonNullable<Assets["fontFamilies"]> = {};
+  for (const id of needed) if (id !== defaultFamily) fontFamilies[id] = fontPack(input.assetRoot, id);
+
+  const images: Record<string, CollabImage> = {};
+  const planCustom: NonNullable<PlanAssets["custom"]> = {};
+  const psdImages: NonNullable<PsdAssets["images"]> = {};
+
+  const put = async (id: string, img: CollabImage, metrics: PDFDocument) => {
+    images[id] = img;
+    if (img.kind === "svg") { planCustom[id] = { aspect: 1, art: img }; return; }
+    const embedded = img.kind === "png" ? await metrics.embedPng(img.bytes) : await metrics.embedJpg(img.bytes);
+    planCustom[id] = { aspect: embedded.width / embedded.height };
+    if (img.kind === "png") {
+      const png = PNG.sync.read(Buffer.from(img.bytes));
+      psdImages[id] = { data: new Uint8Array(png.data), width: png.width, height: png.height };
+    } else {
+      warnings.push(`warning: ${id} is JPEG — PSD will omit this raster layer`);
+    }
+  };
+
+  const metrics = await PDFDocument.create();
+  metrics.registerFontkit(fontkit);
+  if (tex) await put(PAGE_ART_ID.background, asImage(tex.name, tex.bytes), metrics);
+  if (mask) {
+    const img = asImage(mask.name, mask.bytes);
+    if (img.kind !== "png") throw new Error("mask: mask must be a PNG");
+    await put(PAGE_ART_ID.mask, img, metrics);
+  }
+  for (const [id, a] of Object.entries(input.masterAssets.customImages ?? {}))
+    await put(id, asImage(a.name, a.bytes), metrics);
+  for (const [layerId, file] of Object.entries(input.extraImages)) {
+    if (layerId === "background" || layerId === "mask") continue;
+    await put(`cli-${layerId}`, asImage(file.name, file.bytes), metrics);
+  }
+
+  for (const l of resolved.layers) {
+    if (l.kind !== "image" || !l.tintRaster || !l.asset) continue;
+    const img = images[l.asset];
+    if (!img || img.kind === "svg") continue;
+    if (img.kind !== "png") {
+      warnings.push(`warning: ${l.asset} — tint is PNG-only here, embedding untinted`);
+      continue;
+    }
+    const png = PNG.sync.read(Buffer.from(img.bytes));
+    tintRgba(new Uint8Array(png.data.buffer, png.data.byteOffset, png.data.length), l.style.fill);
+    const bytes = PNG.sync.write(png);
+    images[l.asset] = { kind: "png", bytes };
+    psdImages[l.asset] = { data: new Uint8Array(png.data), width: png.width, height: png.height };
+  }
+
+  const embedded: Record<Face, Awaited<ReturnType<PDFDocument["embedFont"]>>> = {
+    regular: await metrics.embedFont(fonts.regular),
+    semibold: await metrics.embedFont(fonts.semibold),
+    bold: await metrics.embedFont(fonts.bold),
+  };
+  const embeddedFamilies: Partial<Record<FontFamilyId, typeof embedded>> = {};
+  for (const [id, pack] of Object.entries(fontFamilies) as [FontFamilyId, Assets["fonts"]][]) {
+    embeddedFamilies[id] = {
+      regular: await metrics.embedFont(pack.regular),
+      semibold: await metrics.embedFont(pack.semibold),
+      bold: await metrics.embedFont(pack.bold),
+    };
+  }
+  const measure = (text: string, size: number, face: Face, family?: FontFamilyId) =>
+    (family && embeddedFamilies[family] ? embeddedFamilies[family]! : embedded)[face]
+      .widthOfTextAtSize(text, size);
+
+  const plan = planLayers(resolved.layers, measure, {
+    logoSvg, guides: guideLines(input.master), custom: planCustom,
+  });
+  const pdfAssets: Assets = { fonts, fontFamilies, title, images };
+  const psdAssets: PsdAssets = { fonts, fontFamily: defaultFamily, images: psdImages };
+  const files: GenerateFile[] = [];
+  if (input.format.pdf) {
+    files.push({ name: `${basename}.pdf`, bytes: await buildArtPdf(plan, pdfAssets) });
+    files.push({ name: `${basename}-mask.pdf`, bytes: await buildMaskPdf(plan, pdfAssets) });
+  }
+  if (input.format.psd) {
+    files.push({ name: `${basename}.psd`, bytes: await buildPsd(plan, psdAssets, "art", { layers: resolved.layers }) });
+    files.push({ name: `${basename}-mask.psd`, bytes: await buildPsd(plan, psdAssets, "mask", { layers: resolved.layers }) });
+  }
+  return { title, basename, warnings, files };
 }
