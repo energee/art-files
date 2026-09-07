@@ -106,7 +106,7 @@ function isCheckAction(entry: ActionEntry): entry is CheckAction {
   return "check" in entry;
 }
 
-function actionsIn(entries: MenuEntry[]): ActionEntry[] {
+export function actionsIn(entries: MenuEntry[]): ActionEntry[] {
   return entries.flatMap((entry) => {
     if (entry.kind === "action") return [entry];
     return entry.kind === "submenu" ? actionsIn(entry.items) : [];

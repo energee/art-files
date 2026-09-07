@@ -3,19 +3,9 @@
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it } from "vitest";
-import { APP_MENUS, AppMenu } from "@/components/AppMenu";
-import type { Command } from "@/components/CommandMenu";
+import { APP_MENUS, AppMenu, actionsIn } from "@/components/AppMenu";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-function stubCommands(entries: typeof APP_MENUS[number]["items"]): Command[] {
-  return entries.flatMap((entry) => {
-    if (entry.kind === "action") {
-      return [{ id: entry.id, label: entry.text, run: () => undefined }];
-    }
-    return entry.kind === "submenu" ? stubCommands(entry.items) : [];
-  });
-}
 
 it("renders a leading svg on File → New Tab", async () => {
   const container = document.createElement("div");
@@ -24,7 +14,9 @@ it("renders a leading svg on File → New Tab", async () => {
   try {
     await act(async () => {
       root.render(createElement(AppMenu, {
-        actions: APP_MENUS.flatMap((menu) => stubCommands(menu.items)),
+        actions: actionsIn(APP_MENUS).map((entry) => ({
+          id: entry.id, label: entry.text, run: () => undefined,
+        })),
         checked: {},
         onNativeError: () => undefined,
         onCheckForUpdates: () => undefined,
