@@ -1,4 +1,8 @@
 // generate.ts — DOM-free headless generate: argv, inspect, coerce, build.
+import { parseDescription } from "./description";
+import type { LabelFile, Layer, LayerValue, Master, TextLine } from "./model/layers";
+import { widenValue } from "./model/resolveLayers";
+import type { Style } from "./types";
 
 export const USAGE =
   "usage: npm run generate -- <master.master> [values.json|-] <outDir> " +
@@ -139,4 +143,99 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
   }
 
   throw new Error(USAGE);
+}
+
+const JOB_KEYS = new Set(["values", "variants", "files", "overrides"]);
+
+const isPlain = (v: unknown): v is Record<string, unknown> =>
+  !!v && typeof v === "object" && !Array.isArray(v);
+
+export interface JobInput {
+  values: Record<string, unknown>;
+  variants?: string[];
+  files?: Record<string, string>;
+  overrides?: LabelFile["overrides"];
+}
+
+function asJob(v: unknown): JobInput {
+  if (!isPlain(v)) throw new Error("values JSON must be an object or an array of jobs");
+  const asObject = Object.keys(v).every((k) => JOB_KEYS.has(k));
+  if (asObject && "values" in v) {
+    if (!isPlain(v.values)) throw new Error("values JSON must be an object or an array of jobs");
+    return {
+      values: v.values,
+      ...(Array.isArray(v.variants) ? { variants: v.variants as string[] } : {}),
+      ...(isPlain(v.files) ? { files: v.files as Record<string, string> } : {}),
+      ...(isPlain(v.overrides) ? { overrides: v.overrides as LabelFile["overrides"] } : {}),
+    };
+  }
+  return { values: v };
+}
+
+/** One job from a values-map or job object; N jobs from an array. */
+export function parseJobs(json: unknown): JobInput[] {
+  if (Array.isArray(json)) return json.map(asJob);
+  return [asJob(json)];
+}
+
+function linesFromText(src: string, base: Style): TextLine[] {
+  const d = parseDescription(src, base);
+  const out: TextLine[] = [];
+  if (d.header) out.push({ ...d.header, header: true });
+  for (const l of d.lines) out.push(l);
+  return out;
+}
+
+function isTextLines(v: unknown): v is TextLine[] {
+  return Array.isArray(v) && v.every((l) => isPlain(l) && typeof l.text === "string");
+}
+
+/** Layers a CLI job may fill: the master's, plus whole layers each enabled
+ *  variant adds (an id the master already has is just an override — still
+ *  filled against the master layer). */
+function fillableById(master: Master, enabledVariants: string[]): Map<string, Layer> {
+  const map = new Map(master.layers.map((l) => [l.id, l] as const));
+  for (const vid of enabledVariants) {
+    const v = master.variants.find((x) => x.id === vid);
+    if (!v) continue;
+    for (const [id, p] of Object.entries(v.layers)) {
+      if (map.has(id) || !p.kind) continue;
+      map.set(id, p as Layer);
+    }
+  }
+  return map;
+}
+
+function coerceOne(layer: Layer, raw: unknown): { value: LayerValue } | { error: string } {
+  if (layer.kind === "text") {
+    if (isTextLines(raw)) return { value: raw };
+    if (typeof raw === "string" || typeof raw === "number") {
+      const s = String(raw);
+      if (layer.input === "number" || layer.input === "code") return { value: widenValue(layer, s) };
+      return { value: linesFromText(s, layer.style) };
+    }
+    return { error: "Expected text." };
+  }
+  if (typeof raw !== "string")
+    return { error: layer.kind === "image" ? "Expected an image." : "Expected a code value." };
+  return { value: raw };
+}
+
+/** JSON layer values → LabelFile.values. Unknown ids are errors, not dormant. */
+export function coerceValues(
+  master: Master,
+  raw: Record<string, unknown>,
+  enabledVariants: string[],
+): { values: Record<string, LayerValue>; errors: Record<string, string> } {
+  const layers = fillableById(master, enabledVariants);
+  const values: Record<string, LayerValue> = {};
+  const errors: Record<string, string> = {};
+  for (const [id, v] of Object.entries(raw)) {
+    const layer = layers.get(id);
+    if (!layer) { errors[id] = `Unknown layer "${id}".`; continue; }
+    const r = coerceOne(layer, v);
+    if ("error" in r) errors[id] = r.error;
+    else values[id] = r.value;
+  }
+  return { values, errors };
 }

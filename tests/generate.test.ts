@@ -1,7 +1,8 @@
 // generate.test.ts — headless CLI: argv, value coercion, inspect, and
 // master+values builds. Pure against src/generate.ts; no process spawn.
 import { describe, expect, it } from "vitest";
-import { parseGenerateArgs } from "../src/generate";
+import { parseGenerateArgs, coerceValues, parseJobs } from "../src/generate";
+import { lolevMaster } from "../src/model/lolevLayers";
 
 describe("parseGenerateArgs", () => {
   it("new form: positional master + values + out", () => {
@@ -41,5 +42,47 @@ describe("parseGenerateArgs", () => {
   it("--label and --values together throw", () => {
     expect(() => parseGenerateArgs(["--master", "m.master", "--label", "a.label",
       "--values", "v.json", "--out", "out"])).toThrow(/--label/);
+  });
+});
+
+describe("parseJobs", () => {
+  it("plain values object is one job", () => {
+    expect(parseJobs({ name: "X" })).toEqual([{ values: { name: "X" } }]);
+  });
+  it("array is a batch", () => {
+    expect(parseJobs([{ values: { name: "A" } }, { name: "B" }]))
+      .toEqual([{ values: { name: "A" } }, { values: { name: "B" } }]);
+  });
+});
+
+describe("coerceValues", () => {
+  const m = lolevMaster();
+  it("plain name string becomes one styled line", () => {
+    const r = coerceValues(m, { name: "Labradorite" }, []);
+    expect(r.errors).toEqual({});
+    expect(r.values.name).toEqual([
+      expect.objectContaining({ text: "Labradorite" }),
+    ]);
+  });
+  it("description markdown keeps header and white-ink lines", () => {
+    const r = coerceValues(m, { description: "# HOPS\n_dry hopped_" }, []);
+    expect(r.values.description).toEqual([
+      expect.objectContaining({ text: "HOPS", header: true }),
+      expect.objectContaining({ text: "dry hopped", layer: "white" }),
+    ]);
+  });
+  it("abv number stringifies; barcode stays a string", () => {
+    const r = coerceValues(m, { abv: 6.5, barcode: "850051366224" }, []);
+    expect(r.values.abv).toEqual([expect.objectContaining({ text: "6.5" })]);
+    expect(r.values.barcode).toBe("850051366224");
+  });
+  it("unknown layer id is an error, not dormant", () => {
+    const r = coerceValues(m, { nam: "X" }, []);
+    expect(r.errors.nam).toMatch(/unknown layer/i);
+    expect(r.values).toEqual({});
+  });
+  it("collabLeft is unknown until the collab variant is enabled", () => {
+    expect(coerceValues(m, { collabLeft: "a" }, []).errors.collabLeft).toMatch(/unknown/i);
+    expect(coerceValues(m, { collabLeft: "a" }, ["collab"]).errors).toEqual({});
   });
 });
