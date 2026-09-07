@@ -1,4 +1,5 @@
 // plan.ts — shared display-list types and generic text placement primitives.
+import type { FontFamilyId } from "./fontCatalog";
 import type { Fill, Style, StyledLine } from "./types";
 import type { GuideLines } from "./model/position";
 import type { BarcodeGeometry } from "./barcode";
@@ -7,7 +8,7 @@ import { strokeLayerOf } from "./strokes";
 import * as L from "./layout";
 
 export type Face = "regular" | "semibold" | "bold";
-export type MeasureFace = (text: string, size: number, face: Face) => number;
+export type MeasureFace = (text: string, size: number, face: Face, family?: FontFamilyId) => number;
 
 export type StrokeSpec = { fill: Fill; layer: Style["layer"]; w: number };
 
@@ -27,6 +28,7 @@ export interface PlacedText {
   readonly w: number;
   readonly size: number;
   readonly face: Face;
+  readonly fontFamily?: FontFamilyId;
   readonly tracking: number;
   readonly fill: Fill;
   readonly layer: Style["layer"];

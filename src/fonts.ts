@@ -2,13 +2,14 @@
 // the bundled TTFs the PDF builds embed (see pdf/fonts.ts, which shares the
 // FONT_URLS map below) as document faces under labelFontCss(id), and hands
 // back the canvas-metrics Measure that hit-testing and the in-place editor
-// share. The gate is family-aware: every consumer — measure, hit boxes, the
-// editor's visible text — takes the config's fontFamilyOf(cfg) choice
-// (fontCatalog.ts) and follows it, memoized per family so switching families
-// never re-fetches a face already loaded.
+// share. Text layers may override the master family; the same family choice
+// reaches measurement, drawing, the editor and export. Loaded faces are cached.
 import poppinsRegular from "./assets/fonts/Poppins-Regular.ttf?url";
 import poppinsSemiBold from "./assets/fonts/Poppins-SemiBold.ttf?url";
 import poppinsBold from "./assets/fonts/Poppins-Bold.ttf?url";
+import barlowRegular from "./assets/fonts/BarlowCondensed-Regular.ttf?url";
+import barlowSemiBold from "./assets/fonts/BarlowCondensed-SemiBold.ttf?url";
+import barlowBold from "./assets/fonts/BarlowCondensed-Bold.ttf?url";
 import type { FontFamilyId } from "./fontCatalog";
 type Measure = (text: string, size: number, bold: boolean) => number;
 import type { MeasureFace } from "./plan";
@@ -20,6 +21,7 @@ type Face = "regular" | "semibold" | "bold";
  *  pdf/fonts.ts (loadFonts), so the URL side has one source. */
 export const FONT_URLS: Record<FontFamilyId, Record<Face, string>> = {
   poppins: { regular: poppinsRegular, semibold: poppinsSemiBold, bold: poppinsBold },
+  "barlow-condensed": { regular: barlowRegular, semibold: barlowSemiBold, bold: barlowBold },
 };
 
 /** The CSS font-family a family's faces register under — one distinct name
@@ -71,14 +73,17 @@ const facesPromises = new Map<FontFamilyId, Promise<MeasureFace>>();
 export function loadLabelFaces(id: FontFamilyId = "poppins"): Promise<MeasureFace> {
   const cached = facesPromises.get(id);
   if (cached) return cached;
-  const css = labelFontCss(id);
   // Memoized like loadLabelFont: callers sit on hot paths (the dev preview
   // effect re-asks per rebuild), and the measurement canvas is reusable.
-  const p: Promise<MeasureFace> = loadLabelFont(id).then((): MeasureFace => {
+  // Both bundled families are ready before editing; switching a layer cannot
+  // measure a fallback font while its actual face is still loading.
+  const p: Promise<MeasureFace> = Promise.all(
+    (Object.keys(FONT_URLS) as FontFamilyId[]).map(loadLabelFont),
+  ).then((): MeasureFace => {
     const ctx = document.createElement("canvas").getContext("2d");
     if (!ctx) throw new Error("Could not create the font measurement canvas.");
-    return (text, size, face) => {
-      ctx.font = `${FACE_WEIGHT[face]} ${size}px ${css}`;
+    return (text, size, face, family = id) => {
+      ctx.font = `${FACE_WEIGHT[face]} ${size}px ${labelFontCss(family)}`;
       return ctx.measureText(text).width;
     };
   }).catch((error) => {

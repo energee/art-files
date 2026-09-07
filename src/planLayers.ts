@@ -130,7 +130,8 @@ function lineAt(
   });
 }
 
-function prepareText(l: TextLayer, m: MeasureFace): Prepared {
+function prepareText(l: TextLayer, measure: MeasureFace): Prepared {
+  const m: MeasureFace = (text, size, face) => measure(text, size, face, l.fontFamily);
   const id = l.id;
   const faces = facesOf(l);
   const faceOf = (r: StyledLine): Face => (r.bold ? faces.bold : faces.base);
@@ -187,9 +188,16 @@ function prepareText(l: TextLayer, m: MeasureFace): Prepared {
           : l.align === "right" ? box.x + box.w - lw : box.x;
         out.push(...lineAt(id, ln, m, faceOf, x, baseline, size));
       });
-      return out;
+      return l.fontFamily ? out.map((run) => ({ ...run, fontFamily: l.fontFamily })) : out;
     },
   };
+}
+
+/** Text-only measurement uses the exact export preparation, without needing
+ *  sibling layers to resolve bindings or image assets to load. */
+export function planText(layer: TextLayer, measure: MeasureFace): PlacedText[] {
+  const prepared = prepareText(layer, measure);
+  return prepared.emit({ x: 0, y: 0, ...prepared.size }) as PlacedText[];
 }
 
 // --- image ----------------------------------------------------------------

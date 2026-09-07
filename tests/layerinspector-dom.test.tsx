@@ -463,3 +463,90 @@ describe("LayerInspector fill vocabulary", () => {
     });
   });
 });
+
+
+it("keeps typography together and template-only settings in a closed disclosure", () => {
+  render(text({ placeholder: "Name", choices: [{ value: "Ale" }] }));
+  const details = $("details") as HTMLDetailsElement;
+  expect(details.open).toBe(false);
+  expect(details.querySelector("summary")?.textContent).toContain("Template field settings");
+  expect(details.querySelector("#name-placeholder")).not.toBeNull();
+  expect(details.querySelector("#name-choice-0-value")).not.toBeNull();
+  expect($("#name-size")!.parentElement?.closest("details")).toBeNull();
+  expect(Array.from(container.querySelectorAll("h2")).map((el) => el.textContent))
+    .toEqual(["Typography", "Position", "Color", "Stroke"]);
+  expect($("#name-placeholder")!.getAttribute("aria-describedby")).toBe("name-placeholder-hint");
+  expect($("#name-placeholder-hint")!.textContent).toBe("Drawn while the layer is empty");
+});
+
+
+it("displays imported size precision cleanly without changing the stored layer", () => {
+  const { onChange } = render(text({ size: 15.829999923706056 }));
+  expect(($("#name-size") as HTMLInputElement).value).toBe("15.83");
+  expect(onChange).not.toHaveBeenCalled();
+  type($("#name-size")!, "16.25");
+  expect(onChange).toHaveBeenLastCalledWith({ size: 16.25 });
+});
+
+it("converts dimensional edits from mm to points while keeping typography in points", () => {
+  const onUnitChange = vi.fn();
+  const { onChange } = render(text({ x: 72, y: -72, width: 144, size: 15.83 }), { unit: "mm", onUnitChange });
+  expect(($("#name-x") as HTMLInputElement).value).toBe("25.4");
+  expect(($("#name-y") as HTMLInputElement).value).toBe("-25.4");
+  expect(($("#name-width") as HTMLInputElement).value).toBe("50.8");
+  expect(($("#name-size") as HTMLInputElement).value).toBe("15.83");
+  expect(onChange).not.toHaveBeenCalled();
+  type($("#name-x")!, "12.7");
+  expect(onChange).toHaveBeenLastCalledWith({ x: 36 });
+  type($("#name-width")!, "25.4");
+  expect(onChange).toHaveBeenLastCalledWith({ width: 72 });
+  type($("#name-width")!, "");
+  expect(onChange).toHaveBeenLastCalledWith({ width: undefined });
+  vi.mocked(onChange).mockClear();
+  click(byLabel("Points")!);
+  expect(onUnitChange).toHaveBeenLastCalledWith("pt");
+  render(text({ x: 72 }), { unit: "pt", onChange, onUnitChange });
+  expect(($("#name-x") as HTMLInputElement).value).toBe("72");
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+it("converts image dimensions and binding gaps in mm without losing optional height or bounds", () => {
+  const { onChange } = render(image({ w: 72, h: 144, binding: { to: "name", side: "bottom", gap: -72 } }), { unit: "mm" });
+  expect(($("#logo-w") as HTMLInputElement).value).toBe("25.4");
+  expect(($("#logo-h") as HTMLInputElement).value).toBe("50.8");
+  expect(($("#logo-gap") as HTMLInputElement).value).toBe("-25.4");
+  type($("#logo-gap")!, "-12.7");
+  expect(onChange).toHaveBeenLastCalledWith({ binding: { to: "name", side: "bottom", gap: -36 } });
+  type($("#logo-h")!, "");
+  expect(onChange).toHaveBeenLastCalledWith({ h: undefined });
+  type($("#logo-w")!, "0");
+  expect(onChange).toHaveBeenLastCalledWith({ w: 1 });
+});
+
+it("converts barcode and QR dimensions while preserving their point-based model", () => {
+  const { onChange } = render(barcode({ h: 72 }), { unit: "mm" });
+  expect(($("#barcode-h") as HTMLInputElement).value).toBe("25.4");
+  type($("#barcode-modulew")!, "0.5");
+  expect(vi.mocked(onChange).mock.lastCall?.[0]).toMatchObject({ moduleW: expect.closeTo(0.5 * 72 / 25.4) });
+  render(qr({ size: 72 }), { unit: "mm", onChange });
+  expect(($("#qr-size") as HTMLInputElement).value).toBe("25.4");
+  type($("#qr-size")!, "12.7");
+  expect(onChange).toHaveBeenLastCalledWith({ size: 36 });
+});
+
+it("changes only the selected layer's font and offers inheritance", async () => {
+  const { onChange } = render(text());
+  expect(byLabel("Font")!.textContent).toContain("Default (Poppins)");
+  click(byLabel("Font")!);
+  const option = Array.from(document.querySelectorAll('[role="option"]')).find((el) => el.textContent?.includes("Barlow Condensed"));
+  expect(option).toBeDefined();
+  act(() => { option!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" })); });
+  click(option!);
+  expect(onChange).toHaveBeenLastCalledWith({ fontFamily: "barlow-condensed" });
+  render(text({ fontFamily: "barlow-condensed" }), { onChange });
+  click(byLabel("Font")!);
+  const inherit = Array.from(document.querySelectorAll('[role="option"]')).find((el) => el.textContent?.includes("Default (Poppins)"));
+  act(() => { inherit!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" })); });
+  click(inherit!);
+  expect(onChange).toHaveBeenLastCalledWith({ fontFamily: undefined });
+});

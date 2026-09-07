@@ -1,3 +1,4 @@
+import { FONT_FAMILIES } from "../fontCatalog";
 // src/model/files.ts — v3 .master / .label file containers. Same ZIP layout
 // as before: master.json or label.json plus the asset role directories
 // labelfile.ts's packAssets/extractAssets own (texture/<name>, mask/<name>,
@@ -86,6 +87,11 @@ export function parseLabel(json: unknown): LabelFile | { v2: LabelFileV2 } | { l
   const o = json as Record<string, unknown>;
   if (o.formatVersion === 2) return { v2: parseLabelFile(json) as LabelFileV2 };
   if (o.formatVersion !== 3) return { legacy: json };
+  for (const patch of Object.values(o.overrides ?? {})) {
+    const family = (patch as { fontFamily?: unknown } | null)?.fontFamily;
+    if (family != null && (typeof family !== "string" || !Object.hasOwn(FONT_FAMILIES, family)))
+      throw new Error(`Unknown label font family: ${family}`);
+  }
   if (typeof o.masterId !== "string" || !o.masterId) throw new Error("Label file is missing its masterId.");
   const dormant = parseDormant(o.dormant);
   return {

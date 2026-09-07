@@ -2,8 +2,8 @@
 // (spec: docs/superpowers/specs/2026-09-04-master-as-layers-design.md, "UI"
 // and "Relative position"). Sections, top to bottom: header (kind icon,
 // inline rename, enabled/locked), the parent's content editor,
-// Position (free coordinates or a binding to another layer's edge, with
-// a gap; rotation 0/90), kind-specific Geometry, and Style.
+// kind-specific geometry/typography, Position, Style, and expandable
+// template field settings.
 //
 // Every control is controlled from `layer` and writes ONLY through
 // `onChange` with a minimal DeepPartial<Layer> patch ({ x }, { y: 12 },
@@ -24,7 +24,7 @@
 // every layer has a position, `below` covers the flow, and every layer is
 // fillable. The text/image/code content editor is the parent's (`content`),
 // so this file never builds a text editor of its own.
-import { useState, type ReactNode } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
 import {
   AlignCenterHorizontal, AlignCenterVertical, AlignEndVertical, AlignStartVertical, ArrowDownToLine, ArrowUpToLine,
   Barcode, ChevronsUpDown, Heading1, Image, Link2, Link2Off, QrCode, RotateCcw,
@@ -62,6 +62,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ColorField } from "./ColorField";
 import { MetallicToggle } from "./MetallicToggle";
 import { ScrubField } from "./ScrubField";
+import { CharacterHeight } from "./CharacterHeight";
+import { FONT_FAMILIES, fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
 
 type Patch = DeepPartial<Layer>;
 
@@ -76,11 +78,23 @@ const KIND_ICONS: Record<LayerKind, LucideIcon> = {
  *  halves — fine enough to land a snap, coarse enough to cross the label. */
 const PT = { step: 0.01, dragStep: 0.5 } as const;
 
+// The model stays in PDF points; only dimensional controls convert for display.
+const MM_PER_PT = 25.4 / 72;
+type DimensionUnit = "mm" | "pt";
+
+function DimensionField(props: Omit<ComponentProps<typeof ScrubField>, "unit"> & { unit: DimensionUnit }) {
+  const scale = props.unit === "mm" ? MM_PER_PT : 1;
+  return <ScrubField {...props} key={props.unit}
+    value={props.value * scale} min={props.min * scale} max={props.max * scale}
+    step={0.01} dragStep={props.unit === "mm" ? 0.1 : props.dragStep}
+    onChange={(value) => props.onChange(Math.min(props.max, Math.max(props.min, value / scale)))} />;
+}
+
 /** Section heading — the idiom StyleProperties' inspector used, so the new
  *  panel reads in the app's established voice. */
 function Heading(props: { children?: ReactNode }) {
   return (
-    <h2 className="mb-1.5 mt-4 text-[11px] uppercase tracking-wider text-muted-foreground">
+    <h2 className="mb-2 mt-4 border-t border-border pt-3 text-xs font-medium text-foreground">
       {props.children}
     </h2>
   );
@@ -141,11 +155,13 @@ function Badge(props: {
         <button
           key={m.source}
           type="button"
-          className={cn("size-2 shrink-0 rounded-full text-info-text transition-transform hover:scale-125", m.cls)}
+          className="flex size-6 shrink-0 items-center justify-center rounded text-info-text hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           title={m.title}
           aria-label={m.aria}
           onClick={() => props.onReset(m.path!, m.source)}
-        />
+        >
+          <span aria-hidden="true" className={cn("size-2 rounded-full", m.cls)} />
+        </button>
       ))}
     </span>
   );
@@ -162,24 +178,25 @@ function BlankableField(props: {
   onChange: (v: number | undefined) => void;
 }) {
   const [text, setText] = useState<string | null>(null);
+  const scale = props.unit === "mm" ? MM_PER_PT : 1;
   return (
     <Field id={props.id} label={props.label} badge={props.badge}>
       <InputGroup className="h-6 w-24">
         <InputGroupInput
           id={props.id}
           type="number"
-          min={props.min}
-          max={props.max}
+          min={props.min * scale}
+          max={props.max * scale}
           step={props.step}
           placeholder={props.placeholder}
           className="h-6 text-xs"
-          value={text ?? (props.value ?? "")}
+          value={text ?? (props.value === undefined ? "" : Number((props.value * scale).toFixed(2)))}
           onChange={(e) => {
             const s = e.target.value;
             setText(s);
             if (s === "") { props.onChange(undefined); return; }
             const n = Number(s);
-            if (Number.isFinite(n)) props.onChange(Math.min(props.max, Math.max(props.min, n)));
+            if (Number.isFinite(n)) props.onChange(Math.min(props.max, Math.max(props.min, n / scale)));
           }}
           onBlur={() => setText(null)}
         />
@@ -269,6 +286,7 @@ const SYMBOLOGIES: readonly { value: Symbology; label: string }[] = [
 /** What every section receives: the layer, the one write, and the badge
  *  factory bound to this layer's overridden set. */
 interface Ctx {
+  unit: DimensionUnit;
   set: (patch: Patch) => void;
   badge: (paths: readonly string[], label: string) => ReactNode;
 }
@@ -288,8 +306,8 @@ function Position(props: Ctx & {
       <Heading>Position</Heading>
       {!horizontal && <>
       <Row badge={badge(["x"], "X")}>
-        <ScrubField
-          id={`${id}-x`} label={guideOf(layer.guideX) ? "X offset" : "X"} unit="pt" value={layer.x}
+        <DimensionField
+          id={`${id}-x`} label={guideOf(layer.guideX) ? "X offset" : "X"} unit={props.unit} value={layer.x}
           min={-2000} max={2000} {...PT}
           onChange={(x) => set({ x })}
         />
@@ -304,8 +322,8 @@ function Position(props: Ctx & {
       {(!binding || horizontal) && typeof y === "number" && (
         <>
           <Row badge={badge(["y"], "Y")}>
-            <ScrubField
-              id={`${id}-y`} label={guideOf(layer.guideY) ? "Y offset" : "Y"} unit="pt" value={y}
+            <DimensionField
+              id={`${id}-y`} label={guideOf(layer.guideY) ? "Y offset" : "Y"} unit={props.unit} value={y}
               min={-2000} max={2000} {...PT}
               onChange={(v) => set({ y: v })}
             />
@@ -360,7 +378,7 @@ function Position(props: Ctx & {
             </select>
           </Field>
           <Row badge={badge(["binding.gap", "y.gap", "y"], "Gap")}>
-            <ScrubField id={`${id}-gap`} label="Gap" unit="pt" value={binding.gap}
+            <DimensionField id={`${id}-gap`} label="Gap" unit={props.unit} value={binding.gap}
               min={-500} max={500} {...PT}
               onChange={(gap) => layer.binding
                 ? set({ binding: { ...binding, gap } })
@@ -398,12 +416,23 @@ function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: string }) {
   const id = layer.id;
   return (
     <div className="space-y-1.5">
-      <Heading>Type</Heading>
-      {/* Display only: the typeface is the master's one font gate, chosen in
-          the master picker / Settings, never per layer (dynamic-fonts). */}
-      {props.fontFamily && (
-        <Field label="Font"><span className="text-xs">{props.fontFamily}</span></Field>
-      )}
+      <Heading>Typography</Heading>
+      <Row badge={badge(["fontFamily"], "Font")}>
+        <Field label="Font">
+          <Select value={layer.fontFamily ?? "inherit"}
+            onValueChange={(value) => set({ fontFamily: value === "inherit" ? undefined : value as FontFamilyId })}>
+            <SelectTrigger size="sm" aria-label="Font" className="h-7 w-40 text-xs">
+              <SelectValue>{layer.fontFamily ? FONT_FAMILIES[layer.fontFamily].label : `Default (${FONT_FAMILIES[fontFamilyOf(props)].label})`}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="inherit">Default ({FONT_FAMILIES[fontFamilyOf(props)].label})</SelectItem>
+              {Object.entries(FONT_FAMILIES).map(([value, font]) => (
+                <SelectItem key={value} value={value}>{font.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      </Row>
       <Row badge={badge(["size"], "Size")}>
         <ScrubField
           id={`${id}-size`} label="Size" unit="pt" value={layer.size}
@@ -411,17 +440,52 @@ function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: string }) {
           onChange={(size) => set({ size })}
         />
       </Row>
+      <CharacterHeight key={layer.fontFamily ?? props.fontFamily} layer={layer}
+        family={fontFamilyOf({ fontFamily: layer.fontFamily ?? props.fontFamily })}
+        onChange={(size) => set({ size })} />
       <Segmented
         label="Align" value={layer.align} options={ALIGNS}
         badge={badge(["align"], "Align")}
         onChange={(align) => set({ align })}
       />
       <BlankableField
-        id={`${id}-width`} label="Wrap width" unit="pt" placeholder="none"
+        id={`${id}-width`} label="Wrap width" unit={props.unit} key={props.unit} placeholder="none"
         value={layer.width} min={1} max={2000} step={PT.step}
         badge={badge(["width"], "Wrap width")}
         onChange={(width) => set({ width })}
       />
+      <Row badge={badge(["leading"], "Leading")}>
+        <ScrubField
+          id={`${id}-leading`} label="Line spacing" icon={ChevronsUpDown} unit="×"
+          value={layer.leading ?? 1.2} min={0.5} max={4} step={0.01} dragStep={0.05}
+          onChange={(leading) => set({ leading })}
+        />
+      </Row>
+      <Row badge={badge(["headerScale"], "Header scale")}>
+        <ScrubField
+          id={`${id}-header-scale`} label="Heading scale" icon={Heading1} unit="×"
+          value={layer.headerScale ?? 1} min={0.5} max={4} step={0.01} dragStep={0.05}
+          onChange={(headerScale) => set({ headerScale })}
+        />
+      </Row>
+      {/* Clamped both ends by ScrubField: tracking wide enough to overrun
+          the label reads as a broken line, not a style. */}
+      <Row badge={badge(["style.letterSpacing"], "Letter Spacing")}>
+        <ScrubField
+          id={`${id}-tracking`} label="Letter spacing" icon={WholeWord} unit="pt"
+          value={layer.style.letterSpacing ?? 0} min={-2} max={20} step={0.01} dragStep={0.1}
+          onChange={(letterSpacing) => set({ style: { letterSpacing } })}
+        />
+      </Row>
+      {/* A display transform, not an edit: the stored text keeps its
+          typed case, which is what lets the QR's {name|slug} still read
+          it. Legacy masters author it one level up, hence uppercaseOf. */}
+      <SwitchRow
+        label="Uppercase" checked={uppercaseOf(layer)}
+        badge={badge(["style.uppercase", "uppercase"], "Uppercase")}
+        onChange={(uppercase) => set({ style: { uppercase } })}
+      />
+
     </div>
   );
 }
@@ -472,7 +536,7 @@ function Vocabulary(props: Ctx & { layer: Layer }) {
     <>
       <Row badge={badge(["title"], "Title")}>
         <InputRow
-          id={`${id}-title`} label="Title" value={layer.title ?? ""}
+          id={`${id}-title`} label="Field label" value={layer.title ?? ""}
           hint="Caption above the fill field"
           onChange={(v) => set({ title: v || undefined })}
         />
@@ -555,7 +619,7 @@ function FillContract(props: Ctx & { layer: TextLayer }) {
   const numeric = layer.input === "number";
   return (
     <div className="space-y-1.5">
-      <Heading>Fill contract</Heading>
+      <p className="text-xs text-muted-foreground">These settings define the field in the master for labels that use it.</p>
       <Row badge={badge(["placeholder"], "Placeholder")}>
         <InputRow
           id={`${id}-placeholder`} label="Placeholder" value={layer.placeholder ?? ""}
@@ -613,7 +677,7 @@ function FillContract(props: Ctx & { layer: TextLayer }) {
           </Select>
         </Field>
       )}
-      <Vocabulary layer={layer} set={set} badge={badge} />
+      <Vocabulary layer={layer} set={set} badge={badge} unit={props.unit} />
       {/* Fixed text drawn after the filled value on the same line ("% alc by
           vol"); the filler never edits it. */}
       {layer.input !== undefined && (
@@ -641,9 +705,10 @@ function InputRow(props: {
       <Label htmlFor={props.id} className="text-xs text-muted-foreground">{props.label}</Label>
       <Input
         id={props.id} className="h-6 text-xs" value={props.value}
-        placeholder={props.hint}
+        aria-describedby={props.hint ? `${props.id}-hint` : undefined}
         onChange={(e) => props.onChange(e.target.value)}
       />
+      {props.hint && <p id={`${props.id}-hint`} className="text-[11px] text-muted-foreground">{props.hint}</p>}
     </div>
   );
 }
@@ -676,14 +741,14 @@ function ImageGeometry(props: Ctx & { layer: ImageLayer }) {
     <div className="space-y-1.5">
       <Heading>Image</Heading>
       <Row badge={badge(["w"], "Width")}>
-        <ScrubField
-          id={`${id}-w`} label="Width" unit="pt" value={layer.w}
+        <DimensionField
+          id={`${id}-w`} label="Width" unit={props.unit} value={layer.w}
           min={1} max={2000} {...PT}
           onChange={(w) => set({ w })}
         />
       </Row>
       <BlankableField
-        id={`${id}-h`} label="Height" unit="pt" placeholder="auto"
+        id={`${id}-h`} label="Height" unit={props.unit} key={props.unit} placeholder="auto"
         value={layer.h} min={1} max={2000} step={PT.step}
         badge={badge(["h"], "Height")}
         onChange={(h) => set({ h })}
@@ -732,16 +797,16 @@ function BarcodeGeometry(props: Ctx & { layer: BarcodeLayer }) {
       {/* min > 0: a typed zero would collapse the symbol to nothing rather
           than reading as "very narrow". */}
       <Row badge={badge(["moduleW"], "Module width")}>
-        <ScrubField
-          id={`${id}-modulew`} label="Module width" unit="pt" value={layer.moduleW}
+        <DimensionField
+          id={`${id}-modulew`} label="Module width" unit={props.unit} value={layer.moduleW}
           min={0.01} max={10} step={0.01} dragStep={0.05}
           onChange={(moduleW) => set({ moduleW })}
         />
       </Row>
       {warning && <p className="text-[11px] text-warning-text">{warning}</p>}
       <Row badge={badge(["h"], "Height")}>
-        <ScrubField
-          id={`${id}-h`} label="Height" unit="pt" value={layer.h}
+        <DimensionField
+          id={`${id}-h`} label="Height" unit={props.unit} value={layer.h}
           min={1} max={300} {...PT}
           onChange={(h) => set({ h })}
         />
@@ -762,8 +827,8 @@ function QrGeometry(props: Ctx & { layer: QrLayer }) {
     <div className="space-y-1.5">
       <Heading>QR</Heading>
       <Row badge={badge(["size"], "Size")}>
-        <ScrubField
-          id={`${id}-size`} label="Size" unit="pt" value={layer.size}
+        <DimensionField
+          id={`${id}-size`} label="Size" unit={props.unit} value={layer.size}
           min={1} max={300} {...PT}
           onChange={(size) => set({ size })}
         />
@@ -838,47 +903,6 @@ function StyleSection(props: Ctx & { layer: Layer }) {
         </div>
       </div>
 
-      {layer.kind === "text" && (
-        <div className="space-y-1">
-          <Heading>Typography</Heading>
-          {/* Leading and Header scale are TextLayer fields, not Style ones —
-              they patch through `set`, not `setStyle`. They live here anyway
-              because a reader tuning type reaches for line height and
-              tracking together; `size` stays in Type, where it sits with the
-              geometry (align, wrap width) that resizes the layer's box. */}
-          <Row badge={badge(["leading"], "Leading")}>
-            <ScrubField
-              id={`${id}-leading`} label="Leading" icon={ChevronsUpDown} unit="×"
-              value={layer.leading ?? 1.2} min={0.5} max={4} step={0.01} dragStep={0.05}
-              onChange={(leading) => set({ leading })}
-            />
-          </Row>
-          <Row badge={badge(["headerScale"], "Header scale")}>
-            <ScrubField
-              id={`${id}-header-scale`} label="Header scale" icon={Heading1} unit="×"
-              value={layer.headerScale ?? 1} min={0.5} max={4} step={0.01} dragStep={0.05}
-              onChange={(headerScale) => set({ headerScale })}
-            />
-          </Row>
-          {/* Clamped both ends by ScrubField: tracking wide enough to overrun
-              the label reads as a broken line, not a style. */}
-          <Row badge={badge(["style.letterSpacing"], "Letter Spacing")}>
-            <ScrubField
-              id={`${id}-tracking`} label="Letter Spacing" icon={WholeWord} unit="pt"
-              value={style.letterSpacing ?? 0} min={-2} max={20} step={0.01} dragStep={0.1}
-              onChange={(letterSpacing) => setStyle({ letterSpacing })}
-            />
-          </Row>
-          {/* A display transform, not an edit: the stored text keeps its
-              typed case, which is what lets the QR's {name|slug} still read
-              it. Legacy masters author it one level up, hence uppercaseOf. */}
-          <SwitchRow
-            label="Uppercase" checked={uppercaseOf(layer)}
-            badge={badge(["style.uppercase", "uppercase"], "Uppercase")}
-            onChange={(uppercase) => setStyle({ uppercase })}
-          />
-        </div>
-      )}
 
       <div className="space-y-1">
         <div className="flex items-center justify-between">
@@ -931,6 +955,8 @@ function StyleSection(props: Ctx & { layer: Layer }) {
 }
 
 export function LayerInspector(props: {
+  unit?: DimensionUnit;
+  onUnitChange?: (unit: DimensionUnit) => void;
   /** The resolved layer being edited. */
   layer: Layer;
   /** Every layer's id and name, for the "Bind to layer…" picker (the layer
@@ -957,7 +983,7 @@ export function LayerInspector(props: {
   const badge = (paths: readonly string[], label: string) => (
     <Badge paths={paths} overridden={props.overridden} label={label} onReset={props.onReset} />
   );
-  const ctx: Ctx = { set, badge };
+  const ctx: Ctx = { set, badge, unit: props.unit ?? "pt" };
   // A layer name is required (parseMaster fails on an empty one), so it is
   // typed through the same guard as a choice's value.
   const nameProps = useRequiredText(layer.name, (v) => set({ name: v }));
@@ -989,6 +1015,17 @@ export function LayerInspector(props: {
         </Field>
       </div>
 
+      {props.onUnitChange && <Field label="Dimensions">
+        <ToggleGroup aria-label="Dimension units" variant="outline" size="sm" spacing={0}
+          value={[ctx.unit]} onValueChange={(values) => {
+            const unit = values[0];
+            if (unit === "mm" || unit === "pt") props.onUnitChange?.(unit);
+          }}>
+          <ToggleGroupItem value="mm" aria-label="Millimeters" className="h-6 px-2 text-xs">mm</ToggleGroupItem>
+          <ToggleGroupItem value="pt" aria-label="Points" className="h-6 px-2 text-xs">pt</ToggleGroupItem>
+        </ToggleGroup>
+      </Field>}
+
       {props.content !== undefined && (
         <div className="space-y-1.5">
           <Heading>Content</Heading>
@@ -996,21 +1033,32 @@ export function LayerInspector(props: {
         </div>
       )}
 
-      <Position layer={layer} layerNames={props.layerNames} onUnbind={props.onUnbind} onBind={props.onBind} {...ctx} />
-
       {layer.kind === "text" && <TextGeometry layer={layer} fontFamily={props.fontFamily} {...ctx} />}
-      {layer.kind === "text" && <FillContract layer={layer} {...ctx} />}
       {layer.kind === "image" && <ImageGeometry layer={layer} {...ctx} />}
       {layer.kind === "barcode" && <BarcodeGeometry layer={layer} {...ctx} />}
       {/* A barcode has no `input` to hang a contract off, but its tier list is
           the same vocabulary a style has. */}
-      {layer.kind === "barcode" && <Vocabulary layer={layer} {...ctx} />}
       {layer.kind === "qr" && <QrGeometry layer={layer} {...ctx} />}
 
       {/* The page art has no ink of its own to colour or stroke — the
           texture IS the colour and the mask IS the plate — so like the old
           Document layers it carries no Style stack. */}
+      <Position layer={layer} layerNames={props.layerNames} onUnbind={props.onUnbind} onBind={props.onBind} {...ctx} />
+
       {!page && <StyleSection layer={layer} {...ctx} />}
+      {(layer.kind === "text" || layer.kind === "barcode") && (
+        <details className="mt-4 border-t border-border pt-3">
+          <summary className="cursor-pointer rounded py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            Template field settings
+          </summary>
+          <div className="space-y-3 pt-2">
+            {layer.kind === "text" ? <FillContract layer={layer} {...ctx} /> : <>
+              <p className="text-xs text-muted-foreground">Set the field label and saved choices in the master.</p>
+              <Vocabulary layer={layer} {...ctx} />
+            </>}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

@@ -48,7 +48,7 @@ import { uppercaseOf } from "@/model/layers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, snappedDx, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue,
+  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, nearestLine, snapDelta, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -61,6 +61,7 @@ import {
 import { lolevMaster } from "@/model/lolevLayers";
 import { SHIPPED_MASTER_ID, masterIndex, rememberMaster, resolveMasterById } from "@/masters";
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
+import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
 import { makeHiddenPropsEqual } from "@/tabs";
 import { EMBEDDABLE_RASTER, mimeFor, rasterKind, tintRgba } from "@/collab";
@@ -88,7 +89,7 @@ import {
 } from "@/selection";
 import { CommandMenu, type Command } from "@/components/CommandMenu";
 import { AppMenu } from "@/components/AppMenu";
-import { PreviewCompare, type PreviewCompareHandle } from "@/components/PreviewCompare";
+import { PreviewCompare, SNAP_PT, type PreviewCompareHandle, type SnapLines, type SnapMark, type SnapTarget } from "@/components/PreviewCompare";
 import { Rulers } from "@/components/Rulers";
 import { CanView, type CanViewHandle } from "@/components/CanView";
 import {
@@ -108,7 +109,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { loadLabelFaces, labelFontCss } from "@/fonts";
-import { fontFamilyOf } from "@/fontCatalog";
+import { fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
 import { loadFonts } from "@/pdf/fonts";
 import type { MeasureFace, PlanAssets } from "@/plan";
 import type { CanvasAssets, CanvasRenderSource } from "@/canvas/draw";
@@ -138,6 +139,10 @@ type Doc = { master: Master; label: LabelFile };
  *  (labelfile.ts's texture/<name>, mask/<name>), so the layers carry no id
  *  of their own; App binds them here and registers the same ids in the
  *  render assets (see withPageArt and the assembly effect). */
+/** Shift + an arrow key moves the selection this many points instead of one —
+ *  the coarse step, as in every design tool. */
+const NUDGE_SHIFT_PT = 10;
+
 const PAGE_ART_ID = { background: "texture", mask: "mask" } as const;
 
 /** A fresh label on `master`: nothing filled, no variant on. */
@@ -644,6 +649,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Rulers and guides are view state: they assist the operator but are not
   // label content, so none enters history/exports. Both persist per operator.
   const [showRulers, setShowRulers] = useState(() => loadViewToggles().showRulers);
+  const [dimensionUnit, setDimensionUnit] = useState<"mm" | "pt">("mm");
   const [rulerUnit, setRulerUnit] = useState<RulerUnit>("in");
   const [showGuides, setShowGuides] = useState(() => loadViewToggles().showGuides);
   const marginPt = master.guides.top ?? DEFAULT_MARGIN_PT;
@@ -837,6 +843,29 @@ export const DocumentEditor = memo(function DocumentEditor({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Arrow-key nudge for the selection: 1pt a press, 10pt with shift. Same
+  // inert-while-typing guard as the other two; registered once and reading
+  // the live move through a ref, like the command table above.
+  const nudgeRef = useRef<(dx: number, dy: number) => void>(() => {});
+  useEffect(() => {
+    const steps: Record<string, [number, number]> = {
+      ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (!activeRef.current) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return; // ⌘← is "go back", not a nudge
+      const step = steps[e.key];
+      if (!step) return;
+      const el = e.target as HTMLElement | null;
+      if (el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "")) return;
+      e.preventDefault();
+      const by = e.shiftKey ? NUDGE_SHIFT_PT : 1;
+      nudgeRef.current(step[0] * by, step[1] * by);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
   }, []);
 
   // A loaded-but-invalid mask or an invalid filled value (a bad UPC) blocks
@@ -1076,53 +1105,181 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** The same over every listed row (disabled layers included) — what the
    *  inspector's bind/unbind actions want. */
   const rowBoxes = () => boxesNow(rows.map((r) => r.layer));
+  /** Every line a gesture can snap to on each axis: the master's guides, plus
+   *  the edges and middles of the layers NOT taking part (`skip`) — the
+   *  Photoshop/Sketch rule that objects line up with each other, not only with
+   *  the page. In guide space: layerBoxes measures in page space, which
+   *  BLEED_SHIFT offsets from the coordinates layer.x and the guides use. */
+  const snapTargets = (skip: ReadonlySet<string>, boxes: Map<string, Box>, skipGuide?: number) => {
+    // A guide runs the whole page; a layer's line runs only as far as the
+    // layer does — that extent is what the indicator segment is drawn from.
+    const lines = {
+      x: [guides.left, guides.center, guides.right].map((at) => ({ at, min: 0, max: PAGE.h })),
+      y: [guides.top, guides.bottom].map((at) => ({ at, min: 0, max: PAGE.w })),
+    };
+    for (const g of manualGuides) {
+      if (g.id === skipGuide) continue;
+      lines[g.axis].push(g.axis === "x"
+        ? { at: g.point - BLEED_SHIFT, min: 0, max: PAGE.h }
+        : { at: g.point - BLEED_SHIFT, min: 0, max: PAGE.w });
+    }
+    for (const layer of drawLayers) {
+      if (skip.has(layer.id)) continue;
+      const box = boxes.get(layer.id);
+      // A zero-size box is a layer with no geometry of its own (the background
+      // and mask fill the page): its "edges" are all 0, not a line anyone is
+      // aligning to.
+      if (!box || box.w <= 0 || box.h <= 0) continue;
+      const left = box.x - BLEED_SHIFT;
+      const top = box.y - BLEED_SHIFT;
+      for (const at of [left, left + box.w / 2, left + box.w])
+        lines.x.push({ at, min: top, max: top + box.h });
+      for (const at of [top, top + box.h / 2, top + box.h])
+        lines.y.push({ at, min: left, max: left + box.w });
+    }
+    return lines;
+  };
+
+  /** The indicator segment for a snap: the line it landed on, spanning from
+   *  the moving box to the far end of everything that offered that line —
+   *  Photoshop's smart guide, which shows WHAT you lined up with, not just
+   *  where. Null when the axis did not snap. */
+  const snapMark = (
+    marks: readonly SnapTarget[], at: number | null, min: number, max: number,
+  ): SnapMark | null => {
+    if (at === null) return null;
+    let from = min;
+    let to = max;
+    for (const m of marks) {
+      if (m.at !== at) continue;
+      from = Math.min(from, m.min);
+      to = Math.max(to, m.max);
+    }
+    return { at, from, to };
+  };
+
   const dragBase = useRef<
-    { id: string; bases: { layer: Layer; w: number }[]; bounds: { x: number; w: number } } | null
+    {
+      id: string; bases: { layer: Layer; w: number }[];
+      bounds: { x: number; w: number; y: number; h: number };
+      lines: { x: SnapTarget[]; y: SnapTarget[] };
+    } | null
   >(null);
-  const onDrag = (id: string, dx: number, dy: number, first: boolean) => {
+  const onDrag = (id: string, dx: number, dy: number, first: boolean): SnapLines => {
     if (first || dragBase.current?.id !== id) {
       const boxes = boxesNow();
-      if (!boxes) return;
+      if (!boxes) return { x: null, y: null, dx, dy };
       const ids = new Set(gestureIds(selected, id));
       const bases = drawLayers.filter((l) => ids.has(l.id) && !l.locked)
         .map((layer) => ({ layer, w: boxes.get(layer.id)?.w ?? 0 }));
-      if (!bases.length) return;
+      if (!bases.length) return { x: null, y: null, dx, dy };
       // The selection's own box, in the guides' space: layerBoxes measures in
       // page space, which BLEED_SHIFT offsets from the coordinates layer.x and
       // the guides are written in.
-      const span = bases.reduce((acc, { layer, w }) => {
-        const left = (boxes.get(layer.id)?.x ?? layer.x) - BLEED_SHIFT;
-        return { x: Math.min(acc.x, left), right: Math.max(acc.right, left + w) };
-      }, { x: Infinity, right: -Infinity });
-      dragBase.current = { id, bases, bounds: { x: span.x, w: span.right - span.x } };
+      const span = bases.reduce((acc, { layer }) => {
+        const box = boxes.get(layer.id);
+        const left = (box?.x ?? layer.x) - BLEED_SHIFT;
+        const top = (box?.y ?? 0) - BLEED_SHIFT;
+        return {
+          x: Math.min(acc.x, left), right: Math.max(acc.right, left + (box?.w ?? 0)),
+          y: Math.min(acc.y, top), bottom: Math.max(acc.bottom, top + (box?.h ?? 0)),
+        };
+      }, { x: Infinity, right: -Infinity, y: Infinity, bottom: -Infinity });
+        const lines = snapTargets(ids, boxes);
+      dragBase.current = {
+        id, bases, lines,
+        bounds: { x: span.x, w: span.right - span.x, y: span.y, h: span.bottom - span.y },
+      };
     }
-    // The SELECTION'S BOUNDS decide where the drag lands: one snap to the
-    // master's guides, applied as the distance every selected layer travels.
-    // Snapping the grabbed layer alone re-spaced the group every time it
-    // crossed a guide, and centred that layer rather than the thing on screen.
+    // The SELECTION'S BOUNDS decide where the drag lands: one snap per axis,
+    // applied as the distance every selected layer travels. Snapping the
+    // grabbed layer alone re-spaced the group every time it crossed a guide,
+    // and centred that layer rather than the thing on screen.
     // The set is moveBy's "already carried" test: a layer bound to another in
     // the same drag follows it, and must not move its own gap on top of that.
+    const { bounds, lines } = dragBase.current;
     const moving = new Set(dragBase.current.bases.map(({ layer }) => layer.id));
-    const gdx = snappedDx(dragBase.current.bounds, dx, guides, 6);
+    const sx = snapDelta({ min: bounds.x, size: bounds.w }, dx, lines.x.map((m) => m.at), SNAP_PT);
+    const sy = snapDelta({ min: bounds.y, size: bounds.h }, dy, lines.y.map((m) => m.at), SNAP_PT);
     const entries = dragBase.current.bases
-      .map(({ layer }): [string, DeepPartial<Layer>] => [layer.id, moveBy(layer, gdx, dy, moving)])
+      .map(({ layer }): [string, DeepPartial<Layer>] => [layer.id, moveBy(layer, sx.delta, sy.delta, moving)])
       .filter(([, p]) => Object.keys(p).length);
     if (entries.length) patchMany(entries, !first);
+    // The indicator spans the moved selection AND whatever it lined up with.
+    const top = bounds.y + sy.delta;
+    const left = bounds.x + sx.delta;
+    return {
+      x: snapMark(lines.x, sx.line, top, top + bounds.h),
+      y: snapMark(lines.y, sy.line, left, left + bounds.w),
+      dx: sx.delta, dy: sy.delta,
+    };
   };
+  /** A manual guide dragged off the ruler snaps to the same lines a layer
+   *  does — the master's guides, the other manual guides, and every layer's
+   *  edges and middle — so "line this guide up with that logo" is a drag, not
+   *  arithmetic. Rulers speaks page space; the lines are in guide space. */
+  const snapGuidePoint = (axis: GuideAxis, point: number, id?: number) => {
+    const boxes = boxesNow();
+    if (!boxes) return point;
+    const line = nearestLine(
+      point - BLEED_SHIFT, snapTargets(new Set(), boxes, id)[axis].map((m) => m.at), SNAP_PT);
+    return line === null ? point : line + BLEED_SHIFT;
+  };
+
+  /** The keyboard half of drag-to-move: every selected unlocked layer steps
+   *  by the same delta, through the same moveBy the pointer uses (so a bound
+   *  layer moves its gap and a layer carried by another is left alone). No
+   *  snapping — a nudge is a deliberate exact step, which is the whole reason
+   *  to reach for the arrow keys. One press is one undo step. */
+  nudgeRef.current = (dx, dy) => {
+    const moving = new Set(
+      drawLayers.filter((l) => selected.includes(l.id) && !l.locked).map((l) => l.id));
+    if (!moving.size) return;
+    const entries = drawLayers.filter((l) => moving.has(l.id))
+      .map((layer): [string, DeepPartial<Layer>] => [layer.id, moveBy(layer, dx, dy, moving)])
+      .filter(([, p]) => Object.keys(p).length);
+    if (entries.length) patchMany(entries);
+  };
+
   /** Handle resize: like onDrag, the patch is resizeBy against the layer
    *  and box captured at the gesture's start, coalesced into one undo step.
    *  Only the grabbed layer resizes, never the group. */
-  const resizeBase = useRef<{ layer: Layer; box: { w: number; h: number } } | null>(null);
-  const onResize = (id: string, handle: ResizeHandle, dx: number, dy: number, uniform: boolean, first: boolean) => {
+  const resizeBase = useRef<
+    { layer: Layer; box: Box; lines: { x: SnapTarget[]; y: SnapTarget[] } } | null
+  >(null);
+  const onResize = (
+    id: string, handle: ResizeHandle, dx: number, dy: number, uniform: boolean, first: boolean,
+  ): SnapLines => {
     if (first) {
+      const boxes = boxesNow();
       const layer = drawLayers.find((l) => l.id === id);
-      const box = boxesNow()?.get(id);
-      resizeBase.current = layer && box ? { layer, box } : null;
+      const box = boxes?.get(id);
+      resizeBase.current = layer && box && boxes
+        ? { layer, box, lines: snapTargets(new Set([id]), boxes) } : null;
     }
     const base = resizeBase.current;
-    if (!base) return;
-    const p = resizeBy(base.layer, base.box, handle, dx, dy, uniform);
+    if (!base) return { x: null, y: null, dx, dy };
+    // The GRABBED EDGE snaps, the opposite one stays put: a resize is about
+    // where the edge you are dragging lands, so the snap range is that edge
+    // alone (size 0), not the whole box.
+    const edgeX = base.box.x - BLEED_SHIFT + (handle.hx === 1 ? base.box.w : 0);
+    const edgeY = base.box.y - BLEED_SHIFT + (handle.hy === 1 ? base.box.h : 0);
+    const sx = handle.hx === 0 ? { delta: dx, line: null }
+      : snapDelta({ min: edgeX, size: 0 }, dx, base.lines.x.map((m) => m.at), SNAP_PT);
+    const sy = handle.hy === 0 ? { delta: dy, line: null }
+      : snapDelta({ min: edgeY, size: 0 }, dy, base.lines.y.map((m) => m.at), SNAP_PT);
+    const p = resizeBy(base.layer, base.box, handle, sx.delta, sy.delta, uniform);
     if (Object.keys(p).length) patch(id, p, !first);
+    // The indicator spans the resized box (its live one, after the patch) and
+    // whatever the grabbed edge lined up with.
+    const now = boxesNow()?.get(id) ?? base.box;
+    const top = now.y - BLEED_SHIFT;
+    const left = now.x - BLEED_SHIFT;
+    return {
+      x: snapMark(base.lines.x, sx.line, top, top + now.h),
+      y: snapMark(base.lines.y, sy.line, left, left + now.w),
+      dx: sx.delta, dy: sy.delta,
+    };
   };
   /** The inspector's Unbind: the bound layer's current resolved top, written
    *  as its numeric `y` — only the planner knows where the layer above ends. */
@@ -1184,9 +1341,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** The full-resolution display list for an export: the same layers the
    *  preview draws, planned with the canvas measure (fonts.ts — the one
    *  font gate) and the full-size asset descriptors. */
-  async function exportPlan(): Promise<{ plan: PlacedLayer[]; images: Record<string, CollabImage> }> {
+  async function exportPlan(): Promise<{ plan: PlacedLayer[]; images: Record<string, CollabImage>; fontFamilies: Assets["fontFamilies"] }> {
     const m = await loadLabelFaces(family);
-    return { plan: planLayers(drawLayers, m, planAssetsOf()), images: await imageAssets() };
+    const plan = planLayers(drawLayers, m, planAssetsOf());
+    const families = new Set(plan.flatMap((run) => run.kind === "text" && run.fontFamily ? [run.fontFamily] : []));
+    const fontFamilies = Object.fromEntries(await Promise.all(
+      [...families].map(async (id: FontFamilyId) => [id, await loadFonts(id)]),
+    ));
+    return { plan, images: await imageAssets(), fontFamilies };
   }
 
   /** Downloads rebuild from the full-resolution assets on demand — the
@@ -1196,12 +1358,12 @@ export const DocumentEditor = memo(function DocumentEditor({
     setBuilding(true);
     startSaveBatch();
     try {
-      const [{ buildArtPdf, buildMaskPdf }, fonts, { plan, images }] = await Promise.all([
+      const [{ buildArtPdf, buildMaskPdf }, fonts, { plan, images, fontFamilies }] = await Promise.all([
         import("@/pdf/build"), loadFonts(family), exportPlan(),
       ]);
       const art = pageArt(false);
       const assets: Assets = {
-        fonts, title,
+        fonts, fontFamilies, title,
         images: {
           ...images,
           ...(art.texture ? { [PAGE_ART_ID.background]: art.texture } : {}),
@@ -1369,9 +1531,9 @@ export const DocumentEditor = memo(function DocumentEditor({
     /** Adopt `m` as the saved master: the document's, the library's, and the
      *  baseline the next review diffs against. A plain save with nothing
      *  promoted is a no-op edit and pushes no history entry. */
-    const commit = (m: Master, where: string) => {
+    const commit = (m: Master, where: string, bytes?: Uint8Array) => {
       edit(() => ({ master: m, label: adoptMaster(promoted.label, m) }));
-      rememberMaster(m, where);
+      rememberMaster(m, where, bytes);
       pristineMaster.current = m;
       repaintMasterDirty((n) => n + 1);
     };
@@ -1410,8 +1572,11 @@ export const DocumentEditor = memo(function DocumentEditor({
         // The handle's name is known BEFORE the write here (unlike the Tauri
         // branch above), so a renamed fork packs and writes exactly once.
         const final = titled(masterFileHandle.current.name);
-        await writeHandle(masterFileHandle.current, packMaster(final, assets));
-        commit(final, masterFileHandle.current.name);
+        const bytes = packMaster(final, assets);
+        await writeHandle(masterFileHandle.current, bytes);
+        // The bytes go to the master cache too: a browser reload has no path
+        // to re-read this file from (masterCache.ts).
+        commit(final, masterFileHandle.current.name, bytes);
         return true;
       } catch (err) {
         masterFileHandle.current = null;
@@ -1423,9 +1588,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     // The download fallback names the file itself, so `titled` is a no-op
     // here — it stays in the line so all three branches read the same way.
     const name = suggested + MASTER_EXT;
+    const bytes = packMaster(forked, assets);
     startSaveBatch();
-    saveBytes(packMaster(forked, assets), name, "application/zip");
-    commit(titled(name), name);
+    saveBytes(bytes, name, "application/zip");
+    commit(titled(name), name, bytes);
     return true;
   }
 
@@ -1479,8 +1645,8 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** File → Open Master…: register the newly opened master in the library
    *  index, then commitRebind onto it. */
-  function applyOpenedMaster(m: Master, path: string) {
-    rememberMaster(m, path);
+  function applyOpenedMaster(m: Master, path: string, bytes?: Uint8Array) {
+    rememberMaster(m, path, bytes);
     commitRebind(m);
   }
 
@@ -1508,11 +1674,12 @@ export const DocumentEditor = memo(function DocumentEditor({
     try {
       const [handle] = await pick({ types: MASTER_TYPES });
       const file = await handle.getFile();
-      const r = tryParseMaster(new Uint8Array(await file.arrayBuffer()));
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const r = tryParseMaster(bytes);
       if (!r) return;
       masterFileHandle.current = handle;
       masterFilePath.current = null;
-      applyOpenedMaster(r.master, file.name);
+      applyOpenedMaster(r.master, file.name, bytes);
       await adoptMasterAssets(r.assets);
     } catch (err) {
       if (!isAbort(err)) setLoadError(`Could not open master: ${errMsg(err)}`);
@@ -1761,6 +1928,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         <TextEditor id={id} label="Text" lines={layer.lines} base={layer.style}
           onChange={(lines) => setContent(layer, lines, true)}
           multiline={true} uppercase={uppercaseOf(layer)}
+          onUppercase={(uppercase) => patch(layer.id, { style: { uppercase } })}
           input={layer.input} min={layer.min} max={layer.max} symbology={layer.symbology}
           suffix={layer.suffix} choices={layer.choices} title={layer.title} />
       );
@@ -1931,11 +2099,12 @@ export const DocumentEditor = memo(function DocumentEditor({
               e.target.value = "";
               if (!f) return;
               void f.arrayBuffer().then(async (buf) => {
-                const r = tryParseMaster(new Uint8Array(buf));
+                const bytes = new Uint8Array(buf);
+                const r = tryParseMaster(bytes);
                 if (!r) return;
                 masterFileHandle.current = null;
                 masterFilePath.current = null;
-                applyOpenedMaster(r.master, f.name);
+                applyOpenedMaster(r.master, f.name, bytes);
                 await adoptMasterAssets(r.assets);
               });
             }} />
@@ -1994,6 +2163,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onPick={pick}
               // Live per-keystroke updates so the canvas render IS the edit
               // feedback, folded into one undo step per session.
+              onEditUppercase={(id, uppercase, first) => patch(id, { style: { uppercase } }, !first)}
               onEditText={(id, lines, first) => {
                 const layer = drawLayers.find((l) => l.id === id);
                 if (layer) setContent(layer, lines, !first);
@@ -2027,7 +2197,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 showRulers={showRulers} unit={rulerUnit} onUnitChange={setRulerUnit}
                 showGuides={showGuides} marginPt={marginPt}
                 onMarginChange={(margin) => editMaster((m) => ({ ...m, guides: { ...m.guides, left: margin, right: margin, top: margin, bottom: margin } }))} manual={manualGuides}
-                onAddManual={addManualGuide} onMoveManual={moveManualGuide}
+                onAddManual={addManualGuide} onMoveManual={moveManualGuide} onSnapGuide={snapGuidePoint}
                 onRemoveManual={removeManualGuide} />
             )}
             {building && previewReady && (
@@ -2125,6 +2295,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             className="w-[300px] gap-0 overflow-y-auto border-l-0! bg-sidebar p-0 sm:max-w-[300px]">
             {inspected && (
               <LayerInspector key={inspected.layer.id} layer={inspected.layer}
+                unit={dimensionUnit} onUnitChange={setDimensionUnit}
                 layerNames={rows.map((r) => ({ id: r.layer.id, name: r.layer.name }))}
                 overridden={overridden}
                 onChange={(p) => patch(inspected.layer.id, p)}

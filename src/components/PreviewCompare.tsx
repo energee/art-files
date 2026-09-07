@@ -20,7 +20,7 @@ import {
   hitBoxesFromLayout, hitTestBoxes, type LayerBox,
 } from "@/hittestLayers";
 import type { Face } from "@/plan";
-import { positionFromDrag, type GuideLines } from "@/model/position";
+import { type GuideLines } from "@/model/position";
 import type { ResizeHandle } from "@/model/edit";
 import type { Layer, TextLayer, TextLine } from "@/model/layers";
 import { uppercaseOf } from "@/model/layers";
@@ -32,7 +32,7 @@ import {
   PREVIEW_RASTER_MAX_EDGE, previewRasterScale, trackedWidth,
 } from "@/layout";
 import type { Style } from "@/types";
-import { FACE_WEIGHT } from "@/fonts";
+import { FACE_WEIGHT, labelFontCss } from "@/fonts";
 import { TextToolbarButtons, useTextField, type LinePaint } from "@/components/TextEditor";
 import { modsOf, type SelectMods } from "@/selection";
 import { cn } from "@/lib/utils";
@@ -60,8 +60,37 @@ const SEL_PAD = 4;
 /** The multi-selection group frame sits outside the per-layer rings. */
 const GROUP_PAD = SEL_PAD * 3;
 
-/** Drag snap distance to a guide, in label points. */
-const SNAP_PT = 6;
+/** Drag snap distance to a guide or another layer's edge/middle, in label points. */
+export const SNAP_PT = 6;
+
+/** Blue for one of the master's guides, fuchsia for another layer's edge or
+ *  middle — the Photoshop/Sketch convention, and the only way to tell at a
+ *  glance WHICH kind of alignment the drag caught. */
+const snapColor = (at: number, guides: GuideLines) =>
+  Object.values(guides).includes(at) ? "bg-sky-400" : "bg-fuchsia-500";
+
+/** The lines an in-flight drag has snapped to, one per axis (null = free),
+ *  in guide space. App returns them from onDrag; they only draw the
+ *  highlight. */
+/** One candidate line a gesture can snap to, with the extent of whatever
+ *  offered it (a layer's own span; a guide's is the whole page) — App builds
+ *  these, and they are what the indicator segment is measured from. */
+export interface SnapTarget { at: number; min: number; max: number }
+
+/** A snap that happened: the line, and how far the indicator segment runs
+ *  along it — from the moving box to the far end of what it lined up with. */
+export interface SnapMark { at: number; from: number; to: number }
+
+export interface SnapLines {
+  x: SnapMark | null; y: SnapMark | null;
+  /** The distance the drag ACTUALLY travelled after snapping, in label
+   *  points — what the drag readout shows. */
+  dx: number; dy: number;
+}
+
+/** Label points as the inches the readout speaks in — Photoshop's move/resize
+ *  badge, three decimals. */
+const inches = (pt: number) => `${(pt / 72).toFixed(3)} in`;
 
 /** Bleed per side, in label-space points: the gap between the trimmed art box
  *  and the printed page. The die cuts at ART, so the sheet's own corners are
@@ -163,6 +192,7 @@ function InPlaceRichField(props: {
   /** Pill position, viewport px, captured once at open. */
   toolbarPos: { left: number; top: number };
   onApply: (lines: TextLine[]) => void;
+  onUppercase: (uppercase: boolean) => void;
   /** Ends the session: Escape asks to undo it (`cancel`). */
   onClose: (cancel: boolean) => void;
   /** Click-away guards — the field wrapper and the portaled pill both count
@@ -265,7 +295,8 @@ function InPlaceRichField(props: {
           className="fixed z-50 flex items-center gap-1 rounded-lg border border-border bg-background p-1 shadow-md"
           style={toolbarPos}
         >
-          <TextToolbarButtons caret={caret} toggle={toggle} toggleHeader={toggleHeader} />
+          <TextToolbarButtons caret={caret} toggle={toggle} toggleHeader={toggleHeader}
+            uppercase={uppercaseOf(layer)} onUppercase={props.onUppercase} />
         </div>,
         document.body,
       )}
@@ -314,6 +345,7 @@ export const PreviewCompare = forwardRef<
      *  new lines. `first` is true on the session's opening keystroke; App
      *  uses it to fold the whole session into one undo step. */
     onEditText: (id: string, lines: TextLine[], first: boolean) => void;
+    onEditUppercase: (id: string, uppercase: boolean, first: boolean) => void;
     /** Escape mid-session: App undoes the session's single step. Never
      *  called when nothing was typed. */
     onEditCancel: () => void;
@@ -322,15 +354,17 @@ export const PreviewCompare = forwardRef<
      *  true on the movement that crosses the threshold — App applies moveBy
      *  against the layer as it was at the start (and every other selected
      *  layer, if `id` is selected) and folds the drag into one undo step
-     *  (see onEditText). */
-    onDrag: (id: string, dx: number, dy: number, first: boolean) => void;
+     *  (see onEditText). Returns the lines the drag snapped to, which drive
+     *  the highlights here. */
+    onDrag: (id: string, dx: number, dy: number, first: boolean) => SnapLines;
     /** Escape mid-drag: App undoes the drag's single step. Never called when
      *  the drag never crossed the threshold (a plain click). */
     onDragCancel: () => void;
     /** Corner-handle resize, same session contract as onDrag: cumulative
      *  page-space pointer deltas and the grabbed handle, `uniform` while shift is held, `first` on the
-     *  movement that opens the undo step. App applies resizeBy. */
-    onResize: (id: string, handle: ResizeHandle, dx: number, dy: number, uniform: boolean, first: boolean) => void;
+     *  movement that opens the undo step. App applies resizeBy, and reports
+     *  back what the grabbed edge snapped to (same contract as onDrag). */
+    onResize: (id: string, handle: ResizeHandle, dx: number, dy: number, uniform: boolean, first: boolean) => SnapLines;
     /** The layer currently being edited on the preview, null when idle.
      *  planLayers skips it (the render source's skip set) so the editor's
      *  live DOM text is the layer. */
@@ -352,7 +386,7 @@ export const PreviewCompare = forwardRef<
   }
 >(function PreviewCompare(
   {
-    canvasRender, layers, guides, selected, onPick, onEditText, onEditCancel, onDrag,
+    canvasRender, layers, guides, selected, onPick, onEditText, onEditUppercase, onEditCancel, onDrag,
     onDragCancel, onResize, onEditSession, onSplit, bleed, cornerRadiusPct, zoom, bleedIn, onRenderError,
   },
   ref,
@@ -492,14 +526,18 @@ export const PreviewCompare = forwardRef<
   // further move coalesces into it — the same session contract as onEditText.
   const drag = useRef<{
     id: string; startClientX: number; startClientY: number;
-    /** The layer's box at pointerdown, for the snap highlight only. */
-    left: number; w: number;
     pxPerPtX: number; pxPerPtY: number; started: boolean;
   } | null>(null);
 
-  // Which guide (if any) the in-flight drag has snapped to, purely to drive
-  // the guide-line highlight below — the drag math itself is App's (moveBy).
-  const [snap, setSnap] = useState<"left" | "center" | "right" | null>(null);
+  // Which lines (if any) the in-flight drag has snapped to, purely to drive
+  // the highlights below — the drag math itself is App's (snapDelta/moveBy),
+  // which reports back what it landed on.
+  const [snap, setSnap] = useState<SnapLines>({ x: null, y: null, dx: 0, dy: 0 });
+
+  // The live measurement badge: the layer it hangs off, and the distance
+  // travelled (a move) or nothing (a resize, which reads its size off the
+  // box the patch just produced). Null when no gesture is running.
+  const [readout, setReadout] = useState<{ id: string; moved: { dx: number; dy: number } | null } | null>(null);
 
   /** Label points per CSS pixel for the page element, captured once per
    *  gesture (the wrapper's aspect ratio is locked to the page). */
@@ -530,11 +568,13 @@ export const PreviewCompare = forwardRef<
     if (!d.started && Math.hypot(dxPx, dyPx) < DRAG_THRESHOLD_PX) return;
     const first = !d.started;
     d.started = true;
-    onResize(d.id, d.handle, dxPx / d.pxPerPtX, dyPx / d.pxPerPtY, e.shiftKey, first);
+    setSnap(onResize(d.id, d.handle, dxPx / d.pxPerPtX, dyPx / d.pxPerPtY, e.shiftKey, first));
+    setReadout({ id: d.id, moved: null }); // a resize reads its own W x H below
   }
   function onHandleUp(e: React.PointerEvent<HTMLSpanElement>) {
     swallowClick.current = !!resize.current?.started;
     resize.current = null;
+    setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
     e.stopPropagation();
   }
 
@@ -546,7 +586,7 @@ export const PreviewCompare = forwardRef<
     if (!target || target.locked) return; // locked, or draws nothing
     drag.current = {
       id, startClientX: e.clientX, startClientY: e.clientY,
-      left: target.x - BLEED_SHIFT, w: target.w, ...pageScale(), started: false,
+      ...pageScale(), started: false,
     };
     e.currentTarget.setPointerCapture(e.pointerId);
   }
@@ -560,13 +600,13 @@ export const PreviewCompare = forwardRef<
     d.started = true;
     const dx = dxPx / d.pxPerPtX;
     const dy = dyPx / d.pxPerPtY;
-    // The same snap rule moveBy applies, re-run here only for the highlight.
-    setSnap(positionFromDrag(d.left + dx, 0, d.w, 0, guides, SNAP_PT).snappedX);
-    onDrag(d.id, dx, dy, first);
+    const snapped = onDrag(d.id, dx, dy, first);
+    setSnap(snapped);
+    setReadout({ id: d.id, moved: { dx: snapped.dx, dy: snapped.dy } });
   }
   function onPointerUp() {
     swallowClick.current = !!drag.current?.started;
-    drag.current = null; setSnap(null);
+    drag.current = null; setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
   }
 
   // Escape mid-drag: undo the single step the drag opened and drop the
@@ -576,7 +616,7 @@ export const PreviewCompare = forwardRef<
       if (e.key !== "Escape") return;
       if (drag.current?.started || resize.current?.started) onDragCancel();
       drag.current = null; resize.current = null;
-      setSnap(null);
+      setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -619,10 +659,9 @@ export const PreviewCompare = forwardRef<
       const r = e.currentTarget.getBoundingClientRect();
       const boxLeft = r.left + (b.x / PAGE.w) * r.width;
       const boxTop = r.top + (b.y / PAGE.h) * r.height;
-      // ponytail: fixed clamps sized to the three-toggle pill (~140x40px)
-      // instead of measuring it — measure toolbarRef if its content grows.
+      // ponytail: fixed clamp for four toggles; measure if the toolbar grows.
       setToolbarPos({
-        left: Math.max(8, Math.min(boxLeft, window.innerWidth - 148)),
+        left: Math.max(8, Math.min(boxLeft, window.innerWidth - 188)),
         top: Math.max(8, boxTop - 48),
       });
     }
@@ -714,14 +753,54 @@ export const PreviewCompare = forwardRef<
           }}
         />
       )}
-      {/* Snap-guide highlight: while a drag is engaged on a guide, a thin
-          accent line at that guide. The guides are master-space points at the
-          master's own bleed; BLEED_SHIFT re-bases them to the live bleed the
-          way hittestLayers does for the boxes. */}
-      {snap && (
+      {/* The live measurement badge: how far a move has travelled, or the
+          W x H a resize has reached — Photoshop's readout, hung off the top-
+          left of the layer under the gesture. */}
+      {readout && boxesById.get(readout.id) && (() => {
+        const b = boxesById.get(readout.id)!;
+        const rows = readout.moved
+          ? [`X ${inches(readout.moved.dx)}`, `Y ${inches(readout.moved.dy)}`]
+          : [`W ${inches(b.w)}`, `H ${inches(b.h)}`];
+        return (
+          <div
+            className="pointer-events-none absolute"
+            style={pageBox(b.x, b.y, 0, 0)}
+          >
+            <div className="absolute bottom-1 left-0 whitespace-nowrap rounded-sm bg-neutral-900/90 px-1.5 py-1 text-[10px] leading-3 text-white tabular-nums">
+              {rows.map((r) => <div key={r}>{r}</div>)}
+            </div>
+          </div>
+        );
+      })()}
+      {/* The smart guide: a segment along the line that was caught, running
+          from the moving box to the far end of what it lined up with — so the
+          indicator names the thing you aligned to, not just the coordinate.
+          Points are master-space at the master's own bleed; BLEED_SHIFT
+          re-bases them to the live bleed the way hittestLayers does.
+          Its 1px thickness is INLINE, not a `w-px` class: this element also
+          carries an inline `width`/`height` for its length, and an inline
+          declaration beats a class — which is why the old full-page version
+          of this line was `width: 0` and never drew. */}
+      {snap.x && (
         <div
-          className="pointer-events-none absolute inset-y-0 w-px bg-sky-400"
-          style={pageBox(guides[snap] + BLEED_SHIFT, 0, 0, PAGE.h)}
+          className={`pointer-events-none absolute ${snapColor(snap.x.at, guides)}`}
+          style={{
+            left: `${((snap.x.at + BLEED_SHIFT) / PAGE.w) * 100}%`,
+            top: `${((snap.x.from + BLEED_SHIFT) / PAGE.h) * 100}%`,
+            height: `${((snap.x.to - snap.x.from) / PAGE.h) * 100}%`,
+            width: 1,
+          }}
+        />
+      )}
+      {snap.y && (
+        <div
+          className={`pointer-events-none absolute ${snapColor(snap.y.at, guides)}`}
+          style={{
+            left: `${((snap.y.from + BLEED_SHIFT) / PAGE.w) * 100}%`,
+            top: `${((snap.y.at + BLEED_SHIFT) / PAGE.h) * 100}%`,
+            width: `${((snap.y.to - snap.y.from) / PAGE.w) * 100}%`,
+            height: 1,
+          }}
         />
       )}
       {groupBox && (
@@ -778,10 +857,14 @@ export const PreviewCompare = forwardRef<
           return (
             <InPlaceRichField
               layer={layer}
-              fontCss={canvasRender.fontCss}
+              fontCss={layer.fontFamily ? labelFontCss(layer.fontFamily) : canvasRender.fontCss}
               box={b}
               toolbarPos={toolbarPos}
               onApply={apply}
+              onUppercase={(uppercase) => {
+                onEditUppercase(editing, uppercase, !edited.current);
+                edited.current = true;
+              }}
               onClose={close}
               fieldRef={sessionRef}
               toolbarRef={toolbarRef}
@@ -798,7 +881,7 @@ export const PreviewCompare = forwardRef<
         // same measure the canvas draws with, plus the one trailing gap CSS
         // letter-spacing adds after the last glyph, plus 2px of caret room.
         const fieldWidth = layer.suffix
-          ? `calc(${cqh(trackedWidth(canvasRender.m(typed, size, faces.base), typed, ls) + ls)} + 2px)`
+          ? `calc(${cqh(trackedWidth(canvasRender.m(typed, size, faces.base, layer.fontFamily), typed, ls) + ls)} + 2px)`
           : "100%";
         return (
           <div
@@ -808,7 +891,7 @@ export const PreviewCompare = forwardRef<
               ...pageBox(b.x, b.y, b.w, b.h, SEL_PAD),
               fontSize: cqh(size),
               lineHeight: 1,
-              fontFamily: canvasRender.fontCss,
+              fontFamily: layer.fontFamily ? labelFontCss(layer.fontFamily) : canvasRender.fontCss,
               fontWeight: FACE_WEIGHT[faces.base],
               letterSpacing: cqh(ls),
               color: inkOf(st),

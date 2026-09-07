@@ -20,7 +20,7 @@ import { deepMerge, type DeepPartial } from "./merge";
 import { getPath } from "./document";
 import { setPath } from "./resolve";
 import { valueOf, valuePath, widenValue } from "./resolveLayers";
-import { anchoredX, anchorFraction, positionFromDrag, type GuideLines } from "./position";
+import { anchorFraction, type GuideLines } from "./position";
 import { CENTER_X, GOLD } from "../layout";
 import { KEYLINE } from "../defaults";
 import { DEFAULT_STROKE_LAYER } from "../strokes";
@@ -411,25 +411,57 @@ export function bindingPatch(layer: Layer, to: string, side: BindingSide, box: B
   };
 }
 
-/** The horizontal distance a drag ACTUALLY travels once it has snapped: `dx`
- *  adjusted so `box` — the left edge and width of what is being dragged —
- *  lands on a guide it came within `snap` of, and `dx` unchanged when nothing
- *  is in range.
+/** The distance a drag ACTUALLY travels on one axis once it has snapped:
+ *  `delta` adjusted so the dragged range's near edge, middle or far edge
+ *  lands on whichever candidate `line` it comes within `snap` of, and
+ *  `delta` unchanged when nothing is in range. `lines` are the master's
+ *  guides plus the edges and middles of the layers that are NOT moving —
+ *  the Photoshop/Sketch behaviour: things line up with each other, not only
+ *  with the page.
  *
- *  App computes this ONCE, from the bounds of the whole selection, and drags
- *  every selected layer by it. Two rules in one:
+ *  App computes this ONCE per axis, from the bounds of the whole selection,
+ *  and drags every selected layer by it. Two rules in one:
  *    * a group snaps together or not at all. Snapping only the grabbed layer
  *      re-spaced the selection by up to `snap` every time it crossed a guide.
  *    * what snaps is the SELECTION's bounds, not whichever layer the pointer
  *      happens to be on — "centre this on the label" is about the thing you
- *      can see, and the grabbed layer is rarely centred within it.
- *  Vertical movement has no snap, which is why only X ever drifted. */
+ *      can see, and the grabbed layer is rarely centred within it. */
+/** The candidate line `at` is closest to, within `snap` — null when nothing
+ *  is in range. Ties go to the last candidate, so a layer's own edge wins
+ *  over the page guide it sits on. */
+export function nearestLine(
+  at: number, lines: readonly number[], snap: number,
+): number | null {
+  let best: number | null = null;
+  let bestAbs = snap;
+  for (const line of lines) {
+    if (Math.abs(line - at) <= bestAbs) { bestAbs = Math.abs(line - at); best = line; }
+  }
+  return best;
+}
+
+export function snapDelta(
+  range: { min: number; size: number }, delta: number, lines: readonly number[], snap: number,
+): { delta: number; line: number | null } {
+  if (delta === 0) return { delta, line: null };
+  const start = range.min + delta;
+  const edges = [start, start + range.size / 2, start + range.size];
+  let best = 0;
+  let bestAbs = snap;
+  let line: number | null = null;
+  for (const edge of edges) {
+    const hit = nearestLine(edge, lines, bestAbs);
+    if (hit === null) continue;
+    bestAbs = Math.abs(hit - edge); best = hit - edge; line = hit;
+  }
+  return { delta: delta + best, line };
+}
+
+/** snapDelta against the master's guides alone, on X. */
 export function snappedDx(
   box: { x: number; w: number }, dx: number, guides: GuideLines, snap: number,
 ): number {
-  if (dx === 0) return dx;
-  const { position } = positionFromDrag(box.x + dx, 0, box.w, 0, guides, snap);
-  return anchoredX(position, box.w, guides) - box.x;
+  return snapDelta({ min: box.x, size: box.w }, dx, [guides.left, guides.center, guides.right], snap).delta;
 }
 
 /** The drag patch. Horizontal: x moves by `dx`, in whatever terms the layer

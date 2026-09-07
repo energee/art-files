@@ -12,6 +12,7 @@ import type { Master } from "@/model/layers";
 import { lolevMaster } from "@/model/lolevLayers";
 import { unpackMaster, type MasterAssets } from "@/model/files";
 import { readNativeFile } from "@/files";
+import { cacheMaster, cachedMaster } from "@/masterCache";
 
 export const SHIPPED_MASTER_ID = lolevMaster().id;
 const KEY = "labellab.masters";
@@ -26,10 +27,14 @@ export function masterIndex(): Record<string, MasterIndexEntry> {
   }
 }
 
-export function rememberMaster(m: Master, path: string): void {
+/** Register a master in the library index — and, when the caller has the
+ *  file's `bytes`, keep them in the browser's master cache so a reload can
+ *  resolve this master without a filesystem path (masterCache.ts). */
+export function rememberMaster(m: Master, path: string, bytes?: Uint8Array): void {
   const idx = masterIndex();
   idx[m.id] = { name: m.name, path, lastSeen: new Date().toISOString() };
   localStorage.setItem(KEY, JSON.stringify(idx));
+  if (bytes) void cacheMaster(m.id, bytes);
 }
 
 /** A resolved master with its template assets — what unpackMaster returns
@@ -57,6 +62,17 @@ export async function resolveMasterById(id: string, hint?: string): Promise<Reso
   if (hint) {
     const r = await readMasterAt(hint);
     if (r?.master.id === id) return r;
+  }
+  // Nothing on disk: in a browser there never is (readMasterAt bails), so the
+  // cached bytes of the master this operator last saved or opened stand in for
+  // the file — without this a reload silently swapped their template for the
+  // shipped fixture.
+  const held = await cachedMaster(id);
+  if (held) {
+    try {
+      const r = unpackMaster(held);
+      if (r.master.id === id) return r;
+    } catch { /* a stale or truncated entry falls through to the fixture */ }
   }
   // Fall back to the built-in fixture only when nothing on disk resolved —
   // guarantees a fresh install with an empty index still works, without
