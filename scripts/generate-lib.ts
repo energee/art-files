@@ -104,7 +104,8 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
       continue;
     }
     const value = eq >= 0 ? a.slice(eq + 1) : argv[++i];
-    if (value === undefined || value.startsWith("--")) throw new Error(`--${name} needs a value\n${USAGE}`);
+    if (value === undefined || value === "" || value.startsWith("--"))
+      throw new Error(`--${name} needs a value\n${USAGE}`);
     if (name === "variant") { variants.push(value); continue; }
     if (name === "asset") { const [id, path] = kv("asset", value); assets[id] = path; continue; }
     if (name === "set") { const [id, v] = kv("set", value); set[id] = v; continue; }
@@ -182,6 +183,20 @@ function asJob(v: unknown): JobInput {
   const asObject = Object.keys(v).every((k) => JOB_KEYS.has(k));
   if (asObject && "values" in v) {
     if (!isPlain(v.values)) throw new Error("values JSON must be an object or an array of jobs");
+    if (v.variants !== undefined) {
+      if (!Array.isArray(v.variants) || !v.variants.every((x) => typeof x === "string"))
+        throw new Error("job variants must be an array of strings");
+    }
+    if (v.files !== undefined) {
+      if (!isPlain(v.files) || Object.values(v.files).some((x) => typeof x !== "string" || !x))
+        throw new Error("job files must be a map of layer id to path");
+    }
+    if (v.overrides !== undefined) {
+      if (!isPlain(v.overrides)) throw new Error("job overrides must be an object");
+      for (const k of Object.keys(v.overrides))
+        if (k === "__proto__" || k === "constructor" || k === "prototype")
+          throw new Error("job overrides contain a forbidden key");
+    }
     return {
       values: v.values,
       ...(Array.isArray(v.variants) ? { variants: v.variants as string[] } : {}),
@@ -194,7 +209,10 @@ function asJob(v: unknown): JobInput {
 
 /** One job from a values-map or job object; N jobs from an array. */
 export function parseJobs(json: unknown): JobInput[] {
-  if (Array.isArray(json)) return json.map(asJob);
+  if (Array.isArray(json)) {
+    if (!json.length) throw new Error("values JSON contains no jobs");
+    return json.map(asJob);
+  }
   return [asJob(json)];
 }
 
@@ -207,7 +225,9 @@ function linesFromText(src: string, base: Style): TextLine[] {
 }
 
 function isTextLines(v: unknown): v is TextLine[] {
-  return Array.isArray(v) && v.every((l) => isPlain(l) && typeof l.text === "string");
+  return Array.isArray(v) && v.every((l) =>
+    isPlain(l) && typeof l.text === "string" && typeof l.fill === "string"
+    && (l.layer === "metallic" || l.layer === "white"));
 }
 
 /** Layers a CLI job may fill: the master's, plus whole layers each enabled
@@ -374,12 +394,15 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
   overrides.background = { ...overrides.background, asset: tex ? PAGE_ART_ID.background : "" };
   overrides.mask = { ...overrides.mask, asset: mask ? PAGE_ART_ID.mask : "" };
 
+  const values = { ...input.values };
   for (const layerId of Object.keys(input.extraImages)) {
     if (layerId === "background" || layerId === "mask") continue;
-    overrides[layerId] = { ...overrides[layerId], asset: `cli-${layerId}` };
+    const assetId = `cli-${layerId}`;
+    overrides[layerId] = { ...overrides[layerId], asset: assetId };
+    values[layerId] = assetId;
   }
 
-  const resolved = resolveLayers(input.master, input.enabledVariants, input.values, overrides);
+  const resolved = resolveLayers(input.master, input.enabledVariants, values, overrides);
   warnings.push(...resolved.warnings);
   if (Object.keys(resolved.errors).length)
     throw new Error(Object.entries(resolved.errors).map(([id, e]) => `${id}: ${e}`).join("\n"));
@@ -426,6 +449,11 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
   for (const [layerId, file] of Object.entries(input.extraImages)) {
     if (layerId === "background" || layerId === "mask") continue;
     await put(`cli-${layerId}`, asImage(file.name, file.bytes), metrics);
+  }
+
+  for (const l of resolved.layers) {
+    if (l.kind !== "image" || !l.asset || l.asset.startsWith("builtin:")) continue;
+    if (!images[l.asset]) throw new Error(`${l.id}: missing image asset "${l.asset}"`);
   }
 
   for (const l of resolved.layers) {
@@ -483,6 +511,7 @@ export interface GenerateIo {
   argv: string[];
   cwd: string;
   stdin?: string;
+  readStdin?: () => string;
   readFile: (p: string) => Uint8Array;
   readFileText: (p: string) => string;
   writeFile: (p: string, bytes: Uint8Array) => void;
@@ -498,6 +527,14 @@ function resolveUnder(cwd: string, p: string): string {
 
 function fileName(p: string): string {
   return p.split(/[/\\]/).pop() || p;
+}
+
+function parseValuesJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error(`invalid values JSON: ${e instanceof Error ? e.message : e}`);
+  }
 }
 
 function jobBasename(values: Record<string, LayerValue>): string {
@@ -595,6 +632,8 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     if (!unpacked.label)
       throw new Error("this CLI opens v3 .label files; open and re-save in Label Lab first");
     const lab = unpacked.label;
+    if (lab.masterId !== master.id)
+      throw new Error(`label masterId "${lab.masterId}" does not match master "${master.id}"`);
     jobs = [{ values: lab.values, variants: lab.enabledVariants, overrides: lab.overrides }];
     if (unpacked.assets.texture) labelExtras.background = unpacked.assets.texture;
     if (unpacked.assets.mask) labelExtras.mask = unpacked.assets.mask;
@@ -603,10 +642,11 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
   } else {
     let raw: unknown = {};
     if (args.valuesPath === "-") {
-      if (io.stdin === undefined) throw new Error("values JSON on stdin is empty");
-      raw = JSON.parse(io.stdin);
+      const text = io.stdin ?? io.readStdin?.();
+      if (text === undefined || text === "") throw new Error("values JSON on stdin is empty");
+      raw = parseValuesJson(text);
     } else if (args.valuesPath) {
-      raw = JSON.parse(io.readFileText(resolveUnder(io.cwd, args.valuesPath)));
+      raw = parseValuesJson(io.readFileText(resolveUnder(io.cwd, args.valuesPath)));
     }
     jobs = parseJobs(raw);
   }
@@ -624,6 +664,12 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     const coerced = coerceValues(master, raw, variants);
     for (const [id, e] of Object.entries(coerced.errors)) errors.push(`${id}: ${e}`);
     const files = mergeFiles(job, args.assets);
+    const fillable = fillableById(master, variants);
+    for (const id of Object.keys(files)) {
+      if (id === "background" || id === "mask") continue;
+      if (!fillable.has(id)) errors.push(`Unknown layer "${id}".`);
+    }
+    if (errors.length) continue;
     const extraImages: GenerateInput["extraImages"] = { ...labelExtras };
     for (const [id, p] of Object.entries(files)) extraImages[id] = readImage(io, p);
     prepared.push({

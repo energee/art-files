@@ -1,5 +1,5 @@
 // generate.test.ts — headless CLI: argv, value coercion, inspect, and
-// master+values builds. Pure against src/generate.ts; no process spawn.
+// master+values builds. Pure against scripts/generate-lib.ts; no process spawn.
 import { join } from "node:path";
 import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
@@ -7,6 +7,7 @@ import {
   parseGenerateArgs, coerceValues, parseJobs, inspectMaster, assertVariants, buildLabel,
   runGenerate,
 } from "../scripts/generate-lib";
+import { packLabel } from "../src/model/files";
 import { lolevMaster } from "../src/model/lolevLayers";
 
 describe("parseGenerateArgs", () => {
@@ -54,6 +55,13 @@ describe("parseGenerateArgs", () => {
     expect(() => parseGenerateArgs(["--master", "m.master", "--label", "a.label",
       "--values", "v.json", "--out", "out"])).toThrow(/--label/);
   });
+
+  it("equals-form stdin and empty flags", () => {
+    expect(parseGenerateArgs(["--values=-", "--out", "out"])).toMatchObject({
+      mode: "generate", valuesPath: "-",
+    });
+    expect(() => parseGenerateArgs(["--out="])).toThrow(/needs a value/i);
+  });
 });
 
 describe("parseJobs", () => {
@@ -63,6 +71,13 @@ describe("parseJobs", () => {
   it("array is a batch", () => {
     expect(parseJobs([{ values: { name: "A" } }, { name: "B" }]))
       .toEqual([{ values: { name: "A" } }, { values: { name: "B" } }]);
+  });
+  it("empty array is an error", () => {
+    expect(() => parseJobs([])).toThrow(/no jobs/i);
+  });
+  it("variants must be strings", () => {
+    expect(() => parseJobs({ values: { name: "A" }, variants: "collab" }))
+      .toThrow(/variants/i);
   });
 });
 
@@ -95,6 +110,10 @@ describe("coerceValues", () => {
   it("collabLeft is unknown until the collab variant is enabled", () => {
     expect(coerceValues(m, { collabLeft: "a" }, []).errors.collabLeft).toMatch(/unknown/i);
     expect(coerceValues(m, { collabLeft: "a" }, ["collab"]).errors).toEqual({});
+  });
+  it("a text-line array without fill/layer is an error", () => {
+    const r = coerceValues(m, { name: [{ text: "Hello" }] }, []);
+    expect(r.errors.name).toMatch(/text/i);
   });
 });
 
@@ -208,5 +227,43 @@ describe("runGenerate", () => {
     expect(io.files.has("/out/label-mask.pdf")).toBe(true);
     expect(io.files.has("/out/label.psd")).toBe(true);
     expect(io.files.has("/out/label-mask.psd")).toBe(true);
+  });
+
+  it("reads values from stdin when --values=-", async () => {
+    const io = memIo();
+    expect(await io.run(
+      ["--values=-", "--out", "/out", "--format", "pdf"],
+      JSON.stringify({ name: "Labradorite", barcode: "850051366224" }),
+    )).toBe(0);
+    expect(io.files.has("/out/labradorite.pdf")).toBe(true);
+  });
+
+  it("unknown --asset layer returns 1", async () => {
+    const io = memIo();
+    expect(await io.run(["--asset", "nope=./a.svg", "--out", "/out"])).toBe(1);
+    expect(io.stderr.join("")).toMatch(/nope/);
+  });
+
+  it("rejects a .label aimed at a different master", async () => {
+    const io = memIo();
+    io.files.set("/x.label", packLabel({
+      formatVersion: 3, masterId: "other", enabledVariants: [], values: {},
+    }, {}));
+    expect(await io.run(["--label", "/x.label", "--out", "/out"])).toBe(1);
+    expect(io.stderr.join("")).toMatch(/masterId/);
+  });
+});
+
+describe("buildLabel missing art", () => {
+  it("throws when an image value names an asset that was not loaded", async () => {
+    await expect(buildLabel({
+      master: lolevMaster(),
+      masterAssets: {},
+      values: coerceValues(lolevMaster(), { collabLeft: "missing" }, ["collab"]).values,
+      enabledVariants: ["collab"],
+      extraImages: {},
+      format: { pdf: true, psd: false },
+      assetRoot,
+    })).rejects.toThrow(/missing/i);
   });
 });

@@ -8,7 +8,7 @@ const argv = process.argv.slice(2);
 const code = await runGenerate({
   argv,
   cwd: process.cwd(),
-  stdin: argv.includes("-") ? readFileSync(0, "utf8") : undefined,
+  readStdin: () => readFileSync(0, "utf8"),
   readFile: (p) => new Uint8Array(readFileSync(p)),
   readFileText: (p) => readFileSync(p, "utf8"),
   writeFile: (p, b) => writeFileSync(p, b),
