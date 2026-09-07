@@ -1,6 +1,6 @@
 // appmenu.test.ts — native menu accelerators and standard text-edit roles.
 import { describe, expect, it } from "vitest";
-import { APP_MENUS, nativeAccelerator } from "@/components/AppMenu";
+import { APP_MENUS, actionsIn, nativeAccelerator } from "@/components/AppMenu";
 import type { Command } from "@/components/CommandMenu";
 
 const command = (fields: Partial<Command>): Command => ({
@@ -27,19 +27,10 @@ describe("native menu accelerators", () => {
   });
 });
 
-type MenuNode = (typeof APP_MENUS)[number]["items"][number];
-type ActionNode = Extract<MenuNode, { kind: "action" }>;
-
-function actionsOf(entries: readonly MenuNode[]): ActionNode[] {
-  return entries.flatMap((entry) => {
-    if (entry.kind === "action") return [entry];
-    return entry.kind === "submenu" ? actionsOf(entry.items) : [];
-  });
-}
+type ActionNode = ReturnType<typeof actionsIn>[number];
 
 function nativeIconOf(action: ActionNode | undefined) {
-  if (!action || !("nativeIcon" in action)) return undefined;
-  return action.nativeIcon;
+  return action && "icon" in action ? action.nativeIcon : undefined;
 }
 
 describe("file menu", () => {
@@ -56,12 +47,12 @@ describe("file menu", () => {
 
   it("gives every File action and the Export submenu a leading icon", () => {
     const file = APP_MENUS.find((menu) => menu.id === "file-menu")!;
-    const exported = file.items.find((entry) =>
+    const exportMenu = file.items.find((entry) =>
       entry.kind === "submenu" && entry.id === "export-menu");
-    if (exported?.kind !== "submenu") throw new Error("export-menu missing");
-    expect(exported.icon).toBeTruthy();
-    expect(exported.nativeIcon).toBe("Share");
-    const actions = actionsOf(file.items);
+    if (exportMenu?.kind !== "submenu") throw new Error("export-menu missing");
+    expect(exportMenu.icon).toBeTruthy();
+    expect(exportMenu.nativeIcon).toBe("Share");
+    const actions = actionsIn(file.items);
     for (const action of actions) {
       expect("icon" in action && action.icon, action.id).toBeTruthy();
     }
@@ -101,13 +92,13 @@ describe("native text editing menu", () => {
   it("icons Undo, Redo and Settings, and leaves View checks glyph-free", () => {
     const edit = APP_MENUS.find((menu) => menu.id === "edit-menu")!;
     const view = APP_MENUS.find((menu) => menu.id === "view-menu")!;
-    const editActions = actionsOf(edit.items);
+    const editActions = actionsIn(edit.items);
     for (const action of editActions) {
       expect("icon" in action && action.icon, action.id).toBeTruthy();
     }
     expect(nativeIconOf(editActions.find((action) => action.id === "settings")))
       .toBe("PreferencesGeneral");
-    for (const action of actionsOf(view.items)) {
+    for (const action of actionsIn(view.items)) {
       expect("icon" in action, action.id).toBe(false);
       expect("nativeIcon" in action, action.id).toBe(false);
     }

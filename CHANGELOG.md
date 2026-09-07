@@ -3,6 +3,13 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.66] - 2026-09-07
+
+### Changed
+
+- Menu tests walk the same File/Edit/View table the app uses. No operator-visible
+  change.
+
 ## [0.1.65] - 2026-09-07
 
 ### Added
