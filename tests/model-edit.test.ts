@@ -275,7 +275,7 @@ describe("moveBy", () => {
   it("moves x by dx and leaves the anchor alone", () => {
     // It used to adopt the nearest guide's anchor on every move, which flipped
     // a centred layer to left- or right-anchored partway across the page.
-    // Snapping lives in snappedDx now (tests/model-group-drag.test.ts).
+    // Snapping lives in snapDelta now (tests/model-group-drag.test.ts).
     const l: TextLayer = { ...nameLayer(), x: CENTER_X - 10, anchor: "left" };
     expect(moveBy(l, 8, 0)).toEqual({ x: CENTER_X - 2 });
     expect(moveBy(nameLayer(), 12, 0)).toEqual({ x: CENTER_X + 12 });

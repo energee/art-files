@@ -4,7 +4,7 @@
 // same selection — it moves its own `gap` AND follows the layer it hangs from,
 // so it travelled twice as far as the pointer.
 import { describe, expect, it } from "vitest";
-import { moveBy, snapDelta, snappedDx } from "../src/model/edit";
+import { moveBy, snapDelta } from "../src/model/edit";
 import { layerBoxes } from "../src/planLayers";
 import type { Layer, TextLayer, TextLine } from "../src/model/layers";
 import type { MeasureFace } from "../src/plan";
@@ -65,6 +65,12 @@ describe("dragging a selection", () => {
 // alone re-spaces the group by up to `snap` every time it crosses a guide,
 // which is what "the X axis is all over the place" looks like.
 describe("snapping a group", () => {
+  // The master's three vertical guides as snap targets. Their extent is only
+  // there to draw the on-screen indicator, so it plays no part here.
+  const guideLines = [guides.left, guides.center, guides.right]
+    .map((at) => ({ at, min: 0, max: 0 }));
+  const dx = (box: { x: number; w: number }, by: number) =>
+    snapDelta({ min: box.x, size: box.w }, by, guideLines, 6).delta;
   const grabbed = text({ id: "g", x: 60, y: 20 });      // 20 wide, left-anchored
   const follower = text({ id: "f", x: 150, y: 60 });
   const layers: Layer[] = [grabbed, follower];
@@ -76,7 +82,7 @@ describe("snapping a group", () => {
   it("centres one dragged layer on the guide", () => {
     // A 26pt drag puts the box's centre at 96, 4 short of the centre guide at
     // 100 — inside the 6pt threshold, so the drag really travels 30.
-    expect(snappedDx({ x: 60, w: 20 }, 26, guides, 6)).toBe(30);
+    expect(dx({ x: 60, w: 20 }, 26)).toBe(30);
   });
 
   it("centres the SELECTION's bounds, not the layer that happens to be grabbed", () => {
@@ -84,7 +90,7 @@ describe("snapping a group", () => {
     // centre 115. Bringing that centre to the guide at 100 is a 15pt drag left
     // — a snap the grabbed layer's own box (centre 70) would never ask for.
     const group = { x: 60, w: 110 };
-    expect(snappedDx(group, -12, guides, 6)).toBe(-15);
+    expect(dx(group, -12)).toBe(-15);
     const after = lefts(layers.map((l) =>
       deepMerge(l, moveBy(l, -15, 0)) as Layer));
     expect(after.g).toBe(45);
@@ -93,7 +99,7 @@ describe("snapping a group", () => {
   });
 
   it("is the raw delta when nothing is in range", () => {
-    expect(snappedDx({ x: 60, w: 20 }, 40, guides, 6)).toBe(40);
+    expect(dx({ x: 60, w: 20 }, 40)).toBe(40);
   });
 });
 
@@ -101,7 +107,9 @@ describe("snapping a group", () => {
 // master's guides — the edges and middles of the layers that stay put are
 // lines too, on both axes.
 describe("snapping to other layers", () => {
-  const lines = [40, 55, 70]; // a static layer: left 40, middle 55, right 70
+  // A static layer 30 wide at 40, spanning 10..25 on the other axis: its left
+  // edge, middle and right edge are the lines to catch.
+  const lines = [40, 55, 70].map((at) => ({ at, min: 10, max: 25 }));
 
   it("snaps the dragged edge to a neighbour's edge", () => {
     // Box 20 wide at 0, dragged 48: right edge at 68, 2 short of the

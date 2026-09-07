@@ -20,7 +20,6 @@ import {
   hitBoxesFromLayout, hitTestBoxes, type LayerBox,
 } from "@/hittestLayers";
 import type { Face } from "@/plan";
-import { type GuideLines } from "@/model/position";
 import type { ResizeHandle } from "@/model/edit";
 import type { Layer, TextLayer, TextLine } from "@/model/layers";
 import { uppercaseOf } from "@/model/layers";
@@ -63,23 +62,19 @@ const GROUP_PAD = SEL_PAD * 3;
 /** Drag snap distance to a guide or another layer's edge/middle, in label points. */
 export const SNAP_PT = 6;
 
-/** Blue for one of the master's guides, fuchsia for another layer's edge or
- *  middle — the Photoshop/Sketch convention, and the only way to tell at a
- *  glance WHICH kind of alignment the drag caught. */
-const snapColor = (at: number, guides: GuideLines) =>
-  Object.values(guides).includes(at) ? "bg-sky-400" : "bg-fuchsia-500";
+/** Blue for a page guide (the master's margins/centre, or a manual one),
+ *  fuchsia for another layer's edge or middle — the Photoshop/Sketch
+ *  convention, and the only way to tell at a glance WHICH kind of alignment
+ *  the drag caught. App classifies the line (SnapMark.guide); comparing
+ *  coordinates here could not tell a manual guide from a layer edge, nor an
+ *  X guide's value landing on a Y line. */
+const snapColor = (mark: SnapMark) => (mark.guide ? "bg-sky-400" : "bg-fuchsia-500");
 
-/** The lines an in-flight drag has snapped to, one per axis (null = free),
- *  in guide space. App returns them from onDrag; they only draw the
- *  highlight. */
-/** One candidate line a gesture can snap to, with the extent of whatever
- *  offered it (a layer's own span; a guide's is the whole page) — App builds
- *  these, and they are what the indicator segment is measured from. */
-export interface SnapTarget { at: number; min: number; max: number }
-
-/** A snap that happened: the line, and how far the indicator segment runs
- *  along it — from the moving box to the far end of what it lined up with. */
-export interface SnapMark { at: number; from: number; to: number }
+/** A snap that happened: the line (guide space), how far the indicator
+ *  segment runs along it — from the moving box to the far end of what it
+ *  lined up with — and whether a page guide, rather than another layer's
+ *  edge, is the only thing that offered it. */
+export interface SnapMark { at: number; from: number; to: number; guide: boolean }
 
 export interface SnapLines {
   x: SnapMark | null; y: SnapMark | null;
@@ -332,8 +327,6 @@ export const PreviewCompare = forwardRef<
      *  order — what the display list, the hit boxes and the drag targets are
      *  all computed from, so they cannot disagree. */
     layers: Layer[];
-    /** The master's guide lines — what a drag snaps to. */
-    guides: GuideLines;
     /** Which layers the list (or previous clicks here) have selected — one
      *  outline is drawn per id. */
     selected: readonly string[];
@@ -386,7 +379,7 @@ export const PreviewCompare = forwardRef<
   }
 >(function PreviewCompare(
   {
-    canvasRender, layers, guides, selected, onPick, onEditText, onEditUppercase, onEditCancel, onDrag,
+    canvasRender, layers, selected, onPick, onEditText, onEditUppercase, onEditCancel, onDrag,
     onDragCancel, onResize, onEditSession, onSplit, bleed, cornerRadiusPct, zoom, bleedIn, onRenderError,
   },
   ref,
@@ -783,7 +776,7 @@ export const PreviewCompare = forwardRef<
           of this line was `width: 0` and never drew. */}
       {snap.x && (
         <div
-          className={`pointer-events-none absolute ${snapColor(snap.x.at, guides)}`}
+          className={`pointer-events-none absolute ${snapColor(snap.x)}`}
           style={{
             left: `${((snap.x.at + BLEED_SHIFT) / PAGE.w) * 100}%`,
             top: `${((snap.x.from + BLEED_SHIFT) / PAGE.h) * 100}%`,
@@ -794,7 +787,7 @@ export const PreviewCompare = forwardRef<
       )}
       {snap.y && (
         <div
-          className={`pointer-events-none absolute ${snapColor(snap.y.at, guides)}`}
+          className={`pointer-events-none absolute ${snapColor(snap.y)}`}
           style={{
             left: `${((snap.y.from + BLEED_SHIFT) / PAGE.w) * 100}%`,
             top: `${((snap.y.at + BLEED_SHIFT) / PAGE.h) * 100}%`,

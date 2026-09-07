@@ -62,6 +62,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ColorField } from "./ColorField";
 import { MetallicToggle } from "./MetallicToggle";
 import { ScrubField } from "./ScrubField";
+import { decimalsOf } from "@/numeric";
 import { CharacterHeight } from "./CharacterHeight";
 import { FONT_FAMILIES, fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
 
@@ -82,12 +83,21 @@ const PT = { step: 0.01, dragStep: 0.5 } as const;
 const MM_PER_PT = 25.4 / 72;
 type DimensionUnit = "mm" | "pt";
 
+// A millimetre is ~2.8 points, so mm needs one more decimal than pt to keep
+// the model's 0.01pt precision — at two, a sub-millimetre value (a barcode's
+// module width) rounds to 0.00 in the field while the layer holds a real one.
+const DISPLAY_STEP = { mm: 0.001, pt: 0.01 } as const;
+
 function DimensionField(props: Omit<ComponentProps<typeof ScrubField>, "unit"> & { unit: DimensionUnit }) {
   const scale = props.unit === "mm" ? MM_PER_PT : 1;
   return <ScrubField {...props} key={props.unit}
     value={props.value * scale} min={props.min * scale} max={props.max * scale}
-    step={0.01} dragStep={props.unit === "mm" ? 0.1 : props.dragStep}
-    onChange={(value) => props.onChange(Math.min(props.max, Math.max(props.min, value / scale)))} />;
+    step={DISPLAY_STEP[props.unit]} dragStep={props.unit === "mm" ? 0.1 : props.dragStep}
+    // Back to points at the MODEL's precision, then clamped: the field
+    // rounds in display units, and a rounded-up millimetre reading of a
+    // bound (1pt -> 0.353mm -> 1.0006pt) must not slip past it.
+    onChange={(value) => props.onChange(Math.min(props.max, Math.max(props.min,
+      Number((value / scale).toFixed(decimalsOf(props.step))))))} />;
 }
 
 /** Section heading — the idiom StyleProperties' inspector used, so the new
@@ -179,6 +189,11 @@ function BlankableField(props: {
 }) {
   const [text, setText] = useState<string | null>(null);
   const scale = props.unit === "mm" ? MM_PER_PT : 1;
+  // Display granularity, matching DimensionField: mm needs a third decimal to
+  // carry the model's 0.01pt precision. The input's `step` has to agree with
+  // the rendered value or the browser reports a step mismatch on a number the
+  // field itself produced.
+  const displayStep = props.unit === "mm" ? DISPLAY_STEP.mm : props.step;
   return (
     <Field id={props.id} label={props.label} badge={props.badge}>
       <InputGroup className="h-6 w-24">
@@ -187,16 +202,21 @@ function BlankableField(props: {
           type="number"
           min={props.min * scale}
           max={props.max * scale}
-          step={props.step}
+          step={displayStep}
           placeholder={props.placeholder}
           className="h-6 text-xs"
-          value={text ?? (props.value === undefined ? "" : Number((props.value * scale).toFixed(2)))}
+          value={text ?? (props.value === undefined ? "" : Number((props.value * scale).toFixed(decimalsOf(displayStep))))}
           onChange={(e) => {
             const s = e.target.value;
             setText(s);
             if (s === "") { props.onChange(undefined); return; }
             const n = Number(s);
-            if (Number.isFinite(n)) props.onChange(Math.min(props.max, Math.max(props.min, n / scale)));
+            // Back to points at the MODEL's precision before clamping, as
+            // DimensionField does: without it a millimetre reading typed back
+            // verbatim (35pt -> 12.347mm -> 34.99916pt) never re-matches the
+            // master, so the override badge can't be cleared from this field.
+            if (Number.isFinite(n)) props.onChange(Math.min(props.max, Math.max(props.min,
+              Number((n / scale).toFixed(decimalsOf(props.step))))));
           }}
           onBlur={() => setText(null)}
         />
