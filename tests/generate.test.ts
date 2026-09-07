@@ -1,7 +1,7 @@
 // generate.test.ts — headless CLI: argv, value coercion, inspect, and
 // master+values builds. Pure against src/generate.ts; no process spawn.
 import { describe, expect, it } from "vitest";
-import { parseGenerateArgs, coerceValues, parseJobs } from "../src/generate";
+import { parseGenerateArgs, coerceValues, parseJobs, inspectMaster, assertVariants } from "../src/generate";
 import { lolevMaster } from "../src/model/lolevLayers";
 
 describe("parseGenerateArgs", () => {
@@ -84,5 +84,22 @@ describe("coerceValues", () => {
   it("collabLeft is unknown until the collab variant is enabled", () => {
     expect(coerceValues(m, { collabLeft: "a" }, []).errors.collabLeft).toMatch(/unknown/i);
     expect(coerceValues(m, { collabLeft: "a" }, ["collab"]).errors).toEqual({});
+  });
+});
+
+describe("inspectMaster", () => {
+  it("lists Lolev fill layers and the collab additions", () => {
+    const r = inspectMaster(lolevMaster());
+    expect(r.id).toBe("lolev");
+    expect(r.layers.map((l) => l.id)).toContain("name");
+    expect(r.layers.find((l) => l.id === "abv")?.input).toBe("number");
+    expect(r.layers.find((l) => l.id === "collabLeft")).toMatchObject({
+      kind: "image", variant: "collab",
+    });
+  });
+
+  it("assertVariants throws on typos", () => {
+    expect(() => assertVariants(lolevMaster(), ["collab", "nope"]))
+      .toThrow(/nope/);
   });
 });

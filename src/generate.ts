@@ -1,6 +1,8 @@
 // generate.ts — DOM-free headless generate: argv, inspect, coerce, build.
 import { parseDescription } from "./description";
-import type { LabelFile, Layer, LayerValue, Master, TextLine } from "./model/layers";
+import type { FontFamilyId } from "./fontCatalog";
+import type { MasterAssets } from "./model/files";
+import type { LabelFile, Layer, LayerKind, LayerValue, Master, TextLayer, TextLine } from "./model/layers";
 import { widenValue } from "./model/resolveLayers";
 import type { Style } from "./types";
 
@@ -238,4 +240,72 @@ export function coerceValues(
     else values[id] = r.value;
   }
   return { values, errors };
+}
+
+export const PAGE_ART_ID = { background: "texture", mask: "mask" } as const;
+
+export interface InspectReport {
+  id: string;
+  name: string;
+  fontFamily: FontFamilyId;
+  variants: { id: string; name: string }[];
+  layers: {
+    id: string;
+    name: string;
+    kind: LayerKind;
+    input?: TextLayer["input"];
+    symbology?: string;
+    placeholder?: string;
+    role?: "background" | "mask";
+    variant?: string;
+  }[];
+}
+
+export interface GenerateInput {
+  master: Master;
+  masterAssets: MasterAssets;
+  values: Record<string, LayerValue>;
+  enabledVariants: string[];
+  overrides?: LabelFile["overrides"];
+  extraImages: Record<string, { name: string; bytes: Uint8Array }>;
+  format: FormatSet;
+  assetRoot: string;
+}
+
+function inspectRow(l: Layer, variant?: string): InspectReport["layers"][number] {
+  return {
+    id: l.id,
+    name: l.name,
+    kind: l.kind,
+    ...(l.kind === "text" && l.input ? { input: l.input } : {}),
+    ...(l.kind === "barcode" || (l.kind === "text" && l.symbology) ? { symbology: l.symbology } : {}),
+    ...(l.kind === "text" && l.placeholder ? { placeholder: l.placeholder } : {}),
+    ...(l.kind === "image" && (l.role === "background" || l.role === "mask") ? { role: l.role } : {}),
+    ...(variant ? { variant } : {}),
+  };
+}
+
+/** The fill contract a values JSON can key: master layers, then layers each
+ *  variant adds (not overrides of existing ids). */
+export function inspectMaster(master: Master): InspectReport {
+  const masterIds = new Set(master.layers.map((l) => l.id));
+  const layers = master.layers.map((l) => inspectRow(l));
+  for (const v of master.variants) {
+    for (const [id, p] of Object.entries(v.layers)) {
+      if (masterIds.has(id) || !p.kind) continue;
+      layers.push(inspectRow(p as Layer, v.id));
+    }
+  }
+  return {
+    id: master.id,
+    name: master.name,
+    fontFamily: master.fontFamily ?? "poppins",
+    variants: master.variants.map((v) => ({ id: v.id, name: v.name })),
+    layers,
+  };
+}
+
+export function assertVariants(master: Master, ids: string[]): void {
+  const unknown = ids.filter((id) => !master.variants.some((v) => v.id === id));
+  if (unknown.length) throw new Error(`Unknown variant "${unknown.join('", "')}".`);
 }
