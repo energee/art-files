@@ -46,11 +46,6 @@ export async function openNativeFile(
   options: { filter: { name: string; extensions: string[] } },
 ): Promise<string | null> {
   const { open } = await import("@tauri-apps/plugin-dialog");
-  const selected = await open({
-    multiple: false,
-    filters: [options.filter],
-  });
-  if (typeof selected === "string") return selected;
-  if (Array.isArray(selected)) return selected[0] ?? null;
-  return null;
+  const selected = await open({ multiple: false, filters: [options.filter] });
+  return typeof selected === "string" ? selected : null;
 }

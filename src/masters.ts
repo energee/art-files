@@ -33,7 +33,6 @@ export function masterIndex(): Record<string, MasterIndexEntry> {
  *  file's `bytes`, keep them in the browser's master cache so a reload can
  *  resolve this master without a filesystem path (masterCache.ts). */
 export async function rememberMaster(m: Master, path: string, bytes?: Uint8Array, opts?: { applied?: boolean }): Promise<void> {
-  const prev = masterIndex()[m.id];
   const applied = opts?.applied !== false;
   // Bytes first: LAST_KEY / lastSeen must not claim this master until a
   // reload can actually resolve it (void cacheMaster used to return while
@@ -47,8 +46,8 @@ export async function rememberMaster(m: Master, path: string, bytes?: Uint8Array
   // keep lastSeen so it cannot steal the next untitled document.
   idx[m.id] = {
     name: m.name,
-    path: path || cur?.path || prev?.path || "",
-    lastSeen: applied ? new Date().toISOString() : (cur?.lastSeen ?? prev?.lastSeen ?? ""),
+    path: path || cur?.path || "",
+    lastSeen: applied ? new Date().toISOString() : (cur?.lastSeen ?? ""),
   };
   localStorage.setItem(KEY, JSON.stringify(idx));
   if (applied) localStorage.setItem(LAST_KEY, m.id);
@@ -71,11 +70,9 @@ function lastMasterId(): string {
       bestId = id;
     }
   }
-  const id = bestId || SHIPPED_MASTER_ID;
-  // Pin so a later .label resolve cannot win via lastSeen before LAST_KEY
-  // exists (upgrade from an index-only session).
-  try { localStorage.setItem(LAST_KEY, id); } catch { /* no localStorage */ }
-  return id;
+  // No pin needed: a resolve-only rememberMaster never bumps lastSeen, so
+  // this fallback is stable until the next apply writes LAST_KEY.
+  return bestId || SHIPPED_MASTER_ID;
 }
 
 /** A resolved master with its template assets — what unpackMaster returns

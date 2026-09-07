@@ -1607,11 +1607,11 @@ export const DocumentEditor = memo(function DocumentEditor({
         // renamed fork rewrites the file it just wrote — same path, no second
         // dialog, but a second zip of every asset. Split saveNativeFile into
         // "pick a path" and "write bytes" if that ever bites.
-        const written = final !== forked ? packMaster(final, assets) : packed;
-        if (final !== forked)
-          await saveNativeFile(written, {
-            defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path,
-          });
+        let written = packed;
+        if (final !== forked) {
+          written = packMaster(final, assets);
+          await saveNativeFile(written, { defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path });
+        }
         await commit(final, path, written);
         setLoadError("");
         return true;
@@ -1709,12 +1709,27 @@ export const DocumentEditor = memo(function DocumentEditor({
     commitRebind(m);
   }
 
-  /** MasterPicker's library pick (the preview's Continue). */
+  /** Parsed bytes from any Open Master source (native path, FS-Access
+   *  handle, hidden input): bind the source, register, rebind, adopt assets. */
+  async function openMasterBytes(
+    bytes: Uint8Array, name: string, src: { handle?: FileSystemFileHandle; path?: string },
+  ) {
+    const r = tryParseMaster(bytes);
+    if (!r) return;
+    masterFileHandle.current = src.handle ?? null;
+    masterFilePath.current = src.path ?? null;
+    await applyOpenedMaster(r.master, name, bytes);
+    await adoptMasterAssets(r.assets);
+  }
+
+  /** MasterPicker's library pick (the preview's Continue). The bytes are
+   *  already in the master cache (the picker resolved them from disk or the
+   *  cache), so only the index / last-applied record needs touching. */
   async function pickLibraryMaster(target: Master, assets: MasterAssets) {
     const path = masterIndex()[target.id]?.path ?? "";
-    await rememberMaster(target, path, packMaster(target, assets));
+    await rememberMaster(target, path);
     masterFileHandle.current = null;
-    masterFilePath.current = isTauri() ? path || null : null;
+    masterFilePath.current = isTauri() && path ? path : null;
     commitRebind(target);
     void adoptMasterAssets(assets);
   }
@@ -1731,34 +1746,18 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  next launch can re-read the file), FS-Access picker in the browser,
    *  hidden-input fallback elsewhere. */
   async function openMasterPicker() {
-    if (isTauri()) {
-      try {
+    try {
+      if (isTauri()) {
         const path = await openNativeFile({ filter: MASTER_FILTER });
         if (path === null) return;
-        const bytes = await readNativeFile(path);
-        const r = tryParseMaster(bytes);
-        if (!r) return;
-        masterFileHandle.current = null;
-        masterFilePath.current = path;
-        await applyOpenedMaster(r.master, path, bytes);
-        await adoptMasterAssets(r.assets);
-      } catch (err) {
-        if (!isAbort(err)) setLoadError(`Could not open master: ${errMsg(err)}`);
+        await openMasterBytes(await readNativeFile(path), path, { path });
+        return;
       }
-      return;
-    }
-    const pick = openPicker();
-    if (!pick) { masterInput.current?.click(); return; }
-    try {
+      const pick = openPicker();
+      if (!pick) { masterInput.current?.click(); return; }
       const [handle] = await pick({ types: MASTER_TYPES });
       const file = await handle.getFile();
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const r = tryParseMaster(bytes);
-      if (!r) return;
-      masterFileHandle.current = handle;
-      masterFilePath.current = null;
-      await applyOpenedMaster(r.master, file.name, bytes);
-      await adoptMasterAssets(r.assets);
+      await openMasterBytes(new Uint8Array(await file.arrayBuffer()), file.name, { handle });
     } catch (err) {
       if (!isAbort(err)) setLoadError(`Could not open master: ${errMsg(err)}`);
     }
@@ -1772,13 +1771,14 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (fileToOpen) return;
     let cancelled = false;
     openChain.current = openChain.current.then(async () => {
+      // An open has claimed this editor (or it unmounted): stand down.
+      const claimed = () => cancelled || fileToOpenRef.current || openedSeq.current !== 0;
       try {
-        if (cancelled || fileToOpenRef.current || openedSeq.current !== 0) return;
+        if (claimed()) return;
         const r = await resolveDefaultMaster();
-        if (cancelled || fileToOpenRef.current || openedSeq.current !== 0 || editedRef.current) return;
+        if (claimed() || editedRef.current) return;
         const current = docRef.current;
-        const shipped = lolevMaster();
-        const untouched = current.master.id === shipped.id
+        const untouched = current.master.id === SHIPPED_MASTER_ID
           && Object.keys(current.label.values).length === 0
           && !current.label.overrides
           && (current.label.enabledVariants?.length ?? 0) === 0;
@@ -1792,18 +1792,15 @@ export const DocumentEditor = memo(function DocumentEditor({
           // Untitled restore is not an Open/Save of this document — do not
           // bind Save Master to the last file's path or a restart overwrites it.
           masterFilePath.current = null;
-          if (cancelled || openedSeq.current !== 0) return;
           await adoptMasterAssets(r.assets);
         } finally {
           restoringRef.current = false;
         }
-        if (cancelled || openedSeq.current !== 0 || editedRef.current) return;
+        if (claimed() || editedRef.current) return;
         setEdited(false);
         setDirty(true);
       } catch (err) {
-        restoringRef.current = false;
-        if (!cancelled && openedSeq.current === 0)
-          setLoadError(`Could not restore master: ${errMsg(err)}`);
+        if (!claimed()) setLoadError(`Could not restore master: ${errMsg(err)}`);
       }
     });
     return () => { cancelled = true; };
@@ -2222,15 +2219,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               const f = e.target.files?.[0];
               e.target.value = "";
               if (!f) return;
-              void f.arrayBuffer().then(async (buf) => {
-                const bytes = new Uint8Array(buf);
-                const r = tryParseMaster(bytes);
-                if (!r) return;
-                masterFileHandle.current = null;
-                masterFilePath.current = null;
-                await applyOpenedMaster(r.master, f.name, bytes);
-                await adoptMasterAssets(r.assets);
-              });
+              void f.arrayBuffer().then((buf) => openMasterBytes(new Uint8Array(buf), f.name, {}));
             }} />
         </header>
       {/* The workspace tab strip's slot, under the menubar. */}
