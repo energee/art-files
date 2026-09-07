@@ -6,7 +6,8 @@
 // fallback when nothing on disk resolves, guaranteeing a fresh install with
 // an empty index still works. localStorage (per-operator app state, like the
 // view toggles and settings.ts): the index describes this machine's
-// filesystem.
+// filesystem. A new untitled document reloads the last master this operator
+// applied (resolveDefaultMaster), not the hardcoded fixture.
 import { isTauri } from "@tauri-apps/api/core";
 import type { Master } from "@/model/layers";
 import { lolevMaster } from "@/model/lolevLayers";
@@ -16,6 +17,7 @@ import { cacheMaster, cachedMaster } from "@/masterCache";
 
 export const SHIPPED_MASTER_ID = lolevMaster().id;
 const KEY = "labellab.masters";
+const LAST_KEY = "labellab.lastMaster";
 
 export interface MasterIndexEntry { name: string; path: string; lastSeen: string }
 
@@ -30,11 +32,47 @@ export function masterIndex(): Record<string, MasterIndexEntry> {
 /** Register a master in the library index — and, when the caller has the
  *  file's `bytes`, keep them in the browser's master cache so a reload can
  *  resolve this master without a filesystem path (masterCache.ts). */
-export function rememberMaster(m: Master, path: string, bytes?: Uint8Array): void {
+export async function rememberMaster(m: Master, path: string, bytes?: Uint8Array, opts?: { applied?: boolean }): Promise<void> {
+  const applied = opts?.applied !== false;
+  // Bytes first: LAST_KEY / lastSeen must not claim this master until a
+  // reload can actually resolve it (void cacheMaster used to return while
+  // IndexedDB was still empty, and the next launch fell back to Lolev).
+  if (bytes) await cacheMaster(m.id, bytes);
   const idx = masterIndex();
-  idx[m.id] = { name: m.name, path, lastSeen: new Date().toISOString() };
+  const cur = idx[m.id];
+  // An apply that has no filesystem path (a library pick of the shipped
+  // master, a browser handle whose name we already stored) must not wipe a
+  // real path from an earlier Open/Save. Resolving a .label is not an apply:
+  // keep lastSeen so it cannot steal the next untitled document.
+  idx[m.id] = {
+    name: m.name,
+    path: path || cur?.path || "",
+    lastSeen: applied ? new Date().toISOString() : (cur?.lastSeen ?? ""),
+  };
   localStorage.setItem(KEY, JSON.stringify(idx));
-  if (bytes) void cacheMaster(m.id, bytes);
+  if (applied) localStorage.setItem(LAST_KEY, m.id);
+}
+
+/** The master this operator last opened, saved, or picked — LAST_KEY when
+ *  this session has applied one, otherwise the index entry with the latest
+ *  lastSeen (so a library built before LAST_KEY still restores). Fresh
+ *  install: the shipped id. */
+function lastMasterId(): string {
+  try {
+    const stored = localStorage.getItem(LAST_KEY);
+    if (stored) return stored;
+  } catch { /* no localStorage — same fallback as masterIndex */ }
+  let bestId = "";
+  let bestSeen = "";
+  for (const [id, e] of Object.entries(masterIndex())) {
+    if (e.lastSeen > bestSeen) {
+      bestSeen = e.lastSeen;
+      bestId = id;
+    }
+  }
+  // No pin needed: a resolve-only rememberMaster never bumps lastSeen, so
+  // this fallback is stable until the next apply writes LAST_KEY.
+  return bestId || SHIPPED_MASTER_ID;
 }
 
 /** A resolved master with its template assets — what unpackMaster returns
@@ -45,8 +83,9 @@ export type ResolvedMaster = { master: Master; assets: MasterAssets };
 async function readMasterAt(path: string): Promise<ResolvedMaster | null> {
   if (!isTauri()) return null; // browser: no filesystem paths to read
   try {
-    const r = unpackMaster(await readNativeFile(path)); // ZIP or legacy JSON
-    rememberMaster(r.master, path); // self-healing: a good read refreshes the index
+    const bytes = await readNativeFile(path); // ZIP or legacy JSON
+    const r = unpackMaster(bytes);
+    await rememberMaster(r.master, path, bytes, { applied: false });
     return r;
   } catch {
     return null; // moved/deleted/corrupt — caller falls through to the hint
@@ -55,7 +94,7 @@ async function readMasterAt(path: string): Promise<ResolvedMaster | null> {
 
 export async function resolveMasterById(id: string, hint?: string): Promise<ResolvedMaster | null> {
   const entry = masterIndex()[id];
-  if (entry) {
+  if (entry?.path) {
     const r = await readMasterAt(entry.path);
     if (r?.master.id === id) return r;
   }
@@ -79,4 +118,10 @@ export async function resolveMasterById(id: string, hint?: string): Promise<Reso
   // letting the shipped id short-circuit a registered .master on disk.
   if (id === SHIPPED_MASTER_ID) return { master: lolevMaster(), assets: {} };
   return null;
+}
+
+/** The master a new untitled document should open onto. Falls back to the
+ *  shipped fixture when the last-applied id cannot be resolved. */
+export async function resolveDefaultMaster(): Promise<ResolvedMaster> {
+  return (await resolveMasterById(lastMasterId())) ?? { master: lolevMaster(), assets: {} };
 }

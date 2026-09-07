@@ -3,6 +3,19 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.63] - 2026-09-06
+
+### Fixed
+
+- A new untitled document reopens the last master you applied, instead of
+  always starting from the shipped Lolev template. The last-applied id is
+  recorded only after the master bytes are stored, so a reload cannot miss
+  them and fall back to Lolev.
+
+- The desktop app can re-read `.master` files from disk (Open Master uses
+  the native dialog and remembers the real path), so a restart finds the
+  template you last used instead of falling back to the shipped one.
+
 ## [0.1.62] - 2026-09-06
 
 ### Added

@@ -39,7 +39,7 @@ import {
   LABEL_FILTER, LABEL_TYPES, MASTER_FILTER, MASTER_TYPES, isAbort, openPicker, savePicker,
   writeHandle,
 } from "@/filePickers";
-import { readNativeFile, saveNativeFile } from "@/files";
+import { openNativeFile, readNativeFile, saveNativeFile } from "@/files";
 import { useHistory } from "@/history";
 import type {
   ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master, TextLine,
@@ -59,7 +59,7 @@ import {
   type MasterAssets,
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
-import { SHIPPED_MASTER_ID, masterIndex, rememberMaster, resolveMasterById } from "@/masters";
+import { SHIPPED_MASTER_ID, masterIndex, rememberMaster, resolveDefaultMaster, resolveMasterById } from "@/masters";
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
@@ -454,6 +454,15 @@ export const DocumentEditor = memo(function DocumentEditor({
   const { value: doc, set: setDoc, reset: resetDoc, undo, redo, canUndo, canRedo } =
     useHistory<Doc>(() => { const m = lolevMaster(); return { master: m, label: newLabel(m) }; });
   const { master, label } = doc;
+  const docRef = useRef(doc);
+  docRef.current = doc;
+  const fileToOpenRef = useRef(fileToOpen);
+  fileToOpenRef.current = fileToOpen;
+  /** Shared by boot-restore and File/OS open so they cannot interleave
+   *  resetDocument / asset writes. openedSeq !== 0 means an open has claimed
+   *  this editor — restore must not run (or continue) after that. */
+  const openedSeq = useRef(0);
+  const openChain = useRef<Promise<void>>(Promise.resolve());
   // The master as of the last open/save — the baseline the "unsaved master
   // edits" dot (Save Master) compares against, itemised by masterChanges.
   const pristineMaster = useRef(doc.master);
@@ -692,7 +701,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Whether the user has actually touched this document — the shell
    *  prompts about closing a tab only when edited AND dirty. */
   const [edited, setEdited] = useState(false);
-  const markDirty = () => { setDirty(true); setEdited(true); };
+  const editedRef = useRef(edited);
+  editedRef.current = edited;
+  /** Boot-restore's resetDocument/adoptMasterAssets go through swapLoaded
+   *  and onTexture, which markDirty. While this is set they must not flip
+   *  `edited` — an untitled tab has to stay pristine so an OS-open can reuse
+   *  it, and a keystroke during the await must not be cleared afterwards. */
+  const restoringRef = useRef(false);
+  const markDirty = () => { setDirty(true); if (!restoringRef.current) setEdited(true); };
 
   /** THE write path. Every document edit is a pure Doc → Doc transition
    *  (model/edit.ts), recorded as one history entry; `coalesce` folds a
@@ -708,7 +724,10 @@ export const DocumentEditor = memo(function DocumentEditor({
       return;
     }
     if (next === doc || (next.master === doc.master && next.label === doc.label)) return;
-    markDirty();
+    // Always mark edited: boot-restore's restoringRef only suppresses
+    // swapLoaded/onTexture, not a keystroke while assets are still loading.
+    setDirty(true);
+    setEdited(true);
     setDoc((d) => (d === doc ? next : fn(d)), coalesce);
   };
   const editMaster = (fn: (m: Master) => Master, coalesce?: boolean) =>
@@ -1568,16 +1587,17 @@ export const DocumentEditor = memo(function DocumentEditor({
     /** Adopt `m` as the saved master: the document's, the library's, and the
      *  baseline the next review diffs against. A plain save with nothing
      *  promoted is a no-op edit and pushes no history entry. */
-    const commit = (m: Master, where: string, bytes?: Uint8Array) => {
+    const commit = async (m: Master, where: string, bytes?: Uint8Array) => {
       edit(() => ({ master: m, label: adoptMaster(promoted.label, m) }));
-      rememberMaster(m, where, bytes);
+      await rememberMaster(m, where, bytes);
       pristineMaster.current = m;
       repaintMasterDirty((n) => n + 1);
     };
     if (isTauri()) {
       const existingPath = as ? null : masterFilePath.current;
       try {
-        const path = await saveNativeFile(packMaster(forked, assets), {
+        const packed = packMaster(forked, assets);
+        const path = await saveNativeFile(packed, {
           defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path: existingPath ?? undefined,
         });
         if (path === null) return false;
@@ -1587,11 +1607,12 @@ export const DocumentEditor = memo(function DocumentEditor({
         // renamed fork rewrites the file it just wrote — same path, no second
         // dialog, but a second zip of every asset. Split saveNativeFile into
         // "pick a path" and "write bytes" if that ever bites.
-        if (final !== forked)
-          await saveNativeFile(packMaster(final, assets), {
-            defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path,
-          });
-        commit(final, path);
+        let written = packed;
+        if (final !== forked) {
+          written = packMaster(final, assets);
+          await saveNativeFile(written, { defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path });
+        }
+        await commit(final, path, written);
         setLoadError("");
         return true;
       } catch (err) {
@@ -1613,7 +1634,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         await writeHandle(masterFileHandle.current, bytes);
         // The bytes go to the master cache too: a browser reload has no path
         // to re-read this file from (masterCache.ts).
-        commit(final, masterFileHandle.current.name, bytes);
+        await commit(final, masterFileHandle.current.name, bytes);
         return true;
       } catch (err) {
         masterFileHandle.current = null;
@@ -1628,7 +1649,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const bytes = packMaster(forked, assets);
     startSaveBatch();
     saveBytes(bytes, name, "application/zip");
-    commit(titled(name), name, bytes);
+    await commit(titled(name), name, bytes);
     return true;
   }
 
@@ -1669,7 +1690,8 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  freshly bound master reads as saved (Open Master / the library pick)
    *  or not (a never-written duplicate, so Save Master stays live). */
   function commitRebind(target: Master, clean = true) {
-    const { label: next, dropped } = rebindLabel(label, master, target);
+    const { master: from, label: current } = docRef.current;
+    const { label: next, dropped } = rebindLabel(current, from, target);
     markDirty();
     setDoc({ master: target, label: next });
     if (clean) { pristineMaster.current = target; repaintMasterDirty((n) => n + 1); }
@@ -1682,15 +1704,32 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** File → Open Master…: register the newly opened master in the library
    *  index, then commitRebind onto it. */
-  function applyOpenedMaster(m: Master, path: string, bytes?: Uint8Array) {
-    rememberMaster(m, path, bytes);
+  async function applyOpenedMaster(m: Master, path: string, bytes?: Uint8Array) {
+    await rememberMaster(m, path, bytes);
     commitRebind(m);
   }
 
-  /** MasterPicker's library pick (the preview's Continue). */
-  function pickLibraryMaster(target: Master, assets: MasterAssets) {
+  /** Parsed bytes from any Open Master source (native path, FS-Access
+   *  handle, hidden input): bind the source, register, rebind, adopt assets. */
+  async function openMasterBytes(
+    bytes: Uint8Array, name: string, src: { handle?: FileSystemFileHandle; path?: string },
+  ) {
+    const r = tryParseMaster(bytes);
+    if (!r) return;
+    masterFileHandle.current = src.handle ?? null;
+    masterFilePath.current = src.path ?? null;
+    await applyOpenedMaster(r.master, name, bytes);
+    await adoptMasterAssets(r.assets);
+  }
+
+  /** MasterPicker's library pick (the preview's Continue). The bytes are
+   *  already in the master cache (the picker resolved them from disk or the
+   *  cache), so only the index / last-applied record needs touching. */
+  async function pickLibraryMaster(target: Master, assets: MasterAssets) {
+    const path = masterIndex()[target.id]?.path ?? "";
+    await rememberMaster(target, path);
     masterFileHandle.current = null;
-    masterFilePath.current = isTauri() ? masterIndex()[target.id]?.path ?? null : null;
+    masterFilePath.current = isTauri() && path ? path : null;
     commitRebind(target);
     void adoptMasterAssets(assets);
   }
@@ -1703,25 +1742,71 @@ export const DocumentEditor = memo(function DocumentEditor({
     return entries;
   }
 
-  /** File → Open Master…: FS-Access picker where available, hidden-input
-   *  fallback elsewhere (Tauri included today). */
+  /** File → Open Master…: native dialog on desktop (a real path, so the
+   *  next launch can re-read the file), FS-Access picker in the browser,
+   *  hidden-input fallback elsewhere. */
   async function openMasterPicker() {
-    const pick = openPicker();
-    if (!pick) { masterInput.current?.click(); return; }
     try {
+      if (isTauri()) {
+        const path = await openNativeFile({ filter: MASTER_FILTER });
+        if (path === null) return;
+        await openMasterBytes(await readNativeFile(path), path, { path });
+        return;
+      }
+      const pick = openPicker();
+      if (!pick) { masterInput.current?.click(); return; }
       const [handle] = await pick({ types: MASTER_TYPES });
       const file = await handle.getFile();
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const r = tryParseMaster(bytes);
-      if (!r) return;
-      masterFileHandle.current = handle;
-      masterFilePath.current = null;
-      applyOpenedMaster(r.master, file.name, bytes);
-      await adoptMasterAssets(r.assets);
+      await openMasterBytes(new Uint8Array(await file.arrayBuffer()), file.name, { handle });
     } catch (err) {
       if (!isAbort(err)) setLoadError(`Could not open master: ${errMsg(err)}`);
     }
   }
+
+  /** A new untitled tab starts on the hardcoded fixture (useHistory is sync)
+   *  and then swaps in the last master this operator applied. Queued on
+   *  openChain so a File/OS open cannot interleave resetDocument with this
+   *  swap; skipped once openedSeq is claimed or the operator has edited. */
+  useEffect(() => {
+    if (fileToOpen) return;
+    let cancelled = false;
+    openChain.current = openChain.current.then(async () => {
+      // An open has claimed this editor (or it unmounted): stand down.
+      const claimed = () => cancelled || fileToOpenRef.current || openedSeq.current !== 0;
+      try {
+        if (claimed()) return;
+        const r = await resolveDefaultMaster();
+        if (claimed() || editedRef.current) return;
+        const current = docRef.current;
+        const untouched = current.master.id === SHIPPED_MASTER_ID
+          && Object.keys(current.label.values).length === 0
+          && !current.label.overrides
+          && (current.label.enabledVariants?.length ?? 0) === 0;
+        if (!untouched) return;
+        if (!masterDiff(current.master, r.master)
+          && !r.assets.texture && !r.assets.mask
+          && !Object.keys(r.assets.customImages ?? {}).length) return;
+        restoringRef.current = true;
+        try {
+          resetDocument({ master: r.master, label: newLabel(r.master) });
+          // Untitled restore is not an Open/Save of this document — do not
+          // bind Save Master to the last file's path or a restart overwrites it.
+          masterFilePath.current = null;
+          await adoptMasterAssets(r.assets);
+        } finally {
+          restoringRef.current = false;
+        }
+        if (claimed() || editedRef.current) return;
+        setEdited(false);
+        setDirty(true);
+      } catch (err) {
+        if (!claimed()) setLoadError(`Could not restore master: ${errMsg(err)}`);
+      }
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- boot restore once
+  }, []);
+
   const reportOpenError = (err: unknown) => {
     if (!isAbort(err)) setLoadError(`Could not open project: ${errMsg(err)}`);
   };
@@ -1825,9 +1910,8 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** Opens handed down by the shell — OS file-opens and File → Open both
    *  land here. seq-gated so a re-render can never re-open; serialized so
-   *  two opens never interleave their resetDocument/asset writes. */
-  const openedSeq = useRef(0);
-  const openChain = useRef<Promise<void>>(Promise.resolve());
+   *  two opens never interleave their resetDocument/asset writes (including
+   *  the boot-restore job queued on the same chain). */
   useEffect(() => {
     if (!fileToOpen || fileToOpen.seq === openedSeq.current) return;
     openedSeq.current = fileToOpen.seq;
@@ -2135,15 +2219,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               const f = e.target.files?.[0];
               e.target.value = "";
               if (!f) return;
-              void f.arrayBuffer().then(async (buf) => {
-                const bytes = new Uint8Array(buf);
-                const r = tryParseMaster(bytes);
-                if (!r) return;
-                masterFileHandle.current = null;
-                masterFilePath.current = null;
-                applyOpenedMaster(r.master, f.name, bytes);
-                await adoptMasterAssets(r.assets);
-              });
+              void f.arrayBuffer().then((buf) => openMasterBytes(new Uint8Array(buf), f.name, {}));
             }} />
         </header>
       {/* The workspace tab strip's slot, under the menubar. */}
