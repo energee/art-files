@@ -6,8 +6,9 @@ Read this file first; follow the pointers below only when you need them.
 ## About this repo
 
 Lolev beer label generator: a local Vite + TypeScript web app (with a Node headless
-harness, `npm run generate`) that turns a rock texture PNG, a metallic mask PNG, and
-beer info into two print-ready 600-DPI PDFs — label art plus a white-ink layer where
+harness, `npm run generate`, that fills a `.master` from layer-id JSON — the old
+texture/mask/config argv still works) turning art and beer info into print-ready
+600-DPI PDFs — label art plus a white-ink layer where
 blue = white ink and white = knockout. Node ecosystem, no UI framework on `main`
 (vanilla DOM; a shadcn/React rewrite is planned in `docs/superpowers/plans/`).
 Small: 26 files, ~4.1k lines including docs and bundled fonts.

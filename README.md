@@ -333,13 +333,30 @@ repainted the same way from its own layer assignment, as an editable outside
 effect beneath the fill. The barcode follows that same independent
 stroke/fill composition, exactly like the mask PDF.
 
-Headless (same renderer, used for iteration/batches):
+Headless (same renderer as the app; a `.master` plus layer values):
 
 ```bash
-npm run generate -- <texture.png|none> <mask.png|none> <outDir> [config.json] \
-  [--collab-left=<logo.svg|png|jpg>] [--collab-center=<...>]
-# writes {Name}.pdf, {Name}-mask.pdf, {Name}.psd and {Name}-mask.psd
+npm run generate -- beer.master values.json ./out
+# writes {name}.pdf, {name}-mask.pdf, {name}.psd, {name}-mask.psd
+
+npm run generate -- beer.master --inspect
+# prints the master's layer ids (the keys values.json uses)
 ```
+
+`values.json` is keyed by layer id (`name`, `abv`, `description`, `barcode`, …).
+Text layers accept a string (markdown subset for rich layers: `# header`,
+`**bold**`, `_white ink_`). Enable variants with `--variant collab`; attach
+image files with `--asset collabLeft=./logo.svg`. `--format pdf` skips PSDs.
+A JSON array is a batch (one output set per job); a job may also be
+`{values, variants, files, overrides}`, where `overrides` patches layer fields
+and is type-checked against the layer before anything builds. A batch is
+validated, read, and built whole before the first file is written, so a bad
+job anywhere leaves nothing on disk. `--asset background=` / `mask=` need a
+master with that role layer. `--values -` reads stdin; `--label run.label`
+uses a v3 project file; `--set name=X` overlays one value on every job.
+Exit codes: 0 wrote everything, 1 a job or input was rejected, 2 bad argv.
+
+The older texture/mask/config.json argv still works for golden re-baselines.
 
 The Save/Load config buttons round-trip the whole form as JSON (`{version: 1,
 ...LabelConfig}`, see `src/types.ts`). Config files saved by the pre-rewrite

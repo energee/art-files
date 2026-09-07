@@ -12,6 +12,7 @@ import { deepMerge, type DeepPartial } from "./merge";
 import { validateField } from "./fields";
 import { expandFormat, fieldRefs } from "./format";
 import { parseRuns } from "../description";
+import { machineName } from "../qr";
 
 type Result = { layer: Layer } | { error: string };
 
@@ -47,8 +48,20 @@ function applyValue(l: Layer, v: LayerValue): Result {
 }
 
 /** Lines as one plain string: runs joined with their markers stripped. */
-const plainText = (lines: TextLine[]): string =>
+export const plainText = (lines: TextLine[]): string =>
   lines.map((l) => parseRuns(l).map((r) => r.text).join("")).join(" ");
+
+/** What the tab strip and export names call the document: the `name` text
+ *  layer's filled text, if the master has one. */
+export function titleOf(layers: Layer[]): string {
+  const name = layers.find((l) => l.id === "name");
+  return name?.kind === "text" ? plainText(name.lines).trim() : "";
+}
+
+/** Filename stem for every export (PDF, PSD, and their mask plates): the
+ *  title slugged the way the QR URL is. One fallback, so an unnamed label
+ *  is "label.*" in the app and the CLI alike. */
+export const exportBase = (layers: Layer[]): string => machineName(titleOf(layers)) || "label";
 
 /** What a `{layerId}` ref in a barcode/qr value reads: the layer's plain
  *  text, uppercased if the layer draws that way, or its placeholder while

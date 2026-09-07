@@ -16,6 +16,11 @@ import type { Anchor } from "./position";
 import { FONT_FAMILIES, type FontFamilyId } from "../fontCatalog";
 import { deepMerge, type DeepPartial } from "./merge";
 
+/** Asset ids the page-art slots (texture / mask) ride under in every image
+ *  map the PDF and PSD builders key on. Shared by the app and the CLI so a
+ *  background/mask layer's `asset` resolves the same way in both. */
+export const PAGE_ART_ID = { background: "texture", mask: "mask" } as const;
+
 export type Symbology = "upc-a" | "ean-13" | "code-128";
 export type LayerKind = "text" | "image" | "barcode" | "qr";
 
