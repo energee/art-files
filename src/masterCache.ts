@@ -29,12 +29,20 @@ function open(): Promise<IDBDatabase | null> {
 
 function run<T>(mode: IDBTransactionMode, act: (s: IDBObjectStore) => IDBRequest<T>): Promise<T | null> {
   return open().then((db) => db && new Promise<T | null>((resolve) => {
+    // Close the connection on the way out, whichever way it goes: `open`
+    // makes a fresh one per call, and a leaked one both holds memory and
+    // blocks any later version upgrade indefinitely.
+    const done = (v: T | null) => { try { db.close(); } catch { /* already gone */ } resolve(v); };
     try {
-      const req = act(db.transaction(STORE, mode).objectStore(STORE));
-      req.onsuccess = () => resolve(req.result ?? null);
-      req.onerror = () => resolve(null);
+      const tx = db.transaction(STORE, mode);
+      const req = act(tx.objectStore(STORE));
+      // For a write the request settles before the transaction commits, so
+      // the close waits on the transaction; for a read either is enough.
+      tx.oncomplete = () => done(req.result ?? null);
+      tx.onerror = tx.onabort = () => done(null);
+      req.onerror = () => done(null);
     } catch {
-      resolve(null);
+      done(null);
     }
   }));
 }

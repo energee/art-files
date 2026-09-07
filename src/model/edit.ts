@@ -411,6 +411,28 @@ export function bindingPatch(layer: Layer, to: string, side: BindingSide, box: B
   };
 }
 
+/** One line a gesture can snap to: where it sits on the snapping axis, and
+ *  how far the thing that offered it runs along the OTHER axis — a layer's
+ *  own span, a guide's the whole page. The extent is what the on-screen
+ *  indicator segment is measured from (App's snapMark). `guide` marks the
+ *  page's own lines (master margins/centre and manual guides) apart from a
+ *  layer's edges, which is what the indicator colours itself by. */
+export interface SnapTarget { at: number; min: number; max: number; guide?: boolean }
+
+/** The candidate `at` is closest to, within `snap` — null when nothing is in
+ *  range. Ties go to the last candidate, so a layer's own edge wins over the
+ *  page guide it sits on. */
+export function nearestLine(
+  at: number, lines: readonly SnapTarget[], snap: number,
+): SnapTarget | null {
+  let best: SnapTarget | null = null;
+  let bestAbs = snap;
+  for (const line of lines) {
+    if (Math.abs(line.at - at) <= bestAbs) { bestAbs = Math.abs(line.at - at); best = line; }
+  }
+  return best;
+}
+
 /** The distance a drag ACTUALLY travels on one axis once it has snapped:
  *  `delta` adjusted so the dragged range's near edge, middle or far edge
  *  lands on whichever candidate `line` it comes within `snap` of, and
@@ -426,22 +448,8 @@ export function bindingPatch(layer: Layer, to: string, side: BindingSide, box: B
  *    * what snaps is the SELECTION's bounds, not whichever layer the pointer
  *      happens to be on — "centre this on the label" is about the thing you
  *      can see, and the grabbed layer is rarely centred within it. */
-/** The candidate line `at` is closest to, within `snap` — null when nothing
- *  is in range. Ties go to the last candidate, so a layer's own edge wins
- *  over the page guide it sits on. */
-export function nearestLine(
-  at: number, lines: readonly number[], snap: number,
-): number | null {
-  let best: number | null = null;
-  let bestAbs = snap;
-  for (const line of lines) {
-    if (Math.abs(line - at) <= bestAbs) { bestAbs = Math.abs(line - at); best = line; }
-  }
-  return best;
-}
-
 export function snapDelta(
-  range: { min: number; size: number }, delta: number, lines: readonly number[], snap: number,
+  range: { min: number; size: number }, delta: number, lines: readonly SnapTarget[], snap: number,
 ): { delta: number; line: number | null } {
   if (delta === 0) return { delta, line: null };
   const start = range.min + delta;
@@ -451,17 +459,10 @@ export function snapDelta(
   let line: number | null = null;
   for (const edge of edges) {
     const hit = nearestLine(edge, lines, bestAbs);
-    if (hit === null) continue;
-    bestAbs = Math.abs(hit - edge); best = hit - edge; line = hit;
+    if (!hit) continue;
+    bestAbs = Math.abs(hit.at - edge); best = hit.at - edge; line = hit.at;
   }
   return { delta: delta + best, line };
-}
-
-/** snapDelta against the master's guides alone, on X. */
-export function snappedDx(
-  box: { x: number; w: number }, dx: number, guides: GuideLines, snap: number,
-): number {
-  return snapDelta({ min: box.x, size: box.w }, dx, [guides.left, guides.center, guides.right], snap).delta;
 }
 
 /** The drag patch. Horizontal: x moves by `dx`, in whatever terms the layer
@@ -477,7 +478,7 @@ export function snappedDx(
  *  of the way across the page — and since the flip re-reads x against a box
  *  width assumed from the drag's start, any layer whose real box differs
  *  (a rotated column, an image still measuring) jumped at exactly those two
- *  places. Snapping does not need it either: snappedDx already lands the drag
+ *  places. Snapping does not need it either: snapDelta already lands the drag
  *  on the guide, and `guideX` is the deliberate way to glue a layer to one.
  *
  *  `moving` is the rest of the dragged SELECTION. A layer bound to another

@@ -48,7 +48,7 @@ import { uppercaseOf } from "@/model/layers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, nearestLine, snapDelta, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue,
+  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -89,7 +89,7 @@ import {
 } from "@/selection";
 import { CommandMenu, type Command } from "@/components/CommandMenu";
 import { AppMenu } from "@/components/AppMenu";
-import { PreviewCompare, SNAP_PT, type PreviewCompareHandle, type SnapLines, type SnapMark, type SnapTarget } from "@/components/PreviewCompare";
+import { PreviewCompare, SNAP_PT, type PreviewCompareHandle, type SnapLines, type SnapMark } from "@/components/PreviewCompare";
 import { Rulers } from "@/components/Rulers";
 import { CanView, type CanViewHandle } from "@/components/CanView";
 import {
@@ -142,6 +142,27 @@ type Doc = { master: Master; label: LabelFile };
 /** Shift + an arrow key moves the selection this many points instead of one —
  *  the coarse step, as in every design tool. */
 const NUDGE_SHIFT_PT = 10;
+
+/** An overlay that has taken focus: a modal, a menu, a Select's list. EVERY
+ *  bare key belongs to it while it is up — base-ui moves focus into the popup,
+ *  so "g" there is the list's typeahead, not the app's Show-guides command, and
+ *  firing the command would both act on the canvas behind the popup and
+ *  preventDefault the key the popup needed. */
+const POPUP_OWNS_KEYS = [
+  '[role="dialog"]', '[role="alertdialog"]', '[role="listbox"]', '[role="menu"]',
+  '[role="combobox"]',
+].join(",");
+
+/** Everything a popup owns, plus the roving-focus widgets where only the ARROWS
+ *  belong to the widget (the inspector's mm/pt toggle, tabs, a radio group).
+ *  The nudge stands aside for these rather than moving the layer behind them.
+ *  Deliberately narrow: the layer list and the preview carry none of these
+ *  roles, so selecting there still nudges. */
+const WIDGET_OWNS_ARROWS = [
+  POPUP_OWNS_KEYS,
+  '[role="radiogroup"]', '[role="tablist"]', '[role="slider"]',
+  '[data-slot="toggle-group"]',
+].join(",");
 
 const PAGE_ART_ID = { background: "texture", mask: "mask" } as const;
 
@@ -835,6 +856,10 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (!mods && e.shiftKey) return;
       const el = e.target as HTMLElement | null;
       if (el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "")) return;
+      // Same stand-aside as the nudge, for the BARE keys (1/2/3/r/g): an open
+      // menu, dialog or Select holds focus and those keys are its own
+      // typeahead. The ⌘ shortcuts stay live — no popup claims those.
+      if (!mods && el?.closest?.(POPUP_OWNS_KEYS)) return;
       const cmd = commandsRef.current.find((c) => c.key === e.key.toLowerCase() && c.mods === mods);
       if (!cmd || cmd.disabled) return;
       e.preventDefault();
@@ -860,6 +885,10 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (!step) return;
       const el = e.target as HTMLElement | null;
       if (el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "")) return;
+      // A popup, dialog or roving-focus widget owns the arrow keys while it
+      // holds focus: nudging the canvas behind an open Select (and eating the
+      // key the list needs) is never what the arrow meant there.
+      if (el?.closest?.(WIDGET_OWNS_ARROWS)) return;
       e.preventDefault();
       const by = e.shiftKey ? NUDGE_SHIFT_PT : 1;
       nudgeRef.current(step[0] * by, step[1] * by);
@@ -1113,15 +1142,17 @@ export const DocumentEditor = memo(function DocumentEditor({
   const snapTargets = (skip: ReadonlySet<string>, boxes: Map<string, Box>, skipGuide?: number) => {
     // A guide runs the whole page; a layer's line runs only as far as the
     // layer does — that extent is what the indicator segment is drawn from.
-    const lines = {
-      x: [guides.left, guides.center, guides.right].map((at) => ({ at, min: 0, max: PAGE.h })),
-      y: [guides.top, guides.bottom].map((at) => ({ at, min: 0, max: PAGE.w })),
+    // The page's own span is written in GUIDE space like everything else here
+    // (-BLEED_SHIFT to the far edge), or the drawn segment would sit a bleed
+    // low and overrun the sheet when BLEED_SHIFT re-bases it for the DOM.
+    const wholePage = { x: { min: -BLEED_SHIFT, max: PAGE.h - BLEED_SHIFT }, y: { min: -BLEED_SHIFT, max: PAGE.w - BLEED_SHIFT } };
+    const lines: { x: SnapTarget[]; y: SnapTarget[] } = {
+      x: [guides.left, guides.center, guides.right].map((at) => ({ at, ...wholePage.x, guide: true })),
+      y: [guides.top, guides.bottom].map((at) => ({ at, ...wholePage.y, guide: true })),
     };
     for (const g of manualGuides) {
       if (g.id === skipGuide) continue;
-      lines[g.axis].push(g.axis === "x"
-        ? { at: g.point - BLEED_SHIFT, min: 0, max: PAGE.h }
-        : { at: g.point - BLEED_SHIFT, min: 0, max: PAGE.w });
+      lines[g.axis].push({ at: g.point - BLEED_SHIFT, ...wholePage[g.axis], guide: true });
     }
     for (const layer of drawLayers) {
       if (skip.has(layer.id)) continue;
@@ -1150,12 +1181,16 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (at === null) return null;
     let from = min;
     let to = max;
+    // A page guide and a layer edge can sit on the same coordinate; the
+    // indicator reads blue only when NOTHING but a guide offered the line.
+    let guide = true;
     for (const m of marks) {
       if (m.at !== at) continue;
       from = Math.min(from, m.min);
       to = Math.max(to, m.max);
+      guide &&= !!m.guide;
     }
-    return { at, from, to };
+    return { at, from, to, guide };
   };
 
   const dragBase = useRef<
@@ -1199,8 +1234,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     // the same drag follows it, and must not move its own gap on top of that.
     const { bounds, lines } = dragBase.current;
     const moving = new Set(dragBase.current.bases.map(({ layer }) => layer.id));
-    const sx = snapDelta({ min: bounds.x, size: bounds.w }, dx, lines.x.map((m) => m.at), SNAP_PT);
-    const sy = snapDelta({ min: bounds.y, size: bounds.h }, dy, lines.y.map((m) => m.at), SNAP_PT);
+    const sx = snapDelta({ min: bounds.x, size: bounds.w }, dx, lines.x, SNAP_PT);
+    const sy = snapDelta({ min: bounds.y, size: bounds.h }, dy, lines.y, SNAP_PT);
     const entries = dragBase.current.bases
       .map(({ layer }): [string, DeepPartial<Layer>] => [layer.id, moveBy(layer, sx.delta, sy.delta, moving)])
       .filter(([, p]) => Object.keys(p).length);
@@ -1221,9 +1256,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   const snapGuidePoint = (axis: GuideAxis, point: number, id?: number) => {
     const boxes = boxesNow();
     if (!boxes) return point;
-    const line = nearestLine(
-      point - BLEED_SHIFT, snapTargets(new Set(), boxes, id)[axis].map((m) => m.at), SNAP_PT);
-    return line === null ? point : line + BLEED_SHIFT;
+    const line = nearestLine(point - BLEED_SHIFT, snapTargets(new Set(), boxes, id)[axis], SNAP_PT);
+    return line ? line.at + BLEED_SHIFT : point;
   };
 
   /** The keyboard half of drag-to-move: every selected unlocked layer steps
@@ -1265,13 +1299,16 @@ export const DocumentEditor = memo(function DocumentEditor({
     const edgeX = base.box.x - BLEED_SHIFT + (handle.hx === 1 ? base.box.w : 0);
     const edgeY = base.box.y - BLEED_SHIFT + (handle.hy === 1 ? base.box.h : 0);
     const sx = handle.hx === 0 ? { delta: dx, line: null }
-      : snapDelta({ min: edgeX, size: 0 }, dx, base.lines.x.map((m) => m.at), SNAP_PT);
+      : snapDelta({ min: edgeX, size: 0 }, dx, base.lines.x, SNAP_PT);
     const sy = handle.hy === 0 ? { delta: dy, line: null }
-      : snapDelta({ min: edgeY, size: 0 }, dy, base.lines.y.map((m) => m.at), SNAP_PT);
+      : snapDelta({ min: edgeY, size: 0 }, dy, base.lines.y, SNAP_PT);
     const p = resizeBy(base.layer, base.box, handle, sx.delta, sy.delta, uniform);
     if (Object.keys(p).length) patch(id, p, !first);
-    // The indicator spans the resized box (its live one, after the patch) and
-    // whatever the grabbed edge lined up with.
+    // The indicator spans the resized box and whatever the grabbed edge lined
+    // up with. `patch` is a state update, so boxesNow() here still measures
+    // the PREVIOUS frame's layers — the segment's cross-axis extent trails the
+    // pointer by one move, which is invisible at pointer rates and is not
+    // worth re-planning the scene for.
     const now = boxesNow()?.get(id) ?? base.box;
     const top = now.y - BLEED_SHIFT;
     const left = now.x - BLEED_SHIFT;
@@ -2158,7 +2195,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             <PreviewCompare ref={previewRef}
               canvasRender={viewMode === "2d" ? canvasSource : null}
               bleedIn={render.bleedIn}
-              layers={drawLayers} guides={guides}
+              layers={drawLayers}
               selected={selected}
               onPick={pick}
               // Live per-keystroke updates so the canvas render IS the edit

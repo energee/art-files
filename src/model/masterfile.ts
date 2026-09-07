@@ -12,8 +12,6 @@ import type { Master } from "./types";
 import { parseMaster } from "./types";
 import { extractAssets, packAssets, type LabelAssets } from "../labelfile";
 
-export const MASTER_EXT = ".master";
-
 /** The template assets a master carries — the master-owned subset of the
  *  .label roles, by construction (one Pick, one convention: labelfile.ts's
  *  packAssets/extractAssets do the actual reading and writing for both

@@ -531,20 +531,27 @@ export function TextToolbarButtons(props: {
   /** Hidden on a single-line layer: one drawn line has nowhere for a header
    *  to render differently. */
   showHeader?: boolean;
+  /** The run toggles (header, bold, white ink) act on the field's SELECTION,
+   *  so they are inert with nothing focused. The sidebar keeps the row
+   *  mounted for the layer-wide Uppercase switch and passes false here rather
+   *  than offering three buttons that silently do nothing. */
+  showRuns?: boolean;
   uppercase?: boolean;
   onUppercase?: (uppercase: boolean) => void;
 }) {
-  const { caret, toggle, toggleHeader, showHeader = true } = props;
+  const { caret, toggle, toggleHeader, showHeader = true, showRuns = true } = props;
   return (
     <>
-      {showHeader && (
+      {showRuns && showHeader && (
         <ToolbarToggle label="Toggle header" tip="Header" pressed={caret.header} onPress={toggleHeader}>
           <HeaderIcon />
         </ToolbarToggle>
       )}
-      <ToolbarToggle label="Toggle bold" tip="Bold" pressed={caret.bold} onPress={() => toggle("bold")}>
-        <Bold />
-      </ToolbarToggle>
+      {showRuns && (
+        <ToolbarToggle label="Toggle bold" tip="Bold" pressed={caret.bold} onPress={() => toggle("bold")}>
+          <Bold />
+        </ToolbarToggle>
+      )}
       {props.onUppercase && (
         <ToolbarToggle label="Toggle uppercase" tip="Uppercase entire text layer"
           pressed={props.uppercase ?? false} onPress={() => props.onUppercase!(!props.uppercase)}>
@@ -554,12 +561,14 @@ export function TextToolbarButtons(props: {
       {/* White ink is a print layer (a separate underlay plate), not a text
           colour, hence the explicit label — Droplet alone reads ambiguously
           next to a colour swatch. */}
+      {showRuns && (
       <ToolbarToggle
         label="Toggle white ink underlay" tip="White ink underlay"
         pressed={caret.white} onPress={() => toggle("white")}
       >
         <Droplet />
       </ToolbarToggle>
+      )}
     </>
   );
 }
@@ -791,7 +800,7 @@ function RichField(props: TextEditorProps) {
           {(focused || props.onUppercase) && (
             <TextToolbarButtons
               caret={caret} toggle={toggle} toggleHeader={toggleHeader} showHeader={multiline}
-              uppercase={uppercase} onUppercase={props.onUppercase}
+              showRuns={focused} uppercase={uppercase} onUppercase={props.onUppercase}
             />
           )}
         </div>
