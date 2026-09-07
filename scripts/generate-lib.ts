@@ -368,6 +368,20 @@ export function assertVariants(master: Master, ids: string[]): void {
   if (unknown.length) throw new Error(`Unknown variant "${unknown.join('", "')}".`);
 }
 
+/** Job/label variants first, then CLI `--variant` ids that are not already on.
+ *  A `.label` always carries `enabledVariants` (possibly `[]`), so `??` would
+ *  drop the flag; union is how `--label x.label --variant collab` turns collab on. */
+function mergeVariants(job: string[] | undefined, cli: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const id of [...(job ?? []), ...cli]) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
 export interface GenerateFile { name: string; bytes: Uint8Array }
 
 export interface GenerateResult {
@@ -679,7 +693,7 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
   const fail = (e: unknown) => { errors.push(e instanceof Error ? e.message : String(e)); };
   const dests = new Set<string>();
   const prepared = jobs.map((job) => {
-    const variants = job.variants ?? args.variants;
+    const variants = mergeVariants(job.variants, args.variants);
     try { assertVariants(master, variants); }
     catch (e) { fail(e); return null; }
     const fillable = fillableById(master, variants);

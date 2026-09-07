@@ -294,6 +294,21 @@ describe("runGenerate", () => {
     expect(io.files.has("/out/saved-name.pdf")).toBe(true);
   });
 
+  it("--variant collab applies on top of a .label that saved no variants", async () => {
+    const io = memIo();
+    const lab = lolevMaster();
+    const values = coerceValues(lab, { name: "Collab Label", barcode: "850051366224" }, []).values;
+    io.files.set("/x.label", packLabel({
+      formatVersion: 3, masterId: lab.id, enabledVariants: [], values,
+    }, {}));
+    io.files.set("/left.png", whitePng());
+    expect(await io.run([
+      "--label", "/x.label", "--out", "/out", "--format", "pdf",
+      "--variant", "collab", "--asset", "collabLeft=/left.png",
+    ])).toBe(0);
+    expect(io.files.has("/out/collab-label.pdf")).toBe(true);
+  });
+
   it("new-form --asset background= and mask= feed the page art", async () => {
     const io = memIo();
     io.files.set("/tex.png", whitePng());
