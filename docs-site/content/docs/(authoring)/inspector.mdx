@@ -1,0 +1,62 @@
+---
+title: Inspector
+description: One layer. Content, type, position, colour
+---
+
+Pick a layer in the list or on the preview and the right-hand inspector opens. Esc or the header close clears the selection and shuts it. One panel at a time.
+
+mm / pt in the inspector is display only. Under the hood it's still PDF points.
+
+## Header
+
+Kind icon, inline rename, enabled, locked. Same switches as the list row.
+
+## Content
+
+Depends on the kind:
+
+- **Text.** The WYSIWYG editor ([Editing](/docs/editing)). Number layers (ABV) are a number box. Code-as-text layers validate like a barcode.
+- **Image.** Drop or pick a file. SVG logos take the slot's fill. Rasters print as you authored them.
+- **Barcode.** The code string, plus a choice list if the master offers tiers.
+- **QR.** A URL template. A simple link is a prefix plus one field, always slugified. Lolev ships as `https://lolev.beer/beer/{name|slug}`. That derived URL is what gets encoded. No separate QR data field. Transforms: `slug`, `upper`, `lower`, `trim`.
+
+## Typography (text)
+
+- Font: Poppins or Barlow Condensed, or the master default
+- Size in points, and **printed character height** in millimetres (tallest letter or numeral at export size)
+- Align: left, centre, right, justify. A last or only justified line falls back to left
+- Wrap width. Blank means no wrap
+- Line spacing and heading scale
+- Letter spacing (tracking)
+- **Uppercase.** Display only. Stored text keeps its typed case so `{name|slug}` still reads the original
+
+## Geometry
+
+Position is measured from the layer's guides and anchors. **Bind** a layer to another layer's edge with a gap and it rides along when the other grows (the collab block is built this way). **Unbind** writes the current top as a plain coordinate.
+
+Text and codes can rotate **90°** (reads bottom to top). Images can't.
+
+Image layers also have width, optional height, contain/cover fit, scale, and "tint raster" for colouring a bitmap with the fill. Page art (texture and mask) only exposes fit. It always covers the page.
+
+Barcodes: UPC-A, EAN-13, or Code 128. Module width, bar height, show digits. You'll see a warning when the module is too skinny for curved metal.
+
+QR: size of the square.
+
+## Colour
+
+- **Fill.** Colour picker (screen eyedropper on Chromium), hex field, and **no ink**, except on barcodes and QR. Those have to scan.
+- **Metallic.** On knocks out of the white-ink plate (bare stock). Off lays white ink under it.
+- **Stroke.** Optional outer stroke with its own colour, metallic flag, and width in px at export DPI. Codes default the halo to white. Everything else defaults a dark keyline.
+
+## Override badges
+
+A **filled dot** means an enabled variant sets this property. A **ring** means this label overrides it. Each badge resets only its own source, so clearing your beer's edit cannot rewrite the shipped variant.
+
+## Fill contract
+
+This is what someone filling the layer is allowed to put in. It belongs to the master and shows up in Save Master review:
+
+- Field label (caption above the fill widget)
+- Choices (a list you can pick from; typing something new is still allowed and can be learned)
+- Placeholder on empty text
+- Suffix after a number (`% alc by vol` and friends)

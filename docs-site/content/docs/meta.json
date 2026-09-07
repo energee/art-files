@@ -1,0 +1,13 @@
+{
+  "title": "User guide",
+  "description": "How you actually use Label Lab",
+  "root": true,
+  "pages": [
+    "index",
+    "getting-started",
+    "workspace",
+    "(authoring)",
+    "(output)",
+    "(reference)"
+  ]
+}

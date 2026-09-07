@@ -30,7 +30,7 @@ recorded-at: d10cddf
   `src/main.ts` for the same reason.
 - Label geometry has a single source of truth: every coordinate lives in
   `src/layout.ts` (points, top-left origin) and `src/pdf/build.ts` draws *both* PDFs
-  from it so art and mask stay registered (`src/layout.ts:1-3`, `README.md:50-55`).
+  from it so art and mask stay registered (`src/layout.ts:1-3`, `README.md` Layout).
   Never hardcode geometry in the builder.
 - Design specs and implementation plans are committed under `docs/superpowers/`
   before implementation (`docs/superpowers/specs/2026-08-02-label-pdf-generator-design.md`,

@@ -1,0 +1,9 @@
+{
+  "title": "Reference",
+  "description": "Shortcuts and the generate CLI",
+  "defaultOpen": true,
+  "pages": [
+    "shortcuts",
+    "generate"
+  ]
+}

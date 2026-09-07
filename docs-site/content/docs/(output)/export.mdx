@@ -1,0 +1,54 @@
+---
+title: Export
+description: Art PDF, mask PDF, Photoshop, and what blue means
+---
+
+File → Export, the palette, `⌘E` and `⇧⌘E`:
+
+| Action | Files |
+| --- | --- |
+| Export PDFs | `{name}.pdf` and `{name}-mask.pdf` |
+| Export Artwork PDF | art only |
+| Export Mask PDF | mask only |
+| Export PSDs | `{name}.psd` and `{name}-mask.psd` |
+| Export Artwork / Mask PSD | one plate |
+
+Export greys out while the label is invalid. The reason sits in the header next to the menus.
+
+Downloads always rebuild at **full resolution** (Settings → Resolution, default 600 DPI). Live preview is a downscaled stand-in.
+
+The filename is the beer name, slugged like the QR. The PDF title is `{Name} label art` (and the mask equivalent).
+
+## White-ink plate
+
+The mask PDF is what the printer uses for white ink:
+
+- **Blue** = white ink
+- **White** = knockout (silver / metallic stock shows through)
+
+Uploaded masks are embedded as-authored. The 3D preview classifies pixels by brightness for its metalness map (bright/unsaturated = foil, any ink colour = matte white ink). That's preview only.
+
+No mask uploaded? The plate floods full blue. Print as a white label. Metallic elements still knock back out to bare stock on top of the flood.
+
+Each element has a **fill** (drawn in the art PDF; `none` for no ink) and a **plate** (metallic knocks out of the white layer; white gets a white-ink underlay). Outer strokes have their own independent plate. White-ink runs inside a text line (`_white ink_` / the White ink toggle) follow the same rule per span.
+
+Barcodes ship as near-black bars inside a white halo over white ink. The halo is an outset per bar plus a pill per digit group, unioned, so white ink doesn't fall short between bars.
+
+## Photoshop
+
+Export PSDs is the editable handoff. Text becomes type layers. Logo and QR become vector shapes. Outer strokes are layer effects. The description is one type layer with style runs. The barcode is one merged shape (bars plus digit outlines), not editable type.
+
+Photoshop may prompt to **Update** text layers on open. ag-psd writes the text data without a rendered bitmap. Choose Update.
+
+The mask PSD mirrors the mask PDF: a knockout base, the recolored mask raster (or a solid white-ink flood), then every element by its plate.
+
+The PDFs are still what you send to the printer.
+
+## CMYK
+
+The app outputs RGB. Before you send it:
+
+```bash
+brew install ghostscript   # once
+tools/to-cmyk.sh LABRADORITE.pdf LABRADORITE-mask.pdf
+```
