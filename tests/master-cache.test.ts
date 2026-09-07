@@ -15,7 +15,7 @@ vi.mock("../src/masterCache", () => ({
 // A browser: no filesystem paths to read (the Tauri branch is the desktop's).
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => false }));
 
-const { rememberMaster, resolveMasterById, SHIPPED_MASTER_ID } = await import("../src/masters");
+const { rememberMaster, resolveMasterById, resolveDefaultMaster, SHIPPED_MASTER_ID } = await import("../src/masters");
 
 const mine = (): ReturnType<typeof lolevMaster> =>
   ({ ...lolevMaster(), id: "master-mine", name: "Mine" });
@@ -41,5 +41,55 @@ describe("resolveMasterById in a browser", () => {
   it("still falls back to the fixture with nothing cached", async () => {
     expect((await resolveMasterById(SHIPPED_MASTER_ID))?.master.id).toBe(SHIPPED_MASTER_ID);
     expect(await resolveMasterById("master-nowhere")).toBeNull();
+  });
+});
+
+describe("resolveDefaultMaster", () => {
+  it("is the shipped fixture on a fresh install", async () => {
+    const r = await resolveDefaultMaster();
+    expect(r.master.id).toBe(SHIPPED_MASTER_ID);
+    expect(r.master.name).toBe("Lolev");
+  });
+
+  it("reloads the last master that was applied, not the shipped fixture", async () => {
+    const m = mine();
+    rememberMaster(m, "mine.master", packMaster(m, {}));
+    const r = await resolveDefaultMaster();
+    expect(r.master.id).toBe("master-mine");
+    expect(r.master.name).toBe("Mine");
+  });
+
+  it("reloads an edited shipped master instead of the hardcoded fixture", async () => {
+    rememberMaster({ ...lolevMaster(), name: "Lolev (edited)" }, "lolev.master", packMaster({ ...lolevMaster(), name: "Lolev (edited)" }, {}));
+    expect((await resolveDefaultMaster()).master.name).toBe("Lolev (edited)");
+  });
+
+  it("uses the most recently remembered index entry when no last-applied id is stored yet", async () => {
+    const m = mine();
+    localStorage.setItem("labellab.masters", JSON.stringify({
+      [m.id]: { name: m.name, path: "mine.master", lastSeen: "2026-09-06T12:00:00.000Z" },
+    }));
+    cache.set(m.id, packMaster(m, {}));
+    const r = await resolveDefaultMaster();
+    expect(r.master.id).toBe("master-mine");
+  });
+
+  it("resolving a .label's master does not steal the last-applied default", async () => {
+    const a = mine();
+    rememberMaster(a, "mine.master", packMaster(a, {}));
+    const other = { ...lolevMaster(), id: "master-other", name: "Other" };
+    rememberMaster(other, "other.master", packMaster(other, {}), { applied: false });
+    expect((await resolveDefaultMaster()).master.id).toBe("master-mine");
+  });
+
+  it("a resolve-only index entry cannot win the lastSeen fallback", async () => {
+    const a = mine();
+    localStorage.setItem("labellab.masters", JSON.stringify({
+      [a.id]: { name: a.name, path: "mine.master", lastSeen: "2026-09-06T12:00:00.000Z" },
+    }));
+    cache.set(a.id, packMaster(a, {}));
+    const other = { ...lolevMaster(), id: "master-other", name: "Other" };
+    rememberMaster(other, "other.master", packMaster(other, {}), { applied: false });
+    expect((await resolveDefaultMaster()).master.id).toBe("master-mine");
   });
 });

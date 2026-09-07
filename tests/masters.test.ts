@@ -65,6 +65,29 @@ describe("master library index", () => {
     vi.doUnmock("@/files");
   });
 
+  // Desktop .master reads can fail (fs scope, a basename registered by the
+  // hidden-input Open Master path) — the cached bytes from the last apply
+  // must still win over the hardcoded fixture.
+  it("cached bytes win when the desktop path cannot be read", async () => {
+    vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+    vi.doMock("@/files", () => ({
+      readNativeFile: async () => { throw new Error("forbidden"); },
+    }));
+    const held = new Map<string, Uint8Array>();
+    vi.doMock("@/masterCache", () => ({
+      cacheMaster: async (id: string, bytes: Uint8Array) => { held.set(id, bytes); },
+      cachedMaster: async (id: string) => held.get(id) ?? null,
+    }));
+    const { packMaster } = await import("../src/model/files");
+    const mod = await import("../src/masters");
+    const edited = { ...lolevMaster(), name: "ZZZ-CACHED" };
+    mod.rememberMaster(edited, "lolev.master", packMaster(edited, {}));
+    expect((await mod.resolveMasterById(mod.SHIPPED_MASTER_ID))?.master.name).toBe("ZZZ-CACHED");
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/files");
+    vi.doUnmock("@/masterCache");
+  });
+
   it("an empty/broken index still yields the built-in fixture for the shipped id", async () => {
     vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
     vi.doMock("@/files", () => ({
