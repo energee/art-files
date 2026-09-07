@@ -3,6 +3,20 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.64] - 2026-09-07
+
+### Added
+
+- **Headless generate from a master.** `npm run generate -- beer.master values.json out`
+  fills a `.master` from JSON (one job or a batch), with `--variant`, `--asset`,
+  `--set`, `--format`, and `--label`; `--inspect` prints the fill contract. The
+  old texture/mask/config form still works.
+
+### Changed
+
+- The document title and export filename rule live in one place shared by the
+  app and the CLI, so both name a label identically.
+
 ## [0.1.62] - 2026-09-06
 
 ### Added
