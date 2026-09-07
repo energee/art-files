@@ -7,14 +7,24 @@ import {
   parseGenerateArgs, coerceValues, parseJobs, inspectMaster, assertVariants, buildLabel,
   runGenerate,
 } from "../scripts/generate-lib";
-import { packLabel } from "../src/model/files";
+import { PNG } from "pngjs";
+import { defaultConfig } from "../src/defaults";
+import { packLabel, packMaster } from "../src/model/files";
 import { lolevMaster } from "../src/model/lolevLayers";
+
+/** A tiny solid-white PNG, enough to embed and tint. */
+const whitePng = (): Uint8Array => {
+  const png = new PNG({ width: 2, height: 2 });
+  png.data.fill(255);
+  return new Uint8Array(PNG.sync.write(png));
+};
+const json = (v: unknown) => new TextEncoder().encode(JSON.stringify(v));
 
 describe("parseGenerateArgs", () => {
   it("new form: positional master + values + out", () => {
     expect(parseGenerateArgs(["beer.master", "v.json", "out"])).toEqual({
-      mode: "generate", masterPath: "beer.master", valuesPath: "v.json",
-      outDir: "out", variants: [], assets: {}, set: {}, format: { pdf: true, psd: true },
+      mode: "generate", masterPath: "beer.master", source: { kind: "values", path: "v.json" },
+      outDir: "out", variants: [], assets: {}, set: {}, format: "all",
     });
   });
 
@@ -23,8 +33,8 @@ describe("parseGenerateArgs", () => {
       "--master", "beer.master", "--values", "-", "--out", "out",
       "--variant", "collab", "--asset", "collabLeft=./a.svg", "--format", "pdf",
     ])).toMatchObject({
-      mode: "generate", valuesPath: "-", variants: ["collab"],
-      assets: { collabLeft: "./a.svg" }, format: { pdf: true, psd: false },
+      mode: "generate", source: { kind: "values", path: "-" }, variants: ["collab"],
+      assets: { collabLeft: "./a.svg" }, format: "pdf",
     });
   });
 
@@ -58,7 +68,7 @@ describe("parseGenerateArgs", () => {
 
   it("equals-form stdin and empty flags", () => {
     expect(parseGenerateArgs(["--values=-", "--out", "out"])).toMatchObject({
-      mode: "generate", valuesPath: "-",
+      mode: "generate", source: { kind: "values", path: "-" },
     });
     expect(() => parseGenerateArgs(["--out="])).toThrow(/needs a value/i);
   });
@@ -152,7 +162,7 @@ describe("buildLabel", () => {
       values: labradorite(),
       enabledVariants: [],
       extraImages: {},
-      format: { pdf: true, psd: false },
+      format: "pdf",
       assetRoot,
     });
     expect(result.basename).toBe("labradorite");
@@ -168,7 +178,7 @@ describe("buildLabel", () => {
       values: coerceValues(lolevMaster(), { name: "X", barcode: "123" }, []).values,
       enabledVariants: [],
       extraImages: {},
-      format: { pdf: true, psd: false },
+      format: "pdf",
       assetRoot,
     })).rejects.toThrow(/barcode/i);
   });
@@ -258,6 +268,82 @@ describe("runGenerate", () => {
     expect(io.stderr.join("")).toMatch(/masterId/);
   });
 
+  it("usage errors exit 2 with the usage text", async () => {
+    const io = memIo();
+    expect(await io.run(["--bogus"])).toBe(2);
+    expect(io.stderr.join("")).toMatch(/usage/i);
+  });
+
+  it("--set overlays every job's values", async () => {
+    const io = memIo();
+    io.files.set("/v.json", json([{ name: "A" }, { name: "B", abv: "5" }]));
+    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf",
+      "--set", "name=Forced"])).toBe(1);
+    // Both jobs collapse onto the same forced name: the overlay applied to each.
+    expect(io.stderr.join("")).toMatch(/duplicate output file "forced\.pdf"/);
+  });
+
+  it("--label builds from the saved values and its embedded page art", async () => {
+    const io = memIo();
+    const lab = lolevMaster();
+    const values = coerceValues(lab, { name: "Saved Name", barcode: "850051366224" }, []).values;
+    io.files.set("/x.label", packLabel({
+      formatVersion: 3, masterId: lab.id, enabledVariants: [], values,
+    }, { texture: { name: "t.png", bytes: whitePng() } }));
+    expect(await io.run(["--label", "/x.label", "--out", "/out", "--format", "pdf"])).toBe(0);
+    expect(io.files.has("/out/saved-name.pdf")).toBe(true);
+  });
+
+  it("new-form --asset background= and mask= feed the page art", async () => {
+    const io = memIo();
+    io.files.set("/tex.png", whitePng());
+    io.files.set("/mask.png", whitePng());
+    io.files.set("/v.json", json({ name: "Art", barcode: "850051366224" }));
+    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf",
+      "--asset", "background=/tex.png", "--asset", "mask=/mask.png"])).toBe(0);
+    const withArt = io.files.get("/out/art.pdf")!.length;
+    const bare = memIo();
+    bare.files.set("/v.json", json({ name: "Art", barcode: "850051366224" }));
+    await bare.run(["--values", "/v.json", "--out", "/out", "--format", "pdf"]);
+    expect(withArt).toBeGreaterThan(bare.files.get("/out/art.pdf")!.length);
+  });
+
+  it("page art aimed at a master with no such role layer is an error, not a no-op", async () => {
+    const io = memIo();
+    const m = lolevMaster();
+    const noRole = { ...m, id: "norole", layers: m.layers.filter((l) => l.kind !== "image" || !l.role) };
+    io.files.set("/norole.master", packMaster(noRole, {}));
+    io.files.set("/tex.png", whitePng());
+    expect(await io.run(["/norole.master", "--out", "/out", "--asset", "background=/tex.png"])).toBe(1);
+    expect(io.stderr.join("")).toMatch(/no background layer/);
+  });
+
+  it("a bad image in job 2 leaves nothing of job 1 on disk", async () => {
+    const io = memIo();
+    io.files.set("/v.json", json([
+      { values: { name: "First", barcode: "850051366224" } },
+      { values: { name: "Second" }, files: { collabLeft: "/missing.png" }, variants: ["collab"] },
+    ]));
+    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf"])).toBe(1);
+    expect(io.stderr.join("")).toMatch(/missing\.png/);
+    expect([...io.files.keys()].filter((k) => k.startsWith("/out/"))).toEqual([]);
+  });
+
+  it("a mistyped override names the layer and field", async () => {
+    const io = memIo();
+    io.files.set("/v.json", json({ values: { name: "X" }, overrides: { name: { size: "big" } } }));
+    expect(await io.run(["--values", "/v.json", "--out", "/out"])).toBe(1);
+    expect(io.stderr.join("")).toMatch(/name\.size: expected number, got string/);
+  });
+
+  it("legacy config.json plus --collab-left names the output after the config", async () => {
+    const io = memIo();
+    io.files.set("/cfg.json", json({ version: 1, ...defaultConfig(), beerName: "Old Way" }));
+    io.files.set("/left.png", whitePng());
+    expect(await io.run(["none", "none", "/out", "/cfg.json", "--collab-left=/left.png"])).toBe(0);
+    expect(io.files.has("/out/old-way.pdf")).toBe(true);
+  });
+
   it("rejects a batch whose files would overwrite (night vs night-mask)", async () => {
     const io = memIo();
     io.files.set("/v.json", new TextEncoder().encode(JSON.stringify([
@@ -265,6 +351,24 @@ describe("runGenerate", () => {
     ])));
     expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf"])).toBe(1);
     expect(io.stderr.join("")).toMatch(/night-mask\.pdf/);
+  });
+});
+
+describe("buildLabel tint", () => {
+  const build = (tint: boolean) => buildLabel({
+    master: lolevMaster(),
+    masterAssets: {},
+    values: coerceValues(lolevMaster(), { name: "T", barcode: "850051366224" }, ["collab"]).values,
+    enabledVariants: ["collab"],
+    overrides: { collabLeft: { tintRaster: tint } },
+    extraImages: { collabLeft: { name: "l.png", bytes: whitePng() } },
+    format: "pdf",
+    assetRoot,
+  });
+  it("a tinted raster is not the untinted one", async () => {
+    const [on, off] = await Promise.all([build(true), build(false)]);
+    expect(on.warnings).toEqual([]);
+    expect(Buffer.from(on.files[0].bytes).equals(Buffer.from(off.files[0].bytes))).toBe(false);
   });
 });
 
@@ -276,7 +380,7 @@ describe("buildLabel missing art", () => {
       values: coerceValues(lolevMaster(), { collabLeft: "missing" }, ["collab"]).values,
       enabledVariants: ["collab"],
       extraImages: {},
-      format: { pdf: true, psd: false },
+      format: "pdf",
       assetRoot,
     })).rejects.toThrow(/missing/i);
   });

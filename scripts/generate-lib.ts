@@ -29,7 +29,11 @@ export const USAGE =
   "       npm run generate -- <texture|none> <mask.png|none> <outDir> [config.json] " +
   "[--collab-left=file] [--collab-center=file]";
 
-export type FormatSet = { pdf: boolean; psd: boolean };
+/** Which plates to write. A closed union, so "nothing" is unrepresentable
+ *  and a run can never exit 0 having written zero files. */
+export type FormatSet = "pdf" | "psd" | "all";
+const wantsPdf = (f: FormatSet) => f !== "psd";
+const wantsPsd = (f: FormatSet) => f !== "pdf";
 
 export type GenerateArgs =
   | {
@@ -48,8 +52,9 @@ export type GenerateArgs =
   | {
       mode: "generate";
       masterPath?: string;
-      valuesPath?: string;
-      labelPath?: string;
+      /** Where the fill comes from: a values JSON (path, "-" for stdin, or
+       *  nothing for an empty fill) or one saved .label — never both. */
+      source: { kind: "values"; path?: string } | { kind: "label"; path: string };
       outDir: string;
       variants: string[];
       assets: Record<string, string>;
@@ -63,9 +68,7 @@ const KNOWN_FLAGS = new Set([
 ]);
 
 function parseFormat(raw: string): FormatSet {
-  if (raw === "all") return { pdf: true, psd: true };
-  if (raw === "pdf") return { pdf: true, psd: false };
-  if (raw === "psd") return { pdf: false, psd: true };
+  if (raw === "all" || raw === "pdf" || raw === "psd") return raw;
   throw new Error(`--format must be pdf, psd, or all\n${USAGE}`);
 }
 
@@ -139,13 +142,14 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
     return {
       mode: "generate",
       ...(masterPath ? { masterPath } : {}),
-      ...(valuesPath !== undefined ? { valuesPath } : {}),
-      ...(singles.label ? { labelPath: singles.label } : {}),
+      source: singles.label
+        ? { kind: "label", path: singles.label }
+        : { kind: "values", ...(valuesPath !== undefined ? { path: valuesPath } : {}) },
       outDir,
       variants,
       assets,
       set,
-      format: singles.format ? parseFormat(singles.format) : { pdf: true, psd: true },
+      format: singles.format ? parseFormat(singles.format) : "all",
     };
   }
 
@@ -188,9 +192,11 @@ function asJob(v: unknown): JobInput {
       throw new Error("job files must be a map of layer id to path");
     if (overrides !== undefined) {
       if (!isPlain(overrides)) throw new Error("job overrides must be an object");
-      for (const k of Object.keys(overrides))
+      for (const [k, patch] of Object.entries(overrides)) {
         if (k === "__proto__" || k === "constructor" || k === "prototype")
           throw new Error("job overrides contain a forbidden key");
+        if (!isPlain(patch)) throw new Error(`job override "${k}" must be an object`);
+      }
     }
     return {
       values,
@@ -331,6 +337,30 @@ export function inspectMaster(master: Master): InspectReport {
     variants: master.variants.map((v) => ({ id: v.id, name: v.name })),
     layers,
   };
+}
+
+/** Override patches must fit the layer they patch: every field the layer
+ *  already has keeps its type. Catches a hand-edited `size: "big"` here, with
+ *  the layer id, instead of deep inside planning with no id at all. Fields
+ *  the layer lacks pass — resolveLayers merges those as-is. */
+export function checkOverrides(
+  layers: Map<string, Layer>, overrides: LabelFile["overrides"],
+): string[] {
+  const errors: string[] = [];
+  const walk = (path: string, have: unknown, patch: unknown) => {
+    if (!isPlain(patch) || !isPlain(have)) {
+      if (have !== undefined && typeof have !== typeof patch)
+        errors.push(`override ${path}: expected ${typeof have}, got ${typeof patch}`);
+      return;
+    }
+    for (const [k, v] of Object.entries(patch)) walk(`${path}.${k}`, have[k], v);
+  };
+  for (const [id, patch] of Object.entries(overrides ?? {})) {
+    const layer = layers.get(id);
+    if (!layer) { errors.push(`Unknown layer "${id}".`); continue; }
+    walk(id, layer, patch);
+  }
+  return errors;
 }
 
 export function assertVariants(master: Master, ids: string[]): void {
@@ -497,10 +527,10 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
   const psdAssets: PsdAssets = { fonts, fontFamily: defaultFamily, images: psdImages };
   const psdOpts = { layers: resolved.layers };
   const builds: [string, () => Promise<Uint8Array>][] = [];
-  if (input.format.pdf) builds.push(
+  if (wantsPdf(input.format)) builds.push(
     [`${stem}.pdf`, () => buildArtPdf(plan, pdfAssets)],
     [`${stem}-mask.pdf`, () => buildMaskPdf(plan, pdfAssets)]);
-  if (input.format.psd) builds.push(
+  if (wantsPsd(input.format)) builds.push(
     [`${stem}.psd`, () => buildPsd(plan, psdAssets, "art", psdOpts)],
     [`${stem}-mask.psd`, () => buildPsd(plan, psdAssets, "mask", psdOpts)]);
   const files = await Promise.all(builds.map(async ([name, build]) => ({ name, bytes: await build() })));
@@ -532,8 +562,8 @@ function parseValuesJson(text: string): unknown {
 
 function outputNames(stem: string, format: FormatSet): string[] {
   const names: string[] = [];
-  if (format.pdf) names.push(`${stem}.pdf`, `${stem}-mask.pdf`);
-  if (format.psd) names.push(`${stem}.psd`, `${stem}-mask.psd`);
+  if (wantsPdf(format)) names.push(`${stem}.pdf`, `${stem}-mask.pdf`);
+  if (wantsPsd(format)) names.push(`${stem}.psd`, `${stem}-mask.psd`);
   return names;
 }
 
@@ -604,7 +634,7 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
       enabledVariants: converted.label.enabledVariants,
       overrides: converted.label.overrides,
       extraImages,
-      format: { pdf: true, psd: true },
+      format: "all",
       assetRoot,
     });
     const outDir = resolve(io.cwd, args.outDir);
@@ -618,8 +648,8 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
 
   let jobs: JobInput[];
   let labelExtras: GenerateInput["extraImages"] = {};
-  if (args.labelPath) {
-    const unpacked = unpackLabel(io.readFile(resolve(io.cwd, args.labelPath)));
+  if (args.source.kind === "label") {
+    const unpacked = unpackLabel(io.readFile(resolve(io.cwd, args.source.path)));
     if (!unpacked.label)
       throw new Error("this CLI opens v3 .label files; open and re-save in Label Lab first");
     const lab = unpacked.label;
@@ -632,30 +662,38 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
       masterAssets.customImages = { ...masterAssets.customImages, [id]: a };
   } else {
     let raw: unknown = {};
-    if (args.valuesPath === "-") {
+    const valuesPath = args.source.path;
+    if (valuesPath === "-") {
       const text = io.readStdin?.();
       if (text === undefined || text === "") throw new Error("values JSON on stdin is empty");
       raw = parseValuesJson(text);
-    } else if (args.valuesPath) {
-      raw = parseValuesJson(io.readFileText(resolve(io.cwd, args.valuesPath)));
+    } else if (valuesPath) {
+      raw = parseValuesJson(io.readFileText(resolve(io.cwd, valuesPath)));
     }
     jobs = parseJobs(raw);
   }
 
-  // Pass 1: validate every job and every output name before any I/O, so a
-  // batch fails whole rather than half-written.
+  // Pass 1: validate every job, read every input, and claim every output
+  // name before anything is built or written, so a batch fails whole.
   const errors: string[] = [];
+  const fail = (e: unknown) => { errors.push(e instanceof Error ? e.message : String(e)); };
   const dests = new Set<string>();
   const prepared = jobs.map((job) => {
     const variants = job.variants ?? args.variants;
     try { assertVariants(master, variants); }
-    catch (e) { errors.push(e instanceof Error ? e.message : String(e)); return null; }
+    catch (e) { fail(e); return null; }
     const fillable = fillableById(master, variants);
     const coerced = coerceValues(master, { ...job.values, ...args.set }, variants, fillable);
     if (Object.keys(coerced.errors).length) errors.push(errorText(coerced.errors));
+    errors.push(...checkOverrides(fillable, job.overrides));
     const files = { ...job.files, ...args.assets };
-    for (const id of Object.keys(files))
-      if (id !== "background" && id !== "mask" && !fillable.has(id)) errors.push(`Unknown layer "${id}".`);
+    const extraImages: GenerateInput["extraImages"] = { ...labelExtras };
+    for (const [id, path] of Object.entries(files)) {
+      if (id === "background" || id === "mask") {
+        if (!roleLayerId(master, id)) { errors.push(`master "${master.id}" has no ${id} layer to take "${path}"`); continue; }
+      } else if (!fillable.has(id)) { errors.push(`Unknown layer "${id}".`); continue; }
+      try { extraImages[id] = readImage(io, path); } catch (e) { fail(e); }
+    }
     // ponytail: resolves once here for the name and again inside buildLabel;
     // resolution is a pure data walk, so cheap. Pass resolved layers into
     // buildLabel if it ever shows up in a profile.
@@ -664,22 +702,23 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
       if (dests.has(name)) errors.push(`duplicate output file "${name}"`);
       dests.add(name);
     }
-    return { variants, values: coerced.values, files, overrides: job.overrides };
+    return { variants, values: coerced.values, extraImages, overrides: job.overrides };
   });
   if (errors.length) throw new Error(errors.join("\n"));
 
-  // Pass 2: read inputs, build, write.
-  const outDir = resolve(io.cwd, args.outDir);
-  io.mkdir(outDir);
+  // Pass 2: build every job in memory, then write. A decode or build failure
+  // in job N leaves nothing of jobs 1..N-1 on disk. (ponytail: whole batch
+  // buffered; stage to a temp dir instead if batches outgrow RAM.)
+  const results: GenerateResult[] = [];
   for (const p of prepared) {
     if (!p) continue;
-    const extraImages: GenerateInput["extraImages"] = { ...labelExtras };
-    for (const [id, path] of Object.entries(p.files)) extraImages[id] = readImage(io, path);
-    const result = await buildLabel({
+    results.push(await buildLabel({
       master, masterAssets, values: p.values, enabledVariants: p.variants,
-      overrides: p.overrides, extraImages, format: args.format, assetRoot,
-    });
-    emit(result, outDir);
+      overrides: p.overrides, extraImages: p.extraImages, format: args.format, assetRoot,
+    }));
   }
+  const outDir = resolve(io.cwd, args.outDir);
+  io.mkdir(outDir);
+  for (const r of results) emit(r, outDir);
   return 0;
 }

@@ -342,8 +342,13 @@ npm run generate -- beer.master --inspect
 Text layers accept a string (markdown subset for rich layers: `# header`,
 `**bold**`, `_white ink_`). Enable variants with `--variant collab`; attach
 image files with `--asset collabLeft=./logo.svg`. `--format pdf` skips PSDs.
-A JSON array is a batch (one output set per job). `--values -` reads stdin;
-`--label run.label` uses a v3 project file; `--set name=X` overlays one value.
+A JSON array is a batch (one output set per job); a job may also be
+`{values, variants, files, overrides}`, where `overrides` patches layer fields
+and is type-checked against the layer before anything builds. A batch is
+validated, read, and built whole before the first file is written, so a bad
+job anywhere leaves nothing on disk. `--asset background=` / `mask=` need a
+master with that role layer. `--values -` reads stdin; `--label run.label`
+uses a v3 project file; `--set name=X` overlays one value on every job.
 
 The older texture/mask/config.json argv still works for golden re-baselines.
 
