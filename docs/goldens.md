@@ -34,6 +34,10 @@ Afterwards the golden is byte-locked again.
      npm run generate -- <texture.png|none> <mask.png|none> /tmp/golden-old [config.json])
    ```
 
+   The same four files also come from the master/values form, e.g.
+   `npm run generate -- --out /tmp/golden-old --format all` for the shipped
+   Lolev master with empty fills, or a `.master` plus `values.json`.
+
    `generate` writes `<beerName>.pdf`, `<beerName>-mask.pdf`, `<beerName>.psd`
    and `<beerName>-mask.psd`. Use the same texture, mask and config the golden
    test uses (for the collab goldens: the shipped master, no texture, no mask).
