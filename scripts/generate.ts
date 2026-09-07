@@ -1,8 +1,8 @@
 // generate.ts — Node entry for `npm run generate`. Argv and filesystem only;
-// resolve / plan / encode live in src/generate.ts so tests drive them without
+// resolve / plan / encode live in generate-lib.ts so tests drive them without
 // spawning a process.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { runGenerate } from "../src/generate";
+import { runGenerate } from "./generate-lib";
 
 const argv = process.argv.slice(2);
 const code = await runGenerate({

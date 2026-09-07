@@ -1,26 +1,27 @@
-// generate.ts — DOM-free headless generate: argv, inspect, coerce, build.
+// generate-lib.ts — DOM-free headless generate: argv, inspect, coerce, build.
+// Lives under scripts/ so it is not a desktop binary input (src/ is).
 import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument } from "pdf-lib";
 import { PNG } from "pngjs";
-import { rasterKind, tintRgba } from "./collab";
-import { defaultConfig, parseConfigFile } from "./defaults";
-import { parseDescription, parseRuns } from "./description";
-import { FONT_FAMILIES, type FontFamilyId } from "./fontCatalog";
-import { setBleed } from "./layout";
-import { convertConfigV1, guideLines } from "./model/convert";
-import { unpackLabel, unpackMaster, type MasterAssets } from "./model/files";
-import type { LabelFile, Layer, LayerKind, LayerValue, Master, TextLayer, TextLine } from "./model/layers";
-import { lolevMaster } from "./model/lolevLayers";
-import { resolveLayers, widenValue } from "./model/resolveLayers";
-import type { Face, PlanAssets } from "./plan";
-import { planLayers } from "./planLayers";
-import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "./pdf/build";
-import { buildPsd, type PsdAssets } from "./psd/build";
-import { machineName } from "./qr";
-import type { Style } from "./types";
+import { rasterKind, tintRgba } from "../src/collab";
+import { defaultConfig, parseConfigFile } from "../src/defaults";
+import { parseDescription, parseRuns } from "../src/description";
+import { FONT_FAMILIES, type FontFamilyId } from "../src/fontCatalog";
+import { setBleed } from "../src/layout";
+import { convertConfigV1, guideLines } from "../src/model/convert";
+import { unpackLabel, unpackMaster, type MasterAssets } from "../src/model/files";
+import type { LabelFile, Layer, LayerKind, LayerValue, Master, TextLayer, TextLine } from "../src/model/layers";
+import { lolevMaster } from "../src/model/lolevLayers";
+import { resolveLayers, widenValue } from "../src/model/resolveLayers";
+import type { Face, PlanAssets } from "../src/plan";
+import { planLayers } from "../src/planLayers";
+import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "../src/pdf/build";
+import { buildPsd, type PsdAssets } from "../src/psd/build";
+import { machineName } from "../src/qr";
+import type { Style } from "../src/types";
 
 export const USAGE =
   "usage: npm run generate -- <master.master> [values.json|-] <outDir> " +
@@ -476,7 +477,7 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
   return { title, basename, warnings, files };
 }
 
-const DEFAULT_ASSET_ROOT = join(dirname(fileURLToPath(import.meta.url)), "assets");
+const DEFAULT_ASSET_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "assets");
 
 export interface GenerateIo {
   argv: string[];

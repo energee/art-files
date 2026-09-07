@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseGenerateArgs, coerceValues, parseJobs, inspectMaster, assertVariants, buildLabel,
   runGenerate,
-} from "../src/generate";
+} from "../scripts/generate-lib";
 import { lolevMaster } from "../src/model/lolevLayers";
 
 describe("parseGenerateArgs", () => {
