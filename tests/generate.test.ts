@@ -5,6 +5,7 @@ import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 import {
   parseGenerateArgs, coerceValues, parseJobs, inspectMaster, assertVariants, buildLabel,
+  runGenerate,
 } from "../src/generate";
 import { lolevMaster } from "../src/model/lolevLayers";
 
@@ -29,6 +30,12 @@ describe("parseGenerateArgs", () => {
   it("inspect", () => {
     expect(parseGenerateArgs(["beer.master", "--inspect"])).toEqual({
       mode: "inspect", masterPath: "beer.master",
+    });
+  });
+
+  it("shipped master: --out alone is generate mode", () => {
+    expect(parseGenerateArgs(["--out", "out"])).toMatchObject({
+      mode: "generate", outDir: "out",
     });
   });
 
@@ -140,5 +147,66 @@ describe("buildLabel", () => {
       format: { pdf: true, psd: false },
       assetRoot,
     })).rejects.toThrow(/barcode/i);
+  });
+});
+
+function memIo() {
+  const files = new Map<string, Uint8Array>();
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const text = (p: string) => {
+    const b = files.get(p);
+    if (!b) throw new Error(`ENOENT ${p}`);
+    return new TextDecoder().decode(b);
+  };
+  return {
+    files, stdout, stderr,
+    run: (argv: string[], stdin?: string) => runGenerate({
+      argv, cwd: "/", stdin,
+      readFile: (p) => {
+        const b = files.get(p);
+        if (!b) throw new Error(`ENOENT ${p}`);
+        return b;
+      },
+      readFileText: text,
+      writeFile: (p, b) => { files.set(p, b); },
+      mkdir: () => {},
+      stdout: (s) => stdout.push(s),
+      stderr: (s) => stderr.push(s),
+      assetRoot,
+    }),
+  };
+}
+
+describe("runGenerate", () => {
+  it("inspect prints layer ids as JSON", async () => {
+    const io = memIo();
+    expect(await io.run(["--inspect"])).toBe(0);
+    expect(JSON.parse(io.stdout.join(""))).toMatchObject({ id: "lolev" });
+    expect(JSON.parse(io.stdout.join("")).layers.map((l: { id: string }) => l.id)).toContain("name");
+  });
+
+  it("generate writes the named art PDF", async () => {
+    const io = memIo();
+    io.files.set("/v.json", new TextEncoder().encode(JSON.stringify({
+      name: "Labradorite", barcode: "850051366224",
+    })));
+    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf"])).toBe(0);
+    expect(io.files.has("/out/labradorite.pdf")).toBe(true);
+  });
+
+  it("unknown variant returns 1", async () => {
+    const io = memIo();
+    expect(await io.run(["--variant", "nope", "--out", "/out"])).toBe(1);
+    expect(io.stderr.join("")).toMatch(/nope/);
+  });
+
+  it("legacy none none out still writes four files", async () => {
+    const io = memIo();
+    expect(await io.run(["none", "none", "/out"])).toBe(0);
+    expect(io.files.has("/out/label.pdf")).toBe(true);
+    expect(io.files.has("/out/label-mask.pdf")).toBe(true);
+    expect(io.files.has("/out/label.psd")).toBe(true);
+    expect(io.files.has("/out/label-mask.psd")).toBe(true);
   });
 });

@@ -1,16 +1,19 @@
 // generate.ts — DOM-free headless generate: argv, inspect, coerce, build.
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument } from "pdf-lib";
 import { PNG } from "pngjs";
 import { rasterKind, tintRgba } from "./collab";
+import { defaultConfig, parseConfigFile } from "./defaults";
 import { parseDescription, parseRuns } from "./description";
 import { FONT_FAMILIES, type FontFamilyId } from "./fontCatalog";
 import { setBleed } from "./layout";
-import { guideLines } from "./model/convert";
-import type { MasterAssets } from "./model/files";
+import { convertConfigV1, guideLines } from "./model/convert";
+import { unpackLabel, unpackMaster, type MasterAssets } from "./model/files";
 import type { LabelFile, Layer, LayerKind, LayerValue, Master, TextLayer, TextLine } from "./model/layers";
+import { lolevMaster } from "./model/lolevLayers";
 import { resolveLayers, widenValue } from "./model/resolveLayers";
 import type { Face, PlanAssets } from "./plan";
 import { planLayers } from "./planLayers";
@@ -119,7 +122,8 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
     return { mode: "inspect", ...(masterPath ? { masterPath } : {}) };
   }
 
-  const newForm = !!(singles.master || singles.values || singles.label || masterPath);
+  const newForm = !!(singles.master || singles.values || singles.label || masterPath
+    || singles.out || singles.format || variants.length || Object.keys(assets).length || Object.keys(set).length);
   if (newForm) {
     if (singles.label && singles.values) throw new Error(`--label cannot be combined with --values\n${USAGE}`);
     let valuesPath = singles.values;
@@ -470,4 +474,180 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
     files.push({ name: `${basename}-mask.psd`, bytes: await buildPsd(plan, psdAssets, "mask", { layers: resolved.layers }) });
   }
   return { title, basename, warnings, files };
+}
+
+const DEFAULT_ASSET_ROOT = join(dirname(fileURLToPath(import.meta.url)), "assets");
+
+export interface GenerateIo {
+  argv: string[];
+  cwd: string;
+  stdin?: string;
+  readFile: (p: string) => Uint8Array;
+  readFileText: (p: string) => string;
+  writeFile: (p: string, bytes: Uint8Array) => void;
+  mkdir: (p: string) => void;
+  stdout: (s: string) => void;
+  stderr: (s: string) => void;
+  assetRoot?: string;
+}
+
+function resolveUnder(cwd: string, p: string): string {
+  return isAbsolute(p) ? p : join(cwd, p);
+}
+
+function fileName(p: string): string {
+  return p.split(/[/\\]/).pop() || p;
+}
+
+function jobBasename(values: Record<string, LayerValue>): string {
+  const v = values.name;
+  const text = Array.isArray(v) ? plainText(v) : typeof v === "string" ? v : "";
+  return machineName(text) || "label";
+}
+
+function loadMaster(io: GenerateIo, path: string | undefined): { master: Master; assets: MasterAssets; warnings: string[] } {
+  if (!path) return { master: lolevMaster(), assets: {}, warnings: [] };
+  return unpackMaster(io.readFile(resolveUnder(io.cwd, path)));
+}
+
+function readImage(io: GenerateIo, p: string): { name: string; bytes: Uint8Array } {
+  const abs = resolveUnder(io.cwd, p);
+  return { name: fileName(p), bytes: io.readFile(abs) };
+}
+
+function mergeFiles(job: JobInput, assets: Record<string, string>): Record<string, string> {
+  return { ...job.files, ...assets };
+}
+
+/** Argv + filesystem → generate / inspect. Exit 0 ok, 1 validation, 2 usage. */
+export async function runGenerate(io: GenerateIo): Promise<number> {
+  let args: GenerateArgs;
+  try {
+    args = parseGenerateArgs(io.argv);
+  } catch (e) {
+    io.stderr(`${e instanceof Error ? e.message : e}\n`);
+    return 2;
+  }
+  try {
+    return await runGenerateJob(io, args);
+  } catch (e) {
+    io.stderr(`${e instanceof Error ? e.message : e}\n`);
+    return 1;
+  }
+}
+
+async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<number> {
+  const assetRoot = io.assetRoot ?? DEFAULT_ASSET_ROOT;
+  const warn = (w: string) => io.stderr(w.endsWith("\n") ? w : `${w}\n`);
+
+  if (args.mode === "inspect") {
+    const { master, warnings } = loadMaster(io, args.masterPath);
+    for (const w of warnings) warn(w);
+    io.stdout(`${JSON.stringify(inspectMaster(master), null, 2)}\n`);
+    return 0;
+  }
+
+  if (args.mode === "legacy") {
+    const cfg = args.configPath
+      ? parseConfigFile(io.readFileText(resolveUnder(io.cwd, args.configPath)))
+      : defaultConfig();
+    const extraImages: GenerateInput["extraImages"] = {};
+    if (args.texturePath !== "none") extraImages.background = readImage(io, args.texturePath);
+    if (args.maskPath !== "none") extraImages.mask = readImage(io, args.maskPath);
+    if (args.collabLeft) extraImages.collabLeft = readImage(io, args.collabLeft);
+    if (args.collabCenter) extraImages.collabCenter = readImage(io, args.collabCenter);
+    const converted = convertConfigV1(cfg, !!(args.collabLeft || args.collabCenter));
+    for (const w of converted.warnings) warn(w);
+    const coerced = coerceValues(
+      lolevMaster(), converted.label.values, converted.label.enabledVariants,
+    );
+    if (Object.keys(coerced.errors).length)
+      throw new Error(Object.entries(coerced.errors).map(([id, e]) => `${id}: ${e}`).join("\n"));
+    const result = await buildLabel({
+      master: lolevMaster(),
+      masterAssets: {},
+      values: coerced.values,
+      enabledVariants: converted.label.enabledVariants,
+      overrides: converted.label.overrides,
+      extraImages,
+      format: { pdf: true, psd: true },
+      assetRoot,
+    });
+    for (const w of result.warnings) warn(w);
+    const outDir = resolveUnder(io.cwd, args.outDir);
+    io.mkdir(outDir);
+    for (const f of result.files) {
+      const dest = join(outDir, f.name);
+      io.writeFile(dest, f.bytes);
+      io.stdout(`wrote ${dest} (${(f.bytes.length / 1e6).toFixed(1)}MB)\n`);
+    }
+    return 0;
+  }
+
+  const { master, assets: masterAssets, warnings } = loadMaster(io, args.masterPath);
+  for (const w of warnings) warn(w);
+
+  let jobs: JobInput[];
+  let labelExtras: GenerateInput["extraImages"] = {};
+  if (args.labelPath) {
+    const unpacked = unpackLabel(io.readFile(resolveUnder(io.cwd, args.labelPath)));
+    if (!unpacked.label)
+      throw new Error("this CLI opens v3 .label files; open and re-save in Label Lab first");
+    const lab = unpacked.label;
+    jobs = [{ values: lab.values, variants: lab.enabledVariants, overrides: lab.overrides }];
+    if (unpacked.assets.texture) labelExtras.background = unpacked.assets.texture;
+    if (unpacked.assets.mask) labelExtras.mask = unpacked.assets.mask;
+    for (const [id, a] of Object.entries(unpacked.assets.customImages ?? {}))
+      masterAssets.customImages = { ...masterAssets.customImages, [id]: a };
+  } else {
+    let raw: unknown = {};
+    if (args.valuesPath === "-") {
+      if (io.stdin === undefined) throw new Error("values JSON on stdin is empty");
+      raw = JSON.parse(io.stdin);
+    } else if (args.valuesPath) {
+      raw = JSON.parse(io.readFileText(resolveUnder(io.cwd, args.valuesPath)));
+    }
+    jobs = parseJobs(raw);
+  }
+
+  const prepared: {
+    job: JobInput; variants: string[]; values: Record<string, LayerValue>;
+    extraImages: GenerateInput["extraImages"]; basename: string;
+  }[] = [];
+  const errors: string[] = [];
+  for (const job of jobs) {
+    const variants = job.variants ?? args.variants;
+    try { assertVariants(master, variants); }
+    catch (e) { errors.push(e instanceof Error ? e.message : String(e)); continue; }
+    const raw = { ...job.values, ...args.set };
+    const coerced = coerceValues(master, raw, variants);
+    for (const [id, e] of Object.entries(coerced.errors)) errors.push(`${id}: ${e}`);
+    const files = mergeFiles(job, args.assets);
+    const extraImages: GenerateInput["extraImages"] = { ...labelExtras };
+    for (const [id, p] of Object.entries(files)) extraImages[id] = readImage(io, p);
+    prepared.push({
+      job, variants, values: coerced.values, extraImages, basename: jobBasename(coerced.values),
+    });
+  }
+  if (errors.length) throw new Error(errors.join("\n"));
+
+  const seen = new Set<string>();
+  const dup = prepared.map((p) => p.basename).filter((b) => { if (seen.has(b)) return true; seen.add(b); return false; });
+  if (dup.length) throw new Error(`duplicate output basename "${dup[0]}"`);
+
+  const outDir = resolveUnder(io.cwd, args.outDir);
+  io.mkdir(outDir);
+  for (const p of prepared) {
+    const result = await buildLabel({
+      master, masterAssets, values: p.values, enabledVariants: p.variants,
+      overrides: p.job.overrides, extraImages: p.extraImages, format: args.format, assetRoot,
+    });
+    for (const w of result.warnings) warn(w);
+    for (const f of result.files) {
+      const dest = join(outDir, f.name);
+      io.writeFile(dest, f.bytes);
+      io.stdout(`wrote ${dest} (${(f.bytes.length / 1e6).toFixed(1)}MB)\n`);
+    }
+  }
+  return 0;
 }
