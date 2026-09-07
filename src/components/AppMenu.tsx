@@ -3,8 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import type {
-  CheckMenuItem, MenuItem, PredefinedMenuItem, Submenu,
+  CheckMenuItem, IconMenuItem, MenuItem, NativeIcon, PredefinedMenuItem, Submenu,
 } from "@tauri-apps/api/menu";
+import {
+  Bookmark, BookmarkPlus, FileImage, FilePlus, Files, FolderOpen,
+  Layers, Library, Redo2, Scan, Settings, SquareArrowDown, SquareArrowUp,
+  Undo2, X, type LucideIcon,
+} from "lucide-react";
 import { shortcutOf, type Command } from "@/components/CommandMenu";
 import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu,
@@ -12,12 +17,20 @@ import {
   MenubarSubTrigger, MenubarTrigger,
 } from "@/components/ui/menubar";
 
-type ActionEntry = {
+/** A Tauri `NativeIcon` name. macOS paints these as template images in the
+ *  application menu; Windows and Linux ignore them. Items without one still
+ *  align — AppKit reserves the image column once any sibling has an image. */
+type NativeIconName = `${NativeIcon}`;
+
+type CheckAction = { kind: "action"; id: string; text: string; check: true };
+type IconAction = {
   kind: "action";
   id: string;
   text: string;
-  check?: true;
+  icon: LucideIcon;
+  nativeIcon?: NativeIconName;
 };
+type ActionEntry = CheckAction | IconAction;
 type SeparatorEntry = { kind: "separator"; id: string };
 type PredefinedEntry = {
   kind: "predefined";
@@ -27,47 +40,49 @@ type SubmenuEntry = {
   kind: "submenu";
   id: string;
   text: string;
+  icon?: LucideIcon;
+  nativeIcon?: NativeIconName;
   items: MenuEntry[];
 };
 type MenuEntry = ActionEntry | SeparatorEntry | PredefinedEntry | SubmenuEntry;
 
-/** The application-owned menus. This is intentionally data rather than two
- *  JSX/Rust trees: adding, removing, or moving an action changes the browser
- *  and native menus together. Exported for tests, which pin the wiring
- *  (e.g. the Edit menu's native clipboard roles) against this data. */
+/** The application-owned menus. One table drives both renderers: Lucide
+ *  icons in the in-window menubar, `nativeIcon` names in the macOS
+ *  application menu. Exported for tests, which pin the wiring (e.g. the
+ *  Edit menu's native clipboard roles) against this data. */
 export const APP_MENUS: SubmenuEntry[] = [
   {
     kind: "submenu", id: "file-menu", text: "File", items: [
-      { kind: "action", id: "tab-new", text: "New Tab" },
-      { kind: "action", id: "project-open", text: "Open Project…" },
-      { kind: "action", id: "tab-close", text: "Close Tab" },
+      { kind: "action", id: "tab-new", text: "New Tab", icon: FilePlus, nativeIcon: "Add" },
+      { kind: "action", id: "project-open", text: "Open Project…", icon: FolderOpen, nativeIcon: "Folder" },
+      { kind: "action", id: "tab-close", text: "Close Tab", icon: X, nativeIcon: "Remove" },
       { kind: "separator", id: "file-new" },
-      { kind: "action", id: "project-save", text: "Save Project" },
-      { kind: "action", id: "project-save-as", text: "Save Project As…" },
+      { kind: "action", id: "project-save", text: "Save Project", icon: SquareArrowDown },
+      { kind: "action", id: "project-save-as", text: "Save Project As…", icon: Files, nativeIcon: "MultipleDocuments" },
       { kind: "separator", id: "file-master" },
-      { kind: "action", id: "master-open", text: "Open Master…" },
-      { kind: "action", id: "master-save", text: "Save Master" },
-      { kind: "action", id: "master-save-as", text: "Save Master As…" },
+      { kind: "action", id: "master-open", text: "Open Master…", icon: Library, nativeIcon: "FolderSmart" },
+      { kind: "action", id: "master-save", text: "Save Master", icon: Bookmark, nativeIcon: "Bookmarks" },
+      { kind: "action", id: "master-save-as", text: "Save Master As…", icon: BookmarkPlus, nativeIcon: "Bookmarks" },
       { kind: "separator", id: "file-projects" },
       {
-        kind: "submenu", id: "export-menu", text: "Export", items: [
-          { kind: "action", id: "export-both", text: "Export PDFs" },
-          { kind: "action", id: "export-art", text: "Export Artwork PDF" },
-          { kind: "action", id: "export-mask", text: "Export Mask PDF" },
+        kind: "submenu", id: "export-menu", text: "Export", icon: SquareArrowUp, nativeIcon: "Share", items: [
+          { kind: "action", id: "export-both", text: "Export PDFs", icon: Files, nativeIcon: "Share" },
+          { kind: "action", id: "export-art", text: "Export Artwork PDF", icon: FileImage, nativeIcon: "IconView" },
+          { kind: "action", id: "export-mask", text: "Export Mask PDF", icon: Scan, nativeIcon: "QuickLook" },
           { kind: "separator", id: "export-formats" },
-          { kind: "action", id: "export-psd", text: "Export PSDs" },
-          { kind: "action", id: "export-psd-art", text: "Export Artwork PSD" },
-          { kind: "action", id: "export-psd-mask", text: "Export Mask PSD" },
+          { kind: "action", id: "export-psd", text: "Export PSDs", icon: Layers, nativeIcon: "ListView" },
+          { kind: "action", id: "export-psd-art", text: "Export Artwork PSD", icon: FileImage, nativeIcon: "IconView" },
+          { kind: "action", id: "export-psd-mask", text: "Export Mask PSD", icon: Scan, nativeIcon: "QuickLook" },
         ],
       },
     ],
   },
   {
     kind: "submenu", id: "edit-menu", text: "Edit", items: [
-      { kind: "action", id: "undo", text: "Undo" },
-      { kind: "action", id: "redo", text: "Redo" },
+      { kind: "action", id: "undo", text: "Undo", icon: Undo2 },
+      { kind: "action", id: "redo", text: "Redo", icon: Redo2 },
       { kind: "separator", id: "edit-variants" },
-      { kind: "action", id: "settings", text: "Settings…" },
+      { kind: "action", id: "settings", text: "Settings…", icon: Settings, nativeIcon: "PreferencesGeneral" },
       { kind: "predefined", item: "Separator" },
       { kind: "predefined", item: "Cut" },
       { kind: "predefined", item: "Copy" },
@@ -87,6 +102,10 @@ export const APP_MENUS: SubmenuEntry[] = [
   },
 ];
 
+function isCheckAction(entry: ActionEntry): entry is CheckAction {
+  return "check" in entry;
+}
+
 function actionsIn(entries: MenuEntry[]): ActionEntry[] {
   return entries.flatMap((entry) => {
     if (entry.kind === "action") return [entry];
@@ -104,6 +123,10 @@ const MENU_ITEMS =
 type CommandIndex = Record<string, Command>;
 type CheckedState = Partial<Record<string, boolean>>;
 
+function MenuGlyph({ icon: Icon }: { icon: LucideIcon }) {
+  return <Icon className="size-4" aria-hidden="true" />;
+}
+
 function WebEntries(props: {
   entries: MenuEntry[];
   commands: CommandIndex;
@@ -118,7 +141,10 @@ function WebEntries(props: {
     if (entry.kind === "submenu") {
       return (
         <MenubarSub key={entry.id}>
-          <MenubarSubTrigger>{entry.text}</MenubarSubTrigger>
+          <MenubarSubTrigger>
+            {entry.icon && <MenuGlyph icon={entry.icon} />}
+            {entry.text}
+          </MenubarSubTrigger>
           <MenubarSubContent className={MENU_ITEMS}>
             <WebEntries entries={entry.items} commands={props.commands} checked={props.checked} />
           </MenubarSubContent>
@@ -128,7 +154,7 @@ function WebEntries(props: {
 
     const command = props.commands[entry.id];
     const keys = shortcutOf(command);
-    if (entry.check) {
+    if (isCheckAction(entry)) {
       return (
         <MenubarCheckboxItem key={entry.id} checked={!!props.checked[entry.id]}
           disabled={command.disabled} onClick={command.run}>
@@ -139,6 +165,7 @@ function WebEntries(props: {
     }
     return (
       <MenubarItem key={entry.id} disabled={command.disabled} onClick={command.run}>
+        <MenuGlyph icon={entry.icon} />
         {entry.text}
         {keys && <MenubarShortcut>{keys}</MenubarShortcut>}
       </MenubarItem>
@@ -163,8 +190,12 @@ function WebMenu(props: { commands: CommandIndex; checked: CheckedState }) {
 
 type MenuApi = typeof import("@tauri-apps/api/menu");
 type NativeResource = { close: () => Promise<void> };
-type NativeEntry = MenuItem | CheckMenuItem | PredefinedMenuItem | Submenu;
-type NativeAction = MenuItem | CheckMenuItem;
+type NativeEntry = MenuItem | CheckMenuItem | IconMenuItem | PredefinedMenuItem | Submenu;
+type NativeAction = MenuItem | CheckMenuItem | IconMenuItem;
+
+function isMacOS() {
+  return /Macintosh|Mac OS X/.test(navigator.userAgent);
+}
 
 /** Native menus must own modified accelerators so macOS can display them.
  *  Bare 1–3/R/G bindings deliberately stay in App's guarded key listener:
@@ -202,10 +233,11 @@ async function macApplicationMenu(
     resources.push(item);
     return item;
   }));
-  const updater = await api.MenuItem.new({
+  const updater = await api.IconMenuItem.new({
     id: "check-for-updates",
     text: UPDATE_ITEM_TEXT.check,
     action: checkForUpdates,
+    icon: "Refresh",
   });
   resources.push(updater);
   items.splice(1, 0, updater);
@@ -232,7 +264,12 @@ async function nativeEntry(
   if (entry.kind === "submenu") {
     const items = await Promise.all(entry.items.map((item) =>
       nativeEntry(api, item, commands, checked, run, resources)));
-    const submenu = await api.Submenu.new({ id: entry.id, text: entry.text, items });
+    const submenu = await api.Submenu.new({
+      id: entry.id,
+      text: entry.text,
+      items,
+      icon: isMacOS() ? entry.nativeIcon : undefined,
+    });
     resources.push(submenu);
     return submenu;
   }
@@ -245,9 +282,14 @@ async function nativeEntry(
     accelerator: nativeAccelerator(command),
     action: () => run(entry.id),
   };
-  const item = entry.check
-    ? await api.CheckMenuItem.new({ ...options, checked: !!checked[entry.id] })
-    : await api.MenuItem.new(options);
+  let item: NativeAction;
+  if (isCheckAction(entry)) {
+    item = await api.CheckMenuItem.new({ ...options, checked: !!checked[entry.id] });
+  } else if (isMacOS() && entry.nativeIcon) {
+    item = await api.IconMenuItem.new({ ...options, icon: entry.nativeIcon });
+  } else {
+    item = await api.MenuItem.new(options);
+  }
   resources.push(item);
   return item;
 }
@@ -304,7 +346,7 @@ function useNativeMenu(
         // On macOS the first submenu is the conventional application menu;
         // the browser renderer must not show it. Other desktop platforms put
         // File first and receive their window-local menu bar normally.
-        if (/Macintosh|Mac OS X/.test(navigator.userAgent)) {
+        if (isMacOS()) {
           roots.unshift(await macApplicationMenu(api, resources, () => updateRef.current()));
         }
         const menu = await api.Menu.new({ id: "label-lab-menu", items: roots });
@@ -321,7 +363,11 @@ function useNativeMenu(
         }
         const actionItems = new Map<string, NativeAction>();
         for (const resource of resources) {
-          if (resource instanceof api.MenuItem || resource instanceof api.CheckMenuItem) {
+          if (
+            resource instanceof api.MenuItem
+            || resource instanceof api.CheckMenuItem
+            || resource instanceof api.IconMenuItem
+          ) {
             actionItems.set(resource.id, resource);
           }
         }
@@ -354,7 +400,7 @@ function useNativeMenu(
   const snapshot = MENU_ACTIONS.map((entry) => ({
     id: entry.id,
     enabled: !commands[entry.id].disabled,
-    checked: entry.check ? !!checked[entry.id] : null,
+    checked: isCheckAction(entry) ? !!checked[entry.id] : null,
   }));
   const signature = JSON.stringify(snapshot);
 
@@ -393,10 +439,6 @@ export function AppMenu(props: {
   updateInstalled?: boolean;
 }) {
   const commands = Object.fromEntries(props.actions.map((command) => [command.id, command]));
-  for (const entry of MENU_ACTIONS) {
-    if (!commands[entry.id]) throw new Error(`Unknown menu command: ${entry.id}`);
-  }
-
   const desktop = isTauri();
   useNativeMenu(
     desktop,
@@ -406,5 +448,9 @@ export function AppMenu(props: {
     props.onCheckForUpdates,
     !!props.updateInstalled,
   );
+  // After hooks: throwing earlier for a missing command would skip useNativeMenu.
+  for (const entry of MENU_ACTIONS) {
+    if (!commands[entry.id]) throw new Error(`Unknown menu command: ${entry.id}`);
+  }
   return desktop ? null : <WebMenu commands={commands} checked={props.checked} />;
 }

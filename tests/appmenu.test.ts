@@ -27,6 +27,21 @@ describe("native menu accelerators", () => {
   });
 });
 
+type MenuNode = (typeof APP_MENUS)[number]["items"][number];
+type ActionNode = Extract<MenuNode, { kind: "action" }>;
+
+function actionsOf(entries: readonly MenuNode[]): ActionNode[] {
+  return entries.flatMap((entry) => {
+    if (entry.kind === "action") return [entry];
+    return entry.kind === "submenu" ? actionsOf(entry.items) : [];
+  });
+}
+
+function nativeIconOf(action: ActionNode | undefined) {
+  if (!action || !("nativeIcon" in action)) return undefined;
+  return action.nativeIcon;
+}
+
 describe("file menu", () => {
   it("wires the workspace-tab commands in place of New Project", () => {
     const file = APP_MENUS.find((menu) => menu.id === "file-menu")!;
@@ -37,6 +52,29 @@ describe("file menu", () => {
     // DocumentEditor's command table).
     expect(ids.slice(0, 3)).toEqual(["tab-new", "project-open", "tab-close"]);
     expect(ids).not.toContain("project-new");
+  });
+
+  it("gives every File action and the Export submenu a leading icon", () => {
+    const file = APP_MENUS.find((menu) => menu.id === "file-menu")!;
+    const exported = file.items.find((entry) =>
+      entry.kind === "submenu" && entry.id === "export-menu");
+    if (exported?.kind !== "submenu") throw new Error("export-menu missing");
+    expect(exported.icon).toBeTruthy();
+    expect(exported.nativeIcon).toBe("Share");
+    const actions = actionsOf(file.items);
+    for (const action of actions) {
+      expect("icon" in action && action.icon, action.id).toBeTruthy();
+    }
+    const byId = Object.fromEntries(actions.map((action) => [action.id, action]));
+    expect(nativeIconOf(byId["tab-new"])).toBe("Add");
+    expect(nativeIconOf(byId["project-open"])).toBe("Folder");
+    expect(nativeIconOf(byId["tab-close"])).toBe("Remove");
+    expect(nativeIconOf(byId["project-save"])).toBeUndefined();
+    expect(nativeIconOf(byId["project-save-as"])).toBe("MultipleDocuments");
+    expect(nativeIconOf(byId["master-open"])).toBe("FolderSmart");
+    expect(nativeIconOf(byId["master-save"])).toBe("Bookmarks");
+    expect(nativeIconOf(byId["master-save-as"])).toBe("Bookmarks");
+    expect(nativeIconOf(byId["export-both"])).toBe("Share");
   });
 });
 
@@ -58,5 +96,20 @@ describe("native text editing menu", () => {
     const roles = edit.items.flatMap((entry) =>
       entry.kind === "predefined" && entry.item !== "Separator" ? [entry.item] : []);
     expect(roles).toEqual(["Cut", "Copy", "Paste", "SelectAll"]);
+  });
+
+  it("icons Undo, Redo and Settings, and leaves View checks glyph-free", () => {
+    const edit = APP_MENUS.find((menu) => menu.id === "edit-menu")!;
+    const view = APP_MENUS.find((menu) => menu.id === "view-menu")!;
+    const editActions = actionsOf(edit.items);
+    for (const action of editActions) {
+      expect("icon" in action && action.icon, action.id).toBeTruthy();
+    }
+    expect(nativeIconOf(editActions.find((action) => action.id === "settings")))
+      .toBe("PreferencesGeneral");
+    for (const action of actionsOf(view.items)) {
+      expect("icon" in action, action.id).toBe(false);
+      expect("nativeIcon" in action, action.id).toBe(false);
+    }
   });
 });
