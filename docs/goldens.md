@@ -38,8 +38,10 @@ Afterwards the golden is byte-locked again.
    `npm run generate -- --out /tmp/golden-old --format all` for the shipped
    Lolev master with empty fills, or a `.master` plus `values.json`.
 
-   `generate` writes `<beerName>.pdf`, `<beerName>-mask.pdf`, `<beerName>.psd`
-   and `<beerName>-mask.psd`. Use the same texture, mask and config the golden
+   `generate` writes `{slug}.pdf`, `{slug}-mask.pdf`, `{slug}.psd` and
+   `{slug}-mask.psd`, where `slug` is `machineName` of the name layer (or
+   `label` if that layer is blank). A beer named Labradorite is
+   `labradorite.pdf`. Use the same texture, mask and values the golden
    test uses (for the collab goldens: the shipped master, no texture, no mask).
 
 2. Build the NEW output from your branch the same way into `/tmp/golden-new`.

@@ -24,9 +24,9 @@ import { machineName } from "../src/qr";
 import type { Style } from "../src/types";
 
 export const USAGE =
-  "usage: npm run generate -- <master.master> [values.json|-] <outDir> " +
+  "usage: npm run generate -- [master.master] [values.json|-] <outDir> " +
   "[--variant id] [--asset layerId=path] [--set id=value] [--format pdf|psd|all] [--label file.label]\n" +
-  "       npm run generate -- <master.master> --inspect\n" +
+  "       npm run generate -- [master.master] --inspect\n" +
   "       npm run generate -- <texture|none> <mask.png|none> <outDir> [config.json] " +
   "[--collab-left=file] [--collab-center=file]";
 
@@ -119,7 +119,9 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
   const rest = positional.filter((p) => p !== masterPath);
 
   if (inspect) {
-    if (singles.values || singles.label || singles.out || rest.length)
+    if (singles.values || singles.label || singles.out || rest.length
+      || singles.format || variants.length || Object.keys(assets).length || Object.keys(set).length
+      || singles["collab-left"] || singles["collab-center"])
       throw new Error(USAGE);
     return { mode: "inspect", ...(masterPath ? { masterPath } : {}) };
   }
@@ -127,6 +129,8 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
   const newForm = !!(singles.master || singles.values || singles.label || masterPath
     || singles.out || singles.format || variants.length || Object.keys(assets).length || Object.keys(set).length);
   if (newForm) {
+    if (singles["collab-left"] || singles["collab-center"])
+      throw new Error("use --asset collabLeft=file --variant collab\n" + USAGE);
     if (singles.label && singles.values) throw new Error(`--label cannot be combined with --values\n${USAGE}`);
     let valuesPath = singles.values;
     let outDir = singles.out;
@@ -376,9 +380,15 @@ function asImage(name: string, bytes: Uint8Array): CollabImage {
   return { kind: rasterKind(name), bytes };
 }
 
+function roleLayerId(master: Master, role: "background" | "mask"): string | undefined {
+  return master.layers.find((l) => l.kind === "image" && l.role === role)?.id;
+}
+
 function pageFile(
   assets: MasterAssets, extra: GenerateInput["extraImages"], role: "background" | "mask",
+  roleId?: string,
 ): { name: string; bytes: Uint8Array } | undefined {
+  if (roleId && extra[roleId]) return extra[roleId];
   if (extra[role]) return extra[role];
   return role === "background" ? assets.texture : assets.mask;
 }
@@ -386,17 +396,21 @@ function pageFile(
 /** Resolve a master + values into print bytes (PDF and/or PSD). */
 export async function buildLabel(input: GenerateInput): Promise<GenerateResult> {
   assertVariants(input.master, input.enabledVariants);
+  // Process-local PAGE/BLEED_SHIFT. This Node process is one generate run.
   setBleed(input.master.physical.bleedIn);
   const warnings: string[] = [];
   const overrides: NonNullable<LabelFile["overrides"]> = { ...input.overrides };
-  const tex = pageFile(input.masterAssets, input.extraImages, "background");
-  const mask = pageFile(input.masterAssets, input.extraImages, "mask");
-  overrides.background = { ...overrides.background, asset: tex ? PAGE_ART_ID.background : "" };
-  overrides.mask = { ...overrides.mask, asset: mask ? PAGE_ART_ID.mask : "" };
+  const bgId = roleLayerId(input.master, "background");
+  const maskId = roleLayerId(input.master, "mask");
+  const tex = pageFile(input.masterAssets, input.extraImages, "background", bgId);
+  const mask = pageFile(input.masterAssets, input.extraImages, "mask", maskId);
+  if (bgId) overrides[bgId] = { ...overrides[bgId], asset: tex ? PAGE_ART_ID.background : "" };
+  if (maskId) overrides[maskId] = { ...overrides[maskId], asset: mask ? PAGE_ART_ID.mask : "" };
+  const pageIds = new Set([bgId, maskId, "background", "mask"].filter((id): id is string => !!id));
 
   const values = { ...input.values };
   for (const layerId of Object.keys(input.extraImages)) {
-    if (layerId === "background" || layerId === "mask") continue;
+    if (pageIds.has(layerId)) continue;
     const assetId = `cli-${layerId}`;
     overrides[layerId] = { ...overrides[layerId], asset: assetId };
     values[layerId] = assetId;
@@ -447,7 +461,7 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
   for (const [id, a] of Object.entries(input.masterAssets.customImages ?? {}))
     await put(id, asImage(a.name, a.bytes), metrics);
   for (const [layerId, file] of Object.entries(input.extraImages)) {
-    if (layerId === "background" || layerId === "mask") continue;
+    if (pageIds.has(layerId)) continue;
     await put(`cli-${layerId}`, asImage(file.name, file.bytes), metrics);
   }
 
@@ -537,10 +551,19 @@ function parseValuesJson(text: string): unknown {
   }
 }
 
-function jobBasename(values: Record<string, LayerValue>): string {
-  const v = values.name;
-  const text = Array.isArray(v) ? plainText(v) : typeof v === "string" ? v : "";
-  return machineName(text) || "label";
+function outputNames(stem: string, format: FormatSet): string[] {
+  const names: string[] = [];
+  if (format.pdf) names.push(`${stem}.pdf`, `${stem}-mask.pdf`);
+  if (format.psd) names.push(`${stem}.psd`, `${stem}-mask.psd`);
+  return names;
+}
+
+function resolvedStem(
+  master: Master, variants: string[], values: Record<string, LayerValue>,
+  overrides: LabelFile["overrides"],
+): string {
+  const r = resolveLayers(master, variants, values, overrides);
+  return machineName(titleOf(r.layers)) || "label";
 }
 
 function loadMaster(io: GenerateIo, path: string | undefined): { master: Master; assets: MasterAssets; warnings: string[] } {
@@ -653,7 +676,7 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
 
   const prepared: {
     job: JobInput; variants: string[]; values: Record<string, LayerValue>;
-    extraImages: GenerateInput["extraImages"]; basename: string;
+    extraImages: GenerateInput["extraImages"];
   }[] = [];
   const errors: string[] = [];
   for (const job of jobs) {
@@ -673,14 +696,19 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     const extraImages: GenerateInput["extraImages"] = { ...labelExtras };
     for (const [id, p] of Object.entries(files)) extraImages[id] = readImage(io, p);
     prepared.push({
-      job, variants, values: coerced.values, extraImages, basename: jobBasename(coerced.values),
+      job, variants, values: coerced.values, extraImages,
     });
   }
   if (errors.length) throw new Error(errors.join("\n"));
 
-  const seen = new Set<string>();
-  const dup = prepared.map((p) => p.basename).filter((b) => { if (seen.has(b)) return true; seen.add(b); return false; });
-  if (dup.length) throw new Error(`duplicate output basename "${dup[0]}"`);
+  const dests = new Set<string>();
+  for (const p of prepared) {
+    const stem = resolvedStem(master, p.variants, p.values, p.job.overrides);
+    for (const name of outputNames(stem, args.format)) {
+      if (dests.has(name)) throw new Error(`duplicate output file "${name}"`);
+      dests.add(name);
+    }
+  }
 
   const outDir = resolveUnder(io.cwd, args.outDir);
   io.mkdir(outDir);

@@ -62,6 +62,11 @@ describe("parseGenerateArgs", () => {
     });
     expect(() => parseGenerateArgs(["--out="])).toThrow(/needs a value/i);
   });
+
+  it("new-form --collab-left is rejected", () => {
+    expect(() => parseGenerateArgs(["--out", "out", "--collab-left=a.svg"]))
+      .toThrow(/--asset collabLeft/i);
+  });
 });
 
 describe("parseJobs", () => {
@@ -251,6 +256,15 @@ describe("runGenerate", () => {
     }, {}));
     expect(await io.run(["--label", "/x.label", "--out", "/out"])).toBe(1);
     expect(io.stderr.join("")).toMatch(/masterId/);
+  });
+
+  it("rejects a batch whose files would overwrite (night vs night-mask)", async () => {
+    const io = memIo();
+    io.files.set("/v.json", new TextEncoder().encode(JSON.stringify([
+      { name: "Night" }, { name: "Night Mask" },
+    ])));
+    expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf"])).toBe(1);
+    expect(io.stderr.join("")).toMatch(/night-mask\.pdf/);
   });
 });
 
