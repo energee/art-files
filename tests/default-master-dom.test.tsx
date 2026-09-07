@@ -47,7 +47,7 @@ async function waitFor(pred: () => boolean, tries = 30) {
 
 it("shows the last applied master on a fresh untitled document", async () => {
   const mine = { ...lolevMaster(), id: "master-mine", name: "Mine" };
-  rememberMaster(mine, "mine.master", packMaster(mine, {}));
+  await rememberMaster(mine, "mine.master", packMaster(mine, {}));
   await act(async () => { await Promise.resolve(); });
 
   const container = document.createElement("div");
@@ -68,7 +68,7 @@ it("shows the last applied master on a fresh untitled document", async () => {
 
 it("does not replace a .label that is already queued to open", async () => {
   const mine = { ...lolevMaster(), id: "master-mine", name: "Mine" };
-  rememberMaster(mine, "mine.master", packMaster(mine, {}));
+  await rememberMaster(mine, "mine.master", packMaster(mine, {}));
   await act(async () => { await Promise.resolve(); });
 
   const bytes = packLabel({

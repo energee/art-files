@@ -8,7 +8,9 @@ binary-impacting change gets its own version before it is merged.
 ### Fixed
 
 - A new untitled document reopens the last master you applied, instead of
-  always starting from the shipped Lolev template.
+  always starting from the shipped Lolev template. The last-applied id is
+  recorded only after the master bytes are stored, so a reload cannot miss
+  them and fall back to Lolev.
 
 - The desktop app can re-read `.master` files from disk (Open Master uses
   the native dialog and remembers the real path), so a restart finds the

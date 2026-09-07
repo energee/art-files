@@ -32,22 +32,26 @@ export function masterIndex(): Record<string, MasterIndexEntry> {
 /** Register a master in the library index — and, when the caller has the
  *  file's `bytes`, keep them in the browser's master cache so a reload can
  *  resolve this master without a filesystem path (masterCache.ts). */
-export function rememberMaster(m: Master, path: string, bytes?: Uint8Array, opts?: { applied?: boolean }): void {
-  const idx = masterIndex();
-  const prev = idx[m.id];
+export async function rememberMaster(m: Master, path: string, bytes?: Uint8Array, opts?: { applied?: boolean }): Promise<void> {
+  const prev = masterIndex()[m.id];
   const applied = opts?.applied !== false;
+  // Bytes first: LAST_KEY / lastSeen must not claim this master until a
+  // reload can actually resolve it (void cacheMaster used to return while
+  // IndexedDB was still empty, and the next launch fell back to Lolev).
+  if (bytes) await cacheMaster(m.id, bytes);
+  const idx = masterIndex();
+  const cur = idx[m.id];
   // An apply that has no filesystem path (a library pick of the shipped
   // master, a browser handle whose name we already stored) must not wipe a
   // real path from an earlier Open/Save. Resolving a .label is not an apply:
   // keep lastSeen so it cannot steal the next untitled document.
   idx[m.id] = {
     name: m.name,
-    path: path || prev?.path || "",
-    lastSeen: applied ? new Date().toISOString() : (prev?.lastSeen ?? ""),
+    path: path || cur?.path || prev?.path || "",
+    lastSeen: applied ? new Date().toISOString() : (cur?.lastSeen ?? prev?.lastSeen ?? ""),
   };
   localStorage.setItem(KEY, JSON.stringify(idx));
   if (applied) localStorage.setItem(LAST_KEY, m.id);
-  if (bytes) void cacheMaster(m.id, bytes);
 }
 
 /** The master this operator last opened, saved, or picked — LAST_KEY when
@@ -84,7 +88,7 @@ async function readMasterAt(path: string): Promise<ResolvedMaster | null> {
   try {
     const bytes = await readNativeFile(path); // ZIP or legacy JSON
     const r = unpackMaster(bytes);
-    rememberMaster(r.master, path, bytes, { applied: false });
+    await rememberMaster(r.master, path, bytes, { applied: false });
     return r;
   } catch {
     return null; // moved/deleted/corrupt — caller falls through to the hint

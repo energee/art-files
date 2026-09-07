@@ -102,7 +102,7 @@ describe("MasterPicker", () => {
     expect(preview!.textContent).toContain("variant");
     expect(onMaster).not.toHaveBeenCalled();
 
-    act(() => {
+    await act(async () => {
       (container.querySelector("#master-picker-continue") as HTMLButtonElement).click();
     });
     expect(onMaster).toHaveBeenCalledWith(otherMaster, {});

@@ -81,7 +81,7 @@ describe("master library index", () => {
     const { packMaster } = await import("../src/model/files");
     const mod = await import("../src/masters");
     const edited = { ...lolevMaster(), name: "ZZZ-CACHED" };
-    mod.rememberMaster(edited, "lolev.master", packMaster(edited, {}));
+    await mod.rememberMaster(edited, "lolev.master", packMaster(edited, {}));
     expect((await mod.resolveMasterById(mod.SHIPPED_MASTER_ID))?.master.name).toBe("ZZZ-CACHED");
     vi.doUnmock("@tauri-apps/api/core");
     vi.doUnmock("@/files");

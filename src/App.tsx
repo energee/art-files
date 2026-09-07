@@ -1587,9 +1587,9 @@ export const DocumentEditor = memo(function DocumentEditor({
     /** Adopt `m` as the saved master: the document's, the library's, and the
      *  baseline the next review diffs against. A plain save with nothing
      *  promoted is a no-op edit and pushes no history entry. */
-    const commit = (m: Master, where: string, bytes?: Uint8Array) => {
+    const commit = async (m: Master, where: string, bytes?: Uint8Array) => {
       edit(() => ({ master: m, label: adoptMaster(promoted.label, m) }));
-      rememberMaster(m, where, bytes);
+      await rememberMaster(m, where, bytes);
       pristineMaster.current = m;
       repaintMasterDirty((n) => n + 1);
     };
@@ -1612,7 +1612,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           await saveNativeFile(written, {
             defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path,
           });
-        commit(final, path, written);
+        await commit(final, path, written);
         setLoadError("");
         return true;
       } catch (err) {
@@ -1634,7 +1634,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         await writeHandle(masterFileHandle.current, bytes);
         // The bytes go to the master cache too: a browser reload has no path
         // to re-read this file from (masterCache.ts).
-        commit(final, masterFileHandle.current.name, bytes);
+        await commit(final, masterFileHandle.current.name, bytes);
         return true;
       } catch (err) {
         masterFileHandle.current = null;
@@ -1649,7 +1649,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const bytes = packMaster(forked, assets);
     startSaveBatch();
     saveBytes(bytes, name, "application/zip");
-    commit(titled(name), name, bytes);
+    await commit(titled(name), name, bytes);
     return true;
   }
 
@@ -1690,7 +1690,8 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  freshly bound master reads as saved (Open Master / the library pick)
    *  or not (a never-written duplicate, so Save Master stays live). */
   function commitRebind(target: Master, clean = true) {
-    const { label: next, dropped } = rebindLabel(label, master, target);
+    const { master: from, label: current } = docRef.current;
+    const { label: next, dropped } = rebindLabel(current, from, target);
     markDirty();
     setDoc({ master: target, label: next });
     if (clean) { pristineMaster.current = target; repaintMasterDirty((n) => n + 1); }
@@ -1703,15 +1704,15 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** File → Open Master…: register the newly opened master in the library
    *  index, then commitRebind onto it. */
-  function applyOpenedMaster(m: Master, path: string, bytes?: Uint8Array) {
-    rememberMaster(m, path, bytes);
+  async function applyOpenedMaster(m: Master, path: string, bytes?: Uint8Array) {
+    await rememberMaster(m, path, bytes);
     commitRebind(m);
   }
 
   /** MasterPicker's library pick (the preview's Continue). */
-  function pickLibraryMaster(target: Master, assets: MasterAssets) {
+  async function pickLibraryMaster(target: Master, assets: MasterAssets) {
     const path = masterIndex()[target.id]?.path ?? "";
-    rememberMaster(target, path, packMaster(target, assets));
+    await rememberMaster(target, path, packMaster(target, assets));
     masterFileHandle.current = null;
     masterFilePath.current = isTauri() ? path || null : null;
     commitRebind(target);
@@ -1739,7 +1740,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         if (!r) return;
         masterFileHandle.current = null;
         masterFilePath.current = path;
-        applyOpenedMaster(r.master, path, bytes);
+        await applyOpenedMaster(r.master, path, bytes);
         await adoptMasterAssets(r.assets);
       } catch (err) {
         if (!isAbort(err)) setLoadError(`Could not open master: ${errMsg(err)}`);
@@ -1756,7 +1757,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (!r) return;
       masterFileHandle.current = handle;
       masterFilePath.current = null;
-      applyOpenedMaster(r.master, file.name, bytes);
+      await applyOpenedMaster(r.master, file.name, bytes);
       await adoptMasterAssets(r.assets);
     } catch (err) {
       if (!isAbort(err)) setLoadError(`Could not open master: ${errMsg(err)}`);
@@ -2227,7 +2228,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 if (!r) return;
                 masterFileHandle.current = null;
                 masterFilePath.current = null;
-                applyOpenedMaster(r.master, f.name, bytes);
+                await applyOpenedMaster(r.master, f.name, bytes);
                 await adoptMasterAssets(r.assets);
               });
             }} />
