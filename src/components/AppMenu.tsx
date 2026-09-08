@@ -6,9 +6,9 @@ import type {
   CheckMenuItem, IconMenuItem, MenuItem, NativeIcon, PredefinedMenuItem, Submenu,
 } from "@tauri-apps/api/menu";
 import {
-  Bookmark, BookmarkPlus, FileImage, FilePlus, Files, FolderOpen,
-  Layers, Library, Redo2, Scan, Settings, SquareArrowDown, SquareArrowUp,
-  Undo2, X, type LucideIcon,
+  Bookmark, BookmarkPlus, Columns2, Cylinder, FileImage, FilePlus, Files,
+  FolderOpen, Layers, Library, RectangleHorizontal, Redo2, Ruler, Scan,
+  Settings, SquareArrowDown, SquareArrowUp, Undo2, X, type LucideIcon,
 } from "lucide-react";
 import { shortcutOf, type Command } from "@/components/CommandMenu";
 import {
@@ -17,12 +17,32 @@ import {
   MenubarSubTrigger, MenubarTrigger,
 } from "@/components/ui/menubar";
 
-/** A Tauri `NativeIcon` name. macOS paints these as template images in the
- *  application menu; Windows and Linux ignore them. Items without one still
- *  align — AppKit reserves the image column once any sibling has an image. */
-type NativeIconName = `${NativeIcon}`;
+/** AppKit *Template* NSImage names only — they tint with the menu (black in
+ *  light, white in dark). Color icons like Folder and PreferencesGeneral are
+ *  excluded so the bar stays black-and-white. Windows and Linux ignore them.
+ *  Items without one still align: AppKit reserves the image column once any
+ *  sibling has an image. */
+type NativeIconName = Extract<
+  `${NativeIcon}`,
+  | "Add"
+  | "Remove"
+  | "Share"
+  | "Bookmarks"
+  | "IconView"
+  | "QuickLook"
+  | "ListView"
+  | "Refresh"
+  | "GoLeft"
+  | "GoRight"
+>;
 
-type CheckAction = { kind: "action"; id: string; text: string; check: true };
+type CheckAction = {
+  kind: "action";
+  id: string;
+  text: string;
+  check: true;
+  icon: LucideIcon;
+};
 type IconAction = {
   kind: "action";
   id: string;
@@ -54,13 +74,13 @@ export const APP_MENUS: SubmenuEntry[] = [
   {
     kind: "submenu", id: "file-menu", text: "File", items: [
       { kind: "action", id: "tab-new", text: "New Tab", icon: FilePlus, nativeIcon: "Add" },
-      { kind: "action", id: "project-open", text: "Open Project…", icon: FolderOpen, nativeIcon: "Folder" },
+      { kind: "action", id: "project-open", text: "Open Project…", icon: FolderOpen },
       { kind: "action", id: "tab-close", text: "Close Tab", icon: X, nativeIcon: "Remove" },
       { kind: "separator", id: "file-new" },
       { kind: "action", id: "project-save", text: "Save Project", icon: SquareArrowDown },
-      { kind: "action", id: "project-save-as", text: "Save Project As…", icon: Files, nativeIcon: "MultipleDocuments" },
+      { kind: "action", id: "project-save-as", text: "Save Project As…", icon: Files },
       { kind: "separator", id: "file-master" },
-      { kind: "action", id: "master-open", text: "Open Master…", icon: Library, nativeIcon: "FolderSmart" },
+      { kind: "action", id: "master-open", text: "Open Master…", icon: Library },
       { kind: "action", id: "master-save", text: "Save Master", icon: Bookmark, nativeIcon: "Bookmarks" },
       { kind: "action", id: "master-save-as", text: "Save Master As…", icon: BookmarkPlus, nativeIcon: "Bookmarks" },
       { kind: "separator", id: "file-projects" },
@@ -79,10 +99,10 @@ export const APP_MENUS: SubmenuEntry[] = [
   },
   {
     kind: "submenu", id: "edit-menu", text: "Edit", items: [
-      { kind: "action", id: "undo", text: "Undo", icon: Undo2 },
-      { kind: "action", id: "redo", text: "Redo", icon: Redo2 },
+      { kind: "action", id: "undo", text: "Undo", icon: Undo2, nativeIcon: "GoLeft" },
+      { kind: "action", id: "redo", text: "Redo", icon: Redo2, nativeIcon: "GoRight" },
       { kind: "separator", id: "edit-variants" },
-      { kind: "action", id: "settings", text: "Settings…", icon: Settings, nativeIcon: "PreferencesGeneral" },
+      { kind: "action", id: "settings", text: "Settings…", icon: Settings },
       { kind: "predefined", item: "Separator" },
       { kind: "predefined", item: "Cut" },
       { kind: "predefined", item: "Copy" },
@@ -92,12 +112,12 @@ export const APP_MENUS: SubmenuEntry[] = [
   },
   {
     kind: "submenu", id: "view-menu", text: "View", items: [
-      { kind: "action", id: "view-label", text: "Label", check: true },
-      { kind: "action", id: "view-mask", text: "Mask", check: true },
-      { kind: "action", id: "view-can", text: "Can", check: true },
+      { kind: "action", id: "view-label", text: "Label", check: true, icon: RectangleHorizontal },
+      { kind: "action", id: "view-mask", text: "Mask", check: true, icon: Scan },
+      { kind: "action", id: "view-can", text: "Can", check: true, icon: Cylinder },
       { kind: "separator", id: "view-modes" },
-      { kind: "action", id: "rulers", text: "Rulers", check: true },
-      { kind: "action", id: "guides", text: "Guides", check: true },
+      { kind: "action", id: "rulers", text: "Rulers", check: true, icon: Ruler },
+      { kind: "action", id: "guides", text: "Guides", check: true, icon: Columns2 },
     ],
   },
 ];
@@ -118,13 +138,13 @@ const MENU_ACTIONS = actionsIn(APP_MENUS);
 // the same APP_MENUS data but lets the OS size and paint each item.
 const MENU_TRIGGER = "px-2 py-1 text-xs font-normal";
 const MENU_ITEMS =
-  "min-w-52 [&_[data-slot=menubar-item]]:text-xs [&_[data-slot=menubar-sub-trigger]]:text-xs";
+  "min-w-52 [&_[data-slot=menubar-item]]:text-xs [&_[data-slot=menubar-checkbox-item]]:text-xs [&_[data-slot=menubar-sub-trigger]]:text-xs";
 
 type CommandIndex = Record<string, Command>;
 type CheckedState = Partial<Record<string, boolean>>;
 
 function MenuGlyph({ icon: Icon }: { icon: LucideIcon }) {
-  return <Icon className="size-4" aria-hidden="true" />;
+  return <Icon className="size-4 text-current" strokeWidth={2} aria-hidden="true" />;
 }
 
 function WebEntries(props: {
@@ -158,6 +178,7 @@ function WebEntries(props: {
       return (
         <MenubarCheckboxItem key={entry.id} checked={!!props.checked[entry.id]}
           disabled={command.disabled} onClick={command.run}>
+          <MenuGlyph icon={entry.icon} />
           {entry.text}
           {keys && <MenubarShortcut>{keys}</MenubarShortcut>}
         </MenubarCheckboxItem>
