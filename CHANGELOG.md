@@ -3,6 +3,22 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.67] - 2026-09-07
+
+### Changed
+
+- **Black-and-white menu icons.** The in-window glyphs follow the menu text
+  color, including Undo, Redo, and the View checks (Label, Mask, Can, Rulers,
+  Guides). The macOS menu uses AppKit template images only, so they tint with
+  the bar instead of drawing in color.
+
+## [0.1.66] - 2026-09-07
+
+### Changed
+
+- Menu tests walk the same File/Edit/View table the app uses. No operator-visible
+  change.
+
 ## [0.1.65] - 2026-09-07
 
 ### Added
