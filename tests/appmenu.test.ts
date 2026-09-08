@@ -30,7 +30,7 @@ describe("native menu accelerators", () => {
 type ActionNode = ReturnType<typeof actionsIn>[number];
 
 function nativeIconOf(action: ActionNode | undefined) {
-  return action && "icon" in action ? action.nativeIcon : undefined;
+  return action && "nativeIcon" in action ? action.nativeIcon : undefined;
 }
 
 describe("file menu", () => {
@@ -58,14 +58,31 @@ describe("file menu", () => {
     }
     const byId = Object.fromEntries(actions.map((action) => [action.id, action]));
     expect(nativeIconOf(byId["tab-new"])).toBe("Add");
-    expect(nativeIconOf(byId["project-open"])).toBe("Folder");
+    expect(nativeIconOf(byId["project-open"])).toBeUndefined();
     expect(nativeIconOf(byId["tab-close"])).toBe("Remove");
     expect(nativeIconOf(byId["project-save"])).toBeUndefined();
-    expect(nativeIconOf(byId["project-save-as"])).toBe("MultipleDocuments");
-    expect(nativeIconOf(byId["master-open"])).toBe("FolderSmart");
+    expect(nativeIconOf(byId["project-save-as"])).toBeUndefined();
+    expect(nativeIconOf(byId["master-open"])).toBeUndefined();
     expect(nativeIconOf(byId["master-save"])).toBe("Bookmarks");
     expect(nativeIconOf(byId["master-save-as"])).toBe("Bookmarks");
     expect(nativeIconOf(byId["export-both"])).toBe("Share");
+  });
+
+  it("uses only AppKit template names so native icons stay black-and-white", () => {
+    const templates = new Set([
+      "Add", "Remove", "Share", "Bookmarks", "IconView", "QuickLook", "ListView",
+      "Refresh", "GoLeft", "GoRight",
+    ]);
+    const file = APP_MENUS.find((menu) => menu.id === "file-menu")!;
+    const exportMenu = file.items.find((entry) =>
+      entry.kind === "submenu" && entry.id === "export-menu");
+    if (exportMenu?.kind === "submenu" && exportMenu.nativeIcon) {
+      expect(templates.has(exportMenu.nativeIcon)).toBe(true);
+    }
+    for (const action of actionsIn(APP_MENUS)) {
+      const name = nativeIconOf(action);
+      if (name) expect(templates.has(name), action.id).toBe(true);
+    }
   });
 });
 
@@ -79,6 +96,14 @@ describe("view menu", () => {
     // bleed, margin, center and manual guides — no per-kind items, no Clear.
     expect(ids).toEqual(["view-label", "view-mask", "view-can", "rulers", "guides"]);
   });
+
+  it("gives every View check a leading icon and no native glyph", () => {
+    const view = APP_MENUS.find((menu) => menu.id === "view-menu")!;
+    for (const action of actionsIn(view.items)) {
+      expect("icon" in action && action.icon, action.id).toBeTruthy();
+      expect(nativeIconOf(action), action.id).toBeUndefined();
+    }
+  });
 });
 
 describe("native text editing menu", () => {
@@ -89,18 +114,15 @@ describe("native text editing menu", () => {
     expect(roles).toEqual(["Cut", "Copy", "Paste", "SelectAll"]);
   });
 
-  it("icons Undo, Redo and Settings, and leaves View checks glyph-free", () => {
+  it("icons Undo, Redo and Settings", () => {
     const edit = APP_MENUS.find((menu) => menu.id === "edit-menu")!;
-    const view = APP_MENUS.find((menu) => menu.id === "view-menu")!;
     const editActions = actionsIn(edit.items);
     for (const action of editActions) {
       expect("icon" in action && action.icon, action.id).toBeTruthy();
     }
+    expect(nativeIconOf(editActions.find((action) => action.id === "undo"))).toBe("GoLeft");
+    expect(nativeIconOf(editActions.find((action) => action.id === "redo"))).toBe("GoRight");
     expect(nativeIconOf(editActions.find((action) => action.id === "settings")))
-      .toBe("PreferencesGeneral");
-    for (const action of actionsIn(view.items)) {
-      expect("icon" in action, action.id).toBe(false);
-      expect("nativeIcon" in action, action.id).toBe(false);
-    }
+      .toBeUndefined();
   });
 });
