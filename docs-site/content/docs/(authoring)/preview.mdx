@@ -1,0 +1,40 @@
+---
+title: Preview
+description: Label, mask, can, zoom, pan, rulers, guides
+---
+
+One preview, centre of the window. View → **Label** / **Mask** / **Can** (keys `1` `2` `3`), or click **View Mode** in the status bar to cycle.
+
+## Label and mask
+
+Both plates draw in place. Drag the divider and the **white-ink layer** slides over the art so you can check registration. View → Label jumps the divider to artwork. View → Mask jumps it to the plate.
+
+Live preview uses a downscaled texture and mask so typing doesn't churn print-size images. Downloads always rebuild at full resolution.
+
+While a rebuild is in flight the stale render blurs, and a small "rendering preview…" note shows up.
+
+## Zoom and pan
+
+- Scroll or pinch over the 2D preview to zoom about the pointer (up to 2.5×)
+- **Right-button drag** pans (grabbing cursor). The browser context menu is off over the pane so this matches the 3D views
+- The **percentage** in the status bar is a readout *and* a control. Type a figure. `100` fits the view. No separate reset button
+
+In 3D, 100% means "as framed" for that mode. 200% is twice as close. Typing 100 restores framing distance and leaves your orbit alone. Each 3D view frames so the label reads the same on-screen height as the 2D sheet (measured to the label's near face). Switch views and the subject changes, not the scale. The can running off the top and bottom of the frame is the point. You're looking at the label.
+
+## Can
+
+Same plates, wrapped around a can. **1 / 4** in the status bar is one can or a 2×2 four-pack. Orbit with the left button, pan with the right, same as 2D.
+
+Settings → corner radius and edge softness are how the die-cut and foil edge read on the can. Preview/press appearance. They don't redraw the 2D plates, aside from bleed and DPI.
+
+## Rulers and guides
+
+View → **Rulers** (`R`) and **Guides** (`G`). 2D only.
+
+- Ruler zero is the **trimmed** art's top-left, so bleed reads negative
+- Click the trim-size readout in the status bar to cycle inches / points / 600-DPI pixels
+- Locked margin and centre guides come from the trim box. The margin control (ruler corner) sets the safe inset on all four sides
+- Drag from a ruler to add a **manual** guide. Kill it with the × in the ruler, by dragging it back into a ruler, or with Delete while it's focused. Manual guides snap to layers as you place them
+- **Guides** is one switch: trim line, margin and centre, and your manual guides, together
+
+Session-only overlays. They never enter a `.label` or an export.

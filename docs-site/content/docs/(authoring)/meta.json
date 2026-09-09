@@ -1,0 +1,13 @@
+{
+  "title": "Authoring",
+  "description": "Masters, layers, the inspector, and the preview",
+  "defaultOpen": true,
+  "pages": [
+    "masters-and-labels",
+    "layers",
+    "inspector",
+    "editing",
+    "preview",
+    "variants"
+  ]
+}

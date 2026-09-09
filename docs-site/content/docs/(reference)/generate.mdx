@@ -1,0 +1,39 @@
+---
+title: Headless generate
+description: PDFs and PSDs from a master and JSON, no window
+---
+
+Same resolve, plan, and build path as the app. No window.
+
+```bash
+npm run generate -- beer.master values.json ./out
+# writes {name}.pdf, {name}-mask.pdf, {name}.psd, {name}-mask.psd
+
+npm run generate -- beer.master --inspect
+# prints the master's layer ids (the keys values.json uses)
+```
+
+`values.json` is keyed by layer id (`name`, `abv`, `description`, `barcode`, …). Text layers take a string. Rich layers still understand the markdown subset: `# header`, `**bold**`, `_white ink_`. A JSON array is a batch, one output set per job. A job can also be `{values, variants, files, overrides}`. `overrides` patches layer fields and is type-checked against the layer before anything builds. A batch is validated, read, and built whole before the first file is written. A bad job anywhere leaves nothing on disk.
+
+```bash
+npm run generate -- beer.master values.json ./out --variant collab \
+  --asset collabLeft=./logo.svg --format pdf
+
+npm run generate -- --master beer.master --values - --out ./out   # stdin
+npm run generate -- --master beer.master --label run.label --out ./out
+npm run generate -- beer.master values.json ./out --set name=X
+```
+
+- `--variant id`: enable a variant (union with variants already on a `--label`)
+- `--asset layerId=path`: attach an image file. `--asset background=` / `mask=` need a master with that role layer
+- `--format pdf` or `psd`: skip the other pair. Default is both
+- `--set id=value`: overlay one value on every job
+- `--inspect`: JSON on stdout, exit 0
+
+Exit codes: **0** wrote everything, **1** a job or input was rejected, **2** bad argv.
+
+The older texture/mask/config.json argv still works for golden re-baselines:
+
+```bash
+npm run generate -- <texture|none> <mask.png|none> <outDir> [config.json]
+```

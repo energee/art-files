@@ -1,0 +1,37 @@
+---
+title: Files
+description: .label, .master, and where dropped images land
+---
+
+## Projects (`.label`)
+
+File → **Save Project** (`⌘S`) / **Save Project As…** (`⇧⌘S`) writes a zip named from the beer. `<slug>.label`: lowercase, punctuation to dashes, same slug rule as the QR. Inside: the label JSON plus embedded art (texture, mask, image-layer files).
+
+On Chromium and in the desktop app, Save is a real dialog and later Save rewrites that file in place. Everywhere else it falls back to a download.
+
+File → **Open Project…** unpacks a `.label`. If the master it names is already in your library, that template is used. Otherwise the file's `masterHint` is tried. Values that no longer match the master sit on a **bench** (dormant) instead of getting dropped, so a rebind can bring them back.
+
+Double-click a `.label` on desktop and it opens in Label Lab. Details in [Getting started](/docs/getting-started).
+
+## Masters (`.master`)
+
+Also a zip: `master.json` plus the same asset layout. Legacy JSON-only `.master` files still open.
+
+File → Open Master / Save Master / Save Master As lives under [Masters and labels](/docs/masters-and-labels).
+
+## Dropping images
+
+PNG, JPEG, or WebP dropped **anywhere** in the window opens the background/mask chooser:
+
+- Left half (or any JPEG/WebP): **texture**
+- Right half, PNG only: **mask**
+
+Dropping on an inspector image field wins and loads that field. Clicking a field still opens its picker.
+
+Background takes PNG, JPEG, or WebP. A WebP is decoded and stored as PNG (the PDF embed handles PNG and JPEG only), so the project file and both PDFs carry PNG for it.
+
+The mask **must** be a PNG. It's embedded as-authored, no recoloring. A JPEG or WebP aimed at the mask half of the chooser lands on the background instead.
+
+## Older configs
+
+JSON configs from the pre-rewrite UI still open and migrate. Named fills (`gold` / `white` / `black`), a `qrData` field, missing stroke layers: they pick up current defaults so historical files print like they always have.

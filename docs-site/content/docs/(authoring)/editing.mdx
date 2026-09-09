@@ -1,0 +1,51 @@
+---
+title: Editing
+description: Click, type, drag, snap, nudge, undo
+---
+
+## Selecting
+
+Click a layer on the preview or in the list. Click the empty pasteboard around the sheet to clear it (inspector closes too).
+
+- `⇧`-click extends
+- `⌘`-click / `Ctrl`-click toggles
+- Multi-select draws a group frame around the layers
+
+## Typing
+
+Double-click a text layer on the preview and you edit **in place**, at print metrics, pill toolbar floating above. The sidebar is the same editor.
+
+It's WYSIWYG. Not a markdown box.
+
+- **Header:** bigger line (heading scale in the inspector)
+- **Bold**
+- **White ink:** that line (or run) goes on the white-ink plate. Fill colour stays
+- **Uppercase:** whole layer, without losing what you actually typed
+
+Select part of a line and hit Bold or White ink to wrap just that span. Type `**bold**` or `_white ink_` and it becomes a run. The markers vanish. There is no escape hatch for a literal pair.
+
+Number and code layers get a plain box with validation.
+
+## Moving and resizing
+
+Pointer down on an unlocked layer, drag a few pixels, and it (or the whole selection) moves. Corner and edge ticks on the outline resize.
+
+While you drag or resize:
+
+- Layers **snap** to other layers' edges and middles, and to page guides (including ones you pulled off the rulers)
+- **Fuchsia** lines are another layer. **Blue** lines are a page guide
+- A badge reads how far you travelled, or the width and height while resizing
+
+Arrow keys nudge **1 point**. Shift makes it **10**. They stay out of the way while you're typing or a menu is open.
+
+Locked layers don't move on the canvas. Powered-off layers don't draw and you can't click them.
+
+## Undo
+
+`⌘Z` / `⇧⌘Z` (or `⌘Y`) cover the document: fills, style, position, structure. Edits within half a second collapse into one step, so a scrub undoes as a single move.
+
+Loaded texture and mask **files** are not on that stack. Stepping back never re-decodes an image. While a text field has focus, that field's own undo wins.
+
+## What you're actually changing
+
+Moving a name, restyling gold, typing this beer: that's the **label**. Promote those overrides in Save Master when they should become the template. Adding a layer or a variant is already a master edit. It will be on the review.

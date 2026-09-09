@@ -1,0 +1,48 @@
+---
+title: Masters and labels
+description: The brand file versus this beer, and the Save Master gate
+---
+
+Two files, on purpose.
+
+| File | What it is |
+| --- | --- |
+| **Master** (`.master`) | The brand. Size, background, mask, every layer, guides, named variants. Shared by every beer that wears this look. |
+| **Label** (`.label`) | This release. Which master, which variants are on, the filled values, and any overrides for this beer only. |
+
+What you see is the resolved label: master layers, plus enabled variant diffs, plus this beer's fills and overrides.
+
+## What writes where
+
+- **Fills** (name, ABV, UPC, logos you drop) belong to the label.
+- **Property edits** (move, resize, colour, type) also belong to the label, as overrides. They do not rewrite the template until you promote them.
+- **Structure** (add, remove, reorder, rename a layer; new variant; guides; master name) writes the master in this session, and shows up when you save the master.
+- **Fill contract** (field label, placeholder, choices, number suffix, barcode symbology on a text-as-code field) is template vocabulary. Master.
+
+You can fill beers all day without drifting the brand. File → Save Master is the gate.
+
+## Master picker
+
+Top of the left sidebar. It answers "which version am I editing?"
+
+- The **current master** and its **variants as versions**. Switch a version and a later Save Master / promotion lands in that variant, not the base master.
+- **Other masters** in the library. Picking one is a rebind. You get a preview of what would move to the bench, then Continue.
+- **New Variant** at the foot of the menu (same as Edit → New Variant).
+
+The chips in the Layers list **show** a variant on this label. They do not pick the version you author into. That's the picker.
+
+## Save Master
+
+File → **Save Master** (or **Save Master As…**) puts every template change in front of you:
+
+- Structural rows (added, removed, reordered, renamed)
+- Fill-contract edits
+- This label's overrides, each with a tick, so you can **promote** them into the master (or the version the picker names)
+
+One tick can promote everything. Confirm, and the `.master` file writes. Save Master As mints a new master id, rebinds this document onto it, and writes the new file.
+
+File → **Open Master…** loads a template from disk. The desktop app remembers the real path, so a restart finds it. The browser caches the last applied master, so a reload does not sneak you back to shipped Lolev.
+
+<Callout title="Untitled tabs">
+  A new tab reopens the last master you applied. Shipped Lolev is only the fallback when you have never applied one.
+</Callout>

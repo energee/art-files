@@ -1,0 +1,16 @@
+---
+title: Settings
+description: Bleed, DPI, die-cut, light or dark
+---
+
+Edit → **Settings…** is the knobs. They stick on this machine. They do not live in the `.label` file.
+
+| Control | What it does |
+| --- | --- |
+| **Corner radius** | Die-cut rounding, as a fraction of the label's short edge. You see it on the 3D can. |
+| **Edge softness** | Foil-mask blur as a fraction of label width. How the can preview reads the edge. |
+| **Resolution** | DPI of exported PDFs and PSDs (72–1200, default 600). Status bar shows the current value. |
+| **Bleed** | Extra around the trim. Geometry for both plates. Ruler zero stays at trim. |
+| **Appearance** | Light or dark chrome. |
+
+Bleed and DPI change what gets built. Corner radius and edge softness are how the can preview presents the press. They don't redraw the 2D plates.
