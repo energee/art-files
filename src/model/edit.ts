@@ -743,6 +743,42 @@ export function masterDiff(base: Master, edited: Master): boolean {
   return !deepEqual(base, edited);
 }
 
+/** Untitled restore: keep the template's layers and positions, drop fill
+ *  values and raster art so a new tab is not the last beer. Template copy
+ *  (volume, wordmark, warning) and bundled assets (`builtin:`) stay.
+ *  Fillable text is anything with a placeholder or a number/code input. */
+export function structureOnlyMaster(master: Master): Master {
+  const byId = new Map(master.layers.map((l) => [l.id, l]));
+  return {
+    ...master,
+    layers: master.layers.map((l) => structureOnlyEntry(l) as Layer),
+    variants: master.variants.map((v) => withEntries(v, Object.fromEntries(
+      Object.entries(v.layers).map(([id, patch]) =>
+        [id, structureOnlyEntry(patch, byId.get(id))]),
+    ))),
+  };
+}
+
+function isFillableText(layer: unknown): boolean {
+  return isPlain(layer) && !!(layer.placeholder || layer.input);
+}
+
+/** A variant override is not a complete Layer (parseMaster validates the
+ *  merge). Fillable is the merged layer: base placeholder/input, else the
+ *  patch for a variant-added id. Blank `lines` only when they are present. */
+function structureOnlyEntry(p: Entry, base?: Layer): Entry {
+  const rec = p as Entry & { lines?: unknown; asset?: unknown };
+  const next = { ...rec };
+  if ((isFillableText(rec) || isFillableText(base)) && Array.isArray(rec.lines)) {
+    next.lines = rec.lines.map((line) =>
+      line && typeof line === "object" ? { ...line as object, text: "" } : line);
+  }
+  if (typeof rec.asset === "string" && rec.asset && !rec.asset.startsWith("builtin:")) {
+    next.asset = "";
+  }
+  return next;
+}
+
 /** One line in the Save Master review: a change the save is about to write.
  *  `promote` is the odd one — it is not in `edited` yet, it is a label
  *  override the reviewer may fold into the template (the ONLY promotion path;

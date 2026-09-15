@@ -6,8 +6,8 @@
 // fallback when nothing on disk resolves, guaranteeing a fresh install with
 // an empty index still works. localStorage (per-operator app state, like the
 // view toggles and settings.ts): the index describes this machine's
-// filesystem. A new untitled document reloads the last master this operator
-// applied (resolveDefaultMaster), not the hardcoded fixture.
+// filesystem. Untitled tabs call resolveDefaultMaster, then drop fill values
+// and raster art in structureOnlyMaster (model/edit.ts).
 import { isTauri } from "@tauri-apps/api/core";
 import type { Master } from "@/model/layers";
 import { lolevMaster } from "@/model/lolevLayers";
@@ -120,7 +120,8 @@ export async function resolveMasterById(id: string, hint?: string): Promise<Reso
   return null;
 }
 
-/** The master a new untitled document should open onto. Falls back to the
+/** The last-applied master an untitled tab starts from, before
+ *  structureOnlyMaster drops fill values and raster art. Falls back to the
  *  shipped fixture when the last-applied id cannot be resolved. */
 export async function resolveDefaultMaster(): Promise<ResolvedMaster> {
   return (await resolveMasterById(lastMasterId())) ?? { master: lolevMaster(), assets: {} };
