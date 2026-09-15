@@ -9,7 +9,7 @@ import {
   addLayer, addVariant, bindBelow, clearLabelOverride, clearOverride, clearValue,
   masterDiff, mintLayerId, moveBy, moveLayers, overriddenPaths, removeLayer,
   removeVariant, renameVariant, setLabelOverride, setLayer, setLayerIn, setValue,
-  toggleVariant, unbind, whereLayerLives,
+  structureOnlyMaster, toggleVariant, unbind, whereLayerLives,
 } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { parseMaster } from "../src/model/layers";
@@ -496,5 +496,47 @@ describe("resizeBy", () => {
   it("locked layers and empty boxes return {}", () => {
     expect(resizeBy(byId(lolevMaster(), "warning"), box, BR, 5, 5, false)).toEqual({});
     expect(resizeBy(byId(lolevMaster(), "qr"), { w: 0, h: 0 }, BR, 5, 5, false)).toEqual({});
+  });
+});
+
+describe("structureOnlyMaster", () => {
+  it("keeps layer ids and positions, drops fillable text and raster assets", () => {
+    const filled = lolevMaster();
+    const name = byId<TextLayer>(filled, "name");
+    name.lines = [{ ...name.lines[0], text: "Old Beer" }];
+    byId<ImageLayer>(filled, "background").asset = "custom-rock";
+    const collabLeft = collab(filled).layers.collabLeft as ImageLayer;
+    collab(filled).layers.collabLeft = { ...collabLeft, asset: "custom-logo" };
+    const next = structureOnlyMaster(filled);
+    expect(next).not.toBe(filled);
+    expect(byId<TextLayer>(filled, "name").lines[0].text).toBe("Old Beer");
+    const stripped = byId<TextLayer>(next, "name");
+    expect(stripped.lines[0].text).toBe("");
+    expect(stripped.x).toBe(name.x);
+    expect(stripped.y).toBe(name.y);
+    expect(stripped.size).toBe(name.size);
+    expect(byId<ImageLayer>(next, "background").asset).toBe("");
+    expect(byId<ImageLayer>(next, "logo").asset).toBe("builtin:logo");
+    expect(byId<TextLayer>(next, "volume").lines[0].text).toBe("1 PINT");
+    expect((collab(next).layers.collabLeft as ImageLayer).asset).toBe("");
+  });
+
+  it("a kind+placeholder variant patch without lines does not throw", () => {
+    const filled = lolevMaster();
+    collab(filled).layers.name = { kind: "text", placeholder: "Name", x: 12 };
+    const next = structureOnlyMaster(filled);
+    expect(collab(next).layers.name).toMatchObject({
+      kind: "text", placeholder: "Name", x: 12,
+    });
+  });
+
+  it("a kind-less lines override of a fillable master layer is cleared", () => {
+    const filled = lolevMaster();
+    collab(filled).layers.name = { lines: [{ text: "Old Beer", fill: "#F3CD80", layer: "metallic" }] };
+    collab(filled).layers.wordmark = { lines: [{ text: "Collab Brand", fill: "#F3CD80", layer: "metallic" }] };
+    const next = structureOnlyMaster(filled);
+    expect((collab(next).layers.name as { lines: { text: string }[] }).lines[0].text).toBe("");
+    expect((collab(next).layers.wordmark as { lines: { text: string }[] }).lines[0].text)
+      .toBe("Collab Brand");
   });
 });

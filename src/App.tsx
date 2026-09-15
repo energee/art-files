@@ -49,7 +49,7 @@ import { exportBase as exportBaseOf, titleOf } from "@/model/resolveLayers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue,
+  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -690,10 +690,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [edited, setEdited] = useState(false);
   const editedRef = useRef(edited);
   editedRef.current = edited;
-  /** Boot-restore's resetDocument/adoptMasterAssets go through swapLoaded
-   *  and onTexture, which markDirty. While this is set they must not flip
-   *  `edited` — an untitled tab has to stay pristine so an OS-open can reuse
-   *  it, and a keystroke during the await must not be cleared afterwards. */
+  /** Boot-restore's resetDocument goes through swapLoaded, which markDirty.
+   *  While this is set they must not flip `edited` — an untitled tab has to
+   *  stay pristine so an OS-open can reuse it, and a keystroke during the
+   *  await must not be cleared afterwards. */
   const restoringRef = useRef(false);
   const markDirty = () => { setDirty(true); if (!restoringRef.current) setEdited(true); };
 
@@ -1751,9 +1751,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   }
 
   /** A new untitled tab starts on the hardcoded fixture (useHistory is sync)
-   *  and then swaps in the last master this operator applied. Queued on
-   *  openChain so a File/OS open cannot interleave resetDocument with this
-   *  swap; skipped once openedSeq is claimed or the operator has edited. */
+   *  and then swaps in the last master this operator applied — layers and
+   *  positions only; fill values and raster assets stay off so the canvas
+   *  is not the last beer. Queued on openChain so a File/OS open cannot
+   *  interleave resetDocument with this swap; skipped once openedSeq is
+   *  claimed or the operator has edited. */
   useEffect(() => {
     if (fileToOpen) return;
     let cancelled = false;
@@ -1770,16 +1772,14 @@ export const DocumentEditor = memo(function DocumentEditor({
           && !current.label.overrides
           && (current.label.enabledVariants?.length ?? 0) === 0;
         if (!untouched) return;
-        if (!masterDiff(current.master, r.master)
-          && !r.assets.texture && !r.assets.mask
-          && !Object.keys(r.assets.customImages ?? {}).length) return;
+        const nextMaster = structureOnlyMaster(r.master);
+        if (!masterDiff(current.master, nextMaster)) return;
         restoringRef.current = true;
         try {
-          resetDocument({ master: r.master, label: newLabel(r.master) });
+          resetDocument({ master: nextMaster, label: newLabel(nextMaster) });
           // Untitled restore is not an Open/Save of this document — do not
           // bind Save Master to the last file's path or a restart overwrites it.
           masterFilePath.current = null;
-          await adoptMasterAssets(r.assets);
         } finally {
           restoringRef.current = false;
         }

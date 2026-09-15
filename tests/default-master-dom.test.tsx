@@ -1,7 +1,8 @@
-// default-master-dom.test.tsx — a new untitled editor must boot onto the
-// last master this operator applied, not the hardcoded Lolev fixture.
+// default-master-dom.test.tsx — an untitled editor boots onto the last
+// master this operator applied (layers and positions), without that master's
+// fill values or raster art.
 // @vitest-environment happy-dom
-import { act, createElement } from "react";
+import { act, createElement, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
@@ -45,24 +46,68 @@ async function waitFor(pred: () => boolean, tries = 30) {
   }
 }
 
+async function mountEditor(props: ComponentProps<typeof DocumentEditor>) {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(createElement(DocumentEditor, props));
+  });
+  return {
+    container,
+    async unmount() {
+      await act(async () => { root.unmount(); });
+      container.remove();
+    },
+  };
+}
+
+function pickerText(container: HTMLElement) {
+  return container.querySelector("#master-picker")?.textContent ?? "";
+}
+
+it("loads the last master's layers without its fill values or art", async () => {
+  const base = lolevMaster();
+  const mine = {
+    ...base,
+    id: "master-mine",
+    name: "Mine",
+    layers: base.layers.map((layer) =>
+      layer.id === "name" && layer.kind === "text"
+        ? { ...layer, lines: [{ ...layer.lines[0], text: "Old Beer" }] }
+        : layer),
+  };
+  const texture = { name: "old.png", bytes: new Uint8Array([137, 80, 78, 71]) };
+  await rememberMaster(mine, "mine.master", packMaster(mine, { texture }));
+  await act(async () => { await Promise.resolve(); });
+
+  const onMeta = vi.fn();
+  const { container, unmount } = await mountEditor({ ...editorProps, onMeta });
+  try {
+    await waitFor(() => pickerText(container).includes("Mine"));
+    expect(pickerText(container)).toContain("Mine");
+    expect(pickerText(container)).not.toContain("Lolev");
+    for (let i = 0; i < 10; i++) {
+      expect(onMeta.mock.calls.some((c) => c[0]?.title === "Old Beer")).toBe(false);
+      await act(async () => { await Promise.resolve(); });
+    }
+  } finally {
+    await unmount();
+  }
+});
+
 it("shows the last applied master on a fresh untitled document", async () => {
   const mine = { ...lolevMaster(), id: "master-mine", name: "Mine" };
   await rememberMaster(mine, "mine.master", packMaster(mine, {}));
   await act(async () => { await Promise.resolve(); });
 
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
+  const { container, unmount } = await mountEditor(editorProps);
   try {
-    await act(async () => {
-      root.render(createElement(DocumentEditor, editorProps));
-    });
-    await waitFor(() => (container.querySelector("#master-picker")?.textContent ?? "").includes("Mine"));
-    expect(container.querySelector("#master-picker")?.textContent).toContain("Mine");
-    expect(container.querySelector("#master-picker")?.textContent).not.toContain("Lolev");
+    await waitFor(() => pickerText(container).includes("Mine"));
+    expect(pickerText(container)).toContain("Mine");
+    expect(pickerText(container)).not.toContain("Lolev");
   } finally {
-    await act(async () => { root.unmount(); });
-    container.remove();
+    await unmount();
   }
 });
 
@@ -76,22 +121,16 @@ it("does not replace a .label that is already queued to open", async () => {
     values: { name: [{ text: "Peregrine", fill: "#F3CD80", layer: "metallic" }] },
   }, {});
   const onMeta = vi.fn();
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
+  const { container, unmount } = await mountEditor({
+    ...editorProps,
+    onMeta,
+    fileToOpen: { seq: 1, file: new File([bytes as unknown as BlobPart], "beer.label") },
+  });
   try {
-    await act(async () => {
-      root.render(createElement(DocumentEditor, {
-        ...editorProps,
-        onMeta,
-        fileToOpen: { seq: 1, file: new File([bytes as unknown as BlobPart], "beer.label") },
-      }));
-    });
     await waitFor(() => onMeta.mock.calls.some((c) => c[0]?.title === "Peregrine"));
-    expect(container.querySelector("#master-picker")?.textContent).toContain("Lolev");
-    expect(container.querySelector("#master-picker")?.textContent).not.toContain("Mine");
+    expect(pickerText(container)).toContain("Lolev");
+    expect(pickerText(container)).not.toContain("Mine");
   } finally {
-    await act(async () => { root.unmount(); });
-    container.remove();
+    await unmount();
   }
 });

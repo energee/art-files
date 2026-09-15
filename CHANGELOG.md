@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.68] - 2026-09-15
+
+### Fixed
+
+- **Untitled tabs load the last master without the last beer.** File → New
+  Tab (`⌘N`) still opens onto the last master you applied — its layers and
+  positions — but not that master's fill values or raster art, so the canvas
+  is Untitled on bare stock instead of a previous beer name and its texture.
+
 ## [0.1.67] - 2026-09-07
 
 ### Changed
