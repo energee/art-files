@@ -3,6 +3,22 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.69] - 2026-09-17
+
+### Fixed
+
+- **A crash no longer blanks the window.** If the editor hits an error it
+  cannot recover from, it now shows the message and a Reload button instead
+  of an empty page.
+- **Opening a file after a background fault.** The desktop app no longer
+  aborts if its open-file queue was interrupted mid-launch.
+
+### Changed
+
+- Internal cleanup with no operator-visible change: a linter now guards the
+  editor's React hooks in CI, unused code and a stale package lockfile are
+  gone.
+
 ## [0.1.68] - 2026-09-15
 
 ### Fixed
