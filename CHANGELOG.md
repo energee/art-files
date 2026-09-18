@@ -16,6 +16,8 @@ binary-impacting change gets its own version before it is merged.
 - **Shared labels cannot point the app at arbitrary files.** A `.label`'s
   remembered master path is only read when it sits beside the label or
   beside a master you already registered.
+- **The desktop window enforces a content security policy.** Only the app's
+  own bundled code and assets may load; nothing from the network.
 - **A crash no longer blanks the window.** If the editor hits an error it
   cannot recover from, it now shows the message and a Reload button instead
   of an empty page.

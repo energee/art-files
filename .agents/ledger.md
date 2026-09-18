@@ -341,8 +341,9 @@ no status, no attempts, no delta.
 
 ## 2026-09-05 native-desktop-files
 - finding: [Fail fast/high] src/masters.ts:40, src/App.tsx:1114,1441,1720 — custom masters cannot resolve on desktop; masterHint reads are uncontained; export prompts twice; the platform save is spelled three times
-- status: open
-- attempts: 0/3
+- status: done
+- attempts: 1/3
+- evidence: .master read scope + dialog open landed earlier (learnings.md); PR #65 adds hintContained (tests/masters.test.ts), titled 1-of-2/2-of-2 export dialogs with cancel-aborts-pair (App.tsx buildFull/buildPsd), Help → Check for Updates… on non-macOS (AppMenu.tsx helpMenu, no harness). Desktop dialogs not exercised in the Tauri webview.
 - id: native-desktop-files
 - depends-on: none
 - read-path: src/files.ts
