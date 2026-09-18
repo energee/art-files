@@ -400,14 +400,17 @@ no status, no attempts, no delta.
 
 ## 2026-09-05 eslint-react-hooks
 - finding: [evidence/high] package.json — no ESLint; 12 eslint-disable comments unverified
-- status: open
-- attempts: 0/3
+- status: done
+- attempts: 1/3
 - id: eslint-react-hooks
 - depends-on: none
 - read-path: package.json
 - write-path: package.json
 - write-path: .github/workflows/ci.yml
 - acceptance: `npm run lint` passes in CI with react-hooks and jsx-a11y enabled
+- evidence: `npm run lint` (rules-of-hooks, exhaustive-deps, unused vars) green in ci.yml on PR #65; jsx-a11y deferred — not added
+- fixed-by: 1926299
+- verified-by: same-context fallback @ 1926299
 
 ## 2026-09-05 vision-items
 - finding: [UX/low] five delight items, each under 30 minutes: Reveal in Finder after export; drop a .master onto the window to register it; Recent Masters submenu; greyed Export explains itself via one shared gate and a tooltip; non-destructive dismissable warning alert (top-ten #10)
@@ -488,3 +491,10 @@ no status, no attempts, no delta.
 - status: open
 - attempts: 0/3
 - delta: none; needs its own plan and worktree
+
+## 2026-09-18 three-lazy-and-path2d
+- finding: [performance/high] src/App.tsx:94 three.js in the entry chunk; src/canvas/draw.ts:123 Path2D re-parsed per repaint (audit 2026-09-05 #3, #8)
+- status: done
+- attempts: 1/3
+- delta: entry chunk 1,550 kB → 898 kB (gzip 463 → 296); Path2D parses per repaint N → 0 after first; verified 3D view in browser at b8342e6
+- fixed-by: 8a3e9a3
