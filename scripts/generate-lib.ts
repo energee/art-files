@@ -661,7 +661,7 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
   for (const w of warnings) warn(w);
 
   let jobs: JobInput[];
-  let labelExtras: GenerateInput["extraImages"] = {};
+  const labelExtras: GenerateInput["extraImages"] = {};
   if (args.source.kind === "label") {
     const unpacked = unpackLabel(io.readFile(resolve(io.cwd, args.source.path)));
     if (!unpacked.label)

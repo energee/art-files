@@ -63,22 +63,7 @@ const itemStarting = (text: string) =>
   Array.from(document.querySelectorAll<HTMLElement>("button, [role=option]"))
     .find((b) => (b.getAttribute("aria-label") ?? b.textContent)?.trim().startsWith(text)) as HTMLButtonElement | undefined;
 
-function type(el: Element, value: string) {
-  const input = el as HTMLInputElement;
-  const setter = Object.getOwnPropertyDescriptor(
-    Object.getPrototypeOf(input), "value",
-  )!.set!;
-  act(() => {
-    setter.call(input, value);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  });
-}
 
-function press(el: Element, key: string) {
-  act(() => {
-    el.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
-  });
-}
 
 describe("MasterPicker", () => {
   it("names the current master on the trigger", () => {

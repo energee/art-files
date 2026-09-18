@@ -300,6 +300,7 @@ export default function TabsShell() {
         setConfirmClose(first.id);
       }));
     return () => void stopping.then((stop) => stop());
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- registered once; apply reads live state
   }, []);
 
   // Browser window close: the generic prompt is all a page may show.

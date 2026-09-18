@@ -16,7 +16,6 @@ import { parseMaster } from "../src/model/layers";
 import type {
   BarcodeLayer, ImageLayer, LabelFile, Layer, Master, QrLayer, RelativeY, TextLayer,
 } from "../src/model/layers";
-import type { GuideLines } from "../src/model/position";
 import { CENTER_X, GOLD } from "../src/layout";
 
 const byId = <T extends Layer = Layer>(m: Master, id: string) =>
@@ -25,7 +24,6 @@ const collab = (m: Master) => m.variants.find((v) => v.id === "collab")!;
 const label = (over: Partial<LabelFile> = {}): LabelFile => ({
   formatVersion: 3, masterId: "lolev", enabledVariants: [], values: {}, ...over,
 });
-const guides: GuideLines = { left: 28.68, center: CENTER_X, right: 556.44, top: 24.12, bottom: 345 };
 
 describe("mintLayerId", () => {
   it("mints kind-prefixed six-hex ids that avoid the taken set", () => {
