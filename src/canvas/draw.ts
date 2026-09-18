@@ -57,6 +57,18 @@ export interface CanvasRenderSource {
   fontCss: string;
 }
 
+/** Path2D per SVG path string, parsed once. Every keystroke repaints the
+ *  plate, and the laurel/logo path strings it carries are identical frame to
+ *  frame, so re-parsing them was the repaint's fixed cost.
+ *  ponytail: unbounded Map — the keys are the master's logo paths, not user
+ *  data; an LRU if masters ever ship thousands of distinct paths. */
+const path2dCache = new Map<string, Path2D>();
+const path2d = (d: string): Path2D => {
+  let p = path2dCache.get(d);
+  if (!p) path2dCache.set(d, (p = new Path2D(d)));
+  return p;
+};
+
 /** Art-mode CSS color for a Fill — "none" is no ink, i.e. white, the same
  *  rule as pdf/build.ts's fillColor via parseHexFill. */
 const cssFill = (fill: Fill) => (fill === "none" ? "#FFFFFF" : fill);
@@ -120,7 +132,7 @@ export function drawPlate(
     else if (r.kind === "paths") {
       c.save();
       c.translate(r.x, r.y);
-      const paths = r.paths.map((d) => new Path2D(d));
+      const paths = r.paths.map(path2d);
       // Every stroke path before any fill — the laurel-branch rule. Unlike
       // pdf-lib's stroked drawSvgPath (whose one op fills AND strokes), the
       // stroke pass only strokes: the fill pass below repaints every

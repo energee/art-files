@@ -66,6 +66,16 @@ const afterTranslate = (log: { op: string; args: unknown[] }[]) =>
   log.slice(log.findIndex((x) => x.op === "translate") + 1);
 
 describe("drawPlate", () => {
+  it("parses each SVG path into a Path2D once, not once per repaint", () => {
+    let parsed = 0;
+    vi.stubGlobal("Path2D", class { constructor(public d?: string) { parsed++; } });
+    const p = plan();
+    drawPlate(fakeCtx().ctx, p, {}, "art", FONT);
+    const afterFirst = parsed;
+    drawPlate(fakeCtx().ctx, p, {}, "art", FONT);
+    expect(parsed).toBe(afterFirst);
+  });
+
   it("mask mode with no mask bitmap floods the plate white-ink blue first", () => {
     for (const p of [plan(), plan(withPages)]) {
       const { ctx, log } = fakeCtx();
