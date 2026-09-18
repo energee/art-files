@@ -466,7 +466,7 @@ export function convertLabelV2(old: LabelFileV2, master: Master): { label: Label
     overrides[id] = overrideFrom(base, p, values[id] !== undefined);
   }
   // A per-label custom layer has no master row to override: it rides as a
-  // whole layer, which resolveLayers appends (the old composeConfig rule).
+  // whole layer, which resolveLayers appends after the master's rows.
   for (const c of op.custom) overrides[c.id] = customToLayer(c.id, c.name, true, c.locked, c, c.type, g);
   for (const k of op.unknown) warnings.push(`Override "${k}" has no v3 home; dropped.`);
   if (op.fontFamily) warnings.push("fontFamily dropped: the font is a master setting.");

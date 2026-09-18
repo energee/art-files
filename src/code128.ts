@@ -5,6 +5,7 @@
 // 2026-08-27: https://en.wikipedia.org/wiki/Code_128
 // tests/code128.test.ts pins a published reference vector (also from that
 // article) against transcription errors.
+import type { Validation } from "./validation";
 import type { UpcModules } from "./upc";
 
 // ponytail: code set B, or C only for an all-digit even-length payload —
@@ -41,7 +42,7 @@ const START_C = 105;
 const toModules = (widths: string): string =>
   [...widths].map((w, i) => (i % 2 === 0 ? "1" : "0").repeat(+w)).join("");
 
-export function validateCode128(value: string): { ok: boolean; error?: string } {
+export function validateCode128(value: string): Validation {
   if (value.length === 0) return { ok: false, error: "Code 128 value is empty." };
   if (!/^[\x20-\x7e]+$/.test(value))
     return { ok: false, error: "Code 128 supports printable ASCII only." };

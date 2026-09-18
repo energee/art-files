@@ -40,6 +40,7 @@ import {
   writeHandle,
 } from "@/filePickers";
 import { openNativeFile, readNativeFile, saveNativeFile } from "@/files";
+import { savePair, type PairOutcome } from "@/exportPair";
 import { useHistory } from "@/history";
 import type {
   ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master,
@@ -60,7 +61,7 @@ import {
   type MasterAssets,
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
-import { SHIPPED_MASTER_ID, masterIndex, rememberMaster, resolveDefaultMaster, resolveMasterById } from "@/masters";
+import { SHIPPED_MASTER_ID, hintTrusted, masterIndex, rememberMaster, resolveDefaultMaster, resolveMasterById } from "@/masters";
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
@@ -1385,6 +1386,14 @@ export const DocumentEditor = memo(function DocumentEditor({
     return true;
   }
 
+  /** What an export's outcome means to the operator: a cancel is a note, a
+   *  pair that stopped after the artwork is an error — the mask is missing. */
+  function reportExport(outcome: PairOutcome, kind: string) {
+    if (outcome === "partial") setBuildError(`Export stopped after the artwork ${kind} — the mask ${kind} was not written. Export again for both plates.`);
+    else setBuildError("");
+    if (outcome === "cancelled") setLoadNote("Export cancelled — nothing was written.");
+  }
+
   // What the tab strip, window title and export names call this document.
   const title = titleOf(drawLayers) || "Untitled";
   const exportBase = exportBaseOf(drawLayers);
@@ -1430,16 +1439,8 @@ export const DocumentEditor = memo(function DocumentEditor({
         which !== "mask" ? buildArtPdf(plan, assets) : null,
         which !== "art" ? buildMaskPdf(plan, assets) : null,
       ]);
-      // A pair is two dialogs, each titled with its place in the pair, and a
-      // cancel on the first skips the second: the printer needs both plates
-      // or neither, never an artwork PDF without its mask.
-      const pair = which === "both";
-      const artSaved = artPdf
-        ? await saveVia(artPdf, `${exportBase}.pdf`, "application/pdf", pair ? "Export 1 of 2: Artwork PDF" : undefined)
-        : true;
-      if (maskPdf && artSaved)
-        await saveVia(maskPdf, `${exportBase}-mask.pdf`, "application/pdf", pair ? "Export 2 of 2: Mask PDF" : undefined);
-      setBuildError("");
+      reportExport(await savePair(
+        (b, n, t) => saveVia(b, n, "application/pdf", t), artPdf, maskPdf, exportBase, "pdf", "PDF"), "PDF");
     } catch (err) {
       setBuildError(String(err));
     } finally {
@@ -1871,10 +1872,11 @@ export const DocumentEditor = memo(function DocumentEditor({
         const ref = unpacked.label ?? unpacked.v2!;
         const resolved = await resolveMasterById(ref.masterId, ref.masterHint, { labelPath: f.path });
         if (!resolved) {
-          setLoadError(
-            `Could not find master "${ref.masterId}"` +
-            `${ref.masterHint ? ` (last seen at ${ref.masterHint})` : ""}` +
-            ` — open its .master file once to register it.`);
+          const hint = ref.masterHint;
+          const where = !hint ? ""
+            : hintTrusted(hint, f.path) ? ` (last seen at ${hint})`
+            : ` (its remembered path ${hint} is outside this label's folder and the master library, so it was not read)`;
+          setLoadError(`Could not find master "${ref.masterId}"${where} — open its .master file once to register it.`);
           return false;
         }
         masterAssets = resolved.assets;
@@ -1992,13 +1994,8 @@ export const DocumentEditor = memo(function DocumentEditor({
         which !== "mask" ? buildPsd(plan, assets, "art", { layers: drawLayers }) : null,
         which !== "art" ? buildPsd(plan, assets, "mask", { layers: drawLayers }) : null,
       ]);
-      const pair = which === "both";
-      const artSaved = artPsd
-        ? await saveVia(artPsd, `${exportBase}.psd`, "image/vnd.adobe.photoshop", pair ? "Export 1 of 2: Artwork PSD" : undefined)
-        : true;
-      if (maskPsd && artSaved)
-        await saveVia(maskPsd, `${exportBase}-mask.psd`, "image/vnd.adobe.photoshop", pair ? "Export 2 of 2: Mask PSD" : undefined);
-      setBuildError("");
+      reportExport(await savePair(
+        (b, n, t) => saveVia(b, n, "image/vnd.adobe.photoshop", t), artPsd, maskPsd, exportBase, "psd", "PSD"), "PSD");
     } catch (err) {
       setBuildError(String(err));
     } finally {

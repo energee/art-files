@@ -235,6 +235,16 @@ describe("convertLabelV2", () => {
 });
 
 describe("convertConfigV1", () => {
+  // A legacy config omits barcodeStrokeWidth deliberately (defaults.ts's
+  // parseConfigFile). configDiff records that absence as a removal marker,
+  // and since a v3 patch cannot express removal, the converter must say so
+  // rather than silently let defaultConfig()'s value stand unannounced.
+  it("reports a key the old file left unset instead of resurrecting the default silently", () => {
+    const cfg = structuredClone(defaultConfig()) as Partial<ReturnType<typeof defaultConfig>>;
+    delete cfg.barcodeStrokeWidth;
+    const { warnings } = convertConfigV1(cfg as ReturnType<typeof defaultConfig>, false);
+    expect(warnings.some((w) => w.includes("barcodeStrokeWidth") && w.includes("unset"))).toBe(true);
+  });
   it("a default config becomes an override-free label with its filled values", () => {
     const { label, warnings } = convertConfigV1(defaultConfig(), false);
     expect(warnings).toEqual([]);

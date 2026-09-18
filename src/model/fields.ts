@@ -2,14 +2,11 @@
 // "how the value is validated" half of a field. Invalid values become
 // field-level errors upstream — the preview never crashes on them
 // (resolveLayers.ts skips applying them).
-import { validateUpc, validateEan13 } from "../upc";
-import { validateCode128 } from "../code128";
-import type { Symbology } from "../barcode";
+import { validateFor, type Symbology } from "../barcode";
+import type { Validation } from "../validation";
+export type { Validation };
 
 export type InputKind = "number" | "code";
-/** A union, not `{ ok: boolean; error?: string }`: `!r.ok` narrows to the
- *  branch that has the message, so no caller writes `r.error!`. */
-export type Validation = { ok: true } | { ok: false; error: string };
 const ok: Validation = { ok: true };
 const err = (error: string): Validation => ({ ok: false, error });
 
@@ -25,14 +22,10 @@ export function validateInput(
     return ok;
   }
   if (typeof value !== "string") return err("Expected a code value.");
-  // upc-a and an unset symbology both validate as UPC-A: the historical
-  // `upc` field predates `symbology` and was always a UPC-A code, so
-  // leaving symbology unset is a deliberate default, not a fallback.
-  const validate = opts.symbology === "ean-13" ? validateEan13
-    : opts.symbology === "code-128" ? validateCode128
-    : validateUpc;
-  const r = validate(value);
-  return r.ok ? ok : err(r.error!);
+  // An unset symbology validates as UPC-A: the historical `upc` field
+  // predates `symbology` and was always a UPC-A code, so leaving it unset
+  // is a deliberate default, not a fallback.
+  return validateFor(opts.symbology ?? "upc-a", value);
 }
 
 const SYMBOLOGY_LABEL: Record<Symbology, string> = {

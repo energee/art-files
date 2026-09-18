@@ -114,18 +114,25 @@ async function readMasterAt(path: string): Promise<ResolvedMaster | null> {
   }
 }
 
+/** Whether a label's masterHint may be read at all: beside the label, or
+ *  beside a master already in the library. App.tsx uses the same answer to
+ *  word the "could not find master" error — a hint that was never opened
+ *  must not read as a file that was looked for and missing. */
+export function hintTrusted(hint: string, labelPath?: string): boolean {
+  const roots = Object.values(masterIndex()).map((e) => dirOf(e.path));
+  if (labelPath) roots.push(dirOf(labelPath));
+  return hintContained(hint, roots);
+}
+
 export async function resolveMasterById(
   id: string, hint?: string, opts?: { labelPath?: string },
 ): Promise<ResolvedMaster | null> {
-  const index = masterIndex();
-  const entry = index[id];
+  const entry = masterIndex()[id];
   if (entry?.path) {
     const r = await readMasterAt(entry.path);
     if (r?.master.id === id) return r;
   }
-  const roots = Object.values(index).map((e) => dirOf(e.path));
-  if (opts?.labelPath) roots.push(dirOf(opts.labelPath));
-  if (hint && hintContained(hint, roots)) {
+  if (hint && hintTrusted(hint, opts?.labelPath)) {
     const r = await readMasterAt(hint);
     if (r?.master.id === id) return r;
   }

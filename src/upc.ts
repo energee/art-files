@@ -1,6 +1,7 @@
 // upc.ts — pure UPC-A + EAN-13 validation + module encoding (no DOM).
 // Validation mirrors the barcode-qr app's behavior; encoding implements the
 // standard L/R/G patterns so the PDF builder can draw bars directly.
+import type { Validation } from "./validation";
 
 /** Left-hand (odd parity) patterns for digits 0-9; right-hand = bitwise NOT. */
 const L: string[] = [
@@ -18,7 +19,7 @@ export function upcCheckDigit(first11: string): number {
   return (10 - ((odd * 3 + even) % 10)) % 10;
 }
 
-export function validateUpc(value: string): { ok: boolean; error?: string } {
+export function validateUpc(value: string): Validation {
   if (!/^\d{12}$/.test(value))
     return { ok: false, error: `"${value}" is not a valid UPC-A code (12 digits).` };
   if (upcCheckDigit(value.slice(0, 11)) !== +value[11])
@@ -74,7 +75,7 @@ export function ean13CheckDigit(first12: string): number {
   return (10 - (sum % 10)) % 10;
 }
 
-export function validateEan13(value: string): { ok: boolean; error?: string } {
+export function validateEan13(value: string): Validation {
   if (!/^\d{13}$/.test(value))
     return { ok: false, error: `"${value}" is not a valid EAN-13 code (13 digits).` };
   if (ean13CheckDigit(value.slice(0, 12)) !== +value[12])

@@ -4,6 +4,7 @@
 // below stays UPC-A-specific. Each renderer only paints; the geometry lives
 // here, so the two can't silently disagree about the one element where drift
 // means a code that no longer scans.
+import type { Validation } from "./validation";
 import type { LabelConfig } from "./types";
 import * as L from "./layout";
 import { encodeUpc, encodeEan13, validateUpc, validateEan13, type UpcModules } from "./upc";
@@ -57,7 +58,7 @@ export function quietModulesFor(symbology: Symbology): number {
  *  otherwise happily emit a garbage pattern instead of failing loudly. */
 export function validateFor(
   symbology: Symbology, value: string,
-): { ok: boolean; error?: string } {
+): Validation {
   switch (symbology) {
     case "upc-a": return validateUpc(value);
     case "ean-13": return validateEan13(value);
