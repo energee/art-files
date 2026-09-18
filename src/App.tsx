@@ -245,7 +245,7 @@ const errMsg = (err: unknown) => (err instanceof Error ? err.message : String(er
 /** What every open path hands to openProject. Each entry point converts
  *  to this shape itself (fileSource for picked Files), so the shared
  *  pipeline never branches on where the bytes came from. */
-type LabelSource = { name: string; bytes: Uint8Array };
+type LabelSource = { name: string; bytes: Uint8Array; path?: string };
 const fileSource = async (f: File): Promise<LabelSource> =>
   ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
 
@@ -1355,15 +1355,17 @@ export const DocumentEditor = memo(function DocumentEditor({
   }
   /** Save one exported file through the platform's save dialog. Tauri uses
    *  the OS dialog; supported browsers use File System Access; Safari/Firefox
-   *  keep the plain-download fallback. */
-  async function saveVia(bytes: Uint8Array, name: string, type: string) {
+   *  keep the plain-download fallback. Resolves false when the operator
+   *  cancelled, so a two-plate export can stop instead of asking again. */
+  async function saveVia(bytes: Uint8Array, name: string, type: string, title?: string): Promise<boolean> {
     const extension = name.slice(name.lastIndexOf(".") + 1);
     if (isTauri()) {
-      await saveNativeFile(bytes, {
+      const saved = await saveNativeFile(bytes, {
+        title,
         defaultPath: name,
         filter: { name: `${extension.toUpperCase()} file`, extensions: [extension] },
       });
-      return;
+      return saved !== null;
     }
     const pick = savePicker();
     if (pick) {
@@ -1374,12 +1376,13 @@ export const DocumentEditor = memo(function DocumentEditor({
           types: [{ description: `${ext.slice(1).toUpperCase()} file`, accept: { [type]: [ext] } }],
         });
         await writeHandle(handle, bytes);
-        return;
+        return true;
       } catch (err) {
-        if (isAbort(err)) return;
+        if (isAbort(err)) return false;
       }
     }
     saveBytes(bytes, name, type);
+    return true;
   }
 
   // What the tab strip, window title and export names call this document.
@@ -1427,8 +1430,15 @@ export const DocumentEditor = memo(function DocumentEditor({
         which !== "mask" ? buildArtPdf(plan, assets) : null,
         which !== "art" ? buildMaskPdf(plan, assets) : null,
       ]);
-      if (artPdf) await saveVia(artPdf, `${exportBase}.pdf`, "application/pdf");
-      if (maskPdf) await saveVia(maskPdf, `${exportBase}-mask.pdf`, "application/pdf");
+      // A pair is two dialogs, each titled with its place in the pair, and a
+      // cancel on the first skips the second: the printer needs both plates
+      // or neither, never an artwork PDF without its mask.
+      const pair = which === "both";
+      const artSaved = artPdf
+        ? await saveVia(artPdf, `${exportBase}.pdf`, "application/pdf", pair ? "Export 1 of 2: Artwork PDF" : undefined)
+        : true;
+      if (maskPdf && artSaved)
+        await saveVia(maskPdf, `${exportBase}-mask.pdf`, "application/pdf", pair ? "Export 2 of 2: Mask PDF" : undefined);
       setBuildError("");
     } catch (err) {
       setBuildError(String(err));
@@ -1859,7 +1869,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         next = { master: lolevMaster(), label: adoptLegacyCollab(r.label) };
       } else {
         const ref = unpacked.label ?? unpacked.v2!;
-        const resolved = await resolveMasterById(ref.masterId, ref.masterHint);
+        const resolved = await resolveMasterById(ref.masterId, ref.masterHint, { labelPath: f.path });
         if (!resolved) {
           setLoadError(
             `Could not find master "${ref.masterId}"` +
@@ -1920,7 +1930,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       try {
         if (path) {
           const name = await basename(path);
-          if (await openWithRetry(async () => ({ name, bytes: await readNativeFile(path) }))) {
+          if (await openWithRetry(async () => ({ name, bytes: await readNativeFile(path), path }))) {
             projectPath.current = path;
             setFilePath(path);
           }
@@ -1982,8 +1992,12 @@ export const DocumentEditor = memo(function DocumentEditor({
         which !== "mask" ? buildPsd(plan, assets, "art", { layers: drawLayers }) : null,
         which !== "art" ? buildPsd(plan, assets, "mask", { layers: drawLayers }) : null,
       ]);
-      if (artPsd) await saveVia(artPsd, `${exportBase}.psd`, "image/vnd.adobe.photoshop");
-      if (maskPsd) await saveVia(maskPsd, `${exportBase}-mask.psd`, "image/vnd.adobe.photoshop");
+      const pair = which === "both";
+      const artSaved = artPsd
+        ? await saveVia(artPsd, `${exportBase}.psd`, "image/vnd.adobe.photoshop", pair ? "Export 1 of 2: Artwork PSD" : undefined)
+        : true;
+      if (maskPsd && artSaved)
+        await saveVia(maskPsd, `${exportBase}-mask.psd`, "image/vnd.adobe.photoshop", pair ? "Export 2 of 2: Mask PSD" : undefined);
       setBuildError("");
     } catch (err) {
       setBuildError(String(err));

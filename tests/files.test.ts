@@ -34,6 +34,16 @@ describe("native file saving", () => {
     expect(writeFile).toHaveBeenCalledWith("/labels/Labradorite.label", bytes);
   });
 
+  it("passes a dialog title through when one is given", async () => {
+    save.mockResolvedValue("/out/a.pdf");
+    await saveNativeFile(new Uint8Array([1]), {
+      title: "Export 1 of 2: Artwork PDF", defaultPath: "a.pdf", filter: { name: "PDF file", extensions: ["pdf"] },
+    });
+    expect(save).toHaveBeenCalledWith({
+      title: "Export 1 of 2: Artwork PDF", defaultPath: "a.pdf", filters: [{ name: "PDF file", extensions: ["pdf"] }],
+    });
+  });
+
   it("reuses an existing Save path without opening another dialog", async () => {
     const bytes = new Uint8Array([4, 5, 6]);
 

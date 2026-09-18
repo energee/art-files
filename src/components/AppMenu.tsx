@@ -267,6 +267,21 @@ async function macApplicationMenu(
   return menu;
 }
 
+/** Non-macOS desktops have no application menu, so Check for Updates… gets
+ *  a Help menu of its own — otherwise Windows/Linux operators have no way
+ *  to retry after a silent launch-time check fails offline. */
+async function helpMenu(api: MenuApi, resources: NativeResource[], checkForUpdates: () => void) {
+  const updater = await api.MenuItem.new({
+    id: "check-for-updates",
+    text: UPDATE_ITEM_TEXT.check,
+    action: checkForUpdates,
+  });
+  resources.push(updater);
+  const menu = await api.Submenu.new({ id: "help-menu", text: "Help", items: [updater] });
+  resources.push(menu);
+  return menu;
+}
+
 async function nativeEntry(
   api: MenuApi,
   entry: MenuEntry,
@@ -369,6 +384,8 @@ function useNativeMenu(
         // File first and receive their window-local menu bar normally.
         if (isMacOS()) {
           roots.unshift(await macApplicationMenu(api, resources, () => updateRef.current()));
+        } else {
+          roots.push(await helpMenu(api, resources, () => updateRef.current()));
         }
         const menu = await api.Menu.new({ id: "label-lab-menu", items: roots });
         resources.push(menu);
@@ -408,7 +425,7 @@ function useNativeMenu(
 
   useEffect(() => {
     const item = items?.get("check-for-updates");
-    if (!item) return; // non-macOS menus have no updater item
+    if (!item) return; // the native menu has not been installed yet
     const text = updateInstalled ? UPDATE_ITEM_TEXT.restart : UPDATE_ITEM_TEXT.check;
     if (appliedState.current.get("check-for-updates:text") === text) return;
     appliedState.current.set("check-for-updates:text", text);

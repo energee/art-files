@@ -80,6 +80,28 @@ function lastMasterId(): string {
  *  on the way in, see model/files.ts). */
 export type ResolvedMaster = { master: Master; assets: MasterAssets };
 
+/** Directory of a native path, with either separator; "" for a bare name. */
+const dirOf = (p: string): string => {
+  const n = p.replace(/\\/g, "/");
+  const i = n.lastIndexOf("/");
+  return i < 0 ? "" : n.slice(0, i);
+};
+
+/** True when `hint` sits lexically inside one of `roots` — no `..`
+ *  segments, same separator-normalized prefix followed by `/`. A .label is
+ *  shared, so its `masterHint` is untrusted: the only paths it may make the
+ *  app read are beside the label itself or beside a master this operator
+ *  already registered. Everything else falls through to the cache, the
+ *  shipped fixture, or the "open its .master file once" error. */
+export function hintContained(hint: string, roots: string[]): boolean {
+  const h = hint.replace(/\\/g, "/");
+  if (h.split("/").includes("..")) return false;
+  return roots.some((r) => {
+    const root = r.replace(/\\/g, "/").replace(/\/+$/, "");
+    return root !== "" && h.startsWith(root + "/");
+  });
+}
+
 async function readMasterAt(path: string): Promise<ResolvedMaster | null> {
   if (!isTauri()) return null; // browser: no filesystem paths to read
   try {
@@ -92,13 +114,18 @@ async function readMasterAt(path: string): Promise<ResolvedMaster | null> {
   }
 }
 
-export async function resolveMasterById(id: string, hint?: string): Promise<ResolvedMaster | null> {
-  const entry = masterIndex()[id];
+export async function resolveMasterById(
+  id: string, hint?: string, opts?: { labelPath?: string },
+): Promise<ResolvedMaster | null> {
+  const index = masterIndex();
+  const entry = index[id];
   if (entry?.path) {
     const r = await readMasterAt(entry.path);
     if (r?.master.id === id) return r;
   }
-  if (hint) {
+  const roots = Object.values(index).map((e) => dirOf(e.path));
+  if (opts?.labelPath) roots.push(dirOf(opts.labelPath));
+  if (hint && hintContained(hint, roots)) {
     const r = await readMasterAt(hint);
     if (r?.master.id === id) return r;
   }

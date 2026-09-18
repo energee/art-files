@@ -4,6 +4,8 @@
 // scope allows reading .label and .master paths.
 
 export type NativeSaveOptions = {
+  /** Dialog window title (desktop only) — "Export 1 of 2: Artwork PDF". */
+  title?: string;
   defaultPath: string;
   filter: { name: string; extensions: string[] };
   /** Reuse a path from an earlier Save As instead of prompting again. */
@@ -21,6 +23,7 @@ export async function saveNativeFile(
   if (!path) {
     const { save } = await import("@tauri-apps/plugin-dialog");
     path = await save({
+      ...(options.title ? { title: options.title } : {}),
       defaultPath: options.defaultPath,
       filters: [options.filter],
     }) ?? undefined;

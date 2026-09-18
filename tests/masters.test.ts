@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { masterIndex, rememberMaster, resolveMasterById, SHIPPED_MASTER_ID } from "../src/masters";
+import { hintContained, masterIndex, rememberMaster, resolveMasterById, SHIPPED_MASTER_ID } from "../src/masters";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { parseMasterJson, serializeMaster } from "../src/model/files";
 
@@ -121,5 +121,30 @@ describe("master library index", () => {
     expect(await mod.resolveMasterById("master-requested", "/tmp/stale.master")).toBeNull();
     vi.doUnmock("@tauri-apps/api/core");
     vi.doUnmock("@/files");
+  });
+
+  // A .label is shared, so its masterHint is untrusted: only a path beside
+  // the label or beside an already-registered master may be read.
+  it("reads a hint only when it sits beside the label or a registered master", async () => {
+    vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+    const reads: string[] = [];
+    vi.doMock("@/files", () => ({
+      readNativeFile: async (p: string) => { reads.push(p); throw new Error("not found"); },
+    }));
+    const mod = await import("../src/masters");
+    await mod.resolveMasterById("x", "/Users/me/../../etc/secret.master", { labelPath: "/Users/me/beers/a.label" });
+    await mod.resolveMasterById("x", "/elsewhere/x.master", { labelPath: "/Users/me/beers/a.label" });
+    expect(reads).toEqual([]);
+    await mod.resolveMasterById("x", "/Users/me/beers/masters/x.master", { labelPath: "/Users/me/beers/a.label" });
+    expect(reads).toEqual(["/Users/me/beers/masters/x.master"]);
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/files");
+  });
+  it("hintContained is lexical and separator-agnostic", () => {
+    expect(hintContained("/a/b/x.master", ["/a/b"])).toBe(true);
+    expect(hintContained("C:\\labels\\x.master", ["C:/labels"])).toBe(true);
+    expect(hintContained("/a/bc/x.master", ["/a/b"])).toBe(false);
+    expect(hintContained("/a/b/../c/x.master", ["/a/b"])).toBe(false);
+    expect(hintContained("/a/b/x.master", [""])).toBe(false);
   });
 });

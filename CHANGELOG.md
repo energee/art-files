@@ -7,6 +7,15 @@ binary-impacting change gets its own version before it is merged.
 
 ### Fixed
 
+- **Export asks in order and stops on cancel.** Export PDFs and Export PSDs
+  title their two save dialogs "1 of 2: Artwork" and "2 of 2: Mask", and
+  cancelling the first skips the second so a printer never gets one plate
+  without the other.
+- **Check for Updates on Windows and Linux.** A Help menu carries it; before,
+  only the macOS application menu had it.
+- **Shared labels cannot point the app at arbitrary files.** A `.label`'s
+  remembered master path is only read when it sits beside the label or
+  beside a master you already registered.
 - **A crash no longer blanks the window.** If the editor hits an error it
   cannot recover from, it now shows the message and a Reload button instead
   of an empty page.
