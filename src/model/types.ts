@@ -5,7 +5,7 @@
 import type { LabelConfig } from "../types";
 import type { DeepPartial } from "./merge";
 
-export type FieldKind = "text" | "number" | "image" | "code" | "select" | "toggle";
+type FieldKind = "text" | "number" | "image" | "code" | "select" | "toggle";
 export type FieldValue = string | number | boolean;
 
 /** What a .label may fill. `path` binds the value into the resolved
@@ -28,7 +28,7 @@ export interface FieldDecl {
   symbology?: "upc-a" | "ean-13" | "code-128";
 }
 
-export interface Guides {
+interface Guides {
   left: number | null; center: "auto" | null; right: number | null;
   top: number | null; bottom: number | null;   // null = guide removed
 }

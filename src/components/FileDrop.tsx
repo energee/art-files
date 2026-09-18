@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 // squares keep both black and white artwork visible, whatever the theme.
 // Exported: FieldList's image-field wells (the collab logo slots, now
 // ordinary fields) reuse it for the same loaded-thumbnail presentation.
-export const CHECKER =
+const CHECKER =
   "repeating-conic-gradient(#c9c9c9 0% 25%, #f2f2f2 0% 50%) 0 0 / 12px 12px";
 
 /** Marks a field drop target. AssetDropOverlay's window listener yields to

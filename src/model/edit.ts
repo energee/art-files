@@ -610,7 +610,7 @@ export interface Doc { master: Master; label: LabelFile }
  *  `choices` and `title` are here for the same reason: the vocabulary a filler
  *  picks from, and the caption it is picked under, describe the slot rather
  *  than one label's answer to it (docs/plans/choice-input.md). */
-export const MASTER_PATHS: ReadonlySet<string> =
+const MASTER_PATHS: ReadonlySet<string> =
   new Set(["placeholder", "input", "min", "max", "symbology", "suffix",
     "choices", "title"]);
 

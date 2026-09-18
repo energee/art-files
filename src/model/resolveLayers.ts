@@ -48,7 +48,7 @@ function applyValue(l: Layer, v: LayerValue): Result {
 }
 
 /** Lines as one plain string: runs joined with their markers stripped. */
-export const plainText = (lines: TextLine[]): string =>
+const plainText = (lines: TextLine[]): string =>
   lines.map((l) => parseRuns(l).map((r) => r.text).join("")).join(" ");
 
 /** What the tab strip and export names call the document: the `name` text

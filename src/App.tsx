@@ -171,7 +171,7 @@ const newLabel = (master: Master): LabelFile =>
 /** Mint a new image asset id. One spelling of the format, so every drop
  *  site mints ids a saved project's `ImageLayer.asset` can always resolve
  *  against a customImages entry here, regardless of which added it. */
-export function mintCustomAssetId(): string {
+function mintCustomAssetId(): string {
   return `custom-asset-${crypto.randomUUID().slice(0, 8)}`;
 }
 
@@ -179,7 +179,7 @@ export function mintCustomAssetId(): string {
  *  draws the slot's art (under PAGE_ART_ID) while the slot holds any, and
  *  nothing otherwise — a layer the master switched off is not in `layers`
  *  at all, so switching Background off is what the old eye did. */
-export function withPageArt(layers: Layer[], hasTexture: boolean, hasMask: boolean): Layer[] {
+function withPageArt(layers: Layer[], hasTexture: boolean, hasMask: boolean): Layer[] {
   return layers.map((l) => {
     if (l.kind !== "image" || (l.role !== "background" && l.role !== "mask")) return l;
     const has = l.role === "background" ? hasTexture : hasMask;

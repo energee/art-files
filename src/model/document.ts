@@ -8,7 +8,7 @@ import { deepMerge, type DeepPartial } from "./merge";
 import { resolve } from "./resolve";
 import { expandFormat, fieldRefs } from "./format";
 
-export function visibleFieldsOf(master: Master, enabledVariants: string[]): FieldDecl[] {
+function visibleFieldsOf(master: Master, enabledVariants: string[]): FieldDecl[] {
   const out = [...master.fields];
   for (const id of enabledVariants) {
     const v = master.variants.find((x) => x.id === id);
@@ -405,7 +405,7 @@ export function resetOverride(master: Master, target: EditTarget, path: string):
  *  when `target` names a variant the master doesn't declare. Exported so
  *  App.tsx's removeFieldDoc can look a field up by id before removing it
  *  (to bench its current value — see removeFieldDoc's own doc comment). */
-export function fieldsAt(master: Master, target: EditTarget): FieldDecl[] | undefined {
+function fieldsAt(master: Master, target: EditTarget): FieldDecl[] | undefined {
   if (target === "master") return master.fields;
   return master.variants.find((v) => v.id === target.variant)?.fields;
 }
@@ -424,7 +424,7 @@ export function fieldsAt(master: Master, target: EditTarget): FieldDecl[] | unde
  *  fillable" check (StyleProperties.tsx's MakeFillable, via App's
  *  `declaredPaths`) can use the exact same set the model refuses against —
  *  see that file for the one deliberate trade-off this rule accepts. */
-export function declaredFieldPaths(master: Master): Set<string> {
+function declaredFieldPaths(master: Master): Set<string> {
   const out = new Set(master.fields.map((f) => f.path));
   for (const v of master.variants) for (const f of v.fields) out.add(f.path);
   return out;
@@ -452,36 +452,6 @@ export function addField(master: Master, target: EditTarget, decl: FieldDecl): M
   if (target === "master") return { ...master, fields: [...master.fields, decl] };
   const variants = master.variants.map((v) =>
     v.id === target.variant ? { ...v, fields: [...v.fields, decl] } : v);
-  return { ...master, variants };
-}
-
-/** Rename one field's label at `target`, in place in its declared list — the
- *  inline edit TargetFields offers once a field is unlocked (spec: "no
- *  read-only fields" — a field ships locked, but never permanently frozen).
- *  Returns a new master, or `master` itself when the id isn't declared at
- *  `target` or is already called `label`. */
-export function renameField(
-  master: Master, target: EditTarget, fieldId: string, label: string,
-): Master {
-  const existing = fieldsAt(master, target);
-  const cur = existing?.find((f) => f.id === fieldId);
-  if (!cur || cur.label === label) return master;
-  if (target === "master")
-    return { ...master, fields: master.fields.map((f) => (f.id === fieldId ? { ...f, label } : f)) };
-  const variants = master.variants.map((v) =>
-    v.id === target.variant ? { ...v, fields: v.fields.map((f) => (f.id === fieldId ? { ...f, label } : f)) } : v);
-  return { ...master, variants };
-}
-
-/** Drop one field from `target`'s declared list — TargetFields' remove,
- *  offered once a field is unlocked, same gate as renameField above. Returns
- *  a new master, or `master` itself when the id isn't declared at `target`. */
-export function removeField(master: Master, target: EditTarget, fieldId: string): Master {
-  const existing = fieldsAt(master, target);
-  if (!existing?.some((f) => f.id === fieldId)) return master;
-  if (target === "master") return { ...master, fields: master.fields.filter((f) => f.id !== fieldId) };
-  const variants = master.variants.map((v) =>
-    v.id === target.variant ? { ...v, fields: v.fields.filter((f) => f.id !== fieldId) } : v);
   return { ...master, variants };
 }
 
@@ -600,7 +570,7 @@ export function applyMaterializedLayerEdit(
  *  layer, which lives only in a `customLayers` array and is still edited as
  *  ordinary config. `PanelRow.materialized` (model/panel.ts) is this same set,
  *  read once per row. */
-export function materializedLayerIds(master: Master): Set<string> {
+function materializedLayerIds(master: Master): Set<string> {
   const out = new Set<string>();
   for (const l of master.layers) if (l.kind) out.add(l.id);
   for (const v of master.variants) for (const l of v.layers ?? []) if (l.kind) out.add(l.id);
@@ -619,7 +589,7 @@ export function materializedLayerIds(master: Master): Set<string> {
  *  `kind`-bearing layer anywhere (a LEGACY per-label layer is not this
  *  function's business — its removal stays an ordinary `customLayers` array
  *  edit). */
-export function removeLayer(master: Master, layerId: string): Master {
+function removeLayer(master: Master, layerId: string): Master {
   const dropOverride = (v: Variant): Variant =>
     layerId in v.layerOverrides
       ? { ...v, layerOverrides: Object.fromEntries(
@@ -655,7 +625,7 @@ export function removeLayer(master: Master, layerId: string): Master {
  *  CustomLayer it materializes, so writing it into `cfg.customLayers` would
  *  be recomposed away. Returns `master` unchanged when the id isn't
  *  materialized anywhere, or already carries that name. */
-export function renameLayer(master: Master, layerId: string, name: string): Master {
+function renameLayer(master: Master, layerId: string, name: string): Master {
   return applyMaterializedLayerEdit(master, layerId, { name });
 }
 
