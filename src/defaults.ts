@@ -83,7 +83,7 @@ export function defaultConfig(): LabelConfig {
     qrLayer: "metallic",
     qrStrokeLayer: DEFAULT_STROKE_LAYER,
     // The collab block's styling ships on every label; whether it DRAWS is
-    // the Collab variant's business (model/lolev.ts), not a flag here. Most
+    // the Collab variant's business (model/lolevLayers.ts), not a flag here. Most
     // releases are not collabs, so the variant is off and the resolver
     // disables these three layers.
     collabLead: { fill: GOLD, layer: "metallic", strokeLayer: DEFAULT_STROKE_LAYER },

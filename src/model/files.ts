@@ -7,8 +7,7 @@ import { FONT_FAMILIES } from "../fontCatalog";
 // label.json is handed back as `v2` because it needs the master to convert;
 // a v1 config.json comes back raw for parseConfigFile + convertConfigV1) and
 // saving always writes v3. The legacy '{' sniff for JSON-only .master files
-// stays. Replaces model/masterfile.ts, model/labelfile.ts and the v2 half of
-// src/labelfile.ts once the app is rewired.
+// stays. Replaces the v1 .master packer and the v2 half of src/labelfile.ts.
 import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from "fflate";
 import type { LabelFile, Master } from "./layers";
 import { parseMaster } from "./layers";

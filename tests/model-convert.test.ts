@@ -8,7 +8,7 @@ import {
   parseMaster, type BarcodeLayer, type ImageLayer, type Layer, type TextLayer,
 } from "../src/model/layers";
 import { lolevMaster as lolevV3 } from "../src/model/lolevLayers";
-import { lolevMaster as lolevV1 } from "../src/model/lolev";
+import { lolevMaster as lolevV1 } from "./fixtures/lolevV1";
 import type { LabelFileV2 } from "../src/model/types";
 import { defaultConfig, KEYLINE } from "../src/defaults";
 import { GOLD } from "../src/layout";

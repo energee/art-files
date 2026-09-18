@@ -9,8 +9,8 @@ import {
   masterNameFromFile, packLabel, packMaster, parseLabel, serializeLabel, serializeMaster, unpackLabel, unpackMaster,
 } from "../src/model/files";
 import { lolevMaster as lolevV3 } from "../src/model/lolevLayers";
-import { lolevMaster as lolevV1 } from "../src/model/lolev";
-import { serializeMaster as serializeMasterV1 } from "../src/model/masterfile";
+import { lolevMaster as lolevV1 } from "./fixtures/lolevV1";
+const serializeMasterV1 = (m: unknown) => JSON.stringify(m, null, 2);
 import { packLabel as packLabelV1, packLabelV2 } from "../src/labelfile";
 import { defaultConfig } from "../src/defaults";
 import type { LabelFile } from "../src/model/layers";

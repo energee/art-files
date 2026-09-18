@@ -22,7 +22,6 @@ import { lolevMaster } from "./lolevLayers";
 import { parseDescription } from "../description";
 import { segments } from "./format";
 import { defaultConfig } from "../defaults";
-import { configDiff } from "./document";
 
 // --- Old config keys → element patches ------------------------------------
 
@@ -66,6 +65,42 @@ const PATH_LAYER: Record<string, string> = {
 
 const isPlain = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
+
+// `null` is the removal marker configDiff emits for a key present in `base`
+// but absent from `cfg` (the one real case: a legacy config's unset
+// barcodeStrokeWidth — see defaults.ts's parseConfigFile comments). It has
+// to be `null`, not `undefined`: JSON.stringify drops undefined-valued keys
+// entirely, which would silently lose the removal. DeepPartial<LabelConfig>
+// has no room for this marker, so the spot that writes it is cast.
+const REMOVE: null = null;
+
+/** Everything in `cfg` that differs from `base`, deep for plain objects,
+ *  wholesale for arrays and leaves. A key present in `base` but absent from
+ *  `cfg` is recorded as REMOVE, not skipped, so the v3 converter can see
+ *  the removal (see REMOVE above).
+ *  {} = no deviations. */
+function configDiff(base: LabelConfig, cfg: LabelConfig): DeepPartial<LabelConfig> {
+  return (diffValue(base, cfg, true) ?? {}) as DeepPartial<LabelConfig>;
+}
+
+/** configDiff's engine, over any two plain values rather than two whole
+ *  LabelConfigs — `undefined` when they match. */
+function diffValue(b: unknown, c: unknown, cHasKey: boolean): unknown {
+  if (!cHasKey) return REMOVE;
+  if (isPlain(b) && isPlain(c)) {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(b)) {
+      const d = diffValue(b[k], c[k], k in c);
+      if (d !== undefined) out[k] = d;
+    }
+    for (const k of Object.keys(c)) {
+      if (k in b) continue;
+      out[k] = c[k];
+    }
+    return Object.keys(out).length ? out : undefined;
+  }
+  return JSON.stringify(b) === JSON.stringify(c) ? undefined : c;
+}
 
 /** Sort an old DeepPartial<LabelConfig> into per-layer patches. Keys with no
  *  v3 home come back in `unknown` for the caller to consume (custom-layer
@@ -322,7 +357,7 @@ export function convertMasterV1(old: MasterV1): { master: Master; warnings: stri
     if (c) layers.push(c);
   }
   // ponytail: a legacy raw `defaults.customLayers` array (pre-Task-5b
-  // masters) appends after the built-ins, as resolve() used to place it.
+  // masters) appends after the built-ins, where the v1 resolver placed it.
   for (const c of dp.custom) {
     if (ids.has(c.id)) { warnings.push(`Legacy custom layer "${c.id}" collides with a layer id; dropped.`); continue; }
     layers.push(customToLayer(c.id, c.name, true, c.locked, c, c.type, g));

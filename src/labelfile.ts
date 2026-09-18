@@ -56,7 +56,7 @@ const CUSTOM_DIR = "custom";
 /** Write the asset roles and per-id custom images into `zip` — the ONE
  *  spelling of the container's asset convention (role dirs, custom/<id>/,
  *  level-0 image entries), shared by both .label packers and .master's
- *  packMaster (model/masterfile.ts), so the two containers cannot drift. */
+ *  packMaster (model/files.ts), so the two containers cannot drift. */
 export function packAssets(zip: Zippable, assets: LabelAssets): void {
   for (const [role, dir] of Object.entries(ROLE_DIRS) as [FixedAssetRole, string][]) {
     const a = assets[role];

@@ -1,7 +1,7 @@
 // Per-kind field validation (spec: FieldDecl). A field is "what editor the
 // filler gets and how the value is validated"; this is the validation half.
 // Invalid values become field-level errors upstream — the preview never crashes
-// on them (resolve.ts skips applying them).
+// on them (resolveLayers.ts skips applying them).
 import type { FieldDecl, FieldValue } from "./types";
 import { validateUpc, validateEan13 } from "../upc";
 import { validateCode128 } from "../code128";
