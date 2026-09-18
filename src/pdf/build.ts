@@ -115,7 +115,7 @@ type TextAt = { x: number; y: number; size: number; font: PDFFont; rotate?: Rota
 /** Filled glyph copies bridging the interior of the intended outside stroke,
  *  stamped on the shared ring (bridgeOffsets owns the radius and the sampling
  *  rule; the canvas backend stamps the same one). pdf.js's path-font renderer
- *  (required in rasterWorker, where DOM fonts do not exist) can leave the
+ *  (what scripts/golden-diff.mts falls back to without poppler) can leave the
  *  inner half of a wide text stroke unpainted around tiny glyph features even
  *  though PDF/Poppler renders the true stroke solid; these copies fill only
  *  that interior. The width is the live per-element stroke — no

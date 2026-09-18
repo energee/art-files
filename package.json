@@ -12,7 +12,6 @@
     "desktop:release-config": "node scripts/configure-updater.mjs",
     "prepare": "git config core.hooksPath .githooks || true",
     "preview": "vite preview",
-    "parity": "vite --open /parity.html",
     "strokecap": "vite --open /strokecap.html",
     "test": "vitest run",
     "lint": "eslint . --max-warnings 0",

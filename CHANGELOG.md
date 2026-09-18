@@ -16,8 +16,8 @@ binary-impacting change gets its own version before it is merged.
 ### Changed
 
 - Internal cleanup with no operator-visible change: a linter now guards the
-  editor's React hooks in CI, unused code and a stale package lockfile are
-  gone.
+  editor's React hooks in CI; unused code, the retired canvas-vs-PDF parity
+  harness, and a stale package lockfile are gone.
 
 ## [0.1.68] - 2026-09-15
 
