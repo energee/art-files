@@ -475,3 +475,16 @@ no status, no attempts, no delta.
 - review follow-ups: page art on a master without that role layer is an error; a batch is validated, read and built whole before the first write; job overrides are type-checked per field against the target layer; FormatSet and the values/label source are closed unions
 - evidence: 1015 tests pass (41 in tests/generate.test.ts incl. --label, --set, exit 2, tint, new-form page art, legacy config + collab, half-write, mistyped override); tsc clean; goldens unchanged; 0.1.64 release metadata gate passes. No release published.
 - open: no non-default font-family test — the catalog ships only Poppins; add one when a second family lands
+
+## 2026-09-17 repo-cleanup-pass
+- finding: [YAGNI/medium] repo-wide — stale pnpm lockfile, unused Collapsible/planFrom/renameField/removeField, 20 internal-only exports, no linter behind 16 eslint-disable comments, no React error boundary, two mutex unwraps in main.rs
+- status: done
+- attempts: 1/3
+- delta: knip unused exports 61 → 0 real (2 false positives: `Rgba` via import() type, DESIGN_DPI/OUTPUT_DPI let); lint 52 → 0; tests 1036 → 1042 green; PR #65 (0.1.69)
+- learning: see learnings.md 2026-09-17 lines
+
+## 2026-09-17 app-tsx-split
+- finding: [SRP/high] src/App.tsx:1 — 2424 lines; react-hooks compiler rules (refs, immutability, set-state-in-effect) flag ~35 sites that need hooks extracted
+- status: open
+- attempts: 0/3
+- delta: none; needs its own plan and worktree
