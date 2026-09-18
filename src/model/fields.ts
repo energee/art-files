@@ -1,48 +1,38 @@
-// Per-kind field validation (spec: FieldDecl). A field is "what editor the
-// filler gets and how the value is validated"; this is the validation half.
-// Invalid values become field-level errors upstream — the preview never crashes
-// on them (resolveLayers.ts skips applying them).
-import type { FieldDecl, FieldValue } from "./types";
+// Input validation for a layer's declared input (`number` or `code`): the
+// "how the value is validated" half of a field. Invalid values become
+// field-level errors upstream — the preview never crashes on them
+// (resolveLayers.ts skips applying them).
 import { validateUpc, validateEan13 } from "../upc";
 import { validateCode128 } from "../code128";
 import type { Symbology } from "../barcode";
 
-type Result = { ok: boolean; error?: string };
-const ok: Result = { ok: true };
-const err = (error: string): Result => ({ ok: false, error });
+export type InputKind = "number" | "code";
+/** A union, not `{ ok: boolean; error?: string }`: `!r.ok` narrows to the
+ *  branch that has the message, so no caller writes `r.error!`. */
+export type Validation = { ok: true } | { ok: false; error: string };
+const ok: Validation = { ok: true };
+const err = (error: string): Validation => ({ ok: false, error });
 
-export function validateField(decl: FieldDecl, value: FieldValue): Result {
-  switch (decl.kind) {
-    case "text":
-      return typeof value === "string" ? ok : err("Expected text.");
-    case "number": {
-      const n = typeof value === "number" ? value : Number(value);
-      if (typeof value === "boolean" || Number.isNaN(n)) return err("Expected a number.");
-      if (decl.min !== undefined && n < decl.min) return err(`Must be at least ${decl.min}.`);
-      if (decl.max !== undefined && n > decl.max) return err(`Must be at most ${decl.max}.`);
-      return ok;
-    }
-    case "image":
-      return typeof value === "string" ? ok : err("Expected an image.");
-    case "code": {
-      if (typeof value !== "string") return err("Expected a code value.");
-      // upc-a and an unset symbology both validate as UPC-A: the historical
-      // `upc` field predates `symbology` and was always a UPC-A code, so
-      // leaving symbology unset is a deliberate default, not a fallback.
-      const validate = decl.symbology === "ean-13" ? validateEan13
-        : decl.symbology === "code-128" ? validateCode128
-        : validateUpc;
-      const r = validate(value);
-      return r.ok ? ok : err(r.error!);
-    }
-    case "select":
-      return decl.options?.includes(String(value))
-        ? ok : err(`Must be one of: ${decl.options?.join(", ") ?? ""}.`);
-    case "toggle":
-      return typeof value === "boolean" ? ok : err("Expected on/off.");
-    default:
-      return err(`Unknown field kind "${decl.kind}".`);
+export function validateInput(
+  input: InputKind, value: string | number,
+  opts: { min?: number; max?: number; symbology?: Symbology } = {},
+): Validation {
+  if (input === "number") {
+    const n = typeof value === "number" ? value : Number(value);
+    if (Number.isNaN(n)) return err("Expected a number.");
+    if (opts.min !== undefined && n < opts.min) return err(`Must be at least ${opts.min}.`);
+    if (opts.max !== undefined && n > opts.max) return err(`Must be at most ${opts.max}.`);
+    return ok;
   }
+  if (typeof value !== "string") return err("Expected a code value.");
+  // upc-a and an unset symbology both validate as UPC-A: the historical
+  // `upc` field predates `symbology` and was always a UPC-A code, so
+  // leaving symbology unset is a deliberate default, not a fallback.
+  const validate = opts.symbology === "ean-13" ? validateEan13
+    : opts.symbology === "code-128" ? validateCode128
+    : validateUpc;
+  const r = validate(value);
+  return r.ok ? ok : err(r.error!);
 }
 
 const SYMBOLOGY_LABEL: Record<Symbology, string> = {
@@ -53,7 +43,7 @@ const SYMBOLOGY_LABEL: Record<Symbology, string> = {
  *  module width, or null while it's fine. Fires under 0.72pt (0.01in) — the
  *  rule of thumb for common laser/CCD scanners on a curved metal can, below
  *  which adjacent bars start to blur together as the label wraps. Purely
- *  advisory: it never blocks saving or drawing, unlike validateField's
+ *  advisory: it never blocks saving or drawing, unlike validateInput's
  *  errors — the layer still draws (see plan.ts's custom-barcode item), just
  *  at a width a scanner may reject. */
 export function minModuleWarning(symbology: Symbology, moduleW: number): string | null {

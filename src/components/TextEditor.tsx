@@ -26,7 +26,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CaseUpper, Bold, Droplet, Heading as HeaderIcon } from "lucide-react";
 import type { Style } from "@/types";
 import type { Choice, Symbology, TextLine } from "@/model/layers";
-import { validateField } from "@/model/fields";
+import { validateInput, type Validation } from "@/model/fields";
 import { markRun, parseRuns } from "@/description";
 import { GOLD } from "@/layout";
 import { cn } from "@/lib/utils";
@@ -736,9 +736,9 @@ function ChoiceField(props: TextEditorProps & { choices: Choice[] }) {
   const value = lines[0]?.text ?? "";
   // Only a layer that declares an input has anything to validate against; a
   // style is free text, and its vocabulary is a suggestion, not a rule.
-  const check: { ok: boolean; error?: string } = value === "" || !input
+  const check: Validation = value === "" || !input
     ? { ok: true }
-    : validateField({ id, label, kind: input, path: id, min, max, symbology }, value);
+    : validateInput(input, value, { min, max, symbology });
 
   return (
     <div className="space-y-1">
@@ -756,15 +756,15 @@ function ChoiceField(props: TextEditorProps & { choices: Choice[] }) {
 }
 
 /** A number or code box: one plain line in, one plain line out, validated
- *  by model/fields.ts through a FieldDecl built from the layer's own hints
- *  so the code/number rules have one spelling. */
+ *  by model/fields.ts's validateInput from the layer's own hints so the
+ *  code/number rules have one spelling. */
 function PlainField(props: TextEditorProps & { input: "number" | "code" }) {
   const { id, label, title, lines, onChange, base, input, min, max, symbology, suffix } = props;
   const value = lines[0]?.text ?? "";
   // Blank is "not filled yet", not "invalid" — only judge a value that's there.
-  const check: { ok: boolean; error?: string } = value === ""
+  const check: Validation = value === ""
     ? { ok: true }
-    : validateField({ id, label, kind: input, path: id, min, max, symbology }, value);
+    : validateInput(input, value, { min, max, symbology });
   return (
     <div className="space-y-1">
       <Label htmlFor={id} className={LABEL_CLASS}>{title ?? label}</Label>

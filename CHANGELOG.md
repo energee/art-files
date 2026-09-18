@@ -15,6 +15,9 @@ binary-impacting change gets its own version before it is merged.
 
 ### Changed
 
+- **Open notes are notes, not errors.** Converter warnings and "value(s)
+  benched" notes after opening a file now show in the amber warning strip
+  with a dismiss button instead of the red error strip.
 - **Faster first paint.** The 3D can view loads on first use instead of
   with the editor, cutting the startup bundle by about 40%.
 - Internal cleanup with no operator-visible change: a linter now guards the

@@ -9,7 +9,7 @@
 import type { Layer, LayerValue, Master, TextLayer, TextLine } from "./layers";
 import { uppercaseOf } from "./layers";
 import { deepMerge, type DeepPartial } from "./merge";
-import { validateField } from "./fields";
+import { validateInput } from "./fields";
 import { expandFormat, fieldRefs } from "./format";
 import { parseRuns } from "../description";
 import { machineName } from "../qr";
@@ -31,18 +31,16 @@ function applyValue(l: Layer, v: LayerValue): Result {
     const lines = widenValue(l, v);
     if (!Array.isArray(lines)) return { error: "Expected text." };
     if (l.input) {
-      // ponytail: validateField still speaks FieldDecl; build one on the fly.
-      const r = validateField({ id: l.id, label: l.name, kind: l.input, path: "",
-        min: l.min, max: l.max, symbology: l.symbology }, plainText(lines));
-      if (!r.ok) return { error: r.error! };
+      const r = validateInput(l.input, plainText(lines), { min: l.min, max: l.max, symbology: l.symbology });
+      if (!r.ok) return { error: r.error };
     }
     return { layer: { ...l, lines } };
   }
   if (typeof v !== "string") return { error: l.kind === "image" ? "Expected an image." : "Expected a code value." };
   if (l.kind === "image") return { layer: { ...l, asset: v } };
   if (l.kind === "barcode") {
-    const r = validateField({ id: l.id, label: l.name, kind: "code", path: "", symbology: l.symbology }, v);
-    if (!r.ok) return { error: r.error! };
+    const r = validateInput("code", v, { symbology: l.symbology });
+    if (!r.ok) return { error: r.error };
   }
   return { layer: { ...l, value: v } };
 }

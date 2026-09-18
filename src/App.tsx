@@ -198,7 +198,9 @@ function withPageArt(layers: Layer[], hasTexture: boolean, hasMask: boolean): La
  *  "default" plus its own colour classes rather than the destructive variant,
  *  which paints its descendant text through a selector on Alert itself that
  *  a className override can't reach. */
-function HeaderAlert({ children, tone = "destructive" }: { children: React.ReactNode; tone?: "destructive" | "warning" }) {
+function HeaderAlert({ children, tone = "destructive", onDismiss }: {
+  children: React.ReactNode; tone?: "destructive" | "warning"; onDismiss?: () => void;
+}) {
   return (
     <Alert
       variant={tone === "warning" ? "default" : "destructive"}
@@ -209,6 +211,9 @@ function HeaderAlert({ children, tone = "destructive" }: { children: React.React
     >
       <AlertDescription className={cn("text-xs", tone === "warning" && "text-warning-text")}>
         {children}
+        {onDismiss && (
+          <button type="button" aria-label="Dismiss" onClick={onDismiss} className="ml-2 opacity-70 hover:opacity-100">×</button>
+        )}
       </AlertDescription>
     </Alert>
   );
@@ -545,6 +550,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [buildError, setBuildError] = useState("");
   const [renderError, setRenderError] = useState("");
   const [loadError, setLoadError] = useState("");
+  // Non-fatal open notes (converter warnings, benched values): a warning, not
+  // an error — dismissible, and replaced by the next open.
+  const [loadNote, setLoadNote] = useState("");
   // Divider position reported by PreviewCompare (% of width showing
   // white-ink), so the View menu can check off whichever end it sits at.
   const [split, setSplit] = useState(0);
@@ -1647,7 +1655,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   function tryParseMaster(bytes: Uint8Array): { master: Master; assets: MasterAssets } | null {
     try {
       const r = unpackMaster(bytes);
-      if (r.warnings.length) setLoadError("Note: " + r.warnings.join(" · "));
+      if (r.warnings.length) setLoadNote(r.warnings.join(" · "));
       return r;
     } catch (err) {
       setLoadError(`Could not open master: ${errMsg(err)}`);
@@ -1687,7 +1695,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     const notes: string[] = [];
     if (dropped.values.length) notes.push(`${dropped.values.length} value(s) benched: ${dropped.values.join(", ")}`);
     if (dropped.variants.length) notes.push(`${dropped.variants.length} variant(s) benched: ${dropped.variants.join(", ")}`);
-    setLoadError(notes.length ? "Note: " + notes.join(" · ") : "");
+    setLoadError("");
+    setLoadNote(notes.join(" · "));
   }
 
   /** File → Open Master…: register the newly opened master in the library
@@ -1888,7 +1897,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       ]);
       setDirty(false);
       setEdited(false);
-      setLoadError(notes.length ? "Note: " + notes.join(" · ") : "");
+      setLoadError("");
+      setLoadNote(notes.join(" · "));
       return true;
     } catch (err) {
       if (!opts?.quiet) setLoadError(`Could not open ${f.name}: ${errMsg(err)}`);
@@ -2199,6 +2209,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           }} />}
           {blocked && <HeaderAlert>{blockedWhy}</HeaderAlert>}
           {loadError && <HeaderAlert>{loadError}</HeaderAlert>}
+          {loadNote && <HeaderAlert tone="warning" onDismiss={() => setLoadNote("")}>{loadNote}</HeaderAlert>}
           {(buildError || renderError) && <HeaderAlert>{buildError || renderError}</HeaderAlert>}
           {resolveWarnings.length > 0 && <HeaderAlert tone="warning">{resolveWarnings.join(" · ")}</HeaderAlert>}
           {/* Open Master's fallback — see masterInput/openMasterPicker. */}
