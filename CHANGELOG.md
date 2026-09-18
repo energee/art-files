@@ -15,6 +15,8 @@ binary-impacting change gets its own version before it is merged.
 
 ### Changed
 
+- **Faster first paint.** The 3D can view loads on first use instead of
+  with the editor, cutting the startup bundle by about 40%.
 - Internal cleanup with no operator-visible change: a linter now guards the
   editor's React hooks in CI; unused code, the retired canvas-vs-PDF parity
   harness, the pdf.js golden-diff fallback, and a stale package lockfile are

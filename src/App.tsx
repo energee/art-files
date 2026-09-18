@@ -27,7 +27,7 @@
 import { RenderSettings as RenderSettingsFields } from "@/components/RenderSettings";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { MasterSaveReview } from "@/components/MasterSaveReview";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, memo, useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
 import type { Fill } from "@/types";
@@ -91,7 +91,11 @@ import { CommandMenu, type Command } from "@/components/CommandMenu";
 import { AppMenu } from "@/components/AppMenu";
 import { PreviewCompare, SNAP_PT, type PreviewCompareHandle, type SnapLines, type SnapMark } from "@/components/PreviewCompare";
 import { Rulers } from "@/components/Rulers";
-import { CanView, type CanViewHandle } from "@/components/CanView";
+import type { CanViewHandle } from "@/components/CanView";
+// three.js is the largest thing in the bundle and most sessions never leave
+// the 2D view, so the 3D view (and three.js with it) loads on first use —
+// the same split pdf/build.ts and psd/build.ts already get via import().
+const CanView = lazy(() => import("@/components/CanView").then((m) => ({ default: m.CanView })));
 import {
   DEFAULT_MARGIN_PT, nextRulerUnit, sizeLabel,
   type GuideAxis, type ManualGuide, type RulerUnit,
@@ -2277,6 +2281,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onRenderError={setRenderError} />
             </div>
             {active && viewMode !== "2d" && (
+              <Suspense fallback={null}>
               <CanView ref={canView}
                 initialView={carried.current}
                 onZoom={(z, pan) => {
@@ -2287,6 +2292,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 mode={cans === 4 ? "pack" : "can"} cornerRadiusPct={render.cornerRadius}
                 edgeSoftnessPct={render.edgeSoftness}
                 onRenderError={setRenderError} />
+              </Suspense>
             )}
             </div>
             {viewMode === "2d" && (
