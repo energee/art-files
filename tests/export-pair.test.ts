@@ -12,7 +12,7 @@ const fake = (answers: boolean[]) => {
 describe("savePair", () => {
   it("titles the two dialogs and saves both", async () => {
     const { save, calls } = fake([true, true]);
-    expect(await savePair(save, a, m, "Lager", "pdf", "PDF")).toBe("saved");
+    expect(await savePair(save, a, m, "Lager", "pdf")).toBe("saved");
     expect(calls).toEqual([
       { name: "Lager.pdf", title: "Export 1 of 2: Artwork PDF" },
       { name: "Lager-mask.pdf", title: "Export 2 of 2: Mask PDF" },
@@ -20,15 +20,15 @@ describe("savePair", () => {
   });
   it("a cancel on the first dialog skips the second", async () => {
     const { save, calls } = fake([false]);
-    expect(await savePair(save, a, m, "Lager", "pdf", "PDF")).toBe("cancelled");
+    expect(await savePair(save, a, m, "Lager", "pdf")).toBe("cancelled");
     expect(calls).toHaveLength(1);
   });
   it("a cancel on the second dialog is partial — the artwork is on disk", async () => {
-    expect(await savePair(fake([true, false]).save, a, m, "Lager", "psd", "PSD")).toBe("partial");
+    expect(await savePair(fake([true, false]).save, a, m, "Lager", "psd")).toBe("partial");
   });
   it("a single plate has no title and cancels cleanly", async () => {
     const { save, calls } = fake([false]);
-    expect(await savePair(save, null, m, "Lager", "pdf", "PDF")).toBe("cancelled");
+    expect(await savePair(save, null, m, "Lager", "pdf")).toBe("cancelled");
     expect(calls).toEqual([{ name: "Lager-mask.pdf", title: undefined }]);
   });
 });

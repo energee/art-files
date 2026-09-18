@@ -57,15 +57,15 @@ export interface CanvasRenderSource {
   fontCss: string;
 }
 
-/** Path2D per SVG path string, parsed once. Every keystroke repaints the
- *  plate, and the laurel/logo path strings it carries are identical frame to
- *  frame, so re-parsing them was the repaint's fixed cost.
- *  ponytail: unbounded Map — the keys are the master's logo paths, not user
- *  data; an LRU if masters ever ship thousands of distinct paths. */
-const path2dCache = new Map<string, Path2D>();
-const path2d = (d: string): Path2D => {
-  let p = path2dCache.get(d);
-  if (!p) path2dCache.set(d, (p = new Path2D(d)));
+/** Path2D per logo path array, parsed once: every keystroke repaints the
+ *  plate with the same arrays logo.ts memoized, so re-parsing them was the
+ *  repaint's fixed cost. Keyed by the array so each entry lives exactly as
+ *  long as logo.ts's own cache entry — a resize drag's intermediate sizes
+ *  do not pin native paths forever. */
+const path2dCache = new WeakMap<readonly string[], Path2D[]>();
+const path2ds = (paths: readonly string[]): Path2D[] => {
+  let p = path2dCache.get(paths);
+  if (!p) path2dCache.set(paths, (p = paths.map((d) => new Path2D(d))));
   return p;
 };
 
@@ -132,7 +132,7 @@ export function drawPlate(
     else if (r.kind === "paths") {
       c.save();
       c.translate(r.x, r.y);
-      const paths = r.paths.map(path2d);
+      const paths = path2ds(r.paths);
       // Every stroke path before any fill — the laurel-branch rule. Unlike
       // pdf-lib's stroked drawSvgPath (whose one op fills AND strokes), the
       // stroke pass only strokes: the fill pass below repaints every

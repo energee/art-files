@@ -94,6 +94,17 @@ listener reads live state) is the majority. The replacement is one small
 Phases 2–8 are sequential in that order (each one shrinks the surface the
 next one has to read), but 1 can run in parallel with any of them.
 
+## Folded in from the PR #65 simplify pass
+
+- `loadError` + `note` are two strings always written as a pair; phase 7
+  (`useProjectFiles`) should replace them with one
+  `notice: { tone: "error" | "warning"; text: string } | null`.
+- `resolveMasterById` returns `null` without saying why, so App.tsx calls
+  `hintTrusted` again to word the error; phase 7 should return the reason
+  (`"missing" | "untrusted-hint"`) and make `hintTrusted` internal.
+- Phase 1 should enable the compiler rules globally with a `src/App.tsx`-only
+  override, rather than the current global off switch in `eslint.config.js`.
+
 ## Not in scope
 
 - Splitting the JSX into more components. The render tree is already

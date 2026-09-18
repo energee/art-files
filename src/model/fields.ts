@@ -11,17 +11,16 @@ const ok: Validation = { ok: true };
 const err = (error: string): Validation => ({ ok: false, error });
 
 export function validateInput(
-  input: InputKind, value: string | number,
+  input: InputKind, value: string,
   opts: { min?: number; max?: number; symbology?: Symbology } = {},
 ): Validation {
   if (input === "number") {
-    const n = typeof value === "number" ? value : Number(value);
-    if (Number.isNaN(n)) return err("Expected a number.");
+    const n = Number(value);
+    if (value.trim() === "" || Number.isNaN(n)) return err("Expected a number.");
     if (opts.min !== undefined && n < opts.min) return err(`Must be at least ${opts.min}.`);
     if (opts.max !== undefined && n > opts.max) return err(`Must be at most ${opts.max}.`);
     return ok;
   }
-  if (typeof value !== "string") return err("Expected a code value.");
   // An unset symbology validates as UPC-A: the historical `upc` field
   // predates `symbology` and was always a UPC-A code, so leaving it unset
   // is a deliberate default, not a fallback.

@@ -66,31 +66,23 @@ const PATH_LAYER: Record<string, string> = {
 const isPlain = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
 
-// `null` is the removal marker configDiff emits for a key present in `base`
-// but absent from `cfg` (the one real case: a legacy config's unset
-// barcodeStrokeWidth — see defaults.ts's parseConfigFile comments). It has
-// to be `null`, not `undefined`: JSON.stringify drops undefined-valued keys
-// entirely, which would silently lose the removal. DeepPartial<LabelConfig>
-// has no room for this marker, so the spot that writes it is cast.
-const REMOVE: null = null;
-
 /** Everything in `cfg` that differs from `base`, deep for plain objects,
  *  wholesale for arrays and leaves. A key present in `base` but absent from
- *  `cfg` is recorded as REMOVE, not skipped, so the v3 converter can see
- *  the removal (see REMOVE above).
+ *  `cfg` (a legacy config's unset barcodeStrokeWidth — defaults.ts) comes
+ *  back as `null`, not skipped, so elementPatches can report the removal;
+ *  null rather than undefined because JSON.stringify would drop the key.
  *  {} = no deviations. */
 function configDiff(base: LabelConfig, cfg: LabelConfig): DeepPartial<LabelConfig> {
-  return (diffValue(base, cfg, true) ?? {}) as DeepPartial<LabelConfig>;
+  return (diffValue(base, cfg) ?? {}) as DeepPartial<LabelConfig>;
 }
 
-/** configDiff's engine, over any two plain values rather than two whole
- *  LabelConfigs — `undefined` when they match. */
-function diffValue(b: unknown, c: unknown, cHasKey: boolean): unknown {
-  if (!cHasKey) return REMOVE;
+/** configDiff's engine, over any two plain values — `undefined` when they match. */
+function diffValue(b: unknown, c: unknown): unknown {
   if (isPlain(b) && isPlain(c)) {
     const out: Record<string, unknown> = {};
     for (const k of Object.keys(b)) {
-      const d = diffValue(b[k], c[k], k in c);
+      if (!(k in c)) { out[k] = null; continue; }
+      const d = diffValue(b[k], c[k]);
       if (d !== undefined) out[k] = d;
     }
     for (const k of Object.keys(c)) {

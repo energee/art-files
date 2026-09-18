@@ -8,10 +8,10 @@ export type Save = (bytes: Uint8Array, name: string, title?: string) => Promise<
 export type PairOutcome = "saved" | "cancelled" | "partial";
 
 export async function savePair(
-  save: Save, art: Uint8Array | null, mask: Uint8Array | null,
-  base: string, ext: string, kind: string,
+  save: Save, art: Uint8Array | null, mask: Uint8Array | null, base: string, ext: string,
 ): Promise<PairOutcome> {
   const pair = !!(art && mask);
+  const kind = ext.toUpperCase();
   if (art && !await save(art, `${base}.${ext}`, pair ? `Export 1 of 2: Artwork ${kind}` : undefined))
     return "cancelled";
   if (mask && !await save(mask, `${base}-mask.${ext}`, pair ? `Export 2 of 2: Mask ${kind}` : undefined))

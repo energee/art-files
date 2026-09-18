@@ -254,29 +254,28 @@ async function macApplicationMenu(
     resources.push(item);
     return item;
   }));
-  const updater = await api.IconMenuItem.new({
-    id: "check-for-updates",
-    text: UPDATE_ITEM_TEXT.check,
-    action: checkForUpdates,
-    icon: "Refresh",
-  });
-  resources.push(updater);
-  items.splice(1, 0, updater);
+  items.splice(1, 0, await updaterItem(api, resources, checkForUpdates, "Refresh"));
   const menu = await api.Submenu.new({ id: "application-menu", text: "Label Lab", items });
   resources.push(menu);
   return menu;
+}
+
+/** The one Check for Updates… item; its id is what the relabel effect
+ *  below looks up, so both menus mint it here. */
+async function updaterItem(
+  api: MenuApi, resources: NativeResource[], checkForUpdates: () => void, icon?: NativeIconName,
+) {
+  const options = { id: "check-for-updates", text: UPDATE_ITEM_TEXT.check, action: checkForUpdates };
+  const item = await (icon ? api.IconMenuItem.new({ ...options, icon }) : api.MenuItem.new(options));
+  resources.push(item);
+  return item;
 }
 
 /** Non-macOS desktops have no application menu, so Check for Updates… gets
  *  a Help menu of its own — otherwise Windows/Linux operators have no way
  *  to retry after a silent launch-time check fails offline. */
 async function helpMenu(api: MenuApi, resources: NativeResource[], checkForUpdates: () => void) {
-  const updater = await api.MenuItem.new({
-    id: "check-for-updates",
-    text: UPDATE_ITEM_TEXT.check,
-    action: checkForUpdates,
-  });
-  resources.push(updater);
+  const updater = await updaterItem(api, resources, checkForUpdates);
   const menu = await api.Submenu.new({ id: "help-menu", text: "Help", items: [updater] });
   resources.push(menu);
   return menu;

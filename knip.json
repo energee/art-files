@@ -15,6 +15,5 @@
   ],
   "ignoreBinaries": [
     "pdftoppm"
-  ],
-  "ignoreDependencies": []
+  ]
 }

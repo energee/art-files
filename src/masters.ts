@@ -81,11 +81,7 @@ function lastMasterId(): string {
 export type ResolvedMaster = { master: Master; assets: MasterAssets };
 
 /** Directory of a native path, with either separator; "" for a bare name. */
-const dirOf = (p: string): string => {
-  const n = p.replace(/\\/g, "/");
-  const i = n.lastIndexOf("/");
-  return i < 0 ? "" : n.slice(0, i);
-};
+const dirOf = (p: string): string => p.replace(/\\/g, "/").split("/").slice(0, -1).join("/");
 
 /** True when `hint` sits lexically inside one of `roots` — no `..`
  *  segments, same separator-normalized prefix followed by `/`. A .label is
@@ -118,8 +114,8 @@ async function readMasterAt(path: string): Promise<ResolvedMaster | null> {
  *  beside a master already in the library. App.tsx uses the same answer to
  *  word the "could not find master" error — a hint that was never opened
  *  must not read as a file that was looked for and missing. */
-export function hintTrusted(hint: string, labelPath?: string): boolean {
-  const roots = Object.values(masterIndex()).map((e) => dirOf(e.path));
+export function hintTrusted(hint: string, labelPath?: string, index = masterIndex()): boolean {
+  const roots = Object.values(index).map((e) => dirOf(e.path));
   if (labelPath) roots.push(dirOf(labelPath));
   return hintContained(hint, roots);
 }
@@ -127,12 +123,13 @@ export function hintTrusted(hint: string, labelPath?: string): boolean {
 export async function resolveMasterById(
   id: string, hint?: string, opts?: { labelPath?: string },
 ): Promise<ResolvedMaster | null> {
-  const entry = masterIndex()[id];
+  const index = masterIndex();
+  const entry = index[id];
   if (entry?.path) {
     const r = await readMasterAt(entry.path);
     if (r?.master.id === id) return r;
   }
-  if (hint && hintTrusted(hint, opts?.labelPath)) {
+  if (hint && hintTrusted(hint, opts?.labelPath, index)) {
     const r = await readMasterAt(hint);
     if (r?.master.id === id) return r;
   }

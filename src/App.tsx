@@ -551,9 +551,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [buildError, setBuildError] = useState("");
   const [renderError, setRenderError] = useState("");
   const [loadError, setLoadError] = useState("");
-  // Non-fatal open notes (converter warnings, benched values): a warning, not
-  // an error — dismissible, and replaced by the next open.
-  const [loadNote, setLoadNote] = useState("");
+  // Non-fatal notes (converter warnings, benched values, a cancelled export):
+  // a warning, not an error — dismissible, and replaced by the next one.
+  const [note, setNote] = useState("");
   // Divider position reported by PreviewCompare (% of width showing
   // white-ink), so the View menu can check off whichever end it sits at.
   const [split, setSplit] = useState(0);
@@ -835,7 +835,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   const family = fontFamilyOf(master);
   useEffect(() => {
     let cancelled = false;
-    loadLabelFaces(family)
+    void loadLabelFaces(family)
       .catch((error) => { if (!cancelled) setBuildError(String(error)); });
     return () => { cancelled = true; };
   }, [family]);
@@ -1389,9 +1389,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** What an export's outcome means to the operator: a cancel is a note, a
    *  pair that stopped after the artwork is an error — the mask is missing. */
   function reportExport(outcome: PairOutcome, kind: string) {
-    if (outcome === "partial") setBuildError(`Export stopped after the artwork ${kind} — the mask ${kind} was not written. Export again for both plates.`);
-    else setBuildError("");
-    if (outcome === "cancelled") setLoadNote("Export cancelled — nothing was written.");
+    setBuildError(outcome === "partial"
+      ? `Export stopped after the artwork ${kind} — the mask ${kind} was not written. Export again for both plates.` : "");
+    if (outcome === "cancelled") setNote("Export cancelled — nothing was written.");
   }
 
   // What the tab strip, window title and export names call this document.
@@ -1440,7 +1440,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         which !== "art" ? buildMaskPdf(plan, assets) : null,
       ]);
       reportExport(await savePair(
-        (b, n, t) => saveVia(b, n, "application/pdf", t), artPdf, maskPdf, exportBase, "pdf", "PDF"), "PDF");
+        (b, n, t) => saveVia(b, n, "application/pdf", t), artPdf, maskPdf, exportBase, "pdf"), "PDF");
     } catch (err) {
       setBuildError(String(err));
     } finally {
@@ -1666,7 +1666,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   function tryParseMaster(bytes: Uint8Array): { master: Master; assets: MasterAssets } | null {
     try {
       const r = unpackMaster(bytes);
-      if (r.warnings.length) setLoadNote(r.warnings.join(" · "));
+      if (r.warnings.length) setNote(r.warnings.join(" · "));
       return r;
     } catch (err) {
       setLoadError(`Could not open master: ${errMsg(err)}`);
@@ -1707,7 +1707,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (dropped.values.length) notes.push(`${dropped.values.length} value(s) benched: ${dropped.values.join(", ")}`);
     if (dropped.variants.length) notes.push(`${dropped.variants.length} variant(s) benched: ${dropped.variants.join(", ")}`);
     setLoadError("");
-    setLoadNote(notes.join(" · "));
+    setNote(notes.join(" · "));
   }
 
   /** File → Open Master…: register the newly opened master in the library
@@ -1910,7 +1910,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       setDirty(false);
       setEdited(false);
       setLoadError("");
-      setLoadNote(notes.join(" · "));
+      setNote(notes.join(" · "));
       return true;
     } catch (err) {
       if (!opts?.quiet) setLoadError(`Could not open ${f.name}: ${errMsg(err)}`);
@@ -1995,7 +1995,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         which !== "art" ? buildPsd(plan, assets, "mask", { layers: drawLayers }) : null,
       ]);
       reportExport(await savePair(
-        (b, n, t) => saveVia(b, n, "image/vnd.adobe.photoshop", t), artPsd, maskPsd, exportBase, "psd", "PSD"), "PSD");
+        (b, n, t) => saveVia(b, n, "image/vnd.adobe.photoshop", t), artPsd, maskPsd, exportBase, "psd"), "PSD");
     } catch (err) {
       setBuildError(String(err));
     } finally {
@@ -2220,7 +2220,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           }} />}
           {blocked && <HeaderAlert>{blockedWhy}</HeaderAlert>}
           {loadError && <HeaderAlert>{loadError}</HeaderAlert>}
-          {loadNote && <HeaderAlert tone="warning" onDismiss={() => setLoadNote("")}>{loadNote}</HeaderAlert>}
+          {note && <HeaderAlert tone="warning" onDismiss={() => setNote("")}>{note}</HeaderAlert>}
           {(buildError || renderError) && <HeaderAlert>{buildError || renderError}</HeaderAlert>}
           {resolveWarnings.length > 0 && <HeaderAlert tone="warning">{resolveWarnings.join(" · ")}</HeaderAlert>}
           {/* Open Master's fallback — see masterInput/openMasterPicker. */}

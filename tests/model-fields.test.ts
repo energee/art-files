@@ -8,8 +8,8 @@ describe("validateInput", () => {
     expect(validateInput("number", "abc").ok).toBe(false);
   });
   it("enforces number min/max and names the bound", () => {
-    expect(validateInput("number", 6.2, { min: 0, max: 20 }).ok).toBe(true);
-    const r = validateInput("number", 21, { min: 0, max: 20 });
+    expect(validateInput("number", "6.2", { min: 0, max: 20 }).ok).toBe(true);
+    const r = validateInput("number", "21", { min: 0, max: 20 });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/20/);
   });

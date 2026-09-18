@@ -126,20 +126,24 @@ export function hasPdftoppm(): boolean {
 }
 
 /** Page 1 through pdftoppm. Poppler 26 writes nothing to stdout for a `-`
- *  root, so this goes through a scratch directory. Throws a pointed error
- *  when poppler is missing rather than the raw ENOENT. */
-export function rasterizePdf(pdf: Uint8Array, dpi: number): Raster {
-  if (!hasPdftoppm())
-    throw new Error("pdftoppm is not on PATH — install poppler (brew install poppler / apt-get install poppler-utils)");
+ *  root, so this goes through a scratch directory. A missing binary is the
+ *  spawn's own ENOENT, reworded — no probe spawn before the real one. */
+function rasterizePdf(pdf: Uint8Array, dpi: number): Raster {
   const dir = mkdtempSync(join(tmpdir(), "golden-diff-"));
   try {
     const input = join(dir, "in.pdf");
     writeFileSync(input, pdf);
-    execFileSync(
-      "pdftoppm",
-      ["-r", String(dpi), "-f", "1", "-l", "1", "-png", "-singlefile", input, join(dir, "out")],
-      { stdio: ["ignore", "ignore", "pipe"] },
-    );
+    try {
+      execFileSync(
+        "pdftoppm",
+        ["-r", String(dpi), "-f", "1", "-l", "1", "-png", "-singlefile", input, join(dir, "out")],
+        { stdio: ["ignore", "ignore", "pipe"] },
+      );
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT")
+        throw new Error("pdftoppm is not on PATH — install poppler (brew install poppler / apt-get install poppler-utils)");
+      throw e;
+    }
     return rasterOf(PNG.sync.read(readFileSync(join(dir, "out.png"))));
   } finally {
     rmSync(dir, { recursive: true, force: true });
