@@ -16,7 +16,7 @@ export function validateInput(
 ): Validation {
   if (input === "number") {
     const n = Number(value);
-    if (value.trim() === "" || Number.isNaN(n)) return err("Expected a number.");
+    if (Number.isNaN(n)) return err("Expected a number.");
     if (opts.min !== undefined && n < opts.min) return err(`Must be at least ${opts.min}.`);
     if (opts.max !== undefined && n > opts.max) return err(`Must be at most ${opts.max}.`);
     return ok;
