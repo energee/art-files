@@ -3,9 +3,8 @@
 // diff to zero, a moved element diffs to red where it was and where it is
 // with a bbox spanning both, a size mismatch counts the new strip as changed,
 // the review PNG decodes at the union's size, and the CLI's one-line summary
-// plus exit code hold. The PDF tests run through whichever rasterizer the
-// script would pick here; the tests that name pdftoppm explicitly skip
-// (loudly) when poppler is not installed, so CI without it stays green.
+// plus exit code hold. PDFs rasterize through poppler's pdftoppm, which is
+// required (ci.yml installs poppler-utils; docs/goldens.md for dev machines).
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -17,15 +16,8 @@ import {
   diffPdfs, diffPngs, diffRasters, hasPdftoppm, parseArgs, summaryLine, type Raster,
 } from "../scripts/golden-diff.mjs";
 
-const pdftoppm = hasPdftoppm();
-if (!pdftoppm) {
-  console.warn(
-    "golden-diff.test: pdftoppm is not on PATH — skipping the poppler-specific tests; " +
-      "the PDF diffs below run through the pdfjs fallback instead.",
-  );
-}
-// The pdfjs fallback loads pdf.worker in-process on first use (~10-15s).
-const SLOW = 90_000;
+if (!hasPdftoppm())
+  throw new Error("golden-diff.test: pdftoppm is not on PATH — install poppler (see docs/goldens.md)");
 
 /** A 200x100pt page with one 40x40pt black square whose left edge is at `x`
  *  pt, 30pt up from the bottom — so at 72 dpi it covers raster x..x+40,
@@ -130,7 +122,7 @@ describe("diffPdfs", () => {
     const png = decode(r.png);
     expect([png.width, png.height]).toEqual([200, 100]);
     expect(r.total).toBe(200 * 100);
-  }, SLOW);
+  });
 
   it("a moved square changes pixels inside a bbox spanning old and new positions", async () => {
     const r = await diffPdfs(await squarePdf(50), await squarePdf(80), { dpi: 72 });
@@ -149,37 +141,21 @@ describe("diffPdfs", () => {
     expect(px(png, 110, 50)).toEqual(RED); // where it is
     expect(px(png, 85, 50)).toEqual(FADED_BLACK); // the overlap, unchanged ink
     expect(px(png, 10, 10)).toEqual(WHITE);
-  }, SLOW);
+  });
 
   it("scales the raster with dpi", async () => {
     const a = await squarePdf(50);
     const r = await diffPdfs(a, a, { dpi: 144 });
     expect([r.width, r.height]).toEqual([400, 200]);
-  }, SLOW);
+  });
 
-  it.skipIf(!pdftoppm)("renders through pdftoppm at the default 600 dpi when asked for it", async () => {
+  it("renders at the default 600 dpi", async () => {
     const a = await squarePdf(50);
-    const warnings: string[] = [];
-    const r = await diffPdfs(a, a, { rasterizer: "pdftoppm", warn: (m) => warnings.push(m) });
-    expect(warnings).toEqual([]);
+    const r = diffPdfs(a, a);
     expect(r.changed).toBe(0);
     // 200x100pt at 600 dpi.
     expect([r.width, r.height]).toEqual([1667, 834]);
   });
-
-  it.skipIf(!pdftoppm)("warns and falls back only when poppler is missing — not when it is present", async () => {
-    const warnings: string[] = [];
-    await diffPdfs(await squarePdf(50), await squarePdf(50), { dpi: 72, rasterizer: "auto", warn: (m) => warnings.push(m) });
-    expect(warnings).toEqual([]);
-  });
-
-  it("renders through the pdfjs fallback and agrees with the moved-square geometry", async () => {
-    const r = await diffPdfs(await squarePdf(50), await squarePdf(80), { dpi: 72, rasterizer: "pdfjs" });
-    expect([r.width, r.height]).toEqual([200, 100]);
-    expect(Math.abs(r.changed - 2 * 30 * 40)).toBeLessThanOrEqual(2 * 2 * 40);
-    expect(Math.abs(r.bbox!.x - 50)).toBeLessThanOrEqual(1);
-    expect(Math.abs(r.bbox!.w - 70)).toBeLessThanOrEqual(2);
-  }, SLOW);
 });
 
 describe("summaryLine and parseArgs", () => {
@@ -192,16 +168,16 @@ describe("summaryLine and parseArgs", () => {
 
   it("accepts --flag value and --flag=value, defaults dpi 600 / threshold 0 / auto", () => {
     expect(parseArgs(["o.pdf", "n.pdf", "d.png"])).toEqual({
-      oldPath: "o.pdf", newPath: "n.pdf", outPath: "d.png", dpi: 600, threshold: 0, rasterizer: "auto",
+      oldPath: "o.pdf", newPath: "n.pdf", outPath: "d.png", dpi: 600, threshold: 0,
     });
-    expect(parseArgs(["o.pdf", "n.pdf", "d.png", "--dpi", "300", "--threshold=5", "--rasterizer", "pdfjs"]))
-      .toMatchObject({ dpi: 300, threshold: 5, rasterizer: "pdfjs" });
+    expect(parseArgs(["o.pdf", "n.pdf", "d.png", "--dpi", "300", "--threshold=5"]))
+      .toMatchObject({ dpi: 300, threshold: 5 });
   });
 
   it("rejects malformed invocations", () => {
     expect(() => parseArgs(["o.pdf", "n.pdf"])).toThrow(/usage/);
     expect(() => parseArgs(["o.pdf", "n.pdf", "d.png", "--dpi", "lots"])).toThrow(/--dpi/);
-    expect(() => parseArgs(["o.pdf", "n.pdf", "d.png", "--rasterizer", "ghostscript"])).toThrow(/--rasterizer/);
+    expect(() => parseArgs(["o.pdf", "n.pdf", "d.png", "--rasterizer", "pdfjs"])).toThrow(/unknown flag/);
     expect(() => parseArgs(["o.pdf", "n.pdf", "d.png", "--bogus", "1"])).toThrow(/unknown flag/);
   });
 });
@@ -214,7 +190,7 @@ describe("CLI", () => {
     return { status: p.status, stdout: p.stdout, stderr: p.stderr };
   };
 
-  it.skipIf(!pdftoppm)("prints the summary, writes the PNG, and exits 1 past the threshold", async () => {
+  it("prints the summary, writes the PNG, and exits 1 past the threshold", async () => {
     const dir = mkdtempSync(join(tmpdir(), "golden-diff-test-"));
     try {
       const oldPdf = join(dir, "old.pdf"), newPdf = join(dir, "new.pdf"), out = join(dir, "diff.png");
@@ -249,5 +225,5 @@ describe("CLI", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  }, SLOW);
+  });
 });

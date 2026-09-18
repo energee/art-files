@@ -17,7 +17,8 @@ binary-impacting change gets its own version before it is merged.
 
 - Internal cleanup with no operator-visible change: a linter now guards the
   editor's React hooks in CI; unused code, the retired canvas-vs-PDF parity
-  harness, and a stale package lockfile are gone.
+  harness, the pdf.js golden-diff fallback, and a stale package lockfile are
+  gone. Golden diffs now require poppler's `pdftoppm`.
 
 ## [0.1.68] - 2026-09-15
 
