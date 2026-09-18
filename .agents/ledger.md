@@ -498,3 +498,10 @@ no status, no attempts, no delta.
 - attempts: 1/3
 - delta: entry chunk 1,550 kB → 898 kB (gzip 463 → 296); Path2D parses per repaint N → 0 after first; verified 3D view in browser at b8342e6
 - fixed-by: 8a3e9a3
+
+## 2026-09-18 v1-model-deleted
+- finding: [YAGNI/med] src/model/document.ts, resolve.ts, lolev.ts, masterfile.ts — dead v1 authoring model kept alive by six test suites (audit 2026-09-05 #6, #7, #10)
+- status: done
+- attempts: 1/3
+- delta: 4 files / 984 lines and 6 suites / 873 lines deleted; getPath/setPath → model/path.ts, configDiff → convert.ts, v1 fixture → tests/fixtures/lolevV1.ts; validateField(FieldDecl) → validateInput union (no `r.error!`); open notes → dismissible warning alert; tests 1041 → 938 green
+- fixed-by: e1a01f3
