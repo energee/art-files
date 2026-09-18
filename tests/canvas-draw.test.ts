@@ -66,13 +66,15 @@ const afterTranslate = (log: { op: string; args: unknown[] }[]) =>
   log.slice(log.findIndex((x) => x.op === "translate") + 1);
 
 describe("drawPlate", () => {
-  it("parses each SVG path into a Path2D once, not once per repaint", () => {
+  it("parses each SVG path into a Path2D once, not once per repaint — across re-plans too", () => {
     let parsed = 0;
     vi.stubGlobal("Path2D", class { constructor(public d?: string) { parsed++; } });
-    const p = plan();
-    drawPlate(fakeCtx().ctx, p, {}, "art", FONT);
+    drawPlate(fakeCtx().ctx, plan(), {}, "art", FONT);
     const afterFirst = parsed;
-    drawPlate(fakeCtx().ctx, p, {}, "art", FONT);
+    expect(afterFirst).toBeGreaterThan(0);
+    // A fresh plan (every keystroke replans) must hand the renderer the same
+    // logo and QR path arrays, so nothing re-parses.
+    drawPlate(fakeCtx().ctx, plan(), {}, "art", FONT);
     expect(parsed).toBe(afterFirst);
   });
 

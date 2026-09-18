@@ -1388,7 +1388,8 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** What an export's outcome means to the operator: a cancel is a note, a
    *  pair that stopped after the artwork is an error — the mask is missing. */
-  function reportExport(outcome: PairOutcome, kind: string) {
+  function reportExport(outcome: PairOutcome, ext: string) {
+    const kind = ext.toUpperCase();
     setBuildError(outcome === "partial"
       ? `Export stopped after the artwork ${kind} — the mask ${kind} was not written. Export again for both plates.` : "");
     if (outcome === "cancelled") setNote("Export cancelled — nothing was written.");
@@ -1440,7 +1441,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         which !== "art" ? buildMaskPdf(plan, assets) : null,
       ]);
       reportExport(await savePair(
-        (b, n, t) => saveVia(b, n, "application/pdf", t), artPdf, maskPdf, exportBase, "pdf"), "PDF");
+        (b, n, t) => saveVia(b, n, "application/pdf", t), artPdf, maskPdf, exportBase, "pdf"), "pdf");
     } catch (err) {
       setBuildError(String(err));
     } finally {
@@ -1995,7 +1996,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         which !== "art" ? buildPsd(plan, assets, "mask", { layers: drawLayers }) : null,
       ]);
       reportExport(await savePair(
-        (b, n, t) => saveVia(b, n, "image/vnd.adobe.photoshop", t), artPsd, maskPsd, exportBase, "psd"), "PSD");
+        (b, n, t) => saveVia(b, n, "image/vnd.adobe.photoshop", t), artPsd, maskPsd, exportBase, "psd"), "psd");
     } catch (err) {
       setBuildError(String(err));
     } finally {

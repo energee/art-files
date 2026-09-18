@@ -3,7 +3,7 @@
 // simply merging in enable order (spec: Resolution step 2).
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
 
-const isPlain = (v: unknown): v is Record<string, unknown> =>
+export const isPlain = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** Deep-clones plain objects/arrays so a stored patch value is never the same

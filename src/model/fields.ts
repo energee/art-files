@@ -7,7 +7,6 @@ import type { Validation } from "../validation";
 export type { Validation };
 
 export type InputKind = "number" | "code";
-const ok: Validation = { ok: true };
 const err = (error: string): Validation => ({ ok: false, error });
 
 export function validateInput(
@@ -15,11 +14,12 @@ export function validateInput(
   opts: { min?: number; max?: number; symbology?: Symbology } = {},
 ): Validation {
   if (input === "number") {
+    if (value.trim() === "") return { ok: true }; // blank is "not filled yet", not invalid
     const n = Number(value);
     if (Number.isNaN(n)) return err("Expected a number.");
     if (opts.min !== undefined && n < opts.min) return err(`Must be at least ${opts.min}.`);
     if (opts.max !== undefined && n > opts.max) return err(`Must be at most ${opts.max}.`);
-    return ok;
+    return { ok: true };
   }
   // An unset symbology validates as UPC-A: the historical `upc` field
   // predates `symbology` and was always a UPC-A code, so leaving it unset

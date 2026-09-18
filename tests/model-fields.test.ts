@@ -13,8 +13,9 @@ describe("validateInput", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/20/);
   });
-  it("accepts numeric strings for number (form inputs are strings)", () => {
-    expect(validateInput("number", "6.2", { min: 0, max: 20 }).ok).toBe(true);
+  it("a blank number is not filled yet, not invalid — even under a min", () => {
+    expect(validateInput("number", "", { min: 1 }).ok).toBe(true);
+    expect(validateInput("number", "0", { min: 1 }).ok).toBe(false);
   });
   it("defaults an unset symbology to UPC-A validation", () => {
     expect(validateInput("code", "036000291452").ok).toBe(true);    // valid UPC-A

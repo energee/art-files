@@ -133,18 +133,17 @@ function rasterizePdf(pdf: Uint8Array, dpi: number): Raster {
   try {
     const input = join(dir, "in.pdf");
     writeFileSync(input, pdf);
-    try {
-      execFileSync(
-        "pdftoppm",
-        ["-r", String(dpi), "-f", "1", "-l", "1", "-png", "-singlefile", input, join(dir, "out")],
-        { stdio: ["ignore", "ignore", "pipe"] },
-      );
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === "ENOENT")
-        throw new Error("pdftoppm is not on PATH — install poppler (brew install poppler / apt-get install poppler-utils)");
-      throw e;
-    }
+    execFileSync(
+      "pdftoppm",
+      ["-r", String(dpi), "-f", "1", "-l", "1", "-png", "-singlefile", input, join(dir, "out")],
+      { stdio: ["ignore", "ignore", "pipe"] },
+    );
     return rasterOf(PNG.sync.read(readFileSync(join(dir, "out.png"))));
+  } catch (e) {
+    const { code, path } = e as NodeJS.ErrnoException;
+    if (code === "ENOENT" && path === "pdftoppm")
+      throw new Error("pdftoppm is not on PATH — install poppler (brew install poppler / apt-get install poppler-utils)");
+    throw e;
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

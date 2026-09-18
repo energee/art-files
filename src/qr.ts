@@ -160,3 +160,17 @@ export function qrPath(shapes: QrShapes, size: number, grow = 0): string {
   }
   return parts.join(" ");
 }
+
+/** `[qrPath(...)]` with a stable identity: the renderer caches Path2D per
+ *  path ARRAY (canvas/draw.ts), so the same shapes at the same size must
+ *  hand back the same array plan after plan. Keyed on the shapes object,
+ *  which qrShapes already memoizes, so entries die with it. */
+const pathsCache = new WeakMap<QrShapes, Map<string, readonly string[]>>();
+export function qrPaths(shapes: QrShapes, size: number, grow = 0): readonly string[] {
+  let bySize = pathsCache.get(shapes);
+  if (!bySize) pathsCache.set(shapes, (bySize = new Map()));
+  const key = `${size}|${grow}`;
+  let hit = bySize.get(key);
+  if (!hit) bySize.set(key, (hit = [qrPath(shapes, size, grow)]));
+  return hit;
+}

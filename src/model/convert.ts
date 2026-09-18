@@ -15,7 +15,7 @@ import type {
 import type {
   Guides, LabelFile, Layer, LayerValue, Master, RelativeY, TextLayer, TextLine, Variant,
 } from "./layers";
-import type { DeepPartial } from "./merge";
+import { isPlain, type DeepPartial } from "./merge";
 import type { GuideLines } from "./position";
 import type { FontFamilyId } from "../fontCatalog";
 import { lolevMaster } from "./lolevLayers";
@@ -62,9 +62,6 @@ const PATH_LAYER: Record<string, string> = {
   beerName: "name", "styleLine.text": "styleLine", abv: "abv", description: "description",
   upc: "barcode", "collabLeft.image": "collabLeft", "collabCenter.image": "collabCenter",
 };
-
-const isPlain = (v: unknown): v is Record<string, unknown> =>
-  !!v && typeof v === "object" && !Array.isArray(v);
 
 /** Everything in `cfg` that differs from `base`, deep for plain objects,
  *  wholesale for arrays and leaves. A key present in `base` but absent from

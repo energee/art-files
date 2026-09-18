@@ -24,7 +24,7 @@ import {
 import { parseRuns } from "./description";
 import { strokeLayerOf } from "./strokes";
 import { parseLogo } from "./logo";
-import { qrPath, qrShapes } from "./qr";
+import { qrPaths, qrShapes } from "./qr";
 import {
   barcodeDigitsFor, CUSTOM_BARCODE_DIGIT_GAP_RATIO, CUSTOM_BARCODE_DIGIT_SIZE_RATIO,
   encodeFor, quietModulesFor, validateFor, type BarcodeGeometry,
@@ -358,10 +358,10 @@ function prepareQr(l: QrLayer): Prepared {
       if (style.stroke && style.stroke !== "none")
         out.push({
           kind: "paths", id, ...at, stroke: null,
-          paths: [qrPath(shapes, l.size, (style.strokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX)],
+          paths: qrPaths(shapes, l.size, (style.strokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX),
           fill: style.stroke, layer: strokeLayerOf(style),
         });
-      out.push({ kind: "paths", id, ...at, stroke: null, paths: [qrPath(shapes, l.size)], fill: style.fill, layer: style.layer });
+      out.push({ kind: "paths", id, ...at, stroke: null, paths: qrPaths(shapes, l.size), fill: style.fill, layer: style.layer });
       return out;
     },
   };
