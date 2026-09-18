@@ -3,7 +3,7 @@
 // Prevents an additional console window on Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::{ffi::OsString, path::PathBuf, sync::Mutex};
+use std::{ffi::OsString, path::PathBuf, sync::{Mutex, PoisonError}};
 use tauri::Manager;
 
 /** Release builds set the public updater key at compile time. Local builds do
@@ -49,10 +49,12 @@ impl OpenedFile {
      * document handle through the whole open/save pipeline.
      *
      * Returns whether it was queued. Plain method so tests reach it. */
+    // A poisoned lock (a panic elsewhere while holding it) is not a reason to
+    // abort the app: the queue is a Vec<String> never left half-written.
     fn push(&self, path: PathBuf) -> bool {
         match path.into_os_string().into_string() {
             Ok(path) => {
-                self.0.lock().unwrap().push(path);
+                self.0.lock().unwrap_or_else(PoisonError::into_inner).push(path);
                 true
             }
             Err(_) => false,
@@ -62,7 +64,7 @@ impl OpenedFile {
     /** Pop the oldest queued path — FIFO, so files open in the order the
      * OS delivered them. Plain method (not the command) so tests reach it. */
     fn take(&self) -> Option<String> {
-        let mut queue = self.0.lock().unwrap();
+        let mut queue = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         if queue.is_empty() {
             return None;
         }
