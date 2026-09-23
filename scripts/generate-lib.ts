@@ -16,9 +16,9 @@ import { unpackLabel, unpackMaster, type MasterAssets } from "../src/model/files
 import { PAGE_ART_ID, type LabelFile, type Layer, type LayerKind, type LayerValue, type Master, type TextLayer, type TextLine } from "../src/model/layers";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { exportBase, resolveLayers, titleOf, widenValue } from "../src/model/resolveLayers";
-import type { Face, PlanAssets } from "../src/plan";
+import type { PlanAssets } from "../src/plan";
 import { planLayers } from "../src/planLayers";
-import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "../src/pdf/build";
+import { buildArtPdf, buildMaskPdf, pdfMeasureFace, type Assets, type CollabImage } from "../src/pdf/build";
 import { buildPsd, type PsdAssets } from "../src/psd/build";
 import type { Style } from "../src/types";
 
@@ -520,19 +520,7 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
     psdImages[l.asset] = { data: new Uint8Array(png.data), width: png.width, height: png.height };
   }
 
-  type Embedded = Record<Face, Awaited<ReturnType<PDFDocument["embedFont"]>>>;
-  const embedPack = async (pack: Assets["fonts"]): Promise<Embedded> => {
-    const [regular, semibold, bold] = await Promise.all(
-      [pack.regular, pack.semibold, pack.bold].map((f) => metrics.embedFont(f)));
-    return { regular, semibold, bold };
-  };
-  const packs = { [defaultFamily]: fonts, ...fontFamilies } as Record<FontFamilyId, Assets["fonts"]>;
-  const embedded: Partial<Record<FontFamilyId, Embedded>> = {};
-  await Promise.all((Object.keys(packs) as FontFamilyId[]).map(async (id) => {
-    embedded[id] = await embedPack(packs[id]);
-  }));
-  const measure = (text: string, size: number, face: Face, family?: FontFamilyId) =>
-    (embedded[family ?? defaultFamily] ?? embedded[defaultFamily]!)[face].widthOfTextAtSize(text, size);
+  const measure = await pdfMeasureFace({ [defaultFamily]: fonts, ...fontFamilies }, defaultFamily);
 
   const plan = planLayers(resolved.layers, measure, {
     logoSvg, guides: guideLines(input.master), custom: planCustom,

@@ -34,7 +34,7 @@ import fontkit from "@pdf-lib/fontkit";
 import type { FontFamilyId } from "../fontCatalog";
 import type { Fill } from "../types";
 import { bridgeOffsets } from "../strokes";
-import { type Face, type Mode, type PlacedBarcode, type PlacedText } from "../plan";
+import { type Face, type MeasureFace, type Mode, type PlacedBarcode, type PlacedText } from "../plan";
 import type { PlacedLayer, PlacedPage } from "../planLayers";
 import * as L from "../layout";
 
@@ -326,6 +326,31 @@ function drawItems(
       else page.drawRectangle({ ...rect, color: toRgb(L.COLORS.maskBlue) });
     } else drawBarcode(page, fonts, r, mode);
   }
+}
+
+/** The plan measure for a PDF/PSD export: each face's width from the pdf-lib
+ *  font drawText draws it with. drawText places glyphs by their raw advances
+ *  and emits no kerning, so a kerned measure (canvas measureText's default)
+ *  plans a kern-table family like Barlow Condensed up to ~8% short of the
+ *  ink it prints (#86). A run with no family, or one missing from `packs`,
+ *  measures in `fallback`'s faces. Shared by the App export and the CLI. */
+export async function pdfMeasureFace(
+  packs: Partial<Record<FontFamilyId, Assets["fonts"]>>,
+  fallback: FontFamilyId,
+): Promise<MeasureFace> {
+  const doc = await PDFDocument.create();
+  doc.registerFontkit(fontkit);
+  const embedded: Partial<Record<FontFamilyId, Record<Face, PDFFont>>> = {};
+  for (const [id, pack] of Object.entries(packs) as [FontFamilyId, Assets["fonts"]][]) {
+    embedded[id] = {
+      regular: await doc.embedFont(pack.regular),
+      semibold: await doc.embedFont(pack.semibold),
+      bold: await doc.embedFont(pack.bold),
+    };
+  }
+  if (!embedded[fallback]) throw new Error(`Missing measure font family: ${fallback}`);
+  return (text, size, face, family) =>
+    (embedded[family ?? fallback] ?? embedded[fallback]!)[face].widthOfTextAtSize(text, size);
 }
 
 async function newDoc(assets: Assets): Promise<{ doc: PDFDocument; page: PDFPage; fonts: Fonts }> {
