@@ -75,7 +75,7 @@ import type { PsdAssets } from "@/psd/build";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
 import {
-  ART, BLEED_SHIFT, PAGE, PREVIEW_OVERSAMPLE, PSD_DOC, setBleed as setLayoutBleed, setOutputDpi,
+  ART, BLEED_SHIFT, PAGE, PREVIEW_OVERSAMPLE, setBleed as setLayoutBleed, setOutputDpi,
 } from "@/layout";
 import { LayerList } from "@/components/LayerList";
 import { LayerInspector } from "@/components/LayerInspector";
@@ -1928,16 +1928,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileToOpen]);
 
-  /** The PSD's texture layer needs raw RGBA at document size, cover-fit
-   *  here (PSD layers hold pixels 1:1). Export only: ~60MB. */
-  async function rasterPixels(bytes: Uint8Array | undefined): Promise<import("@/psd/build").Rgba | undefined> {
-    if (!bytes) return undefined;
-    const canvas = await decodeToCanvas(blobOf(bytes), { width: PSD_DOC.w, height: PSD_DOC.h });
-    const img = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
-    return { data: new Uint8Array(img.data.buffer), width: img.width, height: img.height };
-  }
-  /** An image layer's raster bytes at NATURAL size — buildPsd resamples to
-   *  the placed rect itself. */
+  /** An image's raster bytes as RGBA at NATURAL size — buildPsd resamples
+   *  every raster (page texture and mask included) to its placed rect
+   *  itself, so nothing is pre-fit here (#88). Export only: a full-res
+   *  texture decodes to tens of MB. */
   async function rasterPixelsNatural(bytes: Uint8Array): Promise<import("@/psd/build").Rgba> {
     const canvas = await decodeToCanvas(blobOf(bytes));
     const img = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
@@ -1951,21 +1945,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     setBuilding(true);
     startSaveBatch();
     try {
-      const [{ buildPsd }, fonts, { plan, images }] = await Promise.all([
+      const [{ buildPsd, psdImages }, fonts, { plan, images }] = await Promise.all([
         import("@/psd/build"), loadFonts(family), exportPlan(),
       ]);
       const art = pageArt(false);
-      const rasterEntries = (await Promise.all(Object.entries(images).map(async ([id, img]) =>
-        img.kind === "svg" ? null : [id, await rasterPixelsNatural(img.bytes)] as const)))
-        .filter((e): e is readonly [string, import("@/psd/build").Rgba] => e !== null);
-      const [texturePx, maskPx] = await Promise.all([rasterPixels(art.texture?.bytes), rasterPixels(art.maskPng)]);
       const assets: PsdAssets = {
         fonts, fontFamily: family,
-        images: {
-          ...Object.fromEntries(rasterEntries),
-          ...(texturePx ? { [PAGE_ART_ID.background]: texturePx } : {}),
-          ...(maskPx ? { [PAGE_ART_ID.mask]: maskPx } : {}),
-        },
+        images: await psdImages(images, { texture: art.texture?.bytes, mask: art.maskPng }, rasterPixelsNatural),
       };
       const [artPsd, maskPsd] = await Promise.all([
         which !== "mask" ? buildPsd(plan, assets, "art", { layers: drawLayers }) : null,

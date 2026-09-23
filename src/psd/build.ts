@@ -38,9 +38,10 @@ import type { Fill } from "../types";
 import { FONT_FAMILIES, type FontFamilyId } from "../fontCatalog";
 import * as L from "../layout";
 import type { Face, PlacedBarcode, PlacedPaths, PlacedText } from "../plan";
+import type { CollabImage } from "../pdf/build";
 import type { PlacedLayer, PlacedPage } from "../planLayers";
 import { facesOf } from "../planLayers";
-import type { Layer as AppLayer, TextLayer } from "../model/layers";
+import { PAGE_ART_ID, type Layer as AppLayer, type TextLayer } from "../model/layers";
 import { qrShapes, type QrShapes } from "../qr";
 import { strokeLayerOf } from "../strokes";
 
@@ -60,6 +61,25 @@ export interface PsdAssets {
    *  page roles, an empty background / the white-ink flood). An SVG-sourced
    *  image carries no entry — planLayers already turned it into paths. */
   images?: Record<string, Rgba | null | undefined>;
+}
+
+/** PsdAssets.images from the export's art bytes: every raster image asset
+ *  (SVGs are skipped — planLayers already made them paths) plus the page
+ *  texture and mask under their PAGE_ART_ID keys. `decode` must return
+ *  NATURAL-size pixels: pageLayer and rasterItemLayer resample into the placed
+ *  rect themselves, so pixels pre-fit to PSD_DOC would be fit twice and
+ *  stretch any texture whose aspect differs from the page (#88). */
+export async function psdImages(
+  images: Record<string, CollabImage>,
+  page: { texture?: Uint8Array; mask?: Uint8Array },
+  decode: (bytes: Uint8Array) => Promise<Rgba>,
+): Promise<Record<string, Rgba>> {
+  const out: Record<string, Rgba> = {};
+  for (const [id, img] of Object.entries(images))
+    if (img.kind !== "svg") out[id] = await decode(img.bytes);
+  if (page.texture) out[PAGE_ART_ID.background] = await decode(page.texture);
+  if (page.mask) out[PAGE_ART_ID.mask] = await decode(page.mask);
+  return out;
 }
 
 export interface PsdOpts {
@@ -101,8 +121,8 @@ const px = (n: number) => (n / 72) * L.OUTPUT_DPI;
  *
  *  Identity at the shipped bleed, where BLEED_SHIFT is 0. */
 const pos = (n: number) => px(n + L.BLEED_SHIFT);
-/** Document size in pixels. Exported so a caller can cover-fit the texture
- *  to it before handing the pixels over — PSD layers hold pixels 1:1. */
+/** Document size in pixels. Page rasters are NOT pre-fit to it — hand them
+ *  over at natural size; pageLayer cover-fits them (see psdImages). */
 export const PSD_DOC = L.PSD_DOC;
 
 const color255 = (fill: Fill) => {
