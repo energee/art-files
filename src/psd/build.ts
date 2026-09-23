@@ -403,18 +403,19 @@ function digitGroupPaths(
   return { paths: out, bbox };
 }
 
-/** One vector layer. `stroke`/`strokeWidth` become the same editable
- *  Photoshop stroke effect textLayer uses — the PDF strokes these paths for
- *  real (drawSvgPath's borderColor), and the effect is the PSD parallel. */
+/** One vector layer. `stroke`/`strokePt` (width in points) become the same
+ *  editable Photoshop stroke effect textLayer uses — the PDF strokes these
+ *  paths for real (drawSvgPath's borderColor), and the effect is the PSD
+ *  parallel. */
 function shapeLayer(
-  name: string, paths: BezierPath[], fill: Fill, stroke?: Fill, strokeWidth?: number,
+  name: string, paths: BezierPath[], fill: Fill, stroke?: Fill, strokePt = 0,
 ): Layer {
   return {
     name,
     left: 0, top: 0, right: PSD_DOC.w, bottom: PSD_DOC.h,
     vectorFill: { type: "color", color: color255(fill) },
     vectorMask: { paths },
-    ...strokeEffect(stroke, strokeWidth),
+    ...strokeEffect(stroke, strokePt),
   };
 }
 
@@ -425,17 +426,19 @@ const floodLayer = (name: string, fill: Fill): Layer =>
   shapeLayer(name, [pageRectPath(0, 0, L.PAGE.w, L.PAGE.h)], fill);
 
 /** The `effects.stroke` fragment for a layer, or nothing when the element
- *  carries no stroke. Widths are authored in px at the 600dpi deliverable,
- *  which is the PSD's own resolution — no px() conversion, unlike the
- *  point-based geometry everywhere else. */
-function strokeEffect(stroke: Fill | undefined, strokeWidth: number | undefined) {
+ *  carries no stroke. `strokePt` is the resolved width in POINTS (a placed
+ *  stroke's `w`, or a style's px * L.PX); like every other length here it
+ *  goes through px(), so the effect lands on this document's pixels and
+ *  keeps its physical ink width at any export DPI (1.8pt = 15px at 600,
+ *  7.5px at 300). Rounded to 1/1000 px to drop the conversion's float dust. */
+function strokeEffect(stroke: Fill | undefined, strokePt: number) {
   if (!stroke || stroke === "none") return {};
   return {
     effects: {
       stroke: [{
         enabled: true,
         position: "outside" as const,
-        size: { units: "Pixels" as const, value: strokeWidth ?? L.DEFAULT_STROKE_PX },
+        size: { units: "Pixels" as const, value: Math.round(px(strokePt) * 1000) / 1000 },
         fillType: "color" as const,
         color: color255(stroke),
         opacity: 1,
@@ -544,14 +547,10 @@ function typeLayer(
     },
     ...strokeEffect(
       first.stroke ? paint(mode, first.stroke.fill, first.stroke.layer) : undefined,
-      first.stroke ? strokePx(first.stroke.w) : undefined,
+      first.stroke?.w ?? 0,
     ),
   };
 }
-
-/** A placed stroke's width (points, strokeSpec's px * L.PX) back to the px
- *  the effect is authored in, without the float dust the round trip leaves. */
-const strokePx = (pt: number) => Math.round((pt / L.PX) * 1000) / 1000;
 
 /** Merge adjacent style runs with identical styles (a justified line is one
  *  placed run per word, all in one face) so Photoshop sees one span per
@@ -642,7 +641,8 @@ function buildLayers(
         const paths = qrBeziers(shapes, layer.size).map((p) => translatePath(p, px(fill.x), px(fill.y)));
         children.push(shapeLayer(
           name, paths, paint(mode, layer.style.fill, layer.style.layer),
-          strokePaint(mode, layer.style.stroke, layer.style.strokeLayer), layer.style.strokeWidth,
+          strokePaint(mode, layer.style.stroke, layer.style.strokeLayer),
+          (layer.style.strokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX,
         ));
       }
     } else {
@@ -654,7 +654,7 @@ function buildLayers(
             name, r.paths.flatMap((d) => svgToPaths(d, r.x, r.y)),
             paint(mode, r.fill, r.layer),
             r.stroke ? paint(mode, r.stroke.fill, r.stroke.layer) : undefined,
-            r.stroke ? strokePx(r.stroke.w) : undefined,
+            r.stroke?.w,
           ));
         } else if (r.kind === "image") {
           // Missing pixels is a no-op on EITHER plate — checked BEFORE the
@@ -690,7 +690,7 @@ function barcodeLayer(name: string, bc: PlacedBarcode, fk: FKFont, mode: PsdMode
       .map((r) => ({ ...rectPath(r.x, r.yTop, r.w, r.h), operation: "combine" as const }));
     return shapeLayer(
       name, footprint, paint(mode, bc.fill, bc.fillLayer),
-      S > 0 ? strokePaint(mode, bc.stroke, bc.strokeLayer) : undefined, px(S),
+      S > 0 ? strokePaint(mode, bc.stroke, bc.strokeLayer) : undefined, S,
     );
   }
   // Rotated (the template): anchorY is the string-start Y a `rotate(90)`
@@ -709,7 +709,7 @@ function barcodeLayer(name: string, bc: PlacedBarcode, fk: FKFont, mode: PsdMode
   ];
   return shapeLayer(
     name, barcodePaths, paint(mode, bc.fill, bc.fillLayer),
-    S > 0 ? strokePaint(mode, bc.stroke, bc.strokeLayer) : undefined, px(S),
+    S > 0 ? strokePaint(mode, bc.stroke, bc.strokeLayer) : undefined, S,
   );
 }
 

@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { readPsd } from "ag-psd";
 import { buildPsd, qrBeziers, PSD_DOC, type PsdAssets } from "../src/psd/build";
 import { qrShapes } from "../src/qr";
+import { DESIGN_DPI, setOutputDpi } from "../src/layout";
 import type { Layer } from "../src/model/layers";
 import { flatLayers, lolevLayers, lolevPlan, psdAssets as assets } from "./fixtures";
 
@@ -137,6 +138,26 @@ describe("psd build", () => {
       const stroke = l.effects?.stroke?.[0];
       expect([name, stroke?.enabled, stroke?.color]).toEqual([name, true, { r: 0, g: 0, b: 0 }]);
       expect([name, stroke?.size?.value]).toEqual([name, 15]);
+    }
+  });
+
+  it("keeps every stroke's physical width at a non-600 export DPI (#87)", async () => {
+    // A 1.8pt keyline is 7.5px in a 300-DPI document, not 15: stroke sizes
+    // are lengths in document pixels, so they follow OUTPUT_DPI like
+    // everything else. The barcode's 20px halo likewise halves to 10.
+    const expected: Record<string, number> = {
+      Info: 7.5, Volume: 7.5, Name: 7.5, Style: 7.5, ABV: 7.5, Brand: 7.5, Logo: 7.5, QR: 7.5, Barcode: 10,
+    };
+    let psd: ReturnType<typeof readPsd>;
+    try {
+      setOutputDpi(300);
+      psd = await build();
+    } finally {
+      setOutputDpi(DESIGN_DPI);
+    }
+    for (const [name, size] of Object.entries(expected)) {
+      const value = layer(psd.children as any[], name).effects?.stroke?.[0]?.size?.value;
+      expect([name, Math.round(value * 1000) / 1000]).toEqual([name, size]);
     }
   });
 
