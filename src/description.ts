@@ -137,6 +137,24 @@ export function parseRuns(line: StyledLine): StyledLine[] {
   return out.length ? out : [{ ...line, text: "" }];
 }
 
+/** Splits text into its space-separated words with every word's inline
+ *  markers balanced on their own: a span crossing a space is closed at each
+ *  word's end and reopened at the next (`**A B**` -> `**A**`, `**B**`).
+ *  Anything that wraps or justifies word by word must split through this —
+ *  a raw `split(" ")` leaves each half with an unmatched marker, which
+ *  parseRuns draws literally and unstyled (#89). Marker-free text splits
+ *  exactly like `text.split(" ")`, as does text already marked per word. */
+export function markedWords(text: string): string[] {
+  const words = [""];
+  for (const r of parseRuns({ text, fill: GOLD, layer: "metallic" })) {
+    r.text.split(" ").forEach((piece, i) => {
+      if (i) words.push("");
+      words[words.length - 1] += markRun(piece, { bold: r.bold, white: r.layer === "white" });
+    });
+  }
+  return words;
+}
+
 /** The Info line (cfg.handleAddress) authored in the SAME markdown subset as
  *  the description block, but rendered as one rotated line: `**bold**` and
  *  `_white ink_` over the element's own style. Header markup collapses to

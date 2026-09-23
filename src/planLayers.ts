@@ -21,7 +21,7 @@ import {
   justifiedRotatedRuns, rotatedRuns, strokeSpec,
   type Face, type MeasureFace, type Placed, type PlacedBarcode, type PlacedText, type PlanAssets,
 } from "./plan";
-import { parseRuns } from "./description";
+import { markedWords, parseRuns } from "./description";
 import { strokeLayerOf } from "./strokes";
 import { parseLogo } from "./logo";
 import { qrPath, qrShapes } from "./qr";
@@ -91,15 +91,16 @@ function drawableLines(l: TextLayer): TextLine[] {
 }
 
 /** Greedy word wrap to `width`, wrapWarning's rule: a line that fits stays
- *  whole; a longer one breaks before the word that overflows. Measures the
- *  joined text so inline markers (balanced per word) keep their faces. */
+ *  whole; a longer one breaks before the word that overflows. Words come
+ *  from markedWords, so a `**bold**` / `_white_` span crossing a break keeps
+ *  its style on both sides; measures the joined text so runs keep faces. */
 function wrap(lines: TextLine[], widthOf: (ln: TextLine) => number, width?: number): TextLine[] {
   if (width === undefined) return lines;
   return lines.flatMap((ln) => {
     if (widthOf(ln) <= width) return [ln];
     const out: TextLine[] = [];
     let cur = "";
-    for (const word of ln.text.split(" ")) {
+    for (const word of markedWords(ln.text)) {
       const next = cur ? `${cur} ${word}` : word;
       if (cur && widthOf({ ...ln, text: next }) > width) { out.push({ ...ln, text: cur }); cur = word; }
       else cur = next;
@@ -174,7 +175,7 @@ function prepareText(l: TextLayer, measure: MeasureFace): Prepared {
         }
         const baseline = box.y + ASC * first + i * leading;
         if (justify) {
-          const words = ln.text.split(" ");
+          const words = markedWords(ln.text);
           const ww = words.map((w) => widthOf({ ...ln, text: w }));
           const gap = (box.w - ww.reduce((a, b) => a + b, 0)) / (words.length - 1);
           let cursor = box.x;

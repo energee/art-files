@@ -3,7 +3,7 @@ import type { FontFamilyId } from "./fontCatalog";
 import type { Fill, Style, StyledLine } from "./types";
 import type { GuideLines } from "./model/position";
 import type { BarcodeGeometry } from "./barcode";
-import { parseRuns } from "./description";
+import { markedWords, parseRuns } from "./description";
 import { strokeLayerOf } from "./strokes";
 import * as L from "./layout";
 
@@ -215,7 +215,8 @@ export function rotatedRuns(
 /** A justified warning column: inter-word gaps stretched so the span lands
  *  exactly on maxLen (the PDF backend's former drawJustifiedRotated's math).
  *  Word widths measure the runs each word actually draws (markers stripped,
- *  own faces), or a bold-marked column would overshoot. A single word has no
+ *  own faces), or a bold-marked column would overshoot; words split via
+ *  markedWords so a span crossing a space stays styled. A single word has no
  *  gap and stays at its natural length (see warningColumnLen). */
 export function justifiedRotatedRuns(
   id: string,
@@ -224,7 +225,7 @@ export function justifiedRotatedRuns(
   m: MeasureFace,
   at: { x: number; yStart: number; size: number; maxLen: number; base: Face; boldFace?: Face },
 ): PlacedText[] {
-  const words = text.split(" ");
+  const words = markedWords(text);
   if (words.length < 2) return rotatedRuns(id, style, text, m, at);
   const faceOf = (r: StyledLine): Face => (r.bold ? at.boldFace ?? at.base : at.base);
   const widths = words.map((w) =>
