@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import jsQR from "jsqr";
 import { qrPath, qrShapes } from "../src/qr";
 
 describe("QR options", () => {
@@ -25,4 +26,25 @@ describe("QR options", () => {
     const b = qrShapes("same", { style: "dots" });
     expect(a).not.toBe(b);
   });
+});
+
+/** Rasterize square-style shapes (plus a 4-module quiet zone) to RGBA and
+ *  decode with jsQR — the same round trip a phone scanner makes. */
+function decode(text: string): string | undefined {
+  const s = qrShapes(text, { style: "square" });
+  const px = 4, quiet = 4, side = (s.count + 2 * quiet) * px;
+  const rgba = new Uint8ClampedArray(side * side * 4).fill(255);
+  for (const q of s.squares!) {
+    const c0 = Math.round(q.x * s.count) + quiet, r0 = Math.round(q.y * s.count) + quiet;
+    for (let y = r0 * px; y < (r0 + 1) * px; y++)
+      for (let x = c0 * px; x < (c0 + 1) * px; x++) rgba.fill(0, (y * side + x) * 4, (y * side + x) * 4 + 3);
+  }
+  return jsQR(rgba, side, side)?.data;
+}
+
+describe("QR text encoding (#66)", () => {
+  it.each(["https://lolev.beer/beer/x", "🍺 cheers", "Brewed in Kraków — €5", "Café"])(
+    "scans back exactly: %s",
+    (text) => expect(decode(text)).toBe(text),
+  );
 });

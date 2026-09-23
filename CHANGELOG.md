@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.71] - 2026-09-23
+
+### Fixed
+
+- **QR codes scan back non-ASCII text exactly.** Accented letters, symbols
+  like `€` and `—`, and emoji in a QR layer are now encoded as UTF-8, so
+  phones read the same text you typed instead of garbled characters or
+  nothing at all. Plain ASCII QR codes (such as beer URLs) are unchanged.
+
 ## [0.1.68] - 2026-09-15
 
 ### Fixed

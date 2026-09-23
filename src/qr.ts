@@ -72,13 +72,23 @@ function rotate90(s: QrShapes): QrShapes {
   };
 }
 
+/** qrcode-generator's Byte mode keeps only the low 8 bits of each UTF-16
+ *  code unit (`charCodeAt(i) & 0xff`), which garbles anything non-ASCII.
+ *  Hand it the UTF-8 bytes as one char per byte instead, so scanners read
+ *  back the exact text. ASCII maps to itself, so ASCII payloads are
+ *  byte-identical to before. Local rather than patching the shared
+ *  `qrcode.stringToBytes` global. */
+function utf8ByteString(s: string): string {
+  return String.fromCharCode(...new TextEncoder().encode(s));
+}
+
 function buildShapes(
   data: string,
   style: "square" | "rounded" | "dots",
   ecLevel: "L" | "M" | "Q" | "H",
 ): QrShapes {
   const qr = qrcode(0, ecLevel);
-  qr.addData(data || " ");
+  qr.addData(utf8ByteString(data || " "));
   qr.make();
   const count = qr.getModuleCount();
   const ms = 1 / count;
