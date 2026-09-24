@@ -822,7 +822,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   const activeRef = useRef(active);
   activeRef.current = active;
 
-  // ⌘Z / ⇧⌘Z (and ⌘Y) for the history. Inert while a text field has focus:
+  // ⌘Z / ⇧⌘Z (and ⌘Y) for the history, marking the document dirty like the
+  // menu commands do. Inert while a text field has focus:
   // there the browser's own per-field undo is the one the user means.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -833,12 +834,14 @@ export const DocumentEditor = memo(function DocumentEditor({
       const el = e.target as HTMLElement | null;
       if (el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "")) return;
       e.preventDefault();
-      if (key === "y" || e.shiftKey) redo();
-      else undo();
+      // History moves bypass `edit`; without mutating, ⌘Z after a save left the tab clean (#76).
+      // Nothing to step over is a no-op, as the disabled menu item is.
+      const redoing = key === "y" || e.shiftKey;
+      if (redoing ? canRedo : canUndo) mutating(redoing ? redo : undo)();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [undo, redo]);
+  }, [undo, redo, canUndo, canRedo]);
 
   // Figma-style bare keys plus the ⌘-modified exports, with the same
   // inert-while-typing guard as undo. Registered once — reads the table
