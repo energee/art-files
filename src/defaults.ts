@@ -16,9 +16,8 @@ export const KEYLINE = {
 } as const;
 
 // "GOVERNMENT WARNING:" carries inline **bold** markers — the TTB requires
-// the phrase in bold caps. Marked PER WORD, not across the phrase, because
-// wrapWarning splits on spaces and every word must stay a balanced run on
-// its own (an unmatched marker renders literally — see parseRuns).
+// the phrase in bold caps. Marked per word only because the print goldens
+// pin this exact string; one span across the phrase works too (markedWords).
 // Sentence case body (2026-08): the TTB requires caps + bold only for the
 // "GOVERNMENT WARNING:" phrase itself; lowercase body text is narrower, which
 // is what lets the type size come up toward the 2mm minimum.
