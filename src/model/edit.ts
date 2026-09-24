@@ -814,6 +814,24 @@ function changedPaths(a: unknown, b: unknown): string[] {
   return [...paths].filter((p) => p !== "name" && !deepEqual(getPath(a, p), getPath(b, p)));
 }
 
+/** The items of `items` NOT on a longest increasing run of `order` (the
+ *  items' old positions, in new order): the fewest items whose moving explains
+ *  the new order. Quadratic, which is nothing at a master's layer count. */
+function movedOutOfOrder<T>(order: readonly number[], items: readonly T[]): T[] {
+  const len: number[] = [];
+  const prev: number[] = [];
+  let end = -1;
+  for (let i = 0; i < order.length; i++) {
+    len[i] = 1; prev[i] = -1;
+    for (let j = 0; j < i; j++)
+      if (order[j] < order[i] && len[j] + 1 > len[i]) { len[i] = len[j] + 1; prev[i] = j; }
+    if (end < 0 || len[i] > len[end]) end = i;
+  }
+  const kept = new Set<number>();
+  for (let i = end; i >= 0; i = prev[i]) kept.add(i);
+  return items.filter((_, i) => !kept.has(i));
+}
+
 /** What saving this master would write, itemised for review: the structural
  *  and fill-contract edits already in `edited`, then the label's overrides
  *  offered for promotion into the template. Pure and synchronous — the dialog
@@ -836,16 +854,14 @@ export function masterChanges(
   for (const l of edited.layers)
     if (!baseById.has(l.id)) out.push({ kind: "added", layerId: l.id, layerName: l.name });
 
-  // Draw order, comparing only the layers both have: a layer whose position
-  // among the survivors changed was reordered, not merely displaced by a
-  // neighbour's add or remove.
-  const commonBase = base.layers.filter((l) => editedById.has(l.id)).map((l) => l.id);
-  const commonEdited = edited.layers.filter((l) => baseById.has(l.id)).map((l) => l.id);
-  for (const [i, id] of commonEdited.entries())
-    if (commonBase[i] !== id) {
-      const l = editedById.get(id)!;
-      out.push({ kind: "moved", layerId: id, layerName: l.name });
-    }
+  // Draw order, comparing only the layers both have, so a neighbour's add or
+  // remove displaces nothing. The layers that kept their relative order are
+  // the longest run still in base order (#99); only the rest were moved —
+  // moving one layer to the front is one row, not one per layer it passed.
+  const baseIndex = new Map(base.layers.filter((l) => editedById.has(l.id)).map((l, i) => [l.id, i]));
+  const commonEdited = edited.layers.filter((l) => baseIndex.has(l.id));
+  for (const l of movedOutOfOrder(commonEdited.map((l) => baseIndex.get(l.id)!), commonEdited))
+    out.push({ kind: "moved", layerId: l.id, layerName: l.name });
 
   for (const l of edited.layers) {
     const was = baseById.get(l.id);
