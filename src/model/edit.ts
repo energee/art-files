@@ -26,6 +26,7 @@ import { KEYLINE } from "../defaults";
 import { DEFAULT_STROKE_LAYER } from "../strokes";
 import { validateFor } from "../barcode";
 import { fieldRefs } from "./format";
+import { PT_STEP, roundToStep } from "../numeric";
 
 type LayerPatch = DeepPartial<Layer>;
 /** A variant's diff entry: a whole layer (variant-added) or a partial
@@ -404,12 +405,18 @@ export function unbind(master: Master, id: string, computedTopY: number): Master
   return parseMaster(withLayer(master, id, ({ vAnchor: _v, ...l }) => ({ ...l, y: computedTopY, guideY: "none", binding: null })));
 }
 
+/** A position written from a gesture or a measurement, on the model's 0.01pt
+ *  grid (#130). Pointer deltas and measured boxes are raw floats, and without
+ *  this their noise went straight into the saved master (x: 193.08552000000003)
+ *  where a typed or nudged value is clean. */
+const pt = (v: number) => roundToStep(v, PT_STEP);
+
 /** Detach only the bound axis, preserving its current measured position. */
 export function unbindPatch(layer: Layer, box: Box): LayerPatch {
   const b = bindingOf(layer);
   return b?.side === "left" || b?.side === "right"
-    ? { binding: null, x: box.x, anchor: "left", guideX: "none" }
-    : { binding: null, y: box.y, vAnchor: "top", guideY: "none" };
+    ? { binding: null, x: pt(box.x), anchor: "left", guideX: "none" }
+    : { binding: null, y: pt(box.y), vAnchor: "top", guideY: "none" };
 }
 
 /** Switch sides without moving the newly free axis or retaining a conflicting guide. */
@@ -418,8 +425,8 @@ export function bindingPatch(layer: Layer, to: string, side: BindingSide, box: B
   return {
     ...(old ? unbindPatch(layer, box) : {}),
     ...(side === "left" || side === "right"
-      ? { x: box.x, anchor: "left", guideX: "none" } as const
-      : { y: box.y, vAnchor: "top", guideY: "none" } as const),
+      ? { x: pt(box.x), anchor: "left", guideX: "none" } as const
+      : { y: pt(box.y), vAnchor: "top", guideY: "none" } as const),
     binding: { to, side, gap: old?.gap ?? 0 },
   };
 }
@@ -513,11 +520,11 @@ export function moveBy(
   if (carriedH) return moveBy({ ...layer, binding: null }, 0, dy, moving);
   if (binding && !carriedV && (horizontal ? dx !== 0 : dy !== 0)) {
     const delta = horizontal ? dx : dy;
-    patch.binding = { ...binding, gap: binding.gap + (binding.side === "left" || binding.side === "top" ? -delta : delta) };
+    patch.binding = { ...binding, gap: pt(binding.gap + (binding.side === "left" || binding.side === "top" ? -delta : delta)) };
   }
-  if (dx !== 0 && !horizontal) patch.x = layer.x + dx;
+  if (dx !== 0 && !horizontal) patch.x = pt(layer.x + dx);
   if (dy !== 0 && !carriedV && (!binding || horizontal)) {
-    patch.y = isBound(layer.y) ? { below: layer.y.below, gap: layer.y.gap + dy } : layer.y + dy;
+    patch.y = isBound(layer.y) ? { below: layer.y.below, gap: pt(layer.y.gap + dy) } : pt(layer.y + dy);
   }
   return patch;
 }
@@ -1053,10 +1060,12 @@ export function resizeBy(
   const sx = (bw + lw) / bw, sy = (bh + lh) / bh;
   const size = ((): LayerPatch => {
     switch (layer.kind) {
-      case "text": return { width: Math.max((layer.width ?? bw) + lw, 1) };
-      case "qr": return { size: layer.size * sx };
-      case "barcode": return { h: layer.h * sy, moduleW: layer.moduleW * sx };
-      case "image": return { w: layer.w * sx, ...(layer.h != null ? { h: layer.h * sy } : {}) };
+      // Sizes on the same 0.01pt grid as positions; moduleW keeps its own,
+      // finer precision (a module is under a point).
+      case "text": return { width: pt(Math.max((layer.width ?? bw) + lw, 1)) };
+      case "qr": return { size: pt(layer.size * sx) };
+      case "barcode": return { h: pt(layer.h * sy), moduleW: layer.moduleW * sx };
+      case "image": return { w: pt(layer.w * sx), ...(layer.h != null ? { h: pt(layer.h * sy) } : {}) };
     }
   })();
   // Keep the opposite edge still: the anchored point moves by its share of
@@ -1067,7 +1076,7 @@ export function resizeBy(
   const ax = dw * (anchorFraction(hAnchorOf(layer)) - (handle.hx === -1 ? 1 : 0));
   const ay = dh * (anchorFraction(vAnchorOf(layer)) - (handle.hy === -1 ? 1 : 0));
   const pos: LayerPatch = {};
-  if (ax && !(b?.side === "left" || b?.side === "right")) pos.x = layer.x + ax;
-  if (ay && typeof layer.y === "number" && !(b?.side === "top" || b?.side === "bottom")) pos.y = layer.y + ay;
+  if (ax && !(b?.side === "left" || b?.side === "right")) pos.x = pt(layer.x + ax);
+  if (ay && typeof layer.y === "number" && !(b?.side === "top" || b?.side === "bottom")) pos.y = pt(layer.y + ay);
   return { ...size, ...pos };
 }

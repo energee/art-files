@@ -39,13 +39,13 @@ const val = (v: unknown) =>
     : typeof v === "object" ? JSON.stringify(v) : String(v);
 
 /** What one entry of a list is called: a Choice by its title, else its value,
- *  a plain string as itself. */
-const entryName = (v: unknown): string =>
-  typeof v === "string" ? v
-    : v && typeof v === "object"
-      ? String((v as { title?: string; value?: unknown }).title
-        ?? (v as { value?: unknown }).value ?? JSON.stringify(v))
-      : String(v);
+ *  a text line by its text, a plain string as itself. */
+const entryName = (v: unknown): string => {
+  if (typeof v === "string") return v;
+  if (!v || typeof v !== "object") return String(v);
+  const o = v as { title?: string; value?: unknown; text?: string };
+  return String(o.title ?? o.value ?? o.text ?? JSON.stringify(v));
+};
 
 /** A list-valued path — a fill vocabulary, a layer's lines — reads as its
  *  count and the ONE entry that came or went, not as its JSON. leafPaths
@@ -54,8 +54,9 @@ const entryName = (v: unknown): string =>
  *  is the only thing between a learned value and the template
  *  (docs/plans/choice-input.md, Task 7).
  *
- *  More than one difference falls back to the counts alone: naming two of five
- *  changes is worse than naming none, because it reads as the whole story. */
+ *  One entry swapped for another names both. More than that falls back to the
+ *  counts alone: naming two of five changes is worse than naming none, because
+ *  it reads as the whole story. */
 function listText(from: readonly unknown[], to: readonly unknown[]): string {
   const key = (v: unknown) => JSON.stringify(v);
   const before = from.map(key);
@@ -65,6 +66,10 @@ function listText(from: readonly unknown[], to: readonly unknown[]): string {
   const counts = `${from.length} → ${to.length}`;
   if (added.length === 1 && removed.length === 0) return `${counts} (+ "${entryName(added[0])}")`;
   if (removed.length === 1 && added.length === 0) return `${counts} (− "${entryName(removed[0])}")`;
+  // One entry swapped for another — an edited text line — names both, or the
+  // row reads "1 → 1" and says nothing (#130).
+  if (removed.length === 1 && added.length === 1)
+    return `${counts} ("${entryName(removed[0])}" → "${entryName(added[0])}")`;
   return counts;
 }
 

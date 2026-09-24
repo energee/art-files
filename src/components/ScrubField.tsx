@@ -11,10 +11,10 @@ import { Label } from "@/components/ui/label";
 import {
   InputGroup, InputGroupAddon, InputGroupInput, InputGroupText,
 } from "@/components/ui/input-group";
-// Decimal places implied by the step, so a drag can't accumulate float noise
+// Round to the decimal places the step implies, so a drag can't accumulate float noise
 // (0.4 + 0.1 = 0.5000000000000001) straight into the saved config. Shared with
 // the callers that have to predict what this field commits — see numeric.ts.
-import { decimalsOf as decimals } from "@/numeric";
+import { roundToStep } from "@/numeric";
 
 /** Pixels of pointer travel per drag increment. Two keeps a full-range drag
  *  comfortable (tracking's -2..20 in 0.1s is ~440px) while leaving a single
@@ -53,7 +53,7 @@ export function ScrubField(props: {
   const drag = useRef<{ x: number; v: number } | null>(null);
 
   const snap = (v: number) =>
-    Number(Math.min(props.max, Math.max(props.min, v)).toFixed(decimals(props.step)));
+    roundToStep(Math.min(props.max, Math.max(props.min, v)), props.step);
 
   return (
     <div className="flex items-center justify-between gap-2">
@@ -95,7 +95,7 @@ export function ScrubField(props: {
           className="h-6 text-xs"
           // Match editing precision without mutating imported geometry on render.
           // Keep the draft untouched until blur so typing remains uninterrupted.
-          value={text ?? (props.mixed ? "" : Number(props.value.toFixed(decimals(props.step))))}
+          value={text ?? (props.mixed ? "" : roundToStep(props.value, props.step))}
           placeholder={props.mixed ? "Mixed" : undefined}
           onChange={(e) => {
             setText(e.target.value);
