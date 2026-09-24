@@ -22,8 +22,8 @@
 // listeners or renders a singleton surface (the native menu) MUST honor the
 // `active` prop — and per-document renders are dropped while inactive (see
 // the deactivation effect). The editor reports { title, dirty, edited,
-// filePath } upward through onMeta; the shell owns tabs, file-open routing,
-// render settings, and the updater.
+// masterDirty, filePath } upward through onMeta; the shell owns tabs,
+// file-open routing, render settings, and the updater.
 import { RenderSettings as RenderSettingsFields } from "@/components/RenderSettings";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { MasterSaveReview } from "@/components/MasterSaveReview";
@@ -399,6 +399,10 @@ export type DocumentMeta = {
   title: string;
   dirty: boolean;
   edited: boolean;
+  /** The master moved off its last open/save (templateMoved). File → Save
+   *  writes only the label, so this keeps the close prompt armed until
+   *  Save Master. Label overrides don't count — they ride in the .label. */
+  masterDirty: boolean;
   filePath: string | null;
 };
 
@@ -1377,9 +1381,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const title = titleOf(drawLayers) || "Untitled";
   const exportBase = exportBaseOf(drawLayers);
   useEffect(() => {
-    onMeta({ title, dirty, edited, filePath });
+    onMeta({ title, dirty, edited, masterDirty: templateMoved, filePath });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, dirty, edited]); // filePath is declared below; its own effect follows
+  }, [title, dirty, edited, templateMoved]); // filePath is declared below; its own effect follows
 
   /** The full-resolution display list for an export: the same layers the
    *  preview draws, planned with the canvas measure (fonts.ts — the one
@@ -1439,7 +1443,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** State mirror of projectPath (a ref, which can't drive onMeta). */
   const [filePath, setFilePath] = useState<string | null>(null);
   useEffect(() => {
-    onMeta({ title, dirty, edited, filePath });
+    onMeta({ title, dirty, edited, masterDirty: templateMoved, filePath });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filePath]);
   function forgetProjectFile() {

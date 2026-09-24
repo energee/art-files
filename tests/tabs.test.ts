@@ -4,11 +4,26 @@
 import { describe, expect, test } from "vitest";
 import {
   activateTab, addTab, closeTab, initialTabs, isPristine,
-  makeHiddenPropsEqual, routeFileOpen, updateTabMeta,
+  makeHiddenPropsEqual, routeFileOpen, unsaved, updateTabMeta,
 } from "@/tabs";
 
 const opened = (path: string) =>
-  ({ title: path, dirty: false, edited: false, filePath: path });
+  ({ title: path, dirty: false, edited: false, masterDirty: false, filePath: path });
+
+// Issue #77: ⌘S writes only the .label; a master edit (an added layer) lives
+// on in memory until Save Master, so it must keep the close prompt armed.
+describe("unsaved", () => {
+  const tab = { dirty: false, edited: true, masterDirty: false };
+  test("a saved label with no pending master edits closes silently", () => {
+    expect(unsaved(tab)).toBe(false);
+  });
+  test("a saved label with an unsaved master edit still prompts", () => {
+    expect(unsaved({ ...tab, masterDirty: true })).toBe(true);
+  });
+  test("an untouched tab never prompts, whatever its flags", () => {
+    expect(unsaved({ dirty: true, edited: false, masterDirty: true })).toBe(false);
+  });
+});
 
 describe("tab transitions", () => {
   test("boots with one active Untitled tab", () => {
