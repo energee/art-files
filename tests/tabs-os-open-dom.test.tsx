@@ -1,7 +1,7 @@
 // tabs-os-open-dom.test.tsx — OS file-opens that land during startup
-// (issue #109): a path the Rust side queues after the shell's first drain
-// but before its "project-file-opened" listener registers loses its emit,
-// so the shell must drain again once the listener is live.
+// (issue #109): a path the Rust side queues while the shell's
+// "project-file-opened" listener is still registering loses its emit, so
+// the shell must drain once the listener is live.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -21,20 +21,16 @@ const mocks = vi.hoisted(() => ({
 // emit lost — the mock sees the listen call before registering it.
 const { mockIPC, mockWindows } = await import("@tauri-apps/api/mocks");
 mockWindows("main");
-mockIPC((cmd) => (cmd === "take_opened_file" ? mocks.queue.shift() ?? null : null));
-const { invoke } = await import("@tauri-apps/api/core");
-const realInvoke = (window as unknown as { __TAURI_INTERNALS__: { invoke: typeof invoke } })
-  .__TAURI_INTERNALS__;
-const ipcInvoke = realInvoke.invoke;
-realInvoke.invoke = (async (cmd: string, args?: unknown, opts?: unknown) => {
+mockIPC((cmd, args) => {
+  if (cmd === "take_opened_file") return mocks.queue.shift() ?? null;
+  // Without shouldMockEvents, listen() reaches this handler. Rust side:
+  // OpenedFile::push, then an emit to no one — the listener is not
+  // registered until this call returns.
   if (cmd === "plugin:event|listen" && (args as { event: string }).event === "project-file-opened") {
-    // Rust: OpenedFile::push, then emit to no one — the listener is not
-    // registered until this call returns.
     mocks.queue.push("/labels/Startup.label");
-    return 1;
   }
-  return (ipcInvoke as (c: string, a?: unknown, o?: unknown) => Promise<unknown>)(cmd, args, opts);
-}) as typeof invoke;
+  return null;
+});
 (globalThis as { isTauri?: boolean }).isTauri = true; // what isTauri() reads
 vi.mock("../src/components/DesktopUpdater", () => ({ DesktopUpdater: () => null }));
 vi.mock("../src/App", async () => {
@@ -59,8 +55,9 @@ afterEach(async () => { await act(async () => { root.unmount(); }); });
 it("opens a path queued while the listener was still registering", async () => {
   root = createRoot(document.createElement("div"));
   await act(async () => { root.render(createElement(TabsShell)); });
-  // Let the dynamic event import, the listen round-trip and any drain settle.
-  for (let i = 0; i < 5; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  // Let the dynamic event import, the listen round-trip and the drain settle
+  // (a few macrotasks, each flushed through act so React commits).
+  for (let i = 0; i < 5; i++) await act(() => new Promise((r) => setTimeout(r, 0)));
 
   expect(mocks.queue).toEqual([]);
   expect(mocks.editors[0]?.fileToOpen).toMatchObject({ path: "/labels/Startup.label" });

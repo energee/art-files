@@ -186,10 +186,10 @@ export default function TabsShell() {
 
   /** OS file-opens (Finder / Explorer double-click, second-instance argv):
    *  the Rust side stores the path and emits (see take_opened_file in
-   *  src-tauri/src/main.rs); pulled once on mount — a launch-by-file beats
-   *  the webview loading — again once the listener registers, and again
-   *  per emit. Routed by path identity:
-   *  already open → focus, pristine active tab → reuse, else a new tab. */
+   *  src-tauri/src/main.rs); pulled once the listener registers — a
+   *  launch-by-file beats the webview loading — and again per emit. Routed
+   *  by path identity: already open → focus, pristine active tab → reuse,
+   *  else a new tab. */
   useEffect(() => {
     if (!isTauri()) return;
     async function openFromOs() {
@@ -203,10 +203,10 @@ export default function TabsShell() {
     }
     const stopping = import("@tauri-apps/api/event")
       .then(({ listen }) => listen("project-file-opened", () => void openFromOs()));
-    void openFromOs();
-    // And again once the listener is live (#109): a path the OS delivers
-    // after the first drain but before listen() resolves is queued with its
-    // emit lost, and would otherwise sit until the next open.
+    // Drain only once the listener is live (#109): a drain before listen()
+    // resolves leaves a gap where a delivery's emit reaches no one and the
+    // path sits queued until the next open. The queue holds anything that
+    // arrived earlier (a launch-by-file), so nothing is lost by waiting.
     void stopping.then(() => openFromOs());
     return () => void stopping.then((stop) => stop());
     // Routing reads live state through stateRef; the helpers are stable.
