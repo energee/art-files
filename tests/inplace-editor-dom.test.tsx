@@ -44,7 +44,7 @@ function openEditor(id: string) {
   const snap = () => ({ x: null, y: null, dx: 0, dy: 0 });
   act(() => {
     root.render(createElement(PreviewCompare, {
-      canvasRender: source, layers, selected: [], onPick: noop, onEditText: noop, onEditUppercase: noop,
+      canvasRender: source, layers, editLayerOf: (l) => l, selected: [], onPick: noop, onEditText: noop, onEditUppercase: noop,
       onEditCancel: noop, onDrag: snap, onDragCancel: noop, onResize: snap, onEditSession: noop,
       cornerRadiusPct: 0, zoom: 1, bleedIn: 0,
     } as Parameters<typeof PreviewCompare>[0]));
