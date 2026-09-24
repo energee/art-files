@@ -109,8 +109,6 @@ describe("routeFileOpen", () => {
   });
 
   test("a picker/input-opened tab (clean, no path) is not reused (#83)", () => {
-    // Handle and file-input opens leave filePath null; the open still resets
-    // dirty, so the tab reports a clean document that came from a file.
     const s0 = initialTabs();
     const openedNoPath = updateTabMeta(s0, s0.active, { title: "IPA", dirty: false });
     expect(isPristine(openedNoPath.tabs[0])).toBe(false);

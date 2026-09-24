@@ -15,7 +15,7 @@ export type Tab = TabMeta & { id: number };
 export type TabsState = { tabs: Tab[]; active: number; nextId: number };
 
 // dirty starts true, edited false: a fresh default document has Save enabled
-// (today's boot state) but closing it must not prompt.
+// and counts as pristine (isPristine), but closing it must not prompt.
 const UNTITLED: TabMeta = {
   title: "Untitled", dirty: true, edited: false, masterUnsaved: false, filePath: null,
 };
@@ -64,11 +64,9 @@ export function closeTab(s: TabsState, id: number): TabsState {
 export const unsaved = (t: Pick<TabMeta, "dirty" | "edited" | "masterUnsaved">) =>
   t.edited && (t.dirty || t.masterUnsaved);
 
-/** Never been touched and not backed by a file — safe to reuse for an open
- *  and free to close without a prompt. `dirty` is the file signal: a fresh
- *  Untitled boots dirty, and only a completed open or save clears it — for
- *  picker/handle and file-input opens too, which leave filePath null
- *  (issue #83). A failed open never clears it, so the tab stays reusable. */
+/** Untouched and not from a file — safe to reuse for an open. `dirty` stays
+ *  true until an open or save succeeds, so it covers the picker and
+ *  file-input opens that leave filePath null (issue #83). */
 export const isPristine = (t: Tab) => !t.edited && t.dirty;
 
 /** Where an opened .label lands: the tab already holding that path (OS
