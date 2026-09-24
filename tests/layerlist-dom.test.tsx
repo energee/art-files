@@ -192,6 +192,23 @@ describe("LayerList", () => {
     expect(rowFor("wordmark").textContent).toContain("Brand");
   });
 
+  it("double-click renames even though pointerdown captured the pointer on the row button (#115)", () => {
+    // In a real browser the row button's pointerdown calls setPointerCapture,
+    // so the dblclick that follows is targeted at the BUTTON, never at the
+    // name span inside it. happy-dom doesn't retarget, so send the press and
+    // the dblclick to the element Chrome actually hits.
+    render(baseProps());
+    const button = rowFor("barcode").querySelector("button")!;
+    button.setPointerCapture = vi.fn();
+    const pointer = (type: string) => act(() => {
+      button.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, button: 0, clientX: 10, clientY: 10 }));
+    });
+    for (let n = 0; n < 2; n++) { pointer("pointerdown"); pointer("pointerup"); }
+    expect(button.setPointerCapture).toHaveBeenCalled();
+    dblclick(button);
+    expect(rowFor("barcode").querySelector('input[aria-label="Rename Barcode"]')).not.toBeNull();
+  });
+
   it("Add layer → Text calls onAdd(\"text\")", async () => {
     const props = render(baseProps());
     await openMenu(byLabel("Add layer"));
