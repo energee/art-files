@@ -59,3 +59,36 @@ describe("hitTestBoxes", () => {
     expect(hitTestBoxes(400, 200, boxes)).toBeNull();
   });
 });
+
+describe("empty text layers (#116)", () => {
+  const empty = (id: string, extra: Partial<TextLayer> = {}) =>
+    text({ id, x: 100, y: 50, lines: [line("")], ...extra });
+  const H = (L.FONT_ASC + L.FONT_DESC) * 10;
+
+  it("gets a square hit box grown from its anchor point the way its text grows (per align)", () => {
+    // Anchor and align deliberately disagree: the box is zero-width at x
+    // whatever the anchor, and the in-place editor finds x back from the box
+    // through `align`, so the padding must follow align to keep it put.
+    const ls = [empty("l", { anchor: "right" }), empty("c", { align: "center" }), empty("r", { align: "right" })];
+    const boxes = hitBoxesFromLayout(ls, layerBoxes(ls, m, assets));
+    expect(boxes).toEqual([
+      { id: "l", x: 100, y: 50, w: H, h: H, locked: false },
+      { id: "c", x: 100 - H / 2, y: 50, w: H, h: H, locked: false },
+      { id: "r", x: 100 - H, y: 50, w: H, h: H, locked: false },
+    ]);
+    expect(hitTestBoxes(100 + H * 0.75, 50 + H / 2, boxes)).toBe("l"); // right of c's half
+  });
+
+  it("a rotated empty column pads up its run, keeping the bottom edge the editor starts from", () => {
+    const ls = [empty("t", { rotation: 90 }), empty("b", { rotation: 90, vAnchor: "bottom" })];
+    expect(hitBoxesFromLayout(ls, layerBoxes(ls, m, assets))).toEqual([
+      { id: "t", x: 100, y: 50 - H, w: H, h: H, locked: false },
+      { id: "b", x: 100, y: 50 - H, w: H, h: H, locked: false },
+    ]);
+  });
+
+  it("the padding is hit-testing only: the layout box stays zero-width", () => {
+    const ls = [empty("l")];
+    expect(layerBoxes(ls, m, assets).get("l")).toMatchObject({ w: 0 });
+  });
+});

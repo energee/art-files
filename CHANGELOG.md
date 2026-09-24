@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.93] - 2026-09-23
+
+### Fixed
+
+- **Empty text layers stay clickable and editable.** A new Text layer, or one
+  whose text you have deleted, keeps a small box on the canvas: you can click
+  to select it, see its outline, and double-click to type into it. Deleting
+  every character while editing on the canvas no longer closes the editor
+  and sends your next keystrokes to menu shortcuts.
 ## [0.1.92] - 2026-09-23
 
 ### Fixed
