@@ -137,14 +137,9 @@ it("offers the barcode's tiers in the field that fills it", async () => {
   }
 });
 
-// #132: the inspector Sheet is 300px at every width. The base SheetContent
-// sizes its right side with `data-[side=right]:w-3/4` and
-// `data-[side=right]:sm:max-w-sm`; an unprefixed `w-[300px]` neither
-// replaces them in tailwind-merge (different variant) nor beats them in the
-// cascade (lower specificity), so below 640px the sheet was 75% of the window
-// and above it 24rem (312px at the 13px root). happy-dom computes no Tailwind
-// CSS, so this pins the merged class list: every width / max-width class on
-// the sheet must be the 300px one (or lift the cap).
+// #132: the inspector Sheet is 300px at every width (see the SheetContent
+// comment in App.tsx for why the base's variant classes won). happy-dom
+// computes no Tailwind CSS, so this pins the merged class list instead.
 it("sizes the inspector sheet to 300px at every breakpoint (#132)", async () => {
   const container = document.createElement("div");
   document.body.appendChild(container);
