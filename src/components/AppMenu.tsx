@@ -233,10 +233,15 @@ async function closeResources(resources: NativeResource[]) {
   await Promise.allSettled(owned.map((resource) => resource.close()));
 }
 
-async function macApplicationMenu(
+/** The macOS application menu. Quit is a custom item, not the predefined
+ *  one: that sends NSApp `terminate:`, which exits without a window
+ *  close-requested event, so ⌘Q skipped the unsaved-tabs prompt (#80).
+ *  `quit` must run the window close flow instead. Exported for tests. */
+export async function macApplicationMenu(
   api: MenuApi,
   resources: NativeResource[],
   checkForUpdates: () => void,
+  quit: () => void,
 ) {
   const definitions = [
     { item: { About: null } as const },
@@ -247,7 +252,6 @@ async function macApplicationMenu(
     { item: "HideOthers" as const },
     { item: "ShowAll" as const },
     { item: "Separator" as const },
-    { item: "Quit" as const },
   ];
   const items: NativeEntry[] = await Promise.all(definitions.map(async (definition) => {
     const item = await api.PredefinedMenuItem.new(definition);
@@ -262,6 +266,14 @@ async function macApplicationMenu(
   });
   resources.push(updater);
   items.splice(1, 0, updater);
+  const quitItem = await api.MenuItem.new({
+    id: "quit",
+    text: "Quit Label Lab",
+    accelerator: "CmdOrCtrl+Q",
+    action: quit,
+  });
+  resources.push(quitItem);
+  items.push(quitItem);
   const menu = await api.Submenu.new({ id: "application-menu", text: "Label Lab", items });
   resources.push(menu);
   return menu;
@@ -368,7 +380,12 @@ function useNativeMenu(
         // the browser renderer must not show it. Other desktop platforms put
         // File first and receive their window-local menu bar normally.
         if (isMacOS()) {
-          roots.unshift(await macApplicationMenu(api, resources, () => updateRef.current()));
+          // Quit closes the window like its red button, so TabsShell's
+          // onCloseRequested sweep prompts for unsaved tabs before exit.
+          const quit = () => void import("@tauri-apps/api/window")
+            .then((m) => m.getCurrentWindow().close())
+            .catch((error) => errorRef.current(`Could not quit: ${String(error)}`));
+          roots.unshift(await macApplicationMenu(api, resources, () => updateRef.current(), quit));
         }
         const menu = await api.Menu.new({ id: "label-lab-menu", items: roots });
         resources.push(menu);

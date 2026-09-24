@@ -190,6 +190,10 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
           size="sm"
           isActive={isSelected}
           {...(!renaming ? dragHandlers : {})}
+          // Rename lives on the button, not the name span: pointerdown's
+          // setPointerCapture (the drag) retargets the follow-up dblclick to
+          // this capture element, so a span handler never fires (#115).
+          onDoubleClick={() => setRenaming(true)}
           onKeyDown={(e) => { dragHandlers.onKeyDown?.(e); if (!e.defaultPrevented) onKeyDown(e); }}
           aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
           title="Drag to reorder · Alt+↑/↓"
@@ -212,7 +216,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
               className="min-w-0 flex-1 rounded-sm border border-sidebar-border bg-transparent px-1 text-xs outline-none"
             />
           ) : (
-            <span className="min-w-0 flex-1 truncate" onDoubleClick={() => setRenaming(true)}>
+            <span className="min-w-0 flex-1 truncate">
               {name}
             </span>
           )}
