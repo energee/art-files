@@ -173,6 +173,11 @@ binary-impacting change gets its own version before it is merged.
   and overlapped the canvas by 12px. It is now 300px at every width, and the
   label recentres in the space beside it.
 
+- **An empty QR layer draws nothing.** Clearing a QR layer's value used to
+  print a real, scannable QR code for a single space. An empty QR layer now
+  draws nothing on the canvas, in the PDFs, or in the PSD, the same as a
+  barcode with an invalid number.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed

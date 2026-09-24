@@ -344,9 +344,11 @@ function prepareBarcode(l: BarcodeLayer, m: MeasureFace): Prepared | null {
 
 // --- qr -------------------------------------------------------------------
 
-function prepareQr(l: QrLayer): Prepared {
+/** Null for an empty value (no modules), like an invalid barcode. */
+function prepareQr(l: QrLayer): Prepared | null {
   const id = l.id;
   const shapes = qrShapes(l.value, { style: l.qrStyle, ecLevel: l.ecLevel ?? "L", rotation: l.rotation });
+  if (shapes.count === 0) return null;
   const style = l.style;
   return {
     size: { w: l.size, h: l.size },

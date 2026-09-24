@@ -295,6 +295,11 @@ describe("planLayers qr", () => {
     expect(planLayers([{ ...qr, style: { fill: "#F3CD80", layer: "metallic" } }], m, assets)).toHaveLength(1);
     expect(layerBoxes([qr], m, assets).get("qr")).toEqual({ x: 10, y: 20, w: 59, h: 59 });
   });
+
+  it("an empty value emits nothing and has an empty box, like an invalid barcode (#72)", () => {
+    expect(planLayers([{ ...qr, value: "" }], m, assets)).toEqual([]);
+    expect(layerBoxes([{ ...qr, value: "" }], m, assets).get("qr")).toEqual({ x: 10, y: 20, w: 0, h: 0 });
+  });
 });
 
 describe("planLayers order and binding", () => {
