@@ -23,7 +23,7 @@ function draggedTypes(dt: DataTransfer | null): string[] {
 /** True for an OS file drag (Finder/Explorer), as opposed to an in-page
  *  text or element drag, which must keep its default behavior. */
 function carriesFiles(dt: DataTransfer | null): boolean {
-  return !!dt && Array.from(dt.types).includes("Files");
+  return !!dt && dt.types.includes("Files");
 }
 
 /** The global chooser's routing rule, pure so both MIME and extension
@@ -61,20 +61,18 @@ export function AssetDropOverlay(props: {
       setActive(false);
       setOver(null);
     };
-    // Without preventDefault on dragover and drop the webview "opens" the
-    // file — navigating the whole window to it and discarding every tab
-    // (#121). So every file drag outside a field is prevented, claimed or
-    // not; only claimed images arm the overlay and get routed. A field
-    // prevents for itself, so yielding here preserves react-dropzone's
-    // accept/reject behavior. dragover fires as soon as the pointer enters
-    // the window and continuously after, so it alone arms the overlay — no
-    // dragenter listener needed.
+    // Any file drag outside a field is prevented on dragover and drop, or the
+    // webview navigates to the file and discards every tab (#121); only
+    // claimed images arm the overlay and get routed. A field prevents for
+    // itself, so yielding preserves react-dropzone's accept/reject behavior.
+    // dragover fires as soon as the pointer enters the window and
+    // continuously after, so it alone arms the overlay — no dragenter needed.
     const onDragOver = (e: DragEvent) => {
       if (isFieldDrop(e.target)) return hide();
-      if (carriesFiles(e.dataTransfer)) e.preventDefault();
+      if (!carriesFiles(e.dataTransfer)) return;
+      e.preventDefault();
       const type = draggedTypes(e.dataTransfer).find((t) => CLAIMED_TYPES.includes(t));
       if (!type) return;
-      e.preventDefault();
       setActive(true);
       // Same routing rule as the drop itself, so the highlighted half always
       // matches where the file will land (no name mid-drag; type suffices).
@@ -90,13 +88,12 @@ export function AssetDropOverlay(props: {
       const file = e.dataTransfer?.files[0];
       const kind = file ? globalAssetKind(file, e.clientX, window.innerWidth) : null;
       hide();
-      if (field) return;
+      if (field || !carriesFiles(e.dataTransfer)) return;
+      e.preventDefault();
       // Unclaimed files (a .label, a PDF, an SVG) are swallowed, not opened:
       // opening a dropped .label would need the tab shell's open path, which
       // this per-tab overlay can't reach — use File → Open Project… for those.
-      if (carriesFiles(e.dataTransfer)) e.preventDefault();
       if (!file || !kind) return;
-      e.preventDefault();
       if (kind === "mask") handlersRef.current.onMask(file);
       else handlersRef.current.onTexture(file);
     };

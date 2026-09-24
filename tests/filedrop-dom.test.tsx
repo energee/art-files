@@ -1,9 +1,7 @@
-// filedrop-dom.test.tsx — window-level drag/drop behavior of AssetDropOverlay
-// (src/components/AssetDropOverlay.tsx): any file drag outside a field must be
-// defaultPrevented so the webview never navigates to the file and discards
-// every tab (#121), while only claimed image types are routed or arm the
-// overlay. No @testing-library/react in this repo — mounted through
-// react-dom/client + act, matching tests/rulers-dom.test.tsx.
+// filedrop-dom.test.tsx — AssetDropOverlay's window drag/drop listeners: the
+// #121 regression (unclaimed file drops must not navigate the window) plus
+// claimed routing and the field yield. No @testing-library/react in this repo —
+// mounted through react-dom/client + act, matching tests/rulers-dom.test.tsx.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
