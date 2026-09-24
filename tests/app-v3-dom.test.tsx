@@ -19,20 +19,31 @@ import { DocumentEditor } from "../src/App";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-it("selects a v3 text layer, edits its content through the inspector, and undoes the label edit", async () => {
+/** Mount a real DocumentEditor; `onMeta` records the tab metadata it reports. */
+async function mountEditor() {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
   const onMeta = vi.fn();
+  await act(async () => {
+    root.render(createElement(DocumentEditor, {
+      active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta,
+      saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+      onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+      onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+    }));
+  });
+  const unmount = async () => { await act(async () => { root.unmount(); }); container.remove(); };
+  return { container, onMeta, unmount };
+}
+
+const pressUndo = () => act(async () => {
+  document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
+});
+
+it("selects a v3 text layer, edits its content through the inspector, and undoes the label edit", async () => {
+  const { container, onMeta, unmount } = await mountEditor();
   try {
-    await act(async () => {
-      root.render(createElement(DocumentEditor, {
-        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta,
-        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
-        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
-        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
-      }));
-    });
     expect(container.querySelector("#master-picker")?.textContent).toContain("Lolev");
     // Switching a variant-added layer ON enables the variant that owns it —
     // read off the master Select, which names the version being shown now that
@@ -45,9 +56,7 @@ it("selects a v3 text layer, edits its content through the inspector, and undoes
     expect(picker()).toContain("Collab");
     expect(leadPower.getAttribute("aria-pressed")).toBe("true");
     expect(container.textContent).not.toContain("Invalid master file");
-    await act(async () => {
-      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
-    });
+    await pressUndo();
     expect(picker()).not.toContain("Collab");
     const row = container.querySelector('[data-layer-id="name"]');
     expect(row).not.toBeNull();
@@ -61,14 +70,11 @@ it("selects a v3 text layer, edits its content through the inspector, and undoes
       editor.dispatchEvent(new Event("input", { bubbles: true }));
     });
     expect(onMeta.mock.lastCall?.[0]).toMatchObject({ title: "Peregrine", dirty: true, edited: true });
-    await act(async () => {
-      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
-    });
+    await pressUndo();
     expect(onMeta.mock.lastCall?.[0].title).not.toBe("Peregrine");
     expect(editor.textContent).not.toContain("Peregrine");
   } finally {
-    await act(async () => { root.unmount(); });
-    container.remove();
+    await unmount();
   }
 });
 
@@ -141,22 +147,8 @@ it("offers the barcode's tiers in the field that fills it", async () => {
 // keystroke folded into whatever step came before it (a drag, a toggle): ⌘Z
 // then undid the typing AND the earlier edit together.
 it("opens a fresh undo step for inspector typing instead of folding into the previous edit", async () => {
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  const onMeta = vi.fn();
-  const undo = () => act(async () => {
-    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
-  });
+  const { container, onMeta, unmount } = await mountEditor();
   try {
-    await act(async () => {
-      root.render(createElement(DocumentEditor, {
-        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta,
-        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
-        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
-        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
-      }));
-    });
     const picker = () => container.querySelector("#master-picker")!.textContent ?? "";
     // The earlier, unrelated edit: switch the collab layer on (its own step).
     const leadPower = container.querySelector('[data-layer-id="collabLead"] button[aria-label$=": enabled"]') as HTMLButtonElement;
@@ -176,13 +168,12 @@ it("opens a fresh undo step for inspector typing instead of folding into the pre
     }
     expect(onMeta.mock.lastCall?.[0].title).toBe("Peregrine");
     // …but not with the toggle before them: one ⌘Z removes only the typing.
-    await undo();
+    await pressUndo();
     expect(onMeta.mock.lastCall?.[0].title).not.toMatch(/^Pere/);
     expect(picker()).toContain("Collab");
-    await undo();
+    await pressUndo();
     expect(picker()).not.toContain("Collab");
   } finally {
-    await act(async () => { root.unmount(); });
-    container.remove();
+    await unmount();
   }
 });

@@ -701,7 +701,7 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  (model/edit.ts), recorded as one history entry; `coalesce` folds a
    *  gesture's many updates (a drag, an in-place text session) into one undo
    *  step, and an inspector field passes its id so its typing is one step of
-   *  its own — see useHistory's `set`. Computed against the doc THIS render
+   *  its own — see history.ts's `Coalesce`. Computed against the doc THIS render
    *  sees so a no-op can return before marking the tab dirty. */
   const edit = (fn: (d: Doc) => Doc, coalesce?: Coalesce) => {
     let next: Doc;
@@ -718,19 +718,19 @@ export const DocumentEditor = memo(function DocumentEditor({
     setEdited(true);
     setDoc((d) => (d === doc ? next : fn(d)), coalesce);
   };
-  const editMaster = (fn: (m: Master) => Master, coalesce?: boolean) =>
+  const editMaster = (fn: (m: Master) => Master, coalesce?: Coalesce) =>
     edit((d) => ({ ...d, master: fn(d.master) }), coalesce);
-  const editLabel = (fn: (l: LabelFile) => LabelFile, coalesce?: boolean) =>
+  const editLabel = (fn: (l: LabelFile) => LabelFile, coalesce?: Coalesce) =>
     edit((d) => ({ ...d, label: fn(d.label) }), coalesce);
   /** A DESIGN edit on one layer — position, style, policy, geometry: lands in
    *  the LABEL as an override, never in the master. The master is the template
    *  and changes only through the reviewed Save Master (see edit.ts's
    *  patchLayers for the rule). */
-  const patch = (id: string, p: DeepPartial<Layer>, coalesce?: boolean) =>
+  const patch = (id: string, p: DeepPartial<Layer>, coalesce?: Coalesce) =>
     patchMany([[id, p]], coalesce);
   /** patch for several layers in ONE doc edit (one clone, one undo entry) —
    *  a group drag patches every selected layer per pointermove. */
-  const patchMany = (entries: [string, DeepPartial<Layer>][], coalesce?: boolean) =>
+  const patchMany = (entries: [string, DeepPartial<Layer>][], coalesce?: Coalesce) =>
     edit((d) => patchLayers(d, entries), coalesce);
   /** A layer's CONTENT: always a fill value into the label, for any layer. */
   const setContent = (layer: Layer, value: LayerValue, coalesce?: Coalesce) =>
@@ -2088,8 +2088,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       const tokens = rows.flatMap((r) =>
         r.layer.kind === "text" ? [{ id: r.layer.id, name: r.layer.name }] : []);
       const src = link.id ?? "";
-      // The link box types as one session (keyed by its id); a suffix pick
-      // is a discrete choice and gets a step of its own.
+      // The link box types as one session keyed by its id; a suffix pick is
+      // a discrete choice and gets a step of its own (false).
       const write = (prefix: string, ref: string, coalesce: Coalesce) =>
         setContent(layer, formatLink(prefix, ref), coalesce);
       return (

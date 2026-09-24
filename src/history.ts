@@ -15,7 +15,15 @@ const COALESCE_MS = 500;
 const LIMIT = 100;
 
 export type Stacks<T> = { past: T[]; present: T; future: T[] };
-/** How `useHistory`'s setter groups an edit into undo steps — see `set`. */
+/** How `useHistory`'s setter groups an edit into undo steps, overriding its
+ *  timing window:
+ *  - boolean — the caller tracks its own session: the preview's inline text
+ *    editor and canvas drags pass false on the first update (open a step)
+ *    and true on the rest (fold in).
+ *  - string — a field session key (an inspector field's id): folds only into
+ *    a step the SAME key opened with the immediately preceding edit, so a
+ *    field's typing is one step however slowly the user types, yet never
+ *    merges into an unrelated earlier edit (#73). */
 export type Coalesce = boolean | string;
 
 /** Establish a new document boundary: the value becomes current and neither
@@ -59,14 +67,7 @@ export function useHistory<T>(initial: T | (() => T)) {
   // undo, redo, or reset, so the next keyed edit always opens a fresh step.
   const lastKey = useRef<string | null>(null);
 
-  // `coalesce` overrides the timing window when given:
-  // - boolean — the caller tracks its own session: the preview's inline text
-  //   editor and canvas drags pass false on the first update (open a step)
-  //   and true on the rest (fold in).
-  // - string — a field session key (an inspector field's id): folds only
-  //   into a step the SAME key opened by the immediately preceding edit, so a
-  //   field's typing is one step however slowly the user types, yet never
-  //   merges into an unrelated earlier edit (#73).
+  // `coalesce`, when given, overrides the timing window — see `Coalesce`.
   const set = useCallback((next: T | ((current: T) => T), coalesce?: Coalesce) => {
     // Decided outside the updater: StrictMode double-invokes updaters, and a
     // ref write in there would make the second call see its own key.
