@@ -337,10 +337,13 @@ function validateLayer(l: Layer, ctx: string): void {
   if (!l.style || typeof l.style !== "object") fail(`${ctx} layer "${l.id}" missing style`);
 }
 
-/** Every `below` reference must name a layer in the list, and the graph
- *  must be acyclic. Runs over the master's own layers and again per variant
- *  with that variant's diff merged in. */
-function validateBindings(layers: Layer[], ctx: string): void {
+/** Every `below` reference must name a layer in the list, an enabled layer
+ *  must not hang off a disabled one, and the graph must be acyclic. Runs over
+ *  the master's own layers and again per variant with that variant's diff
+ *  merged in; edit.ts's patchLayers runs it over a label's resolved layers
+ *  too, passing its own `report` since that failure is an edit refusal, not
+ *  an invalid file. */
+export function validateBindings(layers: Layer[], ctx: string, report: (msg: string) => never = fail): void {
   const byId = new Map(layers.map((l) => [l.id, l]));
   for (const l of layers) {
     const seen = new Set<string>([l.id]);
@@ -348,9 +351,9 @@ function validateBindings(layers: Layer[], ctx: string): void {
     let binding = bindingOf(at);
     while (binding) {
       const next = byId.get(binding.to);
-      if (!next) fail(`${ctx} layer "${at.id}" is bound to missing layer "${binding.to}"`);
-      if (l.enabled && !next.enabled) fail(`${ctx} layer "${l.id}" is bound to disabled layer "${next.id}"`);
-      if (seen.has(next.id)) fail(`${ctx} layer "${l.id}" has a cyclic binding`);
+      if (!next) report(`${ctx} layer "${at.id}" is bound to missing layer "${binding.to}"`);
+      if (l.enabled && !next.enabled) report(`${ctx} layer "${l.id}" is bound to disabled layer "${next.id}"`);
+      if (seen.has(next.id)) report(`${ctx} layer "${l.id}" has a cyclic binding`);
       seen.add(next.id);
       at = next;
       binding = bindingOf(at);

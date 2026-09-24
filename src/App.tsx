@@ -49,7 +49,7 @@ import { exportBase as exportBaseOf, titleOf } from "@/model/resolveLayers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue, structureOnlyMaster,
+  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -707,7 +707,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     try {
       next = fn(doc);
     } catch (err) {
-      setBuildError(errMsg(err)); // bindBelow/unbind re-validate through parseMaster
+      setBuildError(errMsg(err)); // parseMaster / checkLabelBindings refusals
       return;
     }
     if (next === doc || (next.master === doc.master && next.label === doc.label)) return;
@@ -719,8 +719,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   };
   const editMaster = (fn: (m: Master) => Master, coalesce?: boolean) =>
     edit((d) => ({ ...d, master: fn(d.master) }), coalesce);
+  /** A label edit that can reshape the binding graph (a version switch, an
+   *  override reset) — refused, like patchLayers, when it would leave a layer
+   *  bound to a disabled or missing one (checkLabelBindings). */
   const editLabel = (fn: (l: LabelFile) => LabelFile, coalesce?: boolean) =>
-    edit((d) => ({ ...d, label: fn(d.label) }), coalesce);
+    edit((d) => checkLabelBindings({ ...d, label: fn(d.label) }), coalesce);
   /** A DESIGN edit on one layer — position, style, policy, geometry: lands in
    *  the LABEL as an override, never in the master. The master is the template
    *  and changes only through the reviewed Save Master (see edit.ts's
@@ -786,7 +789,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Delete a variant and stop showing it. One undoable edit, so it needs no
    *  confirm of its own. */
   function onRemoveVersion(id: string) {
-    edit((d) => ({
+    edit((d) => checkLabelBindings({
       master: removeVariant(d.master, id),
       label: showVersion(d.label, version === id ? id : version, null),
     }));

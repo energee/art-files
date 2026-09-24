@@ -3,6 +3,17 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.76] - 2026-09-23
+
+### Fixed
+
+- **Switching off a layer another layer is bound to no longer breaks the
+  preview and export.** Turning off Description with Collab on (the collab
+  lead-in hangs below it), switching to a version whose layers hang off a
+  layer you turned off, or resetting a bound layer back on is now refused
+  with a message naming the binding, instead of leaving the preview in an
+  error state. Switch off or unbind the layers bound to it first.
+
 ## [0.1.68] - 2026-09-15
 
 ### Fixed
