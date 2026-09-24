@@ -153,6 +153,23 @@ describe("LayerList", () => {
     expect(rowFor("wordmark").textContent).not.toContain("Collab");
   });
 
+  it("titles the variant chip by what the variant does: adds the layer, or changes a master one", () => {
+    // layerRows sets `variant` on BOTH a layer the variant adds and a master
+    // layer it only overrides (then with `variantOverridden`); the chip said
+    // "Added by" for both (#102).
+    const on = lolevRows(true);
+    const collab = on.variants[0];
+    render(baseProps({ rows: on.rows.map((r) =>
+      r.layer.id === "logo" ? { ...r, variant: collab, variantOverridden: collab } : r) }));
+    const chipTitle = (id: string) => Array.from(rowFor(id).querySelectorAll("span[title]"))
+      .find((el) => el.textContent === "Collab")?.getAttribute("title");
+    expect(chipTitle("logo")).toBe("Changed by the Collab variant");
+    expect(chipTitle("collabLead")).toBe("Added by the Collab variant");
+
+    render(baseProps());
+    expect(chipTitle("collabLead")).toBe("Added by the Collab variant (off)");
+  });
+
   it("no row carries a fillable switch any more — every layer is fillable", () => {
     render(baseProps());
     expect(byLabel("Brand: fillable")).toBeNull();

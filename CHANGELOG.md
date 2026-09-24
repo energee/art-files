@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.136] - 2026-09-24
+
+### Fixed
+
+- **Variant badges say what the variant did.** Hovering a layer's variant
+  badge now reads "Changed by the Collab variant" on a master layer the
+  variant only overrides, and keeps "Added by the Collab variant" for a
+  layer the variant adds.
+
 ## [0.1.135] - 2026-09-24
 
 ### Fixed
