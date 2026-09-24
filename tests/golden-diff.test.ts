@@ -201,6 +201,11 @@ describe("summaryLine and parseArgs", () => {
   it("rejects malformed invocations", () => {
     expect(() => parseArgs(["o.pdf", "n.pdf"])).toThrow(/usage/);
     expect(() => parseArgs(["o.pdf", "n.pdf", "d.png", "--dpi", "lots"])).toThrow(/--dpi/);
+    // #111: pdftoppm treats -r 0 as "use the default" and renders at 150 dpi
+    // while the log claims 0, so a zero (or negative) DPI must be refused.
+    expect(() => parseArgs(["o.pdf", "n.pdf", "d.png", "--dpi", "0"])).toThrow(/--dpi must be a positive number/);
+    expect(() => parseArgs(["o.pdf", "n.pdf", "d.png", "--dpi=-72"])).toThrow(/--dpi must be a positive number/);
+    expect(parseArgs(["o.pdf", "n.pdf", "d.png", "--threshold", "0"]).threshold).toBe(0);
     expect(() => parseArgs(["o.pdf", "n.pdf", "d.png", "--rasterizer", "ghostscript"])).toThrow(/--rasterizer/);
     expect(() => parseArgs(["o.pdf", "n.pdf", "d.png", "--bogus", "1"])).toThrow(/unknown flag/);
   });
