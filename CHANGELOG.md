@@ -75,6 +75,11 @@ binary-impacting change gets its own version before it is merged.
   with no unsaved changes, Export while exports are blocked) now does
   nothing instead of falling through to the browser's own action for that key.
 
+- **Editing text on the canvas no longer tightens the letters.** The on-canvas
+  text editor now sets Barlow Condensed with the same letter spacing as the
+  preview under it, so text stays put when you start typing. Poppins labels
+  are unchanged.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
