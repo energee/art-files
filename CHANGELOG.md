@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.87] - 2026-09-23
+
+### Fixed
+
+- **Desktop File → Open Project remembers where the file lives.** Opening a
+  `.label` from the menu now uses the macOS open dialog, so `⌘S` saves back
+  to that file instead of asking where to save, and opening the same file
+  again (from the menu or Finder) switches to its tab instead of opening a
+  duplicate.
 ## [0.1.86] - 2026-09-23
 
 ### Fixed
