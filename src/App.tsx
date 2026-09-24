@@ -21,9 +21,9 @@
 // inactive ones, so anything here that registers window/document-level
 // listeners or renders a singleton surface (the native menu) MUST honor the
 // `active` prop — and per-document renders are dropped while inactive (see
-// the deactivation effect). The editor reports { title, dirty, edited,
-// masterUnsaved, filePath } upward through onMeta; the shell owns tabs, file-open routing,
-// render settings, and the updater.
+// the deactivation effect). The editor reports its TabMeta ({ title,
+// dirty, edited, masterUnsaved, filePath }) upward through onMeta; the
+// shell owns tabs, file-open routing, render settings, and the updater.
 import { RenderSettings as RenderSettingsFields } from "@/components/RenderSettings";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { MasterSaveReview } from "@/components/MasterSaveReview";
@@ -64,7 +64,7 @@ import { SHIPPED_MASTER_ID, masterIndex, rememberMaster, resolveDefaultMaster, r
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
-import { makeHiddenPropsEqual } from "@/tabs";
+import { makeHiddenPropsEqual, type TabMeta } from "@/tabs";
 import { EMBEDDABLE_RASTER, mimeFor, rasterKind, tintRgba } from "@/collab";
 import { parseLogo } from "@/logo";
 // The builders are imported dynamically at export time (see buildFull /
@@ -393,17 +393,10 @@ export type FileToOpen = {
   file?: File;
 };
 
-/** What the tab strip shows for this document — reported through onMeta
+/** What the tab strip shows for this document (src/tabs.ts TabMeta — one
+ *  definition, so a new field can't drift) — reported through onMeta
  *  whenever any field changes. */
-export type DocumentMeta = {
-  title: string;
-  dirty: boolean;
-  edited: boolean;
-  /** Unsaved master edits (templateMoved): the close prompt warns that a
-   *  label Save leaves them behind — only File → Save Master writes them. */
-  masterUnsaved: boolean;
-  filePath: string | null;
-};
+export type DocumentMeta = TabMeta;
 
 type DocumentEditorProps = {
   active: boolean;

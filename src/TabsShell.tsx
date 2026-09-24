@@ -436,15 +436,16 @@ export default function TabsShell() {
             <DialogDescription>
               This tab has unsaved changes. Save them, discard them, or keep
               the tab open.
+              {/* Save writes only the .label (issue #159): name the master
+                  edits it leaves behind rather than prompting a second
+                  time. Inside the description so it is announced with it. */}
+              {confirmTab?.masterUnsaved && (
+                <>
+                  {" "}This tab also has master changes. They'll be discarded
+                  unless you Cancel and use File → Save Master.
+                </>
+              )}
             </DialogDescription>
-            {/* Save writes only the .label (issue #159): name the master
-                edits it leaves behind rather than prompting a second time. */}
-            {confirmTab?.masterUnsaved && (
-              <p className="text-sm text-muted-foreground">
-                This tab also has master changes. They'll be discarded unless
-                you Cancel and use File → Save Master.
-              </p>
-            )}
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" disabled={saving} onClick={cancelClose}>

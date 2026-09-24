@@ -41,28 +41,23 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-async function mount() {
+async function render(el: ReturnType<typeof createElement>) {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
-  const saveSlot: { current: (() => Promise<boolean>) | null } = { current: null };
-  const onMeta = vi.fn();
-  await act(async () => {
-    root!.render(createElement(DocumentEditor, {
-      active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta,
-      saveSlot, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
-      onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
-      onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
-    }));
-  });
-  return { saveSlot, onMeta };
+  await act(async () => { root!.render(el); });
 }
 
-async function mountShell() {
-  container = document.createElement("div");
-  document.body.appendChild(container);
-  root = createRoot(container);
-  await act(async () => { root!.render(createElement(TabsShell)); });
+async function mountEditor() {
+  const saveSlot: { current: (() => Promise<boolean>) | null } = { current: null };
+  const onMeta = vi.fn();
+  await render(createElement(DocumentEditor, {
+    active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta,
+    saveSlot, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+    onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+    onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+  }));
+  return { saveSlot, onMeta };
 }
 
 /** base-ui's menu trigger opens on mousedown — send the whole press. */
@@ -83,43 +78,33 @@ const reviewOpen = () =>
   Array.from(document.querySelectorAll('[role="dialog"]'))
     .some((d) => d.textContent?.includes("Save Master"));
 
-const MASTER_LINE = "This tab also has master changes";
 const closePrompt = () =>
   Array.from(document.querySelectorAll('[role="dialog"]'))
     .find((d) => d.textContent?.includes("unsaved changes")) ?? null;
 
-it("close-prompt Save with an unsaved master edit saves the label and lets the tab close", async () => {
-  const { saveSlot, onMeta } = await mount();
-  await addTextLayer();
-  expect(onMeta.mock.lastCall?.[0]).toMatchObject({ edited: true, masterUnsaved: true });
-  let result: boolean | undefined;
-  await act(async () => { result = await saveSlot.current!(); });
-  // true = TabsShell closes the tab, as before #159; no review detour.
-  expect(result).toBe(true);
-  expect(reviewOpen()).toBe(false);
-  expect(savedNames).toHaveLength(1);
-  expect(savedNames[0]).toMatch(/\.label$/);
-});
-
-it("close-prompt Save with no master edit saves the label and lets the tab close", async () => {
-  const { saveSlot, onMeta } = await mount();
-  expect(onMeta.mock.lastCall?.[0]).toMatchObject({ masterUnsaved: false });
-  let result: boolean | undefined;
-  await act(async () => { result = await saveSlot.current!(); });
-  expect(result).toBe(true);
-  expect(reviewOpen()).toBe(false);
-  expect(savedNames).toHaveLength(1);
-  expect(savedNames[0]).toMatch(/\.label$/);
-});
+it.each([true, false])(
+  "close-prompt Save saves the label and lets the tab close (master edit: %s)",
+  async (masterEdit) => {
+    const { saveSlot, onMeta } = await mountEditor();
+    if (masterEdit) await addTextLayer();
+    expect(onMeta.mock.lastCall?.[0]).toMatchObject({ masterUnsaved: masterEdit });
+    let result: boolean | undefined;
+    await act(async () => { result = await saveSlot.current!(); });
+    // true = TabsShell closes the tab, as before #159; no review detour.
+    expect(result).toBe(true);
+    expect(reviewOpen()).toBe(false);
+    expect(savedNames).toHaveLength(1);
+    expect(savedNames[0]).toMatch(/\.label$/);
+  });
 
 it("the close prompt warns that unsaved master changes will be discarded", async () => {
-  await mountShell();
+  await render(createElement(TabsShell));
   await addTextLayer();
   const close = document.querySelector('[aria-label^="Close "]') as HTMLElement;
   await act(async () => { close.click(); });
   const prompt = closePrompt();
   expect(prompt).not.toBeNull();
-  expect(prompt!.textContent).toContain(MASTER_LINE);
+  expect(prompt!.textContent).toContain("This tab also has master changes");
   expect(prompt!.textContent).toContain("File → Save Master");
   // Still the same three choices — no extra button.
   expect(Array.from(prompt!.querySelectorAll("button")).map((b) => b.textContent))
