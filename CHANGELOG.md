@@ -202,6 +202,11 @@ binary-impacting change gets its own version before it is merged.
   variant only overrides, and keeps "Added by the Collab variant" for a
   layer the variant adds.
 
+- **Number fields show the value they applied.** Typing a number in
+  exponent form, such as `1e2` in Size, applied 100 but left `1e2` in the
+  field after you clicked away. The field now shows `100`. This covers
+  every inspector number field, including optional ones like wrap width.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
