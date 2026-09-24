@@ -3,6 +3,16 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [Unreleased]
+
+### Fixed
+
+- **Undo brings back replaced or cleared layer images.** Dropping a new image
+  on an image layer (or clearing it) and then pressing `⌘Z` restores the
+  original art, instead of leaving the layer blank and saving a project with
+  its image missing. Saved `.label` files also no longer carry images the
+  label has stopped using.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
