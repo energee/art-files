@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.81] - 2026-09-23
+
+### Fixed
+
+- **Save works for files opened from Finder and for remembered masters.**
+  ⌘S on a `.label` opened by double-click (or from the command line), and
+  File → Save Master on a master picked from the library after a relaunch, no
+  longer fail with "forbidden path". `.label` and `.master` files inside hidden
+  folders (such as `~/.something/`) can now be opened and saved too.
 ## [0.1.80] - 2026-09-23
 
 ### Fixed

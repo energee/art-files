@@ -12,9 +12,15 @@
     "core:window:allow-destroy",
     "dialog:allow-save",
     "dialog:allow-open",
-    "fs:allow-write-file",
     {
       "identifier": "fs:allow-read-file",
+      "allow": [
+        { "path": "**/*.[lL][aA][bB][eE][lL]" },
+        { "path": "**/*.[mM][aA][sS][tT][eE][rR]" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-write-file",
       "allow": [
         { "path": "**/*.[lL][aA][bB][eE][lL]" },
         { "path": "**/*.[mM][aA][sS][tT][eE][rR]" }
