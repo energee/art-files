@@ -1,23 +1,15 @@
 // terminate.rs — macOS app-level quit (Dock → Quit, logout / shutdown,
 // AppleScript `quit`) runs the unsaved-tabs prompt instead of exiting (#151).
 //
-// Those paths send NSApp `terminate:` straight to the app delegate. tao owns
-// that delegate and implements no `applicationShouldTerminate:`, so AppKit
-// terminates at once: no window CloseRequested, no preventable
-// ExitRequested, and TabsShell's close sweep never runs. (⌘Q avoids this via
-// a custom menu item that closes the window — see AppMenu.tsx, #80.)
-//
-// The fix ADDS `applicationShouldTerminate:` to the delegate's class at
-// startup — class_addMethod, which never replaces an existing method, so
-// tao's delegate stays intact and a future tao that implements the selector
-// itself simply wins (install() then does nothing). The frontend reports
-// whether any tab is unsaved; with nothing unsaved the quit proceeds
-// untouched (so logout is never interrupted needlessly), otherwise it is
-// cancelled and handed to the window's close flow, whose prompt ends in
-// the window's destroy and the app's normal exit when the user confirms.
+// Those paths send NSApp `terminate:`. tao's app delegate has no
+// `applicationShouldTerminate:`, so AppKit quits at once with no window
+// CloseRequested (⌘Q sidesteps this with a custom menu item, #80). install()
+// ADDS that selector with class_addMethod, which never replaces a method:
+// tao's delegate stays intact, and a future tao implementing it wins. With
+// unsaved work the quit is cancelled and handed to the window's close sweep;
+// otherwise it proceeds, so logout is never interrupted needlessly.
 
-// Only macOS installs the hook; elsewhere set_unsaved is a harmless no-op
-// and the decision helpers go unused outside tests.
+// Only macOS installs the hook; elsewhere the decision helper is test-only.
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -35,10 +27,6 @@ pub fn set_unsaved(unsaved: bool) {
     UNSAVED.store(unsaved, Ordering::Relaxed);
 }
 
-fn has_unsaved() -> bool {
-    UNSAVED.load(Ordering::Relaxed)
-}
-
 /** The hook's answer. Cancel only when there is unsaved work AND a window
  *  to run the prompt in — with no window, cancelling would make the app
  *  unquittable. */
@@ -52,7 +40,7 @@ fn terminate_reply(unsaved: bool, has_window: bool) -> usize {
 
 #[cfg(target_os = "macos")]
 mod macos {
-    use super::{has_unsaved, terminate_reply, TERMINATE_CANCEL};
+    use super::{terminate_reply, Ordering, TERMINATE_CANCEL, UNSAVED};
     use objc2::runtime::{AnyObject, Imp, Sel};
     use objc2::{class, ffi, msg_send, sel};
     use std::sync::OnceLock;
@@ -63,7 +51,7 @@ mod macos {
     /** `- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender` */
     extern "C-unwind" fn should_terminate(_: &AnyObject, _: Sel, _: *mut AnyObject) -> usize {
         let window = APP.get().and_then(|app| app.get_webview_window("main"));
-        let reply = terminate_reply(has_unsaved(), window.is_some());
+        let reply = terminate_reply(UNSAVED.load(Ordering::Relaxed), window.is_some());
         if reply == TERMINATE_CANCEL {
             // close() emits CloseRequested like the red button, so the
             // frontend's sweep prompts for each unsaved tab.
@@ -99,6 +87,10 @@ mod macos {
 #[cfg(target_os = "macos")]
 pub use macos::install;
 
+/** Elsewhere quitting already goes through the window close flow. */
+#[cfg(not(target_os = "macos"))]
+pub fn install(_: &tauri::AppHandle) {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,13 +111,5 @@ mod tests {
     #[test]
     fn unsaved_without_a_window_still_terminates() {
         assert_eq!(terminate_reply(true, false), TERMINATE_NOW);
-    }
-
-    #[test]
-    fn set_unsaved_is_what_the_hook_reads() {
-        set_unsaved(true);
-        assert!(has_unsaved());
-        set_unsaved(false);
-        assert!(!has_unsaved());
     }
 }

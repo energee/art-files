@@ -168,10 +168,7 @@ fn main() {
         // macOS: Dock → Quit, logout and AppleScript `quit` bypass the
         // window close flow; route them through it (see terminate.rs).
         .setup(|app| {
-            #[cfg(target_os = "macos")]
             terminate::install(app.handle());
-            #[cfg(not(target_os = "macos"))]
-            let _ = app;
             Ok(())
         })
         .build(tauri::generate_context!())
