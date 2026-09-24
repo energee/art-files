@@ -13,6 +13,8 @@ import {
 } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { parseMaster } from "../src/model/layers";
+import { placeLayers } from "../src/model/place";
+import { resolveLayers } from "../src/model/resolveLayers";
 import type {
   BarcodeLayer, ImageLayer, LabelFile, Layer, Master, QrLayer, RelativeY, TextLayer,
 } from "../src/model/layers";
@@ -540,9 +542,6 @@ describe("structureOnlyMaster", () => {
       .toBe("Collab Brand");
   });
 });
-
-import { resolveLayers } from "../src/model/resolveLayers";
-import { placeLayers } from "../src/model/place";
 
 // Issue #98: removing a layer must not move the layers bound below it. The
 // dependent takes the vacated slot, i.e. its top lands where the removed
