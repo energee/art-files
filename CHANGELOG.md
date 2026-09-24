@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.83] - 2026-09-23
+
+### Fixed
+
+- **Undo after inspector typing only undoes the typing.** Typing in an
+  inspector field (Text, Link, Code, Value) is now its own undo step. Before,
+  it merged into whatever you did just before it (a move, a toggle), so `⌘Z`
+  took back both at once.
+
 ## [0.1.68] - 2026-09-15
 
 ### Fixed

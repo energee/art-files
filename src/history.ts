@@ -15,6 +15,8 @@ const COALESCE_MS = 500;
 const LIMIT = 100;
 
 export type Stacks<T> = { past: T[]; present: T; future: T[] };
+/** How `useHistory`'s setter groups an edit into undo steps — see `set`. */
+export type Coalesce = boolean | string;
 
 /** Establish a new document boundary: the value becomes current and neither
  *  project can reach the other through undo or redo. */
@@ -53,18 +55,30 @@ export function useHistory<T>(initial: T | (() => T)) {
     resetTo(typeof initial === "function" ? (initial as () => T)() : initial));
   // Timestamp of the last accepted edit, for the coalescing window above.
   const lastEdit = useRef(0);
+  // Session key of the last edit (see `set`); null after any unkeyed edit,
+  // undo, redo, or reset, so the next keyed edit always opens a fresh step.
+  const lastKey = useRef<string | null>(null);
 
-  // `coalesce` overrides the timing window when given: the preview's inline
-  // text editor applies every keystroke live but must land as ONE undo step
-  // per session, however slowly the user types — it passes false on the
-  // session's first edit (open a step) and true on the rest (fold in).
-  const set = useCallback((next: T | ((current: T) => T), coalesce?: boolean) => {
+  // `coalesce` overrides the timing window when given:
+  // - boolean — the caller tracks its own session: the preview's inline text
+  //   editor and canvas drags pass false on the first update (open a step)
+  //   and true on the rest (fold in).
+  // - string — a field session key (an inspector field's id): folds only
+  //   into a step the SAME key opened by the immediately preceding edit, so a
+  //   field's typing is one step however slowly the user types, yet never
+  //   merges into an unrelated earlier edit (#73).
+  const set = useCallback((next: T | ((current: T) => T), coalesce?: Coalesce) => {
+    // Decided outside the updater: StrictMode double-invokes updaters, and a
+    // ref write in there would make the second call see its own key.
+    const keyed = typeof coalesce === "string";
+    const sameKey = keyed && lastKey.current === coalesce;
+    lastKey.current = keyed ? coalesce : null;
     setH((s) => {
       const value = typeof next === "function" ? (next as (c: T) => T)(s.present) : next;
       // ponytail: reading the clock inside the updater is impure, but the
       // only cost of a double-invoke under StrictMode is one coalesced step.
       const now = performance.now();
-      const fold = coalesce ?? now - lastEdit.current < COALESCE_MS;
+      const fold = keyed ? sameKey : coalesce ?? now - lastEdit.current < COALESCE_MS;
       if (!Object.is(value, s.present)) lastEdit.current = now;
       return pushed(s, value, fold);
     });
@@ -74,16 +88,19 @@ export function useHistory<T>(initial: T | (() => T)) {
     // Break the coalescing window: the next edit after an undo must start a
     // fresh step, never merge into the one we just stepped back over.
     lastEdit.current = 0;
+    lastKey.current = null;
     setH(undone);
   }, []);
 
   const redo = useCallback(() => {
     lastEdit.current = 0;
+    lastKey.current = null;
     setH(redone);
   }, []);
 
   const reset = useCallback((value: T) => {
     lastEdit.current = 0;
+    lastKey.current = null;
     setH(resetTo(value));
   }, []);
 

@@ -136,3 +136,53 @@ it("offers the barcode's tiers in the field that fills it", async () => {
     container.remove();
   }
 });
+
+// Issue #73 — inspector fields passed a hard `coalesce: true`, so the first
+// keystroke folded into whatever step came before it (a drag, a toggle): ⌘Z
+// then undid the typing AND the earlier edit together.
+it("opens a fresh undo step for inspector typing instead of folding into the previous edit", async () => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  const onMeta = vi.fn();
+  const undo = () => act(async () => {
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
+  });
+  try {
+    await act(async () => {
+      root.render(createElement(DocumentEditor, {
+        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta,
+        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+      }));
+    });
+    const picker = () => container.querySelector("#master-picker")!.textContent ?? "";
+    // The earlier, unrelated edit: switch the collab layer on (its own step).
+    const leadPower = container.querySelector('[data-layer-id="collabLead"] button[aria-label$=": enabled"]') as HTMLButtonElement;
+    await act(async () => leadPower.click());
+    expect(picker()).toContain("Collab");
+    const row = container.querySelector('[data-layer-id="name"]')!;
+    await act(async () => {
+      (row.querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement).click();
+    });
+    const editor = document.querySelector('[contenteditable="true"]') as HTMLElement;
+    // Two keystrokes of one typing session: they coalesce with each other…
+    for (const text of ["Pere", "Peregrine"]) {
+      await act(async () => {
+        editor.innerHTML = `<div>${text}</div>`;
+        editor.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+    expect(onMeta.mock.lastCall?.[0].title).toBe("Peregrine");
+    // …but not with the toggle before them: one ⌘Z removes only the typing.
+    await undo();
+    expect(onMeta.mock.lastCall?.[0].title).not.toMatch(/^Pere/);
+    expect(picker()).toContain("Collab");
+    await undo();
+    expect(picker()).not.toContain("Collab");
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+  }
+});
