@@ -3,6 +3,16 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.131] - 2026-09-24
+
+### Fixed
+
+- **The drop overlay no longer flickers on macOS.** When you drag a texture
+  or mask image across the window, the "Background texture / Metallic mask"
+  overlay now stays up as the pointer moves over the canvas and panels. It
+  used to blink off at every element edge in the desktop app. It still
+  closes when you drag out of the window or drop.
+
 ## [0.1.95] - 2026-09-24
 
 ### Fixed

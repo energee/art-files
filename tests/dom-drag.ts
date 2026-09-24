@@ -4,7 +4,7 @@
 import { act } from "react";
 
 export function fileDrag(
-  type: "dragover" | "drop", file: File, target: EventTarget = document.body,
+  type: "dragenter" | "dragover" | "dragleave" | "drop", file: File, target: EventTarget = document.body,
 ): DragEvent {
   const e = new Event(type, { bubbles: true, cancelable: true }) as DragEvent;
   Object.defineProperty(e, "dataTransfer", {
