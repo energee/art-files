@@ -13,18 +13,16 @@ const mocks = vi.hoisted(() => ({
   editors: [] as Array<{ fileToOpen: FileToOpen | null; onOpenProject: () => void }>,
 }));
 
-vi.mock("@tauri-apps/api/core", () => ({
-  isTauri: () => true,
-  invoke: async () => null, // take_opened_file: no OS open queued
-}));
-vi.mock("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
-// The shell's window title / close handlers load @tauri-apps/api/window
-// dynamically; a vi.mock of it proved racy (one of the two mount-time
-// imports got the real module), so run the real module against Tauri's
-// own IPC mocks instead.
+// All Tauri behavior runs through Tauri's own mocks: the real api modules
+// (core's invoke, event's listen, the window title / close handlers) hit
+// mockIPC, which answers every command with null — so take_opened_file
+// reports no queued OS open. A vi.mock of @tauri-apps/api/window proved
+// racy (one of the shell's two mount-time dynamic imports got the real
+// module), which is why the real modules are driven instead.
 const { mockIPC, mockWindows } = await import("@tauri-apps/api/mocks");
 mockWindows("main");
 mockIPC(() => null, { shouldMockEvents: true });
+(globalThis as { isTauri?: boolean }).isTauri = true; // what isTauri() reads
 vi.mock("../src/files", () => ({ openNativeFile: mocks.openNativeFile }));
 vi.mock("../src/components/DesktopUpdater", () => ({ DesktopUpdater: () => null }));
 // Stub editor: records the shell's props so the test sees what open the
@@ -99,6 +97,7 @@ it("re-opening the same path focuses its tab instead of duplicating it", async (
 
   await openProject();
   const first = mocks.editors[0].fileToOpen;
+  expect(first).toMatchObject({ path: "/labels/Labradorite.label" });
   await openProject();
 
   // Same path-identity rule as OS opens: no second tab, no second open.
