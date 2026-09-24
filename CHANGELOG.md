@@ -3,6 +3,14 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.135] - 2026-09-24
+
+### Fixed
+
+- **Ruler numbers stay clear of the unit corner.** When a vertical-ruler
+  number would run up into the corner box (e.g. "-0.5" over "in"), its label
+  is left out; the tick mark still shows.
+
 ## [0.1.134] - 2026-09-24
 
 ### Fixed
