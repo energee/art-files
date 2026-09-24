@@ -1,7 +1,7 @@
 // warning.ts — DOM/PDF-free warning-column wrapping shared by every renderer
 // and preview hit-testing, so importing hit-test geometry stays lightweight.
 import { WARNING_TEXT } from "./defaults";
-import { parseRuns } from "./description";
+import { markedWords, parseRuns } from "./description";
 import { runsWidth } from "./layout";
 import type { StyledLine } from "./types";
 
@@ -28,7 +28,7 @@ export function warningColumnLen(
 
 /** Wrap the warning paragraph to fit the rotated column height. */
 export function wrapWarning(measure: (text: string) => number, maxLen: number): string[] {
-  const words = WARNING_TEXT.split(" ");
+  const words = markedWords(WARNING_TEXT);
   const lines: string[] = [];
   let cur = "";
   for (const word of words) {

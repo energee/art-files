@@ -346,12 +346,13 @@ export const PreviewCompare = forwardRef<
      *  the CUMULATIVE delta from the drag's start, in label points, `first`
      *  true on the movement that crosses the threshold — App applies moveBy
      *  against the layer as it was at the start (and every other selected
-     *  layer, if `id` is selected) and folds the drag into one undo step
-     *  (see onEditText). Returns the lines the drag snapped to, which drive
+     *  layer, if `id` is selected) and folds the drag into one undo step.
+     *  Returns the lines the drag snapped to, which drive
      *  the highlights here. */
     onDrag: (id: string, dx: number, dy: number, first: boolean) => SnapLines;
-    /** Escape mid-drag: App undoes the drag's single step. Never called when
-     *  the drag never crossed the threshold (a plain click). */
+    /** Escape mid-drag or mid-resize: App undoes the gesture's single step,
+     *  if it opened one. Never called when the drag never crossed the
+     *  threshold (a plain click). */
     onDragCancel: () => void;
     /** Corner-handle resize, same session contract as onDrag: cumulative
      *  page-space pointer deltas and the grabbed handle, `uniform` while shift is held, `first` on the
@@ -515,8 +516,8 @@ export const PreviewCompare = forwardRef<
   const edited = useRef(false);
 
   // Drag-to-move: pointerdown on an unlocked layer arms a two-axis drag;
-  // crossing a 3px threshold opens ONE undo step (first=true) and every
-  // further move coalesces into it — the same session contract as onEditText.
+  // crossing a 3px threshold starts the gesture (first=true); App folds every
+  // move into ONE undo step.
   const drag = useRef<{
     id: string; startClientX: number; startClientY: number;
     pxPerPtX: number; pxPerPtY: number; started: boolean;
@@ -602,17 +603,23 @@ export const PreviewCompare = forwardRef<
     drag.current = null; setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
   }
 
-  // Escape mid-drag: undo the single step the drag opened and drop the
-  // in-flight session so a further pointermove can't resume it.
+  // Escape mid-drag: undo the single step the drag opened (if any) and drop the
+  // in-flight session so a further pointermove can't resume it. Capture
+  // phase + preventDefault marks the Escape as spent before the inspector
+  // Sheet's document listener sees it, so cancelling a drag doesn't also
+  // close the inspector and deselect (App's Sheet onOpenChange, #117).
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
-      if (drag.current?.started || resize.current?.started) onDragCancel();
+      if (drag.current?.started || resize.current?.started) {
+        e.preventDefault();
+        onDragCancel();
+      }
       drag.current = null; resize.current = null;
       setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
     }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
   }, [onDragCancel]);
 
   // Report the open session so App can skip the layer from the render for

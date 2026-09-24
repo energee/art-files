@@ -3,7 +3,7 @@ title: Inspector
 description: One layer. Content, type, position, colour
 ---
 
-Pick a layer in the list or on the preview and the right-hand inspector opens. Esc or the header close clears the selection and shuts it. One panel at a time.
+Pick a layer in the list or on the preview and the right-hand inspector opens. Esc or the header close clears the selection and shuts it. One panel at a time. Esc inside a field, an on-preview text edit, or a drag only cancels that; the inspector stays open.
 
 mm / pt in the inspector is display only. Under the hood it's still PDF points.
 
@@ -46,7 +46,7 @@ QR: size of the square.
 
 - **Fill.** Colour picker (screen eyedropper on Chromium), hex field, and **no ink**, except on barcodes and QR. Those have to scan.
 - **Metallic.** On knocks out of the white-ink plate (bare stock). Off lays white ink under it.
-- **Stroke.** Optional outer stroke with its own colour, metallic flag, and width in px at export DPI. Codes default the halo to white. Everything else defaults a dark keyline.
+- **Stroke.** Optional outer stroke with its own colour, metallic flag, and width in px at 600 DPI (15px = 1.8pt). The physical width holds at any export DPI. Codes default the halo to white. Everything else defaults a dark keyline.
 
 ## Override badges
 

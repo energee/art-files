@@ -2,8 +2,9 @@
 // the bundled TTFs the PDF builds embed (see pdf/fonts.ts, which shares the
 // FONT_URLS map below) as document faces under labelFontCss(id), and hands
 // back the canvas-metrics Measure that hit-testing and the in-place editor
-// share. Text layers may override the master family; the same family choice
-// reaches measurement, drawing, the editor and export. Loaded faces are cached.
+// share. Measurement is unkerned, matching the PDF's drawText (#86). Text
+// layers may override the master family; the same family choice reaches
+// measurement, drawing, the editor and export. Loaded faces are cached.
 import poppinsRegular from "./assets/fonts/Poppins-Regular.ttf?url";
 import poppinsSemiBold from "./assets/fonts/Poppins-SemiBold.ttf?url";
 import poppinsBold from "./assets/fonts/Poppins-Bold.ttf?url";
@@ -33,6 +34,19 @@ export const labelFontCss = (id: FontFamilyId) => "LabelFont-" + id;
  *  the family it styles, and both loadLabelFaces and canvas/draw import it. */
 export const FACE_WEIGHT = { regular: 400, semibold: 600, bold: 700 } as const;
 
+/** A measurement context with kerning OFF. The PDF is drawn unkerned
+ *  (pdf-lib's drawText places raw glyph advances), and canvas/draw paints
+ *  unkerned to match, so measuring with the canvas default (kerned) would
+ *  size a kern-table family like Barlow Condensed ~8% narrower than both
+ *  (#86). Exports plan with pdf/build's pdfMeasureFace instead, so the
+ *  file stays exact even on an engine that ignores fontKerning. */
+function unkernedContext(): CanvasRenderingContext2D {
+  const ctx = document.createElement("canvas").getContext("2d");
+  if (!ctx) throw new Error("Could not create the font measurement canvas.");
+  ctx.fontKerning = "none";
+  return ctx;
+}
+
 const measurePromises = new Map<FontFamilyId, Promise<Measure>>();
 
 /** Memoized per family; a failed load clears that family's memo so the next
@@ -50,8 +64,7 @@ export function loadLabelFont(id: FontFamilyId = "poppins"): Promise<Measure> {
     new FontFace(css, `url(${urls.bold})`, { weight: "700" }).load(),
   ]).then((faces) => {
     faces.forEach((face) => document.fonts.add(face));
-    const ctx = document.createElement("canvas").getContext("2d");
-    if (!ctx) throw new Error("Could not create the font measurement canvas.");
+    const ctx = unkernedContext();
     return (text: string, size: number, bold: boolean) => {
       ctx.font = `${bold ? 600 : 400} ${size}px ${css}`;
       return ctx.measureText(text).width;
@@ -80,8 +93,7 @@ export function loadLabelFaces(id: FontFamilyId = "poppins"): Promise<MeasureFac
   const p: Promise<MeasureFace> = Promise.all(
     (Object.keys(FONT_URLS) as FontFamilyId[]).map(loadLabelFont),
   ).then((): MeasureFace => {
-    const ctx = document.createElement("canvas").getContext("2d");
-    if (!ctx) throw new Error("Could not create the font measurement canvas.");
+    const ctx = unkernedContext();
     return (text, size, face, family = id) => {
       ctx.font = `${FACE_WEIGHT[face]} ${size}px ${labelFontCss(family)}`;
       return ctx.measureText(text).width;

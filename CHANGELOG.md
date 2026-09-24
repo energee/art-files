@@ -11,6 +11,209 @@ binary-impacting change gets its own version before it is merged.
   A value the label can't print (such as an invalid barcode) no longer stops
   the preview: it keeps drawing with the master's value in that spot, and the
   header's error message still blocks export until you fix it.
+## [0.1.94] - 2026-09-23
+
+### Fixed
+
+- **Escape inside the inspector no longer closes it.** Pressing Escape in an
+  inspector field (to cancel a typed value or dismiss its suggestions), while
+  editing text on the preview, or mid-drag now only cancels that action; the
+  layer stays selected and the inspector stays open. Escape with no field
+  being edited still closes the inspector.
+## [0.1.93] - 2026-09-23
+
+### Fixed
+
+- **Empty text layers stay clickable and editable.** A new Text layer, or one
+  whose text you have deleted, keeps a small box on the canvas: you can click
+  to select it, see its outline, and double-click to type into it. Deleting
+  every character while editing on the canvas no longer closes the editor
+  and sends your next keystrokes to menu shortcuts.
+## [0.1.92] - 2026-09-23
+
+### Fixed
+
+- **Removing a layer no longer moves the layers bound below it.** A layer
+  bound below the removed one now takes its place exactly where the removed
+  layer sat, even when that layer was positioned from a guide, anchored at
+  its bottom, or bound to another layer. Previously it could jump to the top
+  of the label or land below the vacated spot.
+## [0.1.91] - 2026-09-23
+
+### Fixed
+
+- **Save Master no longer fails when promoting a layer binding.** Binding a
+  layer to another in the inspector and then promoting it in the Save Master
+  review now writes the whole binding (target, side, and gap) to the master
+  as one row, instead of throwing "invalid binding". If a promotion is ever
+  rejected, the error now shows in the header instead of the save silently
+  doing nothing.
+## [0.1.90] - 2026-09-23
+
+### Fixed
+
+- **A file that fails to open no longer takes over the tab.** If a `.label`
+  can't be opened (for example its artwork won't decode), the tab now stays
+  exactly as it was — still showing the previous file and still saving to it.
+  Before, the tab showed the failed file's content while Save (`⌘S`) still
+  pointed at the previous file, so saving overwrote it. A master that fails
+  to open likewise no longer becomes the Save Master target.
+## [0.1.89] - 2026-09-23
+
+### Fixed
+
+- **Escape during a drag no longer undoes your previous edit.** A move or
+  resize on the canvas is always its own undo step. Before, a drag whose first
+  movement snapped back to where it started could merge into the edit you made
+  just before it, so pressing Escape to cancel the drag (or `⌘Z` afterwards)
+  took back that edit too.
+## [0.1.88] - 2026-09-23
+
+### Fixed
+
+- **Collab SVG logos with clipping paths now fill their slot.** SVGs exported
+  with a clip path, mask, or other hidden definitions (Illustrator adds these
+  routinely) were drawing that hidden shape as ink, which shrank the real logo
+  to a speck. Commented-out shapes were drawn too. Only the visible artwork is
+  placed now.
+## [0.1.87] - 2026-09-23
+
+### Fixed
+
+- **Desktop File → Open Project remembers where the file lives.** Opening a
+  `.label` from the menu now uses the macOS open dialog, so `⌘S` saves back
+  to that file instead of asking where to save, and opening the same file
+  again (from the menu or Finder) switches to its tab instead of opening a
+  duplicate.
+## [0.1.86] - 2026-09-23
+
+### Fixed
+
+- **Unsaved master edits now keep the close prompt armed.** Adding a layer
+  (or any other master edit) and then saving the label with `⌘S` no longer
+  lets the tab or window close silently: the tab keeps its unsaved dot, closing
+  asks first, and the updater warns before restarting, until you save the
+  master with Save Master.
+## [0.1.85] - 2026-09-23
+
+### Fixed
+
+- **Double-clicking a layer's name renames it again.** In the Layers list, a
+  double-click on a row now opens the inline rename box, as it always should
+  have; the row menu's Rename still works too, and dragging a row to reorder
+  is unchanged.
+## [0.1.84] - 2026-09-23
+
+### Fixed
+
+- **Undo and redo from the keyboard mark the label unsaved again.** In the
+  browser, pressing ⌘Z or ⇧⌘Z after saving now enables Save and makes closing
+  the tab ask first, just like Edit → Undo/Redo, so an undone change is no
+  longer silently lost.
+## [0.1.83] - 2026-09-23
+
+### Fixed
+
+- **Undo after inspector typing only undoes the typing.** Typing in an
+  inspector field (Text, Link, Code, Value) is now its own undo step. Before,
+  it merged into whatever you did just before it (a move, a toggle), so `⌘Z`
+  took back both at once.
+## [0.1.82] - 2026-09-23
+
+### Fixed
+
+- **Collab SVG logos with quadratic curves now appear in the PSD.** Partner
+  logos drawn with quadratic curves (common in some SVG exporters) rendered in
+  the PDF but vanished from the Photoshop file; they now come out identical in
+  both.
+## [0.1.81] - 2026-09-23
+
+### Fixed
+
+- **Save works for files opened from Finder and for remembered masters.**
+  ⌘S on a `.label` opened by double-click (or from the command line), and
+  File → Save Master on a master picked from the library after a relaunch, no
+  longer fail with "forbidden path". `.label` and `.master` files inside hidden
+  folders (such as `~/.something/`) can now be opened and saved too.
+## [0.1.80] - 2026-09-23
+
+### Fixed
+
+- **Quitting asks about unsaved tabs.** Label Lab → Quit (`⌘Q`) now walks
+  every tab with unsaved work through the Save / Discard / Cancel prompt,
+  the same as closing the window, instead of quitting and losing the edits.
+## [0.1.79] - 2026-09-23
+
+### Fixed
+
+- **Save Master no longer overwrites another master's file after undo.**
+  Undoing back past Open Master, a library pick, or Save Master As used to
+  leave Save Master pointed at the newer master's `.master` file, so saving
+  wrote the older master over it with no dialog. Save Master now asks where
+  to save whenever the document's master is not the one that file belongs to.
+## [0.1.77] - 2026-09-23
+
+### Fixed
+
+- **An invalid barcode can no longer drop silently off the print.** A bad code
+  saved into the master (by promoting it in the Save Master review) used to
+  clear the error and export without the barcode. Export now checks the code
+  each barcode actually prints, after any `{layer}` refs expand, and blocks
+  with an error when it isn't valid. A label barcode like `{textId}` that
+  expands to a valid UPC no longer shows a false error, and a typed invalid
+  code is no longer added to the barcode's picker.
+## [0.1.75] - 2026-09-23
+
+### Fixed
+
+- **Bold and white-ink spans across several words survive wrapping.** A
+  span like `**GOVERNMENT WARNING:**` or `_very hoppy double_` in a wrapped
+  or justified text layer (including the rotated warning column) now keeps
+  its style on every word, in the preview, PDF, and PSD, instead of printing
+  literal `**` / `_` markers in the regular face.
+## [0.1.74] - 2026-09-23
+
+### Fixed
+
+- **PSD export no longer stretches textures and masks.** A texture or mask
+  whose shape differs from the label page (a square image, for example) now
+  lands in the Photoshop file cropped the same way as the PDF and preview,
+  instead of stretched and shifted.
+## [0.1.73] - 2026-09-23
+
+### Fixed
+
+- **PSD strokes keep their width at any export DPI.** Text keylines, vector
+  art, and QR strokes in an exported PSD now print at the same physical
+  width as the PDF when Settings → Resolution is not 600 DPI. At 300 DPI a
+  1.8pt keyline is 7.5px instead of a doubled 15px, matching the barcode
+  halo.
+## [0.1.72] - 2026-09-23
+
+### Fixed
+
+- **Barlow Condensed text prints where the preview shows it.** Exported PDFs
+  and PSDs now position text with the same letter spacing the file is drawn
+  with, so centred Barlow Condensed lines stay centred, right-aligned lines
+  no longer run past their margin, and mixed bold or white-ink runs no longer
+  overlap. The preview draws that spacing too, so screen and print agree.
+  Poppins labels are unchanged.
+## [0.1.71] - 2026-09-23
+
+### Fixed
+
+- **QR codes scan back non-ASCII text exactly.** Accented letters, symbols
+  like `€` and `—`, and emoji in a QR layer are now encoded as UTF-8, so
+  phones read the same text you typed instead of garbled characters or
+  nothing at all. Plain ASCII QR codes (such as beer URLs) are unchanged.
+## [0.1.70] - 2026-09-23
+
+### Fixed
+
+- **Selecting a layer no longer puts the cursor in its name field.** The
+  inspector opens without taking focus, so Delete/Backspace removes the
+  selected layer and the arrow keys nudge it, instead of quietly editing the
+  layer's name.
 
 ## [0.1.68] - 2026-09-15
 
