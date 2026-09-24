@@ -33,7 +33,8 @@ handoff.
    current version, because `release-notes.mjs` publishes only the current one.
 4. Run `node scripts/check-release.mjs <base-ref>` along with the task's normal tests
    and build. A pre-push git hook (`.githooks/pre-push`, activated by `npm install`
-   via the `prepare` script) runs the same check automatically, but do not rely on
+   via the `prepare` script) runs the same check against each pushed commit in a
+   clean temporary worktree, but do not rely on
    it alone — run the checker before handoff. For a pull request, `<base-ref>` is the target branch or its merge-base.
 5. Report the classification, selected version, release-note heading, and validation
    result in the handoff.
