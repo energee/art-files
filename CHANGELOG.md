@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.98] - 2026-09-24
+
+### Fixed
+
+- **Close-tab Save no longer loses unsaved master edits.** When the tab's
+  master has changed (a layer added, removed, or reordered), Save in the
+  close prompt opens the Save Master review and keeps the tab open, instead
+  of saving only the label and closing.
+
 ## [0.1.68] - 2026-09-15
 
 ### Fixed

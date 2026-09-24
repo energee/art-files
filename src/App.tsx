@@ -409,8 +409,10 @@ type DocumentEditorProps = {
    *  shell can drop the queued entry. */
   onOpenSettled: (seq: number) => void;
   onMeta: (meta: DocumentMeta) => void;
-  /** Shell-owned slot this editor assigns its save fn into on every render;
-   *  resolves false when the user cancels the save dialog. */
+  /** Shell-owned slot this editor assigns its close-prompt save fn into on
+   *  every render; resolves false when the user cancels the save dialog, or
+   *  when unsaved master edits sent them to the Save Master review instead
+   *  (the tab must stay open). */
   saveSlot: { current: (() => Promise<boolean>) | null };
   /** The Document Settings knobs (DPI/bleed/corner/edge) — shell-owned. */
   render: RenderSettings;
@@ -1528,7 +1530,16 @@ export const DocumentEditor = memo(function DocumentEditor({
     setDirty(false);
     return true;
   }
-  saveSlot.current = () => saveProject();
+  // The close prompt's Save. A .label never carries the template, so with
+  // the master moved a label save alone would close the tab and drop those
+  // edits: open the Save Master review instead and resolve false, which
+  // keeps the tab open and aborts any window-close sweep (issue #159).
+  // Label overrides alone don't count — the .label saves them.
+  saveSlot.current = () => {
+    if (!templateMoved) return saveProject();
+    setPendingSave({ as: false });
+    return Promise.resolve(false);
+  };
 
   /** The template assets a Save Master captures: the loaded texture/mask
    *  (the art being authored IS the template art) plus the bytes of every
