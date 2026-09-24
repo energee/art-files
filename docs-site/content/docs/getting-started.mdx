@@ -29,7 +29,7 @@ npm run desktop:dev
 
 `npm run desktop:build` drops the installer in `src-tauri/target/release/bundle/`. macOS gets a `.app` and a DMG, Windows an NSIS `setup.exe`, Linux an AppImage (Debian 13 "trixie" and newer). Local Mac builds are ad-hoc signed. Shipping to other Macs without Gatekeeper yelling means Apple signing and notarization.
 
-Double-click a `.label` and it opens in Label Lab, even if the app is already running. New tab, or it focuses the tab that already has that file. On Linux the association shows up once the AppImage is desktop-integrated. `Label_Lab.AppImage path/to/file.label` works either way.
+Double-click a `.label` and it opens in Label Lab, even if the app is already running: the window comes to the front, even from minimized. New tab, or it focuses the tab that already has that file. On Linux the association shows up once the AppImage is desktop-integrated. `Label_Lab.AppImage path/to/file.label` works either way.
 
 Published builds check GitHub Releases after launch and when the window comes back. **Label Lab → Check for Updates…** is the same check, on demand. Dev builds skip it. They have no release key.
 
