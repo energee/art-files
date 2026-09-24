@@ -463,8 +463,11 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
 
   const logoSvg = readAsset(input.assetRoot, "logo2025.svg").toString("utf8");
   const fonts = fontPack(input.assetRoot, defaultFamily);
+  // The default family is listed too, as the SAME pack: a text layer may
+  // name it explicitly (plan runs are then tagged with it), and newDoc
+  // reuses the base embed for an identical pack rather than embedding twice (#90).
   const fontFamilies: NonNullable<Assets["fontFamilies"]> = {};
-  for (const id of needed) if (id !== defaultFamily) fontFamilies[id] = fontPack(input.assetRoot, id);
+  for (const id of needed) fontFamilies[id] = id === defaultFamily ? fonts : fontPack(input.assetRoot, id);
 
   const images: Record<string, CollabImage> = {};
   const planCustom: NonNullable<PlanAssets["custom"]> = {};
