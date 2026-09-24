@@ -197,6 +197,11 @@ binary-impacting change gets its own version before it is merged.
   used to blink off at every element edge in the desktop app. It still
   closes when you drag out of the window or drop.
 
+- **Variant badges say what the variant did.** Hovering a layer's variant
+  badge now reads "Changed by the Collab variant" on a master layer the
+  variant only overrides, and keeps "Added by the Collab variant" for a
+  layer the variant adds.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed

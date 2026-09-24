@@ -38,8 +38,10 @@ export interface VariantChip { id: string; name: string; enabled: boolean }
 export interface LayerRow {
   /** The RESOLVED layer (every enabled variant's diff already merged in). */
   layer: Layer;
-  /** Set when a variant ADDS this layer (an id the master lacks): the row
-   *  shows the variant's name as a badge and dims while it is off. */
+  /** Set when a variant ADDS this layer (an id the master lacks), and also on
+   *  a master layer an enabled variant overrides (alongside
+   *  `variantOverridden`): the row shows the variant's name as a badge, titled
+   *  "Added by" or "Changed by" accordingly, and dims while it is off. */
   variant?: VariantChip;
   /** An enabled VARIANT changes part of this master layer — the one that
    *  does, so the mark can name it. Distinct from `changed` because resetting
@@ -222,9 +224,8 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
           )}
           {row.variant && (
             <span
-              title={row.variant.enabled
-                ? `Added by the ${row.variant.name} variant`
-                : `Added by the ${row.variant.name} variant (off)`}
+              title={`${row.variantOverridden ? "Changed" : "Added"} by the ${row.variant.name} variant${
+                row.variant.enabled ? "" : " (off)"}`}
               className={cn(
                 "shrink-0 rounded-sm border border-sidebar-border px-1 text-[10px] leading-4",
                 row.variant.enabled ? "text-sidebar-foreground/70" : "text-sidebar-foreground/40",
