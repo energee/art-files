@@ -845,8 +845,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       const el = e.target as HTMLElement | null;
       if (el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "")) return;
       e.preventDefault();
-      // mutating, like the Edit menu's Undo/Redo: history moves bypass
-      // `edit`, so without it an undo after a save left the tab clean (#76).
+      // History moves bypass `edit`; without mutating, ⌘Z after a save left the tab clean (#76).
       mutating(key === "y" || e.shiftKey ? redo : undo)();
     };
     document.addEventListener("keydown", onKey);

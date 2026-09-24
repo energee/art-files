@@ -18,10 +18,7 @@ import { DocumentEditor } from "../src/App";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-it.each([
-  ["⌘Z undo", { key: "z", shiftKey: false }],
-  ["⇧⌘Z redo", { key: "z", shiftKey: true }],
-])("%s from the keyboard marks a saved document dirty", async (_name, keys) => {
+it("⌘Z and ⇧⌘Z from the keyboard mark a saved document dirty", async () => {
   URL.createObjectURL ??= () => "blob:test";
   URL.revokeObjectURL ??= () => {};
   const container = document.createElement("div");
@@ -29,8 +26,10 @@ it.each([
   const root = createRoot(container);
   const onMeta = vi.fn();
   const saveSlot: { current: (() => Promise<boolean>) | null } = { current: null };
-  const press = (init: KeyboardEventInit) => act(async () => {
-    document.body.dispatchEvent(new KeyboardEvent("keydown", { metaKey: true, bubbles: true, ...init }));
+  const dirty = () => onMeta.mock.lastCall?.[0].dirty;
+  const save = () => act(async () => { await saveSlot.current!(); });
+  const press = (shiftKey: boolean) => act(async () => {
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, shiftKey, bubbles: true }));
   });
   try {
     await act(async () => {
@@ -44,15 +43,18 @@ it.each([
     // One undoable edit: switch a variant-added layer on.
     const power = container.querySelector('[data-layer-id="collabLead"] button[aria-label$=": enabled"]') as HTMLButtonElement;
     await act(async () => power.click());
-    // For redo, step back first so there is something to redo.
-    if (keys.shiftKey) await press({ key: "z" });
-    await act(async () => { await saveSlot.current!(); });
-    expect(onMeta.mock.lastCall?.[0].dirty).toBe(false);
-    await press(keys);
-    expect(power.getAttribute("aria-pressed")).toBe(keys.shiftKey ? "true" : "false");
-    expect(onMeta.mock.lastCall?.[0].dirty).toBe(true);
+    await save();
+    expect(dirty()).toBe(false);
+    await press(false);
+    expect(power.getAttribute("aria-pressed")).toBe("false");
+    expect(dirty()).toBe(true);
+    await save();
+    expect(dirty()).toBe(false);
+    await press(true);
+    expect(power.getAttribute("aria-pressed")).toBe("true");
+    expect(dirty()).toBe(true);
   } finally {
     await act(async () => { root.unmount(); });
     container.remove();
   }
-});
+}, 20_000); // a full editor mount; the 5s default flakes under machine load
