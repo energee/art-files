@@ -3,6 +3,14 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.85] - 2026-09-23
+
+### Fixed
+
+- **Double-clicking a layer's name renames it again.** In the Layers list, a
+  double-click on a row now opens the inline rename box, as it always should
+  have; the row menu's Rename still works too, and dragging a row to reorder
+  is unchanged.
 ## [0.1.84] - 2026-09-23
 
 ### Fixed
