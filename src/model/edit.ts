@@ -140,28 +140,33 @@ function withLayer(master: Master, id: string, fn: (l: Entry) => Entry): Master 
     withEntries(v, { ...v.layers, [id]: fn(v.layers[id]) }));
 }
 
-/** Rebinds every `below: id` reference in a list of records to `y`. */
-const repoint = <T extends { y?: unknown }>(l: T, id: string, y: Layer["y"]): T =>
-  isBound(l.y) && l.y.below === id ? { ...l, y: structuredClone(y) } : l;
+/** Rewrites every `below: id` reference in a list of records with `slot`. */
+const repoint = <T extends { y?: unknown }>(l: T, id: string, slot: Entry): T =>
+  isBound(l.y) && l.y.below === id ? { ...l, ...structuredClone(slot) } : l;
 
 /** Removes the layer from wherever it lives, strips every variant's entry
- *  for it, and re-points any layer bound below it onto the removed layer's
- *  own `y` — the layer beneath takes the vacated slot — so no binding
- *  dangles. */
+ *  for it, and re-points any layer bound below it into the vacated slot so
+ *  no binding dangles and the layer beneath does not move. A removed layer
+ *  that is itself bound below another hands its `below` binding on (the
+ *  chain closes up); otherwise the dependent is pinned at the removed
+ *  layer's measured top (`boxes`) with no guide and a top anchor, since the
+ *  removed layer's raw `y` means nothing without its own guideY/vAnchor/
+ *  binding. Without its box the raw `y` is copied as a best effort. */
 export function removeLayer(master: Master, id: string, boxes?: ReadonlyMap<string, Box>): Master {
   const where = whereLayerLives(master, id);
   const removed = where === "master"
     ? master.layers.find((l) => l.id === id)!
     : variantOf(master, where.variant).layers[id];
   const y = removed.y as Layer["y"];
+  const top = boxes?.get(id)?.y;
+  const slot: Entry = isBound(y) || top === undefined
+    ? { y }
+    : { y: top, vAnchor: "top", guideY: "none" };
   const detach = <T extends Entry>(entry: T, key: string): T => {
-    if (entry.binding?.to !== id) return repoint(entry, id, y);
+    if (entry.binding?.to !== id) return repoint(entry, id, slot);
     const box = boxes?.get(key);
     if (!box) throw new Error(`Cannot remove "${id}" without the position of bound layer "${key}"`);
-    const b = entry.binding;
-    return { ...entry, ...(b.side === "left" || b.side === "right"
-      ? { binding: null, x: box.x, anchor: "left", guideX: "none" }
-      : { binding: null, y: box.y, vAnchor: "top", guideY: "none" }) };
+    return { ...entry, ...unbindPatch(entry as Layer, box) };
   };
   const layers = master.layers.filter((l) => l.id !== id).map((l) => detach(l, l.id));
   const variants = master.variants.map((v) => withEntries(v,

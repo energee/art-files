@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.92] - 2026-09-23
+
+### Fixed
+
+- **Removing a layer no longer moves the layers bound below it.** A layer
+  bound below the removed one now takes its place exactly where the removed
+  layer sat, even when that layer was positioned from a guide, anchored at
+  its bottom, or bound to another layer. Previously it could jump to the top
+  of the label or land below the vacated spot.
 ## [0.1.91] - 2026-09-23
 
 ### Fixed
