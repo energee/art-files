@@ -4,7 +4,6 @@
 // (resolveLayers.ts skips applying them).
 import { validateFor, type Symbology } from "../barcode";
 import type { Validation } from "../validation";
-export type { Validation };
 
 export type InputKind = "number" | "code";
 const err = (error: string): Validation => ({ ok: false, error });
