@@ -34,6 +34,19 @@ describe(".master ZIP container", () => {
     expect(a.customImages).toBeUndefined();
   });
 
+  it("skips directory entries a Finder / zip -r re-zip adds (#100)", () => {
+    const zip = zipSync({
+      "master.json": strToU8(serializeMaster(lolevMaster())),
+      "texture/": new Uint8Array(0),
+      "texture/rock.png": png(1),
+      "mask/": new Uint8Array(0),
+      "mask/metal.png": png(2),
+    });
+    const { assets: a } = unpackMaster(zip);
+    expect(a.texture).toEqual(assets.texture);
+    expect(a.mask).toEqual(assets.mask);
+  });
+
   it("still opens a legacy JSON-only .master ('{' sniff), with no assets", () => {
     const { master, assets: a } = unpackMaster(strToU8(serializeMaster(lolevMaster())));
     expect(master).toEqual(lolevMaster());

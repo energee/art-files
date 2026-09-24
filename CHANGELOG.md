@@ -3,6 +3,14 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.120] - 2026-09-24
+
+### Fixed
+
+- **Re-zipped label and master files keep their art.** A `.label` or
+  `.master` that was unzipped and re-compressed with Finder or `zip -r` now
+  opens with its texture and mask instead of an empty, nameless image.
+
 ## [0.1.68] - 2026-09-15
 
 ### Fixed

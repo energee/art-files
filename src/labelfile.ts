@@ -67,17 +67,21 @@ export function packAssets(zip: Zippable, assets: LabelAssets): void {
 }
 
 /** The unpack half of packAssets: pull every asset role and per-id custom
- *  image out of an unzipped entry map. Shared with unpackMaster. */
+ *  image out of an unzipped entry map. Shared with unpackMaster. Directory
+ *  entries (names ending in `/`) are skipped: packAssets never writes them,
+ *  but a file re-zipped by Finder or `zip -r` carries a zero-byte `texture/`
+ *  ahead of `texture/<name>`, and it must not be taken as the asset (#100). */
 export function extractAssets(entries: Record<string, Uint8Array>): LabelAssets {
   const assets: LabelAssets = {};
+  const files = Object.keys(entries).filter((p) => !p.endsWith("/"));
   for (const [role, dir] of Object.entries(ROLE_DIRS) as [FixedAssetRole, string][]) {
-    const path = Object.keys(entries).find((p) => p.startsWith(`${dir}/`));
+    const path = files.find((p) => p.startsWith(`${dir}/`));
     if (path) assets[role] = { name: path.slice(dir.length + 1), bytes: entries[path] };
   }
   // Custom image assets: one directory per assetId under custom/, each
   // holding exactly one file (name is whatever comes after the id).
   const customImages: Record<string, CustomImageAsset> = {};
-  for (const path of Object.keys(entries)) {
+  for (const path of files) {
     const m = /^custom\/([^/]+)\/(.+)$/.exec(path);
     if (m) customImages[m[1]] = { name: m[2], bytes: entries[path] };
   }
