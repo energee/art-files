@@ -47,15 +47,12 @@ function emit(p: ReturnType<typeof svgpath>): string {
   return out.join(" ");
 }
 
-/** Drop what never paints on its own: comments, and the contents of the
- *  non-rendered containers (Illustrator exports wrap the art in a <clipPath>
- *  whose paths are only a clip region). Left in, their paths would be drawn
- *  as ink and stretch the collab fit box (#68). A self-closing container
- *  is matched first so it can't swallow the markup up to a later close tag. */
+/** Strip comments and the non-rendered containers (Illustrator wraps art in
+ *  a <clipPath>) so their paths aren't drawn as ink or counted in the fit box
+ *  (#68). One pass; `/>` is tried first so a self-closing <defs/> can't
+ *  swallow the markup up to a later </defs>. */
 function renderedOnly(svg: string): string {
-  return svg
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<(defs|clipPath|mask|symbol|pattern)\b[^>]*?(?:\/>|>[\s\S]*?<\/\1\s*>)/g, "");
+  return svg.replace(/<!--[\s\S]*?-->|<(defs|clipPath|mask|symbol|pattern)\b[^>]*?(?:\/>|>[\s\S]*?<\/\1\s*>)/g, "");
 }
 
 function parseLogoUncached(
