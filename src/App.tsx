@@ -873,9 +873,11 @@ export const DocumentEditor = memo(function DocumentEditor({
       // typeahead. The ⌘ shortcuts stay live — no popup claims those.
       if (!mods && el?.closest?.(POPUP_OWNS_KEYS)) return;
       const cmd = commandsRef.current.find((c) => c.key === e.key.toLowerCase() && c.mods === mods);
-      if (!cmd || cmd.disabled) return;
+      if (!cmd) return;
+      // The key is the app's even while its command is disabled: ⌘S on a
+      // clean document must not fall through to the browser's Save Page.
       e.preventDefault();
-      cmd.run();
+      if (!cmd.disabled) cmd.run();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);

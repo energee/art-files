@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.108] - 2026-09-24
+
+### Fixed
+
+- **⌘S on a saved document no longer opens the browser's Save Page dialog.**
+  In the browser, a shortcut whose command is unavailable right now (Save
+  with no unsaved changes, Export while exports are blocked) now does
+  nothing instead of falling through to the browser's own action for that key.
+
 ## [0.1.94] - 2026-09-23
 
 ### Fixed
