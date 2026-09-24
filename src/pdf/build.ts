@@ -328,6 +328,17 @@ function drawItems(
   }
 }
 
+/** A family's three faces embedded into `doc`, in face order (sequential,
+ *  so the document's object order stays deterministic). Subsetting changes
+ *  only what the file carries, never a glyph's width. */
+async function embedFaces(doc: PDFDocument, pack: Assets["fonts"], subset = false): Promise<Record<Face, PDFFont>> {
+  return {
+    regular: await doc.embedFont(pack.regular, { subset }),
+    semibold: await doc.embedFont(pack.semibold, { subset }),
+    bold: await doc.embedFont(pack.bold, { subset }),
+  };
+}
+
 /** The plan measure for a PDF/PSD export: each face's width from the pdf-lib
  *  font drawText draws it with. drawText places glyphs by their raw advances
  *  and emits no kerning, so a kerned measure (canvas measureText's default)
@@ -341,13 +352,8 @@ export async function pdfMeasureFace(
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
   const embedded: Partial<Record<FontFamilyId, Record<Face, PDFFont>>> = {};
-  for (const [id, pack] of Object.entries(packs) as [FontFamilyId, Assets["fonts"]][]) {
-    embedded[id] = {
-      regular: await doc.embedFont(pack.regular),
-      semibold: await doc.embedFont(pack.semibold),
-      bold: await doc.embedFont(pack.bold),
-    };
-  }
+  for (const [id, pack] of Object.entries(packs) as [FontFamilyId, Assets["fonts"]][])
+    embedded[id] = await embedFaces(doc, pack);
   if (!embedded[fallback]) throw new Error(`Missing measure font family: ${fallback}`);
   return (text, size, face, family) =>
     (embedded[family ?? fallback] ?? embedded[fallback]!)[face].widthOfTextAtSize(text, size);
@@ -358,11 +364,7 @@ async function newDoc(assets: Assets): Promise<{ doc: PDFDocument; page: PDFPage
   doc.setCreationDate(PDF_EPOCH);
   doc.setModificationDate(PDF_EPOCH);
   doc.registerFontkit(fontkit);
-  const embed = async (bytes: Assets["fonts"]): Promise<Fonts> => ({
-    regular: await doc.embedFont(bytes.regular, { subset: true }),
-    semibold: await doc.embedFont(bytes.semibold, { subset: true }),
-    bold: await doc.embedFont(bytes.bold, { subset: true }),
-  });
+  const embed = (bytes: Assets["fonts"]): Promise<Fonts> => embedFaces(doc, bytes, true);
   const fonts = await embed(assets.fonts);
   for (const [family, bytes] of Object.entries(assets.fontFamilies ?? {})) {
     (fonts.families ??= {})[family as FontFamilyId] = bytes === assets.fonts ? fonts : await embed(bytes);

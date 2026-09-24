@@ -2,8 +2,9 @@
 // the bundled TTFs the PDF builds embed (see pdf/fonts.ts, which shares the
 // FONT_URLS map below) as document faces under labelFontCss(id), and hands
 // back the canvas-metrics Measure that hit-testing and the in-place editor
-// share. Measurement is unkerned, matching the PDF's drawText (#86). Text layers may override the master family; the same family choice
-// reaches measurement, drawing, the editor and export. Loaded faces are cached.
+// share. Measurement is unkerned, matching the PDF's drawText (#86). Text
+// layers may override the master family; the same family choice reaches
+// measurement, drawing, the editor and export. Loaded faces are cached.
 import poppinsRegular from "./assets/fonts/Poppins-Regular.ttf?url";
 import poppinsSemiBold from "./assets/fonts/Poppins-SemiBold.ttf?url";
 import poppinsBold from "./assets/fonts/Poppins-Bold.ttf?url";

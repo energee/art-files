@@ -3,7 +3,6 @@
 import { readFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument } from "pdf-lib";
 import { PNG } from "pngjs";
 import { rasterKind, tintRgba } from "../src/collab";
@@ -472,10 +471,10 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
   const psdImages: NonNullable<PsdAssets["images"]> = {};
   const decoded: Record<string, PNG> = {};
 
-  const put = async (id: string, img: CollabImage, metrics: PDFDocument) => {
+  const put = async (id: string, img: CollabImage, imageDoc: PDFDocument) => {
     images[id] = img;
     if (img.kind === "svg") { planCustom[id] = { aspect: 1, art: img }; return; }
-    const embedded = img.kind === "png" ? await metrics.embedPng(img.bytes) : await metrics.embedJpg(img.bytes);
+    const embedded = img.kind === "png" ? await imageDoc.embedPng(img.bytes) : await imageDoc.embedJpg(img.bytes);
     planCustom[id] = { aspect: embedded.width / embedded.height };
     if (img.kind === "png") {
       const png = PNG.sync.read(Buffer.from(img.bytes));
@@ -486,19 +485,18 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
     }
   };
 
-  const metrics = await PDFDocument.create();
-  metrics.registerFontkit(fontkit);
-  if (tex) await put(PAGE_ART_ID.background, asImage(tex.name, tex.bytes), metrics);
+  const imageDoc = await PDFDocument.create();
+  if (tex) await put(PAGE_ART_ID.background, asImage(tex.name, tex.bytes), imageDoc);
   if (mask) {
     const img = asImage(mask.name, mask.bytes);
     if (img.kind !== "png") throw new Error("mask: mask must be a PNG");
-    await put(PAGE_ART_ID.mask, img, metrics);
+    await put(PAGE_ART_ID.mask, img, imageDoc);
   }
   for (const [id, a] of Object.entries(input.masterAssets.customImages ?? {}))
-    await put(id, asImage(a.name, a.bytes), metrics);
+    await put(id, asImage(a.name, a.bytes), imageDoc);
   for (const [layerId, file] of Object.entries(input.extraImages)) {
     if (pageIds.has(layerId)) continue;
-    await put(`cli-${layerId}`, asImage(file.name, file.bytes), metrics);
+    await put(`cli-${layerId}`, asImage(file.name, file.bytes), imageDoc);
   }
 
   for (const l of resolved.layers) {
