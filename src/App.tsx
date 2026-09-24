@@ -2221,7 +2221,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             // is `m-auto` inside — recentres itself in what is left. Keeping
             // it a MARGIN rather than padding also keeps this element's
             // rect equal to the visible area, which is what clampView pans
-            // against. Width must match SheetContent's w-[300px] below.
+            // against. Width must match SheetContent's data-[side=right]:w-[300px] below.
             className={cn("relative flex min-h-0 flex-1 overflow-hidden border-l border-sidebar-border",
               "transition-[margin] duration-200",
               active && inspected && "mr-[300px]",
@@ -2392,7 +2392,11 @@ export const DocumentEditor = memo(function DocumentEditor({
           }}>
           <SheetContent side="right" showOverlay={false} showCloseButton={false}
             finalFocus={(closeType) => closeType === "keyboard"}
-            className="w-[300px] gap-0 overflow-y-auto border-l-0! bg-sidebar p-0 sm:max-w-[300px]">
+            // Sized on the base's own `data-[side=right]:` variant so
+            // tailwind-merge REPLACES its w-3/4 and sm:max-w-sm (24rem, 312px
+            // at the 13px root); an unprefixed w-[300px] lost to both on
+            // specificity and left the sheet at 75% below 640px (#132).
+            className="gap-0 overflow-y-auto border-l-0! bg-sidebar p-0 data-[side=right]:w-[300px] data-[side=right]:sm:max-w-none">
             {inspected && (
               <LayerInspector key={inspected.layer.id} layer={inspected.layer}
                 unit={dimensionUnit} onUnitChange={setDimensionUnit}

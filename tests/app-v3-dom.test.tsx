@@ -136,3 +136,41 @@ it("offers the barcode's tiers in the field that fills it", async () => {
     container.remove();
   }
 });
+
+// #132: the inspector Sheet is 300px at every width. The base SheetContent
+// sizes its right side with `data-[side=right]:w-3/4` and
+// `data-[side=right]:sm:max-w-sm`; an unprefixed `w-[300px]` neither
+// replaces them in tailwind-merge (different variant) nor beats them in the
+// cascade (lower specificity), so below 640px the sheet was 75% of the window
+// and above it 24rem (312px at the 13px root). happy-dom computes no Tailwind
+// CSS, so this pins the merged class list: every width / max-width class on
+// the sheet must be the 300px one (or lift the cap).
+it("sizes the inspector sheet to 300px at every breakpoint (#132)", async () => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(createElement(DocumentEditor, {
+        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
+        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+      }));
+    });
+    const row = container.querySelector('[data-layer-id="name"]')!;
+    await act(async () => {
+      (row.querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement).click();
+    });
+    const sheet = document.querySelector('[data-slot="sheet-content"]');
+    expect(sheet).not.toBeNull();
+    // Only what applies to this right-side sheet: other sides' classes never match.
+    const sizing = sheet!.className.split(/\s+/)
+      .filter((c) => /(^|:)(max-)?w-/.test(c) && !/data-\[side=(left|top|bottom)\]/.test(c));
+    expect(sizing.length).toBeGreaterThan(0);
+    for (const c of sizing) expect(c).toMatch(/w-\[300px\]$|max-w-none$/);
+  } finally {
+    act(() => { root.unmount(); });
+    container.remove();
+  }
+});

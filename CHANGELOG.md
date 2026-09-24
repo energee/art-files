@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.129] - 2026-09-24
+
+### Fixed
+
+- **The inspector stays 300px wide in a narrow window.** Below 640px it took
+  three quarters of the window and covered the label. Above that it was 312px
+  and overlapped the canvas by 12px. It is now 300px at every width, and the
+  label recentres in the space beside it.
+
 ## [0.1.128] - 2026-09-24
 
 ### Fixed
