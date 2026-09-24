@@ -718,19 +718,19 @@ export const DocumentEditor = memo(function DocumentEditor({
     setEdited(true);
     setDoc((d) => (d === doc ? next : fn(d)), coalesce);
   };
-  const editMaster = (fn: (m: Master) => Master, coalesce?: Coalesce) =>
+  const editMaster = (fn: (m: Master) => Master, coalesce?: boolean) =>
     edit((d) => ({ ...d, master: fn(d.master) }), coalesce);
-  const editLabel = (fn: (l: LabelFile) => LabelFile, coalesce?: Coalesce) =>
+  const editLabel = (fn: (l: LabelFile) => LabelFile, coalesce?: boolean) =>
     edit((d) => ({ ...d, label: fn(d.label) }), coalesce);
   /** A DESIGN edit on one layer — position, style, policy, geometry: lands in
    *  the LABEL as an override, never in the master. The master is the template
    *  and changes only through the reviewed Save Master (see edit.ts's
    *  patchLayers for the rule). */
-  const patch = (id: string, p: DeepPartial<Layer>, coalesce?: Coalesce) =>
+  const patch = (id: string, p: DeepPartial<Layer>, coalesce?: boolean) =>
     patchMany([[id, p]], coalesce);
   /** patch for several layers in ONE doc edit (one clone, one undo entry) —
    *  a group drag patches every selected layer per pointermove. */
-  const patchMany = (entries: [string, DeepPartial<Layer>][], coalesce?: Coalesce) =>
+  const patchMany = (entries: [string, DeepPartial<Layer>][], coalesce?: boolean) =>
     edit((d) => patchLayers(d, entries), coalesce);
   /** A layer's CONTENT: always a fill value into the label, for any layer. */
   const setContent = (layer: Layer, value: LayerValue, coalesce?: Coalesce) =>
