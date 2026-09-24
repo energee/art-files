@@ -79,12 +79,14 @@ describe("parseLogo non-rendered geometry", () => {
   });
 });
 
+/** Fit a 100x100-viewBox body into a 36pt collab slot. */
+const fit = (body: string) => parseLogo(`<svg viewBox="0 0 100 100">${body}</svg>`, 36, 36);
+
 // #69: basic shapes are ink too — converted to path data in src/logo.ts.
 // Elements it can't draw (<use>, <text>, <image>) are rejected by name
 // rather than silently dropped.
 describe("parseLogo basic shapes", () => {
   const TRIANGLE = '<path d="M 40 60 L 60 60 L 50 40 Z"/>';
-  const fit = (body: string) => parseLogo(`<svg viewBox="0 0 100 100">${body}</svg>`, 36, 36);
 
   it("keeps a <rect> next to a path, fitting both", () => {
     // Rect spans 0..100; triangle 40..60 — the old parser returned only the
@@ -125,7 +127,6 @@ describe("parseLogo basic shapes", () => {
 // #70: any valid XML attribute syntax — either quote, any whitespace before
 // the name and around "=" — reads the same (attr in src/logo.ts).
 describe("parseLogo attribute syntax", () => {
-  const fit = (body: string) => parseLogo(`<svg viewBox="0 0 100 100">${body}</svg>`, 36, 36);
   const SQUARE = "M 40 40 L 60 40 L 60 60 L 40 60 Z";
 
   it.each([
@@ -141,8 +142,8 @@ describe("parseLogo attribute syntax", () => {
   });
 
   it("applies a single-quoted <g> transform", () => {
-    // translate(0,-1000) moves the square far above; the fit then normalizes
-    // it back, so compare the unfitted laurel path (viewBox-scaled) instead.
+    // The collab fit would normalize any translate away, so use the laurel
+    // path (viewBox-scaled, width 100 = 1:1) where the shift survives.
     const art = parseLogo(
       `<svg viewBox="0 0 100 100"><g\ttransform='translate(10,0)'><path d="${SQUARE}"/></g></svg>`, 100);
     expect(art.paths[0].startsWith("M 50 40")).toBe(true);
