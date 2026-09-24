@@ -61,8 +61,6 @@ describe("hitTestBoxes", () => {
 });
 
 describe("empty text layers (#116)", () => {
-  // A fresh Text layer (or one whose text was just deleted) measures w:0 —
-  // it still needs a box to click, outline, and hold the in-place editor.
   const empty = (id: string, extra: Partial<TextLayer> = {}) =>
     text({ id, x: 100, y: 50, lines: [line("")], ...extra });
   const H = (L.FONT_ASC + L.FONT_DESC) * 10;

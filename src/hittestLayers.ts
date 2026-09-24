@@ -17,15 +17,14 @@ export interface LayerBox {
 /** One hit box per drawing layer, in draw order, from the scene's measured
  *  boxes (planLayerScene / layerBoxes). Page-role images (background, mask)
  *  are omitted so a click there selects the page; a layer that draws nothing
- *  has a zero box and is omitted too — except empty text (#116), which gets
- *  a line-height square (see emptyTextBox) so it can still be clicked,
- *  outlined and edited in place. */
+ *  has a zero box and is omitted too — except empty text, which keeps a
+ *  minimum box (see emptyTextBox). */
 export function hitBoxesFromLayout(layers: Layer[], boxes: ReadonlyMap<string, Box>): LayerBox[] {
   const out: LayerBox[] = [];
   for (const l of layers) {
     if (l.kind === "image" && (l.role === "background" || l.role === "mask")) continue;
-    let b = boxes.get(l.id)!;
-    if (l.kind === "text") b = emptyTextBox(l, b);
+    const raw = boxes.get(l.id)!;
+    const b = l.kind === "text" ? emptyTextBox(l, raw) : raw;
     if (b.w <= 0 || b.h <= 0) continue;
     out.push({
       id: l.id, x: b.x + L.BLEED_SHIFT, y: b.y + L.BLEED_SHIFT, w: b.w, h: b.h,
@@ -35,7 +34,7 @@ export function hitBoxesFromLayout(layers: Layer[], boxes: ReadonlyMap<string, B
   return out;
 }
 
-/** An empty text layer measures zero along its run (w, or h when rotated)
+/** #116: an empty text layer measures zero along its run (w, or h when rotated)
  *  but a full line across it. Hit-testing only: pad the run to that line
  *  height so the layer stays a target, growing from the anchor point the way
  *  typed text will — per `align` horizontally, upward from the bottom when

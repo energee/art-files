@@ -1,8 +1,6 @@
-// preview-empty-text-dom.test.tsx — the in-place text editor on the real
-// PreviewCompare in happy-dom (#116): deleting every character mid-session
-// must not unmount the editor, and a fresh empty Text layer must still be
-// double-clickable. Canvas painting is irrelevant here (happy-dom has no 2D
-// context; the paint effect's error path swallows it).
+// preview-empty-text-dom.test.tsx — the in-place editor on the real
+// PreviewCompare with empty text (#116). happy-dom has no 2D context; the
+// paint effect's error path swallows that.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -11,6 +9,7 @@ import { PreviewCompare } from "../src/components/PreviewCompare";
 import type { CanvasRenderSource } from "../src/canvas/draw";
 import type { TextLayer } from "../src/model/layers";
 import * as L from "../src/layout";
+import { measure } from "./fixtures";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -20,7 +19,7 @@ const layer = (text: string): TextLayer => ({
   x: 100, y: 50, size: 10, style: GOLD, lines: [{ text, ...GOLD }],
 });
 const source: CanvasRenderSource = {
-  m: (text, size) => text.length * size * 0.5,
+  m: measure,
   planAssets: { logoSvg: "" }, drawAssets: {}, skip: new Set(), fontCss: "sans-serif",
 };
 
