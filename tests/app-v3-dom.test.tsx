@@ -103,40 +103,6 @@ it("measures asset assembly while moving margin guides", async () => {
   }
 });
 
-// docs/plans/choice-input.md — the barcode and QR fill through App's own code
-// field, not TextEditor, so wiring the picker into TextEditor alone left the
-// tier list unreachable exactly where a tier is filled.
-it("offers the barcode's tiers in the field that fills it", async () => {
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  try {
-    await act(async () => {
-      root.render(createElement(DocumentEditor, {
-        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
-        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
-        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
-        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
-      }));
-    });
-    const row = container.querySelector('[data-layer-id="barcode"]')!;
-    await act(async () => {
-      (row.querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement).click();
-    });
-    // The inspector is a Sheet: it portals to document.body, not into the
-    // container the app was rendered into.
-    const field = document.querySelector("#barcode-content") as HTMLInputElement;
-    expect(field).not.toBeNull();
-    await act(async () => { field.focus(); });
-    const tiers = Array.from(document.querySelectorAll("[data-choice]")).map((o) => o.textContent?.trim());
-    expect(tiers).toContain("Tier 1");
-    expect(tiers).toHaveLength(8);
-  } finally {
-    act(() => { root.unmount(); });
-    container.remove();
-  }
-});
-
 // #128/#129 — an invalid fill is stored in the label but resolveLayers skips
 // applying it, so a field fed from the RESOLVED layer snapped back to the
 // master's value (barcode) or went blank (ABV) while the header named the
@@ -199,5 +165,22 @@ it("keeps a negative ABV in the ABV field, with its error (#129)", async () => {
     await act(async () => { field().blur(); });
     expect(field().value).toBe("-3");
     expect(document.body.textContent).toContain("Must be at least 0.");
+  });
+});
+
+// docs/plans/choice-input.md — the barcode and QR fill through App's own code
+// field, not TextEditor, so wiring the picker into TextEditor alone left the
+// tier list unreachable exactly where a tier is filled.
+it("offers the barcode's tiers in the field that fills it", async () => {
+  await withEditor(async () => {
+    await selectLayer("barcode");
+    // The inspector is a Sheet: it portals to document.body, not into the
+    // container the app was rendered into.
+    const field = document.querySelector("#barcode-content") as HTMLInputElement;
+    expect(field).not.toBeNull();
+    await act(async () => { field.focus(); });
+    const tiers = Array.from(document.querySelectorAll("[data-choice]")).map((o) => o.textContent?.trim());
+    expect(tiers).toContain("Tier 1");
+    expect(tiers).toHaveLength(8);
   });
 });

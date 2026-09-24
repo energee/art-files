@@ -25,6 +25,18 @@ export const widenValue = (l: Layer, v: LayerValue): LayerValue =>
   l.kind === "text" && typeof v === "string"
     ? [{ text: v, fill: l.style.fill, layer: l.style.layer }] : v;
 
+/** One value onto one layer, UNVALIDATED — the per-kind shaping applyValue
+ *  and withRejectedValue share. Undefined when the value has the wrong shape
+ *  for the layer (a .label is parsed JSON, so the guard is real). */
+function putValue(l: Layer, v: LayerValue): Layer | undefined {
+  if (l.kind === "text") {
+    const lines = widenValue(l, v);
+    return Array.isArray(lines) ? { ...l, lines } : undefined;
+  }
+  if (typeof v !== "string") return undefined;
+  return l.kind === "image" ? { ...l, asset: v } : { ...l, value: v };
+}
+
 /** A stored value the resolver REJECTED, put back on its layer for display
  *  only (#128/#129): applyValue skips an invalid value so the canvas and
  *  exports never draw it, but the fill field must show what the label holds —
@@ -32,32 +44,25 @@ export const widenValue = (l: Layer, v: LayerValue): LayerValue =>
  *  never reached ref expansion, so it is its own template. A value of the
  *  wrong shape for the layer leaves the layer as it was. */
 export function withRejectedValue(l: Layer, v: LayerValue): Layer {
-  const lines = widenValue(l, v);
-  if (l.kind === "text") return Array.isArray(lines) ? { ...l, lines } : l;
-  if (typeof v !== "string") return l;
-  return l.kind === "image" ? { ...l, asset: v } : { ...l, value: v, format: undefined };
+  const shown = putValue(l, v);
+  if (!shown) return l;
+  return shown.kind === "barcode" || shown.kind === "qr" ? { ...shown, format: undefined } : shown;
 }
 
 /** One value into one layer, validated per kind. */
 function applyValue(l: Layer, v: LayerValue): Result {
-  if (l.kind === "text") {
-    const lines = widenValue(l, v);
-    if (!Array.isArray(lines)) return { error: "Expected text." };
-    if (l.input) {
-      // ponytail: validateField still speaks FieldDecl; build one on the fly.
-      const r = validateField({ id: l.id, label: l.name, kind: l.input, path: "",
-        min: l.min, max: l.max, symbology: l.symbology }, plainText(lines));
-      if (!r.ok) return { error: r.error! };
-    }
-    return { layer: { ...l, lines } };
+  const layer = putValue(l, v);
+  if (!layer) {
+    return { error: l.kind === "text" ? "Expected text." : l.kind === "image" ? "Expected an image." : "Expected a code value." };
   }
-  if (typeof v !== "string") return { error: l.kind === "image" ? "Expected an image." : "Expected a code value." };
-  if (l.kind === "image") return { layer: { ...l, asset: v } };
-  if (l.kind === "barcode") {
-    const r = validateField({ id: l.id, label: l.name, kind: "code", path: "", symbology: l.symbology }, v);
-    if (!r.ok) return { error: r.error! };
-  }
-  return { layer: { ...l, value: v } };
+  // ponytail: validateField still speaks FieldDecl; build one on the fly.
+  const r = layer.kind === "text" && layer.input
+    ? validateField({ id: l.id, label: l.name, kind: layer.input, path: "",
+      min: layer.min, max: layer.max, symbology: layer.symbology }, plainText(layer.lines))
+    : layer.kind === "barcode"
+      ? validateField({ id: l.id, label: l.name, kind: "code", path: "", symbology: layer.symbology }, layer.value)
+      : undefined;
+  return r && !r.ok ? { error: r.error! } : { layer };
 }
 
 /** Lines as one plain string: runs joined with their markers stripped. */
