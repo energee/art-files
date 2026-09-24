@@ -123,8 +123,11 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
     return { mode: "inspect", ...(masterPath ? { masterPath } : {}) };
   }
 
+  // Fewer than three positionals can only be the new form (`[values|-] <out>`
+  // on the shipped master): the legacy argv needs texture, mask and out (#105).
   const newForm = !!(singles.master || singles.values || singles.label || masterPath
-    || singles.out || singles.format || variants.length || Object.keys(assets).length || Object.keys(set).length);
+    || singles.out || singles.format || variants.length || Object.keys(assets).length || Object.keys(set).length
+    || positional.length < 3);
   if (newForm) {
     if (singles["collab-left"] || singles["collab-center"])
       throw new Error("use --asset collabLeft=file --variant collab\n" + USAGE);
@@ -153,19 +156,16 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
     };
   }
 
-  if (positional.length >= 3) {
-    const [texturePath, maskPath, outDir, configPath] = positional;
-    if (positional.length > 4) throw new Error(USAGE);
-    return {
-      mode: "legacy",
-      texturePath, maskPath, outDir,
-      ...(configPath ? { configPath } : {}),
-      ...(singles["collab-left"] ? { collabLeft: singles["collab-left"] } : {}),
-      ...(singles["collab-center"] ? { collabCenter: singles["collab-center"] } : {}),
-    };
-  }
-
-  throw new Error(USAGE);
+  // Not the new form, so three or more positionals: the legacy argv.
+  const [texturePath, maskPath, outDir, configPath] = positional;
+  if (positional.length > 4) throw new Error(USAGE);
+  return {
+    mode: "legacy",
+    texturePath, maskPath, outDir,
+    ...(configPath ? { configPath } : {}),
+    ...(singles["collab-left"] ? { collabLeft: singles["collab-left"] } : {}),
+    ...(singles["collab-center"] ? { collabCenter: singles["collab-center"] } : {}),
+  };
 }
 
 const JOB_KEYS = new Set(["values", "variants", "files", "overrides"]);
