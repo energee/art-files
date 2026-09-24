@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Label Lab",
-  "version": "0.1.68",
+  "version": "0.1.81",
   "identifier": "com.labellab.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -27,6 +27,9 @@
     "security": {
       "csp": null
     }
+  },
+  "plugins": {
+    "fs": { "requireLiteralLeadingDot": false }
   },
   "bundle": {
     "active": true,
