@@ -1042,7 +1042,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   } : null, [decodedAssets, guides]);
   const bgOn = pageOn("background"), maskOn = pageOn("mask");
   useEffect(() => {
-    if (blocked || !active) return;
+    // Not gated on `blocked`: this only decodes fonts and art, and a rejected
+    // value already falls back to the master's, so the preview keeps drawing (#127).
+    if (!active) return;
     let cancelled = false;
     const timer = setTimeout(() => {
       (async () => {
@@ -1090,7 +1092,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // Asset inputs only — the layers reach this effect through tintKey and
     // the two page-art switches (see the comment above).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [texture, mask, customImages, family, tintKey, bgOn, maskOn, blocked, active]);
+  }, [texture, mask, customImages, family, tintKey, bgOn, maskOn, active]);
   // The bitmaps backing the CURRENTLY LIVE `canvasAssets` generation, closed
   // once the next generation has fully replaced them (bitmaps aren't GC'd
   // on their own). A bitmap can sit under two keys; close each once.
@@ -2313,9 +2315,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 </span>
               </div>
             )}
-            {/* Loading only: a blocking error skips the build, so previewReady
-                would never flip — the header alert explains the stall instead. */}
-            {!previewReady && !blocked && !buildError && !renderError && (
+            {!previewReady && !buildError && !renderError && (
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
                   <span className="size-6 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-foreground" />

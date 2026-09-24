@@ -8,9 +8,9 @@ binary-impacting change gets its own version before it is merged.
 ### Fixed
 
 - **No more endless "rendering label…" spinner on a label with an error.**
-  When a value the label can't print (such as an invalid barcode) blocks the
-  preview, switching to another tab and back no longer leaves the loading
-  spinner up forever — the header's error message explains what to fix.
+  A value the label can't print (such as an invalid barcode) no longer stops
+  the preview: it keeps drawing with the master's value in that spot, and the
+  header's error message still blocks export until you fix it.
 
 ## [0.1.68] - 2026-09-15
 

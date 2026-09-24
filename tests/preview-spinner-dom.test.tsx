@@ -1,6 +1,6 @@
-// preview-spinner-dom.test.tsx — the "rendering label…" spinner is a loading
-// state, so it must clear when the preview build is skipped on purpose (a
-// validation error blocks it), not only when a build finishes (issue #127).
+// preview-spinner-dom.test.tsx — a validation error must not stall the
+// preview: the build still runs (the rejected value falls back to the
+// master's), so the "rendering label…" spinner clears (issue #127).
 // @vitest-environment happy-dom
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
@@ -79,7 +79,7 @@ it("control: a valid label builds its preview and the spinner clears", async () 
   }
 });
 
-it("an invalid barcode does not leave the spinner up after returning to the tab", async () => {
+it("an invalid barcode still rebuilds the preview after returning to the tab", async () => {
   const ed = await mountWithBarcode("999");
   try {
     await settle();
@@ -87,7 +87,7 @@ it("an invalid barcode does not leave the spinner up after returning to the tab"
     await ed.setActive(false);
     await ed.setActive(true);
     await settle();
-    // The validation error is what's blocking the preview — and it's shown.
+    // The error still shows (export stays blocked), but the preview rebuilt.
     expect(ed.container.textContent).toContain("not a valid UPC-A code");
     expect(spinning(ed.container)).toBe(false);
   } finally {
