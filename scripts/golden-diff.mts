@@ -33,9 +33,9 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { dirname, join } from "node:path";
 import { PNG } from "pngjs";
+import { isEntry } from "./is-entry.mjs";
 
 /** An RGBA raster, row-major, 4 bytes per pixel — what pngjs decodes to and
  *  what a 2D canvas's getImageData returns. */
@@ -324,10 +324,9 @@ async function main(argv: string[]): Promise<number> {
   return result.changed > args.threshold ? 1 : 0;
 }
 
-// Thin CLI wrapper, same entry guard as scripts/release-notes.mjs: only run
-// when this file is the process's entry point, never on import from tests.
-const entryUrl = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";
-if (entryUrl === import.meta.url) {
+// Thin CLI wrapper: only run when this file is the process's entry point,
+// never on import from tests (scripts/is-entry.mjs).
+if (isEntry(import.meta.url)) {
   main(process.argv.slice(2)).then(
     (code) => process.exit(code),
     (e: unknown) => {
