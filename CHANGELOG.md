@@ -112,6 +112,10 @@ binary-impacting change gets its own version before it is merged.
   to a new place in the stack now shows a single "moved" row in the Save
   Master review, instead of flagging nearly every layer it passed.
 
+- **Save Master review stays with its tab.** Opening or switching to another
+  tab while the Save Master review is up now hides it until you return, so
+  confirming can only write the master of the tab you are looking at.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
