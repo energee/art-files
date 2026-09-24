@@ -3,6 +3,14 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.74] - 2026-09-23
+
+### Fixed
+
+- **PSD export no longer stretches textures and masks.** A texture or mask
+  whose shape differs from the label page (a square image, for example) now
+  lands in the Photoshop file cropped the same way as the PDF and preview,
+  instead of stretched and shifted.
 ## [0.1.73] - 2026-09-23
 
 ### Fixed
