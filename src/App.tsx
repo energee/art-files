@@ -833,7 +833,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   const activeRef = useRef(active);
   activeRef.current = active;
 
-  // ⌘Z / ⇧⌘Z (and ⌘Y) for the history. Inert while a text field has focus:
+  // ⌘Z / ⇧⌘Z (and ⌘Y) for the history, marking the document dirty like the
+  // menu commands do. Inert while a text field has focus:
   // there the browser's own per-field undo is the one the user means.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -844,8 +845,9 @@ export const DocumentEditor = memo(function DocumentEditor({
       const el = e.target as HTMLElement | null;
       if (el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "")) return;
       e.preventDefault();
-      if (key === "y" || e.shiftKey) redo();
-      else undo();
+      // mutating, like the Edit menu's Undo/Redo: history moves bypass
+      // `edit`, so without it an undo after a save left the tab clean (#76).
+      mutating(key === "y" || e.shiftKey ? redo : undo)();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
