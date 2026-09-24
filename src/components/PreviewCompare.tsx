@@ -269,6 +269,8 @@ function InPlaceRichField(props: {
           fontSize: cqh(size),
           lineHeight: leading / size,
           fontFamily: fontCss,
+          // Unkerned, like the canvas under it and the PDF (#86, #144).
+          fontKerning: "none",
           letterSpacing: cqh(layer.style.letterSpacing ?? 0),
           textAlign: align,
         }}
@@ -886,6 +888,9 @@ export const PreviewCompare = forwardRef<
               lineHeight: 1,
               fontFamily: layer.fontFamily ? labelFontCss(layer.fontFamily) : canvasRender.fontCss,
               fontWeight: FACE_WEIGHT[faces.base],
+              // Unkerned like drawPlate; the input inherits it through
+              // preflight's `font: inherit` (#144).
+              fontKerning: "none",
               letterSpacing: cqh(ls),
               color: inkOf(st),
             }}

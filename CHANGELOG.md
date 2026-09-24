@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.103] - 2026-09-24
+
+### Fixed
+
+- **Editing text on the canvas no longer tightens the letters.** The on-canvas
+  text editor now sets Barlow Condensed with the same letter spacing as the
+  preview under it, so text stays put when you start typing. Poppins labels
+  are unchanged.
+
 ## [0.1.102] - 2026-09-24
 
 ### Fixed
