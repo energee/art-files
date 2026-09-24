@@ -54,3 +54,18 @@ describe("parseLogo collab fit", () => {
     expect(art.h).toBeCloseTo(100, 6);
   });
 });
+
+// #67: the PSD builder only reads M/L/C/Z, so quadratics must leave as cubics.
+describe("parseLogo quadratic elevation", () => {
+  it("elevates Q to the exact equivalent C", () => {
+    const art = parseLogo('<svg viewBox="0 0 10 10"><path d="M0 0 Q5 10 10 0 Z"/></svg>', 100, 100);
+    // C1 = P0 + 2/3(Q1 - P0), C2 = P2 + 2/3(Q1 - P2) with P0=(0,0), Q1=(50,100), P2=(100,0).
+    expect(art.paths[0]).toBe("M 0 0 C 33.3333 66.6667 66.6667 66.6667 100 0 Z");
+  });
+
+  it("elevates T (smooth quadratic) too, reflecting the previous control point", () => {
+    const art = parseLogo('<svg viewBox="0 0 20 10"><path d="M0 0 Q5 10 10 0 T20 0"/></svg>', 20);
+    // T's implied control point is (15,-10): the reflection of (5,10) through (10,0).
+    expect(art.paths[0]).toBe("M 0 0 C 3.3333 6.6667 6.6667 6.6667 10 0 C 13.3333 -6.6667 16.6667 -6.6667 20 0");
+  });
+});

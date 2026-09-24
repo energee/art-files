@@ -143,6 +143,38 @@ it("offers the barcode's tiers in the field that fills it", async () => {
   }
 });
 
+// #126 — opening the inspector must not steal focus into its rename box: the
+// sheet opens on a selection, and Base UI's default initial focus landed in
+// the first input, so a moment later Backspace/arrows renamed the layer
+// ("Name" → "Nam") instead of deleting or nudging it.
+it("leaves focus out of the inspector when a layer selection opens it", async () => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(createElement(DocumentEditor, {
+        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
+        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+      }));
+    });
+    const row = container.querySelector('[data-layer-id="name"]')!;
+    await act(async () => {
+      (row.querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement).click();
+    });
+    // Base UI applies initial focus on the next animation frame after open.
+    await act(async () => { await new Promise(requestAnimationFrame); });
+    const sheet = document.querySelector('[data-slot="sheet-content"]');
+    expect(sheet).not.toBeNull();
+    expect(sheet!.contains(document.activeElement)).toBe(false);
+  } finally {
+    act(() => { root.unmount(); });
+    container.remove();
+  }
+});
+
 // Issue #73 — inspector fields passed a hard `coalesce: true`, so the first
 // keystroke folded into whatever step came before it (a drag, a toggle): ⌘Z
 // then undid the typing AND the earlier edit together.

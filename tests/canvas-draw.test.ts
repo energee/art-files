@@ -265,3 +265,31 @@ it("draws a text layer in its own font while other layers inherit the default", 
   expect(fonts.some((font) => font.endsWith("LabelFont-barlow-condensed"))).toBe(true);
   expect(fonts.some((font) => font.endsWith("LabelFont-poppins"))).toBe(true);
 });
+
+/** Issue #86: the PDF is drawn unkerned (pdf-lib emits no kerning), so the
+ *  preview must be too — both what it measures and what it paints — or the
+ *  screen shows Barlow Condensed ~8% tighter than the file prints. */
+describe("canvas text is unkerned, like the PDF (#86)", () => {
+  it("drawPlate turns kerning off before painting any text", () => {
+    const { ctx, log } = fakeCtx();
+    drawPlate(ctx, plan(), {}, "art", FONT);
+    const kerning = log.findIndex((x) => x.op === "set:fontKerning" && x.args[0] === "none");
+    expect(kerning).toBeGreaterThan(-1);
+    expect(kerning).toBeLessThan(log.findIndex((x) => x.op === "fillText"));
+  });
+
+  it("the plan's canvas measure (loadLabelFaces) measures with kerning off", async () => {
+    vi.resetModules();
+    const seen: string[] = [];
+    const measureCtx: Record<string, unknown> = {
+      font: "", fontKerning: "auto",
+      measureText: () => { seen.push(String(measureCtx.fontKerning)); return { width: 1 }; },
+    };
+    vi.stubGlobal("FontFace", class { load() { return Promise.resolve(this); } });
+    vi.stubGlobal("document", { fonts: { add() {} }, createElement: () => ({ getContext: () => measureCtx }) });
+    const { loadLabelFaces, loadLabelFont } = await import("../src/fonts");
+    (await loadLabelFaces("barlow-condensed"))("AVATAR", 10, "regular");
+    (await loadLabelFont("barlow-condensed"))("AVATAR", 10, false);
+    expect(seen).toEqual(["none", "none"]);
+  });
+});

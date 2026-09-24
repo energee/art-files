@@ -34,6 +34,8 @@ Each element has a **fill** (drawn in the art PDF; `none` for no ink) and a **pl
 
 Barcodes ship as near-black bars inside a white halo over white ink. The halo is an outset per bar plus a pill per digit group, unioned, so white ink doesn't fall short between bars.
 
+Export checks the code each barcode will actually print, after any `{layer}` refs expand, wherever it came from: this label, a variant, or the master. A code that isn't valid for the barcode's symbology blocks export with an error instead of leaving the barcode off. A blank or switched-off barcode doesn't block anything.
+
 ## Photoshop
 
 Export PSDs is the editable handoff. Text becomes type layers. Logo and QR become vector shapes. Outer strokes are layer effects. The description is one type layer with style runs. The barcode is one merged shape (bars plus digit outlines), not editable type.
