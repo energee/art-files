@@ -69,3 +69,27 @@ describe("parseLogo quadratic elevation", () => {
     expect(art.paths[0]).toBe("M 0 0 C 3.3333 6.6667 6.6667 6.6667 10 0 C 13.3333 -6.6667 16.6667 -6.6667 20 0");
   });
 });
+
+// #68: only rendered geometry is ink — see renderedOnly in src/logo.ts.
+describe("parseLogo non-rendered geometry", () => {
+  const TRIANGLE = '<path d="M 40 60 L 60 60 L 50 40 Z"/>';
+  const SQUARE = '<path d="M -500 -500 L 500 -500 L 500 500 L -500 500 Z"/>';
+  const hidden = (tag: string) => `<${tag} id="x">${SQUARE}</${tag}>${TRIANGLE}`;
+
+  it.each([
+    ["a clipPath square around the triangle", `<clipPath id="c">${SQUARE}</clipPath><g clip-path="url(#c)">${TRIANGLE}</g>`],
+    ["<defs>", hidden("defs")],
+    ["<mask>", hidden("mask")],
+    ["<symbol>", hidden("symbol")],
+    ["<pattern>", hidden("pattern")],
+    ["HTML-commented paths", `<!-- ${SQUARE} -->${TRIANGLE}`],
+    // Without the `/>` guard, <defs/> would swallow the triangle up to </defs>.
+    ["a self-closing <defs/> without swallowing the art", `<defs/>${TRIANGLE}<defs>${SQUARE}</defs>`],
+  ])("ignores %s", (_name, body) => {
+    const art = parseLogo(`<svg viewBox="0 0 100 100">${body}</svg>`, 36, 36);
+    expect(art.paths).toHaveLength(1);
+    // The 20x20 triangle fills the slot rather than shrinking to ~0.7pt.
+    expect(art.w).toBeCloseTo(36, 6);
+    expect(art.h).toBeCloseTo(36, 6);
+  });
+});

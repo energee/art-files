@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.88] - 2026-09-23
+
+### Fixed
+
+- **Collab SVG logos with clipping paths now fill their slot.** SVGs exported
+  with a clip path, mask, or other hidden definitions (Illustrator adds these
+  routinely) were drawing that hidden shape as ink, which shrank the real logo
+  to a speck. Commented-out shapes were drawn too. Only the visible artwork is
+  placed now.
 ## [0.1.87] - 2026-09-23
 
 ### Fixed
