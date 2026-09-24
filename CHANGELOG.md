@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.101] - 2026-09-24
+
+### Fixed
+
+- **An over-long QR value now shows a clear message.** A QR payload too long
+  to fit in any QR code used to report a cryptic "code length overflow" (or
+  an "undefined" error on export). It now says the value is too long, how
+  many bytes it is, and to shorten it or lower the error correction level.
+
 ## [0.1.71] - 2026-09-23
 
 ### Fixed
