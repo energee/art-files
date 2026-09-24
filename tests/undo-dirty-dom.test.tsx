@@ -40,6 +40,10 @@ it("⌘Z and ⇧⌘Z from the keyboard mark a saved document dirty", async () =>
         onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
       }));
     });
+    // Nothing to undo yet: the key must not dirty a saved document.
+    await save();
+    await press(false);
+    expect(dirty()).toBe(false);
     // One undoable edit: switch a variant-added layer on.
     const power = container.querySelector('[data-layer-id="collabLead"] button[aria-label$=": enabled"]') as HTMLButtonElement;
     await act(async () => power.click());

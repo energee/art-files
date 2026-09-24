@@ -846,11 +846,13 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "")) return;
       e.preventDefault();
       // History moves bypass `edit`; without mutating, ⌘Z after a save left the tab clean (#76).
-      mutating(key === "y" || e.shiftKey ? redo : undo)();
+      // Nothing to step over is a no-op, as the disabled menu item is.
+      const redoing = key === "y" || e.shiftKey;
+      if (redoing ? canRedo : canUndo) mutating(redoing ? redo : undo)();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [undo, redo]);
+  }, [undo, redo, canUndo, canRedo]);
 
   // Figma-style bare keys plus the ⌘-modified exports, with the same
   // inert-while-typing guard as undo. Registered once — reads the table
