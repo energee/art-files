@@ -40,12 +40,12 @@ const val = (v: unknown) =>
 
 /** What one entry of a list is called: a Choice by its title, else its value,
  *  a text line by its text, a plain string as itself. */
-const entryName = (v: unknown): string =>
-  typeof v === "string" ? v
-    : v && typeof v === "object"
-      ? String((v as { title?: string; value?: unknown; text?: string }).title
-        ?? (v as { value?: unknown }).value ?? (v as { text?: string }).text ?? JSON.stringify(v))
-      : String(v);
+const entryName = (v: unknown): string => {
+  if (typeof v === "string") return v;
+  if (!v || typeof v !== "object") return String(v);
+  const o = v as { title?: string; value?: unknown; text?: string };
+  return String(o.title ?? o.value ?? o.text ?? JSON.stringify(v));
+};
 
 /** A list-valued path — a fill vocabulary, a layer's lines — reads as its
  *  count and the ONE entry that came or went, not as its JSON. leafPaths

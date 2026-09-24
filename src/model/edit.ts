@@ -476,9 +476,8 @@ export function snapDelta(
  *  already states it — an offset from a guide, or an absolute anchored at its
  *  own edge. Vertical: a bound layer moves its `gap` and keeps its binding; an
  *  unbound one moves `y` (bottom-anchored layers included — `y` is their
- *  bottom edge, still += dy). Every written position lands on the 0.01pt
- *  grid (`pt`). Locked layers return {}. Axes with no movement are left out
- *  of the patch.
+ *  bottom edge, still += dy). Locked layers return {}. Axes with no movement
+ *  are left out of the patch.
  *
  *  It does NOT re-anchor. It used to run positionFromDrag on every move and
  *  adopt whichever anchor came out nearest, which flipped a layer from centre-
@@ -1006,10 +1005,12 @@ export function resizeBy(
   const sx = (bw + lw) / bw, sy = (bh + lh) / bh;
   const size = ((): LayerPatch => {
     switch (layer.kind) {
-      case "text": return { width: Math.max((layer.width ?? bw) + lw, 1) };
-      case "qr": return { size: layer.size * sx };
-      case "barcode": return { h: layer.h * sy, moduleW: layer.moduleW * sx };
-      case "image": return { w: layer.w * sx, ...(layer.h != null ? { h: layer.h * sy } : {}) };
+      // Sizes on the same 0.01pt grid as positions; moduleW keeps its own,
+      // finer precision (a module is under a point).
+      case "text": return { width: pt(Math.max((layer.width ?? bw) + lw, 1)) };
+      case "qr": return { size: pt(layer.size * sx) };
+      case "barcode": return { h: pt(layer.h * sy), moduleW: layer.moduleW * sx };
+      case "image": return { w: pt(layer.w * sx), ...(layer.h != null ? { h: pt(layer.h * sy) } : {}) };
     }
   })();
   // Keep the opposite edge still: the anchored point moves by its share of

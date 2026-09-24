@@ -8,8 +8,9 @@ binary-impacting change gets its own version before it is merged.
 ### Fixed
 
 - **Dragged positions save as clean numbers.** Moving or resizing a layer on
-  the canvas, and binding or unbinding one, now lands its position on the same
-  0.01pt grid the inspector types and the arrow keys nudge on, so Save Master
+  the canvas, and binding or unbinding one, now lands its position (and a
+  resize its size) on the same 0.01pt grid the inspector types and the arrow
+  keys nudge on, so Save Master
   shows `x: 292.56 → 193.09` instead of `193.08552000000003`.
 - **Save Master names an edited text line.** A changed line reads
   `lines: 1 → 1 ("Old" → "New")` instead of the uninformative `1 → 1`.

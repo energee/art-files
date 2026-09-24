@@ -62,7 +62,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ColorField } from "./ColorField";
 import { MetallicToggle } from "./MetallicToggle";
 import { ScrubField } from "./ScrubField";
-import { decimalsOf, PT_STEP } from "@/numeric";
+import { PT_STEP, roundToStep } from "@/numeric";
 import { CharacterHeight } from "./CharacterHeight";
 import { FONT_FAMILIES, fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
 
@@ -74,10 +74,9 @@ const KIND_ICONS: Record<LayerKind, LucideIcon> = {
   text: Type, image: Image, barcode: Barcode, qr: QrCode,
 };
 
-/** Points precision for positions and sizes: the model's PT_STEP (hundredths,
- *  as the Lolev master authors them — 24.12, 15.83), so typing keeps that and a
- *  scrub moves in halves — fine enough to land a snap, coarse enough to cross
- *  the label. A canvas drag rounds to the same PT_STEP (edit.ts's moveBy). */
+/** Points precision for positions and sizes: typing keeps the model's PT_STEP
+ *  and a scrub moves in halves — fine enough to land a snap, coarse enough to
+ *  cross the label. */
 const PT = { step: PT_STEP, dragStep: 0.5 } as const;
 
 // The model stays in PDF points; only dimensional controls convert for display.
@@ -87,7 +86,7 @@ type DimensionUnit = "mm" | "pt";
 // A millimetre is ~2.8 points, so mm needs one more decimal than pt to keep
 // the model's 0.01pt precision — at two, a sub-millimetre value (a barcode's
 // module width) rounds to 0.00 in the field while the layer holds a real one.
-const DISPLAY_STEP = { mm: 0.001, pt: 0.01 } as const;
+const DISPLAY_STEP = { mm: 0.001, pt: PT_STEP } as const;
 
 function DimensionField(props: Omit<ComponentProps<typeof ScrubField>, "unit"> & { unit: DimensionUnit }) {
   const scale = props.unit === "mm" ? MM_PER_PT : 1;
@@ -98,7 +97,7 @@ function DimensionField(props: Omit<ComponentProps<typeof ScrubField>, "unit"> &
     // rounds in display units, and a rounded-up millimetre reading of a
     // bound (1pt -> 0.353mm -> 1.0006pt) must not slip past it.
     onChange={(value) => props.onChange(Math.min(props.max, Math.max(props.min,
-      Number((value / scale).toFixed(decimalsOf(props.step))))))} />;
+      roundToStep(value / scale, props.step))))} />;
 }
 
 /** Section heading — the idiom StyleProperties' inspector used, so the new
@@ -206,7 +205,7 @@ function BlankableField(props: {
           step={displayStep}
           placeholder={props.placeholder}
           className="h-6 text-xs"
-          value={text ?? (props.value === undefined ? "" : Number((props.value * scale).toFixed(decimalsOf(displayStep))))}
+          value={text ?? (props.value === undefined ? "" : roundToStep(props.value * scale, displayStep))}
           onChange={(e) => {
             const s = e.target.value;
             setText(s);
@@ -217,7 +216,7 @@ function BlankableField(props: {
             // verbatim (35pt -> 12.347mm -> 34.99916pt) never re-matches the
             // master, so the override badge can't be cleared from this field.
             if (Number.isFinite(n)) props.onChange(Math.min(props.max, Math.max(props.min,
-              Number((n / scale).toFixed(decimalsOf(props.step))))));
+              roundToStep(n / scale, props.step))));
           }}
           onBlur={() => setText(null)}
         />

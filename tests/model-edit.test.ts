@@ -12,6 +12,7 @@ import {
   structureOnlyMaster, toggleVariant, unbind, whereLayerLives,
 } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
+import { PT_STEP, roundToStep } from "../src/numeric";
 import { parseMaster } from "../src/model/layers";
 import type {
   BarcodeLayer, ImageLayer, LabelFile, Layer, Master, QrLayer, RelativeY, TextLayer,
@@ -283,7 +284,7 @@ describe("moveBy", () => {
   it("moves an unbound y by dy, bottom-anchored layers included", () => {
     // The shipped tops are derived from baselines (off the 0.01pt grid); a
     // move lands them on it, as typing the inspector's value back would.
-    const onGrid = (v: number) => Number(v.toFixed(2));
+    const onGrid = (v: number) => roundToStep(v, PT_STEP);
     expect(moveBy(nameLayer(), 0, -7)).toEqual({ y: onGrid((nameLayer().y as number) - 7) });
     const store = byId<TextLayer>(lolevMaster(), "storeCold");
     expect(store.vAnchor).toBe("bottom");
@@ -300,7 +301,7 @@ describe("moveBy", () => {
     expect(moveBy(l, -99.47448, 147.52530452012383)).toEqual({ x: 193.09, y: 247.53 });
     const bound = { ...collab(lolevMaster()).layers.collabLeft } as ImageLayer;
     const gap = (bound.y as RelativeY).gap;
-    expect(moveBy(bound, 0, 0.1 + 0.2)).toEqual({ y: { below: "collabLead", gap: Number((gap + 0.3).toFixed(2)) } });
+    expect(moveBy(bound, 0, 0.1 + 0.2)).toEqual({ y: { below: "collabLead", gap: roundToStep(gap + 0.3, PT_STEP) } });
   });
 });
 
@@ -490,8 +491,8 @@ describe("resizeBy", () => {
     const b = { ...byId<BarcodeLayer>(lolevMaster(), "barcode"), h: 40, moduleW: 1, rotation: 0 as const, vAnchor: undefined };
     expect(resizeBy(b, box, BR, 100, 50, false)).toEqual({ h: 80, moduleW: 2 });
   });
-  it("rounds the position a resize moves to 0.01pt (#130)", () => {
-    expect(resizeBy({ ...img(), x: 292.56 }, box, L, 20.123456789, 0, false).x).toBe(312.68);
+  it("rounds the position and size a resize writes to 0.01pt (#130)", () => {
+    expect(resizeBy({ ...img(), x: 292.56 }, box, L, 20.123456789, 0, false)).toEqual({ x: 312.68, w: 31.95, h: 20 });
   });
   it("the opposite edge stays put from any handle, per anchor", () => {
     // Left handle dragged 20pt right: box shrinks by 20 and its left edge moves right.
