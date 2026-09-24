@@ -34,6 +34,16 @@ describe(".master ZIP container", () => {
     expect(a.customImages).toBeUndefined();
   });
 
+  it("opens a legacy JSON-only .master behind a UTF-8 BOM or leading whitespace (#101)", () => {
+    const json = serializeMaster(lolevMaster());
+    const bom = new Uint8Array([0xef, 0xbb, 0xbf, ...strToU8(json)]);
+    for (const bytes of [bom, strToU8(`\n  ${json}`)]) {
+      const { master, assets: a } = unpackMaster(bytes);
+      expect(master).toEqual(lolevMaster());
+      expect(a).toEqual({});
+    }
+  });
+
   it("still opens a legacy JSON-only .master ('{' sniff), with no assets", () => {
     const { master, assets: a } = unpackMaster(strToU8(serializeMaster(lolevMaster())));
     expect(master).toEqual(lolevMaster());

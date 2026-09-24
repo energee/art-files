@@ -42,6 +42,16 @@ describe(".master v3 container", () => {
     expect(assets.mask).toEqual({ name: "metal.png", bytes: png(2) });
   });
 
+  it("opens a legacy JSON-only master behind a UTF-8 BOM or leading whitespace (#101)", () => {
+    const json = serializeMasterV1(lolevV1());
+    const bom = new Uint8Array([0xef, 0xbb, 0xbf, ...strToU8(json)]);
+    for (const bytes of [bom, strToU8(`\n  ${json}`), strToU8(`\r\n\t${json}`)]) {
+      const { master, assets } = unpackMaster(bytes);
+      expect(master.formatVersion).toBe(3);
+      expect(assets).toEqual({});
+    }
+  });
+
   it("opens a legacy JSON-only v1 master converted to v3, with no assets", () => {
     const { master, assets, warnings } = unpackMaster(strToU8(serializeMasterV1(lolevV1())));
     expect(master.formatVersion).toBe(3);

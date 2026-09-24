@@ -3,14 +3,14 @@
 // validates) plus the TEMPLATE assets under the same role directories .label
 // uses (texture/<name>, mask/<name>, custom/<assetId>/<name>), so the master
 // carries the art every label shares and a new label needs nothing dropped.
-// Legacy JSON-only .master files still open: unpackMaster sniffs the first
-// byte ('{' = pretty-printed JSON, asset-less; anything else is unzipped).
+// Legacy JSON-only .master files still open: unpackMaster sniffs for a '{'
+// past any BOM/whitespace (JSON, asset-less; anything else is unzipped).
 // Files on disk are the source of truth; the library index (src/masters.ts)
 // is only a resolver cache built from them, never the other way around.
 import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from "fflate";
 import type { Master } from "./types";
 import { parseMaster } from "./types";
-import { extractAssets, packAssets, type LabelAssets } from "../labelfile";
+import { extractAssets, legacyJsonText, packAssets, type LabelAssets } from "../labelfile";
 
 /** The template assets a master carries — the master-owned subset of the
  *  .label roles, by construction (one Pick, one convention: labelfile.ts's
@@ -41,8 +41,8 @@ export function packMaster(m: Master, assets: MasterAssets): Uint8Array {
  *  master.json throws a readable error; a bad master.json fails through
  *  parseMaster's own loud fail() — nothing half-applies. */
 export function unpackMaster(bytes: Uint8Array): { master: Master; assets: MasterAssets } {
-  if (bytes[0] === 0x7b) // '{' — a legacy JSON-only master, no assets
-    return { master: parseMasterFile(strFromU8(bytes)), assets: {} };
+  const legacy = legacyJsonText(bytes); // a legacy JSON-only master, no assets
+  if (legacy !== undefined) return { master: parseMasterFile(legacy), assets: {} };
   const entries = unzipSync(bytes);
   const masterEntry = entries["master.json"];
   if (!masterEntry) throw new Error("Not a .master file: missing master.json");

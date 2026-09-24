@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.121] - 2026-09-24
+
+### Fixed
+
+- **Older JSON-only masters open even when an editor touched them.** A
+  legacy `.master` saved as plain JSON now opens when it starts with a
+  byte-order mark or a blank line, instead of failing with "invalid zip
+  data".
+
 ## [0.1.120] - 2026-09-24
 
 ### Fixed

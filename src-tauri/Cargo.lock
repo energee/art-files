@@ -1979,7 +1979,7 @@ dependencies = [
 
 [[package]]
 name = "label-lab"
-version = "0.1.120"
+version = "0.1.121"
 dependencies = [
  "serde_json",
  "tauri",

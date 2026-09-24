@@ -89,6 +89,17 @@ export function extractAssets(entries: Record<string, Uint8Array>): LabelAssets 
   return assets;
 }
 
+/** The text of a legacy JSON-only file (the pre-ZIP .master), or undefined
+ *  when the bytes are anything else — in practice a ZIP. Sniffs for the
+ *  opening '{' past a UTF-8 BOM and leading whitespace, which an editor may
+ *  add on save (#101), and drops the BOM from the text, since JSON.parse
+ *  rejects it (whitespace it accepts). Shared by both unpackMasters. */
+export function legacyJsonText(bytes: Uint8Array): string | undefined {
+  let i = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf ? 3 : 0;
+  while (bytes[i] === 0x20 || bytes[i] === 0x09 || bytes[i] === 0x0a || bytes[i] === 0x0d) i++;
+  return bytes[i] === 0x7b ? strFromU8(bytes.subarray(i)) : undefined;
+}
+
 /** Pack a v1 label file: config.json (legacy writer kept for tests and Node
  *  harness until Plan 6). For new code, use packLabelV2. */
 export function packLabel(config: LabelConfig, assets: LabelAssets): Uint8Array {
