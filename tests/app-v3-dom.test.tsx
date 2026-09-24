@@ -7,9 +7,10 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 
-vi.mock("../src/components/PreviewCompare", () => ({ PreviewCompare: (props: { canvasRender: import("../src/canvas/draw").CanvasRenderSource | null }) => { perf.source = props.canvasRender; return null; } }));
+vi.mock("../src/components/PreviewCompare", () => ({ SNAP_PT: 6, PreviewCompare: (props: PreviewProps) => { perf.source = props.canvasRender; perf.preview = props; return null; } }));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
-const perf = vi.hoisted(() => ({ fontLoads: 0, source: null as import("../src/canvas/draw").CanvasRenderSource | null, margin: null as null | ((n: number) => void) }));
+type PreviewProps = import("react").ComponentProps<typeof import("../src/components/PreviewCompare").PreviewCompare>;
+const perf = vi.hoisted(() => ({ fontLoads: 0, source: null as import("../src/canvas/draw").CanvasRenderSource | null, margin: null as null | ((n: number) => void), preview: null as PreviewProps | null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: (props: { onMarginChange: (n: number) => void }) => { perf.margin = props.onMarginChange; return null; } }));
 vi.mock("../src/fonts", () => ({
   loadLabelFaces: async () => { perf.fontLoads++; return (text: string, size: number) => text.length * size * 0.55; },
@@ -136,3 +137,69 @@ it("offers the barcode's tiers in the field that fills it", async () => {
     container.remove();
   }
 });
+
+// Issue #74 — a drag (or resize) whose first move produced no patch (a
+// snapped-to-zero delta) opened no undo step, yet its later moves still
+// passed coalesce=true and folded into the edit before it; Escape's undo then
+// reverted that earlier edit along with the drag.
+async function renameThenGesture(gesture: (p: PreviewProps) => void) {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  const onMeta = vi.fn();
+  try {
+    await act(async () => {
+      root.render(createElement(DocumentEditor, {
+        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta,
+        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+      }));
+    });
+    // Gestures measure boxes off the decoded canvas assets.
+    await vi.waitFor(() => expect(perf.source).not.toBeNull(), { timeout: 30_000 });
+    const row = container.querySelector('[data-layer-id="name"]')!;
+    await act(async () => {
+      (row.querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement).click();
+    });
+    const editor = document.querySelector('[contenteditable="true"]') as HTMLElement;
+    await act(async () => {
+      editor.innerHTML = "<div>Peregrine</div>";
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(onMeta.mock.lastCall?.[0].title).toBe("Peregrine");
+    await act(async () => gesture(perf.preview!));
+    // Escape mid-gesture: undo only what the gesture itself did.
+    await act(async () => perf.preview!.onDragCancel());
+    expect(onMeta.mock.lastCall?.[0].title).toBe("Peregrine");
+    // The rename is still its own step: one ⌘Z removes it.
+    await act(async () => {
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
+    });
+    expect(onMeta.mock.lastCall?.[0].title).not.toBe("Peregrine");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+}
+
+it("a drag whose first move snaps to zero never folds into the previous edit", async () => {
+  await renameThenGesture((p) => {
+    // A first move whose snapped delta is zero patches nothing (snapDelta
+    // passes an exact 0 through; a snap landing back on the start does too).
+    expect(p.onDrag("barcode", 0, 0, true)).toMatchObject({ dx: 0, dy: 0 });
+    p.onDrag("barcode", 40, 0, false);
+  });
+}, 60_000);
+
+it("a resize whose first move changes nothing never folds into the previous edit", async () => {
+  await renameThenGesture((p) => {
+    // A text layer has no height to resize: a vertical-only pull is a no-op.
+    p.onResize("name", { hx: 1, hy: 1 }, 0, 4, false, true);
+    p.onResize("name", { hx: 1, hy: 1 }, 40, 4, false, false);
+  });
+}, 60_000);
+
+it("Escape on a drag that never moved anything leaves the previous edit alone", async () => {
+  await renameThenGesture((p) => { p.onDrag("barcode", 0, 0, true); });
+}, 60_000);
