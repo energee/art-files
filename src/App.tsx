@@ -40,7 +40,7 @@ import {
   writeHandle,
 } from "@/filePickers";
 import { openNativeFile, readNativeFile, saveNativeFile } from "@/files";
-import { useHistory } from "@/history";
+import { useHistory, type Coalesce } from "@/history";
 import type {
   ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master,
 } from "@/model/layers";
@@ -688,9 +688,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** THE write path. Every document edit is a pure Doc → Doc transition
    *  (model/edit.ts), recorded as one history entry; `coalesce` folds a
    *  gesture's many updates (a drag, an in-place text session) into one undo
-   *  step — see useHistory's `pushed`. Computed against the doc THIS render
+   *  step, and an inspector field passes its id so its typing is one step of
+   *  its own — see history.ts's `Coalesce`. Computed against the doc THIS render
    *  sees so a no-op can return before marking the tab dirty. */
-  const edit = (fn: (d: Doc) => Doc, coalesce?: boolean) => {
+  const edit = (fn: (d: Doc) => Doc, coalesce?: Coalesce) => {
     let next: Doc;
     try {
       next = fn(doc);
@@ -720,7 +721,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   const patchMany = (entries: [string, DeepPartial<Layer>][], coalesce?: boolean) =>
     edit((d) => patchLayers(d, entries), coalesce);
   /** A layer's CONTENT: always a fill value into the label, for any layer. */
-  const setContent = (layer: Layer, value: LayerValue, coalesce?: boolean) =>
+  const setContent = (layer: Layer, value: LayerValue, coalesce?: Coalesce) =>
     edit((d) => setContentIn(d, layer.id, value), coalesce);
   /** Wrap a mutation that bypasses `edit` (undo/redo) so it still marks
    *  the document dirty. */
@@ -2015,7 +2016,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (layer.kind === "text") {
       return (
         <TextEditor id={id} label="Text" lines={layer.lines} base={layer.style}
-          onChange={(lines) => setContent(layer, lines, true)}
+          onChange={(lines) => setContent(layer, lines, id)}
           multiline={true} uppercase={uppercaseOf(layer)}
           onUppercase={(uppercase) => patch(layer.id, { style: { uppercase } })}
           input={layer.input} min={layer.min} max={layer.max} symbology={layer.symbology}
@@ -2068,18 +2069,20 @@ export const DocumentEditor = memo(function DocumentEditor({
       const tokens = rows.flatMap((r) =>
         r.layer.kind === "text" ? [{ id: r.layer.id, name: r.layer.name }] : []);
       const src = link.id ?? "";
-      const write = (prefix: string, id: string) =>
-        setContent(layer, formatLink(prefix, id), true);
+      // The link box types as one session keyed by its id; a suffix pick is
+      // a discrete choice and gets a step of its own (false).
+      const write = (prefix: string, ref: string, coalesce: Coalesce) =>
+        setContent(layer, formatLink(prefix, ref), coalesce);
       return (
         <div className="space-y-1">
           <Label htmlFor={id} className="text-xs text-muted-foreground">Link</Label>
           <Input id={id} className="h-7 font-mono text-xs" value={link.prefix}
             placeholder="https://lolev.beer/beer/"
             aria-invalid={errors[layer.id] ? true : undefined}
-            onChange={(e) => write(e.target.value, src)} />
+            onChange={(e) => write(e.target.value, src, id)} />
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-muted-foreground">followed by</span>
-            <Select value={src || "none"} onValueChange={(v) => write(link.prefix, v === "none" ? "" : (v ?? ""))}>
+            <Select value={src || "none"} onValueChange={(v) => write(link.prefix, v === "none" ? "" : (v ?? ""), false)}>
               <SelectTrigger id={`${id}-src`} size="sm" aria-label="Link suffix"
                 className="h-6 w-32 text-xs">
                 <SelectValue />
@@ -2112,12 +2115,12 @@ export const DocumentEditor = memo(function DocumentEditor({
           <ChoiceBox id={id} className="h-7 font-mono text-xs" value={template}
             choices={layer.choices} invalid={!!errors[layer.id]}
             placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : "digits"}
-            onCommit={(v) => setContent(layer, v, true)} />
+            onCommit={(v) => setContent(layer, v, id)} />
         ) : (
           <Input id={id} className="h-7 font-mono text-xs" value={template}
             placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : "digits"}
             aria-invalid={errors[layer.id] ? true : undefined}
-            onChange={(e) => setContent(layer, e.target.value, true)} />
+            onChange={(e) => setContent(layer, e.target.value, id)} />
         )}
         {foot}
       </div>
