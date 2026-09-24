@@ -147,6 +147,11 @@ binary-impacting change gets its own version before it is merged.
 - **Save Master names an edited text line.** A changed line reads
   `lines: 1 → 1 ("Old" → "New")` instead of the uninformative `1 → 1`.
 
+- **A failed restart keeps the installed update.** If Restart Now fails,
+  closing the error puts you back where you were: the status bar still offers
+  Restart to finish, and Label Lab → Restart to Update opens the restart
+  dialog instead of an empty one.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
