@@ -53,6 +53,11 @@ binary-impacting change gets its own version before it is merged.
   byte-order mark or a blank line, instead of failing with "invalid zip
   data".
 
+- **Moving a label to another master and back restores all its text.** Text
+  set aside while a label sat on a master without that field (including text
+  carried over from older label files) now comes back when the label returns
+  to a master that has it, instead of staying set aside for good.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed

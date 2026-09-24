@@ -28,9 +28,11 @@ function layerKinds(master: Master): Map<string, Layer["kind"] | undefined> {
   return kinds;
 }
 
-/** A text layer fills from lines, every other kind from a string. */
+/** A text layer fills from lines or from a plain string (resolveLayers'
+ *  widenValue lays a string as one line — how migrated v2 values and CLI
+ *  values arrive); every other kind fills from a string. */
 const fits = (kind: Layer["kind"] | undefined, value: LayerValue): boolean =>
-  kind === "text" ? Array.isArray(value) : typeof value === "string";
+  typeof value === "string" || (kind === "text" && Array.isArray(value));
 
 /** `from` is the master the label is leaving; the v3 match is by layer id
  *  alone so it is not consulted, but it stays in the signature so the App
