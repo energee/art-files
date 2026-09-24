@@ -950,26 +950,12 @@ export const DocumentEditor = memo(function DocumentEditor({
     });
   }
 
-  /** Releases an image asset's bytes once nothing in the document names it
-   *  any more — the same art can be shared by two layers, so only an
-   *  unreferenced id is dropped. Checked against the doc AFTER the write. */
-  function releaseAsset(assetId: string, after: Doc) {
-    if (!assetId || assetReferenced(after.master, after.label, assetId)) return;
-    setCustomImages((old) => {
-      const entry = old[assetId];
-      if (!entry) return old;
-      URL.revokeObjectURL(entry.previewUrl);
-      const next = { ...old };
-      delete next[assetId];
-      return next;
-    });
-  }
-
   /** An image layer's well: read the dropped file into the per-id store
    *  and point the layer (its fill value, or the master's own asset) at the
-   *  minted id; the previous asset is released if nothing else uses it. */
+   *  minted id. The previous asset's bytes are deliberately KEPT: undo can
+   *  point the layer back at it (#75). The store is only emptied by
+   *  resetDocument, and Save packs just the ids the doc still references. */
   async function onLayerImage(layer: ImageLayer, f: File | null) {
-    const previous = layer.asset;
     let assetId = "";
     if (f) {
       assetId = mintCustomAssetId();
@@ -977,10 +963,6 @@ export const DocumentEditor = memo(function DocumentEditor({
       setCustomImages((old) => ({ ...old, [assetId]: file }));
     }
     setContent(layer, assetId);
-    // The doc as it will be after that edit lands — releaseAsset must see the
-    // NEW state to decide whether the old asset is still referenced.
-    const after: Doc = setContentIn({ master, label }, layer.id, assetId);
-    if (previous && previous !== assetId) releaseAsset(previous, after);
   }
 
   /** The image layers whose raster art draws repainted in their fill
@@ -1489,7 +1471,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   async function saveProject(as = false): Promise<boolean> {
     const zip = packLabel({ ...label, masterHint: masterIndex()[master.id]?.path }, {
       texture: textureAsset(), mask: maskAsset(),
-      customImages: imageBundle(Object.keys(customImages)),
+      // Only art the doc still names: the store also holds replaced/cleared
+      // images kept alive for undo (#75), which must not bloat the file (#84).
+      customImages: imageBundle(Object.keys(customImages).filter((id) => assetReferenced(master, label, id))),
     });
     if (isTauri()) {
       const existingPath = as ? null : projectPath.current;
