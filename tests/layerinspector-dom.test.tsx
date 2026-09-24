@@ -327,12 +327,12 @@ describe("LayerInspector override badges", () => {
     expect(badge.className).toContain("text-info-text");
   });
 
-  it("a bound y reports whichever leaf path the parent marked", () => {
+  it("a bound y is one path, so the Gap badge resets the whole y", () => {
     const { onReset } = render(
-      text({ y: { below: "description", gap: 5 } }), { overridden: from(["y.gap"]) },
+      text({ y: { below: "description", gap: 5 } }), { overridden: from(["y"]) },
     );
     click(byLabel("Reset Gap to the master")!);
-    expect(onReset).toHaveBeenCalledWith("y.gap", "variant");
+    expect(onReset).toHaveBeenCalledWith("y", "variant");
   });
 
   it("an edge binding is one path, so the Gap badge resets the whole binding (#92)", () => {
