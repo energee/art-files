@@ -3,6 +3,18 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.77] - 2026-09-23
+
+### Fixed
+
+- **An invalid barcode can no longer drop silently off the print.** A bad code
+  saved into the master (by promoting it in the Save Master review) used to
+  clear the error and export without the barcode. Export now checks the code
+  each barcode actually prints, after any `{layer}` refs expand, and blocks
+  with an error when it isn't valid. A label barcode like `{textId}` that
+  expands to a valid UPC no longer shows a false error, and a typed invalid
+  code is no longer added to the barcode's picker.
+
 ## [0.1.68] - 2026-09-15
 
 ### Fixed

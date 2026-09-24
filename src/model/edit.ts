@@ -24,6 +24,8 @@ import { anchorFraction, type GuideLines } from "./position";
 import { CENTER_X, GOLD } from "../layout";
 import { KEYLINE } from "../defaults";
 import { DEFAULT_STROKE_LAYER } from "../strokes";
+import { validateFor } from "../barcode";
+import { fieldRefs } from "./format";
 
 type LayerPatch = DeepPartial<Layer>;
 /** A variant's diff entry: a whole layer (variant-added) or a partial
@@ -682,7 +684,8 @@ const drawnText = (value: LayerValue): string =>
 /** Teaches a layer's fill vocabulary a value it does not already offer
  *  (docs/plans/choice-input.md). Returns the master UNCHANGED — by identity,
  *  so callers make no history entry — when the value is blank, already
- *  offered, or the layer does not exist.
+ *  offered, the layer does not exist, or it is a literal barcode code that
+ *  fails its symbology's validator.
  *
  *  Matching is on `value`, what the label draws, never on a choice's `title`:
  *  typing the words that happen to be a title means a different value than the
@@ -691,6 +694,9 @@ export function learnChoice(master: Master, id: string, text: string): Master {
   const value = text.trim();
   const layer = master.layers.find((l) => l.id === id);
   if (!value || !layer || layer.choices?.some((c) => c.value === value)) return master;
+  // Never learn a literal barcode that cannot encode (#94); templates are
+  // judged after expansion, by resolveLayers.
+  if (layer.kind === "barcode" && !fieldRefs(value).length && !validateFor(layer.symbology, value).ok) return master;
   return patchLayer(master, id, { choices: [...(layer.choices ?? []), { value }] });
 }
 
