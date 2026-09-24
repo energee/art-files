@@ -29,6 +29,19 @@ export function masterIndex(): Record<string, MasterIndexEntry> {
   }
 }
 
+/** A Save Master target — a native path or an FS-Access handle — tagged
+ *  with the id of the master it was opened from or saved as. */
+export interface MasterSaveTarget<T> { id: string; target: T }
+
+/** The bound target, but only when it was bound for `masterId`. The binding
+ *  lives outside undo history, so undo past Open Master / a library pick /
+ *  Save Master As puts another master back in the document while the binding
+ *  still names the newer file — reusing it would overwrite that master's file
+ *  (#78). A mismatch returns null, so Save Master asks where to write. */
+export function saveTargetFor<T>(bound: MasterSaveTarget<T> | null, masterId: string): T | null {
+  return bound && bound.id === masterId ? bound.target : null;
+}
+
 /** Register a master in the library index — and, when the caller has the
  *  file's `bytes`, keep them in the browser's master cache so a reload can
  *  resolve this master without a filesystem path (masterCache.ts). */

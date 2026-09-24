@@ -14,7 +14,7 @@ import { DocumentEditor, type DocumentMeta, type FileToOpen } from "@/App";
 import { LABEL_FILTER, LABEL_TYPES, isAbort, openPicker } from "@/filePickers";
 import { openNativeFile } from "@/files";
 import {
-  activateTab, addTab, closeTab, initialTabs, routeFileOpen, updateTabMeta,
+  activateTab, addTab, closeTab, initialTabs, routeFileOpen, unsaved, updateTabMeta,
   type TabsState,
 } from "@/tabs";
 import { LABEL_EXT } from "@/labelfile";
@@ -30,10 +30,6 @@ import { cn } from "@/lib/utils";
  *  (destroy, close-requested, title) share. The registry caches the load. */
 const currentWindow = () =>
   import("@tauri-apps/api/window").then((m) => m.getCurrentWindow());
-
-/** Unsaved work worth prompting about: dirty AND touched by the user — a
- *  fresh Untitled tab boots dirty (Save enabled) but closes silently. */
-const unsaved = (t: { dirty: boolean; edited: boolean }) => t.dirty && t.edited;
 
 /** The shell-side per-tab objects that must stay identity-stable for the
  *  editor's memo bail to hold (see DocumentEditor): the save slot its
