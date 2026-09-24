@@ -257,6 +257,23 @@ it("keeps a negative ABV in the ABV field, with its error (#129)", async () => {
   });
 });
 
+// #171 — the on-canvas editor read the RESOLVED layer too, so after a
+// rejected entry it opened on the master's value (a blank ABV) while the
+// header named the bad one. It must open on what the label holds.
+it("opens the on-canvas editor on a rejected ABV, not the master value (#171)", async () => {
+  await withEditor(async () => {
+    await selectLayer("abv");
+    const field = () => document.querySelector("#abv-content") as HTMLInputElement;
+    await act(async () => { field().focus(); });
+    await act(async () => { typeInto(field(), "25"); });
+    await act(async () => { field().blur(); });
+    expect(document.body.textContent).toContain("Must be at most 20.");
+    const p = perf.preview!;
+    const shown = p.editLayerOf(p.layers.find((l) => l.id === "abv")!);
+    expect(shown.kind === "text" && shown.lines[0].text).toBe("25");
+  });
+});
+
 // docs/plans/choice-input.md — the barcode and QR fill through App's own code
 // field, not TextEditor, so wiring the picker into TextEditor alone left the
 // tier list unreachable exactly where a tier is filled.

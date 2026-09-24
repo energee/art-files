@@ -129,6 +129,12 @@ binary-impacting change gets its own version before it is merged.
   Open silently swapped it out of its tab. Any opened label now keeps its tab,
   and the next Open goes to a new tab. Only an untouched Untitled tab is reused.
 
+- **The on-canvas editor keeps an invalid entry, too.** After an invalid
+  entry was rejected (such as an ABV of `25`), double-clicking the layer on
+  the preview opened its editor on the master's value, or blank. It now
+  shows the value you entered, the same one the error names and the
+  inspector field shows.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed

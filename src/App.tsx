@@ -2055,17 +2055,23 @@ export const DocumentEditor = memo(function DocumentEditor({
   const commandsRef = useRef(commands);
   commandsRef.current = commands;
 
+  /** The layer a fill field shows: a value the resolver rejected (errors[id])
+   *  is shown as STORED, not as the master fallback the resolved layer
+   *  carries — the field and the header error must name the same value. Both
+   *  fill fields use it: the inspector's (#128/#129) and the on-canvas
+   *  editor's (#171). */
+  function shownLayer(resolved: Layer): Layer {
+    const stored = label.values[resolved.id];
+    return errors[resolved.id] && stored !== undefined
+      ? withRejectedValue(resolved, stored) : resolved;
+  }
+
   /** The inspector's content slot for the selected layer: the rich text
    *  field (or number/code box) for text, the image well for images, the
    *  payload box for barcode/QR — each writing through setContent, so every
-   *  layer's content belongs to this label. A value the resolver rejected
-   *  (errors[id]) is shown as STORED, not as the master fallback the resolved
-   *  layer carries — the field and the header error must name the same value
-   *  (#128/#129). */
+   *  layer's content belongs to this label. */
   function contentFor(resolved: Layer): React.ReactNode {
-    const stored = label.values[resolved.id];
-    const layer = errors[resolved.id] && stored !== undefined
-      ? withRejectedValue(resolved, stored) : resolved;
+    const layer = shownLayer(resolved);
     const id = `${layer.id}-content`;
     if (layer.kind === "text") {
       return (
@@ -2300,6 +2306,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               canvasRender={viewMode === "2d" ? canvasSource : null}
               bleedIn={render.bleedIn}
               layers={drawLayers}
+              editLayerOf={shownLayer}
               selected={selected}
               onPick={pick}
               // Live per-keystroke updates so the canvas render IS the edit
