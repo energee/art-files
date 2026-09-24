@@ -42,8 +42,9 @@ export function globalAssetKind(
 }
 
 /** FileDrop marks its root with this attribute. Drag events bubble to window,
- *  but a field owns the drop whenever it is the pointer's actual target. */
-function isFieldDrop(target: EventTarget | null): boolean {
+ *  but a field owns the drop whenever it is the pointer's actual target.
+ *  Shared with TabsShell's window-level .label drop. */
+export function isFieldDrop(target: EventTarget | null): boolean {
   return target instanceof Element && !!target.closest(`[${FILE_DROP_ATTR}]`);
 }
 
@@ -90,9 +91,9 @@ export function AssetDropOverlay(props: {
       hide();
       if (field || !carriesFiles(e.dataTransfer)) return;
       e.preventDefault();
-      // Unclaimed files (a .label, a PDF, an SVG) are swallowed, not opened:
-      // opening a dropped .label would need the tab shell's open path, which
-      // this per-tab overlay can't reach — use File → Open Project… for those.
+      // Unclaimed files are swallowed here, not routed. A .label is opened
+      // by TabsShell's own window drop listener (the shell owns open
+      // routing); anything else (a PDF, an SVG) is just ignored.
       if (!file || !kind) return;
       if (kind === "mask") handlersRef.current.onMask(file);
       else handlersRef.current.onTexture(file);

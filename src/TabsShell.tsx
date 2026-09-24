@@ -2,10 +2,10 @@
 // per open .label project, inactive ones hidden (display:none), their state
 // intact but their rendered previews dropped (see App.tsx's active gating).
 // The shell owns everything that outlives or spans documents: the tab list
-// (src/tabs.ts), OS file-open routing, the File → Open picker (an open must
-// be able to target a new tab), the dirty-close confirm flow, shared render
-// settings (persisted per operator — see settings.ts), the desktop updater,
-// and window title/close integration.
+// (src/tabs.ts), OS file-open and dropped-.label routing, the File → Open
+// picker (an open must be able to target a new tab), the dirty-close confirm
+// flow, shared render settings (persisted per operator — see settings.ts),
+// the desktop updater, and window title/close integration.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
@@ -19,6 +19,7 @@ import {
 import { LABEL_EXT } from "@/labelfile";
 import { loadRenderSettings, saveRenderSettings, type RenderSettings } from "@/settings";
 import { DesktopUpdater } from "@/components/DesktopUpdater";
+import { isFieldDrop } from "@/components/AssetDropOverlay";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -203,6 +204,24 @@ export default function TabsShell() {
       .then(({ listen }) => listen("project-file-opened", () => void openFromOs()));
     void openFromOs();
     return () => void stopping.then((stop) => stop());
+    // Routing reads live state through stateRef; the helpers are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** A .label dropped anywhere on the window (outside a file well) opens
+   *  like the hidden-input fallback: a File, bytes only, no save identity —
+   *  Save goes through Save As. The active editor's AssetDropOverlay already
+   *  prevents the navigate-to-file default for every OS file drag (#121);
+   *  this only adds the routing. */
+  useEffect(() => {
+    const onDrop = (e: DragEvent) => {
+      const file = e.dataTransfer?.files[0];
+      if (!file || isFieldDrop(e.target) || !file.name.toLowerCase().endsWith(LABEL_EXT)) return;
+      e.preventDefault();
+      openRouted({ file });
+    };
+    window.addEventListener("drop", onDrop);
+    return () => window.removeEventListener("drop", onDrop);
     // Routing reads live state through stateRef; the helpers are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

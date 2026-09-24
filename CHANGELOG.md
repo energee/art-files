@@ -7,11 +7,12 @@ binary-impacting change gets its own version before it is merged.
 
 ### Fixed
 
-- **Dropping an unsupported file no longer replaces the window.** Dragging a
-  `.label`, PDF, SVG, or other file the app doesn't take onto the window
-  outside a file well is now ignored, instead of the window navigating to
-  that file and losing every open tab. Textures and masks still drop as
-  before; open `.label` files with File → Open Project….
+- **Dropping a file on the window no longer replaces it.** A dropped
+  `.label` now opens as a project, the same as File → Open Project… (in the
+  current tab if untouched, otherwise a new one). A PDF, SVG, or other file
+  the app doesn't take, dropped outside a file well, is ignored. Before,
+  either one navigated the window to the file and lost every open tab.
+  Textures and masks still drop as before.
 
 ## [0.1.68] - 2026-09-15
 
