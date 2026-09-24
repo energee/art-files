@@ -1,7 +1,7 @@
 // files.ts — native desktop file-dialog and file I/O boundary. All
 // @tauri-apps/plugin-* imports stay here so the app's native surface is
 // visible in one place. Open and save both live here; the capability
-// scope allows reading .label and .master paths.
+// scope allows reading and writing .label and .master paths.
 
 export type NativeSaveOptions = {
   defaultPath: string;
@@ -12,7 +12,11 @@ export type NativeSaveOptions = {
 
 /** Save bytes through Tauri's native APIs. Dynamic imports keep both plugins
  *  out of the browser's initial chunk. A null result is an ordinary dialog
- *  cancellation; plugin and write errors propagate to the app's Alert. */
+ *  cancellation; plugin and write errors propagate to the app's Alert.
+ *  A dialog-chosen path is writable because the dialog plugin adds it to the
+ *  runtime scope; a reused `path` (Finder/argv opens, remembered masters) is
+ *  writable only through the .label/.master globs in
+ *  src-tauri/capabilities/default.json. */
 export async function saveNativeFile(
   bytes: Uint8Array,
   options: NativeSaveOptions,
@@ -34,7 +38,8 @@ export async function saveNativeFile(
 
 /** Read a file's bytes through Tauri's fs plugin — the read half of this
  *  boundary. The capability scope (src-tauri/capabilities/default.json)
- *  limits reads to .label and .master paths. */
+ *  limits reads to .label and .master paths (including inside hidden folders:
+ *  tauri.conf.json sets plugins.fs.requireLiteralLeadingDot false). */
 export async function readNativeFile(path: string): Promise<Uint8Array> {
   const { readFile } = await import("@tauri-apps/plugin-fs");
   return readFile(path);

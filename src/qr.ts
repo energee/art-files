@@ -72,13 +72,21 @@ function rotate90(s: QrShapes): QrShapes {
   };
 }
 
+/** qrcode-generator's Byte mode keeps only `charCodeAt(i) & 0xff`; pass the
+ *  UTF-8 bytes one per char so non-ASCII text scans back exactly (ASCII is
+ *  unchanged). Local, instead of patching the shared `qrcode.stringToBytes`. */
+const utf8 = new TextEncoder();
+function utf8ByteString(s: string): string {
+  return String.fromCharCode(...utf8.encode(s));
+}
+
 function buildShapes(
   data: string,
   style: "square" | "rounded" | "dots",
   ecLevel: "L" | "M" | "Q" | "H",
 ): QrShapes {
   const qr = qrcode(0, ecLevel);
-  qr.addData(data || " ");
+  qr.addData(utf8ByteString(data || " "));
   qr.make();
   const count = qr.getModuleCount();
   const ms = 1 / count;
