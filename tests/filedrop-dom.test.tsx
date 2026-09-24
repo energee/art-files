@@ -1,6 +1,7 @@
-// filedrop-dom.test.tsx — AssetDropOverlay's window drag/drop listeners: the
-// #121 regression (unclaimed file drops must not navigate the window) plus
-// claimed routing and the field yield. No @testing-library/react in this repo —
+// filedrop-dom.test.tsx — AssetDropOverlay's window drag/drop listeners:
+// claimed images route to texture/mask, unclaimed files are left alone (the
+// #121 navigation guard lives in TabsShell — tabsshell-drop-dom.test.tsx),
+// and field drops yield to the field. No @testing-library/react in this repo —
 // mounted through react-dom/client + act, matching tests/rulers-dom.test.tsx.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
@@ -8,6 +9,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AssetDropOverlay } from "../src/components/AssetDropOverlay";
 import { FILE_DROP_ATTR } from "../src/components/FileDrop";
+import { fieldWell, fileDrag, label, pdf, png } from "./dom-drag";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -30,43 +32,24 @@ afterEach(() => {
   onMask.mockReset();
 });
 
-/** happy-dom's DataTransfer can't carry OS files, so a minimal stand-in
- *  shaped like a Finder drag (types includes "Files") is attached. */
-function fileDrag(type: "dragover" | "drop", file: File, target: EventTarget = document.body) {
-  const e = new Event(type, { bubbles: true, cancelable: true }) as DragEvent;
-  Object.defineProperty(e, "dataTransfer", {
-    value: { types: ["Files"], items: [{ kind: "file", type: file.type }], files: [file] },
-  });
-  Object.defineProperty(e, "clientX", { value: 10 });
-  act(() => { target.dispatchEvent(e); });
-  return e;
-}
-
-const pdf = new File(["%PDF"], "art.pdf", { type: "application/pdf" });
-const label = new File(["{}"], "beer.label", { type: "" });
-const png = new File(["png"], "rock.png", { type: "image/png" });
-
 describe("AssetDropOverlay window drops", () => {
-  it("prevents navigation for unclaimed file types without routing them", () => {
+  it("does not route or arm for unclaimed file types", () => {
     for (const f of [pdf, label]) {
-      expect(fileDrag("dragover", f).defaultPrevented).toBe(true);
-      expect(fileDrag("drop", f).defaultPrevented).toBe(true);
+      fileDrag("dragover", f);
+      fileDrag("drop", f);
     }
     expect(onTexture).not.toHaveBeenCalled();
     expect(onMask).not.toHaveBeenCalled();
-    // An unclaimed drag never arms the overlay.
     expect(document.querySelector(".fixed")).toBeNull();
   });
 
-  it("still routes a claimed image", () => {
+  it("routes a claimed image", () => {
     expect(fileDrag("drop", png).defaultPrevented).toBe(true);
     expect(onTexture).toHaveBeenCalledWith(png);
   });
 
   it("yields field drops to the field", () => {
-    const field = document.createElement("div");
-    field.setAttribute(FILE_DROP_ATTR, "");
-    document.body.appendChild(field);
+    const field = fieldWell(FILE_DROP_ATTR);
     expect(fileDrag("dragover", png, field).defaultPrevented).toBe(false);
     expect(fileDrag("drop", png, field).defaultPrevented).toBe(false);
     expect(onTexture).not.toHaveBeenCalled();

@@ -208,20 +208,28 @@ export default function TabsShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** A .label dropped anywhere on the window (outside a file well) opens
-   *  like the hidden-input fallback: a File, bytes only, no save identity —
-   *  Save goes through Save As. The active editor's AssetDropOverlay already
-   *  prevents the navigate-to-file default for every OS file drag (#121);
-   *  this only adds the routing. */
+  /** Any OS file drag outside a file well is prevented here, or the webview
+   *  navigates to the file and discards every tab (#121). Lives in the shell
+   *  so the guard never depends on which editor is mounted. A dropped .label
+   *  opens like the hidden-input fallback (bytes only; Save goes through
+   *  Save As); textures and masks are routed by the active editor's
+   *  AssetDropOverlay; anything else is ignored. */
   useEffect(() => {
+    const guarded = (e: DragEvent) =>
+      !!e.dataTransfer?.types.includes("Files") && !isFieldDrop(e.target);
+    const onDragOver = (e: DragEvent) => { if (guarded(e)) e.preventDefault(); };
     const onDrop = (e: DragEvent) => {
-      const file = e.dataTransfer?.files[0];
-      if (!file || isFieldDrop(e.target) || !file.name.toLowerCase().endsWith(LABEL_EXT)) return;
+      if (!guarded(e)) return;
       e.preventDefault();
-      openRouted({ file });
+      const file = e.dataTransfer!.files[0];
+      if (file?.name.toLowerCase().endsWith(LABEL_EXT)) openRouted({ file });
     };
+    window.addEventListener("dragover", onDragOver);
     window.addEventListener("drop", onDrop);
-    return () => window.removeEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+    };
     // Routing reads live state through stateRef; the helpers are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

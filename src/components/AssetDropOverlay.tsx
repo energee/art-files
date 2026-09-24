@@ -20,12 +20,6 @@ function draggedTypes(dt: DataTransfer | null): string[] {
   return dt ? Array.from(dt.items, (i) => i.type) : [];
 }
 
-/** True for an OS file drag (Finder/Explorer), as opposed to an in-page
- *  text or element drag, which must keep its default behavior. */
-function carriesFiles(dt: DataTransfer | null): boolean {
-  return !!dt && dt.types.includes("Files");
-}
-
 /** The global chooser's routing rule, pure so both MIME and extension
  *  fallbacks are pinned without manufacturing DOM drag events in tests. */
 export function globalAssetKind(
@@ -42,8 +36,7 @@ export function globalAssetKind(
 }
 
 /** FileDrop marks its root with this attribute. Drag events bubble to window,
- *  but a field owns the drop whenever it is the pointer's actual target.
- *  Shared with TabsShell's window-level .label drop. */
+ *  but a field owns the drop whenever it is the pointer's actual target. */
 export function isFieldDrop(target: EventTarget | null): boolean {
   return target instanceof Element && !!target.closest(`[${FILE_DROP_ATTR}]`);
 }
@@ -62,18 +55,17 @@ export function AssetDropOverlay(props: {
       setActive(false);
       setOver(null);
     };
-    // Any file drag outside a field is prevented on dragover and drop, or the
-    // webview navigates to the file and discards every tab (#121); only
-    // claimed images arm the overlay and get routed. A field prevents for
-    // itself, so yielding preserves react-dropzone's accept/reject behavior.
-    // dragover fires as soon as the pointer enters the window and
-    // continuously after, so it alone arms the overlay — no dragenter needed.
+    // Without preventDefault on dragover the browser refuses the drop and
+    // navigates to the file instead; TabsShell guards every other file drag
+    // (#121). A field prevents for itself, so yielding here preserves
+    // react-dropzone's accept/reject behavior. dragover fires as soon as the
+    // pointer enters the window and continuously after, so it alone arms the
+    // overlay — no dragenter listener needed.
     const onDragOver = (e: DragEvent) => {
       if (isFieldDrop(e.target)) return hide();
-      if (!carriesFiles(e.dataTransfer)) return;
-      e.preventDefault();
       const type = draggedTypes(e.dataTransfer).find((t) => CLAIMED_TYPES.includes(t));
       if (!type) return;
+      e.preventDefault();
       setActive(true);
       // Same routing rule as the drop itself, so the highlighted half always
       // matches where the file will land (no name mid-drag; type suffices).
@@ -89,12 +81,8 @@ export function AssetDropOverlay(props: {
       const file = e.dataTransfer?.files[0];
       const kind = file ? globalAssetKind(file, e.clientX, window.innerWidth) : null;
       hide();
-      if (field || !carriesFiles(e.dataTransfer)) return;
+      if (field || !file || !kind) return;
       e.preventDefault();
-      // Unclaimed files are swallowed here, not routed. A .label is opened
-      // by TabsShell's own window drop listener (the shell owns open
-      // routing); anything else (a PDF, an SVG) is just ignored.
-      if (!file || !kind) return;
       if (kind === "mask") handlersRef.current.onMask(file);
       else handlersRef.current.onTexture(file);
     };
