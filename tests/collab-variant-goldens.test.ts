@@ -68,7 +68,7 @@ describe("collab byte-identity goldens — Collab variant OFF, both slots loaded
     expect(digests(await shipped([]))).toEqual({
       art: "80217f6667bd2fc46774441e69968fca664c67b5d7938a7fad30fe3fc7d65c29", artLen: 57916,
       mask: "663472fc6d93ba8d9ed76f3834543c6520bf9a8d4378656abd071afb81de7e4d", maskLen: 57090,
-      psd: "f470f1ac36c161adfd5868a042ed5718528904d4fe3241695584191e9701bec7", psdLen: 1155342,
+      psd: "c353feca6f59b3fd63d82c0d6606383dcab74c2c93f574a7a71015fe0b694c24", psdLen: 1155418,
     });
   });
 });
@@ -78,7 +78,7 @@ describe("collab byte-identity goldens — Collab variant ON, both slots loaded"
     expect(digests(await shipped(["collab"]))).toEqual({
       art: "9cfe5396f8ee63918d539e943fce1b0f3efdd75fc71fefcd785a10f7a4130984", artLen: 59799,
       mask: "bc6b233b530e7b04e5b45fbc984d89edb698ab683816741dd7f1196685a57a96", maskLen: 58946,
-      psd: "608dc03ddd85c41b6618b2121ee40a8faea3d72b1f5ba222f1d64b3051ef557c", psdLen: 1165362,
+      psd: "c57033dfb0be5c6d6423df465af4034b67d1dd386f972b5553cc9f7c2f581f11", psdLen: 1165438,
     });
   });
 });

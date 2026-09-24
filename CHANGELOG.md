@@ -58,6 +58,11 @@ binary-impacting change gets its own version before it is merged.
   carried over from older label files) now comes back when the label returns
   to a master that has it, instead of staying set aside for good.
 
+- **PSD text sets with the same letter spacing as the PDF.** Editable type
+  layers in exported PSDs now turn Photoshop's auto-kerning off, so Barlow
+  Condensed text no longer sets tighter in Photoshop than in the PDF and the
+  preview. Poppins labels are unchanged.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
