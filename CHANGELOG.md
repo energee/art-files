@@ -3,6 +3,14 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.123] - 2026-09-24
+
+### Fixed
+
+- **View menu checkmarks stay put.** In the desktop app, choosing the view you
+  are already in (View → Label while showing the label, or View → Can in the
+  can view) no longer clears its checkmark.
+
 ## [0.1.122] - 2026-09-24
 
 ### Fixed
