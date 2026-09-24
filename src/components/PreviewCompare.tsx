@@ -604,16 +604,22 @@ export const PreviewCompare = forwardRef<
   }
 
   // Escape mid-drag: undo the single step the drag opened (if any) and drop the
-  // in-flight session so a further pointermove can't resume it.
+  // in-flight session so a further pointermove can't resume it. Capture
+  // phase + preventDefault marks the Escape as spent before the inspector
+  // Sheet's document listener sees it, so cancelling a drag doesn't also
+  // close the inspector and deselect (App's Sheet onOpenChange, #117).
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
-      if (drag.current?.started || resize.current?.started) onDragCancel();
+      if (drag.current?.started || resize.current?.started) {
+        e.preventDefault();
+        onDragCancel();
+      }
       drag.current = null; resize.current = null;
       setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
     }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
   }, [onDragCancel]);
 
   // Report the open session so App can skip the layer from the render for
