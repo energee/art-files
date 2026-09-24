@@ -32,6 +32,8 @@ afterEach(() => {
   onMask.mockReset();
 });
 
+const overlay = () => document.querySelector(".fixed");
+
 describe("AssetDropOverlay window drops", () => {
   it("does not route or arm for unclaimed file types", () => {
     for (const f of [pdf, label]) {
@@ -40,7 +42,7 @@ describe("AssetDropOverlay window drops", () => {
     }
     expect(onTexture).not.toHaveBeenCalled();
     expect(onMask).not.toHaveBeenCalled();
-    expect(document.querySelector(".fixed")).toBeNull();
+    expect(overlay()).toBeNull();
   });
 
   it("routes a claimed image", () => {
@@ -52,9 +54,7 @@ describe("AssetDropOverlay window drops", () => {
     // WebKit reports relatedTarget null on every dragleave, including moves
     // between elements inside the window. Only the last leave (depth 0) is
     // the pointer actually leaving the window.
-    const inner = document.createElement("div");
-    document.body.appendChild(inner);
-    const overlay = () => document.querySelector(".fixed");
+    const inner = document.body.appendChild(document.createElement("div"));
     fileDrag("dragenter", png);
     fileDrag("dragover", png);
     expect(overlay()).not.toBeNull();
@@ -68,9 +68,7 @@ describe("AssetDropOverlay window drops", () => {
 
   it("keeps its depth across a pass over a field (#122)", () => {
     const field = fieldWell(FILE_DROP_ATTR);
-    const inner = document.createElement("div");
-    document.body.appendChild(inner);
-    const overlay = () => document.querySelector(".fixed");
+    const inner = document.body.appendChild(document.createElement("div"));
     fileDrag("dragenter", png);
     fileDrag("dragenter", png, field);
     fileDrag("dragleave", png);
