@@ -102,6 +102,12 @@ binary-impacting change gets its own version before it is merged.
   instead. They now run from anywhere. Single-key shortcuts (1, 2, 3, R, G)
   still type into the field, and ⌘Z still undoes the field's own typing.
 
+- **Opening a file brings Label Lab to the front on Windows and Linux.**
+  Double-clicking a `.label` while the app is already running (even
+  minimized) now restores and focuses the window, so the file's tab is in
+  view instead of opening out of sight. Launching the app again from its
+  icon also surfaces the running window.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
