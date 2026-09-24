@@ -15,7 +15,7 @@
 
 zero=0000000000000000000000000000000000000000
 status=0
-while read -r local_ref local_sha _remote_ref _remote_sha; do
+while read -r local_ref local_sha _; do
   [ "$local_sha" = "$zero" ] && continue # deleting a remote ref: nothing to check
   parent=$(git config "branch.${local_ref#refs/heads/}.stack-parent" 2>/dev/null)
   # ponytail: no base ref (fresh clone, offline) = skip; CI still guards.
