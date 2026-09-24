@@ -39,7 +39,7 @@ afterEach(() => { localStorage.clear(); });
 const spinning = (c: HTMLElement) => (c.textContent ?? "").includes("rendering label…");
 
 /** Flushes microtasks and lets the 150ms debounced asset build fire. */
-async function settle(ms = 400) {
+async function settle(ms = 200) {
   await act(async () => { await new Promise((r) => setTimeout(r, ms)); });
 }
 
@@ -49,9 +49,8 @@ async function mountWithBarcode(barcode: string) {
     formatVersion: 3, masterId: "lolev", enabledVariants: [],
     values: { barcode },
   }, {});
-  const onMeta = vi.fn();
   const props: Props = {
-    ...editorProps, onMeta,
+    ...editorProps,
     fileToOpen: { seq: 1, file: new File([bytes as unknown as BlobPart], "beer.label") },
   };
   const container = document.createElement("div");
@@ -60,7 +59,6 @@ async function mountWithBarcode(barcode: string) {
   await act(async () => { root.render(createElement(DocumentEditor, props)); });
   return {
     container,
-    onMeta,
     async setActive(active: boolean) {
       await act(async () => { root.render(createElement(DocumentEditor, { ...props, active })); });
     },
@@ -87,7 +85,6 @@ it("an invalid barcode does not leave the spinner up after returning to the tab"
     await settle();
     // Switch away (drops the decoded render source) and back.
     await ed.setActive(false);
-    await settle();
     await ed.setActive(true);
     await settle();
     // The validation error is what's blocking the preview — and it's shown.

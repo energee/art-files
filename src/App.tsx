@@ -1042,8 +1042,6 @@ export const DocumentEditor = memo(function DocumentEditor({
   } : null, [decodedAssets, guides]);
   const bgOn = pageOn("background"), maskOn = pageOn("mask");
   useEffect(() => {
-    // A blocked document never builds, so previewReady can stay false here;
-    // the "rendering label…" spinner checks `blocked` for that reason.
     if (blocked || !active) return;
     let cancelled = false;
     const timer = setTimeout(() => {
