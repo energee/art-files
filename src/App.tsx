@@ -75,7 +75,7 @@ import type { PsdAssets } from "@/psd/build";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
 import {
-  ART, BLEED_SHIFT, PAGE, PREVIEW_OVERSAMPLE, PSD_DOC, setBleed as setLayoutBleed, setOutputDpi,
+  ART, BLEED_SHIFT, PAGE, PREVIEW_OVERSAMPLE, setBleed as setLayoutBleed, setOutputDpi,
 } from "@/layout";
 import { LayerList } from "@/components/LayerList";
 import { LayerInspector } from "@/components/LayerInspector";
@@ -108,7 +108,7 @@ import {
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { loadLabelFaces, labelFontCss } from "@/fonts";
+import { FONT_URLS, loadLabelFaces, labelFontCss } from "@/fonts";
 import { fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
 import { loadFonts } from "@/pdf/fonts";
 import type { MeasureFace, PlanAssets } from "@/plan";
@@ -247,27 +247,15 @@ async function canvasToPng(canvas: HTMLCanvasElement): Promise<Uint8Array> {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
-/** Decode an image into a fresh 2D canvas — the front half of every pixel
- *  pipeline here. `size` forces the canvas dimensions and cover-fits the
- *  image into them, centred; without it the canvas takes the image's
- *  natural size. The bitmap is always closed. */
-async function decodeToCanvas(
-  src: Blob, size?: { width: number; height: number },
-): Promise<HTMLCanvasElement> {
+/** Decode an image into a fresh 2D canvas at its natural size — the front
+ *  half of every pixel pipeline here. The bitmap is always closed. */
+async function decodeToCanvas(src: Blob): Promise<HTMLCanvasElement> {
   const bmp = await createImageBitmap(src);
   try {
     const canvas = document.createElement("canvas");
-    canvas.width = size?.width ?? bmp.width;
-    canvas.height = size?.height ?? bmp.height;
-    const ctx = canvas.getContext("2d")!;
-    if (size) {
-      const s = Math.max(canvas.width / bmp.width, canvas.height / bmp.height);
-      const w = bmp.width * s;
-      const h = bmp.height * s;
-      ctx.drawImage(bmp, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
-    } else {
-      ctx.drawImage(bmp, 0, 0);
-    }
+    canvas.width = bmp.width;
+    canvas.height = bmp.height;
+    canvas.getContext("2d")!.drawImage(bmp, 0, 0);
     return canvas;
   } finally {
     bmp.close();
@@ -1382,15 +1370,18 @@ export const DocumentEditor = memo(function DocumentEditor({
   }, [title, dirty, edited]); // filePath is declared below; its own effect follows
 
   /** The full-resolution display list for an export: the same layers the
-   *  preview draws, planned with the canvas measure (fonts.ts — the one
-   *  font gate) and the full-size asset descriptors. */
+   *  preview draws, planned with the pdf-lib widths the PDF draws with
+   *  (pdfMeasureFace — unkerned, #86) and the full-size asset descriptors.
+   *  Every bundled family is loaded so a layer's own font measures true. */
   async function exportPlan(): Promise<{ plan: PlacedLayer[]; images: Record<string, CollabImage>; fontFamilies: Assets["fontFamilies"] }> {
-    const m = await loadLabelFaces(family);
-    const plan = planLayers(drawLayers, m, planAssetsOf());
+    const [{ pdfMeasureFace }, loaded] = await Promise.all([
+      import("@/pdf/build"),
+      Promise.all((Object.keys(FONT_URLS) as FontFamilyId[]).map(async (id) => [id, await loadFonts(id)] as const)),
+    ]);
+    const packs = Object.fromEntries(loaded) as Record<FontFamilyId, Assets["fonts"]>;
+    const plan = planLayers(drawLayers, await pdfMeasureFace(packs, family), planAssetsOf());
     const families = new Set(plan.flatMap((run) => run.kind === "text" && run.fontFamily ? [run.fontFamily] : []));
-    const fontFamilies = Object.fromEntries(await Promise.all(
-      [...families].map(async (id: FontFamilyId) => [id, await loadFonts(id)]),
-    ));
+    const fontFamilies = Object.fromEntries([...families].map((id) => [id, packs[id]]));
     return { plan, images: await imageAssets(), fontFamilies };
   }
 
@@ -1928,16 +1919,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileToOpen]);
 
-  /** The PSD's texture layer needs raw RGBA at document size, cover-fit
-   *  here (PSD layers hold pixels 1:1). Export only: ~60MB. */
-  async function rasterPixels(bytes: Uint8Array | undefined): Promise<import("@/psd/build").Rgba | undefined> {
-    if (!bytes) return undefined;
-    const canvas = await decodeToCanvas(blobOf(bytes), { width: PSD_DOC.w, height: PSD_DOC.h });
-    const img = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
-    return { data: new Uint8Array(img.data.buffer), width: img.width, height: img.height };
-  }
-  /** An image layer's raster bytes at NATURAL size — buildPsd resamples to
-   *  the placed rect itself. */
+  /** An image's raster bytes as RGBA at NATURAL size — buildPsd resamples
+   *  every raster (page texture and mask included) to its placed rect
+   *  itself, so nothing is pre-fit here (#88). Export only: a full-res
+   *  texture decodes to tens of MB. */
   async function rasterPixelsNatural(bytes: Uint8Array): Promise<import("@/psd/build").Rgba> {
     const canvas = await decodeToCanvas(blobOf(bytes));
     const img = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
@@ -1951,21 +1936,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     setBuilding(true);
     startSaveBatch();
     try {
-      const [{ buildPsd }, fonts, { plan, images }] = await Promise.all([
+      const [{ buildPsd, psdImages }, fonts, { plan, images }] = await Promise.all([
         import("@/psd/build"), loadFonts(family), exportPlan(),
       ]);
       const art = pageArt(false);
-      const rasterEntries = (await Promise.all(Object.entries(images).map(async ([id, img]) =>
-        img.kind === "svg" ? null : [id, await rasterPixelsNatural(img.bytes)] as const)))
-        .filter((e): e is readonly [string, import("@/psd/build").Rgba] => e !== null);
-      const [texturePx, maskPx] = await Promise.all([rasterPixels(art.texture?.bytes), rasterPixels(art.maskPng)]);
       const assets: PsdAssets = {
         fonts, fontFamily: family,
-        images: {
-          ...Object.fromEntries(rasterEntries),
-          ...(texturePx ? { [PAGE_ART_ID.background]: texturePx } : {}),
-          ...(maskPx ? { [PAGE_ART_ID.mask]: maskPx } : {}),
-        },
+        images: await psdImages(images, { texture: art.texture?.bytes, mask: art.maskPng }, rasterPixelsNatural),
       };
       const [artPsd, maskPsd] = await Promise.all([
         which !== "mask" ? buildPsd(plan, assets, "art", { layers: drawLayers }) : null,
@@ -2391,6 +2368,10 @@ export const DocumentEditor = memo(function DocumentEditor({
               clearSelection();
           }}>
           <SheetContent side="right" showOverlay={false} showCloseButton={false}
+            // Opening follows a selection, so focus stays where the user
+            // selected: Base UI's default would land in the rename box and
+            // turn Backspace/arrows into text edits instead of delete/nudge.
+            initialFocus={false}
             finalFocus={(closeType) => closeType === "keyboard"}
             className="w-[300px] gap-0 overflow-y-auto border-l-0! bg-sidebar p-0 sm:max-w-[300px]">
             {inspected && (

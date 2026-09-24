@@ -3,7 +3,6 @@
 import { readFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument } from "pdf-lib";
 import { PNG } from "pngjs";
 import { rasterKind, tintRgba } from "../src/collab";
@@ -16,9 +15,9 @@ import { unpackLabel, unpackMaster, type MasterAssets } from "../src/model/files
 import { PAGE_ART_ID, type LabelFile, type Layer, type LayerKind, type LayerValue, type Master, type TextLayer, type TextLine } from "../src/model/layers";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { exportBase, resolveLayers, titleOf, widenValue } from "../src/model/resolveLayers";
-import type { Face, PlanAssets } from "../src/plan";
+import type { PlanAssets } from "../src/plan";
 import { planLayers } from "../src/planLayers";
-import { buildArtPdf, buildMaskPdf, type Assets, type CollabImage } from "../src/pdf/build";
+import { buildArtPdf, buildMaskPdf, pdfMeasureFace, type Assets, type CollabImage } from "../src/pdf/build";
 import { buildPsd, type PsdAssets } from "../src/psd/build";
 import type { Style } from "../src/types";
 
@@ -472,10 +471,10 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
   const psdImages: NonNullable<PsdAssets["images"]> = {};
   const decoded: Record<string, PNG> = {};
 
-  const put = async (id: string, img: CollabImage, metrics: PDFDocument) => {
+  const put = async (id: string, img: CollabImage, imageDoc: PDFDocument) => {
     images[id] = img;
     if (img.kind === "svg") { planCustom[id] = { aspect: 1, art: img }; return; }
-    const embedded = img.kind === "png" ? await metrics.embedPng(img.bytes) : await metrics.embedJpg(img.bytes);
+    const embedded = img.kind === "png" ? await imageDoc.embedPng(img.bytes) : await imageDoc.embedJpg(img.bytes);
     planCustom[id] = { aspect: embedded.width / embedded.height };
     if (img.kind === "png") {
       const png = PNG.sync.read(Buffer.from(img.bytes));
@@ -486,19 +485,18 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
     }
   };
 
-  const metrics = await PDFDocument.create();
-  metrics.registerFontkit(fontkit);
-  if (tex) await put(PAGE_ART_ID.background, asImage(tex.name, tex.bytes), metrics);
+  const imageDoc = await PDFDocument.create();
+  if (tex) await put(PAGE_ART_ID.background, asImage(tex.name, tex.bytes), imageDoc);
   if (mask) {
     const img = asImage(mask.name, mask.bytes);
     if (img.kind !== "png") throw new Error("mask: mask must be a PNG");
-    await put(PAGE_ART_ID.mask, img, metrics);
+    await put(PAGE_ART_ID.mask, img, imageDoc);
   }
   for (const [id, a] of Object.entries(input.masterAssets.customImages ?? {}))
-    await put(id, asImage(a.name, a.bytes), metrics);
+    await put(id, asImage(a.name, a.bytes), imageDoc);
   for (const [layerId, file] of Object.entries(input.extraImages)) {
     if (pageIds.has(layerId)) continue;
-    await put(`cli-${layerId}`, asImage(file.name, file.bytes), metrics);
+    await put(`cli-${layerId}`, asImage(file.name, file.bytes), imageDoc);
   }
 
   for (const l of resolved.layers) {
@@ -520,19 +518,7 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
     psdImages[l.asset] = { data: new Uint8Array(png.data), width: png.width, height: png.height };
   }
 
-  type Embedded = Record<Face, Awaited<ReturnType<PDFDocument["embedFont"]>>>;
-  const embedPack = async (pack: Assets["fonts"]): Promise<Embedded> => {
-    const [regular, semibold, bold] = await Promise.all(
-      [pack.regular, pack.semibold, pack.bold].map((f) => metrics.embedFont(f)));
-    return { regular, semibold, bold };
-  };
-  const packs = { [defaultFamily]: fonts, ...fontFamilies } as Record<FontFamilyId, Assets["fonts"]>;
-  const embedded: Partial<Record<FontFamilyId, Embedded>> = {};
-  await Promise.all((Object.keys(packs) as FontFamilyId[]).map(async (id) => {
-    embedded[id] = await embedPack(packs[id]);
-  }));
-  const measure = (text: string, size: number, face: Face, family?: FontFamilyId) =>
-    (embedded[family ?? defaultFamily] ?? embedded[defaultFamily]!)[face].widthOfTextAtSize(text, size);
+  const measure = await pdfMeasureFace({ [defaultFamily]: fonts, ...fontFamilies }, defaultFamily);
 
   const plan = planLayers(resolved.layers, measure, {
     logoSvg, guides: guideLines(input.master), custom: planCustom,

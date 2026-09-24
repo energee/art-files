@@ -65,3 +65,25 @@ workflow, or manipulate release tags and artifacts without explicit user authori
 ## Worktrees
 
 Create improvement worktrees under `.agents/worktrees/<slug>/`; they are gitignored.
+
+Never use `git stash`: the stash list is shared by every worktree and every
+parallel session, so a pop or apply can take another agent's changes. Set work
+aside with a WIP commit on your own branch, or `git diff > <scratch>.patch`.
+(On the maintainer's machine a global Claude Code hook blocks it outright.)
+
+## Stacked PRs
+
+When a fix builds on, or touches the same code as, another open PR, stack it
+instead of branching from `main`:
+
+1. `git worktree add -b <branch> .agents/worktrees/<slug> origin/<parent>`
+2. `git config branch.<branch>.stack-parent <parent>` — the pre-push hook then
+   checks release metadata against the parent, as CI does against the PR base.
+3. Take the next version above the parent's and add only your own `CHANGELOG.md`
+   section on top of the parent's.
+4. `gh pr create --base <parent>`.
+
+Merge a stack bottom-up. After the parent squash-merges (GitHub retargets the
+child PR to `main` when the parent branch is deleted), rebase the child onto
+`main` with `git rebase --onto origin/main <old parent tip>`, drop the
+`stack-parent` config, and re-run `node scripts/check-release.mjs origin/main`.
