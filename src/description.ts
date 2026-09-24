@@ -146,7 +146,7 @@ export function parseRuns(line: StyledLine): StyledLine[] {
  *  exactly like `text.split(" ")`, as does text already marked per word. */
 export function markedWords(text: string): string[] {
   const words = [""];
-  for (const r of parseRuns({ text, fill: GOLD, layer: "metallic" })) {
+  for (const r of parseRuns({ ...DEFAULT_BASE, text })) {
     r.text.split(" ").forEach((piece, i) => {
       if (i) words.push("");
       words[words.length - 1] += markRun(piece, { bold: r.bold, white: r.layer === "white" });

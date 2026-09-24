@@ -215,8 +215,8 @@ export function rotatedRuns(
 /** A justified warning column: inter-word gaps stretched so the span lands
  *  exactly on maxLen (the PDF backend's former drawJustifiedRotated's math).
  *  Word widths measure the runs each word actually draws (markers stripped,
- *  own faces), or a bold-marked column would overshoot; words split via
- *  markedWords so a span crossing a space stays styled. A single word has no
+ *  own faces), or a bold-marked column would overshoot. Words split via
+ *  markedWords. A single word has no
  *  gap and stays at its natural length (see warningColumnLen). */
 export function justifiedRotatedRuns(
   id: string,

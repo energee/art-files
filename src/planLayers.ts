@@ -91,9 +91,8 @@ function drawableLines(l: TextLayer): TextLine[] {
 }
 
 /** Greedy word wrap to `width`, wrapWarning's rule: a line that fits stays
- *  whole; a longer one breaks before the word that overflows. Words come
- *  from markedWords, so a `**bold**` / `_white_` span crossing a break keeps
- *  its style on both sides; measures the joined text so runs keep faces. */
+ *  whole; a longer one breaks before the word that overflows. Words split
+ *  via markedWords; measures the joined text so runs keep their faces. */
 function wrap(lines: TextLine[], widthOf: (ln: TextLine) => number, width?: number): TextLine[] {
   if (width === undefined) return lines;
   return lines.flatMap((ln) => {

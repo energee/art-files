@@ -142,10 +142,8 @@ describe("planLayers text: multi-word markup across wrap/justify", () => {
   it("wrap: a bold span split across lines stays bold on both", () => {
     const runs = planLayers([text({ id: "w", x: 0, y: 0, width: 60, lines: [line(WARN)] })], m, assets) as PlacedText[];
     noMarkers(runs);
-    const s = styled(runs);
-    expect(s).toContainEqual(["GOVERNMENT", "semibold", "metallic"]);
-    expect(s).toContainEqual(["WARNING:", "semibold", "metallic"]);
-    expect(s.filter((r) => r[1] === "semibold").map((r) => r[0])).toEqual(["GOVERNMENT", "WARNING:"]);
+    expect(styled(runs).filter((r) => r[1] === "semibold"))
+      .toEqual([["GOVERNMENT", "semibold", "metallic"], ["WARNING:", "semibold", "metallic"]]);
   });
 
   it("wrap: a _white ink_ span split across lines stays white on both", () => {
@@ -157,7 +155,6 @@ describe("planLayers text: multi-word markup across wrap/justify", () => {
   it("justify: every word of a bold span is bold, markers stripped", () => {
     const runs = planLayers([text({ id: "w", x: 0, y: 0, width: 200, align: "justify",
       lines: [line("A **very hoppy double** IPA"), line("end")] })], m, assets) as PlacedText[];
-    noMarkers(runs);
     expect(styled(runs)).toEqual([
       ["A", "regular", "metallic"], ["very", "semibold", "metallic"], ["hoppy", "semibold", "metallic"],
       ["double", "semibold", "metallic"], ["IPA", "regular", "metallic"], ["end", "regular", "metallic"],
