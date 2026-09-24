@@ -25,6 +25,18 @@ export function releaseNotes(version, changelog = readFileSync("CHANGELOG.md", "
   return { heading: `## [${version}] - ${match[1]}`, body };
 }
 
+/** The bullets queued under `## [Unreleased]` for the next release, or null
+ *  when there is no such section or it lists nothing. Binary-impacting PRs
+ *  add here instead of bumping; cutting a release renames the heading. */
+export function pendingNotes(changelog = readFileSync("CHANGELOG.md", "utf8")) {
+  const match = /^## \[Unreleased\]\s*$/m.exec(changelog);
+  if (!match) return null;
+  const remaining = changelog.slice(match.index + match[0].length);
+  const next = remaining.search(/^## /m);
+  const body = (next === -1 ? remaining : remaining.slice(0, next)).trim();
+  return /^-\s+\S/m.test(body) ? body : null;
+}
+
 /** Changelog versions newer than `baseVersion` that are not `version`. A
  *  branch publishes exactly one section (the current version's); any other
  *  section it introduces is never read by release.yml, so its notes vanish.

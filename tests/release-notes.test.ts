@@ -3,7 +3,7 @@
 // an intermediate section no release will ever publish.
 import { describe, expect, it } from "vitest";
 // @ts-expect-error plain .mjs script, no declaration file
-import { releaseNotes, unreleasedSections } from "../scripts/release-notes.mjs";
+import { pendingNotes, releaseNotes, unreleasedSections } from "../scripts/release-notes.mjs";
 
 const log = `# Changelog
 
@@ -34,5 +34,19 @@ describe("releaseNotes", () => {
     expect(releaseNotes("0.1.52", log)).toEqual({
       heading: "## [0.1.52] - 2026-09-05", body: "- Reorder layers by dragging.",
     });
+  });
+});
+
+describe("pendingNotes", () => {
+  const pending = `# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- Undo restores images.\n\n${log.slice(log.indexOf("## [0.1.52]"))}`;
+  it("returns the bullets queued under [Unreleased] for the next release", () => {
+    expect(pendingNotes(pending)).toBe("### Fixed\n\n- Undo restores images.");
+  });
+  it("is null without an [Unreleased] section, or with one that has no bullets", () => {
+    expect(pendingNotes(log)).toBeNull();
+    expect(pendingNotes(pending.replace("- Undo restores images.", ""))).toBeNull();
+  });
+  it("does not count [Unreleased] as a numbered section", () => {
+    expect(unreleasedSections("0.1.52", "0.1.52", pending)).toEqual([]);
   });
 });

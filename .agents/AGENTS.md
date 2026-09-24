@@ -57,9 +57,10 @@ one-at-a-time flow.
 Before an agent finishes a task, it must classify whether the diff changes the
 installed Label Lab application or its packaged runtime. In a multi-agent run,
 assign one agent the release-steward role; in a single-agent run, the active agent
-owns it. Binary-impacting changes require a new synchronized version and a matching
-`CHANGELOG.md` entry in the same change. Merging a version change to `main` publishes
-that release automatically, so agents must not merge, manually dispatch the release
+owns it. Binary-impacting changes queue user-facing bullets under `## [Unreleased]`
+in `CHANGELOG.md` without bumping the version; cutting a release (the version bump)
+is a separate decision the steward recommends and the user makes. Merging a version
+change to `main` publishes that release automatically, so agents must not merge, manually dispatch the release
 workflow, or manipulate release tags and artifacts without explicit user authorization.
 
 ## Worktrees
@@ -79,11 +80,13 @@ instead of branching from `main`:
 1. `git worktree add -b <branch> .agents/worktrees/<slug> origin/<parent>`
 2. `git config branch.<branch>.stack-parent <parent>` — the pre-push hook then
    checks release metadata against the parent, as CI does against the PR base.
-3. Take the next version above the parent's and add only your own `CHANGELOG.md`
-   section on top of the parent's.
+3. Add your bullets under `## [Unreleased]` in `CHANGELOG.md`; don't bump the
+   version (see release-steward.md).
 4. `gh pr create --base <parent>`.
 
-Merge a stack bottom-up. After the parent squash-merges (GitHub retargets the
-child PR to `main` when the parent branch is deleted), rebase the child onto
+Merge a stack bottom-up. Before deleting a merged parent branch, retarget its
+children with `gh pr edit <child> --base main` — `git push --delete` of a PR's base
+branch closes the child PR instead of retargeting it (only GitHub's own
+delete-on-merge retargets). Then rebase the child onto
 `main` with `git rebase --onto origin/main <old parent tip>`, drop the
 `stack-parent` config, and re-run `node scripts/check-release.mjs origin/main`.

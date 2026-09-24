@@ -3,7 +3,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-import { releaseNotes, unreleasedSections } from "./release-notes.mjs";
+import { pendingNotes, releaseNotes, unreleasedSections } from "./release-notes.mjs";
 
 const VERSION_FILES = [
   "package.json",
@@ -146,15 +146,29 @@ try {
   abort(`could not read package.json at ${baseRef}: ${error.message}`);
 }
 
-const requiresIncrement = releaseMode || binaryFiles.length > 0;
-if (requiresIncrement && !isNewerVersion(version, baseVersion)) {
-  const reason = releaseMode
-    ? "a release must be newer than the latest release tag"
-    : `binary-impacting files changed (${binaryFiles.join(", ")})`;
-  abort(`${reason}, but version ${version} is not newer than ${baseVersion} at ${baseRef}`);
+// Release train: a binary-impacting change either queues its notes under
+// `## [Unreleased]` (no bump — it ships with the next release) or cuts a
+// release by bumping the version. Only a bump publishes (release.yml runs on
+// package.json changes), so when to release is a separate decision.
+const bumped = isNewerVersion(version, baseVersion);
+if (releaseMode && !bumped) {
+  abort(`a release must be newer than the latest release tag, but version ${version} is not newer than ${baseVersion} at ${baseRef}`);
+}
+if (!bumped && version !== baseVersion) {
+  abort(`version ${version} is older than ${baseVersion} at ${baseRef}`);
 }
 if (binaryFiles.length > 0 && !changedFiles.includes("CHANGELOG.md")) {
   abort("binary-impacting files changed, but CHANGELOG.md was not updated");
+}
+const pending = pendingNotes();
+if (binaryFiles.length > 0 && !bumped && !pending) {
+  abort(
+    `binary-impacting files changed (${binaryFiles.join(", ")}) without a version bump; ` +
+    "add user-facing bullets under ## [Unreleased] in CHANGELOG.md, or bump the version to cut a release",
+  );
+}
+if ((bumped || releaseMode) && /^## \[Unreleased\]\s*$/m.test(readFileSync("CHANGELOG.md", "utf8"))) {
+  abort(`cutting ${version}: rename ## [Unreleased] to ## [${version}] - <date> so its notes ship with this release`);
 }
 
 let notesHeading;
@@ -173,7 +187,7 @@ if (orphans.length > 0) {
     `but the release is ${version}; no release publishes those notes — fold them into [${version}]`,
   );
 }
-console.log(`Release metadata check passed for ${version}.`);
+console.log(`Release metadata check passed for ${version}${bumped ? "" : pending ? " (changes queued under [Unreleased])" : ""}.`);
 console.log(
   binaryFiles.length > 0
     ? `Binary-impacting changes: ${binaryFiles.join(", ")}`
