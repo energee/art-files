@@ -70,6 +70,11 @@ binary-impacting change gets its own version before it is merged.
   that relies on clones, live text, or embedded images is refused with a
   message naming the element, instead of silently losing that part.
 
+- **⌘S on a saved document no longer opens the browser's Save Page dialog.**
+  In the browser, a shortcut whose command is unavailable right now (Save
+  with no unsaved changes, Export while exports are blocked) now does
+  nothing instead of falling through to the browser's own action for that key.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
