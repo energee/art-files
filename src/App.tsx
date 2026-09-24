@@ -247,27 +247,15 @@ async function canvasToPng(canvas: HTMLCanvasElement): Promise<Uint8Array> {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
-/** Decode an image into a fresh 2D canvas — the front half of every pixel
- *  pipeline here. `size` forces the canvas dimensions and cover-fits the
- *  image into them, centred; without it the canvas takes the image's
- *  natural size. The bitmap is always closed. */
-async function decodeToCanvas(
-  src: Blob, size?: { width: number; height: number },
-): Promise<HTMLCanvasElement> {
+/** Decode an image into a fresh 2D canvas at its natural size — the front
+ *  half of every pixel pipeline here. The bitmap is always closed. */
+async function decodeToCanvas(src: Blob): Promise<HTMLCanvasElement> {
   const bmp = await createImageBitmap(src);
   try {
     const canvas = document.createElement("canvas");
-    canvas.width = size?.width ?? bmp.width;
-    canvas.height = size?.height ?? bmp.height;
-    const ctx = canvas.getContext("2d")!;
-    if (size) {
-      const s = Math.max(canvas.width / bmp.width, canvas.height / bmp.height);
-      const w = bmp.width * s;
-      const h = bmp.height * s;
-      ctx.drawImage(bmp, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
-    } else {
-      ctx.drawImage(bmp, 0, 0);
-    }
+    canvas.width = bmp.width;
+    canvas.height = bmp.height;
+    canvas.getContext("2d")!.drawImage(bmp, 0, 0);
     return canvas;
   } finally {
     bmp.close();

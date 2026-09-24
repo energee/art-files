@@ -74,12 +74,14 @@ export async function psdImages(
   page: { texture?: Uint8Array; mask?: Uint8Array },
   decode: (bytes: Uint8Array) => Promise<Rgba>,
 ): Promise<Record<string, Rgba>> {
-  const out: Record<string, Rgba> = {};
-  for (const [id, img] of Object.entries(images))
-    if (img.kind !== "svg") out[id] = await decode(img.bytes);
-  if (page.texture) out[PAGE_ART_ID.background] = await decode(page.texture);
-  if (page.mask) out[PAGE_ART_ID.mask] = await decode(page.mask);
-  return out;
+  const sources: [string, Uint8Array | undefined][] = [
+    ...Object.entries(images).map(([id, img]): [string, Uint8Array | undefined] =>
+      [id, img.kind === "svg" ? undefined : img.bytes]),
+    [PAGE_ART_ID.background, page.texture],
+    [PAGE_ART_ID.mask, page.mask],
+  ];
+  return Object.fromEntries(await Promise.all(sources.flatMap(([id, bytes]) =>
+    bytes ? [decode(bytes).then((px) => [id, px] as const)] : [])));
 }
 
 export interface PsdOpts {
