@@ -953,8 +953,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** An image layer's well: read the dropped file into the per-id store
    *  and point the layer (its fill value, or the master's own asset) at the
    *  minted id. The previous asset's bytes are deliberately KEPT: undo can
-   *  point the layer back at it (#75). The store is only emptied by
-   *  resetDocument, and Save packs just the ids the doc still references. */
+   *  point the layer back at it (#75); see liveImages. */
   async function onLayerImage(layer: ImageLayer, f: File | null) {
     let assetId = "";
     if (f) {
@@ -965,6 +964,15 @@ export const DocumentEditor = memo(function DocumentEditor({
     setContent(layer, assetId);
   }
 
+  /** The images the doc still names. The store also keeps replaced/cleared
+   *  art so undo can bring it back (#75); the preview, the exports and Save
+   *  read only this live subset, so kept art is never decoded or packed
+   *  (#84). Keyed by the live-id list, so an edit that changes no image
+   *  reference keeps the same object and the preview doesn't re-decode. */
+  const liveIds = useMemo(() => Object.keys(customImages)
+    .filter((id) => assetReferenced(master, label, id)).join("\n"), [customImages, master, label]);
+  const liveImages = useMemo(() => Object.fromEntries(
+    liveIds ? liveIds.split("\n").map((id) => [id, customImages[id]]) : []), [customImages, liveIds]);
   /** The image layers whose raster art draws repainted in their fill
    *  (`tintRaster`), keyed by asset — the one per-layer knob the render
    *  assets depend on, spelled as a string so the assembly effect can key
@@ -977,7 +985,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   async function imageAssets(): Promise<Record<string, CollabImage>> {
     const tints = new Map<string, Fill>(JSON.parse(tintKey) as [string, Fill][]);
     const out: Record<string, CollabImage> = {};
-    for (const [id, c] of Object.entries(customImages)) {
+    for (const [id, c] of Object.entries(liveImages)) {
       const fill = tints.get(id);
       out[id] = c.image.kind !== "svg" && fill
         ? { kind: "png", bytes: await tintedPngCached(c.image.bytes, fill) }
@@ -991,7 +999,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   const planAssetsOf = (): PlanAssets => ({
     logoSvg, guides,
     custom: {
-      ...Object.fromEntries(Object.entries(customImages).map(([id, c]) => [
+      ...Object.fromEntries(Object.entries(liveImages).map(([id, c]) => [
         id,
         { aspect: c.aspect, ...(c.image.kind === "svg" ? { art: { kind: "svg" as const, svg: c.image.svg } } : {}) },
       ])),
@@ -1072,7 +1080,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // Asset inputs only — the layers reach this effect through tintKey and
     // the two page-art switches (see the comment above).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [texture, mask, customImages, family, tintKey, bgOn, maskOn, blocked, active]);
+  }, [texture, mask, liveImages, family, tintKey, bgOn, maskOn, blocked, active]);
   // The bitmaps backing the CURRENTLY LIVE `canvasAssets` generation, closed
   // once the next generation has fully replaced them (bitmaps aren't GC'd
   // on their own). A bitmap can sit under two keys; close each once.
@@ -1471,9 +1479,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   async function saveProject(as = false): Promise<boolean> {
     const zip = packLabel({ ...label, masterHint: masterIndex()[master.id]?.path }, {
       texture: textureAsset(), mask: maskAsset(),
-      // Only art the doc still names: the store also holds replaced/cleared
-      // images kept alive for undo (#75), which must not bloat the file (#84).
-      customImages: imageBundle(Object.keys(customImages).filter((id) => assetReferenced(master, label, id))),
+      customImages: imageBundle(Object.keys(liveImages)),
     });
     if (isTauri()) {
       const existingPath = as ? null : projectPath.current;

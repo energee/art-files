@@ -367,9 +367,8 @@ export function adoptMaster(label: LabelFile, master: Master): LabelFile {
 
 /** Is an image asset id still reachable from the document: an image layer's
  *  `asset` in the master, any variant's diff or the label's overrides, or a
- *  label value. What App's Save checks to pack only live art — replaced or
- *  cleared images stay in the in-memory store for undo, so not every stored
- *  id is still referenced. */
+ *  label value. App's liveImages filter: the in-memory store also keeps
+ *  replaced/cleared art for undo, so not every stored id is referenced. */
 export function assetReferenced(master: Master, label: LabelFile, assetId: string): boolean {
   const uses = (e: DeepPartial<Layer> | undefined) => !!e && (e as { asset?: string }).asset === assetId;
   if (master.layers.some(uses)) return true;
