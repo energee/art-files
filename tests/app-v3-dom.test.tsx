@@ -6,6 +6,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
+import type { TextLayer } from "../src/model/layers";
 
 vi.mock("../src/components/PreviewCompare", () => ({ SNAP_PT: 6, PreviewCompare: (props: PreviewProps) => { perf.source = props.canvasRender; perf.preview = props; return null; } }));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
@@ -138,17 +139,15 @@ it("offers the barcode's tiers in the field that fills it", async () => {
   }
 });
 
-// Issue #74 — a drag (or resize) whose first move produced no patch (a
-// snapped-to-zero delta) opened no undo step, yet its later moves still
-// passed coalesce=true and folded into the edit before it; Escape's undo then
-// reverted that earlier edit along with the drag.
-async function renameThenGesture(
-  gesture: (p: PreviewProps) => void, cancel = (p: PreviewProps) => p.onDragCancel(),
+/** Mounts a DocumentEditor, waits for its canvas assets (gestures measure
+ *  boxes off them), runs `body`, and unmounts. `p()` reads the latest
+ *  PreviewCompare props, so it sees each re-render's layers. */
+async function withEditor(
+  body: (p: () => PreviewProps, container: HTMLElement) => Promise<void>, onMeta = vi.fn(),
 ) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
-  const onMeta = vi.fn();
   perf.source = null; // so the wait below waits for THIS mount's assets
   try {
     await act(async () => {
@@ -159,8 +158,23 @@ async function renameThenGesture(
         onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
       }));
     });
-    // Gestures measure boxes off the decoded canvas assets.
     await vi.waitFor(() => expect(perf.source).not.toBeNull(), { timeout: 30_000 });
+    await body(() => perf.preview!, container);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+}
+
+// Issue #74 — a drag (or resize) whose first move produced no patch (a
+// snapped-to-zero delta) opened no undo step, yet its later moves still
+// passed coalesce=true and folded into the edit before it; Escape's undo then
+// reverted that earlier edit along with the drag.
+async function renameThenGesture(
+  gesture: (p: PreviewProps) => void, cancel = (p: PreviewProps) => p.onDragCancel(),
+) {
+  const onMeta = vi.fn();
+  await withEditor(async (p, container) => {
     const row = container.querySelector('[data-layer-id="name"]')!;
     await act(async () => {
       (row.querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement).click();
@@ -171,19 +185,16 @@ async function renameThenGesture(
       editor.dispatchEvent(new Event("input", { bubbles: true }));
     });
     expect(onMeta.mock.lastCall?.[0].title).toBe("Peregrine");
-    await act(async () => gesture(perf.preview!));
+    await act(async () => gesture(p()));
     // Escape mid-gesture: undo only what the gesture itself did.
-    await act(async () => cancel(perf.preview!));
+    await act(async () => cancel(p()));
     expect(onMeta.mock.lastCall?.[0].title).toBe("Peregrine");
     // The rename is still its own step: one ⌘Z removes it.
     await act(async () => {
       document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
     });
     expect(onMeta.mock.lastCall?.[0].title).not.toBe("Peregrine");
-  } finally {
-    await act(async () => root.unmount());
-    container.remove();
-  }
+  }, onMeta);
 }
 
 it("a drag whose first move snaps to zero never folds into the previous edit", async () => {
@@ -212,47 +223,24 @@ it("Escape on a drag that never moved anything leaves the previous edit alone", 
 // move: an axis whose delta returned to exactly 0 patched nothing for that
 // axis, so the layer kept the last move's offset there instead of returning
 // to where the drag began.
-async function withEditor(body: (p: () => PreviewProps) => Promise<void>) {
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  perf.source = null;
-  try {
-    await act(async () => {
-      root.render(createElement(DocumentEditor, {
-        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
-        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
-        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
-        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
-      }));
-    });
-    await vi.waitFor(() => expect(perf.source).not.toBeNull(), { timeout: 30_000 });
-    await body(() => perf.preview!);
-  } finally {
-    await act(async () => root.unmount());
-    container.remove();
-  }
-}
-const xOf = (p: PreviewProps, id: string) => p.layers.find((l) => l.id === id)!.x;
-const yOf = (p: PreviewProps, id: string) => p.layers.find((l) => l.id === id)!.y;
+const layerOf = (p: PreviewProps, id: string) => p.layers.find((l) => l.id === id)!;
 
 it("a drag back to exactly its start puts the layer back where it began", async () => {
   await withEditor(async (p) => {
-    const x0 = xOf(p(), "barcode"), y0 = yOf(p(), "barcode");
+    const { x, y } = layerOf(p(), "barcode");
     await act(async () => p().onDrag("barcode", 40, 30, true));
-    expect(xOf(p(), "barcode")).not.toBe(x0);
+    expect(layerOf(p(), "barcode").x).not.toBe(x);
     await act(async () => p().onDrag("barcode", 0, 0, false));
-    expect(xOf(p(), "barcode")).toBe(x0);
-    expect(yOf(p(), "barcode")).toEqual(y0);
+    expect(layerOf(p(), "barcode")).toMatchObject({ x, y });
   });
 }, 60_000);
 
 it("a drag back to its start on one axis restores that axis", async () => {
   await withEditor(async (p) => {
-    const x0 = xOf(p(), "barcode");
+    const { x } = layerOf(p(), "barcode");
     await act(async () => p().onDrag("barcode", 40, 0, true));
     await act(async () => p().onDrag("barcode", 0, 30, false));
-    expect(xOf(p(), "barcode")).toBe(x0);
+    expect(layerOf(p(), "barcode").x).toBe(x);
   });
 }, 60_000);
 
@@ -261,7 +249,7 @@ it("a drag back to its start on one axis restores that axis", async () => {
 // number field re-applies the same value), or Escape reverts the edit before.
 it("an in-place session whose first keystroke changes nothing never folds into the previous edit", async () => {
   await renameThenGesture((p) => {
-    const lines = (p.layers.find((l) => l.id === "abv") as { lines: import("../src/model/layers").TextLine[] }).lines;
+    const { lines } = layerOf(p, "abv") as TextLayer;
     p.onEditText("abv", lines, true);
     p.onEditText("abv", [{ ...lines[0], text: "6.5" }], false);
   }, (p) => p.onEditCancel());

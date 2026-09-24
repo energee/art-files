@@ -1129,22 +1129,18 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (!active) setDecodedAssets(null);
   }, [active]);
 
-  /** The document as it was before the in-flight canvas drag or resize
-   *  opened its undo step — null until it has. The step opens on the first
-   *  move that actually patches something, which need not be the `first`
-   *  move: one whose delta snapped to zero patches nothing, and folding the
-   *  next move in on `!first` merged the drag into the edit BEFORE it (#74).
-   *  Once open, every move is applied to this base rather than to the last
-   *  move's result: a move's patch omits any axis whose delta is back at 0,
-   *  so layering it on the last move left the layer displaced on that axis
-   *  instead of back where the drag began (#164). Escape likewise undoes
-   *  only a step that exists. */
+  /** The doc before the in-flight canvas drag or resize opened its undo
+   *  step; null until a move actually patches something (a first move that
+   *  snapped to zero opens nothing, so the next can't fold into the edit
+   *  before it — #74). Every move is applied to this base, not to the last
+   *  move's result, so an axis whose delta is back at 0 returns to where the
+   *  drag began (#164). Escape undoes only a step that exists. */
   const gestureBase = useRef<Doc | null>(null);
   const gesturePatch = (entries: [string, DeepPartial<Layer>][]) => {
     const real = entries.filter(([, p]) => Object.keys(p).length);
-    const base = gestureBase.current;
-    if (base) edit(() => patchLayers(base, real), true);
-    else if (real.length && patchMany(real, false)) gestureBase.current = doc;
+    const opened = gestureBase.current;
+    if (!opened && !real.length) return;
+    if (edit((d) => patchLayers(opened ?? d, real), !!opened)) gestureBase.current ??= doc;
   };
   const cancelGesture = () => {
     if (gestureBase.current) mutating(undo)();
