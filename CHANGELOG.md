@@ -39,6 +39,11 @@ binary-impacting change gets its own version before it is merged.
   unless you Cancel and use File → Save Master. Save still saves the label
   and closes the tab.
 
+- **Old labels with an ABV like "6.5%" open cleanly.** Labels saved when the
+  ABV field carried its own percent sign no longer open with "Expected a
+  number." and a blank ABV that blocked export; the sign is dropped on open,
+  since the label already prints "% alc by vol".
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed

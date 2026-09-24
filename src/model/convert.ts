@@ -21,7 +21,7 @@ import type { FontFamilyId } from "../fontCatalog";
 import { lolevMaster } from "./lolevLayers";
 import { parseDescription } from "../description";
 import { segments } from "./format";
-import { defaultConfig } from "../defaults";
+import { defaultConfig, stripPercent } from "../defaults";
 import { configDiff } from "./document";
 
 // --- Old config keys → element patches ------------------------------------
@@ -395,11 +395,13 @@ const layerIn = (master: Master, id: string): Layer | undefined =>
 
 /** An old FieldValue → the layer's LayerValue: text is laid as lines in the
  *  layer's style (with the label's own restyle applied), everything else is
- *  the string it was. */
+ *  the string it was. A number layer drops the trailing "%" an old ABV could
+ *  carry ("6.5%"), which would otherwise fail its number validation. */
 function toLayerValue(layer: Layer, v: FieldValue, p: ElementPatch | undefined, warnings: string[]): LayerValue | undefined {
   if (typeof v === "boolean") { warnings.push(`Value for "${layer.id}" is on/off, which no v3 layer takes; dropped.`); return undefined; }
-  if (layer.kind !== "text") return String(v);
-  return textLines(layer.id, String(v), { ...layer.style, ...p?.style }, p?.bold);
+  const s = String(v);
+  if (layer.kind !== "text") return s;
+  return textLines(layer.id, layer.input === "number" ? stripPercent(s) : s, { ...layer.style, ...p?.style }, p?.bold);
 }
 
 export function convertLabelV2(old: LabelFileV2, master: Master): { label: LabelFile; warnings: string[] } {

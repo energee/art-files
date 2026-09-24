@@ -8,6 +8,7 @@ import {
   parseMaster, type BarcodeLayer, type ImageLayer, type Layer, type TextLayer,
 } from "../src/model/layers";
 import { lolevMaster as lolevV3 } from "../src/model/lolevLayers";
+import { resolveLayers } from "../src/model/resolveLayers";
 import { lolevMaster as lolevV1 } from "../src/model/lolev";
 import type { LabelFileV2 } from "../src/model/types";
 import { defaultConfig, KEYLINE } from "../src/defaults";
@@ -268,6 +269,15 @@ describe("convertConfigV1", () => {
       name: { style: { fill: "#FF0000" } },
       logo: { y: logoY() + 4 },
     });
+  });
+
+  it("a legacy ABV saved with its own percent sign converts to a valid number (#95)", () => {
+    const cfg = defaultConfig();
+    cfg.abv = "6.5 %";
+    const { label } = convertConfigV1(cfg, false);
+    expect(label.values.abv).toEqual([{ text: "6.5", fill: GOLD, layer: "metallic" }]);
+    const { errors } = resolveLayers(lolevV3(), label.enabledVariants, label.values, label.overrides);
+    expect(errors.abv).toBeUndefined();
   });
 
   it("a legacy per-label custom layer rides along as a whole-layer override", () => {
