@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.110] - 2026-09-24
+
+### Fixed
+
+- **Dragging a layer back to where it started puts it back exactly.** Moving
+  a layer away and then returning the pointer to its starting point (on one
+  axis or both) used to leave the layer at its last offset on that axis. It
+  now lands back where the drag began, and the drag is still one undo step.
+
 ## [0.1.89] - 2026-09-23
 
 ### Fixed

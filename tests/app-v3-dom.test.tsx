@@ -142,7 +142,9 @@ it("offers the barcode's tiers in the field that fills it", async () => {
 // snapped-to-zero delta) opened no undo step, yet its later moves still
 // passed coalesce=true and folded into the edit before it; Escape's undo then
 // reverted that earlier edit along with the drag.
-async function renameThenGesture(gesture: (p: PreviewProps) => void) {
+async function renameThenGesture(
+  gesture: (p: PreviewProps) => void, cancel = (p: PreviewProps) => p.onDragCancel(),
+) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -171,7 +173,7 @@ async function renameThenGesture(gesture: (p: PreviewProps) => void) {
     expect(onMeta.mock.lastCall?.[0].title).toBe("Peregrine");
     await act(async () => gesture(perf.preview!));
     // Escape mid-gesture: undo only what the gesture itself did.
-    await act(async () => perf.preview!.onDragCancel());
+    await act(async () => cancel(perf.preview!));
     expect(onMeta.mock.lastCall?.[0].title).toBe("Peregrine");
     // The rename is still its own step: one ⌘Z removes it.
     await act(async () => {
@@ -203,4 +205,64 @@ it("a resize whose first move changes nothing never folds into the previous edit
 
 it("Escape on a drag that never moved anything leaves the previous edit alone", async () => {
   await renameThenGesture((p) => { p.onDrag("barcode", 0, 0, true); });
+}, 60_000);
+
+// Issue #164 — a drag's moves are patches against the layer as it was at the
+// gesture's start, but each one landed on the doc as it was AFTER the last
+// move: an axis whose delta returned to exactly 0 patched nothing for that
+// axis, so the layer kept the last move's offset there instead of returning
+// to where the drag began.
+async function withEditor(body: (p: () => PreviewProps) => Promise<void>) {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  perf.source = null;
+  try {
+    await act(async () => {
+      root.render(createElement(DocumentEditor, {
+        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
+        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+      }));
+    });
+    await vi.waitFor(() => expect(perf.source).not.toBeNull(), { timeout: 30_000 });
+    await body(() => perf.preview!);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+}
+const xOf = (p: PreviewProps, id: string) => p.layers.find((l) => l.id === id)!.x;
+const yOf = (p: PreviewProps, id: string) => p.layers.find((l) => l.id === id)!.y;
+
+it("a drag back to exactly its start puts the layer back where it began", async () => {
+  await withEditor(async (p) => {
+    const x0 = xOf(p(), "barcode"), y0 = yOf(p(), "barcode");
+    await act(async () => p().onDrag("barcode", 40, 30, true));
+    expect(xOf(p(), "barcode")).not.toBe(x0);
+    await act(async () => p().onDrag("barcode", 0, 0, false));
+    expect(xOf(p(), "barcode")).toBe(x0);
+    expect(yOf(p(), "barcode")).toEqual(y0);
+  });
+}, 60_000);
+
+it("a drag back to its start on one axis restores that axis", async () => {
+  await withEditor(async (p) => {
+    const x0 = xOf(p(), "barcode");
+    await act(async () => p().onDrag("barcode", 40, 0, true));
+    await act(async () => p().onDrag("barcode", 0, 30, false));
+    expect(xOf(p(), "barcode")).toBe(x0);
+  });
+}, 60_000);
+
+// #164 part 1 — the in-place editor's first keystroke must open the session's
+// step even when it leaves the text as it was (a rejected character in a
+// number field re-applies the same value), or Escape reverts the edit before.
+it("an in-place session whose first keystroke changes nothing never folds into the previous edit", async () => {
+  await renameThenGesture((p) => {
+    const lines = (p.layers.find((l) => l.id === "abv") as { lines: import("../src/model/layers").TextLine[] }).lines;
+    p.onEditText("abv", lines, true);
+    p.onEditText("abv", [{ ...lines[0], text: "6.5" }], false);
+  }, (p) => p.onEditCancel());
 }, 60_000);
