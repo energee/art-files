@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import {
   InputGroup, InputGroupAddon, InputGroupInput, InputGroupText,
 } from "@/components/ui/input-group";
-// Decimal places implied by the step, so a drag can't accumulate float noise
+// Round to the decimal places the step implies, so a drag can't accumulate float noise
 // (0.4 + 0.1 = 0.5000000000000001) straight into the saved config. Shared with
 // the callers that have to predict what this field commits — see numeric.ts.
 import { roundToStep } from "@/numeric";
