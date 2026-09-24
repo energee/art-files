@@ -94,12 +94,14 @@ describe("parseLogo non-rendered geometry", () => {
   });
 });
 
+/** Fit a 100x100-viewBox body into a 36pt collab slot. */
+const fit = (body: string) => parseLogo(`<svg viewBox="0 0 100 100">${body}</svg>`, 36, 36);
+
 // #69: basic shapes are ink too — converted to path data in src/logo.ts.
 // Elements it can't draw (<use>, <text>, <image>) are rejected by name
 // rather than silently dropped.
 describe("parseLogo basic shapes", () => {
   const TRIANGLE = '<path d="M 40 60 L 60 60 L 50 40 Z"/>';
-  const fit = (body: string) => parseLogo(`<svg viewBox="0 0 100 100">${body}</svg>`, 36, 36);
 
   it("keeps a <rect> next to a path, fitting both", () => {
     // Rect spans 0..100; triangle 40..60 — the old parser returned only the
@@ -134,5 +136,41 @@ describe("parseLogo basic shapes", () => {
 
   it.each(["use", "text", "image"])("rejects <%s> by name instead of dropping it", (tag) => {
     expect(() => fit(`${TRIANGLE}<${tag} href="#x"/>`)).toThrow(new RegExp(`<${tag}>`));
+  });
+});
+
+// #70: any valid XML attribute syntax — either quote, any whitespace before
+// the name and around "=" — reads the same (attr in src/logo.ts).
+describe("parseLogo attribute syntax", () => {
+  const SQUARE = "M 40 40 L 60 40 L 60 60 L 40 60 Z";
+
+  it.each([
+    ["single quotes", `<path d='${SQUARE}'/>`],
+    ["a newline before d", `<path\nd="${SQUARE}"/>`],
+    ["a tab before d", `<path\td="${SQUARE}"/>`],
+    ["spaces around =", `<path d = "${SQUARE}"/>`],
+    ["a double quote inside single quotes", `<path id='a"b' d='${SQUARE}'/>`],
+  ])("reads d with %s", (_name, body) => {
+    const art = fit(body);
+    expect(art.w).toBeCloseTo(36, 6);
+    expect(art.paths[0].startsWith("M 0 0")).toBe(true);
+  });
+
+  it("applies a single-quoted <g> transform", () => {
+    // The collab fit would normalize any translate away, so use the laurel
+    // path (viewBox-scaled, width 100 = 1:1) where the shift survives.
+    const art = parseLogo(
+      `<svg viewBox="0 0 100 100"><g\ttransform='translate(10,0)'><path d="${SQUARE}"/></g></svg>`, 100);
+    expect(art.paths[0].startsWith("M 50 40")).toBe(true);
+  });
+
+  it("reads single-quoted shape attributes", () => {
+    const art = fit(`<rect x='0' y='0' width='100' height='50'/>`);
+    expect(art.h / art.w).toBeCloseTo(0.5, 6);
+  });
+
+  it("doesn't read a longer name ending in the attribute's", () => {
+    // stroke-width must not be taken for width.
+    expect(() => fit(`<rect stroke-width="5" height="10"/>`)).toThrow();
   });
 });

@@ -90,6 +90,12 @@ binary-impacting change gets its own version before it is merged.
   place for it, moving the label onto a master that has one now restores the
   value instead of losing it.
 
+- **Collab SVG logos load whatever quote style or line breaks they use.** SVGs
+  written with single-quoted attributes, or with attributes on their own lines,
+  were refused ("Logo path is missing d attribute"), and a single-quoted group
+  transform was ignored, which put the art in the wrong place. Both now load
+  and place correctly.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
