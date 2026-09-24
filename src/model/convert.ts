@@ -414,9 +414,12 @@ export function convertLabelV2(old: LabelFileV2, master: Master): { label: Label
   // the overrides are built.
   const values: Record<string, LayerValue> = {};
   const dormant: Record<string, LayerValue> = {};
-  const bench = (id: string, v: FieldValue) => {
-    if (typeof v === "boolean") warnings.push(`Dormant on/off value "${id}" dropped.`);
-    else dormant[id] = String(v);
+  // Benched under the v3 layer id (FIELD_RENAMES), so a later rebind onto a
+  // master with that layer finds it — for live values the master lacks and
+  // for the old bench alike.
+  const bench = (fid: string, v: FieldValue) => {
+    if (typeof v === "boolean") warnings.push(`Dormant on/off value "${fid}" dropped.`);
+    else dormant[FIELD_RENAMES[fid] ?? fid] = String(v);
   };
   for (const [fid, v] of Object.entries(old.values)) {
     const id = FIELD_RENAMES[fid] ?? fid;

@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.119] - 2026-09-24
+
+### Fixed
+
+- **Set-aside style lines and barcodes in older labels come back.** When an
+  older label's style line or UPC was set aside because its master had no
+  place for it, moving the label onto a master that has one now restores the
+  value instead of losing it.
+
 ## [0.1.118] - 2026-09-24
 
 ### Fixed
