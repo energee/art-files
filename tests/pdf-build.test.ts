@@ -6,7 +6,9 @@
 // PDFPage.
 import { describe, expect, it } from "vitest";
 import { PDFDocument, PDFName } from "pdf-lib";
-import { buildArtPdf, buildMaskPdf } from "../src/pdf/build";
+import { readFileSync } from "node:fs";
+import fontkit from "@pdf-lib/fontkit";
+import { buildArtPdf, buildMaskPdf, pdfMeasureFace } from "../src/pdf/build";
 import { warningColumnLen, warningMeasure, wrapWarning } from "../src/warning";
 import * as L from "../src/layout";
 import { assets, contentStreamText, lolevPlan, onePxPng } from "./fixtures";
@@ -221,5 +223,38 @@ describe("added layers", () => {
     expect(withImage.some((r) => r.kind === "image" && r.id === "i1")).toBe(true); // placed…
     expect(await buildArtPdf(withImage, assets)).toEqual(await buildArtPdf(plain, assets)); // …not drawn
     expect(await buildMaskPdf(withImage, assets)).toEqual(await buildMaskPdf(plain, assets));
+  });
+});
+
+/** Issue #86: pdf-lib's drawText emits no kerning, so every run must be
+ *  planned with the advances it will actually be drawn with. Barlow
+ *  Condensed carries a kern table (Poppins has none), so its kerned and
+ *  drawn widths diverge: "AVATAR" is 2334/1000 kerned but draws 2535. */
+describe("pdfMeasureFace — plans with the widths drawText draws (#86)", () => {
+  const font = (f: string) => readFileSync(new URL(`../src/assets/fonts/${f}`, import.meta.url));
+  const barlow = {
+    regular: font("BarlowCondensed-Regular.ttf"),
+    semibold: font("BarlowCondensed-SemiBold.ttf"),
+    bold: font("BarlowCondensed-Bold.ttf"),
+  };
+  const kerned = (bytes: Uint8Array, text: string) => {
+    const f = fontkit.create(bytes);
+    return f.layout(text).positions.reduce((s, p) => s + p.xAdvance, 0) * 1000 / f.unitsPerEm;
+  };
+
+  it("measures Barlow Condensed with its unkerned drawn advances, not kerned ones", async () => {
+    const m = await pdfMeasureFace({ poppins: assets.fonts, "barlow-condensed": barlow }, "poppins");
+    expect(m("AVATAR", 1000, "regular", "barlow-condensed")).toBeCloseTo(2535);
+    expect(m("WAVE TOWER", 1000, "regular", "barlow-condensed")).toBeCloseTo(4475);
+    // The kerned width (what canvas measureText returns with kerning on)
+    // would place the run ~8% short of the ink the PDF actually lays down.
+    expect(kerned(barlow.regular, "AVATAR")).toBeCloseTo(2334);
+  });
+
+  it("falls back to the default family for runs without their own", async () => {
+    const m = await pdfMeasureFace({ poppins: assets.fonts, "barlow-condensed": barlow }, "barlow-condensed");
+    expect(m("AVATAR", 1000, "bold")).toBeCloseTo(2873);
+    // Poppins has no kern table: its drawn width equals the kerned one.
+    expect(m("AVATAR", 1000, "regular", "poppins")).toBeCloseTo(kerned(assets.fonts.regular, "AVATAR"));
   });
 });

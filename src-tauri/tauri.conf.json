@@ -28,6 +28,9 @@
       "csp": null
     }
   },
+  "plugins": {
+    "fs": { "requireLiteralLeadingDot": false }
+  },
   "bundle": {
     "active": true,
     "category": "GraphicsAndDesign",

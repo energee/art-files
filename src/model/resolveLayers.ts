@@ -2,7 +2,8 @@
 // master.layers → deep-merge each enabled variant's diff in enable order
 // (an id the master lacks appends a whole layer) → the label's overrides →
 // the label's values into its layers → format refs in barcode/qr
-// values expanded over the text layers' plain text → layers with
+// values expanded over the text layers' plain text → every drawn barcode's
+// expanded value validated, whatever tier supplied it → layers with
 // enabled === false dropped. Pure and synchronous. Relative `y` bindings
 // are NOT resolved here: that needs measured heights and is the renderer's
 // step. The layers come back in draw order, ready to measure and place.
@@ -13,6 +14,7 @@ import { validateField } from "./fields";
 import { expandFormat, fieldRefs } from "./format";
 import { parseRuns } from "../description";
 import { machineName } from "../qr";
+import { validateFor } from "../barcode";
 
 type Result = { layer: Layer } | { error: string };
 
@@ -40,8 +42,11 @@ function applyValue(l: Layer, v: LayerValue): Result {
   }
   if (typeof v !== "string") return { error: l.kind === "image" ? "Expected an image." : "Expected a code value." };
   if (l.kind === "image") return { layer: { ...l, asset: v } };
-  if (l.kind === "barcode") {
-    const r = validateField({ id: l.id, label: l.name, kind: "code", path: "", symbology: l.symbology }, v);
+  // A literal code is checked here so a bad one keeps the master's value; a
+  // template ("{textId}") can only be judged once expanded — resolveLayers'
+  // post-expansion check covers it, and every other tier's value too.
+  if (l.kind === "barcode" && !fieldRefs(v).length) {
+    const r = validateFor(l.symbology, v);
     if (!r.ok) return { error: r.error! };
   }
   return { layer: { ...l, value: v } };
@@ -141,6 +146,15 @@ export function resolveLayers(
     // (renderers, PSD/PDF builders) reads the expanded `value`.
     return { ...l, value: text, format: l.value };
   });
+  // Validate the code the renderer will actually draw, whichever tier (master,
+  // variant, override, label) supplied it — prepareBarcode silently drops an
+  // invalid one, so this error is what blocks export instead (#94). Blank is
+  // "not filled yet" and a switched-off layer never draws: neither blocks.
+  for (const l of layers) {
+    if (l.kind !== "barcode" || l.enabled === false || !l.value.trim() || errors[l.id]) continue;
+    const r = validateFor(l.symbology, l.value);
+    if (!r.ok) errors[l.id] = r.error!;
+  }
   return { layers: opts.keepDisabled ? layers : layers.filter((l) => l.enabled !== false), warnings, errors };
 }
 
