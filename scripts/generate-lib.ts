@@ -521,7 +521,7 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
     psdImages[l.asset] = { data: new Uint8Array(png.data), width: png.width, height: png.height };
   }
 
-  const measure = await pdfMeasureFace({ [defaultFamily]: fonts, ...fontFamilies }, defaultFamily);
+  const measure = await pdfMeasureFace(fontFamilies, defaultFamily);
 
   const plan = planLayers(resolved.layers, measure, {
     logoSvg, guides: guideLines(input.master), custom: planCustom,
