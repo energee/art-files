@@ -4,11 +4,25 @@
 # Activated by `npm install` via the package.json "prepare" script
 # (git config core.hooksPath .githooks). See .agents/release-steward.md.
 #
+# The check runs against each pushed commit, not the working tree: git feeds
+# "<local ref> <local sha> <remote ref> <remote sha>" lines on stdin, and each
+# sha is checked out into a throwaway detached worktree — a clean tree, like
+# CI's checkout — so uncommitted or untracked files cannot sway the result.
+#
 # Stacked PRs: a branch whose PR targets another branch records that parent
 # with `git config branch.<name>.stack-parent <parent>`; the check then runs
 # against the parent — the same base CI uses (the PR's base branch).
 
-parent=$(git config "branch.$(git branch --show-current).stack-parent" 2>/dev/null)
-# ponytail: no base ref (fresh clone, offline) = skip; CI still guards.
-base=$(git merge-base HEAD "origin/${parent:-main}" 2>/dev/null) || exit 0
-exec node scripts/check-release.mjs "$base"
+zero=0000000000000000000000000000000000000000
+status=0
+while read -r local_ref local_sha _; do
+  [ "$local_sha" = "$zero" ] && continue # deleting a remote ref: nothing to check
+  parent=$(git config "branch.${local_ref#refs/heads/}.stack-parent" 2>/dev/null)
+  # ponytail: no base ref (fresh clone, offline) = skip; CI still guards.
+  base=$(git merge-base "$local_sha" "origin/${parent:-main}" 2>/dev/null) || continue
+  tree=$(mktemp -d) || exit 1
+  git worktree add -q --detach "$tree" "$local_sha" </dev/null || { rmdir "$tree"; exit 1; }
+  (cd "$tree" && node scripts/check-release.mjs "$base" </dev/null) || status=1
+  git worktree remove --force "$tree"
+done
+exit $status

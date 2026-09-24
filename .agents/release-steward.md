@@ -29,7 +29,9 @@ Fixes ride a release train: a binary-impacting PR does **not** bump the version.
 2. Leave the five version fields alone.
 3. Run `node scripts/check-release.mjs <base-ref>` with the task's normal tests and
    build. It passes when a binary-impacting diff queues `[Unreleased]` bullets. The
-   pre-push hook runs the same check; for a PR, `<base-ref>` is the target branch
+   pre-push hook (`.githooks/pre-push`, activated by `npm install` via the `prepare`
+   script) runs the same check against each pushed commit in a clean temporary
+   worktree, but do not rely on it alone. For a PR, `<base-ref>` is the target branch
    (a stacked branch's parent — see AGENTS.md "Stacked PRs").
 4. Report the classification and the bullets you queued in the handoff.
 
