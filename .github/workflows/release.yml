@@ -155,7 +155,7 @@ jobs:
         # By THIS run's tag, not "the latest release": now that the job runs
         # after a failed leg, a run whose every leg failed before publishing
         # must fail here rather than re-publish the previous release's feed.
-        # A release with no latest.json yet fails the same way.
+        # (A release with no latest.json yet fails at the jq step below.)
         run: |
           mkdir site
           tag="label-lab-v$(node -p 'require("./package.json").version')"
@@ -167,7 +167,6 @@ jobs:
             --pattern '*.AppImage.sig' \
             --pattern '*-setup.exe' \
             --pattern '*-setup.exe.sig'
-          test -f site/latest.json || { echo "$tag has no latest.json yet" >&2; exit 1; }
 
       - name: Point latest.json at the Pages copies
         # The release's own URLs are API asset ids (the repo is private), so
