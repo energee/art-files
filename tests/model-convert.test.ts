@@ -228,12 +228,6 @@ describe("convertLabelV2", () => {
     expect(label.dormant).toEqual({ values: { partner: "p.png", old: "v" }, variants: ["retired"] });
   });
 
-  it("strips a trailing percent sign from a number layer's value (#95)", () => {
-    const { label, warnings } = convertLabelV2(v2({ values: { abv: "6.5 %" } }), lolevV3());
-    expect(warnings).toEqual([]);
-    expect(label.values.abv).toEqual([{ text: "6.5", fill: GOLD, layer: "metallic" }]);
-  });
-
   it("carries masterHint and enabledVariants verbatim", () => {
     const { label } = convertLabelV2(v2({ masterHint: "Lolev", enabledVariants: ["collab", "nope"] }), lolevV3());
     expect(label.masterHint).toBe("Lolev");
@@ -279,7 +273,7 @@ describe("convertConfigV1", () => {
 
   it("a legacy ABV saved with its own percent sign converts to a valid number (#95)", () => {
     const cfg = defaultConfig();
-    cfg.abv = "6.5%";
+    cfg.abv = "6.5 %";
     const { label } = convertConfigV1(cfg, false);
     expect(label.values.abv).toEqual([{ text: "6.5", fill: GOLD, layer: "metallic" }]);
     const { errors } = resolveLayers(lolevV3(), label.enabledVariants, label.values, label.overrides);

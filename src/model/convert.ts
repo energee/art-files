@@ -399,9 +399,9 @@ const layerIn = (master: Master, id: string): Layer | undefined =>
  *  carry ("6.5%"), which would otherwise fail its number validation. */
 function toLayerValue(layer: Layer, v: FieldValue, p: ElementPatch | undefined, warnings: string[]): LayerValue | undefined {
   if (typeof v === "boolean") { warnings.push(`Value for "${layer.id}" is on/off, which no v3 layer takes; dropped.`); return undefined; }
-  if (layer.kind !== "text") return String(v);
-  const text = layer.input === "number" ? stripPercent(String(v)) : String(v);
-  return textLines(layer.id, text, { ...layer.style, ...p?.style }, p?.bold);
+  const s = String(v);
+  if (layer.kind !== "text") return s;
+  return textLines(layer.id, layer.input === "number" ? stripPercent(s) : s, { ...layer.style, ...p?.style }, p?.bold);
 }
 
 export function convertLabelV2(old: LabelFileV2, master: Master): { label: LabelFile; warnings: string[] } {
