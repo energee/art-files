@@ -685,21 +685,23 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  gesture's many updates (a drag, an in-place text session) into one undo
    *  step, and an inspector field passes its id so its typing is one step of
    *  its own — see history.ts's `Coalesce`. Computed against the doc THIS render
-   *  sees so a no-op can return before marking the tab dirty. */
-  const edit = (fn: (d: Doc) => Doc, coalesce?: Coalesce) => {
+   *  sees so a no-op can return before marking the tab dirty. Returns whether
+   *  the edit was recorded (false for a no-op or a rejected edit). */
+  const edit = (fn: (d: Doc) => Doc, coalesce?: Coalesce): boolean => {
     let next: Doc;
     try {
       next = fn(doc);
     } catch (err) {
       setBuildError(errMsg(err)); // bindBelow/unbind re-validate through parseMaster
-      return;
+      return false;
     }
-    if (next === doc || (next.master === doc.master && next.label === doc.label)) return;
+    if (next === doc || (next.master === doc.master && next.label === doc.label)) return false;
     // Always mark edited: boot-restore's restoringRef only suppresses
     // swapLoaded/onTexture, not a keystroke while assets are still loading.
     setDirty(true);
     setEdited(true);
     setDoc((d) => (d === doc ? next : fn(d)), coalesce);
+    return true;
   };
   const editMaster = (fn: (m: Master) => Master, coalesce?: boolean) =>
     edit((d) => ({ ...d, master: fn(d.master) }), coalesce);
@@ -1114,12 +1116,29 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (!active) setDecodedAssets(null);
   }, [active]);
 
+  /** Whether the in-flight canvas drag or resize has opened its undo step.
+   *  The step opens on the first move that actually patches something, which
+   *  need not be the `first` move: one whose delta snapped to zero patches
+   *  nothing, and folding the next move in on `!first` merged the drag into
+   *  the edit BEFORE it (#74). Escape likewise undoes only a step that
+   *  exists. */
+  const gestureOpened = useRef(false);
+  const gesturePatch = (entries: [string, DeepPartial<Layer>][]) => {
+    const real = entries.filter(([, p]) => Object.keys(p).length);
+    if (real.length && patchMany(real, gestureOpened.current)) gestureOpened.current = true;
+  };
+  const cancelGesture = () => {
+    if (gestureOpened.current) mutating(undo)();
+    gestureOpened.current = false;
+  };
+
   /** Drag-to-move. PreviewCompare reports the cumulative delta from the
    *  drag's start; the patch is moveBy against the layer AS IT WAS at the
    *  start (kept in a ref for the gesture), so every move replaces the last
-   *  rather than stacking on it, and the whole drag coalesces into one undo
-   *  step. Horizontal snapping to the master's guides is moveBy's. When the
-   *  grabbed layer is selected, every selected unlocked layer moves with it. */
+   *  rather than stacking on it, and the whole drag is one undo step (see
+   *  `gestureOpened`). Horizontal snapping to the master's guides is moveBy's.
+   *  When the grabbed layer is selected, every selected unlocked layer moves
+   *  with it. */
   /** Every layer's resolved box for the current draw list — one full place
    *  pass, wanted only at gesture starts and unbinds, never per move. */
   const boxesNow = (layers: Layer[] = drawLayers) =>
@@ -1194,6 +1213,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     } | null
   >(null);
   const onDrag = (id: string, dx: number, dy: number, first: boolean): SnapLines => {
+    if (first) gestureOpened.current = false;
     if (first || dragBase.current?.id !== id) {
       const boxes = boxesNow();
       if (!boxes) return { x: null, y: null, dx, dy };
@@ -1230,9 +1250,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     const sx = snapDelta({ min: bounds.x, size: bounds.w }, dx, lines.x, SNAP_PT);
     const sy = snapDelta({ min: bounds.y, size: bounds.h }, dy, lines.y, SNAP_PT);
     const entries = dragBase.current.bases
-      .map(({ layer }): [string, DeepPartial<Layer>] => [layer.id, moveBy(layer, sx.delta, sy.delta, moving)])
-      .filter(([, p]) => Object.keys(p).length);
-    if (entries.length) patchMany(entries, !first);
+      .map(({ layer }): [string, DeepPartial<Layer>] => [layer.id, moveBy(layer, sx.delta, sy.delta, moving)]);
+    gesturePatch(entries);
     // The indicator spans the moved selection AND whatever it lined up with.
     const top = bounds.y + sy.delta;
     const left = bounds.x + sx.delta;
@@ -1269,7 +1288,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   };
 
   /** Handle resize: like onDrag, the patch is resizeBy against the layer
-   *  and box captured at the gesture's start, coalesced into one undo step.
+   *  and box captured at the gesture's start, one undo step per gesture.
    *  Only the grabbed layer resizes, never the group. */
   const resizeBase = useRef<
     { layer: Layer; box: Box; lines: { x: SnapTarget[]; y: SnapTarget[] } } | null
@@ -1278,6 +1297,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     id: string, handle: ResizeHandle, dx: number, dy: number, uniform: boolean, first: boolean,
   ): SnapLines => {
     if (first) {
+      gestureOpened.current = false;
       const boxes = boxesNow();
       const layer = drawLayers.find((l) => l.id === id);
       const box = boxes?.get(id);
@@ -1296,7 +1316,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const sy = handle.hy === 0 ? { delta: dy, line: null }
       : snapDelta({ min: edgeY, size: 0 }, dy, base.lines.y, SNAP_PT);
     const p = resizeBy(base.layer, base.box, handle, sx.delta, sy.delta, uniform);
-    if (Object.keys(p).length) patch(id, p, !first);
+    gesturePatch([[id, p]]);
     // The indicator spans the resized box and whatever the grabbed edge lined
     // up with. `patch` is a state update, so boxesNow() here still measures
     // the PREVIOUS frame's layers — the segment's cross-axis extent trails the
@@ -2251,7 +2271,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onEditCancel={mutating(undo)}
               onDrag={onDrag}
               onResize={onResize}
-              onDragCancel={mutating(undo)}
+              onDragCancel={cancelGesture}
               onEditSession={setEditSession}
               onSplit={setSplit}
               bleed={showGuides}
