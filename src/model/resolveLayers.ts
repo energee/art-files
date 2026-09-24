@@ -25,6 +25,19 @@ export const widenValue = (l: Layer, v: LayerValue): LayerValue =>
   l.kind === "text" && typeof v === "string"
     ? [{ text: v, fill: l.style.fill, layer: l.style.layer }] : v;
 
+/** A stored value the resolver REJECTED, put back on its layer for display
+ *  only (#128/#129): applyValue skips an invalid value so the canvas and
+ *  exports never draw it, but the fill field must show what the label holds —
+ *  not the master's fallback — beside the error. No `format`: a rejected value
+ *  never reached ref expansion, so it is its own template. A value of the
+ *  wrong shape for the layer leaves the layer as it was. */
+export function withRejectedValue(l: Layer, v: LayerValue): Layer {
+  const lines = widenValue(l, v);
+  if (l.kind === "text") return Array.isArray(lines) ? { ...l, lines } : l;
+  if (typeof v !== "string") return l;
+  return l.kind === "image" ? { ...l, asset: v } : { ...l, value: v, format: undefined };
+}
+
 /** One value into one layer, validated per kind. */
 function applyValue(l: Layer, v: LayerValue): Result {
   if (l.kind === "text") {

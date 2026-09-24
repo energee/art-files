@@ -45,7 +45,7 @@ import type {
   ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master,
 } from "@/model/layers";
 import { PAGE_ART_ID, uppercaseOf } from "@/model/layers";
-import { exportBase as exportBaseOf, titleOf } from "@/model/resolveLayers";
+import { exportBase as exportBaseOf, titleOf, withRejectedValue } from "@/model/resolveLayers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
@@ -2028,8 +2028,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** The inspector's content slot for the selected layer: the rich text
    *  field (or number/code box) for text, the image well for images, the
    *  payload box for barcode/QR — each writing through setContent, so every
-   *  layer's content belongs to this label. */
-  function contentFor(layer: Layer): React.ReactNode {
+   *  layer's content belongs to this label. A value the resolver rejected
+   *  (errors[id]) is shown as STORED, not as the master fallback the resolved
+   *  layer carries — the field and the header error must name the same value
+   *  (#128/#129). */
+  function contentFor(resolved: Layer): React.ReactNode {
+    const stored = label.values[resolved.id];
+    const layer = errors[resolved.id] && stored !== undefined
+      ? withRejectedValue(resolved, stored) : resolved;
     const id = `${layer.id}-content`;
     if (layer.kind === "text") {
       return (

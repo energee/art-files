@@ -4,7 +4,7 @@
 // here (that needs measured heights); format refs in barcode/qr values
 // expand over the text layers' plain text.
 import { describe, expect, it } from "vitest";
-import { resolveLayers, valueOf } from "../src/model/resolveLayers";
+import { resolveLayers, valueOf, withRejectedValue } from "../src/model/resolveLayers";
 import { uppercaseOf } from "../src/model/layers";
 import { lolevMaster } from "../src/model/lolevLayers";
 import type {
@@ -203,5 +203,26 @@ describe("valueOf", () => {
     expect(valueOf(byId(r.layers, "collabLeft"))).toBe("a1");
     expect(valueOf(byId(r.layers, "barcode"))).toBe("850051366224");
     expect(valueOf(byId(r.layers, "qr"))).toBe("https://lolev.beer/beer/p");
+  });
+});
+
+// #128/#129: the resolver drops an invalid value (the canvas never draws it),
+// so the fill field puts the STORED value back for display only.
+describe("withRejectedValue", () => {
+  it("shows the stored invalid code and number the resolver rejected", () => {
+    const r = resolveLayers(lolevMaster(), [], { barcode: "ABC123", abv: "-3" });
+    expect(r.errors.barcode).toBeTruthy();
+    expect(r.errors.abv).toBe("Must be at least 0.");
+    const barcode = byId<BarcodeLayer>(r.layers, "barcode");
+    expect(barcode.value).not.toBe("ABC123"); // resolution is unchanged
+    const shown = withRejectedValue(barcode, "ABC123") as BarcodeLayer;
+    expect(shown.value).toBe("ABC123");
+    expect(shown.format).toBeUndefined();
+    const abv = withRejectedValue(byId(r.layers, "abv"), "-3") as TextLayer;
+    expect(abv.lines[0].text).toBe("-3");
+  });
+  it("leaves the layer alone for a value of the wrong shape", () => {
+    const barcode = byId(lolevMaster().layers, "barcode");
+    expect(withRejectedValue(barcode, [line("x")])).toBe(barcode);
   });
 });

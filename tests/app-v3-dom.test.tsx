@@ -136,3 +136,68 @@ it("offers the barcode's tiers in the field that fills it", async () => {
     container.remove();
   }
 });
+
+// #128/#129 — an invalid fill is stored in the label but resolveLayers skips
+// applying it, so a field fed from the RESOLVED layer snapped back to the
+// master's value (barcode) or went blank (ABV) while the header named the
+// bad value. The field must show what the label holds, error beneath.
+async function withEditor(run: () => Promise<void>) {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(createElement(DocumentEditor, {
+        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
+        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+      }));
+    });
+    await run();
+  } finally {
+    act(() => { root.unmount(); });
+    container.remove();
+  }
+}
+
+async function selectLayer(id: string) {
+  const row = document.querySelector(`[data-layer-id="${id}"]`)!;
+  await act(async () => {
+    (row.querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement).click();
+  });
+}
+
+/** Type into a React-controlled input the way the browser does: the native
+ *  value setter, then an input event React's onChange listens for. */
+function typeInto(input: HTMLInputElement, text: string) {
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, text);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+it("keeps an invalid barcode code in the Code field, with its error (#128)", async () => {
+  await withEditor(async () => {
+    await selectLayer("barcode");
+    const field = () => document.querySelector("#barcode-content") as HTMLInputElement;
+    await act(async () => { field().focus(); });
+    await act(async () => { typeInto(field(), "ABC123"); });
+    await act(async () => {
+      field().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    await act(async () => { field().blur(); });
+    expect(field().value).toBe("ABC123");
+    expect(field().getAttribute("aria-invalid")).toBe("true");
+  });
+});
+
+it("keeps a negative ABV in the ABV field, with its error (#129)", async () => {
+  await withEditor(async () => {
+    await selectLayer("abv");
+    const field = () => document.querySelector("#abv-content") as HTMLInputElement;
+    await act(async () => { field().focus(); });
+    await act(async () => { typeInto(field(), "-3"); });
+    await act(async () => { field().blur(); });
+    expect(field().value).toBe("-3");
+    expect(document.body.textContent).toContain("Must be at least 0.");
+  });
+});
