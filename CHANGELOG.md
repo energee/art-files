@@ -3,6 +3,14 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.96] - 2026-09-24
+
+### Fixed
+
+- **No more endless "rendering label…" spinner on a label with an error.**
+  A value the label can't print (such as an invalid barcode) no longer stops
+  the preview: it keeps drawing with the master's value in that spot, and the
+  header's error message still blocks export until you fix it.
 ## [0.1.94] - 2026-09-23
 
 ### Fixed
