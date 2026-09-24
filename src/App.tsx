@@ -1042,6 +1042,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   } : null, [decodedAssets, guides]);
   const bgOn = pageOn("background"), maskOn = pageOn("mask");
   useEffect(() => {
+    // A blocked document never builds, so previewReady can stay false here;
+    // the "rendering label…" spinner checks `blocked` for that reason.
     if (blocked || !active) return;
     let cancelled = false;
     const timer = setTimeout(() => {
@@ -2313,7 +2315,9 @@ export const DocumentEditor = memo(function DocumentEditor({
                 </span>
               </div>
             )}
-            {!previewReady && !buildError && !renderError && (
+            {/* Loading only: a blocking error skips the build, so previewReady
+                would never flip — the header alert explains the stall instead. */}
+            {!previewReady && !blocked && !buildError && !renderError && (
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
                   <span className="size-6 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-foreground" />
