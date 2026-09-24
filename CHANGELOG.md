@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.113] - 2026-09-24
+
+### Fixed
+
+- **Opening a file no longer replaces one you just opened.** A label opened
+  through the Open dialog stayed "untouched" in the browser build, so the next
+  Open silently swapped it out of its tab. Any opened label now keeps its tab,
+  and the next Open goes to a new tab. Only an untouched Untitled tab is reused.
+
 ## [0.1.86] - 2026-09-23
 
 ### Fixed
