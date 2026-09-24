@@ -48,6 +48,11 @@ binary-impacting change gets its own version before it is merged.
   `.master` that was unzipped and re-compressed with Finder or `zip -r` now
   opens with its texture and mask instead of an empty, nameless image.
 
+- **Older JSON-only masters open even when an editor touched them.** A
+  legacy `.master` saved as plain JSON now opens when it starts with a
+  byte-order mark or a blank line, instead of failing with "invalid zip
+  data".
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
