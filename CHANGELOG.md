@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.75] - 2026-09-23
+
+### Fixed
+
+- **Bold and white-ink spans across several words survive wrapping.** A
+  span like `**GOVERNMENT WARNING:**` or `_very hoppy double_` in a wrapped
+  or justified text layer (including the rotated warning column) now keeps
+  its style on every word, in the preview, PDF, and PSD, instead of printing
+  literal `**` / `_` markers in the regular face.
 ## [0.1.74] - 2026-09-23
 
 ### Fixed

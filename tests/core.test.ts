@@ -6,9 +6,9 @@ import { qrPath, qrShapes, machineName, qrUrl } from "../src/qr";
 import { tintRgba } from "../src/collab";
 import {
   defaultConfig, displayAbv, exportBaseName, legacyCollabEnabled, parseConfigFile,
-  toConfigFile,
+  toConfigFile, WARNING_TEXT,
 } from "../src/defaults";
-import { parseDescription, parseInfoLine, parseRuns, serializeDescription } from "../src/description";
+import { markedWords, parseDescription, parseInfoLine, parseRuns, serializeDescription } from "../src/description";
 import {
   COLLAB_LEAD, COLLAB_LEFT, DEFAULT_STROKE_PX, DESC, GOLD, QR,
   PREVIEW_RASTER_MAX_EDGE, PREVIEW_RASTER_MAX_SCALE,
@@ -247,6 +247,18 @@ describe("description markdown", () => {
   it("interprets a body line wrapped in _ as white ink, markers stripped — mirrors the renderer", () => {
     const d = parseDescription("_Galaxy_");
     expect(d.lines).toEqual([{ text: "Galaxy", bold: false, fill: GOLD, layer: "white" }]);
+  });
+});
+
+describe("markedWords", () => {
+  it("balances a span across spaces per word (#89)", () => {
+    expect(markedWords("**GOVERNMENT WARNING:** (1) x")).toEqual(["**GOVERNMENT**", "**WARNING:**", "(1)", "x"]);
+    expect(markedWords("A _very **hoppy** double_ IPA")).toEqual(["A", "_very_", "**_hoppy_**", "_double_", "IPA"]);
+  });
+
+  it("splits like split(\" \") for plain, per-word-marked, and literal-marker text", () => {
+    for (const t of [WARNING_TEXT, "a  b", "", "A_B c", "no markers here"])
+      expect(markedWords(t)).toEqual(t.split(" "));
   });
 });
 
