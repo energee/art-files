@@ -711,7 +711,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   }, [showRulers, showGuides]);
 
   /** Whether the document differs from the last saved/opened project —
-   *  File → Save disables while clean. */
+   *  File → Save disables while clean. Clear it ONLY after a completed open
+   *  or save: the shell reads false as "holds a file" (tabs.ts isPristine). */
   const [dirty, setDirty] = useState(true);
   /** Whether the user has actually touched this document — the shell
    *  prompts about closing a tab only when edited AND unsaved (tabs.ts). */

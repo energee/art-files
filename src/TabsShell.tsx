@@ -66,8 +66,9 @@ export default function TabsShell() {
   // NOT outlive the attempt: routeFileOpen also dedupes by a queued entry's
   // path, so a stale entry made a FAILED open permanently un-retryable (the
   // re-open just focused the empty tab) and let a Save-As'd tab keep
-  // claiming its original path. After success tab.filePath carries the
-  // claim; after failure the tab is legitimately pristine again.
+  // claiming its original path. After success tab.filePath (path opens) or
+  // the cleared dirty flag (every open) carries the claim; after failure
+  // the tab is legitimately pristine again.
   const [pending, setPending] = useState<Record<number, FileToOpen>>({});
   // Mirror for the routing path: two opens can arrive in one task (the OS
   // drain loop), before the state above has flushed.

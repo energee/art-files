@@ -6,7 +6,7 @@
 // upward through onMeta; the shell never reaches into editor internals.
 export type TabMeta = {
   title: string;            // the beer name as typed; "Untitled" while blank
-  dirty: boolean;           // the editor's dirty flag (Save enabled)
+  dirty: boolean;           // the editor's dirty flag (Save enabled); false = matches an opened/saved file
   edited: boolean;          // any user mutation since mount/open — gates close prompts
   masterUnsaved: boolean;   // the master differs from its last open/save — ⌘S doesn't write it
   filePath: string | null;  // Tauri path identity, for OS-open dedupe
@@ -15,7 +15,7 @@ export type Tab = TabMeta & { id: number };
 export type TabsState = { tabs: Tab[]; active: number; nextId: number };
 
 // dirty starts true, edited false: a fresh default document has Save enabled
-// (today's boot state) but closing it must not prompt.
+// and counts as pristine (isPristine), but closing it must not prompt.
 const UNTITLED: TabMeta = {
   title: "Untitled", dirty: true, edited: false, masterUnsaved: false, filePath: null,
 };
@@ -64,9 +64,10 @@ export function closeTab(s: TabsState, id: number): TabsState {
 export const unsaved = (t: Pick<TabMeta, "dirty" | "edited" | "masterUnsaved">) =>
   t.edited && (t.dirty || t.masterUnsaved);
 
-/** Never been touched and not backed by a file — safe to reuse for an open
- *  and free to close without a prompt. */
-export const isPristine = (t: Tab) => !t.edited && !t.filePath;
+/** Untouched and not from a file — safe to reuse for an open. `dirty` stays
+ *  true until an open or save succeeds, so it covers the picker and
+ *  file-input opens that leave filePath null (issue #83). */
+export const isPristine = (t: Tab) => !t.edited && t.dirty;
 
 /** Where an opened .label lands: the tab already holding that path (OS
  *  opens carry one; picker opens without a path skip this), else a pristine
@@ -74,8 +75,8 @@ export const isPristine = (t: Tab) => !t.edited && !t.filePath;
  *  of the shell's open entry points go through it.
  *  `busy` marks tabs already spoken for (the shell passes "has a queued
  *  open"): a busy tab is never reused, so two rapid opens can't share one
- *  editor — and a browser handle-open, which leaves no filePath to break
- *  pristineness, still claims its tab.
+ *  editor — and a browser handle-open, whose tab stays pristine until the
+ *  open completes and clears `dirty`, still claims its tab.
  *  `queuedPath` exposes the path of a tab's queued-but-uncompleted open:
  *  tab.filePath stays null until the async open finishes, so without it a
  *  re-delivered OS open (the Rust side queues rapid double-clicks) would

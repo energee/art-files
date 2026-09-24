@@ -124,6 +124,11 @@ binary-impacting change gets its own version before it is merged.
   double-clicked in the moment the app was still loading could sit unopened
   until the next file was opened; it now opens as soon as the app is ready.
 
+- **Opening a file no longer replaces one you just opened.** A label opened
+  through the Open dialog stayed "untouched" in the browser build, so the next
+  Open silently swapped it out of its tab. Any opened label now keeps its tab,
+  and the next Open goes to a new tab. Only an untouched Untitled tab is reused.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
