@@ -21,6 +21,15 @@ describe("QR options", () => {
     const h = qrShapes("test", { ecLevel: "H" }).count;
     expect(h).toBeGreaterThanOrEqual(l);
   });
+  it("empty data yields no modules instead of a code for a space (#72)", () => {
+    for (const style of ["dots", "square", "rounded"] as const) {
+      const s = qrShapes("", { style });
+      expect(s.dots).toEqual([]);
+      expect(s.finders).toEqual([]);
+      expect(s.squares ?? []).toEqual([]);
+      expect(qrPath(s, 100)).toBe("");
+    }
+  });
   it("memo distinguishes options", () => {
     const a = qrShapes("same", { style: "square" });
     const b = qrShapes("same", { style: "dots" });

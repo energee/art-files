@@ -23,7 +23,7 @@ export interface QrOptions {
 }
 
 export interface QrShapes {
-  count: number; // modules per side
+  count: number; // modules per side; 0 = empty data, nothing to draw
   /** Data module centers in unit space (0..1), excluding finder patterns.
    *  Populated only for the "dots" style. */
   dots: { cx: number; cy: number }[];
@@ -85,8 +85,11 @@ function buildShapes(
   style: "square" | "rounded" | "dots",
   ecLevel: "L" | "M" | "Q" | "H",
 ): QrShapes {
+  // Empty data draws nothing (#72): encoding a stand-in " " would print a
+  // real, scannable code. Callers treat count 0 as "no QR" (planLayers).
+  if (!data) return { count: 0, dots: [], finders: [], moduleSize: 0, style };
   const qr = qrcode(0, ecLevel);
-  const bytes = utf8ByteString(data || " ");
+  const bytes = utf8ByteString(data);
   qr.addData(bytes);
   try {
     qr.make();

@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.130] - 2026-09-24
+
+### Fixed
+
+- **An empty QR layer draws nothing.** Clearing a QR layer's value used to
+  print a real, scannable QR code for a single space. An empty QR layer now
+  draws nothing on the canvas, in the PDFs, or in the PSD, the same as a
+  barcode with an invalid number.
+
 ## [0.1.101] - 2026-09-24
 
 ### Fixed
