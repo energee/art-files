@@ -310,6 +310,15 @@ export default function TabsShell() {
     return () => window.removeEventListener("beforeunload", warn);
   }, [anyUnsaved]);
 
+  // Desktop app quit (#151): macOS Dock → Quit, logout and AppleScript
+  // `quit` terminate the app without a window close, so the Rust side asks
+  // this flag whether to cancel and route the quit through the close sweep
+  // above, or let it through (see src-tauri/src/terminate.rs).
+  useEffect(() => {
+    if (!isTauri()) return;
+    void invoke("set_unsaved", { unsaved: anyUnsaved });
+  }, [anyUnsaved]);
+
   // Desktop window title tracks the active tab; • marks unsaved work.
   // Derived first so the effect deps on exactly the string it writes.
   const windowTitle = unsaved(activeTab) ? `• ${activeTab.title}` : activeTab.title;

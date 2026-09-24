@@ -3,6 +3,16 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.116] - 2026-09-24
+
+### Fixed
+
+- **Every way of quitting on macOS asks about unsaved tabs.** Dock → Quit,
+  logging out or shutting down, and AppleScript `quit` now run the same
+  Save / Discard / Cancel prompt as `⌘Q` instead of quitting and losing the
+  edits. With unsaved work open, Label Lab stops a logout or shutdown until
+  you've decided; with nothing unsaved it quits right away as before.
+
 ## [0.1.80] - 2026-09-23
 
 ### Fixed

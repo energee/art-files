@@ -1,7 +1,10 @@
-// main.rs — Label Lab's desktop shell: the updater gate and the OS
-// file-open delivery (.label paths from Finder / Explorer / argv).
+// main.rs — Label Lab's desktop shell: the updater gate, the OS
+// file-open delivery (.label paths from Finder / Explorer / argv), and the
+// macOS app-quit hook (terminate.rs).
 // Prevents an additional console window on Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod terminate;
 
 use std::{ffi::OsString, path::PathBuf, sync::Mutex};
 use tauri::Manager;
@@ -159,8 +162,18 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             updater_enabled,
             relaunch_app,
-            take_opened_file
+            take_opened_file,
+            terminate::set_unsaved
         ])
+        // macOS: Dock → Quit, logout and AppleScript `quit` bypass the
+        // window close flow; route them through it (see terminate.rs).
+        .setup(|app| {
+            #[cfg(target_os = "macos")]
+            terminate::install(app.handle());
+            #[cfg(not(target_os = "macos"))]
+            let _ = app;
+            Ok(())
+        })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
