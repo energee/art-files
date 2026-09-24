@@ -302,10 +302,16 @@ export function clearOverride(master: Master, variant: string, id: string, path?
   return withVariant(master, variant, (v) => withEntries(v, clearEntry(v.layers, id, path)));
 }
 
+/** Layer keys whose object value is ONE setting: parseMaster validates an
+ *  edge `binding` ({to, side, gap}) and a bound `y` ({below, gap}) whole, so
+ *  a promote row or reset for just one field would write a half-binding the
+ *  master rejects (#92). */
+const ATOMIC_KEYS = new Set(["binding", "y"]);
+
 /** Flattens to dotted leaf paths; arrays count as leaves (a `lines` override
- *  is one edit, not one per run). */
+ *  is one edit, not one per run), and so do the ATOMIC_KEYS objects. */
 function leafPaths(obj: unknown, prefix: string, out: Set<string>): void {
-  if (!isPlain(obj)) { if (prefix) out.add(prefix); return; }
+  if (!isPlain(obj) || ATOMIC_KEYS.has(prefix)) { if (prefix) out.add(prefix); return; }
   for (const k of Object.keys(obj)) leafPaths(obj[k], prefix ? `${prefix}.${k}` : k, out);
 }
 

@@ -4,7 +4,7 @@
 // edits already sitting in the edited master, plus the label's own overrides
 // offered for PROMOTION into the template. Pure — the dialog does the rendering.
 import { describe, expect, it } from "vitest";
-import { applyPromotions, masterChanges, setValue, showVersion, addLayer, addVariant, removeVariant, renameVariant, setLayerIn, moveLayers, patchLayer, removeLayer, setLabelOverride } from "../src/model/edit";
+import { applyPromotions, bindingPatch, masterChanges, setValue, showVersion, addLayer, addVariant, removeVariant, renameVariant, setLayerIn, moveLayers, patchLayer, removeLayer, setLabelOverride } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { resolveLayers } from "../src/model/resolveLayers";
 import type { LabelFile, Master } from "../src/model/layers";
@@ -257,5 +257,34 @@ describe("promoting an explicit unset", () => {
     const label = setLabelOverride(newLabel(base), "warning", { width: undefined });
     const r = applyPromotions(base, label, masterChanges(base, base, label), undefined);
     expect(r.master.layers.find((l) => l.id === "warning")).not.toHaveProperty("width");
+  });
+});
+
+// Issue #92: a binding is one value, not three. Splitting `{to, side, gap}`
+// into three promote rows applied each through patchLayer → parseMaster, and
+// the first wrote `{binding:{to}}` — "invalid binding", and Save Master threw.
+describe("promoting a layer binding", () => {
+  const styleLine = (m: Master) => m.layers.find((l) => l.id === "styleLine")!;
+
+  it("offers an edge binding as ONE promote row and writes it whole", () => {
+    const base = lolevMaster();
+    const patch = bindingPatch(styleLine(base), "name", "bottom", { x: 100, y: 200, w: 50, h: 12 });
+    const label = setLabelOverride(newLabel(base), "styleLine", { ...patch, binding: { to: "name", side: "bottom", gap: 4 } });
+    const rows = masterChanges(base, base, label).filter((c) => c.kind === "promote");
+    expect(rows.filter((c) => c.path?.startsWith("binding"))).toEqual([
+      expect.objectContaining({ path: "binding", to: { to: "name", side: "bottom", gap: 4 } }),
+    ]);
+    const r = applyPromotions(base, label, rows);
+    expect(styleLine(r.master).binding).toEqual({ to: "name", side: "bottom", gap: 4 });
+    expect(r.label.overrides).toBeUndefined();
+  });
+
+  it("treats a legacy `{below, gap}` y the same way", () => {
+    const base = lolevMaster();
+    const label = setLabelOverride(newLabel(base), "styleLine", { y: { below: "name", gap: 3 } });
+    const rows = masterChanges(base, base, label).filter((c) => c.kind === "promote");
+    expect(rows.map((c) => c.path)).toEqual(["y"]);
+    const r = applyPromotions(base, label, rows);
+    expect(styleLine(r.master).y).toEqual({ below: "name", gap: 3 });
   });
 });
