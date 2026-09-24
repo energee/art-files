@@ -3,6 +3,14 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.124] - 2026-09-24
+
+### Fixed
+
+- **Text formatting buttons work from the keyboard.** In a sidebar text field,
+  Shift+Tab now reaches the Header, Bold, and White ink buttons instead of
+  hiding them, and they apply to the text you had selected.
+
 ## [0.1.123] - 2026-09-24
 
 ### Fixed
