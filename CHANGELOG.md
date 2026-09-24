@@ -157,6 +157,11 @@ binary-impacting change gets its own version before it is merged.
   switching tabs quickly no longer piles up contexts until the browser starts
   dropping them.
 
+- **Millimetre fields keep the number you typed.** Typing 50 in a millimetre
+  position or size field no longer comes back as 49.999 on blur (or 10 as
+  10.001). Fields show the shortest millimetre reading that stores the same
+  value, and keep a third decimal only where it matters.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
