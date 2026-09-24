@@ -7,9 +7,10 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 
-vi.mock("../src/components/PreviewCompare", () => ({ PreviewCompare: (props: { canvasRender: import("../src/canvas/draw").CanvasRenderSource | null }) => { perf.source = props.canvasRender; return null; } }));
+vi.mock("../src/components/PreviewCompare", () => ({ PreviewCompare: (props: PreviewProps) => { perf.source = props.canvasRender; perf.preview = props; return null; } }));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
-const perf = vi.hoisted(() => ({ fontLoads: 0, source: null as import("../src/canvas/draw").CanvasRenderSource | null, margin: null as null | ((n: number) => void) }));
+type PreviewProps = import("react").ComponentProps<typeof import("../src/components/PreviewCompare").PreviewCompare>;
+const perf = vi.hoisted(() => ({ fontLoads: 0, source: null as import("../src/canvas/draw").CanvasRenderSource | null, margin: null as null | ((n: number) => void), preview: null as PreviewProps | null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: (props: { onMarginChange: (n: number) => void }) => { perf.margin = props.onMarginChange; return null; } }));
 vi.mock("../src/fonts", () => ({
   loadLabelFaces: async () => { perf.fontLoads++; return (text: string, size: number) => text.length * size * 0.55; },
@@ -165,6 +166,24 @@ it("keeps a negative ABV in the ABV field, with its error (#129)", async () => {
     await act(async () => { field().blur(); });
     expect(field().value).toBe("-3");
     expect(document.body.textContent).toContain("Must be at least 0.");
+  });
+});
+
+// #171 — the on-canvas editor read the RESOLVED layer too, so after a
+// rejected entry it opened on the master's value (a blank ABV) while the
+// header named the bad one. It must open on what the label holds.
+it("opens the on-canvas editor on a rejected ABV, not the master value (#171)", async () => {
+  await withEditor(async () => {
+    await selectLayer("abv");
+    const field = () => document.querySelector("#abv-content") as HTMLInputElement;
+    await act(async () => { field().focus(); });
+    await act(async () => { typeInto(field(), "25"); });
+    await act(async () => { field().blur(); });
+    expect(document.body.textContent).toContain("Must be at most 20.");
+    const p = perf.preview!;
+    const abv = p.layers.find((l) => l.id === "abv")!;
+    const shown = (p.editLayerOf ?? ((l) => l))(abv);
+    expect(shown.kind === "text" && shown.lines[0].text).toBe("25");
   });
 });
 

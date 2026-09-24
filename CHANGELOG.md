@@ -3,6 +3,16 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.111] - 2026-09-24
+
+### Fixed
+
+- **The on-canvas editor keeps an invalid entry, too.** After an invalid
+  entry was rejected (such as an ABV of `25`), double-clicking the layer on
+  the preview opened its editor on the master's value, or blank. It now
+  shows the value you entered, the same one the error names and the
+  inspector field shows.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed

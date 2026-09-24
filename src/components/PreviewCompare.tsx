@@ -327,6 +327,11 @@ export const PreviewCompare = forwardRef<
      *  order — what the display list, the hit boxes and the drag targets are
      *  all computed from, so they cannot disagree. */
     layers: Layer[];
+    /** The layer the in-place editor opens on, given the resolved one from
+     *  `layers`: App puts back a stored value the resolver rejected, so the
+     *  editor shows what the label holds rather than the master's fallback
+     *  (#171). Identity when omitted. */
+    editLayerOf?: (layer: Layer) => Layer;
     /** Which layers the list (or previous clicks here) have selected — one
      *  outline is drawn per id. */
     selected: readonly string[];
@@ -379,7 +384,7 @@ export const PreviewCompare = forwardRef<
   }
 >(function PreviewCompare(
   {
-    canvasRender, layers, selected, onPick, onEditText, onEditUppercase, onEditCancel, onDrag,
+    canvasRender, layers, editLayerOf, selected, onPick, onEditText, onEditUppercase, onEditCancel, onDrag,
     onDragCancel, onResize, onEditSession, onSplit, bleed, cornerRadiusPct, zoom, bleedIn, onRenderError,
   },
   ref,
@@ -687,7 +692,8 @@ export const PreviewCompare = forwardRef<
     () => boxes.find((b) => b.id === editing) ?? null,
     [boxes, editing],
   );
-  const editLayer = editing ? layers.find((l) => l.id === editing) : undefined;
+  const resolvedEditLayer = editing ? layers.find((l) => l.id === editing) : undefined;
+  const editLayer = resolvedEditLayer && editLayerOf ? editLayerOf(resolvedEditLayer) : resolvedEditLayer;
   return (
     <div
       ref={pageElement}
