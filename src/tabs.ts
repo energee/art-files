@@ -8,7 +8,7 @@ export type TabMeta = {
   title: string;            // the beer name as typed; "Untitled" while blank
   dirty: boolean;           // the editor's dirty flag (Save enabled)
   edited: boolean;          // any user mutation since mount/open — gates close prompts
-  masterDirty: boolean;     // the master differs from its last open/save — ⌘S doesn't write it
+  masterUnsaved: boolean;   // the master differs from its last open/save — ⌘S doesn't write it
   filePath: string | null;  // Tauri path identity, for OS-open dedupe
 };
 export type Tab = TabMeta & { id: number };
@@ -17,7 +17,7 @@ export type TabsState = { tabs: Tab[]; active: number; nextId: number };
 // dirty starts true, edited false: a fresh default document has Save enabled
 // (today's boot state) but closing it must not prompt.
 const UNTITLED: TabMeta = {
-  title: "Untitled", dirty: true, edited: false, masterDirty: false, filePath: null,
+  title: "Untitled", dirty: true, edited: false, masterUnsaved: false, filePath: null,
 };
 
 const fresh = (id: number): Tab => ({ id, ...UNTITLED });
@@ -61,8 +61,8 @@ export function closeTab(s: TabsState, id: number): TabsState {
  *  either the label is dirty or the master holds edits only Save Master
  *  writes — a label Save leaves those in memory (issue #77). A fresh
  *  Untitled tab boots dirty (Save enabled) but closes silently. */
-export const unsaved = (t: Pick<TabMeta, "dirty" | "edited" | "masterDirty">) =>
-  t.edited && (t.dirty || t.masterDirty);
+export const unsaved = (t: Pick<TabMeta, "dirty" | "edited" | "masterUnsaved">) =>
+  t.edited && (t.dirty || t.masterUnsaved);
 
 /** Never been touched and not backed by a file — safe to reuse for an open
  *  and free to close without a prompt. */

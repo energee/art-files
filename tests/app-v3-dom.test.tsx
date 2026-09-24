@@ -90,7 +90,7 @@ it("still reports an unsaved master edit after the label is saved", async () => 
         onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
       }));
     });
-    expect(onMeta.mock.lastCall?.[0]).toMatchObject({ masterDirty: false });
+    expect(onMeta.mock.lastCall?.[0]).toMatchObject({ masterUnsaved: false });
     // base-ui's menu trigger opens on the full press, not click alone.
     const trigger = container.querySelector('[aria-label="Add layer"]')!;
     await act(async () => {
@@ -102,11 +102,11 @@ it("still reports an unsaved master edit after the label is saved", async () => 
     const text = Array.from(document.querySelectorAll('[role="menuitem"]'))
       .find((el) => el.textContent?.trim() === "Text") as HTMLElement;
     await act(async () => { text.click(); await Promise.resolve(); });
-    expect(onMeta.mock.lastCall?.[0]).toMatchObject({ edited: true, masterDirty: true });
+    expect(onMeta.mock.lastCall?.[0]).toMatchObject({ edited: true, masterUnsaved: true });
     let saved = false;
     await act(async () => { saved = await saveSlot.current!(); });
     expect(saved).toBe(true);
-    expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: false, edited: true, masterDirty: true });
+    expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: false, edited: true, masterUnsaved: true });
   } finally {
     await act(async () => { root.unmount(); });
     container.remove();
