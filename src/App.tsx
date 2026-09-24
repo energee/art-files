@@ -361,8 +361,9 @@ async function readTexture(f: File): Promise<LoadedTexture> {
   return { bytes, previewBytes, name, kind: rasterKind(name), previewUrl, aspect };
 }
 
-/** Decode a mask file into its slot value. The mask passes through untouched — the printer accepts these plates
- *  as-authored (the metalness map classifies pixels itself). */
+/** Decode a mask file into its slot value. The mask passes through
+ *  untouched — the printer accepts these plates as-authored (the metalness
+ *  map classifies pixels itself). */
 async function readMask(f: File): Promise<LoadedMask> {
   const [srcBytes, canvas] = await Promise.all([
     f.arrayBuffer().then((b) => new Uint8Array(b)), decodeToCanvas(f),
@@ -1889,16 +1890,13 @@ export const DocumentEditor = memo(function DocumentEditor({
       const mskP = m ? readMask(assetToFile(m)) : undefined;
       const imgPs = Object.entries(ci).map(async ([id, a]) =>
         [id, await readCustomImage(assetToFile(a))] as const);
-      let tex, msk, images;
-      try {
-        [tex, msk, images] = await Promise.all([texP, mskP, Promise.all(imgPs)]);
-      } catch (err) {
+      const [tex, msk, images] = await Promise.all([texP, mskP, Promise.all(imgPs)]).catch((err) => {
         // Nothing reached state, so nothing would revoke the previews the
         // successful decodes minted — release them here.
         for (const p of [texP, mskP, ...imgPs.map((q) => q.then(([, c]) => c))])
           p?.then((x) => URL.revokeObjectURL(x.previewUrl), () => {});
         throw err;
-      }
+      });
       resetDocument(next);
       notes.push(...layerRows(next.master, next.label).warnings);
       if (tex) swapLoaded(setTexture, tex);
