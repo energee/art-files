@@ -44,6 +44,10 @@ binary-impacting change gets its own version before it is merged.
   number." and a blank ABV that blocked export; the sign is dropped on open,
   since the label already prints "% alc by vol".
 
+- **Re-zipped label and master files keep their art.** A `.label` or
+  `.master` that was unzipped and re-compressed with Finder or `zip -r` now
+  opens with its texture and mask instead of an empty, nameless image.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed

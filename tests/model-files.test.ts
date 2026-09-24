@@ -30,6 +30,18 @@ describe(".master v3 container", () => {
     expect(a).toEqual(assets);
   });
 
+  it("skips directory entries a Finder / zip -r re-zip adds (#100)", () => {
+    const { assets } = unpackMaster(zipSync({
+      "master.json": strToU8(serializeMaster(lolevV3())),
+      "texture/": new Uint8Array(0),
+      "texture/rock.png": png(1),
+      "mask/": new Uint8Array(0),
+      "mask/metal.png": png(2),
+    }));
+    expect(assets.texture).toEqual({ name: "rock.png", bytes: png(1) });
+    expect(assets.mask).toEqual({ name: "metal.png", bytes: png(2) });
+  });
+
   it("opens a legacy JSON-only v1 master converted to v3, with no assets", () => {
     const { master, assets, warnings } = unpackMaster(strToU8(serializeMasterV1(lolevV1())));
     expect(master.formatVersion).toBe(3);
