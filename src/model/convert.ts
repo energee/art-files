@@ -57,6 +57,7 @@ const STYLE_KEYS = new Set<keyof Style>(["fill", "layer", "stroke", "strokeLayer
 const MULTILINE = new Set(["description"]);
 /** Old field ids that were not their layer's id. */
 const FIELD_RENAMES: Record<string, string> = { style: "styleLine", upc: "barcode" };
+const v3Id = (fid: string) => FIELD_RENAMES[fid] ?? fid;
 /** Old FieldDecl paths → the layer they filled (generic fields start with
  *  their layer id instead). */
 const PATH_LAYER: Record<string, string> = {
@@ -414,15 +415,15 @@ export function convertLabelV2(old: LabelFileV2, master: Master): { label: Label
   // the overrides are built.
   const values: Record<string, LayerValue> = {};
   const dormant: Record<string, LayerValue> = {};
-  // Benched under the v3 layer id (FIELD_RENAMES), so a later rebind onto a
+  // Benched under the v3 layer id (v3Id), so a later rebind onto a
   // master with that layer finds it — for live values the master lacks and
   // for the old bench alike.
   const bench = (fid: string, v: FieldValue) => {
     if (typeof v === "boolean") warnings.push(`Dormant on/off value "${fid}" dropped.`);
-    else dormant[FIELD_RENAMES[fid] ?? fid] = String(v);
+    else dormant[v3Id(fid)] = String(v);
   };
   for (const [fid, v] of Object.entries(old.values)) {
-    const id = FIELD_RENAMES[fid] ?? fid;
+    const id = v3Id(fid);
     const layer = layerIn(master, id);
     if (!layer) { bench(fid, v); continue; }
     const lv = toLayerValue(layer, v, op.byId[id], warnings);

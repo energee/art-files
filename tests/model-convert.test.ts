@@ -230,13 +230,14 @@ describe("convertLabelV2", () => {
   });
 
   it("benches renamed v2 fields under their v3 layer ids so a rebind restores them (#97)", () => {
-    const bare = { ...lolevV3(), layers: lolevV3().layers.filter((l) => l.id !== "styleLine" && l.id !== "barcode") };
+    const full = lolevV3();
+    const bare = { ...full, layers: full.layers.filter((l) => l.id !== "styleLine" && l.id !== "barcode") };
     const { label } = convertLabelV2(v2({
       values: { name: "X", style: "IPA" },
       dormant: { values: { upc: "036000291452" }, variants: [] },
     }), bare);
     expect(label.dormant!.values).toEqual({ styleLine: "IPA", barcode: "036000291452" });
-    const home = rebindLabel(label, bare, lolevV3()).label;
+    const home = rebindLabel(label, bare, full).label;
     expect(home.values).toMatchObject({ styleLine: "IPA", barcode: "036000291452" });
     expect(home.dormant).toBeUndefined();
   });
