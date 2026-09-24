@@ -168,6 +168,11 @@ binary-impacting change gets its own version before it is merged.
   edits. With unsaved work open, Label Lab stops a logout or shutdown until
   you've decided; with nothing unsaved it quits right away as before.
 
+- **The inspector stays 300px wide in a narrow window.** Below 640px it took
+  three quarters of the window and covered the label. Above that it was 312px
+  and overlapped the canvas by 12px. It is now 300px at every width, and the
+  label recentres in the space beside it.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed

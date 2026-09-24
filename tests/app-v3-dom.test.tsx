@@ -424,3 +424,36 @@ it("a resize whose first move changes nothing never folds into the previous edit
 it("Escape on a drag that never moved anything leaves the previous edit alone", async () => {
   await renameThenGesture((p) => { p.onDrag("barcode", 0, 0, true); });
 }, 60_000);
+
+// #132: the inspector Sheet is 300px at every width (see the SheetContent
+// comment in App.tsx for why the base's variant classes won). happy-dom
+// computes no Tailwind CSS, so this pins the merged class list instead.
+it("sizes the inspector sheet to 300px at every breakpoint (#132)", async () => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(createElement(DocumentEditor, {
+        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
+        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
+      }));
+    });
+    const row = container.querySelector('[data-layer-id="name"]')!;
+    await act(async () => {
+      (row.querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement).click();
+    });
+    const sheet = document.querySelector('[data-slot="sheet-content"]');
+    expect(sheet).not.toBeNull();
+    // Only what applies to this right-side sheet: other sides' classes never match.
+    const sizing = sheet!.className.split(/\s+/)
+      .filter((c) => /(^|:)(max-)?w-/.test(c) && !/data-\[side=(left|top|bottom)\]/.test(c));
+    expect(sizing.length).toBeGreaterThan(0);
+    for (const c of sizing) expect(c).toMatch(/w-\[300px\]$|max-w-none$/);
+  } finally {
+    act(() => { root.unmount(); });
+    container.remove();
+  }
+});
