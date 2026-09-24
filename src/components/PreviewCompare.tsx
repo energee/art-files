@@ -346,9 +346,8 @@ export const PreviewCompare = forwardRef<
      *  the CUMULATIVE delta from the drag's start, in label points, `first`
      *  true on the movement that crosses the threshold — App applies moveBy
      *  against the layer as it was at the start (and every other selected
-     *  layer, if `id` is selected) and folds the drag into one undo step —
-     *  opened by the first move that actually patches something, which may
-     *  come after `first`. Returns the lines the drag snapped to, which drive
+     *  layer, if `id` is selected) and folds the drag into one undo step.
+     *  Returns the lines the drag snapped to, which drive
      *  the highlights here. */
     onDrag: (id: string, dx: number, dy: number, first: boolean) => SnapLines;
     /** Escape mid-drag or mid-resize: App undoes the gesture's single step,
@@ -518,7 +517,7 @@ export const PreviewCompare = forwardRef<
 
   // Drag-to-move: pointerdown on an unlocked layer arms a two-axis drag;
   // crossing a 3px threshold starts the gesture (first=true); App folds every
-  // move into ONE undo step, opened by the first move that changes anything.
+  // move into ONE undo step.
   const drag = useRef<{
     id: string; startClientX: number; startClientY: number;
     pxPerPtX: number; pxPerPtY: number; started: boolean;

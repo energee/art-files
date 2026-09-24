@@ -57,9 +57,7 @@ export function useHistory<T>(initial: T | (() => T)) {
   // `coalesce` overrides the timing window when given: the preview's inline
   // text editor applies every keystroke live but must land as ONE undo step
   // per session, however slowly the user types — it passes false on the
-  // session's first edit (open a step) and true on the rest (fold in). A
-  // canvas drag passes whether it has opened its step yet (App's
-  // gestureOpened), since its first move may patch nothing (#74).
+  // session's first edit (open a step) and true on the rest (fold in).
   const set = useCallback((next: T | ((current: T) => T), coalesce?: boolean) => {
     setH((s) => {
       const value = typeof next === "function" ? (next as (c: T) => T)(s.present) : next;

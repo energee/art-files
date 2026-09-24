@@ -147,6 +147,7 @@ async function renameThenGesture(gesture: (p: PreviewProps) => void) {
   document.body.appendChild(container);
   const root = createRoot(container);
   const onMeta = vi.fn();
+  perf.source = null; // so the wait below waits for THIS mount's assets
   try {
     await act(async () => {
       root.render(createElement(DocumentEditor, {

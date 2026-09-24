@@ -1137,7 +1137,8 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  exists. */
   const gestureOpened = useRef(false);
   const gesturePatch = (entries: [string, DeepPartial<Layer>][]) => {
-    if (entries.length && patchMany(entries, gestureOpened.current)) gestureOpened.current = true;
+    const real = entries.filter(([, p]) => Object.keys(p).length);
+    if (real.length && patchMany(real, gestureOpened.current)) gestureOpened.current = true;
   };
   const cancelGesture = () => {
     if (gestureOpened.current) mutating(undo)();
@@ -1262,8 +1263,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const sx = snapDelta({ min: bounds.x, size: bounds.w }, dx, lines.x, SNAP_PT);
     const sy = snapDelta({ min: bounds.y, size: bounds.h }, dy, lines.y, SNAP_PT);
     const entries = dragBase.current.bases
-      .map(({ layer }): [string, DeepPartial<Layer>] => [layer.id, moveBy(layer, sx.delta, sy.delta, moving)])
-      .filter(([, p]) => Object.keys(p).length);
+      .map(({ layer }): [string, DeepPartial<Layer>] => [layer.id, moveBy(layer, sx.delta, sy.delta, moving)]);
     gesturePatch(entries);
     // The indicator spans the moved selection AND whatever it lined up with.
     const top = bounds.y + sy.delta;
@@ -1329,7 +1329,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const sy = handle.hy === 0 ? { delta: dy, line: null }
       : snapDelta({ min: edgeY, size: 0 }, dy, base.lines.y, SNAP_PT);
     const p = resizeBy(base.layer, base.box, handle, sx.delta, sy.delta, uniform);
-    if (Object.keys(p).length) gesturePatch([[id, p]]);
+    gesturePatch([[id, p]]);
     // The indicator spans the resized box and whatever the grabbed edge lined
     // up with. `patch` is a state update, so boxesNow() here still measures
     // the PREVIOUS frame's layers — the segment's cross-axis extent trails the
