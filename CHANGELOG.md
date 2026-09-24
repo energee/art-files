@@ -3,6 +3,16 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.94] - 2026-09-23
+
+### Fixed
+
+- **Escape inside the inspector no longer closes it.** Pressing Escape in an
+  inspector field (to cancel a typed value or dismiss its suggestions), while
+  editing text on the preview, or mid-drag now only cancels that action; the
+  layer stays selected and the inspector stays open. Escape with no field
+  being edited still closes the inspector.
+
 ## [0.1.68] - 2026-09-15
 
 ### Fixed

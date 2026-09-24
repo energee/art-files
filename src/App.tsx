@@ -164,6 +164,13 @@ const WIDGET_OWNS_ARROWS = [
   '[data-slot="toggle-group"]',
 ].join(",");
 
+/** A key event aimed at a text field or contenteditable: the field owns
+ *  editing keys (undo, bare shortcuts, arrows, Escape) while it has focus. */
+const isTypingTarget = (target: EventTarget | null): boolean => {
+  const el = target as HTMLElement | null;
+  return !!el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "");
+};
+
 /** A fresh label on `master`: nothing filled, no variant on. */
 const newLabel = (master: Master): LabelFile =>
   ({ formatVersion: 3, masterId: master.id, enabledVariants: [], values: {} });
@@ -2386,8 +2393,18 @@ export const DocumentEditor = memo(function DocumentEditor({
           // Only a deliberate close clears the selection — the sheet has no
           // backdrop, so every click in the list or on the canvas reports as
           // "outside-press", and honouring it wiped ⇧/⌘ selections.
+          // Escape is deliberate only when nothing else claimed it: Base UI
+          // listens on the document and ignores defaultPrevented, so Escape
+          // that cancels a field's draft/suggestions, an on-canvas text edit
+          // or a canvas drag would otherwise also close this and deselect.
           onOpenChange={(open, details) => {
-            if (!open && (details.reason === "escape-key" || details.reason === "close-press"))
+            if (open) return;
+            if (details.reason === "escape-key"
+              && (details.event.defaultPrevented || isTypingTarget(details.event.target))) {
+              details.cancel();
+              return;
+            }
+            if (details.reason === "escape-key" || details.reason === "close-press")
               clearSelection();
           }}>
           <SheetContent side="right" showOverlay={false} showCloseButton={false}
