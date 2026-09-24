@@ -11,6 +11,14 @@ binary-impacting change gets its own version before it is merged.
   like `€` and `—`, and emoji in a QR layer are now encoded as UTF-8, so
   phones read the same text you typed instead of garbled characters or
   nothing at all. Plain ASCII QR codes (such as beer URLs) are unchanged.
+## [0.1.70] - 2026-09-23
+
+### Fixed
+
+- **Selecting a layer no longer puts the cursor in its name field.** The
+  inspector opens without taking focus, so Delete/Backspace removes the
+  selected layer and the arrow keys nudge it, instead of quietly editing the
+  layer's name.
 
 ## [0.1.68] - 2026-09-15
 
