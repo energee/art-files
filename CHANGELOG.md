@@ -85,6 +85,11 @@ binary-impacting change gets its own version before it is merged.
   an "undefined" error on export). It now says the value is too long, how
   many bytes it is, and to shorten it or lower the error correction level.
 
+- **Set-aside style lines and barcodes in older labels come back.** When an
+  older label's style line or UPC was set aside because its master had no
+  place for it, moving the label onto a master that has one now restores the
+  value instead of losing it.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed

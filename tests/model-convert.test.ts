@@ -9,6 +9,7 @@ import {
 } from "../src/model/layers";
 import { lolevMaster as lolevV3 } from "../src/model/lolevLayers";
 import { resolveLayers } from "../src/model/resolveLayers";
+import { rebindLabel } from "../src/model/rebindLayers";
 import { lolevMaster as lolevV1 } from "../src/model/lolev";
 import type { LabelFileV2 } from "../src/model/types";
 import { defaultConfig, KEYLINE } from "../src/defaults";
@@ -226,6 +227,19 @@ describe("convertLabelV2", () => {
     }), lolevV3());
     expect(label.values.partner).toBeUndefined();
     expect(label.dormant).toEqual({ values: { partner: "p.png", old: "v" }, variants: ["retired"] });
+  });
+
+  it("benches renamed v2 fields under their v3 layer ids so a rebind restores them (#97)", () => {
+    const full = lolevV3();
+    const bare = { ...full, layers: full.layers.filter((l) => l.id !== "styleLine" && l.id !== "barcode") };
+    const { label } = convertLabelV2(v2({
+      values: { name: "X", style: "IPA" },
+      dormant: { values: { upc: "036000291452" }, variants: [] },
+    }), bare);
+    expect(label.dormant!.values).toEqual({ styleLine: "IPA", barcode: "036000291452" });
+    const home = rebindLabel(label, bare, full).label;
+    expect(home.values).toMatchObject({ styleLine: "IPA", barcode: "036000291452" });
+    expect(home.dormant).toBeUndefined();
   });
 
   it("carries masterHint and enabledVariants verbatim", () => {
