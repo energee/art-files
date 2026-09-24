@@ -66,24 +66,26 @@ it("a key no command binds is left to the browser", async () => {
   expect(await press(document.body, { key: "p", metaKey: true })).toBe(false);
 });
 
+/** Mount `el` in the editor's container and give it focus. */
+const focused = <T extends HTMLElement>(el: T): T => {
+  container.appendChild(el);
+  el.focus();
+  return el;
+};
+
 it("⌘ shortcuts still run while a text field has focus", async () => {
-  const input = document.createElement("input");
-  container.appendChild(input);
-  input.focus();
+  const input = focused(document.createElement("input"));
   expect(await press(input, { key: "o", metaKey: true })).toBe(true);
   expect(onOpenProject).toHaveBeenCalledTimes(1);
-  const editor = document.createElement("div");
-  editor.contentEditable = "true";
-  container.appendChild(editor);
-  editor.focus();
+  const div = document.createElement("div");
+  div.contentEditable = "true";
+  const editor = focused(div);
   expect(await press(editor, { key: "s", metaKey: true })).toBe(true);
   expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: false });
 });
 
 it("bare-key shortcuts stay inert while a text field has focus", async () => {
-  const input = document.createElement("input");
-  container.appendChild(input);
-  input.focus();
+  const input = focused(document.createElement("input"));
   expect(await press(input, { key: "g" })).toBe(false);
   expect(await press(input, { key: "2" })).toBe(false);
 });

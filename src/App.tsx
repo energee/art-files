@@ -867,10 +867,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (!mods && e.shiftKey) return;
       const el = e.target as HTMLElement | null;
       // The BARE keys (1/2/3/r/g) stand aside where they are someone else's
-      // input: a text field (they are the text being typed) or an open menu,
-      // dialog or Select (its typeahead). The ⌘ shortcuts stay live in both —
-      // ⌘S saves from inside a field, as in any native app, instead of
-      // falling through to the browser's Save Page.
+      // input: a text field, or an open menu/dialog/Select's typeahead. The ⌘
+      // shortcuts stay live in both — ⌘S saves from inside a field.
       if (!mods && (isTypingTarget(el) || el?.closest?.(POPUP_OWNS_KEYS))) return;
       const cmd = commandsRef.current.find((c) => c.key === e.key.toLowerCase() && c.mods === mods);
       if (!cmd) return;
@@ -885,8 +883,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   }, []);
 
   // Arrow-key nudge for the selection: 1pt a press, 10pt with shift. Inert
-  // while typing, like undo and the bare-key commands; registered once and reading
-  // the live move through a ref, like the command table above.
+  // while typing, like undo and the bare-key commands; registered once and
+  // reading the live move through a ref, like the command table above.
   const nudgeRef = useRef<(dx: number, dy: number) => void>(() => {});
   useEffect(() => {
     const steps: Record<string, [number, number]> = {
@@ -1990,7 +1988,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   }
 
   /** Every command the app exposes, once. The palette and AppMenu read this
-   *  list, while the key listener dispatches off `key`. */
+   *  list, while the key listener dispatches off `key`. A ⌘ key here fires
+   *  even inside a text field, so never bind one a field needs (A/C/V/X/Z). */
   const twoD = viewMode === "2d";
   const commands: Command[] = [
     { id: "tab-new", label: "New Tab", key: "n", mods: "⌘", run: onNewTab },
