@@ -5,7 +5,7 @@
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 
 vi.mock("../src/components/PreviewCompare", () => ({ PreviewCompare: () => null }));
@@ -21,10 +21,12 @@ import { DocumentEditor } from "../src/App";
 
 // The browser download fallback (no FS-Access picker in happy-dom) ends in an
 // <a download> click; record the file names instead of navigating.
-const saved = { names: [] as string[] };
-HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
-  if (this.download) saved.names.push(this.download);
-};
+let savedNames: string[] = [];
+beforeEach(() => {
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+    if (this.download) savedNames.push(this.download);
+  });
+});
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -32,7 +34,8 @@ afterEach(async () => {
   await act(async () => { root?.unmount(); });
   container?.remove();
   root = null; container = null;
-  saved.names = [];
+  savedNames = [];
+  vi.restoreAllMocks();
 });
 
 async function mount() {
@@ -78,7 +81,7 @@ it("close-prompt Save with an unsaved master edit opens the master review and ke
   // false = TabsShell cancels the close (and any window-close sweep).
   expect(result).toBe(false);
   expect(reviewOpen()).toBe(true);
-  expect(saved.names).toEqual([]);
+  expect(savedNames).toEqual([]);
 });
 
 it("close-prompt Save with no master edit saves the label and lets the tab close", async () => {
@@ -87,6 +90,6 @@ it("close-prompt Save with no master edit saves the label and lets the tab close
   await act(async () => { result = await saveSlot.current!(); });
   expect(result).toBe(true);
   expect(reviewOpen()).toBe(false);
-  expect(saved.names).toHaveLength(1);
-  expect(saved.names[0]).toMatch(/\.label$/);
+  expect(savedNames).toHaveLength(1);
+  expect(savedNames[0]).toMatch(/\.label$/);
 });

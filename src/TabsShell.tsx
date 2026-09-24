@@ -268,10 +268,9 @@ export default function TabsShell() {
   const saveAndClose = async (id: number) => {
     setSaving(true);
     try {
-      // false = the user cancelled the save dialog, or the tab has unsaved
-      // master edits and the editor opened its Save Master review instead
-      // (a label save can't keep them) — keep the tab (and, mid-sweep,
-      // abort the window close: a cancel is a cancel).
+      // false = keep the tab (save dialog cancelled, or the editor sent it
+      // to Save Master — see saveSlot in App.tsx) and, mid-sweep, abort the
+      // window close: a cancel is a cancel.
       if (await extras.current.get(id)?.saveSlot.current?.()) doClose(id);
       else cancelClose();
     } finally {

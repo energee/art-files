@@ -410,9 +410,8 @@ type DocumentEditorProps = {
   onOpenSettled: (seq: number) => void;
   onMeta: (meta: DocumentMeta) => void;
   /** Shell-owned slot this editor assigns its close-prompt save fn into on
-   *  every render; resolves false when the user cancels the save dialog, or
-   *  when unsaved master edits sent them to the Save Master review instead
-   *  (the tab must stay open). */
+   *  every render; resolves false when the tab must stay open (save dialog
+   *  cancelled, or redirected to the Save Master review). */
   saveSlot: { current: (() => Promise<boolean>) | null };
   /** The Document Settings knobs (DPI/bleed/corner/edge) — shell-owned. */
   render: RenderSettings;
@@ -1535,10 +1534,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   // edits: open the Save Master review instead and resolve false, which
   // keeps the tab open and aborts any window-close sweep (issue #159).
   // Label overrides alone don't count — the .label saves them.
-  saveSlot.current = () => {
+  saveSlot.current = async () => {
     if (!templateMoved) return saveProject();
     setPendingSave({ as: false });
-    return Promise.resolve(false);
+    return false;
   };
 
   /** The template assets a Save Master captures: the loaded texture/mask
