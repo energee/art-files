@@ -9,7 +9,7 @@ import {
 import { ART, PAGE } from "@/layout";
 import {
   clampMargin, layoutGuides, pointToScreen, pointToUnit, rulerTicks, screenToPoint,
-  unitToPoint,
+  unitToPoint, VERTICAL_LABEL_GAP, withCornerClear,
   type GuideAxis, type ManualGuide, type RulerUnit,
 } from "@/rulers";
 import { cn } from "@/lib/utils";
@@ -164,7 +164,7 @@ export function Rulers(props: {
     origin: ART.x,
     unit,
   }) : [], [geometry, showRulers, unit]);
-  const verticalTicks = useMemo(() => geometry && showRulers ? rulerTicks({
+  const verticalTicks = useMemo(() => geometry && showRulers ? withCornerClear(rulerTicks({
     visibleStart: RULER_SIZE,
     visibleEnd: geometry.height,
     frameStart: geometry.pageTop,
@@ -172,7 +172,7 @@ export function Rulers(props: {
     pageSize: PAGE.h,
     origin: ART.y,
     unit,
-  }) : [], [geometry, showRulers, unit]);
+  }), RULER_SIZE) : [], [geometry, showRulers, unit]);
   const locked = useMemo(() => layoutGuides(marginPt), [marginPt]);
 
   if (!geometry) return null;
@@ -286,7 +286,7 @@ export function Rulers(props: {
                 <line x1={tick.major ? 10 : 14} x2={RULER_SIZE}
                   y1={tick.screen} y2={tick.screen} className="stroke-muted-foreground" />
                 {tick.label !== undefined && (
-                  <text transform={`translate(8 ${tick.screen - 2}) rotate(-90)`}
+                  <text transform={`translate(8 ${tick.screen - VERTICAL_LABEL_GAP}) rotate(-90)`}
                     className="fill-muted-foreground text-[8px]">
                     {tick.label}
                   </text>
