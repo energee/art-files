@@ -13,6 +13,8 @@ import {
 } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { parseMaster } from "../src/model/layers";
+import { placeLayers } from "../src/model/place";
+import { resolveLayers } from "../src/model/resolveLayers";
 import type {
   BarcodeLayer, ImageLayer, LabelFile, Layer, Master, QrLayer, RelativeY, TextLayer,
 } from "../src/model/layers";
@@ -538,5 +540,35 @@ describe("structureOnlyMaster", () => {
     expect((collab(next).layers.name as { lines: { text: string }[] }).lines[0].text).toBe("");
     expect((collab(next).layers.wordmark as { lines: { text: string }[] }).lines[0].text)
       .toBe("Collab Brand");
+  });
+});
+
+// Issue #98: removing a layer must not move the layers bound below it. The
+// dependent takes the vacated slot, i.e. its top lands where the removed
+// layer's top WAS — whatever guide or vertical anchor placed it there.
+describe("removeLayer keeps a bound dependent where the removed layer sat", () => {
+  const sizeOf = (l: Layer) => ({ w: 100, h: l.id === "description" ? 29 : 12 });
+  const boxesOf = (m: Master) =>
+    placeLayers(resolveLayers(m, ["collab"], {}, undefined, { keepDisabled: true }).layers, sizeOf, guides);
+  it.each([
+    ["a top-guide", { guideY: "top", y: 10 }],
+    ["a bottom-anchored", { y: 150, vAnchor: "bottom" }],
+  ] as const)("old-style `below` dependent of %s layer", (_, pos) => {
+    const m = setLayer(lolevMaster(), "description", pos as Partial<Layer>);
+    const before = boxesOf(m);
+    const after = boxesOf(removeLayer(m, "description", before));
+    expect(after.get("collabLead")!.y).toBeCloseTo(before.get("description")!.y);
+  });
+  it("old-style `below` dependent of a layer placed by a new-style binding", () => {
+    const m = setLayer(lolevMaster(), "description", { binding: { to: "name", side: "bottom", gap: 5 } });
+    const before = boxesOf(m);
+    const removed = removeLayer(m, "description", before);
+    expect(boxesOf(removed).get("collabLead")!.y).toBeCloseTo(before.get("description")!.y);
+    expect(() => parseMaster(removed)).not.toThrow();
+  });
+  it("a chained `below` dependent keeps its binding", () => {
+    const m = lolevMaster();
+    const removed = removeLayer(m, "collabLead", boxesOf(m));
+    expect(collab(removed).layers.collabLeft!.y).toEqual(collab(m).layers.collabLead!.y);
   });
 });

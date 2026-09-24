@@ -140,9 +140,9 @@ function Field(props: { id?: string; label: string; badge?: ReactNode; children:
  *  Each resets only its own source, so clearing your own edit can never
  *  rewrite the shipped variant (which is what one merged badge used to do).
  *
- *  `paths` are checked in order and the first hit is what Reset restores — a
- *  bound y is written as one object but a parent's leaf-path walk may report
- *  it as "y", "y.below" or "y.gap". */
+ *  `paths` are checked in order and the first hit is what Reset restores. A
+ *  binding and a bound y are each ONE path to edit.ts's leaf-path walk
+ *  ("binding", "y"), never split into their fields (#92). */
 function Badge(props: {
   paths: readonly string[];
   overridden: Overridden;
@@ -381,7 +381,7 @@ function Position(props: Ctx & {
         </DropdownMenu>
       ) : (
         <>
-          <Field label="Bound to" badge={badge(["binding", "y.below", "y"], "Binding")}>
+          <Field label="Bound to" badge={badge(["binding", "y"], "Binding")}>
             <span className="flex items-center gap-1 text-xs font-medium">
               <Link2 className="size-3 text-muted-foreground" aria-hidden="true" />{nameOf(binding.to)}
             </span>
@@ -397,7 +397,7 @@ function Position(props: Ctx & {
                 <option key={side} value={side}>{side}</option>)}
             </select>
           </Field>
-          <Row badge={badge(["binding.gap", "y.gap", "y"], "Gap")}>
+          <Row badge={badge(["binding", "y"], "Gap")}>
             <DimensionField id={`${id}-gap`} label="Gap" unit={props.unit} value={binding.gap}
               min={-500} max={500} {...PT}
               onChange={(gap) => layer.binding
@@ -982,7 +982,7 @@ export function LayerInspector(props: {
   /** Every layer's id and name, for the "Bind to layer…" picker (the layer
    *  itself is filtered out here regardless). */
   layerNames: { id: string; name: string }[];
-  /** Dotted paths, relative to the layer ("x", "style.fill", "y.gap"), that
+  /** Dotted paths, relative to the layer ("x", "style.fill", "binding"), that
    *  a variant/label override currently wins on → a reset badge beside the
    *  control that writes that path. */
   overridden: Overridden;

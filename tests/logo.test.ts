@@ -54,3 +54,42 @@ describe("parseLogo collab fit", () => {
     expect(art.h).toBeCloseTo(100, 6);
   });
 });
+
+// #67: the PSD builder only reads M/L/C/Z, so quadratics must leave as cubics.
+describe("parseLogo quadratic elevation", () => {
+  it("elevates Q to the exact equivalent C", () => {
+    const art = parseLogo('<svg viewBox="0 0 10 10"><path d="M0 0 Q5 10 10 0 Z"/></svg>', 100, 100);
+    // C1 = P0 + 2/3(Q1 - P0), C2 = P2 + 2/3(Q1 - P2) with P0=(0,0), Q1=(50,100), P2=(100,0).
+    expect(art.paths[0]).toBe("M 0 0 C 33.3333 66.6667 66.6667 66.6667 100 0 Z");
+  });
+
+  it("elevates T (smooth quadratic) too, reflecting the previous control point", () => {
+    const art = parseLogo('<svg viewBox="0 0 20 10"><path d="M0 0 Q5 10 10 0 T20 0"/></svg>', 20);
+    // T's implied control point is (15,-10): the reflection of (5,10) through (10,0).
+    expect(art.paths[0]).toBe("M 0 0 C 3.3333 6.6667 6.6667 6.6667 10 0 C 13.3333 -6.6667 16.6667 -6.6667 20 0");
+  });
+});
+
+// #68: only rendered geometry is ink — see renderedOnly in src/logo.ts.
+describe("parseLogo non-rendered geometry", () => {
+  const TRIANGLE = '<path d="M 40 60 L 60 60 L 50 40 Z"/>';
+  const SQUARE = '<path d="M -500 -500 L 500 -500 L 500 500 L -500 500 Z"/>';
+  const hidden = (tag: string) => `<${tag} id="x">${SQUARE}</${tag}>${TRIANGLE}`;
+
+  it.each([
+    ["a clipPath square around the triangle", `<clipPath id="c">${SQUARE}</clipPath><g clip-path="url(#c)">${TRIANGLE}</g>`],
+    ["<defs>", hidden("defs")],
+    ["<mask>", hidden("mask")],
+    ["<symbol>", hidden("symbol")],
+    ["<pattern>", hidden("pattern")],
+    ["HTML-commented paths", `<!-- ${SQUARE} -->${TRIANGLE}`],
+    // Without the `/>` guard, <defs/> would swallow the triangle up to </defs>.
+    ["a self-closing <defs/> without swallowing the art", `<defs/>${TRIANGLE}<defs>${SQUARE}</defs>`],
+  ])("ignores %s", (_name, body) => {
+    const art = parseLogo(`<svg viewBox="0 0 100 100">${body}</svg>`, 36, 36);
+    expect(art.paths).toHaveLength(1);
+    // The 20x20 triangle fills the slot rather than shrinking to ~0.7pt.
+    expect(art.w).toBeCloseTo(36, 6);
+    expect(art.h).toBeCloseTo(36, 6);
+  });
+});

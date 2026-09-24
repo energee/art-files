@@ -36,6 +36,13 @@ recorded-at: d10cddf
   before implementation (`docs/superpowers/specs/2026-08-02-label-pdf-generator-design.md`,
   `docs/superpowers/plans/2026-08-02-shadcn-ui-rewrite.md`).
 
+- Every file picker branches on `isTauri()` FIRST and uses the native
+  dialog (`openNativeFile` / `saveNativeFile` in `src/files.ts`): WKWebView
+  has no File System Access API, and the browser fallbacks lose the file's
+  path, so desktop Save could not write back in place (`openMasterPicker`
+  and `saveProject` in `src/App.tsx`, `openProjectPicker` in
+  `src/TabsShell.tsx`).
+
 ## Naming
 
 - Source files are single lowercase words named for their domain concept

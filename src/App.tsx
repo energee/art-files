@@ -21,9 +21,9 @@
 // inactive ones, so anything here that registers window/document-level
 // listeners or renders a singleton surface (the native menu) MUST honor the
 // `active` prop — and per-document renders are dropped while inactive (see
-// the deactivation effect). The editor reports { title, dirty, edited,
-// filePath } upward through onMeta; the shell owns tabs, file-open routing,
-// render settings, and the updater.
+// the deactivation effect). The editor reports its DocumentMeta upward
+// through onMeta; the shell owns tabs, file-open routing, render settings,
+// and the updater.
 import { RenderSettings as RenderSettingsFields } from "@/components/RenderSettings";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { MasterSaveReview } from "@/components/MasterSaveReview";
@@ -40,7 +40,7 @@ import {
   writeHandle,
 } from "@/filePickers";
 import { openNativeFile, readNativeFile, saveNativeFile } from "@/files";
-import { useHistory } from "@/history";
+import { useHistory, type Coalesce } from "@/history";
 import type {
   ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master,
 } from "@/model/layers";
@@ -60,11 +60,11 @@ import {
   type MasterAssets,
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
-import { SHIPPED_MASTER_ID, masterIndex, rememberMaster, resolveDefaultMaster, resolveMasterById } from "@/masters";
+import { SHIPPED_MASTER_ID, masterIndex, rememberMaster, resolveDefaultMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget } from "@/masters";
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
-import { makeHiddenPropsEqual } from "@/tabs";
+import { makeHiddenPropsEqual, type TabMeta } from "@/tabs";
 import { EMBEDDABLE_RASTER, mimeFor, rasterKind, tintRgba } from "@/collab";
 import { parseLogo } from "@/logo";
 // The builders are imported dynamically at export time (see buildFull /
@@ -75,7 +75,7 @@ import type { PsdAssets } from "@/psd/build";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
 import {
-  ART, BLEED_SHIFT, PAGE, PREVIEW_OVERSAMPLE, PSD_DOC, setBleed as setLayoutBleed, setOutputDpi,
+  ART, BLEED_SHIFT, PAGE, PREVIEW_OVERSAMPLE, setBleed as setLayoutBleed, setOutputDpi,
 } from "@/layout";
 import { LayerList } from "@/components/LayerList";
 import { LayerInspector } from "@/components/LayerInspector";
@@ -108,7 +108,7 @@ import {
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { loadLabelFaces, labelFontCss } from "@/fonts";
+import { FONT_URLS, loadLabelFaces, labelFontCss } from "@/fonts";
 import { fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
 import { loadFonts } from "@/pdf/fonts";
 import type { MeasureFace, PlanAssets } from "@/plan";
@@ -254,27 +254,15 @@ async function canvasToPng(canvas: HTMLCanvasElement): Promise<Uint8Array> {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
-/** Decode an image into a fresh 2D canvas — the front half of every pixel
- *  pipeline here. `size` forces the canvas dimensions and cover-fits the
- *  image into them, centred; without it the canvas takes the image's
- *  natural size. The bitmap is always closed. */
-async function decodeToCanvas(
-  src: Blob, size?: { width: number; height: number },
-): Promise<HTMLCanvasElement> {
+/** Decode an image into a fresh 2D canvas at its natural size — the front
+ *  half of every pixel pipeline here. The bitmap is always closed. */
+async function decodeToCanvas(src: Blob): Promise<HTMLCanvasElement> {
   const bmp = await createImageBitmap(src);
   try {
     const canvas = document.createElement("canvas");
-    canvas.width = size?.width ?? bmp.width;
-    canvas.height = size?.height ?? bmp.height;
-    const ctx = canvas.getContext("2d")!;
-    if (size) {
-      const s = Math.max(canvas.width / bmp.width, canvas.height / bmp.height);
-      const w = bmp.width * s;
-      const h = bmp.height * s;
-      ctx.drawImage(bmp, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
-    } else {
-      ctx.drawImage(bmp, 0, 0);
-    }
+    canvas.width = bmp.width;
+    canvas.height = bmp.height;
+    canvas.getContext("2d")!.drawImage(bmp, 0, 0);
     return canvas;
   } finally {
     bmp.close();
@@ -345,6 +333,44 @@ async function previewPng(src: ImageBitmap | HTMLCanvasElement): Promise<Uint8Ar
   return canvasToPng(c);
 }
 
+type LoadedTexture = Loaded & { kind: "png" | "jpg" };
+// srcBytes: the original upload — the bytes Save writes.
+type LoadedMask = Loaded & { error?: string; srcBytes: Uint8Array };
+
+/** Decode a texture file into its slot value; state-free, like readMask and
+ *  readCustomImage, so an open can decode before it commits (#81). PNG and
+ *  JPEG pass through byte-for-byte; anything else the browser can decode
+ *  (WebP) is re-encoded to PNG ONCE, here, and renamed to match — pdf-lib
+ *  embeds PNG and JPEG only. */
+async function readTexture(f: File): Promise<LoadedTexture> {
+  const passthrough = EMBEDDABLE_RASTER.test(f.name);
+  const decoded = passthrough ? await createImageBitmap(f) : await decodeToCanvas(f);
+  const bytes = passthrough
+    ? new Uint8Array(await f.arrayBuffer())
+    : await canvasToPng(decoded as HTMLCanvasElement);
+  const previewBytes = await previewPng(decoded);
+  const aspect = decoded.width / decoded.height;
+  if (decoded instanceof ImageBitmap) decoded.close();
+  const name = passthrough ? f.name : `${f.name.replace(/\.[^.]*$/, "")}.png`;
+  const previewUrl = URL.createObjectURL(f);
+  return { bytes, previewBytes, name, kind: rasterKind(name), previewUrl, aspect };
+}
+
+/** Decode a mask file into its slot value. The mask passes through
+ *  untouched — the printer accepts these plates as-authored (the metalness
+ *  map classifies pixels itself). */
+async function readMask(f: File): Promise<LoadedMask> {
+  const [srcBytes, canvas] = await Promise.all([
+    f.arrayBuffer().then((b) => new Uint8Array(b)), decodeToCanvas(f),
+  ]);
+  const previewBytes = await previewPng(canvas);
+  const previewUrl = URL.createObjectURL(f);
+  return {
+    bytes: srcBytes, previewBytes, name: f.name, previewUrl, srcBytes,
+    aspect: canvas.width / canvas.height,
+  };
+}
+
 // Blob snapshots the bytes at construction (no transfer), so no copy needed.
 const blobUrl = (bytes: Uint8Array, type: string) =>
   URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type }));
@@ -402,12 +428,7 @@ export type FileToOpen = {
 
 /** What the tab strip shows for this document — reported through onMeta
  *  whenever any field changes. */
-export type DocumentMeta = {
-  title: string;
-  dirty: boolean;
-  edited: boolean;
-  filePath: string | null;
-};
+export type DocumentMeta = TabMeta;
 
 type DocumentEditorProps = {
   active: boolean;
@@ -512,9 +533,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   const guides = useMemo(
     () => guideLines({ physical: master.physical, guides: master.guides }),
     [master.physical, master.guides]);
-  const [texture, setTexture] = useState<(Loaded & { kind: "png" | "jpg" }) | null>(null);
-  // srcBytes: the original upload — the bytes Save writes.
-  const [mask, setMask] = useState<(Loaded & { error?: string; srcBytes: Uint8Array }) | null>(null);
+  const [texture, setTexture] = useState<LoadedTexture | null>(null);
+  const [mask, setMask] = useState<LoadedMask | null>(null);
   // Every per-id image asset this document carries: image layers' art,
   // collab logos included (an image layer's value is a key here).
   const [customImages, setCustomImages] = useState<Record<string, CustomFile>>({});
@@ -693,7 +713,7 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  File → Save disables while clean. */
   const [dirty, setDirty] = useState(true);
   /** Whether the user has actually touched this document — the shell
-   *  prompts about closing a tab only when edited AND dirty. */
+   *  prompts about closing a tab only when edited AND unsaved (tabs.ts). */
   const [edited, setEdited] = useState(false);
   const editedRef = useRef(edited);
   editedRef.current = edited;
@@ -707,22 +727,25 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** THE write path. Every document edit is a pure Doc → Doc transition
    *  (model/edit.ts), recorded as one history entry; `coalesce` folds a
    *  gesture's many updates (a drag, an in-place text session) into one undo
-   *  step — see useHistory's `pushed`. Computed against the doc THIS render
-   *  sees so a no-op can return before marking the tab dirty. */
-  const edit = (fn: (d: Doc) => Doc, coalesce?: boolean) => {
+   *  step, and an inspector field passes its id so its typing is one step of
+   *  its own — see history.ts's `Coalesce`. Computed against the doc THIS render
+   *  sees so a no-op can return before marking the tab dirty. Returns whether
+   *  the edit was recorded (false for a no-op or a rejected edit). */
+  const edit = (fn: (d: Doc) => Doc, coalesce?: Coalesce): boolean => {
     let next: Doc;
     try {
       next = fn(doc);
     } catch (err) {
       setBuildError(errMsg(err)); // bindBelow/unbind re-validate through parseMaster
-      return;
+      return false;
     }
-    if (next === doc || (next.master === doc.master && next.label === doc.label)) return;
+    if (next === doc || (next.master === doc.master && next.label === doc.label)) return false;
     // Always mark edited: boot-restore's restoringRef only suppresses
     // swapLoaded/onTexture, not a keystroke while assets are still loading.
     setDirty(true);
     setEdited(true);
     setDoc((d) => (d === doc ? next : fn(d)), coalesce);
+    return true;
   };
   const editMaster = (fn: (m: Master) => Master, coalesce?: boolean) =>
     edit((d) => ({ ...d, master: fn(d.master) }), coalesce);
@@ -739,7 +762,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   const patchMany = (entries: [string, DeepPartial<Layer>][], coalesce?: boolean) =>
     edit((d) => patchLayers(d, entries), coalesce);
   /** A layer's CONTENT: always a fill value into the label, for any layer. */
-  const setContent = (layer: Layer, value: LayerValue, coalesce?: boolean) =>
+  const setContent = (layer: Layer, value: LayerValue, coalesce?: Coalesce) =>
     edit((d) => setContentIn(d, layer.id, value), coalesce);
   /** Wrap a mutation that bypasses `edit` (undo/redo) so it still marks
    *  the document dirty. */
@@ -840,7 +863,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   const activeRef = useRef(active);
   activeRef.current = active;
 
-  // ⌘Z / ⇧⌘Z (and ⌘Y) for the history. Inert while a text field has focus:
+  // ⌘Z / ⇧⌘Z (and ⌘Y) for the history, marking the document dirty like the
+  // menu commands do. Inert while a text field has focus:
   // there the browser's own per-field undo is the one the user means.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -850,12 +874,14 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (!e.metaKey && !e.ctrlKey) return;
       if (isTypingTarget(e.target)) return;
       e.preventDefault();
-      if (key === "y" || e.shiftKey) redo();
-      else undo();
+      // History moves bypass `edit`; without mutating, ⌘Z after a save left the tab clean (#76).
+      // Nothing to step over is a no-op, as the disabled menu item is.
+      const redoing = key === "y" || e.shiftKey;
+      if (redoing ? canRedo : canUndo) mutating(redoing ? redo : undo)();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [undo, redo]);
+  }, [undo, redo, canUndo, canRedo]);
 
   // Figma-style bare keys plus the ⌘-modified exports, with the same
   // inert-while-typing guard as undo. Registered once — reads the table
@@ -925,36 +951,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     set((old) => { if (old) URL.revokeObjectURL(old.previewUrl); return next; });
   };
 
-  async function onTexture(f: File) {
-    // PNG and JPEG pass through byte-for-byte; anything else the browser can
-    // decode (WebP) is re-encoded to PNG ONCE, here, and renamed to match —
-    // pdf-lib embeds PNG and JPEG only.
-    const passthrough = EMBEDDABLE_RASTER.test(f.name);
-    const decoded = passthrough ? await createImageBitmap(f) : await decodeToCanvas(f);
-    const bytes = passthrough
-      ? new Uint8Array(await f.arrayBuffer())
-      : await canvasToPng(decoded as HTMLCanvasElement);
-    const previewBytes = await previewPng(decoded);
-    const aspect = decoded.width / decoded.height;
-    if (decoded instanceof ImageBitmap) decoded.close();
-    const name = passthrough ? f.name : `${f.name.replace(/\.[^.]*$/, "")}.png`;
-    const previewUrl = URL.createObjectURL(f);
-    swapLoaded(setTexture, { bytes, previewBytes, name, kind: rasterKind(name), previewUrl, aspect });
-  }
-
-  async function onMask(f: File) {
-    // The mask passes through untouched — the printer accepts these plates
-    // as-authored (the metalness map classifies pixels itself).
-    const [srcBytes, canvas] = await Promise.all([
-      f.arrayBuffer().then((b) => new Uint8Array(b)), decodeToCanvas(f),
-    ]);
-    const previewBytes = await previewPng(canvas);
-    const previewUrl = URL.createObjectURL(f);
-    swapLoaded(setMask, {
-      bytes: srcBytes, previewBytes, name: f.name, previewUrl, srcBytes,
-      aspect: canvas.width / canvas.height,
-    });
-  }
+  async function onTexture(f: File) { swapLoaded(setTexture, await readTexture(f)); }
+  async function onMask(f: File) { swapLoaded(setMask, await readMask(f)); }
 
   /** Releases an image asset's bytes once nothing in the document names it
    *  any more — the same art can be shared by two layers, so only an
@@ -1133,12 +1131,29 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (!active) setDecodedAssets(null);
   }, [active]);
 
+  /** Whether the in-flight canvas drag or resize has opened its undo step.
+   *  The step opens on the first move that actually patches something, which
+   *  need not be the `first` move: one whose delta snapped to zero patches
+   *  nothing, and folding the next move in on `!first` merged the drag into
+   *  the edit BEFORE it (#74). Escape likewise undoes only a step that
+   *  exists. */
+  const gestureOpened = useRef(false);
+  const gesturePatch = (entries: [string, DeepPartial<Layer>][]) => {
+    const real = entries.filter(([, p]) => Object.keys(p).length);
+    if (real.length && patchMany(real, gestureOpened.current)) gestureOpened.current = true;
+  };
+  const cancelGesture = () => {
+    if (gestureOpened.current) mutating(undo)();
+    gestureOpened.current = false;
+  };
+
   /** Drag-to-move. PreviewCompare reports the cumulative delta from the
    *  drag's start; the patch is moveBy against the layer AS IT WAS at the
    *  start (kept in a ref for the gesture), so every move replaces the last
-   *  rather than stacking on it, and the whole drag coalesces into one undo
-   *  step. Horizontal snapping to the master's guides is moveBy's. When the
-   *  grabbed layer is selected, every selected unlocked layer moves with it. */
+   *  rather than stacking on it, and the whole drag is one undo step (see
+   *  `gestureOpened`). Horizontal snapping to the master's guides is moveBy's.
+   *  When the grabbed layer is selected, every selected unlocked layer moves
+   *  with it. */
   /** Every layer's resolved box for the current draw list — one full place
    *  pass, wanted only at gesture starts and unbinds, never per move. */
   const boxesNow = (layers: Layer[] = drawLayers) =>
@@ -1213,6 +1228,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     } | null
   >(null);
   const onDrag = (id: string, dx: number, dy: number, first: boolean): SnapLines => {
+    if (first) gestureOpened.current = false;
     if (first || dragBase.current?.id !== id) {
       const boxes = boxesNow();
       if (!boxes) return { x: null, y: null, dx, dy };
@@ -1249,9 +1265,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     const sx = snapDelta({ min: bounds.x, size: bounds.w }, dx, lines.x, SNAP_PT);
     const sy = snapDelta({ min: bounds.y, size: bounds.h }, dy, lines.y, SNAP_PT);
     const entries = dragBase.current.bases
-      .map(({ layer }): [string, DeepPartial<Layer>] => [layer.id, moveBy(layer, sx.delta, sy.delta, moving)])
-      .filter(([, p]) => Object.keys(p).length);
-    if (entries.length) patchMany(entries, !first);
+      .map(({ layer }): [string, DeepPartial<Layer>] => [layer.id, moveBy(layer, sx.delta, sy.delta, moving)]);
+    gesturePatch(entries);
     // The indicator spans the moved selection AND whatever it lined up with.
     const top = bounds.y + sy.delta;
     const left = bounds.x + sx.delta;
@@ -1288,7 +1303,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   };
 
   /** Handle resize: like onDrag, the patch is resizeBy against the layer
-   *  and box captured at the gesture's start, coalesced into one undo step.
+   *  and box captured at the gesture's start, one undo step per gesture.
    *  Only the grabbed layer resizes, never the group. */
   const resizeBase = useRef<
     { layer: Layer; box: Box; lines: { x: SnapTarget[]; y: SnapTarget[] } } | null
@@ -1297,6 +1312,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     id: string, handle: ResizeHandle, dx: number, dy: number, uniform: boolean, first: boolean,
   ): SnapLines => {
     if (first) {
+      gestureOpened.current = false;
       const boxes = boxesNow();
       const layer = drawLayers.find((l) => l.id === id);
       const box = boxes?.get(id);
@@ -1315,7 +1331,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const sy = handle.hy === 0 ? { delta: dy, line: null }
       : snapDelta({ min: edgeY, size: 0 }, dy, base.lines.y, SNAP_PT);
     const p = resizeBy(base.layer, base.box, handle, sx.delta, sy.delta, uniform);
-    if (Object.keys(p).length) patch(id, p, !first);
+    gesturePatch([[id, p]]);
     // The indicator spans the resized box and whatever the grabbed edge lined
     // up with. `patch` is a state update, so boxesNow() here still measures
     // the PREVIOUS frame's layers — the segment's cross-axis extent trails the
@@ -1382,21 +1398,20 @@ export const DocumentEditor = memo(function DocumentEditor({
   // What the tab strip, window title and export names call this document.
   const title = titleOf(drawLayers) || "Untitled";
   const exportBase = exportBaseOf(drawLayers);
-  useEffect(() => {
-    onMeta({ title, dirty, edited, filePath });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, dirty, edited]); // filePath is declared below; its own effect follows
 
   /** The full-resolution display list for an export: the same layers the
-   *  preview draws, planned with the canvas measure (fonts.ts — the one
-   *  font gate) and the full-size asset descriptors. */
+   *  preview draws, planned with the pdf-lib widths the PDF draws with
+   *  (pdfMeasureFace — unkerned, #86) and the full-size asset descriptors.
+   *  Every bundled family is loaded so a layer's own font measures true. */
   async function exportPlan(): Promise<{ plan: PlacedLayer[]; images: Record<string, CollabImage>; fontFamilies: Assets["fontFamilies"] }> {
-    const m = await loadLabelFaces(family);
-    const plan = planLayers(drawLayers, m, planAssetsOf());
+    const [{ pdfMeasureFace }, loaded] = await Promise.all([
+      import("@/pdf/build"),
+      Promise.all((Object.keys(FONT_URLS) as FontFamilyId[]).map(async (id) => [id, await loadFonts(id)] as const)),
+    ]);
+    const packs = Object.fromEntries(loaded) as Record<FontFamilyId, Assets["fonts"]>;
+    const plan = planLayers(drawLayers, await pdfMeasureFace(packs, family), planAssetsOf());
     const families = new Set(plan.flatMap((run) => run.kind === "text" && run.fontFamily ? [run.fontFamily] : []));
-    const fontFamilies = Object.fromEntries(await Promise.all(
-      [...families].map(async (id: FontFamilyId) => [id, await loadFonts(id)]),
-    ));
+    const fontFamilies = Object.fromEntries([...families].map((id) => [id, packs[id]]));
     return { plan, images: await imageAssets(), fontFamilies };
   }
 
@@ -1444,19 +1459,23 @@ export const DocumentEditor = memo(function DocumentEditor({
   const projectPath = useRef<string | null>(null);
   /** State mirror of projectPath (a ref, which can't drive onMeta). */
   const [filePath, setFilePath] = useState<string | null>(null);
+  // masterUnsaved is templateMoved, NOT the Save Master `masterDirty` above:
+  // label overrides ride in the .label, so ⌘S already saves them.
   useEffect(() => {
-    onMeta({ title, dirty, edited, filePath });
+    onMeta({ title, dirty, edited, masterUnsaved: templateMoved, filePath });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filePath]);
+  }, [title, dirty, edited, templateMoved, filePath]);
   function forgetProjectFile() {
     projectHandle.current = null;
     projectPath.current = null;
     setFilePath(null);
   }
   /** The same save-identity pattern for the .master this document's master
-   *  was last saved to or opened from. */
-  const masterFileHandle = useRef<FileSystemFileHandle | null>(null);
-  const masterFilePath = useRef<string | null>(null);
+   *  was last saved to or opened from — tagged with that master's id, since
+   *  undo can swap the document's master without touching these refs. Read
+   *  them only through saveTargetFor (#78). */
+  const masterFileHandle = useRef<MasterSaveTarget<FileSystemFileHandle> | null>(null);
+  const masterFilePath = useRef<MasterSaveTarget<string> | null>(null);
   const masterInput = useRef<HTMLInputElement>(null);
 
   /** Full-document replacement for Open: swap the whole Doc in (resetting
@@ -1465,7 +1484,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     resetDoc(next);
     pristineMaster.current = next.master;
     masterFileHandle.current = null;
-    masterFilePath.current = isTauri() ? masterIndex()[next.master.id]?.path ?? null : null;
+    const indexed = isTauri() ? masterIndex()[next.master.id]?.path : undefined;
+    masterFilePath.current = indexed ? { id: next.master.id, target: indexed } : null;
     clearSelection();
     swapLoaded(setTexture, null);
     swapLoaded(setMask, null);
@@ -1559,7 +1579,16 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  saveProject, then registers the file in the library index and moves the
    *  master-dirty baseline. */
   async function saveMaster(as = false, promote: readonly MasterChange[] = []): Promise<boolean> {
-    const promoted = applyPromotions(master, label, promote, version ?? undefined);
+    // A promotion re-validates through parseMaster; surface a rejection in the
+    // header like the write failures below instead of an unhandled rejection
+    // from the `void saveMaster(...)` caller (#92).
+    let promoted: ReturnType<typeof applyPromotions>;
+    try {
+      promoted = applyPromotions(master, label, promote, version ?? undefined);
+    } catch (err) {
+      setLoadError(`Could not save master: ${errMsg(err)}`);
+      return false;
+    }
     const forked = as
       ? { ...promoted.master, id: `master-${crypto.randomUUID().slice(0, 8)}` }
       : promoted.master;
@@ -1587,14 +1616,14 @@ export const DocumentEditor = memo(function DocumentEditor({
       repaintMasterDirty((n) => n + 1);
     };
     if (isTauri()) {
-      const existingPath = as ? null : masterFilePath.current;
+      const existingPath = as ? null : saveTargetFor(masterFilePath.current, master.id);
       try {
         const packed = packMaster(forked, assets);
         const path = await saveNativeFile(packed, {
           defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path: existingPath ?? undefined,
         });
         if (path === null) return false;
-        masterFilePath.current = path;
+        masterFilePath.current = { id: forked.id, target: path };
         const final = titled(path);
         // ponytail: the name is only knowable after the picker returns, so a
         // renamed fork rewrites the file it just wrote — same path, no second
@@ -1617,17 +1646,17 @@ export const DocumentEditor = memo(function DocumentEditor({
     const pick = savePicker();
     if (pick) {
       try {
-        if (as || !masterFileHandle.current) {
-          masterFileHandle.current = await pick({ suggestedName: suggested + MASTER_EXT, types: MASTER_TYPES });
-        }
+        const handle = (as ? null : saveTargetFor(masterFileHandle.current, master.id))
+          ?? await pick({ suggestedName: suggested + MASTER_EXT, types: MASTER_TYPES });
+        masterFileHandle.current = { id: forked.id, target: handle };
         // The handle's name is known BEFORE the write here (unlike the Tauri
         // branch above), so a renamed fork packs and writes exactly once.
-        const final = titled(masterFileHandle.current.name);
+        const final = titled(handle.name);
         const bytes = packMaster(final, assets);
-        await writeHandle(masterFileHandle.current, bytes);
+        await writeHandle(handle, bytes);
         // The bytes go to the master cache too: a browser reload has no path
         // to re-read this file from (masterCache.ts).
-        await commit(final, masterFileHandle.current.name, bytes);
+        await commit(final, handle.name, bytes);
         return true;
       } catch (err) {
         masterFileHandle.current = null;
@@ -1709,9 +1738,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   ) {
     const r = tryParseMaster(bytes);
     if (!r) return;
-    masterFileHandle.current = src.handle ?? null;
-    masterFilePath.current = src.path ?? null;
     await applyOpenedMaster(r.master, name, bytes);
+    // Bind Save Master only once the doc is on this master (#81).
+    const id = r.master.id;
+    masterFileHandle.current = src.handle ? { id, target: src.handle } : null;
+    masterFilePath.current = src.path ? { id, target: src.path } : null;
     await adoptMasterAssets(r.assets);
   }
 
@@ -1722,7 +1753,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const path = masterIndex()[target.id]?.path ?? "";
     await rememberMaster(target, path);
     masterFileHandle.current = null;
-    masterFilePath.current = isTauri() && path ? path : null;
+    masterFilePath.current = isTauri() && path ? { id: target.id, target: path } : null;
     commitRebind(target);
     void adoptMasterAssets(assets);
   }
@@ -1873,24 +1904,31 @@ export const DocumentEditor = memo(function DocumentEditor({
         }
         next = { master: resolved.master, label: adoptLegacyCollab(l) };
       }
-      resetDocument(next);
-      notes.push(...layerRows(next.master, next.label).warnings);
       // Label-delta rule: the label's own embedded role wins; a missing one
       // falls back to the master's template asset. Image bytes merge the
       // same way, per id (spread order: master first, label last).
       const t = unpacked.assets.texture ?? masterAssets.texture;
       const m = unpacked.assets.mask ?? masterAssets.mask;
       const ci = { ...masterAssets.customImages, ...unpacked.assets.customImages, ...legacyAssets };
-      // Awaited so the freshly opened document can be marked clean AFTER
-      // the asset handlers' state writes.
-      await Promise.all([
-        t && onTexture(assetToFile(t)), m && onMask(assetToFile(m)),
-        (async () => {
-          const entries = await Promise.all(Object.entries(ci).map(async ([id, a]) =>
-            [id, await readCustomImage(assetToFile(a))] as const));
-          if (entries.length) setCustomImages(Object.fromEntries(entries));
-        })(),
-      ]);
+      // Decode every asset before resetDocument: a failed decode must leave
+      // the previous doc and its Save target (rebound by the caller only on
+      // success) intact (#81).
+      const texP = t ? readTexture(assetToFile(t)) : undefined;
+      const mskP = m ? readMask(assetToFile(m)) : undefined;
+      const imgPs = Object.entries(ci).map(async ([id, a]) =>
+        [id, await readCustomImage(assetToFile(a))] as const);
+      const [tex, msk, images] = await Promise.all([texP, mskP, Promise.all(imgPs)]).catch((err) => {
+        // Nothing reached state, so nothing would revoke the previews the
+        // successful decodes minted — release them here.
+        for (const p of [texP, mskP, ...imgPs.map((q) => q.then(([, c]) => c))])
+          p?.then((x) => URL.revokeObjectURL(x.previewUrl), () => {});
+        throw err;
+      });
+      resetDocument(next);
+      notes.push(...layerRows(next.master, next.label).warnings);
+      if (tex) swapLoaded(setTexture, tex);
+      if (msk) swapLoaded(setMask, msk);
+      if (images.length) setCustomImages(Object.fromEntries(images));
       setDirty(false);
       setEdited(false);
       setLoadError(notes.length ? "Note: " + notes.join(" · ") : "");
@@ -1934,16 +1972,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileToOpen]);
 
-  /** The PSD's texture layer needs raw RGBA at document size, cover-fit
-   *  here (PSD layers hold pixels 1:1). Export only: ~60MB. */
-  async function rasterPixels(bytes: Uint8Array | undefined): Promise<import("@/psd/build").Rgba | undefined> {
-    if (!bytes) return undefined;
-    const canvas = await decodeToCanvas(blobOf(bytes), { width: PSD_DOC.w, height: PSD_DOC.h });
-    const img = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
-    return { data: new Uint8Array(img.data.buffer), width: img.width, height: img.height };
-  }
-  /** An image layer's raster bytes at NATURAL size — buildPsd resamples to
-   *  the placed rect itself. */
+  /** An image's raster bytes as RGBA at NATURAL size — buildPsd resamples
+   *  every raster (page texture and mask included) to its placed rect
+   *  itself, so nothing is pre-fit here (#88). Export only: a full-res
+   *  texture decodes to tens of MB. */
   async function rasterPixelsNatural(bytes: Uint8Array): Promise<import("@/psd/build").Rgba> {
     const canvas = await decodeToCanvas(blobOf(bytes));
     const img = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
@@ -1957,21 +1989,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     setBuilding(true);
     startSaveBatch();
     try {
-      const [{ buildPsd }, fonts, { plan, images }] = await Promise.all([
+      const [{ buildPsd, psdImages }, fonts, { plan, images }] = await Promise.all([
         import("@/psd/build"), loadFonts(family), exportPlan(),
       ]);
       const art = pageArt(false);
-      const rasterEntries = (await Promise.all(Object.entries(images).map(async ([id, img]) =>
-        img.kind === "svg" ? null : [id, await rasterPixelsNatural(img.bytes)] as const)))
-        .filter((e): e is readonly [string, import("@/psd/build").Rgba] => e !== null);
-      const [texturePx, maskPx] = await Promise.all([rasterPixels(art.texture?.bytes), rasterPixels(art.maskPng)]);
       const assets: PsdAssets = {
         fonts, fontFamily: family,
-        images: {
-          ...Object.fromEntries(rasterEntries),
-          ...(texturePx ? { [PAGE_ART_ID.background]: texturePx } : {}),
-          ...(maskPx ? { [PAGE_ART_ID.mask]: maskPx } : {}),
-        },
+        images: await psdImages(images, { texture: art.texture?.bytes, mask: art.maskPng }, rasterPixelsNatural),
       };
       const [artPsd, maskPsd] = await Promise.all([
         which !== "mask" ? buildPsd(plan, assets, "art", { layers: drawLayers }) : null,
@@ -2040,7 +2064,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (layer.kind === "text") {
       return (
         <TextEditor id={id} label="Text" lines={layer.lines} base={layer.style}
-          onChange={(lines) => setContent(layer, lines, true)}
+          onChange={(lines) => setContent(layer, lines, id)}
           multiline={true} uppercase={uppercaseOf(layer)}
           onUppercase={(uppercase) => patch(layer.id, { style: { uppercase } })}
           input={layer.input} min={layer.min} max={layer.max} symbology={layer.symbology}
@@ -2093,18 +2117,20 @@ export const DocumentEditor = memo(function DocumentEditor({
       const tokens = rows.flatMap((r) =>
         r.layer.kind === "text" ? [{ id: r.layer.id, name: r.layer.name }] : []);
       const src = link.id ?? "";
-      const write = (prefix: string, id: string) =>
-        setContent(layer, formatLink(prefix, id), true);
+      // The link box types as one session keyed by its id; a suffix pick is
+      // a discrete choice and gets a step of its own (false).
+      const write = (prefix: string, ref: string, coalesce: Coalesce) =>
+        setContent(layer, formatLink(prefix, ref), coalesce);
       return (
         <div className="space-y-1">
           <Label htmlFor={id} className="text-xs text-muted-foreground">Link</Label>
           <Input id={id} className="h-7 font-mono text-xs" value={link.prefix}
             placeholder="https://lolev.beer/beer/"
             aria-invalid={errors[layer.id] ? true : undefined}
-            onChange={(e) => write(e.target.value, src)} />
+            onChange={(e) => write(e.target.value, src, id)} />
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-muted-foreground">followed by</span>
-            <Select value={src || "none"} onValueChange={(v) => write(link.prefix, v === "none" ? "" : (v ?? ""))}>
+            <Select value={src || "none"} onValueChange={(v) => write(link.prefix, v === "none" ? "" : (v ?? ""), false)}>
               <SelectTrigger id={`${id}-src`} size="sm" aria-label="Link suffix"
                 className="h-6 w-32 text-xs">
                 <SelectValue />
@@ -2137,12 +2163,12 @@ export const DocumentEditor = memo(function DocumentEditor({
           <ChoiceBox id={id} className="h-7 font-mono text-xs" value={template}
             choices={layer.choices} invalid={!!errors[layer.id]}
             placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : "digits"}
-            onCommit={(v) => setContent(layer, v, true)} />
+            onCommit={(v) => setContent(layer, v, id)} />
         ) : (
           <Input id={id} className="h-7 font-mono text-xs" value={template}
             placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : "digits"}
             aria-invalid={errors[layer.id] ? true : undefined}
-            onChange={(e) => setContent(layer, e.target.value, true)} />
+            onChange={(e) => setContent(layer, e.target.value, id)} />
         )}
         {foot}
       </div>
@@ -2277,7 +2303,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onEditCancel={mutating(undo)}
               onDrag={onDrag}
               onResize={onResize}
-              onDragCancel={mutating(undo)}
+              onDragCancel={cancelGesture}
               onEditSession={setEditSession}
               onSplit={setSplit}
               bleed={showGuides}
@@ -2404,6 +2430,10 @@ export const DocumentEditor = memo(function DocumentEditor({
             } else if (details.reason === "close-press") clearSelection();
           }}>
           <SheetContent side="right" showOverlay={false} showCloseButton={false}
+            // Opening follows a selection, so focus stays where the user
+            // selected: Base UI's default would land in the rename box and
+            // turn Backspace/arrows into text edits instead of delete/nudge.
+            initialFocus={false}
             finalFocus={(closeType) => closeType === "keyboard"}
             className="w-[300px] gap-0 overflow-y-auto border-l-0! bg-sidebar p-0 sm:max-w-[300px]">
             {inspected && (

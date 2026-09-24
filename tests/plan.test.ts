@@ -79,6 +79,16 @@ describe("justifiedRotatedRuns", () => {
     expect(last.y - last.w).toBeCloseTo(300 - 100);
   });
 
+  it("a bold span across words bolds each word, no literal markers (#89)", () => {
+    const runs = justifiedRotatedRuns("warning", { fill: "none", layer: "metallic" },
+      "**GOVERNMENT WARNING:** (1) text", m, { x: 520, yStart: 300, size: 5, maxLen: 200, base: "regular", boldFace: "bold" });
+    expect(runs.map((r) => [r.text, r.face])).toEqual([
+      ["GOVERNMENT", "bold"], ["WARNING:", "bold"], ["(1)", "regular"], ["text", "regular"],
+    ]);
+    const last = runs[runs.length - 1];
+    expect(last.y - last.w).toBeCloseTo(300 - 200);
+  });
+
   it("a single word keeps its natural length (no gap to stretch)", () => {
     const runs = justifiedRotatedRuns("warning", { fill: "none", layer: "metallic" },
       "ALCOHOL", m, { x: 520, yStart: 300, size: 5, maxLen: 100, base: "regular" });
