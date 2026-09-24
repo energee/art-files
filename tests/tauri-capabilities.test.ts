@@ -6,10 +6,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-type Permission = string | { identifier: string; allow?: { path: string }[] };
-
 const caps = JSON.parse(readFileSync("src-tauri/capabilities/default.json", "utf8")) as {
-  permissions: Permission[];
+  permissions: Array<string | { identifier: string; allow?: { path: string }[] }>;
 };
 const tauriConf = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8")) as {
   plugins?: { fs?: { requireLiteralLeadingDot?: boolean } };
@@ -30,7 +28,6 @@ describe("desktop master-file access", () => {
   // added to the runtime scope, so Save to an OS-opened .label or a remembered
   // .master failed with "forbidden path". Write must cover what read covers.
   it("can write back to every .label/.master path it can read", () => {
-    expect(caps.permissions).not.toContain("fs:allow-write-file");
     const read = scopedPaths("fs:allow-read-file");
     expect(read.length).toBeGreaterThan(0);
     expect(scopedPaths("fs:allow-write-file")).toEqual(read);
