@@ -702,7 +702,12 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  gesture's many updates (a drag, an in-place text session) into one undo
    *  step — see useHistory's `pushed`. Computed against the doc THIS render
    *  sees so a no-op can return before marking the tab dirty. */
-  const edit = (fn: (d: Doc) => Doc, coalesce?: boolean) => {
+  const edit = (apply: (d: Doc) => Doc, coalesce?: boolean) => {
+    // Every doc edit is checked for bindings the label's resolved layers would
+    // break (an enabled layer bound to a disabled or missing one) and refused,
+    // as parseMaster refuses them on the master — otherwise placeLayers throws
+    // on preview and export (issue #93). Both applications below use it.
+    const fn = (d: Doc) => { const n = apply(d); return n === d ? n : checkLabelBindings(n); };
     let next: Doc;
     try {
       next = fn(doc);
@@ -719,11 +724,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   };
   const editMaster = (fn: (m: Master) => Master, coalesce?: boolean) =>
     edit((d) => ({ ...d, master: fn(d.master) }), coalesce);
-  /** A label edit that can reshape the binding graph (a version switch, an
-   *  override reset) — refused, like patchLayers, when it would leave a layer
-   *  bound to a disabled or missing one (checkLabelBindings). */
   const editLabel = (fn: (l: LabelFile) => LabelFile, coalesce?: boolean) =>
-    edit((d) => checkLabelBindings({ ...d, label: fn(d.label) }), coalesce);
+    edit((d) => ({ ...d, label: fn(d.label) }), coalesce);
   /** A DESIGN edit on one layer — position, style, policy, geometry: lands in
    *  the LABEL as an override, never in the master. The master is the template
    *  and changes only through the reviewed Save Master (see edit.ts's
@@ -789,7 +791,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Delete a variant and stop showing it. One undoable edit, so it needs no
    *  confirm of its own. */
   function onRemoveVersion(id: string) {
-    edit((d) => checkLabelBindings({
+    edit((d) => ({
       master: removeVariant(d.master, id),
       label: showVersion(d.label, version === id ? id : version, null),
     }));

@@ -340,7 +340,7 @@ function validateLayer(l: Layer, ctx: string): void {
 /** Every `below` reference must name a layer in the list, an enabled layer
  *  must not hang off a disabled one, and the graph must be acyclic. Runs over
  *  the master's own layers and again per variant with that variant's diff
- *  merged in; edit.ts's patchLayers runs it over a label's resolved layers
+ *  merged in; edit.ts's checkLabelBindings runs it over a label's resolved layers
  *  too, passing its own `report` since that failure is an edit refusal, not
  *  an invalid file. */
 export function validateBindings(layers: Layer[], ctx: string, report: (msg: string) => never = fail): void {

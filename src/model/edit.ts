@@ -641,14 +641,9 @@ export const MASTER_PATHS: ReadonlySet<string> =
  *  no warning. The fill contract still routes to the master, since those
  *  fields live in the master file whether the variant is on or not.
  *
- *  A patch that can change the binding graph (`enabled`, `binding`, `y`) is
- *  checked against the label's RESOLVED layers with the same validateBindings
- *  parseMaster runs, and THROWS on failure — the master path's refusal, which
- *  App's `edit` surfaces as a build error. Switching off a layer an enabled
- *  layer is bound to would otherwise leave placeLayers throwing on preview
- *  and export (issue #93). Checked once after every entry, so one call that
- *  switches off a layer and its dependents together is allowed
- *  (checkLabelBindings). */
+ *  Bindings are NOT checked here: a patch can switch off a layer another is
+ *  bound to. App's `edit` runs checkLabelBindings on every result, once per
+ *  call, so switching a layer off together with its dependents is allowed. */
 export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
   const masterIds = new Set(doc.master.layers.map((l) => l.id));
   /** Every layer id this document RESOLVES: the master's, plus those the
@@ -662,7 +657,7 @@ export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
     return ids;
   };
   let resolves = resolvable(doc.label);
-  const next = entries.reduce((d, [id, patch]) => {
+  return entries.reduce((d, [id, patch]) => {
     const keys = Object.keys(patch);
     const contract = keys.filter((k) => MASTER_PATHS.has(k));
     const rest = keys.filter((k) => !MASTER_PATHS.has(k));
@@ -681,16 +676,15 @@ export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
     if (rest.length && resolves.has(id)) label = setLabelOverride(label, id, pick(rest));
     return master === d.master && label === d.label ? d : { master, label };
   }, doc);
-  return next.label !== doc.label && entries.some(([, p]) => "enabled" in p || "binding" in p || "y" in p)
-    ? checkLabelBindings(next) : next;
 }
 
 /** Returns `doc` unchanged, or THROWS when its label's resolved layers break
  *  a binding — an enabled layer bound to a disabled or missing one, or a
  *  cycle. The label-side twin of parseMaster's check (the same
- *  validateBindings), for edits that reshape the graph through the label
- *  rather than the master: patchLayers, a label-override reset, a version
- *  switch. Without it placeLayers throws on preview and export (issue #93). */
+ *  validateBindings), run by App's `edit` on every edit — the label can
+ *  reshape the graph (a patch, an override reset, a version switch) where
+ *  parseMaster never looks. Without it placeLayers throws on preview and
+ *  export (issue #93). */
 export function checkLabelBindings(doc: Doc): Doc {
   const { layers } = resolveLayers(doc.master, doc.label.enabledVariants, {}, doc.label.overrides, { keepDisabled: true });
   validateBindings(layers, "label", (msg) => { throw new Error(`Can't apply this edit: ${msg}`); });

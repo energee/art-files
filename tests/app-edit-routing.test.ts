@@ -12,7 +12,8 @@ import {
 } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { resolveLayers } from "../src/model/resolveLayers";
-import type { LabelFile, Master, TextLayer } from "../src/model/layers";
+import type { LabelFile, Layer, Master, TextLayer } from "../src/model/layers";
+import type { DeepPartial } from "../src/model/merge";
 import { GOLD } from "../src/layout";
 
 const line = (text: string) => ({ text, fill: GOLD, layer: "metallic" } as const);
@@ -89,36 +90,33 @@ describe("property patches route to the label", () => {
   // Issue #93: the label path wrote `enabled: false` with no binding check, so
   // switching off a layer another one is bound to (Collab's lead-in hangs
   // below Description) left placeLayers throwing on preview and export. The
-  // master path refuses this in parseMaster; the label path now does too.
-  it("refuses to disable a layer an enabled layer is bound to", () => {
-    const on: Doc = { ...doc(), label: { ...newLabel(lolevMaster()), enabledVariants: ["collab"] } };
-    expect(() => patchLayers(on, [["description", { enabled: false }]]))
+  // master path refuses this in parseMaster; App's `edit` now runs
+  // checkLabelBindings over every result, whichever label path made it.
+  const collabDoc = (): Doc => ({ ...doc(), label: { ...newLabel(lolevMaster()), enabledVariants: ["collab"] } });
+  const disable = (...ids: string[]): [string, DeepPartial<Layer>][] => ids.map((id) => [id, { enabled: false }]);
+  const CHAIN = ["description", "collabLead", "collabLeft"];
+
+  it("refuses disabling a layer an enabled layer is bound to", () => {
+    expect(() => checkLabelBindings(patchLayers(collabDoc(), disable("description"))))
       .toThrow(/"collabLead" is bound to disabled layer "description"/);
   });
 
-  it("still disables a bound-to layer together with everything bound to it", () => {
-    const on: Doc = { ...doc(), label: { ...newLabel(lolevMaster()), enabledVariants: ["collab"] } };
-    const chain = ["description", "collabLead", "collabLeft"].map((id) => [id, { enabled: false }] as [string, { enabled: boolean }]);
-    const d = patchLayers(on, chain);
+  it("allows disabling a bound-to layer together with everything bound to it", () => {
+    const d = patchLayers(collabDoc(), disable(...CHAIN));
+    expect(checkLabelBindings(d)).toBe(d);
     expect(d.label.overrides?.description).toEqual({ enabled: false });
   });
 
-  // The other label paths that reshape the graph: switching to a version
-  // whose layer hangs off one this label switched off, and resetting a
-  // dependent's own `enabled: false` while its target stays off.
-  it("checkLabelBindings refuses a version switch onto a disabled bound-to layer", () => {
-    const off = patchLayers(doc(), [["description", { enabled: false }]]);
+  it("refuses a version switch onto a disabled bound-to layer", () => {
+    const off = patchLayers(doc(), disable("description"));
     const switched = { ...off, label: showVersion(off.label, null, "collab") };
     expect(() => checkLabelBindings(switched)).toThrow(/bound to disabled layer "description"/);
   });
 
-  it("checkLabelBindings refuses resetting a dependent back on", () => {
-    const on: Doc = { ...doc(), label: { ...newLabel(lolevMaster()), enabledVariants: ["collab"] } };
-    const chain = ["description", "collabLead", "collabLeft"].map((id) => [id, { enabled: false }] as [string, { enabled: boolean }]);
-    const off = patchLayers(on, chain);
+  it("refuses resetting a dependent back on while its target stays off", () => {
+    const off = patchLayers(collabDoc(), disable(...CHAIN));
     const reset = { ...off, label: clearLabelOverride(off.label, "collabLead", "enabled") };
     expect(() => checkLabelBindings(reset)).toThrow(/"collabLead" is bound to disabled layer "description"/);
-    expect(checkLabelBindings(off)).toBe(off);
   });
 
   it("still overrides that layer once its variant is on", () => {
