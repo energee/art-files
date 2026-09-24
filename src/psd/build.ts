@@ -293,8 +293,8 @@ function svgToPaths(d: string, dx: number, dy: number): BezierPath[] {
 type GlyphCmd = { command: string; args: number[] };
 type FKFont = { unitsPerEm: number; layout(text: string): FKGlyphRun };
 interface FKGlyphRun {
-  glyphs: { path: { commands: GlyphCmd[] } }[];
-  positions: { xAdvance: number; xOffset: number; yOffset: number }[];
+  glyphs: { advanceWidth: number; path: { commands: GlyphCmd[] } }[];
+  positions: { xOffset: number; yOffset: number }[];
 }
 
 /** One digit group's glyph outlines as closed bezier subpaths in label
@@ -330,7 +330,7 @@ interface FKGlyphRun {
  *  C2 = P2 + 2/3(Q-P2); this still holds after either (u,v)->label map above
  *  because both maps are affine, and affine maps preserve the barycentric
  *  combination the elevation formula is built from. */
-function digitGroupPaths(
+export function digitGroupPaths(
   font: FKFont,
   text: string,
   size: number,
@@ -398,7 +398,10 @@ function digitGroupPaths(
       }
     }
     flush();
-    uCum += pos.xAdvance * scale;
+    // The raw advance, not pos.xAdvance: the PDF's drawText emits no
+    // kerning, so a kerned advance would shift these digits off the PDF's
+    // for a kern-table font like Barlow Condensed (#86).
+    uCum += glyph.advanceWidth * scale;
   }
   return { paths: out, bbox };
 }

@@ -3,6 +3,16 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.72] - 2026-09-23
+
+### Fixed
+
+- **Barlow Condensed text prints where the preview shows it.** Exported PDFs
+  and PSDs now position text with the same letter spacing the file is drawn
+  with, so centred Barlow Condensed lines stay centred, right-aligned lines
+  no longer run past their margin, and mixed bold or white-ink runs no longer
+  overlap. The preview draws that spacing too, so screen and print agree.
+  Poppins labels are unchanged.
 ## [0.1.71] - 2026-09-23
 
 ### Fixed

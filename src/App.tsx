@@ -108,7 +108,7 @@ import {
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { loadLabelFaces, labelFontCss } from "@/fonts";
+import { FONT_URLS, loadLabelFaces, labelFontCss } from "@/fonts";
 import { fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
 import { loadFonts } from "@/pdf/fonts";
 import type { MeasureFace, PlanAssets } from "@/plan";
@@ -1382,15 +1382,18 @@ export const DocumentEditor = memo(function DocumentEditor({
   }, [title, dirty, edited]); // filePath is declared below; its own effect follows
 
   /** The full-resolution display list for an export: the same layers the
-   *  preview draws, planned with the canvas measure (fonts.ts — the one
-   *  font gate) and the full-size asset descriptors. */
+   *  preview draws, planned with the pdf-lib widths the PDF draws with
+   *  (pdfMeasureFace — unkerned, #86) and the full-size asset descriptors.
+   *  Every bundled family is loaded so a layer's own font measures true. */
   async function exportPlan(): Promise<{ plan: PlacedLayer[]; images: Record<string, CollabImage>; fontFamilies: Assets["fontFamilies"] }> {
-    const m = await loadLabelFaces(family);
-    const plan = planLayers(drawLayers, m, planAssetsOf());
+    const [{ pdfMeasureFace }, loaded] = await Promise.all([
+      import("@/pdf/build"),
+      Promise.all((Object.keys(FONT_URLS) as FontFamilyId[]).map(async (id) => [id, await loadFonts(id)] as const)),
+    ]);
+    const packs = Object.fromEntries(loaded) as Record<FontFamilyId, Assets["fonts"]>;
+    const plan = planLayers(drawLayers, await pdfMeasureFace(packs, family), planAssetsOf());
     const families = new Set(plan.flatMap((run) => run.kind === "text" && run.fontFamily ? [run.fontFamily] : []));
-    const fontFamilies = Object.fromEntries(await Promise.all(
-      [...families].map(async (id: FontFamilyId) => [id, await loadFonts(id)]),
-    ));
+    const fontFamilies = Object.fromEntries([...families].map((id) => [id, packs[id]]));
     return { plan, images: await imageAssets(), fontFamilies };
   }
 
