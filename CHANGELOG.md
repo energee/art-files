@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.73] - 2026-09-23
+
+### Fixed
+
+- **PSD strokes keep their width at any export DPI.** Text keylines, vector
+  art, and QR strokes in an exported PSD now print at the same physical
+  width as the PDF when Settings → Resolution is not 600 DPI. At 300 DPI a
+  1.8pt keyline is 7.5px instead of a doubled 15px, matching the barcode
+  halo.
 ## [0.1.72] - 2026-09-23
 
 ### Fixed
