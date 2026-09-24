@@ -10,6 +10,7 @@ import { defaultConfig, parseConfigFile } from "../src/defaults";
 import { parseDescription } from "../src/description";
 import { FONT_FAMILIES, type FontFamilyId } from "../src/fontCatalog";
 import { setBleed } from "../src/layout";
+import { parseLogo } from "../src/logo";
 import { convertConfigV1, guideLines } from "../src/model/convert";
 import { unpackLabel, unpackMaster, type MasterAssets } from "../src/model/files";
 import { PAGE_ART_ID, type LabelFile, type Layer, type LayerKind, type LayerValue, type Master, type TextLayer, type TextLine } from "../src/model/layers";
@@ -476,7 +477,12 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
 
   const put = async (id: string, img: CollabImage, imageDoc: PDFDocument) => {
     images[id] = img;
-    if (img.kind === "svg") { planCustom[id] = { aspect: 1, art: img }; return; }
+    if (img.kind === "svg") {
+      // The SVG's ink-box aspect, as the App's readCustomImage takes it (#91).
+      const { w, h } = parseLogo(img.svg, 1, 1);
+      planCustom[id] = { aspect: w / h, art: img };
+      return;
+    }
     const embedded = img.kind === "png" ? await imageDoc.embedPng(img.bytes) : await imageDoc.embedJpg(img.bytes);
     planCustom[id] = { aspect: embedded.width / embedded.height };
     if (img.kind === "png") {

@@ -386,6 +386,31 @@ describe("buildLabel explicit default font (#90)", () => {
   });
 });
 
+describe("buildLabel SVG aspect (#91)", () => {
+  // A 50x100 SVG in the 70pt-wide collab slot. With no h the layer's box is
+  // the asset's aspect at w — 70x140, as the App plans it — so leaving h
+  // out must build exactly what an explicit h of 140 builds.
+  const tall = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 100"><path d="M0 0H50V100H0Z"/></svg>');
+  const build = (h: number | undefined) => {
+    const master = lolevMaster();
+    const slot = master.variants![0].layers.collabLeft as { h?: number };
+    if (h === undefined) delete slot.h; else slot.h = h;
+    return buildLabel({
+      master,
+      masterAssets: {},
+      values: coerceValues(master, { name: "T", barcode: "850051366224" }, ["collab"]).values,
+      enabledVariants: ["collab"],
+      extraImages: { collabLeft: { name: "tall.svg", bytes: tall } },
+      format: "pdf",
+      assetRoot,
+    });
+  };
+  it("an SVG image layer without h plans at the SVG's own aspect, not square", async () => {
+    const [auto, explicit] = await Promise.all([build(undefined), build(140)]);
+    expect(Buffer.from(auto.files[0].bytes).equals(Buffer.from(explicit.files[0].bytes))).toBe(true);
+  });
+});
+
 describe("buildLabel tint", () => {
   const build = (tint: boolean) => buildLabel({
     master: lolevMaster(),
