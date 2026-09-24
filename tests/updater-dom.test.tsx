@@ -179,6 +179,14 @@ it("a manual check during a download shows the download, and Restart Now reports
     await act(async () => button("Restart to finish").click());
     await act(async () => button("Restart Now").click());
     expect(dialog()).toContain("Could not restart: Error: no permission");
+    // Closing that error keeps the installed update: the status bar still
+    // offers the restart, and the menu's Restart to Update reopens a titled
+    // dialog rather than a blank one (issue #123).
+    await act(async () => button("Close").click());
+    expect(bar.textContent).toContain("Restart to finish · 0.2.0");
+    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={2} statusHost={bar} />));
+    expect(dialog()).toContain("Restart to finish updating");
+    expect(update.close).not.toHaveBeenCalled();
   } finally {
     await act(async () => root.unmount());
     container.remove(); bar.remove();

@@ -32,7 +32,9 @@ type Status =
   | { kind: "downloading"; version: string; downloaded: number; total?: number }
   /** Installed on disk; the running process is still the old version until relaunch. */
   | { kind: "installed"; version: string }
-  | { kind: "error"; message: string };
+  /** `installed` = a failed restart: the update is still on disk, so
+   *  dismissing the error returns to the installed state, not idle. */
+  | { kind: "error"; message: string; installed?: string };
 
 async function checkForUpdate(): Promise<CheckResult> {
   try {
@@ -192,7 +194,8 @@ export function DesktopUpdater(props: {
 
   const dismiss = () => {
     setOpen(false);
-    if (!["available", "current", "installed", "downloading"].includes(status.kind)) setStatus({ kind: "idle" });
+    if (status.kind === "error" && status.installed) setStatus({ kind: "installed", version: status.installed });
+    else if (!["available", "current", "installed", "downloading"].includes(status.kind)) setStatus({ kind: "idle" });
   };
 
   const install = async () => {
@@ -326,7 +329,7 @@ export function DesktopUpdater(props: {
           <DialogFooter>
             <Button variant="outline" onClick={dismiss}>Later</Button>
             <Button onClick={() => void invoke("relaunch_app").catch((error: unknown) => {
-              setStatus({ kind: "error", message: `Could not restart: ${String(error)}` });
+              setStatus({ kind: "error", message: `Could not restart: ${String(error)}`, installed: status.version });
             })}>Restart Now</Button>
           </DialogFooter>
         )}

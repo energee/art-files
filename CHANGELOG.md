@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.125] - 2026-09-24
+
+### Fixed
+
+- **A failed restart keeps the installed update.** If Restart Now fails,
+  closing the error puts you back where you were: the status bar still offers
+  Restart to finish, and Label Lab → Restart to Update opens the restart
+  dialog instead of an empty one.
+
 ## [0.1.124] - 2026-09-24
 
 ### Fixed
