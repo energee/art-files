@@ -72,14 +72,12 @@ function rotate90(s: QrShapes): QrShapes {
   };
 }
 
-/** qrcode-generator's Byte mode keeps only the low 8 bits of each UTF-16
- *  code unit (`charCodeAt(i) & 0xff`), which garbles anything non-ASCII.
- *  Hand it the UTF-8 bytes as one char per byte instead, so scanners read
- *  back the exact text. ASCII maps to itself, so ASCII payloads are
- *  byte-identical to before. Local rather than patching the shared
- *  `qrcode.stringToBytes` global. */
+/** qrcode-generator's Byte mode keeps only `charCodeAt(i) & 0xff`; pass the
+ *  UTF-8 bytes one per char so non-ASCII text scans back exactly (ASCII is
+ *  unchanged). Local, instead of patching the shared `qrcode.stringToBytes`. */
+const utf8 = new TextEncoder();
 function utf8ByteString(s: string): string {
-  return String.fromCharCode(...new TextEncoder().encode(s));
+  return String.fromCharCode(...utf8.encode(s));
 }
 
 function buildShapes(

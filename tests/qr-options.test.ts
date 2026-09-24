@@ -32,12 +32,19 @@ describe("QR options", () => {
  *  decode with jsQR — the same round trip a phone scanner makes. */
 function decode(text: string): string | undefined {
   const s = qrShapes(text, { style: "square" });
-  const px = 4, quiet = 4, side = (s.count + 2 * quiet) * px;
+  const px = 4;
+  const quiet = 4;
+  const side = (s.count + 2 * quiet) * px;
   const rgba = new Uint8ClampedArray(side * side * 4).fill(255);
   for (const q of s.squares!) {
-    const c0 = Math.round(q.x * s.count) + quiet, r0 = Math.round(q.y * s.count) + quiet;
-    for (let y = r0 * px; y < (r0 + 1) * px; y++)
-      for (let x = c0 * px; x < (c0 + 1) * px; x++) rgba.fill(0, (y * side + x) * 4, (y * side + x) * 4 + 3);
+    const c0 = Math.round(q.x * s.count) + quiet;
+    const r0 = Math.round(q.y * s.count) + quiet;
+    for (let y = r0 * px; y < (r0 + 1) * px; y++) {
+      for (let x = c0 * px; x < (c0 + 1) * px; x++) {
+        const i = (y * side + x) * 4;
+        rgba.fill(0, i, i + 3);
+      }
+    }
   }
   return jsQR(rgba, side, side)?.data;
 }
