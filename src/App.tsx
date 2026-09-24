@@ -22,7 +22,7 @@
 // listeners or renders a singleton surface (the native menu) MUST honor the
 // `active` prop — and per-document renders are dropped while inactive (see
 // the deactivation effect). The editor reports { title, dirty, edited,
-// filePath } upward through onMeta; the shell owns tabs, file-open routing,
+// masterUnsaved, filePath } upward through onMeta; the shell owns tabs, file-open routing,
 // render settings, and the updater.
 import { RenderSettings as RenderSettingsFields } from "@/components/RenderSettings";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -399,6 +399,9 @@ export type DocumentMeta = {
   title: string;
   dirty: boolean;
   edited: boolean;
+  /** Unsaved master edits (templateMoved): the close prompt warns that a
+   *  label Save leaves them behind — only File → Save Master writes them. */
+  masterUnsaved: boolean;
   filePath: string | null;
 };
 
@@ -409,9 +412,8 @@ type DocumentEditorProps = {
    *  shell can drop the queued entry. */
   onOpenSettled: (seq: number) => void;
   onMeta: (meta: DocumentMeta) => void;
-  /** Shell-owned slot this editor assigns its close-prompt save fn into on
-   *  every render; resolves false when the tab must stay open (save dialog
-   *  cancelled, or redirected to the Save Master review). */
+  /** Shell-owned slot this editor assigns its save fn into on every render;
+   *  resolves false when the user cancels the save dialog. */
   saveSlot: { current: (() => Promise<boolean>) | null };
   /** The Document Settings knobs (DPI/bleed/corner/edge) — shell-owned. */
   render: RenderSettings;
@@ -1377,10 +1379,6 @@ export const DocumentEditor = memo(function DocumentEditor({
   // What the tab strip, window title and export names call this document.
   const title = titleOf(drawLayers) || "Untitled";
   const exportBase = exportBaseOf(drawLayers);
-  useEffect(() => {
-    onMeta({ title, dirty, edited, filePath });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, dirty, edited]); // filePath is declared below; its own effect follows
 
   /** The full-resolution display list for an export: the same layers the
    *  preview draws, planned with the canvas measure (fonts.ts — the one
@@ -1439,10 +1437,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   const projectPath = useRef<string | null>(null);
   /** State mirror of projectPath (a ref, which can't drive onMeta). */
   const [filePath, setFilePath] = useState<string | null>(null);
+  // masterUnsaved is templateMoved, NOT the Save Master `masterDirty` above:
+  // label overrides ride in the .label, so ⌘S already saves them.
   useEffect(() => {
-    onMeta({ title, dirty, edited, filePath });
+    onMeta({ title, dirty, edited, masterUnsaved: templateMoved, filePath });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filePath]);
+  }, [title, dirty, edited, templateMoved, filePath]);
   function forgetProjectFile() {
     projectHandle.current = null;
     projectPath.current = null;
@@ -1529,16 +1529,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     setDirty(false);
     return true;
   }
-  // The close prompt's Save. A .label never carries the template, so with
-  // the master moved a label save alone would close the tab and drop those
-  // edits: open the Save Master review instead and resolve false, which
-  // keeps the tab open and aborts any window-close sweep (issue #159).
-  // Label overrides alone don't count — the .label saves them.
-  saveSlot.current = async () => {
-    if (!templateMoved) return saveProject();
-    setPendingSave({ as: false });
-    return false;
-  };
+  saveSlot.current = () => saveProject();
 
   /** The template assets a Save Master captures: the loaded texture/mask
    *  (the art being authored IS the template art) plus the bytes of every

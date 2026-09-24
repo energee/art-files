@@ -268,9 +268,8 @@ export default function TabsShell() {
   const saveAndClose = async (id: number) => {
     setSaving(true);
     try {
-      // false = keep the tab (save dialog cancelled, or the editor sent it
-      // to Save Master — see saveSlot in App.tsx) and, mid-sweep, abort the
-      // window close: a cancel is a cancel.
+      // false = the user cancelled the save dialog — keep the tab (and,
+      // mid-sweep, abort the window close: a cancel is a cancel).
       if (await extras.current.get(id)?.saveSlot.current?.()) doClose(id);
       else cancelClose();
     } finally {
@@ -438,6 +437,14 @@ export default function TabsShell() {
               This tab has unsaved changes. Save them, discard them, or keep
               the tab open.
             </DialogDescription>
+            {/* Save writes only the .label (issue #159): name the master
+                edits it leaves behind rather than prompting a second time. */}
+            {confirmTab?.masterUnsaved && (
+              <p className="text-sm text-muted-foreground">
+                This tab also has master changes. They'll be discarded unless
+                you Cancel and use File → Save Master.
+              </p>
+            )}
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" disabled={saving} onClick={cancelClose}>

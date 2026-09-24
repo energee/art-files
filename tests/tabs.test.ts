@@ -8,7 +8,7 @@ import {
 } from "@/tabs";
 
 const opened = (path: string) =>
-  ({ title: path, dirty: false, edited: false, filePath: path });
+  ({ title: path, dirty: false, edited: false, masterUnsaved: false, filePath: path });
 
 describe("tab transitions", () => {
   test("boots with one active Untitled tab", () => {

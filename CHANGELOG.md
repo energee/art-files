@@ -7,10 +7,11 @@ binary-impacting change gets its own version before it is merged.
 
 ### Fixed
 
-- **Close-tab Save no longer loses unsaved master edits.** When the tab's
-  master has changed (a layer added, removed, or reordered), Save in the
-  close prompt opens the Save Master review and keeps the tab open, instead
-  of saving only the label and closing.
+- **The close-tab prompt now warns about unsaved master changes.** When the
+  tab's master has changed (a layer added, removed, or reordered), the Save /
+  Discard / Cancel prompt adds a line saying those changes will be discarded
+  unless you Cancel and use File → Save Master. Save still saves the label
+  and closes the tab.
 
 ## [0.1.68] - 2026-09-15
 

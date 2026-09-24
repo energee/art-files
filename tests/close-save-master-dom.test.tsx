@@ -1,7 +1,9 @@
-// close-save-master-dom.test.tsx — the close prompt's Save (the editor's
-// saveSlot, which TabsShell's saveAndClose awaits) must not drop unsaved
-// master edits: with the template moved, it opens the Save Master review and
-// resolves false so the tab stays open (issue #159).
+// close-save-master-dom.test.tsx — closing a tab with unsaved master edits
+// (issue #159): the close prompt's Save (the editor's saveSlot, which
+// TabsShell's saveAndClose awaits) saves the .label and closes, never
+// opening the Save Master review; the prompt itself carries one extra line
+// warning that the master changes will be discarded, driven by the tab's
+// masterUnsaved meta.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -16,6 +18,7 @@ vi.mock("../src/fonts", () => ({
   labelFontCss: () => "sans-serif",
 }));
 import { DocumentEditor } from "../src/App";
+import TabsShell from "../src/TabsShell";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -43,15 +46,23 @@ async function mount() {
   document.body.appendChild(container);
   root = createRoot(container);
   const saveSlot: { current: (() => Promise<boolean>) | null } = { current: null };
+  const onMeta = vi.fn();
   await act(async () => {
     root!.render(createElement(DocumentEditor, {
-      active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
+      active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta,
       saveSlot, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
       onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
       onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
     }));
   });
-  return saveSlot;
+  return { saveSlot, onMeta };
+}
+
+async function mountShell() {
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+  await act(async () => { root!.render(createElement(TabsShell)); });
 }
 
 /** base-ui's menu trigger opens on mousedown — send the whole press. */
@@ -72,24 +83,49 @@ const reviewOpen = () =>
   Array.from(document.querySelectorAll('[role="dialog"]'))
     .some((d) => d.textContent?.includes("Save Master"));
 
-it("close-prompt Save with an unsaved master edit opens the master review and keeps the tab", async () => {
-  const saveSlot = await mount();
+const MASTER_LINE = "This tab also has master changes";
+const closePrompt = () =>
+  Array.from(document.querySelectorAll('[role="dialog"]'))
+    .find((d) => d.textContent?.includes("unsaved changes")) ?? null;
+
+it("close-prompt Save with an unsaved master edit saves the label and lets the tab close", async () => {
+  const { saveSlot, onMeta } = await mount();
   await addTextLayer();
-  expect(reviewOpen()).toBe(false);
+  expect(onMeta.mock.lastCall?.[0]).toMatchObject({ edited: true, masterUnsaved: true });
   let result: boolean | undefined;
   await act(async () => { result = await saveSlot.current!(); });
-  // false = TabsShell cancels the close (and any window-close sweep).
-  expect(result).toBe(false);
-  expect(reviewOpen()).toBe(true);
-  expect(savedNames).toEqual([]);
+  // true = TabsShell closes the tab, as before #159; no review detour.
+  expect(result).toBe(true);
+  expect(reviewOpen()).toBe(false);
+  expect(savedNames).toHaveLength(1);
+  expect(savedNames[0]).toMatch(/\.label$/);
 });
 
 it("close-prompt Save with no master edit saves the label and lets the tab close", async () => {
-  const saveSlot = await mount();
+  const { saveSlot, onMeta } = await mount();
+  expect(onMeta.mock.lastCall?.[0]).toMatchObject({ masterUnsaved: false });
   let result: boolean | undefined;
   await act(async () => { result = await saveSlot.current!(); });
   expect(result).toBe(true);
   expect(reviewOpen()).toBe(false);
   expect(savedNames).toHaveLength(1);
   expect(savedNames[0]).toMatch(/\.label$/);
+});
+
+it("the close prompt warns that unsaved master changes will be discarded", async () => {
+  await mountShell();
+  await addTextLayer();
+  const close = document.querySelector('[aria-label^="Close "]') as HTMLElement;
+  await act(async () => { close.click(); });
+  const prompt = closePrompt();
+  expect(prompt).not.toBeNull();
+  expect(prompt!.textContent).toContain(MASTER_LINE);
+  expect(prompt!.textContent).toContain("File → Save Master");
+  // Still the same three choices — no extra button.
+  expect(Array.from(prompt!.querySelectorAll("button")).map((b) => b.textContent))
+    .toEqual(["Cancel", "Discard", "Save"]);
+  // No second dialog (the Save Master review) alongside the prompt. Counted
+  // by dialog-content: the narrow happy-dom viewport also mounts the
+  // sidebar as a role="dialog" sheet.
+  expect(document.querySelectorAll('[data-slot="dialog-content"]')).toHaveLength(1);
 });
