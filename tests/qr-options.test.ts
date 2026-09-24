@@ -55,3 +55,12 @@ describe("QR text encoding (#66)", () => {
     (text) => expect(decode(text)).toBe(text),
   );
 });
+
+describe("QR capacity overflow (#71)", () => {
+  it("throws a real Error naming the problem, not qrcode-generator's bare string", () => {
+    const overflow = () => qrShapes("x".repeat(1300), { ecLevel: "H" });
+    expect(overflow).toThrow(Error);
+    expect(overflow).toThrow(/QR value is too long.*1300 bytes/);
+    expect(qrShapes("x".repeat(1300), { ecLevel: "L" }).count).toBeGreaterThan(0);
+  });
+});

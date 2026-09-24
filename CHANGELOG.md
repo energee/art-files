@@ -80,6 +80,11 @@ binary-impacting change gets its own version before it is merged.
   preview under it, so text stays put when you start typing. Poppins labels
   are unchanged.
 
+- **An over-long QR value now shows a clear message.** A QR payload too long
+  to fit in any QR code used to report a cryptic "code length overflow" (or
+  an "undefined" error on export). It now says the value is too long, how
+  many bytes it is, and to shorten it or lower the error correction level.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed

@@ -86,8 +86,20 @@ function buildShapes(
   ecLevel: "L" | "M" | "Q" | "H",
 ): QrShapes {
   const qr = qrcode(0, ecLevel);
-  qr.addData(utf8ByteString(data || " "));
-  qr.make();
+  const bytes = utf8ByteString(data || " ");
+  qr.addData(bytes);
+  try {
+    qr.make();
+  } catch (e) {
+    // qrcode-generator throws a bare string ("code length overflow. (…)")
+    // when the payload exceeds version 40's capacity; handlers read
+    // `e.message`, so rethrow a real Error the operator can act on.
+    throw new Error(
+      `QR value is too long to encode (${bytes.length} bytes at error correction ${ecLevel}). ` +
+      `Shorten it or lower the error correction level.`,
+      { cause: e },
+    );
+  }
   const count = qr.getModuleCount();
   const ms = 1 / count;
   const inFinder = (r: number, c: number) =>
