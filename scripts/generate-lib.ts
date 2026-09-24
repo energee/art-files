@@ -156,19 +156,16 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
     };
   }
 
-  if (positional.length >= 3) {
-    const [texturePath, maskPath, outDir, configPath] = positional;
-    if (positional.length > 4) throw new Error(USAGE);
-    return {
-      mode: "legacy",
-      texturePath, maskPath, outDir,
-      ...(configPath ? { configPath } : {}),
-      ...(singles["collab-left"] ? { collabLeft: singles["collab-left"] } : {}),
-      ...(singles["collab-center"] ? { collabCenter: singles["collab-center"] } : {}),
-    };
-  }
-
-  throw new Error(USAGE);
+  // Not the new form, so three or more positionals: the legacy argv.
+  const [texturePath, maskPath, outDir, configPath] = positional;
+  if (positional.length > 4) throw new Error(USAGE);
+  return {
+    mode: "legacy",
+    texturePath, maskPath, outDir,
+    ...(configPath ? { configPath } : {}),
+    ...(singles["collab-left"] ? { collabLeft: singles["collab-left"] } : {}),
+    ...(singles["collab-center"] ? { collabCenter: singles["collab-center"] } : {}),
+  };
 }
 
 const JOB_KEYS = new Set(["values", "variants", "files", "overrides"]);
