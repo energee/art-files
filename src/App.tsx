@@ -21,9 +21,9 @@
 // inactive ones, so anything here that registers window/document-level
 // listeners or renders a singleton surface (the native menu) MUST honor the
 // `active` prop — and per-document renders are dropped while inactive (see
-// the deactivation effect). The editor reports { title, dirty, edited,
-// filePath } upward through onMeta; the shell owns tabs, file-open routing,
-// render settings, and the updater.
+// the deactivation effect). The editor reports its DocumentMeta upward
+// through onMeta; the shell owns tabs, file-open routing, render settings,
+// and the updater.
 import { RenderSettings as RenderSettingsFields } from "@/components/RenderSettings";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { MasterSaveReview } from "@/components/MasterSaveReview";
@@ -64,7 +64,7 @@ import { SHIPPED_MASTER_ID, masterIndex, rememberMaster, resolveDefaultMaster, r
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
-import { makeHiddenPropsEqual } from "@/tabs";
+import { makeHiddenPropsEqual, type TabMeta } from "@/tabs";
 import { EMBEDDABLE_RASTER, mimeFor, rasterKind, tintRgba } from "@/collab";
 import { parseLogo } from "@/logo";
 // The builders are imported dynamically at export time (see buildFull /
@@ -383,12 +383,7 @@ export type FileToOpen = {
 
 /** What the tab strip shows for this document — reported through onMeta
  *  whenever any field changes. */
-export type DocumentMeta = {
-  title: string;
-  dirty: boolean;
-  edited: boolean;
-  filePath: string | null;
-};
+export type DocumentMeta = TabMeta;
 
 type DocumentEditorProps = {
   active: boolean;
@@ -674,7 +669,7 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  File → Save disables while clean. */
   const [dirty, setDirty] = useState(true);
   /** Whether the user has actually touched this document — the shell
-   *  prompts about closing a tab only when edited AND dirty. */
+   *  prompts about closing a tab only when edited AND unsaved (tabs.ts). */
   const [edited, setEdited] = useState(false);
   const editedRef = useRef(edited);
   editedRef.current = edited;
@@ -1368,10 +1363,6 @@ export const DocumentEditor = memo(function DocumentEditor({
   // What the tab strip, window title and export names call this document.
   const title = titleOf(drawLayers) || "Untitled";
   const exportBase = exportBaseOf(drawLayers);
-  useEffect(() => {
-    onMeta({ title, dirty, edited, filePath });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, dirty, edited]); // filePath is declared below; its own effect follows
 
   /** The full-resolution display list for an export: the same layers the
    *  preview draws, planned with the pdf-lib widths the PDF draws with
@@ -1433,10 +1424,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   const projectPath = useRef<string | null>(null);
   /** State mirror of projectPath (a ref, which can't drive onMeta). */
   const [filePath, setFilePath] = useState<string | null>(null);
+  // masterUnsaved is templateMoved, NOT the Save Master `masterDirty` above:
+  // label overrides ride in the .label, so ⌘S already saves them.
   useEffect(() => {
-    onMeta({ title, dirty, edited, filePath });
+    onMeta({ title, dirty, edited, masterUnsaved: templateMoved, filePath });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filePath]);
+  }, [title, dirty, edited, templateMoved, filePath]);
   function forgetProjectFile() {
     projectHandle.current = null;
     projectPath.current = null;

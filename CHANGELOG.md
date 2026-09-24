@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.86] - 2026-09-23
+
+### Fixed
+
+- **Unsaved master edits now keep the close prompt armed.** Adding a layer
+  (or any other master edit) and then saving the label with `⌘S` no longer
+  lets the tab or window close silently: the tab keeps its unsaved dot, closing
+  asks first, and the updater warns before restarting, until you save the
+  master with Save Master.
 ## [0.1.85] - 2026-09-23
 
 ### Fixed
