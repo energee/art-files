@@ -158,8 +158,8 @@ it("leaves focus out of the inspector when a layer selection opens it", async ()
     await act(async () => {
       (row.querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement).click();
     });
-    // Let the sheet's open transition and deferred initial-focus run.
-    await act(async () => { await new Promise((r) => setTimeout(r, 500)); });
+    // Base UI applies initial focus on the next animation frame after open.
+    await act(async () => { await new Promise(requestAnimationFrame); });
     const sheet = document.querySelector('[data-slot="sheet-content"]');
     expect(sheet).not.toBeNull();
     expect(sheet!.contains(document.activeElement)).toBe(false);
