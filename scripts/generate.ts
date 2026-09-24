@@ -7,7 +7,9 @@ import { runGenerate } from "./generate-lib";
 const argv = process.argv.slice(2);
 const code = await runGenerate({
   argv,
-  cwd: process.cwd(),
+  // npm runs scripts from the package root; INIT_CWD is the directory the
+  // caller ran `npm run generate` from, which relative paths mean (#104).
+  cwd: process.env.INIT_CWD ?? process.cwd(),
   readStdin: () => readFileSync(0, "utf8"),
   readFile: (p) => new Uint8Array(readFileSync(p)),
   readFileText: (p) => readFileSync(p, "utf8"),

@@ -30,6 +30,8 @@ npm run generate -- beer.master values.json ./out --set name=X
 - `--set id=value`: overlay one value on every job
 - `--inspect`: JSON on stdout, exit 0
 
+Relative paths resolve against the directory you run `npm run generate` from, even though npm runs the script from the repo root.
+
 Exit codes: **0** wrote everything, **1** a job or input was rejected, **2** bad argv.
 
 The older texture/mask/config.json argv still works for golden re-baselines:
