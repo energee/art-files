@@ -44,10 +44,10 @@ afterEach(async () => {
 });
 
 /** Dispatch a keydown at `target` and report whether the app claimed it. */
-const press = async (target: EventTarget, init: KeyboardEventInit): Promise<KeyboardEvent> => {
+const press = async (target: EventTarget, init: KeyboardEventInit): Promise<boolean> => {
   const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
   await act(async () => { target.dispatchEvent(event); });
-  return event;
+  return event.defaultPrevented;
 };
 
 it("⌘S on a clean document keeps the browser's Save Page dialog from opening", async () => {
@@ -55,11 +55,9 @@ it("⌘S on a clean document keeps the browser's Save Page dialog from opening",
   // fallback here) and leaves it clean, so Save is now disabled.
   await press(document.body, { key: "s", metaKey: true });
   expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: false });
-  const event = await press(document.body, { key: "s", metaKey: true });
-  expect(event.defaultPrevented).toBe(true);
+  expect(await press(document.body, { key: "s", metaKey: true })).toBe(true);
 });
 
 it("a key no command binds is left to the browser", async () => {
-  const event = await press(document.body, { key: "p", metaKey: true });
-  expect(event.defaultPrevented).toBe(false);
+  expect(await press(document.body, { key: "p", metaKey: true })).toBe(false);
 });
