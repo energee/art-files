@@ -535,3 +535,14 @@ it("shows uppercase in the sidebar warning field before focus and emits a style 
   expect(onUppercase).toHaveBeenCalledWith(true);
   expect(onChange).not.toHaveBeenCalled();
 });
+
+it("keeps the run toggles hidden when Tab lands on Uppercase from outside the field", () => {
+  act(() => { root.render(createElement(TooltipProvider, null,
+    createElement(TextEditor, {
+      id: "warning", label: "Text", lines: [line("x")], base,
+      multiline: true, uppercase: false, onUppercase: vi.fn(), onChange: vi.fn(),
+    }))); });
+  const button = container.querySelector('[aria-label="Toggle uppercase"]') as HTMLElement;
+  act(() => { button.focus(); });
+  expect(container.querySelector('[aria-label="Toggle bold"]')).toBeNull();
+});
