@@ -20,3 +20,9 @@ tauri-plugin-updater = "2.10.1"
 # Apple events natively, so it does not need the plugin).
 [target."cfg(not(target_os = \"macos\"))".dependencies]
 tauri-plugin-single-instance = "2"
+
+# macOS: adds applicationShouldTerminate: to tao's app delegate so app-level
+# quits run the unsaved-tabs prompt (src/terminate.rs). Already in the tree
+# via tao; listed here only to call the Objective-C runtime directly.
+[target."cfg(target_os = \"macos\")".dependencies]
+objc2 = "0.6"
