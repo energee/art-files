@@ -2391,6 +2391,10 @@ export const DocumentEditor = memo(function DocumentEditor({
               clearSelection();
           }}>
           <SheetContent side="right" showOverlay={false} showCloseButton={false}
+            // Opening follows a selection, so focus stays where the user
+            // selected: Base UI's default would land in the rename box and
+            // turn Backspace/arrows into text edits instead of delete/nudge.
+            initialFocus={false}
             finalFocus={(closeType) => closeType === "keyboard"}
             className="w-[300px] gap-0 overflow-y-auto border-l-0! bg-sidebar p-0 sm:max-w-[300px]">
             {inspected && (

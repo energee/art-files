@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.70] - 2026-09-23
+
+### Fixed
+
+- **Selecting a layer no longer puts the cursor in its name field.** The
+  inspector opens without taking focus, so Delete/Backspace removes the
+  selected layer and the arrow keys nudge it, instead of quietly editing the
+  layer's name.
+
 ## [0.1.68] - 2026-09-15
 
 ### Fixed
