@@ -1,7 +1,7 @@
 // CommandMenu.tsx — ⌘K palette exposing the app's actions.
 import { useEffect, useState } from "react";
 import {
-  CommandDialog, CommandEmpty, CommandInput, CommandItem, CommandList,
+  CommandDialog, CommandEmpty, CommandInput, CommandItem, CommandList, CommandShortcut,
 } from "@/components/ui/command";
 
 /** One entry in the app's command table (see App's `commands`). `key` is the
@@ -51,9 +51,10 @@ export function CommandMenu(props: { actions: Command[] }) {
             <CommandItem key={a.id} disabled={a.disabled}
               onSelect={() => { setOpen(false); a.run(); }}>
               {a.label}
-              {glyphs && (
-                <span className="ml-auto text-xs text-muted-foreground">{glyphs}</span>
-              )}
+              {/* CommandShortcut, not a bare ml-auto span: its data-slot is what
+                  hides CommandItem's trailing check icon, whose own ml-auto
+                  would otherwise split the free space and park the hint mid-row. */}
+              {glyphs && <CommandShortcut>{glyphs}</CommandShortcut>}
             </CommandItem>
           );
         })}

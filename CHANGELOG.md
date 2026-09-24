@@ -3,6 +3,14 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.134] - 2026-09-24
+
+### Fixed
+
+- **Command palette shortcuts line up on the right.** The key hints in the ⌘K
+  palette now sit flush against the right edge of every row, instead of
+  floating mid-row at a position that changed with each command's name.
+
 ## [0.1.133] - 2026-09-24
 
 ### Fixed
