@@ -681,7 +681,7 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  File → Save disables while clean. */
   const [dirty, setDirty] = useState(true);
   /** Whether the user has actually touched this document — the shell
-   *  prompts about closing a tab only when edited AND dirty. */
+   *  prompts about closing a tab only when edited AND unsaved (tabs.ts). */
   const [edited, setEdited] = useState(false);
   const editedRef = useRef(edited);
   editedRef.current = edited;
