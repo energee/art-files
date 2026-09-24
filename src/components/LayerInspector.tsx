@@ -216,6 +216,7 @@ function BlankableField(props: {
   // the rendered value or the browser reports a step mismatch on a number the
   // field itself produced.
   const displayStep = props.unit === "mm" ? DISPLAY_STEP.mm : props.step;
+  const shown = props.value === undefined ? "" : displayValue(props.value, props.unit, props.step);
   return (
     <Field id={props.id} label={props.label} badge={props.badge}>
       <InputGroup className="h-6 w-24">
@@ -227,7 +228,7 @@ function BlankableField(props: {
           step={displayStep}
           placeholder={props.placeholder}
           className="h-6 text-xs"
-          value={text ?? (props.value === undefined ? "" : displayValue(props.value, props.unit, props.step))}
+          value={text ?? shown}
           onChange={(e) => {
             const s = e.target.value;
             setText(s);
@@ -240,7 +241,9 @@ function BlankableField(props: {
             if (Number.isFinite(n)) props.onChange(Math.min(props.max, Math.max(props.min,
               toPoints(n, props.unit, props.step))));
           }}
-          onBlur={() => setText(null)}
+          // Write the shown value too: React won't replace "3e2" with 300,
+          // they're loosely equal (#135, see ScrubField).
+          onBlur={(e) => { setText(null); e.currentTarget.value = String(shown); }}
         />
         <InputGroupAddon align="inline-end">
           <InputGroupText className="text-[10px]">{props.unit}</InputGroupText>
