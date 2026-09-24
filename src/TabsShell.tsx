@@ -11,7 +11,8 @@ import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
 import { DocumentEditor, type DocumentMeta, type FileToOpen } from "@/App";
-import { LABEL_TYPES, isAbort, openPicker } from "@/filePickers";
+import { LABEL_FILTER, LABEL_TYPES, isAbort, openPicker } from "@/filePickers";
+import { openNativeFile } from "@/files";
 import {
   activateTab, addTab, closeTab, initialTabs, routeFileOpen, updateTabMeta,
   type TabsState,
@@ -207,14 +208,23 @@ export default function TabsShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** File → Open Project…: FS-Access picker where available (yields a
-   *  writable handle, so Save rewrites the picked file), hidden-input
-   *  fallback elsewhere. The editor runs the actual open (see fileToOpen
-   *  in App.tsx). */
+  /** File → Open Project…: native dialog on desktop (a real path, routed
+   *  exactly like an OS open, so the tab records filePath and ⌘S saves in
+   *  place — WKWebView has no FS-Access picker), FS-Access picker in the
+   *  browser (yields a writable handle, so Save rewrites the picked file),
+   *  hidden-input fallback elsewhere. The editor runs the actual open (see
+   *  fileToOpen in App.tsx). */
   async function openProjectPicker() {
-    const pick = openPicker();
-    if (!pick) { fileInput.current?.click(); return; }
     try {
+      if (isTauri()) {
+        const path = await openNativeFile({ filter: LABEL_FILTER });
+        if (path === null) return; // dialog cancelled
+        setPickError("");
+        openRouted({ path });
+        return;
+      }
+      const pick = openPicker();
+      if (!pick) { fileInput.current?.click(); return; }
       const [handle] = await pick({ types: LABEL_TYPES });
       setPickError("");
       openRouted({ handle });
@@ -420,7 +430,8 @@ export default function TabsShell() {
       {/* The strip lands in the active editor's slot without being one of
           its props (see tabStripHost). */}
       {stripHost && createPortal(tabStrip, stripHost)}
-      {/* Hidden-input Open fallback (no FS-Access): bytes, no save identity. */}
+      {/* Hidden-input Open fallback (browser without FS-Access): bytes, no
+          save identity. Desktop never lands here — it uses the native dialog. */}
       <input ref={fileInput} type="file" accept={LABEL_EXT} className="hidden"
         onChange={(e) => {
           const f = e.currentTarget.files?.[0];
