@@ -74,6 +74,15 @@ describe("rebindLabel", () => {
     expect(home.enabledVariants).toEqual(["collab"]);
     expect(home.dormant).toEqual({ values: { untappd: "u/x" }, variants: ["seasonal"] });
   });
+  it("restores a benched text value stored as a plain string (#96)", () => {
+    // convertLabelV2 benches v2 dormant text as String(v); resolveLayers
+    // widens a string on a text layer, so the rebind must accept it too.
+    const l: LabelFile = { formatVersion: 3, masterId: "other", enabledVariants: [],
+      values: {}, dormant: { values: { name: "Peregrine" }, variants: [] } };
+    const r = rebindLabel(l, other(), lolevMaster());
+    expect(r.label.values).toEqual({ name: "Peregrine" });
+    expect(r.dropped.values).toEqual([]);
+  });
   it("live values win over a benched value with the same id", () => {
     const l: LabelFile = { ...label(), dormant: { values: { name: line("OLD") }, variants: [] } };
     expect(rebindLabel(l, undefined, lolevMaster()).label.values.name).toEqual(line("HAZY"));
