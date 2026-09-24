@@ -2039,7 +2039,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** The inspector's content slot for the selected layer: the rich text
    *  field (or number/code box) for text, the image well for images, the
    *  payload box for barcode/QR — each writing through setContent, so every
-   *  layer's content belongs to this label. Shows `shownLayer`'s value. */
+   *  layer's content belongs to this label. */
   function contentFor(resolved: Layer): React.ReactNode {
     const layer = shownLayer(resolved);
     const id = `${layer.id}-content`;

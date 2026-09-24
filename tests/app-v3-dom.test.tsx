@@ -181,8 +181,7 @@ it("opens the on-canvas editor on a rejected ABV, not the master value (#171)", 
     await act(async () => { field().blur(); });
     expect(document.body.textContent).toContain("Must be at most 20.");
     const p = perf.preview!;
-    const abv = p.layers.find((l) => l.id === "abv")!;
-    const shown = (p.editLayerOf ?? ((l) => l))(abv);
+    const shown = p.editLayerOf(p.layers.find((l) => l.id === "abv")!);
     expect(shown.kind === "text" && shown.lines[0].text).toBe("25");
   });
 });
