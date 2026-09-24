@@ -7,13 +7,10 @@ import { describe, expect, it } from "vitest";
 import { psdImages, type Rgba } from "../src/psd/build";
 import { PAGE_ART_ID } from "../src/model/layers";
 
-/** Stand-in for App.tsx's decodeToCanvas contract: natural size unless a
- *  `size` is forced, in which case the canvas takes that size. */
+/** Stand-in for App.tsx's natural-size decoder: every image is 1000x1000. */
 const NATURAL = { width: 1000, height: 1000 };
-const decode = async (_bytes: Uint8Array, size?: { width: number; height: number }): Promise<Rgba> => {
-  const { width, height } = size ?? NATURAL;
-  return { data: new Uint8Array(width * height * 4), width, height };
-};
+const decode = async (): Promise<Rgba> =>
+  ({ data: new Uint8Array(NATURAL.width * NATURAL.height * 4), ...NATURAL });
 const bytes = new Uint8Array([1]);
 
 describe("psdImages", () => {
