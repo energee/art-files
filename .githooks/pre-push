@@ -8,7 +8,7 @@
 # with `git config branch.<name>.stack-parent <parent>`; the check then runs
 # against the parent — the same base CI uses (the PR's base branch).
 
-parent=$(git config "branch.$(git branch --show-current).stack-parent")
+parent=$(git config "branch.$(git branch --show-current).stack-parent" 2>/dev/null)
 # ponytail: no base ref (fresh clone, offline) = skip; CI still guards.
 base=$(git merge-base HEAD "origin/${parent:-main}" 2>/dev/null) || exit 0
 exec node scripts/check-release.mjs "$base"
