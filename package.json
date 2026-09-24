@@ -1,7 +1,7 @@
 {
   "name": "label-lab",
   "private": true,
-  "version": "0.1.70",
+  "version": "0.1.71",
   "type": "module",
   "description": "Label Lab: create print-ready label artwork and white-ink plates",
   "scripts": {
@@ -28,6 +28,7 @@
     "@vitejs/plugin-react": "^4.7.0",
     "ag-psd": "^31.0.2",
     "happy-dom": "^20.11.6",
+    "jsqr": "^1.4.0",
     "pngjs": "^7.0.0",
     "shadcn": "^4.16.1",
     "tailwindcss": "^4.3.3",
