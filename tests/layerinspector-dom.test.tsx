@@ -510,6 +510,32 @@ it("converts dimensional edits from mm to points while keeping typography in poi
   expect(onChange).not.toHaveBeenCalled();
 });
 
+// #131: a millimetre value is stored at the model's 0.01pt, and that stored
+// point read back at 0.001mm is off by the rounding — 50 came back as 49.999.
+// The field shows the shortest reading that stores the same points.
+it("shows a typed millimetre value back as typed (#131)", () => {
+  const { onChange } = render(text({ x: 72, width: 144 }), { unit: "mm" });
+  const stored: Record<string, number> = {};
+  for (const mm of ["50", "10", "-500"]) {
+    type($("#name-x")!, mm);
+    stored[mm] = (vi.mocked(onChange).mock.lastCall?.[0] as { x: number }).x;
+  }
+  type($("#name-width")!, "50");
+  const width = (vi.mocked(onChange).mock.lastCall?.[0] as { width: number }).width;
+  // Blur drops each field's typed draft, so what follows reads the stored value.
+  for (const id of ["#name-x", "#name-width"])
+    act(() => { $(id)!.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
+  for (const mm of ["50", "10", "-500"]) {
+    render(text({ x: stored[mm], width }), { unit: "mm" });
+    expect(($("#name-x") as HTMLInputElement).value).toBe(mm);
+    expect(($("#name-width") as HTMLInputElement).value).toBe("50");
+  }
+  // A value that needs the third decimal still gets it: 1pt is 0.353mm, and
+  // 0.35mm would store 0.99pt.
+  render(text({ x: 1 }), { unit: "mm" });
+  expect(($("#name-x") as HTMLInputElement).value).toBe("0.353");
+});
+
 it("converts image dimensions and binding gaps in mm without losing optional height or bounds", () => {
   const { onChange } = render(image({ w: 72, h: 144, binding: { to: "name", side: "bottom", gap: -72 } }), { unit: "mm" });
   expect(($("#logo-w") as HTMLInputElement).value).toBe("25.4");
