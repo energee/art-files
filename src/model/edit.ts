@@ -164,10 +164,7 @@ export function removeLayer(master: Master, id: string, boxes?: ReadonlyMap<stri
     if (entry.binding?.to !== id) return repoint(entry, id, slot);
     const box = boxes?.get(key);
     if (!box) throw new Error(`Cannot remove "${id}" without the position of bound layer "${key}"`);
-    const b = entry.binding;
-    return { ...entry, ...(b.side === "left" || b.side === "right"
-      ? { binding: null, x: box.x, anchor: "left", guideX: "none" }
-      : { binding: null, y: box.y, vAnchor: "top", guideY: "none" }) };
+    return { ...entry, ...unbindPatch(entry as Layer, box) };
   };
   const layers = master.layers.filter((l) => l.id !== id).map((l) => detach(l, l.id));
   const variants = master.variants.map((v) => withEntries(v,

@@ -563,9 +563,9 @@ describe("removeLayer keeps a bound dependent where the removed layer sat", () =
   it("old-style `below` dependent of a layer placed by a new-style binding", () => {
     const m = setLayer(lolevMaster(), "description", { binding: { to: "name", side: "bottom", gap: 5 } });
     const before = boxesOf(m);
-    const after = boxesOf(removeLayer(m, "description", before));
-    expect(after.get("collabLead")!.y).toBeCloseTo(before.get("description")!.y);
-    expect(() => parseMaster(removeLayer(m, "description", before))).not.toThrow();
+    const removed = removeLayer(m, "description", before);
+    expect(boxesOf(removed).get("collabLead")!.y).toBeCloseTo(before.get("description")!.y);
+    expect(() => parseMaster(removed)).not.toThrow();
   });
   it("a chained `below` dependent keeps its binding", () => {
     const m = lolevMaster();
