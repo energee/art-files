@@ -6,8 +6,9 @@ import svgpath from "svgpath";
 /** Extract the logo's paths (basic shapes converted — see shapeToPath)
  *  pre-scaled to `width` points. Transforms are applied — each shape's own
  *  composed with its ancestor <g> transforms (text-outline exports carry
- *  their y-flip there) — and the output is normalized to absolute M/L/C/Z commands with rounded coordinates — pdf-lib's drawSvgPath cannot
- *  handle relative/shorthand/arc/H/V commands or its own scale option's
+ *  their y-flip there) — and the output is normalized to absolute M/L/C/Z
+ *  commands with rounded coordinates — pdf-lib's drawSvgPath cannot handle
+ *  relative/shorthand/arc/H/V commands or its own scale option's
  *  exponent-notation output, and the PSD builder needs plain cubics to turn
  *  into bezier knots. */
 export function parseLogo(
@@ -86,7 +87,7 @@ function shapeToPath(name: string, tag: string): string {
     case "circle":
     case "ellipse": {
       const cx = n("cx"), cy = n("cy");
-      const rx = name === "circle" ? n("r") : n("rx"), ry = name === "circle" ? rx : n("ry");
+      const rx = n(name === "circle" ? "r" : "rx"), ry = name === "circle" ? rx : n("ry");
       if (!(rx > 0 && ry > 0)) return "";
       const arc = `A ${rx} ${ry} 0 1 0`;
       return `M ${cx - rx} ${cy} ${arc} ${cx + rx} ${cy} ${arc} ${cx - rx} ${cy} Z`;
@@ -122,16 +123,18 @@ function parseLogoUncached(
   // transform string applies.
   const stack: string[] = [];
   const parsed: ReturnType<typeof svgpath>[] = [];
+  // Every name here must have a case in shapeToPath (or reach its throw);
+  // a drawing element missing from this list is silently skipped.
   const tags = /<\/g>|<(g|path|rect|circle|ellipse|polygon|polyline|line|use|text|image)\b[^>]*>/g;
   for (const m of renderedOnly(svg).matchAll(tags)) {
     const [tag, name] = m;
-    if (tag === "</g>") stack.pop();
+    if (!name) stack.pop(); // </g>
     else if (name === "g") {
       // A self-closing <g/> opens nothing: pushing it would leak its
       // transform onto every following sibling, with no </g> to pop it.
       if (!tag.endsWith("/>")) stack.push(attr(tag, "transform"));
     } else {
-      const d = shapeToPath(name!, tag);
+      const d = shapeToPath(name, tag);
       if (!d) continue;
       const tf = [...stack, attr(tag, "transform")].join(" ").trim();
       parsed.push(svgpath(d).transform(tf).abs().unshort().unarc());
