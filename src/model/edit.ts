@@ -814,17 +814,21 @@ function changedPaths(a: unknown, b: unknown): string[] {
   return [...paths].filter((p) => p !== "name" && !deepEqual(getPath(a, p), getPath(b, p)));
 }
 
-/** The items of `items` NOT on a longest increasing run of `order` (the
- *  items' old positions, in new order): the fewest items whose moving explains
- *  the new order. Quadratic, which is nothing at a master's layer count. */
-function movedOutOfOrder<T>(order: readonly number[], items: readonly T[]): T[] {
-  const len: number[] = [];
-  const prev: number[] = [];
+/** The items NOT on a longest run whose `rank` (old position) increases in
+ *  their current order: the fewest items whose moving explains the new
+ *  order. Quadratic, which is nothing at a master's layer count. */
+function movedOutOfOrder<T>(items: readonly T[], rank: (t: T) => number): T[] {
+  const order = items.map(rank);
+  const len = order.map(() => 1);
+  const prev = order.map(() => -1);
   let end = -1;
   for (let i = 0; i < order.length; i++) {
-    len[i] = 1; prev[i] = -1;
-    for (let j = 0; j < i; j++)
-      if (order[j] < order[i] && len[j] + 1 > len[i]) { len[i] = len[j] + 1; prev[i] = j; }
+    for (let j = 0; j < i; j++) {
+      if (order[j] < order[i] && len[j] + 1 > len[i]) {
+        len[i] = len[j] + 1;
+        prev[i] = j;
+      }
+    }
     if (end < 0 || len[i] > len[end]) end = i;
   }
   const kept = new Set<number>();
@@ -858,9 +862,9 @@ export function masterChanges(
   // remove displaces nothing. The layers that kept their relative order are
   // the longest run still in base order (#99); only the rest were moved —
   // moving one layer to the front is one row, not one per layer it passed.
-  const baseIndex = new Map(base.layers.filter((l) => editedById.has(l.id)).map((l, i) => [l.id, i]));
-  const commonEdited = edited.layers.filter((l) => baseIndex.has(l.id));
-  for (const l of movedOutOfOrder(commonEdited.map((l) => baseIndex.get(l.id)!), commonEdited))
+  const baseIndex = new Map(base.layers.map((l, i) => [l.id, i]));
+  const common = edited.layers.filter((l) => baseIndex.has(l.id));
+  for (const l of movedOutOfOrder(common, (l) => baseIndex.get(l.id)!))
     out.push({ kind: "moved", layerId: l.id, layerName: l.name });
 
   for (const l of edited.layers) {
