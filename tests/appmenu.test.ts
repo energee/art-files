@@ -1,6 +1,9 @@
-// appmenu.test.ts — native menu accelerators and standard text-edit roles.
-import { describe, expect, it } from "vitest";
-import { APP_MENUS, actionsIn, nativeAccelerator } from "@/components/AppMenu";
+// appmenu.test.ts — native menu accelerators, standard text-edit roles, and
+// the macOS application menu's Quit routing.
+import { describe, expect, it, vi } from "vitest";
+import {
+  APP_MENUS, actionsIn, macApplicationMenu, nativeAccelerator,
+} from "@/components/AppMenu";
 import type { Command } from "@/components/CommandMenu";
 
 const command = (fields: Partial<Command>): Command => ({
@@ -124,5 +127,39 @@ describe("native text editing menu", () => {
     expect(nativeIconOf(editActions.find((action) => action.id === "redo"))).toBe("GoRight");
     expect(nativeIconOf(editActions.find((action) => action.id === "settings")))
       .toBeUndefined();
+  });
+});
+
+describe("macOS application menu", () => {
+  // A stand-in for @tauri-apps/api/menu that records each item's options.
+  type Options = Record<string, unknown>;
+  const fakeApi = () => {
+    const made = { predefined: [] as Options[], items: [] as Options[] };
+    const record = (bucket: Options[]) => ({
+      new: async (options: Options) => {
+        bucket.push(options);
+        return { ...options, close: async () => undefined };
+      },
+    });
+    const api = {
+      PredefinedMenuItem: record(made.predefined),
+      MenuItem: record(made.items),
+      IconMenuItem: record(made.items),
+      Submenu: record([]),
+    };
+    return { api: api as unknown as Parameters<typeof macApplicationMenu>[0], made };
+  };
+
+  // #80: the predefined Quit sends NSApp terminate:, which exits without a
+  // window close-requested event — the unsaved-tabs prompt never runs.
+  it("routes ⌘Q through the window close flow, not the predefined Quit", async () => {
+    const { api, made } = fakeApi();
+    const quit = vi.fn();
+    await macApplicationMenu(api, [], () => undefined, quit);
+    expect(made.predefined.map((options) => options.item)).not.toContain("Quit");
+    const item = made.items.find((options) => options.accelerator === "CmdOrCtrl+Q");
+    expect(item?.text).toBe("Quit Label Lab");
+    (item?.action as () => void)();
+    expect(quit).toHaveBeenCalledOnce();
   });
 });
