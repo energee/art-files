@@ -3,6 +3,17 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.99] - 2026-09-24
+
+### Fixed
+
+- **Collab SVG logos keep their rectangles, circles, and other basic shapes.**
+  Shapes drawn as rectangles, circles, ellipses, polygons, polylines, or lines
+  were dropped, so the rest of the logo was blown up to fill the slot (and a
+  logo made only of shapes wouldn't load at all). They're placed now. An SVG
+  that relies on clones, live text, or embedded images is refused with a
+  message naming the element, instead of silently losing that part.
+
 ## [0.1.88] - 2026-09-23
 
 ### Fixed

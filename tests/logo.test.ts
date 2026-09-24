@@ -78,3 +78,46 @@ describe("parseLogo non-rendered geometry", () => {
     expect(art.h).toBeCloseTo(36, 6);
   });
 });
+
+// #69: basic shapes are ink too — converted to path data in src/logo.ts.
+// Elements it can't draw (<use>, <text>, <image>) are rejected by name
+// rather than silently dropped.
+describe("parseLogo basic shapes", () => {
+  const TRIANGLE = '<path d="M 40 60 L 60 60 L 50 40 Z"/>';
+  const fit = (body: string) => parseLogo(`<svg viewBox="0 0 100 100">${body}</svg>`, 36, 36);
+
+  it("keeps a <rect> next to a path, fitting both", () => {
+    // Rect spans 0..100; triangle 40..60 — the old parser returned only the
+    // triangle, blown up to fill the slot.
+    const art = fit(`<rect x="0" y="0" width="100" height="100"/>${TRIANGLE}`);
+    expect(art.paths).toHaveLength(2);
+    expect(art.paths[0]).toBe("M 0 0 L 36 0 L 36 36 L 0 36 Z");
+    // The triangle keeps its place inside the rect: 40..60 of 100 → 14.4..21.6.
+    expect(art.paths[1].startsWith("M 14.4 21.6")).toBe(true);
+  });
+
+  it.each([
+    ["rect", '<rect x="10" y="20" width="80" height="40"/>', 80, 40],
+    ["rounded rect", '<rect x="10" y="20" width="80" height="40" rx="5"/>', 80, 40],
+    ["circle", '<circle cx="50" cy="50" r="25"/>', 50, 50],
+    ["ellipse", '<ellipse cx="50" cy="50" rx="40" ry="10"/>', 80, 20],
+    ["polygon", '<polygon points="10,10 90,10 50,50"/>', 80, 40],
+    ["polyline", '<polyline points="10 10, 90 10 50 30"/>', 80, 20],
+    ["line", '<line x1="10" y1="10" x2="90" y2="30"/>', 80, 20],
+  ])("converts a lone <%s> to ink", (_name, shape, w, h) => {
+    const art = fit(shape);
+    expect(art.paths).toHaveLength(1);
+    // Aspect of the ink box survives (curves' control points may widen the
+    // box by a hair, so compare the ratio loosely).
+    expect(art.w / art.h).toBeCloseTo(w / h, 1);
+  });
+
+  it("applies a shape's own and its group's transforms", () => {
+    const art = fit('<g transform="scale(2,1)"><rect width="10" height="10" transform="translate(5,0)"/></g>');
+    expect(art.h / art.w).toBeCloseTo(0.5, 6);
+  });
+
+  it.each(["use", "text", "image"])("rejects <%s> by name instead of dropping it", (tag) => {
+    expect(() => fit(`${TRIANGLE}<${tag} href="#x"/>`)).toThrow(new RegExp(`<${tag}>`));
+  });
+});
