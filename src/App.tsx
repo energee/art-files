@@ -848,8 +848,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       const key = e.key.toLowerCase();
       if (key !== "z" && key !== "y") return;
       if (!e.metaKey && !e.ctrlKey) return;
-      const el = e.target as HTMLElement | null;
-      if (el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "")) return;
+      if (isTypingTarget(e.target)) return;
       e.preventDefault();
       if (key === "y" || e.shiftKey) redo();
       else undo();
@@ -868,7 +867,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       const mods = e.metaKey || e.ctrlKey ? (e.shiftKey ? "⇧⌘" : "⌘") : undefined;
       if (!mods && e.shiftKey) return;
       const el = e.target as HTMLElement | null;
-      if (el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "")) return;
+      if (isTypingTarget(el)) return;
       // Same stand-aside as the nudge, for the BARE keys (1/2/3/r/g): an open
       // menu, dialog or Select holds focus and those keys are its own
       // typeahead. The ⌘ shortcuts stay live — no popup claims those.
@@ -897,7 +896,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       const step = steps[e.key];
       if (!step) return;
       const el = e.target as HTMLElement | null;
-      if (el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "")) return;
+      if (isTypingTarget(el)) return;
       // A popup, dialog or roving-focus widget owns the arrow keys while it
       // holds focus: nudging the canvas behind an open Select (and eating the
       // key the list needs) is never what the arrow meant there.
@@ -2399,13 +2398,10 @@ export const DocumentEditor = memo(function DocumentEditor({
           // or a canvas drag would otherwise also close this and deselect.
           onOpenChange={(open, details) => {
             if (open) return;
-            if (details.reason === "escape-key"
-              && (details.event.defaultPrevented || isTypingTarget(details.event.target))) {
-              details.cancel();
-              return;
-            }
-            if (details.reason === "escape-key" || details.reason === "close-press")
-              clearSelection();
+            if (details.reason === "escape-key") {
+              if (details.event.defaultPrevented || isTypingTarget(details.event.target)) details.cancel();
+              else clearSelection();
+            } else if (details.reason === "close-press") clearSelection();
           }}>
           <SheetContent side="right" showOverlay={false} showCloseButton={false}
             finalFocus={(closeType) => closeType === "keyboard"}

@@ -36,8 +36,7 @@ beforeEach(async () => {
   });
   // Select the barcode: its inspector fills through a ChoiceBox.
   await act(async () => { rowButton().click(); });
-  expect(field()).not.toBeNull();
-  expect(rowButton().getAttribute("data-active")).not.toBeNull();
+  expectInspectorOpenAndSelected();
 });
 
 afterEach(async () => {
@@ -49,6 +48,10 @@ const rowButton = () => container.querySelector(
   '[data-layer-id="barcode"] [data-slot="sidebar-menu-button"]') as HTMLButtonElement;
 // The inspector is a Sheet portalled to document.body.
 const field = () => document.querySelector("#barcode-content") as HTMLInputElement | null;
+const expectInspectorOpenAndSelected = () => {
+  expect(field()).not.toBeNull();
+  expect(rowButton().getAttribute("data-active")).not.toBeNull();
+};
 const escape = async (target: EventTarget) => {
   await act(async () => {
     target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
@@ -61,8 +64,7 @@ it("Escape in an inspector ChoiceBox cancels its draft but keeps the inspector a
   expect(document.querySelectorAll("[data-choice]").length).toBeGreaterThan(0);
   await escape(input);
   expect(document.querySelectorAll("[data-choice]")).toHaveLength(0);
-  expect(field()).not.toBeNull();
-  expect(rowButton().getAttribute("data-active")).not.toBeNull();
+  expectInspectorOpenAndSelected();
 });
 
 it("Escape ending an on-canvas text edit does not deselect", async () => {
@@ -72,8 +74,7 @@ it("Escape ending an on-canvas text edit does not deselect", async () => {
   container.appendChild(editor);
   editor.focus();
   await escape(editor);
-  expect(field()).not.toBeNull();
-  expect(rowButton().getAttribute("data-active")).not.toBeNull();
+  expectInspectorOpenAndSelected();
 });
 
 it("Escape already handled elsewhere (a cancelled canvas drag) does not deselect", async () => {
@@ -84,8 +85,7 @@ it("Escape already handled elsewhere (a cancelled canvas drag) does not deselect
   } finally {
     document.removeEventListener("keydown", handled, true);
   }
-  expect(field()).not.toBeNull();
-  expect(rowButton().getAttribute("data-active")).not.toBeNull();
+  expectInspectorOpenAndSelected();
 });
 
 it("a bare Escape with nothing editable focused still closes the inspector", async () => {
