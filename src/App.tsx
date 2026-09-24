@@ -2151,8 +2151,11 @@ export const DocumentEditor = memo(function DocumentEditor({
           <RenderSettingsFields value={render} onChange={onRenderChange} />
         </DialogContent>
       </Dialog>
+      {/* Gated on `active` like Settings and the inspector Sheet: a pending
+          review stays with its tab (hidden while another tab is in front,
+          back on return) so a confirm can only write the visible tab's master. */}
       {pendingSave && (
-        <MasterSaveReview open changes={masterChangeList}
+        <MasterSaveReview open={active} changes={masterChangeList}
           target={master.variants.find((v) => v.id === version)?.name}
           onCancel={() => setPendingSave(null)}
           onConfirm={(promote) => {

@@ -3,6 +3,14 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.122] - 2026-09-24
+
+### Fixed
+
+- **Save Master review stays with its tab.** Opening or switching to another
+  tab while the Save Master review is up now hides it until you return, so
+  confirming can only write the master of the tab you are looking at.
+
 ## [0.1.68] - 2026-09-15
 
 ### Fixed
