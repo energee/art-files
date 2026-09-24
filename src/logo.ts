@@ -7,11 +7,10 @@ import svgpath from "svgpath";
  *  applied — each path's own composed with its ancestor <g> transforms
  *  (text-outline exports carry their y-flip there) — and the output is
  *  normalized to absolute
- *  M/L/C/Z commands only (arcs, H/V and quadratics are all rewritten) with
- *  rounded coordinates — pdf-lib's drawSvgPath cannot handle
- *  relative/shorthand/arc/H/V commands or its own scale option's
- *  exponent-notation output, and the PSD builder needs plain cubics to turn
- *  into bezier knots. */
+ *  M/L/C/Z commands only, with rounded coordinates — pdf-lib's drawSvgPath
+ *  cannot handle relative/shorthand/arc/H/V commands or its own scale
+ *  option's exponent-notation output, and the PSD builder needs plain cubics
+ *  to turn into bezier knots. */
 export function parseLogo(
   svg: string,
   width: number,
@@ -37,19 +36,17 @@ export function parseLogo(
 
 const logoCache = new Map<string, Map<string, { paths: string[]; w: number; h: number }>>();
 
-/** Emit a normalized path string, converting H/V to L and elevating
- *  quadratics (Q, and T once unshort() has made it a Q) to the exact
- *  equivalent cubic: C1 = P0 + 2/3(Q1 - P0), C2 = P2 + 2/3(Q1 - P2). The PSD
- *  builder only reads M/L/C/Z, so a Q left in dropped its whole subpath. */
+/** Emit a normalized path string: H/V become L, and quadratics (T is
+ *  already Q after unshort()) become the exact cubic, C1 = P0 + 2/3(Q1 - P0),
+ *  C2 = P2 + 2/3(Q1 - P2). Elevated before round() so the thirds round like
+ *  every other number; returning an array from iterate() replaces the segment. */
 function emit(p: ReturnType<typeof svgpath>): string {
   const out: string[] = [];
-  // Elevate before round() so the thirds are rounded like every other number.
-  // Returning an array from svgpath's iterate() replaces that segment.
+  const towardQ = (from: number, q: number) => from + (2 / 3) * (q - from);
   p.iterate((seg, _i, x, y) => {
     if (seg[0] !== "Q") return;
     const [, qx, qy, ex, ey] = seg;
-    return [["C", x + (2 / 3) * (qx - x), y + (2 / 3) * (qy - y),
-      ex + (2 / 3) * (qx - ex), ey + (2 / 3) * (qy - ey), ex, ey]];
+    return [["C", towardQ(x, qx), towardQ(y, qy), towardQ(ex, qx), towardQ(ey, qy), ex, ey]];
   });
   p.round(4).iterate((seg, _i, x, y) => {
     if (seg[0] === "H") out.push(`L ${seg[1]} ${y}`);
