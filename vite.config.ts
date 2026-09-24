@@ -6,7 +6,11 @@ import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  server: { watch: { ignored: ["**/src-tauri/**"] } },
+  // Pinned to tauri.conf.json's devUrl port. strictPort makes a busy 5173 an
+  // error instead of a silent hop to 5174, which would leave the Tauri window
+  // loading whatever other Vite app holds 5173. `vitest run` opens no server,
+  // and an explicit `--port` flag still overrides this for a browser-only copy.
+  server: { port: 5173, strictPort: true, watch: { ignored: ["**/src-tauri/**"] } },
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   // Scoped here rather than in the npm script's flags so EVERY entry point to
   // vitest (watch mode, IDE runners, bare `npx vitest`) skips suites in nested

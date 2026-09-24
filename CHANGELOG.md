@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.133] - 2026-09-24
+
+### Fixed
+
+- **The development window always loads its own editor.** `npm run dev` now
+  serves only on port 5173 and stops with an error if another app already
+  holds it, instead of quietly moving to 5174 while the Label Lab dev window
+  kept loading whatever was on 5173.
+
 ## [0.1.68] - 2026-09-15
 
 ### Fixed
