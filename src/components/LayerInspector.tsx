@@ -140,9 +140,9 @@ function Field(props: { id?: string; label: string; badge?: ReactNode; children:
  *  Each resets only its own source, so clearing your own edit can never
  *  rewrite the shipped variant (which is what one merged badge used to do).
  *
- *  `paths` are checked in order and the first hit is what Reset restores — a
- *  bound y is written as one object but a parent's leaf-path walk may report
- *  it as "y", "y.below" or "y.gap". */
+ *  `paths` are checked in order and the first hit is what Reset restores. A
+ *  binding and a bound y are each one value to edit.ts's leaf-path walk
+ *  ("binding", "y"), but older callers may still report "y.below"/"y.gap". */
 function Badge(props: {
   paths: readonly string[];
   overridden: Overridden;
@@ -397,7 +397,7 @@ function Position(props: Ctx & {
                 <option key={side} value={side}>{side}</option>)}
             </select>
           </Field>
-          <Row badge={badge(["binding.gap", "y.gap", "y"], "Gap")}>
+          <Row badge={badge(["binding", "y.gap", "y"], "Gap")}>
             <DimensionField id={`${id}-gap`} label="Gap" unit={props.unit} value={binding.gap}
               min={-500} max={500} {...PT}
               onChange={(gap) => layer.binding

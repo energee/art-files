@@ -1553,7 +1553,16 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  saveProject, then registers the file in the library index and moves the
    *  master-dirty baseline. */
   async function saveMaster(as = false, promote: readonly MasterChange[] = []): Promise<boolean> {
-    const promoted = applyPromotions(master, label, promote, version ?? undefined);
+    // A promotion re-validates through parseMaster; surface a rejection in the
+    // header like the write failures below instead of an unhandled rejection
+    // from the `void saveMaster(...)` caller (#92).
+    let promoted: ReturnType<typeof applyPromotions>;
+    try {
+      promoted = applyPromotions(master, label, promote, version ?? undefined);
+    } catch (err) {
+      setLoadError(`Could not save master: ${errMsg(err)}`);
+      return false;
+    }
     const forked = as
       ? { ...promoted.master, id: `master-${crypto.randomUUID().slice(0, 8)}` }
       : promoted.master;

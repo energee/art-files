@@ -335,6 +335,14 @@ describe("LayerInspector override badges", () => {
     expect(onReset).toHaveBeenCalledWith("y.gap", "variant");
   });
 
+  it("an edge binding is one path, so the Gap badge resets the whole binding (#92)", () => {
+    const { onReset } = render(
+      text({ binding: { to: "description", side: "bottom", gap: 5 } }), { overridden: from(["binding"]) },
+    );
+    click(byLabel("Reset Gap to the master")!);
+    expect(onReset).toHaveBeenCalledWith("binding", "variant");
+  });
+
   it("marks a variant's change and this label's separately, each resetting its own", () => {
     // One merged badge used to mean the same click could clear your own edit
     // or rewrite the shipped variant, depending on state you could not see.

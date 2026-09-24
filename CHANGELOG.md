@@ -3,6 +3,17 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.91] - 2026-09-23
+
+### Fixed
+
+- **Save Master no longer fails when promoting a layer binding.** Binding a
+  layer to another in the inspector and then promoting it in the Save Master
+  review now writes the whole binding (target, side, and gap) to the master
+  as one row, instead of throwing "invalid binding". If a promotion is ever
+  rejected, the error now shows in the header instead of the save silently
+  doing nothing.
+
 ## [0.1.68] - 2026-09-15
 
 ### Fixed
