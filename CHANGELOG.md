@@ -183,6 +183,10 @@ binary-impacting change gets its own version before it is merged.
   holds it, instead of quietly moving to 5174 while the Label Lab dev window
   kept loading whatever was on 5173.
 
+- **Command palette shortcuts line up on the right.** The key hints in the ⌘K
+  palette now sit flush against the right edge of every row, instead of
+  floating mid-row at a position that changed with each command's name.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
