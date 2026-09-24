@@ -178,6 +178,11 @@ binary-impacting change gets its own version before it is merged.
   draws nothing on the canvas, in the PDFs, or in the PSD, the same as a
   barcode with an invalid number.
 
+- **The development window always loads its own editor.** `npm run dev` now
+  serves only on port 5173 and stops with an error if another app already
+  holds it, instead of quietly moving to 5174 while the Label Lab dev window
+  kept loading whatever was on 5173.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
