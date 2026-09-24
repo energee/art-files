@@ -43,13 +43,17 @@ export const displayName = (c: LabelConfig) => c.beerName.trim() || "Name";
 export const exportBaseName = (c: LabelConfig) =>
   machineName(c.beerName) || "label";
 export const displayStyle = (c: LabelConfig) => c.styleLine.text.trim() || "Style";
+/** A number figure without the trailing percent sign an old config carried
+ *  when the ABV field held its own unit ("6.5%" → "6.5"). Shared by
+ *  displayAbv and the v1/v2 → v3 migration (convert.ts), which must strip it
+ *  too or the number layer rejects the value. */
+export const stripPercent = (s: string) => s.trim().replace(/\s*%$/, "").trim();
 /** The ABV figure alone. Every caller appends the unit ("% alc by vol" on the
  *  label), so a trailing percent sign — typed, or inherited from a config
  *  written when the field carried its own unit — is stripped rather than
  *  printed twice. Text measurement runs on this same value, so the hitbox
  *  follows. */
-export const displayAbv = (c: LabelConfig) =>
-  c.abv.trim().replace(/\s*%$/, "").trim() || "#";
+export const displayAbv = (c: LabelConfig) => stripPercent(c.abv) || "#";
 
 export function defaultConfig(): LabelConfig {
   return {

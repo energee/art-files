@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.117] - 2026-09-24
+
+### Fixed
+
+- **Old labels with an ABV like "6.5%" open cleanly.** Labels saved when the
+  ABV field carried its own percent sign no longer open with "Expected a
+  number." and a blank ABV that blocked export; the sign is dropped on open,
+  since the label already prints "% alc by vol".
+
 ## [0.1.68] - 2026-09-15
 
 ### Fixed
