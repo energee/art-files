@@ -3,6 +3,15 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.102] - 2026-09-24
+
+### Fixed
+
+- **PSD text sets with the same letter spacing as the PDF.** Editable type
+  layers in exported PSDs now turn Photoshop's auto-kerning off, so Barlow
+  Condensed text no longer sets tighter in Photoshop than in the PDF and the
+  preview. Poppins labels are unchanged.
+
 ## [0.1.72] - 2026-09-23
 
 ### Fixed

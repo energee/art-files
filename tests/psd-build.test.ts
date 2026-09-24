@@ -73,6 +73,18 @@ describe("psd build", () => {
     expect(warning.children![0].text!.style!.font!.name).toBe("Poppins-Bold");
   });
 
+  it("turns Photoshop's auto-kerning off on every type layer and run, like the PDF (#143)", () => {
+    // pdf-lib draws raw glyph advances and the plan measures unkerned (#86);
+    // Photoshop's default auto-kerning would pull a kern-table face like
+    // Barlow Condensed tighter than the PDF and the preview.
+    const text = flat(doc.children as any[]).filter((l) => l.text);
+    expect(text.length).toBeGreaterThan(0);
+    for (const l of text) {
+      expect(l.text.style.autoKerning, l.name).toBe(false);
+      for (const r of l.text.styleRuns ?? []) expect(r.style.autoKerning ?? false, l.name).toBe(false);
+    }
+  });
+
   it("keeps a description line's own style as a run inside the merged layer", async () => {
     const psd = await build({ values: { description: [
       { text: "HOPS", fill: "#F3CD80", layer: "metallic", header: true },
@@ -183,7 +195,8 @@ describe("added layers", () => {
   // Candidate baseline: PSD raster review remains pending (goldens/README.md).
   // sha256 of buildPsd's bytes for the shipped Lolev master, art and mask.
   // The shipped label must keep building byte-identical output — this fails
-  // the moment the builder emits anything extra or differently.
+  // the moment the builder emits anything extra or differently. Re-pinned
+  // for #143: type layers now carry autoKerning: false.
   it("builds byte-identical output for the shipped label", async () => {
     const hash = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
     const items = await lolevPlan();
@@ -191,8 +204,8 @@ describe("added layers", () => {
     const art = await buildPsd(items, assets, "art", { layers });
     const mask = await buildPsd(items, assets, "mask", { layers });
     expect({ art: hash(art), artLen: art.length, mask: hash(mask), maskLen: mask.length }).toEqual({
-      art: "f470f1ac36c161adfd5868a042ed5718528904d4fe3241695584191e9701bec7", artLen: 1155342,
-      mask: "8736399f084a70717e35bc0054d569da3467f9907d0f7d1b62886c3637a3d969", maskLen: 1148624,
+      art: "c353feca6f59b3fd63d82c0d6606383dcab74c2c93f574a7a71015fe0b694c24", artLen: 1155418,
+      mask: "cd93b89654ea3b83d3ca58d469c671005758e8e777a1842c0815b96559ebdef9", maskLen: 1148632,
     });
   });
 
