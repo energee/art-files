@@ -129,6 +129,50 @@ describe("planLayers text", () => {
   });
 });
 
+// Issue #89: a marker pair spanning a space must survive the word split that
+// wrap and justify do — each word keeps the span's style, and no literal
+// `**` / `_` is ever drawn.
+describe("planLayers text: multi-word markup across wrap/justify", () => {
+  const WARN = "**GOVERNMENT WARNING:** (1) According to the Surgeon General";
+  const styled = (runs: PlacedText[]) =>
+    runs.filter((r) => r.text.trim()).map((r) => [r.text, r.face, r.layer]);
+  const noMarkers = (runs: PlacedText[]) =>
+    expect(runs.some((r) => r.text.includes("*") || r.text.includes("_"))).toBe(false);
+
+  it("wrap: a bold span split across lines stays bold on both", () => {
+    const runs = planLayers([text({ id: "w", x: 0, y: 0, width: 60, lines: [line(WARN)] })], m, assets) as PlacedText[];
+    noMarkers(runs);
+    expect(styled(runs).filter((r) => r[1] === "semibold"))
+      .toEqual([["GOVERNMENT", "semibold", "metallic"], ["WARNING:", "semibold", "metallic"]]);
+  });
+
+  it("wrap: a _white ink_ span split across lines stays white on both", () => {
+    const runs = planLayers([text({ id: "w", x: 0, y: 0, width: 40, lines: [line("A _very hoppy double_ IPA")] })], m, assets) as PlacedText[];
+    noMarkers(runs);
+    expect(styled(runs).filter((r) => r[2] === "white").map((r) => r[0])).toEqual(["very", "hoppy", "double"]);
+  });
+
+  it("justify: every word of a bold span is bold, markers stripped", () => {
+    const runs = planLayers([text({ id: "w", x: 0, y: 0, width: 200, align: "justify",
+      lines: [line("A **very hoppy double** IPA"), line("end")] })], m, assets) as PlacedText[];
+    expect(styled(runs)).toEqual([
+      ["A", "regular", "metallic"], ["very", "semibold", "metallic"], ["hoppy", "semibold", "metallic"],
+      ["double", "semibold", "metallic"], ["IPA", "regular", "metallic"], ["end", "regular", "metallic"],
+    ]);
+    // Justified: the last word of the first line ends exactly at the width.
+    const ipa = runs.find((r) => r.text === "IPA")!;
+    expect(ipa.x + ipa.w).toBeCloseTo(200);
+  });
+
+  it("rotated justify (justifiedRotatedRuns): the warning heading is two bold words", () => {
+    const layer = text({ id: "warn", x: 100, y: 300, vAnchor: "bottom", rotation: 90, width: 120, leading: 1,
+      align: "justify", lines: [line(WARN)] });
+    const runs = planLayers([layer], m, assets) as PlacedText[];
+    noMarkers(runs);
+    expect(styled(runs).filter((r) => r[1] === "semibold").map((r) => r[0])).toEqual(["GOVERNMENT", "WARNING:"]);
+  });
+});
+
 describe("planLayers image", () => {
   it("draws builtin:logo as the laurel paths sized by w, centered on a center anchor", () => {
     const [item] = planLayers([image({ id: "logo", asset: "builtin:logo", w: 33.5, x: 100, anchor: "center", y: 50, style: { ...GOLD_METAL, stroke: "#000000" } })], m, assets) as PlacedPaths[];
