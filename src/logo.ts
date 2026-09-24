@@ -55,9 +55,13 @@ function renderedOnly(svg: string): string {
   return svg.replace(/<!--[\s\S]*?-->|<(defs|clipPath|mask|symbol|pattern)\b[^>]*?(?:\/>|>[\s\S]*?<\/\1\s*>)/g, "");
 }
 
-/** Read one attribute's value from a start tag ("" when absent). */
+/** Read one attribute's value from a start tag ("" when absent). Takes any
+ *  valid XML spelling (#70): whitespace of any kind before the name and
+ *  around "=", and either quote — exporters emit single quotes and put
+ *  attributes on their own lines. The leading \s keeps `width` from
+ *  matching inside `stroke-width`. */
 function attr(tag: string, name: string): string {
-  return tag.match(new RegExp(` ${name}="([^"]+)"`))?.[1] ?? "";
+  return tag.match(new RegExp(`\\s${name}\\s*=\\s*(["'])(.*?)\\1`, "s"))?.[2] ?? "";
 }
 
 /** A tag's geometry as path data (#69): <path> as-is, the basic shapes

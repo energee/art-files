@@ -3,6 +3,16 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.100] - 2026-09-24
+
+### Fixed
+
+- **Collab SVG logos load whatever quote style or line breaks they use.** SVGs
+  written with single-quoted attributes, or with attributes on their own lines,
+  were refused ("Logo path is missing d attribute"), and a single-quoted group
+  transform was ignored, which put the art in the wrong place. Both now load
+  and place correctly.
+
 ## [0.1.99] - 2026-09-24
 
 ### Fixed
