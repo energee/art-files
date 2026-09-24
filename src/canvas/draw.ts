@@ -103,6 +103,10 @@ export function drawPlate(
   // glyph.
   c.textAlign = "left";
   c.textBaseline = "alphabetic";
+  // The PDF draws unkerned (pdf-lib emits no kerning) and the plan measures
+  // unkerned to match (fonts.ts), so the preview must paint unkerned too, or
+  // a kern-table family shows tighter on screen than it prints (#86).
+  c.fontKerning = "none";
 
   // Plate background — mirrors buildArtPdf / buildMaskPdf.
   c.fillStyle = "#FFFFFF";
@@ -189,8 +193,8 @@ function drawText(ctx: Ctx, r: PlacedText, mode: Mode, fontCss: string, ring: Ri
   // Engines without letterSpacing ignore the assignment above, so tracked
   // runs are laid out by hand: one glyph per call, advancing by the glyph's
   // own measured width plus the tracking — all in user-space px, which the
-  // pt-scaled transform makes scale-free. Kerning between pairs is lost on
-  // this degraded path; positions still match the plan's run starts. The
+  // pt-scaled transform makes scale-free. Per-glyph advances are unkerned,
+  // like every other path here (drawPlate sets fontKerning "none"). The
   // glyphs are PLACED once per run, not per paint: a stroked run paints the
   // text up to 66 times (the bridge ring, the stroke, the ink), and measuring
   // every glyph for each of those was the whole cost of this path on the

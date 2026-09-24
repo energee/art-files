@@ -3,7 +3,12 @@
 # so version/lockfile drift is caught locally before it reaches a PR.
 # Activated by `npm install` via the package.json "prepare" script
 # (git config core.hooksPath .githooks). See .agents/release-steward.md.
+#
+# Stacked PRs: a branch whose PR targets another branch records that parent
+# with `git config branch.<name>.stack-parent <parent>`; the check then runs
+# against the parent — the same base CI uses (the PR's base branch).
 
-# ponytail: no origin/main (fresh clone, offline) = skip; CI still guards.
-base=$(git merge-base HEAD origin/main 2>/dev/null) || exit 0
+parent=$(git config "branch.$(git branch --show-current).stack-parent" 2>/dev/null)
+# ponytail: no base ref (fresh clone, offline) = skip; CI still guards.
+base=$(git merge-base HEAD "origin/${parent:-main}" 2>/dev/null) || exit 0
 exec node scripts/check-release.mjs "$base"
