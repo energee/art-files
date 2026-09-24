@@ -152,6 +152,11 @@ binary-impacting change gets its own version before it is merged.
   Restart to finish, and Label Lab → Restart to Update opens the restart
   dialog instead of an empty one.
 
+- **Switching to the 3D can view repeatedly stays smooth.** Leaving the can
+  view now releases its graphics context right away, so toggling 2D and 3D or
+  switching tabs quickly no longer piles up contexts until the browser starts
+  dropping them.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
