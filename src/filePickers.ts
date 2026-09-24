@@ -1,7 +1,9 @@
 // filePickers.ts — the .label and .master dialog surface: the browser File
 // System Access helpers, typed once, plus the Tauri-native dialog filter they
 // must stay in sync with. The FS Access API is absent on Safari/Firefox, so
-// every caller branches on these and keeps a download/input fallback. The
+// every caller branches on these and keeps a download/input fallback —
+// after checking isTauri() first: the desktop webview has no FS Access API
+// and uses the native dialogs in src/files.ts with these filters instead. The
 // fiddly parts (the window casts, the ArrayBuffer cast, abort detection) live
 // here so save/export/open can't drift apart. Lives outside App.tsx so that
 // module exports only React components and Fast Refresh keeps working (a
@@ -18,7 +20,7 @@ const MASTER_DESC = "Label master";
 export const LABEL_TYPES = [
   { description: LABEL_DESC, accept: { "application/zip": [LABEL_EXT] } },
 ];
-/** LABEL_TYPES' Tauri-native twin, for the desktop save dialog. */
+/** LABEL_TYPES' Tauri-native twin, for the desktop open/save dialogs. */
 export const LABEL_FILTER = { name: LABEL_DESC, extensions: [LABEL_EXT.slice(1)] };
 
 /** The .master file picker option — a ZIP like .label since the 2026-08-29
@@ -27,7 +29,7 @@ export const LABEL_FILTER = { name: LABEL_DESC, extensions: [LABEL_EXT.slice(1)]
 export const MASTER_TYPES = [
   { description: MASTER_DESC, accept: { "application/zip": [MASTER_EXT] } },
 ];
-/** MASTER_TYPES' Tauri-native twin, for the desktop save dialog. */
+/** MASTER_TYPES' Tauri-native twin, for the desktop open/save dialogs. */
 export const MASTER_FILTER = { name: MASTER_DESC, extensions: [MASTER_EXT.slice(1)] };
 
 export const savePicker = () => (window as {

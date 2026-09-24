@@ -71,4 +71,10 @@ describe("PSD collab art", () => {
     const psd = await build({ variants: ["collab"] }, "art", psdAssets);
     expect(groups(psd.children as any[]).slice(-1)).toEqual(["Lead-in"]);
   });
+
+  it("a quadratic-curve SVG (Q/T) still lands as vector art (#67)", async () => {
+    const quad = '<svg viewBox="0 0 10 10"><path d="M0 0 Q5 10 10 0 Z"/></svg>';
+    const psd = await build({ ...both, custom: { ...both.custom, left: { aspect: 1, art: { kind: "svg", svg: quad } } } });
+    expect(layer(psd.children as any[], "Text logo").vectorMask.paths.length).toBeGreaterThan(0);
+  });
 });

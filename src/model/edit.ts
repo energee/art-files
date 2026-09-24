@@ -24,6 +24,8 @@ import { anchorFraction, type GuideLines } from "./position";
 import { CENTER_X, GOLD } from "../layout";
 import { KEYLINE } from "../defaults";
 import { DEFAULT_STROKE_LAYER } from "../strokes";
+import { validateFor } from "../barcode";
+import { fieldRefs } from "./format";
 
 type LayerPatch = DeepPartial<Layer>;
 /** A variant's diff entry: a whole layer (variant-added) or a partial
@@ -138,28 +140,33 @@ function withLayer(master: Master, id: string, fn: (l: Entry) => Entry): Master 
     withEntries(v, { ...v.layers, [id]: fn(v.layers[id]) }));
 }
 
-/** Rebinds every `below: id` reference in a list of records to `y`. */
-const repoint = <T extends { y?: unknown }>(l: T, id: string, y: Layer["y"]): T =>
-  isBound(l.y) && l.y.below === id ? { ...l, y: structuredClone(y) } : l;
+/** Rewrites every `below: id` reference in a list of records with `slot`. */
+const repoint = <T extends { y?: unknown }>(l: T, id: string, slot: Entry): T =>
+  isBound(l.y) && l.y.below === id ? { ...l, ...structuredClone(slot) } : l;
 
 /** Removes the layer from wherever it lives, strips every variant's entry
- *  for it, and re-points any layer bound below it onto the removed layer's
- *  own `y` — the layer beneath takes the vacated slot — so no binding
- *  dangles. */
+ *  for it, and re-points any layer bound below it into the vacated slot so
+ *  no binding dangles and the layer beneath does not move. A removed layer
+ *  that is itself bound below another hands its `below` binding on (the
+ *  chain closes up); otherwise the dependent is pinned at the removed
+ *  layer's measured top (`boxes`) with no guide and a top anchor, since the
+ *  removed layer's raw `y` means nothing without its own guideY/vAnchor/
+ *  binding. Without its box the raw `y` is copied as a best effort. */
 export function removeLayer(master: Master, id: string, boxes?: ReadonlyMap<string, Box>): Master {
   const where = whereLayerLives(master, id);
   const removed = where === "master"
     ? master.layers.find((l) => l.id === id)!
     : variantOf(master, where.variant).layers[id];
   const y = removed.y as Layer["y"];
+  const top = boxes?.get(id)?.y;
+  const slot: Entry = isBound(y) || top === undefined
+    ? { y }
+    : { y: top, vAnchor: "top", guideY: "none" };
   const detach = <T extends Entry>(entry: T, key: string): T => {
-    if (entry.binding?.to !== id) return repoint(entry, id, y);
+    if (entry.binding?.to !== id) return repoint(entry, id, slot);
     const box = boxes?.get(key);
     if (!box) throw new Error(`Cannot remove "${id}" without the position of bound layer "${key}"`);
-    const b = entry.binding;
-    return { ...entry, ...(b.side === "left" || b.side === "right"
-      ? { binding: null, x: box.x, anchor: "left", guideX: "none" }
-      : { binding: null, y: box.y, vAnchor: "top", guideY: "none" }) };
+    return { ...entry, ...unbindPatch(entry as Layer, box) };
   };
   const layers = master.layers.filter((l) => l.id !== id).map((l) => detach(l, l.id));
   const variants = master.variants.map((v) => withEntries(v,
@@ -300,10 +307,16 @@ export function clearOverride(master: Master, variant: string, id: string, path?
   return withVariant(master, variant, (v) => withEntries(v, clearEntry(v.layers, id, path)));
 }
 
+/** Layer keys whose object value is ONE setting: parseMaster validates an
+ *  edge `binding` ({to, side, gap}) and a bound `y` ({below, gap}) whole, so
+ *  a promote row or reset for just one field would write a half-binding the
+ *  master rejects (#92). */
+const ATOMIC_KEYS = new Set(["binding", "y"]);
+
 /** Flattens to dotted leaf paths; arrays count as leaves (a `lines` override
- *  is one edit, not one per run). */
+ *  is one edit, not one per run), and so do the ATOMIC_KEYS objects. */
 function leafPaths(obj: unknown, prefix: string, out: Set<string>): void {
-  if (!isPlain(obj)) { if (prefix) out.add(prefix); return; }
+  if (!isPlain(obj) || ATOMIC_KEYS.has(prefix)) { if (prefix) out.add(prefix); return; }
   for (const k of Object.keys(obj)) leafPaths(obj[k], prefix ? `${prefix}.${k}` : k, out);
 }
 
@@ -682,7 +695,8 @@ const drawnText = (value: LayerValue): string =>
 /** Teaches a layer's fill vocabulary a value it does not already offer
  *  (docs/plans/choice-input.md). Returns the master UNCHANGED — by identity,
  *  so callers make no history entry — when the value is blank, already
- *  offered, or the layer does not exist.
+ *  offered, the layer does not exist, or it is a literal barcode code that
+ *  fails its symbology's validator.
  *
  *  Matching is on `value`, what the label draws, never on a choice's `title`:
  *  typing the words that happen to be a title means a different value than the
@@ -691,6 +705,10 @@ export function learnChoice(master: Master, id: string, text: string): Master {
   const value = text.trim();
   const layer = master.layers.find((l) => l.id === id);
   if (!value || !layer || layer.choices?.some((c) => c.value === value)) return master;
+  // Never learn a literal barcode that cannot encode (#94); templates are
+  // judged after expansion, by resolveLayers.
+  if (layer.kind === "barcode" && !fieldRefs(value).length
+    && !validateFor(layer.symbology, value).ok) return master;
   return patchLayer(master, id, { choices: [...(layer.choices ?? []), { value }] });
 }
 
