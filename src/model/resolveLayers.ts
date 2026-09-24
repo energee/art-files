@@ -56,13 +56,16 @@ function applyValue(l: Layer, v: LayerValue): Result {
     return { error: l.kind === "text" ? "Expected text." : l.kind === "image" ? "Expected an image." : "Expected a code value." };
   }
   // ponytail: validateField still speaks FieldDecl; build one on the fly.
-  const r = layer.kind === "text" && layer.input
-    ? validateField({ id: l.id, label: l.name, kind: layer.input, path: "",
-      min: layer.min, max: layer.max, symbology: layer.symbology }, plainText(layer.lines))
-    : layer.kind === "barcode"
-      ? validateField({ id: l.id, label: l.name, kind: "code", path: "", symbology: layer.symbology }, layer.value)
-      : undefined;
-  return r && !r.ok ? { error: r.error! } : { layer };
+  if (layer.kind === "text" && layer.input) {
+    const r = validateField({ id: l.id, label: l.name, kind: layer.input, path: "",
+      min: layer.min, max: layer.max, symbology: layer.symbology }, plainText(layer.lines));
+    if (!r.ok) return { error: r.error! };
+  }
+  if (layer.kind === "barcode") {
+    const r = validateField({ id: l.id, label: l.name, kind: "code", path: "", symbology: layer.symbology }, layer.value);
+    if (!r.ok) return { error: r.error! };
+  }
+  return { layer };
 }
 
 /** Lines as one plain string: runs joined with their markers stripped. */

@@ -103,10 +103,6 @@ it("measures asset assembly while moving margin guides", async () => {
   }
 });
 
-// #128/#129 — an invalid fill is stored in the label but resolveLayers skips
-// applying it, so a field fed from the RESOLVED layer snapped back to the
-// master's value (barcode) or went blank (ABV) while the header named the
-// bad value. The field must show what the label holds, error beneath.
 async function withEditor(run: () => Promise<void>) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -141,6 +137,10 @@ function typeInto(input: HTMLInputElement, text: string) {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+// #128/#129 — an invalid fill is stored in the label but resolveLayers skips
+// applying it, so a field fed from the RESOLVED layer snapped back to the
+// master's value (barcode) or went blank (ABV) while the header named the
+// bad value. The field must show what the label holds, error beneath.
 it("keeps an invalid barcode code in the Code field, with its error (#128)", async () => {
   await withEditor(async () => {
     await selectLayer("barcode");
