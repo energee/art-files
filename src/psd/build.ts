@@ -38,6 +38,7 @@ import type { Fill } from "../types";
 import { FONT_FAMILIES, type FontFamilyId } from "../fontCatalog";
 import * as L from "../layout";
 import type { Face, PlacedBarcode, PlacedPaths, PlacedText } from "../plan";
+import { strokeSpec } from "../plan";
 import type { PlacedLayer, PlacedPage } from "../planLayers";
 import { facesOf } from "../planLayers";
 import type { Layer as AppLayer, TextLayer } from "../model/layers";
@@ -642,7 +643,7 @@ function buildLayers(
         children.push(shapeLayer(
           name, paths, paint(mode, layer.style.fill, layer.style.layer),
           strokePaint(mode, layer.style.stroke, layer.style.strokeLayer),
-          (layer.style.strokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX,
+          strokeSpec(layer.style)?.w ?? 0,
         ));
       }
     } else {
