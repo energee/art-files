@@ -3,6 +3,14 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.115] - 2026-09-24
+
+### Fixed
+
+- **Files opened while Label Lab is starting up open right away.** A `.label`
+  double-clicked in the moment the app was still loading could sit unopened
+  until the next file was opened; it now opens as soon as the app is ready.
+
 ## [0.1.114] - 2026-09-24
 
 ### Fixed
