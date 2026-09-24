@@ -342,8 +342,8 @@ type LoadedTexture = Loaded & { kind: "png" | "jpg" };
 // srcBytes: the original upload — the bytes Save writes.
 type LoadedMask = Loaded & { error?: string; srcBytes: Uint8Array };
 
-/** Decode a texture file into its slot value WITHOUT touching state, so an
- *  open can decode everything before it commits anything (#81). PNG and
+/** Decode a texture file into its slot value; state-free, like readMask and
+ *  readCustomImage, so an open can decode before it commits (#81). PNG and
  *  JPEG pass through byte-for-byte; anything else the browser can decode
  *  (WebP) is re-encoded to PNG ONCE, here, and renamed to match — pdf-lib
  *  embeds PNG and JPEG only. */
@@ -361,8 +361,7 @@ async function readTexture(f: File): Promise<LoadedTexture> {
   return { bytes, previewBytes, name, kind: rasterKind(name), previewUrl, aspect };
 }
 
-/** Decode a mask file into its slot value, state-free like readTexture. The
- *  mask passes through untouched — the printer accepts these plates
+/** Decode a mask file into its slot value. The mask passes through untouched — the printer accepts these plates
  *  as-authored (the metalness map classifies pixels itself). */
 async function readMask(f: File): Promise<LoadedMask> {
   const [srcBytes, canvas] = await Promise.all([
@@ -1713,8 +1712,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const r = tryParseMaster(bytes);
     if (!r) return;
     await applyOpenedMaster(r.master, name, bytes);
-    // Bound only once the doc is on this master: a throw above must not
-    // aim Save Master at a file the document never loaded (#81's twin).
+    // Bind Save Master only once the doc is on this master (#81).
     masterFileHandle.current = src.handle ?? null;
     masterFilePath.current = src.path ?? null;
     await adoptMasterAssets(r.assets);
@@ -1884,15 +1882,23 @@ export const DocumentEditor = memo(function DocumentEditor({
       const t = unpacked.assets.texture ?? masterAssets.texture;
       const m = unpacked.assets.mask ?? masterAssets.mask;
       const ci = { ...masterAssets.customImages, ...unpacked.assets.customImages, ...legacyAssets };
-      // Decode EVERY asset before touching the tab (#81): a file whose art
-      // won't decode must fail here, leaving the previous document — and the
-      // Save target the caller only rebinds on success — intact. Resetting
-      // first left the new content bound to the OLD file, so ⌘S overwrote it.
-      const [tex, msk, images] = await Promise.all([
-        t && readTexture(assetToFile(t)), m && readMask(assetToFile(m)),
-        Promise.all(Object.entries(ci).map(async ([id, a]) =>
-          [id, await readCustomImage(assetToFile(a))] as const)),
-      ]);
+      // Decode every asset before resetDocument: a failed decode must leave
+      // the previous doc and its Save target (rebound by the caller only on
+      // success) intact (#81).
+      const texP = t ? readTexture(assetToFile(t)) : undefined;
+      const mskP = m ? readMask(assetToFile(m)) : undefined;
+      const imgPs = Object.entries(ci).map(async ([id, a]) =>
+        [id, await readCustomImage(assetToFile(a))] as const);
+      let tex, msk, images;
+      try {
+        [tex, msk, images] = await Promise.all([texP, mskP, Promise.all(imgPs)]);
+      } catch (err) {
+        // Nothing reached state, so nothing would revoke the previews the
+        // successful decodes minted — release them here.
+        for (const p of [texP, mskP, ...imgPs.map((q) => q.then(([, c]) => c))])
+          p?.then((x) => URL.revokeObjectURL(x.previewUrl), () => {});
+        throw err;
+      }
       resetDocument(next);
       notes.push(...layerRows(next.master, next.label).warnings);
       if (tex) swapLoaded(setTexture, tex);
