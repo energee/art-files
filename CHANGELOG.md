@@ -3,6 +3,17 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.90] - 2026-09-23
+
+### Fixed
+
+- **A file that fails to open no longer takes over the tab.** If a `.label`
+  can't be opened (for example its artwork won't decode), the tab now stays
+  exactly as it was — still showing the previous file and still saving to it.
+  Before, the tab showed the failed file's content while Save (`⌘S`) still
+  pointed at the previous file, so saving overwrote it. A master that fails
+  to open likewise no longer becomes the Save Master target.
+
 ## [0.1.68] - 2026-09-15
 
 ### Fixed

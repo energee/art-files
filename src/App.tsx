@@ -338,6 +338,44 @@ async function previewPng(src: ImageBitmap | HTMLCanvasElement): Promise<Uint8Ar
   return canvasToPng(c);
 }
 
+type LoadedTexture = Loaded & { kind: "png" | "jpg" };
+// srcBytes: the original upload — the bytes Save writes.
+type LoadedMask = Loaded & { error?: string; srcBytes: Uint8Array };
+
+/** Decode a texture file into its slot value WITHOUT touching state, so an
+ *  open can decode everything before it commits anything (#81). PNG and
+ *  JPEG pass through byte-for-byte; anything else the browser can decode
+ *  (WebP) is re-encoded to PNG ONCE, here, and renamed to match — pdf-lib
+ *  embeds PNG and JPEG only. */
+async function readTexture(f: File): Promise<LoadedTexture> {
+  const passthrough = EMBEDDABLE_RASTER.test(f.name);
+  const decoded = passthrough ? await createImageBitmap(f) : await decodeToCanvas(f);
+  const bytes = passthrough
+    ? new Uint8Array(await f.arrayBuffer())
+    : await canvasToPng(decoded as HTMLCanvasElement);
+  const previewBytes = await previewPng(decoded);
+  const aspect = decoded.width / decoded.height;
+  if (decoded instanceof ImageBitmap) decoded.close();
+  const name = passthrough ? f.name : `${f.name.replace(/\.[^.]*$/, "")}.png`;
+  const previewUrl = URL.createObjectURL(f);
+  return { bytes, previewBytes, name, kind: rasterKind(name), previewUrl, aspect };
+}
+
+/** Decode a mask file into its slot value, state-free like readTexture. The
+ *  mask passes through untouched — the printer accepts these plates
+ *  as-authored (the metalness map classifies pixels itself). */
+async function readMask(f: File): Promise<LoadedMask> {
+  const [srcBytes, canvas] = await Promise.all([
+    f.arrayBuffer().then((b) => new Uint8Array(b)), decodeToCanvas(f),
+  ]);
+  const previewBytes = await previewPng(canvas);
+  const previewUrl = URL.createObjectURL(f);
+  return {
+    bytes: srcBytes, previewBytes, name: f.name, previewUrl, srcBytes,
+    aspect: canvas.width / canvas.height,
+  };
+}
+
 // Blob snapshots the bytes at construction (no transfer), so no copy needed.
 const blobUrl = (bytes: Uint8Array, type: string) =>
   URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type }));
@@ -505,9 +543,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   const guides = useMemo(
     () => guideLines({ physical: master.physical, guides: master.guides }),
     [master.physical, master.guides]);
-  const [texture, setTexture] = useState<(Loaded & { kind: "png" | "jpg" }) | null>(null);
-  // srcBytes: the original upload — the bytes Save writes.
-  const [mask, setMask] = useState<(Loaded & { error?: string; srcBytes: Uint8Array }) | null>(null);
+  const [texture, setTexture] = useState<LoadedTexture | null>(null);
+  const [mask, setMask] = useState<LoadedMask | null>(null);
   // Every per-id image asset this document carries: image layers' art,
   // collab logos included (an image layer's value is a key here).
   const [customImages, setCustomImages] = useState<Record<string, CustomFile>>({});
@@ -919,36 +956,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     set((old) => { if (old) URL.revokeObjectURL(old.previewUrl); return next; });
   };
 
-  async function onTexture(f: File) {
-    // PNG and JPEG pass through byte-for-byte; anything else the browser can
-    // decode (WebP) is re-encoded to PNG ONCE, here, and renamed to match —
-    // pdf-lib embeds PNG and JPEG only.
-    const passthrough = EMBEDDABLE_RASTER.test(f.name);
-    const decoded = passthrough ? await createImageBitmap(f) : await decodeToCanvas(f);
-    const bytes = passthrough
-      ? new Uint8Array(await f.arrayBuffer())
-      : await canvasToPng(decoded as HTMLCanvasElement);
-    const previewBytes = await previewPng(decoded);
-    const aspect = decoded.width / decoded.height;
-    if (decoded instanceof ImageBitmap) decoded.close();
-    const name = passthrough ? f.name : `${f.name.replace(/\.[^.]*$/, "")}.png`;
-    const previewUrl = URL.createObjectURL(f);
-    swapLoaded(setTexture, { bytes, previewBytes, name, kind: rasterKind(name), previewUrl, aspect });
-  }
-
-  async function onMask(f: File) {
-    // The mask passes through untouched — the printer accepts these plates
-    // as-authored (the metalness map classifies pixels itself).
-    const [srcBytes, canvas] = await Promise.all([
-      f.arrayBuffer().then((b) => new Uint8Array(b)), decodeToCanvas(f),
-    ]);
-    const previewBytes = await previewPng(canvas);
-    const previewUrl = URL.createObjectURL(f);
-    swapLoaded(setMask, {
-      bytes: srcBytes, previewBytes, name: f.name, previewUrl, srcBytes,
-      aspect: canvas.width / canvas.height,
-    });
-  }
+  async function onTexture(f: File) { swapLoaded(setTexture, await readTexture(f)); }
+  async function onMask(f: File) { swapLoaded(setMask, await readMask(f)); }
 
   /** Releases an image asset's bytes once nothing in the document names it
    *  any more — the same art can be shared by two layers, so only an
@@ -1703,9 +1712,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   ) {
     const r = tryParseMaster(bytes);
     if (!r) return;
+    await applyOpenedMaster(r.master, name, bytes);
+    // Bound only once the doc is on this master: a throw above must not
+    // aim Save Master at a file the document never loaded (#81's twin).
     masterFileHandle.current = src.handle ?? null;
     masterFilePath.current = src.path ?? null;
-    await applyOpenedMaster(r.master, name, bytes);
     await adoptMasterAssets(r.assets);
   }
 
@@ -1867,24 +1878,26 @@ export const DocumentEditor = memo(function DocumentEditor({
         }
         next = { master: resolved.master, label: adoptLegacyCollab(l) };
       }
-      resetDocument(next);
-      notes.push(...layerRows(next.master, next.label).warnings);
       // Label-delta rule: the label's own embedded role wins; a missing one
       // falls back to the master's template asset. Image bytes merge the
       // same way, per id (spread order: master first, label last).
       const t = unpacked.assets.texture ?? masterAssets.texture;
       const m = unpacked.assets.mask ?? masterAssets.mask;
       const ci = { ...masterAssets.customImages, ...unpacked.assets.customImages, ...legacyAssets };
-      // Awaited so the freshly opened document can be marked clean AFTER
-      // the asset handlers' state writes.
-      await Promise.all([
-        t && onTexture(assetToFile(t)), m && onMask(assetToFile(m)),
-        (async () => {
-          const entries = await Promise.all(Object.entries(ci).map(async ([id, a]) =>
-            [id, await readCustomImage(assetToFile(a))] as const));
-          if (entries.length) setCustomImages(Object.fromEntries(entries));
-        })(),
+      // Decode EVERY asset before touching the tab (#81): a file whose art
+      // won't decode must fail here, leaving the previous document — and the
+      // Save target the caller only rebinds on success — intact. Resetting
+      // first left the new content bound to the OLD file, so ⌘S overwrote it.
+      const [tex, msk, images] = await Promise.all([
+        t && readTexture(assetToFile(t)), m && readMask(assetToFile(m)),
+        Promise.all(Object.entries(ci).map(async ([id, a]) =>
+          [id, await readCustomImage(assetToFile(a))] as const)),
       ]);
+      resetDocument(next);
+      notes.push(...layerRows(next.master, next.label).warnings);
+      if (tex) swapLoaded(setTexture, tex);
+      if (msk) swapLoaded(setMask, msk);
+      if (images.length) setCustomImages(Object.fromEntries(images));
       setDirty(false);
       setEdited(false);
       setLoadError(notes.length ? "Note: " + notes.join(" · ") : "");
