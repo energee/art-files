@@ -889,9 +889,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     return () => document.removeEventListener("keydown", onKey);
   }, [undo, redo, canUndo, canRedo]);
 
-  // Figma-style bare keys plus the ⌘-modified exports, with the same
-  // inert-while-typing guard as undo. Registered once — reads the table
-  // through a ref.
+  // Figma-style bare keys plus the ⌘-modified file and export commands.
+  // Registered once — reads the table through a ref.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!activeRef.current) return;
@@ -899,11 +898,10 @@ export const DocumentEditor = memo(function DocumentEditor({
       const mods = e.metaKey || e.ctrlKey ? (e.shiftKey ? "⇧⌘" : "⌘") : undefined;
       if (!mods && e.shiftKey) return;
       const el = e.target as HTMLElement | null;
-      if (isTypingTarget(el)) return;
-      // Same stand-aside as the nudge, for the BARE keys (1/2/3/r/g): an open
-      // menu, dialog or Select holds focus and those keys are its own
-      // typeahead. The ⌘ shortcuts stay live — no popup claims those.
-      if (!mods && el?.closest?.(POPUP_OWNS_KEYS)) return;
+      // The BARE keys (1/2/3/r/g) stand aside where they are someone else's
+      // input: a text field, or an open menu/dialog/Select's typeahead. The ⌘
+      // shortcuts stay live in both — ⌘S saves from inside a field.
+      if (!mods && (isTypingTarget(el) || el?.closest?.(POPUP_OWNS_KEYS))) return;
       const cmd = commandsRef.current.find((c) => c.key === e.key.toLowerCase() && c.mods === mods);
       if (!cmd) return;
       // The key is the app's even while its command is disabled: ⌘S on a
@@ -916,9 +914,9 @@ export const DocumentEditor = memo(function DocumentEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Arrow-key nudge for the selection: 1pt a press, 10pt with shift. Same
-  // inert-while-typing guard as the other two; registered once and reading
-  // the live move through a ref, like the command table above.
+  // Arrow-key nudge for the selection: 1pt a press, 10pt with shift. Inert
+  // while typing, like undo and the bare-key commands; registered once and
+  // reading the live move through a ref, like the command table above.
   const nudgeRef = useRef<(dx: number, dy: number) => void>(() => {});
   useEffect(() => {
     const steps: Record<string, [number, number]> = {
@@ -2012,7 +2010,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   }
 
   /** Every command the app exposes, once. The palette and AppMenu read this
-   *  list, while the key listener dispatches off `key`. */
+   *  list, while the key listener dispatches off `key`. A ⌘ key here fires
+   *  even inside a text field, so never bind one a field needs (A/C/V/X/Z). */
   const twoD = viewMode === "2d";
   const commands: Command[] = [
     { id: "tab-new", label: "New Tab", key: "n", mods: "⌘", run: onNewTab },

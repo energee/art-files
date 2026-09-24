@@ -2,6 +2,8 @@
 // A shortcut the app binds must keep the browser's default for that key (⌘S's
 // "Save page as") from firing even while the command is disabled, e.g. Save on
 // a clean document: the key is the app's, it just has nothing to do right now.
+// The ⌘ shortcuts also work while a text field has focus (#124); only the bare
+// keys (1/2/3/R/G) stand aside there, since those are the text being typed.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -22,17 +24,19 @@ import { DocumentEditor } from "../src/App";
 let container: HTMLDivElement;
 let root: Root;
 let onMeta: ReturnType<typeof vi.fn>;
+let onOpenProject: ReturnType<typeof vi.fn>;
 
 beforeEach(async () => {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
   onMeta = vi.fn();
+  onOpenProject = vi.fn();
   await act(async () => {
     root.render(createElement(DocumentEditor, {
       active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta,
       saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
-      onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
+      onOpenProject, onNewTab: vi.fn(), onCloseTab: vi.fn(),
       onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
     }));
   });
@@ -60,4 +64,28 @@ it("⌘S on a clean document keeps the browser's Save Page dialog from opening",
 
 it("a key no command binds is left to the browser", async () => {
   expect(await press(document.body, { key: "p", metaKey: true })).toBe(false);
+});
+
+/** Mount `el` in the editor's container and give it focus. */
+const focused = <T extends HTMLElement>(el: T): T => {
+  container.appendChild(el);
+  el.focus();
+  return el;
+};
+
+it("⌘ shortcuts still run while a text field has focus", async () => {
+  const input = focused(document.createElement("input"));
+  expect(await press(input, { key: "o", metaKey: true })).toBe(true);
+  expect(onOpenProject).toHaveBeenCalledTimes(1);
+  const div = document.createElement("div");
+  div.contentEditable = "true";
+  const editor = focused(div);
+  expect(await press(editor, { key: "s", metaKey: true })).toBe(true);
+  expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: false });
+});
+
+it("bare-key shortcuts stay inert while a text field has focus", async () => {
+  const input = focused(document.createElement("input"));
+  expect(await press(input, { key: "g" })).toBe(false);
+  expect(await press(input, { key: "2" })).toBe(false);
 });

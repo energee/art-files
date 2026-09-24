@@ -96,6 +96,12 @@ binary-impacting change gets its own version before it is merged.
   transform was ignored, which put the art in the wrong place. Both now load
   and place correctly.
 
+- **⌘S, ⌘O and ⌘E work while you are typing in a field.** In the browser,
+  the ⌘ shortcuts (save, open, new and close tab, export) used to do nothing
+  while a text field had focus, and ⌘S opened the browser's Save Page dialog
+  instead. They now run from anywhere. Single-key shortcuts (1, 2, 3, R, G)
+  still type into the field, and ⌘Z still undoes the field's own typing.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
