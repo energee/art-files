@@ -37,7 +37,7 @@ export function globalAssetKind(
 
 /** FileDrop marks its root with this attribute. Drag events bubble to window,
  *  but a field owns the drop whenever it is the pointer's actual target. */
-function isFieldDrop(target: EventTarget | null): boolean {
+export function isFieldDrop(target: EventTarget | null): boolean {
   return target instanceof Element && !!target.closest(`[${FILE_DROP_ATTR}]`);
 }
 
@@ -56,10 +56,11 @@ export function AssetDropOverlay(props: {
       setOver(null);
     };
     // Without preventDefault on dragover the browser refuses the drop and
-    // navigates to the file instead. A field does this for itself, so yielding
-    // here preserves react-dropzone's accept/reject behavior. dragover fires
-    // as soon as the pointer enters the window and continuously after, so it
-    // alone arms the overlay — no dragenter listener needed.
+    // navigates to the file instead; TabsShell guards every other file drag
+    // (#121). A field prevents for itself, so yielding here preserves
+    // react-dropzone's accept/reject behavior. dragover fires as soon as the
+    // pointer enters the window and continuously after, so it alone arms the
+    // overlay — no dragenter listener needed.
     const onDragOver = (e: DragEvent) => {
       if (isFieldDrop(e.target)) return hide();
       const type = draggedTypes(e.dataTransfer).find((t) => CLAIMED_TYPES.includes(t));

@@ -418,7 +418,7 @@ function download(url: string, name: string) {
 /** A file the shell wants this editor to open. seq is monotonic — a new
  *  value triggers the open, so a re-render can never re-open. Exactly one
  *  of path (Tauri), handle (FS-Access picker), or file (hidden-input
- *  fallback, no save identity) is set. */
+ *  fallback or a window-dropped .label, no save identity) is set. */
 export type FileToOpen = {
   seq: number;
   path?: string;

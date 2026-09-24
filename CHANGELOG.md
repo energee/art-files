@@ -20,6 +20,13 @@ binary-impacting change gets its own version before it is merged.
   with a message naming the binding, instead of leaving the preview in an
   error state. Switch off or unbind the layers bound to it first.
 
+- **Dropping a file on the window no longer replaces it.** A dropped
+  `.label` now opens as a project, the same as File → Open Project… (in the
+  current tab if untouched, otherwise a new one). A PDF, SVG, or other file
+  the app doesn't take, dropped outside a file well, is ignored. Before,
+  either one navigated the window to the file and lost every open tab.
+  Textures and masks still drop as before.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
