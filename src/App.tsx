@@ -426,7 +426,8 @@ export type FileToOpen = {
   file?: File;
 };
 
-/** What the tab strip shows for this document — reported through onMeta
+/** What the tab strip shows for this document (src/tabs.ts TabMeta — one
+ *  definition, so a new field can't drift) — reported through onMeta
  *  whenever any field changes. */
 export type DocumentMeta = TabMeta;
 

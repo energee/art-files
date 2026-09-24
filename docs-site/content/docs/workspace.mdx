@@ -17,7 +17,7 @@ description: Tabs, menus, the palette, and the three-pane layout
 
 **File → New Tab** (`⌘N`) opens an untitled canvas on the last master you applied (layers and positions only — not the previous beer's fills or art). **Open Project…** (`⌘O`) loads a `.label` into the current tab if you haven't touched it, otherwise a new one.
 
-**Close Tab** (`⌘W`) asks Save / Discard / Cancel when that tab has real work on it. Master edits you haven't written with **Save Master** count too, even after the label itself is saved. The prompt's Save writes only the label, so choose Cancel and use Save Master to keep them. Closing the window or quitting (`⌘Q`) walks every dirty tab through the same prompt. The browser build uses the generic leave-page warning instead.
+**Close Tab** (`⌘W`) asks Save / Discard / Cancel when that tab has real work on it. Master edits you haven't written with **Save Master** count too, even after the label itself is saved. The prompt's Save writes only the `.label`; when the tab also has unsaved master edits (a layer added, removed, or reordered in the template), the prompt says so. Those edits are discarded when the tab closes, so choose Cancel and use **File → Save Master** first if you want to keep them. Closing the window or quitting (`⌘Q`) walks every dirty tab through the same prompt. The browser build uses the generic leave-page warning instead.
 
 Background tabs keep state and assets. They drop the rendered preview. Switch back and it rebuilds like usual.
 

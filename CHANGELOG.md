@@ -33,6 +33,12 @@ binary-impacting change gets its own version before it is merged.
   beneath it, instead of snapping back to the master's code or going blank.
   The preview and exports still skip the invalid value.
 
+- **The close-tab prompt now warns about unsaved master changes.** When the
+  tab's master has changed (a layer added, removed, or reordered), the Save /
+  Discard / Cancel prompt adds a line saying those changes will be discarded
+  unless you Cancel and use File → Save Master. Save still saves the label
+  and closes the tab.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
