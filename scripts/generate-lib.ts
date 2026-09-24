@@ -123,8 +123,11 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
     return { mode: "inspect", ...(masterPath ? { masterPath } : {}) };
   }
 
+  // Fewer than three positionals can only be the new form (`[values|-] <out>`
+  // on the shipped master): the legacy argv needs texture, mask and out (#105).
   const newForm = !!(singles.master || singles.values || singles.label || masterPath
-    || singles.out || singles.format || variants.length || Object.keys(assets).length || Object.keys(set).length);
+    || singles.out || singles.format || variants.length || Object.keys(assets).length || Object.keys(set).length
+    || positional.length < 3);
   if (newForm) {
     if (singles["collab-left"] || singles["collab-center"])
       throw new Error("use --asset collabLeft=file --variant collab\n" + USAGE);

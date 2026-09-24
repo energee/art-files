@@ -50,6 +50,17 @@ describe("parseGenerateArgs", () => {
     });
   });
 
+  it("new form without a master: values + out, and stdin + out (#105)", () => {
+    expect(parseGenerateArgs(["v.json", "out"])).toEqual({
+      mode: "generate", source: { kind: "values", path: "v.json" },
+      outDir: "out", variants: [], assets: {}, set: {}, format: "all",
+    });
+    expect(parseGenerateArgs(["-", "out"])).toMatchObject({
+      mode: "generate", source: { kind: "values", path: "-" }, outDir: "out",
+    });
+    expect(parseGenerateArgs(["out"])).toMatchObject({ mode: "generate", outDir: "out" });
+  });
+
   it("legacy positional still parses", () => {
     expect(parseGenerateArgs(["none", "none", "out", "cfg.json", "--collab-left=a.svg"]))
       .toMatchObject({ mode: "legacy", texturePath: "none", maskPath: "none",
