@@ -696,7 +696,8 @@ export function learnChoice(master: Master, id: string, text: string): Master {
   if (!value || !layer || layer.choices?.some((c) => c.value === value)) return master;
   // Never learn a literal barcode that cannot encode (#94); templates are
   // judged after expansion, by resolveLayers.
-  if (layer.kind === "barcode" && !fieldRefs(value).length && !validateFor(layer.symbology, value).ok) return master;
+  if (layer.kind === "barcode" && !fieldRefs(value).length
+    && !validateFor(layer.symbology, value).ok) return master;
   return patchLayer(master, id, { choices: [...(layer.choices ?? []), { value }] });
 }
 
