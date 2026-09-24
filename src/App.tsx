@@ -40,7 +40,7 @@ import {
   writeHandle,
 } from "@/filePickers";
 import { openNativeFile, readNativeFile, saveNativeFile } from "@/files";
-import { useHistory } from "@/history";
+import { useHistory, type Coalesce } from "@/history";
 import type {
   ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master,
 } from "@/model/layers";
@@ -60,7 +60,7 @@ import {
   type MasterAssets,
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
-import { SHIPPED_MASTER_ID, masterIndex, rememberMaster, resolveDefaultMaster, resolveMasterById } from "@/masters";
+import { SHIPPED_MASTER_ID, masterIndex, rememberMaster, resolveDefaultMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget } from "@/masters";
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
@@ -75,7 +75,7 @@ import type { PsdAssets } from "@/psd/build";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
 import {
-  ART, BLEED_SHIFT, PAGE, PREVIEW_OVERSAMPLE, PSD_DOC, setBleed as setLayoutBleed, setOutputDpi,
+  ART, BLEED_SHIFT, PAGE, PREVIEW_OVERSAMPLE, setBleed as setLayoutBleed, setOutputDpi,
 } from "@/layout";
 import { LayerList } from "@/components/LayerList";
 import { LayerInspector } from "@/components/LayerInspector";
@@ -108,7 +108,7 @@ import {
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { loadLabelFaces, labelFontCss } from "@/fonts";
+import { FONT_URLS, loadLabelFaces, labelFontCss } from "@/fonts";
 import { fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
 import { loadFonts } from "@/pdf/fonts";
 import type { MeasureFace, PlanAssets } from "@/plan";
@@ -247,27 +247,15 @@ async function canvasToPng(canvas: HTMLCanvasElement): Promise<Uint8Array> {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
-/** Decode an image into a fresh 2D canvas — the front half of every pixel
- *  pipeline here. `size` forces the canvas dimensions and cover-fits the
- *  image into them, centred; without it the canvas takes the image's
- *  natural size. The bitmap is always closed. */
-async function decodeToCanvas(
-  src: Blob, size?: { width: number; height: number },
-): Promise<HTMLCanvasElement> {
+/** Decode an image into a fresh 2D canvas at its natural size — the front
+ *  half of every pixel pipeline here. The bitmap is always closed. */
+async function decodeToCanvas(src: Blob): Promise<HTMLCanvasElement> {
   const bmp = await createImageBitmap(src);
   try {
     const canvas = document.createElement("canvas");
-    canvas.width = size?.width ?? bmp.width;
-    canvas.height = size?.height ?? bmp.height;
-    const ctx = canvas.getContext("2d")!;
-    if (size) {
-      const s = Math.max(canvas.width / bmp.width, canvas.height / bmp.height);
-      const w = bmp.width * s;
-      const h = bmp.height * s;
-      ctx.drawImage(bmp, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
-    } else {
-      ctx.drawImage(bmp, 0, 0);
-    }
+    canvas.width = bmp.width;
+    canvas.height = bmp.height;
+    canvas.getContext("2d")!.drawImage(bmp, 0, 0);
     return canvas;
   } finally {
     bmp.close();
@@ -700,9 +688,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** THE write path. Every document edit is a pure Doc → Doc transition
    *  (model/edit.ts), recorded as one history entry; `coalesce` folds a
    *  gesture's many updates (a drag, an in-place text session) into one undo
-   *  step — see useHistory's `pushed`. Computed against the doc THIS render
+   *  step, and an inspector field passes its id so its typing is one step of
+   *  its own — see history.ts's `Coalesce`. Computed against the doc THIS render
    *  sees so a no-op can return before marking the tab dirty. */
-  const edit = (fn: (d: Doc) => Doc, coalesce?: boolean) => {
+  const edit = (fn: (d: Doc) => Doc, coalesce?: Coalesce) => {
     let next: Doc;
     try {
       next = fn(doc);
@@ -732,7 +721,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   const patchMany = (entries: [string, DeepPartial<Layer>][], coalesce?: boolean) =>
     edit((d) => patchLayers(d, entries), coalesce);
   /** A layer's CONTENT: always a fill value into the label, for any layer. */
-  const setContent = (layer: Layer, value: LayerValue, coalesce?: boolean) =>
+  const setContent = (layer: Layer, value: LayerValue, coalesce?: Coalesce) =>
     edit((d) => setContentIn(d, layer.id, value), coalesce);
   /** Wrap a mutation that bypasses `edit` (undo/redo) so it still marks
    *  the document dirty. */
@@ -1385,15 +1374,18 @@ export const DocumentEditor = memo(function DocumentEditor({
   }, [title, dirty, edited]); // filePath is declared below; its own effect follows
 
   /** The full-resolution display list for an export: the same layers the
-   *  preview draws, planned with the canvas measure (fonts.ts — the one
-   *  font gate) and the full-size asset descriptors. */
+   *  preview draws, planned with the pdf-lib widths the PDF draws with
+   *  (pdfMeasureFace — unkerned, #86) and the full-size asset descriptors.
+   *  Every bundled family is loaded so a layer's own font measures true. */
   async function exportPlan(): Promise<{ plan: PlacedLayer[]; images: Record<string, CollabImage>; fontFamilies: Assets["fontFamilies"] }> {
-    const m = await loadLabelFaces(family);
-    const plan = planLayers(drawLayers, m, planAssetsOf());
+    const [{ pdfMeasureFace }, loaded] = await Promise.all([
+      import("@/pdf/build"),
+      Promise.all((Object.keys(FONT_URLS) as FontFamilyId[]).map(async (id) => [id, await loadFonts(id)] as const)),
+    ]);
+    const packs = Object.fromEntries(loaded) as Record<FontFamilyId, Assets["fonts"]>;
+    const plan = planLayers(drawLayers, await pdfMeasureFace(packs, family), planAssetsOf());
     const families = new Set(plan.flatMap((run) => run.kind === "text" && run.fontFamily ? [run.fontFamily] : []));
-    const fontFamilies = Object.fromEntries(await Promise.all(
-      [...families].map(async (id: FontFamilyId) => [id, await loadFonts(id)]),
-    ));
+    const fontFamilies = Object.fromEntries([...families].map((id) => [id, packs[id]]));
     return { plan, images: await imageAssets(), fontFamilies };
   }
 
@@ -1451,9 +1443,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     setFilePath(null);
   }
   /** The same save-identity pattern for the .master this document's master
-   *  was last saved to or opened from. */
-  const masterFileHandle = useRef<FileSystemFileHandle | null>(null);
-  const masterFilePath = useRef<string | null>(null);
+   *  was last saved to or opened from — tagged with that master's id, since
+   *  undo can swap the document's master without touching these refs. Read
+   *  them only through saveTargetFor (#78). */
+  const masterFileHandle = useRef<MasterSaveTarget<FileSystemFileHandle> | null>(null);
+  const masterFilePath = useRef<MasterSaveTarget<string> | null>(null);
   const masterInput = useRef<HTMLInputElement>(null);
 
   /** Full-document replacement for Open: swap the whole Doc in (resetting
@@ -1462,7 +1456,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     resetDoc(next);
     pristineMaster.current = next.master;
     masterFileHandle.current = null;
-    masterFilePath.current = isTauri() ? masterIndex()[next.master.id]?.path ?? null : null;
+    const indexed = isTauri() ? masterIndex()[next.master.id]?.path : undefined;
+    masterFilePath.current = indexed ? { id: next.master.id, target: indexed } : null;
     clearSelection();
     swapLoaded(setTexture, null);
     swapLoaded(setMask, null);
@@ -1584,14 +1579,14 @@ export const DocumentEditor = memo(function DocumentEditor({
       repaintMasterDirty((n) => n + 1);
     };
     if (isTauri()) {
-      const existingPath = as ? null : masterFilePath.current;
+      const existingPath = as ? null : saveTargetFor(masterFilePath.current, master.id);
       try {
         const packed = packMaster(forked, assets);
         const path = await saveNativeFile(packed, {
           defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path: existingPath ?? undefined,
         });
         if (path === null) return false;
-        masterFilePath.current = path;
+        masterFilePath.current = { id: forked.id, target: path };
         const final = titled(path);
         // ponytail: the name is only knowable after the picker returns, so a
         // renamed fork rewrites the file it just wrote — same path, no second
@@ -1614,17 +1609,17 @@ export const DocumentEditor = memo(function DocumentEditor({
     const pick = savePicker();
     if (pick) {
       try {
-        if (as || !masterFileHandle.current) {
-          masterFileHandle.current = await pick({ suggestedName: suggested + MASTER_EXT, types: MASTER_TYPES });
-        }
+        const handle = (as ? null : saveTargetFor(masterFileHandle.current, master.id))
+          ?? await pick({ suggestedName: suggested + MASTER_EXT, types: MASTER_TYPES });
+        masterFileHandle.current = { id: forked.id, target: handle };
         // The handle's name is known BEFORE the write here (unlike the Tauri
         // branch above), so a renamed fork packs and writes exactly once.
-        const final = titled(masterFileHandle.current.name);
+        const final = titled(handle.name);
         const bytes = packMaster(final, assets);
-        await writeHandle(masterFileHandle.current, bytes);
+        await writeHandle(handle, bytes);
         // The bytes go to the master cache too: a browser reload has no path
         // to re-read this file from (masterCache.ts).
-        await commit(final, masterFileHandle.current.name, bytes);
+        await commit(final, handle.name, bytes);
         return true;
       } catch (err) {
         masterFileHandle.current = null;
@@ -1706,8 +1701,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   ) {
     const r = tryParseMaster(bytes);
     if (!r) return;
-    masterFileHandle.current = src.handle ?? null;
-    masterFilePath.current = src.path ?? null;
+    const id = r.master.id;
+    masterFileHandle.current = src.handle ? { id, target: src.handle } : null;
+    masterFilePath.current = src.path ? { id, target: src.path } : null;
     await applyOpenedMaster(r.master, name, bytes);
     await adoptMasterAssets(r.assets);
   }
@@ -1719,7 +1715,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const path = masterIndex()[target.id]?.path ?? "";
     await rememberMaster(target, path);
     masterFileHandle.current = null;
-    masterFilePath.current = isTauri() && path ? path : null;
+    masterFilePath.current = isTauri() && path ? { id: target.id, target: path } : null;
     commitRebind(target);
     void adoptMasterAssets(assets);
   }
@@ -1931,16 +1927,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileToOpen]);
 
-  /** The PSD's texture layer needs raw RGBA at document size, cover-fit
-   *  here (PSD layers hold pixels 1:1). Export only: ~60MB. */
-  async function rasterPixels(bytes: Uint8Array | undefined): Promise<import("@/psd/build").Rgba | undefined> {
-    if (!bytes) return undefined;
-    const canvas = await decodeToCanvas(blobOf(bytes), { width: PSD_DOC.w, height: PSD_DOC.h });
-    const img = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
-    return { data: new Uint8Array(img.data.buffer), width: img.width, height: img.height };
-  }
-  /** An image layer's raster bytes at NATURAL size — buildPsd resamples to
-   *  the placed rect itself. */
+  /** An image's raster bytes as RGBA at NATURAL size — buildPsd resamples
+   *  every raster (page texture and mask included) to its placed rect
+   *  itself, so nothing is pre-fit here (#88). Export only: a full-res
+   *  texture decodes to tens of MB. */
   async function rasterPixelsNatural(bytes: Uint8Array): Promise<import("@/psd/build").Rgba> {
     const canvas = await decodeToCanvas(blobOf(bytes));
     const img = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
@@ -1954,21 +1944,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     setBuilding(true);
     startSaveBatch();
     try {
-      const [{ buildPsd }, fonts, { plan, images }] = await Promise.all([
+      const [{ buildPsd, psdImages }, fonts, { plan, images }] = await Promise.all([
         import("@/psd/build"), loadFonts(family), exportPlan(),
       ]);
       const art = pageArt(false);
-      const rasterEntries = (await Promise.all(Object.entries(images).map(async ([id, img]) =>
-        img.kind === "svg" ? null : [id, await rasterPixelsNatural(img.bytes)] as const)))
-        .filter((e): e is readonly [string, import("@/psd/build").Rgba] => e !== null);
-      const [texturePx, maskPx] = await Promise.all([rasterPixels(art.texture?.bytes), rasterPixels(art.maskPng)]);
       const assets: PsdAssets = {
         fonts, fontFamily: family,
-        images: {
-          ...Object.fromEntries(rasterEntries),
-          ...(texturePx ? { [PAGE_ART_ID.background]: texturePx } : {}),
-          ...(maskPx ? { [PAGE_ART_ID.mask]: maskPx } : {}),
-        },
+        images: await psdImages(images, { texture: art.texture?.bytes, mask: art.maskPng }, rasterPixelsNatural),
       };
       const [artPsd, maskPsd] = await Promise.all([
         which !== "mask" ? buildPsd(plan, assets, "art", { layers: drawLayers }) : null,
@@ -2037,7 +2019,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (layer.kind === "text") {
       return (
         <TextEditor id={id} label="Text" lines={layer.lines} base={layer.style}
-          onChange={(lines) => setContent(layer, lines, true)}
+          onChange={(lines) => setContent(layer, lines, id)}
           multiline={true} uppercase={uppercaseOf(layer)}
           onUppercase={(uppercase) => patch(layer.id, { style: { uppercase } })}
           input={layer.input} min={layer.min} max={layer.max} symbology={layer.symbology}
@@ -2090,18 +2072,20 @@ export const DocumentEditor = memo(function DocumentEditor({
       const tokens = rows.flatMap((r) =>
         r.layer.kind === "text" ? [{ id: r.layer.id, name: r.layer.name }] : []);
       const src = link.id ?? "";
-      const write = (prefix: string, id: string) =>
-        setContent(layer, formatLink(prefix, id), true);
+      // The link box types as one session keyed by its id; a suffix pick is
+      // a discrete choice and gets a step of its own (false).
+      const write = (prefix: string, ref: string, coalesce: Coalesce) =>
+        setContent(layer, formatLink(prefix, ref), coalesce);
       return (
         <div className="space-y-1">
           <Label htmlFor={id} className="text-xs text-muted-foreground">Link</Label>
           <Input id={id} className="h-7 font-mono text-xs" value={link.prefix}
             placeholder="https://lolev.beer/beer/"
             aria-invalid={errors[layer.id] ? true : undefined}
-            onChange={(e) => write(e.target.value, src)} />
+            onChange={(e) => write(e.target.value, src, id)} />
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-muted-foreground">followed by</span>
-            <Select value={src || "none"} onValueChange={(v) => write(link.prefix, v === "none" ? "" : (v ?? ""))}>
+            <Select value={src || "none"} onValueChange={(v) => write(link.prefix, v === "none" ? "" : (v ?? ""), false)}>
               <SelectTrigger id={`${id}-src`} size="sm" aria-label="Link suffix"
                 className="h-6 w-32 text-xs">
                 <SelectValue />
@@ -2134,12 +2118,12 @@ export const DocumentEditor = memo(function DocumentEditor({
           <ChoiceBox id={id} className="h-7 font-mono text-xs" value={template}
             choices={layer.choices} invalid={!!errors[layer.id]}
             placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : "digits"}
-            onCommit={(v) => setContent(layer, v, true)} />
+            onCommit={(v) => setContent(layer, v, id)} />
         ) : (
           <Input id={id} className="h-7 font-mono text-xs" value={template}
             placeholder={layer.kind === "qr" ? "https://lolev.beer/beer/{name|slug}" : "digits"}
             aria-invalid={errors[layer.id] ? true : undefined}
-            onChange={(e) => setContent(layer, e.target.value, true)} />
+            onChange={(e) => setContent(layer, e.target.value, id)} />
         )}
         {foot}
       </div>
@@ -2394,6 +2378,10 @@ export const DocumentEditor = memo(function DocumentEditor({
               clearSelection();
           }}>
           <SheetContent side="right" showOverlay={false} showCloseButton={false}
+            // Opening follows a selection, so focus stays where the user
+            // selected: Base UI's default would land in the rename box and
+            // turn Backspace/arrows into text edits instead of delete/nudge.
+            initialFocus={false}
             finalFocus={(closeType) => closeType === "keyboard"}
             className="w-[300px] gap-0 overflow-y-auto border-l-0! bg-sidebar p-0 sm:max-w-[300px]">
             {inspected && (
