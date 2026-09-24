@@ -532,9 +532,10 @@ export function TextToolbarButtons(props: {
    *  to render differently. */
   showHeader?: boolean;
   /** The run toggles (header, bold, white ink) act on the field's SELECTION,
-   *  so they are inert with nothing focused. The sidebar keeps the row
-   *  mounted for the layer-wide Uppercase switch and passes false here rather
-   *  than offering three buttons that silently do nothing. */
+   *  so they are inert with nothing focused. The sidebar shows them while
+   *  focus is in the field or has moved from it to the toolbar, keeps
+   *  the row mounted for the layer-wide Uppercase switch, and passes false
+   *  otherwise rather than offering three buttons that silently do nothing. */
   showRuns?: boolean;
   uppercase?: boolean;
   onUppercase?: (uppercase: boolean) => void;
@@ -788,10 +789,16 @@ function PlainField(props: TextEditorProps & { input: "number" | "code" }) {
 
 function RichField(props: TextEditorProps) {
   const { id, label, title, lines, onChange, base, multiline, uppercase } = props;
-  const { focused, caret, toggle, toggleHeader, fieldProps } =
+  const { focused, setFocused, caret, toggle, toggleHeader, fieldProps } =
     useTextField({ lines, onChange, base, multiline, uppercase });
+  // Focus starts in the field (fieldProps' onFocus) but only ends when it
+  // leaves this row, so Shift+Tab from the field lands on the run toggles
+  // instead of unmounting them, and the blur reseed doesn't wipe the
+  // selection they act on (issue #120). Tabbing into the toolbar from
+  // outside the field doesn't count: the toggles would have no selection.
   return (
-    <div className="space-y-1">
+    <div className="space-y-1"
+      onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setFocused(false); }}>
       {/* h-7, matching the size-sm toggles inside: a shorter row lets them
           overflow onto the field's outline below. */}
       <div className="flex h-7 items-center justify-between gap-1">
@@ -807,6 +814,7 @@ function RichField(props: TextEditorProps) {
       </div>
       <div
         {...fieldProps}
+        onBlur={undefined}
         id={id}
         aria-label={label}
         className={cn(

@@ -135,6 +135,10 @@ binary-impacting change gets its own version before it is merged.
   shows the value you entered, the same one the error names and the
   inspector field shows.
 
+- **Text formatting buttons work from the keyboard.** In a sidebar text field,
+  Shift+Tab now reaches the Header, Bold, and White ink buttons instead of
+  hiding them, and they apply to the text you had selected.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
