@@ -60,7 +60,7 @@ import {
   type MasterAssets,
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
-import { SHIPPED_MASTER_ID, masterIndex, rememberMaster, resolveDefaultMaster, resolveMasterById } from "@/masters";
+import { SHIPPED_MASTER_ID, masterIndex, rememberMaster, resolveDefaultMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget } from "@/masters";
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
@@ -1448,9 +1448,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     setFilePath(null);
   }
   /** The same save-identity pattern for the .master this document's master
-   *  was last saved to or opened from. */
-  const masterFileHandle = useRef<FileSystemFileHandle | null>(null);
-  const masterFilePath = useRef<string | null>(null);
+   *  was last saved to or opened from — tagged with that master's id, since
+   *  undo can swap the document's master without touching these refs. Read
+   *  them only through saveTargetFor (#78). */
+  const masterFileHandle = useRef<MasterSaveTarget<FileSystemFileHandle> | null>(null);
+  const masterFilePath = useRef<MasterSaveTarget<string> | null>(null);
   const masterInput = useRef<HTMLInputElement>(null);
 
   /** Full-document replacement for Open: swap the whole Doc in (resetting
@@ -1459,7 +1461,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     resetDoc(next);
     pristineMaster.current = next.master;
     masterFileHandle.current = null;
-    masterFilePath.current = isTauri() ? masterIndex()[next.master.id]?.path ?? null : null;
+    const indexed = isTauri() ? masterIndex()[next.master.id]?.path : undefined;
+    masterFilePath.current = indexed ? { id: next.master.id, target: indexed } : null;
     clearSelection();
     swapLoaded(setTexture, null);
     swapLoaded(setMask, null);
@@ -1581,14 +1584,14 @@ export const DocumentEditor = memo(function DocumentEditor({
       repaintMasterDirty((n) => n + 1);
     };
     if (isTauri()) {
-      const existingPath = as ? null : masterFilePath.current;
+      const existingPath = as ? null : saveTargetFor(masterFilePath.current, master.id);
       try {
         const packed = packMaster(forked, assets);
         const path = await saveNativeFile(packed, {
           defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path: existingPath ?? undefined,
         });
         if (path === null) return false;
-        masterFilePath.current = path;
+        masterFilePath.current = { id: forked.id, target: path };
         const final = titled(path);
         // ponytail: the name is only knowable after the picker returns, so a
         // renamed fork rewrites the file it just wrote — same path, no second
@@ -1611,17 +1614,17 @@ export const DocumentEditor = memo(function DocumentEditor({
     const pick = savePicker();
     if (pick) {
       try {
-        if (as || !masterFileHandle.current) {
-          masterFileHandle.current = await pick({ suggestedName: suggested + MASTER_EXT, types: MASTER_TYPES });
-        }
+        const handle = (as ? null : saveTargetFor(masterFileHandle.current, master.id))
+          ?? await pick({ suggestedName: suggested + MASTER_EXT, types: MASTER_TYPES });
+        masterFileHandle.current = { id: forked.id, target: handle };
         // The handle's name is known BEFORE the write here (unlike the Tauri
         // branch above), so a renamed fork packs and writes exactly once.
-        const final = titled(masterFileHandle.current.name);
+        const final = titled(handle.name);
         const bytes = packMaster(final, assets);
-        await writeHandle(masterFileHandle.current, bytes);
+        await writeHandle(handle, bytes);
         // The bytes go to the master cache too: a browser reload has no path
         // to re-read this file from (masterCache.ts).
-        await commit(final, masterFileHandle.current.name, bytes);
+        await commit(final, handle.name, bytes);
         return true;
       } catch (err) {
         masterFileHandle.current = null;
@@ -1703,8 +1706,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   ) {
     const r = tryParseMaster(bytes);
     if (!r) return;
-    masterFileHandle.current = src.handle ?? null;
-    masterFilePath.current = src.path ?? null;
+    const id = r.master.id;
+    masterFileHandle.current = src.handle ? { id, target: src.handle } : null;
+    masterFilePath.current = src.path ? { id, target: src.path } : null;
     await applyOpenedMaster(r.master, name, bytes);
     await adoptMasterAssets(r.assets);
   }
@@ -1716,7 +1720,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const path = masterIndex()[target.id]?.path ?? "";
     await rememberMaster(target, path);
     masterFileHandle.current = null;
-    masterFilePath.current = isTauri() && path ? path : null;
+    masterFilePath.current = isTauri() && path ? { id: target.id, target: path } : null;
     commitRebind(target);
     void adoptMasterAssets(assets);
   }

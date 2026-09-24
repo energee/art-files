@@ -3,6 +3,16 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.79] - 2026-09-23
+
+### Fixed
+
+- **Save Master no longer overwrites another master's file after undo.**
+  Undoing back past Open Master, a library pick, or Save Master As used to
+  leave Save Master pointed at the newer master's `.master` file, so saving
+  wrote the older master over it with no dialog. Save Master now asks where
+  to save whenever the document's master is not the one that file belongs to.
+
 ## [0.1.68] - 2026-09-15
 
 ### Fixed
