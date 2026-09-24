@@ -369,6 +369,23 @@ describe("runGenerate", () => {
   });
 });
 
+describe("buildLabel explicit default font (#90)", () => {
+  const build = (overrides?: Record<string, { fontFamily: "poppins" }>) => buildLabel({
+    master: lolevMaster(),
+    masterAssets: {},
+    values: labradorite(),
+    enabledVariants: [],
+    overrides,
+    extraImages: {},
+    format: "pdf",
+    assetRoot,
+  });
+  it("a text layer naming the master's own font builds, identical to leaving it unset", async () => {
+    const [named, unset] = await Promise.all([build({ name: { fontFamily: "poppins" } }), build()]);
+    expect(Buffer.from(named.files[0].bytes).equals(Buffer.from(unset.files[0].bytes))).toBe(true);
+  });
+});
+
 describe("buildLabel tint", () => {
   const build = (tint: boolean) => buildLabel({
     master: lolevMaster(),
