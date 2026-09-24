@@ -27,6 +27,12 @@ binary-impacting change gets its own version before it is merged.
   either one navigated the window to the file and lost every open tab.
   Textures and masks still drop as before.
 
+- **Invalid entries stay in the field.** Typing an invalid barcode code (such
+  as `ABC123`) or an out-of-range number (such as an ABV of `-3`) now leaves
+  what you typed in the inspector field, marked invalid with the error
+  beneath it, instead of snapping back to the master's code or going blank.
+  The preview and exports still skip the invalid value.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed

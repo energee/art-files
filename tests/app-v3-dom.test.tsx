@@ -151,10 +151,7 @@ it("measures asset assembly while moving margin guides", async () => {
   }
 });
 
-// docs/plans/choice-input.md — the barcode and QR fill through App's own code
-// field, not TextEditor, so wiring the picker into TextEditor alone left the
-// tier list unreachable exactly where a tier is filled.
-it("offers the barcode's tiers in the field that fills it", async () => {
+async function withEditor(run: () => Promise<void>) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -167,10 +164,64 @@ it("offers the barcode's tiers in the field that fills it", async () => {
         onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
       }));
     });
-    const row = container.querySelector('[data-layer-id="barcode"]')!;
+    await run();
+  } finally {
+    act(() => { root.unmount(); });
+    container.remove();
+  }
+}
+
+async function selectLayer(id: string) {
+  const row = document.querySelector(`[data-layer-id="${id}"]`)!;
+  await act(async () => {
+    (row.querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement).click();
+  });
+}
+
+/** Type into a React-controlled input the way the browser does: the native
+ *  value setter, then an input event React's onChange listens for. */
+function typeInto(input: HTMLInputElement, text: string) {
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, text);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+// #128/#129 — an invalid fill is stored in the label but resolveLayers skips
+// applying it, so a field fed from the RESOLVED layer snapped back to the
+// master's value (barcode) or went blank (ABV) while the header named the
+// bad value. The field must show what the label holds, error beneath.
+it("keeps an invalid barcode code in the Code field, with its error (#128)", async () => {
+  await withEditor(async () => {
+    await selectLayer("barcode");
+    const field = () => document.querySelector("#barcode-content") as HTMLInputElement;
+    await act(async () => { field().focus(); });
+    await act(async () => { typeInto(field(), "ABC123"); });
     await act(async () => {
-      (row.querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement).click();
+      field().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     });
+    await act(async () => { field().blur(); });
+    expect(field().value).toBe("ABC123");
+    expect(field().getAttribute("aria-invalid")).toBe("true");
+  });
+});
+
+it("keeps a negative ABV in the ABV field, with its error (#129)", async () => {
+  await withEditor(async () => {
+    await selectLayer("abv");
+    const field = () => document.querySelector("#abv-content") as HTMLInputElement;
+    await act(async () => { field().focus(); });
+    await act(async () => { typeInto(field(), "-3"); });
+    await act(async () => { field().blur(); });
+    expect(field().value).toBe("-3");
+    expect(document.body.textContent).toContain("Must be at least 0.");
+  });
+});
+
+// docs/plans/choice-input.md — the barcode and QR fill through App's own code
+// field, not TextEditor, so wiring the picker into TextEditor alone left the
+// tier list unreachable exactly where a tier is filled.
+it("offers the barcode's tiers in the field that fills it", async () => {
+  await withEditor(async () => {
+    await selectLayer("barcode");
     // The inspector is a Sheet: it portals to document.body, not into the
     // container the app was rendered into.
     const field = document.querySelector("#barcode-content") as HTMLInputElement;
@@ -179,10 +230,7 @@ it("offers the barcode's tiers in the field that fills it", async () => {
     const tiers = Array.from(document.querySelectorAll("[data-choice]")).map((o) => o.textContent?.trim());
     expect(tiers).toContain("Tier 1");
     expect(tiers).toHaveLength(8);
-  } finally {
-    act(() => { root.unmount(); });
-    container.remove();
-  }
+  });
 });
 
 // #126 — opening the inspector must not steal focus into its rename box: the
