@@ -47,12 +47,23 @@ function emit(p: ReturnType<typeof svgpath>): string {
   return out.join(" ");
 }
 
+/** Drop what never paints on its own: comments, and the contents of the
+ *  non-rendered containers (Illustrator exports wrap the art in a <clipPath>
+ *  whose paths are only a clip region). Left in, their paths would be drawn
+ *  as ink and stretch the collab fit box (#68). A self-closing container
+ *  is matched first so it can't swallow the markup up to a later close tag. */
+function renderedOnly(svg: string): string {
+  return svg
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<(defs|clipPath|mask|symbol|pattern)\b[^>]*?(?:\/>|>[\s\S]*?<\/\1\s*>)/g, "");
+}
+
 function parseLogoUncached(
   svg: string,
   width: number,
   maxH?: number,
 ): { paths: string[]; w: number; h: number } {
-  // Walk <g>/<path> tags in document order, carrying the ancestor <g>
+  // Walk the rendered <g>/<path> tags in document order, carrying the ancestor <g>
   // transforms down to each path. Text-to-outline exports (Illustrator,
   // fontforge) wrap their paths in a group with a scale(1,-1)-style matrix —
   // font units are y-up — so reading only the path's own transform mirrors
@@ -61,7 +72,7 @@ function parseLogoUncached(
   const transformOf = (tag: string) => tag.match(/ transform="([^"]+)"/)?.[1] ?? "";
   const stack: string[] = [];
   const parsed: ReturnType<typeof svgpath>[] = [];
-  for (const m of svg.matchAll(/<g\b[^>]*>|<\/g>|<path\b[^>]*>/g)) {
+  for (const m of renderedOnly(svg).matchAll(/<g\b[^>]*>|<\/g>|<path\b[^>]*>/g)) {
     const tag = m[0];
     if (tag === "</g>") stack.pop();
     else if (tag.startsWith("<g")) {

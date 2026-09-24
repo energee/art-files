@@ -54,3 +54,43 @@ describe("parseLogo collab fit", () => {
     expect(art.h).toBeCloseTo(100, 6);
   });
 });
+
+// #68: only rendered geometry is ink. Illustrator exports routinely carry a
+// <clipPath> (or <defs>/<mask>/<symbol>/<pattern>) whose paths are never
+// painted directly; counting them let a huge clip square swallow the fit.
+describe("parseLogo non-rendered geometry", () => {
+  const TRIANGLE = '<path d="M 40 60 L 60 60 L 50 40 Z"/>';
+  const SQUARE = '<path d="M -500 -500 L 500 -500 L 500 500 L -500 500 Z"/>';
+
+  it("ignores a clipPath square around the triangle", () => {
+    const svg =
+      `<svg viewBox="0 0 100 100"><clipPath id="c">${SQUARE}</clipPath>` +
+      `<g clip-path="url(#c)">${TRIANGLE}</g></svg>`;
+    const art = parseLogo(svg, 36, 36);
+    expect(art.paths).toHaveLength(1);
+    // The 20x20 triangle fills the slot rather than shrinking to ~0.7pt.
+    expect(art.w).toBeCloseTo(36, 6);
+    expect(art.h).toBeCloseTo(36, 6);
+  });
+
+  it.each(["defs", "mask", "symbol", "pattern"])("ignores paths inside <%s>", (tag) => {
+    const svg = `<svg viewBox="0 0 100 100"><${tag} id="x">${SQUARE}</${tag}>${TRIANGLE}</svg>`;
+    const art = parseLogo(svg, 36, 36);
+    expect(art.paths).toHaveLength(1);
+    expect(art.w).toBeCloseTo(36, 6);
+  });
+
+  it("a self-closing <defs/> does not swallow the art after it", () => {
+    const svg = `<svg viewBox="0 0 100 100"><defs/>${TRIANGLE}<defs>${SQUARE}</defs></svg>`;
+    const art = parseLogo(svg, 36, 36);
+    expect(art.paths).toHaveLength(1);
+    expect(art.w).toBeCloseTo(36, 6);
+  });
+
+  it("ignores HTML-commented paths", () => {
+    const svg = `<svg viewBox="0 0 100 100"><!-- ${SQUARE} -->${TRIANGLE}</svg>`;
+    const art = parseLogo(svg, 36, 36);
+    expect(art.paths).toHaveLength(1);
+    expect(art.w).toBeCloseTo(36, 6);
+  });
+});
