@@ -120,6 +120,10 @@ binary-impacting change gets its own version before it is merged.
   are already in (View → Label while showing the label, or View → Can in the
   can view) no longer clears its checkmark.
 
+- **Files opened while Label Lab is starting up open right away.** A `.label`
+  double-clicked in the moment the app was still loading could sit unopened
+  until the next file was opened; it now opens as soon as the app is ready.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
