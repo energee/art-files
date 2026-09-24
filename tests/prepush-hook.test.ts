@@ -2,7 +2,7 @@
 // not the working tree: uncommitted files must neither block a clean push nor
 // hide a bad one (#113). Runs the real hook in a throwaway git repo.
 import { execFileSync, spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -45,10 +45,8 @@ beforeEach(() => {
   git("init", "-q", "-b", "main");
   git("config", "user.email", "test@example.com");
   git("config", "user.name", "Test");
-  for (const file of [".githooks/pre-push", "scripts/check-release.mjs", "scripts/release-notes.mjs"]) {
-    mkdirSync(dirname(join(repo, file)), { recursive: true });
-    copyFileSync(join(ROOT, file), join(repo, file));
-  }
+  // The whole scripts/ dir, so the checker's own imports come along.
+  for (const dir of [".githooks", "scripts"]) cpSync(join(ROOT, dir), join(repo, dir), { recursive: true });
   writeVersion("0.1.0", "# Changelog\n\n## [0.1.0] - 2026-01-01\n- First.\n");
   git("add", "-A");
   git("commit", "-qm", "base");
