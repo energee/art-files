@@ -49,7 +49,7 @@ import { exportBase as exportBaseOf, titleOf } from "@/model/resolveLayers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue, structureOnlyMaster,
+  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -731,12 +731,17 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  its own — see history.ts's `Coalesce`. Computed against the doc THIS render
    *  sees so a no-op can return before marking the tab dirty. Returns whether
    *  the edit was recorded (false for a no-op or a rejected edit). */
-  const edit = (fn: (d: Doc) => Doc, coalesce?: Coalesce): boolean => {
+  const edit = (apply: (d: Doc) => Doc, coalesce?: Coalesce): boolean => {
+    // Every doc edit is checked for bindings the label's resolved layers would
+    // break (an enabled layer bound to a disabled or missing one) and refused,
+    // as parseMaster refuses them on the master — otherwise placeLayers throws
+    // on preview and export (issue #93). Both applications below use it.
+    const fn = (d: Doc) => { const n = apply(d); return n === d ? n : checkLabelBindings(n); };
     let next: Doc;
     try {
       next = fn(doc);
     } catch (err) {
-      setBuildError(errMsg(err)); // bindBelow/unbind re-validate through parseMaster
+      setBuildError(errMsg(err)); // parseMaster / checkLabelBindings refusals
       return false;
     }
     if (next === doc || (next.master === doc.master && next.label === doc.label)) return false;

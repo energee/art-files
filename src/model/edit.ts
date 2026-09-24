@@ -15,11 +15,11 @@ import type {
   RelativeY, TextLayer, Variant, BindingSide,
 } from "./layers";
 import type { Box } from "./place";
-import { bindingOf, hAnchorOf, parseMaster, vAnchorOf } from "./layers";
+import { bindingOf, hAnchorOf, parseMaster, validateBindings, vAnchorOf } from "./layers";
 import { deepMerge, type DeepPartial } from "./merge";
 import { getPath } from "./document";
 import { setPath } from "./resolve";
-import { valueOf, valuePath, widenValue } from "./resolveLayers";
+import { resolveLayers, valueOf, valuePath, widenValue } from "./resolveLayers";
 import { anchorFraction, type GuideLines } from "./position";
 import { CENTER_X, GOLD } from "../layout";
 import { KEYLINE } from "../defaults";
@@ -652,7 +652,11 @@ export const MASTER_PATHS: ReadonlySet<string> =
  *  ("Label overrides unknown layer …") while changing nothing on the canvas.
  *  Dropping it makes the click an honest no-op: no edit, no history entry,
  *  no warning. The fill contract still routes to the master, since those
- *  fields live in the master file whether the variant is on or not. */
+ *  fields live in the master file whether the variant is on or not.
+ *
+ *  Bindings are NOT checked here: a patch can switch off a layer another is
+ *  bound to. App's `edit` runs checkLabelBindings on every result, once per
+ *  call, so switching a layer off together with its dependents is allowed. */
 export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
   const masterIds = new Set(doc.master.layers.map((l) => l.id));
   /** Every layer id this document RESOLVES: the master's, plus those the
@@ -685,6 +689,19 @@ export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
     if (rest.length && resolves.has(id)) label = setLabelOverride(label, id, pick(rest));
     return master === d.master && label === d.label ? d : { master, label };
   }, doc);
+}
+
+/** Returns `doc` unchanged, or THROWS when its label's resolved layers break
+ *  a binding — an enabled layer bound to a disabled or missing one, or a
+ *  cycle. The label-side twin of parseMaster's check (the same
+ *  validateBindings), run by App's `edit` on every edit — the label can
+ *  reshape the graph (a patch, an override reset, a version switch) where
+ *  parseMaster never looks. Without it placeLayers throws on preview and
+ *  export (issue #93). */
+export function checkLabelBindings(doc: Doc): Doc {
+  const { layers } = resolveLayers(doc.master, doc.label.enabledVariants, {}, doc.label.overrides, { keepDisabled: true });
+  validateBindings(layers, "label", (msg) => { throw new Error(`Can't apply this edit: ${msg}`); });
+  return doc;
 }
 
 /** The text a LayerValue draws: a plain string as itself, styled runs joined,

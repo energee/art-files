@@ -13,6 +13,13 @@ binary-impacting change gets its own version before it is merged.
   its image missing. Saved `.label` files also no longer carry images the
   label has stopped using.
 
+- **Switching off a layer another layer is bound to no longer breaks the
+  preview and export.** Turning off Description with Collab on (the collab
+  lead-in hangs below it), switching to a version whose layers hang off a
+  layer you turned off, or resetting a bound layer back on is now refused
+  with a message naming the binding, instead of leaving the preview in an
+  error state. Switch off or unbind the layers bound to it first.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed
