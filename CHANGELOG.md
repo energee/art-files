@@ -63,6 +63,13 @@ binary-impacting change gets its own version before it is merged.
   Condensed text no longer sets tighter in Photoshop than in the PDF and the
   preview. Poppins labels are unchanged.
 
+- **Collab SVG logos keep their rectangles, circles, and other basic shapes.**
+  Shapes drawn as rectangles, circles, ellipses, polygons, polylines, or lines
+  were dropped, so the rest of the logo was blown up to fill the slot (and a
+  logo made only of shapes wouldn't load at all). They're placed now. An SVG
+  that relies on clones, live text, or embedded images is refused with a
+  message naming the element, instead of silently losing that part.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed

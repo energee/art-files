@@ -3,14 +3,14 @@
 // use it without importing the PDF renderer.
 import svgpath from "svgpath";
 
-/** Extract the logo's paths pre-scaled to `width` points. Transforms are
- *  applied — each path's own composed with its ancestor <g> transforms
- *  (text-outline exports carry their y-flip there) — and the output is
- *  normalized to absolute
- *  M/L/C/Z commands only, with rounded coordinates — pdf-lib's drawSvgPath
- *  cannot handle relative/shorthand/arc/H/V commands or its own scale
- *  option's exponent-notation output, and the PSD builder needs plain cubics
- *  to turn into bezier knots. */
+/** Extract the logo's paths (basic shapes converted — see shapeToPath)
+ *  pre-scaled to `width` points. Transforms are applied — each shape's own
+ *  composed with its ancestor <g> transforms (text-outline exports carry
+ *  their y-flip there) — and the output is normalized to absolute M/L/C/Z
+ *  commands with rounded coordinates — pdf-lib's drawSvgPath cannot handle
+ *  relative/shorthand/arc/H/V commands or its own scale option's
+ *  exponent-notation output, and the PSD builder needs plain cubics to turn
+ *  into bezier knots. */
 export function parseLogo(
   svg: string,
   width: number,
@@ -64,31 +64,88 @@ function renderedOnly(svg: string): string {
   return svg.replace(/<!--[\s\S]*?-->|<(defs|clipPath|mask|symbol|pattern)\b[^>]*?(?:\/>|>[\s\S]*?<\/\1\s*>)/g, "");
 }
 
+/** Read one attribute's value from a start tag ("" when absent). */
+function attr(tag: string, name: string): string {
+  return tag.match(new RegExp(` ${name}="([^"]+)"`))?.[1] ?? "";
+}
+
+/** A tag's geometry as path data (#69): <path> as-is, the basic shapes
+ *  converted per the SVG spec's equivalent-path rules. "" means the shape
+ *  draws nothing (zero-size rect, zero-radius circle). Elements that render
+ *  but aren't geometry we can fill — <use>, <text>, <image> — throw by name
+ *  so a logo never loses art silently. */
+function shapeToPath(name: string, tag: string): string {
+  const n = (a: string) => +attr(tag, a) || 0;
+  switch (name) {
+    case "path": {
+      const d = attr(tag, "d");
+      if (!d) throw new Error("Logo path is missing d attribute");
+      return d;
+    }
+    case "rect": {
+      const x = n("x"), y = n("y"), w = n("width"), h = n("height");
+      if (!(w > 0 && h > 0)) return "";
+      // rx/ry: a missing one mirrors the other; both clamp to half the side.
+      const rxA = attr(tag, "rx"), ryA = attr(tag, "ry");
+      const rx = Math.min(+(rxA || ryA) || 0, w / 2), ry = Math.min(+(ryA || rxA) || 0, h / 2);
+      if (!(rx > 0 && ry > 0)) return `M ${x} ${y} H ${x + w} V ${y + h} H ${x} Z`;
+      const arc = `A ${rx} ${ry} 0 0 1`;
+      return `M ${x + rx} ${y} H ${x + w - rx} ${arc} ${x + w} ${y + ry} V ${y + h - ry} ` +
+        `${arc} ${x + w - rx} ${y + h} H ${x + rx} ${arc} ${x} ${y + h - ry} V ${y + ry} ${arc} ${x + rx} ${y} Z`;
+    }
+    case "circle":
+    case "ellipse": {
+      const cx = n("cx"), cy = n("cy");
+      const rx = n(name === "circle" ? "r" : "rx"), ry = name === "circle" ? rx : n("ry");
+      if (!(rx > 0 && ry > 0)) return "";
+      const arc = `A ${rx} ${ry} 0 1 0`;
+      return `M ${cx - rx} ${cy} ${arc} ${cx + rx} ${cy} ${arc} ${cx - rx} ${cy} Z`;
+    }
+    case "polygon":
+    case "polyline": {
+      // Path grammar takes the implicit lineto after M, so the point list
+      // drops straight in.
+      const pts = attr(tag, "points").trim();
+      return pts ? `M ${pts}${name === "polygon" ? " Z" : ""}` : "";
+    }
+    case "line":
+      return `M ${n("x1")} ${n("y1")} L ${n("x2")} ${n("y2")}`;
+    default:
+      throw new Error(
+        `Logo SVG uses <${name}>, which can't be placed — convert it to plain paths ` +
+        "(outline text, expand/unlink clones, remove embedded images) and re-export.",
+      );
+  }
+}
+
 function parseLogoUncached(
   svg: string,
   width: number,
   maxH?: number,
 ): { paths: string[]; w: number; h: number } {
-  // Walk the rendered <g>/<path> tags in document order, carrying the ancestor <g>
-  // transforms down to each path. Text-to-outline exports (Illustrator,
-  // fontforge) wrap their paths in a group with a scale(1,-1)-style matrix —
-  // font units are y-up — so reading only the path's own transform mirrors
-  // and flips the art. Transforms compose in document order, which is
-  // exactly what svgpath's space-separated transform string applies.
-  const transformOf = (tag: string) => tag.match(/ transform="([^"]+)"/)?.[1] ?? "";
+  // Walk the rendered <g> and drawing tags in document order, carrying the
+  // ancestor <g> transforms down to each shape. Text-to-outline exports
+  // (Illustrator, fontforge) wrap their paths in a group with a
+  // scale(1,-1)-style matrix — font units are y-up — so reading only the
+  // shape's own transform mirrors and flips the art. Transforms compose in
+  // document order, which is exactly what svgpath's space-separated
+  // transform string applies.
   const stack: string[] = [];
   const parsed: ReturnType<typeof svgpath>[] = [];
-  for (const m of renderedOnly(svg).matchAll(/<g\b[^>]*>|<\/g>|<path\b[^>]*>/g)) {
-    const tag = m[0];
-    if (tag === "</g>") stack.pop();
-    else if (tag.startsWith("<g")) {
+  // Every name here must have a case in shapeToPath (or reach its throw);
+  // a drawing element missing from this list is silently skipped.
+  const tags = /<\/g>|<(g|path|rect|circle|ellipse|polygon|polyline|line|use|text|image)\b[^>]*>/g;
+  for (const m of renderedOnly(svg).matchAll(tags)) {
+    const [tag, name] = m;
+    if (!name) stack.pop(); // </g>
+    else if (name === "g") {
       // A self-closing <g/> opens nothing: pushing it would leak its
       // transform onto every following sibling, with no </g> to pop it.
-      if (!tag.endsWith("/>")) stack.push(transformOf(tag));
+      if (!tag.endsWith("/>")) stack.push(attr(tag, "transform"));
     } else {
-      const d = tag.match(/ d="([^"]+)"/)?.[1];
-      if (!d) throw new Error("Logo path is missing d attribute");
-      const tf = [...stack, transformOf(tag)].join(" ").trim();
+      const d = shapeToPath(name, tag);
+      if (!d) continue;
+      const tf = [...stack, attr(tag, "transform")].join(" ").trim();
       parsed.push(svgpath(d).transform(tf).abs().unshort().unarc());
     }
   }
