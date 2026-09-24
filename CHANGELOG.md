@@ -191,6 +191,12 @@ binary-impacting change gets its own version before it is merged.
   number would run up into the corner box (e.g. "-0.5" over "in"), its label
   is left out; the tick mark still shows.
 
+- **The drop overlay no longer flickers on macOS.** When you drag a texture
+  or mask image across the window, the "Background texture / Metallic mask"
+  overlay now stays up as the pointer moves over the canvas and panels. It
+  used to blink off at every element edge in the desktop app. It still
+  closes when you drag out of the window or drop.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed

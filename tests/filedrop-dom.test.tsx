@@ -32,6 +32,8 @@ afterEach(() => {
   onMask.mockReset();
 });
 
+const overlay = () => document.querySelector(".fixed");
+
 describe("AssetDropOverlay window drops", () => {
   it("does not route or arm for unclaimed file types", () => {
     for (const f of [pdf, label]) {
@@ -40,12 +42,48 @@ describe("AssetDropOverlay window drops", () => {
     }
     expect(onTexture).not.toHaveBeenCalled();
     expect(onMask).not.toHaveBeenCalled();
-    expect(document.querySelector(".fixed")).toBeNull();
+    expect(overlay()).toBeNull();
   });
 
   it("routes a claimed image", () => {
     expect(fileDrag("drop", png).defaultPrevented).toBe(true);
     expect(onTexture).toHaveBeenCalledWith(png);
+  });
+
+  it("stays up while WebKit's null-relatedTarget dragleave crosses elements (#122)", () => {
+    // WebKit reports relatedTarget null on every dragleave, including moves
+    // between elements inside the window. Only the last leave (depth 0) is
+    // the pointer actually leaving the window.
+    const inner = document.body.appendChild(document.createElement("div"));
+    fileDrag("dragenter", png);
+    fileDrag("dragover", png);
+    expect(overlay()).not.toBeNull();
+    fileDrag("dragenter", png, inner);
+    fileDrag("dragleave", png);          // leaving body for inner
+    expect(overlay()).not.toBeNull();
+    fileDrag("dragleave", png, inner);   // leaving inner, then the window
+    expect(overlay()).toBeNull();
+    inner.remove();
+  });
+
+  it("keeps its depth across a pass over a field (#122)", () => {
+    const field = fieldWell(FILE_DROP_ATTR);
+    const inner = document.body.appendChild(document.createElement("div"));
+    fileDrag("dragenter", png);
+    fileDrag("dragenter", png, field);
+    fileDrag("dragleave", png);
+    fileDrag("dragover", png, field);    // over the field: overlay yields
+    expect(overlay()).toBeNull();
+    fileDrag("dragenter", png, inner);
+    fileDrag("dragleave", png, field);
+    fileDrag("dragover", png, inner);    // back on the canvas: re-armed
+    fileDrag("dragenter", png);
+    fileDrag("dragleave", png, inner);   // crossing, not leaving
+    expect(overlay()).not.toBeNull();
+    fileDrag("drop", png);
+    expect(overlay()).toBeNull();
+    field.remove();
+    inner.remove();
   });
 
   it("yields field drops to the field", () => {
