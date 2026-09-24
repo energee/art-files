@@ -88,19 +88,24 @@ type DimensionUnit = "mm" | "pt";
 // module width) rounds to 0.00 in the field while the layer holds a real one.
 const DISPLAY_STEP = { mm: 0.001, pt: PT_STEP } as const;
 
+/** A field's reading back to points at the model's `step` — the one
+ *  conversion both committing a value and choosing its display go through. */
+const toPoints = (value: number, unit: string, step: number) =>
+  roundToStep(unit === "mm" ? value / MM_PER_PT : value, step);
+
 /** A stored point value as the field shows it. Millimetres use the FEWEST
  *  decimals (up to DISPLAY_STEP.mm's three) that store back to the same
- *  points at the model's `step`: 50mm is kept as 141.73pt, which reads
- *  49.999mm at three decimals — the drift in #131 — but 50 already stores
- *  141.73, so 50 is what shows. A value that needs the third decimal (1pt is
- *  0.353mm; 0.35 would store 0.99pt) still gets it. */
-function displayValue(points: number, unit: DimensionUnit, step: number): number {
-  if (unit === "pt") return roundToStep(points, DISPLAY_STEP.pt);
+ *  points: 50mm is kept as 141.73pt, which reads 49.999mm at three decimals —
+ *  the drift in #131 — but 50 already stores 141.73, so 50 is what shows. A
+ *  value that needs the third decimal (1pt is 0.353mm; 0.35 would store
+ *  0.99pt) still gets it. Any other unit shows the value at `step`. */
+function displayValue(points: number, unit: string, step: number): number {
+  if (unit !== "mm") return roundToStep(points, step);
   const exact = points * MM_PER_PT;
   const stored = roundToStep(points, step);
   for (let d = 0; d < decimalsOf(DISPLAY_STEP.mm); d++) {
     const shown = Number(exact.toFixed(d));
-    if (roundToStep(shown / MM_PER_PT, step) === stored) return shown;
+    if (toPoints(shown, unit, step) === stored) return shown;
   }
   return roundToStep(exact, DISPLAY_STEP.mm);
 }
@@ -114,7 +119,7 @@ function DimensionField(props: Omit<ComponentProps<typeof ScrubField>, "unit"> &
     // rounds in display units, and a rounded-up millimetre reading of a
     // bound (1pt -> 0.353mm -> 1.0006pt) must not slip past it.
     onChange={(value) => props.onChange(Math.min(props.max, Math.max(props.min,
-      roundToStep(value / scale, props.step))))} />;
+      toPoints(value, props.unit, props.step))))} />;
 }
 
 /** Section heading — the idiom StyleProperties' inspector used, so the new
@@ -222,7 +227,7 @@ function BlankableField(props: {
           step={displayStep}
           placeholder={props.placeholder}
           className="h-6 text-xs"
-          value={text ?? (props.value === undefined ? "" : displayValue(props.value, props.unit === "mm" ? "mm" : "pt", props.step))}
+          value={text ?? (props.value === undefined ? "" : displayValue(props.value, props.unit, props.step))}
           onChange={(e) => {
             const s = e.target.value;
             setText(s);
@@ -233,7 +238,7 @@ function BlankableField(props: {
             // verbatim (35pt -> 12.347mm -> 34.99916pt) never re-matches the
             // master, so the override badge can't be cleared from this field.
             if (Number.isFinite(n)) props.onChange(Math.min(props.max, Math.max(props.min,
-              roundToStep(n / scale, props.step))));
+              toPoints(n, props.unit, props.step))));
           }}
           onBlur={() => setText(null)}
         />
