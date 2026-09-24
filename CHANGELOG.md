@@ -3,6 +3,16 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.95] - 2026-09-24
+
+### Fixed
+
+- **Dropping an unsupported file no longer replaces the window.** Dragging a
+  `.label`, PDF, SVG, or other file the app doesn't take onto the window
+  outside a file well is now ignored, instead of the window navigating to
+  that file and losing every open tab. Textures and masks still drop as
+  before; open `.label` files with File → Open Project….
+
 ## [0.1.68] - 2026-09-15
 
 ### Fixed
