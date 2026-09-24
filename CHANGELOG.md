@@ -108,6 +108,10 @@ binary-impacting change gets its own version before it is merged.
   view instead of opening out of sight. Launching the app again from its
   icon also surfaces the running window.
 
+- **Save Master lists only the layers you actually moved.** Moving one layer
+  to a new place in the stack now shows a single "moved" row in the Save
+  Master review, instead of flagging nearly every layer it passed.
+
 ## [0.1.97] - 2026-09-24
 
 ### Fixed

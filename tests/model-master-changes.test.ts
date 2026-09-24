@@ -42,6 +42,24 @@ describe("masterChanges", () => {
     expect(masterChanges(base, moved, newLabel(base)).some((c) => c.kind === "moved")).toBe(true);
   });
 
+  it("reports only the layer that moved, not every layer it displaced (#99)", () => {
+    const base = lolevMaster();
+    const last = base.layers[base.layers.length - 1].id;
+    const edited = moveLayers(base, [last], last, -base.layers.length);
+    expect(edited.layers[0].id).toBe(last);
+    expect(masterChanges(base, edited, newLabel(base)).filter((c) => c.kind === "moved")
+      .map((c) => c.layerId)).toEqual([last]);
+  });
+
+  it("reports the smallest set of moved layers when two travel apart", () => {
+    const base = lolevMaster();
+    const ids = base.layers.map((l) => l.id);
+    // Swap the first and last: two layers left their places, the rest kept theirs.
+    const edited = { ...base, layers: [base.layers[ids.length - 1], ...base.layers.slice(1, -1), base.layers[0]] };
+    expect(masterChanges(base, edited, newLabel(base)).filter((c) => c.kind === "moved")
+      .map((c) => c.layerId).sort()).toEqual([ids[0], ids[ids.length - 1]].sort());
+  });
+
   it("offers each label override as a promote entry, with the master's current value", () => {
     const base = lolevMaster();
     const label = setLabelOverride(newLabel(base), "name", { x: 300, style: { fill: "#FF0000" } });
