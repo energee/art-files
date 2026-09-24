@@ -8,7 +8,9 @@
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import { readPsd } from "ag-psd";
-import { buildPsd, qrBeziers, PSD_DOC, type PsdAssets } from "../src/psd/build";
+import { readFileSync } from "node:fs";
+import fontkit from "@pdf-lib/fontkit";
+import { buildPsd, digitGroupPaths, qrBeziers, PSD_DOC, type PsdAssets } from "../src/psd/build";
 import { qrShapes } from "../src/qr";
 import { DESIGN_DPI, setOutputDpi } from "../src/layout";
 import type { Layer } from "../src/model/layers";
@@ -278,5 +280,20 @@ describe("added layers", () => {
     }] }, "mask");
     // white-layer text prints ink on the mask plate: mask blue.
     expect(rgb(layer(psd.children as any[], "Custom Text").text.style.fillColor)).toEqual({ r: 0, g: 156, b: 215 });
+  });
+});
+
+/** Issue #86, PSD side: the PDF draws barcode digits with pdf-lib's drawText,
+ *  which places raw glyph advances and emits no kerning. The PSD's outlined
+ *  digits must advance the same way, or a kern-table master font (Barlow
+ *  Condensed kerns "41" by 46/1000 em) lands its digits off the PDF's. */
+describe("barcode digit outlines advance unkerned, like the PDF (#86)", () => {
+  const fk = fontkit.create(readFileSync(new URL("../src/assets/fonts/BarlowCondensed-Regular.ttf", import.meta.url))) as any;
+  it("places each digit at the previous digits' raw advance", () => {
+    const size = 10;
+    const pair = digitGroupPaths(fk, "41", size, false, 0, 0).bbox;
+    const last = digitGroupPaths(fk, "1", size, false, 0, 0).bbox;
+    const advance4 = fk.layout("4").glyphs[0].advanceWidth * size / fk.unitsPerEm;
+    expect(pair.maxX).toBeCloseTo(advance4 + last.maxX, 6);
   });
 });
