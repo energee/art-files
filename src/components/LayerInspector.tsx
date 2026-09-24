@@ -62,7 +62,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ColorField } from "./ColorField";
 import { MetallicToggle } from "./MetallicToggle";
 import { ScrubField } from "./ScrubField";
-import { decimalsOf } from "@/numeric";
+import { decimalsOf, PT_STEP } from "@/numeric";
 import { CharacterHeight } from "./CharacterHeight";
 import { FONT_FAMILIES, fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
 
@@ -74,10 +74,11 @@ const KIND_ICONS: Record<LayerKind, LucideIcon> = {
   text: Type, image: Image, barcode: Barcode, qr: QrCode,
 };
 
-/** Points precision for positions and sizes: the Lolev master authors to
- *  hundredths (24.12, 15.83), so typing keeps that and a drag moves in
- *  halves — fine enough to land a snap, coarse enough to cross the label. */
-const PT = { step: 0.01, dragStep: 0.5 } as const;
+/** Points precision for positions and sizes: the model's PT_STEP (hundredths,
+ *  as the Lolev master authors them — 24.12, 15.83), so typing keeps that and a
+ *  scrub moves in halves — fine enough to land a snap, coarse enough to cross
+ *  the label. A canvas drag rounds to the same PT_STEP (edit.ts's moveBy). */
+const PT = { step: PT_STEP, dragStep: 0.5 } as const;
 
 // The model stays in PDF points; only dimensional controls convert for display.
 const MM_PER_PT = 25.4 / 72;

@@ -3,6 +3,17 @@
 User-facing changes to the Label Lab desktop application are recorded here. Every
 binary-impacting change gets its own version before it is merged.
 
+## [0.1.127] - 2026-09-24
+
+### Fixed
+
+- **Dragged positions save as clean numbers.** Moving or resizing a layer on
+  the canvas, and binding or unbinding one, now lands its position on the same
+  0.01pt grid the inspector types and the arrow keys nudge on, so Save Master
+  shows `x: 292.56 → 193.09` instead of `193.08552000000003`.
+- **Save Master names an edited text line.** A changed line reads
+  `lines: 1 → 1 ("Old" → "New")` instead of the uninformative `1 → 1`.
+
 ## [0.1.68] - 2026-09-15
 
 ### Fixed

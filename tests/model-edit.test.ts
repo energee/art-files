@@ -281,13 +281,26 @@ describe("moveBy", () => {
     expect(moveBy(nameLayer(), 12, 0)).toEqual({ x: CENTER_X + 12 });
   });
   it("moves an unbound y by dy, bottom-anchored layers included", () => {
-    expect(moveBy(nameLayer(), 0, -7)).toEqual({ y: (nameLayer().y as number) - 7 });
+    // The shipped tops are derived from baselines (off the 0.01pt grid); a
+    // move lands them on it, as typing the inspector's value back would.
+    const onGrid = (v: number) => Number(v.toFixed(2));
+    expect(moveBy(nameLayer(), 0, -7)).toEqual({ y: onGrid((nameLayer().y as number) - 7) });
     const store = byId<TextLayer>(lolevMaster(), "storeCold");
     expect(store.vAnchor).toBe("bottom");
-    expect(moveBy(store, 0, 2)).toEqual({ y: (store.y as number) + 2 });
+    expect(moveBy(store, 0, 2)).toEqual({ y: onGrid((store.y as number) + 2) });
   });
   it("returns an empty patch for a locked layer", () => {
     expect(moveBy(byId(lolevMaster(), "warning"), 5, 5)).toEqual({});
+  });
+  // #130: a pointer drag hands over raw float deltas, and the sum kept their
+  // noise (x: 292.56 -> 193.08552000000003 in the Save Master review). Moves
+  // land on the same 0.01pt grid the inspector types and nudges on.
+  it("rounds a dragged position to 0.01pt (#130)", () => {
+    const l: TextLayer = { ...nameLayer(), x: 292.56, y: 100, anchor: "left" };
+    expect(moveBy(l, -99.47448, 147.52530452012383)).toEqual({ x: 193.09, y: 247.53 });
+    const bound = { ...collab(lolevMaster()).layers.collabLeft } as ImageLayer;
+    const gap = (bound.y as RelativeY).gap;
+    expect(moveBy(bound, 0, 0.1 + 0.2)).toEqual({ y: { below: "collabLead", gap: Number((gap + 0.3).toFixed(2)) } });
   });
 });
 
@@ -420,6 +433,15 @@ it("switches binding axes and detaches at the measured position", () => {
   expect(bindingPatch(bound, "logo", "top", moved)).toMatchObject({ x: 80, y: 140, binding: { to: "logo", side: "top" } });
 });
 
+// #130 regression sweep: Unbind writes the MEASURED box edge, which carries
+// the same float noise a drag did.
+it("detaches at the measured position on the 0.01pt grid", () => {
+  const bound = { ...(collab(lolevMaster()).layers.collabLeft as ImageLayer), binding: { to: "logo", side: "left" as const, gap: 0 } };
+  const box = { x: 80.12345678901, y: 140.00000000000003, w: 40, h: 20 };
+  expect(unbindPatch(bound, box)).toMatchObject({ x: 80.12 });
+  expect(bindingPatch(bound, "logo", "top", box)).toMatchObject({ x: 80.12, y: 140 });
+});
+
 it.each(["top", "left", "right", "bottom"] as const)("dragging a %s binding edits its signed gap and preserves the free axis", (side) => {
   const l = { ...byId(lolevMaster(), "volume"), binding: { to: "logo", side, gap: 10 }, locked: false };
   const patch = moveBy(l, 3, 4);
@@ -467,6 +489,9 @@ describe("resizeBy", () => {
     expect(resizeBy({ ...q, size: 30, anchor: "left", vAnchor: undefined, guideY: undefined }, box, BR, 50, 0, false)).toEqual({ size: 45 });
     const b = { ...byId<BarcodeLayer>(lolevMaster(), "barcode"), h: 40, moduleW: 1, rotation: 0 as const, vAnchor: undefined };
     expect(resizeBy(b, box, BR, 100, 50, false)).toEqual({ h: 80, moduleW: 2 });
+  });
+  it("rounds the position a resize moves to 0.01pt (#130)", () => {
+    expect(resizeBy({ ...img(), x: 292.56 }, box, L, 20.123456789, 0, false).x).toBe(312.68);
   });
   it("the opposite edge stays put from any handle, per anchor", () => {
     // Left handle dragged 20pt right: box shrinks by 20 and its left edge moves right.

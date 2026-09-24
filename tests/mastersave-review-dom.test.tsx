@@ -84,6 +84,14 @@ describe("MasterSaveReview", () => {
     expect(props.onConfirm).toHaveBeenCalledWith([same[1]]);
   });
 
+  // #130: an edited line is one removed and one added entry at the same
+  // count, which fell back to the bare counts — "lines: 1 → 1" says nothing.
+  it("names the line an edit replaced instead of printing 1 → 1 (#130)", () => {
+    render({ changes: [{ kind: "property", layerId: "name", layerName: "Beer name", path: "lines",
+      from: [{ text: "Labradorite" }], to: [{ text: "Moonstone" }] }] });
+    expect(document.body.textContent).toContain('1 → 1 ("Labradorite" → "Moonstone")');
+  });
+
   it("checks and locks the structural rows, and leaves promotions off", () => {
     render();
     expect(box("renamed-name").getAttribute("aria-checked")).toBe("true");
