@@ -8,6 +8,38 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 
+- **Closing a tab frees its images.** A closed tab used to keep its
+  texture, mask, and image-layer art in memory for as long as the app stayed
+  open. Closing it now releases them, and an image that fails to load no
+  longer leaves a copy behind.
+
+- **Dragging a layer back to where it started puts it back exactly.** Moving
+  a layer away and then returning the pointer to its starting point (on one
+  axis or both) used to leave the layer at its last offset on that axis. It
+  now lands back where the drag began, and the drag is still one undo step.
+
+- **The QR "followed by" picker shows what you picked.** It reads "nothing"
+  or the text layer's name, matching its menu, instead of `none` or the
+  layer's internal id.
+
+- **An image dropped on a switched-off variant's layer shows right away.** The
+  layer's drop area names the loaded file instead of still saying "drop or
+  click" until the variant is switched on.
+
+- **Reordering a version's own layers now counts as a master change.**
+  Moving a layer that only a version adds (such as Collab's Lead-in) up or
+  down the layer list now enables Save Master and shows as "Reordered" in
+  the Save Master review, instead of being silently dropped unless something
+  else changed.
+
+- **Deleting a layer another layer is bound to on this label no longer
+  freezes the preview.** A binding made in the inspector but not yet saved
+  to the master (Volume bound below Logo, then Logo deleted) now lets go
+  and keeps the bound layer where it was, instead of showing "bound to
+  missing layer" with a stale preview. A binding saved to the master whose
+  position was not also saved no longer jumps back to where it sat before
+  it was bound.
+
 - **`⌘Z` inside an open dialog no longer undoes the label behind it.** With
   the Save Master review or Settings open, `⌘Z` / `⇧⌘Z` (and Edit → Undo /
   Redo) leave the canvas alone; in the inspector and its color picker they

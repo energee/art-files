@@ -28,7 +28,7 @@ export const widenValue = (l: Layer, v: LayerValue): LayerValue =>
     ? [{ text: v, fill: l.style.fill, layer: l.style.layer }] : v;
 
 /** One value onto one layer, UNVALIDATED — the per-kind shaping applyValue
- *  and withRejectedValue share. Undefined when the value has the wrong shape
+ *  and withStoredValue share. Undefined when the value has the wrong shape
  *  for the layer (a .label is parsed JSON, so the guard is real). */
 function putValue(l: Layer, v: LayerValue): Layer | undefined {
   if (l.kind === "text") {
@@ -39,13 +39,15 @@ function putValue(l: Layer, v: LayerValue): Layer | undefined {
   return l.kind === "image" ? { ...l, asset: v } : { ...l, value: v };
 }
 
-/** A stored value the resolver REJECTED, put back on its layer for display
- *  only (#128/#129): applyValue skips an invalid value so the canvas and
- *  exports never draw it, but the fill field must show what the label holds —
- *  not the master's fallback — beside the error. No `format`: a rejected value
- *  never reached ref expansion, so it is its own template. A value of the
- *  wrong shape for the layer leaves the layer as it was. */
-export function withRejectedValue(l: Layer, v: LayerValue): Layer {
+/** A label's stored value put on its layer for DISPLAY only, unvalidated —
+ *  for the two cases the resolver's own value never reaches the field:
+ *  a value it REJECTED (#128/#129: applyValue skips it so the canvas and
+ *  exports never draw it, but the fill field must show what the label holds,
+ *  not the master's fallback, beside the error), and a layer only an OFF
+ *  variant adds (#222: layerRows shows it raw, since the resolver never sees
+ *  it). No `format`: such a value never reached ref expansion, so it is its
+ *  own template. A value of the wrong shape leaves the layer as it was. */
+export function withStoredValue(l: Layer, v: LayerValue): Layer {
   const shown = putValue(l, v);
   if (!shown) return l;
   return shown.kind === "barcode" || shown.kind === "qr" ? { ...shown, format: undefined } : shown;

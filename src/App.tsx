@@ -46,11 +46,11 @@ import type {
   ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master,
 } from "@/model/layers";
 import { PAGE_ART_ID, uppercaseOf } from "@/model/layers";
-import { exportBase as exportBaseOf, titleOf, withRejectedValue } from "@/model/resolveLayers";
+import { exportBase as exportBaseOf, titleOf, withStoredValue } from "@/model/resolveLayers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue, structureOnlyMaster,
+  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -278,18 +278,19 @@ function assetToFile(a: { name: string; bytes: Uint8Array }): File {
 
 /** Read a dropped image asset. SVG is kept as source text (so it can be
  *  recolored per its layer's style), anything else as raster bytes, plus
- *  the intrinsic aspect (w/h): an SVG's ink box, a raster's bitmap size. */
+ *  the intrinsic aspect (w/h): an SVG's ink box, a raster's bitmap size.
+ *  The thumbnail URL is minted only once decoding succeeds, so a file that
+ *  fails to decode leaves no URL behind to revoke (#85). */
 async function readCustomImage(f: File): Promise<CustomFile> {
-  const previewUrl = URL.createObjectURL(f);
   if (mimeFor(f.name) === "image/svg+xml") {
     const svg = await f.text();
-    return { image: { kind: "svg", svg }, name: f.name, previewUrl, aspect: svgAspect(svg) };
+    return { image: { kind: "svg", svg }, name: f.name, previewUrl: URL.createObjectURL(f), aspect: svgAspect(svg) };
   }
   const bytes = new Uint8Array(await f.arrayBuffer());
   const bmp = await createImageBitmap(new Blob([bytes as unknown as BlobPart]));
   const aspect = bmp.width / bmp.height;
   bmp.close();
-  return { image: { kind: rasterKind(f.name), bytes }, name: f.name, previewUrl, aspect };
+  return { image: { kind: rasterKind(f.name), bytes }, name: f.name, previewUrl: URL.createObjectURL(f), aspect };
 }
 
 /** Longest preview-texture edge in px. Sized to the 3D label texture
@@ -756,7 +757,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     setSelection({ ids: [id], anchor: id });
   }
   function onRemoveLayer(id: string) {
-    editMaster((m) => removeLayer(m, id, rowBoxes()));
+    edit((d) => removeLayerIn(d, id, rowBoxes()));
     setSelection((s) => s.ids.includes(id)
       ? { ids: s.ids.filter((x) => x !== id), anchor: s.anchor === id ? null : s.anchor } : s);
   }
@@ -1102,27 +1103,29 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (!active) setDecodedAssets(null);
   }, [active]);
 
-  /** Whether the in-flight canvas drag or resize has opened its undo step.
-   *  The step opens on the first move that actually patches something, which
-   *  need not be the `first` move: one whose delta snapped to zero patches
-   *  nothing, and folding the next move in on `!first` merged the drag into
-   *  the edit BEFORE it (#74). Escape likewise undoes only a step that
-   *  exists. */
-  const gestureOpened = useRef(false);
+  /** The doc before the in-flight canvas drag or resize opened its undo
+   *  step; null until a move actually patches something (a first move that
+   *  snapped to zero opens nothing, so the next can't fold into the edit
+   *  before it — #74). Every move is applied to this base, not to the last
+   *  move's result, so an axis whose delta is back at 0 returns to where the
+   *  drag began (#164). Escape undoes only a step that exists. */
+  const gestureBase = useRef<Doc | null>(null);
   const gesturePatch = (entries: [string, DeepPartial<Layer>][]) => {
     const real = entries.filter(([, p]) => Object.keys(p).length);
-    if (real.length && patchMany(real, gestureOpened.current)) gestureOpened.current = true;
+    const opened = gestureBase.current;
+    if (!opened && !real.length) return;
+    if (edit((d) => patchLayers(opened ?? d, real), !!opened)) gestureBase.current ??= doc;
   };
   const cancelGesture = () => {
-    if (gestureOpened.current) mutating(undo)();
-    gestureOpened.current = false;
+    if (gestureBase.current) mutating(undo)();
+    gestureBase.current = null;
   };
 
   /** Drag-to-move. PreviewCompare reports the cumulative delta from the
    *  drag's start; the patch is moveBy against the layer AS IT WAS at the
    *  start (kept in a ref for the gesture), so every move replaces the last
    *  rather than stacking on it, and the whole drag is one undo step (see
-   *  `gestureOpened`). Horizontal snapping to the master's guides is moveBy's.
+   *  `gestureBase`). Horizontal snapping to the master's guides is moveBy's.
    *  When the grabbed layer is selected, every selected unlocked layer moves
    *  with it. */
   /** Every layer's resolved box for the current draw list — one full place
@@ -1199,7 +1202,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     } | null
   >(null);
   const onDrag = (id: string, dx: number, dy: number, first: boolean): SnapLines => {
-    if (first) gestureOpened.current = false;
+    if (first) gestureBase.current = null;
     if (first || dragBase.current?.id !== id) {
       const boxes = boxesNow();
       if (!boxes) return { x: null, y: null, dx, dy };
@@ -1283,7 +1286,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     id: string, handle: ResizeHandle, dx: number, dy: number, uniform: boolean, first: boolean,
   ): SnapLines => {
     if (first) {
-      gestureOpened.current = false;
+      gestureBase.current = null;
       const boxes = boxesNow();
       const layer = drawLayers.find((l) => l.id === id);
       const box = boxes?.get(id);
@@ -1326,8 +1329,18 @@ export const DocumentEditor = memo(function DocumentEditor({
   };
 
   // Revoking immediately can abort a large download, so each URL lives until
-  // the NEXT export batch.
+  // the NEXT export batch — or until the tab closes (below).
   const lastSaved = useRef<string[]>([]);
+  /** The assets this tab holds right now, read by the unmount cleanup: a
+   *  closed tab releases their thumbnails and its export URLs, or each one
+   *  pins its file's bytes for the rest of the session (#85). */
+  const held = useRef({ texture, mask, customImages });
+  held.current = { texture, mask, customImages };
+  useEffect(() => () => {
+    const { texture, mask, customImages } = held.current;
+    for (const a of [texture, mask, ...Object.values(customImages)]) if (a) URL.revokeObjectURL(a.previewUrl);
+    lastSaved.current.forEach((u) => URL.revokeObjectURL(u));
+  }, []);
   function startSaveBatch() {
     lastSaved.current.forEach((u) => URL.revokeObjectURL(u));
     lastSaved.current = [];
@@ -2035,7 +2048,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   function shownLayer(resolved: Layer): Layer {
     const stored = label.values[resolved.id];
     return errors[resolved.id] && stored !== undefined
-      ? withRejectedValue(resolved, stored) : resolved;
+      ? withStoredValue(resolved, stored) : resolved;
   }
 
   /** The inspector's content slot for the selected layer: the rich text
@@ -2097,9 +2110,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     const link = layer.kind === "qr" ? parseLink(template) : undefined;
     if (link) {
       // Every text layer can feed the link: its id is the ref, its name is
-      // what the picker shows.
-      const tokens = rows.flatMap((r) =>
-        r.layer.kind === "text" ? [{ id: r.layer.id, name: r.layer.name }] : []);
+      // what the picker shows. Handed to the Select as `items` too, so the
+      // trigger shows an option's label rather than its raw value (#222).
+      const sources = [{ value: "none", label: "nothing" }, ...rows.flatMap((r) =>
+        r.layer.kind === "text" ? [{ value: r.layer.id, label: r.layer.name }] : [])];
       const src = link.id ?? "";
       // The link box types as one session keyed by its id; a suffix pick is
       // a discrete choice and gets a step of its own (false).
@@ -2114,15 +2128,14 @@ export const DocumentEditor = memo(function DocumentEditor({
             onChange={(e) => write(e.target.value, src, id)} />
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-muted-foreground">followed by</span>
-            <Select value={src || "none"} onValueChange={(v) => write(link.prefix, v === "none" ? "" : (v ?? ""), false)}>
+            <Select items={sources} value={src || "none"} onValueChange={(v) => write(link.prefix, v === "none" ? "" : (v ?? ""), false)}>
               <SelectTrigger id={`${id}-src`} size="sm" aria-label="Link suffix"
                 className="h-6 w-32 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none" className="text-xs">nothing</SelectItem>
-                {tokens.map((t) => (
-                  <SelectItem key={t.id} value={t.id} className="text-xs">{t.name}</SelectItem>
+                {sources.map((s) => (
+                  <SelectItem key={s.value} value={s.value} className="text-xs">{s.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
