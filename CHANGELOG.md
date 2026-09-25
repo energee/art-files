@@ -1,7 +1,8 @@
 # Changelog
 
-User-facing changes to the Label Lab desktop application are recorded here. Every
-binary-impacting change gets its own version before it is merged.
+User-facing changes to the Label Lab desktop application are recorded here.
+Merged changes collect under [Unreleased] until a release is cut, which renames
+that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
