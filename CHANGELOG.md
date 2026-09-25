@@ -32,6 +32,14 @@ that section to the new version (see .agents/release-steward.md).
   the Save Master review, instead of being silently dropped unless something
   else changed.
 
+- **Deleting a layer another layer is bound to on this label no longer
+  freezes the preview.** A binding made in the inspector but not yet saved
+  to the master (Volume bound below Logo, then Logo deleted) now lets go
+  and keeps the bound layer where it was, instead of showing "bound to
+  missing layer" with a stale preview. A binding saved to the master whose
+  position was not also saved no longer jumps back to where it sat before
+  it was bound.
+
 ## [0.1.98] - 2026-09-25
 
 ### Fixed
