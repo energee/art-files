@@ -1355,14 +1355,15 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Revoking immediately can abort a large download, so each URL lives until
   // the NEXT export batch — or until the tab closes (below).
   const lastSaved = useRef<string[]>([]);
-  /** The thumbnail URLs this tab holds right now, read by the unmount
-   *  cleanup: a closed tab releases them and its export URLs, or each one
+  /** The assets this tab holds right now, read by the unmount cleanup: a
+   *  closed tab releases their thumbnails and its export URLs, or each one
    *  pins its file's bytes for the rest of the session (#85). */
-  const heldUrls = useRef<string[]>([]);
-  heldUrls.current = [texture, mask, ...Object.values(customImages)]
-    .flatMap((a) => (a ? [a.previewUrl] : []));
+  const held = useRef({ texture, mask, customImages });
+  held.current = { texture, mask, customImages };
   useEffect(() => () => {
-    for (const u of [...heldUrls.current, ...lastSaved.current]) URL.revokeObjectURL(u);
+    const { texture, mask, customImages } = held.current;
+    for (const a of [texture, mask, ...Object.values(customImages)]) if (a) URL.revokeObjectURL(a.previewUrl);
+    lastSaved.current.forEach((u) => URL.revokeObjectURL(u));
   }, []);
   function startSaveBatch() {
     lastSaved.current.forEach((u) => URL.revokeObjectURL(u));
