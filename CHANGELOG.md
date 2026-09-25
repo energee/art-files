@@ -18,6 +18,14 @@ that section to the new version (see .agents/release-steward.md).
   axis or both) used to leave the layer at its last offset on that axis. It
   now lands back where the drag began, and the drag is still one undo step.
 
+- **The QR "followed by" picker shows what you picked.** It reads "nothing"
+  or the text layer's name, matching its menu, instead of `none` or the
+  layer's internal id.
+
+- **An image dropped on a switched-off variant's layer shows right away.** The
+  layer's drop area names the loaded file instead of still saying "drop or
+  click" until the variant is switched on.
+
 ## [0.1.98] - 2026-09-25
 
 ### Fixed

@@ -45,7 +45,7 @@ import type {
   ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master,
 } from "@/model/layers";
 import { PAGE_ART_ID, uppercaseOf } from "@/model/layers";
-import { exportBase as exportBaseOf, titleOf, withRejectedValue } from "@/model/resolveLayers";
+import { exportBase as exportBaseOf, titleOf, withStoredValue } from "@/model/resolveLayers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
@@ -2072,7 +2072,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   function shownLayer(resolved: Layer): Layer {
     const stored = label.values[resolved.id];
     return errors[resolved.id] && stored !== undefined
-      ? withRejectedValue(resolved, stored) : resolved;
+      ? withStoredValue(resolved, stored) : resolved;
   }
 
   /** The inspector's content slot for the selected layer: the rich text
@@ -2134,9 +2134,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     const link = layer.kind === "qr" ? parseLink(template) : undefined;
     if (link) {
       // Every text layer can feed the link: its id is the ref, its name is
-      // what the picker shows.
-      const tokens = rows.flatMap((r) =>
-        r.layer.kind === "text" ? [{ id: r.layer.id, name: r.layer.name }] : []);
+      // what the picker shows. Handed to the Select as `items` too, so the
+      // trigger shows an option's label rather than its raw value (#222).
+      const sources = [{ value: "none", label: "nothing" }, ...rows.flatMap((r) =>
+        r.layer.kind === "text" ? [{ value: r.layer.id, label: r.layer.name }] : [])];
       const src = link.id ?? "";
       // The link box types as one session keyed by its id; a suffix pick is
       // a discrete choice and gets a step of its own (false).
@@ -2151,15 +2152,14 @@ export const DocumentEditor = memo(function DocumentEditor({
             onChange={(e) => write(e.target.value, src, id)} />
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-muted-foreground">followed by</span>
-            <Select value={src || "none"} onValueChange={(v) => write(link.prefix, v === "none" ? "" : (v ?? ""), false)}>
+            <Select items={sources} value={src || "none"} onValueChange={(v) => write(link.prefix, v === "none" ? "" : (v ?? ""), false)}>
               <SelectTrigger id={`${id}-src`} size="sm" aria-label="Link suffix"
                 className="h-6 w-32 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none" className="text-xs">nothing</SelectItem>
-                {tokens.map((t) => (
-                  <SelectItem key={t.id} value={t.id} className="text-xs">{t.name}</SelectItem>
+                {sources.map((s) => (
+                  <SelectItem key={s.value} value={s.value} className="text-xs">{s.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
