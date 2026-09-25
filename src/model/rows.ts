@@ -2,17 +2,19 @@
 // The rows are the RESOLVED layers (every enabled variant's diff and the
 // label's values merged in, disabled layers kept so they can be switched
 // back on), in draw order, plus the layers a switched-OFF variant would add
-// — shown raw from that variant's diff, badged and dimmed — so a filler can
+// — shown raw from that variant's diff (plus any value this label already
+// holds for them), badged and dimmed — so a filler can
 // see what turning the variant on brings. Pure; App memoizes it per
 // master/label change and hands it to LayerList and the inspector.
 import type { LabelFile, Layer, Master } from "./layers";
-import { resolveLayers } from "./resolveLayers";
+import { resolveLayers, withStoredValue } from "./resolveLayers";
 
 /** A variant as the list's chips and badges see it. */
 export interface VariantChip { id: string; name: string; enabled: boolean }
 
 export interface LayerRow {
-  /** The resolved layer (or the raw diff entry of an off variant's added layer). */
+  /** The resolved layer (or the raw diff entry of an off variant's added
+   *  layer, with this label's stored value put on it unvalidated). */
   layer: Layer;
   /** The variant that ADDS this layer (an id the master lacks) or, on a master
    *  layer, the last enabled variant that overrides it (then `variantOverridden`
@@ -63,13 +65,20 @@ export function layerRows(master: Master, label: LabelFile): {
       ...(variantOverridden ? { variantOverridden } : {}), ...(changed ? { changed } : {}),
     };
   });
-  // Layers only an OFF variant would add, raw from its diff.
+  // Layers only an OFF variant would add, raw from its diff — but carrying
+  // this label's stored value, unvalidated, so the inspector shows what was
+  // filled in (a dropped image, typed text) before the variant is on (#222).
   const shown = new Set(rows.map((r) => r.layer.id));
   for (const v of master.variants) {
     if (label.enabledVariants.includes(v.id)) continue;
     for (const [id, entry] of Object.entries(v.layers)) {
       if (masterIds.has(id) || shown.has(id)) continue;
-      rows.push({ layer: entry as Layer, variant: chips.get(v.id) });
+      const stored = label.values[id];
+      const layer = entry as Layer;
+      rows.push({
+        layer: stored === undefined ? layer : withStoredValue(layer, stored),
+        variant: chips.get(v.id),
+      });
       shown.add(id);
     }
   }
