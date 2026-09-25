@@ -6,6 +6,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
+import type { TextLayer } from "../src/model/layers";
 
 vi.mock("../src/components/PreviewCompare", () => ({ SNAP_PT: 6, PreviewCompare: (props: PreviewProps) => { perf.source = props.canvasRender; perf.preview = props; return null; } }));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
@@ -317,15 +318,15 @@ it("opens a fresh undo step for inspector typing instead of folding into the pre
   }
 });
 
-// Issue #74 — a drag (or resize) whose first move produced no patch (a
-// snapped-to-zero delta) opened no undo step, yet its later moves still
-// passed coalesce=true and folded into the edit before it; Escape's undo then
-// reverted that earlier edit along with the drag.
-async function renameThenGesture(gesture: (p: PreviewProps) => void) {
+/** Mounts a DocumentEditor, waits for its canvas assets (gestures measure
+ *  boxes off them), runs `body`, and unmounts. `p()` reads the latest
+ *  PreviewCompare props, so it sees each re-render's layers. */
+async function withCanvasEditor(
+  body: (p: () => PreviewProps, container: HTMLElement) => Promise<void>, onMeta = vi.fn(),
+) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
-  const onMeta = vi.fn();
   perf.source = null; // so the wait below waits for THIS mount's assets
   try {
     await act(async () => {
@@ -336,8 +337,23 @@ async function renameThenGesture(gesture: (p: PreviewProps) => void) {
         onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
       }));
     });
-    // Gestures measure boxes off the decoded canvas assets.
     await vi.waitFor(() => expect(perf.source).not.toBeNull(), { timeout: 30_000 });
+    await body(() => perf.preview!, container);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+}
+
+// Issue #74 — a drag (or resize) whose first move produced no patch (a
+// snapped-to-zero delta) opened no undo step, yet its later moves still
+// passed coalesce=true and folded into the edit before it; Escape's undo then
+// reverted that earlier edit along with the drag.
+async function renameThenGesture(
+  gesture: (p: PreviewProps) => void, cancel = (p: PreviewProps) => p.onDragCancel(),
+) {
+  const onMeta = vi.fn();
+  await withCanvasEditor(async (p, container) => {
     const row = container.querySelector('[data-layer-id="name"]')!;
     await act(async () => {
       (row.querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement).click();
@@ -348,19 +364,16 @@ async function renameThenGesture(gesture: (p: PreviewProps) => void) {
       editor.dispatchEvent(new Event("input", { bubbles: true }));
     });
     expect(onMeta.mock.lastCall?.[0].title).toBe("Peregrine");
-    await act(async () => gesture(perf.preview!));
+    await act(async () => gesture(p()));
     // Escape mid-gesture: undo only what the gesture itself did.
-    await act(async () => perf.preview!.onDragCancel());
+    await act(async () => cancel(p()));
     expect(onMeta.mock.lastCall?.[0].title).toBe("Peregrine");
     // The rename is still its own step: one ⌘Z removes it.
     await act(async () => {
       document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
     });
     expect(onMeta.mock.lastCall?.[0].title).not.toBe("Peregrine");
-  } finally {
-    await act(async () => root.unmount());
-    container.remove();
-  }
+  }, onMeta);
 }
 
 it("a drag whose first move snaps to zero never folds into the previous edit", async () => {
@@ -416,3 +429,40 @@ it("sizes the inspector sheet to 300px at every breakpoint (#132)", async () => 
     container.remove();
   }
 });
+
+// Issue #164 — a drag's moves are patches against the layer as it was at the
+// gesture's start, but each one landed on the doc as it was AFTER the last
+// move: an axis whose delta returned to exactly 0 patched nothing for that
+// axis, so the layer kept the last move's offset there instead of returning
+// to where the drag began.
+const layerOf = (p: PreviewProps, id: string) => p.layers.find((l) => l.id === id)!;
+
+it("a drag back to exactly its start puts the layer back where it began", async () => {
+  await withCanvasEditor(async (p) => {
+    const { x, y } = layerOf(p(), "barcode");
+    await act(async () => p().onDrag("barcode", 40, 30, true));
+    expect(layerOf(p(), "barcode").x).not.toBe(x);
+    await act(async () => p().onDrag("barcode", 0, 0, false));
+    expect(layerOf(p(), "barcode")).toMatchObject({ x, y });
+  });
+}, 60_000);
+
+it("a drag back to its start on one axis restores that axis", async () => {
+  await withCanvasEditor(async (p) => {
+    const { x } = layerOf(p(), "barcode");
+    await act(async () => p().onDrag("barcode", 40, 0, true));
+    await act(async () => p().onDrag("barcode", 0, 30, false));
+    expect(layerOf(p(), "barcode").x).toBe(x);
+  });
+}, 60_000);
+
+// #164 part 1 — the in-place editor's first keystroke must open the session's
+// step even when it leaves the text as it was (a rejected character in a
+// number field re-applies the same value), or Escape reverts the edit before.
+it("an in-place session whose first keystroke changes nothing never folds into the previous edit", async () => {
+  await renameThenGesture((p) => {
+    const { lines } = layerOf(p, "abv") as TextLayer;
+    p.onEditText("abv", lines, true);
+    p.onEditText("abv", [{ ...lines[0], text: "6.5" }], false);
+  }, (p) => p.onEditCancel());
+}, 60_000);

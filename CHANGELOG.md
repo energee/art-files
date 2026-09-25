@@ -8,6 +8,11 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 
+- **Dragging a layer back to where it started puts it back exactly.** Moving
+  a layer away and then returning the pointer to its starting point (on one
+  axis or both) used to leave the layer at its last offset on that axis. It
+  now lands back where the drag began, and the drag is still one undo step.
+
 - **Undo brings back replaced or cleared layer images.** Dropping a new image
   on an image layer (or clearing it) and then pressing `⌘Z` restores the
   original art, instead of leaving the layer blank and saving a project with

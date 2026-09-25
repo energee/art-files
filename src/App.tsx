@@ -1126,27 +1126,29 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (!active) setDecodedAssets(null);
   }, [active]);
 
-  /** Whether the in-flight canvas drag or resize has opened its undo step.
-   *  The step opens on the first move that actually patches something, which
-   *  need not be the `first` move: one whose delta snapped to zero patches
-   *  nothing, and folding the next move in on `!first` merged the drag into
-   *  the edit BEFORE it (#74). Escape likewise undoes only a step that
-   *  exists. */
-  const gestureOpened = useRef(false);
+  /** The doc before the in-flight canvas drag or resize opened its undo
+   *  step; null until a move actually patches something (a first move that
+   *  snapped to zero opens nothing, so the next can't fold into the edit
+   *  before it — #74). Every move is applied to this base, not to the last
+   *  move's result, so an axis whose delta is back at 0 returns to where the
+   *  drag began (#164). Escape undoes only a step that exists. */
+  const gestureBase = useRef<Doc | null>(null);
   const gesturePatch = (entries: [string, DeepPartial<Layer>][]) => {
     const real = entries.filter(([, p]) => Object.keys(p).length);
-    if (real.length && patchMany(real, gestureOpened.current)) gestureOpened.current = true;
+    const opened = gestureBase.current;
+    if (!opened && !real.length) return;
+    if (edit((d) => patchLayers(opened ?? d, real), !!opened)) gestureBase.current ??= doc;
   };
   const cancelGesture = () => {
-    if (gestureOpened.current) mutating(undo)();
-    gestureOpened.current = false;
+    if (gestureBase.current) mutating(undo)();
+    gestureBase.current = null;
   };
 
   /** Drag-to-move. PreviewCompare reports the cumulative delta from the
    *  drag's start; the patch is moveBy against the layer AS IT WAS at the
    *  start (kept in a ref for the gesture), so every move replaces the last
    *  rather than stacking on it, and the whole drag is one undo step (see
-   *  `gestureOpened`). Horizontal snapping to the master's guides is moveBy's.
+   *  `gestureBase`). Horizontal snapping to the master's guides is moveBy's.
    *  When the grabbed layer is selected, every selected unlocked layer moves
    *  with it. */
   /** Every layer's resolved box for the current draw list — one full place
@@ -1223,7 +1225,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     } | null
   >(null);
   const onDrag = (id: string, dx: number, dy: number, first: boolean): SnapLines => {
-    if (first) gestureOpened.current = false;
+    if (first) gestureBase.current = null;
     if (first || dragBase.current?.id !== id) {
       const boxes = boxesNow();
       if (!boxes) return { x: null, y: null, dx, dy };
@@ -1307,7 +1309,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     id: string, handle: ResizeHandle, dx: number, dy: number, uniform: boolean, first: boolean,
   ): SnapLines => {
     if (first) {
-      gestureOpened.current = false;
+      gestureBase.current = null;
       const boxes = boxesNow();
       const layer = drawLayers.find((l) => l.id === id);
       const box = boxes?.get(id);
