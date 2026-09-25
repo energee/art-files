@@ -692,4 +692,10 @@ describe("removeVariantIn detaches label bindings to the layers the version adds
     const off: Doc = { ...bound, label: { ...bound.label, enabledVariants: [] } };
     expect(removeVariantIn(off, v).label.overrides).toEqual({});
   });
+  it("drops only the deleted version from the label's shown versions", () => {
+    const { master: m, id: v } = addVariant(lolevMaster(), "Extra");
+    const d: Doc = { master: m, label: label({ enabledVariants: [v, "collab"] }) };
+    expect(removeVariantIn(d, v).label.enabledVariants).toEqual(["collab"]);
+    expect(removeVariantIn(d, "collab").label.enabledVariants).toEqual([v]);
+  });
 });

@@ -635,7 +635,8 @@ export function removeVariant(master: Master, id: string): Master {
  *  version may be detached — that demands a box a switched-off version's
  *  layers don't have — so the version's patches to master layers and the
  *  added layers' label overrides are dropped up front, and the added layers
- *  go deepest dependent first (bindings are acyclic: parseMaster). */
+ *  go deepest dependent first (bindings are acyclic: parseMaster). The label
+ *  stops showing the deleted version and keeps showing every other one. */
 export function removeVariantIn(doc: Doc, id: string, boxes?: ReadonlyMap<string, Box>): Doc {
   const { layers } = variantOf(doc.master, id);
   const added = new Set(Object.keys(layers).filter((k) => whereLayerLives(doc.master, k) !== "master"));
@@ -653,7 +654,7 @@ export function removeVariantIn(doc: Doc, id: string, boxes?: ReadonlyMap<string
     label: { ...doc.label, overrides: doc.label.overrides && keep(doc.label.overrides, false) },
   };
   const d = order.reduce((acc, k) => removeLayerIn(acc, k, boxes), start);
-  return { ...d, master: removeVariant(d.master, id) };
+  return { master: removeVariant(d.master, id), label: showVersion(d.label, id, null) };
 }
 
 export function renameVariant(master: Master, id: string, name: string): Master {
