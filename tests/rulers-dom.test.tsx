@@ -24,9 +24,13 @@ beforeEach(() => {
   root = createRoot(container);
 });
 
+/** Body-level click counters registered by a test, torn down after it. */
+const listeners: EventListener[] = [];
+
 afterEach(() => {
   act(() => { root.unmount(); });
   container.remove();
+  for (const seen of listeners.splice(0)) document.body.removeEventListener("click", seen);
   vi.unstubAllGlobals();
 });
 
@@ -94,5 +98,83 @@ describe("Rulers manual-guide removal", () => {
     expect(container.querySelector('[aria-label$="manual guide; press Delete to remove"]')).toBeNull();
     expect(removeButton("vertical")).toBeNull();
     expect(removeButton("horizontal")).toBeNull();
+  });
+});
+
+// Rulers does not deselect itself: a click on ruler chrome is meant to reach
+// the pane, whose pasteboard handler treats it as a miss (App.tsx's
+// missedEverything). So these assert on what ESCAPES the overlay — `escaped`
+// counts clicks arriving at the container, standing in for that handler.
+describe("Rulers background click — what reaches the pasteboard", () => {
+  /** The strip that drags out a horizontal guide, with pointer capture
+   *  stubbed (happy-dom has none) and its own click counter attached. */
+  function strip() {
+    const el = container.querySelector<HTMLDivElement>(
+      '[title="Drag down to create a horizontal guide"]')!;
+    el.setPointerCapture = vi.fn();
+    return el;
+  }
+  const cornerButton = () =>
+    container.querySelector<HTMLButtonElement>('[aria-label="Ruler settings, current unit in"]')!;
+  /** Clicks that bubble out of the overlay — what the pane would deselect on.
+   *  Watched from ABOVE the React root: React's own listener sits on the root
+   *  container, and stopPropagation there still lets sibling listeners on that
+   *  same element run, so a counter attached to it would never see a swallow. */
+  function escapes() {
+    const seen = vi.fn();
+    document.body.addEventListener("click", seen);
+    listeners.push(seen);
+    return seen;
+  }
+  const click = (el: Element) =>
+    act(() => { el.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+
+  it("lets a plain click on the corner through", () => {
+    renderRulers();
+    const escaped = escapes();
+    click(cornerButton());
+    expect(escaped).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a plain click on a guide strip (no drag) through", () => {
+    const props = renderRulers();
+    const escaped = escapes();
+    const el = strip();
+    act(() => {
+      el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerId: 1, clientY: 5 }));
+      el.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0, pointerId: 1, clientY: 5 }));
+    });
+    click(el);
+    expect(props.onAddManual).not.toHaveBeenCalled();
+    expect(escaped).toHaveBeenCalledTimes(1);
+  });
+
+  it("swallows the click that tails a guide drag, and only that one", () => {
+    const props = renderRulers();
+    const escaped = escapes();
+    const el = strip();
+    // Each pointer event needs its own act(): endDrag reads `drag` from the
+    // last committed render, so without a flush between them it still sees
+    // null and never places the guide.
+    // clientX must clear RULER_SIZE too — overRuler treats EITHER axis being
+    // inside the ruler thickness as "still over the ruler", and the default
+    // clientX of 0 would otherwise read as the vertical ruler.
+    act(() => {
+      el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerId: 1, clientX: 50, clientY: 5 }));
+    });
+    act(() => {
+      el.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 1, clientX: 50, clientY: 200 }));
+    });
+    act(() => {
+      el.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0, pointerId: 1, clientX: 50, clientY: 200 }));
+    });
+    expect(props.onAddManual).toHaveBeenCalledTimes(1);
+    // setPointerCapture re-targets the browser's own click back to the strip
+    // that started the drag — simulated here the same way.
+    click(el);
+    expect(escaped).not.toHaveBeenCalled();
+    // and placing that guide didn't leave the strip stuck swallowing clicks.
+    click(el);
+    expect(escaped).toHaveBeenCalledTimes(1);
   });
 });

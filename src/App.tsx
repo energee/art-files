@@ -170,6 +170,15 @@ const PAGE_ART_ID = { background: "texture", mask: "mask" } as const;
 const newLabel = (master: Master): LabelFile =>
   ({ formatVersion: 3, masterId: master.id, enabledVariants: [], values: {} });
 
+/** Did this click land on empty space? `owned` names what does own a click
+ *  on that surface; anything else is a miss, and a miss deselects — the one
+ *  rule behind both deselecting surfaces (the pasteboard around the label,
+ *  the gutter under the Layers list). The surfaces keep their own `owned`
+ *  lists: what counts as furniture differs between them. */
+function missedEverything(target: EventTarget, owned: string): boolean {
+  return target instanceof Element && !target.closest(owned);
+}
+
 /** Mint a new image asset id. One spelling of the format, so every drop
  *  site mints ids a saved project's `ImageLayer.asset` can always resolve
  *  against a customImages entry here, regardless of which added it. */
@@ -2094,7 +2103,16 @@ export const DocumentEditor = memo(function DocumentEditor({
           preview center, inspector sheet right. */}
       <SidebarProvider hotkey={active} className="min-h-0 h-full">
         <Sidebar collapsible="offcanvas">
-          <SidebarContent>
+          <SidebarContent
+            // The gutter below the last row deselects too, same as the
+            // pasteboard around the canvas. What still owns its own click
+            // here: a layer row, and any control (MasterPicker's
+            // Select/buttons/input, the Changed chip, Add layer's menu).
+            onClick={(e) => {
+              if (missedEverything(e.target,
+                '[data-layer-id], button, a, input, [role="button"], [role="combobox"], [contenteditable="true"]'))
+                clearSelection();
+            }}>
             {/* The master picker, then the ONE Layers list (spec: UI). */}
             <MasterPicker master={master} label={label}
               library={libraryEntries()} resolve={resolveMasterById}
@@ -2172,9 +2190,11 @@ export const DocumentEditor = memo(function DocumentEditor({
             // is never the tail of a drag.
             onClick={(e) => {
               if (viewMode !== "2d") return;
-              const t = e.target;
-              if (t instanceof Element
-                && !t.closest('[data-slot="label-sheet"],[data-slot="rulers"]')) clearSelection();
+              // The ruler chrome is pasteboard too — only a guide's handle
+              // and its × own their clicks there; the strip that just placed
+              // one swallows its own trailing click (see Rulers).
+              if (missedEverything(e.target, '[data-slot="label-sheet"], [data-guide-control]'))
+                clearSelection();
             }}
             onPointerDown={onPanStart}
             onPointerMove={onPanMove}

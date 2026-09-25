@@ -173,7 +173,9 @@ export function MasterPicker(props: {
             <SelectItem key={id} value={id}>{entry.name}</SelectItem>
           ))}
           <SelectSeparator />
-          <SelectItem value={NEW_VARIANT}>New Variant</SelectItem>
+          {/* attention — a structural verb: it will write a new version into
+              the master, not this label. */}
+          <SelectItem value={NEW_VARIANT} className="text-attention-text">New Variant</SelectItem>
         </SelectContent>
       </Select>
       {naming !== null ? (
@@ -205,7 +207,7 @@ export function MasterPicker(props: {
               </Button>
             </>
           )}
-          <Button type="button" id="variant-save" size="xs" variant="ghost"
+          <Button type="button" id="variant-save" size="xs" variant="attention"
             disabled={!props.masterDirty} onClick={props.onSaveMaster}>
             Save to {version === null ? "Master" : "Variant"}…
           </Button>
@@ -213,7 +215,7 @@ export function MasterPicker(props: {
       )}
       {resolvingId && <p role="status" className="mt-1 text-xs text-muted-foreground">Opening master…</p>}
       {error && (
-        <p id="master-picker-error" className="mt-1 px-1 text-[11px] text-destructive">{error}</p>
+        <p id="master-picker-error" className="mt-1 px-1 text-[11px] text-destructive-text">{error}</p>
       )}
 
       {preview && (

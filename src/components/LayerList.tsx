@@ -229,11 +229,12 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
               {row.variant.name}
             </span>
           )}
-          {/* Two provenance marks, deliberately different shapes: a FILLED
+          {/* Two provenance marks, deliberately different weights: a SOLID
               dot for a variant (it lives in the master file and applies to
-              every label with that variant on) and a RING for this label's own
-              change. Same glyph for both is what made the old single dot
-              unreadable — and its title claimed "variant" either way. */}
+              every label with that variant on) and a FADED dot for this
+              label's own change. Same glyph for both is what made the old
+              single dot unreadable — and its title claimed "variant" either
+              way. */}
           {row.variantOverridden && (
             <span
               role="img"
@@ -247,7 +248,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
               role="img"
               aria-label="Changed in this label"
               title="Changed in this label"
-              className="size-1.5 shrink-0 rounded-full border border-current text-info-text"
+              className="size-1.5 shrink-0 rounded-full bg-current/50 text-info-text"
             />
           )}
         </SidebarMenuButton>
@@ -274,11 +275,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             />
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => setRenaming(true)}>Rename</DropdownMenuItem>
-              <DropdownMenuItem
-                variant="destructive"
-                className="data-[variant=destructive]:text-destructive-text data-[variant=destructive]:focus:text-destructive-text"
-                onClick={() => p.onRemove(id)}
-              >
+              <DropdownMenuItem variant="destructive" onClick={() => p.onRemove(id)}>
                 Remove
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -419,15 +416,17 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
               <button
                 type="button"
                 aria-label="Add layer"
-                className="flex items-center gap-0.5 rounded-sm px-1 text-[11px] text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                className="flex items-center gap-0.5 rounded-sm px-1 text-[11px] text-attention-text/80 hover:text-attention-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
               >
                 <Plus className="size-3" /> Add layer
               </button>
             }
           />
+          {/* attention — adding a layer is structural, written straight into
+              the master (or the switched-to variant), never a label edit. */}
           <DropdownMenuContent align="end">
             {ADD_LAYER_KINDS.map(({ kind, label, Icon }) => (
-              <DropdownMenuItem key={kind} onClick={() => props.onAdd(kind)}>
+              <DropdownMenuItem key={kind} variant="attention" onClick={() => props.onAdd(kind)}>
                 <Icon className="size-3.5" /> {label}
               </DropdownMenuItem>
             ))}

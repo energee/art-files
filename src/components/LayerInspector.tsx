@@ -104,7 +104,7 @@ function DimensionField(props: Omit<ComponentProps<typeof ScrubField>, "unit"> &
  *  panel reads in the app's established voice. */
 function Heading(props: { children?: ReactNode }) {
   return (
-    <h2 className="mb-2 mt-4 border-t border-border pt-3 text-xs font-medium text-foreground">
+    <h2 className="mb-2 mt-7 text-xs font-medium text-foreground">
       {props.children}
     </h2>
   );
@@ -136,8 +136,8 @@ function Field(props: { id?: string; label: string; badge?: ReactNode; children:
 }
 
 /** The override badge — up to TWO marks beside a control, one per source: a
- *  filled dot for a variant, a ring for this label, matching the Layers list.
- *  Each resets only its own source, so clearing your own edit can never
+ *  solid dot for a variant, a faded dot for this label, matching the Layers
+ *  list. Each resets only its own source, so clearing your own edit can never
  *  rewrite the shipped variant (which is what one merged badge used to do).
  *
  *  `paths` are checked in order and the first hit is what Reset restores — a
@@ -154,7 +154,7 @@ function Badge(props: {
     { source: "variant", cls: "bg-current", title: `${who} sets ${props.label} — reset it in the master`,
       aria: `Reset ${props.label} to the master`,
       path: props.paths.find((p) => props.overridden.variant.has(p)) },
-    { source: "label", cls: "border border-current", title: `This label sets ${props.label} — reset it to the master`,
+    { source: "label", cls: "bg-current/50", title: `This label sets ${props.label} — reset it to the master`,
       aria: `Reset ${props.label} to this label's master value`,
       path: props.paths.find((p) => props.overridden.label.has(p)) },
   ] as const).filter((m) => m.path);
@@ -1067,7 +1067,7 @@ export function LayerInspector(props: {
 
       {!page && <StyleSection layer={layer} {...ctx} />}
       {(layer.kind === "text" || layer.kind === "barcode") && (
-        <details className="mt-4 border-t border-border pt-3">
+        <details className="mt-7">
           <summary className="cursor-pointer rounded py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             Template field settings
           </summary>

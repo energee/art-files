@@ -61,7 +61,7 @@
      instead, never the raw token. */
   --primary: light-dark(#7058be, #ab9df2); /* create, edit, finish — Save, Continue, the label-mode accent */
   --destructive: light-dark(#e14775, #ff6188); /* remove, discard */
-  --attention: light-dark(#e16032, #fc9867); /* template mode: the switch, frame, badges, verbs */
+  --attention: light-dark(#e16032, #fc9867); /* edits that escape the label into the master: Save Master, the promotion review, structural verbs (add/remove layer, New Variant) */
   --warning: light-dark(#cc7a0a, #ffd866); /* unsaved-template-changes strip, validation warnings */
   --success: light-dark(#269d69, #a9dc76); /* confirmations, "current" */
   --info: light-dark(#1c8ca8, #78dce8); /* override badges, learned choice */

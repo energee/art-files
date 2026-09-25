@@ -132,12 +132,12 @@ describe("MasterSaveReview", () => {
     expect(p.onConfirm).toHaveBeenCalledWith([]);
   });
 
-  it("has exactly one primary action (docs/plans/template-switch.md, Task 3)", () => {
+  it("has exactly one committing action, styled attention — it writes the master (docs/plans/semantic-color.md, Task 3)", () => {
     render();
-    const primary = Array.from(document.querySelectorAll<HTMLElement>("*"))
-      .filter((el) => (el.getAttribute("class") ?? "").split(" ").includes("bg-primary"));
-    expect(primary).toHaveLength(1);
-    expect(primary[0].textContent?.trim()).toBe("Save Master");
+    const committing = Array.from(document.querySelectorAll<HTMLElement>("*"))
+      .filter((el) => (el.getAttribute("class") ?? "").split(" ").includes("bg-attention-soft"));
+    expect(committing).toHaveLength(1);
+    expect(committing[0].textContent?.trim()).toBe("Save Master");
   });
 });
 
