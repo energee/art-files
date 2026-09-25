@@ -4,7 +4,7 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
-## [0.1.98] - 2026-09-25
+## [Unreleased]
 
 ### Fixed
 
@@ -17,6 +17,10 @@ that section to the new version (see .agents/release-steward.md).
   a layer away and then returning the pointer to its starting point (on one
   axis or both) used to leave the layer at its last offset on that axis. It
   now lands back where the drag began, and the drag is still one undo step.
+
+## [0.1.98] - 2026-09-25
+
+### Fixed
 
 - **Undo brings back replaced or cleared layer images.** Dropping a new image
   on an image layer (or clearing it) and then pressing `⌘Z` restores the
