@@ -28,6 +28,7 @@ import { RenderSettings as RenderSettingsFields } from "@/components/RenderSetti
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { MasterSaveReview } from "@/components/MasterSaveReview";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { isTypingTarget, keyOwner } from "@/keys";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
 import type { Fill } from "@/types";
@@ -142,34 +143,6 @@ type Doc = { master: Master; label: LabelFile };
 /** Shift + an arrow key moves the selection this many points instead of one —
  *  the coarse step, as in every design tool. */
 const NUDGE_SHIFT_PT = 10;
-
-/** An overlay that has taken focus: a modal, a menu, a Select's list. EVERY
- *  bare key belongs to it while it is up — base-ui moves focus into the popup,
- *  so "g" there is the list's typeahead, not the app's Show-guides command, and
- *  firing the command would both act on the canvas behind the popup and
- *  preventDefault the key the popup needed. */
-const POPUP_OWNS_KEYS = [
-  '[role="dialog"]', '[role="alertdialog"]', '[role="listbox"]', '[role="menu"]',
-  '[role="combobox"]',
-].join(",");
-
-/** Everything a popup owns, plus the roving-focus widgets where only the ARROWS
- *  belong to the widget (the inspector's mm/pt toggle, tabs, a radio group).
- *  The nudge stands aside for these rather than moving the layer behind them.
- *  Deliberately narrow: the layer list and the preview carry none of these
- *  roles, so selecting there still nudges. */
-const WIDGET_OWNS_ARROWS = [
-  POPUP_OWNS_KEYS,
-  '[role="radiogroup"]', '[role="tablist"]', '[role="slider"]',
-  '[data-slot="toggle-group"]',
-].join(",");
-
-/** A key event aimed at a text field or contenteditable: the field owns
- *  editing keys (undo, bare shortcuts, arrows, Escape) while it has focus. */
-const isTypingTarget = (target: EventTarget | null): boolean => {
-  const el = target as HTMLElement | null;
-  return !!el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "");
-};
 
 /** A fresh label on `master`: nothing filled, no variant on. */
 const newLabel = (master: Master): LabelFile =>
@@ -867,15 +840,17 @@ export const DocumentEditor = memo(function DocumentEditor({
   activeRef.current = active;
 
   // ⌘Z / ⇧⌘Z (and ⌘Y) for the history, marking the document dirty like the
-  // menu commands do. Inert while a text field has focus:
-  // there the browser's own per-field undo is the one the user means.
+  // menu commands do. Inert while a text field has focus — there the
+  // browser's own per-field undo is the one the user means — or a modal
+  // dialog does, which must not change the canvas behind it (#225).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!activeRef.current) return; // a hidden tab owns no shortcuts
       const key = e.key.toLowerCase();
       if (key !== "z" && key !== "y") return;
       if (!e.metaKey && !e.ctrlKey) return;
-      if (isTypingTarget(e.target)) return;
+      const owner = keyOwner(e.target);
+      if (owner === "text" || owner === "dialog") return;
       e.preventDefault();
       // History moves bypass `edit`; without mutating, ⌘Z after a save left the tab clean (#76).
       // Nothing to step over is a no-op, as the disabled menu item is.
@@ -894,11 +869,14 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (e.altKey) return;
       const mods = e.metaKey || e.ctrlKey ? (e.shiftKey ? "⇧⌘" : "⌘") : undefined;
       if (!mods && e.shiftKey) return;
-      const el = e.target as HTMLElement | null;
       // The BARE keys (1/2/3/r/g) stand aside where they are someone else's
-      // input: a text field, or an open menu/dialog/Select's typeahead. The ⌘
-      // shortcuts stay live in both — ⌘S saves from inside a field.
-      if (!mods && (isTypingTarget(el) || el?.closest?.(POPUP_OWNS_KEYS))) return;
+      // input: a text field, a dialog, or a popup — a menu, a Select's
+      // typeahead, the inspector. The ⌘ shortcuts stay live in all of them — ⌘S saves from
+      // inside a field.
+      if (!mods) {
+        const owner = keyOwner(e.target);
+        if (owner && owner !== "widget") return;
+      }
       const cmd = commandsRef.current.find((c) => c.key === e.key.toLowerCase() && c.mods === mods);
       if (!cmd) return;
       // The key is the app's even while its command is disabled: ⌘S on a
@@ -924,12 +902,10 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (e.metaKey || e.ctrlKey || e.altKey) return; // ⌘← is "go back", not a nudge
       const step = steps[e.key];
       if (!step) return;
-      const el = e.target as HTMLElement | null;
-      if (isTypingTarget(el)) return;
-      // A popup, dialog or roving-focus widget owns the arrow keys while it
-      // holds focus: nudging the canvas behind an open Select (and eating the
-      // key the list needs) is never what the arrow meant there.
-      if (el?.closest?.(WIDGET_OWNS_ARROWS)) return;
+      // A field, popup, the inspector or a roving-focus widget owns the arrow
+      // keys while it holds focus: nudging the canvas behind an open Select
+      // (and eating the key the list needs) is never what the arrow meant.
+      if (keyOwner(e.target)) return;
       e.preventDefault();
       const by = e.shiftKey ? NUDGE_SHIFT_PT : 1;
       nudgeRef.current(step[0] * by, step[1] * by);

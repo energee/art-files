@@ -4,6 +4,15 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Fixed
+
+- **`⌘Z` inside an open dialog no longer undoes the label behind it.** With
+  the Save Master review or Settings open, `⌘Z` / `⇧⌘Z` (and Edit → Undo /
+  Redo) leave the canvas alone; in the inspector and its color picker they
+  still undo your last edit.
+
 ## [0.1.98] - 2026-09-25
 
 ### Fixed
