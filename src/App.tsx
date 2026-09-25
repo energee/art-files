@@ -61,7 +61,7 @@ import {
   type MasterAssets,
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
-import { SHIPPED_MASTER_ID, masterIndex, rememberMaster, resolveDefaultMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget } from "@/masters";
+import { SHIPPED_MASTER_ID, hintTrusted, masterIndex, rememberMaster, resolveDefaultMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget } from "@/masters";
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
@@ -215,8 +215,10 @@ const errMsg = (err: unknown) => (err instanceof Error ? err.message : String(er
 
 /** What every open path hands to openProject. Each entry point converts
  *  to this shape itself (fileSource for picked Files), so the shared
- *  pipeline never branches on where the bytes came from. */
-type LabelSource = { name: string; bytes: Uint8Array };
+ *  pipeline never branches on where the bytes came from. The one exception
+ *  is `path`, set only when the label came off disk (desktop): its folder
+ *  is where the label's masterHint may be read from (masters.ts hintTrusted). */
+type LabelSource = { name: string; bytes: Uint8Array; path?: string };
 const fileSource = async (f: File): Promise<LabelSource> =>
   ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
 
@@ -1870,12 +1872,15 @@ export const DocumentEditor = memo(function DocumentEditor({
         next = { master: lolevMaster(), label: adoptLegacyCollab(r.label) };
       } else {
         const ref = unpacked.label ?? unpacked.v2!;
-        const resolved = await resolveMasterById(ref.masterId, ref.masterHint);
+        const hint = ref.masterHint;
+        const resolved = await resolveMasterById(ref.masterId, hint, f.path);
         if (!resolved) {
-          setLoadError(
-            `Could not find master "${ref.masterId}"` +
-            `${ref.masterHint ? ` (last seen at ${ref.masterHint})` : ""}` +
-            ` — open its .master file once to register it.`);
+          // An untrusted hint was never read, so it must not read as a file
+          // that was looked for and found missing.
+          const where = !hint ? ""
+            : hintTrusted(hint, f.path) ? ` (last seen at ${hint})`
+            : ` (its remembered path ${hint} is outside this label's folder and the master library, so it was not read)`;
+          setLoadError(`Could not find master "${ref.masterId}"${where} — open its .master file once to register it.`);
           return false;
         }
         masterAssets = resolved.assets;
@@ -1937,7 +1942,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       try {
         if (path) {
           const name = await basename(path);
-          if (await openWithRetry(async () => ({ name, bytes: await readNativeFile(path) }))) {
+          if (await openWithRetry(async () => ({ name, bytes: await readNativeFile(path), path }))) {
             projectPath.current = path;
             setFilePath(path);
           }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { masterIndex, rememberMaster, resolveMasterById, SHIPPED_MASTER_ID } from "../src/masters";
+import { hintTrusted, masterIndex, rememberMaster, resolveMasterById, SHIPPED_MASTER_ID } from "../src/masters";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { parseMasterJson, serializeMaster } from "../src/model/files";
 
@@ -121,5 +121,37 @@ describe("master library index", () => {
     expect(await mod.resolveMasterById("master-requested", "/tmp/stale.master")).toBeNull();
     vi.doUnmock("@tauri-apps/api/core");
     vi.doUnmock("@/files");
+  });
+
+  // A .label is shared, so its masterHint is untrusted: only a path beside
+  // the label or beside an already-registered master may be read.
+  it("reads a hint only when it sits beside the label or a registered master", async () => {
+    vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+    const reads: string[] = [];
+    vi.doMock("@/files", () => ({
+      readNativeFile: async (p: string) => { reads.push(p); throw new Error("not found"); },
+    }));
+    const mod = await import("../src/masters");
+    const label = "/Users/me/beers/a.label";
+    await mod.resolveMasterById("x", "/Users/me/beers/../../../etc/x.master", label);
+    await mod.resolveMasterById("x", "/elsewhere/x.master", label);
+    await mod.resolveMasterById("x", "/elsewhere/x.master"); // no label path, empty index
+    expect(reads).toEqual([]);
+    await mod.resolveMasterById("x", "/Users/me/beers/masters/x.master", label);
+    localStorage.setItem("labellab.masters", JSON.stringify({
+      other: { name: "Other", path: "/lib/other.master", lastSeen: "" },
+    }));
+    await mod.resolveMasterById("x", "/lib/x.master");
+    expect(reads).toEqual(["/Users/me/beers/masters/x.master", "/lib/x.master"]);
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/files");
+  });
+  it("hintTrusted is lexical and separator-agnostic", () => {
+    expect(hintTrusted("/a/b/x.master", "/a/b/l.label")).toBe(true);
+    expect(hintTrusted("C:\\labels\\x.master", "C:/labels/l.label")).toBe(true);
+    expect(hintTrusted("/a/bc/x.master", "/a/b/l.label")).toBe(false);
+    expect(hintTrusted("/a/b/../c/x.master", "/a/b/l.label")).toBe(false);
+    expect(hintTrusted("x.master", "l.label")).toBe(false); // a bare name has no folder
+    expect(hintTrusted("/a/b/x.master")).toBe(false);
   });
 });

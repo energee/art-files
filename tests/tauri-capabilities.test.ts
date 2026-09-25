@@ -2,7 +2,8 @@
 // .master it previously applied, write back to .label/.master paths that did
 // not come from a dialog (Finder/argv opens, remembered masters), reach files
 // inside hidden folders, and Open Master must use the native dialog so the
-// index stores a real path rather than a basename.
+// index stores a real path rather than a basename. The window also enforces
+// a content security policy that keeps it to its own bundled code.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -11,6 +12,7 @@ const caps = JSON.parse(readFileSync("src-tauri/capabilities/default.json", "utf
 };
 const tauriConf = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8")) as {
   plugins?: { fs?: { requireLiteralLeadingDot?: boolean } };
+  app: { security: { csp: string | null } };
 };
 
 /** Glob paths a scoped fs permission allows; [] when missing or unscoped. */
@@ -41,5 +43,16 @@ describe("desktop master-file access", () => {
 
   it("can open a native file dialog", () => {
     expect(caps.permissions).toContain("dialog:allow-open");
+  });
+});
+
+// A null CSP let any injected markup load and run remote code. Everything the
+// app loads is bundled ('self', blob: previews, data: inlined assets) and the
+// updater downloads from Rust, so no directive names a remote host or eval.
+describe("desktop content security policy", () => {
+  it("is enforced, allows no eval and names no remote host", () => {
+    const csp = tauriConf.app.security.csp ?? "";
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).not.toMatch(/unsafe-eval|https?:\/\/(?!ipc\.localhost)|\*/);
   });
 });

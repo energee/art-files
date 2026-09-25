@@ -50,6 +50,24 @@ that section to the new version (see .agents/release-steward.md).
   Redo) leave the canvas alone; in the inspector and its color picker they
   still undo your last edit.
 
+- **A crash no longer blanks the window.** If the editor hits an error it
+  cannot recover from, it now shows the message and a Reload button instead
+  of an empty page.
+
+- **Opening files keeps working after an internal error.** If an internal
+  error interrupted queuing a double-clicked `.label`, every later file open
+  could crash the desktop app; it now carries on.
+
+- **Shared labels cannot point the app at arbitrary files.** A `.label`'s
+  remembered master path is only read when it sits beside the label or
+  beside a master you already registered; otherwise the error asks you to
+  open that `.master` once.
+
+### Changed
+
+- **The desktop window enforces a content security policy.** Only the app's
+  own bundled code and assets may load; nothing from the network.
+
 ## [0.1.98] - 2026-09-25
 
 ### Fixed
