@@ -10,7 +10,8 @@
 import { act, createElement, Profiler } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LayerList, type LayerListProps, type LayerRow, type VariantChip } from "../src/components/LayerList";
+import { LayerList, type LayerListProps } from "../src/components/LayerList";
+import type { LayerRow, VariantChip } from "../src/model/rows";
 import { SidebarProvider } from "../src/components/ui/sidebar";
 import { lolevMaster } from "../src/model/lolevLayers";
 import type { Layer } from "../src/model/layers";

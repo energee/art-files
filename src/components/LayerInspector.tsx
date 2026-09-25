@@ -93,6 +93,12 @@ const DISPLAY_STEP = { mm: 0.001, pt: PT_STEP } as const;
 const toPoints = (value: number, unit: string, step: number) =>
   roundToStep(unit === "mm" ? value / MM_PER_PT : value, step);
 
+/** A typed or scrubbed reading back to points (toPoints), then clamped to
+ *  the field's point bounds — after rounding, so a rounded-up millimetre
+ *  reading of a bound (1pt -> 0.353mm -> 1.0006pt) cannot slip past it. */
+const clampedPoints = (value: number, b: { unit: string; step: number; min: number; max: number }) =>
+  Math.min(b.max, Math.max(b.min, toPoints(value, b.unit, b.step)));
+
 /** A stored point value as the field shows it. Millimetres use the FEWEST
  *  decimals (up to DISPLAY_STEP.mm's three) that store back to the same
  *  points: 50mm is kept as 141.73pt, which reads 49.999mm at three decimals —
@@ -115,11 +121,8 @@ function DimensionField(props: Omit<ComponentProps<typeof ScrubField>, "unit"> &
   return <ScrubField {...props} key={props.unit}
     value={displayValue(props.value, props.unit, props.step)} min={props.min * scale} max={props.max * scale}
     step={DISPLAY_STEP[props.unit]} dragStep={props.unit === "mm" ? 0.1 : props.dragStep}
-    // Back to points at the MODEL's precision, then clamped: the field
-    // rounds in display units, and a rounded-up millimetre reading of a
-    // bound (1pt -> 0.353mm -> 1.0006pt) must not slip past it.
-    onChange={(value) => props.onChange(Math.min(props.max, Math.max(props.min,
-      toPoints(value, props.unit, props.step))))} />;
+    // Back to points at the MODEL's precision, then clamped (clampedPoints).
+    onChange={(value) => props.onChange(clampedPoints(value, props))} />;
 }
 
 /** Section heading — the idiom StyleProperties' inspector used, so the new
@@ -238,8 +241,7 @@ function BlankableField(props: {
             // DimensionField does: without it a millimetre reading typed back
             // verbatim (35pt -> 12.347mm -> 34.99916pt) never re-matches the
             // master, so the override badge can't be cleared from this field.
-            if (Number.isFinite(n)) props.onChange(Math.min(props.max, Math.max(props.min,
-              toPoints(n, props.unit, props.step))));
+            if (Number.isFinite(n)) props.onChange(clampedPoints(n, props));
           }}
           // Write the shown value too: React won't replace "3e2" with 300,
           // they're loosely equal (#135, see ScrubField).

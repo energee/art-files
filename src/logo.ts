@@ -36,6 +36,14 @@ export function parseLogo(
 
 const logoCache = new Map<string, Map<string, { paths: string[]; w: number; h: number }>>();
 
+/** An SVG's intrinsic aspect (w/h) as the collab slots see it: its ink box,
+ *  not its viewBox (#91). One spelling for the App's image drop and the
+ *  headless generator. */
+export function svgAspect(svg: string): number {
+  const { w, h } = parseLogo(svg, 1, 1);
+  return w / h;
+}
+
 /** Emit a normalized path string: H/V become L, and quadratics (T is
  *  already Q after unshort()) become the exact cubic, C1 = P0 + 2/3(Q1 - P0),
  *  C2 = P2 + 2/3(Q1 - P2). Elevated before round() so the thirds round like
@@ -158,18 +166,19 @@ function parseLogoUncached(
   // The laurel path (no height cap): scale by the viewBox, exactly as ever —
   // LOGO_ASPECT and the shipped laurel geometry are measured against it.
   if (maxH === undefined) {
-    const vb = svg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/);
-    if (!vb) throw new Error("Could not parse logo SVG viewBox");
-    const scale = width / +vb[1];
+    const vb = attr(svg.match(/<svg\b[^>]*>/)?.[0] ?? "", "viewBox").trim().split(/[\s,]+/);
+    const vbW = +vb[2]!, vbH = +vb[3]!;
+    if (!(vbW > 0 && vbH > 0)) throw new Error("Could not parse logo SVG viewBox");
+    const scale = width / vbW;
     return {
       paths: parsed.map((p) => emit(p.scale(scale))),
-      w: +vb[1] * scale, h: +vb[2] * scale,
+      w: vbW * scale, h: vbH * scale,
     };
   }
 
   // Collab slots: fit and center the INK, not the viewBox. An uploaded icon
   // whose drawing sits in a corner of an oversized viewBox (or a viewBox
-  // with a non-zero origin, which the laurel regex above would reject)
+  // with a non-zero origin, whose offset the laurel scaling above ignores)
   // would otherwise render tiny and off-center in its slot. The box comes
   // from every coordinate the segments carry — control points included, so
   // it can overestimate a curve's extent by a hair (a curve never leaves

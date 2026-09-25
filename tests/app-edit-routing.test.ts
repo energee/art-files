@@ -5,13 +5,20 @@
 // model function (edit.ts's patchLayers / setContentIn) so it can be tested
 // without mounting App — App's `patch` / `patchMany` / `setContent` are thin
 // wrappers over it.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   adoptMaster, addVariant, checkLabelBindings, clearLabelOverride, overrideBadges, patchLayers, setContentIn, setLabelOverride,
   setLayerIn, showVersion, type Doc,
 } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { resolveLayers } from "../src/model/resolveLayers";
+
+// Pass-through spy on resolveLayers, so a test can prove checkLabelBindings
+// skipped its resolve (values-only edits) without changing any other result.
+vi.mock("../src/model/resolveLayers", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../src/model/resolveLayers")>();
+  return { ...real, resolveLayers: vi.fn(real.resolveLayers) };
+});
 import type { LabelFile, Layer, Master, TextLayer } from "../src/model/layers";
 import type { DeepPartial } from "../src/model/merge";
 import { GOLD } from "../src/layout";
@@ -111,6 +118,18 @@ describe("property patches route to the label", () => {
     const off = patchLayers(doc(), disable("description"));
     const switched = { ...off, label: showVersion(off.label, null, "collab") };
     expect(() => checkLabelBindings(switched)).toThrow(/bound to disabled layer "description"/);
+  });
+
+  it("skips the resolve when only values changed since the previous doc (typing)", () => {
+    const before = collabDoc();
+    const typed = setContentIn(before, "name", "Hazy Thing");
+    vi.mocked(resolveLayers).mockClear();
+    expect(checkLabelBindings(typed, before)).toBe(typed);
+    expect(resolveLayers).not.toHaveBeenCalled();
+    // A binding-relevant change against the same previous doc still resolves.
+    expect(() => checkLabelBindings(patchLayers(before, disable("description")), before))
+      .toThrow(/"collabLead" is bound to disabled layer "description"/);
+    expect(resolveLayers).toHaveBeenCalled();
   });
 
   it("refuses resetting a dependent back on while its target stays off", () => {

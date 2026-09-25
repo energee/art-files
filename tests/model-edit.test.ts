@@ -184,6 +184,12 @@ describe("removeLayer", () => {
     expect(collab(m).layers.collabLead!.y).toBe(byId(lolevMaster(), "description").y);
     expect(() => parseMaster(m)).not.toThrow();
   });
+  it("pins a dependent at the removed layer's measured top, on the 0.01pt grid (#130)", () => {
+    const boxes = new Map([["description", { x: 50, y: 210.12345678900003, w: 100, h: 20 }]]);
+    const m = removeLayer(lolevMaster(), "description", boxes);
+    expect(collab(m).layers.collabLead).toMatchObject({ y: 210.12, vAnchor: "top", guideY: "none" });
+    expect(() => parseMaster(m)).not.toThrow();
+  });
   it("throws on an unknown id and never mutates", () => {
     const m = lolevMaster();
     expect(() => removeLayer(m, "nope")).toThrow(/nope/);

@@ -162,7 +162,7 @@ export function removeLayer(master: Master, id: string, boxes?: ReadonlyMap<stri
   const top = boxes?.get(id)?.y;
   const slot: Entry = isBound(y) || top === undefined
     ? { y }
-    : { y: top, vAnchor: "top", guideY: "none" };
+    : { y: pt(top), vAnchor: "top", guideY: "none" };
   const detach = <T extends Entry>(entry: T, key: string): T => {
     if (entry.binding?.to !== id) return repoint(entry, id, slot);
     const box = boxes?.get(key);
@@ -661,9 +661,7 @@ export const MASTER_PATHS: ReadonlySet<string> =
  *  no warning. The fill contract still routes to the master, since those
  *  fields live in the master file whether the variant is on or not.
  *
- *  Bindings are NOT checked here: a patch can switch off a layer another is
- *  bound to. App's `edit` runs checkLabelBindings on every result, once per
- *  call, so switching a layer off together with its dependents is allowed. */
+ *  Bindings are NOT checked here — see checkLabelBindings (#93). */
 export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
   const masterIds = new Set(doc.master.layers.map((l) => l.id));
   /** Every layer id this document RESOLVES: the master's, plus those the
@@ -704,8 +702,23 @@ export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
  *  validateBindings), run by App's `edit` on every edit — the label can
  *  reshape the graph (a patch, an override reset, a version switch) where
  *  parseMaster never looks. Without it placeLayers throws on preview and
- *  export (issue #93). */
-export function checkLabelBindings(doc: Doc): Doc {
+ *  export (issue #93).
+ *
+ *  Patch functions such as patchLayers do not check bindings themselves: a
+ *  patch may switch off a layer another is bound to, and only the whole
+ *  edit's result is judged, so switching a layer off together with its
+ *  dependents is allowed.
+ *
+ *  Given `prev` (the doc the edit started from), the check is skipped when
+ *  nothing that shapes the binding graph changed — the master's layers and
+ *  variants and the label's enabledVariants and overrides are all the same
+ *  objects. Values-only edits (typing) then skip a full resolveLayers per
+ *  keystroke; `prev` was already checked when it was written. */
+export function checkLabelBindings(doc: Doc, prev?: Doc): Doc {
+  if (prev
+    && doc.master.layers === prev.master.layers && doc.master.variants === prev.master.variants
+    && doc.label.enabledVariants === prev.label.enabledVariants && doc.label.overrides === prev.label.overrides)
+    return doc;
   const { layers } = resolveLayers(doc.master, doc.label.enabledVariants, {}, doc.label.overrides, { keepDisabled: true });
   validateBindings(layers, "label", (msg) => { throw new Error(`Can't apply this edit: ${msg}`); });
   return doc;

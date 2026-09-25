@@ -66,7 +66,7 @@ import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
 import { makeHiddenPropsEqual, type TabMeta } from "@/tabs";
 import { EMBEDDABLE_RASTER, mimeFor, rasterKind, tintRgba } from "@/collab";
-import { parseLogo } from "@/logo";
+import { svgAspect } from "@/logo";
 // The builders are imported dynamically at export time (see buildFull /
 // exportPsd) so they stay out of the initial bundle; only their types are
 // needed up front.
@@ -310,8 +310,7 @@ async function readCustomImage(f: File): Promise<CustomFile> {
   const previewUrl = URL.createObjectURL(f);
   if (mimeFor(f.name) === "image/svg+xml") {
     const svg = await f.text();
-    const { w, h } = parseLogo(svg, 1, 1);
-    return { image: { kind: "svg", svg }, name: f.name, previewUrl, aspect: w / h };
+    return { image: { kind: "svg", svg }, name: f.name, previewUrl, aspect: svgAspect(svg) };
   }
   const bytes = new Uint8Array(await f.arrayBuffer());
   const bmp = await createImageBitmap(new Blob([bytes as unknown as BlobPart]));
@@ -734,11 +733,8 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  sees so a no-op can return before marking the tab dirty. Returns whether
    *  the edit was recorded (false for a no-op or a rejected edit). */
   const edit = (fn: (d: Doc) => Doc, coalesce?: Coalesce): boolean => {
-    // Every doc edit is checked for bindings the label's resolved layers would
-    // break (an enabled layer bound to a disabled or missing one) and refused,
-    // as parseMaster refuses them on the master — otherwise placeLayers throws
-    // on preview and export (issue #93). Both applications below use it.
-    const checked = (d: Doc) => { const n = fn(d); return n === d ? n : checkLabelBindings(n); };
+    // Binding check on every result, both applications below — see checkLabelBindings (#93).
+    const checked = (d: Doc) => { const n = fn(d); return n === d ? n : checkLabelBindings(n, d); };
     let next: Doc;
     try {
       next = checked(doc);
