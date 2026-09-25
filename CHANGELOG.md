@@ -45,6 +45,13 @@ that section to the new version (see .agents/release-steward.md).
   Redo) leave the canvas alone; in the inspector and its color picker they
   still undo your last edit.
 
+### Changed
+
+- **Faster startup and smoother typing.** The 3D can view now loads the
+  first time you open it instead of with the editor, cutting the startup
+  code by about 40%. The label preview also stops re-reading the logo and
+  QR shapes on every keystroke.
+
 ## [0.1.98] - 2026-09-25
 
 ### Fixed
