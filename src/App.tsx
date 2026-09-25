@@ -305,18 +305,19 @@ function assetToFile(a: { name: string; bytes: Uint8Array }): File {
 
 /** Read a dropped image asset. SVG is kept as source text (so it can be
  *  recolored per its layer's style), anything else as raster bytes, plus
- *  the intrinsic aspect (w/h): an SVG's ink box, a raster's bitmap size. */
+ *  the intrinsic aspect (w/h): an SVG's ink box, a raster's bitmap size.
+ *  The thumbnail URL is minted only once decoding succeeds, so a file that
+ *  fails to decode leaves no URL behind to revoke (#85). */
 async function readCustomImage(f: File): Promise<CustomFile> {
-  const previewUrl = URL.createObjectURL(f);
   if (mimeFor(f.name) === "image/svg+xml") {
     const svg = await f.text();
-    return { image: { kind: "svg", svg }, name: f.name, previewUrl, aspect: svgAspect(svg) };
+    return { image: { kind: "svg", svg }, name: f.name, previewUrl: URL.createObjectURL(f), aspect: svgAspect(svg) };
   }
   const bytes = new Uint8Array(await f.arrayBuffer());
   const bmp = await createImageBitmap(new Blob([bytes as unknown as BlobPart]));
   const aspect = bmp.width / bmp.height;
   bmp.close();
-  return { image: { kind: rasterKind(f.name), bytes }, name: f.name, previewUrl, aspect };
+  return { image: { kind: rasterKind(f.name), bytes }, name: f.name, previewUrl: URL.createObjectURL(f), aspect };
 }
 
 /** Longest preview-texture edge in px. Sized to the 3D label texture
@@ -1352,8 +1353,18 @@ export const DocumentEditor = memo(function DocumentEditor({
   };
 
   // Revoking immediately can abort a large download, so each URL lives until
-  // the NEXT export batch.
+  // the NEXT export batch — or until the tab closes (below).
   const lastSaved = useRef<string[]>([]);
+  /** The assets this tab holds right now, read by the unmount cleanup: a
+   *  closed tab releases their thumbnails and its export URLs, or each one
+   *  pins its file's bytes for the rest of the session (#85). */
+  const held = useRef({ texture, mask, customImages });
+  held.current = { texture, mask, customImages };
+  useEffect(() => () => {
+    const { texture, mask, customImages } = held.current;
+    for (const a of [texture, mask, ...Object.values(customImages)]) if (a) URL.revokeObjectURL(a.previewUrl);
+    lastSaved.current.forEach((u) => URL.revokeObjectURL(u));
+  }, []);
   function startSaveBatch() {
     lastSaved.current.forEach((u) => URL.revokeObjectURL(u));
     lastSaved.current = [];
