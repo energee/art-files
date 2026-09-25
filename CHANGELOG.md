@@ -50,6 +50,12 @@ that section to the new version (see .agents/release-steward.md).
   Redo) leave the canvas alone; in the inspector and its color picker they
   still undo your last edit.
 
+### Changed
+
+- **Smaller install, same app.** Internal cleanup with no operator-visible
+  change: a retired developer comparison page and the PDF-rendering library
+  it pulled in are gone.
+
 ## [0.1.98] - 2026-09-25
 
 ### Fixed

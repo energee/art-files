@@ -77,18 +77,18 @@ pixel that differs from the old render painted solid red:
 - when the two pages differ in size, the diff runs over their union and the
   strip present in only one of them is red.
 
-Comparison is exact per channel. The two rasterizers below anti-alias
-differently, so both inputs of one diff always go through the same engine, and
-a PNG made with one engine is never compared against one made with the other.
+Comparison is exact per channel, so a raster made by any other engine (a
+pdf.js preview, Acrobat) is never diffed against a pdftoppm one — their
+anti-aliasing differs.
 
 ## Rasterizer
 
-`pdftoppm` (poppler) is used when it is on PATH, at `--dpi` (600 by default,
-the label's design DPI, so one raster pixel is one print pixel). Without it the
-script warns and falls back to `pdfjs-dist` rendering through
-`@napi-rs/canvas` (pdfjs-dist's optional dependency) — it takes ~10-15s to
-start and is a safety net for machines without poppler, not the reference.
-Force one with `--rasterizer pdftoppm|pdfjs`.
+`pdftoppm` (poppler) renders both PDFs at `--dpi` (600 by default, the
+label's design DPI, so one raster pixel is one print pixel). It is required:
+`brew install poppler` on macOS, `apt-get install poppler-utils` on Debian and
+Ubuntu; `ci.yml` installs it, and `tests/golden-diff.test.ts` fails fast
+without it. There is no fallback engine — every golden raster in the repo
+comes from the same anti-aliasing rule.
 
 Only page 1 is rasterized; every label PDF is single-page.
 
