@@ -836,9 +836,21 @@ function deepEqual(a: unknown, b: unknown): boolean {
  *  flag, and all App needs on the edit path. masterChanges answers the same
  *  question itemised, but walks every layer and every variant diff to do it,
  *  which is too much to run per pointermove. Order of keys is ignored; order
- *  of layers (draw order) is not. */
+ *  of layers (draw order) is not — including a variant's added layers, whose
+ *  draw order IS their key order (#198). */
 export function masterDiff(base: Master, edited: Master): boolean {
-  return !deepEqual(base, edited);
+  if (base === edited) return false;
+  if (!deepEqual(base, edited)) return true;
+  // Equal up to key order, so the variants line up by index.
+  const masterIds = new Set(base.layers.map((l) => l.id));
+  const order = (v: Variant) => addedIds(v, masterIds).join("\0");
+  return edited.variants.some((v, i) => order(v) !== order(base.variants[i]));
+}
+
+/** A variant's added layers in draw order: its keys that are not master
+ *  layers (those are overrides, whose key order means nothing). */
+function addedIds(v: Variant, masterIds: { has(id: string): boolean }): string[] {
+  return Object.keys(v.layers).filter((id) => !masterIds.has(id));
 }
 
 /** Untitled restore: keep the template's layers and positions, drop fill
@@ -988,6 +1000,12 @@ export function masterChanges(
     for (const id of Object.keys(was.layers))
       if (!(id in v.layers))
         out.push({ kind: "removed", layerId: id, layerName: nameOf(id, was.layers[id]) });
+    // A variant's added layers draw in key order (moveLayers), so compare that
+    // order the way the base layers' is compared above (#198).
+    const wasIndex = new Map(addedIds(was, baseById).map((id, i) => [id, i]));
+    const kept = addedIds(v, editedById).filter((id) => wasIndex.has(id));
+    for (const id of movedOutOfOrder(kept, (id) => wasIndex.get(id)!))
+      out.push({ kind: "moved", layerId: id, layerName: nameOf(id, v.layers[id]) });
     for (const [id, entry] of Object.entries(v.layers)) {
       const before = was.layers[id];
       if (before === undefined && !editedById.has(id)) {
