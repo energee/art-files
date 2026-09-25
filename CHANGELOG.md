@@ -26,6 +26,12 @@ that section to the new version (see .agents/release-steward.md).
   layer's drop area names the loaded file instead of still saying "drop or
   click" until the variant is switched on.
 
+- **Reordering a version's own layers now counts as a master change.**
+  Moving a layer that only a version adds (such as Collab's Lead-in) up or
+  down the layer list now enables Save Master and shows as "Reordered" in
+  the Save Master review, instead of being silently dropped unless something
+  else changed.
+
 ## [0.1.98] - 2026-09-25
 
 ### Fixed
