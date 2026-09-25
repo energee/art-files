@@ -204,6 +204,26 @@ it("keeps an invalid barcode code in the Code field, with its error (#128)", asy
   });
 });
 
+// #221 — after a rejected code, retyping the master's valid code and leaving
+// the field with Tab (a blur, no Enter) must commit it and clear the error,
+// exactly as Enter does.
+it("clears a rejected barcode code when the valid one is retyped and Tabbed out (#221)", async () => {
+  await withEditor(async () => {
+    await selectLayer("barcode");
+    const field = () => document.querySelector("#barcode-content") as HTMLInputElement;
+    const good = field().value;
+    await act(async () => { field().focus(); });
+    await act(async () => { typeInto(field(), "ABC123"); });
+    await act(async () => { field().blur(); });
+    expect(field().getAttribute("aria-invalid")).toBe("true");
+    await act(async () => { field().focus(); });
+    await act(async () => { typeInto(field(), good); });
+    await act(async () => { field().blur(); });
+    expect(field().value).toBe(good);
+    expect(field().getAttribute("aria-invalid")).toBeNull();
+  });
+});
+
 it("keeps a negative ABV in the ABV field, with its error (#129)", async () => {
   await withEditor(async () => {
     await selectLayer("abv");
