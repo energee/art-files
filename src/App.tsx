@@ -733,15 +733,15 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  its own — see history.ts's `Coalesce`. Computed against the doc THIS render
    *  sees so a no-op can return before marking the tab dirty. Returns whether
    *  the edit was recorded (false for a no-op or a rejected edit). */
-  const edit = (apply: (d: Doc) => Doc, coalesce?: Coalesce): boolean => {
+  const edit = (fn: (d: Doc) => Doc, coalesce?: Coalesce): boolean => {
     // Every doc edit is checked for bindings the label's resolved layers would
     // break (an enabled layer bound to a disabled or missing one) and refused,
     // as parseMaster refuses them on the master — otherwise placeLayers throws
     // on preview and export (issue #93). Both applications below use it.
-    const fn = (d: Doc) => { const n = apply(d); return n === d ? n : checkLabelBindings(n); };
+    const checked = (d: Doc) => { const n = fn(d); return n === d ? n : checkLabelBindings(n); };
     let next: Doc;
     try {
-      next = fn(doc);
+      next = checked(doc);
     } catch (err) {
       setBuildError(errMsg(err)); // parseMaster / checkLabelBindings refusals
       return false;
@@ -751,7 +751,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // swapLoaded/onTexture, not a keystroke while assets are still loading.
     setDirty(true);
     setEdited(true);
-    setDoc((d) => (d === doc ? next : fn(d)), coalesce);
+    setDoc((d) => (d === doc ? next : checked(d)), coalesce);
     return true;
   };
   const editMaster = (fn: (m: Master) => Master, coalesce?: boolean) =>
