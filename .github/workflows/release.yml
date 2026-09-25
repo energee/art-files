@@ -108,6 +108,10 @@ jobs:
           generateReleaseNotes: false
           releaseDraft: false
           prerelease: false
+          # Each leg read-modify-wrote the release's shared latest.json, and
+          # concurrent legs dropped each other's platforms (0.1.98 shipped
+          # without macOS). publish-update-feed builds the feed instead.
+          uploadUpdaterJson: false
           args: --target ${{ matrix.target }} --config src-tauri/tauri.release.generated.conf.json -- --timings
 
       - name: Upload Rust build timings
@@ -127,10 +131,11 @@ jobs:
   # the whole feed is already reachable only by the unguessable site URL.
   #
   # It runs even when a platform failed (#106): one failed leg used to skip the
-  # feed for every platform. latest.json lists only the platforms that
-  # uploaded, so the others keep their current version until "Re-run failed
-  # jobs" rebuilds the failed leg — which re-runs this job too, since it
-  # depends on it. `!cancelled()` still stops it for a cancelled run.
+  # feed for every platform. scripts/build-update-feed.sh lists only the
+  # platforms that uploaded, so the others keep their current version until
+  # "Re-run failed jobs" rebuilds the failed leg — which re-runs this job
+  # too, since it depends on it. `!cancelled()` still stops it for a
+  # cancelled run.
   publish-update-feed:
     name: Publish update feed to Pages
     needs: release
@@ -146,7 +151,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: package.json
+          sparse-checkout: |
+            package.json
+            scripts/build-update-feed.sh
           sparse-checkout-cone-mode: false
 
       - name: Download updater assets from the release
@@ -155,12 +162,11 @@ jobs:
         # By THIS run's tag, not "the latest release": now that the job runs
         # after a failed leg, a run whose every leg failed before publishing
         # must fail here rather than re-publish the previous release's feed.
-        # (A release with no latest.json yet fails at the jq step below.)
+        # (A release with no updater archives fails in the build step below.)
         run: |
           mkdir site
           tag="label-lab-v$(node -p 'require("./package.json").version')"
           gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir site \
-            --pattern 'latest.json' \
             --pattern '*.app.tar.gz' \
             --pattern '*.app.tar.gz.sig' \
             --pattern '*.AppImage' \
@@ -168,33 +174,19 @@ jobs:
             --pattern '*-setup.exe' \
             --pattern '*-setup.exe.sig'
 
-      - name: Point latest.json at the Pages copies
-        # The release's own URLs are API asset ids (the repo is private), so
-        # rebuild each platform URL from the downloaded archive's filename.
-        run: |
-          aarch64=$(basename site/*_aarch64.app.tar.gz)
-          x64=$(basename site/*_x64.app.tar.gz)
-          appimage=$(basename site/*.AppImage)
-          nsis=$(basename site/*-setup.exe)
-          # Tauri emits each platform twice: the bare key and a
-          # bundle-suffixed alias (darwin-x86_64 AND darwin-x86_64-app,
-          # linux-x86_64-appimage, windows-x86_64-nsis). Both must map, and
-          # the error() stays so a future new key fails loudly here instead
-          # of shipping a feed with a broken URL.
-          jq --arg aarch64 "$aarch64" --arg x64 "$x64" \
-             --arg appimage "$appimage" --arg nsis "$nsis" \
-            '.platforms |= with_entries(.value.url = ("https://energ.ee/art-files/" +
-              ({ "darwin-aarch64": $aarch64, "darwin-aarch64-app": $aarch64,
-                 "darwin-x86_64": $x64, "darwin-x86_64-app": $x64,
-                 "linux-x86_64": $appimage, "linux-x86_64-appimage": $appimage,
-                 "windows-x86_64": $nsis, "windows-x86_64-nsis": $nsis
-               }[.key] // error("no artifact mapped for platform " + .key))))' \
-            site/latest.json > site/latest.json.tmp
-          mv site/latest.json.tmp site/latest.json
+      - name: Build latest.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/build-update-feed.sh site "label-lab-v$(node -p 'require("./package.json").version')"
 
+      # Named per attempt: a re-run still sees the earlier attempt's
+      # artifact, and deploy-pages refuses two with the same name.
       - uses: actions/upload-pages-artifact@v4
         with:
           path: site
+          name: github-pages-${{ github.run_attempt }}
 
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
