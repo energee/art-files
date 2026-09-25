@@ -45,6 +45,12 @@ that section to the new version (see .agents/release-steward.md).
   Redo) leave the canvas alone; in the inspector and its color picker they
   still undo your last edit.
 
+### Changed
+
+- Internal: the code is now linted (React hook rules and unused code) on
+  every change; a few unused imports and an unused font-measure state were
+  removed. No change in behavior.
+
 ## [0.1.98] - 2026-09-25
 
 ### Fixed
