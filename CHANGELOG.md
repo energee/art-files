@@ -4,6 +4,20 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Fixed
+
+- **Closing a tab frees its images.** A closed tab used to keep its
+  texture, mask, and image-layer art in memory for as long as the app stayed
+  open. Closing it now releases them, and an image that fails to load no
+  longer leaves a copy behind.
+
+- **Dragging a layer back to where it started puts it back exactly.** Moving
+  a layer away and then returning the pointer to its starting point (on one
+  axis or both) used to leave the layer at its last offset on that axis. It
+  now lands back where the drag began, and the drag is still one undo step.
+
 ## [0.1.98] - 2026-09-25
 
 ### Fixed
