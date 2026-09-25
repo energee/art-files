@@ -12,7 +12,7 @@ import { RGBELoader } from "three/addons/loaders/RGBELoader.js";
 import type { LabelTextures } from "./labelTextures";
 import { DEFAULT_RENDER } from "@/settings";
 import {
-  ART, LABEL_HEIGHT_RATIO, LABEL_WRAP_RATIO, PAGE, PREVIEW_MAX_W, PREVIEW_OVERSAMPLE, TRIM_UV,
+  LABEL_HEIGHT_RATIO, LABEL_WRAP_RATIO, PAGE, PREVIEW_MAX_W, PREVIEW_OVERSAMPLE, TRIM_UV,
 } from "@/layout";
 
 /** How many cans the scene shows: one, or the 2x2 four-pack. */

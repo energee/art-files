@@ -339,7 +339,7 @@ export default function TabsShell() {
         setConfirmClose(first.id);
       }));
     return () => void stopping.then((stop) => stop());
-  }, []);
+  }, [apply]);
 
   // Browser window close: the generic prompt is all a page may show.
   useEffect(() => {

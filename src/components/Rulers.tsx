@@ -123,6 +123,7 @@ export function Rulers(props: {
 
   // CSS transforms do not trigger ResizeObserver, so zoom/pan explicitly
   // re-measures; observers cover pane/sidebar and responsive page resizing.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- measure reads refs only; re-run on transform
   useLayoutEffect(() => { measure(); }, [transform.z, transform.x, transform.y]);
   useEffect(() => {
     const pane = paneRef.current;
@@ -132,6 +133,7 @@ export function Rulers(props: {
     observer.observe(pane);
     observer.observe(page);
     return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- measure reads refs only; observers attach once per element
   }, [paneRef, previewRef]);
 
   // Pointer readout lives here rather than in App, so moving across the page

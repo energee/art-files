@@ -20,7 +20,7 @@ import { deepMerge, type DeepPartial } from "./merge";
 import { getPath } from "./document";
 import { setPath } from "./resolve";
 import { resolveLayers, valueOf, valuePath, widenValue } from "./resolveLayers";
-import { anchorFraction, type GuideLines } from "./position";
+import { anchorFraction } from "./position";
 import { CENTER_X, GOLD } from "../layout";
 import { KEYLINE } from "../defaults";
 import { DEFAULT_STROKE_LAYER } from "../strokes";

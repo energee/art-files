@@ -15,6 +15,7 @@ blue = white ink and white = knockout. Operator guide is the Fumadocs site in
 - Build: `npm run build`
 - Test: `npm test`
 - Typecheck: `npx tsc --noEmit`
+- Lint: `npm run lint` (rules-of-hooks + exhaustive-deps + unused vars; zero warnings)
 - Docs: `npm run dev --prefix docs-site` (the Fumadocs site has its own
   `package.json`; there is no root `docs:dev` script)
 - Verified at: `d10cddf` — the commit these commands were last *run* against.

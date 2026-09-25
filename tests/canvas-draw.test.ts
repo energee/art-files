@@ -4,7 +4,7 @@
 // side is the parity page's job. Plans come from planLayers over the Lolev
 // master with deterministic fake metrics.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { drawPlate, type CanvasAssets } from "../src/canvas/draw";
+import { drawPlate } from "../src/canvas/draw";
 import { planLayers, type PlacedLayer } from "../src/planLayers";
 import type { MeasureFace, PlacedBarcode } from "../src/plan";
 import type { BarcodeLayer } from "../src/model/layers";

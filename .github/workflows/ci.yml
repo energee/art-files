@@ -1,4 +1,4 @@
-# ci.yml — type-check and frontend unit tests for every PR and push to main.
+# ci.yml — type-check, lint, and frontend unit tests for every PR and push to main.
 # Runs on the runner's preinstalled Node (no container, no setup-node: both
 # only added seconds). Rust tests are not run here — release.yml compiles
 # the backend on tags.
@@ -21,4 +21,5 @@ jobs:
       - uses: actions/checkout@v4
       - run: npm ci
       - run: npx tsc --noEmit
+      - run: npm run lint
       - run: npm test
