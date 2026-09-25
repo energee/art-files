@@ -27,7 +27,7 @@
 import { RenderSettings as RenderSettingsFields } from "@/components/RenderSettings";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { MasterSaveReview } from "@/components/MasterSaveReview";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, memo, useEffect, useMemo, useRef, useState } from "react";
 import { isTypingTarget, keyOwner } from "@/keys";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
@@ -92,7 +92,7 @@ import { CommandMenu, type Command } from "@/components/CommandMenu";
 import { AppMenu } from "@/components/AppMenu";
 import { PreviewCompare, SNAP_PT, type PreviewCompareHandle, type SnapLines, type SnapMark } from "@/components/PreviewCompare";
 import { Rulers } from "@/components/Rulers";
-import { CanView, type CanViewHandle } from "@/components/CanView";
+import type { CanViewHandle } from "@/components/CanView";
 import {
   DEFAULT_MARGIN_PT, nextRulerUnit, sizeLabel,
   type GuideAxis, type ManualGuide, type RulerUnit,
@@ -115,6 +115,11 @@ import { loadFonts } from "@/pdf/fonts";
 import type { MeasureFace, PlanAssets } from "@/plan";
 import type { CanvasAssets, CanvasRenderSource } from "@/canvas/draw";
 import logoSvg from "@/assets/logo2025.svg?raw";
+
+// three.js is the largest thing in the bundle and most sessions never leave
+// the 2D view, so the 3D can view (and three.js with it) loads on first use —
+// the same split pdf/build and psd/build already get via import().
+const CanView = lazy(() => import("@/components/CanView").then((m) => ({ default: m.CanView })));
 
 /** bytes = full print resolution (exports); previewBytes = downscaled PNG the
  *  assembly effect decodes into a bitmap, so keystroke-driven rebuilds never
@@ -2313,6 +2318,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onRenderError={setRenderError} />
             </div>
             {active && viewMode !== "2d" && (
+              <Suspense fallback={null}>
               <CanView ref={canView}
                 initialView={carried.current}
                 onZoom={(z, pan) => {
@@ -2323,6 +2329,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 mode={cans === 4 ? "pack" : "can"} cornerRadiusPct={render.cornerRadius}
                 edgeSoftnessPct={render.edgeSoftness}
                 onRenderError={setRenderError} />
+              </Suspense>
             )}
             </div>
             {viewMode === "2d" && (
