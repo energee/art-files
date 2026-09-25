@@ -40,6 +40,11 @@ that section to the new version (see .agents/release-steward.md).
   position was not also saved no longer jumps back to where it sat before
   it was bound.
 
+- **`⌘Z` inside an open dialog no longer undoes the label behind it.** With
+  the Save Master review or Settings open, `⌘Z` / `⇧⌘Z` (and Edit → Undo /
+  Redo) leave the canvas alone; in the inspector and its color picker they
+  still undo your last edit.
+
 ## [0.1.98] - 2026-09-25
 
 ### Fixed
