@@ -17,8 +17,7 @@ import type {
 import type { Box } from "./place";
 import { bindingOf, hAnchorOf, parseMaster, validateBindings, vAnchorOf } from "./layers";
 import { deepMerge, type DeepPartial } from "./merge";
-import { getPath } from "./document";
-import { setPath } from "./resolve";
+import { getPath, setPath } from "./path";
 import { resolveLayers, valueOf, valuePath, widenValue } from "./resolveLayers";
 import { anchorFraction, type GuideLines } from "./position";
 import { CENTER_X, GOLD } from "../layout";

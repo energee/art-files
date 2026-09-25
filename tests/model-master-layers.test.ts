@@ -1,33 +1,13 @@
+// tests/model-master-layers.test.ts — the v1 master parser's (model/types.ts)
+// layer validation, still live: files.ts parses every v1 .master through it
+// before convertMasterV1 lifts it to the layer model.
 import { describe, expect, it } from "vitest";
-import { lolevMaster } from "../src/model/lolev";
+import { lolevMaster } from "./fixtures/lolevV1";
 import { parseMaster } from "../src/model/types";
-import { resolve } from "../src/model/resolve";
-
-describe("lolevMaster layers", () => {
-  it("declares every built-in element in draw order", () => {
-    expect(lolevMaster().layers.map((l) => l.id)).toEqual([
-      "volume", "abv", "description", "collabLead", "collabLeft", "wordmark",
-      "logo", "collabCenter", "name", "styleLine", "handleAddress", "warning",
-      "storeCold", "qr", "barcode",
-    ]);
-  });
-  it("tags the collab block as the Collab variant's layers", () => {
-    const owned = lolevMaster().layers.filter((l) => l.variant === "collab");
-    expect(owned.map((l) => l.id)).toEqual(["collabLead", "collabLeft", "collabCenter"]);
-  });
-  it("renames the wordmark to Brand and ships every layer enabled", () => {
-    const m = lolevMaster();
-    expect(m.layers.find((l) => l.id === "wordmark")!.name).toBe("Brand");
-    expect(m.layers.every((l) => l.enabled)).toBe(true);
-  });
-  it("ships the government warning locked", () => {
-    expect(lolevMaster().layers.find((l) => l.id === "warning")!.locked).toBe(true);
-  });
-});
 
 describe("parseMaster layer validation", () => {
   const withLayers = (layers: unknown) => ({ ...lolevMaster(), layers });
-  it("accepts the shipped master", () => {
+  it("accepts the v1 Lolev master", () => {
     expect(() => parseMaster(lolevMaster())).not.toThrow();
   });
   it("rejects a missing layers array", () => {
@@ -97,49 +77,5 @@ describe("parseMaster Variant.layers validation (M2)", () => {
     const m = lolevMaster();
     m.layers = [...m.layers, { id: "custom-a", name: "X", enabled: true, kind: "text" }];
     expect(() => parseMaster(m)).not.toThrow();
-  });
-});
-
-// Task 5b: a `kind`-bearing MasterLayer is Design mode's "Add layer" — its
-// identity/policy sits in `layers` like any other master layer, and its
-// styling sits in the resolved config at its own id (addLayer, document.ts).
-// resolve() materializes it back into `config.customLayers` so planLabel and
-// the three backends see precisely the array they saw before this feature.
-describe("resolve: kind-bearing layers materialize into customLayers (Task 5b)", () => {
-  const textStyle = {
-    type: "text", size: 12,
-    position: { anchor: "center" as const, vAnchor: "top" as const, offsetX: 0, offsetY: 24 },
-    line: { text: "Hello", fill: "#000000", layer: "white" as const },
-  };
-  const withCustomText = (variant?: string) => {
-    const m = lolevMaster();
-    m.layers = [...m.layers, { id: "custom-a", name: "Text", enabled: true, kind: "text" as const, variant }];
-    m.defaults = { ...m.defaults, "custom-a": textStyle } as typeof m.defaults;
-    return m;
-  };
-
-  it("resolves a master's own kind layer into config.customLayers, in declaration order", () => {
-    const r = resolve(withCustomText(), [], {});
-    expect(r.config.customLayers).toEqual([
-      { ...textStyle, id: "custom-a", name: "Text", type: "text" },
-    ]);
-  });
-
-  it("does not also appear in the returned layers list (no phantom master row)", () => {
-    const r = resolve(withCustomText(), [], {});
-    expect(r.layers.some((l) => l.id === "custom-a")).toBe(false);
-  });
-
-  it("a kind layer on a disabled variant resolves to no custom layer, and lands in disabledLayers", () => {
-    const m = withCustomText("collab");
-    const off = resolve(m, [], {});
-    expect(off.config.customLayers).toBeUndefined();
-    expect(off.disabledLayers.has("custom-a")).toBe(true);
-    const on = resolve(m, ["collab"], {});
-    expect(on.config.customLayers?.map((l) => l.id)).toEqual(["custom-a"]);
-  });
-
-  it("a master with no added layers resolves to the same empty customLayers as today", () => {
-    expect(resolve(lolevMaster(), [], {}).config.customLayers).toBeUndefined();
   });
 });
