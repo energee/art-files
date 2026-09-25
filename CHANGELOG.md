@@ -8,6 +8,9 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 
+- **`⌘K` no longer opens the command palette on top of an open dialog.** With
+  the Save Master review or Settings open, `⌘K` does nothing; from the label
+  it still opens the palette, and inside the palette it still closes it.
 - **`⌘Z` inside an open dialog no longer undoes the label behind it.** With
   the Save Master review or Settings open, `⌘Z` / `⇧⌘Z` (and Edit → Undo /
   Redo) leave the canvas alone; in the inspector and its color picker they
