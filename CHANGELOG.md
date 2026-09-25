@@ -50,6 +50,12 @@ that section to the new version (see .agents/release-steward.md).
   Redo) leave the canvas alone; in the inspector and its color picker they
   still undo your last edit.
 
+### Changed
+
+- **Internal cleanup, no visible change.** Unused code and an unused
+  interface component were removed from the app. Labels, exports, and the
+  editor behave exactly as before.
+
 ## [0.1.98] - 2026-09-25
 
 ### Fixed

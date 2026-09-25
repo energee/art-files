@@ -136,11 +136,11 @@ export const LABEL_WIDE_IN = PAGE.w / 72;
  *  change if the shop's can does. They exist so the Settings layer can read
  *  in inches rather than as a share of a can nobody measured; the stored
  *  values stay percentages, which is what canScene consumes. */
-export const CAN_HEIGHT_IN = 6.19;
-export const CAN_DIAM_IN = 2.6;
+const CAN_HEIGHT_IN = 6.19;
+const CAN_DIAM_IN = 2.6;
 /** What the label actually wraps, so the basis for its width knob. The 8in
  *  art covers very nearly all of it. */
-export const CAN_CIRCUM_IN = Math.PI * CAN_DIAM_IN;
+const CAN_CIRCUM_IN = Math.PI * CAN_DIAM_IN;
 
 /** How the trimmed label sits on the can, derived from the artboard rather
  *  than tuned by eye. These were knobs (labelSize / labelWidth, percentages
@@ -309,7 +309,7 @@ export const PX = 72 / DESIGN_DPI;
  *  ponytail: one module-level output resolution, because the app edits one
  *  document at a time on the main thread. If a worker ever rasters, or two
  *  documents open at once, pass it as a parameter instead. */
-export let OUTPUT_DPI = DESIGN_DPI;
+export let OUTPUT_DPI = 0; // set by setOutputDpi(DESIGN_DPI) below
 /** Document dimensions for PSD raster layers, at OUTPUT_DPI. Mutated in place
  *  rather than replaced so the modules that read `PSD_DOC.w` keep working
  *  without re-importing. */
