@@ -87,22 +87,23 @@ describe("drawPlate", () => {
   });
 
   it("a changed QR gets new Path2Ds while the unchanged logo keeps its own", () => {
-    const qrItems = (p: PlacedLayer[]) =>
-      p.filter((x) => x.kind === "paths" && x.id === "qr").flatMap((x) => x.kind === "paths" ? [...x.paths] : []);
-    const logoItems = (p: PlacedLayer[]) =>
-      p.filter((x) => x.kind === "paths" && x.id !== "qr").flatMap((x) => x.kind === "paths" ? [...x.paths] : []);
+    /** The path strings of a plan's paths items whose id passes `keep`. */
+    const pathStrings = (p: PlacedLayer[], keep: (id: string) => boolean) =>
+      new Set(p.flatMap((x) => (x.kind === "paths" && keep(x.id) ? x.paths : [])));
+    const isQr = (id: string) => id === "qr";
     const before = plan();
     const first = fakeCtx();
     drawPlate(first.ctx, before, {}, "art", FONT);
+    const old = new Set(pathObjects(first.log));
     for (const overrides of [{ qr: { qrStyle: "square" as const } }, { qr: { size: 70 } }]) {
       const after = plan({ overrides });
-      expect(qrItems(after)).not.toEqual(qrItems(before));
+      const qr = pathStrings(after, isQr), logo = pathStrings(after, (id) => !isQr(id));
+      expect(qr).not.toEqual(pathStrings(before, isQr));
       const next = fakeCtx();
       drawPlate(next.ctx, after, {}, "art", FONT);
-      const old = new Set(pathObjects(first.log));
       const drawn = pathObjects(next.log);
-      const qrDrawn = drawn.filter((p) => qrItems(after).includes(p.d));
-      const logoDrawn = drawn.filter((p) => logoItems(after).includes(p.d));
+      const qrDrawn = drawn.filter((p) => qr.has(p.d));
+      const logoDrawn = drawn.filter((p) => logo.has(p.d));
       expect(qrDrawn.length).toBeGreaterThan(0);
       expect(logoDrawn.length).toBeGreaterThan(0);
       for (const p of qrDrawn) expect(old.has(p)).toBe(false);
