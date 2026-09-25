@@ -21,7 +21,7 @@ import type { FontFamilyId } from "../fontCatalog";
 import { lolevMaster } from "./lolevLayers";
 import { parseDescription } from "../description";
 import { segments } from "./format";
-import { defaultConfig } from "../defaults";
+import { defaultConfig, stripPercent } from "../defaults";
 import { configDiff } from "./document";
 
 // --- Old config keys → element patches ------------------------------------
@@ -57,6 +57,7 @@ const STYLE_KEYS = new Set<keyof Style>(["fill", "layer", "stroke", "strokeLayer
 const MULTILINE = new Set(["description"]);
 /** Old field ids that were not their layer's id. */
 const FIELD_RENAMES: Record<string, string> = { style: "styleLine", upc: "barcode" };
+const v3Id = (fid: string) => FIELD_RENAMES[fid] ?? fid;
 /** Old FieldDecl paths → the layer they filled (generic fields start with
  *  their layer id instead). */
 const PATH_LAYER: Record<string, string> = {
@@ -395,11 +396,13 @@ const layerIn = (master: Master, id: string): Layer | undefined =>
 
 /** An old FieldValue → the layer's LayerValue: text is laid as lines in the
  *  layer's style (with the label's own restyle applied), everything else is
- *  the string it was. */
+ *  the string it was. A number layer drops the trailing "%" an old ABV could
+ *  carry ("6.5%"), which would otherwise fail its number validation. */
 function toLayerValue(layer: Layer, v: FieldValue, p: ElementPatch | undefined, warnings: string[]): LayerValue | undefined {
   if (typeof v === "boolean") { warnings.push(`Value for "${layer.id}" is on/off, which no v3 layer takes; dropped.`); return undefined; }
-  if (layer.kind !== "text") return String(v);
-  return textLines(layer.id, String(v), { ...layer.style, ...p?.style }, p?.bold);
+  const s = String(v);
+  if (layer.kind !== "text") return s;
+  return textLines(layer.id, layer.input === "number" ? stripPercent(s) : s, { ...layer.style, ...p?.style }, p?.bold);
 }
 
 export function convertLabelV2(old: LabelFileV2, master: Master): { label: LabelFile; warnings: string[] } {
@@ -412,12 +415,15 @@ export function convertLabelV2(old: LabelFileV2, master: Master): { label: Label
   // the overrides are built.
   const values: Record<string, LayerValue> = {};
   const dormant: Record<string, LayerValue> = {};
-  const bench = (id: string, v: FieldValue) => {
-    if (typeof v === "boolean") warnings.push(`Dormant on/off value "${id}" dropped.`);
-    else dormant[id] = String(v);
+  // Benched under the v3 layer id (v3Id), so a later rebind onto a
+  // master with that layer finds it — for live values the master lacks and
+  // for the old bench alike.
+  const bench = (fid: string, v: FieldValue) => {
+    if (typeof v === "boolean") warnings.push(`Dormant on/off value "${fid}" dropped.`);
+    else dormant[v3Id(fid)] = String(v);
   };
   for (const [fid, v] of Object.entries(old.values)) {
-    const id = FIELD_RENAMES[fid] ?? fid;
+    const id = v3Id(fid);
     const layer = layerIn(master, id);
     if (!layer) { bench(fid, v); continue; }
     const lv = toLayerValue(layer, v, op.byId[id], warnings);

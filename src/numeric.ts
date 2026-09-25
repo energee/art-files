@@ -11,3 +11,14 @@
  *  displayBleedIn/commitBleedIn — must round the same way off the same step, or
  *  the two disagree about whether a value changed. */
 export const decimalsOf = (step: number) => (String(step).split(".")[1] ?? "").length;
+
+/** `value` on the grid `step` implies — the rounding ScrubField applies to
+ *  every typed or scrubbed number, for callers that write a number without
+ *  going through a field (a pointer drag, a resize). */
+export const roundToStep = (value: number, step: number) =>
+  Number(value.toFixed(decimalsOf(step)));
+
+/** The model's precision for positions and sizes, in PDF points: the Lolev
+ *  master authors to hundredths (24.12, 15.83). The inspector types on it and
+ *  a canvas drag lands on it, so both write the same numbers. */
+export const PT_STEP = 0.01;

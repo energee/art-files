@@ -143,6 +143,28 @@ export function rulerTicks(args: {
   return ticks;
 }
 
+/** Gap between a vertical tick and the end of its label, in CSS px. */
+export const VERTICAL_LABEL_GAP = 2;
+/** Upper bound on one 8px ruler glyph's advance. Digits measure about 5.3px
+ *  in the UI font ("-" and "." less), so this over-reserves slightly rather
+ *  than let a label clip the corner. */
+const LABEL_CHAR_PX = 5.5;
+
+/**
+ * Drop the label (never the tick) of any vertical-ruler tick whose text would
+ * reach into the corner. Vertical labels are rotated to read upward from
+ * VERTICAL_LABEL_GAP above their tick, so a tick just below the corner ran its
+ * label over the unit button. Horizontal labels run away from the corner and
+ * need no check.
+ */
+export function withCornerClear(ticks: RulerTick[], cornerEnd: number): RulerTick[] {
+  return ticks.map((tick) =>
+    tick.label !== undefined
+      && tick.screen - VERTICAL_LABEL_GAP - tick.label.length * LABEL_CHAR_PX < cornerEnd
+      ? { ...tick, label: undefined }
+      : tick);
+}
+
 /** Keep a safe-area inset inside the trimmed art without letting sides cross. */
 export function clampMargin(marginPt: number): number {
   return Math.min(Math.min(ART.w, ART.h) / 2, Math.max(0, marginPt));

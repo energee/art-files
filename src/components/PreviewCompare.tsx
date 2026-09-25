@@ -269,6 +269,8 @@ function InPlaceRichField(props: {
           fontSize: cqh(size),
           lineHeight: leading / size,
           fontFamily: fontCss,
+          // Unkerned, like the canvas under it and the PDF (#86, #144).
+          fontKerning: "none",
           letterSpacing: cqh(layer.style.letterSpacing ?? 0),
           textAlign: align,
         }}
@@ -327,6 +329,9 @@ export const PreviewCompare = forwardRef<
      *  order — what the display list, the hit boxes and the drag targets are
      *  all computed from, so they cannot disagree. */
     layers: Layer[];
+    /** Maps a resolved layer to the one the in-place editor opens on (App:
+     *  its stored value, if the resolver rejected it — see shownLayer). */
+    editLayerOf: (layer: Layer) => Layer;
     /** Which layers the list (or previous clicks here) have selected — one
      *  outline is drawn per id. */
     selected: readonly string[];
@@ -380,7 +385,7 @@ export const PreviewCompare = forwardRef<
   }
 >(function PreviewCompare(
   {
-    canvasRender, layers, selected, onPick, onEditText, onEditUppercase, onEditCancel, onDrag,
+    canvasRender, layers, editLayerOf, selected, onPick, onEditText, onEditUppercase, onEditCancel, onDrag,
     onDragCancel, onResize, onEditSession, onSplit, bleed, cornerRadiusPct, zoom, bleedIn, onRenderError,
   },
   ref,
@@ -694,7 +699,8 @@ export const PreviewCompare = forwardRef<
     () => boxes.find((b) => b.id === editing) ?? null,
     [boxes, editing],
   );
-  const editLayer = editing ? layers.find((l) => l.id === editing) : undefined;
+  const found = editing ? layers.find((l) => l.id === editing) : undefined;
+  const editLayer = found && editLayerOf(found);
   return (
     <div
       ref={pageElement}
@@ -893,6 +899,9 @@ export const PreviewCompare = forwardRef<
               lineHeight: 1,
               fontFamily: layer.fontFamily ? labelFontCss(layer.fontFamily) : canvasRender.fontCss,
               fontWeight: FACE_WEIGHT[faces.base],
+              // Unkerned like drawPlate; the input inherits it through
+              // preflight's `font: inherit` (#144).
+              fontKerning: "none",
               letterSpacing: cqh(ls),
               color: inkOf(st),
             }}

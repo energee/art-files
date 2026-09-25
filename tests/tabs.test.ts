@@ -108,6 +108,14 @@ describe("routeFileOpen", () => {
     expect(routeFileOpen(backed, "/a.label")).toEqual({ open: "new" });
   });
 
+  test("a picker/input-opened tab (clean, no path) is not reused (#83)", () => {
+    const s0 = initialTabs();
+    const openedNoPath = updateTabMeta(s0, s0.active, { title: "IPA", dirty: false });
+    expect(isPristine(openedNoPath.tabs[0])).toBe(false);
+    expect(routeFileOpen(openedNoPath)).toEqual({ open: "new" });
+    expect(routeFileOpen(openedNoPath, "/a.label")).toEqual({ open: "new" });
+  });
+
   test("a busy tab is never reused — two rapid opens can't share an editor", () => {
     const s = initialTabs();
     expect(routeFileOpen(s, "/a.label", () => true)).toEqual({ open: "new" });

@@ -6,7 +6,7 @@ import {
 } from "../src/layout";
 import {
   DEFAULT_MARGIN_PT, layoutGuides, majorStep, nextRulerUnit, pointToScreen,
-  pointToUnit, rulerTicks, screenToPoint, sizeLabel, unitToPoint,
+  pointToUnit, rulerTicks, screenToPoint, sizeLabel, unitToPoint, withCornerClear,
 } from "../src/rulers";
 
 describe("preview rulers", () => {
@@ -32,6 +32,19 @@ describe("preview rulers", () => {
     expect(majorStep(1462.8, PAGE.w, "in")).toBe(0.5);
     expect(majorStep(585.12, PAGE.w, "px")).toBe(500);
     expect(majorStep(1462.8, PAGE.w, "px")).toBe(250);
+  });
+
+  it("drops a vertical label that would run up into the unit corner, keeping its tick", () => {
+    // Vertical labels are rotated to read upward from just above their tick,
+    // so a tick a few px under the 20px corner painted "-0.5" over "in" (#134).
+    const ticks = withCornerClear([
+      { screen: 34, value: -0.5, major: true, label: "-0.5" },
+      { screen: 34, value: -1, major: true, label: "-1" },
+      { screen: 60, value: 0, major: true, label: "0" },
+      { screen: 22, value: 0.125, major: false },
+    ], 20);
+    expect(ticks.map((tick) => tick.label)).toEqual([undefined, "-1", "0", undefined]);
+    expect(ticks.map((tick) => tick.screen)).toEqual([34, 34, 60, 22]);
   });
 
   it("anchors tick zero to the trim edge through pan", () => {

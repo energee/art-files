@@ -33,9 +33,9 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { dirname, join } from "node:path";
 import { PNG } from "pngjs";
+import { isEntry } from "./is-entry.mjs";
 
 /** An RGBA raster, row-major, 4 bytes per pixel — what pngjs decodes to and
  *  what a 2D canvas's getImageData returns. */
@@ -286,10 +286,13 @@ export function parseArgs(argv: string[]) {
     flags[name] = value;
   }
   if (positional.length !== 3) throw new Error(USAGE);
-  const num = (name: string, fallback: number) => {
+  // --dpi must be positive: pdftoppm reads `-r 0` as "use the default" and
+  // renders at 150 dpi while the log reports 0 (#111). --threshold may be 0.
+  const num = (name: string, fallback: number, min: "positive" | "non-negative") => {
     if (!(name in flags)) return fallback;
     const n = Number(flags[name]);
-    if (!Number.isFinite(n) || n < 0) throw new Error(`--${name} must be a non-negative number`);
+    if (!Number.isFinite(n) || n < 0 || (min === "positive" && n === 0))
+      throw new Error(`--${name} must be a ${min} number`);
     return n;
   };
   const rasterizer = flags.rasterizer ?? "auto";
@@ -300,7 +303,7 @@ export function parseArgs(argv: string[]) {
   const [oldPath, newPath, outPath] = positional;
   return {
     oldPath, newPath, outPath,
-    dpi: num("dpi", DEFAULT_DPI), threshold: num("threshold", 0),
+    dpi: num("dpi", DEFAULT_DPI, "positive"), threshold: num("threshold", 0, "non-negative"),
     rasterizer: rasterizer as Rasterizer | "auto",
   };
 }
@@ -324,10 +327,9 @@ async function main(argv: string[]): Promise<number> {
   return result.changed > args.threshold ? 1 : 0;
 }
 
-// Thin CLI wrapper, same entry guard as scripts/release-notes.mjs: only run
-// when this file is the process's entry point, never on import from tests.
-const entryUrl = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";
-if (entryUrl === import.meta.url) {
+// Thin CLI wrapper: only run when this file is the process's entry point,
+// never on import from tests (scripts/is-entry.mjs).
+if (isEntry(import.meta.url)) {
   main(process.argv.slice(2)).then(
     (code) => process.exit(code),
     (e: unknown) => {

@@ -133,6 +133,7 @@ export function actionsIn(entries: MenuEntry[]): ActionEntry[] {
   });
 }
 const MENU_ACTIONS = actionsIn(APP_MENUS);
+const CHECK_IDS = new Set(MENU_ACTIONS.filter(isCheckAction).map((entry) => entry.id));
 
 // Menu chrome belongs to the browser renderer only. The native renderer uses
 // the same APP_MENUS data but lets the OS size and paint each item.
@@ -350,6 +351,11 @@ function useNativeMenu(
   const [items, setItems] = useState<Map<string, NativeAction> | null>(null);
   const updateQueue = useRef(Promise.resolve());
   const appliedState = useRef(new Map<string, string>());
+  // Bumped when a native check item is clicked. muda flips a CheckMenuItem
+  // itself on click, so choosing the current view (a no-op for app state)
+  // leaves it unchecked; forgetting its applied state and re-running the sync
+  // effect re-asserts what app state says.
+  const [resync, setResync] = useState(0);
 
   useEffect(() => {
     if (!desktop) return;
@@ -371,6 +377,10 @@ function useNativeMenu(
           if (editing && (id === "undo" || id === "redo")) {
             document.execCommand(id);
             return;
+          }
+          if (CHECK_IDS.has(id)) {
+            appliedState.current.delete(id);
+            setResync((n) => n + 1);
           }
           command.run();
         };
@@ -463,9 +473,10 @@ function useNativeMenu(
       errorRef.current(`Could not update the native menu: ${String(error)}`);
     });
   // signature is the compact set of native-visible state; ordinary App
-  // renders do not produce 26 IPC updates.
+  // renders do not produce 26 IPC updates. resync re-runs it after a native
+  // check click whose command left app state unchanged.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, signature]);
+  }, [items, signature, resync]);
 }
 
 export function AppMenu(props: {

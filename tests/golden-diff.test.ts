@@ -8,7 +8,7 @@
 // (loudly) when poppler is not installed, so CI without it stays green.
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PDFDocument, rgb } from "pdf-lib";
@@ -201,6 +201,11 @@ describe("summaryLine and parseArgs", () => {
   it("rejects malformed invocations", () => {
     expect(() => parseArgs(["o.pdf", "n.pdf"])).toThrow(/usage/);
     expect(() => parseArgs(["o.pdf", "n.pdf", "d.png", "--dpi", "lots"])).toThrow(/--dpi/);
+    // #111: pdftoppm treats -r 0 as "use the default" and renders at 150 dpi
+    // while the log claims 0, so a zero (or negative) DPI must be refused.
+    expect(() => parseArgs(["o.pdf", "n.pdf", "d.png", "--dpi", "0"])).toThrow(/--dpi must be a positive number/);
+    expect(() => parseArgs(["o.pdf", "n.pdf", "d.png", "--dpi=-72"])).toThrow(/--dpi must be a positive number/);
+    expect(parseArgs(["o.pdf", "n.pdf", "d.png", "--threshold", "0"]).threshold).toBe(0);
     expect(() => parseArgs(["o.pdf", "n.pdf", "d.png", "--rasterizer", "ghostscript"])).toThrow(/--rasterizer/);
     expect(() => parseArgs(["o.pdf", "n.pdf", "d.png", "--bogus", "1"])).toThrow(/unknown flag/);
   });
@@ -246,6 +251,20 @@ describe("CLI", () => {
       const usage = run(oldPdf);
       expect(usage.status).toBe(2);
       expect(usage.stderr).toMatch(/usage:/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, SLOW);
+
+  // #110: run through a symlinked path the entry guard used to miss, so the
+  // CLI silently did nothing and exited 0 — a gate that never compared.
+  it("runs when invoked through a symlinked path", () => {
+    const dir = mkdtempSync(join(tmpdir(), "golden-diff-link-"));
+    try {
+      symlinkSync(join(__dirname, "..", "scripts"), join(dir, "scripts"));
+      const p = spawnSync(tsx, [join(dir, "scripts", "golden-diff.mts"), "only-one-arg"], { encoding: "utf8" });
+      expect(p.status).toBe(2);
+      expect(p.stderr).toMatch(/usage:/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

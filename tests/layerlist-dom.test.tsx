@@ -10,7 +10,8 @@
 import { act, createElement, Profiler } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LayerList, type LayerListProps, type LayerRow, type VariantChip } from "../src/components/LayerList";
+import { LayerList, type LayerListProps } from "../src/components/LayerList";
+import type { LayerRow, VariantChip } from "../src/model/rows";
 import { SidebarProvider } from "../src/components/ui/sidebar";
 import { lolevMaster } from "../src/model/lolevLayers";
 import type { Layer } from "../src/model/layers";
@@ -151,6 +152,23 @@ describe("LayerList", () => {
     expect(rowFor("collabLead").querySelector(".opacity-50")).toBeNull();
     // A master row never carries a badge.
     expect(rowFor("wordmark").textContent).not.toContain("Collab");
+  });
+
+  it("titles the variant chip by what the variant does: adds the layer, or changes a master one", () => {
+    // layerRows sets `variant` on BOTH a layer the variant adds and a master
+    // layer it only overrides (then with `variantOverridden`); the chip said
+    // "Added by" for both (#102).
+    const on = lolevRows(true);
+    const collab = on.variants[0];
+    render(baseProps({ rows: on.rows.map((r) =>
+      r.layer.id === "logo" ? { ...r, variant: collab, variantOverridden: collab } : r) }));
+    const chipTitle = (id: string) => Array.from(rowFor(id).querySelectorAll("span[title]"))
+      .find((el) => el.textContent === "Collab")?.getAttribute("title");
+    expect(chipTitle("logo")).toBe("Changed by the Collab variant");
+    expect(chipTitle("collabLead")).toBe("Added by the Collab variant");
+
+    render(baseProps());
+    expect(chipTitle("collabLead")).toBe("Added by the Collab variant (off)");
   });
 
   it("no row carries a fillable switch any more — every layer is fillable", () => {

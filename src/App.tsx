@@ -45,11 +45,11 @@ import type {
   ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master,
 } from "@/model/layers";
 import { PAGE_ART_ID, uppercaseOf } from "@/model/layers";
-import { exportBase as exportBaseOf, titleOf } from "@/model/resolveLayers";
+import { exportBase as exportBaseOf, titleOf, withRejectedValue } from "@/model/resolveLayers";
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue, structureOnlyMaster,
+  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayer, setContentIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -66,7 +66,7 @@ import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
 import { makeHiddenPropsEqual, type TabMeta } from "@/tabs";
 import { EMBEDDABLE_RASTER, mimeFor, rasterKind, tintRgba } from "@/collab";
-import { parseLogo } from "@/logo";
+import { svgAspect } from "@/logo";
 // The builders are imported dynamically at export time (see buildFull /
 // exportPsd) so they stay out of the initial bundle; only their types are
 // needed up front.
@@ -310,8 +310,7 @@ async function readCustomImage(f: File): Promise<CustomFile> {
   const previewUrl = URL.createObjectURL(f);
   if (mimeFor(f.name) === "image/svg+xml") {
     const svg = await f.text();
-    const { w, h } = parseLogo(svg, 1, 1);
-    return { image: { kind: "svg", svg }, name: f.name, previewUrl, aspect: w / h };
+    return { image: { kind: "svg", svg }, name: f.name, previewUrl, aspect: svgAspect(svg) };
   }
   const bytes = new Uint8Array(await f.arrayBuffer());
   const bmp = await createImageBitmap(new Blob([bytes as unknown as BlobPart]));
@@ -418,7 +417,7 @@ function download(url: string, name: string) {
 /** A file the shell wants this editor to open. seq is monotonic — a new
  *  value triggers the open, so a re-render can never re-open. Exactly one
  *  of path (Tauri), handle (FS-Access picker), or file (hidden-input
- *  fallback, no save identity) is set. */
+ *  fallback or a window-dropped .label, no save identity) is set. */
 export type FileToOpen = {
   seq: number;
   path?: string;
@@ -426,7 +425,8 @@ export type FileToOpen = {
   file?: File;
 };
 
-/** What the tab strip shows for this document — reported through onMeta
+/** What the tab strip shows for this document (src/tabs.ts TabMeta — one
+ *  definition, so a new field can't drift) — reported through onMeta
  *  whenever any field changes. */
 export type DocumentMeta = TabMeta;
 
@@ -710,7 +710,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   }, [showRulers, showGuides]);
 
   /** Whether the document differs from the last saved/opened project —
-   *  File → Save disables while clean. */
+   *  File → Save disables while clean. Clear it ONLY after a completed open
+   *  or save: the shell reads false as "holds a file" (tabs.ts isPristine). */
   const [dirty, setDirty] = useState(true);
   /** Whether the user has actually touched this document — the shell
    *  prompts about closing a tab only when edited AND unsaved (tabs.ts). */
@@ -732,11 +733,13 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  sees so a no-op can return before marking the tab dirty. Returns whether
    *  the edit was recorded (false for a no-op or a rejected edit). */
   const edit = (fn: (d: Doc) => Doc, coalesce?: Coalesce): boolean => {
+    // Binding check on every result, both applications below — see checkLabelBindings (#93).
+    const checked = (d: Doc) => { const n = fn(d); return n === d ? n : checkLabelBindings(n, d); };
     let next: Doc;
     try {
-      next = fn(doc);
+      next = checked(doc);
     } catch (err) {
-      setBuildError(errMsg(err)); // bindBelow/unbind re-validate through parseMaster
+      setBuildError(errMsg(err)); // parseMaster / checkLabelBindings refusals
       return false;
     }
     if (next === doc || (next.master === doc.master && next.label === doc.label)) return false;
@@ -744,7 +747,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // swapLoaded/onTexture, not a keystroke while assets are still loading.
     setDirty(true);
     setEdited(true);
-    setDoc((d) => (d === doc ? next : fn(d)), coalesce);
+    setDoc((d) => (d === doc ? next : checked(d)), coalesce);
     return true;
   };
   const editMaster = (fn: (m: Master) => Master, coalesce?: boolean) =>
@@ -883,9 +886,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     return () => document.removeEventListener("keydown", onKey);
   }, [undo, redo, canUndo, canRedo]);
 
-  // Figma-style bare keys plus the ⌘-modified exports, with the same
-  // inert-while-typing guard as undo. Registered once — reads the table
-  // through a ref.
+  // Figma-style bare keys plus the ⌘-modified file and export commands.
+  // Registered once — reads the table through a ref.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!activeRef.current) return;
@@ -893,24 +895,25 @@ export const DocumentEditor = memo(function DocumentEditor({
       const mods = e.metaKey || e.ctrlKey ? (e.shiftKey ? "⇧⌘" : "⌘") : undefined;
       if (!mods && e.shiftKey) return;
       const el = e.target as HTMLElement | null;
-      if (isTypingTarget(el)) return;
-      // Same stand-aside as the nudge, for the BARE keys (1/2/3/r/g): an open
-      // menu, dialog or Select holds focus and those keys are its own
-      // typeahead. The ⌘ shortcuts stay live — no popup claims those.
-      if (!mods && el?.closest?.(POPUP_OWNS_KEYS)) return;
+      // The BARE keys (1/2/3/r/g) stand aside where they are someone else's
+      // input: a text field, or an open menu/dialog/Select's typeahead. The ⌘
+      // shortcuts stay live in both — ⌘S saves from inside a field.
+      if (!mods && (isTypingTarget(el) || el?.closest?.(POPUP_OWNS_KEYS))) return;
       const cmd = commandsRef.current.find((c) => c.key === e.key.toLowerCase() && c.mods === mods);
-      if (!cmd || cmd.disabled) return;
+      if (!cmd) return;
+      // The key is the app's even while its command is disabled: ⌘S on a
+      // clean document must not fall through to the browser's Save Page.
       e.preventDefault();
-      cmd.run();
+      if (!cmd.disabled) cmd.run();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Arrow-key nudge for the selection: 1pt a press, 10pt with shift. Same
-  // inert-while-typing guard as the other two; registered once and reading
-  // the live move through a ref, like the command table above.
+  // Arrow-key nudge for the selection: 1pt a press, 10pt with shift. Inert
+  // while typing, like undo and the bare-key commands; registered once and
+  // reading the live move through a ref, like the command table above.
   const nudgeRef = useRef<(dx: number, dy: number) => void>(() => {});
   useEffect(() => {
     const steps: Record<string, [number, number]> = {
@@ -954,26 +957,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   async function onTexture(f: File) { swapLoaded(setTexture, await readTexture(f)); }
   async function onMask(f: File) { swapLoaded(setMask, await readMask(f)); }
 
-  /** Releases an image asset's bytes once nothing in the document names it
-   *  any more — the same art can be shared by two layers, so only an
-   *  unreferenced id is dropped. Checked against the doc AFTER the write. */
-  function releaseAsset(assetId: string, after: Doc) {
-    if (!assetId || assetReferenced(after.master, after.label, assetId)) return;
-    setCustomImages((old) => {
-      const entry = old[assetId];
-      if (!entry) return old;
-      URL.revokeObjectURL(entry.previewUrl);
-      const next = { ...old };
-      delete next[assetId];
-      return next;
-    });
-  }
-
   /** An image layer's well: read the dropped file into the per-id store
    *  and point the layer (its fill value, or the master's own asset) at the
-   *  minted id; the previous asset is released if nothing else uses it. */
+   *  minted id. The previous asset's bytes are deliberately KEPT: undo can
+   *  point the layer back at it (#75); see liveImages. */
   async function onLayerImage(layer: ImageLayer, f: File | null) {
-    const previous = layer.asset;
     let assetId = "";
     if (f) {
       assetId = mintCustomAssetId();
@@ -981,12 +969,17 @@ export const DocumentEditor = memo(function DocumentEditor({
       setCustomImages((old) => ({ ...old, [assetId]: file }));
     }
     setContent(layer, assetId);
-    // The doc as it will be after that edit lands — releaseAsset must see the
-    // NEW state to decide whether the old asset is still referenced.
-    const after: Doc = setContentIn({ master, label }, layer.id, assetId);
-    if (previous && previous !== assetId) releaseAsset(previous, after);
   }
 
+  /** The images the doc still names. The store also keeps replaced/cleared
+   *  art so undo can bring it back (#75); the preview, the exports and Save
+   *  read only this live subset, so kept art is never decoded or packed
+   *  (#84). Keyed by the live-id list, so an edit that changes no image
+   *  reference keeps the same object and the preview doesn't re-decode. */
+  const liveIds = useMemo(() => Object.keys(customImages)
+    .filter((id) => assetReferenced(master, label, id)).join("\n"), [customImages, master, label]);
+  const liveImages = useMemo(() => Object.fromEntries(
+    liveIds ? liveIds.split("\n").map((id) => [id, customImages[id]]) : []), [customImages, liveIds]);
   /** The image layers whose raster art draws repainted in their fill
    *  (`tintRaster`), keyed by asset — the one per-layer knob the render
    *  assets depend on, spelled as a string so the assembly effect can key
@@ -999,7 +992,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   async function imageAssets(): Promise<Record<string, CollabImage>> {
     const tints = new Map<string, Fill>(JSON.parse(tintKey) as [string, Fill][]);
     const out: Record<string, CollabImage> = {};
-    for (const [id, c] of Object.entries(customImages)) {
+    for (const [id, c] of Object.entries(liveImages)) {
       const fill = tints.get(id);
       out[id] = c.image.kind !== "svg" && fill
         ? { kind: "png", bytes: await tintedPngCached(c.image.bytes, fill) }
@@ -1013,7 +1006,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   const planAssetsOf = (): PlanAssets => ({
     logoSvg, guides,
     custom: {
-      ...Object.fromEntries(Object.entries(customImages).map(([id, c]) => [
+      ...Object.fromEntries(Object.entries(liveImages).map(([id, c]) => [
         id,
         { aspect: c.aspect, ...(c.image.kind === "svg" ? { art: { kind: "svg" as const, svg: c.image.svg } } : {}) },
       ])),
@@ -1096,7 +1089,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // Asset inputs only — the layers reach this effect through tintKey and
     // the two page-art switches (see the comment above).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [texture, mask, customImages, family, tintKey, bgOn, maskOn, active]);
+  }, [texture, mask, liveImages, family, tintKey, bgOn, maskOn, active]);
   // The bitmaps backing the CURRENTLY LIVE `canvasAssets` generation, closed
   // once the next generation has fully replaced them (bitmaps aren't GC'd
   // on their own). A bitmap can sit under two keys; close each once.
@@ -1517,7 +1510,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   async function saveProject(as = false): Promise<boolean> {
     const zip = packLabel({ ...label, masterHint: masterIndex()[master.id]?.path }, {
       texture: textureAsset(), mask: maskAsset(),
-      customImages: imageBundle(Object.keys(customImages)),
+      customImages: imageBundle(Object.keys(liveImages)),
     });
     if (isTauri()) {
       const existingPath = as ? null : projectPath.current;
@@ -2014,7 +2007,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   }
 
   /** Every command the app exposes, once. The palette and AppMenu read this
-   *  list, while the key listener dispatches off `key`. */
+   *  list, while the key listener dispatches off `key`. A ⌘ key here fires
+   *  even inside a text field, so never bind one a field needs (A/C/V/X/Z). */
   const twoD = viewMode === "2d";
   const commands: Command[] = [
     { id: "tab-new", label: "New Tab", key: "n", mods: "⌘", run: onNewTab },
@@ -2057,11 +2051,23 @@ export const DocumentEditor = memo(function DocumentEditor({
   const commandsRef = useRef(commands);
   commandsRef.current = commands;
 
+  /** The layer a fill field shows: a value the resolver rejected (errors[id])
+   *  is shown as STORED, not as the master fallback the resolved layer
+   *  carries — the field and the header error must name the same value. Both
+   *  fill fields use it: the inspector's (#128/#129) and the on-canvas
+   *  editor's (#171). */
+  function shownLayer(resolved: Layer): Layer {
+    const stored = label.values[resolved.id];
+    return errors[resolved.id] && stored !== undefined
+      ? withRejectedValue(resolved, stored) : resolved;
+  }
+
   /** The inspector's content slot for the selected layer: the rich text
    *  field (or number/code box) for text, the image well for images, the
    *  payload box for barcode/QR — each writing through setContent, so every
    *  layer's content belongs to this label. */
-  function contentFor(layer: Layer): React.ReactNode {
+  function contentFor(resolved: Layer): React.ReactNode {
+    const layer = shownLayer(resolved);
     const id = `${layer.id}-content`;
     if (layer.kind === "text") {
       return (
@@ -2185,8 +2191,11 @@ export const DocumentEditor = memo(function DocumentEditor({
           <RenderSettingsFields value={render} onChange={onRenderChange} />
         </DialogContent>
       </Dialog>
+      {/* Gated on `active` like Settings and the inspector Sheet: a pending
+          review stays with its tab (hidden while another tab is in front,
+          back on return) so a confirm can only write the visible tab's master. */}
       {pendingSave && (
-        <MasterSaveReview open changes={masterChangeList}
+        <MasterSaveReview open={active} changes={masterChangeList}
           target={master.variants.find((v) => v.id === version)?.name}
           onCancel={() => setPendingSave(null)}
           onConfirm={(promote) => {
@@ -2255,7 +2264,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             // is `m-auto` inside — recentres itself in what is left. Keeping
             // it a MARGIN rather than padding also keeps this element's
             // rect equal to the visible area, which is what clampView pans
-            // against. Width must match SheetContent's w-[300px] below.
+            // against. Width must match SheetContent's data-[side=right]:w-[300px] below.
             className={cn("relative flex min-h-0 flex-1 overflow-hidden border-l border-sidebar-border",
               "transition-[margin] duration-200",
               active && inspected && "mr-[300px]",
@@ -2293,6 +2302,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               canvasRender={viewMode === "2d" ? canvasSource : null}
               bleedIn={render.bleedIn}
               layers={drawLayers}
+              editLayerOf={shownLayer}
               selected={selected}
               onPick={pick}
               // Live per-keystroke updates so the canvas render IS the edit
@@ -2437,7 +2447,11 @@ export const DocumentEditor = memo(function DocumentEditor({
             // turn Backspace/arrows into text edits instead of delete/nudge.
             initialFocus={false}
             finalFocus={(closeType) => closeType === "keyboard"}
-            className="w-[300px] gap-0 overflow-y-auto border-l-0! bg-sidebar p-0 sm:max-w-[300px]">
+            // Sized on the base's own `data-[side=right]:` variant so
+            // tailwind-merge REPLACES its w-3/4 and sm:max-w-sm (24rem, 312px
+            // at the 13px root); an unprefixed w-[300px] lost to both on
+            // specificity and left the sheet at 75% below 640px (#132).
+            className="gap-0 overflow-y-auto border-l-0! bg-sidebar p-0 data-[side=right]:w-[300px] data-[side=right]:sm:max-w-none">
             {inspected && (
               <LayerInspector key={inspected.layer.id} layer={inspected.layer}
                 unit={dimensionUnit} onUnitChange={setDimensionUnit}

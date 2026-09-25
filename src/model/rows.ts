@@ -14,7 +14,9 @@ export interface VariantChip { id: string; name: string; enabled: boolean }
 export interface LayerRow {
   /** The resolved layer (or the raw diff entry of an off variant's added layer). */
   layer: Layer;
-  /** Set when a variant ADDS this layer (an id the master lacks). */
+  /** The variant that ADDS this layer (an id the master lacks) or, on a master
+   *  layer, the last enabled variant that overrides it (then `variantOverridden`
+   *  is set too, and the chip reads "Changed by" rather than "Added by"). */
   variant?: VariantChip;
   /** An enabled VARIANT changes part of this master layer — the variant that
    *  does, so the row can name it. A variant is a whole alternative version of

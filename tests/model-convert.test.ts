@@ -8,6 +8,8 @@ import {
   parseMaster, type BarcodeLayer, type ImageLayer, type Layer, type TextLayer,
 } from "../src/model/layers";
 import { lolevMaster as lolevV3 } from "../src/model/lolevLayers";
+import { resolveLayers } from "../src/model/resolveLayers";
+import { rebindLabel } from "../src/model/rebindLayers";
 import { lolevMaster as lolevV1 } from "../src/model/lolev";
 import type { LabelFileV2 } from "../src/model/types";
 import { defaultConfig, KEYLINE } from "../src/defaults";
@@ -227,6 +229,19 @@ describe("convertLabelV2", () => {
     expect(label.dormant).toEqual({ values: { partner: "p.png", old: "v" }, variants: ["retired"] });
   });
 
+  it("benches renamed v2 fields under their v3 layer ids so a rebind restores them (#97)", () => {
+    const full = lolevV3();
+    const bare = { ...full, layers: full.layers.filter((l) => l.id !== "styleLine" && l.id !== "barcode") };
+    const { label } = convertLabelV2(v2({
+      values: { name: "X", style: "IPA" },
+      dormant: { values: { upc: "036000291452" }, variants: [] },
+    }), bare);
+    expect(label.dormant!.values).toEqual({ styleLine: "IPA", barcode: "036000291452" });
+    const home = rebindLabel(label, bare, full).label;
+    expect(home.values).toMatchObject({ styleLine: "IPA", barcode: "036000291452" });
+    expect(home.dormant).toBeUndefined();
+  });
+
   it("carries masterHint and enabledVariants verbatim", () => {
     const { label } = convertLabelV2(v2({ masterHint: "Lolev", enabledVariants: ["collab", "nope"] }), lolevV3());
     expect(label.masterHint).toBe("Lolev");
@@ -268,6 +283,15 @@ describe("convertConfigV1", () => {
       name: { style: { fill: "#FF0000" } },
       logo: { y: logoY() + 4 },
     });
+  });
+
+  it("a legacy ABV saved with its own percent sign converts to a valid number (#95)", () => {
+    const cfg = defaultConfig();
+    cfg.abv = "6.5 %";
+    const { label } = convertConfigV1(cfg, false);
+    expect(label.values.abv).toEqual([{ text: "6.5", fill: GOLD, layer: "metallic" }]);
+    const { errors } = resolveLayers(lolevV3(), label.enabledVariants, label.values, label.overrides);
+    expect(errors.abv).toBeUndefined();
   });
 
   it("a legacy per-label custom layer rides along as a whole-layer override", () => {

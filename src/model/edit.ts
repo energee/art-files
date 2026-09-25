@@ -15,17 +15,18 @@ import type {
   RelativeY, TextLayer, Variant, BindingSide,
 } from "./layers";
 import type { Box } from "./place";
-import { bindingOf, hAnchorOf, parseMaster, vAnchorOf } from "./layers";
+import { bindingOf, hAnchorOf, parseMaster, validateBindings, vAnchorOf } from "./layers";
 import { deepMerge, type DeepPartial } from "./merge";
 import { getPath } from "./document";
 import { setPath } from "./resolve";
-import { valueOf, valuePath, widenValue } from "./resolveLayers";
+import { resolveLayers, valueOf, valuePath, widenValue } from "./resolveLayers";
 import { anchorFraction, type GuideLines } from "./position";
 import { CENTER_X, GOLD } from "../layout";
 import { KEYLINE } from "../defaults";
 import { DEFAULT_STROKE_LAYER } from "../strokes";
 import { validateFor } from "../barcode";
 import { fieldRefs } from "./format";
+import { PT_STEP, roundToStep } from "../numeric";
 
 type LayerPatch = DeepPartial<Layer>;
 /** A variant's diff entry: a whole layer (variant-added) or a partial
@@ -161,7 +162,7 @@ export function removeLayer(master: Master, id: string, boxes?: ReadonlyMap<stri
   const top = boxes?.get(id)?.y;
   const slot: Entry = isBound(y) || top === undefined
     ? { y }
-    : { y: top, vAnchor: "top", guideY: "none" };
+    : { y: pt(top), vAnchor: "top", guideY: "none" };
   const detach = <T extends Entry>(entry: T, key: string): T => {
     if (entry.binding?.to !== id) return repoint(entry, id, slot);
     const box = boxes?.get(key);
@@ -380,8 +381,8 @@ export function adoptMaster(label: LabelFile, master: Master): LabelFile {
 
 /** Is an image asset id still reachable from the document: an image layer's
  *  `asset` in the master, any variant's diff or the label's overrides, or a
- *  label value. What App checks before releasing a replaced/cleared asset's
- *  bytes — the same art can be shared by two layers. */
+ *  label value. App's liveImages filter: the in-memory store also keeps
+ *  replaced/cleared art for undo, so not every stored id is referenced. */
 export function assetReferenced(master: Master, label: LabelFile, assetId: string): boolean {
   const uses = (e: DeepPartial<Layer> | undefined) => !!e && (e as { asset?: string }).asset === assetId;
   if (master.layers.some(uses)) return true;
@@ -404,12 +405,18 @@ export function unbind(master: Master, id: string, computedTopY: number): Master
   return parseMaster(withLayer(master, id, ({ vAnchor: _v, ...l }) => ({ ...l, y: computedTopY, guideY: "none", binding: null })));
 }
 
+/** A position written from a gesture or a measurement, on the model's 0.01pt
+ *  grid (#130). Pointer deltas and measured boxes are raw floats, and without
+ *  this their noise went straight into the saved master (x: 193.08552000000003)
+ *  where a typed or nudged value is clean. */
+const pt = (v: number) => roundToStep(v, PT_STEP);
+
 /** Detach only the bound axis, preserving its current measured position. */
 export function unbindPatch(layer: Layer, box: Box): LayerPatch {
   const b = bindingOf(layer);
   return b?.side === "left" || b?.side === "right"
-    ? { binding: null, x: box.x, anchor: "left", guideX: "none" }
-    : { binding: null, y: box.y, vAnchor: "top", guideY: "none" };
+    ? { binding: null, x: pt(box.x), anchor: "left", guideX: "none" }
+    : { binding: null, y: pt(box.y), vAnchor: "top", guideY: "none" };
 }
 
 /** Switch sides without moving the newly free axis or retaining a conflicting guide. */
@@ -418,8 +425,8 @@ export function bindingPatch(layer: Layer, to: string, side: BindingSide, box: B
   return {
     ...(old ? unbindPatch(layer, box) : {}),
     ...(side === "left" || side === "right"
-      ? { x: box.x, anchor: "left", guideX: "none" } as const
-      : { y: box.y, vAnchor: "top", guideY: "none" } as const),
+      ? { x: pt(box.x), anchor: "left", guideX: "none" } as const
+      : { y: pt(box.y), vAnchor: "top", guideY: "none" } as const),
     binding: { to, side, gap: old?.gap ?? 0 },
   };
 }
@@ -513,11 +520,11 @@ export function moveBy(
   if (carriedH) return moveBy({ ...layer, binding: null }, 0, dy, moving);
   if (binding && !carriedV && (horizontal ? dx !== 0 : dy !== 0)) {
     const delta = horizontal ? dx : dy;
-    patch.binding = { ...binding, gap: binding.gap + (binding.side === "left" || binding.side === "top" ? -delta : delta) };
+    patch.binding = { ...binding, gap: pt(binding.gap + (binding.side === "left" || binding.side === "top" ? -delta : delta)) };
   }
-  if (dx !== 0 && !horizontal) patch.x = layer.x + dx;
+  if (dx !== 0 && !horizontal) patch.x = pt(layer.x + dx);
   if (dy !== 0 && !carriedV && (!binding || horizontal)) {
-    patch.y = isBound(layer.y) ? { below: layer.y.below, gap: layer.y.gap + dy } : layer.y + dy;
+    patch.y = isBound(layer.y) ? { below: layer.y.below, gap: pt(layer.y.gap + dy) } : pt(layer.y + dy);
   }
   return patch;
 }
@@ -652,7 +659,9 @@ export const MASTER_PATHS: ReadonlySet<string> =
  *  ("Label overrides unknown layer …") while changing nothing on the canvas.
  *  Dropping it makes the click an honest no-op: no edit, no history entry,
  *  no warning. The fill contract still routes to the master, since those
- *  fields live in the master file whether the variant is on or not. */
+ *  fields live in the master file whether the variant is on or not.
+ *
+ *  Bindings are NOT checked here — see checkLabelBindings (#93). */
 export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
   const masterIds = new Set(doc.master.layers.map((l) => l.id));
   /** Every layer id this document RESOLVES: the master's, plus those the
@@ -685,6 +694,34 @@ export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
     if (rest.length && resolves.has(id)) label = setLabelOverride(label, id, pick(rest));
     return master === d.master && label === d.label ? d : { master, label };
   }, doc);
+}
+
+/** Returns `doc` unchanged, or THROWS when its label's resolved layers break
+ *  a binding — an enabled layer bound to a disabled or missing one, or a
+ *  cycle. The label-side twin of parseMaster's check (the same
+ *  validateBindings), run by App's `edit` on every edit — the label can
+ *  reshape the graph (a patch, an override reset, a version switch) where
+ *  parseMaster never looks. Without it placeLayers throws on preview and
+ *  export (issue #93).
+ *
+ *  Patch functions such as patchLayers do not check bindings themselves: a
+ *  patch may switch off a layer another is bound to, and only the whole
+ *  edit's result is judged, so switching a layer off together with its
+ *  dependents is allowed.
+ *
+ *  Given `prev` (the doc the edit started from), the check is skipped when
+ *  nothing that shapes the binding graph changed — the master's layers and
+ *  variants and the label's enabledVariants and overrides are all the same
+ *  objects. Values-only edits (typing) then skip a full resolveLayers per
+ *  keystroke; `prev` was already checked when it was written. */
+export function checkLabelBindings(doc: Doc, prev?: Doc): Doc {
+  if (prev
+    && doc.master.layers === prev.master.layers && doc.master.variants === prev.master.variants
+    && doc.label.enabledVariants === prev.label.enabledVariants && doc.label.overrides === prev.label.overrides)
+    return doc;
+  const { layers } = resolveLayers(doc.master, doc.label.enabledVariants, {}, doc.label.overrides, { keepDisabled: true });
+  validateBindings(layers, "label", (msg) => { throw new Error(`Can't apply this edit: ${msg}`); });
+  return doc;
 }
 
 /** The text a LayerValue draws: a plain string as itself, styled runs joined,
@@ -826,6 +863,28 @@ function changedPaths(a: unknown, b: unknown): string[] {
   return [...paths].filter((p) => p !== "name" && !deepEqual(getPath(a, p), getPath(b, p)));
 }
 
+/** The items NOT on a longest run whose `rank` (old position) increases in
+ *  their current order: the fewest items whose moving explains the new
+ *  order. Quadratic, which is nothing at a master's layer count. */
+function movedOutOfOrder<T>(items: readonly T[], rank: (t: T) => number): T[] {
+  const order = items.map(rank);
+  const len = order.map(() => 1);
+  const prev = order.map(() => -1);
+  let end = -1;
+  for (let i = 0; i < order.length; i++) {
+    for (let j = 0; j < i; j++) {
+      if (order[j] < order[i] && len[j] + 1 > len[i]) {
+        len[i] = len[j] + 1;
+        prev[i] = j;
+      }
+    }
+    if (end < 0 || len[i] > len[end]) end = i;
+  }
+  const kept = new Set<number>();
+  for (let i = end; i >= 0; i = prev[i]) kept.add(i);
+  return items.filter((_, i) => !kept.has(i));
+}
+
 /** What saving this master would write, itemised for review: the structural
  *  and fill-contract edits already in `edited`, then the label's overrides
  *  offered for promotion into the template. Pure and synchronous — the dialog
@@ -848,16 +907,14 @@ export function masterChanges(
   for (const l of edited.layers)
     if (!baseById.has(l.id)) out.push({ kind: "added", layerId: l.id, layerName: l.name });
 
-  // Draw order, comparing only the layers both have: a layer whose position
-  // among the survivors changed was reordered, not merely displaced by a
-  // neighbour's add or remove.
-  const commonBase = base.layers.filter((l) => editedById.has(l.id)).map((l) => l.id);
-  const commonEdited = edited.layers.filter((l) => baseById.has(l.id)).map((l) => l.id);
-  for (const [i, id] of commonEdited.entries())
-    if (commonBase[i] !== id) {
-      const l = editedById.get(id)!;
-      out.push({ kind: "moved", layerId: id, layerName: l.name });
-    }
+  // Draw order, comparing only the layers both have, so a neighbour's add or
+  // remove displaces nothing. The layers that kept their relative order are
+  // the longest run still in base order (#99); only the rest were moved —
+  // moving one layer to the front is one row, not one per layer it passed.
+  const baseIndex = new Map(base.layers.map((l, i) => [l.id, i]));
+  const common = edited.layers.filter((l) => baseIndex.has(l.id));
+  for (const l of movedOutOfOrder(common, (l) => baseIndex.get(l.id)!))
+    out.push({ kind: "moved", layerId: l.id, layerName: l.name });
 
   for (const l of edited.layers) {
     const was = baseById.get(l.id);
@@ -1016,10 +1073,12 @@ export function resizeBy(
   const sx = (bw + lw) / bw, sy = (bh + lh) / bh;
   const size = ((): LayerPatch => {
     switch (layer.kind) {
-      case "text": return { width: Math.max((layer.width ?? bw) + lw, 1) };
-      case "qr": return { size: layer.size * sx };
-      case "barcode": return { h: layer.h * sy, moduleW: layer.moduleW * sx };
-      case "image": return { w: layer.w * sx, ...(layer.h != null ? { h: layer.h * sy } : {}) };
+      // Sizes on the same 0.01pt grid as positions; moduleW keeps its own,
+      // finer precision (a module is under a point).
+      case "text": return { width: pt(Math.max((layer.width ?? bw) + lw, 1)) };
+      case "qr": return { size: pt(layer.size * sx) };
+      case "barcode": return { h: pt(layer.h * sy), moduleW: layer.moduleW * sx };
+      case "image": return { w: pt(layer.w * sx), ...(layer.h != null ? { h: pt(layer.h * sy) } : {}) };
     }
   })();
   // Keep the opposite edge still: the anchored point moves by its share of
@@ -1030,7 +1089,7 @@ export function resizeBy(
   const ax = dw * (anchorFraction(hAnchorOf(layer)) - (handle.hx === -1 ? 1 : 0));
   const ay = dh * (anchorFraction(vAnchorOf(layer)) - (handle.hy === -1 ? 1 : 0));
   const pos: LayerPatch = {};
-  if (ax && !(b?.side === "left" || b?.side === "right")) pos.x = layer.x + ax;
-  if (ay && typeof layer.y === "number" && !(b?.side === "top" || b?.side === "bottom")) pos.y = layer.y + ay;
+  if (ax && !(b?.side === "left" || b?.side === "right")) pos.x = pt(layer.x + ax);
+  if (ay && typeof layer.y === "number" && !(b?.side === "top" || b?.side === "bottom")) pos.y = pt(layer.y + ay);
   return { ...size, ...pos };
 }

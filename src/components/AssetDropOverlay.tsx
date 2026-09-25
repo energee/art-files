@@ -37,7 +37,7 @@ export function globalAssetKind(
 
 /** FileDrop marks its root with this attribute. Drag events bubble to window,
  *  but a field owns the drop whenever it is the pointer's actual target. */
-function isFieldDrop(target: EventTarget | null): boolean {
+export function isFieldDrop(target: EventTarget | null): boolean {
   return target instanceof Element && !!target.closest(`[${FILE_DROP_ATTR}]`);
 }
 
@@ -51,15 +51,23 @@ export function AssetDropOverlay(props: {
   handlersRef.current = props;
 
   React.useEffect(() => {
+    // Drag nesting depth: +1 per dragenter, -1 per dragleave, so the overlay
+    // hides only when the pointer leaves the window itself (#122). WebKit
+    // (the Tauri macOS webview) reports relatedTarget null on EVERY
+    // dragleave, so relatedTarget can't tell a window exit from crossing
+    // between elements inside it. Only a drop (which fires no dragleave)
+    // resets it; hiding over a field must not, the pointer is still inside.
+    let depth = 0;
     const hide = () => {
       setActive(false);
       setOver(null);
     };
     // Without preventDefault on dragover the browser refuses the drop and
-    // navigates to the file instead. A field does this for itself, so yielding
-    // here preserves react-dropzone's accept/reject behavior. dragover fires
-    // as soon as the pointer enters the window and continuously after, so it
-    // alone arms the overlay — no dragenter listener needed.
+    // navigates to the file instead; TabsShell guards every other file drag
+    // (#121). A field prevents for itself, so yielding here preserves
+    // react-dropzone's accept/reject behavior. dragover fires as soon as the
+    // pointer enters the window and continuously after, so it alone arms the
+    // overlay; dragenter only counts depth.
     const onDragOver = (e: DragEvent) => {
       if (isFieldDrop(e.target)) return hide();
       const type = draggedTypes(e.dataTransfer).find((t) => CLAIMED_TYPES.includes(t));
@@ -70,25 +78,28 @@ export function AssetDropOverlay(props: {
       // matches where the file will land (no name mid-drag; type suffices).
       setOver(globalAssetKind({ name: "", type }, e.clientX, window.innerWidth));
     };
-    // relatedTarget is null only when the pointer leaves the window itself,
-    // not when it crosses between elements inside it.
-    const onDragLeave = (e: DragEvent) => {
-      if (!e.relatedTarget) hide();
+    const onDragEnter = () => { depth++; };
+    const onDragLeave = () => {
+      depth = Math.max(0, depth - 1);
+      if (!depth) hide();
     };
     const onDropAnywhere = (e: DragEvent) => {
       const field = isFieldDrop(e.target);
       const file = e.dataTransfer?.files[0];
       const kind = file ? globalAssetKind(file, e.clientX, window.innerWidth) : null;
+      depth = 0;
       hide();
       if (field || !file || !kind) return;
       e.preventDefault();
       if (kind === "mask") handlersRef.current.onMask(file);
       else handlersRef.current.onTexture(file);
     };
+    window.addEventListener("dragenter", onDragEnter);
     window.addEventListener("dragover", onDragOver);
     window.addEventListener("dragleave", onDragLeave);
     window.addEventListener("drop", onDropAnywhere);
     return () => {
+      window.removeEventListener("dragenter", onDragEnter);
       window.removeEventListener("dragover", onDragOver);
       window.removeEventListener("dragleave", onDragLeave);
       window.removeEventListener("drop", onDropAnywhere);

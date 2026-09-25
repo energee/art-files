@@ -11,10 +11,10 @@ import { Label } from "@/components/ui/label";
 import {
   InputGroup, InputGroupAddon, InputGroupInput, InputGroupText,
 } from "@/components/ui/input-group";
-// Decimal places implied by the step, so a drag can't accumulate float noise
+// Round to the decimal places the step implies, so a drag can't accumulate float noise
 // (0.4 + 0.1 = 0.5000000000000001) straight into the saved config. Shared with
 // the callers that have to predict what this field commits — see numeric.ts.
-import { decimalsOf as decimals } from "@/numeric";
+import { roundToStep } from "@/numeric";
 
 /** Pixels of pointer travel per drag increment. Two keeps a full-range drag
  *  comfortable (tracking's -2..20 in 0.1s is ~440px) while leaving a single
@@ -52,8 +52,9 @@ export function ScrubField(props: {
   const [text, setText] = useState<string | null>(null);
   const drag = useRef<{ x: number; v: number } | null>(null);
 
+  const shown = props.mixed ? "" : roundToStep(props.value, props.step);
   const snap = (v: number) =>
-    Number(Math.min(props.max, Math.max(props.min, v)).toFixed(decimals(props.step)));
+    roundToStep(Math.min(props.max, Math.max(props.min, v)), props.step);
 
   return (
     <div className="flex items-center justify-between gap-2">
@@ -95,7 +96,7 @@ export function ScrubField(props: {
           className="h-6 text-xs"
           // Match editing precision without mutating imported geometry on render.
           // Keep the draft untouched until blur so typing remains uninterrupted.
-          value={text ?? (props.mixed ? "" : Number(props.value.toFixed(decimals(props.step))))}
+          value={text ?? shown}
           placeholder={props.mixed ? "Mixed" : undefined}
           onChange={(e) => {
             setText(e.target.value);
@@ -104,7 +105,13 @@ export function ScrubField(props: {
             const n = Number(e.target.value);
             if (e.target.value !== "" && Number.isFinite(n)) props.onChange(snap(n));
           }}
-          onBlur={() => setText(null)}
+          onBlur={(e) => {
+            setText(null);
+            // React skips the DOM write when the input's text loosely equals
+            // the new value ("1e2" == 100), so a typed exponent would stay on
+            // screen after it applied as 100 (#135). Write the value we show.
+            e.currentTarget.value = String(shown);
+          }}
         />
         <InputGroupAddon align="inline-end">
           <InputGroupText className="text-[10px]">{props.unit}</InputGroupText>

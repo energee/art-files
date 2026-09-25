@@ -1,7 +1,212 @@
 # Changelog
 
-User-facing changes to the Label Lab desktop application are recorded here. Every
-binary-impacting change gets its own version before it is merged.
+User-facing changes to the Label Lab desktop application are recorded here.
+Merged changes collect under [Unreleased] until a release is cut, which renames
+that section to the new version (see .agents/release-steward.md).
+
+## [Unreleased]
+
+### Fixed
+
+- **Undo brings back replaced or cleared layer images.** Dropping a new image
+  on an image layer (or clearing it) and then pressing `⌘Z` restores the
+  original art, instead of leaving the layer blank and saving a project with
+  its image missing. Saved `.label` files also no longer carry images the
+  label has stopped using.
+
+- **Switching off a layer another layer is bound to no longer breaks the
+  preview and export.** Turning off Description with Collab on (the collab
+  lead-in hangs below it), switching to a version whose layers hang off a
+  layer you turned off, or resetting a bound layer back on is now refused
+  with a message naming the binding, instead of leaving the preview in an
+  error state. Switch off or unbind the layers bound to it first.
+
+- **Dropping a file on the window no longer replaces it.** A dropped
+  `.label` now opens as a project, the same as File → Open Project… (in the
+  current tab if untouched, otherwise a new one). A PDF, SVG, or other file
+  the app doesn't take, dropped outside a file well, is ignored. Before,
+  either one navigated the window to the file and lost every open tab.
+  Textures and masks still drop as before.
+
+- **Invalid entries stay in the field.** Typing an invalid barcode code (such
+  as `ABC123`) or an out-of-range number (such as an ABV of `-3`) now leaves
+  what you typed in the inspector field, marked invalid with the error
+  beneath it, instead of snapping back to the master's code or going blank.
+  The preview and exports still skip the invalid value.
+
+- **The close-tab prompt now warns about unsaved master changes.** When the
+  tab's master has changed (a layer added, removed, or reordered), the Save /
+  Discard / Cancel prompt adds a line saying those changes will be discarded
+  unless you Cancel and use File → Save Master. Save still saves the label
+  and closes the tab.
+
+- **Old labels with an ABV like "6.5%" open cleanly.** Labels saved when the
+  ABV field carried its own percent sign no longer open with "Expected a
+  number." and a blank ABV that blocked export; the sign is dropped on open,
+  since the label already prints "% alc by vol".
+
+- **Re-zipped label and master files keep their art.** A `.label` or
+  `.master` that was unzipped and re-compressed with Finder or `zip -r` now
+  opens with its texture and mask instead of an empty, nameless image.
+
+- **Older JSON-only masters open even when an editor touched them.** A
+  legacy `.master` saved as plain JSON now opens when it starts with a
+  byte-order mark or a blank line, instead of failing with "invalid zip
+  data".
+
+- **Moving a label to another master and back restores all its text.** Text
+  set aside while a label sat on a master without that field (including text
+  carried over from older label files) now comes back when the label returns
+  to a master that has it, instead of staying set aside for good.
+
+- **PSD text sets with the same letter spacing as the PDF.** Editable type
+  layers in exported PSDs now turn Photoshop's auto-kerning off, so Barlow
+  Condensed text no longer sets tighter in Photoshop than in the PDF and the
+  preview. Poppins labels are unchanged.
+
+- **Collab SVG logos keep their rectangles, circles, and other basic shapes.**
+  Shapes drawn as rectangles, circles, ellipses, polygons, polylines, or lines
+  were dropped, so the rest of the logo was blown up to fill the slot (and a
+  logo made only of shapes wouldn't load at all). They're placed now. An SVG
+  that relies on clones, live text, or embedded images is refused with a
+  message naming the element, instead of silently losing that part.
+
+- **⌘S on a saved document no longer opens the browser's Save Page dialog.**
+  In the browser, a shortcut whose command is unavailable right now (Save
+  with no unsaved changes, Export while exports are blocked) now does
+  nothing instead of falling through to the browser's own action for that key.
+
+- **Editing text on the canvas no longer tightens the letters.** The on-canvas
+  text editor now sets Barlow Condensed with the same letter spacing as the
+  preview under it, so text stays put when you start typing. Poppins labels
+  are unchanged.
+
+- **An over-long QR value now shows a clear message.** A QR payload too long
+  to fit in any QR code used to report a cryptic "code length overflow" (or
+  an "undefined" error on export). It now says the value is too long, how
+  many bytes it is, and to shorten it or lower the error correction level.
+
+- **Set-aside style lines and barcodes in older labels come back.** When an
+  older label's style line or UPC was set aside because its master had no
+  place for it, moving the label onto a master that has one now restores the
+  value instead of losing it.
+
+- **Collab SVG logos load whatever quote style or line breaks they use.** SVGs
+  written with single-quoted attributes, or with attributes on their own lines,
+  were refused ("Logo path is missing d attribute"), and a single-quoted group
+  transform was ignored, which put the art in the wrong place. Both now load
+  and place correctly.
+
+- **⌘S, ⌘O and ⌘E work while you are typing in a field.** In the browser,
+  the ⌘ shortcuts (save, open, new and close tab, export) used to do nothing
+  while a text field had focus, and ⌘S opened the browser's Save Page dialog
+  instead. They now run from anywhere. Single-key shortcuts (1, 2, 3, R, G)
+  still type into the field, and ⌘Z still undoes the field's own typing.
+
+- **Opening a file brings Label Lab to the front on Windows and Linux.**
+  Double-clicking a `.label` while the app is already running (even
+  minimized) now restores and focuses the window, so the file's tab is in
+  view instead of opening out of sight. Launching the app again from its
+  icon also surfaces the running window.
+
+- **Save Master lists only the layers you actually moved.** Moving one layer
+  to a new place in the stack now shows a single "moved" row in the Save
+  Master review, instead of flagging nearly every layer it passed.
+
+- **Save Master review stays with its tab.** Opening or switching to another
+  tab while the Save Master review is up now hides it until you return, so
+  confirming can only write the master of the tab you are looking at.
+
+- **View menu checkmarks stay put.** In the desktop app, choosing the view you
+  are already in (View → Label while showing the label, or View → Can in the
+  can view) no longer clears its checkmark.
+
+- **Files opened while Label Lab is starting up open right away.** A `.label`
+  double-clicked in the moment the app was still loading could sit unopened
+  until the next file was opened; it now opens as soon as the app is ready.
+
+- **Opening a file no longer replaces one you just opened.** A label opened
+  through the Open dialog stayed "untouched" in the browser build, so the next
+  Open silently swapped it out of its tab. Any opened label now keeps its tab,
+  and the next Open goes to a new tab. Only an untouched Untitled tab is reused.
+
+- **The on-canvas editor keeps an invalid entry, too.** After an invalid
+  entry was rejected (such as an ABV of `25`), double-clicking the layer on
+  the preview opened its editor on the master's value, or blank. It now
+  shows the value you entered, the same one the error names and the
+  inspector field shows.
+
+- **Text formatting buttons work from the keyboard.** In a sidebar text field,
+  Shift+Tab now reaches the Header, Bold, and White ink buttons instead of
+  hiding them, and they apply to the text you had selected.
+
+- **Dragged positions save as clean numbers.** Moving or resizing a layer on
+  the canvas, and binding or unbinding one, now lands its position (and a
+  resize its size) on the same 0.01pt grid the inspector types and the arrow
+  keys nudge on, so Save Master
+  shows `x: 292.56 → 193.09` instead of `193.08552000000003`.
+- **Save Master names an edited text line.** A changed line reads
+  `lines: 1 → 1 ("Old" → "New")` instead of the uninformative `1 → 1`.
+
+- **A failed restart keeps the installed update.** If Restart Now fails,
+  closing the error puts you back where you were: the status bar still offers
+  Restart to finish, and Label Lab → Restart to Update opens the restart
+  dialog instead of an empty one.
+
+- **Switching to the 3D can view repeatedly stays smooth.** Leaving the can
+  view now releases its graphics context right away, so toggling 2D and 3D or
+  switching tabs quickly no longer piles up contexts until the browser starts
+  dropping them.
+
+- **Millimetre fields keep the number you typed.** Typing 50 in a millimetre
+  position or size field no longer comes back as 49.999 on blur (or 10 as
+  10.001). Fields show the shortest millimetre reading that stores the same
+  value, and keep a third decimal only where it matters.
+
+- **Every way of quitting on macOS asks about unsaved tabs.** Dock → Quit,
+  logging out or shutting down, and AppleScript `quit` now run the same
+  Save / Discard / Cancel prompt as `⌘Q` instead of quitting and losing the
+  edits. With unsaved work open, Label Lab stops a logout or shutdown until
+  you've decided; with nothing unsaved it quits right away as before.
+
+- **The inspector stays 300px wide in a narrow window.** Below 640px it took
+  three quarters of the window and covered the label. Above that it was 312px
+  and overlapped the canvas by 12px. It is now 300px at every width, and the
+  label recentres in the space beside it.
+
+- **An empty QR layer draws nothing.** Clearing a QR layer's value used to
+  print a real, scannable QR code for a single space. An empty QR layer now
+  draws nothing on the canvas, in the PDFs, or in the PSD, the same as a
+  barcode with an invalid number.
+
+- **The development window always loads its own editor.** `npm run dev` now
+  serves only on port 5173 and stops with an error if another app already
+  holds it, instead of quietly moving to 5174 while the Label Lab dev window
+  kept loading whatever was on 5173.
+
+- **Command palette shortcuts line up on the right.** The key hints in the ⌘K
+  palette now sit flush against the right edge of every row, instead of
+  floating mid-row at a position that changed with each command's name.
+
+- **Ruler numbers stay clear of the unit corner.** When a vertical-ruler
+  number would run up into the corner box (e.g. "-0.5" over "in"), its label
+  is left out; the tick mark still shows.
+
+- **The drop overlay no longer flickers on macOS.** When you drag a texture
+  or mask image across the window, the "Background texture / Metallic mask"
+  overlay now stays up as the pointer moves over the canvas and panels. It
+  used to blink off at every element edge in the desktop app. It still
+  closes when you drag out of the window or drop.
+
+- **Variant badges say what the variant did.** Hovering a layer's variant
+  badge now reads "Changed by the Collab variant" on a master layer the
+  variant only overrides, and keeps "Added by the Collab variant" for a
+  layer the variant adds.
+
+- **Number fields show the value they applied.** Typing a number in
+  exponent form, such as `1e2` in Size, applied 100 but left `1e2` in the
+  field after you clicked away. The field now shows `100`. This covers
+  every inspector number field, including optional ones like wrap width.
 
 ## [0.1.97] - 2026-09-24
 

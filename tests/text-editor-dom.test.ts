@@ -258,6 +258,22 @@ describe("TextEditor", () => {
     expect(container.textContent).not.toMatch(/markdown/i);
   });
 
+  // Issue #120: Shift+Tab out of the field lands on the toolbar, so the
+  // toggles must stay mounted while focus is anywhere in the field's row —
+  // and still act on the selection the field left behind.
+  it("keeps the toolbar reachable by keyboard from the field", () => {
+    const { onChange } = renderEditor({ lines: [line("x")], multiline: true });
+    const box = focusTextbox();
+    act(() => { window.getSelection()!.selectAllChildren(box.firstElementChild!); });
+    const bold = container.querySelector('[aria-label="Toggle bold"]') as HTMLElement;
+    act(() => { bold.focus(); });
+    expect(container.querySelector('[aria-label="Toggle bold"]')).toBe(bold);
+    act(() => { bold.click(); });
+    expect(onChange.mock.lastCall?.[0][0]).toMatchObject({ text: "x", bold: true });
+    act(() => { bold.blur(); });
+    expect(container.querySelector('[aria-label="Toggle bold"]')).toBeNull();
+  });
+
   it("hides Header on a single-line field", () => {
     renderEditor({ lines: [line("x")], multiline: false });
     focusTextbox();
@@ -518,4 +534,15 @@ it("shows uppercase in the sidebar warning field before focus and emits a style 
   act(() => { button.click(); });
   expect(onUppercase).toHaveBeenCalledWith(true);
   expect(onChange).not.toHaveBeenCalled();
+});
+
+it("keeps the run toggles hidden when Tab lands on Uppercase from outside the field", () => {
+  act(() => { root.render(createElement(TooltipProvider, null,
+    createElement(TextEditor, {
+      id: "warning", label: "Text", lines: [line("x")], base,
+      multiline: true, uppercase: false, onUppercase: vi.fn(), onChange: vi.fn(),
+    }))); });
+  const button = container.querySelector('[aria-label="Toggle uppercase"]') as HTMLElement;
+  act(() => { button.focus(); });
+  expect(container.querySelector('[aria-label="Toggle bold"]')).toBeNull();
 });

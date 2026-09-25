@@ -27,29 +27,50 @@ export const widenValue = (l: Layer, v: LayerValue): LayerValue =>
   l.kind === "text" && typeof v === "string"
     ? [{ text: v, fill: l.style.fill, layer: l.style.layer }] : v;
 
-/** One value into one layer, validated per kind. */
-function applyValue(l: Layer, v: LayerValue): Result {
+/** One value onto one layer, UNVALIDATED — the per-kind shaping applyValue
+ *  and withRejectedValue share. Undefined when the value has the wrong shape
+ *  for the layer (a .label is parsed JSON, so the guard is real). */
+function putValue(l: Layer, v: LayerValue): Layer | undefined {
   if (l.kind === "text") {
     const lines = widenValue(l, v);
-    if (!Array.isArray(lines)) return { error: "Expected text." };
-    if (l.input) {
-      // ponytail: validateField still speaks FieldDecl; build one on the fly.
-      const r = validateField({ id: l.id, label: l.name, kind: l.input, path: "",
-        min: l.min, max: l.max, symbology: l.symbology }, plainText(lines));
-      if (!r.ok) return { error: r.error! };
-    }
-    return { layer: { ...l, lines } };
+    return Array.isArray(lines) ? { ...l, lines } : undefined;
   }
-  if (typeof v !== "string") return { error: l.kind === "image" ? "Expected an image." : "Expected a code value." };
-  if (l.kind === "image") return { layer: { ...l, asset: v } };
+  if (typeof v !== "string") return undefined;
+  return l.kind === "image" ? { ...l, asset: v } : { ...l, value: v };
+}
+
+/** A stored value the resolver REJECTED, put back on its layer for display
+ *  only (#128/#129): applyValue skips an invalid value so the canvas and
+ *  exports never draw it, but the fill field must show what the label holds —
+ *  not the master's fallback — beside the error. No `format`: a rejected value
+ *  never reached ref expansion, so it is its own template. A value of the
+ *  wrong shape for the layer leaves the layer as it was. */
+export function withRejectedValue(l: Layer, v: LayerValue): Layer {
+  const shown = putValue(l, v);
+  if (!shown) return l;
+  return shown.kind === "barcode" || shown.kind === "qr" ? { ...shown, format: undefined } : shown;
+}
+
+/** One value into one layer, validated per kind. */
+function applyValue(l: Layer, v: LayerValue): Result {
+  const layer = putValue(l, v);
+  if (!layer) {
+    return { error: l.kind === "text" ? "Expected text." : l.kind === "image" ? "Expected an image." : "Expected a code value." };
+  }
+  // ponytail: validateField still speaks FieldDecl; build one on the fly.
+  if (layer.kind === "text" && layer.input) {
+    const r = validateField({ id: l.id, label: l.name, kind: layer.input, path: "",
+      min: layer.min, max: layer.max, symbology: layer.symbology }, plainText(layer.lines));
+    if (!r.ok) return { error: r.error! };
+  }
   // A literal code is checked here so a bad one keeps the master's value; a
   // template ("{textId}") can only be judged once expanded — resolveLayers'
   // post-expansion check covers it, and every other tier's value too.
-  if (l.kind === "barcode" && !fieldRefs(v).length) {
-    const r = validateFor(l.symbology, v);
+  if (layer.kind === "barcode" && !fieldRefs(layer.value).length) {
+    const r = validateFor(layer.symbology, layer.value);
     if (!r.ok) return { error: r.error! };
   }
-  return { layer: { ...l, value: v } };
+  return { layer };
 }
 
 /** Lines as one plain string: runs joined with their markers stripped. */

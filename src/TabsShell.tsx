@@ -2,10 +2,10 @@
 // per open .label project, inactive ones hidden (display:none), their state
 // intact but their rendered previews dropped (see App.tsx's active gating).
 // The shell owns everything that outlives or spans documents: the tab list
-// (src/tabs.ts), OS file-open routing, the File → Open picker (an open must
-// be able to target a new tab), the dirty-close confirm flow, shared render
-// settings (persisted per operator — see settings.ts), the desktop updater,
-// and window title/close integration.
+// (src/tabs.ts), OS file-open and dropped-.label routing, the File → Open
+// picker (an open must be able to target a new tab), the dirty-close confirm
+// flow, shared render settings (persisted per operator — see settings.ts),
+// the desktop updater, and window title/close integration.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
@@ -20,6 +20,7 @@ import {
 import { LABEL_EXT } from "@/labelfile";
 import { loadRenderSettings, saveRenderSettings, type RenderSettings } from "@/settings";
 import { DesktopUpdater } from "@/components/DesktopUpdater";
+import { isFieldDrop } from "@/components/AssetDropOverlay";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -65,8 +66,9 @@ export default function TabsShell() {
   // NOT outlive the attempt: routeFileOpen also dedupes by a queued entry's
   // path, so a stale entry made a FAILED open permanently un-retryable (the
   // re-open just focused the empty tab) and let a Save-As'd tab keep
-  // claiming its original path. After success tab.filePath carries the
-  // claim; after failure the tab is legitimately pristine again.
+  // claiming its original path. After success tab.filePath (path opens) or
+  // the cleared dirty flag (every open) carries the claim; after failure
+  // the tab is legitimately pristine again.
   const [pending, setPending] = useState<Record<number, FileToOpen>>({});
   // Mirror for the routing path: two opens can arrive in one task (the OS
   // drain loop), before the state above has flushed.
@@ -182,9 +184,10 @@ export default function TabsShell() {
 
   /** OS file-opens (Finder / Explorer double-click, second-instance argv):
    *  the Rust side stores the path and emits (see take_opened_file in
-   *  src-tauri/src/main.rs); pulled once on mount — a launch-by-file beats
-   *  the webview loading — and again per emit. Routed by path identity:
-   *  already open → focus, pristine active tab → reuse, else a new tab. */
+   *  src-tauri/src/main.rs); pulled once the listener registers — a
+   *  launch-by-file beats the webview loading — and again per emit. Routed
+   *  by path identity: already open → focus, pristine active tab → reuse,
+   *  else a new tab. */
   useEffect(() => {
     if (!isTauri()) return;
     async function openFromOs() {
@@ -198,8 +201,38 @@ export default function TabsShell() {
     }
     const stopping = import("@tauri-apps/api/event")
       .then(({ listen }) => listen("project-file-opened", () => void openFromOs()));
-    void openFromOs();
+    // Drain only once the listener is live (#109): a drain before listen()
+    // resolves leaves a gap where a delivery's emit reaches no one and the
+    // path sits queued until the next open. The queue holds anything that
+    // arrived earlier (a launch-by-file), so nothing is lost by waiting.
+    void stopping.then(() => openFromOs());
     return () => void stopping.then((stop) => stop());
+    // Routing reads live state through stateRef; the helpers are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Any OS file drag outside a file well is prevented here, or the webview
+   *  navigates to the file and discards every tab (#121). Lives in the shell
+   *  so the guard never depends on which editor is mounted. A dropped .label
+   *  opens like the hidden-input fallback (bytes only; Save goes through
+   *  Save As); textures and masks are routed by the active editor's
+   *  AssetDropOverlay; anything else is ignored. */
+  useEffect(() => {
+    const guarded = (e: DragEvent) =>
+      !!e.dataTransfer?.types.includes("Files") && !isFieldDrop(e.target);
+    const onDragOver = (e: DragEvent) => { if (guarded(e)) e.preventDefault(); };
+    const onDrop = (e: DragEvent) => {
+      if (!guarded(e)) return;
+      e.preventDefault();
+      const file = e.dataTransfer!.files[0];
+      if (file?.name.toLowerCase().endsWith(LABEL_EXT)) openRouted({ file });
+    };
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+    };
     // Routing reads live state through stateRef; the helpers are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -314,6 +347,15 @@ export default function TabsShell() {
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
+  }, [anyUnsaved]);
+
+  // Desktop app quit (#151): macOS Dock → Quit, logout and AppleScript
+  // `quit` terminate the app without a window close, so the Rust side asks
+  // this flag whether to cancel and route the quit through the close sweep
+  // above, or let it through (see src-tauri/src/terminate.rs).
+  useEffect(() => {
+    if (!isTauri()) return;
+    void invoke("set_unsaved", { unsaved: anyUnsaved });
   }, [anyUnsaved]);
 
   // Desktop window title tracks the active tab; • marks unsaved work.
@@ -443,6 +485,15 @@ export default function TabsShell() {
             <DialogDescription>
               This tab has unsaved changes. Save them, discard them, or keep
               the tab open.
+              {/* Save writes only the .label (issue #159): name the master
+                  edits it leaves behind rather than prompting a second
+                  time. Inside the description so it is announced with it. */}
+              {confirmTab?.masterUnsaved && (
+                <>
+                  {" "}This tab also has master changes. They'll be discarded
+                  unless you Cancel and use File → Save Master.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

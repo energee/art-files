@@ -1,7 +1,10 @@
-// main.rs — Label Lab's desktop shell: the updater gate and the OS
-// file-open delivery (.label paths from Finder / Explorer / argv).
+// main.rs — Label Lab's desktop shell: the updater gate, the OS
+// file-open delivery (.label paths from Finder / Explorer / argv), and the
+// macOS app-quit hook (terminate.rs).
 // Prevents an additional console window on Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod terminate;
 
 use std::{ffi::OsString, path::PathBuf, sync::Mutex};
 use tauri::Manager;
@@ -107,6 +110,41 @@ fn deliver_opened_file(app: &tauri::AppHandle, path: PathBuf) {
     }
 }
 
+/** The three window calls raise_window makes — a trait only so a test can
+ * record their order without a real window. */
+#[cfg(any(test, not(target_os = "macos")))]
+trait RaiseWindow {
+    fn unminimize(&self) -> tauri::Result<()>;
+    fn show(&self) -> tauri::Result<()>;
+    fn set_focus(&self) -> tauri::Result<()>;
+}
+
+#[cfg(not(target_os = "macos"))]
+impl<R: tauri::Runtime> RaiseWindow for tauri::WebviewWindow<R> {
+    fn unminimize(&self) -> tauri::Result<()> {
+        tauri::WebviewWindow::unminimize(self)
+    }
+    fn show(&self) -> tauri::Result<()> {
+        tauri::WebviewWindow::show(self)
+    }
+    fn set_focus(&self) -> tauri::Result<()> {
+        tauri::WebviewWindow::set_focus(self)
+    }
+}
+
+/** Bring the window forward when a second launch forwards to this one
+ * (#108): a file opened from Explorer while the app sat minimized otherwise
+ * lands in a tab nobody can see. Restore and show BEFORE focusing — a
+ * minimized or hidden window cannot take focus. Best-effort: a failed call
+ * leaves the file queued and opened, just not raised. macOS needs none of
+ * this — the OS activates the app itself before delivering the Apple event. */
+#[cfg(any(test, not(target_os = "macos")))]
+fn raise_window(window: &impl RaiseWindow) {
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
 /** Pop the oldest queued path; the frontend calls this in a loop until it
  * returns null, so one emit can drain several deliveries. */
 #[tauri::command]
@@ -132,6 +170,11 @@ fn main() {
                 path
             };
             deliver_opened_file(app, path);
+        }
+        // Raise even when no .label came along: relaunching the app from
+        // its icon should surface the running window, not do nothing.
+        if let Some(window) = app.get_webview_window("main") {
+            raise_window(&window);
         }
     }));
     let builder = builder
@@ -159,8 +202,15 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             updater_enabled,
             relaunch_app,
-            take_opened_file
+            take_opened_file,
+            terminate::set_unsaved
         ])
+        // macOS: Dock → Quit, logout and AppleScript `quit` bypass the
+        // window close flow; route them through it (see terminate.rs).
+        .setup(|app| {
+            terminate::install(app.handle());
+            Ok(())
+        })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
@@ -228,6 +278,34 @@ mod tests {
         let state = OpenedFile::new([bad, PathBuf::from("/x/ok.label")]);
         assert_eq!(state.take().as_deref(), Some("/x/ok.label"));
         assert_eq!(state.take(), None);
+    }
+
+    /** Records the calls raise_window makes, in order. */
+    #[derive(Default)]
+    struct FakeWindow(std::cell::RefCell<Vec<&'static str>>);
+
+    impl RaiseWindow for FakeWindow {
+        fn unminimize(&self) -> tauri::Result<()> {
+            self.0.borrow_mut().push("unminimize");
+            Ok(())
+        }
+        fn show(&self) -> tauri::Result<()> {
+            self.0.borrow_mut().push("show");
+            Ok(())
+        }
+        fn set_focus(&self) -> tauri::Result<()> {
+            self.0.borrow_mut().push("set_focus");
+            Ok(())
+        }
+    }
+
+    /** #108: a forwarded open must bring a minimized or hidden window back
+     *  and focus it — restore first, so focus lands on a visible window. */
+    #[test]
+    fn raise_window_restores_shows_then_focuses() {
+        let window = FakeWindow::default();
+        raise_window(&window);
+        assert_eq!(*window.0.borrow(), ["unminimize", "show", "set_focus"]);
     }
 
     #[test]

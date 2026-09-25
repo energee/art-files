@@ -2,8 +2,8 @@
 
 import { randomUUID } from "node:crypto";
 import { appendFileSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+
+import { isEntry } from "./is-entry.mjs";
 
 export function releaseNotes(version, changelog = readFileSync("CHANGELOG.md", "utf8")) {
   const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -86,5 +86,4 @@ function main() {
   }
 }
 
-const entryUrl = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";
-if (entryUrl === import.meta.url) main();
+if (isEntry(import.meta.url)) main();

@@ -50,8 +50,13 @@ jobs:
 
       - name: Validate version and release notes
         shell: bash
+        # The newest release tag NOT on this commit. tauri-action tags HEAD as
+        # soon as the first platform finishes, so on a re-run of a failed leg
+        # the newest tag is this release's own, and "not newer than itself"
+        # aborted the re-run (#106). `--no-contains HEAD` skips it while still
+        # listing every earlier release (they are ancestors of HEAD).
         run: |
-          previous_tag=$(git tag --list 'label-lab-v*' --sort=-v:refname | head -n 1)
+          previous_tag=$(git tag --list 'label-lab-v*' --no-contains HEAD --sort=-v:refname | head -n 1)
           if [[ -z "$previous_tag" ]]; then
             echo "No previous label-lab release tag found" >&2
             exit 1
@@ -120,9 +125,16 @@ jobs:
   # release page. On Windows/Linux the updater artifact IS the installer
   # (-setup.exe / .AppImage), so those land on Pages too — acceptable, since
   # the whole feed is already reachable only by the unguessable site URL.
+  #
+  # It runs even when a platform failed (#106): one failed leg used to skip the
+  # feed for every platform. latest.json lists only the platforms that
+  # uploaded, so the others keep their current version until "Re-run failed
+  # jobs" rebuilds the failed leg — which re-runs this job too, since it
+  # depends on it. `!cancelled()` still stops it for a cancelled run.
   publish-update-feed:
     name: Publish update feed to Pages
     needs: release
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -132,12 +144,22 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: package.json
+          sparse-checkout-cone-mode: false
+
       - name: Download updater assets from the release
         env:
           GH_TOKEN: ${{ github.token }}
+        # By THIS run's tag, not "the latest release": now that the job runs
+        # after a failed leg, a run whose every leg failed before publishing
+        # must fail here rather than re-publish the previous release's feed.
+        # (A release with no latest.json yet fails at the jq step below.)
         run: |
           mkdir site
-          gh release download --repo "$GITHUB_REPOSITORY" --dir site \
+          tag="label-lab-v$(node -p 'require("./package.json").version')"
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir site \
             --pattern 'latest.json' \
             --pattern '*.app.tar.gz' \
             --pattern '*.app.tar.gz.sig' \

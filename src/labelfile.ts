@@ -67,22 +67,37 @@ export function packAssets(zip: Zippable, assets: LabelAssets): void {
 }
 
 /** The unpack half of packAssets: pull every asset role and per-id custom
- *  image out of an unzipped entry map. Shared with unpackMaster. */
+ *  image out of an unzipped entry map. Shared with unpackMaster. Directory
+ *  entries (names ending in `/`) are skipped: packAssets never writes them,
+ *  but a file re-zipped by Finder or `zip -r` carries a zero-byte `texture/`
+ *  ahead of `texture/<name>`, and it must not be taken as the asset (#100). */
 export function extractAssets(entries: Record<string, Uint8Array>): LabelAssets {
   const assets: LabelAssets = {};
+  const files = Object.keys(entries).filter((p) => !p.endsWith("/"));
   for (const [role, dir] of Object.entries(ROLE_DIRS) as [FixedAssetRole, string][]) {
-    const path = Object.keys(entries).find((p) => p.startsWith(`${dir}/`));
+    const path = files.find((p) => p.startsWith(`${dir}/`));
     if (path) assets[role] = { name: path.slice(dir.length + 1), bytes: entries[path] };
   }
   // Custom image assets: one directory per assetId under custom/, each
   // holding exactly one file (name is whatever comes after the id).
   const customImages: Record<string, CustomImageAsset> = {};
-  for (const path of Object.keys(entries)) {
+  for (const path of files) {
     const m = /^custom\/([^/]+)\/(.+)$/.exec(path);
     if (m) customImages[m[1]] = { name: m[2], bytes: entries[path] };
   }
   if (Object.keys(customImages).length) assets.customImages = customImages;
   return assets;
+}
+
+/** The text of a legacy JSON-only file (the pre-ZIP .master), or undefined
+ *  when the bytes are anything else — in practice a ZIP. Sniffs for the
+ *  opening '{' past a UTF-8 BOM and leading whitespace, which an editor may
+ *  add on save (#101), and drops the BOM from the text, since JSON.parse
+ *  rejects it (whitespace it accepts). Shared by both unpackMasters. */
+export function legacyJsonText(bytes: Uint8Array): string | undefined {
+  let i = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf ? 3 : 0;
+  while (bytes[i] === 0x20 || bytes[i] === 0x09 || bytes[i] === 0x0a || bytes[i] === 0x0d) i++;
+  return bytes[i] === 0x7b ? strFromU8(bytes.subarray(i)) : undefined;
 }
 
 /** Pack a v1 label file: config.json (legacy writer kept for tests and Node

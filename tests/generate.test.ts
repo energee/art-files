@@ -50,6 +50,17 @@ describe("parseGenerateArgs", () => {
     });
   });
 
+  it("new form without a master: values + out, and stdin + out (#105)", () => {
+    expect(parseGenerateArgs(["v.json", "out"])).toEqual({
+      mode: "generate", source: { kind: "values", path: "v.json" },
+      outDir: "out", variants: [], assets: {}, set: {}, format: "all",
+    });
+    expect(parseGenerateArgs(["-", "out"])).toMatchObject({
+      mode: "generate", source: { kind: "values", path: "-" }, outDir: "out",
+    });
+    expect(parseGenerateArgs(["out"])).toMatchObject({ mode: "generate", outDir: "out" });
+  });
+
   it("legacy positional still parses", () => {
     expect(parseGenerateArgs(["none", "none", "out", "cfg.json", "--collab-left=a.svg"]))
       .toMatchObject({ mode: "legacy", texturePath: "none", maskPath: "none",
@@ -366,6 +377,48 @@ describe("runGenerate", () => {
     ])));
     expect(await io.run(["--values", "/v.json", "--out", "/out", "--format", "pdf"])).toBe(1);
     expect(io.stderr.join("")).toMatch(/night-mask\.pdf/);
+  });
+});
+
+describe("buildLabel explicit default font (#90)", () => {
+  const build = (overrides?: Record<string, { fontFamily: "poppins" }>) => buildLabel({
+    master: lolevMaster(),
+    masterAssets: {},
+    values: labradorite(),
+    enabledVariants: [],
+    overrides,
+    extraImages: {},
+    format: "pdf",
+    assetRoot,
+  });
+  it("a text layer naming the master's own font builds, identical to leaving it unset", async () => {
+    const [named, unset] = await Promise.all([build({ name: { fontFamily: "poppins" } }), build()]);
+    expect(Buffer.from(named.files[0].bytes).equals(Buffer.from(unset.files[0].bytes))).toBe(true);
+  });
+});
+
+describe("buildLabel SVG aspect (#91)", () => {
+  // A 50x100 SVG in the 70pt-wide collab slot. With no h the layer's box is
+  // the asset's aspect at w — 70x140, as the App plans it — so leaving h
+  // out must build exactly what an explicit h of 140 builds.
+  const tall = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 100"><path d="M0 0H50V100H0Z"/></svg>');
+  const build = (h: number | undefined) => {
+    const master = lolevMaster();
+    const slot = master.variants![0].layers.collabLeft as { h?: number };
+    if (h === undefined) delete slot.h; else slot.h = h;
+    return buildLabel({
+      master,
+      masterAssets: {},
+      values: coerceValues(master, { name: "T", barcode: "850051366224" }, ["collab"]).values,
+      enabledVariants: ["collab"],
+      extraImages: { collabLeft: { name: "tall.svg", bytes: tall } },
+      format: "pdf",
+      assetRoot,
+    });
+  };
+  it("an SVG image layer without h plans at the SVG's own aspect, not square", async () => {
+    const [auto, explicit] = await Promise.all([build(undefined), build(140)]);
+    expect(Buffer.from(auto.files[0].bytes).equals(Buffer.from(explicit.files[0].bytes))).toBe(true);
   });
 });
 

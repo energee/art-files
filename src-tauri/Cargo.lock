@@ -1981,6 +1981,7 @@ dependencies = [
 name = "label-lab"
 version = "0.1.97"
 dependencies = [
+ "objc2",
  "serde_json",
  "tauri",
  "tauri-build",

@@ -559,6 +559,11 @@ function typeLayer(
         font: { name: ps[base] },
         fontSize: px(size),
         fillColor: color255(paint(mode, first.fill, first.layer)),
+        // Photoshop auto-kerns by default; the PDF draws raw glyph advances
+        // and the plan measures unkerned (#86), so a kern-table face like
+        // Barlow Condensed would set tighter here than in the PDF. Style
+        // runs inherit this from the base style (#143).
+        autoKerning: false,
         // Omitted for a single line: Photoshop's auto leading is what every
         // single-line layer wants.
         ...(lines.length > 1 ? { leading: px(leading), autoLeading: false } : {}),

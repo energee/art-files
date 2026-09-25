@@ -16,7 +16,7 @@ import type { LabelFileV2 } from "./types";
 import { parseMaster as parseMasterV1 } from "./types";
 import { parseLabelFile } from "./labelfile";
 import { convertMasterV1 } from "./convert";
-import { extractAssets, packAssets, type LabelAssets } from "../labelfile";
+import { extractAssets, legacyJsonText, packAssets, type LabelAssets } from "../labelfile";
 
 /** The template assets a master carries: the master-owned subset of the
  *  .label roles. A label's own embedded art always wins over the master's. */
@@ -56,8 +56,8 @@ export function packMaster(m: Master, assets: MasterAssets): Uint8Array {
 }
 
 export function unpackMaster(bytes: Uint8Array): { master: Master; assets: MasterAssets; warnings: string[] } {
-  if (bytes[0] === 0x7b) // '{' — a legacy JSON-only master, no assets
-    return { ...parseMasterJson(JSON.parse(strFromU8(bytes))), assets: {} };
+  const legacy = legacyJsonText(bytes); // a legacy JSON-only master, no assets
+  if (legacy !== undefined) return { ...parseMasterJson(JSON.parse(legacy)), assets: {} };
   const entries = unzipSync(bytes);
   const entry = entries["master.json"];
   if (!entry) throw new Error("Not a .master file: missing master.json");

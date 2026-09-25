@@ -21,6 +21,15 @@ describe("QR options", () => {
     const h = qrShapes("test", { ecLevel: "H" }).count;
     expect(h).toBeGreaterThanOrEqual(l);
   });
+  it("empty data yields no modules instead of a code for a space (#72)", () => {
+    for (const style of ["dots", "square", "rounded"] as const) {
+      const s = qrShapes("", { style });
+      expect(s.dots).toEqual([]);
+      expect(s.finders).toEqual([]);
+      expect(s.squares ?? []).toEqual([]);
+      expect(qrPath(s, 100)).toBe("");
+    }
+  });
   it("memo distinguishes options", () => {
     const a = qrShapes("same", { style: "square" });
     const b = qrShapes("same", { style: "dots" });
@@ -54,4 +63,13 @@ describe("QR text encoding (#66)", () => {
     "scans back exactly: %s",
     (text) => expect(decode(text)).toBe(text),
   );
+});
+
+describe("QR capacity overflow (#71)", () => {
+  it("throws a real Error naming the problem, not qrcode-generator's bare string", () => {
+    const overflow = () => qrShapes("x".repeat(1300), { ecLevel: "H" });
+    expect(overflow).toThrow(Error);
+    expect(overflow).toThrow(/QR value is too long.*1300 bytes/);
+    expect(qrShapes("x".repeat(1300), { ecLevel: "L" }).count).toBeGreaterThan(0);
+  });
 });

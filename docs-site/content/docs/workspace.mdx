@@ -15,9 +15,9 @@ description: Tabs, menus, the palette, and the three-pane layout
 
 ## Tabs
 
-**File → New Tab** (`⌘N`) opens an untitled canvas on the last master you applied (layers and positions only — not the previous beer's fills or art). **Open Project…** (`⌘O`) loads a `.label` into the current tab if you haven't touched it, otherwise a new one.
+**File → New Tab** (`⌘N`) opens an untitled canvas on the last master you applied (layers and positions only — not the previous beer's fills or art). **Open Project…** (`⌘O`) loads a `.label` into the current tab if it is an untitled tab you haven't touched, otherwise a new one. A file you opened stays put, even unedited.
 
-**Close Tab** (`⌘W`) asks Save / Discard / Cancel when that tab has real work on it. Master edits you haven't written with **Save Master** count too, even after the label itself is saved. The prompt's Save writes only the label, so choose Cancel and use Save Master to keep them. Closing the window or quitting (`⌘Q`) walks every dirty tab through the same prompt. The browser build uses the generic leave-page warning instead.
+**Close Tab** (`⌘W`) asks Save / Discard / Cancel when that tab has real work on it. Unsaved master edits (a layer added, removed, or reordered in the template) count too, even after the label itself is saved. The prompt's Save writes only the `.label`, so the prompt names those edits: they are discarded when the tab closes unless you choose Cancel and use **File → Save Master** first. Closing the window or quitting walks every dirty tab through the same prompt: `⌘Q`, and on macOS also Dock → Quit, logging out, or shutting down (Label Lab stops the logout until you've decided). The browser build uses the generic leave-page warning instead.
 
 Background tabs keep state and assets. They drop the rendered preview. Switch back and it rebuilds like usual.
 
@@ -25,7 +25,7 @@ A fresh Untitled tab starts "dirty" so Save is live, and it closes without a fus
 
 ## Command palette
 
-`⌘K` / `Ctrl+K`. Same moves as the menus: new, open, save, export, undo, views, rulers, guides, settings, new variant.
+`⌘K` / `Ctrl+K`. Same moves as the menus (new, open, save, export, undo, views, rulers, guides, settings), plus New Variant, which is not in the menus.
 
 ## When something's wrong
 

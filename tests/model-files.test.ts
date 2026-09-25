@@ -30,6 +30,28 @@ describe(".master v3 container", () => {
     expect(a).toEqual(assets);
   });
 
+  it("skips directory entries a Finder / zip -r re-zip adds (#100)", () => {
+    const { assets } = unpackMaster(zipSync({
+      "master.json": strToU8(serializeMaster(lolevV3())),
+      "texture/": new Uint8Array(0),
+      "texture/rock.png": png(1),
+      "mask/": new Uint8Array(0),
+      "mask/metal.png": png(2),
+    }));
+    expect(assets.texture).toEqual({ name: "rock.png", bytes: png(1) });
+    expect(assets.mask).toEqual({ name: "metal.png", bytes: png(2) });
+  });
+
+  it("opens a legacy JSON-only master behind a UTF-8 BOM or leading whitespace (#101)", () => {
+    const json = serializeMasterV1(lolevV1());
+    const bom = new Uint8Array([0xef, 0xbb, 0xbf, ...strToU8(json)]);
+    for (const bytes of [bom, strToU8(`\n  ${json}`), strToU8(`\r\n\t${json}`)]) {
+      const { master, assets } = unpackMaster(bytes);
+      expect(master.formatVersion).toBe(3);
+      expect(assets).toEqual({});
+    }
+  });
+
   it("opens a legacy JSON-only v1 master converted to v3, with no assets", () => {
     const { master, assets, warnings } = unpackMaster(strToU8(serializeMasterV1(lolevV1())));
     expect(master.formatVersion).toBe(3);

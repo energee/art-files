@@ -847,5 +847,11 @@ export class CanScene {
     // (React StrictMode double-invoke, HMR) doesn't stack behind this one.
     this.renderer.domElement.remove();
     this.renderer.dispose();
+    // dispose() frees three's GL objects but leaves the context alive until
+    // GC; CanView builds a new scene on every 2D↔3D or tab switch, so rapid
+    // switching piled contexts up to the browser's cap (issue #125). Lose it
+    // now — after dispose(), whose deletes need a live context and which
+    // unhooks three's webglcontextlost handler.
+    this.renderer.forceContextLoss();
   }
 }

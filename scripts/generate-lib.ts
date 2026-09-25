@@ -10,6 +10,7 @@ import { defaultConfig, parseConfigFile } from "../src/defaults";
 import { parseDescription } from "../src/description";
 import { FONT_FAMILIES, type FontFamilyId } from "../src/fontCatalog";
 import { setBleed } from "../src/layout";
+import { svgAspect } from "../src/logo";
 import { convertConfigV1, guideLines } from "../src/model/convert";
 import { unpackLabel, unpackMaster, type MasterAssets } from "../src/model/files";
 import { PAGE_ART_ID, type LabelFile, type Layer, type LayerKind, type LayerValue, type Master, type TextLayer, type TextLine } from "../src/model/layers";
@@ -122,8 +123,11 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
     return { mode: "inspect", ...(masterPath ? { masterPath } : {}) };
   }
 
+  // Fewer than three positionals can only be the new form (`[values|-] <out>`
+  // on the shipped master): the legacy argv needs texture, mask and out (#105).
   const newForm = !!(singles.master || singles.values || singles.label || masterPath
-    || singles.out || singles.format || variants.length || Object.keys(assets).length || Object.keys(set).length);
+    || singles.out || singles.format || variants.length || Object.keys(assets).length || Object.keys(set).length
+    || positional.length < 3);
   if (newForm) {
     if (singles["collab-left"] || singles["collab-center"])
       throw new Error("use --asset collabLeft=file --variant collab\n" + USAGE);
@@ -152,19 +156,16 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
     };
   }
 
-  if (positional.length >= 3) {
-    const [texturePath, maskPath, outDir, configPath] = positional;
-    if (positional.length > 4) throw new Error(USAGE);
-    return {
-      mode: "legacy",
-      texturePath, maskPath, outDir,
-      ...(configPath ? { configPath } : {}),
-      ...(singles["collab-left"] ? { collabLeft: singles["collab-left"] } : {}),
-      ...(singles["collab-center"] ? { collabCenter: singles["collab-center"] } : {}),
-    };
-  }
-
-  throw new Error(USAGE);
+  // Not the new form, so three or more positionals: the legacy argv.
+  const [texturePath, maskPath, outDir, configPath] = positional;
+  if (positional.length > 4) throw new Error(USAGE);
+  return {
+    mode: "legacy",
+    texturePath, maskPath, outDir,
+    ...(configPath ? { configPath } : {}),
+    ...(singles["collab-left"] ? { collabLeft: singles["collab-left"] } : {}),
+    ...(singles["collab-center"] ? { collabCenter: singles["collab-center"] } : {}),
+  };
 }
 
 const JOB_KEYS = new Set(["values", "variants", "files", "overrides"]);
@@ -463,8 +464,11 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
 
   const logoSvg = readAsset(input.assetRoot, "logo2025.svg").toString("utf8");
   const fonts = fontPack(input.assetRoot, defaultFamily);
+  // The default family is listed too, as the SAME pack: a text layer may
+  // name it explicitly (plan runs are then tagged with it), and newDoc
+  // reuses the base embed for an identical pack rather than embedding twice (#90).
   const fontFamilies: NonNullable<Assets["fontFamilies"]> = {};
-  for (const id of needed) if (id !== defaultFamily) fontFamilies[id] = fontPack(input.assetRoot, id);
+  for (const id of needed) fontFamilies[id] = id === defaultFamily ? fonts : fontPack(input.assetRoot, id);
 
   const images: Record<string, CollabImage> = {};
   const planCustom: NonNullable<PlanAssets["custom"]> = {};
@@ -473,7 +477,11 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
 
   const put = async (id: string, img: CollabImage, imageDoc: PDFDocument) => {
     images[id] = img;
-    if (img.kind === "svg") { planCustom[id] = { aspect: 1, art: img }; return; }
+    if (img.kind === "svg") {
+      // The SVG's ink-box aspect, as the App's readCustomImage takes it (#91).
+      planCustom[id] = { aspect: svgAspect(img.svg), art: img };
+      return;
+    }
     const embedded = img.kind === "png" ? await imageDoc.embedPng(img.bytes) : await imageDoc.embedJpg(img.bytes);
     planCustom[id] = { aspect: embedded.width / embedded.height };
     if (img.kind === "png") {
@@ -518,7 +526,7 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
     psdImages[l.asset] = { data: new Uint8Array(png.data), width: png.width, height: png.height };
   }
 
-  const measure = await pdfMeasureFace({ [defaultFamily]: fonts, ...fontFamilies }, defaultFamily);
+  const measure = await pdfMeasureFace(fontFamilies, defaultFamily);
 
   const plan = planLayers(resolved.layers, measure, {
     logoSvg, guides: guideLines(input.master), custom: planCustom,

@@ -62,7 +62,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ColorField } from "./ColorField";
 import { MetallicToggle } from "./MetallicToggle";
 import { ScrubField } from "./ScrubField";
-import { decimalsOf } from "@/numeric";
+import { decimalsOf, PT_STEP, roundToStep } from "@/numeric";
 import { CharacterHeight } from "./CharacterHeight";
 import { FONT_FAMILIES, fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
 
@@ -74,10 +74,10 @@ const KIND_ICONS: Record<LayerKind, LucideIcon> = {
   text: Type, image: Image, barcode: Barcode, qr: QrCode,
 };
 
-/** Points precision for positions and sizes: the Lolev master authors to
- *  hundredths (24.12, 15.83), so typing keeps that and a drag moves in
- *  halves — fine enough to land a snap, coarse enough to cross the label. */
-const PT = { step: 0.01, dragStep: 0.5 } as const;
+/** Points precision for positions and sizes: typing keeps the model's PT_STEP
+ *  and a scrub moves in halves — fine enough to land a snap, coarse enough to
+ *  cross the label. */
+const PT = { step: PT_STEP, dragStep: 0.5 } as const;
 
 // The model stays in PDF points; only dimensional controls convert for display.
 const MM_PER_PT = 25.4 / 72;
@@ -86,18 +86,43 @@ type DimensionUnit = "mm" | "pt";
 // A millimetre is ~2.8 points, so mm needs one more decimal than pt to keep
 // the model's 0.01pt precision — at two, a sub-millimetre value (a barcode's
 // module width) rounds to 0.00 in the field while the layer holds a real one.
-const DISPLAY_STEP = { mm: 0.001, pt: 0.01 } as const;
+const DISPLAY_STEP = { mm: 0.001, pt: PT_STEP } as const;
+
+/** A field's reading back to points at the model's `step` — the one
+ *  conversion both committing a value and choosing its display go through. */
+const toPoints = (value: number, unit: string, step: number) =>
+  roundToStep(unit === "mm" ? value / MM_PER_PT : value, step);
+
+/** A typed or scrubbed reading back to points (toPoints), then clamped to
+ *  the field's point bounds — after rounding, so a rounded-up millimetre
+ *  reading of a bound (1pt -> 0.353mm -> 1.0006pt) cannot slip past it. */
+const clampedPoints = (value: number, b: { unit: string; step: number; min: number; max: number }) =>
+  Math.min(b.max, Math.max(b.min, toPoints(value, b.unit, b.step)));
+
+/** A stored point value as the field shows it. Millimetres use the FEWEST
+ *  decimals (up to DISPLAY_STEP.mm's three) that store back to the same
+ *  points: 50mm is kept as 141.73pt, which reads 49.999mm at three decimals —
+ *  the drift in #131 — but 50 already stores 141.73, so 50 is what shows. A
+ *  value that needs the third decimal (1pt is 0.353mm; 0.35 would store
+ *  0.99pt) still gets it. Any other unit shows the value at `step`. */
+function displayValue(points: number, unit: string, step: number): number {
+  if (unit !== "mm") return roundToStep(points, step);
+  const exact = points * MM_PER_PT;
+  const stored = roundToStep(points, step);
+  for (let d = 0; d < decimalsOf(DISPLAY_STEP.mm); d++) {
+    const shown = Number(exact.toFixed(d));
+    if (toPoints(shown, unit, step) === stored) return shown;
+  }
+  return roundToStep(exact, DISPLAY_STEP.mm);
+}
 
 function DimensionField(props: Omit<ComponentProps<typeof ScrubField>, "unit"> & { unit: DimensionUnit }) {
   const scale = props.unit === "mm" ? MM_PER_PT : 1;
   return <ScrubField {...props} key={props.unit}
-    value={props.value * scale} min={props.min * scale} max={props.max * scale}
+    value={displayValue(props.value, props.unit, props.step)} min={props.min * scale} max={props.max * scale}
     step={DISPLAY_STEP[props.unit]} dragStep={props.unit === "mm" ? 0.1 : props.dragStep}
-    // Back to points at the MODEL's precision, then clamped: the field
-    // rounds in display units, and a rounded-up millimetre reading of a
-    // bound (1pt -> 0.353mm -> 1.0006pt) must not slip past it.
-    onChange={(value) => props.onChange(Math.min(props.max, Math.max(props.min,
-      Number((value / scale).toFixed(decimalsOf(props.step))))))} />;
+    // Back to points at the MODEL's precision, then clamped (clampedPoints).
+    onChange={(value) => props.onChange(clampedPoints(value, props))} />;
 }
 
 /** Section heading — the idiom StyleProperties' inspector used, so the new
@@ -194,6 +219,7 @@ function BlankableField(props: {
   // the rendered value or the browser reports a step mismatch on a number the
   // field itself produced.
   const displayStep = props.unit === "mm" ? DISPLAY_STEP.mm : props.step;
+  const shown = props.value === undefined ? "" : displayValue(props.value, props.unit, props.step);
   return (
     <Field id={props.id} label={props.label} badge={props.badge}>
       <InputGroup className="h-6 w-24">
@@ -205,7 +231,7 @@ function BlankableField(props: {
           step={displayStep}
           placeholder={props.placeholder}
           className="h-6 text-xs"
-          value={text ?? (props.value === undefined ? "" : Number((props.value * scale).toFixed(decimalsOf(displayStep))))}
+          value={text ?? shown}
           onChange={(e) => {
             const s = e.target.value;
             setText(s);
@@ -215,10 +241,11 @@ function BlankableField(props: {
             // DimensionField does: without it a millimetre reading typed back
             // verbatim (35pt -> 12.347mm -> 34.99916pt) never re-matches the
             // master, so the override badge can't be cleared from this field.
-            if (Number.isFinite(n)) props.onChange(Math.min(props.max, Math.max(props.min,
-              Number((n / scale).toFixed(decimalsOf(props.step))))));
+            if (Number.isFinite(n)) props.onChange(clampedPoints(n, props));
           }}
-          onBlur={() => setText(null)}
+          // Write the shown value too: React won't replace "3e2" with 300,
+          // they're loosely equal (#135, see ScrubField).
+          onBlur={(e) => { setText(null); e.currentTarget.value = String(shown); }}
         />
         <InputGroupAddon align="inline-end">
           <InputGroupText className="text-[10px]">{props.unit}</InputGroupText>

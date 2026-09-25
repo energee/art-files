@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import type { Layer, LayerKind } from "@/model/layers";
+import type { LayerRow, VariantChip } from "@/model/rows";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -31,24 +32,6 @@ import {
   SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-
-/** A variant as the header chips and the row badges see it. */
-export interface VariantChip { id: string; name: string; enabled: boolean }
-
-export interface LayerRow {
-  /** The RESOLVED layer (every enabled variant's diff already merged in). */
-  layer: Layer;
-  /** Set when a variant ADDS this layer (an id the master lacks): the row
-   *  shows the variant's name as a badge and dims while it is off. */
-  variant?: VariantChip;
-  /** An enabled VARIANT changes part of this master layer — the one that
-   *  does, so the mark can name it. Distinct from `changed` because resetting
-   *  it edits the MASTER FILE, not this label. */
-  variantOverridden?: VariantChip;
-  /** THIS label changed the layer (a fill value or an override) — what the
-   *  header's "Changed" filter shows. */
-  changed?: boolean;
-}
 
 /** Click modifiers as the row reports them. `meta` is ⌘ on macOS and Ctrl
  *  elsewhere (the toggle-select gesture) — the platform rule lives here so
@@ -222,9 +205,8 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
           )}
           {row.variant && (
             <span
-              title={row.variant.enabled
-                ? `Added by the ${row.variant.name} variant`
-                : `Added by the ${row.variant.name} variant (off)`}
+              title={`${row.variantOverridden ? "Changed" : "Added"} by the ${row.variant.name} variant${
+                row.variant.enabled ? "" : " (off)"}`}
               className={cn(
                 "shrink-0 rounded-sm border border-sidebar-border px-1 text-[10px] leading-4",
                 row.variant.enabled ? "text-sidebar-foreground/70" : "text-sidebar-foreground/40",
