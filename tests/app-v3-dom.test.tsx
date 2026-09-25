@@ -318,30 +318,19 @@ it("opens a fresh undo step for inspector typing instead of folding into the pre
   }
 });
 
-/** Mounts a DocumentEditor, waits for its canvas assets (gestures measure
- *  boxes off them), runs `body`, and unmounts. `p()` reads the latest
- *  PreviewCompare props, so it sees each re-render's layers. */
+/** mountEditor, then waits for its canvas assets (gestures measure boxes off
+ *  them), runs `body`, and unmounts. `p()` reads the latest PreviewCompare
+ *  props, so it sees each re-render's layers. */
 async function withCanvasEditor(
-  body: (p: () => PreviewProps, container: HTMLElement) => Promise<void>, onMeta = vi.fn(),
+  body: (p: () => PreviewProps, container: HTMLElement, onMeta: ReturnType<typeof vi.fn>) => Promise<void>,
 ) {
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
   perf.source = null; // so the wait below waits for THIS mount's assets
+  const { container, onMeta, unmount } = await mountEditor();
   try {
-    await act(async () => {
-      root.render(createElement(DocumentEditor, {
-        active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta,
-        saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
-        onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
-        onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
-      }));
-    });
     await vi.waitFor(() => expect(perf.source).not.toBeNull(), { timeout: 30_000 });
-    await body(() => perf.preview!, container);
+    await body(() => perf.preview!, container, onMeta);
   } finally {
-    await act(async () => root.unmount());
-    container.remove();
+    await unmount();
   }
 }
 
@@ -352,8 +341,7 @@ async function withCanvasEditor(
 async function renameThenGesture(
   gesture: (p: PreviewProps) => void, cancel = (p: PreviewProps) => p.onDragCancel(),
 ) {
-  const onMeta = vi.fn();
-  await withCanvasEditor(async (p, container) => {
+  await withCanvasEditor(async (p, container, onMeta) => {
     const row = container.querySelector('[data-layer-id="name"]')!;
     await act(async () => {
       (row.querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement).click();
@@ -373,7 +361,7 @@ async function renameThenGesture(
       document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
     });
     expect(onMeta.mock.lastCall?.[0].title).not.toBe("Peregrine");
-  }, onMeta);
+  });
 }
 
 it("a drag whose first move snaps to zero never folds into the previous edit", async () => {
