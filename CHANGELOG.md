@@ -63,6 +63,12 @@ that section to the new version (see .agents/release-steward.md).
   Redo) leave the canvas alone; in the inspector and its color picker they
   still undo your last edit.
 
+- **`⌘W`, `⌘S` and the other `⌘` shortcuts no longer act on the tab behind an
+  open dialog.** With the Save Master review or Settings open, `⌘W` no longer
+  closes the tab underneath, and `⌘N`, `⌘O`, `⌘S`, `⇧⌘S` and `⌘E` (and their
+  menu items) do nothing until the dialog is closed. With no dialog open, `⌘S`
+  still saves from inside a text field.
+
 ## [0.1.98] - 2026-09-25
 
 ### Fixed

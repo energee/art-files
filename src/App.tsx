@@ -28,7 +28,7 @@ import { RenderSettings as RenderSettingsFields } from "@/components/RenderSetti
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { MasterSaveReview } from "@/components/MasterSaveReview";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { isTypingTarget, keyOwner } from "@/keys";
+import { inDialog, isTypingTarget, keyOwner } from "@/keys";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
 import type { Fill } from "@/types";
@@ -869,8 +869,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (!mods && e.shiftKey) return;
       // The BARE keys (1/2/3/r/g) stand aside where they are someone else's
       // input: a text field, a dialog, or a popup — a menu, a Select's
-      // typeahead, the inspector. The ⌘ shortcuts stay live in all of them — ⌘S saves from
-      // inside a field.
+      // typeahead, the inspector. The ⌘ shortcuts stay live in fields and
+      // popups — ⌘S saves from inside a field.
       if (!mods) {
         const owner = keyOwner(e.target);
         if (owner && owner !== "widget") return;
@@ -880,7 +880,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       // The key is the app's even while its command is disabled: ⌘S on a
       // clean document must not fall through to the browser's Save Page.
       e.preventDefault();
-      if (!cmd.disabled) cmd.run();
+      // Nor does a modal dialog let ⌘W, ⌘S… reach the tab behind it (#244).
+      if (!cmd.disabled && !inDialog(e.target)) cmd.run();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
