@@ -11,7 +11,7 @@ import { DEFAULT_RENDER } from "../src/settings";
 type DropProps = { label: string; fileName?: string; previewUrl?: string; onFile: (f: File) => unknown; onClear?: () => void };
 const wells = vi.hoisted(() => ({ image: null as null | DropProps }));
 vi.mock("../src/components/FileDrop", () => ({
-  CHECKER: "", FILE_DROP_ATTR: "data-file-drop",
+  FILE_DROP_ATTR: "data-file-drop",
   FileDrop: (p: DropProps) => { if (p.label === "Image") wells.image = p; return null; },
 }));
 vi.mock("../src/components/PreviewCompare", () => ({ PreviewCompare: () => null }));
