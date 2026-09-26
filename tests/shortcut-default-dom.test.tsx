@@ -109,6 +109,13 @@ it("⌘ shortcuts inside an open dialog leave the tab behind it alone (#244)", a
       expect(await press(control, { key, metaKey: true })).toBe(true);
     }
   }
+  // Focus in a Select list portalled out of the dialog: still blocked.
+  const list = document.createElement("div");
+  list.setAttribute("role", "listbox");
+  list.tabIndex = -1;
+  container.appendChild(list);
+  list.focus();
+  expect(await press(list, { key: "w", metaKey: true })).toBe(true);
   expect(onCloseTab).not.toHaveBeenCalled();
   expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: true }); // Save did not run
   // The dialog closed, the same key acts on the tab again.

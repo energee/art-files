@@ -102,6 +102,9 @@ it("native menu commands leave the tab behind an open dialog alone (#244)", asyn
     document.body.append(dialog);
     button.focus();
     for (const id of ["tab-close", "project-save", "undo", "view-mask"]) await click(id);
+    // Focus lost to the page (or in a list portalled out of the dialog): still blocked.
+    button.blur();
+    await click("tab-close");
     expect(ran).toEqual([]);
     // The check muda flipped is put back, since the view did not change.
     await menu.render();

@@ -37,6 +37,15 @@ export const isTypingTarget = (target: EventTarget | null): boolean => {
 export const inDialog = (target: EventTarget | null): boolean =>
   !!(target as HTMLElement | null)?.closest?.(DIALOG);
 
+/** Whether a modal dialog is open at all, wherever focus is — even in a
+ *  Select or popover portalled out of it, or when the key came from the
+ *  native menu with no target. The ⌘ file and edit commands ask this: the
+ *  dialog blocks the whole tab behind it (#244). Hidden tabs keep their
+ *  dialogs closed, so only the front tab's can match. */
+export const dialogOpen = (): boolean =>
+  // A closing dialog stays mounted, marked data-closed, while it animates out.
+  !!document.querySelector(`${DIALOG}:not([data-closed])`);
+
 /** Who a key aimed at `target` belongs to, narrowest claim first; null when
  *  it is the app's. */
 export const keyOwner = (target: EventTarget | null): "text" | "dialog" | "popup" | "widget" | null => {

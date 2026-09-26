@@ -28,7 +28,7 @@ import { RenderSettings as RenderSettingsFields } from "@/components/RenderSetti
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { MasterSaveReview } from "@/components/MasterSaveReview";
 import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useEffect, useMemo, useRef, useState } from "react";
-import { inDialog, isTypingTarget, keyOwner } from "@/keys";
+import { dialogOpen, isTypingTarget, keyOwner } from "@/keys";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
 import type { Fill } from "@/types";
@@ -856,15 +856,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   // ⌘Z / ⇧⌘Z (and ⌘Y) for the history, marking the document dirty like the
   // menu commands do. Inert while a text field has focus — there the
   // browser's own per-field undo is the one the user means — or a modal
-  // dialog does, which must not change the canvas behind it (#225).
+  // dialog is open, which must not change the canvas behind it (#225, #244).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!activeRef.current) return; // a hidden tab owns no shortcuts
       const key = e.key.toLowerCase();
       if (key !== "z" && key !== "y") return;
       if (!e.metaKey && !e.ctrlKey) return;
-      const owner = keyOwner(e.target);
-      if (owner === "text" || owner === "dialog") return;
+      if (isTypingTarget(e.target) || dialogOpen()) return;
       e.preventDefault();
       // History moves bypass `edit`; without mutating, ⌘Z after a save left the tab clean (#76).
       // Nothing to step over is a no-op, as the disabled menu item is.
@@ -898,7 +897,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       // clean document must not fall through to the browser's Save Page.
       e.preventDefault();
       // Nor does a modal dialog let ⌘W, ⌘S… reach the tab behind it (#244).
-      if (!cmd.disabled && !inDialog(e.target)) cmd.run();
+      if (!cmd.disabled && !dialogOpen()) cmd.run();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);

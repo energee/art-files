@@ -11,7 +11,7 @@ import {
   Settings, SquareArrowDown, SquareArrowUp, Undo2, X, type LucideIcon,
 } from "lucide-react";
 import { shortcutOf, type Command } from "@/components/CommandMenu";
-import { inDialog, isTypingTarget } from "@/keys";
+import { dialogOpen, isTypingTarget } from "@/keys";
 import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu,
   MenubarSeparator, MenubarShortcut, MenubarSub, MenubarSubContent,
@@ -380,12 +380,11 @@ function useNativeMenu(
           // follow App's key rules: the focused field keeps its own undo
           // stack, and a modal dialog blocks every command on the tab behind
           // it — ⌘Z (#225) as much as ⌘W, ⌘S or a menu click (#244).
-          const focus = document.activeElement;
-          if ((id === "undo" || id === "redo") && isTypingTarget(focus)) {
+          if ((id === "undo" || id === "redo") && isTypingTarget(document.activeElement)) {
             document.execCommand(id);
             return;
           }
-          if (inDialog(focus)) return;
+          if (dialogOpen()) return;
           command.run();
         };
         const roots = await Promise.all(APP_MENUS.map((entry) =>

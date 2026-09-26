@@ -1,7 +1,8 @@
-// keys.test.ts — keyOwner, the one key-ownership classifier (#225).
+// keys.test.ts — keyOwner, the one key-ownership classifier (#225), and
+// dialogOpen, which blocks the ⌘ commands behind a modal dialog (#244).
 // @vitest-environment happy-dom
 import { afterEach, expect, it } from "vitest";
-import { keyOwner } from "../src/keys";
+import { dialogOpen, keyOwner } from "../src/keys";
 
 afterEach(() => { document.body.replaceChildren(); });
 
@@ -45,4 +46,13 @@ it("everything else, and no target, is the app's", () => {
   expect(keyOwner(document.body)).toBeNull();
   expect(keyOwner(null)).toBeNull();
   expect(keyOwner(window)).toBeNull();
+});
+
+it("dialogOpen sees a modal dialog anywhere, but not a popover or the inspector", () => {
+  document.body.innerHTML = '<div role="dialog" data-slot="popover-content"></div><div role="dialog" data-slot="sheet-content"></div>';
+  expect(dialogOpen()).toBe(false);
+  document.body.insertAdjacentHTML("beforeend", '<div role="dialog" data-slot="dialog-content"></div>');
+  expect(dialogOpen()).toBe(true);
+  document.querySelector('[data-slot="dialog-content"]')!.setAttribute("data-closed", "");
+  expect(dialogOpen()).toBe(false); // animating out after Escape
 });
