@@ -28,6 +28,12 @@ const groups = (children: any[] = []) => children.map((l) => l.name);
 /** ag-psd reads colours back with float dust (155.9988): round per channel. */
 const rgb = (c: { r: number; g: number; b: number }) => ({ r: Math.round(c.r), g: Math.round(c.g), b: Math.round(c.b) });
 
+/** The ResolutionInfo (0x03ED) a reader sizes the page by: dpi and units. */
+const dpiOf = (psd: ReturnType<typeof readPsd>) => {
+  const r = psd.imageResources?.resolutionInfo;
+  return [r?.horizontalResolution, r?.verticalResolution, r?.horizontalResolutionUnit, r?.verticalResolutionUnit];
+};
+
 const read = (bytes: Uint8Array) =>
   readPsd(Buffer.from(bytes).buffer as ArrayBuffer,
     // No canvas in Node: skip every pixel surface, the layer TREE is what
@@ -173,22 +179,12 @@ describe("psd build", () => {
       const value = layer(psd.children as any[], name).effects?.stroke?.[0]?.size?.value;
       expect([name, Math.round(value * 1000) / 1000]).toEqual([name, size]);
     }
+    // …and the file says 300 ppi, so it still opens at print size (#338).
+    expect(dpiOf(psd)).toEqual([300, 300, "PPI", "PPI"]);
   });
 
-  it("declares the export resolution so Photoshop opens it at print size (#338)", async () => {
-    const dpiOf = (psd: ReturnType<typeof readPsd>) => {
-      const r = psd.imageResources?.resolutionInfo;
-      return [r?.horizontalResolution, r?.verticalResolution, r?.horizontalResolutionUnit, r?.verticalResolutionUnit];
-    };
-    expect(dpiOf(await build())).toEqual([DESIGN_DPI, DESIGN_DPI, "PPI", "PPI"]);
-    let psd: ReturnType<typeof readPsd>;
-    try {
-      setOutputDpi(300);
-      psd = await build();
-    } finally {
-      setOutputDpi(DESIGN_DPI);
-    }
-    expect(dpiOf(psd)).toEqual([300, 300, "PPI", "PPI"]);
+  it("declares the export resolution so Photoshop opens it at print size (#338)", () => {
+    expect(dpiOf(doc)).toEqual([DESIGN_DPI, DESIGN_DPI, "PPI", "PPI"]);
   });
 
   it("keeps page rasters in the display list's authored draw order", async () => {
