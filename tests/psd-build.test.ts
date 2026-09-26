@@ -4,7 +4,8 @@
 // back into one type layer per text layer, and that a keylined element
 // carries a stroke effect Photoshop can show (the PDF strokes text via its
 // text rendering mode, which has no PSD equivalent — a layer effect is the
-// parallel).
+// parallel), and that the file declares its export DPI so it opens at the
+// label's print size (#338).
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import { readPsd } from "ag-psd";
@@ -12,6 +13,7 @@ import { readFileSync } from "node:fs";
 import fontkit from "@pdf-lib/fontkit";
 import { buildPsd, digitGroupPaths, qrBeziers, PSD_DOC, type PsdAssets } from "../src/psd/build";
 import { qrShapes } from "../src/qr";
+import * as L from "../src/layout";
 import { DESIGN_DPI, setOutputDpi } from "../src/layout";
 import type { Layer } from "../src/model/layers";
 import { flatLayers, lolevLayers, lolevPlan, psdAssets as assets } from "./fixtures";
@@ -28,10 +30,23 @@ const groups = (children: any[] = []) => children.map((l) => l.name);
 /** ag-psd reads colours back with float dust (155.9988): round per channel. */
 const rgb = (c: { r: number; g: number; b: number }) => ({ r: Math.round(c.r), g: Math.round(c.g), b: Math.round(c.b) });
 
-/** The ResolutionInfo (0x03ED) a reader sizes the page by: dpi and units. */
-const dpiOf = (psd: ReturnType<typeof readPsd>) => {
+/** The page size a reader derives from the declared resolution, in inches,
+ *  per source: ResolutionInfo (0x03ED, Photoshop — with its units) and XMP
+ *  tiff:XResolution (macOS ImageIO). Must be PAGE at any export DPI (#338). */
+const printSize = (psd: ReturnType<typeof readPsd>) => {
   const r = psd.imageResources?.resolutionInfo;
-  return [r?.horizontalResolution, r?.verticalResolution, r?.horizontalResolutionUnit, r?.verticalResolutionUnit];
+  const xmp = Number(psd.imageResources?.xmpMetadata?.match(/<tiff:XResolution>([\d.]+)</)?.[1]);
+  const inches = (px: number, dpi?: number) => Math.round((px / (dpi ?? 72)) * 1000) / 1000;
+  return {
+    resolutionInfo: [inches(psd.width, r?.horizontalResolution), inches(psd.height, r?.verticalResolution),
+      r?.horizontalResolutionUnit, r?.verticalResolutionUnit, r?.widthUnit, r?.heightUnit],
+    xmp: inches(psd.width, xmp),
+  };
+};
+/** PAGE (points) in inches, as printSize reports it. */
+const pageSize = () => {
+  const w = Math.round((L.PAGE.w / 72) * 1000) / 1000, h = Math.round((L.PAGE.h / 72) * 1000) / 1000;
+  return { resolutionInfo: [w, h, "PPI", "PPI", "Inches", "Inches"], xmp: w };
 };
 
 const read = (bytes: Uint8Array) =>
@@ -180,11 +195,11 @@ describe("psd build", () => {
       expect([name, Math.round(value * 1000) / 1000]).toEqual([name, size]);
     }
     // …and the file says 300 ppi, so it still opens at print size (#338).
-    expect(dpiOf(psd)).toEqual([300, 300, "PPI", "PPI"]);
+    expect(printSize(psd)).toEqual(pageSize());
   });
 
   it("declares the export resolution so Photoshop opens it at print size (#338)", () => {
-    expect(dpiOf(doc)).toEqual([DESIGN_DPI, DESIGN_DPI, "PPI", "PPI"]);
+    expect(printSize(doc)).toEqual(pageSize());
   });
 
   it("keeps page rasters in the display list's authored draw order", async () => {
@@ -237,8 +252,8 @@ describe("added layers", () => {
     const art = await buildPsd(items, assets, "art", { layers });
     const mask = await buildPsd(items, assets, "mask", { layers });
     expect({ art: hash(art), artLen: art.length, mask: hash(mask), maskLen: mask.length }).toEqual({
-      art: "a16b0ee159d5c12f2e7231303ed88224ac457f9415ee7a1e88824b92b95b644a", artLen: 1155446,
-      mask: "bfac5b242ffa85ec567a0b46aba913bc01d78223493ca51aabd326bee1c14ecb", maskLen: 1148660,
+      art: "d3c39d261e7145566e4268a876060b2be9685311c86c662455a26f210de0aabc", artLen: 1155796,
+      mask: "04862265409ba7ddb9b5d2425df3fcfde0548623dac6f0f1bcdb9a72f343e2da", maskLen: 1149010,
     });
   });
 

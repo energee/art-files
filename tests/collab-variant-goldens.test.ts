@@ -16,6 +16,12 @@
 // (spec: "justify on a last/only line degrades to left"). Nothing else
 // moved — the collab block included.
 //
+// PSD digests RE-BASELINED 2026-09-26 for #338: every PSD now declares its
+// export DPI — a ResolutionInfo (0x03ED) resource and an XMP packet with the
+// tiff: resolution tags. Each file grew by exactly those two resources (28 +
+// 350 bytes); no layer, pixel or PDF byte moved (the PDF digests are
+// unchanged), and tests/psd-build.test.ts pins the declared print size.
+//
 //   OFF — the collab variant off: its three layers are not in the resolved
 //         list at all, so BOTH slot assets being loaded (the hard case: art
 //         in hand that must not draw) changes nothing.
@@ -68,7 +74,7 @@ describe("collab byte-identity goldens — Collab variant OFF, both slots loaded
     expect(digests(await shipped([]))).toEqual({
       art: "80217f6667bd2fc46774441e69968fca664c67b5d7938a7fad30fe3fc7d65c29", artLen: 57916,
       mask: "663472fc6d93ba8d9ed76f3834543c6520bf9a8d4378656abd071afb81de7e4d", maskLen: 57090,
-      psd: "a16b0ee159d5c12f2e7231303ed88224ac457f9415ee7a1e88824b92b95b644a", psdLen: 1155446,
+      psd: "d3c39d261e7145566e4268a876060b2be9685311c86c662455a26f210de0aabc", psdLen: 1155796,
     });
   });
 });
@@ -78,7 +84,7 @@ describe("collab byte-identity goldens — Collab variant ON, both slots loaded"
     expect(digests(await shipped(["collab"]))).toEqual({
       art: "9cfe5396f8ee63918d539e943fce1b0f3efdd75fc71fefcd785a10f7a4130984", artLen: 59799,
       mask: "bc6b233b530e7b04e5b45fbc984d89edb698ab683816741dd7f1196685a57a96", maskLen: 58946,
-      psd: "29b4f092f11e19c664e74957b8366cff30cb86484e11552b082d4797f01238ac", psdLen: 1165466,
+      psd: "d6d9f4d9222cc43d26bdc2bc7d0bd7d0bca1a7f573427ed66c5b5dd00eb39974", psdLen: 1165816,
     });
   });
 });
