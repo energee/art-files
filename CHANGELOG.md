@@ -52,9 +52,10 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Changed
 
-- **Smaller install, same app.** Internal cleanup with no operator-visible
-  change: a retired developer comparison page and the PDF-rendering library
-  it pulled in are gone.
+- Internal cleanup with no operator-visible change: a retired developer
+  comparison page, the unused PDF-rendering dependency it pulled in, and the
+  superseded first-generation master model are gone. Old `.master` and
+  `.label` files still open exactly as before.
 
 ## [0.1.98] - 2026-09-25
 
