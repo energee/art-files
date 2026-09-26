@@ -604,3 +604,33 @@ it("changes only the selected layer's font and offers inheritance", async () => 
   click(inherit!);
   expect(onChange).toHaveBeenLastCalledWith({ fontFamily: undefined });
 });
+
+describe("LayerInspector dropdown triggers show the option label (#232)", () => {
+  // The closed trigger's displayed value, without its chevron.
+  const shown = (label: string) =>
+    byLabel(label)!.querySelector('[data-slot="select-value"]')!.textContent;
+
+  it("Input and the fill-contract Symbology", () => {
+    render(text());
+    expect(shown("Input")).toBe("Rich text");
+    render(text({ input: "code", symbology: "ean-13" }));
+    expect(shown("Input")).toBe("Code");
+    expect(shown("Symbology")).toBe("EAN-13");
+  });
+
+  it("barcode Symbology", () => {
+    render(barcode());
+    expect(shown("Symbology")).toBe("UPC-A");
+  });
+
+  it("image Fit", () => {
+    render(image({ fit: "cover" }));
+    expect(shown("Fit")).toBe("Cover");
+  });
+
+  it("QR style and Error correction", () => {
+    render(qr({ qrStyle: "rounded" }));
+    expect(shown("QR style")).toBe("Rounded");
+    expect(shown("Error correction")).toBe("M (default)");
+  });
+});

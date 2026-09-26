@@ -362,6 +362,10 @@ describe("masterDiff", () => {
     expect(masterDiff(lolevMaster(), setLayer(lolevMaster(), "name", { size: 20 }))).toBe(true);
     expect(masterDiff(lolevMaster(), setLayer(lolevMaster(), "collabLead", { size: 20 }))).toBe(true);
   });
+  it("sees a reorder of a variant's added layers (#198)", () => {
+    const m = lolevMaster();
+    expect(masterDiff(m, moveLayers(m, ["collabLead"], "collabLead", 1))).toBe(true);
+  });
   it("ignores key order", () => {
     const m = lolevMaster();
     const spun = { ...m, layers: m.layers.map((l) => ({ ...l, y: l.y })) };

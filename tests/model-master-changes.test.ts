@@ -205,6 +205,14 @@ describe("changes inside the variants", () => {
     ]);
   });
 
+  it("reports reordering a variant's added layers (#198)", () => {
+    const base = lolevMaster();
+    const edited = moveLayers(base, ["collabLead"], "collabLead", 1);
+    expect(masterChanges(base, edited, newLabel(base))).toEqual([
+      { kind: "moved", layerId: "collabLead", layerName: "Lead-in" },
+    ]);
+  });
+
   it("reports a variant's override of a master layer", () => {
     const base = lolevMaster();
     const edited = setLayerIn(base, "collab", "name", { x: 222 });
