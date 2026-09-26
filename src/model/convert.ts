@@ -22,7 +22,6 @@ import { lolevMaster } from "./lolevLayers";
 import { parseDescription } from "../description";
 import { segments } from "./format";
 import { defaultConfig, stripPercent } from "../defaults";
-import { configDiff } from "./document";
 
 // --- Old config keys → element patches ------------------------------------
 
@@ -67,6 +66,34 @@ const PATH_LAYER: Record<string, string> = {
 
 const isPlain = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
+
+/** Everything in `cfg` that differs from `base`, deep for plain objects,
+ *  wholesale for arrays and leaves. A key present in `base` but absent from
+ *  `cfg` (a legacy config's unset barcodeStrokeWidth — defaults.ts) comes
+ *  back as `null`, not skipped, so elementPatches can report the removal;
+ *  null rather than undefined because JSON.stringify would drop the key.
+ *  {} = no deviations. */
+function configDiff(base: LabelConfig, cfg: LabelConfig): DeepPartial<LabelConfig> {
+  return (diffValue(base, cfg) ?? {}) as DeepPartial<LabelConfig>;
+}
+
+/** configDiff's engine, over any two plain values — `undefined` when they match. */
+function diffValue(b: unknown, c: unknown): unknown {
+  if (isPlain(b) && isPlain(c)) {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(b)) {
+      if (!(k in c)) { out[k] = null; continue; }
+      const d = diffValue(b[k], c[k]);
+      if (d !== undefined) out[k] = d;
+    }
+    for (const k of Object.keys(c)) {
+      if (k in b) continue;
+      out[k] = c[k];
+    }
+    return Object.keys(out).length ? out : undefined;
+  }
+  return JSON.stringify(b) === JSON.stringify(c) ? undefined : c;
+}
 
 /** Sort an old DeepPartial<LabelConfig> into per-layer patches. Keys with no
  *  v3 home come back in `unknown` for the caller to consume (custom-layer
@@ -323,7 +350,7 @@ export function convertMasterV1(old: MasterV1): { master: Master; warnings: stri
     if (c) layers.push(c);
   }
   // ponytail: a legacy raw `defaults.customLayers` array (pre-Task-5b
-  // masters) appends after the built-ins, as resolve() used to place it.
+  // masters) appends after the built-ins, where the v1 resolver placed it.
   for (const c of dp.custom) {
     if (ids.has(c.id)) { warnings.push(`Legacy custom layer "${c.id}" collides with a layer id; dropped.`); continue; }
     layers.push(customToLayer(c.id, c.name, true, c.locked, c, c.type, g));

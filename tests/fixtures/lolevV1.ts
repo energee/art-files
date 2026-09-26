@@ -1,8 +1,6 @@
-// Lolev master fixture — the coverage bridge proving the model can express
-// today's product. Resolution of this master with no variants reproduces
-// the shipped defaults exactly. Used as the migration seed and proof the
-// model expresses the existing product (spec: Migration).
-import type { Master } from "./types";
+// tests/fixtures/lolevV1.ts — the v1 (pre-layers) Lolev master, kept as the
+// converter's input: convertMasterV1 must turn this into today's lolevMaster.
+import type { Master } from "../../src/model/types";
 
 // Physical dimensions sourced from src/layout.ts:
 // TRIM = { w: 576, h: 360 } (points)

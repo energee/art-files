@@ -1,7 +1,7 @@
 // tests/canvas-draw.test.ts — the canvas backend against a recording fake
-// ctx: Node has no 2D canvas, and what parity needs pinned here is the PAINT
-// PROTOCOL (order, colors, transforms), not rasterized pixels — the pixel
-// side is the parity page's job. Plans come from planLayers over the Lolev
+// ctx: Node has no 2D canvas, so what is pinned here is the PAINT PROTOCOL
+// (order, colors, transforms), not rasterized pixels — the pixel side is
+// covered by the print-geometry goldens. Plans come from planLayers over the Lolev
 // master with deterministic fake metrics.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { drawPlate } from "../src/canvas/draw";

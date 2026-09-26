@@ -65,6 +65,10 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Changed
 
+- Internal cleanup with no operator-visible change: a retired developer
+  comparison page, the unused PDF-rendering dependency it pulled in, and the
+  superseded first-generation master model are gone. Old `.master` and
+  `.label` files still open exactly as before.
 - Internal: the code is now linted (React hook rules and unused code) on
   every change; a few unused imports and an unused font-measure state were
   removed. No change in behavior.

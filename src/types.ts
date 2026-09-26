@@ -59,7 +59,7 @@ export interface Positioned {
    *  collab-only one: it ships absent (= 0), it is whatever the master or the
    *  label has authored, and no variant overrides it (the Collab variant
    *  deliberately declares no `logo` override, so a master-level nudge is not
-   *  stomped when Collab is enabled — see model/lolev.ts). */
+   *  stomped when Collab is enabled — see model/lolevLayers.ts). */
   offsetY?: number;
   /** Freezes the element in place: dragTarget/dragTarget2 return null while
    *  set, same as a locked custom layer (see CustomLayerBase.locked).
@@ -112,7 +112,7 @@ export interface LabelConfig {
   /** 12-digit UPC-A. */
   upc: string;
   /** Collab labels. There is no master switch here any more: "Collab" is an
-   *  ordinary master VARIANT (see model/lolev.ts), and with it off the
+   *  ordinary master VARIANT (see model/lolevLayers.ts), and with it off the
    *  resolver puts `collabLead` / `collabLeft` / `collabCenter` in its
    *  disabled-layer set, which is what stops them drawing. With it on, each
    *  slot draws only once its art is supplied in Assets: `collabLeft` flows
