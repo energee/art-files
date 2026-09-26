@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import type { Layer, LayerKind } from "@/model/layers";
-import type { LayerRow, VariantChip } from "@/model/rows";
+import type { LayerRow } from "@/model/rows";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,

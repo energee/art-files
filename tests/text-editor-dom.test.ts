@@ -456,7 +456,7 @@ describe("TextEditor with a vocabulary", () => {
     const { onChange } = renderEditor({
       lines: [], choices: TIERS, input: "code", symbology: "upc-a",
     });
-    const box = openList();
+    openList();
     pick(options()[0]);
     expect(onChange).toHaveBeenCalledWith([{ ...base, text: "850051366040" }]);
 

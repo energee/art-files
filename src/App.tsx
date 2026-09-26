@@ -838,15 +838,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     });
   };
 
-  // Face-aware canvas measure for the planner (PreviewCompare's hit boxes,
-  // the inspector's Unbind), via the fonts.ts gate — null until the family
-  // loads. Keyed on the master's family (the single font gate).
+  // Warm the face-aware measure for the master's family (the single font
+  // gate) and surface a font-load failure early. The planner callers below
+  // each await loadLabelFaces themselves, so nothing here is stored.
   const family = fontFamilyOf(master);
-  const [measure, setMeasure] = useState<MeasureFace | null>(null);
   useEffect(() => {
     let cancelled = false;
-    void loadLabelFaces(family)
-      .then((next) => { if (!cancelled) setMeasure(() => next); })
+    loadLabelFaces(family)
       .catch((error) => { if (!cancelled) setBuildError(String(error)); });
     return () => { cancelled = true; };
   }, [family]);
@@ -875,6 +873,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mutating only calls state setters and reads a ref; a stale copy is equivalent
   }, [undo, redo, canUndo, canRedo]);
 
   // Figma-style bare keys plus the ⌘-modified file and export commands.
@@ -902,7 +901,6 @@ export const DocumentEditor = memo(function DocumentEditor({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Arrow-key nudge for the selection: 1pt a press, 10pt with shift. Inert

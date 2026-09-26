@@ -15,6 +15,7 @@
     "parity": "vite --open /parity.html",
     "strokecap": "vite --open /strokecap.html",
     "test": "vitest run",
+    "lint": "eslint . --max-warnings 0",
     "generate": "tsx scripts/generate.ts",
     "tauri": "tauri"
   },
@@ -27,6 +28,8 @@
     "@types/three": "^0.185.4",
     "@vitejs/plugin-react": "^4.7.0",
     "ag-psd": "^31.0.2",
+    "eslint": "^10.11.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "happy-dom": "^20.11.6",
     "jsqr": "^1.4.0",
     "pngjs": "^7.0.0",
@@ -34,6 +37,7 @@
     "tailwindcss": "^4.3.3",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
+    "typescript-eslint": "^8.70.1",
     "vite": "^6.0.0",
     "vitest": "^2.1.0"
   },

@@ -65,6 +65,9 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Changed
 
+- Internal: the code is now linted (React hook rules and unused code) on
+  every change; a few unused imports and an unused font-measure state were
+  removed. No change in behavior.
 - **Faster startup and smoother typing.** The 3D can view now loads the
   first time you open it instead of with the editor, cutting the startup
   code by about 40%. The label preview also stops re-reading the logo and
