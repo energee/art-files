@@ -50,7 +50,7 @@ import { exportBase as exportBaseOf, titleOf, withStoredValue } from "@/model/re
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, setValue, structureOnlyMaster,
+  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -151,7 +151,7 @@ const newLabel = (master: Master): LabelFile =>
 /** Mint a new image asset id. One spelling of the format, so every drop
  *  site mints ids a saved project's `ImageLayer.asset` can always resolve
  *  against a customImages entry here, regardless of which added it. */
-export function mintCustomAssetId(): string {
+function mintCustomAssetId(): string {
   return `custom-asset-${crypto.randomUUID().slice(0, 8)}`;
 }
 
@@ -159,7 +159,7 @@ export function mintCustomAssetId(): string {
  *  draws the slot's art (under PAGE_ART_ID) while the slot holds any, and
  *  nothing otherwise — a layer the master switched off is not in `layers`
  *  at all, so switching Background off is what the old eye did. */
-export function withPageArt(layers: Layer[], hasTexture: boolean, hasMask: boolean): Layer[] {
+function withPageArt(layers: Layer[], hasTexture: boolean, hasMask: boolean): Layer[] {
   return layers.map((l) => {
     if (l.kind !== "image" || (l.role !== "background" && l.role !== "mask")) return l;
     const has = l.role === "background" ? hasTexture : hasMask;
@@ -795,10 +795,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Delete a variant and stop showing it. One undoable edit, so it needs no
    *  confirm of its own. */
   function onRemoveVersion(id: string) {
-    edit((d) => ({
-      master: removeVariant(d.master, id),
-      label: showVersion(d.label, version === id ? id : version, null),
-    }));
+    edit((d) => removeVariantIn(d, id, rowBoxes()));
   }
 
   /** The dot-paths deviating from the master on the inspected layer, kept

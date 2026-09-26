@@ -3,7 +3,7 @@
 // are impossible by construction). Spec: "Format strings (derived content)".
 import { machineName } from "../qr";
 
-export const TRANSFORMS: Record<string, (s: string) => string> = {
+const TRANSFORMS: Record<string, (s: string) => string> = {
   // The one machine-name rule, shared with the export filename (defaults.ts).
   slug: machineName,
   upper: (s) => s.toUpperCase(),
