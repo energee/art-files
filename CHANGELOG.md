@@ -22,6 +22,11 @@ that section to the new version (see .agents/release-steward.md).
   or the text layer's name, matching its menu, instead of `none` or the
   layer's internal id.
 
+- **The inspector's other dropdowns show their labels too.** Input, Symbology,
+  Fit, QR style and Error correction read "Rich text", "UPC-A", "Cover",
+  "Rounded" or "M (default)" instead of the raw `text`, `upc-a`, `cover`,
+  `rounded` or `M`.
+
 - **An image dropped on a switched-off variant's layer shows right away.** The
   layer's drop area names the loaded file instead of still saying "drop or
   click" until the variant is switched on.
