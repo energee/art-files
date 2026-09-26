@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { addColor, setSwatches, useSwatches } from "@/settings";
 
 /** "No ink" checkerboard chip background. */
-export const CHECKER =
+const CHECKER =
   "repeating-conic-gradient(#3a3d43 0% 25%, #1a1c1f 0% 50%) 0 0 / 8px 8px";
 const HEX = /^#[0-9a-fA-F]{6}$/;
 

@@ -4,7 +4,7 @@
 // guide is removed from the × that appears in the ruler when its handle is
 // hovered, by dragging it back into a ruler, or with Delete while focused.
 import {
-  useEffect, useLayoutEffect, useMemo, useState, type PointerEvent, type RefObject,
+  useCallback, useEffect, useLayoutEffect, useMemo, useState, type PointerEvent, type RefObject,
 } from "react";
 import { ART, PAGE } from "@/layout";
 import {
@@ -105,7 +105,8 @@ export function Rulers(props: {
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
 
-  function measure() {
+  // Reads only refs and a state setter, so its identity is stable.
+  const measure = useCallback(() => {
     const pane = paneRef.current?.getBoundingClientRect();
     const page = previewRef.current?.getPageElement()?.getBoundingClientRect();
     if (!pane?.width || !pane.height || !page?.width || !page.height) return;
@@ -119,11 +120,11 @@ export function Rulers(props: {
       pageWidth: page.width,
       pageHeight: page.height,
     });
-  }
+  }, [paneRef, previewRef]);
 
   // CSS transforms do not trigger ResizeObserver, so zoom/pan explicitly
   // re-measures; observers cover pane/sidebar and responsive page resizing.
-  useLayoutEffect(() => { measure(); }, [transform.z, transform.x, transform.y]);
+  useLayoutEffect(() => { measure(); }, [measure, transform.z, transform.x, transform.y]);
   useEffect(() => {
     const pane = paneRef.current;
     const page = previewRef.current?.getPageElement();
@@ -132,7 +133,7 @@ export function Rulers(props: {
     observer.observe(pane);
     observer.observe(page);
     return () => observer.disconnect();
-  }, [paneRef, previewRef]);
+  }, [measure, paneRef, previewRef]);
 
   // Pointer readout lives here rather than in App, so moving across the page
   // re-renders only this small overlay instead of the complete editor. Not

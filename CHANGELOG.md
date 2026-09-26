@@ -69,6 +69,40 @@ that section to the new version (see .agents/release-steward.md).
   menu items) do nothing until the dialog is closed. With no dialog open, `⌘S`
   still saves from inside a text field.
 
+### Changed
+
+- Internal cleanup with no operator-visible change: a retired developer
+  comparison page, the unused PDF-rendering dependency it pulled in, and the
+  superseded first-generation master model are gone. Old `.master` and
+  `.label` files still open exactly as before.
+- Internal: the code is now linted (React hook rules and unused code) on
+  every change; a few unused imports and an unused font-measure state were
+  removed. No change in behavior.
+- **Faster startup and smoother typing.** The 3D can view now loads the
+  first time you open it instead of with the editor, cutting the startup
+  code by about 40%. The label preview also stops re-reading the logo and
+  QR shapes on every keystroke.
+- **A crash no longer blanks the window.** If the editor hits an error it
+  cannot recover from, it now shows the message and a Reload button instead
+  of an empty page.
+
+- **Opening files keeps working after an internal error.** If an internal
+  error interrupted queuing a double-clicked `.label`, every later file open
+  could crash the desktop app; it now carries on.
+
+- **Shared labels cannot point the app at arbitrary files.** A `.label`'s
+  remembered master path is only read when it sits beside the label or
+  beside a master you already registered; otherwise the error asks you to
+  open that `.master` once.
+
+
+- **The desktop window enforces a content security policy.** Only the app's
+  own bundled code and assets may load; nothing from the network.
+
+- **Internal cleanup, no visible change.** Unused code and an unused
+  interface component were removed from the app. Labels, exports, and the
+  editor behave exactly as before.
+
 ## [0.1.98] - 2026-09-25
 
 ### Fixed

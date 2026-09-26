@@ -36,7 +36,7 @@ export const CUSTOM_BARCODE_DIGIT_GAP_RATIO = 4 / 15; // textMargin : barH
 
 /** Quiet-zone width in modules, matching JsBarcode's UPC-A/EAN-13 default —
  *  where barcodeDigitsFor's leading/trailing digit sits, outside the guards. */
-export const BARCODE_QUIET_MODULES = 8;
+const BARCODE_QUIET_MODULES = 8;
 
 /** The quiet zone `symbology` reserves on EACH side of its symbol, in modules.
  *  UPC-A and EAN-13 print their edge digits out there, so a custom layer's

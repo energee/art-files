@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import jsQR from "jsqr";
-import { qrPath, qrShapes } from "../src/qr";
+import { qrPath, qrPaths, qrShapes } from "../src/qr";
 
 describe("QR options", () => {
   it("defaults reproduce the legacy dots output exactly", () => {
@@ -71,5 +71,27 @@ describe("QR capacity overflow (#71)", () => {
     expect(overflow).toThrow(Error);
     expect(overflow).toThrow(/QR value is too long.*1300 bytes/);
     expect(qrShapes("x".repeat(1300), { ecLevel: "L" }).count).toBeGreaterThan(0);
+  });
+
+});
+
+describe("qrPaths", () => {
+  it("hands back the same array for the same shapes, size and grow", () => {
+    const s = qrShapes("https://lolev.beer/beer/paths");
+    expect(qrPaths(s, 59)).toBe(qrPaths(s, 59));
+    expect(qrPaths(s, 59, 1)).toBe(qrPaths(s, 59, 1));
+    expect(qrPaths(s, 59)).toEqual([qrPath(s, 59)]);
+    expect(qrPaths(s, 60)).not.toBe(qrPaths(s, 59));
+  });
+  it("keeps only the live fill and stroke entries, so a resize drag does not pile up", () => {
+    const s = qrShapes("https://lolev.beer/beer/drag");
+    const start = qrPaths(s, 59);
+    // Each drag step asks for a stroke and a fill at the new size.
+    for (let size = 60; size < 70; size++) { qrPaths(s, size, 1); qrPaths(s, size); }
+    expect(qrPaths(s, 59)).not.toBe(start);
+    // A stroke-width change keeps the (still live) fill entry.
+    const fill = qrPaths(s, 69);
+    qrPaths(s, 69, 2);
+    expect(qrPaths(s, 69)).toBe(fill);
   });
 });

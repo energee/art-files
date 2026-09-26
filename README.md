@@ -19,6 +19,7 @@ npm run dev            # browser editor
 npm run desktop:dev    # Label Lab native window (needs a stable Rust toolchain)
 npm test               # vitest
 npx tsc --noEmit
+npm run lint           # eslint: react-hooks rules, zero warnings
 ```
 
 `npm run desktop:build` writes the platform installer under

@@ -1,7 +1,7 @@
 // golden-diff.mts — raster diff of two PDF (or PNG) goldens, for re-baselining
 // a byte-locked golden after an approved rendering change. Run:
 //   npx tsx scripts/golden-diff.mts <old.pdf> <new.pdf> <out.png> [--dpi 600]
-//       [--threshold N] [--rasterizer auto|pdftoppm|pdfjs]
+//       [--threshold N]
 //
 // Both inputs are rasterized at the same DPI (600 by default — the label's
 // design DPI, so one raster pixel is one print pixel) and compared pixel for
@@ -17,13 +17,10 @@
 // exit code is 1 when the changed pixel count exceeds --threshold (default 0),
 // 2 on a usage or I/O error, 0 otherwise — so a CI step can gate on it.
 //
-// Rasterizer: poppler's pdftoppm when it is on PATH (the same engine
-// src/dev/strokecap.ts's reference rasters come from), otherwise pdfjs-dist
-// rendering through @napi-rs/canvas, with a warning. The two engines
-// anti-alias differently, so both inputs of one diff always go through the
-// same one; never compare a pdftoppm raster against a pdfjs raster. The
-// pdfjs path has a one-time ~10-15s startup (it loads pdf.worker in-process)
-// and is a fallback for machines without poppler, not the reference.
+// Rasterizer: poppler's pdftoppm, required on PATH (brew install poppler /
+// apt-get install poppler-utils; ci.yml installs it). It is the same engine
+// src/dev/strokecap.ts's reference rasters come from, so every golden raster
+// in the repo shares one anti-aliasing rule.
 //
 // PNG inputs (sniffed by signature) diff directly, which is how a PSD golden
 // gets reviewed: the PSD builder stays byte-locked (Node has no canvas to
@@ -31,9 +28,8 @@
 // those. See docs/goldens.md for the re-baseline procedure.
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { PNG } from "pngjs";
 import { isEntry } from "./is-entry.mjs";
 
@@ -53,15 +49,6 @@ export type DiffResult = {
   height: number;
   /** The review PNG: `b` (the new render) faded, changed pixels solid red. */
   png: Uint8Array;
-};
-export type Rasterizer = "pdftoppm" | "pdfjs";
-export type DiffOptions = {
-  /** Render resolution; defaults to the label's 600 DPI design grid. */
-  dpi?: number;
-  /** Which engine renders both PDFs; "auto" prefers pdftoppm when on PATH. */
-  rasterizer?: Rasterizer | "auto";
-  /** Where the pdfjs-fallback warning goes; defaults to stderr. */
-  warn?: (message: string) => void;
 };
 
 const DEFAULT_DPI = 600;
@@ -124,19 +111,10 @@ export function diffPngs(a: Uint8Array, b: Uint8Array): DiffResult {
   return diffRasters(rasterOf(PNG.sync.read(Buffer.from(a))), rasterOf(PNG.sync.read(Buffer.from(b))));
 }
 
-/** True when poppler's pdftoppm is on PATH. */
-export function hasPdftoppm(): boolean {
-  try {
-    execFileSync("pdftoppm", ["-v"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /** Page 1 through pdftoppm. Poppler 26 writes nothing to stdout for a `-`
- *  root, so this goes through a scratch directory. */
-function rasterizeWithPdftoppm(pdf: Uint8Array, dpi: number): Raster {
+ *  root, so this goes through a scratch directory. A missing binary is the
+ *  spawn's own ENOENT, reworded — no probe spawn before the real one. */
+function rasterizePdf(pdf: Uint8Array, dpi: number): Raster {
   const dir = mkdtempSync(join(tmpdir(), "golden-diff-"));
   try {
     const input = join(dir, "in.pdf");
@@ -147,114 +125,20 @@ function rasterizeWithPdftoppm(pdf: Uint8Array, dpi: number): Raster {
       { stdio: ["ignore", "ignore", "pipe"] },
     );
     return rasterOf(PNG.sync.read(readFileSync(join(dir, "out.png"))));
+  } catch (e) {
+    const { code, path } = e as NodeJS.ErrnoException;
+    if (code === "ENOENT" && path === "pdftoppm")
+      throw new Error("pdftoppm is not on PATH — install poppler (brew install poppler / apt-get install poppler-utils)");
+    throw e;
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
-// The canvas surface pdfjs draws on, narrowed to what this file touches.
-type NodeCanvas = {
-  getContext(kind: "2d"): {
-    fillStyle: string;
-    fillRect(x: number, y: number, w: number, h: number): void;
-    getImageData(x: number, y: number, w: number, h: number): { data: Uint8ClampedArray };
-  };
-};
-type NapiCanvas = {
-  createCanvas(width: number, height: number): NodeCanvas;
-  Path2D: unknown; DOMMatrix: unknown; ImageData: unknown;
-};
-type Pdfjs = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
-
-let pdfjsLoad: Promise<{ pdfjs: Pdfjs; napi: NapiCanvas; standardFontDataUrl: string }> | undefined;
-
-/** Load pdfjs's legacy (Node) build together with THE SAME @napi-rs/canvas
- *  instance it resolves internally. pdfjs polyfills Path2D/DOMMatrix from its
- *  own resolution of that package; a canvas created from a second copy of the
- *  native module (pnpm can hoist one) rejects those paths with InvalidArg, so
- *  the surface must come from pdfjs's copy — and its globals must be in place
- *  before pdfjs is imported. */
-function loadPdfjs() {
-  return (pdfjsLoad ??= (async () => {
-    const require = createRequire(import.meta.url);
-    const pdfjsPath = require.resolve("pdfjs-dist/legacy/build/pdf.mjs");
-    let napi: NapiCanvas;
-    try {
-      napi = createRequire(pdfjsPath)("@napi-rs/canvas") as NapiCanvas;
-    } catch (e) {
-      throw new Error(
-        "golden-diff: the pdfjs fallback needs @napi-rs/canvas (pdfjs-dist's optional " +
-          `dependency); install it or put pdftoppm on PATH. ${(e as Error).message}`,
-      );
-    }
-    const g = globalThis as Record<string, unknown>;
-    g.Path2D ??= napi.Path2D;
-    g.DOMMatrix ??= napi.DOMMatrix;
-    g.ImageData ??= napi.ImageData;
-    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-    // Plain path with a trailing slash — pdfjs's Node fetcher hands it to
-    // fs.readFile after appending the font file name.
-    const standardFontDataUrl = join(dirname(pdfjsPath), "..", "..", "standard_fonts") + "/";
-    return { pdfjs, napi, standardFontDataUrl };
-  })());
-}
-
-/** Page 1 through pdfjs onto a white @napi-rs/canvas surface. */
-async function rasterizeWithPdfjs(pdf: Uint8Array, dpi: number): Promise<Raster> {
-  const { pdfjs, napi, standardFontDataUrl } = await loadPdfjs();
-  const task = pdfjs.getDocument({
-    // A copy: pdfjs takes ownership of the buffer it is handed.
-    data: new Uint8Array(pdf),
-    verbosity: pdfjs.VerbosityLevel.ERRORS,
-    standardFontDataUrl,
-  });
-  try {
-    const doc = await task.promise;
-    const page = await doc.getPage(1);
-    const viewport = page.getViewport({ scale: dpi / 72 });
-    const width = Math.ceil(viewport.width), height = Math.ceil(viewport.height);
-    const canvas = napi.createCanvas(width, height);
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, width, height);
-    await page.render({ canvas: canvas as unknown as HTMLCanvasElement, viewport }).promise;
-    const { data } = ctx.getImageData(0, 0, width, height);
-    return { width, height, data: new Uint8Array(data.buffer, data.byteOffset, data.byteLength) };
-  } finally {
-    await task.destroy();
-  }
-}
-
-/** Resolve "auto" to a concrete engine, warning when poppler is absent. */
-export function pickRasterizer(
-  choice: Rasterizer | "auto" = "auto", warn: (m: string) => void = (m) => console.error(m),
-): Rasterizer {
-  if (choice !== "auto") return choice;
-  if (hasPdftoppm()) return "pdftoppm";
-  warn(
-    "golden-diff: pdftoppm not found on PATH — rendering with pdfjs-dist instead " +
-      "(slower; its anti-aliasing differs from poppler's, so never compare this " +
-      "run's rasters against pdftoppm ones).",
-  );
-  return "pdfjs";
-}
-
-/** Rasterize page 1 of a PDF at `dpi` with the chosen engine. */
-export async function rasterizePdf(
-  pdf: Uint8Array, dpi: number, rasterizer: Rasterizer,
-): Promise<Raster> {
-  return rasterizer === "pdftoppm" ? rasterizeWithPdftoppm(pdf, dpi) : rasterizeWithPdfjs(pdf, dpi);
-}
-
-/** Rasterize both PDFs with one engine at one DPI and diff them. */
-export async function diffPdfs(
-  oldBytes: Uint8Array, newBytes: Uint8Array, opts: DiffOptions = {},
-): Promise<DiffResult> {
-  const dpi = opts.dpi ?? DEFAULT_DPI;
-  const rasterizer = pickRasterizer(opts.rasterizer, opts.warn);
-  const a = await rasterizePdf(oldBytes, dpi, rasterizer);
-  const b = await rasterizePdf(newBytes, dpi, rasterizer);
-  return diffRasters(a, b);
+/** Rasterize both PDFs at one DPI (the label's 600 DPI design grid by
+ *  default) and diff them. */
+export function diffPdfs(oldBytes: Uint8Array, newBytes: Uint8Array, dpi = DEFAULT_DPI): DiffResult {
+  return diffRasters(rasterizePdf(oldBytes, dpi), rasterizePdf(newBytes, dpi));
 }
 
 /** The stdout contract: one line, machine-readable. */
@@ -269,7 +153,7 @@ const isPdf = (b: Uint8Array) => b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44
 
 const USAGE =
   "usage: npx tsx scripts/golden-diff.mts <old.pdf|png> <new.pdf|png> <out.png> " +
-  "[--dpi 600] [--threshold 0] [--rasterizer auto|pdftoppm|pdfjs]";
+  "[--dpi 600] [--threshold 0]";
 
 /** Parse argv into the three paths and the flags; `--flag value` and
  *  `--flag=value` both work. Throws on anything malformed. */
@@ -295,27 +179,22 @@ export function parseArgs(argv: string[]) {
       throw new Error(`--${name} must be a ${min} number`);
     return n;
   };
-  const rasterizer = flags.rasterizer ?? "auto";
-  if (!["auto", "pdftoppm", "pdfjs"].includes(rasterizer))
-    throw new Error(`--rasterizer must be auto, pdftoppm or pdfjs`);
   for (const k of Object.keys(flags))
-    if (!["dpi", "threshold", "rasterizer"].includes(k)) throw new Error(`unknown flag --${k}\n${USAGE}`);
+    if (!["dpi", "threshold"].includes(k)) throw new Error(`unknown flag --${k}\n${USAGE}`);
   const [oldPath, newPath, outPath] = positional;
   return {
     oldPath, newPath, outPath,
     dpi: num("dpi", DEFAULT_DPI, "positive"), threshold: num("threshold", 0, "non-negative"),
-    rasterizer: rasterizer as Rasterizer | "auto",
   };
 }
 
-async function main(argv: string[]): Promise<number> {
+function main(argv: string[]): number {
   const args = parseArgs(argv);
   const a = readFileSync(args.oldPath), b = readFileSync(args.newPath);
   let result: DiffResult;
   if (isPdf(a) && isPdf(b)) {
-    const rasterizer = pickRasterizer(args.rasterizer);
-    console.error(`golden-diff: rasterizing with ${rasterizer} at ${args.dpi} dpi`);
-    result = await diffPdfs(a, b, { dpi: args.dpi, rasterizer });
+    console.error(`golden-diff: rasterizing with pdftoppm at ${args.dpi} dpi`);
+    result = diffPdfs(a, b, args.dpi);
   } else if (isPng(a) && isPng(b)) {
     result = diffPngs(a, b);
   } else {
@@ -330,11 +209,12 @@ async function main(argv: string[]): Promise<number> {
 // Thin CLI wrapper: only run when this file is the process's entry point,
 // never on import from tests (scripts/is-entry.mjs).
 if (isEntry(import.meta.url)) {
-  main(process.argv.slice(2)).then(
-    (code) => process.exit(code),
-    (e: unknown) => {
-      console.error(`golden-diff: ${(e as Error).message}`);
-      process.exit(2);
-    },
-  );
+  let code: number;
+  try {
+    code = main(process.argv.slice(2));
+  } catch (e) {
+    console.error(`golden-diff: ${(e as Error).message}`);
+    code = 2;
+  }
+  process.exit(code);
 }

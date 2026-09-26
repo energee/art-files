@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import type { Layer, LayerKind } from "@/model/layers";
-import type { LayerRow, VariantChip } from "@/model/rows";
+import type { LayerRow } from "@/model/rows";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -36,7 +36,7 @@ import {
 /** Click modifiers as the row reports them. `meta` is ⌘ on macOS and Ctrl
  *  elsewhere (the toggle-select gesture) — the platform rule lives here so
  *  the caller only ever sees one flag. */
-export interface SelectMods { shift: boolean; meta: boolean }
+interface SelectMods { shift: boolean; meta: boolean }
 
 export interface LayerListProps {
   /** DRAW ORDER, back to front — exactly `Master.layers` plus any

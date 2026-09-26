@@ -1,6 +1,6 @@
 // Test-only pre-v3 layout oracle.
 import type {
-  CollabSlot, CustomBarcodeLayer, Fill, Style, StyledLine, LabelConfig,
+  CollabSlot, CustomBarcodeLayer, StyledLine, LabelConfig,
 } from "../../src/types";
 import { anchoredX, anchoredY, type GuideLines } from "../../src/model/position";
 import { logoNudge, type ElementId } from "./elements";
@@ -19,8 +19,7 @@ import {
 } from "../../src/barcode";
 
 import { labelGuides, strokeSpec, lineRuns, rotatedRuns, justifiedRotatedRuns,
-  type Face, type MeasureFace, type Placed, type PlacedText, type PlacedPaths,
-  type PlacedImage, type PlacedBarcode, type PlanArt, type PlanAssets } from "../../src/plan";
+  type Face, type MeasureFace, type Placed, type PlacedBarcode, type PlanArt, type PlanAssets } from "../../src/plan";
 
 /** Which collab logo slots hold art — the same fact hittest tracks: the
  *  renderers skip an empty slot, so its text must not be planned either. */

@@ -1,0 +1,31 @@
+# dependabot.yml — weekly dependency PRs, grouped so one PR carries all the
+# minor/patch bumps for each ecosystem; majors arrive one PR each. ci.yml
+# gates them like any PR. A root npm or cargo bump changes a lockfile the
+# app is built from, so release-metadata.yml fails it until someone adds an
+# `## [Unreleased]` CHANGELOG bullet (.agents/release-steward.md).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: npm
+    directory: /docs-site
+    schedule: { interval: weekly }
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule: { interval: weekly }
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      actions:
+        patterns: ["*"]

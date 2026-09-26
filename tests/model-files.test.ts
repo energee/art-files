@@ -9,8 +9,7 @@ import {
   masterNameFromFile, packLabel, packMaster, parseLabel, serializeLabel, serializeMaster, unpackLabel, unpackMaster,
 } from "../src/model/files";
 import { lolevMaster as lolevV3 } from "../src/model/lolevLayers";
-import { lolevMaster as lolevV1 } from "../src/model/lolev";
-import { serializeMaster as serializeMasterV1 } from "../src/model/masterfile";
+import { lolevMaster as lolevV1 } from "./fixtures/lolevV1";
 import { packLabel as packLabelV1, packLabelV2 } from "../src/labelfile";
 import { defaultConfig } from "../src/defaults";
 import type { LabelFile } from "../src/model/layers";
@@ -43,7 +42,7 @@ describe(".master v3 container", () => {
   });
 
   it("opens a legacy JSON-only master behind a UTF-8 BOM or leading whitespace (#101)", () => {
-    const json = serializeMasterV1(lolevV1());
+    const json = JSON.stringify(lolevV1());
     const bom = new Uint8Array([0xef, 0xbb, 0xbf, ...strToU8(json)]);
     for (const bytes of [bom, strToU8(`\n  ${json}`), strToU8(`\r\n\t${json}`)]) {
       const { master, assets } = unpackMaster(bytes);
@@ -53,7 +52,7 @@ describe(".master v3 container", () => {
   });
 
   it("opens a legacy JSON-only v1 master converted to v3, with no assets", () => {
-    const { master, assets, warnings } = unpackMaster(strToU8(serializeMasterV1(lolevV1())));
+    const { master, assets, warnings } = unpackMaster(strToU8(JSON.stringify(lolevV1())));
     expect(master.formatVersion).toBe(3);
     expect(master.layers.map((l) => l.id)).toEqual(lolevV3().layers.map((l) => l.id));
     expect(assets).toEqual({});
@@ -62,7 +61,7 @@ describe(".master v3 container", () => {
 
   it("opens a v1 ZIP master converted, keeping its assets", () => {
     const bytes = zipSync({
-      "master.json": strToU8(serializeMasterV1(lolevV1())),
+      "master.json": strToU8(JSON.stringify(lolevV1())),
       "texture/rock.png": [png(3), { level: 0 }],
     });
     const { master, assets } = unpackMaster(bytes);
