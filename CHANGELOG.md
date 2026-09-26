@@ -8,6 +8,11 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 
+- **Exported PSDs open at print size.** A PSD now records its export
+  resolution (600 ppi by default), so Photoshop opens it at the label's
+  physical size instead of treating it as a 72 ppi image roughly eight
+  times too large.
+
 - **Closing a tab frees its images.** A closed tab used to keep its
   texture, mask, and image-layer art in memory for as long as the app stayed
   open. Closing it now releases them, and an image that fails to load no

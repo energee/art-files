@@ -809,6 +809,14 @@ export async function buildPsd(
   const psd: Psd = {
     width: PSD_DOC.w,
     height: PSD_DOC.h,
+    // Without a ResolutionInfo resource every reader assumes 72 ppi and
+    // opens the page ~8× its physical size (#338).
+    imageResources: {
+      resolutionInfo: {
+        horizontalResolution: L.OUTPUT_DPI, horizontalResolutionUnit: "PPI", widthUnit: "Inches",
+        verticalResolution: L.OUTPUT_DPI, verticalResolutionUnit: "PPI", heightUnit: "Inches",
+      },
+    },
     children: buildLayers(items, assets, digitFont, mode, opts),
   };
   return writePsdUint8Array(psd);

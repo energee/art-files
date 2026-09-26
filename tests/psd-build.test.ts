@@ -175,6 +175,22 @@ describe("psd build", () => {
     }
   });
 
+  it("declares the export resolution so Photoshop opens it at print size (#338)", async () => {
+    const dpiOf = (psd: ReturnType<typeof readPsd>) => {
+      const r = psd.imageResources?.resolutionInfo;
+      return [r?.horizontalResolution, r?.verticalResolution, r?.horizontalResolutionUnit, r?.verticalResolutionUnit];
+    };
+    expect(dpiOf(await build())).toEqual([DESIGN_DPI, DESIGN_DPI, "PPI", "PPI"]);
+    let psd: ReturnType<typeof readPsd>;
+    try {
+      setOutputDpi(300);
+      psd = await build();
+    } finally {
+      setOutputDpi(DESIGN_DPI);
+    }
+    expect(dpiOf(psd)).toEqual([300, 300, "PPI", "PPI"]);
+  });
+
   it("keeps page rasters in the display list's authored draw order", async () => {
     const text = (await lolevPlan()).find((r) => r.id === "volume")!;
     const page = { kind: "page", role: "background", id: "background", asset: "tex", x: 0, y: 0, w: 1, h: 1 } as const;
@@ -225,8 +241,8 @@ describe("added layers", () => {
     const art = await buildPsd(items, assets, "art", { layers });
     const mask = await buildPsd(items, assets, "mask", { layers });
     expect({ art: hash(art), artLen: art.length, mask: hash(mask), maskLen: mask.length }).toEqual({
-      art: "c353feca6f59b3fd63d82c0d6606383dcab74c2c93f574a7a71015fe0b694c24", artLen: 1155418,
-      mask: "cd93b89654ea3b83d3ca58d469c671005758e8e777a1842c0815b96559ebdef9", maskLen: 1148632,
+      art: "a16b0ee159d5c12f2e7231303ed88224ac457f9415ee7a1e88824b92b95b644a", artLen: 1155446,
+      mask: "bfac5b242ffa85ec567a0b46aba913bc01d78223493ca51aabd326bee1c14ecb", maskLen: 1148660,
     });
   });
 
