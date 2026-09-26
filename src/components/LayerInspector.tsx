@@ -326,9 +326,26 @@ const ALIGNS = [
   { value: "justify", label: "Justify", icon: TextAlignJustify },
 ] as const;
 
+// Dropdown options. Each list is also handed to its Select as `items`, so the
+// closed trigger shows the option's label, not its raw value (#232).
 const SYMBOLOGIES: readonly { value: Symbology; label: string }[] = [
   { value: "upc-a", label: "UPC-A" }, { value: "ean-13", label: "EAN-13" }, { value: "code-128", label: "Code 128" },
 ];
+const INPUTS = [
+  { value: "text", label: "Rich text" }, { value: "number", label: "Number" }, { value: "code", label: "Code" },
+] as const;
+const FITS = [{ value: "contain", label: "Contain" }, { value: "cover", label: "Cover" }] as const;
+const QR_STYLES = [
+  { value: "square", label: "Square" }, { value: "rounded", label: "Rounded" }, { value: "dots", label: "Dots" },
+] as const;
+const EC_LEVELS = [
+  { value: "L", label: "L" }, { value: "M", label: "M (default)" }, { value: "Q", label: "Q" }, { value: "H", label: "H" },
+] as const;
+
+/** One compact menu item per option list entry, for those Selects. */
+function SelectOptions({ items }: { items: readonly { value: string; label: string }[] }) {
+  return items.map((o) => <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>);
+}
 
 /** What every section receives: the layer, the one write, and the badge
  *  factory bound to this layer's overridden set. */
@@ -676,6 +693,7 @@ function FillContract(props: Ctx & { layer: TextLayer }) {
       </Row>
       <Field id={`${id}-input`} label="Input" badge={badge(["input"], "Input")}>
         <Select
+          items={INPUTS}
           value={layer.input ?? "text"}
           onValueChange={(v) => { if (v) set({ input: v === "text" ? undefined : v as TextLayer["input"] }); }}
         >
@@ -683,9 +701,7 @@ function FillContract(props: Ctx & { layer: TextLayer }) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="text" className="text-xs">Rich text</SelectItem>
-            <SelectItem value="number" className="text-xs">Number</SelectItem>
-            <SelectItem value="code" className="text-xs">Code</SelectItem>
+            <SelectOptions items={INPUTS} />
           </SelectContent>
         </Select>
       </Field>
@@ -710,6 +726,7 @@ function FillContract(props: Ctx & { layer: TextLayer }) {
       {layer.input === "code" && (
         <Field id={`${id}-fill-symbology`} label="Symbology" badge={badge(["symbology"], "Symbology")}>
           <Select
+            items={SYMBOLOGIES}
             value={layer.symbology ?? "upc-a"}
             onValueChange={(v) => { if (v) set({ symbology: v as Symbology }); }}
           >
@@ -717,9 +734,7 @@ function FillContract(props: Ctx & { layer: TextLayer }) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {SYMBOLOGIES.map((sym) => (
-                <SelectItem key={sym.value} value={sym.value} className="text-xs">{sym.label}</SelectItem>
-              ))}
+              <SelectOptions items={SYMBOLOGIES} />
             </SelectContent>
           </Select>
         </Field>
@@ -767,6 +782,7 @@ function ImageGeometry(props: Ctx & { layer: ImageLayer }) {
   const fit = (
     <Field id={`${id}-fit`} label="Fit" badge={badge(["fit"], "Fit")}>
       <Select
+        items={FITS}
         value={layer.fit ?? "contain"}
         onValueChange={(v) => { if (v) set({ fit: v as ImageLayer["fit"] }); }}
       >
@@ -774,8 +790,7 @@ function ImageGeometry(props: Ctx & { layer: ImageLayer }) {
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="contain" className="text-xs">Contain</SelectItem>
-          <SelectItem value="cover" className="text-xs">Cover</SelectItem>
+          <SelectOptions items={FITS} />
         </SelectContent>
       </Select>
     </Field>
@@ -828,6 +843,7 @@ function BarcodeGeometry(props: Ctx & { layer: BarcodeLayer }) {
       <Heading>Barcode</Heading>
       <Field id={`${id}-symbology`} label="Symbology" badge={badge(["symbology"], "Symbology")}>
         <Select
+          items={SYMBOLOGIES}
           value={layer.symbology}
           onValueChange={(v) => { if (v) set({ symbology: v as Symbology }); }}
         >
@@ -835,9 +851,7 @@ function BarcodeGeometry(props: Ctx & { layer: BarcodeLayer }) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {SYMBOLOGIES.map((s) => (
-              <SelectItem key={s.value} value={s.value} className="text-xs">{s.label}</SelectItem>
-            ))}
+            <SelectOptions items={SYMBOLOGIES} />
           </SelectContent>
         </Select>
       </Field>
@@ -882,6 +896,7 @@ function QrGeometry(props: Ctx & { layer: QrLayer }) {
       </Row>
       <Field id={`${id}-qr-style`} label="Style" badge={badge(["qrStyle"], "QR style")}>
         <Select
+          items={QR_STYLES}
           value={layer.qrStyle}
           onValueChange={(v) => { if (v) set({ qrStyle: v as QrLayer["qrStyle"] }); }}
         >
@@ -889,9 +904,7 @@ function QrGeometry(props: Ctx & { layer: QrLayer }) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="square" className="text-xs">Square</SelectItem>
-            <SelectItem value="rounded" className="text-xs">Rounded</SelectItem>
-            <SelectItem value="dots" className="text-xs">Dots</SelectItem>
+            <SelectOptions items={QR_STYLES} />
           </SelectContent>
         </Select>
       </Field>
@@ -899,6 +912,7 @@ function QrGeometry(props: Ctx & { layer: QrLayer }) {
           that would read as L. */}
       <Field id={`${id}-ec`} label="Error correction" badge={badge(["ecLevel"], "Error correction")}>
         <Select
+          items={EC_LEVELS}
           value={layer.ecLevel ?? "M"}
           onValueChange={(v) => { if (v) set({ ecLevel: v as QrLayer["ecLevel"] }); }}
         >
@@ -906,10 +920,7 @@ function QrGeometry(props: Ctx & { layer: QrLayer }) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="L" className="text-xs">L</SelectItem>
-            <SelectItem value="M" className="text-xs">M (default)</SelectItem>
-            <SelectItem value="Q" className="text-xs">Q</SelectItem>
-            <SelectItem value="H" className="text-xs">H</SelectItem>
+            <SelectOptions items={EC_LEVELS} />
           </SelectContent>
         </Select>
       </Field>

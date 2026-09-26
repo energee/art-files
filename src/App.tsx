@@ -50,7 +50,7 @@ import { exportBase as exportBaseOf, titleOf, withStoredValue } from "@/model/re
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, setValue, structureOnlyMaster,
+  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -61,7 +61,7 @@ import {
   type MasterAssets,
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
-import { SHIPPED_MASTER_ID, masterIndex, rememberMaster, resolveDefaultMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget } from "@/masters";
+import { SHIPPED_MASTER_ID, hintTrusted, masterIndex, rememberMaster, resolveDefaultMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget } from "@/masters";
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
@@ -167,7 +167,7 @@ const newLabel = (master: Master): LabelFile =>
 /** Mint a new image asset id. One spelling of the format, so every drop
  *  site mints ids a saved project's `ImageLayer.asset` can always resolve
  *  against a customImages entry here, regardless of which added it. */
-export function mintCustomAssetId(): string {
+function mintCustomAssetId(): string {
   return `custom-asset-${crypto.randomUUID().slice(0, 8)}`;
 }
 
@@ -175,7 +175,7 @@ export function mintCustomAssetId(): string {
  *  draws the slot's art (under PAGE_ART_ID) while the slot holds any, and
  *  nothing otherwise — a layer the master switched off is not in `layers`
  *  at all, so switching Background off is what the old eye did. */
-export function withPageArt(layers: Layer[], hasTexture: boolean, hasMask: boolean): Layer[] {
+function withPageArt(layers: Layer[], hasTexture: boolean, hasMask: boolean): Layer[] {
   return layers.map((l) => {
     if (l.kind !== "image" || (l.role !== "background" && l.role !== "mask")) return l;
     const has = l.role === "background" ? hasTexture : hasMask;
@@ -231,8 +231,10 @@ const errMsg = (err: unknown) => (err instanceof Error ? err.message : String(er
 
 /** What every open path hands to openProject. Each entry point converts
  *  to this shape itself (fileSource for picked Files), so the shared
- *  pipeline never branches on where the bytes came from. */
-type LabelSource = { name: string; bytes: Uint8Array };
+ *  pipeline never branches on where the bytes came from. The one exception
+ *  is `path`, set only when the label came off disk (desktop): its folder
+ *  is where the label's masterHint may be read from (masters.ts hintTrusted). */
+type LabelSource = { name: string; bytes: Uint8Array; path?: string };
 const fileSource = async (f: File): Promise<LabelSource> =>
   ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
 
@@ -809,10 +811,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Delete a variant and stop showing it. One undoable edit, so it needs no
    *  confirm of its own. */
   function onRemoveVersion(id: string) {
-    edit((d) => ({
-      master: removeVariant(d.master, id),
-      label: showVersion(d.label, version === id ? id : version, null),
-    }));
+    edit((d) => removeVariantIn(d, id, rowBoxes()));
   }
 
   /** The dot-paths deviating from the master on the inspected layer, kept
@@ -1886,12 +1885,15 @@ export const DocumentEditor = memo(function DocumentEditor({
         next = { master: lolevMaster(), label: adoptLegacyCollab(r.label) };
       } else {
         const ref = unpacked.label ?? unpacked.v2!;
-        const resolved = await resolveMasterById(ref.masterId, ref.masterHint);
+        const hint = ref.masterHint;
+        const resolved = await resolveMasterById(ref.masterId, hint, f.path);
         if (!resolved) {
-          setLoadError(
-            `Could not find master "${ref.masterId}"` +
-            `${ref.masterHint ? ` (last seen at ${ref.masterHint})` : ""}` +
-            ` — open its .master file once to register it.`);
+          // An untrusted hint was never read, so it must not read as a file
+          // that was looked for and found missing.
+          const where = !hint ? ""
+            : hintTrusted(hint, f.path) ? ` (last seen at ${hint})`
+            : ` (its remembered path ${hint} is outside this label's folder and the master library, so it was not read)`;
+          setLoadError(`Could not find master "${ref.masterId}"${where} — open its .master file once to register it.`);
           return false;
         }
         masterAssets = resolved.assets;
@@ -1953,7 +1955,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       try {
         if (path) {
           const name = await basename(path);
-          if (await openWithRetry(async () => ({ name, bytes: await readNativeFile(path) }))) {
+          if (await openWithRetry(async () => ({ name, bytes: await readNativeFile(path), path }))) {
             projectPath.current = path;
             setFilePath(path);
           }

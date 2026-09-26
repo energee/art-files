@@ -11,8 +11,7 @@
 // missing face would silently measure wrong, which is exactly what the gate
 // exists to prevent.
 import { type Mode, type MeasureFace, type PlacedBarcode, type PlacedText, type PlanAssets } from "../plan";
-import { planLayers, type PlacedLayer, type PlacedPage } from "../planLayers";
-import type { Layer } from "../model/layers";
+import type { PlacedLayer, PlacedPage } from "../planLayers";
 import type { Fill, Style } from "../types";
 import { bridgeOffsets } from "../strokes";
 import { FACE_WEIGHT, labelFontCss } from "../fonts";
@@ -57,13 +56,6 @@ export interface CanvasRenderSource {
    *  under, so drawPlate's text/barcode calls resolve the right glyphs. */
   fontCss: string;
 }
-
-/** The one spelling of "plan from a render source" — PreviewCompare and the
- *  3D texture path both build the identical call. `layers` are the RESOLVED
- *  layers (resolveLayers' output: variants merged, values filled, disabled
- *  layers dropped). */
-export const planFrom = (layers: Layer[], s: CanvasRenderSource): PlacedLayer[] =>
-  planLayers(layers, s.m, s.planAssets, { skip: s.skip });
 
 /** Path2D per path ARRAY, parsed once: every keystroke replans and repaints
  *  the plate, but logo.ts (parseLogo) and qr.ts (qrPaths) memoize the arrays

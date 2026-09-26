@@ -22,6 +22,11 @@ that section to the new version (see .agents/release-steward.md).
   or the text layer's name, matching its menu, instead of `none` or the
   layer's internal id.
 
+- **The inspector's other dropdowns show their labels too.** Input, Symbology,
+  Fit, QR style and Error correction read "Rich text", "UPC-A", "Cover",
+  "Rounded" or "M (default)" instead of the raw `text`, `upc-a`, `cover`,
+  `rounded` or `M`.
+
 - **An image dropped on a switched-off variant's layer shows right away.** The
   layer's drop area names the loaded file instead of still saying "drop or
   click" until the variant is switched on.
@@ -32,6 +37,15 @@ that section to the new version (see .agents/release-steward.md).
   the Save Master review, instead of being silently dropped unless something
   else changed.
 
+- **Deleting a version no longer hides the one you're working in.**
+  Deleting any version other than the current one also switched off the
+  current one; now only the deleted version goes away.
+
+- **Deleting a version whose layer another layer is bound to now goes
+  through.** Binding a layer below one a version adds (Volume below the
+  Collab lead-in), then deleting that version, was refused with "bound to
+  missing layer"; the bound layer now lets go and stays where it was.
+
 - **Deleting a layer another layer is bound to on this label no longer
   freezes the preview.** A binding made in the inspector but not yet saved
   to the master (Volume bound below Logo, then Logo deleted) now lets go
@@ -39,6 +53,10 @@ that section to the new version (see .agents/release-steward.md).
   missing layer" with a stale preview. A binding saved to the master whose
   position was not also saved no longer jumps back to where it sat before
   it was bound.
+
+- **`⌘K` no longer opens the command palette on top of an open dialog.** With
+  the Save Master review or Settings open, `⌘K` does nothing; from the label
+  it still opens the palette, and inside the palette it still closes it.
 
 - **`⌘Z` inside an open dialog no longer undoes the label behind it.** With
   the Save Master review or Settings open, `⌘Z` / `⇧⌘Z` (and Edit → Undo /
@@ -51,6 +69,26 @@ that section to the new version (see .agents/release-steward.md).
   first time you open it instead of with the editor, cutting the startup
   code by about 40%. The label preview also stops re-reading the logo and
   QR shapes on every keystroke.
+- **A crash no longer blanks the window.** If the editor hits an error it
+  cannot recover from, it now shows the message and a Reload button instead
+  of an empty page.
+
+- **Opening files keeps working after an internal error.** If an internal
+  error interrupted queuing a double-clicked `.label`, every later file open
+  could crash the desktop app; it now carries on.
+
+- **Shared labels cannot point the app at arbitrary files.** A `.label`'s
+  remembered master path is only read when it sits beside the label or
+  beside a master you already registered; otherwise the error asks you to
+  open that `.master` once.
+
+
+- **The desktop window enforces a content security policy.** Only the app's
+  own bundled code and assets may load; nothing from the network.
+
+- **Internal cleanup, no visible change.** Unused code and an unused
+  interface component were removed from the app. Labels, exports, and the
+  editor behave exactly as before.
 
 ## [0.1.98] - 2026-09-25
 
