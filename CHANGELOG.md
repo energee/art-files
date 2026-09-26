@@ -37,6 +37,10 @@ that section to the new version (see .agents/release-steward.md).
   the Save Master review, instead of being silently dropped unless something
   else changed.
 
+- **Deleting a version no longer hides the one you're working in.**
+  Deleting any version other than the current one also switched off the
+  current one; now only the deleted version goes away.
+
 - **Deleting a version whose layer another layer is bound to now goes
   through.** Binding a layer below one a version adds (Volume below the
   Collab lead-in), then deleting that version, was refused with "bound to

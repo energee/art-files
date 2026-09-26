@@ -793,10 +793,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Delete a variant and stop showing it. One undoable edit, so it needs no
    *  confirm of its own. */
   function onRemoveVersion(id: string) {
-    edit((d) => {
-      const removed = removeVariantIn(d, id, rowBoxes());
-      return { ...removed, label: showVersion(removed.label, version === id ? id : version, null) };
-    });
+    edit((d) => removeVariantIn(d, id, rowBoxes()));
   }
 
   /** The dot-paths deviating from the master on the inspected layer, kept
