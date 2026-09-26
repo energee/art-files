@@ -37,6 +37,11 @@ that section to the new version (see .agents/release-steward.md).
   the Save Master review, instead of being silently dropped unless something
   else changed.
 
+- **Deleting a version whose layer another layer is bound to now goes
+  through.** Binding a layer below one a version adds (Volume below the
+  Collab lead-in), then deleting that version, was refused with "bound to
+  missing layer"; the bound layer now lets go and stays where it was.
+
 - **Deleting a layer another layer is bound to on this label no longer
   freezes the preview.** A binding made in the inspector but not yet saved
   to the master (Volume bound below Logo, then Logo deleted) now lets go

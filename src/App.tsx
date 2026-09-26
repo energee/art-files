@@ -50,7 +50,7 @@ import { exportBase as exportBaseOf, titleOf, withStoredValue } from "@/model/re
 import type { DeepPartial } from "@/model/merge";
 import {
   addLayer, addVariant, adoptMaster, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
-  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariant, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, setValue, structureOnlyMaster,
+  applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
 import { convertConfigV1, convertLabelV2, guideLines } from "@/model/convert";
@@ -793,10 +793,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Delete a variant and stop showing it. One undoable edit, so it needs no
    *  confirm of its own. */
   function onRemoveVersion(id: string) {
-    edit((d) => ({
-      master: removeVariant(d.master, id),
-      label: showVersion(d.label, version === id ? id : version, null),
-    }));
+    edit((d) => {
+      const removed = removeVariantIn(d, id, rowBoxes());
+      return { ...removed, label: showVersion(removed.label, version === id ? id : version, null) };
+    });
   }
 
   /** The dot-paths deviating from the master on the inspected layer, kept
