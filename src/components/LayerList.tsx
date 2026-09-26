@@ -36,7 +36,7 @@ import {
 /** Click modifiers as the row reports them. `meta` is ⌘ on macOS and Ctrl
  *  elsewhere (the toggle-select gesture) — the platform rule lives here so
  *  the caller only ever sees one flag. */
-export interface SelectMods { shift: boolean; meta: boolean }
+interface SelectMods { shift: boolean; meta: boolean }
 
 export interface LayerListProps {
   /** DRAW ORDER, back to front — exactly `Master.layers` plus any

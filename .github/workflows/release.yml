@@ -16,8 +16,35 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # `paths: package.json` also fires on dependency-only edits (Dependabot,
+  # a new devDependency), and those runs failed the version check on every
+  # leg (#248). Release only a version with no label-lab-v tag yet — the same
+  # signal the Validate step uses. A manual dispatch always releases (the
+  # recovery path if a partial release already tagged this version).
+  version:
+    name: Version unreleased?
+    runs-on: ubuntu-latest
+    outputs:
+      unreleased: ${{ steps.check.outputs.unreleased }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: check
+        shell: bash
+        run: |
+          tag="label-lab-v$(jq -r .version package.json)"
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]] ||
+             ! git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            unreleased=true
+          else
+            unreleased=false
+          fi
+          echo "$tag unreleased=$unreleased"
+          echo "unreleased=$unreleased" >> "$GITHUB_OUTPUT"
+
   release:
     name: ${{ matrix.name }}
+    needs: version
+    if: needs.version.outputs.unreleased == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -138,8 +165,9 @@ jobs:
   # cancelled run.
   publish-update-feed:
     name: Publish update feed to Pages
-    needs: release
-    if: ${{ !cancelled() }}
+    needs: [version, release]
+    # A skipped release is not "cancelled", so gate on the version too.
+    if: ${{ !cancelled() && needs.version.outputs.unreleased == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

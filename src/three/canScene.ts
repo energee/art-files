@@ -8,7 +8,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { RGBELoader } from "three/addons/loaders/RGBELoader.js";
+import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 import type { LabelTextures } from "./labelTextures";
 import { DEFAULT_RENDER } from "@/settings";
 import {
@@ -236,7 +236,7 @@ export class CanScene {
   /** studio.hdr as scene.environment only — background stays the flat theme
    *  color; the HDRI exists for the metal's reflections. */
   private loadEnvironment() {
-    new RGBELoader().load(
+    new HDRLoader().load(
       `${import.meta.env.BASE_URL}studio.hdr`,
       (texture) => {
         if (this.disposed) { texture.dispose(); return; }

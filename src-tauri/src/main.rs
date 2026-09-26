@@ -6,7 +6,7 @@
 
 mod terminate;
 
-use std::{ffi::OsString, path::PathBuf, sync::Mutex};
+use std::{ffi::OsString, path::PathBuf, sync::{Mutex, PoisonError}};
 use tauri::Manager;
 
 /** Release builds set the public updater key at compile time. Local builds do
@@ -51,11 +51,15 @@ impl OpenedFile {
      * ponytail: dropping is the ceiling — opening these needs an opaque
      * document handle through the whole open/save pipeline.
      *
-     * Returns whether it was queued. Plain method so tests reach it. */
+     * Returns whether it was queued. Plain method so tests reach it.
+     *
+     * Both push and take read through a poisoned lock (a panic elsewhere
+     * while it was held) rather than aborting the app: every mutation is a
+     * single Vec push/remove, so the queue is never left half-written. */
     fn push(&self, path: PathBuf) -> bool {
         match path.into_os_string().into_string() {
             Ok(path) => {
-                self.0.lock().unwrap().push(path);
+                self.0.lock().unwrap_or_else(PoisonError::into_inner).push(path);
                 true
             }
             Err(_) => false,
@@ -65,7 +69,7 @@ impl OpenedFile {
     /** Pop the oldest queued path — FIFO, so files open in the order the
      * OS delivered them. Plain method (not the command) so tests reach it. */
     fn take(&self) -> Option<String> {
-        let mut queue = self.0.lock().unwrap();
+        let mut queue = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         if queue.is_empty() {
             return None;
         }
@@ -265,6 +269,21 @@ mod tests {
     #[test]
     fn argv_filter_yields_nothing_without_label_paths() {
         assert!(label_paths_from_args(["exe", "--flag", "notes.txt"]).is_empty());
+    }
+
+    /** A panic while the queue lock was held poisons it; opening files
+     *  must keep working instead of aborting the app on every later open. */
+    #[test]
+    fn opened_file_queue_survives_a_poisoned_lock() {
+        let state = OpenedFile::new([PathBuf::from("/x/a.label")]);
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = state.0.lock().unwrap();
+            panic!("poison the queue lock");
+        }));
+        assert!(state.0.is_poisoned());
+        assert!(state.push(PathBuf::from("/x/b.label")));
+        assert_eq!(state.take().as_deref(), Some("/x/a.label"));
+        assert_eq!(state.take().as_deref(), Some("/x/b.label"));
     }
 
     /** A path that cannot be a String is dropped, not mangled — see

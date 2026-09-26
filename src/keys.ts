@@ -32,12 +32,17 @@ export const isTypingTarget = (target: EventTarget | null): boolean => {
   return !!el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "");
 };
 
+/** Whether `target` sits inside a modal dialog — even in a text field there,
+ *  which keyOwner reports as "text". */
+export const inDialog = (target: EventTarget | null): boolean =>
+  !!(target as HTMLElement | null)?.closest?.(DIALOG);
+
 /** Who a key aimed at `target` belongs to, narrowest claim first; null when
  *  it is the app's. */
 export const keyOwner = (target: EventTarget | null): "text" | "dialog" | "popup" | "widget" | null => {
   if (isTypingTarget(target)) return "text";
   const el = target as HTMLElement | null;
-  if (el?.closest?.(DIALOG)) return "dialog";
+  if (inDialog(target)) return "dialog";
   if (el?.closest?.(POPUP)) return "popup";
   if (el?.closest?.(WIDGET)) return "widget";
   return null;
