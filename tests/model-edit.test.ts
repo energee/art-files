@@ -6,10 +6,10 @@
 // input.
 import { describe, expect, it } from "vitest";
 import {
-  addLayer, addVariant, bindBelow, clearLabelOverride, clearOverride, clearValue,
-  masterDiff, mintLayerId, moveBy, moveLayers, overriddenPaths, removeLayer,
-  removeVariant, renameVariant, setLabelOverride, setLayer, setLayerIn, setValue,
-  structureOnlyMaster, toggleVariant, unbind, whereLayerLives,
+  addLayer, addVariant, bindBelow, checkLabelBindings, clearLabelOverride, clearOverride, clearValue,
+  masterDiff, mintLayerId, moveBy, moveLayers, overriddenPaths, patchLayers, removeLayer,
+  removeLayerIn, removeVariant, removeVariantIn, renameVariant, setLabelOverride, setLayer, setLayerIn, setValue,
+  structureOnlyMaster, toggleVariant, unbind, whereLayerLives, type Doc,
 } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { PT_STEP, roundToStep } from "../src/numeric";
@@ -362,6 +362,10 @@ describe("masterDiff", () => {
     expect(masterDiff(lolevMaster(), setLayer(lolevMaster(), "name", { size: 20 }))).toBe(true);
     expect(masterDiff(lolevMaster(), setLayer(lolevMaster(), "collabLead", { size: 20 }))).toBe(true);
   });
+  it("sees a reorder of a variant's added layers (#198)", () => {
+    const m = lolevMaster();
+    expect(masterDiff(m, moveLayers(m, ["collabLead"], "collabLead", 1))).toBe(true);
+  });
   it("ignores key order", () => {
     const m = lolevMaster();
     const spun = { ...m, layers: m.layers.map((l) => ({ ...l, y: l.y })) };
@@ -602,5 +606,100 @@ describe("removeLayer keeps a bound dependent where the removed layer sat", () =
     const m = lolevMaster();
     const removed = removeLayer(m, "collabLead", boxesOf(m));
     expect(collab(removed).layers.collabLeft!.y).toEqual(collab(m).layers.collabLead!.y);
+  });
+});
+
+// Issue #220: a binding made in the inspector lives in the LABEL's overrides
+// until Save Master promotes it. Removing its target must detach it there
+// too, or the label keeps a binding to a missing layer (the edit is refused)
+// or its override `y` snaps the dependent back to where it sat at bind time.
+describe("removeLayerIn detaches label-override bindings to the removed layer", () => {
+  const sizeOf = (l: Layer) => ({ w: 100, h: l.id === "logo" ? 40 : 12 });
+  const boxesOf = (d: Doc) => placeLayers(resolveLayers(d.master, d.label.enabledVariants, {},
+    d.label.overrides, { keepDisabled: true }).layers, sizeOf, guides);
+  const boundToLogo = (d: Doc) =>
+    patchLayers(d, [["volume", bindingPatch(byId(d.master, "volume"), "logo", "bottom", boxesOf(d).get("volume")!)]]);
+
+  const labelOnly = (): Doc => boundToLogo({ master: lolevMaster(), label: label() });
+  /** Save Master promoted the binding alone; its y/vAnchor/guideY stayed. */
+  const promoted = (): Doc => {
+    const bound = labelOnly();
+    const { binding, ...position } = bound.label.overrides!.volume;
+    return {
+      master: setLayer(bound.master, "volume", { binding: binding as Layer["binding"] }),
+      label: { ...bound.label, overrides: { volume: position } },
+    };
+  };
+  it.each([["a label-only binding", labelOnly], ["a promoted binding", promoted]])("%s", (_, make) => {
+    const d = make();
+    const before = boxesOf(d);
+    const after = removeLayerIn(d, "logo", before);
+    expect(() => checkLabelBindings(after)).not.toThrow();
+    expect(boxesOf(after).get("volume")!.y).toBeCloseTo(before.get("volume")!.y);
+  });
+  it("a label-only binding on a layer of a switched-off version", () => {
+    const on: Doc = { master: lolevMaster(), label: label({ enabledVariants: ["collab"] }) };
+    const boxes = boxesOf(on);
+    const bound = patchLayers(on, [["collabLeft",
+      bindingPatch(collab(on.master).layers.collabLeft as Layer, "logo", "bottom", boxes.get("collabLeft")!)]]);
+    const off: Doc = { ...bound, label: { ...bound.label, enabledVariants: [] } };
+    // Unmeasured, it is refused like a master binding would be, not left dangling.
+    expect(() => removeLayerIn(off, "logo", boxesOf(off))).toThrow(/collabLeft/);
+    const after = removeLayerIn(off, "logo", boxes);
+    expect(() => checkLabelBindings({ ...after, label: { ...after.label, enabledVariants: ["collab"] } })).not.toThrow();
+  });
+  it("leaves an override that holds no position key alone", () => {
+    const m = setLayer(lolevMaster(), "volume", { binding: { to: "logo", side: "bottom", gap: 0 } });
+    const d: Doc = { master: m, label: label({ overrides: { volume: { size: 11 } } }) };
+    expect(removeLayerIn(d, "logo", boxesOf(d)).label.overrides).toEqual({ volume: { size: 11 } });
+  });
+});
+
+// Deleting a VERSION removes the layers it adds, so a label-override binding
+// to one of them (bound in the inspector while the version was on) must be
+// detached like a deleted layer's (#220), not left dangling — the delete was
+// refused with "bound to missing layer".
+describe("removeVariantIn detaches label bindings to the layers the version adds", () => {
+  const sizeOf = (l: Layer) => ({ w: 100, h: l.id === "collabLead" ? 32 : 12 });
+  const boxesOf = (d: Doc) => placeLayers(resolveLayers(d.master, d.label.enabledVariants, {},
+    d.label.overrides, { keepDisabled: true }).layers, sizeOf, guides);
+  it("the delete goes through and the bound layer stays where it was", () => {
+    const on: Doc = { master: lolevMaster(), label: label({ enabledVariants: ["collab"] }) };
+    const d = patchLayers(on, [["volume",
+      bindingPatch(byId(on.master, "volume"), "collabLead", "bottom", boxesOf(on).get("volume")!)]]);
+    const before = boxesOf(d);
+    const after = removeVariantIn(d, "collab", before);
+    expect(after.master.variants.map((v) => v.id)).not.toContain("collab");
+    const shown = { ...after, label: { ...after.label, enabledVariants: [] } };
+    expect(() => checkLabelBindings(shown)).not.toThrow();
+    expect(boxesOf(shown).get("volume")!.y).toBeCloseTo(before.get("volume")!.y);
+  });
+  it("a switched-off version whose own layers bind to each other deletes unmeasured", () => {
+    const { master: m1, id: v } = addVariant(lolevMaster(), "Extra");
+    const { master: m2, id: a } = addLayer(m1, "text", { variant: v });
+    const { master: m3, id: b } = addLayer(m2, "text", { variant: v });
+    const m = setLayer(m3, b, { binding: { to: a, side: "bottom", gap: 0 } });
+    const d: Doc = { master: m, label: label() };
+    expect(removeVariantIn(d, v).master.variants.map((x) => x.id)).toEqual(["collab"]);
+  });
+  it("so does one that binds a master layer to its own layer", () => {
+    const m = { ...lolevMaster(), variants: lolevMaster().variants.map((v) => ({ ...v,
+      layers: { ...v.layers, volume: { binding: { to: "collabLead", side: "bottom" as const, gap: 0 } } } })) };
+    expect(removeVariantIn({ master: m, label: label() }, "collab").master.variants).toEqual([]);
+  });
+  it("so does one whose layers are bound to each other only on the label", () => {
+    const { master: m1, id: v } = addVariant(lolevMaster(), "Extra");
+    const { master: m2, id: a } = addLayer(m1, "text", { variant: v });
+    const { master: m, id: b } = addLayer(m2, "text", { variant: v });
+    const on: Doc = { master: m, label: label({ enabledVariants: [v] }) };
+    const bound = patchLayers(on, [[b, bindingPatch(m.variants[1].layers[b] as Layer, a, "bottom", boxesOf(on).get(b)!)]]);
+    const off: Doc = { ...bound, label: { ...bound.label, enabledVariants: [] } };
+    expect(removeVariantIn(off, v).label.overrides).toEqual({});
+  });
+  it("drops only the deleted version from the label's shown versions", () => {
+    const { master: m, id: v } = addVariant(lolevMaster(), "Extra");
+    const d: Doc = { master: m, label: label({ enabledVariants: [v, "collab"] }) };
+    expect(removeVariantIn(d, v).label.enabledVariants).toEqual(["collab"]);
+    expect(removeVariantIn(d, "collab").label.enabledVariants).toEqual([v]);
   });
 });

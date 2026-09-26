@@ -141,19 +141,17 @@ function withLayer(master: Master, id: string, fn: (l: Entry) => Entry): Master 
     withEntries(v, { ...v.layers, [id]: fn(v.layers[id]) }));
 }
 
-/** Rewrites every `below: id` reference in a list of records with `slot`. */
-const repoint = <T extends { y?: unknown }>(l: T, id: string, slot: Entry): T =>
-  isBound(l.y) && l.y.below === id ? { ...l, ...structuredClone(slot) } : l;
-
-/** Removes the layer from wherever it lives, strips every variant's entry
- *  for it, and re-points any layer bound below it into the vacated slot so
- *  no binding dangles and the layer beneath does not move. A removed layer
- *  that is itself bound below another hands its `below` binding on (the
- *  chain closes up); otherwise the dependent is pinned at the removed
- *  layer's measured top (`boxes`) with no guide and a top anchor, since the
- *  removed layer's raw `y` means nothing without its own guideY/vAnchor/
- *  binding. Without its box the raw `y` is copied as a best effort. */
-export function removeLayer(master: Master, id: string, boxes?: ReadonlyMap<string, Box>): Master {
+/** The patch removing layer `id` makes to one record `key` that points at
+ *  it, or undefined for a record that doesn't. A layer bound below `id` is
+ *  re-pointed into the vacated slot so no binding dangles and the layer
+ *  beneath does not move: a removed layer that is itself bound below another
+ *  hands its `below` binding on (the chain closes up); otherwise the
+ *  dependent is pinned at the removed layer's measured top (`boxes`) with no
+ *  guide and a top anchor, since the removed layer's raw `y` means nothing
+ *  without its own guideY/vAnchor/binding. Without its box the raw `y` is
+ *  copied as a best effort. A new-style `binding` to `id` is detached at the
+ *  dependent's own measured box (unbindPatch). */
+function detacher(master: Master, id: string, boxes?: ReadonlyMap<string, Box>) {
   const where = whereLayerLives(master, id);
   const removed = where === "master"
     ? master.layers.find((l) => l.id === id)!
@@ -163,16 +161,61 @@ export function removeLayer(master: Master, id: string, boxes?: ReadonlyMap<stri
   const slot: Entry = isBound(y) || top === undefined
     ? { y }
     : { y: pt(top), vAnchor: "top", guideY: "none" };
+  return (entry: Entry, key: string): Entry | undefined => {
+    if (entry.binding?.to === id) {
+      const box = boxes?.get(key);
+      if (!box) throw new Error(`Cannot remove "${id}" without the position of bound layer "${key}"`);
+      return unbindPatch(entry as Layer, box);
+    }
+    if (isBound(entry.y) && entry.y.below === id) return structuredClone(slot);
+    return undefined;
+  };
+}
+
+/** Removes the layer from wherever it lives, strips every variant's entry
+ *  for it, and detaches every record pointing at it (see detacher). */
+export function removeLayer(master: Master, id: string, boxes?: ReadonlyMap<string, Box>): Master {
+  const patchOf = detacher(master, id, boxes);
   const detach = <T extends Entry>(entry: T, key: string): T => {
-    if (entry.binding?.to !== id) return repoint(entry, id, slot);
-    const box = boxes?.get(key);
-    if (!box) throw new Error(`Cannot remove "${id}" without the position of bound layer "${key}"`);
-    return { ...entry, ...unbindPatch(entry as Layer, box) };
+    const p = patchOf(entry, key);
+    return p ? { ...entry, ...p } : entry;
   };
   const layers = master.layers.filter((l) => l.id !== id).map((l) => detach(l, l.id));
   const variants = master.variants.map((v) => withEntries(v,
     Object.fromEntries(Object.entries(without(v.layers, id)).map(([k, e]) => [k, detach(e, k)]))));
   return { ...master, layers, variants };
+}
+
+/** removeLayer for the editor's document (issue #220): the label's own
+ *  overrides are detached too, and its override for the removed layer
+ *  dropped. An override can hold a binding the master never saw (bound in
+ *  the inspector, not yet saved), or the y/vAnchor/guideY a promoted binding
+ *  left behind — so each is judged by the layer it RESOLVES to, and the
+ *  patch lands in an override that holds one of the keys it writes, where it
+ *  would otherwise win over the master's. A switched-off version's layers
+ *  count too; unmeasured (no box), one bound to `id` refuses the removal. */
+export function removeLayerIn(doc: Doc, id: string, boxes?: ReadonlyMap<string, Box>): Doc {
+  const master = removeLayer(doc.master, id, boxes);
+  const overrides = doc.label.overrides;
+  if (!overrides) return { ...doc, master };
+  const patchOf = detacher(doc.master, id, boxes);
+  // Switched-off versions too, their layers' overrides still bind; the
+  // enabled resolve goes last so it wins for the layers you see.
+  const resolve = (variants: string[]) =>
+    resolveLayers(doc.master, variants, {}, overrides, { keepDisabled: true }).layers;
+  const resolved = new Map([...resolve(doc.master.variants.map((v) => v.id)), ...resolve(doc.label.enabledVariants)]
+    .map((l) => [l.id, l]));
+  const next = Object.fromEntries(Object.entries(without(overrides, id)).map(([k, o]) => {
+    const layer = resolved.get(k);
+    const p = layer && patchOf(layer, k);
+    // Only an override that holds a key the patch writes would win over the
+    // master's own detach; patching any other would invent overrides.
+    if (!p || !Object.keys(p).some((key) => key in o)) return [k, o];
+    // A shallow spread, not setLabelOverride's deepMerge: the patch replaces
+    // `y` whole, so no key of an old `{ below, gap }` survives into it.
+    return [k, { ...o, ...p }];
+  }));
+  return { master, label: { ...doc.label, overrides: next } };
 }
 
 /** Moves `block` (the members of `list` whose id is in `ids`, keeping their
@@ -585,6 +628,35 @@ export function removeVariant(master: Master, id: string): Master {
   return { ...master, variants: master.variants.filter((v) => v.id !== id) };
 }
 
+/** removeVariant for the editor's document (issue #236): each layer the
+ *  version adds is removed first with removeLayerIn, so a layer bound to one
+ *  of them — in the master or in the label's overrides — lets go and stays
+ *  where it was (`boxes`) instead of dangling. Nothing that goes away with the
+ *  version may be detached — that demands a box a switched-off version's
+ *  layers don't have — so the version's patches to master layers and the
+ *  added layers' label overrides are dropped up front, and the added layers
+ *  go deepest dependent first (bindings are acyclic: parseMaster). The label
+ *  stops showing the deleted version and keeps showing every other one. */
+export function removeVariantIn(doc: Doc, id: string, boxes?: ReadonlyMap<string, Box>): Doc {
+  const { layers } = variantOf(doc.master, id);
+  const added = new Set(Object.keys(layers).filter((k) => whereLayerLives(doc.master, k) !== "master"));
+  /** The entries of `o` whose key is (or, with false, is not) an added layer. */
+  const keep = <T,>(o: Record<string, T>, isAdded: boolean) =>
+    Object.fromEntries(Object.entries(o).filter(([k]) => added.has(k) === isAdded));
+  const depth = (k: string): number => {
+    const to = bindingOf(layers[k])?.to;
+    return to !== undefined && added.has(to) ? 1 + depth(to) : 0;
+  };
+  const depths = new Map([...added].map((k) => [k, depth(k)]));
+  const order = [...added].sort((a, b) => depths.get(b)! - depths.get(a)!);
+  const start: Doc = {
+    master: withVariant(doc.master, id, (v) => withEntries(v, keep(v.layers, true))),
+    label: { ...doc.label, overrides: doc.label.overrides && keep(doc.label.overrides, false) },
+  };
+  const d = order.reduce((acc, k) => removeLayerIn(acc, k, boxes), start);
+  return { master: removeVariant(d.master, id), label: showVersion(d.label, id, null) };
+}
+
 export function renameVariant(master: Master, id: string, name: string): Master {
   variantOf(master, id);
   return withVariant(master, id, (v) => ({ ...v, name }));
@@ -793,9 +865,21 @@ function deepEqual(a: unknown, b: unknown): boolean {
  *  flag, and all App needs on the edit path. masterChanges answers the same
  *  question itemised, but walks every layer and every variant diff to do it,
  *  which is too much to run per pointermove. Order of keys is ignored; order
- *  of layers (draw order) is not. */
+ *  of layers (draw order) is not — including a variant's added layers, whose
+ *  draw order IS their key order (#198). */
 export function masterDiff(base: Master, edited: Master): boolean {
-  return !deepEqual(base, edited);
+  if (base === edited) return false;
+  if (!deepEqual(base, edited)) return true;
+  // Equal up to key order, so the variants line up by index.
+  const masterIds = new Set(base.layers.map((l) => l.id));
+  const order = (v: Variant) => addedIds(v, masterIds).join("\0");
+  return edited.variants.some((v, i) => order(v) !== order(base.variants[i]));
+}
+
+/** A variant's added layers in draw order: its keys that are not master
+ *  layers (those are overrides, whose key order means nothing). */
+function addedIds(v: Variant, masterIds: { has(id: string): boolean }): string[] {
+  return Object.keys(v.layers).filter((id) => !masterIds.has(id));
 }
 
 /** Untitled restore: keep the template's layers and positions, drop fill
@@ -945,6 +1029,12 @@ export function masterChanges(
     for (const id of Object.keys(was.layers))
       if (!(id in v.layers))
         out.push({ kind: "removed", layerId: id, layerName: nameOf(id, was.layers[id]) });
+    // A variant's added layers draw in key order (moveLayers), so compare that
+    // order the way the base layers' is compared above (#198).
+    const wasIndex = new Map(addedIds(was, baseById).map((id, i) => [id, i]));
+    const kept = addedIds(v, editedById).filter((id) => wasIndex.has(id));
+    for (const id of movedOutOfOrder(kept, (id) => wasIndex.get(id)!))
+      out.push({ kind: "moved", layerId: id, layerName: nameOf(id, v.layers[id]) });
     for (const [id, entry] of Object.entries(v.layers)) {
       const before = was.layers[id];
       if (before === undefined && !editedById.has(id)) {
