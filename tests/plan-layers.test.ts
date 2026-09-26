@@ -50,8 +50,13 @@ describe("planLayers text", () => {
     // pdf-lib would print a tab as four spaces (and break a line at \v/\f)
     // while the canvas preview shows one space, so the plan normalizes first.
     const plan = (t: string) => planLayers([text({ id: "s", x: 0, y: 0, lines: [line(t)] })], m, assets) as PlacedText[];
-    expect(plan("Hops\tCitra\u0001\u2028Mosaic\vX").map((r) => [r.text, r.w]))
+    expect(plan("\uFEFFHops\tCitra\u0001\u2028Mosaic\u200B\u009B\vX").map((r) => [r.text, r.w]))
       .toEqual(plan("Hops Citra Mosaic X").map((r) => [r.text, r.w]));
+  });
+
+  it("shows the placeholder when a line holds only control characters (#282)", () => {
+    const [run] = planLayers([text({ id: "s", x: 0, y: 0, placeholder: "Name", lines: [line("\u0001\u007F")] })], m, assets) as PlacedText[];
+    expect(run.text).toBe("Name");
   });
 
   it("centers a center-anchored, center-aligned line on x", () => {
