@@ -63,6 +63,12 @@ that section to the new version (see .agents/release-steward.md).
   Redo) leave the canvas alone; in the inspector and its color picker they
   still undo your last edit.
 
+### Changed
+
+- **Faster startup and smoother typing.** The 3D can view now loads the
+  first time you open it instead of with the editor, cutting the startup
+  code by about 40%. The label preview also stops re-reading the logo and
+  QR shapes on every keystroke.
 - **A crash no longer blanks the window.** If the editor hits an error it
   cannot recover from, it now shows the message and a Reload button instead
   of an empty page.
@@ -76,7 +82,6 @@ that section to the new version (see .agents/release-steward.md).
   beside a master you already registered; otherwise the error asks you to
   open that `.master` once.
 
-### Changed
 
 - **The desktop window enforces a content security policy.** Only the app's
   own bundled code and assets may load; nothing from the network.
