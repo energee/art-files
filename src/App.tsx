@@ -27,7 +27,7 @@
 import { RenderSettings as RenderSettingsFields } from "@/components/RenderSettings";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { MasterSaveReview } from "@/components/MasterSaveReview";
-import { Suspense, lazy, memo, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useEffect, useMemo, useRef, useState } from "react";
 import { isTypingTarget, keyOwner } from "@/keys";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
@@ -118,8 +118,19 @@ import logoSvg from "@/assets/logo2025.svg?raw";
 
 // three.js is the largest thing in the bundle and most sessions never leave
 // the 2D view, so the 3D can view (and three.js with it) loads on first use —
-// the same split pdf/build and psd/build already get via import().
-const CanView = lazy(() => import("@/components/CanView").then((m) => ({ default: m.CanView })));
+// the same split pdf/build and psd/build already get via import(). A chunk
+// that fails to load (a stale dev chunk, a broken install) reports through
+// the view's own onRenderError instead of unmounting the editor — there is
+// no error boundary above it.
+type CanViewProps = ComponentPropsWithRef<typeof import("@/components/CanView").CanView>;
+const CanView = lazy<ComponentType<CanViewProps>>(() => import("@/components/CanView").then(
+  (m) => ({ default: m.CanView }),
+  (err: unknown) => ({
+    default: function CanViewLoadFailed({ onRenderError }: CanViewProps) {
+      useEffect(() => onRenderError(`The 3D view failed to load: ${String(err)}`), [onRenderError]);
+      return null;
+    },
+  })));
 
 /** bytes = full print resolution (exports); previewBytes = downscaled PNG the
  *  assembly effect decodes into a bitmap, so keystroke-driven rebuilds never

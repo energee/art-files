@@ -1,6 +1,7 @@
 // canview-lazy-dom.test.tsx — the 3D can view (and three.js with it) loads on
 // first use, not with the editor: the CanView module is not imported while
 // the editor sits in 2D, and switching to the Can view still mounts it.
+// canview-lazy-fail-dom.test.tsx covers a failed load.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
