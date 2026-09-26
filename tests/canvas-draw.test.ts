@@ -4,7 +4,7 @@
 // covered by the print-geometry goldens. Plans come from planLayers over the Lolev
 // master with deterministic fake metrics.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { drawPlate, type CanvasAssets } from "../src/canvas/draw";
+import { drawPlate } from "../src/canvas/draw";
 import { planLayers, type PlacedLayer } from "../src/planLayers";
 import type { MeasureFace, PlacedBarcode } from "../src/plan";
 import type { BarcodeLayer } from "../src/model/layers";
@@ -66,6 +66,51 @@ const afterTranslate = (log: { op: string; args: unknown[] }[]) =>
   log.slice(log.findIndex((x) => x.op === "translate") + 1);
 
 describe("drawPlate", () => {
+  /** Every Path2D a draw filled or stroked, in order. */
+  const pathObjects = (log: { op: string; args: unknown[] }[]) =>
+    log.filter((x) => x.op === "fill" || x.op === "stroke").map((x) => x.args[0] as { d: string });
+
+  it("reuses each Path2D across repaints and re-plans of the same logo and QR", () => {
+    let parsed = 0;
+    vi.stubGlobal("Path2D", class { constructor(public d?: string) { parsed++; } });
+    const first = fakeCtx();
+    drawPlate(first.ctx, plan(), {}, "art", FONT);
+    const afterFirst = parsed;
+    // Every keystroke replans, so a FRESH plan must still hit the cache.
+    const second = fakeCtx();
+    drawPlate(second.ctx, plan(), {}, "mask", FONT);
+    expect(parsed).toBe(afterFirst);
+    const a = pathObjects(first.log), b = pathObjects(second.log);
+    expect(a.length).toBeGreaterThan(0);
+    expect(b.length).toBe(a.length);
+    b.forEach((p, i) => expect(p).toBe(a[i]));
+  });
+
+  it("a changed QR gets new Path2Ds while the unchanged logo keeps its own", () => {
+    /** The path strings of a plan's paths items whose id passes `keep`. */
+    const pathStrings = (p: PlacedLayer[], keep: (id: string) => boolean) =>
+      new Set(p.flatMap((x) => (x.kind === "paths" && keep(x.id) ? x.paths : [])));
+    const isQr = (id: string) => id === "qr";
+    const before = plan();
+    const first = fakeCtx();
+    drawPlate(first.ctx, before, {}, "art", FONT);
+    const old = new Set(pathObjects(first.log));
+    for (const overrides of [{ qr: { qrStyle: "square" as const } }, { qr: { size: 70 } }]) {
+      const after = plan({ overrides });
+      const qr = pathStrings(after, isQr), logo = pathStrings(after, (id) => !isQr(id));
+      expect(qr).not.toEqual(pathStrings(before, isQr));
+      const next = fakeCtx();
+      drawPlate(next.ctx, after, {}, "art", FONT);
+      const drawn = pathObjects(next.log);
+      const qrDrawn = drawn.filter((p) => qr.has(p.d));
+      const logoDrawn = drawn.filter((p) => logo.has(p.d));
+      expect(qrDrawn.length).toBeGreaterThan(0);
+      expect(logoDrawn.length).toBeGreaterThan(0);
+      for (const p of qrDrawn) expect(old.has(p)).toBe(false);
+      for (const p of logoDrawn) expect(old.has(p)).toBe(true);
+    }
+  });
+
   it("mask mode with no mask bitmap floods the plate white-ink blue first", () => {
     for (const p of [plan(), plan(withPages)]) {
       const { ctx, log } = fakeCtx();

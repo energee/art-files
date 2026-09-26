@@ -18,7 +18,7 @@ import type { Box } from "./place";
 import { bindingOf, hAnchorOf, parseMaster, validateBindings, vAnchorOf } from "./layers";
 import { deepMerge, type DeepPartial } from "./merge";
 import { resolveLayers, valueOf, valuePath, widenValue } from "./resolveLayers";
-import { anchorFraction, type GuideLines } from "./position";
+import { anchorFraction } from "./position";
 import { CENTER_X, GOLD } from "../layout";
 import { KEYLINE } from "../defaults";
 import { DEFAULT_STROKE_LAYER } from "../strokes";
@@ -644,6 +644,35 @@ export function removeVariant(master: Master, id: string): Master {
   return { ...master, variants: master.variants.filter((v) => v.id !== id) };
 }
 
+/** removeVariant for the editor's document (issue #236): each layer the
+ *  version adds is removed first with removeLayerIn, so a layer bound to one
+ *  of them — in the master or in the label's overrides — lets go and stays
+ *  where it was (`boxes`) instead of dangling. Nothing that goes away with the
+ *  version may be detached — that demands a box a switched-off version's
+ *  layers don't have — so the version's patches to master layers and the
+ *  added layers' label overrides are dropped up front, and the added layers
+ *  go deepest dependent first (bindings are acyclic: parseMaster). The label
+ *  stops showing the deleted version and keeps showing every other one. */
+export function removeVariantIn(doc: Doc, id: string, boxes?: ReadonlyMap<string, Box>): Doc {
+  const { layers } = variantOf(doc.master, id);
+  const added = new Set(Object.keys(layers).filter((k) => whereLayerLives(doc.master, k) !== "master"));
+  /** The entries of `o` whose key is (or, with false, is not) an added layer. */
+  const keep = <T,>(o: Record<string, T>, isAdded: boolean) =>
+    Object.fromEntries(Object.entries(o).filter(([k]) => added.has(k) === isAdded));
+  const depth = (k: string): number => {
+    const to = bindingOf(layers[k])?.to;
+    return to !== undefined && added.has(to) ? 1 + depth(to) : 0;
+  };
+  const depths = new Map([...added].map((k) => [k, depth(k)]));
+  const order = [...added].sort((a, b) => depths.get(b)! - depths.get(a)!);
+  const start: Doc = {
+    master: withVariant(doc.master, id, (v) => withEntries(v, keep(v.layers, true))),
+    label: { ...doc.label, overrides: doc.label.overrides && keep(doc.label.overrides, false) },
+  };
+  const d = order.reduce((acc, k) => removeLayerIn(acc, k, boxes), start);
+  return { master: removeVariant(d.master, id), label: showVersion(d.label, id, null) };
+}
+
 export function renameVariant(master: Master, id: string, name: string): Master {
   variantOf(master, id);
   return withVariant(master, id, (v) => ({ ...v, name }));
@@ -689,7 +718,7 @@ export interface Doc { master: Master; label: LabelFile }
  *  `choices` and `title` are here for the same reason: the vocabulary a filler
  *  picks from, and the caption it is picked under, describe the slot rather
  *  than one label's answer to it (docs/plans/choice-input.md). */
-export const MASTER_PATHS: ReadonlySet<string> =
+const MASTER_PATHS: ReadonlySet<string> =
   new Set(["placeholder", "input", "min", "max", "symbology", "suffix",
     "choices", "title"]);
 

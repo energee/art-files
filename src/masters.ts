@@ -1,8 +1,8 @@
 // src/masters.ts — the master library index: {id -> {name, path, lastSeen}}.
 // A RESOLVER CACHE ONLY — .master files on disk are the source of truth
-// (spec: Library index). resolveMasterById always consults the index (and
-// hint) first, so a registered .master on disk wins even when its id is the
-// shipped id; the built-in Lolev fixture is used only as a last-resort
+// (spec: Library index). resolveMasterById always consults the index (and a
+// trusted hint) first, so a registered .master on disk wins even when its id
+// is the shipped id; the built-in Lolev fixture is used only as a last-resort
 // fallback when nothing on disk resolves, guaranteeing a fresh install with
 // an empty index still works. localStorage (per-operator app state, like the
 // view toggles and settings.ts): the index describes this machine's
@@ -105,13 +105,34 @@ async function readMasterAt(path: string): Promise<ResolvedMaster | null> {
   }
 }
 
-export async function resolveMasterById(id: string, hint?: string): Promise<ResolvedMaster | null> {
+/** Folder of a native path with `/` separators; "" for a bare name. */
+const folderOf = (p: string): string => {
+  const n = p.replace(/\\/g, "/");
+  return n.slice(0, Math.max(n.lastIndexOf("/"), 0));
+};
+
+/** Whether a `.label`'s masterHint may be read. A .label is shared, so the
+ *  hint is untrusted: it is read only when it sits lexically inside the
+ *  label's own folder (`labelPath`) or the folder of a master already in the
+ *  library — no `..` segments, either separator. Anything else falls through
+ *  to the cache and the shipped fixture. */
+export function hintTrusted(hint: string, labelPath?: string): boolean {
+  const h = hint.replace(/\\/g, "/");
+  if (h.split("/").includes("..")) return false;
+  const roots = Object.values(masterIndex()).map((e) => folderOf(e.path));
+  if (labelPath) roots.push(folderOf(labelPath));
+  return roots.some((root) => root !== "" && h.startsWith(root + "/"));
+}
+
+/** `labelPath` is the native path of the .label being opened, when there is
+ *  one — it widens where `hint` may be read (hintTrusted). */
+export async function resolveMasterById(id: string, hint?: string, labelPath?: string): Promise<ResolvedMaster | null> {
   const entry = masterIndex()[id];
   if (entry?.path) {
     const r = await readMasterAt(entry.path);
     if (r?.master.id === id) return r;
   }
-  if (hint) {
+  if (hint && hintTrusted(hint, labelPath)) {
     const r = await readMasterAt(hint);
     if (r?.master.id === id) return r;
   }

@@ -11,8 +11,7 @@
 // missing face would silently measure wrong, which is exactly what the gate
 // exists to prevent.
 import { type Mode, type MeasureFace, type PlacedBarcode, type PlacedText, type PlanAssets } from "../plan";
-import { planLayers, type PlacedLayer, type PlacedPage } from "../planLayers";
-import type { Layer } from "../model/layers";
+import type { PlacedLayer, PlacedPage } from "../planLayers";
 import type { Fill, Style } from "../types";
 import { bridgeOffsets } from "../strokes";
 import { FACE_WEIGHT, labelFontCss } from "../fonts";
@@ -58,12 +57,22 @@ export interface CanvasRenderSource {
   fontCss: string;
 }
 
-/** The one spelling of "plan from a render source" — PreviewCompare and the
- *  3D texture path both build the identical call. `layers` are the RESOLVED
- *  layers (resolveLayers' output: variants merged, values filled, disabled
- *  layers dropped). */
-export const planFrom = (layers: Layer[], s: CanvasRenderSource): PlacedLayer[] =>
-  planLayers(layers, s.m, s.planAssets, { skip: s.skip });
+/** Path2D per path ARRAY, parsed once: every keystroke replans and repaints
+ *  the plate, but logo.ts (parseLogo) and qr.ts (qrPaths) memoize the arrays
+ *  they hand the plan, so the same array comes back plan after plan and
+ *  re-parsing it was the repaint's fixed cost. Keyed by the array itself so
+ *  each entry lives exactly as long as the upstream cache keeps the array:
+ *  qrPaths drops a resize drag's intermediate sizes, but parseLogo's cache is
+ *  unbounded (its ponytail note), so each logo width it keeps pins its
+ *  Path2Ds too. A plan whose arrays are built fresh (not memoized upstream —
+ *  e.g. two QR layers alternating through qrShapes' one-slot memo) just
+ *  misses, as before this cache. */
+const path2dCache = new WeakMap<readonly string[], Path2D[]>();
+const path2ds = (paths: readonly string[]): Path2D[] => {
+  let p = path2dCache.get(paths);
+  if (!p) path2dCache.set(paths, (p = paths.map((d) => new Path2D(d))));
+  return p;
+};
 
 /** Art-mode CSS color for a Fill — "none" is no ink, i.e. white, the same
  *  rule as pdf/build.ts's fillColor via parseHexFill. */
@@ -132,7 +141,7 @@ export function drawPlate(
     else if (r.kind === "paths") {
       c.save();
       c.translate(r.x, r.y);
-      const paths = r.paths.map((d) => new Path2D(d));
+      const paths = path2ds(r.paths);
       // Every stroke path before any fill — the laurel-branch rule. Unlike
       // pdf-lib's stroked drawSvgPath (whose one op fills AND strokes), the
       // stroke pass only strokes: the fill pass below repaints every

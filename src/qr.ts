@@ -184,3 +184,22 @@ export function qrPath(shapes: QrShapes, size: number, grow = 0): string {
   }
   return parts.join(" ");
 }
+
+/** `[qrPath(...)]` with a stable identity: the canvas renderer caches Path2D
+ *  per path ARRAY (canvas/draw.ts), so the same shapes at the same size and
+ *  grow must hand back the same array plan after plan. Keyed on the shapes
+ *  object, which qrShapes memoizes, so entries die with it. Per shapes only
+ *  the two most recently used (size, grow) entries are kept — a plan asks for
+ *  at most a fill and a stroke — so a resize drag's intermediate sizes do not
+ *  pile up. Map order is the recency order: a hit is re-inserted. */
+const pathsCache = new WeakMap<QrShapes, Map<string, readonly string[]>>();
+export function qrPaths(shapes: QrShapes, size: number, grow = 0): readonly string[] {
+  let recent = pathsCache.get(shapes);
+  if (!recent) pathsCache.set(shapes, (recent = new Map()));
+  const key = `${size}|${grow}`;
+  const hit = recent.get(key) ?? [qrPath(shapes, size, grow)];
+  recent.delete(key);
+  recent.set(key, hit);
+  if (recent.size > 2) recent.delete(recent.keys().next().value!);
+  return hit;
+}
