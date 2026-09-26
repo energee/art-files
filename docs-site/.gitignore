@@ -11,6 +11,12 @@
 /build
 *.tsbuildinfo
 
+# Next.js agent rules `next dev` writes when it detects an AI coding agent
+# (`agentRules: false` in next.config.mjs would stop it; left on so agents
+# working here get pointed at the bundled Next 16 docs)
+/AGENTS.md
+/CLAUDE.md
+
 # misc
 .DS_Store
 *.pem

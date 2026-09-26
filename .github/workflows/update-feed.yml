@@ -1,8 +1,7 @@
 # Republish the auto-update feed from the LATEST GitHub release, without
 # rebuilding anything. Exists because the feed publish can fail after a
-# release's binaries are already up (as it did for v0.1.10/v0.1.11 when
-# latest.json grew bundle-suffixed platform keys), and release.yml's version
-# guard rightly refuses to rebuild an existing version — this is the
+# release's binaries are already up (as it did for v0.1.10/v0.1.11), and
+# release.yml's version guard rightly refuses to rebuild an existing version — this is the
 # re-runnable half. Keep the steps in lockstep with release.yml's
 # publish-update-feed job.
 name: Republish update feed
@@ -22,47 +21,34 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Download updater assets from the release
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/build-update-feed.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Download updater assets and build latest.json
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir site
-          gh release download --repo "$GITHUB_REPOSITORY" --dir site \
-            --pattern 'latest.json' \
+          tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir site \
             --pattern '*.app.tar.gz' \
             --pattern '*.app.tar.gz.sig' \
             --pattern '*.AppImage' \
             --pattern '*.AppImage.sig' \
             --pattern '*-setup.exe' \
             --pattern '*-setup.exe.sig'
+          bash scripts/build-update-feed.sh site "$tag"
 
-      - name: Point latest.json at the Pages copies
-        # The release's own URLs are API asset ids (the repo is private), so
-        # rebuild each platform URL from the downloaded archive's filename.
-        run: |
-          aarch64=$(basename site/*_aarch64.app.tar.gz)
-          x64=$(basename site/*_x64.app.tar.gz)
-          appimage=$(basename site/*.AppImage)
-          nsis=$(basename site/*-setup.exe)
-          # Tauri emits each platform twice: the bare key and a
-          # bundle-suffixed alias (darwin-x86_64 AND darwin-x86_64-app,
-          # linux-x86_64-appimage, windows-x86_64-nsis). Both must map, and
-          # the error() stays so a future new key fails loudly here instead
-          # of shipping a feed with a broken URL.
-          jq --arg aarch64 "$aarch64" --arg x64 "$x64" \
-             --arg appimage "$appimage" --arg nsis "$nsis" \
-            '.platforms |= with_entries(.value.url = ("https://energ.ee/art-files/" +
-              ({ "darwin-aarch64": $aarch64, "darwin-aarch64-app": $aarch64,
-                 "darwin-x86_64": $x64, "darwin-x86_64-app": $x64,
-                 "linux-x86_64": $appimage, "linux-x86_64-appimage": $appimage,
-                 "windows-x86_64": $nsis, "windows-x86_64-nsis": $nsis
-               }[.key] // error("no artifact mapped for platform " + .key))))' \
-            site/latest.json > site/latest.json.tmp
-          mv site/latest.json.tmp site/latest.json
-
+      # Named per attempt: a re-run still sees the earlier attempt's
+      # artifact, and deploy-pages refuses two with the same name.
       - uses: actions/upload-pages-artifact@v4
         with:
           path: site
+          name: github-pages-${{ github.run_attempt }}
 
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
