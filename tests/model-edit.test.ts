@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   addLayer, addVariant, bindBelow, checkLabelBindings, clearLabelOverride, clearOverride, clearValue,
   masterDiff, mintLayerId, moveBy, moveLayers, overriddenPaths, patchLayers, removeLayer,
-  removeLayerIn, removeVariant, renameVariant, setLabelOverride, setLayer, setLayerIn, setValue,
+  removeLayerIn, removeVariant, removeVariantIn, renameVariant, setLabelOverride, setLayer, setLayerIn, setValue,
   structureOnlyMaster, toggleVariant, unbind, whereLayerLives, type Doc,
 } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
@@ -652,5 +652,54 @@ describe("removeLayerIn detaches label-override bindings to the removed layer", 
     const m = setLayer(lolevMaster(), "volume", { binding: { to: "logo", side: "bottom", gap: 0 } });
     const d: Doc = { master: m, label: label({ overrides: { volume: { size: 11 } } }) };
     expect(removeLayerIn(d, "logo", boxesOf(d)).label.overrides).toEqual({ volume: { size: 11 } });
+  });
+});
+
+// Deleting a VERSION removes the layers it adds, so a label-override binding
+// to one of them (bound in the inspector while the version was on) must be
+// detached like a deleted layer's (#220), not left dangling — the delete was
+// refused with "bound to missing layer".
+describe("removeVariantIn detaches label bindings to the layers the version adds", () => {
+  const sizeOf = (l: Layer) => ({ w: 100, h: l.id === "collabLead" ? 32 : 12 });
+  const boxesOf = (d: Doc) => placeLayers(resolveLayers(d.master, d.label.enabledVariants, {},
+    d.label.overrides, { keepDisabled: true }).layers, sizeOf, guides);
+  it("the delete goes through and the bound layer stays where it was", () => {
+    const on: Doc = { master: lolevMaster(), label: label({ enabledVariants: ["collab"] }) };
+    const d = patchLayers(on, [["volume",
+      bindingPatch(byId(on.master, "volume"), "collabLead", "bottom", boxesOf(on).get("volume")!)]]);
+    const before = boxesOf(d);
+    const after = removeVariantIn(d, "collab", before);
+    expect(after.master.variants.map((v) => v.id)).not.toContain("collab");
+    const shown = { ...after, label: { ...after.label, enabledVariants: [] } };
+    expect(() => checkLabelBindings(shown)).not.toThrow();
+    expect(boxesOf(shown).get("volume")!.y).toBeCloseTo(before.get("volume")!.y);
+  });
+  it("a switched-off version whose own layers bind to each other deletes unmeasured", () => {
+    const { master: m1, id: v } = addVariant(lolevMaster(), "Extra");
+    const { master: m2, id: a } = addLayer(m1, "text", { variant: v });
+    const { master: m3, id: b } = addLayer(m2, "text", { variant: v });
+    const m = setLayer(m3, b, { binding: { to: a, side: "bottom", gap: 0 } });
+    const d: Doc = { master: m, label: label() };
+    expect(removeVariantIn(d, v).master.variants.map((x) => x.id)).toEqual(["collab"]);
+  });
+  it("so does one that binds a master layer to its own layer", () => {
+    const m = { ...lolevMaster(), variants: lolevMaster().variants.map((v) => ({ ...v,
+      layers: { ...v.layers, volume: { binding: { to: "collabLead", side: "bottom" as const, gap: 0 } } } })) };
+    expect(removeVariantIn({ master: m, label: label() }, "collab").master.variants).toEqual([]);
+  });
+  it("so does one whose layers are bound to each other only on the label", () => {
+    const { master: m1, id: v } = addVariant(lolevMaster(), "Extra");
+    const { master: m2, id: a } = addLayer(m1, "text", { variant: v });
+    const { master: m, id: b } = addLayer(m2, "text", { variant: v });
+    const on: Doc = { master: m, label: label({ enabledVariants: [v] }) };
+    const bound = patchLayers(on, [[b, bindingPatch(m.variants[1].layers[b] as Layer, a, "bottom", boxesOf(on).get(b)!)]]);
+    const off: Doc = { ...bound, label: { ...bound.label, enabledVariants: [] } };
+    expect(removeVariantIn(off, v).label.overrides).toEqual({});
+  });
+  it("drops only the deleted version from the label's shown versions", () => {
+    const { master: m, id: v } = addVariant(lolevMaster(), "Extra");
+    const d: Doc = { master: m, label: label({ enabledVariants: [v, "collab"] }) };
+    expect(removeVariantIn(d, v).label.enabledVariants).toEqual(["collab"]);
+    expect(removeVariantIn(d, "collab").label.enabledVariants).toEqual([v]);
   });
 });

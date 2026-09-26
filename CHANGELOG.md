@@ -22,6 +22,11 @@ that section to the new version (see .agents/release-steward.md).
   or the text layer's name, matching its menu, instead of `none` or the
   layer's internal id.
 
+- **The inspector's other dropdowns show their labels too.** Input, Symbology,
+  Fit, QR style and Error correction read "Rich text", "UPC-A", "Cover",
+  "Rounded" or "M (default)" instead of the raw `text`, `upc-a`, `cover`,
+  `rounded` or `M`.
+
 - **An image dropped on a switched-off variant's layer shows right away.** The
   layer's drop area names the loaded file instead of still saying "drop or
   click" until the variant is switched on.
@@ -32,6 +37,15 @@ that section to the new version (see .agents/release-steward.md).
   the Save Master review, instead of being silently dropped unless something
   else changed.
 
+- **Deleting a version no longer hides the one you're working in.**
+  Deleting any version other than the current one also switched off the
+  current one; now only the deleted version goes away.
+
+- **Deleting a version whose layer another layer is bound to now goes
+  through.** Binding a layer below one a version adds (Volume below the
+  Collab lead-in), then deleting that version, was refused with "bound to
+  missing layer"; the bound layer now lets go and stays where it was.
+
 - **Deleting a layer another layer is bound to on this label no longer
   freezes the preview.** A binding made in the inspector but not yet saved
   to the master (Volume bound below Logo, then Logo deleted) now lets go
@@ -39,6 +53,10 @@ that section to the new version (see .agents/release-steward.md).
   missing layer" with a stale preview. A binding saved to the master whose
   position was not also saved no longer jumps back to where it sat before
   it was bound.
+
+- **`⌘K` no longer opens the command palette on top of an open dialog.** With
+  the Save Master review or Settings open, `⌘K` does nothing; from the label
+  it still opens the palette, and inside the palette it still closes it.
 
 - **`⌘Z` inside an open dialog no longer undoes the label behind it.** With
   the Save Master review or Settings open, `⌘Z` / `⇧⌘Z` (and Edit → Undo /
