@@ -86,8 +86,8 @@ anti-aliasing differs.
 `pdftoppm` (poppler) renders both PDFs at `--dpi` (600 by default, the
 label's design DPI, so one raster pixel is one print pixel). It is required:
 `brew install poppler` on macOS, `apt-get install poppler-utils` on Debian and
-Ubuntu; `ci.yml` installs it, and `tests/golden-diff.test.ts` fails fast
-without it. There is no fallback engine — every golden raster in the repo
+Ubuntu; `ci.yml` installs it. Without it the script (and the PDF cases in
+`tests/golden-diff.test.ts`) stop with a "pdftoppm is not on PATH" error. There is no fallback engine — every golden raster in the repo
 comes from the same anti-aliasing rule.
 
 Only page 1 is rasterized; every label PDF is single-page.

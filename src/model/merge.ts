@@ -7,8 +7,8 @@ const isPlain = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** Deep-clones plain objects/arrays so a stored patch value is never the same
- *  reference as the caller's — otherwise a later setPath could mutate the
- *  patch (e.g. a Variant's overrides) through the merged result. */
+ *  reference as the caller's — otherwise mutating the merged result would
+ *  write through to the patch (e.g. a Variant's overrides). */
 function clone(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(clone);
   if (isPlain(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, clone(x)]));

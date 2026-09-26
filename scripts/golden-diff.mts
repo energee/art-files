@@ -50,10 +50,6 @@ export type DiffResult = {
   /** The review PNG: `b` (the new render) faded, changed pixels solid red. */
   png: Uint8Array;
 };
-export type DiffOptions = {
-  /** Render resolution; defaults to the label's 600 DPI design grid. */
-  dpi?: number;
-};
 
 const DEFAULT_DPI = 600;
 const RED = [255, 0, 0, 255] as const;
@@ -115,16 +111,6 @@ export function diffPngs(a: Uint8Array, b: Uint8Array): DiffResult {
   return diffRasters(rasterOf(PNG.sync.read(Buffer.from(a))), rasterOf(PNG.sync.read(Buffer.from(b))));
 }
 
-/** True when poppler's pdftoppm is on PATH. */
-export function hasPdftoppm(): boolean {
-  try {
-    execFileSync("pdftoppm", ["-v"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /** Page 1 through pdftoppm. Poppler 26 writes nothing to stdout for a `-`
  *  root, so this goes through a scratch directory. A missing binary is the
  *  spawn's own ENOENT, reworded — no probe spawn before the real one. */
@@ -149,9 +135,9 @@ function rasterizePdf(pdf: Uint8Array, dpi: number): Raster {
   }
 }
 
-/** Rasterize both PDFs at one DPI and diff them. */
-export function diffPdfs(oldBytes: Uint8Array, newBytes: Uint8Array, opts: DiffOptions = {}): DiffResult {
-  const dpi = opts.dpi ?? DEFAULT_DPI;
+/** Rasterize both PDFs at one DPI (the label's 600 DPI design grid by
+ *  default) and diff them. */
+export function diffPdfs(oldBytes: Uint8Array, newBytes: Uint8Array, dpi = DEFAULT_DPI): DiffResult {
   return diffRasters(rasterizePdf(oldBytes, dpi), rasterizePdf(newBytes, dpi));
 }
 
@@ -202,13 +188,13 @@ export function parseArgs(argv: string[]) {
   };
 }
 
-async function main(argv: string[]): Promise<number> {
+function main(argv: string[]): number {
   const args = parseArgs(argv);
   const a = readFileSync(args.oldPath), b = readFileSync(args.newPath);
   let result: DiffResult;
   if (isPdf(a) && isPdf(b)) {
     console.error(`golden-diff: rasterizing with pdftoppm at ${args.dpi} dpi`);
-    result = diffPdfs(a, b, { dpi: args.dpi });
+    result = diffPdfs(a, b, args.dpi);
   } else if (isPng(a) && isPng(b)) {
     result = diffPngs(a, b);
   } else {
@@ -223,11 +209,12 @@ async function main(argv: string[]): Promise<number> {
 // Thin CLI wrapper: only run when this file is the process's entry point,
 // never on import from tests (scripts/is-entry.mjs).
 if (isEntry(import.meta.url)) {
-  main(process.argv.slice(2)).then(
-    (code) => process.exit(code),
-    (e: unknown) => {
-      console.error(`golden-diff: ${(e as Error).message}`);
-      process.exit(2);
-    },
-  );
+  let code: number;
+  try {
+    code = main(process.argv.slice(2));
+  } catch (e) {
+    console.error(`golden-diff: ${(e as Error).message}`);
+    code = 2;
+  }
+  process.exit(code);
 }

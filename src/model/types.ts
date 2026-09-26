@@ -1,7 +1,9 @@
 // Model types and parser for the v1 Master/Variant label model (spec:
 // docs/superpowers/specs/2026-08-27-master-variation-design.md). Pure types +
-// a defensive parser; no DOM, no rendering. Kept for convert.ts, which lifts
-// a v1 .master into the layer model (model/layers.ts) that the app now uses.
+// a defensive parser; no DOM, no rendering. Still live: files.ts parses a v1
+// .master with parseMaster before convert.ts lifts it into the layer model
+// (model/layers.ts), and FieldDecl/FieldValue/LabelFileV2 type the v2 label
+// readers (model/labelfile.ts, src/labelfile.ts) and model/fields.ts.
 import type { LabelConfig } from "../types";
 import type { DeepPartial } from "./merge";
 
@@ -72,7 +74,7 @@ export interface Variant {
   name: string;
   /** DeepPartial, not Partial: a variant overrides LEAVES (an authored
    *  `nameStyle.fill`, say), applied by deepMerge. The shipped v1 Collab
-   *  variant overrides nothing (`overrides: {}`) — tests/fixtures/lolevV1.ts. */
+   *  variant overrides nothing (`overrides: {}`). */
   overrides: DeepPartial<LabelConfig>;
   layerOverrides: Record<string, Partial<MasterLayer>>;
   fields: FieldDecl[];

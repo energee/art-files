@@ -4,7 +4,8 @@
 // with a bbox spanning both, a size mismatch counts the new strip as changed,
 // the review PNG decodes at the union's size, and the CLI's one-line summary
 // plus exit code hold. PDFs rasterize through poppler's pdftoppm, which is
-// required (ci.yml installs poppler-utils; docs/goldens.md for dev machines).
+// required (ci.yml installs poppler-utils; docs/goldens.md for dev machines):
+// without it the PDF tests fail with the script's own "install poppler" error.
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -13,11 +14,9 @@ import { join } from "node:path";
 import { PDFDocument, rgb } from "pdf-lib";
 import { PNG } from "pngjs";
 import {
-  diffPdfs, diffPngs, diffRasters, hasPdftoppm, parseArgs, summaryLine, type Raster,
+  diffPdfs, diffPngs, diffRasters, parseArgs, summaryLine, type Raster,
 } from "../scripts/golden-diff.mjs";
 
-if (!hasPdftoppm())
-  throw new Error("golden-diff.test: pdftoppm is not on PATH — install poppler (see docs/goldens.md)");
 // The CLI tests spawn tsx, which compiles the script on every run.
 const SLOW = 30_000;
 
@@ -118,7 +117,7 @@ describe("diffPngs", () => {
 describe("diffPdfs", () => {
   it("two identical PDFs diff to zero and the PNG is the page at the requested dpi", async () => {
     const a = await squarePdf(50);
-    const r = diffPdfs(a, a, { dpi: 72 });
+    const r = diffPdfs(a, a, 72);
     expect(r.changed).toBe(0);
     expect(r.bbox).toBeNull();
     const png = decode(r.png);
@@ -127,7 +126,7 @@ describe("diffPdfs", () => {
   });
 
   it("a moved square changes pixels inside a bbox spanning old and new positions", async () => {
-    const r = diffPdfs(await squarePdf(50), await squarePdf(80), { dpi: 72 });
+    const r = diffPdfs(await squarePdf(50), await squarePdf(80), 72);
     // Old square x 50..90, new x 80..120: the 80..90 overlap is black in both,
     // leaving two 30x40 silhouettes. Allow a pixel of rasterizer rounding.
     expect(r.changed).toBeGreaterThan(0);
@@ -147,7 +146,7 @@ describe("diffPdfs", () => {
 
   it("scales the raster with dpi", async () => {
     const a = await squarePdf(50);
-    const r = diffPdfs(a, a, { dpi: 144 });
+    const r = diffPdfs(a, a, 144);
     expect([r.width, r.height]).toEqual([400, 200]);
   });
 

@@ -480,12 +480,12 @@ no status, no attempts, no delta.
 - finding: [YAGNI/med] src/model/document.ts, resolve.ts, lolev.ts, masterfile.ts — dead v1 authoring model kept alive by six test suites (audit 2026-09-05 #6, #7, #10); re-applied from stale PR #65 (005ce9b) onto current main
 - status: done
 - attempts: 1/3
-- delta: document.ts/resolve.ts/masterfile.ts (919 lines) and 4 suites (653 lines) deleted; getPath/setPath → model/path.ts, configDiff → convert.ts, v1 fixture → tests/fixtures/lolevV1.ts; kept (unlike #65) the v1 parseMaster validation tests (model-master-layers) and the v3 shipped-vocabulary tests (model-lolev), both still live; model/fields.ts, merge.ts, types.ts, labelfile.ts stay (live importers)
+- delta: document.ts/resolve.ts/masterfile.ts (919 lines) and 4 suites (653 lines) deleted; getPath/setPath → private in edit.ts (their one caller, beside deletePath), configDiff → convert.ts, v1 fixture → tests/fixtures/lolevV1.ts; kept (unlike #65) the v1 parseMaster validation tests (merged into model-types.test.ts) and the v3 shipped-vocabulary tests (model-lolev), both still live; model/fields.ts, merge.ts, types.ts, labelfile.ts stay (live importers)
 - fixed-by: chore/65-retire-dead
 
 ## 2026-09-25 parity-harness-retired
 - finding: [YAGNI/med] parity.html, src/dev/parity.ts, src/pdf/render.ts, rasterWorker.ts, pdfjs-dist (audit 2026-09-05 lines 27, 146) — dev-only parity page and the golden-diff pdf.js fallback; re-applied from #65 (24e05b5, 709892b)
 - status: done
 - attempts: 1/3
-- delta: parity page + pdf.js raster path deleted; pdfjs-dist removed from dependencies (package-lock -278 lines); golden-diff requires pdftoppm (ci.yml installs poppler-utils; tests fail fast without it); strokecap page kept
+- delta: parity page + pdf.js raster path deleted; pdfjs-dist removed from dependencies (package-lock -278 lines); golden-diff requires pdftoppm (ci.yml installs poppler-utils; a missing binary is the script's own "install poppler" error, no probe spawn); strokecap page kept; pnpm-lock.yaml still lists pdfjs-dist (left to the pnpm-lock hygiene work)
 - fixed-by: chore/65-retire-dead

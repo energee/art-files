@@ -17,7 +17,6 @@ import type {
 import type { Box } from "./place";
 import { bindingOf, hAnchorOf, parseMaster, validateBindings, vAnchorOf } from "./layers";
 import { deepMerge, type DeepPartial } from "./merge";
-import { getPath, setPath } from "./path";
 import { resolveLayers, valueOf, valuePath, widenValue } from "./resolveLayers";
 import { anchorFraction, type GuideLines } from "./position";
 import { CENTER_X, GOLD } from "../layout";
@@ -313,6 +312,24 @@ export function patchLayerIn(master: Master, variant: string, id: string, patch:
     if (value === undefined) delete entry[key];
   }
   return parseMaster(next);
+}
+
+/** Dot-path read; undefined when the path doesn't resolve. */
+function getPath(obj: unknown, path: string): unknown {
+  let at: unknown = obj;
+  for (const k of path.split(".")) {
+    if (!at || typeof at !== "object") return undefined;
+    at = (at as Record<string, unknown>)[k];
+  }
+  return at;
+}
+
+/** Dot-path write, creating intermediate objects on the way down. */
+function setPath(obj: Record<string, unknown>, path: string, value: unknown): void {
+  const keys = path.split(".");
+  let at = obj;
+  for (const k of keys.slice(0, -1)) at = (at[k] ??= {}) as Record<string, unknown>;
+  at[keys[keys.length - 1]] = value;
 }
 
 /** Deletes one dot-path in place, pruning any object left empty above it.
