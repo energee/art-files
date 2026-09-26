@@ -6,7 +6,7 @@ import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 
 export default tseslint.config(
-  { ignores: ["dist/", "out/", "docs-site/", "src-tauri/", ".agents/", ".claude/", "node_modules/"] },
+  { ignores: ["dist/", "out/", "docs-site/", "src-tauri/", ".agents/", ".claude/"] },
   ...tseslint.configs.recommended,
   {
     files: ["**/*.{ts,tsx,mts,mjs}"],
@@ -17,10 +17,9 @@ export default tseslint.config(
       // those is a later step, not part of turning the linter on.
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
-      // tsc already enforces types; these are the recommended rules the
-      // codebase trips on for stylistic reasons.
+      // `_`-prefixed names are deliberate placeholders; tsc already enforces
+      // types, so explicit `any` is left to review.
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrors: "none" }],
-      "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/no-explicit-any": "off",
     },
   },
