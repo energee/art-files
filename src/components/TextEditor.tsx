@@ -27,7 +27,7 @@ import { CaseUpper, Bold, Droplet, Heading as HeaderIcon } from "lucide-react";
 import type { Style } from "@/types";
 import type { Choice, Symbology, TextLine } from "@/model/layers";
 import { validateField } from "@/model/fields";
-import { markRun, parseRuns } from "@/description";
+import { markRun, parseRuns, printableText } from "@/description";
 import { GOLD } from "@/layout";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -474,8 +474,10 @@ export function useTextField(opts: {
       // Coerce to plain text so pasting off a web page can't drag in that
       // page's markup (which could be misread as our own run markers).
       e.preventDefault();
-      const raw = e.clipboardData.getData("text/plain");
-      const text = multiline ? raw : raw.replace(/\r?\n/g, " ");
+      // A tab or other control character would be stored verbatim and print
+      // differently from the preview (#282): clean each line, keep the breaks.
+      const lines = e.clipboardData.getData("text/plain").split(/\r\n?|\n/).map(printableText);
+      const text = lines.join(multiline ? "\n" : " ");
       // execCommand is deprecated but still broadly supported, and it's the
       // browser's own caret/undo-aware insert — including splitting embedded
       // newlines into new line-divs the way a native Enter would.

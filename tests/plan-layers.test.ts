@@ -46,6 +46,14 @@ describe("planLayers text", () => {
     expect(run.w).toBeCloseTo(m("1 PINT", 10, "semibold"));
   });
 
+  it("draws a tab as one space and drops other control characters, whatever stored them (#282)", () => {
+    // pdf-lib would print a tab as four spaces (and break a line at \v/\f)
+    // while the canvas preview shows one space, so the plan normalizes first.
+    const plan = (t: string) => planLayers([text({ id: "s", x: 0, y: 0, lines: [line(t)] })], m, assets) as PlacedText[];
+    expect(plan("Hops\tCitra\u0001\u2028Mosaic\vX").map((r) => [r.text, r.w]))
+      .toEqual(plan("Hops Citra Mosaic X").map((r) => [r.text, r.w]));
+  });
+
   it("centers a center-anchored, center-aligned line on x", () => {
     const [run] = planLayers([text({ id: "s", x: 100, y: 0, anchor: "center", align: "center", size: 8, lines: [line("IPA")] })], m, assets) as PlacedText[];
     expect(run.x).toBeCloseTo(100 - m("IPA", 8, "regular") / 2);

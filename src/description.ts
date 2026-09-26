@@ -137,6 +137,15 @@ export function parseRuns(line: StyledLine): StyledLine[] {
   return out.length ? out : [{ ...line, text: "" }];
 }
 
+/** One line of text as every renderer agrees to draw it: the canvas preview
+ *  paints ASCII whitespace as one space, but pdf-lib prints a tab as FOUR
+ *  (and U+0085/U+2028/U+2029 too), drops \b/\v and breaks the run at
+ *  \v/\f/\r — so whitespace-like controls become one space and every other
+ *  C0 control (and DEL) is dropped before anything measures or draws (#282). */
+export function printableText(text: string): string {
+  return text.replace(/[\t\n\v\f\r\u0085\u2028\u2029]/g, " ").replace(/[\0-\x1f\x7f]/g, "");
+}
+
 /** Splits text into its space-separated words with every word's inline
  *  markers balanced on their own: a span crossing a space is closed at each
  *  word's end and reopened at the next (`**A B**` -> `**A**`, `**B**`).
