@@ -11,6 +11,7 @@ import {
   Settings, SquareArrowDown, SquareArrowUp, Undo2, X, type LucideIcon,
 } from "lucide-react";
 import { shortcutOf, type Command } from "@/components/CommandMenu";
+import { keyOwner } from "@/keys";
 import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu,
   MenubarSeparator, MenubarShortcut, MenubarSub, MenubarSubContent,
@@ -370,13 +371,14 @@ function useNativeMenu(
         const run = (id: string) => {
           const command = commandsRef.current[id];
           if (!command || command.disabled) return;
-          // Native Undo/Redo accelerators fire before the webview's keydown.
-          // Keep the active field's own undo stack when the cursor is in text.
-          const active = document.activeElement as HTMLElement | null;
-          const editing = active?.isContentEditable || /^(INPUT|TEXTAREA)$/.test(active?.tagName ?? "");
-          if (editing && (id === "undo" || id === "redo")) {
-            document.execCommand(id);
-            return;
+          // Native Undo/Redo accelerators fire before the webview's keydown,
+          // so they follow the same owner rule as App's ⌘Z handler: the
+          // focused field keeps its own undo stack, and a modal dialog
+          // leaves the canvas behind it alone (#225).
+          if (id === "undo" || id === "redo") {
+            const owner = keyOwner(document.activeElement);
+            if (owner === "text") { document.execCommand(id); return; }
+            if (owner === "dialog") return;
           }
           if (CHECK_IDS.has(id)) {
             appliedState.current.delete(id);
