@@ -29,8 +29,8 @@ it("anything inside a dialog, menu or list is the popup's", () => {
   expect(keyOwner(at('<div role="dialog"><div role="radiogroup"><button data-t></button></div></div>'))).toBe("popup");
 });
 
-it("a modal dialog (shadcn DialogContent) is a dialog, not just a popup", () => {
-  expect(keyOwner(at('<div role="dialog" data-slot="dialog-content"><button data-t></button></div>'))).toBe("dialog");
+it("a modal dialog (shadcn DialogContent) owns bare keys like any popup", () => {
+  expect(keyOwner(at('<div role="dialog" data-slot="dialog-content"><button data-t></button></div>'))).toBe("popup");
   expect(keyOwner(at('<div role="dialog" data-slot="popover-content"><button data-t></button></div>'))).toBe("popup");
   expect(keyOwner(at('<div role="dialog" data-slot="sheet-content"><button data-t></button></div>'))).toBe("popup");
 });

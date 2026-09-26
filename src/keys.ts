@@ -8,9 +8,9 @@ const DIALOG = '[data-slot="dialog-content"]';
 
 /** Any overlay or panel holding focus: a dialog, a popover, a menu, a Select
  *  (trigger or list), the inspector Sheet (role "dialog"). Every BARE key
- *  belongs to it — "g" in a Select is its typeahead, not Show guides — but
- *  the ⌘ shortcuts, undo included, still reach the app: most of these are
- *  non-modal and edit the very layer on the canvas. */
+ *  belongs to it — "g" in a Select is its typeahead, not Show guides. The ⌘
+ *  shortcuts still reach the app unless a MODAL dialog is open (dialogOpen):
+ *  the non-modal ones edit the very layer on the canvas. */
 const POPUP = [
   '[role="dialog"]', '[role="alertdialog"]', '[role="listbox"]', '[role="menu"]',
   '[role="combobox"]',
@@ -32,11 +32,6 @@ export const isTypingTarget = (target: EventTarget | null): boolean => {
   return !!el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? "");
 };
 
-/** Whether `target` sits inside a modal dialog — even in a text field there,
- *  which keyOwner reports as "text". */
-export const inDialog = (target: EventTarget | null): boolean =>
-  !!(target as HTMLElement | null)?.closest?.(DIALOG);
-
 /** Whether a modal dialog is open at all, wherever focus is — even in a
  *  Select or popover portalled out of it, or when the key came from the
  *  native menu with no target. The ⌘ file and edit commands ask this: the
@@ -48,10 +43,9 @@ export const dialogOpen = (): boolean =>
 
 /** Who a key aimed at `target` belongs to, narrowest claim first; null when
  *  it is the app's. */
-export const keyOwner = (target: EventTarget | null): "text" | "dialog" | "popup" | "widget" | null => {
+export const keyOwner = (target: EventTarget | null): "text" | "popup" | "widget" | null => {
   if (isTypingTarget(target)) return "text";
   const el = target as HTMLElement | null;
-  if (inDialog(target)) return "dialog";
   if (el?.closest?.(POPUP)) return "popup";
   if (el?.closest?.(WIDGET)) return "widget";
   return null;
