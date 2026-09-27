@@ -919,7 +919,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       // A field, popup, the inspector or a roving-focus widget owns the arrow
       // keys while it holds focus: nudging the canvas behind an open Select
       // (and eating the key the list needs) is never what the arrow meant.
-      if (keyOwner(e.target)) return;
+      // A modal dialog blocks the canvas wherever focus is (#244).
+      if (keyOwner(e.target) || dialogOpen()) return;
       e.preventDefault();
       const by = e.shiftKey ? NUDGE_SHIFT_PT : 1;
       nudgeRef.current(step[0] * by, step[1] * by);

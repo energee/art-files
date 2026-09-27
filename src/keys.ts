@@ -1,5 +1,7 @@
 // keys.ts — who owns a key press before the app's shortcuts see it (#225):
-// one classifier, so each shortcut handler states only its own rule.
+// keyOwner says which focused element claims a key, and dialogOpen whether
+// a modal blocks the tab behind it wherever focus is (#244). Every key
+// listener that acts on the tab checks both.
 
 /** A modal dialog (shadcn's DialogContent: Settings, the Save Master review,
  *  the unsaved-tab prompt, the updater, the command palette). It blocks the
@@ -34,9 +36,10 @@ export const isTypingTarget = (target: EventTarget | null): boolean => {
 
 /** Whether a modal dialog is open at all, wherever focus is — even in a
  *  Select or popover portalled out of it, or when the key came from the
- *  native menu with no target. The ⌘ file and edit commands ask this: the
- *  dialog blocks the whole tab behind it (#244). Hidden tabs keep their
- *  dialogs closed, so only the front tab's can match. */
+ *  native menu with no target. Every key listener that acts on the tab asks
+ *  this — the ⌘ commands, ⌘K, ⌘B, undo and the arrow nudge: the dialog
+ *  blocks the tab behind it (#244). App-level dialogs (the unsaved-tabs
+ *  prompt, the updater) match too and block every tab, which is intended. */
 export const dialogOpen = (): boolean =>
   // A closing dialog stays mounted, marked data-closed, while it animates out.
   !!document.querySelector(`${DIALOG}:not([data-closed])`);

@@ -36,8 +36,10 @@ export function CommandMenu(props: { actions: Command[] }) {
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         // Toggle, but never open while a modal dialog is open (#237, #244);
-        // with the palette itself open, ⌘K closes it.
-        setOpen((o) => !o && !dialogOpen());
+        // with the palette itself open, ⌘K closes it. Read the DOM now, at
+        // the key press — a state updater may run later, during render.
+        const blocked = dialogOpen();
+        setOpen((o) => !o && !blocked);
       }
     };
     document.addEventListener("keydown", down);

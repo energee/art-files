@@ -123,3 +123,17 @@ it("⌘ shortcuts inside an open dialog leave the tab behind it alone (#244)", a
   await press(document.body, { key: "w", metaKey: true });
   expect(onCloseTab).toHaveBeenCalledTimes(1);
 });
+
+it("the arrow nudge and ⌘B leave the tab behind an open dialog alone (#244)", async () => {
+  // Focus fell to the page (a clicked-away dialog button): keyOwner calls the
+  // key the app's, but the modal still blocks the canvas and the sidebar.
+  const dialog = document.createElement("div");
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("data-slot", "dialog-content");
+  container.appendChild(dialog);
+  expect(await press(document.body, { key: "ArrowLeft" })).toBe(false);
+  expect(await press(document.body, { key: "b", metaKey: true })).toBe(false);
+  dialog.remove();
+  expect(await press(document.body, { key: "ArrowLeft" })).toBe(true);
+  expect(await press(document.body, { key: "b", metaKey: true })).toBe(true);
+});
