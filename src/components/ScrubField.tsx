@@ -1,25 +1,88 @@
 // ScrubField.tsx — a numeric style field you tune by dragging its label, the
 // gesture Photoshop and Figma use for values judged against a live preview
-// (tracking, stroke width) rather than known in advance. The interface is
-// entirely shadcn — a Label as the scrub handle, an InputGroup holding the
-// Input and its unit addon — so this stays inside the mature-component rule;
-// only the pointer gesture is ours, since no shadcn primitive scrubs. Typing
-// still works, and the Input keeps its native arrow-key stepping.
-import { useRef, useState } from "react";
-import type { LucideIcon } from "lucide-react";
+// (tracking, stroke width) rather than known in advance. Built on Base UI's
+// NumberField, which owns clamping, rounding, arrow keys and the scrub gesture
+// (ScrubArea, Shift/Alt for coarse/fine). NumberRoot below pins the few
+// NumberField defaults that don't suit an editor that writes on every change.
+// Styling stays shadcn — a Label as the scrub handle, an InputGroup holding
+// the Input and its unit addon. LayerInspector's BlankableField shares
+// NumberRoot and UnitInput.
+import { useState, type ReactNode } from "react";
+import { MoveHorizontal, type LucideIcon } from "lucide-react";
+import { NumberField } from "@base-ui/react/number-field";
 import { Label } from "@/components/ui/label";
 import {
   InputGroup, InputGroupAddon, InputGroupInput, InputGroupText,
 } from "@/components/ui/input-group";
-// Round to the decimal places the step implies, so a drag can't accumulate float noise
-// (0.4 + 0.1 = 0.5000000000000001) straight into the saved config. Shared with
-// the callers that have to predict what this field commits — see numeric.ts.
-import { roundToStep } from "@/numeric";
+// The step's decimal places become NumberField's maximumFractionDigits, so it
+// clamps and rounds every typed or scrubbed value (no 0.5000000000000001 in a
+// saved config) — the rule numeric.ts states for callers that predict it.
+import { decimalsOf } from "@/numeric";
 
-/** Pixels of pointer travel per drag increment. Two keeps a full-range drag
- *  comfortable (tracking's -2..20 in 0.1s is ~440px) while leaving a single
- *  increment easy to land on. */
-const PX_PER_STEP = 2;
+/** Text NumberField (en-US, no grouping) parses as a number. */
+const PARSEABLE = /^[-+]?(\d+\.?\d*|\.\d+)$/;
+
+/** A NumberField.Root for this app's fields. `step` is the typed precision
+ *  (shown and rounded to); `dragStep` what one arrow press or scrub
+ *  increment moves, with Shift/Alt at ×10/÷10 — never finer than `step`, or
+ *  a fine step would round straight back to where it started. Fixed to en-US
+ *  without grouping, so a value reads "1200.5" whatever the OS locale. */
+export function NumberRoot(props: {
+  id: string; min: number; max: number; step: number; dragStep?: number;
+  value: number | null;
+  /** Whether blank is a value (BlankableField's "none"); otherwise a blank
+   *  field reverts on blur, like any other text that isn't a number. */
+  blankable?: boolean;
+  onChange: (v: number | null) => void;
+  className?: string;
+  children: ReactNode;
+}) {
+  const inc = props.dragStep ?? props.step;
+  // NumberField leaves unparseable text ("-", ".", or blank here) on screen
+  // after blur, since there is no number to reformat. Remounting re-seeds it
+  // from `value`, the number actually applied.
+  const [epoch, setEpoch] = useState(0);
+  return (
+    <NumberField.Root
+      key={epoch}
+      id={props.id} min={props.min} max={props.max}
+      step={inc} smallStep={Math.max(inc / 10, props.step)} largeStep={inc * 10}
+      locale="en-US"
+      format={{ useGrouping: false, maximumFractionDigits: decimalsOf(props.step) }}
+      value={props.value}
+      // Typing already applied the value (reason "input-change"). The blur
+      // commit only re-sends a stale or re-rounded copy — merely focusing an
+      // imported 15.829999 would write 15.83 — so it is dropped.
+      onValueChange={(v, details) => { if (details.reason !== "input-blur") props.onChange(v); }}
+      onBlur={(e) => {
+        const text = (e.target as HTMLInputElement).value.trim();
+        const ok = text === "" ? props.blankable : PARSEABLE.test(text);
+        if (!ok) setEpoch((n) => n + 1);
+      }}
+      className={props.className}
+    >
+      {props.children}
+    </NumberField.Root>
+  );
+}
+
+/** The input and its unit addon; render inside a NumberRoot. */
+export function UnitInput(props: { unit: string; placeholder?: string }) {
+  return (
+    <InputGroup className={props.unit === "mm" ? "h-6 w-28" : "h-6 w-24"}>
+      <NumberField.Input
+        render={<InputGroupInput className="h-6 text-xs" />}
+        placeholder={props.placeholder}
+        // NumberField maps Home/End to min/max; here they move the caret, as
+        // in every other text field (End on X would throw a layer off-page).
+        onKeyDown={(e) => { if (e.key === "Home" || e.key === "End") e.preventBaseUIHandler(); }}
+      />
+      <InputGroupAddon align="inline-end">
+        <InputGroupText className="text-[10px]">{props.unit}</InputGroupText>
+      </InputGroupAddon>
+    </InputGroup>
+  );
+}
 
 export function ScrubField(props: {
   /** Ties the Label to the Input; callers prefix it per element. */
@@ -32,94 +95,35 @@ export function ScrubField(props: {
   value: number;
   min: number;
   max: number;
-  /** Typing and arrow-key granularity, and the precision values snap to. */
+  /** Typed precision: the decimals shown, and what values round to. */
   step: number;
-  /** Drag granularity, when a finger-friendly increment is coarser than the
-   *  typed precision — tracking types in hundredths but scrubs in tenths,
-   *  since 0.01 per drag increment would make its full range ~4400px of
-   *  travel. Defaults to `step`, i.e. drag and type at the same granularity. */
+  /** Scrub and arrow-key granularity, when a finger-friendly increment is
+   *  coarser than the typed precision — tracking types in hundredths but
+   *  scrubs in tenths, since 0.01 per pixel would make its full range
+   *  ~2200px of travel. Defaults to `step`. */
   dragStep?: number;
-  /** The selection's elements disagree about this number (multi-select):
-   *  show an empty field instead of one element's value. Typing or dragging
-   *  still writes the new value to every selected element — a drag starts
-   *  from `value`, which the caller sets to the first element's. */
-  mixed?: boolean;
   onChange: (v: number) => void;
 }) {
-  // Half-typed text ("0.", "-") would round-trip through Number() as a
-  // different value and fight the keystroke, so it lives here until it
-  // parses — the same guard ColorField's hex field uses.
-  const [text, setText] = useState<string | null>(null);
-  const drag = useRef<{ x: number; v: number } | null>(null);
-
-  const shown = props.mixed ? "" : roundToStep(props.value, props.step);
-  const snap = (v: number) =>
-    roundToStep(Math.min(props.max, Math.max(props.min, v)), props.step);
-
   return (
-    <div className="flex items-center justify-between gap-2">
-      <Label
-        htmlFor={props.id}
+    <NumberRoot {...props} onChange={(v) => { if (v !== null) props.onChange(v); }}
+      className="flex items-center justify-between gap-2">
+      <NumberField.ScrubArea
+        render={<Label htmlFor={props.id} />}
         title="Drag to change"
+        // One step per pixel. At the default 2, NumberField applies only the
+        // triggering event's movement, so the rate varied with pointer speed.
+        pixelSensitivity={1}
         className="cursor-ew-resize select-none gap-1 text-xs text-muted-foreground"
-        onPointerDown={(e) => {
-          // Left button only: a right-click on the label shouldn't scrub.
-          if (e.button !== 0) return;
-          drag.current = { x: e.clientX, v: props.value };
-          e.currentTarget.setPointerCapture(e.pointerId);
-        }}
-        onPointerMove={(e) => {
-          const d = drag.current;
-          if (!d) return;
-          // Coarse/fine modifiers, as on Photoshop's scrubby sliders.
-          const mult = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
-          const inc = props.dragStep ?? props.step;
-          setText(null);
-          d.v = Math.min(props.max, Math.max(props.min, d.v + ((e.clientX - d.x) / PX_PER_STEP) * inc * mult));
-          d.x = e.clientX;
-          props.onChange(snap(d.v));
-        }}
-        onPointerCancel={() => { drag.current = null; }}
-        onPointerUp={(e) => {
-          drag.current = null;
-          if (e.currentTarget.hasPointerCapture(e.pointerId))
-            e.currentTarget.releasePointerCapture(e.pointerId);
-        }}
       >
         {props.icon && <props.icon className="size-3.5" aria-hidden="true" />}
         {props.label}
-      </Label>
-      <InputGroup className={props.unit === "mm" ? "h-6 w-28" : "h-6 w-24"}>
-        <InputGroupInput
-          id={props.id}
-          type="number"
-          min={props.min}
-          max={props.max}
-          step={props.step}
-          className="h-6 text-xs"
-          // Match editing precision without mutating imported geometry on render.
-          // Keep the draft untouched until blur so typing remains uninterrupted.
-          value={text ?? shown}
-          placeholder={props.mixed ? "Mixed" : undefined}
-          onChange={(e) => {
-            setText(e.target.value);
-            // Clamp on commit: `min`/`max` on a number input do not stop a
-            // typed value, and both fields feed straight into the renderer.
-            const n = Number(e.target.value);
-            if (e.target.value !== "" && Number.isFinite(n)) props.onChange(snap(n));
-          }}
-          onBlur={(e) => {
-            setText(null);
-            // React skips the DOM write when the input's text loosely equals
-            // the new value ("1e2" == 100), so a typed exponent would stay on
-            // screen after it applied as 100 (#135). Write the value we show.
-            e.currentTarget.value = String(shown);
-          }}
-        />
-        <InputGroupAddon align="inline-end">
-          <InputGroupText className="text-[10px]">{props.unit}</InputGroupText>
-        </InputGroupAddon>
-      </InputGroup>
-    </div>
+        {/* Stands in for the OS cursor, which pointer lock hides during a
+            scrub (Chromium and Firefox; WebKit skips pointer lock). */}
+        <NumberField.ScrubAreaCursor className="drop-shadow">
+          <MoveHorizontal className="size-4" aria-hidden="true" />
+        </NumberField.ScrubAreaCursor>
+      </NumberField.ScrubArea>
+      <UnitInput unit={props.unit} />
+    </NumberRoot>
   );
 }

@@ -6,18 +6,23 @@ import { expect, it, vi } from "vitest";
 import { ScrubField } from "../src/components/ScrubField";
 import { ColorField } from "../src/components/ColorField";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-it("modifier changes affect only new scrub travel (#303)", () => {
+it("modifier changes affect only new scrub travel (#303)", async () => {
+  // NumberField scrubs by movementX, one step per pixel (Shift = largeStep 10).
   const host = document.createElement("div"); document.body.append(host);
-  const root = createRoot(host); const change = vi.fn();
+  const root = createRoot(host); let value = 0;
+  const change = vi.fn((v: number) => { value = v; });
+  const field = () => createElement(ScrubField, { id: "n", label: "N", unit: "mm", value, min: -1000, max: 1000, step: 1, onChange: change });
   try {
-    act(() => root.render(createElement(ScrubField, { id: "n", label: "N", unit: "mm", value: 0, min: -1000, max: 1000, step: 1, onChange: change })));
+    act(() => root.render(field()));
     const label = host.querySelector("label")!;
-    label.setPointerCapture = vi.fn();
-    act(() => label.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 0 })));
-    for (const [clientX, shiftKey, expected] of [[40, false, 20], [40, true, 20], [42, true, 30], [42, false, 30], [44, false, 31]] as const) {
-      act(() => label.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX, shiftKey })));
-      expect(change).toHaveBeenLastCalledWith(expected);
+    const o = { bubbles: true, cancelable: true, pointerType: "mouse", button: 0, buttons: 1, pointerId: 1 };
+    await act(async () => { label.dispatchEvent(new PointerEvent("pointerdown", o)); });
+    for (const [movementX, shiftKey, expected] of [[20, false, 20], [0, true, 20], [2, true, 40], [0, false, 40], [1, false, 41]] as const) {
+      await act(async () => { window.dispatchEvent(new PointerEvent("pointermove", { ...o, movementX, shiftKey })); });
+      act(() => root.render(field()));  // controlled: feed the value back, as App does
+      expect(value).toBe(expected);
     }
+    await act(async () => { window.dispatchEvent(new PointerEvent("pointerup", { ...o, buttons: 0 })); });
   } finally { act(() => root.unmount()); host.remove(); }
 });
 /** Types `typed` into the ColorField's hex box the way a keystroke does. */

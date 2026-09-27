@@ -61,14 +61,14 @@ export const DEFAULT_RENDER: RenderSettings = {
   bleedIn: 0.0635,
 };
 
-/** Typing and arrow-key granularity of the bleed field, in inches — and so the
+/** Typing granularity of the bleed field, in inches — and so the
  *  precision a committed value snaps to, and the precision it is displayed at.
  *  Four decimals, because a bleed is quoted in ten-thousandths of an inch
  *  (0.0625 is the house 1/16" die, 0.0635 the shipped page) and three would
  *  collapse those onto 0.063 and 0.064. */
 export const BLEED_STEP_IN = 0.0005;
-/** Drag granularity — a finger-friendly increment, coarser than the typed one.
- *  ScrubField takes the two separately for exactly this case: dragging in
+/** Drag and arrow-key granularity — a finger-friendly increment, coarser than
+ *  the typed one. ScrubField takes the two separately for exactly this case: dragging in
  *  ten-thousandths would make the field's full range about 1000px of travel. */
 export const BLEED_DRAG_STEP_IN = 0.005;
 const BLEED_DECIMALS = decimalsOf(BLEED_STEP_IN);

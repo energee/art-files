@@ -49,9 +49,6 @@ import {
   DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import {
-  InputGroup, InputGroupAddon, InputGroupInput, InputGroupText,
-} from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -61,7 +58,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ColorField } from "./ColorField";
 import { MetallicToggle } from "./MetallicToggle";
-import { ScrubField } from "./ScrubField";
+import { NumberRoot, ScrubField, UnitInput } from "./ScrubField";
 import { decimalsOf, PT_STEP, roundToStep } from "@/numeric";
 import { CharacterHeight } from "./CharacterHeight";
 import { FONT_FAMILIES, fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
@@ -75,8 +72,8 @@ const KIND_ICONS: Record<LayerKind, LucideIcon> = {
 };
 
 /** Points precision for positions and sizes: typing keeps the model's PT_STEP
- *  and a scrub moves in halves — fine enough to land a snap, coarse enough to
- *  cross the label. */
+ *  and a scrub or arrow press moves in halves — fine enough to land a snap,
+ *  coarse enough to cross the label. */
 const PT = { step: PT_STEP, dragStep: 0.5 } as const;
 
 // The model stays in PDF points; only dimensional controls convert for display.
@@ -116,11 +113,23 @@ function displayValue(points: number, unit: string, step: number): number {
   return roundToStep(exact, DISPLAY_STEP.mm);
 }
 
+/** A point-valued field's bounds, steps and shown value in its display unit
+ *  — the one pt->display mapping DimensionField and BlankableField share.
+ *  Coming back, clampedPoints returns a reading to points. */
+function unitProps(p: { unit: string; value: number; min: number; max: number; step: number; dragStep?: number }) {
+  const mm = p.unit === "mm";
+  const scale = mm ? MM_PER_PT : 1;
+  return {
+    value: displayValue(p.value, p.unit, p.step), min: p.min * scale, max: p.max * scale,
+    // The pt drag step converted, so an arrow press moves the same physical
+    // distance in either unit (never below the mm display precision).
+    step: mm ? DISPLAY_STEP.mm : p.step,
+    dragStep: mm ? Math.max(DISPLAY_STEP.mm, roundToStep((p.dragStep ?? p.step) * MM_PER_PT, DISPLAY_STEP.mm)) : p.dragStep,
+  };
+}
+
 function DimensionField(props: Omit<ComponentProps<typeof ScrubField>, "unit"> & { unit: DimensionUnit }) {
-  const scale = props.unit === "mm" ? MM_PER_PT : 1;
-  return <ScrubField {...props} key={props.unit}
-    value={displayValue(props.value, props.unit, props.step)} min={props.min * scale} max={props.max * scale}
-    step={DISPLAY_STEP[props.unit]} dragStep={props.unit === "mm" ? 0.1 : props.dragStep}
+  return <ScrubField {...props} key={props.unit} {...unitProps(props)}
     // Back to points at the MODEL's precision, then clamped (clampedPoints).
     onChange={(value) => props.onChange(clampedPoints(value, props))} />;
 }
@@ -204,53 +213,28 @@ function Badge(props: {
 
 /** A number that may be ABSENT (text wrap width, image height): blank means
  *  "none"/"auto" and emits `undefined` — see the file header for what the
- *  parent must do with that. Same half-typed guard as ScrubField, same
- *  InputGroup so it sits in the same right-hand column. */
+ *  parent must do with that. The same NumberField and InputGroup as
+ *  ScrubField, without the scrub, so it sits in the same right-hand column. */
 function BlankableField(props: {
   id: string; label: string; unit: string; placeholder: string;
-  value: number | undefined; min: number; max: number; step: number;
+  value: number | undefined; min: number; max: number; step: number; dragStep?: number;
   badge?: ReactNode;
   onChange: (v: number | undefined) => void;
 }) {
-  const [text, setText] = useState<string | null>(null);
-  const scale = props.unit === "mm" ? MM_PER_PT : 1;
-  // Display granularity, matching DimensionField: mm needs a third decimal to
-  // carry the model's 0.01pt precision. The input's `step` has to agree with
-  // the rendered value or the browser reports a step mismatch on a number the
-  // field itself produced.
-  const displayStep = props.unit === "mm" ? DISPLAY_STEP.mm : props.step;
-  const shown = props.value === undefined ? "" : displayValue(props.value, props.unit, props.step);
+  const shown = unitProps({ ...props, value: props.value ?? 0 });
   return (
     <Field id={props.id} label={props.label} badge={props.badge}>
-      <InputGroup className="h-6 w-24">
-        <InputGroupInput
-          id={props.id}
-          type="number"
-          min={props.min * scale}
-          max={props.max * scale}
-          step={displayStep}
-          placeholder={props.placeholder}
-          className="h-6 text-xs"
-          value={text ?? shown}
-          onChange={(e) => {
-            const s = e.target.value;
-            setText(s);
-            if (s === "") { props.onChange(undefined); return; }
-            const n = Number(s);
-            // Back to points at the MODEL's precision before clamping, as
-            // DimensionField does: without it a millimetre reading typed back
-            // verbatim (35pt -> 12.347mm -> 34.99916pt) never re-matches the
-            // master, so the override badge can't be cleared from this field.
-            if (Number.isFinite(n)) props.onChange(clampedPoints(n, props));
-          }}
-          // Write the shown value too: React won't replace "3e2" with 300,
-          // they're loosely equal (#135, see ScrubField).
-          onBlur={(e) => { setText(null); e.currentTarget.value = String(shown); }}
-        />
-        <InputGroupAddon align="inline-end">
-          <InputGroupText className="text-[10px]">{props.unit}</InputGroupText>
-        </InputGroupAddon>
-      </InputGroup>
+      <NumberRoot
+        {...shown} id={props.id} blankable
+        value={props.value === undefined ? null : shown.value}
+        // Back to points at the MODEL's precision before clamping, as
+        // DimensionField does: without it a millimetre reading typed back
+        // verbatim (35pt -> 12.347mm -> 34.99916pt) never re-matches the
+        // master, so the override badge can't be cleared from this field.
+        onChange={(v) => props.onChange(v === null ? undefined : clampedPoints(v, props))}
+      >
+        <UnitInput unit={props.unit} placeholder={props.placeholder} />
+      </NumberRoot>
     </Field>
   );
 }
@@ -528,7 +512,7 @@ function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: string }) {
       />
       <BlankableField
         id={`${id}-width`} label="Wrap width" unit={props.unit} key={props.unit} placeholder="none"
-        value={layer.width} min={1} max={2000} step={PT.step}
+        value={layer.width} min={1} max={2000} {...PT}
         badge={badge(["width"], "Wrap width")}
         onChange={(width) => set({ width })}
       />
@@ -546,7 +530,7 @@ function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: string }) {
           onChange={(headerScale) => set({ headerScale })}
         />
       </Row>
-      {/* Clamped both ends by ScrubField: tracking wide enough to overrun
+      {/* Clamped both ends by the field: tracking wide enough to overrun
           the label reads as a broken line, not a style. */}
       <Row badge={badge(["style.letterSpacing"], "Letter Spacing")}>
         <ScrubField
@@ -780,7 +764,7 @@ function ImageGeometry(props: Ctx & { layer: ImageLayer }) {
       </Row>
       <BlankableField
         id={`${id}-h`} label="Height" unit={props.unit} key={props.unit} placeholder="auto"
-        value={layer.h} min={1} max={2000} step={PT.step}
+        value={layer.h} min={1} max={2000} {...PT}
         badge={badge(["h"], "Height")}
         onChange={(h) => set({ h })}
       />
