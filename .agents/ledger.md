@@ -489,3 +489,37 @@ no status, no attempts, no delta.
 - attempts: 1/3
 - delta: parity page + pdf.js raster path deleted; pdfjs-dist removed from dependencies (package-lock -278 lines); golden-diff requires pdftoppm (ci.yml installs poppler-utils; a missing binary is the script's own "install poppler" error, no probe spawn); strokecap page kept; pnpm-lock.yaml still lists pdfjs-dist (left to the pnpm-lock hygiene work)
 - fixed-by: chore/65-retire-dead
+
+## 2026-09-27 issue-queue-339
+- finding: [correctness/high] #339 — neutral PDF vectors converted to four-colour black
+- status: done
+- attempts: 1/3
+- delta: neutral art fills/strokes use DeviceGray; coloured vectors and raster assets retain their existing colour handling
+- evidence: 1177 tests pass with NODE_OPTIONS=--no-experimental-webstorage (Node 26 otherwise shadows happy-dom localStorage); TypeScript, zero-warning lint and release gate pass; Ghostscript 10.08 preserves DeviceGray black and converts gold to coloured CMYK; both 600-DPI art golden diffs have zero changed pixels
+- release: binary-impacting; queued under Unreleased, no release published
+
+## 2026-09-27 issue-queue-document-safety
+- finding: [correctness/high] #263–#273, #287, #288, #290, #299, #304, #311, #341 — save races, malformed input and inconsistent model/CLI handling
+- status: done
+- attempts: 1/3
+- delta: snapshot-aware saves; stable cancelled/failed save targets; decode errors surfaced; preflight before document replacement; editable label-only layers; complete master review; variant-order round trips; bounded archive inflation; optional CLI clears and dormant values; useful WebP error; independent nudges; precise barcode resize; unique variant names; actual QR default; shared plain-object test and native cloning
+- evidence: 1195 tests pass; TypeScript, zero-warning lint and release metadata checks pass; focused DOM regressions retain the prior document and save target after each malformed open
+- release: binary-impacting; queued under Unreleased, no release published
+
+## 2026-09-27 issue-queue-ui-and-docs
+- finding: #274–#276, #278–#281, #285–#286, #291–#293, #296–#298, #300–#303, #310, #312–#336, #342–#347, #350–#356 — keyboard/input correctness, updater safety, stale docs and redundant helpers
+- status: done
+- attempts: 1/3
+- delta: restored cancelled text state; paragraph-aware justification; keyboard guide/can/swatch controls; stable scrub modifiers; selected-layer removal; platform hints; updater dirty gates and retry; readable rebind/Save As/drop errors; one plain-line field; shared PSD spacing decision; native file FIFO and CLI entry detection; Rust CI and declared Node/runtime dependencies; operator docs match current behavior; route suffix guards; recovered historical plan; corrected agent evidence
+- evidence: 1209 tests across 106 suites pass (four workers to avoid machine-contention timeouts); TypeScript, zero-warning lint and release gate pass; all 10 Rust tests pass; docs production build passes; valid markdown/image endpoints return 200 and invalid suffixes 404
+- release: binary-impacting; notes queued under Unreleased; version unchanged; no release published
+
+## 2026-09-27 issue-queue-export-and-cleanup
+- finding: #245, #254, #284, #289, #294–#295, #305–#309, #340, #348–#349 — export consistency, barcode backing, missing font coverage, semantic colour and redundant runtime code
+- status: implemented; review branch fix/issue-queue
+- attempts: 1/3
+- delta: shared file routing and paired-export cancellation/partial outcomes; Windows/Linux Help updater; font-coverage errors before export; continuous barcode backing through the shared plan; independent full barcode tables and 600-DPI dots-QR/UPC decode tests; semantic colour port with ruler-click tests; native keyboard divider; legacy oracle moved under tests; unused sidebar/font/model/container code removed
+- evidence: 1210 tests across 110 suites pass; TypeScript, zero-warning lint, production app build and release checks against main and stack parent pass. Windows download/edit race and renamed export destinations are covered. All three real labels' UPCs decode after the backing fix. Background-only experiment preserved every symbol pixel and rescued both textured cases. Four PDF golden raster diffs are empty; real Blue Agate changes stay inside the barcode backing.
+- browser: local light/dark smoke, keyboard divider, narrow sidebar toggle; collapsed controls are inert. No baseline for visual-regression certification; Photoshop raster certification remains pending.
+- remaining: #283 requires the printed Lupula phone scan before QR design changes. #244, #282, #338 already have green PRs #337, #358, #357. Full 95-issue disposition: docs/audits/2026-09-27-issue-queue.md.
+- release: binary-impacting; notes queued under Unreleased, version remains 0.1.98. No merge or release performed.

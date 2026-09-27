@@ -8,14 +8,14 @@ import { FONT_FAMILIES } from "../fontCatalog";
 // a v1 config.json comes back raw for parseConfigFile + convertConfigV1) and
 // saving always writes v3. The legacy '{' sniff for JSON-only .master files
 // stays. Replaces the v1 .master packer and the v2 half of src/labelfile.ts.
-import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from "fflate";
+import { strFromU8, strToU8, zipSync, type Zippable } from "fflate";
 import type { LabelFile, Master } from "./layers";
 import { parseMaster } from "./layers";
 import type { LabelFileV2 } from "./types";
 import { parseMaster as parseMasterV1 } from "./types";
 import { parseLabelFile } from "./labelfile";
 import { convertMasterV1 } from "./convert";
-import { extractAssets, legacyJsonText, packAssets, type LabelAssets } from "../labelfile";
+import { unpackArchive, extractAssets, legacyJsonText, packAssets, type LabelAssets } from "../labelfile";
 
 /** The template assets a master carries: the master-owned subset of the
  *  .label roles. A label's own embedded art always wins over the master's. */
@@ -57,7 +57,7 @@ export function packMaster(m: Master, assets: MasterAssets): Uint8Array {
 export function unpackMaster(bytes: Uint8Array): { master: Master; assets: MasterAssets; warnings: string[] } {
   const legacy = legacyJsonText(bytes); // a legacy JSON-only master, no assets
   if (legacy !== undefined) return { ...parseMasterJson(JSON.parse(legacy)), assets: {} };
-  const entries = unzipSync(bytes);
+  const entries = unpackArchive(bytes);
   const entry = entries["master.json"];
   if (!entry) throw new Error("Not a .master file: missing master.json");
   return { ...parseMasterJson(JSON.parse(strFromU8(entry))), assets: extractAssets(entries) };
@@ -75,6 +75,8 @@ function parseDormant(v: unknown): LabelFile["dormant"] {
   return {
     values: (d.values && typeof d.values === "object" ? d.values : {}) as LabelFile["values"],
     variants: Array.isArray(d.variants) ? (d.variants as string[]) : [],
+    ...(Array.isArray(d.variantOrder) && d.variantOrder.every((id) => typeof id === "string")
+      ? { variantOrder: d.variantOrder as string[] } : {}),
   };
 }
 
@@ -116,7 +118,7 @@ export function packLabel(l: LabelFile, assets: LabelAssets): Uint8Array {
 export function unpackLabel(bytes: Uint8Array): {
   label?: LabelFile; v2?: LabelFileV2; legacy?: string; assets: LabelAssets;
 } {
-  const entries = unzipSync(bytes);
+  const entries = unpackArchive(bytes);
   const assets = extractAssets(entries);
   const configEntry = entries["config.json"];
   const labelEntry = entries["label.json"];

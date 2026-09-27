@@ -124,3 +124,31 @@ it("native menu commands leave the tab behind an open dialog alone (#244)", asyn
     Reflect.deleteProperty(document, "execCommand");
   }
 });
+
+// isMacOS() reads navigator.userAgent, so that is what each case pins.
+for (const [platform, userAgent] of [
+  ["Windows", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)"],
+  ["Linux", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko)"],
+]) {
+  it(`provides Help → Check for Updates on ${platform}`, async () => {
+    const platformSpy = vi.spyOn(navigator, "userAgent", "get").mockReturnValue(userAgent);
+    native.items.clear();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const check = vi.fn();
+    try {
+      await act(async () => { root.render(createElement(AppMenu, {
+        actions: actionsIn(APP_MENUS).map((entry) => ({ id: entry.id, label: entry.text, run: () => {} })),
+        checked: {}, onNativeError: (error) => { throw new Error(error); }, onCheckForUpdates: check,
+      })); });
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+      expect(native.items.has("help-menu")).toBe(true);
+      native.items.get("check-for-updates")!.action!();
+      expect(check).toHaveBeenCalledOnce();
+    } finally {
+      await act(async () => { root.unmount(); });
+      container.remove(); platformSpy.mockRestore();
+    }
+  });
+}

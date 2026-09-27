@@ -6,7 +6,7 @@
 // strokes DO carry the same cavity bridge the PDF backend uses; Skia
 // underpaints a wide stroke's interior just as pdf.js does (see
 // bridgeOffsets in strokes.ts). Fonts arrive through the fonts.ts
-// gate: callers must have awaited loadLabelFont()/loadLabelFaces() for the
+// gate: callers must have awaited loadLabelFaces() for the
 // same family as the `fontCss` passed in, so that CSS family resolves — a
 // missing face would silently measure wrong, which is exactly what the gate
 // exists to prevent.

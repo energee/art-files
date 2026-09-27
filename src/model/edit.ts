@@ -16,7 +16,7 @@ import type {
 } from "./layers";
 import type { Box } from "./place";
 import { bindingOf, hAnchorOf, parseMaster, validateBindings, vAnchorOf } from "./layers";
-import { deepMerge, type DeepPartial } from "./merge";
+import { isPlain, deepMerge, type DeepPartial } from "./merge";
 import { resolveLayers, valueOf, valuePath, widenValue } from "./resolveLayers";
 import { anchorFraction } from "./position";
 import { CENTER_X, GOLD } from "../layout";
@@ -31,8 +31,7 @@ type LayerPatch = DeepPartial<Layer>;
  *  override of a master layer. Same static shape either way. */
 type Entry = DeepPartial<Layer>;
 
-const isPlain = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
+
 const isBound = (y: unknown): y is RelativeY => isPlain(y) && typeof y.below === "string";
 
 function variantOf(master: Master, id: string): Variant {
@@ -52,7 +51,7 @@ const without = <T,>(o: Record<string, T>, key: string): Record<string, T> =>
 
 // --- Ids and defaults -------------------------------------------------------
 
-export function mintLayerId(kind: LayerKind, taken: Set<string>): string {
+export function mintLayerId(kind: string, taken: Set<string>): string {
   for (;;) {
     const hex = Math.floor(Math.random() * 0x1000000).toString(16).padStart(6, "0");
     const id = `${kind}-${hex}`;
@@ -192,11 +191,22 @@ export function removeLayer(master: Master, id: string, boxes?: ReadonlyMap<stri
  *  patch lands in an override that holds one of the keys it writes, where it
  *  would otherwise win over the master's. A switched-off version's layers
  *  count too; unmeasured (no box), one bound to `id` refuses the removal. */
+/** A label-only legacy layer (#264): a whole-layer override (it carries
+ *  `kind`) whose id neither the master nor any variant defines. The override
+ *  is the layer's ONLY definition, so there is no master value under it. */
+function isLabelOnly(master: Master, label: LabelFile, id: string): boolean {
+  return !!label.overrides?.[id]?.kind && !master.layers.some((l) => l.id === id)
+    && !master.variants.some((v) => id in v.layers);
+}
+
 export function removeLayerIn(doc: Doc, id: string, boxes?: ReadonlyMap<string, Box>): Doc {
-  const master = removeLayer(doc.master, id, boxes);
   const overrides = doc.label.overrides;
+  const own = overrides?.[id];
+  const labelOnly = isLabelOnly(doc.master, doc.label, id);
+  const source = labelOnly ? { ...doc.master, layers: [...doc.master.layers, own as Layer] } : doc.master;
+  const master = labelOnly ? doc.master : removeLayer(doc.master, id, boxes);
   if (!overrides) return { ...doc, master };
-  const patchOf = detacher(doc.master, id, boxes);
+  const patchOf = detacher(source, id, boxes);
   // Switched-off versions too, their layers' overrides still bind; the
   // enabled resolve goes last so it wins for the layers you see.
   const resolve = (variants: string[]) =>
@@ -240,6 +250,10 @@ function blockShifted<T>(list: readonly T[], ids: ReadonlySet<string>, idOf: (x:
  *  layer only reorders among its peers. The target index is clamped to the
  *  ends; a move that lands where it started returns `master` itself. */
 export function moveLayers(master: Master, ids: readonly string[], id: string, delta: number): Master {
+  // ponytail: a label-only legacy layer (#264) has no draw-order slot of its
+  // own (resolveLayers appends it), so it doesn't reorder; add a label-side
+  // order if anyone needs to move one.
+  if (!master.layers.some((l) => l.id === id) && !master.variants.some((v) => id in v.layers)) return master;
   const block = new Set(ids);
   const where = whereLayerLives(master, id);
   if (where === "master") {
@@ -407,8 +421,9 @@ export function labelOverriddenPaths(label: LabelFile, id: string): Set<string> 
  *
  *  A variant-ADDED layer has no variant-vs-master baseline to diff, so it
  *  shows no variant badge; its LABEL overrides are still the label's own and
- *  still resettable, exactly like a base layer's. Throws for an unknown id
- *  (whereLayerLives), so callers pass a layer the document has. */
+ *  still resettable, exactly like a base layer's. A label-only legacy layer
+ *  has no badges at all: its override is its only definition, so a "reset"
+ *  would delete a required field (x, y, anchor…) rather than restore one. */
 export interface OverrideBadges {
   variant: Set<string>;
   label: Set<string>;
@@ -418,13 +433,14 @@ export interface OverrideBadges {
 export function overrideBadges(master: Master, label: LabelFile, id: string): OverrideBadges {
   const variant = new Set<string>();
   let variantName: string | undefined;
-  if (whereLayerLives(master, id) === "master") {
+  if (master.layers.some((l) => l.id === id)) {
     for (const v of master.variants) {
       if (!label.enabledVariants.includes(v.id)) continue;
       for (const p of overriddenPaths(master, v.id, id)) { variant.add(p); variantName = v.name; }
     }
   }
-  return { variant, label: labelOverriddenPaths(label, id), variantName };
+  const own = isLabelOnly(master, label, id) ? new Set<string>() : labelOverriddenPaths(label, id);
+  return { variant, label: own, variantName };
 }
 
 /** Rebinds the label onto `master`, which is what adopting a saved master
@@ -448,20 +464,6 @@ export function assetReferenced(master: Master, label: LabelFile, assetId: strin
   if (master.variants.some((v) => Object.values(v.layers).some(uses))) return true;
   if (Object.values(label.overrides ?? {}).some(uses)) return true;
   return Object.values(label.values).some((v) => v === assetId);
-}
-
-/** Binds the layer's top edge below another layer's bottom. `vAnchor` is
- *  dropped (meaningless on a bound layer). Throws parseMaster's error for a
- *  binding the loader would reject (cycle, missing layer, a master layer
- *  below a variant-only one). */
-export function bindBelow(master: Master, id: string, below: string, gap: number): Master {
-  return parseMaster(withLayer(master, id, ({ vAnchor: _v, ...l }) => ({ ...l, y: { below, gap }, guideY: "none", binding: null })));
-}
-
-/** Writes the resolved top edge as a plain `y` (the inspector's "Unbind"),
- *  clearing `vAnchor` to top. Re-validated like bindBelow. */
-export function unbind(master: Master, id: string, computedTopY: number): Master {
-  return parseMaster(withLayer(master, id, ({ vAnchor: _v, ...l }) => ({ ...l, y: computedTopY, guideY: "none", binding: null })));
 }
 
 /** A position written from a gesture or a measurement, on the model's 0.01pt
@@ -631,11 +633,17 @@ export function showVersion(
   return out;
 }
 
-export function addVariant(master: Master, name: string): { master: Master; id: string } {
-  const stem = slugify(name) || "variant";
-  const ids = new Set(master.variants.map((v) => v.id));
-  let id = stem;
-  for (let n = 2; ids.has(id); n++) id = `${stem}-${n}`;
+export function addVariant(master: Master, name?: string): { master: Master; id: string } {
+  if (name === undefined) {
+    const names = new Set(master.variants.map((v) => v.name));
+    let n = 1;
+    while (names.has(`Variant ${n}`)) n++;
+    name = `Variant ${n}`;
+  }
+  // A random suffix, like mintLayerId: the master forgets a deleted variant,
+  // but labels on disk may still list its id in enabledVariants, and a reused
+  // id would silently switch the new variant on for them.
+  const id = mintLayerId(slugify(name) || "variant", new Set(master.variants.map((v) => v.id)));
   return { id, master: { ...master, variants: [...master.variants, { id, name, layers: {} }] } };
 }
 
@@ -760,13 +768,15 @@ export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
     const ids = new Set(masterIds);
     for (const v of doc.master.variants)
       if (label.enabledVariants.includes(v.id)) for (const k of Object.keys(v.layers)) ids.add(k);
+    for (const [id, patch] of Object.entries(label.overrides ?? {})) if (patch.kind) ids.add(id);
     return ids;
   };
   let resolves = resolvable(doc.label);
   return entries.reduce((d, [id, patch]) => {
     const keys = Object.keys(patch);
-    const contract = keys.filter((k) => MASTER_PATHS.has(k));
-    const rest = keys.filter((k) => !MASTER_PATHS.has(k));
+    const labelOnly = isLabelOnly(d.master, d.label, id);
+    const contract = keys.filter((k) => !labelOnly && MASTER_PATHS.has(k));
+    const rest = keys.filter((k) => labelOnly || !MASTER_PATHS.has(k));
     const pick = (ks: string[]) =>
       Object.fromEntries(ks.map((k) => [k, (patch as Record<string, unknown>)[k]])) as LayerPatch;
 
@@ -1001,6 +1011,12 @@ export function masterChanges(
   const baseById = new Map(base.layers.map((l) => [l.id, l]));
   const editedById = new Map(edited.layers.map((l) => [l.id, l]));
   const out: MasterChange[] = [];
+  for (const key of ["guides", "physical", "fontFamily"] as const)
+    for (const path of changedPaths({ [key]: base[key] }, { [key]: edited[key] }))
+      out.push({ kind: "property", layerId: "master", layerName: "Master settings", path,
+        from: getPath(base, path), to: getPath(edited, path) });
+  if (base.name !== edited.name)
+    out.push({ kind: "renamed", layerId: "master", layerName: edited.name, from: base.name, to: edited.name });
 
   for (const l of base.layers)
     if (!editedById.has(l.id)) out.push({ kind: "removed", layerId: l.id, layerName: l.name });
@@ -1043,8 +1059,13 @@ export function masterChanges(
     const nameOf = (id: string, e: unknown) =>
       (e as { name?: string }).name ?? editedById.get(id)?.name ?? id;
     for (const id of Object.keys(was.layers))
-      if (!(id in v.layers))
-        out.push({ kind: "removed", layerId: id, layerName: nameOf(id, was.layers[id]) });
+      if (!(id in v.layers)) {
+        if (!baseById.has(id))
+          out.push({ kind: "removed", layerId: id, layerName: nameOf(id, was.layers[id]) });
+        else for (const path of changedPaths(was.layers[id], {}))
+          out.push({ kind: "property", layerId: id, layerName: nameOf(id, was.layers[id]), path,
+            from: getPath(was.layers[id], path), to: getPath(editedById.get(id), path) });
+      }
     // A variant's added layers draw in key order (moveLayers), so compare that
     // order the way the base layers' is compared above (#198).
     const wasIndex = new Map(addedIds(was, baseById).map((id, i) => [id, i]));
@@ -1183,7 +1204,7 @@ export function resizeBy(
       // finer precision (a module is under a point).
       case "text": return { width: pt(Math.max((layer.width ?? bw) + lw, 1)) };
       case "qr": return { size: pt(layer.size * sx) };
-      case "barcode": return { h: pt(layer.h * sy), moduleW: layer.moduleW * sx };
+      case "barcode": return { h: pt(layer.h * sy), moduleW: roundToStep(layer.moduleW * sx, 0.0001) };
       case "image": return { w: pt(layer.w * sx), ...(layer.h != null ? { h: pt(layer.h * sy) } : {}) };
     }
   })();

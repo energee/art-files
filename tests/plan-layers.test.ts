@@ -8,13 +8,13 @@ import {
   planLayers, planLayerScene, layerBoxes, DEFAULT_FACES, type PlacedPage,
 } from "../src/planLayers";
 import { barcodeItem, customBarcodeItem } from "./legacy/plan";
-import { labelGuides, type MeasureFace, type PlacedBarcode, type PlacedImage, type PlacedPaths, type PlacedText,  } from "../src/plan";
+import { labelGuides, type MeasureFace, type PlacedBarcode, type PlacedImage, type PlacedPaths, type PlacedText,  } from "./legacy/planShared";
 import type {
   BarcodeLayer, ImageLayer, Layer, QrLayer, TextLayer, TextLine,
 } from "../src/model/layers";
 import { qrPath, qrShapes } from "../src/qr";
 import { defaultConfig } from "../src/defaults";
-import * as L from "../src/layout";
+import * as L from "./legacy/layout";
 
 const m: MeasureFace = (text, size, face) =>
   text.length * size * (face === "regular" ? 0.5 : face === "semibold" ? 0.55 : 0.6);
@@ -44,6 +44,19 @@ describe("planLayers text", () => {
       face: "semibold", tracking: 0, rotated: false, fill: GOLD_METAL.fill, layer: "metallic",
     });
     expect(run.w).toBeCloseTo(m("1 PINT", 10, "semibold"));
+  });
+
+  it("draws a tab as one space and drops other control characters, whatever stored them (#282)", () => {
+    // pdf-lib would print a tab as four spaces (and break a line at \v/\f)
+    // while the canvas preview shows one space, so the plan normalizes first.
+    const plan = (t: string) => planLayers([text({ id: "s", x: 0, y: 0, lines: [line(t)] })], m, assets) as PlacedText[];
+    expect(plan("\uFEFFHops\tCitra\u0001\u2028Mosaic\u200B\u009B\vX").map((r) => [r.text, r.w]))
+      .toEqual(plan("Hops Citra Mosaic X").map((r) => [r.text, r.w]));
+  });
+
+  it("shows the placeholder when a line holds only control characters (#282)", () => {
+    const [run] = planLayers([text({ id: "s", x: 0, y: 0, placeholder: "Name", lines: [line("\u0001\u007F")] })], m, assets) as PlacedText[];
+    expect(run.text).toBe("Name");
   });
 
   it("centers a center-anchored, center-aligned line on x", () => {
@@ -154,10 +167,10 @@ describe("planLayers text: multi-word markup across wrap/justify", () => {
 
   it("justify: every word of a bold span is bold, markers stripped", () => {
     const runs = planLayers([text({ id: "w", x: 0, y: 0, width: 200, align: "justify",
-      lines: [line("A **very hoppy double** IPA"), line("end")] })], m, assets) as PlacedText[];
+      lines: [line("A **very hoppy double** IPA extraordinarilylongnextword")] })], m, assets) as PlacedText[];
     expect(styled(runs)).toEqual([
       ["A", "regular", "metallic"], ["very", "semibold", "metallic"], ["hoppy", "semibold", "metallic"],
-      ["double", "semibold", "metallic"], ["IPA", "regular", "metallic"], ["end", "regular", "metallic"],
+      ["double", "semibold", "metallic"], ["IPA", "regular", "metallic"], ["extraordinarilylongnextword", "regular", "metallic"],
     ]);
     // Justified: the last word of the first line ends exactly at the width.
     const ipa = runs.find((r) => r.text === "IPA")!;
@@ -221,7 +234,7 @@ describe("planLayers barcode", () => {
   const r2 = (n: number) => Math.round(n * 100) / 100;
 
   it("upright: matches plan.ts's custom barcode geometry (print-geometry goldens), guards run long into the digit band", () => {
-    const [item] = planLayers([upright], m, assets) as PlacedBarcode[];
+    const item = planLayers([upright], m, assets).find((p): p is PlacedBarcode => p.kind === "barcode")!;
     const ref = customBarcodeItem({
       id: "custom-bc", name: "BC", type: "barcode", symbology: "upc-a", value: "012345678905", h: 30, moduleW: 1,
       position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 }, style: upright.style,
@@ -241,13 +254,36 @@ describe("planLayers barcode", () => {
     expect(item.footprint.slice(item.geo.bars.length)).toEqual(ref.footprint.slice(ref.geo.bars.length));
   });
 
+  // Along the scan direction the backing's fill (before its stroke halo) is
+  // the layer's own box — the box hit-testing, snapping and bindings use — so
+  // a right-anchored symbol at the trim keeps its quiet zone on the page, and
+  // every symbology reserves at least 8X of it.
+  it.each([
+    ["upc-a", "012345678905", 0], ["ean-13", "5901234123457", 0], ["code-128", "LOLEV-42", 0],
+    ["upc-a", "012345678905", 90], ["code-128", "LOLEV-42", 90],
+  ] as const)("%s %s at %s degrees: the backing fills exactly the layer box", (symbology, value, rotation) => {
+    const layer: BarcodeLayer = { ...upright, symbology, value, moduleW: 2.5, rotation };
+    const items = planLayers([layer], m, assets);
+    const backing = items[0] as PlacedPaths;
+    expect(backing.kind).toBe("paths");
+    const box = layerBoxes([layer], m, assets).get("bc")!;
+    const [, w, h] = backing.paths[0].match(/L([\d.]+) 0L[\d.]+ ([\d.]+)/)!.map(Number);
+    // Along the scan direction only: across it, the backing still covers
+    // the digit pills' descenders, which hang below the reserved band.
+    expect(rotation ? [r2(backing.y), r2(h)] : [r2(backing.x), r2(w)])
+      .toEqual(rotation ? [r2(box.y), r2(box.h)] : [r2(box.x), r2(box.w)]);
+    const bars = (items[1] as PlacedBarcode).geo.bars;
+    const lead = rotation ? box.y + box.h - Math.max(...bars.map((b) => b.yTop + b.h)) : Math.min(...bars.map((b) => b.x)) - box.x;
+    expect(lead).toBeGreaterThanOrEqual(8 * 2.5 - 1e-9);
+  });
+
   it("rotated: reproduces the template barcode item exactly", () => {
     const mod = 29.88 / 29;
     const rotated: BarcodeLayer = {
       ...upright, id: "barcode", x: L.BARCODE.x, y: L.BARCODE.yTop, rotation: 90, value: "850051366224",
       h: 15 * mod, moduleW: mod, style: { fill: "#1A1A1A", layer: "white", stroke: "#FFFFFF", strokeWidth: 20, strokeLayer: "white" },
     };
-    const [item] = planLayers([rotated], m, assets) as PlacedBarcode[];
+    const item = planLayers([rotated], m, assets).find((p): p is PlacedBarcode => p.kind === "barcode")!;
     const ref = barcodeItem(defaultConfig(), m);
     expect(item.rotated).toBe(true);
     expect(item.S).toBeCloseTo(ref.S);
@@ -343,4 +379,13 @@ it("shares measured boxes with drawing, including skipped layers and binding cha
   expect(scene.boxes.get("b")!.y).toBeCloseTo(scene.boxes.get("a")!.y + scene.boxes.get("a")!.h + 5);
   expect(scene.items).toEqual(planLayers(layers, m, assets, { skip: new Set(["a"]) }));
   expect(scene.boxes).toEqual(layerBoxes(layers, m, assets));
+});
+
+
+it.each([0, 90] as const)("keeps each paragraph's last line naturally spaced at rotation %s (#293)", (rotation) => {
+  const runs = planLayers([text({ id: "paragraphs", x: 0, y: 0, width: 30, rotation,
+    align: "justify", lines: [line("aa bb"), line("aa bb cc")] })], m, assets) as PlacedText[];
+  expect(runs.map((r) => r.text)).toEqual(["aa bb", "aa", "bb", "cc"]);
+  expect(runs[0].w).toBe(25);
+  expect(rotation ? runs[1].y - runs[2].y : runs[2].x - runs[1].x).toBe(20);
 });

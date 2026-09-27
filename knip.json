@@ -2,7 +2,8 @@
   "$schema": "https://unpkg.com/knip@6.38.0/schema.json",
   "entry": [
     "src/dev/*.ts",
-    "scripts/*.{ts,mts,mjs}"
+    "scripts/*.{ts,mts,mjs}",
+    "tests/legacy/check-margins.mts"
   ],
   "project": [
     "src/**",

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { planLabel, barcodeItem } from "./legacy/plan";
-import { lineRuns, rotatedRuns, justifiedRotatedRuns, labelGuides, type MeasureFace, type PlacedText, type PlacedImage } from "../src/plan";
-import * as L from "../src/layout";
+import { lineRuns, rotatedRuns, justifiedRotatedRuns, labelGuides, type MeasureFace, type PlacedText, type PlacedImage } from "./legacy/planShared";
+import * as L from "./legacy/layout";
 import { defaultConfig } from "../src/defaults";
 import { assets } from "./fixtures";
 import type { CustomTextLayer, CustomImageLayer } from "../src/types";

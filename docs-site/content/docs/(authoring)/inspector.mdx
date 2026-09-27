@@ -3,7 +3,7 @@ title: Inspector
 description: One layer. Content, type, position, colour
 ---
 
-Pick a layer in the list or on the preview and the right-hand inspector opens. Esc or the header close clears the selection and shuts it. One panel at a time. Esc inside a field, an on-preview text edit, or a drag only cancels that; the inspector stays open.
+Pick a layer in the list or on the preview and the right-hand inspector opens. Esc or a click on the empty pasteboard clears the selection and shuts it. One panel at a time. Esc inside a field, an on-preview text edit, or a drag only cancels that; the inspector stays open.
 
 mm / pt in the inspector is display only. Under the hood it's still PDF points.
 
@@ -18,7 +18,7 @@ Depends on the kind:
 - **Text.** The WYSIWYG editor ([Editing](/docs/editing)). Number layers (ABV) are a number box. Code-as-text layers validate like a barcode.
 - **Image.** Drop or pick a file. SVG logos take the slot's fill. Rasters print as you authored them.
 - **Barcode.** The code string, plus a choice list if the master offers tiers.
-- **QR.** A URL template. A simple link is a prefix plus one field, always slugified. Lolev ships as `https://lolev.beer/beer/{name|slug}`. That derived URL is what gets encoded. No separate QR data field. Transforms: `slug`, `upper`, `lower`, `trim`.
+- **QR.** A **Link** box and a **followed by** picker of text layers (or “nothing”). The selected text is made safe for a link. Lolev ships as `https://lolev.beer/beer/{name|slug}`; that derived URL is what gets encoded.
 
 ## Typography (text)
 
@@ -36,11 +36,11 @@ Position is measured from the layer's guides and anchors. **Bind** a layer to an
 
 Text and codes can rotate **90°** (reads bottom to top). Images can't.
 
-Image layers also have width, optional height, contain/cover fit, scale, and "tint raster" for colouring a bitmap with the fill. Page art (texture and mask) only exposes fit. It always covers the page.
+Image layers also have width, optional height, contain/cover fit, scale, and "tint raster" for colouring a bitmap with the fill. Page art (texture and mask) always covers the page.
 
 Barcodes: UPC-A, EAN-13, or Code 128. Module width, bar height, show digits. You'll see a warning when the module is too skinny for curved metal.
 
-QR: size of the square.
+QR: square size, style (square, rounded, dots), and error correction (L, M, Q, H; default L).
 
 ## Colour
 

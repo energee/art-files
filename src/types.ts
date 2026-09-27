@@ -237,7 +237,3 @@ export interface CustomQrLayer extends CustomLayerBase {
 
 export type CustomLayer =
   | CustomTextLayer | CustomImageLayer | CustomBarcodeLayer | CustomQrLayer;
-
-export interface ConfigFile extends LabelConfig {
-  version: 1;
-}

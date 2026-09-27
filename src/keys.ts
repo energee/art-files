@@ -53,3 +53,7 @@ export const keyOwner = (target: EventTarget | null): "text" | "popup" | "widget
   if (el?.closest?.(WIDGET)) return "widget";
   return null;
 };
+
+/** Shared by shortcut hints and native-menu presentation. */
+export const isMacOS = () => typeof navigator !== "undefined" && /Macintosh|Mac OS X/.test(navigator.userAgent);
+export const shortcutLabel = (keys: string, mac = isMacOS()) => mac ? keys : keys.replaceAll("⇧⌘", "Ctrl+Shift+").replaceAll("⌘", "Ctrl+").replaceAll("⇧", "Shift+").replaceAll("⌥", "Alt+");
