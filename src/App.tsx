@@ -1577,10 +1577,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** The template assets a Save Master captures: the loaded texture/mask
    *  (the art being authored IS the template art) plus the bytes of every
    *  image asset a master-owned image layer references — a variant's or
-   *  the label's FILL values stay label deltas. */
-  function masterAssetBundle(): MasterAssets {
-    const ids = master.layers.flatMap((l) => l.kind === "image" && l.asset ? [l.asset] : []);
-    for (const v of master.variants)
+   *  the label's FILL values stay label deltas. `m` is the master being
+   *  WRITTEN (promotions applied), so a promoted image value's bytes ride
+   *  along instead of leaving the file naming an asset it lacks. */
+  function masterAssetBundle(m: Master): MasterAssets {
+    const ids = m.layers.flatMap((l) => l.kind === "image" && l.asset ? [l.asset] : []);
+    for (const v of m.variants)
       for (const e of Object.values(v.layers)) if (e.kind === "image" && e.asset) ids.push(e.asset);
     return { texture: textureAsset(), mask: maskAsset(), customImages: imageBundle(ids) };
   }
@@ -1610,7 +1612,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const forked = as
       ? { ...promoted.master, id: `master-${crypto.randomUUID().slice(0, 8)}` }
       : promoted.master;
-    const assets = masterAssetBundle();
+    const assets = masterAssetBundle(forked);
     const suggested = machineName(forked.name) || "master";
     /** A fork takes its display name from the file it was saved as — without
      *  this the library would list two masters called "Lolev" and no way to

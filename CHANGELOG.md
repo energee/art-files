@@ -12,6 +12,12 @@ that section to the new version (see .agents/release-steward.md).
   backing added in 0.1.99 is gone; a QR stroke outlines its modules again,
   in the preview, PDF and PSD.
 
+### Fixed
+
+- **Images promoted into a master stay with it.** Ticking a label's image
+  in the Save Master review now writes the image itself into the .master, so
+  reopening the master no longer drops it.
+
 ## [0.1.99] - 2026-09-27
 
 ### Changed

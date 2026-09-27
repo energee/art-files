@@ -24,7 +24,7 @@ vi.mock("../src/psd/build", () => ({
 }));
 import { DocumentEditor, type FileToOpen } from "../src/App";
 import { lolevMaster } from "../src/model/lolevLayers";
-import { packLabel, packMaster } from "../src/model/files";
+import { packLabel, packMaster, unpackMaster } from "../src/model/files";
 import type { Master } from "../src/model/layers";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -292,4 +292,29 @@ it("a promotion whose layer is deleted during the write doesn't cost the others"
   expect(document.querySelector('[data-layer-id="storeCold"] button[aria-label$=": enabled"]')?.getAttribute("aria-pressed")).toBe("false");
   await act(async () => menu.actions.find((c) => c.id === "master-save")!.run());
   expect(document.querySelector('[data-row*="storeCold"]')).toBeNull();
+});
+
+it("Save Master writes a promoted image value's bytes into the .master", async () => {
+  vi.stubGlobal("createImageBitmap", async () => ({ width: 10, height: 5, close() {} }));
+  const svg = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 5"><rect width="10" height="5"/></svg>');
+  const labelBytes = packLabel({
+    formatVersion: 3, masterId: lolevMaster().id, enabledVariants: [], values: { logo: "img1" },
+  }, { customImages: { img1: { name: "script.svg", bytes: svg } } });
+  const handle = { name: "a.label", getFile: async () => new File([labelBytes as unknown as BlobPart], "a.label") };
+  let written: Uint8Array | undefined;
+  vi.stubGlobal("showSaveFilePicker", async () => ({
+    name: "m.master",
+    createWritable: async () => ({ write: async (b: Uint8Array) => { written = b; }, close: async () => {} }),
+  }));
+  await mount({ seq: 1, handle: handle as unknown as FileSystemFileHandle });
+  await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+  await run("master-save");
+  const row = [...document.querySelectorAll("[data-row]")].find((r) => r.getAttribute("data-row")!.includes("logo"));
+  expect(row, [...document.querySelectorAll("[data-row]")].map((r) => r.getAttribute("data-row")).join()).toBeTruthy();
+  await act(async () => (row!.closest("label")!.querySelector("input") as HTMLInputElement).click());
+  const save = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Save Master")!;
+  await act(async () => { save.click(); await new Promise((r) => setTimeout(r, 20)); });
+  const { master, assets } = unpackMaster(written!);
+  expect(master.layers.find((l) => l.id === "logo")).toMatchObject({ asset: "img1" });
+  expect(assets.customImages?.img1?.name).toBe("script.svg");
 });
