@@ -1991,7 +1991,7 @@ dependencies = [
 
 [[package]]
 name = "label-lab"
-version = "0.1.98"
+version = "0.1.99"
 dependencies = [
  "objc2",
  "serde_json",
