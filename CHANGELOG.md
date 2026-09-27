@@ -15,8 +15,8 @@ that section to the new version (see .agents/release-steward.md).
 ### Fixed
 
 - **Images promoted into a master stay with it.** Ticking a label's image
-  in the Save Master review now writes the image itself into the .master, so
-  reopening the master no longer drops it.
+  in the Save Master review now writes the image itself into the .master, including when a variant
+  such as Collab is on, so reopening the master no longer drops it.
 
 ## [0.1.99] - 2026-09-27
 

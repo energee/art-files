@@ -454,15 +454,25 @@ export function adoptMaster(label: LabelFile, master: Master): LabelFile {
   return label.masterId === master.id ? label : { ...label, masterId: master.id };
 }
 
+const usesAsset = (assetId: string) => (e: DeepPartial<Layer> | undefined) =>
+  !!e && (e as { asset?: string }).asset === assetId;
+
+/** Does the master itself name this image asset: a layer's `asset`, or any
+ *  variant's entry. No `kind` check — a variant that patches an existing
+ *  layer stores only the changed fields, so `{ asset }` arrives without one.
+ *  Save Master's rule for which image bytes ride along in the .master. */
+export function masterReferencesAsset(master: Master, assetId: string): boolean {
+  const uses = usesAsset(assetId);
+  return master.layers.some(uses) || master.variants.some((v) => Object.values(v.layers).some(uses));
+}
+
 /** Is an image asset id still reachable from the document: an image layer's
  *  `asset` in the master, any variant's diff or the label's overrides, or a
  *  label value. App's liveImages filter: the in-memory store also keeps
  *  replaced/cleared art for undo, so not every stored id is referenced. */
 export function assetReferenced(master: Master, label: LabelFile, assetId: string): boolean {
-  const uses = (e: DeepPartial<Layer> | undefined) => !!e && (e as { asset?: string }).asset === assetId;
-  if (master.layers.some(uses)) return true;
-  if (master.variants.some((v) => Object.values(v.layers).some(uses))) return true;
-  if (Object.values(label.overrides ?? {}).some(uses)) return true;
+  if (masterReferencesAsset(master, assetId)) return true;
+  if (Object.values(label.overrides ?? {}).some(usesAsset(assetId))) return true;
   return Object.values(label.values).some((v) => v === assetId);
 }
 

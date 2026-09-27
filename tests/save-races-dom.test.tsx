@@ -1,4 +1,5 @@
-// save-races-dom.test.tsx — pending writes and cancelled browser save targets.
+// save-races-dom.test.tsx — App-level Save / Save Master write paths: pending
+// writes, cancelled browser save targets, and what a Save Master bundles.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -294,11 +295,18 @@ it("a promotion whose layer is deleted during the write doesn't cost the others"
   expect(document.querySelector('[data-row*="storeCold"]')).toBeNull();
 });
 
-it("Save Master writes a promoted image value's bytes into the .master", async () => {
+// Save Master bundles a promoted image's bytes. A variant stores only the
+// fields it changes, so a promotion into Collab writes `{ asset }` with no
+// `kind` — the variant-target case is the one that used to ship without bytes.
+it.each([
+  { name: "base master", variants: [] as string[], cmd: "master-save", target: (m: Master) => m.layers.find((l) => l.id === "logo") },
+  { name: "Collab variant", variants: ["collab"], cmd: "master-save", target: (m: Master) => m.variants.find((v) => v.id === "collab")!.layers.logo },
+  { name: "Save Master As fork", variants: [] as string[], cmd: "master-save-as", target: (m: Master) => m.layers.find((l) => l.id === "logo") },
+])("Save Master writes a promoted image value's bytes into the .master ($name)", async ({ variants, cmd, target }) => {
   vi.stubGlobal("createImageBitmap", async () => ({ width: 10, height: 5, close() {} }));
   const svg = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 5"><rect width="10" height="5"/></svg>');
   const labelBytes = packLabel({
-    formatVersion: 3, masterId: lolevMaster().id, enabledVariants: [], values: { logo: "img1" },
+    formatVersion: 3, masterId: lolevMaster().id, enabledVariants: variants, values: { logo: "img1" },
   }, { customImages: { img1: { name: "script.svg", bytes: svg } } });
   const handle = { name: "a.label", getFile: async () => new File([labelBytes as unknown as BlobPart], "a.label") };
   let written: Uint8Array | undefined;
@@ -307,14 +315,19 @@ it("Save Master writes a promoted image value's bytes into the .master", async (
     createWritable: async () => ({ write: async (b: Uint8Array) => { written = b; }, close: async () => {} }),
   }));
   await mount({ seq: 1, handle: handle as unknown as FileSystemFileHandle });
-  await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
-  await run("master-save");
-  const row = [...document.querySelectorAll("[data-row]")].find((r) => r.getAttribute("data-row")!.includes("logo"));
-  expect(row, [...document.querySelectorAll("[data-row]")].map((r) => r.getAttribute("data-row")).join()).toBeTruthy();
-  await act(async () => (row!.closest("label")!.querySelector("input") as HTMLInputElement).click());
-  const save = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Save Master")!;
-  await act(async () => { save.click(); await new Promise((r) => setTimeout(r, 20)); });
+  await vi.waitFor(() => expect(document.querySelector('[data-layer-id="logo"]')).not.toBeNull());
+  await run(cmd);
+  const row = await vi.waitFor(() => {
+    const r = document.querySelector('[data-row="promote-logo-asset-value"]');
+    expect(r, [...document.querySelectorAll("[data-row]")].map((e) => e.getAttribute("data-row")).join()).not.toBeNull();
+    return r!;
+  });
+  await act(async () => (row.closest("label")!.querySelector("input") as HTMLInputElement).click());
+  const save = [...document.querySelectorAll("button")].find((b) => /^Save Master/.test(b.textContent?.trim() ?? "") && b.closest("[role=dialog]"))!;
+  await act(async () => save.click());
+  await vi.waitFor(() => expect(written).toBeDefined());
   const { master, assets } = unpackMaster(written!);
-  expect(master.layers.find((l) => l.id === "logo")).toMatchObject({ asset: "img1" });
+  expect(target(master)).toMatchObject({ asset: "img1" });
   expect(assets.customImages?.img1?.name).toBe("script.svg");
+  expect(assets.customImages?.img1?.bytes).toEqual(svg);
 });

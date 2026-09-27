@@ -48,7 +48,7 @@ import { PAGE_ART_ID, uppercaseOf, validateLayer } from "@/model/layers";
 import { exportBase as exportBaseOf, titleOf, withStoredValue } from "@/model/resolveLayers";
 import type { DeepPartial } from "@/model/merge";
 import {
-  addLayer, addVariant, adoptMaster, assetReferenced, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
+  addLayer, addVariant, adoptMaster, assetReferenced, masterReferencesAsset, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
   applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
@@ -1576,14 +1576,13 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** The template assets a Save Master captures: the loaded texture/mask
    *  (the art being authored IS the template art) plus the bytes of every
-   *  image asset a master-owned image layer references — a variant's or
-   *  the label's FILL values stay label deltas. `m` is the master being
-   *  WRITTEN (promotions applied), so a promoted image value's bytes ride
-   *  along instead of leaving the file naming an asset it lacks. */
+   *  image asset the master names — its layers and every variant entry,
+   *  including a variant's `{ asset }` patch on an existing layer
+   *  (masterReferencesAsset). Label-only values stay label deltas. `m` is the
+   *  master being WRITTEN (promotions applied), so a promoted image value's
+   *  bytes ride along instead of leaving the file naming an asset it lacks. */
   function masterAssetBundle(m: Master): MasterAssets {
-    const ids = m.layers.flatMap((l) => l.kind === "image" && l.asset ? [l.asset] : []);
-    for (const v of m.variants)
-      for (const e of Object.values(v.layers)) if (e.kind === "image" && e.asset) ids.push(e.asset);
+    const ids = Object.keys(customImages).filter((id) => masterReferencesAsset(m, id));
     return { texture: textureAsset(), mask: maskAsset(), customImages: imageBundle(ids) };
   }
 
