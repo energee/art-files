@@ -10,7 +10,6 @@ import {
 } from "../src/model/files";
 import { lolevMaster as lolevV3 } from "../src/model/lolevLayers";
 import { lolevMaster as lolevV1 } from "./fixtures/lolevV1";
-import { packLabel as packLabelV1, packLabelV2 } from "../src/labelfile";
 import { defaultConfig } from "../src/defaults";
 import type { LabelFile } from "../src/model/layers";
 
@@ -101,15 +100,15 @@ describe(".label v3 container", () => {
   });
 
   it("a v2 label.json comes back as v2 (the master converts it)", () => {
-    const u = unpackLabel(packLabelV2(
-      { formatVersion: 2, masterId: "lolev", enabledVariants: [], values: { name: "X" } }, {}));
+    const u = unpackLabel(zipSync({ "label.json": strToU8(JSON.stringify(
+      { formatVersion: 2, masterId: "lolev", enabledVariants: [], values: { name: "X" } })) }));
     expect(u.v2).toMatchObject({ formatVersion: 2, masterId: "lolev", values: { name: "X" } });
     expect(u.label).toBeUndefined();
     expect(u.legacy).toBeUndefined();
   });
 
   it("a v1 config.json comes back as the legacy JSON string", () => {
-    const u = unpackLabel(packLabelV1(defaultConfig(), {}));
+    const u = unpackLabel(zipSync({ "config.json": strToU8(JSON.stringify({ version: 1, ...defaultConfig() })) }));
     expect(JSON.parse(u.legacy!).version).toBe(1);
     expect(u.label).toBeUndefined();
     expect(u.v2).toBeUndefined();
@@ -146,4 +145,47 @@ describe("masterNameFromFile", () => {
     expect(masterNameFromFile("")).toBe("");
     expect(masterNameFromFile("/Users/ted/Masters/")).toBe("");
   });
+});
+
+it("ignores Finder metadata and rejects oversized entries before inflation (#288, #304)", () => {
+  const bytes = zipSync({
+    "master.json": strToU8(serializeMaster(lolevV3())),
+    "texture/.DS_Store": new Uint8Array([1]),
+    "texture/._rock.png": new Uint8Array([2]),
+    "texture/rock.png": png(3),
+  });
+  expect(unpackMaster(bytes).assets.texture).toEqual({ name: "rock.png", bytes: png(3) });
+  // Forge the advertised size, without allocating a bomb.
+  forgeSizes(bytes, 129 * 1024 * 1024);
+  expect(() => unpackMaster(bytes)).toThrow(/Archive is too large/);
+});
+
+/** Rewrites the uncompressed size of the FIRST entry in both the local header
+ *  and the central directory, as a hostile archive would. */
+function forgeSizes(bytes: Uint8Array, size: number) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  view.setUint32(22, size, true); // the first local header sits at offset 0
+  for (let i = 0; i <= bytes.length - 46; i++) {
+    if (view.getUint32(i, true) === 0x02014b50) { view.setUint32(i + 24, size, true); return; }
+  }
+}
+
+// The declared size is only a claim: an entry that inflates past it is
+// refused, not silently truncated after inflating all of it (#288).
+it("rejects an entry that inflates past its declared size", () => {
+  const bytes = zipSync({ "texture/rock.png": [new Uint8Array(200_000), { level: 9 }] });
+  forgeSizes(bytes, 10);
+  expect(() => unpackLabel(bytes)).toThrow(/Archive is too large/);
+});
+
+// packAssets enforces the open-time limits, so Save can't write a file the
+// app then refuses to reopen.
+it("refuses to pack an asset over the per-file limit", () => {
+  const big = { name: "huge.png", bytes: new Uint8Array(128 * 1024 * 1024 + 1) };
+  expect(() => packMaster(lolevV3(), { texture: big })).toThrow(/Archive is too large: "texture\/huge.png"/);
+});
+
+it("round-trips a legitimate dot-prefixed asset name", () => {
+  const bytes = packMaster(lolevV3(), { texture: { name: ".texture.png", bytes: new Uint8Array([1, 2]) } });
+  expect(unpackMaster(bytes).assets.texture?.name).toBe(".texture.png");
 });

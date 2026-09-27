@@ -6,14 +6,14 @@ import { qrPath, qrShapes, machineName, qrUrl } from "../src/qr";
 import { tintRgba } from "../src/collab";
 import {
   defaultConfig, displayAbv, exportBaseName, legacyCollabEnabled, parseConfigFile,
-  toConfigFile, WARNING_TEXT,
+  WARNING_TEXT,
 } from "../src/defaults";
-import { markedWords, parseDescription, parseInfoLine, parseRuns, serializeDescription } from "../src/description";
+import { markedWords, parseDescription, parseInfoLine, parseRuns } from "../src/description";
 import {
   COLLAB_LEAD, COLLAB_LEFT, DEFAULT_STROKE_PX, DESC, GOLD, QR,
   PREVIEW_RASTER_MAX_EDGE, PREVIEW_RASTER_MAX_SCALE,
   collabLeftFlow, PAGE, parseHexFill, PREVIEW_MAX_W, previewRasterScale,
-} from "../src/layout";
+} from "./legacy/layout";
 import { addColor } from "../src/settings";
 
 describe("preview raster scale", () => {
@@ -164,73 +164,21 @@ describe("description markdown", () => {
     expect(d.lines[1]).toMatchObject({ fill: "#123456", layer: "white", stroke: "#FFFFFF" });
   });
 
-  it("round-trips through serialize", () => {
-    const src = "# HOPS\nFreestyle Motueka\n**_Roy Farms_**\n_Silvery_\n**Bold Gold**";
-    expect(serializeDescription(parseDescription(src))).toBe(src);
+  it("parses both marker orders into the same style", () => {
+    expect(parseDescription("_**Roy Farms**_")).toEqual(parseDescription("**_Roy Farms_**"));
   });
-
-  it("serializes an empty block to an empty string", () => {
-    expect(serializeDescription({ header: null, lines: [] })).toBe("");
+  it("preserves interior blanks and skips leading blanks", () => {
+    expect(parseDescription("A\n\nB").lines.map((l) => l.text)).toEqual(["A", "", "B"]);
+    expect(parseDescription("\n\nA\nB").lines.map((l) => l.text)).toEqual(["A", "B"]);
   });
-
-  it("canonicalizes marker order: reverse input normalizes to white-inside/bold-outside", () => {
-    const reversed = "_**Roy Farms**_"; // reverse order: white outside, bold inside
-    const canonical = "**_Roy Farms_**"; // canonical order: bold outside, white inside
-    expect(serializeDescription(parseDescription(reversed))).toBe(canonical);
-  });
-
-  it("keeps interior blank lines and skips leading ones", () => {
-    // A blank line between body lines is an author's vertical gap: it
-    // survives the round-trip. Blanks before the first line render nothing,
-    // so they are still dropped.
-    expect(serializeDescription(parseDescription("A\n\nB"))).toBe("A\n\nB");
-    expect(serializeDescription(parseDescription("\n\nA\nB"))).toBe("A\nB");
-  });
-
-  it("a second # line does not overwrite the header: first # wins, second survives as a body line", () => {
+  it("only treats the first nonblank unescaped hash line as a header", () => {
     const d = parseDescription("# HOPS\n#Freestyle Motueka");
-    expect(d.header).toMatchObject({ text: "HOPS" });
-    expect(d.lines).toEqual([
-      { text: "#Freestyle Motueka", bold: false, fill: GOLD, layer: "metallic" },
-    ]);
-  });
-
-  it("round-trips a block with a second # line: the header survives, the literal # is preserved", () => {
-    const src = "# HOPS\n#Freestyle Motueka";
-    expect(serializeDescription(parseDescription(src))).toBe(src);
-  });
-
-  // Regression: a '#' body line used to be promoted to the header by the
-  // next parse — it jumped to the top of the block and rendered at the
-  // header baseline in both deliverables.
-  it("does not promote a later # line in a header-less block", () => {
-    const d = parseDescription("Citra, Mosaic\n#3 Citra");
-    expect(d.header).toBeNull();
-    expect(d.lines.map((l) => l.text)).toEqual(["Citra, Mosaic", "#3 Citra"]);
-    expect(serializeDescription(d)).toBe("Citra, Mosaic\n#3 Citra");
-  });
-
-  // A leading '#' on the first line of the SOURCE still means "header" —
-  // that is the format. What must round-trip is a block the editor hands
-  // back with no header and a body line that happens to start with '#':
-  // serializing it verbatim made the next parse promote that line to the
-  // header, jumping it to the top of the block at the header baseline.
-  it("round-trips a header-less block whose FIRST body line starts with #", () => {
-    const body = (text: string) =>
-      ({ text, bold: false, fill: GOLD, layer: "metallic" }) as const;
-    const md = serializeDescription({ header: null, lines: [body("#3 Citra"), body("Mosaic")] });
-    expect(md).toBe("\\#3 Citra\nMosaic");
-    const again = parseDescription(md);
-    expect(again.header).toBeNull();
-    expect(again.lines.map((l) => l.text)).toEqual(["#3 Citra", "Mosaic"]);
-    expect(serializeDescription(again)).toBe(md);
-  });
-
-  it("still parses and round-trips a real '# HOPS' header", () => {
-    const src = "# HOPS\nFreestyle Motueka";
-    const d = parseDescription(src);
     expect(d.header).toMatchObject({ text: "HOPS", bold: true });
-    expect(serializeDescription(d)).toBe(src);
+    expect(d.lines[0].text).toBe("#Freestyle Motueka");
+    const escaped = parseDescription("\\#3 Citra\nMosaic");
+    expect(escaped.header).toBeNull();
+    expect(escaped.lines.map((l) => l.text)).toEqual(["#3 Citra", "Mosaic"]);
+    expect(parseDescription("Citra\n#3 Citra").header).toBeNull();
   });
 
   // Locks in deliberate behaviour (not a bug, see task-6-report.md Finding
@@ -270,7 +218,7 @@ describe("hex fills", () => {
   });
 
   it("keeps the logo's classic keyline on pre-stroke configs", () => {
-    const legacy = toConfigFile(defaultConfig()) as unknown as Record<string, unknown>;
+    const legacy = ({ version: 1, ...defaultConfig() }) as unknown as Record<string, unknown>;
     delete (legacy.logo as Record<string, unknown>).stroke;
     delete (legacy.logo as Record<string, unknown>).strokeWidth;
     const cfg = parseConfigFile(JSON.stringify(legacy));
@@ -279,7 +227,7 @@ describe("hex fills", () => {
   });
 
   it("migrates legacy named fills in config files", () => {
-    const legacy = toConfigFile(defaultConfig());
+    const legacy = ({ version: 1, ...defaultConfig() });
     (legacy.nameStyle as unknown as Record<string, unknown>).fill = "gold";
     (legacy.warning as unknown as Record<string, unknown>).fill = "black";
     (legacy.styleLine as unknown as Record<string, unknown>).fill = "white";
@@ -324,7 +272,7 @@ describe("collab layout", () => {
 describe("config", () => {
   it("migrates legacy per-line description configs", () => {
     const legacy = {
-      ...toConfigFile(defaultConfig()),
+      ...({ version: 1, ...defaultConfig() }),
       description: undefined,
       descriptionHeader: { text: "HOPS", fill: "gold", layer: "metallic", bold: true },
       descriptionLines: [
@@ -339,11 +287,11 @@ describe("config", () => {
   it("round-trips through JSON", () => {
     const cfg = defaultConfig();
     cfg.beerName = "TEST";
-    const parsed = parseConfigFile(JSON.stringify(toConfigFile(cfg)));
+    const parsed = parseConfigFile(JSON.stringify(({ version: 1, ...cfg })));
     expect(parsed).toEqual(cfg);
   });
   it("migrates every missing stroke layer to white without changing config version", () => {
-    const legacy = toConfigFile(defaultConfig()) as unknown as Record<string, any>;
+    const legacy = ({ version: 1, ...defaultConfig() }) as unknown as Record<string, any>;
     delete legacy.qrStrokeLayer;
     delete legacy.barcodeStrokeLayer;
     for (const value of Object.values(legacy)) {
@@ -357,7 +305,6 @@ describe("config", () => {
       if (value && typeof value === "object" && "fill" in value)
         expect(value.strokeLayer).toBe("white");
     }
-    expect(toConfigFile(cfg).version).toBe(1);
   });
   // Collab became an ordinary variant: `collabEnabled` is gone from
   // LabelConfig, and the laurel's stack nudge is applied unconditionally
@@ -365,7 +312,7 @@ describe("config", () => {
   // a nudge with collab OFF must have it zeroed on load, or it would suddenly
   // render 40pt lower than it ever printed.
   it("zeroes a stack nudge saved with collab off, and drops the flag", () => {
-    const legacy = toConfigFile(defaultConfig()) as unknown as Record<string, any>;
+    const legacy = ({ version: 1, ...defaultConfig() }) as unknown as Record<string, any>;
     legacy.collabEnabled = false;
     legacy.logo.offsetY = 40;
     const cfg = parseConfigFile(JSON.stringify(legacy));
@@ -375,7 +322,7 @@ describe("config", () => {
   });
 
   it("keeps a stack nudge saved with collab on, and reports the variant", () => {
-    const legacy = toConfigFile(defaultConfig()) as unknown as Record<string, any>;
+    const legacy = ({ version: 1, ...defaultConfig() }) as unknown as Record<string, any>;
     legacy.collabEnabled = true;
     legacy.logo.offsetY = 40;
     const cfg = parseConfigFile(JSON.stringify(legacy));
@@ -401,7 +348,7 @@ describe("derived QR payload", () => {
     expect(qrUrl("Ultra Juice")).toBe("https://lolev.beer/beer/ultra-juice");
   });
   it("defaults descStyle on pre-descStyle configs", () => {
-    const legacy = toConfigFile(defaultConfig()) as unknown as Record<string, unknown>;
+    const legacy = ({ version: 1, ...defaultConfig() }) as unknown as Record<string, unknown>;
     delete legacy.descStyle;
     const cfg = parseConfigFile(JSON.stringify(legacy));
     expect(cfg.descStyle).toEqual({
@@ -409,7 +356,7 @@ describe("derived QR payload", () => {
     });
   });
   it("config migration drops qrData and defaults qrFill/qrStroke", () => {
-    const legacy = { ...toConfigFile(defaultConfig()), qrData: "https://old.example" } as Record<string, unknown>;
+    const legacy = { ...({ version: 1, ...defaultConfig() }), qrData: "https://old.example" } as Record<string, unknown>;
     delete legacy.qrFill;
     delete legacy.qrStroke;
     const cfg = parseConfigFile(JSON.stringify(legacy)) as unknown as Record<string, unknown>;

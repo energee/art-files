@@ -27,8 +27,8 @@
 import { RenderSettings as RenderSettingsFields } from "@/components/RenderSettings";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { MasterSaveReview } from "@/components/MasterSaveReview";
-import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useEffect, useMemo, useRef, useState } from "react";
-import { isTypingTarget, keyOwner } from "@/keys";
+import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { dialogOpen, isTypingTarget, keyOwner } from "@/keys";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
 import type { Fill } from "@/types";
@@ -37,15 +37,14 @@ import { machineName } from "@/qr";
 import { strToU8 } from "fflate";
 import { LABEL_EXT, type LabelAssets } from "@/labelfile";
 import {
-  LABEL_FILTER, LABEL_TYPES, MASTER_FILTER, MASTER_TYPES, isAbort, openPicker, savePicker,
-  writeHandle,
+  LABEL_FILTER, LABEL_TYPES, MASTER_FILTER, MASTER_TYPES, isAbort,
 } from "@/filePickers";
-import { openNativeFile, readNativeFile, saveNativeFile } from "@/files";
+import { openThrough, readNativeFile, saveThrough } from "@/files";
 import { useHistory, type Coalesce } from "@/history";
 import type {
   ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master,
 } from "@/model/layers";
-import { PAGE_ART_ID, uppercaseOf } from "@/model/layers";
+import { PAGE_ART_ID, uppercaseOf, validateLayer } from "@/model/layers";
 import { exportBase as exportBaseOf, titleOf, withStoredValue } from "@/model/resolveLayers";
 import type { DeepPartial } from "@/model/merge";
 import {
@@ -326,7 +325,7 @@ async function previewPng(src: ImageBitmap | HTMLCanvasElement): Promise<Uint8Ar
 
 type LoadedTexture = Loaded & { kind: "png" | "jpg" };
 // srcBytes: the original upload — the bytes Save writes.
-type LoadedMask = Loaded & { error?: string; srcBytes: Uint8Array };
+type LoadedMask = Loaded & { srcBytes: Uint8Array };
 
 /** Decode a texture file into its slot value; state-free, like readMask and
  *  readCustomImage, so an open can decode before it commits (#81). PNG and
@@ -530,6 +529,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Every per-id image asset this document carries: image layers' art,
   // collab logos included (an image layer's value is a key here).
   const [customImages, setCustomImages] = useState<Record<string, CustomFile>>({});
+  const savedAssetsRef = useRef({ texture, mask, customImages });
+  savedAssetsRef.current = { texture, mask, customImages };
   // The layers that DRAW: enabled, values applied, page art bound to the
   // loaded slots. What the preview, the hit boxes, the drag targets and the
   // exports all plan from.
@@ -708,6 +709,13 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Whether the user has actually touched this document — the shell
    *  prompts about closing a tab only when edited AND unsaved (tabs.ts). */
   const [edited, setEdited] = useState(false);
+  const editFlags = useRef({ dirty, edited });
+  editFlags.current = { dirty, edited };
+  const beforeTextEdit = useRef(editFlags.current);
+  const onEditSession = useCallback((id: string | null) => {
+    if (id) beforeTextEdit.current = editFlags.current;
+    setEditSession(id);
+  }, []);
   const editedRef = useRef(edited);
   editedRef.current = edited;
   /** Boot-restore's resetDocument goes through swapLoaded, which markDirty.
@@ -775,9 +783,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     setSelection({ ids: [id], anchor: id });
   }
   function onRemoveLayer(id: string) {
-    edit((d) => removeLayerIn(d, id, rowBoxes()));
-    setSelection((s) => s.ids.includes(id)
-      ? { ids: s.ids.filter((x) => x !== id), anchor: s.anchor === id ? null : s.anchor } : s);
+    // The selection can hold an id that no longer exists (an undone add, a
+    // deleted variant's layer); removing it would throw and delete nothing.
+    const ids = gestureIds(selected, id).filter((k) => rows.some((r) => r.layer.id === k));
+    const boxes = rowBoxes();
+    if (edit((d) => ids.reduce((next, key) => removeLayerIn(next, key, boxes), d)))
+      setSelection((s) => ({ ids: s.ids.filter((x) => !ids.includes(x)),
+        anchor: s.anchor && ids.includes(s.anchor) ? null : s.anchor }));
   }
   /** Switch the working version: what the canvas draws, and what a promotion
    *  in the Save Master review would be written into. The Select names one
@@ -794,10 +806,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Returns the minted id so the picker can open its rename box on the new
    *  row — MasterPicker.onNewVariant is typed `() => string` for that. */
   function onNewVariant(): string {
-    const name = `Variant ${master.variants.length + 1}`;
     // Minted outside the edit so the id is in hand for the version switch —
     // `edit`'s callback stays a pure Doc → Doc.
-    const { master: m, id } = addVariant(master, name);
+    const { master: m, id } = addVariant(master);
     // Switched to, like any other version: the new one is what you see.
     edit((d) => ({ master: m, label: showVersion(d.label, version, id) }));
     return id;
@@ -856,15 +867,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   // ⌘Z / ⇧⌘Z (and ⌘Y) for the history, marking the document dirty like the
   // menu commands do. Inert while a text field has focus — there the
   // browser's own per-field undo is the one the user means — or a modal
-  // dialog does, which must not change the canvas behind it (#225).
+  // dialog is open, which must not change the canvas behind it (#225, #244).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!activeRef.current) return; // a hidden tab owns no shortcuts
       const key = e.key.toLowerCase();
       if (key !== "z" && key !== "y") return;
       if (!e.metaKey && !e.ctrlKey) return;
-      const owner = keyOwner(e.target);
-      if (owner === "text" || owner === "dialog") return;
+      if (isTypingTarget(e.target) || dialogOpen()) return;
       e.preventDefault();
       // History moves bypass `edit`; without mutating, ⌘Z after a save left the tab clean (#76).
       // Nothing to step over is a no-op, as the disabled menu item is.
@@ -886,8 +896,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (!mods && e.shiftKey) return;
       // The BARE keys (1/2/3/r/g) stand aside where they are someone else's
       // input: a text field, a dialog, or a popup — a menu, a Select's
-      // typeahead, the inspector. The ⌘ shortcuts stay live in all of them — ⌘S saves from
-      // inside a field.
+      // typeahead, the inspector. The ⌘ shortcuts stay live in fields and
+      // popups — ⌘S saves from inside a field.
       if (!mods) {
         const owner = keyOwner(e.target);
         if (owner && owner !== "widget") return;
@@ -897,7 +907,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       // The key is the app's even while its command is disabled: ⌘S on a
       // clean document must not fall through to the browser's Save Page.
       e.preventDefault();
-      if (!cmd.disabled) cmd.run();
+      // Nor does a modal dialog let ⌘W, ⌘S… reach the tab behind it (#244).
+      if (!cmd.disabled && !dialogOpen()) cmd.run();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -906,7 +917,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Arrow-key nudge for the selection: 1pt a press, 10pt with shift. Inert
   // while typing, like undo and the bare-key commands; registered once and
   // reading the live move through a ref, like the command table above.
-  const nudgeRef = useRef<(dx: number, dy: number) => void>(() => {});
+  const nudgeRef = useRef<(dx: number, dy: number, held: boolean) => void>(() => {});
   useEffect(() => {
     const steps: Record<string, [number, number]> = {
       ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
@@ -919,20 +930,23 @@ export const DocumentEditor = memo(function DocumentEditor({
       // A field, popup, the inspector or a roving-focus widget owns the arrow
       // keys while it holds focus: nudging the canvas behind an open Select
       // (and eating the key the list needs) is never what the arrow meant.
-      if (keyOwner(e.target)) return;
+      // A modal dialog blocks the canvas wherever focus is (#244).
+      if (keyOwner(e.target) || dialogOpen()) return;
+      // Already handled on the way up — the 3D can's OrbitControls pan and
+      // rotate on the arrows and preventDefault them.
+      if (e.defaultPrevented) return;
       e.preventDefault();
       const by = e.shiftKey ? NUDGE_SHIFT_PT : 1;
-      nudgeRef.current(step[0] * by, step[1] * by);
+      nudgeRef.current(step[0] * by, step[1] * by, e.repeat);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  // A loaded-but-invalid mask or an invalid filled value (a bad UPC) blocks
-  // exports; texture and mask are both optional.
+  // Invalid filled values (such as a bad UPC) block exports.
   const errorList = Object.entries(errors).map(([id, e]) => `${rowById.get(id)?.layer.name ?? id}: ${e}`);
-  const blocked = !!mask?.error || errorList.length > 0;
-  const blockedWhy = [mask?.error, ...errorList].filter(Boolean).join(" · ");
+  const blocked = errorList.length > 0;
+  const blockedWhy = errorList.join(" · ");
   const exportBlocked = blocked || building;
 
   /** Replaces (or, with null, removes) a loaded asset, revoking the old
@@ -944,8 +958,19 @@ export const DocumentEditor = memo(function DocumentEditor({
     set((old) => { if (old) URL.revokeObjectURL(old.previewUrl); return next; });
   };
 
-  async function onTexture(f: File) { swapLoaded(setTexture, await readTexture(f)); }
-  async function onMask(f: File) { swapLoaded(setMask, await readMask(f)); }
+  /** A successful decode clears only its own slot's earlier failure — not a
+   *  benched-values note or the other slot's error, which it may land beside
+   *  (adoptMasterAssets decodes both at once, right after commitRebind's note). */
+  const clearLoadErrorOf = (what: string) =>
+    setLoadError((e) => e.startsWith(`Could not load ${what} `) ? "" : e);
+  async function onTexture(f: File) {
+    try { swapLoaded(setTexture, await readTexture(f)); clearLoadErrorOf("texture"); }
+    catch (err) { setLoadError(`Could not load texture "${f.name}": ${errMsg(err)}`); }
+  }
+  async function onMask(f: File) {
+    try { swapLoaded(setMask, await readMask(f)); clearLoadErrorOf("mask"); }
+    catch (err) { setLoadError(`Could not load mask "${f.name}": ${errMsg(err)}`); }
+  }
 
   /** An image layer's well: read the dropped file into the per-id store
    *  and point the layer (its fill value, or the master's own asset) at the
@@ -1278,15 +1303,16 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  by the same delta, through the same moveBy the pointer uses (so a bound
    *  layer moves its gap and a layer carried by another is left alone). No
    *  snapping — a nudge is a deliberate exact step, which is the whole reason
-   *  to reach for the arrow keys. One press is one undo step. */
-  nudgeRef.current = (dx, dy) => {
+   *  to reach for the arrow keys. One press is one undo step; a held key's
+   *  auto-repeats (`held`) fold into the step its first press opened. */
+  nudgeRef.current = (dx, dy, held) => {
     const moving = new Set(
       drawLayers.filter((l) => selected.includes(l.id) && !l.locked).map((l) => l.id));
     if (!moving.size) return;
     const entries = drawLayers.filter((l) => moving.has(l.id))
       .map((layer): [string, DeepPartial<Layer>] => [layer.id, moveBy(layer, dx, dy, moving)])
       .filter(([, p]) => Object.keys(p).length);
-    if (entries.length) patchMany(entries);
+    if (entries.length) patchMany(entries, held);
   };
 
   /** Handle resize: like onDrag, the patch is resizeBy against the layer
@@ -1368,28 +1394,10 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  keep the plain-download fallback. */
   async function saveVia(bytes: Uint8Array, name: string, type: string) {
     const extension = name.slice(name.lastIndexOf(".") + 1);
-    if (isTauri()) {
-      await saveNativeFile(bytes, {
-        defaultPath: name,
-        filter: { name: `${extension.toUpperCase()} file`, extensions: [extension] },
-      });
-      return;
-    }
-    const pick = savePicker();
-    if (pick) {
-      const ext = `.${extension}`;
-      try {
-        const handle = await pick({
-          suggestedName: name,
-          types: [{ description: `${ext.slice(1).toUpperCase()} file`, accept: { [type]: [ext] } }],
-        });
-        await writeHandle(handle, bytes);
-        return;
-      } catch (err) {
-        if (isAbort(err)) return;
-      }
-    }
-    saveBytes(bytes, name, type);
+    return await saveThrough(bytes, {
+      name, type, filter: { name: `${extension.toUpperCase()} file`, extensions: [extension] },
+      types: [{ description: `${extension.toUpperCase()} file`, accept: { [type]: [`.${extension}`] } }],
+    }, saveBytes);
   }
 
   // What the tab strip, window title and export names call this document.
@@ -1412,13 +1420,41 @@ export const DocumentEditor = memo(function DocumentEditor({
     return { plan, images: await imageAssets(), fontFamilies };
   }
 
-  /** Downloads rebuild from the full-resolution assets on demand — the
-   *  on-screen preview is deliberately preview-resolution (see Loaded). */
-  async function buildFull(which: "art" | "mask" | "both") {
-    if (building) return;
+  const exportRunning = useRef(false);
+  async function exportPair(
+    extension: "pdf" | "psd", type: string,
+    build: () => Promise<(Uint8Array | null)[]>,
+  ) {
+    if (exportRunning.current) return;
+    exportRunning.current = true;
     setBuilding(true);
     startSaveBatch();
+    const saved: string[] = [];
+    let pending = "";
     try {
+      const pair = await build();
+      for (const [index, bytes] of pair.entries()) {
+        if (!bytes) continue;
+        pending = `${exportBase}${index ? "-mask" : ""}.${extension}`;
+        const result = await saveVia(bytes, pending, type);
+        if (!result) {
+          setBuildError(`Note: ${saved.length ? `Saved ${saved.join(", ")}. ` : ""}Export cancelled before saving ${pending}.`);
+          return;
+        }
+        saved.push(result.name);
+      }
+      setBuildError("");
+    } catch (error) {
+      setBuildError(`${saved.length ? `Saved ${saved.join(", ")}. ` : ""}${pending ? `Could not save ${pending}: ` : ""}${errMsg(error)}`);
+    } finally {
+      exportRunning.current = false;
+      setBuilding(false);
+    }
+  }
+
+  /** Build full-resolution plates before opening either save dialog. */
+  async function buildFull(which: "art" | "mask" | "both") {
+    await exportPair("pdf", "application/pdf", async () => {
       const [{ buildArtPdf, buildMaskPdf }, fonts, { plan, images, fontFamilies }] = await Promise.all([
         import("@/pdf/build"), loadFonts(family), exportPlan(),
       ]);
@@ -1432,18 +1468,11 @@ export const DocumentEditor = memo(function DocumentEditor({
         },
       };
       // Both files build BEFORE the first dialog opens.
-      const [artPdf, maskPdf] = await Promise.all([
+      return await Promise.all([
         which !== "mask" ? buildArtPdf(plan, assets) : null,
         which !== "art" ? buildMaskPdf(plan, assets) : null,
       ]);
-      if (artPdf) await saveVia(artPdf, `${exportBase}.pdf`, "application/pdf");
-      if (maskPdf) await saveVia(maskPdf, `${exportBase}-mask.pdf`, "application/pdf");
-      setBuildError("");
-    } catch (err) {
-      setBuildError(String(err));
-    } finally {
-      setBuilding(false);
-    }
+    });
   }
   const downloadArt = () => void buildFull("art");
   const downloadMask = () => void buildFull("mask");
@@ -1510,46 +1539,38 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** File → Save / Save As…: the v3 label plus its embedded art, zipped as
    *  <name-slug>.label (model/files.ts). */
   async function saveProject(as = false): Promise<boolean> {
+    const finish = () => {
+      const current = savedAssetsRef.current;
+      const unchanged = docRef.current === doc && current.texture === texture
+        && current.mask === mask && current.customImages === customImages;
+      setDirty(!unchanged);
+      // A save inside an in-place text session moves the baseline its cancel
+      // would restore: the reverted text no longer matches the file.
+      beforeTextEdit.current = { dirty: true, edited: true };
+      setLoadError("");
+      // The close-tab caller must not close over edits made during this write.
+      return unchanged;
+    };
     const zip = packLabel({ ...label, masterHint: masterIndex()[master.id]?.path }, {
       texture: textureAsset(), mask: maskAsset(),
       customImages: imageBundle(Object.keys(liveImages)),
     });
-    if (isTauri()) {
-      const existingPath = as ? null : projectPath.current;
-      try {
-        const path = await saveNativeFile(zip, {
-          defaultPath: exportBase + LABEL_EXT, filter: LABEL_FILTER, path: existingPath ?? undefined,
-        });
-        if (path === null) return false;
-        projectPath.current = path;
-        setFilePath(path);
-        setDirty(false);
-        setLoadError("");
-        return true;
-      } catch (err) {
-        if (existingPath) { projectPath.current = null; setFilePath(null); }
-        setLoadError(`Could not save project: ${errMsg(err)}`);
-        return false;
-      }
+    try {
+      startSaveBatch();
+      const saved = await saveThrough(zip, {
+        name: exportBase + LABEL_EXT, type: "application/zip", filter: LABEL_FILTER, types: LABEL_TYPES,
+        target: as ? null : projectPath.current ? { path: projectPath.current }
+          : projectHandle.current ? { handle: projectHandle.current } : null,
+      }, saveBytes);
+      if (!saved) return false;
+      if (saved.target && "path" in saved.target) {
+        projectPath.current = saved.target.path; setFilePath(saved.target.path);
+      } else if (saved.target && "handle" in saved.target) projectHandle.current = saved.target.handle;
+      return finish();
+    } catch (err) {
+      setLoadError(`Could not save project: ${errMsg(err)}`);
+      return false;
     }
-    const pick = savePicker();
-    if (pick) {
-      try {
-        if (as || !projectHandle.current) {
-          projectHandle.current = await pick({ suggestedName: exportBase + LABEL_EXT, types: LABEL_TYPES });
-        }
-        await writeHandle(projectHandle.current, zip);
-        setDirty(false);
-        return true;
-      } catch (err) {
-        projectHandle.current = null;
-        if (isAbort(err)) return false;
-      }
-    }
-    startSaveBatch();
-    saveBytes(zip, exportBase + LABEL_EXT, "application/zip");
-    setDirty(false);
-    return true;
   }
   saveSlot.current = () => saveProject();
 
@@ -1597,7 +1618,7 @@ export const DocumentEditor = memo(function DocumentEditor({
      *
      *  Only a name the user actually TYPED counts: accepting the suggested
      *  filename must not rename "Lolev" to its own slug, and that is also the
-     *  common case, which then costs no second write below. */
+     *  common case, which keeps the original display name. */
     const titled = (file: string): Master => {
       const base = masterNameFromFile(file);
       return as && base && base !== suggested && base !== forked.name
@@ -1605,71 +1626,48 @@ export const DocumentEditor = memo(function DocumentEditor({
     };
     /** Adopt `m` as the saved master: the document's, the library's, and the
      *  baseline the next review diffs against. A plain save with nothing
-     *  promoted is a no-op edit and pushes no history entry. */
-    const commit = async (m: Master, where: string, bytes?: Uint8Array) => {
-      edit(() => ({ master: m, label: adoptMaster(promoted.label, m) }));
+     *  promoted is a no-op edit and pushes no history entry.
+     *
+     *  A master edited during the write keeps that edit and gets the same
+     *  promotions folded in, so the document still carries what the file
+     *  now holds; a promotion whose layer or variant was deleted during the
+     *  write is skipped (the deletion wins) rather than costing the others.
+     *  A document that moved to another master (Open Master during the
+     *  write) is left alone: baseline, save target and header note. */
+    const commit = async (m: Master, where: string, ours: boolean, bytes?: Uint8Array) => {
+      if (ours) edit((d) => {
+        if (d.master.id !== master.id) return d;
+        const rebased = d.master === master ? m : promote.reduce((acc, c) => {
+          try { return applyPromotions(acc, label, [c], version ?? undefined).master; } catch { return acc; }
+        }, d.master);
+        const liveMaster = as ? { ...rebased, id: m.id, name: m.name } : rebased;
+        // Keep newer label edits, including a newly changed promoted field.
+        // Redundant overrides can be promoted again on the next master save.
+        return { master: liveMaster, label: adoptMaster(d.label === label ? promoted.label : d.label, liveMaster) };
+      });
       await rememberMaster(m, where, bytes);
-      pristineMaster.current = m;
+      if (ours) pristineMaster.current = m;
       repaintMasterDirty((n) => n + 1);
     };
-    if (isTauri()) {
-      const existingPath = as ? null : saveTargetFor(masterFilePath.current, master.id);
-      try {
-        const packed = packMaster(forked, assets);
-        const path = await saveNativeFile(packed, {
-          defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path: existingPath ?? undefined,
-        });
-        if (path === null) return false;
-        masterFilePath.current = { id: forked.id, target: path };
-        const final = titled(path);
-        // ponytail: the name is only knowable after the picker returns, so a
-        // renamed fork rewrites the file it just wrote — same path, no second
-        // dialog, but a second zip of every asset. Split saveNativeFile into
-        // "pick a path" and "write bytes" if that ever bites.
-        let written = packed;
-        if (final !== forked) {
-          written = packMaster(final, assets);
-          await saveNativeFile(written, { defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path });
-        }
-        await commit(final, path, written);
-        setLoadError("");
-        return true;
-      } catch (err) {
-        if (existingPath) masterFilePath.current = null;
-        setLoadError(`Could not save master: ${errMsg(err)}`);
-        return false;
-      }
+    try {
+      startSaveBatch();
+      const path = as ? null : saveTargetFor(masterFilePath.current, master.id);
+      const handle = as ? null : saveTargetFor(masterFileHandle.current, master.id);
+      const saved = await saveThrough((name) => packMaster(titled(name), assets), {
+        name: suggested + MASTER_EXT, type: "application/zip", filter: MASTER_FILTER, types: MASTER_TYPES,
+        target: path ? { path } : handle ? { handle } : null,
+      }, saveBytes);
+      if (!saved) return false;
+      const ours = docRef.current.master.id === master.id;
+      if (ours && saved.target && "path" in saved.target) masterFilePath.current = { id: forked.id, target: saved.target.path };
+      else if (ours && saved.target && "handle" in saved.target) masterFileHandle.current = { id: forked.id, target: saved.target.handle };
+      await commit(titled(saved.name), saved.name, ours, saved.bytes);
+      if (ours) setLoadError("");
+      return true;
+    } catch (err) {
+      setLoadError(`Could not save master: ${errMsg(err)}`);
+      return false;
     }
-    const pick = savePicker();
-    if (pick) {
-      try {
-        const handle = (as ? null : saveTargetFor(masterFileHandle.current, master.id))
-          ?? await pick({ suggestedName: suggested + MASTER_EXT, types: MASTER_TYPES });
-        masterFileHandle.current = { id: forked.id, target: handle };
-        // The handle's name is known BEFORE the write here (unlike the Tauri
-        // branch above), so a renamed fork packs and writes exactly once.
-        const final = titled(handle.name);
-        const bytes = packMaster(final, assets);
-        await writeHandle(handle, bytes);
-        // The bytes go to the master cache too: a browser reload has no path
-        // to re-read this file from (masterCache.ts).
-        await commit(final, handle.name, bytes);
-        return true;
-      } catch (err) {
-        masterFileHandle.current = null;
-        if (isAbort(err)) return false;
-        setLoadError(`Could not save master: ${errMsg(err)}`);
-        return false;
-      }
-    }
-    // The download fallback names the file itself, so `titled` is a no-op
-    // here — it stays in the line so all three branches read the same way.
-    const name = suggested + MASTER_EXT;
-    const bytes = packMaster(forked, assets);
-    startSaveBatch();
-    saveBytes(bytes, name, "application/zip");
-    await commit(titled(name), name, bytes);
-    return true;
   }
 
   /** Parse a candidate .master file (ZIP, legacy JSON, or a v1 file, which
@@ -1752,7 +1750,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     masterFileHandle.current = null;
     masterFilePath.current = isTauri() && path ? { id: target.id, target: path } : null;
     commitRebind(target);
-    void adoptMasterAssets(assets);
+    await adoptMasterAssets(assets);
   }
 
   /** MasterPicker's library listing: the shipped master plus every master
@@ -1768,17 +1766,14 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  hidden-input fallback elsewhere. */
   async function openMasterPicker() {
     try {
-      if (isTauri()) {
-        const path = await openNativeFile({ filter: MASTER_FILTER });
-        if (path === null) return;
-        await openMasterBytes(await readNativeFile(path), path, { path });
-        return;
+      const target = await openThrough({ filter: MASTER_FILTER, types: MASTER_TYPES });
+      if (target === undefined) { masterInput.current?.click(); return; }
+      if (target === null) return;
+      if ("path" in target) await openMasterBytes(await readNativeFile(target.path), target.path, target);
+      else {
+        const file = await target.handle.getFile();
+        await openMasterBytes(new Uint8Array(await file.arrayBuffer()), file.name, target);
       }
-      const pick = openPicker();
-      if (!pick) { masterInput.current?.click(); return; }
-      const [handle] = await pick({ types: MASTER_TYPES });
-      const file = await handle.getFile();
-      await openMasterBytes(new Uint8Array(await file.arrayBuffer()), file.name, { handle });
     } catch (err) {
       if (!isAbort(err)) setLoadError(`Could not open master: ${errMsg(err)}`);
     }
@@ -1904,6 +1899,18 @@ export const DocumentEditor = memo(function DocumentEditor({
         }
         next = { master: resolved.master, label: adoptLegacyCollab(l) };
       }
+      // Resolve untrusted overrides/values before installing the document or
+      // decoding its assets; a malformed label must leave the old tab intact.
+      // Resolving is not enough: the resolver tolerates layers the UI can't
+      // draw (an unknown kind, a required field nulled), which would crash
+      // the list or inspector past the open — so each resolved layer must
+      // pass the master's own layer check (an off variant's raw diff rows
+      // were checked by parseMaster already).
+      for (const { layer, variant } of layerRows(next.master, next.label).rows) {
+        if (variant && !variant.enabled) continue;
+        try { validateLayer(structuredClone(layer), "label"); }
+        catch (err) { throw new Error(errMsg(err).replace(/^Invalid master file: /, "invalid override: ")); }
+      }
       // Label-delta rule: the label's own embedded role wins; a missing one
       // falls back to the master's template asset. Image bytes merge the
       // same way, per id (spread order: master first, label last).
@@ -1925,7 +1932,6 @@ export const DocumentEditor = memo(function DocumentEditor({
         throw err;
       });
       resetDocument(next);
-      notes.push(...layerRows(next.master, next.label).warnings);
       if (tex) swapLoaded(setTexture, tex);
       if (msk) swapLoaded(setMask, msk);
       if (images.length) setCustomImages(Object.fromEntries(images));
@@ -1985,10 +1991,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Layered Photoshop files, built full-resolution on demand like the PDFs.
    *  `which` picks a single plate or (default) both. */
   async function exportPsd(which: "both" | "art" | "mask" = "both") {
-    if (building) return;
-    setBuilding(true);
-    startSaveBatch();
-    try {
+    await exportPair("psd", "image/vnd.adobe.photoshop", async () => {
       const [{ buildPsd, psdImages }, fonts, { plan, images }] = await Promise.all([
         import("@/psd/build"), loadFonts(family), exportPlan(),
       ]);
@@ -1997,18 +2000,11 @@ export const DocumentEditor = memo(function DocumentEditor({
         fonts, fontFamily: family,
         images: await psdImages(images, { texture: art.texture?.bytes, mask: art.maskPng }, rasterPixelsNatural),
       };
-      const [artPsd, maskPsd] = await Promise.all([
+      return await Promise.all([
         which !== "mask" ? buildPsd(plan, assets, "art", { layers: drawLayers }) : null,
         which !== "art" ? buildPsd(plan, assets, "mask", { layers: drawLayers }) : null,
       ]);
-      if (artPsd) await saveVia(artPsd, `${exportBase}.psd`, "image/vnd.adobe.photoshop");
-      if (maskPsd) await saveVia(maskPsd, `${exportBase}-mask.psd`, "image/vnd.adobe.photoshop");
-      setBuildError("");
-    } catch (err) {
-      setBuildError(String(err));
-    } finally {
-      setBuilding(false);
-    }
+    });
   }
 
   /** Every command the app exposes, once. The palette and AppMenu read this
@@ -2092,7 +2088,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       }
       if (layer.role === "mask") {
         return <FileDrop label="Metallic mask" accept={{ "image/png": [".png"] }}
-          fileName={mask?.name} previewUrl={mask?.previewUrl} error={mask?.error}
+          fileName={mask?.name} previewUrl={mask?.previewUrl}
           onFile={(f) => void onMask(f)} onClear={() => swapLoaded(setMask, null)} />;
       }
       if (layer.asset === "builtin:logo") return null;
@@ -2188,6 +2184,9 @@ export const DocumentEditor = memo(function DocumentEditor({
     );
   }
 
+  // A build "Note:" (a cancelled export) is only a warning: a render error outranks it.
+  const headerError = buildError && !(renderError && buildError.startsWith("Note: ")) ? buildError : renderError;
+
   return (
     <TooltipProvider>
       <Dialog open={active && settingsOpen} onOpenChange={setSettingsOpen}>
@@ -2200,7 +2199,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           review stays with its tab (hidden while another tab is in front,
           back on return) so a confirm can only write the visible tab's master. */}
       {pendingSave && (
-        <MasterSaveReview open={active} changes={masterChangeList}
+        <MasterSaveReview open={active} as={pendingSave.as} changes={masterChangeList}
           target={master.variants.find((v) => v.id === version)?.name}
           onCancel={() => setPendingSave(null)}
           onConfirm={(promote) => {
@@ -2212,8 +2211,14 @@ export const DocumentEditor = memo(function DocumentEditor({
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
           preview center, inspector sheet right. */}
       <SidebarProvider hotkey={active} className="min-h-0 h-full">
-        <Sidebar collapsible="offcanvas">
-          <SidebarContent>
+        <Sidebar>
+          {/* Click on empty sidebar space deselects. React bubbles a
+              PORTALED menu's click (Add layer, the master picker) through
+              here too, so only a target really inside the sidebar counts. */}
+          <SidebarContent onClick={(event) => {
+            const target = event.target;
+            if (target instanceof Element && event.currentTarget.contains(target) && !target.closest('[data-layer-id], button, a, input, [role="button"], [role="combobox"], [contenteditable="true"]')) clearSelection();
+          }}>
             {/* The master picker, then the ONE Layers list (spec: UI). */}
             <MasterPicker master={master} label={label}
               library={libraryEntries()} resolve={resolveMasterById}
@@ -2222,7 +2227,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onSaveMaster={() => setPendingSave({ as: false })} masterDirty={masterDirty}
               version={version} onVersion={switchVersion} />
             <LayerList rows={rows} selected={selected}
-              onSelect={(id, mods) => pick(id, { shift: mods.shift, toggle: mods.meta })}
+              onSelect={pick}
               onToggle={(id, prop, value) => patch(id, { [prop]: value })}
               onRename={(id, name) => patch(id, { name })}
               onReorder={(id, delta) => editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta))}
@@ -2245,8 +2250,8 @@ export const DocumentEditor = memo(function DocumentEditor({
             guides: showGuides,
           }} />}
           {blocked && <HeaderAlert>{blockedWhy}</HeaderAlert>}
-          {loadError && <HeaderAlert>{loadError}</HeaderAlert>}
-          {(buildError || renderError) && <HeaderAlert>{buildError || renderError}</HeaderAlert>}
+          {loadError && <HeaderAlert tone={loadError.startsWith("Note: ") ? "warning" : "destructive"}>{loadError}</HeaderAlert>}
+          {headerError && <HeaderAlert tone={headerError.startsWith("Note: ") ? "warning" : "destructive"}>{headerError}</HeaderAlert>}
           {resolveWarnings.length > 0 && <HeaderAlert tone="warning">{resolveWarnings.join(" · ")}</HeaderAlert>}
           {/* Open Master's fallback — see masterInput/openMasterPicker. */}
           <input ref={masterInput} type="file" accept={MASTER_EXT} hidden
@@ -2254,7 +2259,8 @@ export const DocumentEditor = memo(function DocumentEditor({
               const f = e.target.files?.[0];
               e.target.value = "";
               if (!f) return;
-              void f.arrayBuffer().then((buf) => openMasterBytes(new Uint8Array(buf), f.name, {}));
+              void f.arrayBuffer().then((buf) => openMasterBytes(new Uint8Array(buf), f.name, {}))
+                .catch((err) => setLoadError(`Could not open master: ${errMsg(err)}`));
             }} />
         </header>
       {/* The workspace tab strip's slot, under the menubar. */}
@@ -2285,7 +2291,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               if (viewMode !== "2d") return;
               const t = e.target;
               if (t instanceof Element
-                && !t.closest('[data-slot="label-sheet"],[data-slot="rulers"]')) clearSelection();
+                && !t.closest('[data-slot="label-sheet"], [data-guide-control]')) clearSelection();
             }}
             onPointerDown={onPanStart}
             onPointerMove={onPanMove}
@@ -2317,11 +2323,11 @@ export const DocumentEditor = memo(function DocumentEditor({
                 const layer = drawLayers.find((l) => l.id === id);
                 if (layer) setContent(layer, lines, !first);
               }}
-              onEditCancel={mutating(undo)}
+              onEditCancel={() => { undo(); setDirty(beforeTextEdit.current.dirty); setEdited(beforeTextEdit.current.edited); }}
               onDrag={onDrag}
               onResize={onResize}
               onDragCancel={cancelGesture}
-              onEditSession={setEditSession}
+              onEditSession={onEditSession}
               onSplit={setSplit}
               bleed={showGuides}
               cornerRadiusPct={render.cornerRadius}
@@ -2398,7 +2404,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             </button>
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
             <span className="shrink-0 px-1 text-xs tabular-nums whitespace-nowrap text-muted-foreground"
-              title="Resolution the PDFs and PSDs are built at">
+              title="PSD raster resolution and pixel-ruler scale">
               {render.dpi} DPI
             </span>
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
@@ -2429,7 +2435,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           </div>
         </section>
         {/* Right inspector: a shadcn Sheet driven by the selection — open
-            while a layer is selected, closed (Esc or the header X) by
+            while a layer is selected, closed (Esc or a click on the empty pasteboard) by
             clearing it. Non-modal and overlay-free so the preview and the
             Layers list stay clickable while inspecting. active gate: the
             sheet portals to document.body, escaping the shell's display:none. */}

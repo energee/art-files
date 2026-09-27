@@ -10,7 +10,7 @@ import { lolevMaster } from "../src/model/lolevLayers";
 import type {
   BarcodeLayer, ImageLayer, Layer, QrLayer, TextLayer, TextLine,
 } from "../src/model/layers";
-import { GOLD } from "../src/layout";
+import { GOLD } from "./legacy/layout";
 
 const line = (text: string): TextLine => ({ text, fill: GOLD, layer: "metallic" });
 const byId = <T extends Layer = Layer>(layers: Layer[], id: string) =>
@@ -165,6 +165,15 @@ describe("resolveLayers", () => {
     delete ln.style.uppercase;
     ln.uppercase = true;
     expect(uppercaseOf(byId<TextLayer>(resolveLayers(legacy, [], {}).layers, "name"))).toBe(true);
+  });
+
+  it("cleans control characters out of a stored text value before anything reads it (#282)", () => {
+    // A .label or CLI value never passes the editor's paste handler: the tab
+    // must not reach validation, a {ref} expansion (the QR would encode it)
+    // or the title, not just the drawing.
+    const r = resolveLayers(lolevMaster(), [], { name: [line("Hops\tCitra\u0001")] }, { qr: { value: "{name}" } });
+    expect(byId<TextLayer>(r.layers, "name").lines.map((l) => l.text)).toEqual(["Hops Citra"]);
+    expect(byId<QrLayer>(r.layers, "qr").value).toBe("HOPS CITRA"); // name draws uppercase
   });
 
   it("keeps the unexpanded template in `format` so an editor never round-trips the expansion", () => {

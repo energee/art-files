@@ -61,10 +61,12 @@ Afterwards the golden is byte-locked again.
    the change you meant to make — a moved description block should light up
    only the description and whatever is positioned relative to it.
 
-4. Once every red pixel is accounted for, take the new digests and byte lengths
-   (`shasum -a 256 Foo.pdf; wc -c Foo.pdf`) into the golden test, and commit the
-   diff PNGs from step 3 alongside them in the same commit, so the review is
-   reproducible from history.
+4. Once every red pixel is accounted for, run
+   `npx vitest run tests/collab-variant-goldens.test.ts` and take the new digests
+   and byte lengths from its **Received** values. Do not copy CLI PDF digests:
+   the CLI supplies a different document title, and the Collab-ON fixture also
+   binds its own tiny image assets. Use the test fixtures for exact byte inputs.
+   Commit the reviewed diff PNGs alongside the updated expectations.
 
 ## What the diff PNG means
 

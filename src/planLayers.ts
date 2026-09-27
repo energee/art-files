@@ -21,7 +21,7 @@ import {
   justifiedRotatedRuns, rotatedRuns, strokeSpec,
   type Face, type MeasureFace, type Placed, type PlacedBarcode, type PlacedText, type PlanAssets,
 } from "./plan";
-import { markedWords, parseRuns } from "./description";
+import { markedWords, parseRuns, printableText } from "./description";
 import { strokeLayerOf } from "./strokes";
 import { parseLogo } from "./logo";
 import { qrPaths, qrShapes } from "./qr";
@@ -71,11 +71,13 @@ interface Prepared { size: { w: number; h: number }; emit(box: Box): PlacedLayer
  *  empty, the suffix on the first line, uppercase applied, and every line
  *  carrying the layer's block style (stroke, tracking) under its own fill /
  *  layer / bold. A header line is bold, as the description's `# ` line has
- *  always been. */
+ *  always been. Control characters are settled here too (printableText):
+ *  label values arrive clean from resolveLayers, but master-authored lines,
+ *  placeholders and suffixes do not. */
 function drawableLines(l: TextLayer): TextLine[] {
   const s = l.style;
   let lines = l.lines;
-  if (l.placeholder && lines.every((ln) => !ln.text.trim()))
+  if (l.placeholder && lines.every((ln) => !printableText(ln.text).trim()))
     lines = [{ ...(lines[0] ?? { fill: s.fill, layer: s.layer }), text: l.placeholder }];
   if (l.suffix)
     lines = lines.length
@@ -83,7 +85,7 @@ function drawableLines(l: TextLayer): TextLine[] {
       : [{ fill: s.fill, layer: s.layer, text: l.suffix }];
   return lines.map((ln) => ({
     ...ln,
-    text: uppercaseOf(l) ? ln.text.toUpperCase() : ln.text,
+    text: printableText(uppercaseOf(l) ? ln.text.toUpperCase() : ln.text),
     bold: !!ln.bold || !!ln.header,
     stroke: s.stroke, strokeLayer: s.strokeLayer, strokeWidth: s.strokeWidth,
     letterSpacing: s.letterSpacing,
@@ -93,18 +95,18 @@ function drawableLines(l: TextLayer): TextLine[] {
 /** Greedy word wrap to `width`, wrapWarning's rule: a line that fits stays
  *  whole; a longer one breaks before the word that overflows. Words split
  *  via markedWords; measures the joined text so runs keep their faces. */
-function wrap(lines: TextLine[], widthOf: (ln: TextLine) => number, width?: number): TextLine[] {
-  if (width === undefined) return lines;
+function wrap(lines: TextLine[], widthOf: (ln: TextLine) => number, width?: number): (TextLine & { paragraphEnd?: boolean })[] {
+  if (width === undefined) return lines.map((ln) => ({ ...ln, paragraphEnd: true }));
   return lines.flatMap((ln) => {
-    if (widthOf(ln) <= width) return [ln];
-    const out: TextLine[] = [];
+    if (widthOf(ln) <= width) return [{ ...ln, paragraphEnd: true }];
+    const out: (TextLine & { paragraphEnd?: boolean })[] = [];
     let cur = "";
     for (const word of markedWords(ln.text)) {
       const next = cur ? `${cur} ${word}` : word;
       if (cur && widthOf({ ...ln, text: next }) > width) { out.push({ ...ln, text: cur }); cur = word; }
       else cur = next;
     }
-    if (cur) out.push({ ...ln, text: cur });
+    if (cur) out.push({ ...ln, text: cur, paragraphEnd: true });
     return out;
   });
 }
@@ -157,7 +159,7 @@ function prepareText(l: TextLayer, measure: MeasureFace): Prepared {
       lines.forEach((ln, i) => {
         const size = sizeOf(ln);
         const lw = widths[i];
-        const justify = l.align === "justify" && i < n - 1 && ln.text.includes(" ");
+        const justify = l.align === "justify" && !ln.paragraphEnd && ln.text.includes(" ");
         if (rotated) {
           // Columns step right by the leading; each reads bottom-to-top from
           // the box bottom (left), or ends at its top (right).
@@ -292,6 +294,28 @@ function prepareBarcode(l: BarcodeLayer, m: MeasureFace): Prepared | null {
     fillLayer: style.layer, strokeLayer: strokeLayerOf(style),
     textSize, digits, footprint,
   });
+  // A halo around individual bars leaves the quiet zone textured (#284).
+  // Emit an ordinary path first: every backend paints the same backing on
+  // the stroke's plate, without moving a single bar or digit. Along the scan
+  // direction it fills the layer's own box (quietModulesFor's zone on each
+  // side), so what the user snaps and anchors is what prints; its stroke
+  // halo adds S/2 beyond that.
+  const withBacking = (barcode: PlacedBarcode): Placed[] => {
+    if (S === 0) return [barcode];
+    const bars = barcode.geo.bars;
+    const q = quiet * mod;
+    const rects = barcode.footprint;
+    const x = Math.min(...rects.map((r) => r.x), ...bars.map((r) => r.x - (rotated ? 0 : q)));
+    const y = Math.min(...rects.map((r) => r.yTop), ...bars.map((r) => r.yTop - (rotated ? q : 0)));
+    const right = Math.max(...rects.map((r) => r.x + r.w), ...bars.map((r) => r.x + r.w + (rotated ? 0 : q)));
+    const bottom = Math.max(...rects.map((r) => r.yTop + r.h), ...bars.map((r) => r.yTop + r.h + (rotated ? q : 0)));
+    return [{
+      kind: "paths", id, x, y,
+      paths: [`M0 0L${right - x} 0L${right - x} ${bottom - y}L0 ${bottom - y}Z`],
+      fill: barcode.stroke, layer: barcode.strokeLayer,
+      stroke: { fill: barcode.stroke, layer: barcode.strokeLayer, w: S },
+    }, barcode];
+  };
   if (rotated) {
     return {
       size: { w: depth, h: runLen },
@@ -314,7 +338,7 @@ function prepareBarcode(l: BarcodeLayer, m: MeasureFace): Prepared | null {
           const yc = bottom - d.center * mod;
           return { x: x0, yTop: yc - len / 2, w: (ASC + DESC) * textSize, h: len };
         });
-        return [item(geo, digits, [...bars, ...pills])];
+        return withBacking(item(geo, digits, [...bars, ...pills]));
       },
     };
   }
@@ -337,7 +361,7 @@ function prepareBarcode(l: BarcodeLayer, m: MeasureFace): Prepared | null {
       const pills = digits.map((d) => ({
         x: d.x - d.w / 2, yTop: d.y - ASC * textSize, w: d.w, h: (ASC + DESC) * textSize,
       }));
-      return [item(geo, digits, [...bars, ...pills])];
+      return withBacking(item(geo, digits, [...bars, ...pills]));
     },
   };
 }

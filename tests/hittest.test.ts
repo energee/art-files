@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { boxesOf, boxOf, hitTest } from "./legacy/hittest";
 import { wrapWarning, warningColumnLen } from "../src/warning";
 import { defaultConfig } from "../src/defaults";
-import * as L from "../src/layout";
+import * as L from "./legacy/layout";
 import { measure, measureBW } from "./fixtures";
 
 describe("preview hit-testing", () => {

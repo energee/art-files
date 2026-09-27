@@ -1,6 +1,7 @@
 // FileDrop.tsx — drag-and-drop/click file target built on react-dropzone
 // (keyboard, focus, and aria handled by the library), with an image
 // thumbnail on a checkerboard and inline error text.
+import { useState } from "react";
 import { useDropzone, type Accept } from "react-dropzone";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,16 +22,30 @@ export function FileDrop(props: {
   accept: Accept;
   fileName?: string;
   previewUrl?: string;
-  error?: string;
   onFile: (f: File) => void;
   /** Removes the loaded file. The X only renders while a file is loaded
    *  AND a handler is given, so drops without one look as before. */
   onClear?: () => void;
 }) {
+  // The rejection belongs to the file shown when it happened: once another
+  // file loads (by the window overlay, Open, or Remove) it no longer applies.
+  const [rejection, setRejection] = useState<{ text: string; shown?: string } | null>(null);
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: props.accept,
     multiple: false,
-    onDrop: (files) => files[0] && props.onFile(files[0]),
+    onDrop: (files, rejected) => {
+      if (rejected.length) {
+        setRejection({
+          shown: props.fileName,
+          text: rejected.some((f) => f.errors.some((e) => e.code === "too-many-files"))
+            ? "Drop one file."
+            : `Choose ${Object.values(props.accept).flat().join(" or ")} for ${props.label}.`,
+        });
+        return;
+      }
+      setRejection(null);
+      if (files[0]) props.onFile(files[0]);
+    },
   });
   return (
     <div className="flex-1">
@@ -76,7 +91,9 @@ export function FileDrop(props: {
         )}
         <input {...getInputProps()} />
       </div>
-      {props.error && <p className="mt-1 text-xs text-destructive-text">{props.error}</p>}
+      {rejection && rejection.shown === props.fileName && (
+        <p role="alert" className="mt-1 text-xs text-destructive-text">{rejection.text}</p>
+      )}
     </div>
   );
 }

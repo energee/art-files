@@ -181,12 +181,12 @@ describe("LayerList", () => {
   it("clicking a row selects it with the modifier keys", () => {
     const props = render(baseProps());
     click(rowFor("wordmark").querySelector("button")!);
-    expect(props.onSelect).toHaveBeenCalledWith("wordmark", { shift: false, meta: false });
+    expect(props.onSelect).toHaveBeenCalledWith("wordmark", { shift: false, toggle: false });
     act(() => {
       rowFor("name").querySelector("button")!
         .dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true, ctrlKey: true }));
     });
-    expect(props.onSelect).toHaveBeenLastCalledWith("name", { shift: true, meta: true });
+    expect(props.onSelect).toHaveBeenLastCalledWith("name", { shift: true, toggle: true });
   });
 
   it("double-click renames inline: Enter commits through onRename, Escape cancels", () => {
@@ -381,7 +381,9 @@ it("measures repeated pointer moves over the same drop position", () => {
       bubbles: true, pointerId: 1, clientY: 21 + n % 4,
     })));
     console.log("PERF layer drag", JSON.stringify({ moves: 100, commits: commits.mock.calls.length, ms: performance.now() - started }));
-    expect(commits.mock.calls.length).toBe(1);
+    // A "nested-update" is a layout-effect re-render inside the same commit
+    // (Base UI 1.8 adds one); the guard is one top-level commit per position.
+    expect(commits.mock.calls.filter((c) => c[1] !== "nested-update").length).toBe(1);
   } finally { vi.restoreAllMocks(); }
 });
 
@@ -401,4 +403,38 @@ describe("ownership vs override", () => {
     expect(props.onReorder).toHaveBeenCalledWith("wordmark", 1);
     expect(props.onReorder).toHaveBeenCalledWith("wordmark", -1);
   });
+});
+
+// Every workspace tab mounts its own LayerList, so a document-wide lookup for
+// "Add layer" found the FIRST tab's (hidden) button, not this list's.
+it("Delete of the only row focuses this list's Add layer, not another tab's", async () => {
+  const decoy = document.createElement("button");
+  decoy.setAttribute("aria-label", "Add layer");
+  document.body.prepend(decoy);
+  try {
+    const { rows } = lolevRows();
+    const only = [rows[0]];
+    const props = baseProps({ rows: only, selected: [only[0].layer.id] });
+    props.onRemove = vi.fn(() => render({ ...props, rows: [], selected: [] }));
+    render(props);
+    const button = rowFor(only[0].layer.id).querySelector("button")!;
+    button.focus();
+    keydown(button, "Delete");
+    await act(async () => { await Promise.resolve(); });
+    expect(document.activeElement).toBe(byLabel("Add layer"));
+  } finally { decoy.remove(); }
+});
+
+// A live region only speaks when its text changes: a second identical
+// "moved forward" was silent.
+it("announces each of two identical reorders", () => {
+  render(baseProps({ selected: ["wordmark"] }));
+  const status = container.querySelector('[role="status"]')!;
+  const button = rowFor("wordmark").querySelector("button")!;
+  keydown(button, "ArrowUp", { altKey: true });
+  const first = status.textContent;
+  keydown(button, "ArrowUp", { altKey: true });
+  expect(first).toContain("moved forward");
+  expect(status.textContent).toContain("moved forward");
+  expect(status.textContent).not.toBe(first);
 });

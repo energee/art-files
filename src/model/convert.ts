@@ -1,3 +1,4 @@
+import { isPlain } from "./merge";
 // src/model/convert.ts — pure converters from the old model to the v3 layer
 // model (spec 2026-09-04: Migration). Three entry points:
 //   convertMasterV1  v1 .master (layers + defaults + fields + variants) → Master
@@ -64,8 +65,7 @@ const PATH_LAYER: Record<string, string> = {
   upc: "barcode", "collabLeft.image": "collabLeft", "collabCenter.image": "collabCenter",
 };
 
-const isPlain = (v: unknown): v is Record<string, unknown> =>
-  !!v && typeof v === "object" && !Array.isArray(v);
+
 
 /** Everything in `cfg` that differs from `base`, deep for plain objects,
  *  wholesale for arrays and leaves. A key present in `base` but absent from

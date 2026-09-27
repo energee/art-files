@@ -69,7 +69,7 @@ export function NumberRoot(props: {
 /** The input and its unit addon; render inside a NumberRoot. */
 export function UnitInput(props: { unit: string; placeholder?: string }) {
   return (
-    <InputGroup className="h-6 w-24">
+    <InputGroup className={props.unit === "mm" ? "h-6 w-28" : "h-6 w-24"}>
       <NumberField.Input
         render={<InputGroupInput className="h-6 text-xs" />}
         placeholder={props.placeholder}

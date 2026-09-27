@@ -11,9 +11,9 @@ import { parseDescription } from "../../src/description";
 import {
   collabCenterFrame, collabLeftFrame, customBarcodeBox, planLabel, type CollabSlots,
 } from "./plan";
-import { labelGuides, type MeasureFace, type PlacedText } from "../../src/plan";
+import { labelGuides, type MeasureFace, type PlacedText } from "./planShared";
 import { anchoredX, anchoredY } from "../../src/model/position";
-import * as L from "../../src/layout";
+import * as L from "./layout";
 
 export type Measure = (text: string, size: number, bold: boolean) => number;
 export interface Box { x0: number; y0: number; x1: number; y1: number; id: ElementId }

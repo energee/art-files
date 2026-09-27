@@ -12,7 +12,7 @@ import { uppercaseOf } from "./layers";
 import { deepMerge, type DeepPartial } from "./merge";
 import { validateField } from "./fields";
 import { expandFormat, fieldRefs } from "./format";
-import { parseRuns } from "../description";
+import { parseRuns, printableText } from "../description";
 import { machineName } from "../qr";
 import { validateFor } from "../barcode";
 
@@ -33,7 +33,11 @@ export const widenValue = (l: Layer, v: LayerValue): LayerValue =>
 function putValue(l: Layer, v: LayerValue): Layer | undefined {
   if (l.kind === "text") {
     const lines = widenValue(l, v);
-    return Array.isArray(lines) ? { ...l, lines } : undefined;
+    // Cleaned here, where every stored value (file, CLI, editor) meets its
+    // layer, so validation, {ref} expansion and titles never see a tab (#282).
+    return Array.isArray(lines)
+      ? { ...l, lines: lines.map((ln) => (typeof ln?.text === "string" ? { ...ln, text: printableText(ln.text) } : ln)) }
+      : undefined;
   }
   if (typeof v !== "string") return undefined;
   return l.kind === "image" ? { ...l, asset: v } : { ...l, value: v };
@@ -104,7 +108,7 @@ function refText(l: TextLayer): string {
  *  image height back to auto) as null, because deepMerge skips `undefined`
  *  and JSON cannot store it — see setLabelOverride. Variant diffs never carry
  *  null today, so this is a no-op for them. */
-function applyDiff<T extends object>(base: T, p: DeepPartial<T>): T {
+export function applyDiff<T extends object>(base: T, p: DeepPartial<T>): T {
   const merged = deepMerge(base, p) as Record<string, unknown>;
   stripNulls(merged, p as Record<string, unknown>);
   return merged as T;

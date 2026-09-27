@@ -1,3 +1,4 @@
+import { isMacOS } from "@/keys";
 // AppMenu.tsx — one File/Edit/View menu layout, rendered as shadcn chrome in
 // the browser and installed as the native application menu under Tauri.
 import { useEffect, useRef, useState } from "react";
@@ -11,7 +12,7 @@ import {
   Settings, SquareArrowDown, SquareArrowUp, Undo2, X, type LucideIcon,
 } from "lucide-react";
 import { shortcutOf, type Command } from "@/components/CommandMenu";
-import { keyOwner } from "@/keys";
+import { dialogOpen, isTypingTarget } from "@/keys";
 import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu,
   MenubarSeparator, MenubarShortcut, MenubarSub, MenubarSubContent,
@@ -216,15 +217,12 @@ type NativeResource = { close: () => Promise<void> };
 type NativeEntry = MenuItem | CheckMenuItem | IconMenuItem | PredefinedMenuItem | Submenu;
 type NativeAction = MenuItem | CheckMenuItem | IconMenuItem;
 
-function isMacOS() {
-  return /Macintosh|Mac OS X/.test(navigator.userAgent);
-}
 
 /** Native menus must own modified accelerators so macOS can display them.
  *  Bare 1–3/R/G bindings deliberately stay in App's guarded key listener:
  *  registering those with the OS would fire them while the user is typing. */
 export function nativeAccelerator(command: Command): string | undefined {
-  const glyphs = shortcutOf(command);
+  const glyphs = shortcutOf(command, true);
   if (!glyphs?.includes("⌘")) return undefined;
   const key = glyphs.replace("⇧", "").replace("⌘", "");
   return `CmdOrCtrl+${glyphs.includes("⇧") ? "Shift+" : ""}${key}`;
@@ -371,19 +369,20 @@ function useNativeMenu(
         const run = (id: string) => {
           const command = commandsRef.current[id];
           if (!command || command.disabled) return;
-          // Native Undo/Redo accelerators fire before the webview's keydown,
-          // so they follow the same owner rule as App's ⌘Z handler: the
-          // focused field keeps its own undo stack, and a modal dialog
-          // leaves the canvas behind it alone (#225).
-          if (id === "undo" || id === "redo") {
-            const owner = keyOwner(document.activeElement);
-            if (owner === "text") { document.execCommand(id); return; }
-            if (owner === "dialog") return;
-          }
+          // Re-assert the check even when nothing runs below.
           if (CHECK_IDS.has(id)) {
             appliedState.current.delete(id);
             setResync((n) => n + 1);
           }
+          // Native accelerators fire before the webview's keydown, so they
+          // follow App's key rules: the focused field keeps its own undo
+          // stack, and a modal dialog blocks every command on the tab behind
+          // it — ⌘Z (#225) as much as ⌘W, ⌘S or a menu click (#244).
+          if ((id === "undo" || id === "redo") && isTypingTarget(document.activeElement)) {
+            document.execCommand(id);
+            return;
+          }
+          if (dialogOpen()) return;
           command.run();
         };
         const roots = await Promise.all(APP_MENUS.map((entry) =>
@@ -398,6 +397,15 @@ function useNativeMenu(
             .then((m) => m.getCurrentWindow().close())
             .catch((error) => errorRef.current(`Could not quit: ${String(error)}`));
           roots.unshift(await macApplicationMenu(api, resources, () => updateRef.current(), quit));
+        } else {
+          const updater = await api.MenuItem.new({
+            id: "check-for-updates", text: UPDATE_ITEM_TEXT.check,
+            action: () => updateRef.current(),
+          });
+          resources.push(updater);
+          const help = await api.Submenu.new({ id: "help-menu", text: "Help", items: [updater] });
+          resources.push(help);
+          roots.push(help);
         }
         const menu = await api.Menu.new({ id: "label-lab-menu", items: roots });
         resources.push(menu);
@@ -437,7 +445,7 @@ function useNativeMenu(
 
   useEffect(() => {
     const item = items?.get("check-for-updates");
-    if (!item) return; // non-macOS menus have no updater item
+    if (!item) return;
     const text = updateInstalled ? UPDATE_ITEM_TEXT.restart : UPDATE_ITEM_TEXT.check;
     if (appliedState.current.get("check-for-updates:text") === text) return;
     appliedState.current.set("check-for-updates:text", text);

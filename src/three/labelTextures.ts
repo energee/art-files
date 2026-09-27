@@ -35,11 +35,7 @@ export interface LabelTextures {
   /** Binary metalness mask: white = metallic foil, black = matte white ink.
    *  Same pixel dimensions as `art`. */
   metalness: HTMLCanvasElement;
-  /** True if any pixel of `metalness` is foil — i.e. the label uses a metallic
-   *  mask at all. Falls out of the pass that builds the mask. */
-  hasFoil: boolean;
-  /** Artwork width / height — drives the cylinder wrap angle. */
-  aspect: number;
+
 }
 
 /**
@@ -50,12 +46,11 @@ export interface LabelTextures {
  * pipeline — the upload is untouched — and canScene's edgeSoftness blur then
  * softens the result, same shape as captiva's soft mask. With no metallic
  * mask dropped, the plate floods solid ink = all matte = all black here,
- * which is the correct "no foil" default. `hasFoil` reports whether any pixel
- * came out white, so callers don't have to re-scan the finished mask.
+ * which is the correct "no foil" default.
  */
 function deriveMetalness(
   maskRender: HTMLCanvasElement,
-): { canvas: HTMLCanvasElement; hasFoil: boolean } {
+): HTMLCanvasElement {
   const { width, height } = maskRender;
   const out = document.createElement("canvas");
   out.width = width;
@@ -64,15 +59,13 @@ function deriveMetalness(
   const src = maskRender.getContext("2d")!.getImageData(0, 0, width, height);
   const dst = ctx.createImageData(width, height);
   const s = src.data, d = dst.data;
-  let hasFoil = false;
   for (let i = 0; i < s.length; i += 4) {
     const v = isPage(s[i], s[i + 1], s[i + 2]) ? 255 : 0;
-    if (v) hasFoil = true;
     d[i] = d[i + 1] = d[i + 2] = v;
     d[i + 3] = 255;
   }
   ctx.putImageData(dst, 0, 0);
-  return { canvas: out, hasFoil };
+  return out;
 }
 
 /** Draw both plates from the display list at texture resolution: MAX_SCALE
@@ -101,6 +94,5 @@ export function drawPlates(
 export function buildLabelTextures(
   { art, mask }: { art: HTMLCanvasElement; mask: HTMLCanvasElement },
 ): LabelTextures {
-  const { canvas: metalness, hasFoil } = deriveMetalness(mask);
-  return { art, metalness, hasFoil, aspect: art.width / art.height };
+  return { art, metalness: deriveMetalness(mask) };
 }

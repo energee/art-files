@@ -335,8 +335,8 @@ interface FKGlyphRun {
  *  rotation about the PDF-space anchor with the PDF page's y-flip back into
  *  layout.ts's top-left/y-down space reduces to: label = (anchorX - v,
  *  anchorY - u) (see `pdf/build.ts`'s `drawBarcode`). `anchorX` is the digit
- *  column's fixed baseline x (all four groups share one, see barcodeGeometry
- *  `place`); `anchorY` is the label-space Y the string's start lands at,
+ *  column's fixed baseline x (every digit group shares one, see planLayers'
+ *  rotated barcode `emit`); `anchorY` is the label-space Y the string's start lands at,
  *  already the value the old text layer used as `baseline`
  *  (`geo.bottom - d.center * geo.mod + measure(d.text) / 2`).
  *
@@ -476,7 +476,7 @@ function strokeEffect(stroke: Fill | undefined, strokePt: number) {
 // --- text helpers ---------------------------------------------------------
 
 /** One line of a type layer, rebuilt from its placed runs. */
-interface TypeLine { runs: PlacedText[]; text: string }
+interface TypeLine { runs: PlacedText[]; text: string; spaced: boolean[] }
 
 /** Fold a text layer's placed runs back into lines. Runs share a line when
  *  they share a baseline (y unrotated, x rotated); within a line, a run that
@@ -488,10 +488,11 @@ function linesOf(runs: PlacedText[]): TypeLine[] {
   for (const r of runs) {
     const last = lines[lines.length - 1];
     const same = last && (r.rotated ? last.runs[0].x === r.x : last.runs[0].y === r.y);
-    if (!same) { lines.push({ runs: [r], text: r.text }); continue; }
+    if (!same) { lines.push({ runs: [r], text: r.text, spaced: [] }); continue; }
     const prev = last.runs[last.runs.length - 1];
     const end = r.rotated ? prev.y - prev.w - prev.tracking : prev.x + prev.w + prev.tracking;
     const gap = r.rotated ? end - r.y : r.x - end;
+    last.spaced.push(gap > 1e-6);
     last.runs.push(r);
     last.text += (gap > 1e-6 ? " " : "") + r.text;
   }
@@ -538,7 +539,7 @@ function typeLayer(
         // The newline belongs to the line before it, so run lengths cover
         // the whole string; a justified word boundary carries its space.
         length: r.text.length
-          + (j < l.runs.length - 1 && gapAfter(l, j) ? 1 : 0)
+          + (l.spaced[j] ? 1 : 0)
           + (j === l.runs.length - 1 && i < lines.length - 1 ? 1 : 0),
         style: {
           font: { name: ps[r.face] },
@@ -594,14 +595,6 @@ function coalesce<T extends { length: number; style: object }>(runs: T[]): T[] {
     else out.push({ ...r });
   }
   return out;
-}
-
-/** Whether linesOf put a space between run j and j+1 of a line. */
-function gapAfter(l: TypeLine, j: number): boolean {
-  const prev = l.runs[j];
-  const next = l.runs[j + 1];
-  const end = prev.rotated ? prev.y - prev.w - prev.tracking : prev.x + prev.w + prev.tracking;
-  return (prev.rotated ? end - next.y : next.x - end) > 1e-6;
 }
 
 // --- the label ------------------------------------------------------------
@@ -809,6 +802,20 @@ export async function buildPsd(
   const psd: Psd = {
     width: PSD_DOC.w,
     height: PSD_DOC.h,
+    // The export DPI, stated twice because readers disagree on where to look:
+    // Photoshop/InDesign read ResolutionInfo (0x03ED); macOS ImageIO (Finder,
+    // Preview, sips) ignores it and reads the XMP tiff: tags. Without them a
+    // reader assumes 72 ppi and sizes the page ~8× too large (#338).
+    imageResources: {
+      resolutionInfo: {
+        horizontalResolution: L.OUTPUT_DPI, horizontalResolutionUnit: "PPI", widthUnit: "Inches",
+        verticalResolution: L.OUTPUT_DPI, verticalResolutionUnit: "PPI", heightUnit: "Inches",
+      },
+      xmpMetadata: `<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">`
+        + `<rdf:Description rdf:about="" xmlns:tiff="http://ns.adobe.com/tiff/1.0/">`
+        + `<tiff:XResolution>${L.OUTPUT_DPI}</tiff:XResolution><tiff:YResolution>${L.OUTPUT_DPI}</tiff:YResolution>`
+        + `<tiff:ResolutionUnit>2</tiff:ResolutionUnit></rdf:Description></rdf:RDF></x:xmpmeta>`,
+    },
     children: buildLayers(items, assets, digitFont, mode, opts),
   };
   return writePsdUint8Array(psd);

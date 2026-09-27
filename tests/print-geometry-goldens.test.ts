@@ -51,7 +51,7 @@ const box = (layer: BarcodeLayer) => {
   const b = layerBoxes([layer], m, assets).get(layer.id)!;
   return { w: r2(b.w), h: r2(b.h) };
 };
-const item = (layer: BarcodeLayer) => planLayers([layer], m, assets)[0] as PlacedBarcode | undefined;
+const item = (layer: BarcodeLayer) => planLayers([layer], m, assets).find((p): p is PlacedBarcode => p.kind === "barcode");
 
 describe("upright barcode geometry goldens", () => {
   describe("upc-a 012345678905", () => {
@@ -138,21 +138,24 @@ describe("upright barcode geometry goldens", () => {
   describe("code-128 LOLEV-123", () => {
     const layer = layerFor("code-128", "LOLEV-123");
 
-    it("reports its box as the bare symbol — #12 must not reach code-128", () => {
-      expect(box(layer)).toEqual({ w: 134, h: 58 });
+    // #359 review: was the bare symbol (134). The quiet-zone backing fills
+    // the box along the scan direction, so the box now reserves GS1's 10X.
+    it("reserves a 10-module quiet zone each side", () => {
+      expect(box(layer)).toEqual({ w: 154, h: 58 });
     });
 
     it("plots bars, digits and footprint", () => {
       const it = item(layer)!;
       expect(it.geo.bars).toHaveLength(37);
-      expect(rect(it.geo.bars[0])).toEqual([28.68, BAR_TOP, 2, 30]);
-      expect(rect(it.geo.bars.at(-1)!)).toEqual([160.68, BAR_TOP, 2, 30]);
+      // #359 review: every x +10 (the new quiet zone).
+      expect(rect(it.geo.bars[0])).toEqual([38.68, BAR_TOP, 2, 30]);
+      expect(rect(it.geo.bars.at(-1)!)).toEqual([170.68, BAR_TOP, 2, 30]);
       expect(it.digits.map((d) => [d.text, r2(d.x), r2(d.y), r2(d.w)])).toEqual([
-        ["LOLEV-123", 95.68, 86.68, 90], // #8 baseline only — x is unmoved
+        ["LOLEV-123", 105.68, 86.68, 90], // #8 baseline; #359 review x +10
       ]);
       expect(it.footprint).toHaveLength(38);
-      expect(rect(it.footprint[0])).toEqual([28.68, 28.68, 2, 30]); // #11
-      expect(it.footprint.slice(37).map(rect)).toEqual([[50.68, 65.68, 90, 28]]);
+      expect(rect(it.footprint[0])).toEqual([38.68, 28.68, 2, 30]); // #11, #359 review
+      expect(it.footprint.slice(37).map(rect)).toEqual([[60.68, 65.68, 90, 28]]);
     });
   });
 

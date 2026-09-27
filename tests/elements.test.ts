@@ -3,7 +3,7 @@ import {
   ELEMENTS, applyStyle, customElement, dragTarget, editableText, elementById, isDefaultStyle,
 } from "./legacy/elements";
 import { defaultConfig } from "../src/defaults";
-import { GOLD } from "../src/layout";
+import { GOLD } from "./legacy/layout";
 import type {
   CustomBarcodeLayer, CustomImageLayer, CustomQrLayer, CustomTextLayer,
 } from "../src/types";

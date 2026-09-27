@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import fontkit from "@pdf-lib/fontkit";
 import { buildArtPdf, buildMaskPdf, pdfMeasureFace } from "../src/pdf/build";
 import { warningColumnLen, warningMeasure, wrapWarning } from "../src/warning";
-import * as L from "../src/layout";
+import * as L from "./legacy/layout";
 import { assets, contentStreamText, lolevPlan, onePxPng } from "./fixtures";
 
 // Counts /Subtype /Image XObjects in a saved PDF's indirect object table —
@@ -99,8 +99,8 @@ describe("the rotated column's stroke pass, on the live draw path", () => {
   // fill-color-setting "r g b rg" operator (NOT "RG", the separate stroke-
   // paint operator) in emission order.
   const rgOps = (stream: string) =>
-    [...stream.matchAll(/(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) rg\b/g)]
-      .map((m) => [Number(m[1]), Number(m[2]), Number(m[3])] as const);
+    [...stream.matchAll(/(-?[\d.]+)(?: (-?[\d.]+) (-?[\d.]+) rg| g)\b/g)]
+      .map((m) => [Number(m[1]), Number(m[2] ?? m[1]), Number(m[3] ?? m[1])] as const);
   const only = async (style: object) => (await lolevPlan({
     overrides: { storeCold: { lines: [{ text: "INK", ...style }], style }, mask: { asset: "msk" } },
     custom: { msk: { aspect: 1 } },
@@ -257,4 +257,32 @@ describe("pdfMeasureFace — plans with the widths drawText draws (#86)", () => 
     // Poppins has no kern table: its drawn width equals the kerned one.
     expect(m("AVATAR", 1000, "regular", "poppins")).toBeCloseTo(kerned(assets.fonts.regular, "AVATAR"));
   });
+});
+
+// #339: the CMYK converter maps DeviceGray to K without recolouring artwork.
+it("uses DeviceGray for neutral vector ink and retains RGB for coloured ink", async () => {
+  const items = await lolevPlan({ overrides: {
+    name: { style: { fill: "#000000", stroke: "#333333" } },
+    qr: { style: { fill: "#ff0000", stroke: "#000000" } },
+  } });
+  const stream = await contentStreamText(await buildArtPdf(items, assets));
+  expect(stream).toMatch(/^0 g$/m);
+  expect(stream).toMatch(/^0 G$/m);
+  expect(stream).toMatch(/^0.2 g$/m);
+  expect(stream).toMatch(/^1 0 0 rg$/m);
+  expect(stream).not.toMatch(/^0 0 0 [rR][gG]$/m);
+});
+
+it("rejects unsupported print glyphs in the actual family and face (#340)", async () => {
+  const m = await pdfMeasureFace({ poppins: assets.fonts }, "poppins");
+  for (const face of ["regular", "semibold", "bold"] as const) {
+    expect(m("Ale™ ½ é", 10, face)).toBeGreaterThan(0);
+    expect(() => m("Ale → 🍺 啤酒", 10, face)).toThrow(/Cannot print .*→.*🍺.*啤.*酒.*Poppins/);
+  }
+});
+
+it("accepts variation selectors the emoji picker appends (™️ ©️ ®️)", async () => {
+  const m = await pdfMeasureFace({ poppins: assets.fonts }, "poppins");
+  // U+FE0F folds into the base glyph, so it prints exactly like a plain ™.
+  expect(m("Blue Agate™️ ©️ ®︎", 10, "bold")).toBe(m("Blue Agate™ © ®", 10, "bold"));
 });

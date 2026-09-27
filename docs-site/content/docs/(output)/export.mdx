@@ -15,7 +15,7 @@ File → Export, the palette, `⌘E` and `⇧⌘E`:
 
 Export greys out while the label is invalid. The reason sits in the header next to the menus.
 
-Downloads always rebuild at **full resolution** (Settings → Resolution, default 600 DPI). Live preview is a downscaled stand-in.
+Exports rebuild from the full-size assets. PDFs preserve vector geometry and embed uploaded images at their original resolution. **Settings → Resolution** controls PSD raster resolution (default 600 DPI). Live preview uses downscaled images.
 
 The filename is the beer name, slugged like the QR. The PDF title is `{Name} label art` (and the mask equivalent).
 
@@ -39,6 +39,8 @@ Export checks the code each barcode will actually print, after any `{layer}` ref
 ## Photoshop
 
 Export PSDs is the editable handoff. Text becomes type layers. Logo and QR become vector shapes. Outer strokes are layer effects. The description is one type layer with style runs. The barcode is one merged shape (bars plus digit outlines), not editable type.
+
+The PSD declares the export resolution (600 ppi unless you change Resolution in Settings), so Photoshop, Preview and Finder all show it at the label's print size.
 
 Photoshop may prompt to **Update** text layers on open. ag-psd writes the text data without a rendered bitmap. Choose Update.
 

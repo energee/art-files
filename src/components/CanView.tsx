@@ -152,7 +152,7 @@ export const CanView = forwardRef<CanViewHandle, {
       {/* Paints the 3D stage's backdrop: the renderer clears transparent, so
           the flat colour behind the can comes from the app's own theme token
           (see canScene's note) rather than a hex duplicated in the scene. */}
-      <div ref={containerRef} className="absolute inset-0 overflow-hidden rounded-md bg-background" />
+      <div ref={containerRef} tabIndex={0} role="region" aria-label="3D can view: arrows pan; Shift plus arrows rotates" className="absolute inset-0 overflow-hidden rounded-md bg-background" />
       {loading && (
         <span className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" />

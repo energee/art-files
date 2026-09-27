@@ -66,8 +66,13 @@ const dialogButton = () => buttonIn({ role: "dialog", "data-slot": "dialog-conte
 it("⌘Z and ⇧⌘Z inside an open dialog leave the canvas behind it alone", async () => {
   await act(async () => power().click());
   expect(on()).toBe("true");
-  await pressZ(dialogButton());
+  const button = dialogButton();
+  await pressZ(button);
   expect(on()).toBe("true");
+  // With the dialog still open, even focus outside it leaves the canvas alone (#244).
+  await pressZ(document.body);
+  expect(on()).toBe("true");
+  button.parentElement!.remove(); // the dialog closes
   await pressZ(document.body);
   expect(on()).toBe("false");
   await pressZ(dialogButton(), true);

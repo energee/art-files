@@ -78,3 +78,14 @@ it("opens the in-place editor on a fresh, empty text layer", () => {
   dblclickNearAnchor();
   expect(editor()).not.toBeNull();
 });
+
+it("moves the comparison divider with the keyboard and bounds it (#307)", () => {
+  render("AB");
+  const divider = container.querySelector('[role="separator"]')!;
+  for (const [key, shiftKey, expected] of [["ArrowRight", false, "1"], ["ArrowRight", true, "11"], ["End", false, "100"], ["ArrowRight", false, "100"], ["Home", false, "0"]] as const) {
+    const event = new KeyboardEvent("keydown", { key, shiftKey, bubbles: true, cancelable: true });
+    act(() => divider.dispatchEvent(event));
+    expect(event.defaultPrevented).toBe(true);
+    expect(divider.getAttribute("aria-valuenow")).toBe(expected);
+  }
+});

@@ -112,6 +112,7 @@ export function MasterSaveReview(props: {
    *  tick writes `master.layers` or `variants.collab.layers` depending on the
    *  version you switched to (Task 12). */
   target?: string;
+  as?: boolean;
   onCancel: () => void;
   /** The ticked `promote` rows, in the order they were listed. */
   onConfirm: (promote: MasterChange[]) => void;
@@ -150,9 +151,11 @@ export function MasterSaveReview(props: {
   return (
     <Dialog open={props.open} onOpenChange={(open) => { if (!open) props.onCancel(); }}>
       <DialogContent className="sm:max-w-lg">
-        <DialogTitle>Save Master</DialogTitle>
+        <DialogTitle>{props.as ? "Save Master As" : "Save Master"}</DialogTitle>
         <DialogDescription>
-          {props.changes.length === 0
+          {props.as
+            ? "Create a new master file from these changes. Tick a label override to include it. The original master stays unchanged."
+            : props.changes.length === 0
             ? "Nothing has changed in the master."
             : props.target === undefined
               ? "These changes will be written to the template. Tick a label override to fold it in too."
@@ -180,7 +183,7 @@ export function MasterSaveReview(props: {
                     disabled={c.kind !== "promote"}
                     checked={c.kind !== "promote" || ticked.has(row)}
                     onCheckedChange={() => toggle(row)} />
-                  <span className={c.kind === "promote" ? ""
+                  <span className={c.kind === "promote" ? "text-attention-text"
                     : c.kind === "removed" ? "text-destructive-text" : "text-muted-foreground"}>
                     {rowText(c)}
                   </span>
@@ -192,7 +195,7 @@ export function MasterSaveReview(props: {
         </div>
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={props.onCancel}>Cancel</Button>
-          <Button size="sm" onClick={confirm}>Save Master</Button>
+          <Button variant="attention" size="sm" onClick={confirm}>{props.as ? "Save Master As" : "Save Master"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
