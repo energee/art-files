@@ -145,6 +145,13 @@ that section to the new version (see .agents/release-steward.md).
   Redo) leave the canvas alone; in the inspector and its color picker they
   still undo your last edit.
 
+- **Shortcuts no longer act on the tab behind an open dialog.** With the Save
+  Master review, Settings or the command palette open, `⌘W` no longer closes
+  the tab underneath, and `⌘N`, `⌘O`, `⌘S`, `⇧⌘S`, `⌘E`, `⇧⌘E` (and their
+  menu items), `⌘B` (sidebar), the arrow-key nudge and the view keys
+  `1`/`2`/`3`/`R`/`G` do nothing until the dialog is closed. With no dialog
+  open, `⌘S` still saves from inside a text field.
+
 ### Changed
 
 - Internal cleanup with no operator-visible change: a retired developer
