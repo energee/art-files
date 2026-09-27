@@ -6,6 +6,11 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Changed
+
+- **Library updates.** React 19.3, Base UI 1.8, Three.js 0.186 and the Tauri
+  dialog, file and updater plugins move to their latest minor releases.
+
 ### Fixed
 
 - **Barcode backgrounds stay clear on textured labels.** A continuous backing
