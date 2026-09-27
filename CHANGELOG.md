@@ -6,6 +6,11 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Changed
+
+- **Desktop runtime updates.** Tauri 2.11.6 and the dialog, file, updater and
+  single-instance plugins move to their latest patch and minor releases.
+
 ### Fixed
 
 - **Closing a tab frees its images.** A closed tab used to keep its
