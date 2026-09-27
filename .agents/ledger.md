@@ -489,3 +489,11 @@ no status, no attempts, no delta.
 - attempts: 1/3
 - delta: parity page + pdf.js raster path deleted; pdfjs-dist removed from dependencies (package-lock -278 lines); golden-diff requires pdftoppm (ci.yml installs poppler-utils; a missing binary is the script's own "install poppler" error, no probe spawn); strokecap page kept; pnpm-lock.yaml still lists pdfjs-dist (left to the pnpm-lock hygiene work)
 - fixed-by: chore/65-retire-dead
+
+## 2026-09-27 issue-queue-339
+- finding: [correctness/high] #339 — neutral PDF vectors converted to four-colour black
+- status: done
+- attempts: 1/3
+- delta: neutral art fills/strokes use DeviceGray; coloured vectors and raster assets retain their existing colour handling
+- evidence: 1177 tests pass with NODE_OPTIONS=--no-experimental-webstorage (Node 26 otherwise shadows happy-dom localStorage); TypeScript, zero-warning lint and release gate pass; Ghostscript 10.08 preserves DeviceGray black and converts gold to coloured CMYK; both 600-DPI art golden diffs have zero changed pixels
+- release: binary-impacting; queued under Unreleased, no release published

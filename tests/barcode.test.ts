@@ -18,7 +18,7 @@ import { BARCODE as B, COLORS, FONT_ASC, FONT_DESC, PAGE, PX, parseHexFill } fro
 
 const UPC = "850051366224";
 
-type Color = { red: number; green: number; blue: number };
+type Color = { red?: number; green?: number; blue?: number; gray?: number };
 type Rect = {
   x: number; y: number; width: number; height: number; color: Color;
   // Set on the art pass's bar halos AND the mask's stroke footprint: both are
@@ -45,7 +45,7 @@ function draw(cfg: LabelConfig, mode: "art" | "mask") {
 }
 
 const sameColor = (a: Color, b: { r: number; g: number; b: number }) =>
-  a.red === b.r && a.green === b.g && a.blue === b.b;
+  (a.gray ?? a.red) === b.r && (a.gray ?? a.green) === b.g && (a.gray ?? a.blue) === b.b;
 
 /** Split an art pass into its stroke-colored halo shapes and its fill ones. */
 function split(cfg: LabelConfig) {
@@ -61,7 +61,7 @@ function split(cfg: LabelConfig) {
 
 function drawnBlackRects(): Rect[] {
   // Drop the white contrast underlays; bars are near-black.
-  return draw(defaultConfig(), "art").rects.filter((r) => r.color.red < 0.5);
+  return draw(defaultConfig(), "art").rects.filter((r) => (r.color.gray ?? r.color.red!) < 0.5);
 }
 
 /** A config as saved before the barcode carried any style of its own. */

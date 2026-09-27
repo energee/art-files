@@ -143,7 +143,7 @@ describe("the shipped keyline colour", () => {
 
   it("draws the volume's stroke in that black on the art plate", async () => {
     const text = await contentStreamText(await buildArtPdf(await configPlan(defaultConfig()), assets));
-    expect(text).toContain("0 0 0 rg");
+    expect(text).toContain("0 g");
     const bare = defaultConfig();
     bare.volume.stroke = "none";
     const plain = await contentStreamText(await buildArtPdf(await configPlan(bare), assets));

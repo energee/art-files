@@ -16,6 +16,7 @@ import {
   PDFFont,
   PDFPage,
   degrees,
+  grayscale,
   popGraphicsState,
   pushGraphicsState,
   rgb,
@@ -73,7 +74,10 @@ const PDF_EPOCH = new Date("2000-01-01T00:00:00Z");
 const toRgb = (c: { r: number; g: number; b: number }) => rgb(c.r, c.g, c.b);
 
 function fillColor(fill: Fill) {
-  return toRgb(L.parseHexFill(fill));
+  const c = L.parseHexFill(fill);
+  // DeviceGray keeps neutral type and vectors on the K plate during CMYK
+  // conversion; DeviceRGB black otherwise becomes four-colour rich black.
+  return c.r === c.g && c.g === c.b ? grayscale(c.r) : toRgb(c);
 }
 
 /** Mask-mode paint for an element: knockout (white) or white-ink (blue). */

@@ -5,6 +5,9 @@
 // identical input builds byte-identical output and a sha256 IS byte
 // identity.
 //
+// Art PDFs re-baselined 2026-09-27 (#339): neutral vectors use DeviceGray.
+// Both 600-DPI RGB raster diffs have zero changed pixels; mask/PSD unchanged.
+//
 // RE-BASELINED 2026-09-04 for the master-as-layers switch (spec: Goldens):
 // the backends now draw a display list planned by planLayers over
 // model/lolevLayers' data instead of a LabelConfig through layout.ts. The
@@ -66,7 +69,7 @@ const digests = (r: Awaited<ReturnType<typeof shipped>>) => ({
 describe("collab byte-identity goldens — Collab variant OFF, both slots loaded", () => {
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped([]))).toEqual({
-      art: "80217f6667bd2fc46774441e69968fca664c67b5d7938a7fad30fe3fc7d65c29", artLen: 57916,
+      art: "d23ecbb45e6f6085edbc5348504686fe902b7a2f5f8eeaf401852e6c20966f69", artLen: 57891,
       mask: "663472fc6d93ba8d9ed76f3834543c6520bf9a8d4378656abd071afb81de7e4d", maskLen: 57090,
       psd: "c353feca6f59b3fd63d82c0d6606383dcab74c2c93f574a7a71015fe0b694c24", psdLen: 1155418,
     });
@@ -76,7 +79,7 @@ describe("collab byte-identity goldens — Collab variant OFF, both slots loaded
 describe("collab byte-identity goldens — Collab variant ON, both slots loaded", () => {
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped(["collab"]))).toEqual({
-      art: "9cfe5396f8ee63918d539e943fce1b0f3efdd75fc71fefcd785a10f7a4130984", artLen: 59799,
+      art: "69012ea71288f4bf6184b672f2a48035f680af1c084b2a33610bd277f136a511", artLen: 59778,
       mask: "bc6b233b530e7b04e5b45fbc984d89edb698ab683816741dd7f1196685a57a96", maskLen: 58946,
       psd: "c57033dfb0be5c6d6423df465af4034b67d1dd386f972b5553cc9f7c2f581f11", psdLen: 1165438,
     });

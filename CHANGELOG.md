@@ -8,6 +8,10 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 
+- **Black text and vector artwork stay on the black plate.** PDF exports
+  preserve neutral vector inks through CMYK conversion without turning
+  colored artwork black. Raster images still use the printer’s color profile.
+
 - **A pasted tab prints the way the preview shows it.** Text pasted from a
   spreadsheet (or any tab or other invisible control character, whether
   pasted, in a saved label or set from the command line) used to print as

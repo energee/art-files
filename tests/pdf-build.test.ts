@@ -99,8 +99,8 @@ describe("the rotated column's stroke pass, on the live draw path", () => {
   // fill-color-setting "r g b rg" operator (NOT "RG", the separate stroke-
   // paint operator) in emission order.
   const rgOps = (stream: string) =>
-    [...stream.matchAll(/(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) rg\b/g)]
-      .map((m) => [Number(m[1]), Number(m[2]), Number(m[3])] as const);
+    [...stream.matchAll(/(-?[\d.]+)(?: (-?[\d.]+) (-?[\d.]+) rg| g)\b/g)]
+      .map((m) => [Number(m[1]), Number(m[2] ?? m[1]), Number(m[3] ?? m[1])] as const);
   const only = async (style: object) => (await lolevPlan({
     overrides: { storeCold: { lines: [{ text: "INK", ...style }], style }, mask: { asset: "msk" } },
     custom: { msk: { aspect: 1 } },
@@ -257,4 +257,18 @@ describe("pdfMeasureFace — plans with the widths drawText draws (#86)", () => 
     // Poppins has no kern table: its drawn width equals the kerned one.
     expect(m("AVATAR", 1000, "regular", "poppins")).toBeCloseTo(kerned(assets.fonts.regular, "AVATAR"));
   });
+});
+
+// #339: the CMYK converter maps DeviceGray to K without recolouring artwork.
+it("uses DeviceGray for neutral vector ink and retains RGB for coloured ink", async () => {
+  const items = await lolevPlan({ overrides: {
+    name: { style: { fill: "#000000", stroke: "#333333" } },
+    qr: { style: { fill: "#ff0000", stroke: "#000000" } },
+  } });
+  const stream = await contentStreamText(await buildArtPdf(items, assets));
+  expect(stream).toMatch(/^0 g$/m);
+  expect(stream).toMatch(/^0 G$/m);
+  expect(stream).toMatch(/^0.2 g$/m);
+  expect(stream).toMatch(/^1 0 0 rg$/m);
+  expect(stream).not.toMatch(/^0 0 0 [rR][gG]$/m);
 });
