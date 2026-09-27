@@ -343,6 +343,8 @@ async function embedFaces(doc: PDFDocument, pack: Assets["fonts"], subset = fals
   };
 }
 
+const VARIATION_SELECTOR = /^[\uFE00-\uFE0F\u{E0100}-\u{E01EF}]$/u;
+
 /** The plan measure for a PDF/PSD export: each face's width from the pdf-lib
  *  font drawText draws it with. drawText places glyphs by their raw advances
  *  and emits no kerning, so a kerned measure (canvas measureText's default)
@@ -367,7 +369,10 @@ export async function pdfMeasureFace(
     if (!selected) throw new Error(`Missing measure font family: ${family}`);
     const font = selected[face];
     const supported = coverage.get(font)!;
-    const missing = [...new Set([...text].filter((ch) => !supported.has(ch.codePointAt(0)!)))];
+    // Variation selectors (the emoji picker's ™️) are folded into the base
+    // glyph by fontkit, so they are never missing.
+    const missing = [...new Set([...text].filter((ch) =>
+      !VARIATION_SELECTOR.test(ch) && !supported.has(ch.codePointAt(0)!)))];
     if (missing.length) throw new Error(`Cannot print ${missing.map((ch) => `“${ch}” (U+${ch.codePointAt(0)!.toString(16).toUpperCase()})`).join(", ")} in ${font.name}. Replace these characters or choose a font that supports them.`);
     return font.widthOfTextAtSize(text, size);
   };

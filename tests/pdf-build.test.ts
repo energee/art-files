@@ -280,3 +280,9 @@ it("rejects unsupported print glyphs in the actual family and face (#340)", asyn
     expect(() => m("Ale → 🍺 啤酒", 10, face)).toThrow(/Cannot print .*→.*🍺.*啤.*酒.*Poppins/);
   }
 });
+
+it("accepts variation selectors the emoji picker appends (™️ ©️ ®️)", async () => {
+  const m = await pdfMeasureFace({ poppins: assets.fonts }, "poppins");
+  // U+FE0F folds into the base glyph, so it prints exactly like a plain ™.
+  expect(m("Blue Agate™️ ©️ ®︎", 10, "bold")).toBe(m("Blue Agate™ © ®", 10, "bold"));
+});

@@ -82,7 +82,8 @@ export async function openThrough(options: FileOptions): Promise<FileTarget | nu
 }
 
 /** Choose once, build bytes with the chosen name, and write once. Cancellation
- *  is null; write failures always propagate instead of becoming downloads. */
+ *  is null; a browser picker that fails to open downloads instead, but write
+ *  failures always propagate rather than becoming downloads. */
 export async function saveThrough(
   content: Uint8Array | ((name: string) => Uint8Array),
   options: FileOptions & { name: string; type: string; target?: FileTarget | null },
@@ -99,10 +100,12 @@ export async function saveThrough(
     } else {
       const pick = savePicker();
       const existing = options.target && "handle" in options.target ? options.target.handle : undefined;
-      if (existing || pick) {
-        const handle = existing ?? await pick!({ suggestedName: name, types: options.types });
-        target = { handle }; name = handle.name;
-      }
+      // A picker that refuses for any reason but cancel (e.g. SecurityError
+      // once a long export build outlives Chrome's user-activation window)
+      // falls through to a download, as the old export path did.
+      const handle = existing ?? await pick?.({ suggestedName: name, types: options.types })
+        .catch((error: unknown) => { if (isAbort(error)) throw error; });
+      if (handle) { target = { handle }; name = handle.name; }
     }
     const bytes = typeof content === "function" ? content(name) : content;
     if (target && "path" in target) await saveNativeFile(bytes, { ...options, defaultPath: name, path: target.path });

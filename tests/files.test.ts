@@ -1,5 +1,5 @@
 // files.test.ts — Tauri native save/open dialogs and path reuse.
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const save = vi.fn();
 const open = vi.fn();
@@ -8,7 +8,7 @@ const readFile = vi.fn();
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save, open }));
 vi.mock("@tauri-apps/plugin-fs", () => ({ writeFile, readFile }));
 
-import { openNativeFile, saveNativeFile } from "@/files";
+import { openNativeFile, saveNativeFile, saveThrough } from "@/files";
 
 describe("native file saving", () => {
   beforeEach(() => {
@@ -90,5 +90,32 @@ describe("native file opening", () => {
     await expect(openNativeFile({
       filter: { name: "Label master", extensions: ["master"] },
     })).resolves.toBeNull();
+  });
+});
+
+describe("browser saveThrough", () => {
+  const options = {
+    name: "label.pdf", type: "application/pdf",
+    filter: { name: "PDF file", extensions: ["pdf"] },
+    types: [{ description: "PDF file", accept: { "application/pdf": [".pdf"] } }],
+  };
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  // A long export build outlives Chrome's user-activation window, so the
+  // picker throws SecurityError; the old saveVia downloaded instead.
+  it("downloads when the picker refuses with a non-abort error", async () => {
+    vi.stubGlobal("window", { showSaveFilePicker: vi.fn().mockRejectedValue(
+      new DOMException("Must be handling a user gesture", "SecurityError")) });
+    const download = vi.fn();
+    const bytes = new Uint8Array([1]);
+    await expect(saveThrough(bytes, options, download)).resolves.toEqual({ name: "label.pdf", bytes, target: undefined });
+    expect(download).toHaveBeenCalledWith(bytes, "label.pdf", "application/pdf");
+  });
+
+  it("treats a dismissed picker as cancelled, with no download", async () => {
+    vi.stubGlobal("window", { showSaveFilePicker: vi.fn().mockRejectedValue(new DOMException("cancelled", "AbortError")) });
+    const download = vi.fn();
+    await expect(saveThrough(new Uint8Array([1]), options, download)).resolves.toBeNull();
+    expect(download).not.toHaveBeenCalled();
   });
 });
