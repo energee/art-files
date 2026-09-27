@@ -51,7 +51,7 @@ const without = <T,>(o: Record<string, T>, key: string): Record<string, T> =>
 
 // --- Ids and defaults -------------------------------------------------------
 
-export function mintLayerId(kind: LayerKind, taken: Set<string>): string {
+export function mintLayerId(kind: string, taken: Set<string>): string {
   for (;;) {
     const hex = Math.floor(Math.random() * 0x1000000).toString(16).padStart(6, "0");
     const id = `${kind}-${hex}`;
@@ -250,6 +250,10 @@ function blockShifted<T>(list: readonly T[], ids: ReadonlySet<string>, idOf: (x:
  *  layer only reorders among its peers. The target index is clamped to the
  *  ends; a move that lands where it started returns `master` itself. */
 export function moveLayers(master: Master, ids: readonly string[], id: string, delta: number): Master {
+  // ponytail: a label-only legacy layer (#264) has no draw-order slot of its
+  // own (resolveLayers appends it), so it doesn't reorder; add a label-side
+  // order if anyone needs to move one.
+  if (!master.layers.some((l) => l.id === id) && !master.variants.some((v) => id in v.layers)) return master;
   const block = new Set(ids);
   const where = whereLayerLives(master, id);
   if (where === "master") {
@@ -636,10 +640,10 @@ export function addVariant(master: Master, name?: string): { master: Master; id:
     while (names.has(`Variant ${n}`)) n++;
     name = `Variant ${n}`;
   }
-  const stem = slugify(name) || "variant";
-  const ids = new Set(master.variants.map((v) => v.id));
-  let id = stem;
-  for (let n = 2; ids.has(id); n++) id = `${stem}-${n}`;
+  // A random suffix, like mintLayerId: the master forgets a deleted variant,
+  // but labels on disk may still list its id in enabledVariants, and a reused
+  // id would silently switch the new variant on for them.
+  const id = mintLayerId(slugify(name) || "variant", new Set(master.variants.map((v) => v.id)));
   return { id, master: { ...master, variants: [...master.variants, { id, name, layers: {} }] } };
 }
 

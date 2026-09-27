@@ -608,3 +608,31 @@ it("cancelling in-place text after a mid-session save leaves the tab dirty", asy
     vi.unstubAllGlobals();
   }
 }, 60_000);
+
+// Undoing an add leaves the added id in the selection. Delete on a still-
+// present selected row must drop that stale id, not throw "Unknown layer"
+// and delete nothing.
+it("Delete with a stale id in a multi-row selection removes the rows that exist", async () => {
+  const { container, unmount } = await mountEditor();
+  try {
+    await vi.waitFor(() => expect(perf.preview).not.toBeNull());
+    const trigger = container.querySelector('[aria-label="Add layer"]')!;
+    await act(async () => {
+      for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"])
+        trigger.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
+      (trigger as HTMLElement).click();
+      await Promise.resolve();
+    });
+    const text = Array.from(document.querySelectorAll('[role="menuitem"]'))
+      .find((el) => el.textContent?.trim() === "Text") as HTMLElement;
+    await act(async () => { text.click(); await Promise.resolve(); });
+    const added = perf.preview!.selected[0];
+    const nameRow = () => container.querySelector('[data-layer-id="name"] [data-slot="sidebar-menu-button"]') as HTMLButtonElement | null;
+    await act(async () => nameRow()!.dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true })));
+    expect(perf.preview!.selected).toEqual(expect.arrayContaining([added, "name"]));
+    await pressUndo();
+    expect(container.querySelector(`[data-layer-id="${added}"]`)).toBeNull();
+    await act(async () => nameRow()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true })));
+    expect(nameRow()).toBeNull();
+  } finally { await unmount(); }
+}, 60_000);

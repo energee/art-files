@@ -474,7 +474,14 @@ it("CLI names unsupported WebP assets instead of sending them to the PNG decoder
   const io = memIo();
   io.files.set("/texture.webp", new Uint8Array([1, 2, 3]));
   expect(await io.run(["--out", "/out", "--format", "pdf", "--asset", "background=/texture.webp"])).toBe(1);
-  expect(io.stderr.join("")).toContain("texture.webp: WebP is not supported");
+  expect(io.stderr.join("")).toContain("texture.webp: WEBP is not supported");
+});
+// Every type the CLI can't embed is named as itself, not only WebP.
+it("CLI names any unsupported image type instead of sending it to the PNG decoder", async () => {
+  const io = memIo();
+  io.files.set("/texture.gif", new Uint8Array([1, 2, 3]));
+  expect(await io.run(["--out", "/out", "--format", "pdf", "--asset", "background=/texture.gif"])).toBe(1);
+  expect(io.stderr.join("")).toContain("texture.gif: GIF is not supported by the CLI");
 });
 it("CLI prints a label's own legacy custom layer instead of skipping it as dormant", async () => {
   const io = memIo();

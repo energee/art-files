@@ -217,6 +217,13 @@ describe("moveLayers", () => {
   });
 });
 
+// A label-only legacy layer (#264) lives in the label's overrides, not the
+// master: reordering it is a no-op on the master, never an "Unknown layer".
+it("moveLayers leaves the master alone for a layer it does not define", () => {
+  const m = lolevMaster();
+  expect(moveLayers(m, ["custom-abc"], "custom-abc", 1)).toBe(m);
+});
+
 describe("moveLayers (single layer)", () => {
   it("moves several steps at once and clamps at the ends", () => {
     const m = lolevMaster();
@@ -295,11 +302,19 @@ describe("variants", () => {
     expect(l.enabledVariants).toEqual(["collab", "seasonal"]);
     expect(toggleVariant(l, "collab").enabledVariants).toEqual(["seasonal"]);
   });
-  it("addVariant slugs the name and dedupes the id", () => {
+  it("addVariant slugs the name into a fresh id", () => {
     const a = addVariant(lolevMaster(), "Collab");
-    expect(a.id).toBe("collab-2");
-    expect(a.master.variants.at(-1)).toEqual({ id: "collab-2", name: "Collab", layers: {} });
-    expect(addVariant(lolevMaster(), "Fall Seasonal!").id).toBe("fall-seasonal");
+    expect(a.id).toMatch(/^collab-[0-9a-f]{6}$/);
+    expect(a.master.variants.at(-1)).toEqual({ id: a.id, name: "Collab", layers: {} });
+    expect(addVariant(lolevMaster(), "Fall Seasonal!").id).toMatch(/^fall-seasonal-[0-9a-f]{6}$/);
+  });
+  // A label on disk may still list a deleted variant's id; a new variant must
+  // not take that id, or the stale label silently switches it on.
+  it("addVariant never reuses a deleted variant's id", () => {
+    const gone = removeVariant(lolevMaster(), "collab");
+    expect(addVariant(gone, "Collab").id).not.toBe("collab");
+    const first = addVariant(lolevMaster());
+    expect(addVariant(removeVariant(first.master, first.id)).id).not.toBe(first.id);
   });
   it("renameVariant and removeVariant", () => {
     const m = renameVariant(lolevMaster(), "collab", "Collaboration");

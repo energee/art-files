@@ -42,15 +42,18 @@ export function rebindLabel(
   label: LabelFile, _from: Master | undefined, to: Master,
 ): { label: LabelFile; dropped: { values: string[]; variants: string[] } } {
   // Live values win over benched ones with the same id (they are what the
-  // operator has been looking at); dormant variants return to their old slots.
+  // operator has been looking at); dormant variants return beneath the variants that used to win over them.
   const candidateValues: Record<string, LayerValue> = { ...label.dormant?.values, ...label.values };
   const order = label.dormant?.variantOrder;
   const candidateVariants = order ? [...label.enabledVariants]
     : dedupe([...(label.dormant?.variants ?? []), ...label.enabledVariants]);
+  // Each benched variant goes back just beneath the first variant that used
+  // to win over it (came after it in `order`) and is still enabled — relative
+  // to its old neighbours, since the live list may have changed while away.
   if (order) for (const id of dedupe([...order, ...(label.dormant?.variants ?? [])])) {
     if (!label.dormant?.variants.includes(id) || candidateVariants.includes(id)) continue;
-    const at = order.indexOf(id);
-    candidateVariants.splice(at < 0 ? candidateVariants.length : Math.min(at, candidateVariants.length), 0, id);
+    const above = order.slice(order.indexOf(id) + 1).map((x) => candidateVariants.indexOf(x)).filter((i) => i >= 0);
+    candidateVariants.splice(above.length && order.includes(id) ? Math.min(...above) : candidateVariants.length, 0, id);
   }
 
   const kinds = layerKinds(to);

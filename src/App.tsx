@@ -783,7 +783,9 @@ export const DocumentEditor = memo(function DocumentEditor({
     setSelection({ ids: [id], anchor: id });
   }
   function onRemoveLayer(id: string) {
-    const ids = gestureIds(selected, id);
+    // The selection can hold an id that no longer exists (an undone add, a
+    // deleted variant's layer); removing it would throw and delete nothing.
+    const ids = gestureIds(selected, id).filter((k) => rows.some((r) => r.layer.id === k));
     const boxes = rowBoxes();
     if (edit((d) => ids.reduce((next, key) => removeLayerIn(next, key, boxes), d)))
       setSelection((s) => ({ ids: s.ids.filter((x) => !ids.includes(x)),

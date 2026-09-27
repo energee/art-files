@@ -6,7 +6,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PDFDocument } from "pdf-lib";
 import { PNG } from "pngjs";
-import { rasterKind, tintRgba } from "../src/collab";
+import { EMBEDDABLE_RASTER, rasterKind, tintRgba } from "../src/collab";
 import { defaultConfig, parseConfigFile } from "../src/defaults";
 import { parseDescription } from "../src/description";
 import { FONT_FAMILIES, type FontFamilyId } from "../src/fontCatalog";
@@ -419,8 +419,13 @@ function fontPack(assetRoot: string, id: FontFamilyId): Assets["fonts"] {
 }
 
 function asImage(name: string, bytes: Uint8Array): CollabImage {
-  if (/\.webp$/i.test(name)) throw new Error(`${name}: WebP is not supported by the CLI — convert to PNG/JPEG.`);
   if (/\.svg$/i.test(name)) return { kind: "svg", svg: new TextDecoder().decode(bytes) };
+  // The CLI has no browser to re-encode other types (the app turns WebP etc.
+  // into PNG on load), and rasterKind would send them to the PNG decoder. An
+  // extensionless name still reads as PNG, as it does in the app.
+  const ext = /\.([^./\\]+)$/.exec(name)?.[1];
+  if (ext && !EMBEDDABLE_RASTER.test(name))
+    throw new Error(`${name}: ${ext.toUpperCase()} is not supported by the CLI — convert to PNG/JPEG.`);
   return { kind: rasterKind(name), bytes };
 }
 

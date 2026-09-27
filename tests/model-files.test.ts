@@ -155,15 +155,34 @@ it("ignores Finder metadata and rejects oversized entries before inflation (#288
     "texture/rock.png": png(3),
   });
   expect(unpackMaster(bytes).assets.texture).toEqual({ name: "rock.png", bytes: png(3) });
-  // Forge the central directory's advertised size, without allocating a bomb.
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  for (let i = 0; i <= bytes.length - 46; i++) {
-    if (view.getUint32(i, true) === 0x02014b50) {
-      view.setUint32(i + 24, 129 * 1024 * 1024, true);
-      break;
-    }
-  }
+  // Forge the advertised size, without allocating a bomb.
+  forgeSizes(bytes, 129 * 1024 * 1024);
   expect(() => unpackMaster(bytes)).toThrow(/Archive is too large/);
+});
+
+/** Rewrites the uncompressed size of the FIRST entry in both the local header
+ *  and the central directory, as a hostile archive would. */
+function forgeSizes(bytes: Uint8Array, size: number) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  view.setUint32(22, size, true); // the first local header sits at offset 0
+  for (let i = 0; i <= bytes.length - 46; i++) {
+    if (view.getUint32(i, true) === 0x02014b50) { view.setUint32(i + 24, size, true); return; }
+  }
+}
+
+// The declared size is only a claim: an entry that inflates past it is
+// refused, not silently truncated after inflating all of it (#288).
+it("rejects an entry that inflates past its declared size", () => {
+  const bytes = zipSync({ "texture/rock.png": [new Uint8Array(200_000), { level: 9 }] });
+  forgeSizes(bytes, 10);
+  expect(() => unpackLabel(bytes)).toThrow(/Archive is too large/);
+});
+
+// packAssets enforces the open-time limits, so Save can't write a file the
+// app then refuses to reopen.
+it("refuses to pack an asset over the per-file limit", () => {
+  const big = { name: "huge.png", bytes: new Uint8Array(128 * 1024 * 1024 + 1) };
+  expect(() => packMaster(lolevV3(), { texture: big })).toThrow(/Archive is too large: "texture\/huge.png"/);
 });
 
 it("round-trips a legitimate dot-prefixed asset name", () => {

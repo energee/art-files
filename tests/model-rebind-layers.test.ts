@@ -127,3 +127,16 @@ it("restores variant precedence after a saved partial rebind (#269)", () => {
   const saved = parseLabel(JSON.parse(serializeLabel(away))) as LabelFile;
   expect(rebindLabel(saved, b, a).label.enabledVariants).toEqual(["v2", "v1"]);
 });
+
+// A benched variant goes back relative to its old neighbours, not at its old
+// absolute index: if the live list changed while away, the variant that used
+// to win over it must still win.
+it("restores a benched variant beneath the variants that used to win over it", () => {
+  const a = lolevMaster();
+  a.variants = ["va", "vx", "vb", "vc"].map((id) => ({ id, name: id, layers: {} }));
+  const b = { ...a, id: "other", variants: a.variants.filter((v) => v.id !== "vx") };
+  const away = rebindLabel({ formatVersion: 3, masterId: a.id, enabledVariants: ["va", "vx", "vb"], values: {} }, a, b).label;
+  // While away: va switched off, vc switched on.
+  const edited = { ...away, enabledVariants: ["vb", "vc"] };
+  expect(rebindLabel(edited, b, a).label.enabledVariants).toEqual(["vx", "vb", "vc"]);
+});
