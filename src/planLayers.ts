@@ -368,6 +368,17 @@ function prepareBarcode(l: BarcodeLayer, m: MeasureFace): Prepared | null {
 
 // --- qr -------------------------------------------------------------------
 
+/** The QR backing square's path array, memoized for the last side so every
+ *  replan hands drawPlate the same array (its Path2D cache keys on it).
+ *  ponytail: one slot, like qrShapes; two stroked QRs of different sizes
+ *  just re-parse a four-point square. */
+let backingMemo: { side: number; paths: readonly string[] } | null = null;
+function qrBacking(side: number): readonly string[] {
+  if (backingMemo?.side !== side)
+    backingMemo = { side, paths: [`M0 0L${side} 0L${side} ${side}L0 ${side}Z`] };
+  return backingMemo.paths;
+}
+
 /** Null for an empty value (no modules), like an invalid barcode. */
 function prepareQr(l: QrLayer): Prepared | null {
   const id = l.id;
@@ -379,14 +390,19 @@ function prepareQr(l: QrLayer): Prepared | null {
     emit(box) {
       const at = { x: box.x, y: box.y };
       const out: PlacedLayer[] = [];
-      // The stroke is its own grown path under the modules, so both items
-      // are unstroked (the template QR's rule).
-      if (style.stroke && style.stroke !== "none")
+      // A stroked QR sits on a solid square of its stroke colour: the modules
+      // plus the four-module quiet zone QR requires, so the art never shows
+      // through light modules or the quiet zone (#283; the barcode's #284
+      // backing). Like that backing it reaches past the layer's box, so what
+      // the user snaps and anchors is still the code itself.
+      if (style.stroke && style.stroke !== "none") {
+        const q = (4 * l.size) / shapes.count;
         out.push({
-          kind: "paths", id, ...at, stroke: null,
-          paths: qrPaths(shapes, l.size, (style.strokeWidth ?? L.DEFAULT_STROKE_PX) * L.PX),
+          kind: "paths", id, x: box.x - q, y: box.y - q, stroke: null,
+          paths: qrBacking(l.size + 2 * q),
           fill: style.stroke, layer: strokeLayerOf(style),
         });
+      }
       out.push({ kind: "paths", id, ...at, stroke: null, paths: qrPaths(shapes, l.size), fill: style.fill, layer: style.layer });
       return out;
     },

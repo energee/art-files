@@ -39,7 +39,6 @@ import { FONT_FAMILIES, type FontFamilyId } from "../fontCatalog";
 import * as L from "../layout";
 import type { Face, PlacedBarcode, PlacedPaths, PlacedText } from "../plan";
 import type { CollabImage } from "../pdf/build";
-import { strokeSpec } from "../plan";
 import type { PlacedLayer, PlacedPage } from "../planLayers";
 import { facesOf } from "../planLayers";
 import { PAGE_ART_ID, type Layer as AppLayer, type TextLayer } from "../model/layers";
@@ -659,15 +658,20 @@ function buildLayers(
       // Rebuilt from the layer: the plan's flattened path uses arcs
       // svgToPaths cannot read, and Photoshop wants node-editable circles.
       // The fill item (the last paths item) carries the placed origin.
-      const fill = its.filter((r): r is PlacedPaths => r.kind === "paths").at(-1);
+      const items = its.filter((r): r is PlacedPaths => r.kind === "paths");
+      const fill = items.at(-1);
       if (fill) {
+        // A stroked QR's quiet-zone backing (#283) is a plain square path,
+        // so it goes through svgToPaths like any other shape; the modules
+        // sit on it unstroked, as in the PDF.
+        const backing = items.length > 1 ? items[0] : undefined;
+        if (backing) children.push(shapeLayer(
+          `${name} backing`, backing.paths.flatMap((d) => svgToPaths(d, backing.x, backing.y)),
+          paint(mode, backing.fill, backing.layer),
+        ));
         const shapes = qrShapes(layer.value, { style: layer.qrStyle, ecLevel: layer.ecLevel ?? "L", rotation: layer.rotation });
         const paths = qrBeziers(shapes, layer.size).map((p) => translatePath(p, px(fill.x), px(fill.y)));
-        children.push(shapeLayer(
-          name, paths, paint(mode, layer.style.fill, layer.style.layer),
-          strokePaint(mode, layer.style.stroke, layer.style.strokeLayer),
-          strokeSpec(layer.style)?.w ?? 0,
-        ));
+        children.push(shapeLayer(name, paths, paint(mode, layer.style.fill, layer.style.layer)));
       }
     } else {
       for (const r of its) {

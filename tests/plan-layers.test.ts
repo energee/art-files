@@ -321,11 +321,12 @@ describe("planLayers qr", () => {
     value: "https://lolev.beer/beer/x", qrStyle: "dots",
     style: { fill: "#F3CD80", layer: "metallic", stroke: "#000000", strokeWidth: 15, strokeLayer: "white" },
   };
-  it("emits a stroke underlay then the fill, both at the box origin", () => {
+  it("emits a stroke-colour backing over a four-module quiet zone, then the fill at the box origin (#283)", () => {
     const items = planLayers([qr], m, assets) as PlacedPaths[];
     const shapes = qrShapes(qr.value, { style: "dots", ecLevel: "L" });
+    const q = (4 * 59) / shapes.count, side = 59 + 2 * q;
     expect(items).toEqual([
-      { kind: "paths", id: "qr", x: 10, y: 20, stroke: null, paths: [qrPath(shapes, 59, 15 * L.PX)], fill: "#000000", layer: "white" },
+      { kind: "paths", id: "qr", x: 10 - q, y: 20 - q, stroke: null, paths: [`M0 0L${side} 0L${side} ${side}L0 ${side}Z`], fill: "#000000", layer: "white" },
       { kind: "paths", id: "qr", x: 10, y: 20, stroke: null, paths: [qrPath(shapes, 59)], fill: "#F3CD80", layer: "metallic" },
     ]);
     expect(planLayers([{ ...qr, style: { fill: "#F3CD80", layer: "metallic" } }], m, assets)).toHaveLength(1);

@@ -84,9 +84,9 @@ const digests = (r: Awaited<ReturnType<typeof shipped>>) => ({
 describe("collab byte-identity goldens — Collab variant OFF, both slots loaded", () => {
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped([]))).toEqual({
-      art: "a5b6252d5fae630e5e5b3549204df0c35f9e9c4899cb3d94f1793564b1f75779", artLen: 57941,
-      mask: "c8b0e2c7d6322a736b30f13b7909140f11dcf04470fb64c36689e3c1c45569e0", maskLen: 57146,
-      psd: "4b8d7ecf8fa2d3b56fe2ee93e22157a0c4b3ff9877bdbcf85afa17978bb11b65", psdLen: 1156650,
+      art: "c0d31f935cb95f77ea803b7ae57f90e3cda7ccf5bb05ed38685bfd06feb5c278", artLen: 44764,
+      mask: "334b108cd33776ea632f35bb075c44fe8f4140de4d5b7f35d13709a7c4a83670", maskLen: 44055,
+      psd: "9c65dc161c007bb67b816c4faeed9865acb3d9a233f466d1d7b98661e51a1734", psdLen: 1156694,
     });
   });
 });
@@ -94,9 +94,9 @@ describe("collab byte-identity goldens — Collab variant OFF, both slots loaded
 describe("collab byte-identity goldens — Collab variant ON, both slots loaded", () => {
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped(["collab"]))).toEqual({
-      art: "9005cb386689962732f41bc6690b0a77fab07bd546844bf889399a471ecc747e", artLen: 59827,
-      mask: "d687af782a7f3149c028fb189026400b537148c055135c2354c0ac2247355a4d", maskLen: 58996,
-      psd: "ec4a51ddfc8b056001241d70087ae5d68254793c1d1f3a0948bdf74e956b79f9", psdLen: 1166676,
+      art: "51ce0f961759ac4a24a1383ed7fa0eec2c802c3ff06cfad2c481334ab8e5f6ca", artLen: 46623,
+      mask: "dde872f43225960547eb90bfdce718823db26bcbc2e98ba9baeb25f3be744d66", maskLen: 45873,
+      psd: "e17dba2da6f6d918a025e9181d4eff7c41db7a3a9fd1d0d14688f9c641a51286", psdLen: 1166714,
     });
   });
 });

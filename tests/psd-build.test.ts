@@ -151,10 +151,12 @@ describe("psd build", () => {
     // …white-layer elements print ink (mask blue): the barcode ships white.
     expect(rgb(layer(psd.children as any[], "Barcode").vectorFill.color)).toEqual({ r: 0, g: 156, b: 215 });
     // Every shipped stroke layer is white/non-metallic, hence mask blue.
-    for (const name of ["Volume", "Name", "Logo", "QR", "Barcode"]) {
+    for (const name of ["Volume", "Name", "Logo", "Barcode"]) {
       const stroke = layer(psd.children as any[], name).effects?.stroke?.[0];
       expect([name, stroke?.enabled, stroke?.color]).toEqual([name, true, { r: 0, g: 156, b: 215 }]);
     }
+    // The QR's keyline is its quiet-zone backing (#283): a filled shape.
+    expect(rgb(layer(psd.children as any[], "QR backing").vectorFill.color)).toEqual({ r: 0, g: 156, b: 215 });
   });
 
   it("keeps a metallic stroke independent from a white fill in the mask PSD", async () => {
@@ -167,7 +169,8 @@ describe("psd build", () => {
   });
 
   it("gives every keylined text layer a real stroke effect in black", () => {
-    for (const name of ["Info", "Volume", "Name", "Style", "ABV", "Brand", "Logo", "QR"]) {
+    expect(rgb(layer(doc.children as any[], "QR backing").vectorFill.color)).toEqual({ r: 0, g: 0, b: 0 });
+    for (const name of ["Info", "Volume", "Name", "Style", "ABV", "Brand", "Logo"]) {
       const l = layer(doc.children as any[], name);
       expect([name, !!l]).toEqual([name, true]);
       const stroke = l.effects?.stroke?.[0];
@@ -181,7 +184,7 @@ describe("psd build", () => {
     // are lengths in document pixels, so they follow OUTPUT_DPI like
     // everything else. The barcode's 20px halo likewise halves to 10.
     const expected: Record<string, number> = {
-      Info: 7.5, Volume: 7.5, Name: 7.5, Style: 7.5, ABV: 7.5, Brand: 7.5, Logo: 7.5, QR: 7.5, Barcode: 10,
+      Info: 7.5, Volume: 7.5, Name: 7.5, Style: 7.5, ABV: 7.5, Brand: 7.5, Logo: 7.5, Barcode: 10,
     };
     let psd: ReturnType<typeof readPsd>;
     try {
@@ -252,8 +255,8 @@ describe("added layers", () => {
     const art = await buildPsd(items, assets, "art", { layers });
     const mask = await buildPsd(items, assets, "mask", { layers });
     expect({ art: hash(art), artLen: art.length, mask: hash(mask), maskLen: mask.length }).toEqual({
-      art: "4b8d7ecf8fa2d3b56fe2ee93e22157a0c4b3ff9877bdbcf85afa17978bb11b65", artLen: 1156650,
-      mask: "09244f725711887525867caa2ff15ca710cf50ca1a9a6009196309ba5ff0c25f", maskLen: 1149868,
+      art: "9c65dc161c007bb67b816c4faeed9865acb3d9a233f466d1d7b98661e51a1734", artLen: 1156694,
+      mask: "d80cf70b66caea4b0a1a60fe3a69b2651d73c4147090e37acaf42601d40ff0a7", maskLen: 1149908,
     });
   });
 
