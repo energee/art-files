@@ -52,11 +52,22 @@ function fakeHandle(fileName: string, bytes: Uint8Array) {
   return { handle, writes };
 }
 
-it("a failed open keeps the tab on the previous file and its Save target", async () => {
+it.each([
+  { assets: { texture: { name: "bad.png", bytes: new Uint8Array([1, 2, 3]) } } },
+  { overrides: { name: { lines: "oops" } } },
+  { values: { name: ["oops"] } },
+  { overrides: { name: { kind: "qr" } } },
+  { overrides: { name: null } },
+  // Overrides the resolver tolerates but the UI can't draw (#267 follow-up):
+  // an unknown kind, a whole layer with no id, a required field nulled out.
+  { overrides: { stamp: { kind: "shape", id: "stamp", name: "Stamp" } } },
+  { overrides: { stamp: { kind: "text", name: "Stamp" } } },
+  { overrides: { name: { style: null } } },
+])("a failed open keeps the tab and Save target: %j", async (bad) => {
   const a = fakeHandle("a.label", labelBytes("Alpha"));
-  const b = fakeHandle("b.label", labelBytes("Bravo", {
-    texture: { name: "bad.png", bytes: new Uint8Array([1, 2, 3]) },
-  }));
+  const b = fakeHandle("b.label", packLabel({
+    formatVersion: 3, masterId: "lolev", enabledVariants: [], values: {}, ...bad,
+  } as Parameters<typeof packLabel>[0], ("assets" in bad ? bad.assets : undefined) ?? {}));
   const onMeta = vi.fn();
   const onOpenSettled = vi.fn();
   const saveSlot: { current: (() => Promise<boolean>) | null } = { current: null };

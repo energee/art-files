@@ -35,14 +35,14 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { PDFDocument } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { planLabel } from "./legacy/plan";
-import { type MeasureFace, type Placed, type PlacedText, type PlacedBarcode, type PlacedPaths, type PlacedImage } from "../src/plan";
+import { type MeasureFace, type Placed, type PlacedText, type PlacedBarcode, type PlacedPaths, type PlacedImage } from "./legacy/planShared";
 import { planLayers, type PlacedLayer, type TextFaces } from "../src/planLayers";
 import { lolevMaster } from "../src/model/lolevLayers";
 import type { Layer, QrLayer, TextLayer, TextLine } from "../src/model/layers";
 import { defaultConfig } from "../src/defaults";
 import { qrUrl } from "../src/qr";
-import { GOLD } from "../src/layout";
-import * as L from "../src/layout";
+import { GOLD } from "./legacy/layout";
+import * as L from "./legacy/layout";
 import { assets as fixture } from "./fixtures";
 
 const TOL = 0.25;

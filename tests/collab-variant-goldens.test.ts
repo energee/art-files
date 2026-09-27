@@ -5,6 +5,18 @@
 // identical input builds byte-identical output and a sha256 IS byte
 // identity.
 //
+// All hashes re-baselined 2026-09-27 (#359 review): the barcode backing
+// fills the layer's 8X quiet zone instead of GS1's 9X. Zero changed pixels
+// at 600 DPI on these fixtures; over a dark flood, 5,844 px at the backing's
+// two ends only (see goldens/README.md).
+//
+// All hashes re-baselined 2026-09-27 (#284): barcode backing added.
+// The bare-stock/flood PDF fixtures have zero changed pixels at 600 DPI.
+// PSD backing geometry is tested; Photoshop visual review remains pending.
+//
+// Art PDFs re-baselined 2026-09-27 (#339): neutral vectors use DeviceGray.
+// Both 600-DPI RGB raster diffs have zero changed pixels; mask/PSD unchanged.
+//
 // RE-BASELINED 2026-09-04 for the master-as-layers switch (spec: Goldens):
 // the backends now draw a display list planned by planLayers over
 // model/lolevLayers' data instead of a LabelConfig through layout.ts. The
@@ -72,9 +84,9 @@ const digests = (r: Awaited<ReturnType<typeof shipped>>) => ({
 describe("collab byte-identity goldens — Collab variant OFF, both slots loaded", () => {
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped([]))).toEqual({
-      art: "80217f6667bd2fc46774441e69968fca664c67b5d7938a7fad30fe3fc7d65c29", artLen: 57916,
-      mask: "663472fc6d93ba8d9ed76f3834543c6520bf9a8d4378656abd071afb81de7e4d", maskLen: 57090,
-      psd: "d3c39d261e7145566e4268a876060b2be9685311c86c662455a26f210de0aabc", psdLen: 1155796,
+      art: "a5b6252d5fae630e5e5b3549204df0c35f9e9c4899cb3d94f1793564b1f75779", artLen: 57941,
+      mask: "c8b0e2c7d6322a736b30f13b7909140f11dcf04470fb64c36689e3c1c45569e0", maskLen: 57146,
+      psd: "4b8d7ecf8fa2d3b56fe2ee93e22157a0c4b3ff9877bdbcf85afa17978bb11b65", psdLen: 1156650,
     });
   });
 });
@@ -82,9 +94,9 @@ describe("collab byte-identity goldens — Collab variant OFF, both slots loaded
 describe("collab byte-identity goldens — Collab variant ON, both slots loaded", () => {
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped(["collab"]))).toEqual({
-      art: "9cfe5396f8ee63918d539e943fce1b0f3efdd75fc71fefcd785a10f7a4130984", artLen: 59799,
-      mask: "bc6b233b530e7b04e5b45fbc984d89edb698ab683816741dd7f1196685a57a96", maskLen: 58946,
-      psd: "d6d9f4d9222cc43d26bdc2bc7d0bd7d0bca1a7f573427ed66c5b5dd00eb39974", psdLen: 1165816,
+      art: "9005cb386689962732f41bc6690b0a77fab07bd546844bf889399a471ecc747e", artLen: 59827,
+      mask: "d687af782a7f3149c028fb189026400b537148c055135c2354c0ac2247355a4d", maskLen: 58996,
+      psd: "ec4a51ddfc8b056001241d70087ae5d68254793c1d1f3a0948bdf74e956b79f9", psdLen: 1166676,
     });
   });
 });

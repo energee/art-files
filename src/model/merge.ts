@@ -3,24 +3,15 @@
 // simply merging in enable order (spec: Resolution step 2).
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
 
-const isPlain = (v: unknown): v is Record<string, unknown> =>
+export const isPlain = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
-
-/** Deep-clones plain objects/arrays so a stored patch value is never the same
- *  reference as the caller's — otherwise mutating the merged result would
- *  write through to the patch (e.g. a Variant's overrides). */
-function clone(v: unknown): unknown {
-  if (Array.isArray(v)) return v.map(clone);
-  if (isPlain(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, clone(x)]));
-  return v;
-}
 
 export function deepMerge<T>(base: T, patch: DeepPartial<T>): T {
   if (!isPlain(base) || !isPlain(patch)) return (patch ?? base) as T;
   const out: Record<string, unknown> = { ...base };
   for (const [k, v] of Object.entries(patch)) {
     if (v === undefined) continue;
-    out[k] = isPlain(v) && isPlain(base[k]) ? deepMerge(base[k], v) : clone(v);
+    out[k] = isPlain(v) && isPlain(base[k]) ? deepMerge(base[k], v) : structuredClone(v);
   }
   return out as T;
 }

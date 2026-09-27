@@ -140,10 +140,10 @@ describe("MasterSaveReview", () => {
     expect(p.onConfirm).toHaveBeenCalledWith([]);
   });
 
-  it("has exactly one primary action (docs/plans/template-switch.md, Task 3)", () => {
+  it("marks its single master-writing action with attention (#245)", () => {
     render();
     const primary = Array.from(document.querySelectorAll<HTMLElement>("*"))
-      .filter((el) => (el.getAttribute("class") ?? "").split(" ").includes("bg-primary"));
+      .filter((el) => (el.getAttribute("class") ?? "").split(" ").includes("bg-attention-soft"));
     expect(primary).toHaveLength(1);
     expect(primary[0].textContent?.trim()).toBe("Save Master");
   });

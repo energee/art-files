@@ -2,6 +2,7 @@
 
 You fill a master. Label Lab writes the two PDFs the printer wants: the art,
 and a white-ink plate where **blue = white ink** and **white = knockout**.
+It also exports editable Photoshop files.
 
 **How to use the whole app:** [`docs-site/content/docs`](docs-site/content/docs),
 or run the Fumadocs site:
@@ -30,7 +31,7 @@ changelog, updater keys, GitHub Release) is `.agents/release-steward.md`.
 
 ```bash
 npm run generate -- beer.master values.json ./out
-npm run generate -- beer.master --inspect
+npm run -s generate -- beer.master --inspect
 ```
 
 Full flags, batch JSON, and the legacy texture/mask/config argv:
@@ -47,8 +48,9 @@ tools/to-cmyk.sh LABRADORITE.pdf LABRADORITE-mask.pdf
 
 ## Layout
 
-All geometry lives in `src/layout.ts` (points, top-left origin).
-`src/pdf/build.ts` draws both PDFs from that single source so art and mask stay
+Page, trim and bleed geometry live in `src/layout.ts`. Layer positions and
+anchors live in each master. `src/planLayers.ts` plans one display list that
+the PDF, canvas and PSD backends draw for both plates, keeping art and mask
 registered. Static assets (fonts, the 2025 laurel) are bundled in `src/assets/`.
 
 ## Design docs

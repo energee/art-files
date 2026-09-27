@@ -7,7 +7,7 @@
 // wrappers over it.
 import { describe, expect, it, vi } from "vitest";
 import {
-  adoptMaster, addVariant, checkLabelBindings, clearLabelOverride, overrideBadges, patchLayers, setContentIn, setLabelOverride,
+  adoptMaster, addVariant, removeLayerIn, checkLabelBindings, clearLabelOverride, overrideBadges, patchLayers, setContentIn, setLabelOverride,
   setLayerIn, showVersion, type Doc,
 } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
@@ -250,6 +250,17 @@ describe("overrideBadges", () => {
     expect(b.variantName).toBe("Collab");
   });
 
+  // A label-only legacy layer's override IS its only definition — there is
+  // no master value to reset to, so a badge would delete a required field.
+  it("reports no resettable paths on a label-only legacy layer", () => {
+    const m = lolevMaster();
+    const own = { ...m.layers.find((l) => l.kind === "text")!, id: "legacy", name: "Stamp" };
+    const label = { ...newLabel(m), overrides: { legacy: own } } as LabelFile;
+    const b = overrideBadges(m, label, "legacy");
+    expect([...b.label]).toEqual([]);
+    expect([...b.variant]).toEqual([]);
+  });
+
   it("ignores a variant that is not switched on", () => {
     const m = setLayerIn(lolevMaster(), "collab", "name", { x: 222 });
     const b = overrideBadges(m, newLabel(m), "name");
@@ -270,4 +281,17 @@ describe("adoptMaster", () => {
     const label = newLabel(m);
     expect(adoptMaster(label, m)).toBe(label);
   });
+});
+
+it("inspects, moves, edits and removes label-only legacy layers (#264)", () => {
+  const d = doc();
+  const own = { ...d.master.layers.find((l) => l.kind === "text")!, id: "legacy", name: "Stamp" };
+  d.label.overrides = { legacy: own };
+  expect(() => overrideBadges(d.master, d.label, "legacy")).not.toThrow();
+  const moved = patchLayers(d, [["legacy", { x: 50, placeholder: "Stamp text" }]]);
+  expect(byId<TextLayer>(moved, "legacy")).toMatchObject({ x: 50, placeholder: "Stamp text" });
+  expect(moved.master).toBe(d.master);
+  const removed = removeLayerIn(moved, "legacy");
+  expect(byId(removed, "legacy")).toBeUndefined();
+  expect(removed.master).toBe(d.master);
 });

@@ -12,6 +12,87 @@ that section to the new version (see .agents/release-steward.md).
   resolution (600 ppi by default), so Photoshop, Preview and Finder show it
   at the label's physical size instead of as a 72 ppi image roughly eight
   times too large.
+- **Barcode backgrounds stay clear on textured labels.** A continuous backing
+  covers the bars, digits and quiet zones across preview, PDF and PSD.
+- **Exports report cancellation and partial saves.** Cancelling artwork stops
+  the paired export, and a failed mask save names the artwork already saved.
+  Unsupported font characters report their names before print files are written.
+- **File dialogs follow one save policy.** Native Master Save As writes the chosen
+  name once; cancelled and refused writes retain their existing save identity.
+- **Colours identify master-writing actions.** Save Master, promotions and layer
+  additions use the attention accent; destructive controls use readable text colours.
+- **Windows and Linux offer Help → Check for Updates.** The comparison divider
+  works by keyboard, and the sidebar uses the same collapsible layout at every width.
+
+- **Keyboard editing keeps its place.** Cancelling text restores the prior saved
+  state; formatting preserves authored case; layer deletion and reordering keep
+  focus and announce changes. Guides, swatches and the can preview work by keyboard.
+- **Updates protect unsaved tabs.** Restart waits for saving, Windows checks again
+  before installing, and failed updates remain visible with a retry action.
+- **Inspector controls match their behavior.** Hex colors accept shorthand,
+  scrubbing stays steady when modifiers change, and page art explains its fixed fit.
+  Rejected file drops and master switching now explain what happened.
+- **Paragraph endings keep natural spacing.** Justification expands only wrapped
+  continuation lines, including rotated text, across preview and exports.
+- **Shortcut hints match the platform.** Windows and Linux show Ctrl and Shift,
+  and Save Master As identifies the new file it creates.
+
+- **Saving protects edits made while a file is writing.** Newer edits remain
+  unsaved, and Save Master preserves them. A failed browser write reports an
+  error; cancelling Save As keeps the original save target.
+- **Bad labels and image loads report errors without replacing the open work.**
+  Archives skip unrelated files and Finder metadata, and reject assets above
+  128 MiB or a combined unpacked size above 256 MiB.
+- **Legacy label-only layers can be inspected, moved, edited and removed.**
+  Save Master also lists changed margins and document settings accurately,
+  and distinguishes resetting a variant override from deleting a layer.
+- **Switching masters preserves variant precedence on return.** New variants
+  receive unused names. Each arrow-key press is its own undo step (a held key is
+  one), and barcode resizing keeps module widths free of floating-point noise.
+
+- **Edits during a save and in-place cancels keep their state.** A promotion
+  survives edits made while Save Master writes, and cancelling in-place text after
+  a save marks the tab unsaved. A loaded image no longer hides other messages.
+- **Label-only layers keep their contents.** Their values survive a master
+  switch, the inspector no longer offers to reset their fields, and a label whose
+  layers can't be drawn fails to open instead of closing every tab.
+- **Editor input no longer changes the wrong thing.** Bold across a line break
+  keeps the text, typing a hex colour applies only complete colours, Add layer
+  keeps the new layer selected, and 3D can arrow keys no longer move the layer.
+- **Exports finish in more cases.** A slow browser export downloads when the
+  save picker is refused, and ™️ ©️ ®️ from the emoji picker print.
+- **The command line prints what the app prints.** It includes a label's own
+  legacy layers and accepts overrides valid under the label's enabled variants.
+- **Saving a master while switching masters keeps each in its place.** Opening
+  another master during a Save Master write keeps its save target, and a promoted
+  layer deleted during the write no longer drops the other promotions.
+- **Layer and variant edits no longer fail on stale state.** Deleting with a
+  stale selection removes the rows that exist, reordering a label-only layer no
+  longer errors, restored variants keep their precedence, and a recreated variant
+  never inherits a deleted one's id.
+- **Label files stay openable.** Saving refuses an image over the size limits
+  that opening enforces, and opening checks each image's real unpacked size.
+- **Barcode backgrounds match the barcode box.** The backing fills exactly the
+  box used for selecting and snapping; Code 128 gains a 10-module quiet zone so
+  it never prints past the trim.
+- **Controls behave consistently.** ⌘B works from the inspector, a cancelled
+  touch no longer swallows the next tap, guides can't be added while hidden,
+  Continue runs once, render errors show after a cancelled export, focus stays
+  in place after deleting swatches and layers, and repeated reorders are announced.
+- **Updates retry without downloading twice**, and a failed update check clears
+  when closed.
+- **The command line names unsupported image types** instead of only WebP.
+- **QR error correction shows the actual default, L.**
+
+- **Black text and vector artwork stay on the black plate.** PDF exports
+  preserve neutral vector inks through CMYK conversion without turning
+  colored artwork black. Raster images still use the printer’s color profile.
+
+- **A pasted tab prints the way the preview shows it.** Text pasted from a
+  spreadsheet (or any tab or other invisible control character, whether
+  pasted, in a saved label or set from the command line) used to print as
+  several spaces, shifting a centred line and overlapping the next run. It
+  now prints as the single space the preview shows.
 
 - **Closing a tab frees its images.** A closed tab used to keep its
   texture, mask, and image-layer art in memory for as long as the app stayed
@@ -67,6 +148,13 @@ that section to the new version (see .agents/release-steward.md).
   the Save Master review or Settings open, `⌘Z` / `⇧⌘Z` (and Edit → Undo /
   Redo) leave the canvas alone; in the inspector and its color picker they
   still undo your last edit.
+
+- **Shortcuts no longer act on the tab behind an open dialog.** With the Save
+  Master review, Settings or the command palette open, `⌘W` no longer closes
+  the tab underneath, and `⌘N`, `⌘O`, `⌘S`, `⇧⌘S`, `⌘E`, `⇧⌘E` (and their
+  menu items), `⌘B` (sidebar), the arrow-key nudge and the view keys
+  `1`/`2`/`3`/`R`/`G` do nothing until the dialog is closed. With no dialog
+  open, `⌘S` still saves from inside a text field.
 
 ### Changed
 

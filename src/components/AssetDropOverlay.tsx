@@ -85,7 +85,7 @@ export function AssetDropOverlay(props: {
     };
     const onDropAnywhere = (e: DragEvent) => {
       const field = isFieldDrop(e.target);
-      const file = e.dataTransfer?.files[0];
+      const file = Array.from(e.dataTransfer?.files ?? []).find((f) => globalAssetKind(f, e.clientX, window.innerWidth));
       const kind = file ? globalAssetKind(file, e.clientX, window.innerWidth) : null;
       depth = 0;
       hide();
@@ -123,7 +123,7 @@ export function AssetDropOverlay(props: {
   return (
     <div aria-hidden="true"
       className="pointer-events-none fixed inset-0 z-50 flex gap-3 bg-background/85 p-6 backdrop-blur-sm">
-      {half("texture", "Background texture", "PNG or JPG")}
+      {half("texture", "Background texture", "PNG, JPG or WebP")}
       {half("mask", "Metallic mask", "PNG only")}
     </div>
   );

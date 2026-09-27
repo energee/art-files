@@ -453,3 +453,64 @@ describe("buildLabel missing art", () => {
     })).rejects.toThrow(/missing/i);
   });
 });
+
+it("CLI accepts optional null clears and dormant saved values, but rejects required clears (#270, #271)", async () => {
+  const io = memIo();
+  const master = lolevMaster();
+  const description = master.layers.find((l) => l.id === "description")!;
+  Object.assign(description, { width: 100 });
+  io.files.set("/m.master", packMaster(master, {}));
+  const label = { formatVersion: 3 as const, masterId: master.id, enabledVariants: [],
+    values: { collabLead: "Hidden" }, overrides: { description: { width: null }, collabLeft: { x: 50 } } };
+  io.files.set("/x.label", packLabel(label as unknown as Parameters<typeof packLabel>[0], {}));
+  expect(await io.run(["--master", "/m.master", "--label", "/x.label", "--out", "/out", "--format", "pdf"])).toBe(0);
+  expect(io.stderr.join("")).toContain("Dormant layer");
+  label.overrides.description = { width: null, size: null } as typeof label.overrides.description;
+  io.files.set("/x.label", packLabel(label as unknown as Parameters<typeof packLabel>[0], {}));
+  expect(await io.run(["--master", "/m.master", "--label", "/x.label", "--out", "/out", "--format", "pdf"])).toBe(1);
+  expect(io.stderr.join("")).toContain("missing size");
+});
+it("CLI names unsupported WebP assets instead of sending them to the PNG decoder (#272)", async () => {
+  const io = memIo();
+  io.files.set("/texture.webp", new Uint8Array([1, 2, 3]));
+  expect(await io.run(["--out", "/out", "--format", "pdf", "--asset", "background=/texture.webp"])).toBe(1);
+  expect(io.stderr.join("")).toContain("texture.webp: WEBP is not supported");
+});
+// Every type the CLI can't embed is named as itself, not only WebP.
+it("CLI names any unsupported image type instead of sending it to the PNG decoder", async () => {
+  const io = memIo();
+  io.files.set("/texture.gif", new Uint8Array([1, 2, 3]));
+  expect(await io.run(["--out", "/out", "--format", "pdf", "--asset", "background=/texture.gif"])).toBe(1);
+  expect(io.stderr.join("")).toContain("texture.gif: GIF is not supported by the CLI");
+});
+it("CLI prints a label's own legacy custom layer instead of skipping it as dormant", async () => {
+  const io = memIo();
+  const master = lolevMaster();
+  io.files.set("/m.master", packMaster(master, {}));
+  const stamp = { ...structuredClone(master.layers.find((l) => l.id === "name")!), id: "custom-z", name: "Stamp",
+    lines: [{ text: "STAMPZ", fill: "#F3CD80", layer: "metallic" }], y: 100 };
+  const label = { formatVersion: 3 as const, masterId: master.id, enabledVariants: [],
+    values: {}, overrides: {} as Record<string, unknown> };
+  io.files.set("/plain.label", packLabel(label as unknown as Parameters<typeof packLabel>[0], {}));
+  label.overrides = { "custom-z": stamp };
+  io.files.set("/x.label", packLabel(label as unknown as Parameters<typeof packLabel>[0], {}));
+  expect(await io.run(["--master", "/m.master", "--label", "/plain.label", "--out", "/a", "--format", "pdf"])).toBe(0);
+  expect(await io.run(["--master", "/m.master", "--label", "/x.label", "--out", "/b", "--format", "pdf"])).toBe(0);
+  expect(io.stderr.join("")).toBe("");
+  const [a] = [...io.files].filter(([p]) => p.startsWith("/a/") && !p.includes("mask"));
+  const [b] = [...io.files].filter(([p]) => p.startsWith("/b/") && !p.includes("mask"));
+  expect(Buffer.from(a[1]).equals(Buffer.from(b[1]))).toBe(false);
+});
+it("CLI validates a label override against the layer its enabled variants produce", async () => {
+  const io = memIo();
+  const master = lolevMaster();
+  Object.assign(master.layers.find((l) => l.id === "styleLine")!, { guideY: "bottom" });
+  master.variants.push({ id: "alt", name: "Alt",
+    layers: { styleLine: { guideY: "none", binding: { to: "name", side: "bottom", gap: 4 } } } } as never);
+  io.files.set("/m.master", packMaster(master, {}));
+  const label = { formatVersion: 3 as const, masterId: master.id, enabledVariants: ["alt"],
+    values: {}, overrides: { styleLine: { binding: { gap: 6 } } } };
+  io.files.set("/x.label", packLabel(label as unknown as Parameters<typeof packLabel>[0], {}));
+  expect(await io.run(["--master", "/m.master", "--label", "/x.label", "--out", "/out", "--format", "pdf"])).toBe(0);
+  expect(io.stderr.join("")).toBe("");
+});

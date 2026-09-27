@@ -16,6 +16,7 @@ import {
   PDFFont,
   PDFPage,
   degrees,
+  grayscale,
   popGraphicsState,
   pushGraphicsState,
   rgb,
@@ -73,7 +74,10 @@ const PDF_EPOCH = new Date("2000-01-01T00:00:00Z");
 const toRgb = (c: { r: number; g: number; b: number }) => rgb(c.r, c.g, c.b);
 
 function fillColor(fill: Fill) {
-  return toRgb(L.parseHexFill(fill));
+  const c = L.parseHexFill(fill);
+  // DeviceGray keeps neutral type and vectors on the K plate during CMYK
+  // conversion; DeviceRGB black otherwise becomes four-colour rich black.
+  return c.r === c.g && c.g === c.b ? grayscale(c.r) : toRgb(c);
 }
 
 /** Mask-mode paint for an element: knockout (white) or white-ink (blue). */
@@ -220,8 +224,9 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, item: PlacedBarcode, mo
   // neighbour, which distorted the module widths until the code stopped
   // decoding. Between the dense bars the stroke closes into a solid field
   // and around the digits it reads as a pill, matching the reference's
-  // white shape without a backing box. Reached only when S > 0, which a
-  // "none" stroke never resolves to (see barcodeStrokePt).
+  // white shape. The quiet zone around it is a separate backing path the
+  // planner emits first (planLayers' withBacking). Reached only when S > 0,
+  // which a "none" stroke never resolves to (see barcodeStrokePt).
   if (S > 0 && item.stroke !== "none") {
     const strokeColor = fillColor(item.stroke);
     // A centered border at 2S extends S beyond the bar and — because the page
@@ -339,12 +344,14 @@ async function embedFaces(doc: PDFDocument, pack: Assets["fonts"], subset = fals
   };
 }
 
+const VARIATION_SELECTOR = /^[\uFE00-\uFE0F\u{E0100}-\u{E01EF}]$/u;
+
 /** The plan measure for a PDF/PSD export: each face's width from the pdf-lib
  *  font drawText draws it with. drawText places glyphs by their raw advances
  *  and emits no kerning, so a kerned measure (canvas measureText's default)
  *  plans a kern-table family like Barlow Condensed up to ~8% short of the
- *  ink it prints (#86). A run with no family, or one missing from `packs`,
- *  measures in `fallback`'s faces. Shared by the App export and the CLI. */
+ *  ink it prints (#86). A run with no family measures in `fallback`'s faces.
+ *  Unsupported glyphs stop the export before any files are written. Shared by the App export and the CLI. */
 export async function pdfMeasureFace(
   packs: Partial<Record<FontFamilyId, Assets["fonts"]>>,
   fallback: FontFamilyId,
@@ -352,11 +359,24 @@ export async function pdfMeasureFace(
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
   const embedded: Partial<Record<FontFamilyId, Record<Face, PDFFont>>> = {};
-  for (const [id, pack] of Object.entries(packs) as [FontFamilyId, Assets["fonts"]][])
+  const coverage = new Map<PDFFont, Set<number>>();
+  for (const [id, pack] of Object.entries(packs) as [FontFamilyId, Assets["fonts"]][]) {
     embedded[id] = await embedFaces(doc, pack);
+    for (const font of Object.values(embedded[id]!)) coverage.set(font, new Set(font.getCharacterSet()));
+  }
   if (!embedded[fallback]) throw new Error(`Missing measure font family: ${fallback}`);
-  return (text, size, face, family) =>
-    (embedded[family ?? fallback] ?? embedded[fallback]!)[face].widthOfTextAtSize(text, size);
+  return (text, size, face, family) => {
+    const selected = embedded[family ?? fallback];
+    if (!selected) throw new Error(`Missing measure font family: ${family}`);
+    const font = selected[face];
+    const supported = coverage.get(font)!;
+    // Variation selectors (the emoji picker's ™️) are folded into the base
+    // glyph by fontkit, so they are never missing.
+    const missing = [...new Set([...text].filter((ch) =>
+      !VARIATION_SELECTOR.test(ch) && !supported.has(ch.codePointAt(0)!)))];
+    if (missing.length) throw new Error(`Cannot print ${missing.map((ch) => `“${ch}” (U+${ch.codePointAt(0)!.toString(16).toUpperCase()})`).join(", ")} in ${font.name}. Replace these characters or choose a font that supports them.`);
+    return font.widthOfTextAtSize(text, size);
+  };
 }
 
 async function newDoc(assets: Assets): Promise<{ doc: PDFDocument; page: PDFPage; fonts: Fonts }> {
