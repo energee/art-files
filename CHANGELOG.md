@@ -8,6 +8,10 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 
+- **Exported PSDs open at print size.** A PSD now records its export
+  resolution (600 ppi by default), so Photoshop, Preview and Finder show it
+  at the label's physical size instead of as a 72 ppi image roughly eight
+  times too large.
 - **Barcode backgrounds stay clear on textured labels.** A continuous backing
   covers the bars, digits and quiet zones across preview, PDF and PSD.
 - **Exports report cancellation and partial saves.** Cancelling artwork stops
