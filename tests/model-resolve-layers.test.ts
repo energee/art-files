@@ -10,7 +10,7 @@ import { lolevMaster } from "../src/model/lolevLayers";
 import type {
   BarcodeLayer, ImageLayer, Layer, QrLayer, TextLayer, TextLine,
 } from "../src/model/layers";
-import { GOLD } from "../src/layout";
+import { GOLD } from "./legacy/layout";
 
 const line = (text: string): TextLine => ({ text, fill: GOLD, layer: "metallic" });
 const byId = <T extends Layer = Layer>(layers: Layer[], id: string) =>

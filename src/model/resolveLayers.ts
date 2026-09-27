@@ -108,7 +108,7 @@ function refText(l: TextLayer): string {
  *  image height back to auto) as null, because deepMerge skips `undefined`
  *  and JSON cannot store it — see setLabelOverride. Variant diffs never carry
  *  null today, so this is a no-op for them. */
-function applyDiff<T extends object>(base: T, p: DeepPartial<T>): T {
+export function applyDiff<T extends object>(base: T, p: DeepPartial<T>): T {
   const merged = deepMerge(base, p) as Record<string, unknown>;
   stripNulls(merged, p as Record<string, unknown>);
   return merged as T;

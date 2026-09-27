@@ -4,6 +4,7 @@
 // (no shadcn color-picker primitive exists). The popover also offers a
 // screen eyedropper where the browser supports the native EyeDropper API.
 import { useState } from "react";
+import { flushSync } from "react-dom";
 import { HexColorPicker } from "react-colorful";
 import { Pipette } from "lucide-react";
 import type { Fill } from "@/types";
@@ -17,7 +18,12 @@ import { addColor, setSwatches, useSwatches } from "@/settings";
 /** "No ink" checkerboard chip background. */
 const CHECKER =
   "repeating-conic-gradient(#3a3d43 0% 25%, #1a1c1f 0% 50%) 0 0 / 8px 8px";
-const HEX = /^#[0-9a-fA-F]{6}$/;
+function normalizeHex(value: string): Fill | undefined {
+  const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value.trim());
+  if (!match) return undefined;
+  const hex = match[1].toLowerCase();
+  return `#${hex.length === 3 ? [...hex].map((c) => c + c).join("") : hex}` as Fill;
+}
 
 // ponytail: EyeDropper is Chromium-only and still absent from lib.dom, so it
 // gets a local type instead of a global Window augmentation. Read once here:
@@ -47,6 +53,14 @@ export function ColorField(props: {
   const hex = props.value === "none" ? "#ffffff" : props.value;
   // Commit a picked color and drop any half-typed hex sitting in the Input.
   const apply = (v: string) => { setText(null); props.onChange(v as Fill); };
+  // Blur / Enter: apply a valid typed hex (the 3-digit form lands only here)
+  // and drop the local text; an invalid entry stays up, flagged.
+  const commitText = () => {
+    const parsed = text === null ? undefined : normalizeHex(text);
+    if (!parsed) return;
+    if (parsed === props.value) setText(null);
+    else apply(parsed);
+  };
   // Saved swatches are this operator's, not the element's, so a color saved
   // here is offered by every other ColorField the moment it lands — all the
   // fields read one shared list (see settings.ts).
@@ -106,14 +120,25 @@ export function ColorField(props: {
               affordance per chip would double the row's height for something
               used once in a while. */}
           <div className="mt-2 flex max-w-[200px] flex-wrap items-center gap-1">
-            {colors.map((c) => (
+            {colors.map((c, index) => (
               <button
                 key={c}
                 type="button"
-                title={`${c} (shift-click to remove)`}
+                title={`${c} (Delete or shift-click to remove)`}
                 aria-label={c}
                 className="size-5 rounded-sm border border-border"
                 style={{ background: c }}
+                onKeyDown={(e) => {
+                  if (e.key !== "Delete" && e.key !== "Backspace") return;
+                  e.preventDefault(); e.stopPropagation();
+                  // Flush first, then focus what now sits in this slot (the
+                  // previous chip after the last one): the Save button next to
+                  // the last chip is disabled until this hex stops being saved.
+                  const row = e.currentTarget.parentElement!;
+                  flushSync(() => setSwatches((cs) => cs.filter((x) => x !== c)));
+                  const slot = index < colors.length - 1 ? index : Math.max(index - 1, 0);
+                  (row.children[slot] as HTMLElement | undefined)?.focus();
+                }}
                 onClick={(e) =>
                   e.shiftKey
                     ? setSwatches((cs) => cs.filter((x) => x !== c))
@@ -141,11 +166,18 @@ export function ColorField(props: {
         value={none ? "none" : (text ?? (props.mixed ? "" : props.value))}
         placeholder={props.mixed ? "Mixed" : undefined}
         disabled={none}
+        // A full #rrggbb applies as it is typed; a 3-digit hex only on
+        // commit (blur / Enter) — every 6-digit entry passes through a valid
+        // 3-digit prefix, which must not flash onto the layer mid-typing.
         onChange={(e) => {
           setText(e.target.value);
-          if (HEX.test(e.target.value)) props.onChange(e.target.value as Fill);
+          const parsed = normalizeHex(e.target.value);
+          if (parsed && /[0-9a-f]{6}\s*$/i.test(e.target.value)) props.onChange(parsed);
         }}
-        onBlur={() => setText(null)}
+        aria-invalid={text !== null && !normalizeHex(text) || undefined}
+        title={text !== null && !normalizeHex(text) ? "Enter a 3- or 6-digit hex color." : undefined}
+        onKeyDown={(e) => { if (e.key === "Enter") commitText(); }}
+        onBlur={commitText}
         // w-24/px-2.5 = a ScrubField's value box, so the hex lands in the
         // same right-hand column as every numeric field in the panel.
         className="h-6 w-24 px-2.5 font-mono text-xs"

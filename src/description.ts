@@ -58,7 +58,7 @@ function styleLine(raw: string, base: Style, bold = false): StyledLine {
   };
 }
 
-/** Strips the leading-`#` escape serializeDescription writes (`\#` -> `#`).
+/** Strips the persisted legacy leading-`#` escape (`\#` -> `#`).
  *  Only ever a single backslash immediately before a leading `#`. */
 const unescapeHash = (s: string) => s.replace(/^\\(?=#)/, "");
 
@@ -193,26 +193,4 @@ export function markRun(text: string, s: { bold?: boolean; white?: boolean }): s
   const b = s.bold ? "**" : "";
   const w = s.white ? "_" : "";
   return `${b}${w}${text}${w}${b}`;
-}
-
-/** Inverse of parseDescription — the WYSIWYG editor edits styled lines and
- *  writes back the markdown string LabelConfig still stores. Canonicalizes
- *  marker order to white-inside/bold-outside (e.g., `**_text_**`), and drops
- *  the redundant `**` from headers since they are always bold. */
-export function serializeDescription(d: ParsedDescription): string {
-  const line = (l: StyledLine, header = false) => {
-    // markRun keeps the empty-line and marker-order rules (see there); a
-    // header is always bold, so it never writes its own `**`.
-    const s = markRun(l.text, { bold: !!l.bold && !header, white: l.layer === "white" });
-    if (!s && !header) return "";
-    return header ? `# ${s}` : s;
-  };
-  const head = d.header ? [line(d.header, true)] : [];
-  const body = d.lines.map((l) => line(l));
-  // Only a body line emitted FIRST can be misread as a header on the way
-  // back in (parseDescription only considers the first non-blank line), so
-  // that is the only place the escape is needed — every later `#` line
-  // survives verbatim without one.
-  if (!d.header && body.length && body[0].startsWith("#")) body[0] = `\\${body[0]}`;
-  return [...head, ...body].join("\n");
 }

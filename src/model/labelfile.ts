@@ -33,12 +33,3 @@ export function parseLabelFile(json: unknown): LabelFileV2 | { legacy: unknown }
     dormant: parseDormant(o.dormant),
   };
 }
-
-export function serializeLabelFile(l: LabelFileV2): string {
-  return JSON.stringify(
-    { formatVersion: 2, masterId: l.masterId, masterHint: l.masterHint,
-      enabledVariants: l.enabledVariants, values: l.values, overrides: l.overrides,
-      dormant: l.dormant },
-    null, 2,
-  );
-}

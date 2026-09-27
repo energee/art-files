@@ -1,7 +1,7 @@
 // fonts.ts — the ONE gate between the label's font and the DOM. Registers
 // the bundled TTFs the PDF builds embed (see pdf/fonts.ts, which shares the
 // FONT_URLS map below) as document faces under labelFontCss(id), and hands
-// back the canvas-metrics Measure that hit-testing and the in-place editor
+// back the face-aware canvas measure that hit-testing and the in-place editor
 // share. Measurement is unkerned, matching the PDF's drawText (#86). Text
 // layers may override the master family; the same family choice reaches
 // measurement, drawing, the editor and export. Loaded faces are cached.
@@ -12,7 +12,6 @@ import barlowRegular from "./assets/fonts/BarlowCondensed-Regular.ttf?url";
 import barlowSemiBold from "./assets/fonts/BarlowCondensed-SemiBold.ttf?url";
 import barlowBold from "./assets/fonts/BarlowCondensed-Bold.ttf?url";
 import type { FontFamilyId } from "./fontCatalog";
-type Measure = (text: string, size: number, bold: boolean) => number;
 import type { MeasureFace } from "./plan";
 
 type Face = "regular" | "semibold" | "bold";
@@ -47,14 +46,11 @@ function unkernedContext(): CanvasRenderingContext2D {
   return ctx;
 }
 
-const measurePromises = new Map<FontFamilyId, Promise<Measure>>();
+const registrationPromises = new Map<FontFamilyId, Promise<void>>();
 
-/** Memoized per family; a failed load clears that family's memo so the next
- *  caller retries. `bold` intentionally measures the SemiBold face: most
- *  bold targets use it, and the two true-Bold elements are centred and
- *  tolerate the small symmetric under-measurement (see hittest.ts). */
-export function loadLabelFont(id: FontFamilyId = "poppins"): Promise<Measure> {
-  const cached = measurePromises.get(id);
+/** Register each family once; failed loads can be retried. */
+function registerFaces(id: FontFamilyId = "poppins"): Promise<void> {
+  const cached = registrationPromises.get(id);
   if (cached) return cached;
   const css = labelFontCss(id);
   const urls = FONT_URLS[id];
@@ -64,34 +60,27 @@ export function loadLabelFont(id: FontFamilyId = "poppins"): Promise<Measure> {
     new FontFace(css, `url(${urls.bold})`, { weight: "700" }).load(),
   ]).then((faces) => {
     faces.forEach((face) => document.fonts.add(face));
-    const ctx = unkernedContext();
-    return (text: string, size: number, bold: boolean) => {
-      ctx.font = `${bold ? 600 : 400} ${size}px ${css}`;
-      return ctx.measureText(text).width;
-    };
+
   }).catch((error) => {
-    measurePromises.delete(id);
+    registrationPromises.delete(id);
     throw error;
   });
-  measurePromises.set(id, p);
+  registrationPromises.set(id, p);
   return p;
 }
 
-/** Face-aware canvas measure for the plan: the same loaded faces, measured
- *  at their true weights (unlike Measure's bold-boolean approximation, which
- *  hit boxes keep for compatibility). The canvas renderer places with THIS,
- *  so what it measures is what it draws. */
+/** Face-aware canvas measure for the plan and renderer. */
 const facesPromises = new Map<FontFamilyId, Promise<MeasureFace>>();
 
 export function loadLabelFaces(id: FontFamilyId = "poppins"): Promise<MeasureFace> {
   const cached = facesPromises.get(id);
   if (cached) return cached;
-  // Memoized like loadLabelFont: callers sit on hot paths (the dev preview
+  // Memoized like registerFaces: callers sit on hot paths (the dev preview
   // effect re-asks per rebuild), and the measurement canvas is reusable.
   // Both bundled families are ready before editing; switching a layer cannot
   // measure a fallback font while its actual face is still loading.
   const p: Promise<MeasureFace> = Promise.all(
-    (Object.keys(FONT_URLS) as FontFamilyId[]).map(loadLabelFont),
+    (Object.keys(FONT_URLS) as FontFamilyId[]).map(registerFaces),
   ).then((): MeasureFace => {
     const ctx = unkernedContext();
     return (text, size, face, family = id) => {

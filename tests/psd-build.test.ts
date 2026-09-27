@@ -12,7 +12,7 @@ import { readFileSync } from "node:fs";
 import fontkit from "@pdf-lib/fontkit";
 import { buildPsd, digitGroupPaths, qrBeziers, PSD_DOC, type PsdAssets } from "../src/psd/build";
 import { qrShapes } from "../src/qr";
-import { DESIGN_DPI, setOutputDpi } from "../src/layout";
+import { DESIGN_DPI, setOutputDpi } from "./legacy/layout";
 import type { Layer } from "../src/model/layers";
 import { flatLayers, lolevLayers, lolevPlan, psdAssets as assets } from "./fixtures";
 
@@ -225,8 +225,8 @@ describe("added layers", () => {
     const art = await buildPsd(items, assets, "art", { layers });
     const mask = await buildPsd(items, assets, "mask", { layers });
     expect({ art: hash(art), artLen: art.length, mask: hash(mask), maskLen: mask.length }).toEqual({
-      art: "c353feca6f59b3fd63d82c0d6606383dcab74c2c93f574a7a71015fe0b694c24", artLen: 1155418,
-      mask: "cd93b89654ea3b83d3ca58d469c671005758e8e777a1842c0815b96559ebdef9", maskLen: 1148632,
+      art: "c02044c7d223490340cdeea1562bbdaeecf49e00904a343750a9a368fe72e2c6", artLen: 1156272,
+      mask: "bf223d4c5d23fe9c8a01c44cb353d982cbf8c02d53aa8787944629ecf8c4c14e", maskLen: 1149490,
     });
   });
 
@@ -269,7 +269,10 @@ describe("added layers", () => {
       id: "bc1", name: "Custom Barcode", kind: "barcode", ...at, symbology: "code-128", value: "LOLEV-123",
       h: 30, moduleW: 1, style: { fill: "#000000", layer: "white" },
     }] });
-    expect(layer(psd.children as any[], "Barcode").vectorMask?.paths?.length).toBeGreaterThan(0);
+    const barcodeShapes = flat(psd.children as any[]).filter((l) => l.name === "Barcode" && !l.children);
+    expect(barcodeShapes).toHaveLength(2); // backing, then the original bars/digits
+    expect(barcodeShapes[0].vectorMask.paths[0].knots).toHaveLength(4);
+    expect(barcodeShapes[1].vectorMask.paths.length).toBeGreaterThan(1);
     expect(layer(psd.children as any[], "Custom Barcode").vectorMask?.paths?.length).toBeGreaterThan(0);
   });
 

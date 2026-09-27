@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ART, BARCODE, DEFAULT_STROKE_PX, DESIGN_DPI, LEFT_X, PAGE, PSD_DOC, PX, QR,
   setOutputDpi, WARNING,
-} from "../src/layout";
+} from "./legacy/layout";
 import {
   DEFAULT_MARGIN_PT, layoutGuides, majorStep, nextRulerUnit, pointToScreen,
   pointToUnit, rulerTicks, screenToPoint, sizeLabel, unitToPoint, withCornerClear,

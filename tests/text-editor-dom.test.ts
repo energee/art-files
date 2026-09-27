@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TextEditor, TextToolbarButtons, useTextField } from "../src/components/TextEditor";
 import { TooltipProvider } from "../src/components/ui/tooltip";
 import type { TextLine } from "../src/model/layers";
-import { GOLD } from "../src/layout";
+import { GOLD } from "./legacy/layout";
 
 // React only honours act() when the environment opts in; without this every
 // act() call still works but logs "not configured to support act(...)".
@@ -131,6 +131,25 @@ describe("Bold / White ink / Header toggles over the live field", () => {
     select(el, "a", true);
     toggle("bold");
     expect(emitted.at(-1)).toStrictEqual([line("a b")]);
+  });
+
+  // Range.toString() has no "\n" at a line-div boundary, so a selection from
+  // mid-line to the START of the next line (Shift+End, Shift+→) looked
+  // single-line: extractContents moved the text into a span outside every
+  // line-div and readLines dropped it.
+  it("never runs-wraps a selection that ends at the start of the next line", () => {
+    const { emitted, toggle, el } = mountField([line("A Hazy beer"), line("Second line")]);
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const first = walker.nextNode()!;
+    const second = walker.nextNode()!;
+    const range = document.createRange();
+    range.setStart(first, "A Hazy ".length);
+    range.setEnd(second, 0);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    toggle("bold");
+    expect(emitted.at(-1)).toStrictEqual([line("A Hazy beer", { bold: true }), line("Second line")]);
   });
 
   it("falls through to the whole line when the selection fills it", () => {
@@ -556,4 +575,12 @@ it("keeps the run toggles hidden when Tab lands on Uppercase from outside the fi
   const button = container.querySelector('[aria-label="Toggle uppercase"]') as HTMLElement;
   act(() => { button.focus(); });
   expect(container.querySelector('[aria-label="Toggle bold"]')).toBeNull();
+});
+
+it("unstyles a selected mixed-case run even if Selection stringifies uppercase (#285)", () => {
+  const { el, emitted, toggle } = mountField([line("A **Hazy** beer")], { uppercase: true });
+  select(el, "Hazy");
+  const spy = vi.spyOn(window.getSelection()!, "toString").mockReturnValue("HAZY");
+  try { toggle("bold"); expect(emitted.at(-1)?.[0].text).toBe("A Hazy beer"); }
+  finally { spy.mockRestore(); }
 });
