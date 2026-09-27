@@ -952,12 +952,17 @@ export const DocumentEditor = memo(function DocumentEditor({
     set((old) => { if (old) URL.revokeObjectURL(old.previewUrl); return next; });
   };
 
+  /** A successful decode clears only its own slot's earlier failure — not a
+   *  benched-values note or the other slot's error, which it may land beside
+   *  (adoptMasterAssets decodes both at once, right after commitRebind's note). */
+  const clearLoadErrorOf = (what: string) =>
+    setLoadError((e) => e.startsWith(`Could not load ${what} `) ? "" : e);
   async function onTexture(f: File) {
-    try { swapLoaded(setTexture, await readTexture(f)); setLoadError(""); }
+    try { swapLoaded(setTexture, await readTexture(f)); clearLoadErrorOf("texture"); }
     catch (err) { setLoadError(`Could not load texture "${f.name}": ${errMsg(err)}`); }
   }
   async function onMask(f: File) {
-    try { swapLoaded(setMask, await readMask(f)); setLoadError(""); }
+    try { swapLoaded(setMask, await readMask(f)); clearLoadErrorOf("mask"); }
     catch (err) { setLoadError(`Could not load mask "${f.name}": ${errMsg(err)}`); }
   }
 
@@ -1532,6 +1537,9 @@ export const DocumentEditor = memo(function DocumentEditor({
       const unchanged = docRef.current === doc && current.texture === texture
         && current.mask === mask && current.customImages === customImages;
       setDirty(!unchanged);
+      // A save inside an in-place text session moves the baseline its cancel
+      // would restore: the reverted text no longer matches the file.
+      beforeTextEdit.current = { dirty: true, edited: true };
       setLoadError("");
       // The close-tab caller must not close over edits made during this write.
       return unchanged;
@@ -1611,18 +1619,25 @@ export const DocumentEditor = memo(function DocumentEditor({
     };
     /** Adopt `m` as the saved master: the document's, the library's, and the
      *  baseline the next review diffs against. A plain save with nothing
-     *  promoted is a no-op edit and pushes no history entry. */
+     *  promoted is a no-op edit and pushes no history entry.
+     *
+     *  A master edited during the write keeps that edit and gets the same
+     *  promotions folded in, so the document still carries what the file
+     *  now holds. A document that moved to another master (Open Master
+     *  during the write) is left alone, baseline included. */
     const commit = async (m: Master, where: string, bytes?: Uint8Array) => {
-      edit((d) => {
+      const ours = docRef.current.master.id === master.id;
+      if (ours) edit((d) => {
         if (d.master.id !== master.id) return d;
-        const liveMaster = d.master === master ? m
-          : as ? { ...d.master, id: m.id, name: m.name } : d.master;
+        const rebased = d.master === master ? m
+          : applyPromotions(d.master, label, promote, version ?? undefined).master;
+        const liveMaster = as ? { ...rebased, id: m.id, name: m.name } : rebased;
         // Keep newer label edits, including a newly changed promoted field.
         // Redundant overrides can be promoted again on the next master save.
         return { master: liveMaster, label: adoptMaster(d.label === label ? promoted.label : d.label, liveMaster) };
       });
       await rememberMaster(m, where, bytes);
-      pristineMaster.current = m;
+      if (ours) pristineMaster.current = m;
       repaintMasterDirty((n) => n + 1);
     };
     try {

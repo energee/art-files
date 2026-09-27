@@ -27,16 +27,17 @@ async function mountEditor() {
   document.body.appendChild(container);
   const root = createRoot(container);
   const onMeta = vi.fn();
+  const saveSlot: { current: (() => Promise<boolean>) | null } = { current: null };
   await act(async () => {
     root.render(createElement(DocumentEditor, {
       active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta,
-      saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+      saveSlot, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
       onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
       onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
     }));
   });
   const unmount = async () => { await act(async () => { root.unmount(); }); container.remove(); };
-  return { container, onMeta, unmount };
+  return { container, onMeta, saveSlot, unmount };
 }
 
 const pressUndo = () => act(async () => {
@@ -342,13 +343,16 @@ it("opens a fresh undo step for inspector typing instead of folding into the pre
  *  them), runs `body`, and unmounts. `p()` reads the latest PreviewCompare
  *  props, so it sees each re-render's layers. */
 async function withCanvasEditor(
-  body: (p: () => PreviewProps, container: HTMLElement, onMeta: ReturnType<typeof vi.fn>) => Promise<void>,
+  body: (
+    p: () => PreviewProps, container: HTMLElement, onMeta: ReturnType<typeof vi.fn>,
+    save: () => Promise<boolean>,
+  ) => Promise<void>,
 ) {
   perf.source = null; // so the wait below waits for THIS mount's assets
-  const { container, onMeta, unmount } = await mountEditor();
+  const { container, onMeta, saveSlot, unmount } = await mountEditor();
   try {
     await vi.waitFor(() => expect(perf.source).not.toBeNull(), { timeout: 30_000 });
-    await body(() => perf.preview!, container, onMeta);
+    await body(() => perf.preview!, container, onMeta, () => saveSlot.current!());
   } finally {
     await unmount();
   }
@@ -494,16 +498,51 @@ it("each arrow nudge has its own undo step (#287)", async () => {
   } finally { await unmount(); }
 });
 
+/** Stubs the browser save picker with a handle whose writes succeed. */
+function stubSavePicker() {
+  const handle = { name: "Beer.label", createWritable: async () => ({ write: async () => {}, close: async () => {} }) };
+  vi.stubGlobal("showSaveFilePicker", async () => handle);
+}
+
 it("cancelling in-place text restores the pre-session dirty state (#278)", async () => {
-  await withCanvasEditor(async (p, _container, onMeta) => {
-    const before = onMeta.mock.calls.at(-1)![0];
-    const lines = (layerOf(p(), "name") as TextLayer).lines;
-    await act(async () => p().onEditSession?.("name"));
-    await act(async () => p().onEditText("name", [{ ...lines[0], text: "Temporary" }], true));
-    expect(onMeta.mock.calls.at(-1)![0].dirty).toBe(true);
-    await act(async () => p().onEditCancel());
-    await act(async () => p().onEditSession?.(null));
-    expect((layerOf(p(), "name") as TextLayer).lines).toEqual(lines);
-    expect(onMeta.mock.calls.at(-1)![0].dirty).toBe(before.dirty);
-  });
+  stubSavePicker();
+  try {
+    await withCanvasEditor(async (p, _container, onMeta, save) => {
+      // Start from a saved, untouched doc so a cancel that leaves it dirty fails.
+      await act(async () => { expect(await save()).toBe(true); });
+      expect(onMeta.mock.calls.at(-1)![0]).toMatchObject({ dirty: false, edited: false });
+      const lines = (layerOf(p(), "name") as TextLayer).lines;
+      await act(async () => p().onEditSession?.("name"));
+      await act(async () => p().onEditText("name", [{ ...lines[0], text: "Temporary" }], true));
+      expect(onMeta.mock.calls.at(-1)![0]).toMatchObject({ dirty: true, edited: true });
+      await act(async () => p().onEditCancel());
+      await act(async () => p().onEditSession?.(null));
+      expect((layerOf(p(), "name") as TextLayer).lines).toEqual(lines);
+      expect(onMeta.mock.calls.at(-1)![0]).toMatchObject({ dirty: false, edited: false });
+    });
+  } finally {
+    vi.unstubAllGlobals();
+  }
+}, 60_000);
+
+it("cancelling in-place text after a mid-session save leaves the tab dirty", async () => {
+  stubSavePicker();
+  try {
+    await withCanvasEditor(async (p, _container, onMeta, save) => {
+      await act(async () => { expect(await save()).toBe(true); });
+      const lines = (layerOf(p(), "name") as TextLayer).lines;
+      await act(async () => p().onEditSession?.("name"));
+      await act(async () => p().onEditText("name", [{ ...lines[0], text: "TYPEDTEXT" }], true));
+      // ⌘S inside the field: the file now holds TYPEDTEXT.
+      await act(async () => { expect(await save()).toBe(true); });
+      expect(onMeta.mock.calls.at(-1)![0].dirty).toBe(false);
+      await act(async () => p().onEditCancel());
+      await act(async () => p().onEditSession?.(null));
+      expect((layerOf(p(), "name") as TextLayer).lines).toEqual(lines);
+      // The reverted doc no longer matches the file.
+      expect(onMeta.mock.calls.at(-1)![0]).toMatchObject({ dirty: true, edited: true });
+    });
+  } finally {
+    vi.unstubAllGlobals();
+  }
 }, 60_000);
