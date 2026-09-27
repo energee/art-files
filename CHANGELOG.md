@@ -4,6 +4,14 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Changed
+
+- **Stroked QR codes no longer sit on a solid square.** The quiet-zone
+  backing added in 0.1.99 is gone; a QR stroke outlines its modules again,
+  in the preview, PDF and PSD.
+
 ## [0.1.99] - 2026-09-27
 
 ### Changed
