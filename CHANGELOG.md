@@ -12,6 +12,8 @@ that section to the new version (see .agents/release-steward.md).
   single-instance plugins move to their latest patch and minor releases.
 - **Library updates.** React 19.3, Base UI 1.8, Three.js 0.186 and the Tauri
   dialog, file and updater plugins move to their latest minor releases.
+- **Build toolchain updates.** The app is now bundled with Vite 8 (Rolldown)
+  and tested with Vitest 5; no change to how it looks or behaves.
 
 ### Fixed
 
