@@ -8,7 +8,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AssetDropOverlay } from "../src/components/AssetDropOverlay";
-import { FILE_DROP_ATTR } from "../src/components/FileDrop";
+import { FileDrop, FILE_DROP_ATTR } from "../src/components/FileDrop";
 import { fieldWell, fileDrag, label, pdf, png } from "./dom-drag";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -93,4 +93,28 @@ describe("AssetDropOverlay window drops", () => {
     expect(onTexture).not.toHaveBeenCalled();
     field.remove();
   });
+});
+
+it("routes the first claimed file in a mixed drop (#325)", () => {
+  const e = new Event("drop", { bubbles: true, cancelable: true });
+  Object.defineProperty(e, "dataTransfer", { value: { files: [pdf, png] } });
+  Object.defineProperty(e, "clientX", { value: 10 });
+  act(() => document.body.dispatchEvent(e));
+  expect(e.defaultPrevented).toBe(true);
+  expect(onTexture).toHaveBeenCalledWith(png);
+});
+it("explains rejected file types and multiple files (#323)", async () => {
+  const onFile = vi.fn();
+  act(() => root.render(createElement(FileDrop, { label: "Mask", accept: { "image/png": [".png"] }, onFile })));
+  const well = container.querySelector(`[${FILE_DROP_ATTR}]`)!;
+  for (const [files, message] of [[[pdf], ".png"], [[png, png], "Drop one file."]] as const) {
+    const event = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "dataTransfer", { value: { types: ["Files"], files, items: files.map((file) => ({ kind: "file", type: file.type, getAsFile: () => file })) } });
+    await act(async () => {
+      well.dispatchEvent(event);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(message);
+    expect(onFile).not.toHaveBeenCalled();
+  }
 });

@@ -46,6 +46,7 @@ function RulerSettings(props: {
   onUnitChange: (unit: RulerUnit) => void;
   marginPt: number;
   onMarginChange: (points: number) => void;
+  onAddManual: (axis: GuideAxis, point: number) => void;
 }) {
   const { unit, onUnitChange, marginPt, onMarginChange } = props;
   const marginValue = pointToUnit(marginPt, 0, unit);
@@ -54,6 +55,8 @@ function RulerSettings(props: {
 
   return (
     <div className="flex flex-col gap-2.5">
+      <button type="button" className="text-xs" onClick={() => props.onAddManual("x", PAGE.w / 2)}>Add vertical guide</button>
+      <button type="button" className="text-xs" onClick={() => props.onAddManual("y", PAGE.h / 2)}>Add horizontal guide</button>
       <Label className="text-xs text-muted-foreground">Measurement</Label>
       <ToggleGroup value={[unit]} spacing={0} variant="outline"
         className="w-full" aria-label="Ruler measurement units"
@@ -328,10 +331,16 @@ export function Rulers(props: {
                   : "top-0 right-0 h-2 -translate-y-1 cursor-row-resize")}
               style={vertical ? { top: contentStart } : { left: contentStart }}
               role="button" tabIndex={0}
-              aria-label={`${kind} manual guide; press Delete to remove`}
+              aria-label={`${kind} manual guide; arrow keys move, Delete removes`}
               onPointerDown={(event) => startExisting(guide, event)}
               onKeyDown={(event) => {
-                if (event.key === "Delete" || event.key === "Backspace") onRemoveManual(guide.id);
+                if (event.key === "Delete" || event.key === "Backspace") {
+                  event.preventDefault(); event.stopPropagation(); onRemoveManual(guide.id);
+                } else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+                  event.preventDefault(); event.stopPropagation();
+                  const forward = event.key === "ArrowRight" || event.key === "ArrowDown";
+                  onMoveManual(guide.id, guide.point + (forward ? 1 : -1) * (event.shiftKey ? 10 : 1));
+                }
               }}
               onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag} />
             <button type="button"
@@ -381,7 +390,7 @@ export function Rulers(props: {
               <PopoverHeader>
                 <PopoverTitle>Ruler settings</PopoverTitle>
               </PopoverHeader>
-              <RulerSettings unit={unit} onUnitChange={onUnitChange}
+              <RulerSettings onAddManual={onAddManual} unit={unit} onUnitChange={onUnitChange}
                 marginPt={marginPt} onMarginChange={onMarginChange} />
             </PopoverContent>
           </Popover>

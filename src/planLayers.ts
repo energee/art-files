@@ -95,18 +95,18 @@ function drawableLines(l: TextLayer): TextLine[] {
 /** Greedy word wrap to `width`, wrapWarning's rule: a line that fits stays
  *  whole; a longer one breaks before the word that overflows. Words split
  *  via markedWords; measures the joined text so runs keep their faces. */
-function wrap(lines: TextLine[], widthOf: (ln: TextLine) => number, width?: number): TextLine[] {
-  if (width === undefined) return lines;
+function wrap(lines: TextLine[], widthOf: (ln: TextLine) => number, width?: number): (TextLine & { paragraphEnd?: boolean })[] {
+  if (width === undefined) return lines.map((ln) => ({ ...ln, paragraphEnd: true }));
   return lines.flatMap((ln) => {
-    if (widthOf(ln) <= width) return [ln];
-    const out: TextLine[] = [];
+    if (widthOf(ln) <= width) return [{ ...ln, paragraphEnd: true }];
+    const out: (TextLine & { paragraphEnd?: boolean })[] = [];
     let cur = "";
     for (const word of markedWords(ln.text)) {
       const next = cur ? `${cur} ${word}` : word;
       if (cur && widthOf({ ...ln, text: next }) > width) { out.push({ ...ln, text: cur }); cur = word; }
       else cur = next;
     }
-    if (cur) out.push({ ...ln, text: cur });
+    if (cur) out.push({ ...ln, text: cur, paragraphEnd: true });
     return out;
   });
 }
@@ -159,7 +159,7 @@ function prepareText(l: TextLayer, measure: MeasureFace): Prepared {
       lines.forEach((ln, i) => {
         const size = sizeOf(ln);
         const lw = widths[i];
-        const justify = l.align === "justify" && i < n - 1 && ln.text.includes(" ");
+        const justify = l.align === "justify" && !ln.paragraphEnd && ln.text.includes(" ");
         if (rotated) {
           // Columns step right by the leading; each reads bottom-to-top from
           // the box bottom (left), or ends at its top (right).

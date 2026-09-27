@@ -52,7 +52,7 @@ it("quietly advertises updates, keeps Later discoverable, and reuses the update 
   expect(update.close).toHaveBeenCalledTimes(1);
 });
 
-it("shows Up-to-date after the launch check and keeps it after closing a manual check", async () => {
+it("shows Up to date after the launch check and keeps it after closing a manual check", async () => {
   vi.useFakeTimers();
   mocks.invoke.mockResolvedValue(true);
   mocks.check.mockResolvedValue(null);
@@ -64,14 +64,14 @@ it("shows Up-to-date after the launch check and keeps it after closing a manual 
     await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
     expect(bar.textContent).toBe("");
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
-    expect(bar.querySelector('[role="status"]')?.textContent?.trim()).toBe("Up-to-date");
+    expect(bar.querySelector('[role="status"]')?.textContent?.trim()).toBe("Up to date");
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={1} statusHost={bar} />));
     const dialog = document.querySelector('[role="dialog"]')!;
     expect(dialog.textContent).toContain("Label Lab is up to date");
     const close = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Close")!;
     await act(async () => close.click());
-    expect(bar.textContent?.trim()).toBe("Up-to-date");
+    expect(bar.textContent?.trim()).toBe("Up to date");
   } finally {
     await act(async () => root.unmount());
     container.remove(); bar.remove();
@@ -137,6 +137,8 @@ it("installs without relaunching, then offers Restart to finish from the status 
     expect(bar.textContent).toContain("Restart to finish · 0.2.0");
     await act(async () => button("Restart to finish").click());
     expect(document.querySelector('[role="dialog"]')?.textContent).toContain("unsaved changes");
+    expect(button("Restart Now").disabled).toBe(true);
+    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} onInstalled={onInstalled} />));
     await act(async () => button("Restart Now").click());
     expect(mocks.invoke).toHaveBeenCalledWith("relaunch_app");
   } finally {
@@ -222,4 +224,43 @@ it("re-checks quietly when the window regains focus, at most once per throttle w
     container.remove(); bar.remove();
     vi.useRealTimers();
   }
+});
+
+it("blocks restarting over dirty tabs and permits it after saving (#292)", async () => {
+  mocks.invoke.mockResolvedValue(true);
+  mocks.check.mockResolvedValue({ version: "0.2.0", currentVersion: "0.1.0", close: vi.fn().mockResolvedValue(undefined), downloadAndInstall: vi.fn().mockResolvedValue(undefined) });
+  const host = document.createElement("div"); const bar = document.createElement("div"); document.body.append(host, bar);
+  const root = createRoot(host);
+  const button = (text: string) => [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === text)!;
+  try {
+    await act(async () => root.render(<DesktopUpdater dirty checkRequest={0} statusHost={bar} />));
+    await act(async () => root.render(<DesktopUpdater dirty checkRequest={1} statusHost={bar} />));
+    await act(async () => button("Install").click());
+    await act(async () => (bar.querySelector("button") as HTMLButtonElement).click());
+    expect(button("Restart Now").disabled).toBe(true);
+    await act(async () => button("Restart Now").click());
+    expect(mocks.invoke).not.toHaveBeenCalledWith("relaunch_app");
+    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={1} statusHost={bar} />));
+    await act(async () => button("Restart Now").click());
+    expect(mocks.invoke).toHaveBeenCalledWith("relaunch_app");
+  } finally { await act(async () => root.unmount()); host.remove(); bar.remove(); }
+});
+it("keeps failed installs discoverable and offers a fresh check (#318)", async () => {
+  mocks.invoke.mockResolvedValue(true);
+  mocks.check.mockResolvedValue({ version: "0.2.0", currentVersion: "0.1.0", close: vi.fn().mockResolvedValue(undefined), downloadAndInstall: vi.fn().mockRejectedValue(new Error("offline")) });
+  const host = document.createElement("div"); const bar = document.createElement("div"); document.body.append(host, bar);
+  const root = createRoot(host);
+  const button = (text: string) => [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === text)!;
+  try {
+    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
+    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={1} statusHost={bar} />));
+    await act(async () => button("Install").click());
+    expect(document.body.textContent).toContain("Could not install");
+    await act(async () => button("Close").click());
+    expect(bar.textContent).toContain("Update failed");
+    await act(async () => (bar.querySelector("button") as HTMLButtonElement).click());
+    await act(async () => button("Try again").click());
+    expect(mocks.check).toHaveBeenCalledTimes(2);
+    expect(document.body.textContent).toContain("Update available");
+  } finally { await act(async () => root.unmount()); host.remove(); bar.remove(); }
 });

@@ -177,16 +177,20 @@ describe("LayerInspector position", () => {
     expect(!!$("#name-y")).toBe(horizontal);
     type($("#name-gap")!, "9");
     expect(onChange).toHaveBeenLastCalledWith({ binding: { ...binding, gap: 9 } });
-    const select = byLabel("Binding side") as HTMLSelectElement;
-    act(() => { select.value = "right"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    click(byLabel("Binding side")!);
+    const option = [...document.querySelectorAll('[role="option"]')].find((o) => o.textContent === "Right")!;
+    act(() => option.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" })));
+    click(option);
     expect(onBind).toHaveBeenLastCalledWith("description", "right");
   });
 
   it("migrates a legacy below binding when its side changes", () => {
     const { onBind } = render(text({ y: { below: "description", gap: 5 } }));
-    const select = byLabel("Binding side") as HTMLSelectElement;
-    expect(select.value).toBe("bottom");
-    act(() => { select.value = "left"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(byLabel("Binding side")!.textContent).toContain("Bottom");
+    click(byLabel("Binding side")!);
+    const option = [...document.querySelectorAll('[role="option"]')].find((o) => o.textContent === "Left")!;
+    act(() => option.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" })));
+    click(option);
     expect(onBind).toHaveBeenCalledWith("description", "left");
   });
 
@@ -260,9 +264,10 @@ describe("LayerInspector geometry follows the kind", () => {
     expect(onChange).toHaveBeenLastCalledWith({ tintRaster: true });
   });
 
-  it("background image layer keeps only Fit — no scale, tint, size or Style", () => {
+  it("background image layer fills the page without ineffective geometry controls", () => {
     render(image({ id: "background", name: "Background", role: "background", fit: "cover" }));
-    expect(byLabel("Fit")).not.toBeNull();
+    expect(byLabel("Fit")).toBeNull();
+    expect(container.textContent).toContain("Page art always covers the full page.");
     expect($("#background-scale")).toBeNull();
     expect($("#background-w")).toBeNull();
     expect(byLabel("Tint raster")).toBeNull();

@@ -193,6 +193,7 @@ describe("CLI", () => {
   const tsx = join(__dirname, "..", "node_modules", ".bin", "tsx");
   const run = (...args: string[]) => {
     const p = spawnSync(tsx, [script, ...args], { encoding: "utf8" });
+    if (p.error) throw p.error;
     return { status: p.status, stdout: p.stdout, stderr: p.stderr };
   };
 
@@ -240,6 +241,7 @@ describe("CLI", () => {
     try {
       symlinkSync(join(__dirname, "..", "scripts"), join(dir, "scripts"));
       const p = spawnSync(tsx, [join(dir, "scripts", "golden-diff.mts"), "only-one-arg"], { encoding: "utf8" });
+      if (p.error) throw p.error;
       expect(p.status).toBe(2);
       expect(p.stderr).toMatch(/usage:/);
     } finally {

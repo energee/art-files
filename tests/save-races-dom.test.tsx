@@ -37,7 +37,7 @@ async function mount() {
   return { saveSlot, onMeta };
 }
 async function toggle(id: string) {
-  const b = document.querySelector(`[data-layer-id="${id}"] button[aria-pressed]`) as HTMLButtonElement;
+  const b = document.querySelector(`[data-layer-id="${id}"] button[aria-label$=": enabled"]`) as HTMLButtonElement;
   expect(b).not.toBeNull();
   await act(async () => b.click());
 }
@@ -93,7 +93,7 @@ it("Save Master preserves a newer edit to a promoted field (#263)", async () => 
   await act(async () => save.click());
   await toggle("warning");
   await act(async () => { finish(); await new Promise((r) => setTimeout(r, 10)); });
-  expect(document.querySelector('[data-layer-id="warning"] button[aria-pressed]')?.getAttribute("aria-pressed")).toBe("true");
+  expect(document.querySelector('[data-layer-id="warning"] button[aria-label$=": enabled"]')?.getAttribute("aria-pressed")).toBe("true");
   expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: true, edited: true });
 });
 

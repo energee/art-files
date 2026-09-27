@@ -167,10 +167,10 @@ describe("planLayers text: multi-word markup across wrap/justify", () => {
 
   it("justify: every word of a bold span is bold, markers stripped", () => {
     const runs = planLayers([text({ id: "w", x: 0, y: 0, width: 200, align: "justify",
-      lines: [line("A **very hoppy double** IPA"), line("end")] })], m, assets) as PlacedText[];
+      lines: [line("A **very hoppy double** IPA extraordinarilylongnextword")] })], m, assets) as PlacedText[];
     expect(styled(runs)).toEqual([
       ["A", "regular", "metallic"], ["very", "semibold", "metallic"], ["hoppy", "semibold", "metallic"],
-      ["double", "semibold", "metallic"], ["IPA", "regular", "metallic"], ["end", "regular", "metallic"],
+      ["double", "semibold", "metallic"], ["IPA", "regular", "metallic"], ["extraordinarilylongnextword", "regular", "metallic"],
     ]);
     // Justified: the last word of the first line ends exactly at the width.
     const ipa = runs.find((r) => r.text === "IPA")!;
@@ -356,4 +356,13 @@ it("shares measured boxes with drawing, including skipped layers and binding cha
   expect(scene.boxes.get("b")!.y).toBeCloseTo(scene.boxes.get("a")!.y + scene.boxes.get("a")!.h + 5);
   expect(scene.items).toEqual(planLayers(layers, m, assets, { skip: new Set(["a"]) }));
   expect(scene.boxes).toEqual(layerBoxes(layers, m, assets));
+});
+
+
+it.each([0, 90] as const)("keeps each paragraph's last line naturally spaced at rotation %s (#293)", (rotation) => {
+  const runs = planLayers([text({ id: "paragraphs", x: 0, y: 0, width: 30, rotation,
+    align: "justify", lines: [line("aa bb"), line("aa bb cc")] })], m, assets) as PlacedText[];
+  expect(runs.map((r) => r.text)).toEqual(["aa bb", "aa", "bb", "cc"]);
+  expect(runs[0].w).toBe(25);
+  expect(rotation ? runs[1].y - runs[2].y : runs[2].x - runs[1].x).toBe(20);
 });

@@ -557,3 +557,11 @@ it("keeps the run toggles hidden when Tab lands on Uppercase from outside the fi
   act(() => { button.focus(); });
   expect(container.querySelector('[aria-label="Toggle bold"]')).toBeNull();
 });
+
+it("unstyles a selected mixed-case run even if Selection stringifies uppercase (#285)", () => {
+  const { el, emitted, toggle } = mountField([line("A **Hazy** beer")], { uppercase: true });
+  select(el, "Hazy");
+  const spy = vi.spyOn(window.getSelection()!, "toString").mockReturnValue("HAZY");
+  try { toggle("bold"); expect(emitted.at(-1)?.[0].text).toBe("A Hazy beer"); }
+  finally { spy.mockRestore(); }
+});

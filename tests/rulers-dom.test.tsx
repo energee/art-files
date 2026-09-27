@@ -82,7 +82,7 @@ describe("Rulers manual-guide removal", () => {
   it("keeps the handle's Delete key as a second way to remove", () => {
     const props = renderRulers();
     const handle = container.querySelector<HTMLDivElement>(
-      '[aria-label="Vertical manual guide; press Delete to remove"]')!;
+      '[aria-label^="Vertical manual guide;"]')!;
     act(() => {
       handle.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true }));
     });
@@ -91,8 +91,17 @@ describe("Rulers manual-guide removal", () => {
 
   it("hides every manual guide, handle and × when Guides is off", () => {
     renderRulers({ showGuides: false });
-    expect(container.querySelector('[aria-label$="manual guide; press Delete to remove"]')).toBeNull();
+    expect(container.querySelector('[aria-label*="manual guide;"]')).toBeNull();
     expect(removeButton("vertical")).toBeNull();
     expect(removeButton("horizontal")).toBeNull();
   });
+});
+
+it("arrows move the focused guide and do not reach layer shortcuts (#301)", () => {
+  const props = renderRulers();
+  const guide = container.querySelector<HTMLElement>('[aria-label^="Vertical manual guide"]')!;
+  const event = new KeyboardEvent("keydown", { key: "ArrowRight", shiftKey: true, bubbles: true, cancelable: true });
+  act(() => guide.dispatchEvent(event));
+  expect(event.defaultPrevented).toBe(true);
+  expect(props.onMoveManual).toHaveBeenCalledWith(7, 110);
 });

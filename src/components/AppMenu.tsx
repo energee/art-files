@@ -1,3 +1,4 @@
+import { isMacOS } from "@/keys";
 // AppMenu.tsx — one File/Edit/View menu layout, rendered as shadcn chrome in
 // the browser and installed as the native application menu under Tauri.
 import { useEffect, useRef, useState } from "react";
@@ -216,15 +217,12 @@ type NativeResource = { close: () => Promise<void> };
 type NativeEntry = MenuItem | CheckMenuItem | IconMenuItem | PredefinedMenuItem | Submenu;
 type NativeAction = MenuItem | CheckMenuItem | IconMenuItem;
 
-function isMacOS() {
-  return /Macintosh|Mac OS X/.test(navigator.userAgent);
-}
 
 /** Native menus must own modified accelerators so macOS can display them.
  *  Bare 1–3/R/G bindings deliberately stay in App's guarded key listener:
  *  registering those with the OS would fire them while the user is typing. */
 export function nativeAccelerator(command: Command): string | undefined {
-  const glyphs = shortcutOf(command);
+  const glyphs = shortcutOf(command, true);
   if (!glyphs?.includes("⌘")) return undefined;
   const key = glyphs.replace("⇧", "").replace("⌘", "");
   return `CmdOrCtrl+${glyphs.includes("⇧") ? "Shift+" : ""}${key}`;

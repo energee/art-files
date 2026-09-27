@@ -103,6 +103,8 @@ export function DesktopUpdater(props: {
   /** Fires with the version once an update is installed and awaiting a relaunch. */
   onInstalled?: () => void;
 }) {
+  const dirtyRef = useRef(props.dirty);
+  dirtyRef.current = props.dirty;
   const desktop = isTauri();
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
@@ -195,12 +197,12 @@ export function DesktopUpdater(props: {
   const dismiss = () => {
     setOpen(false);
     if (status.kind === "error" && status.installed) setStatus({ kind: "installed", version: status.installed });
-    else if (!["available", "current", "installed", "downloading"].includes(status.kind)) setStatus({ kind: "idle" });
+    else if (!["available", "current", "installed", "downloading", "error"].includes(status.kind)) setStatus({ kind: "idle" });
   };
 
   const install = async () => {
     const update = updateRef.current;
-    if (!update || status.kind !== "available") return;
+    if (!update || status.kind !== "available" || (INSTALL_EXITS_APP && props.dirty)) return;
     let downloaded = 0;
     let total: number | undefined;
     let shownPct = -1;
@@ -218,7 +220,19 @@ export function DesktopUpdater(props: {
     setStatus({ kind: "downloading", version: update.version, downloaded: 0 });
     setOpen(false); // progress shows in the status bar; the dialog returns only on error
     try {
-      await update.downloadAndInstall(showProgress, { timeout: 120_000 });
+      if (INSTALL_EXITS_APP) {
+        await update.download(showProgress, { timeout: 120_000 });
+        // Editing stays available during download; check the live workspace
+        // again before handing control to the installer that closes it.
+        if (dirtyRef.current) {
+          setStatus({ kind: "available", version: update.version, currentVersion: update.currentVersion, body: update.body });
+          setOpen(true);
+          return;
+        }
+        await update.install();
+      } else {
+        await update.downloadAndInstall(showProgress, { timeout: 120_000 });
+      }
       if (INSTALL_EXITS_APP) { await invoke("relaunch_app"); return; }
       setStatus({ kind: "installed", version: update.version });
       props.onInstalled?.();
@@ -233,6 +247,7 @@ export function DesktopUpdater(props: {
   // The two clickable status-bar states share one button; only icon and label differ.
   const barAction = status.kind === "available" ? { Icon: Download, label: "Update available", version: status.version }
     : status.kind === "installed" ? { Icon: RotateCw, label: "Restart to finish", version: status.version }
+    : status.kind === "error" ? { Icon: Download, label: "Update failed — try again", version: undefined }
     : null;
   const releasedOn = status.kind === "available" && status.date
     ? ` · Released ${new Date(status.date).toLocaleDateString(undefined, {
@@ -249,7 +264,7 @@ export function DesktopUpdater(props: {
           <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
             <path d="M22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12Z" />
             <path d="M8 12.5L10.5 15L16 9" strokeLinecap="round" strokeLinejoin="round" />
-          </svg> Up-to-date
+          </svg> Up to date
         </span>,
         props.statusHost,
       )}
@@ -263,7 +278,7 @@ export function DesktopUpdater(props: {
             )}
             onClick={() => setOpen(true)}>
             <barAction.Icon data-icon="inline-start" aria-hidden="true" />
-            {barAction.label} · {barAction.version}
+            {barAction.label}{barAction.version && ` · ${barAction.version}`}
           </Button>
         </span>, props.statusHost,
       )}
@@ -298,7 +313,7 @@ export function DesktopUpdater(props: {
               </span>
             )}
             {status.kind === "current" && "You already have the newest available version."}
-            {status.kind === "disabled" && "Local builds do not contain the release signing key."}
+            {status.kind === "disabled" && "Automatic updates are unavailable in this build. Install an official release to receive updates."}
             {status.kind === "error" && status.message}
           </DialogDescription>
         </DialogHeader>
@@ -315,20 +330,20 @@ export function DesktopUpdater(props: {
         )}
         {(status.kind === "installed" || (status.kind === "available" && INSTALL_EXITS_APP)) && props.dirty && (
           <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
-            This label has unsaved changes. Restarting discards them, so choose Later and save first.
+            Some tabs have unsaved changes. Save or discard those changes before restarting.
           </p>
         )}
 
         {status.kind === "available" && (
           <DialogFooter>
             <Button variant="outline" onClick={dismiss}>Later</Button>
-            <Button onClick={() => void install()}>{INSTALL_EXITS_APP ? "Install and Restart" : "Install"}</Button>
+            <Button disabled={INSTALL_EXITS_APP && props.dirty} onClick={() => void install()}>{INSTALL_EXITS_APP ? "Install and Restart" : "Install"}</Button>
           </DialogFooter>
         )}
         {status.kind === "installed" && (
           <DialogFooter>
             <Button variant="outline" onClick={dismiss}>Later</Button>
-            <Button onClick={() => void invoke("relaunch_app").catch((error: unknown) => {
+            <Button disabled={props.dirty} onClick={() => void invoke("relaunch_app").catch((error: unknown) => {
               setStatus({ kind: "error", message: `Could not restart: ${String(error)}`, installed: status.version });
             })}>Restart Now</Button>
           </DialogFooter>
@@ -336,6 +351,10 @@ export function DesktopUpdater(props: {
         {(status.kind === "current" || status.kind === "disabled" || status.kind === "error" || status.kind === "downloading") && (
           <DialogFooter>
             <Button onClick={dismiss}>Close</Button>
+            {status.kind === "error" && !status.installed && <Button onClick={() => {
+              setStatus({ kind: "checking" });
+              void performCheck().then((result) => present(result, true));
+            }}>Try again</Button>}
           </DialogFooter>
         )}
       </DialogContent>

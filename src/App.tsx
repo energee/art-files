@@ -27,7 +27,7 @@
 import { RenderSettings as RenderSettingsFields } from "@/components/RenderSettings";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { MasterSaveReview } from "@/components/MasterSaveReview";
-import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isTypingTarget, keyOwner } from "@/keys";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
@@ -710,6 +710,13 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Whether the user has actually touched this document — the shell
    *  prompts about closing a tab only when edited AND unsaved (tabs.ts). */
   const [edited, setEdited] = useState(false);
+  const editFlags = useRef({ dirty, edited });
+  editFlags.current = { dirty, edited };
+  const beforeTextEdit = useRef(editFlags.current);
+  const onEditSession = useCallback((id: string | null) => {
+    if (id) beforeTextEdit.current = editFlags.current;
+    setEditSession(id);
+  }, []);
   const editedRef = useRef(edited);
   editedRef.current = edited;
   /** Boot-restore's resetDocument goes through swapLoaded, which markDirty.
@@ -777,9 +784,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     setSelection({ ids: [id], anchor: id });
   }
   function onRemoveLayer(id: string) {
-    edit((d) => removeLayerIn(d, id, rowBoxes()));
-    setSelection((s) => s.ids.includes(id)
-      ? { ids: s.ids.filter((x) => x !== id), anchor: s.anchor === id ? null : s.anchor } : s);
+    const ids = gestureIds(selected, id);
+    const boxes = rowBoxes();
+    if (edit((d) => ids.reduce((next, key) => removeLayerIn(next, key, boxes), d)))
+      setSelection((s) => ({ ids: s.ids.filter((x) => !ids.includes(x)),
+        anchor: s.anchor && ids.includes(s.anchor) ? null : s.anchor }));
   }
   /** Switch the working version: what the canvas draws, and what a promotion
    *  in the Save Master review would be written into. The Select names one
@@ -1923,7 +1932,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       }
       // Resolve untrusted overrides/values before installing the document or
       // decoding its assets; a malformed label must leave the old tab intact.
-      notes.push(...layerRows(next.master, next.label).warnings);
+      layerRows(next.master, next.label);
       // Label-delta rule: the label's own embedded role wins; a missing one
       // falls back to the master's template asset. Image bytes merge the
       // same way, per id (spread order: master first, label last).
@@ -2219,7 +2228,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           review stays with its tab (hidden while another tab is in front,
           back on return) so a confirm can only write the visible tab's master. */}
       {pendingSave && (
-        <MasterSaveReview open={active} changes={masterChangeList}
+        <MasterSaveReview open={active} as={pendingSave.as} changes={masterChangeList}
           target={master.variants.find((v) => v.id === version)?.name}
           onCancel={() => setPendingSave(null)}
           onConfirm={(promote) => {
@@ -2241,7 +2250,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onSaveMaster={() => setPendingSave({ as: false })} masterDirty={masterDirty}
               version={version} onVersion={switchVersion} />
             <LayerList rows={rows} selected={selected}
-              onSelect={(id, mods) => pick(id, { shift: mods.shift, toggle: mods.meta })}
+              onSelect={pick}
               onToggle={(id, prop, value) => patch(id, { [prop]: value })}
               onRename={(id, name) => patch(id, { name })}
               onReorder={(id, delta) => editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta))}
@@ -2264,7 +2273,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             guides: showGuides,
           }} />}
           {blocked && <HeaderAlert>{blockedWhy}</HeaderAlert>}
-          {loadError && <HeaderAlert>{loadError}</HeaderAlert>}
+          {loadError && <HeaderAlert tone={loadError.startsWith("Note: ") ? "warning" : "destructive"}>{loadError}</HeaderAlert>}
           {(buildError || renderError) && <HeaderAlert>{buildError || renderError}</HeaderAlert>}
           {resolveWarnings.length > 0 && <HeaderAlert tone="warning">{resolveWarnings.join(" · ")}</HeaderAlert>}
           {/* Open Master's fallback — see masterInput/openMasterPicker. */}
@@ -2337,11 +2346,11 @@ export const DocumentEditor = memo(function DocumentEditor({
                 const layer = drawLayers.find((l) => l.id === id);
                 if (layer) setContent(layer, lines, !first);
               }}
-              onEditCancel={mutating(undo)}
+              onEditCancel={() => { undo(); setDirty(beforeTextEdit.current.dirty); setEdited(beforeTextEdit.current.edited); }}
               onDrag={onDrag}
               onResize={onResize}
               onDragCancel={cancelGesture}
-              onEditSession={setEditSession}
+              onEditSession={onEditSession}
               onSplit={setSplit}
               bleed={showGuides}
               cornerRadiusPct={render.cornerRadius}
@@ -2418,7 +2427,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             </button>
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
             <span className="shrink-0 px-1 text-xs tabular-nums whitespace-nowrap text-muted-foreground"
-              title="Resolution the PDFs and PSDs are built at">
+              title="PSD raster resolution and pixel-ruler scale">
               {render.dpi} DPI
             </span>
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
@@ -2449,7 +2458,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           </div>
         </section>
         {/* Right inspector: a shadcn Sheet driven by the selection — open
-            while a layer is selected, closed (Esc or the header X) by
+            while a layer is selected, closed (Esc or a click on the empty pasteboard) by
             clearing it. Non-modal and overlay-free so the preview and the
             Layers list stay clickable while inspecting. active gate: the
             sheet portals to document.body, escaping the shell's display:none. */}

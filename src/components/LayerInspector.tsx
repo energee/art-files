@@ -431,15 +431,15 @@ function Position(props: Ctx & {
             </span>
           </Field>
           <Field label="Side">
-            <select aria-label="Binding side" value={binding.side}
-              className="h-6 rounded border border-input bg-background px-1 text-xs"
-              onChange={(e) => {
-                const side = e.target.value as BindingSide;
-                props.onBind?.(binding.to, side);
-              }}>
-              {(["top", "left", "right", "bottom"] as const).map((side) =>
-                <option key={side} value={side}>{side}</option>)}
-            </select>
+            <Select value={binding.side} onValueChange={(side) => {
+              if (side === "top" || side === "left" || side === "right" || side === "bottom") props.onBind?.(binding.to, side);
+            }}>
+              <SelectTrigger size="sm" aria-label="Binding side" className="h-6 text-xs"><SelectValue>{binding.side[0].toUpperCase() + binding.side.slice(1)}</SelectValue></SelectTrigger>
+              <SelectContent>
+                {(["top", "left", "right", "bottom"] as const).map((side) =>
+                  <SelectItem key={side} value={side}>{side[0].toUpperCase() + side.slice(1)}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </Field>
           <Row badge={badge(["binding", "y"], "Gap")}>
             <DimensionField id={`${id}-gap`} label="Gap" unit={props.unit} value={binding.gap}
@@ -554,14 +554,6 @@ function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: string }) {
   );
 }
 
-/** The FILL CONTRACT — what a filler may put in this text layer. Authored on
- *  the master, never overridden per label (edit.ts's MASTER_PATHS routes these
- *  paths there), which is why it reads as its own section rather than sitting
- *  among the Type controls: editing one changes the template for every label,
- *  and the Save Master review will say so.
- *
- *  Every field here was already honoured by the renderer and the fill widgets
- *  and authored by lolevLayers.ts; none of them had a control until now. */
 /** Authoring the fill vocabulary: the caption a filler sees, and the list they
  *  pick from (docs/plans/choice-input.md, Task 6). Both are fill-contract keys,
  *  so `set` routes them to the master like `placeholder` does.
@@ -798,7 +790,7 @@ function ImageGeometry(props: Ctx & { layer: ImageLayer }) {
   // The page art (texture, metallic mask) covers the whole page: its box is
   // the page and it has no scale or tint to speak of — only how it meets
   // that box.
-  if (page) return <div className="space-y-1.5"><Heading>Image</Heading>{fit}</div>;
+  if (page) return <p className="text-xs text-muted-foreground">Page art always covers the full page.</p>;
   return (
     <div className="space-y-1.5">
       <Heading>Image</Heading>

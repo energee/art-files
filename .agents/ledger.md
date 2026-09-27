@@ -505,3 +505,11 @@ no status, no attempts, no delta.
 - delta: snapshot-aware saves; stable cancelled/failed save targets; decode errors surfaced; preflight before document replacement; editable label-only layers; complete master review; variant-order round trips; bounded archive inflation; optional CLI clears and dormant values; useful WebP error; independent nudges; precise barcode resize; unique variant names; actual QR default; shared plain-object test and native cloning
 - evidence: 1195 tests pass; TypeScript, zero-warning lint and release metadata checks pass; focused DOM regressions retain the prior document and save target after each malformed open
 - release: binary-impacting; queued under Unreleased, no release published
+
+## 2026-09-27 issue-queue-ui-and-docs
+- finding: #274–#276, #278–#281, #285–#286, #291–#293, #296–#298, #300–#303, #310, #312–#336, #342–#347, #350–#356 — keyboard/input correctness, updater safety, stale docs and redundant helpers
+- status: done
+- attempts: 1/3
+- delta: restored cancelled text state; paragraph-aware justification; keyboard guide/can/swatch controls; stable scrub modifiers; selected-layer removal; platform hints; updater dirty gates and retry; readable rebind/Save As/drop errors; one plain-line field; shared PSD spacing decision; native file FIFO and CLI entry detection; Rust CI and declared Node/runtime dependencies; operator docs match current behavior; route suffix guards; recovered historical plan; corrected agent evidence
+- evidence: 1209 tests across 106 suites pass (four workers to avoid machine-contention timeouts); TypeScript, zero-warning lint and release gate pass; all 10 Rust tests pass; docs production build passes; valid markdown/image endpoints return 200 and invalid suffixes 404
+- release: binary-impacting; notes queued under Unreleased; version unchanged; no release published

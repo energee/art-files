@@ -181,12 +181,12 @@ describe("LayerList", () => {
   it("clicking a row selects it with the modifier keys", () => {
     const props = render(baseProps());
     click(rowFor("wordmark").querySelector("button")!);
-    expect(props.onSelect).toHaveBeenCalledWith("wordmark", { shift: false, meta: false });
+    expect(props.onSelect).toHaveBeenCalledWith("wordmark", { shift: false, toggle: false });
     act(() => {
       rowFor("name").querySelector("button")!
         .dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true, ctrlKey: true }));
     });
-    expect(props.onSelect).toHaveBeenLastCalledWith("name", { shift: true, meta: true });
+    expect(props.onSelect).toHaveBeenLastCalledWith("name", { shift: true, toggle: true });
   });
 
   it("double-click renames inline: Enter commits through onRename, Escape cancels", () => {

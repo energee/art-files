@@ -31,7 +31,6 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PNG } from "pngjs";
-import { isEntry } from "./is-entry.mjs";
 
 /** An RGBA raster, row-major, 4 bytes per pixel — what pngjs decodes to and
  *  what a 2D canvas's getImageData returns. */
@@ -208,7 +207,7 @@ function main(argv: string[]): number {
 
 // Thin CLI wrapper: only run when this file is the process's entry point,
 // never on import from tests (scripts/is-entry.mjs).
-if (isEntry(import.meta.url)) {
+if (import.meta.main) {
   let code: number;
   try {
     code = main(process.argv.slice(2));

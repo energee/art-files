@@ -17,7 +17,12 @@ import { addColor, setSwatches, useSwatches } from "@/settings";
 /** "No ink" checkerboard chip background. */
 const CHECKER =
   "repeating-conic-gradient(#3a3d43 0% 25%, #1a1c1f 0% 50%) 0 0 / 8px 8px";
-const HEX = /^#[0-9a-fA-F]{6}$/;
+function normalizeHex(value: string): Fill | undefined {
+  const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value.trim());
+  if (!match) return undefined;
+  const hex = match[1].toLowerCase();
+  return `#${hex.length === 3 ? [...hex].map((c) => c + c).join("") : hex}` as Fill;
+}
 
 // ponytail: EyeDropper is Chromium-only and still absent from lib.dom, so it
 // gets a local type instead of a global Window augmentation. Read once here:
@@ -110,10 +115,17 @@ export function ColorField(props: {
               <button
                 key={c}
                 type="button"
-                title={`${c} (shift-click to remove)`}
+                title={`${c} (Delete or shift-click to remove)`}
                 aria-label={c}
                 className="size-5 rounded-sm border border-border"
                 style={{ background: c }}
+                onKeyDown={(e) => {
+                  if (e.key !== "Delete" && e.key !== "Backspace") return;
+                  e.preventDefault(); e.stopPropagation();
+                  const next = e.currentTarget.nextElementSibling ?? e.currentTarget.previousElementSibling;
+                  setSwatches((cs) => cs.filter((x) => x !== c));
+                  (next as HTMLElement | null)?.focus();
+                }}
                 onClick={(e) =>
                   e.shiftKey
                     ? setSwatches((cs) => cs.filter((x) => x !== c))
@@ -143,9 +155,12 @@ export function ColorField(props: {
         disabled={none}
         onChange={(e) => {
           setText(e.target.value);
-          if (HEX.test(e.target.value)) props.onChange(e.target.value as Fill);
+          const parsed = normalizeHex(e.target.value);
+          if (parsed) props.onChange(parsed);
         }}
-        onBlur={() => setText(null)}
+        aria-invalid={text !== null && !normalizeHex(text) || undefined}
+        title={text !== null && !normalizeHex(text) ? "Enter a 3- or 6-digit hex color." : undefined}
+        onBlur={() => { if (text === null || normalizeHex(text)) setText(null); }}
         // w-24/px-2.5 = a ScrubField's value box, so the hex lands in the
         // same right-hand column as every numeric field in the panel.
         className="h-6 w-24 px-2.5 font-mono text-xs"

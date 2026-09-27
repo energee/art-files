@@ -571,7 +571,7 @@ export const PreviewCompare = forwardRef<
     setReadout({ id: d.id, moved: null }); // a resize reads its own W x H below
   }
   function onHandleUp(e: React.PointerEvent<HTMLSpanElement>) {
-    swallowClick.current = !!resize.current?.started;
+    swallowClick.current ||= !!resize.current?.started;
     resize.current = null;
     setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
     e.stopPropagation();
@@ -604,7 +604,7 @@ export const PreviewCompare = forwardRef<
     setReadout({ id: d.id, moved: { dx: snapped.dx, dy: snapped.dy } });
   }
   function onPointerUp() {
-    swallowClick.current = !!drag.current?.started;
+    swallowClick.current ||= !!drag.current?.started;
     drag.current = null; setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
   }
 
@@ -618,6 +618,7 @@ export const PreviewCompare = forwardRef<
       if (e.key !== "Escape") return;
       if (drag.current?.started || resize.current?.started) {
         e.preventDefault();
+        swallowClick.current = true;
         onDragCancel();
       }
       drag.current = null; resize.current = null;
@@ -626,6 +627,8 @@ export const PreviewCompare = forwardRef<
     document.addEventListener("keydown", onKeyDown, true);
     return () => document.removeEventListener("keydown", onKeyDown, true);
   }, [onDragCancel]);
+
+  useEffect(() => { if (!canvasRender) setEditing(null); }, [canvasRender]);
 
   // Report the open session so App can skip the layer from the render for
   // its duration. One effect covers every open/close path.
@@ -833,9 +836,10 @@ export const PreviewCompare = forwardRef<
             // edge follows the pointer and the opposite edge stays put.
             // Locked layers keep inert ticks; onHandleDown re-checks the lock.
             <span
-              key={h.key} role="slider" aria-label={`Resize layer (${h.key})`}
+              key={h.key} aria-hidden="true" data-resize-handle={h.key}
               title="Drag to resize (shift: keep proportions)"
               className={b.locked ? h.clsLocked : h.cls}
+              onClick={(e) => { e.stopPropagation(); swallowClick.current = false; }}
               onPointerDown={(e) => onHandleDown(e, b.id, h.handle)}
               onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}
             />

@@ -8,6 +8,20 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 
+- **Keyboard editing keeps its place.** Cancelling text restores the prior saved
+  state; formatting preserves authored case; layer deletion and reordering keep
+  focus and announce changes. Guides, swatches and the can preview work by keyboard.
+- **Updates protect unsaved tabs.** Restart waits for saving, Windows checks again
+  before installing, and failed updates remain visible with a retry action.
+- **Inspector controls match their behavior.** Hex colors accept shorthand,
+  scrubbing stays steady when modifiers change, and page art explains its fixed fit.
+  Rejected file drops and master switching now explain what happened.
+- **Paragraph endings keep natural spacing.** Justification expands only wrapped
+  continuation lines, including rotated text, across preview and exports.
+- **Shortcut hints match the platform.** Windows and Linux show Ctrl and Shift,
+  and Save Master As identifies the new file it creates.
+
+
 - **Saving protects edits made while a file is writing.** Newer edits remain
   unsaved, and Save Master preserves them. A failed browser write reports an
   error; cancelling Save As keeps the original save target.

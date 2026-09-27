@@ -1,5 +1,7 @@
 "use client"
 
+import { keyOwner } from "@/keys"
+
 import * as React from "react"
 import { mergeProps } from "@base-ui/react/merge-props"
 import { useRender } from "@base-ui/react/use-render"
@@ -116,6 +118,7 @@ function SidebarProvider({
   React.useEffect(() => {
     if (!hotkey) return
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || keyOwner(event.target)) return
       if (
         event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
         (event.metaKey || event.ctrlKey)

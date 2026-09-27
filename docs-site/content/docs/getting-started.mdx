@@ -33,7 +33,7 @@ npm run desktop:dev
 
 Double-click a `.label` and it opens in Label Lab, even if the app is already running: the window comes to the front, even from minimized. New tab, or it focuses the tab that already has that file. On Linux the association shows up once the AppImage is desktop-integrated. `Label_Lab.AppImage path/to/file.label` works either way.
 
-Published builds check GitHub Releases after launch and when the window comes back. **Label Lab → Check for Updates…** is the same check, on demand. Dev builds skip it. They have no release key.
+Published builds check the configured update feed after launch and when the window comes back. On macOS, **Label Lab → Check for Updates…** requests a check on demand. On Windows and Linux, updates appear in the status bar after an automatic check. Development builds do not receive automatic updates.
 
 ## Your first document
 

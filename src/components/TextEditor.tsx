@@ -105,32 +105,18 @@ function runsOf(text: string): { text: string; bold: boolean; white: boolean }[]
     .map((r) => ({ text: r.text, bold: !!r.bold, white: r.layer === "white" }));
 }
 
-/** Every class string the sidebar painter can produce, resolved once at
- *  load: cn() would otherwise re-parse a class string per line and per run
- *  on every reseed and every toggle. */
-const LINE_CLASSES: Record<string, string> = {};
-for (const header of [false, true]) {
-  for (const bold of [false, true]) {
-    for (const white of [false, true]) {
-      LINE_CLASSES[`${+header}${+bold}${+white}`] = cn(
-        "font-heading leading-snug outline-none",
-        header ? "text-sm" : "text-xs",
-        bold && "font-semibold",
-        // White ink is shown as a dotted underline, never as white text: the
-        // artwork's own colors (gold, white) are unreadable against a form
-        // field, and white-on-white made the run vanish outright.
-        white && "underline decoration-dotted decoration-2 underline-offset-2",
-      );
-    }
-  }
-}
-
 /** The sidebar's painter: a class, nothing else. Weight and the white-ink
  *  marker only — the field keeps the form's own foreground color, because a
  *  layer's artwork fill (gold on dark, white on white) is what made this
  *  input hard to read. The preview, not the input, is where color belongs. */
 const paintSidebarLine: LinePaint = (el, l) => {
-  el.className = LINE_CLASSES[`${+l.header}${+l.bold}${+l.white}`];
+  el.className = cn(
+    "font-heading leading-snug outline-none",
+    l.header ? "text-sm" : "text-xs",
+    l.bold && "font-semibold",
+    // White ink uses an underline so it stays legible on the form background.
+    l.white && "underline decoration-dotted decoration-2 underline-offset-2",
+  );
 };
 
 /** A line-div's or run-span's data-* flags. Missing data-* (a brand-new div
@@ -394,7 +380,7 @@ export function useTextField(opts: {
     const root = rootRef.current;
     const sel = window.getSelection();
     if (!root || !sel || sel.rangeCount === 0) return false;
-    const selected = sel.toString();
+    const selected = sel.getRangeAt(0).toString();
     if (selected.includes("\n")) return false;
     const sels = linesInSelection(root);
     if (sels.length !== 1) return false;
@@ -616,20 +602,11 @@ export interface TextEditorProps {
 /** The sidebar's field for a text layer: label, the inline toolbar row, and
  *  the widget the layer's `input` calls for. */
 export function TextEditor(props: TextEditorProps) {
-  if (props.choices?.length) return <ChoiceField {...props} choices={props.choices} />;
-  return props.input ? <PlainField {...props} input={props.input} /> : <RichField {...props} />;
+  return props.choices?.length || props.input ? <PlainLineField {...props} /> : <RichField {...props} />;
 }
 
 const LABEL_CLASS = "text-xs text-muted-foreground";
 
-/** A picker over the layer's vocabulary that is still a text box: the list
- *  suggests, it never constrains (docs/plans/choice-input.md). Typing filters
- *  on title and value alike; a value matching nothing offers itself, and
- *  committing it teaches the master (edit.ts's setContentIn).
- *
- *  It runs the same validation a plain field does, off the same `input` —
- *  which is the whole reason `choices` is not an input mode: a barcode tier
- *  list is a vocabulary AND a code box, not a choice between them. */
 /** THE PICKER: a text box over a fixed vocabulary that still takes anything
  *  typed (docs/plans/choice-input.md). Typing filters on title and value
  *  alike; a value nobody offers appears as its own row rather than being
@@ -732,56 +709,23 @@ export function ChoiceBox(props: {
   );
 }
 
-/** The styled-text field's picker: ChoiceBox plus the caption, the suffix and
- *  the validation a plain field runs, writing one plain line back. */
-function ChoiceField(props: TextEditorProps & { choices: Choice[] }) {
+/** One plain line, entered directly or through a vocabulary, with the same
+ *  validation, caption and suffix in either case. */
+function PlainLineField(props: TextEditorProps) {
   const { id, label, title, lines, onChange, base, input, min, max, symbology, suffix, choices } = props;
   const value = lines[0]?.text ?? "";
-  // Only a layer that declares an input has anything to validate against; a
-  // style is free text, and its vocabulary is a suggestion, not a rule.
-  const check: { ok: boolean; error?: string } = value === "" || !input
-    ? { ok: true }
-    : validateField({ id, label, kind: input, path: id, min, max, symbology }, value);
-
-  return (
-    <div className="space-y-1">
-      <Label htmlFor={id} className={LABEL_CLASS}>{title ?? label}</Label>
-      <div className="flex items-center gap-1.5">
-        <ChoiceBox
-          id={id} value={value} choices={choices}
-          invalid={!check.ok}
-          onCommit={(text) => onChange([{ ...base, text }])} />
-        {suffix && <span className="shrink-0 text-xs text-muted-foreground">{suffix}</span>}
-      </div>
-      {!check.ok && <p className="text-xs text-destructive-text">{check.error}</p>}
-    </div>
-  );
-}
-
-/** A number or code box: one plain line in, one plain line out, validated
- *  by model/fields.ts through a FieldDecl built from the layer's own hints
- *  so the code/number rules have one spelling. */
-function PlainField(props: TextEditorProps & { input: "number" | "code" }) {
-  const { id, label, title, lines, onChange, base, input, min, max, symbology, suffix } = props;
-  const value = lines[0]?.text ?? "";
-  // Blank is "not filled yet", not "invalid" — only judge a value that's there.
-  const check: { ok: boolean; error?: string } = value === ""
-    ? { ok: true }
+  const check = value === "" || !input ? { ok: true }
     : validateField({ id, label, kind: input, path: id, min, max, symbology }, value);
   return (
     <div className="space-y-1">
       <Label htmlFor={id} className={LABEL_CLASS}>{title ?? label}</Label>
       <div className="flex items-center gap-1.5">
-        <Input
-          id={id}
-          type={input === "number" ? "number" : "text"}
-          className="h-7 text-xs"
-          value={value}
-          min={min}
-          max={max}
-          aria-invalid={!check.ok || undefined}
-          onChange={(e) => onChange([{ ...base, text: e.target.value }])}
-        />
+        {choices?.length ? <ChoiceBox id={id} value={value} choices={choices}
+          invalid={!check.ok} onCommit={(text) => onChange([{ ...base, text }])} /> :
+          <Input id={id} type={input === "number" ? "number" : "text"}
+            className="h-7 text-xs" value={value} min={min} max={max}
+            aria-invalid={!check.ok || undefined}
+            onChange={(e) => onChange([{ ...base, text: e.target.value }])} />}
         {suffix && <span className="shrink-0 text-xs text-muted-foreground">{suffix}</span>}
       </div>
       {!check.ok && <p className="text-xs text-destructive-text">{check.error}</p>}

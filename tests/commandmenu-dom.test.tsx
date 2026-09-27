@@ -4,7 +4,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CommandMenu } from "@/components/CommandMenu";
+import { CommandMenu, shortcutOf } from "@/components/CommandMenu";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView ??= () => undefined;
@@ -30,7 +30,7 @@ it("renders each shortcut as the command-shortcut slot, so the row's spare check
   const items = [...document.querySelectorAll("[data-slot=command-item]")];
   const withKey = items.find((el) => el.textContent?.startsWith("New Tab"));
   const shortcut = withKey?.querySelector("[data-slot=command-shortcut]");
-  expect(shortcut?.textContent).toBe("⌘N");
+  expect(shortcut?.textContent).toBe("Ctrl+N");
   const plain = items.find((el) => el.textContent === "Show Guides");
   expect(plain?.querySelector("[data-slot=command-shortcut]")).toBeNull();
 
@@ -85,4 +85,10 @@ describe("⌘K over an open dialog (#237)", () => {
     await pressK(input);
     expect(palette()).toBeNull();
   });
+});
+
+it("formats modified shortcuts for both platforms (#320)", () => {
+  const cmd = { id: "save", label: "Save As", run: () => {}, key: "s", mods: "⇧⌘" as const };
+  expect(shortcutOf(cmd, true)).toBe("⇧⌘S");
+  expect(shortcutOf(cmd, false)).toBe("Ctrl+Shift+S");
 });

@@ -493,3 +493,17 @@ it("each arrow nudge has its own undo step (#287)", async () => {
     expect(x()).toBeCloseTo(start);
   } finally { await unmount(); }
 });
+
+it("cancelling in-place text restores the pre-session dirty state (#278)", async () => {
+  await withCanvasEditor(async (p, _container, onMeta) => {
+    const before = onMeta.mock.calls.at(-1)![0];
+    const lines = (layerOf(p(), "name") as TextLayer).lines;
+    await act(async () => p().onEditSession?.("name"));
+    await act(async () => p().onEditText("name", [{ ...lines[0], text: "Temporary" }], true));
+    expect(onMeta.mock.calls.at(-1)![0].dirty).toBe(true);
+    await act(async () => p().onEditCancel());
+    await act(async () => p().onEditSession?.(null));
+    expect((layerOf(p(), "name") as TextLayer).lines).toEqual(lines);
+    expect(onMeta.mock.calls.at(-1)![0].dirty).toBe(before.dirty);
+  });
+}, 60_000);

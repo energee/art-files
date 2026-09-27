@@ -18,16 +18,15 @@
 // registers (docs/plans/label-first-editing.md, Task 12):
 //   * the current master's variants, listed under it as versions of it.
 //     Picking one switches to it, which is what makes a promotion land in
-//     `variants.<id>.layers` instead of the base master. Merely enabling a
-//     variant (the chips in LayerList) shows that version; it does not make
-//     it the one you are changing.
+//     `variants.<id>.layers` instead of the base master. The same selection
+//     shows that version on this label.
 //   * the other masters in the library, which are a REBIND and go through the
 //     bench preview below.
 //   * New Variant, an action at the foot.
 // Only the middle one resolves a file, so the two sentinels are intercepted
 // in onValueChange before any rebind is considered.
 import { CornerDownRight } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { rebindLabel } from "@/model/rebindLayers";
 import type { MasterAssets } from "@/model/files";
@@ -90,6 +89,7 @@ export function MasterPicker(props: {
   /** Whether a save would have anything to write (App's masterDirty). */
   masterDirty: boolean;
 }): React.JSX.Element {
+  const previewId = useId();
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<
     { target: Master; assets: MasterAssets; dropped: string[]; disabledVariants: string[] } | null
@@ -111,7 +111,7 @@ export function MasterPicker(props: {
     setResolvingId(id);
     const r = await props.resolve(id);
     setResolvingId(null);
-    if (!r) { setError(`Could not open master "${id}".`); return; }
+    if (!r) { setError(`Could not open master "${props.library[id]?.name ?? id}".`); return; }
     const { dropped } = rebindLabel(props.label, props.master, r.master);
     setPreview({ target: r.master, assets: r.assets, dropped: dropped.values, disabledVariants: dropped.variants });
   };
@@ -221,22 +221,20 @@ export function MasterPicker(props: {
       )}
 
       {preview && (
-        <div id="master-picker-preview" role="menu"
+        <div id="master-picker-preview" role="group" aria-labelledby={previewId}
           className="mt-1 rounded-md border border-sidebar-border p-2 text-xs text-sidebar-foreground">
-          <p>{previewLine(preview)}</p>
+          <p id={previewId}>{previewLine(preview)}</p>
           <div className="mt-1.5 flex justify-end gap-1.5">
-            <button
-              type="button" onClick={closeAll}
-              className="rounded-sm px-2 py-1 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent"
+            <Button
+              type="button" onClick={closeAll} variant="outline" size="xs"
             >
               Cancel
-            </button>
-            <button
-              type="button" id="master-picker-continue" onClick={() => { void commit(); }}
-              className="rounded-sm bg-sidebar-primary px-2 py-1 text-xs text-sidebar-primary-foreground hover:opacity-90"
+            </Button>
+            <Button
+              type="button" id="master-picker-continue" onClick={() => { void commit(); }} size="xs"
             >
               Continue
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -244,16 +242,12 @@ export function MasterPicker(props: {
   );
 }
 
-/** The preview's confirm line — "3 values and 1 variant move to the bench —
- *  continue?" — with the singular/plural wording handled once here so it
- *  can't drift from the counts driving it. An exact-match rebind (nothing
- *  benched) reads as a plain "switch to" line instead. */
 function previewLine(p: { target: Master; dropped: string[]; disabledVariants: string[] }): string {
   const parts: string[] = [];
   if (p.dropped.length)
-    parts.push(`${p.dropped.length} value${p.dropped.length === 1 ? "" : "s"}`);
+    parts.push(`${p.dropped.length} filled field${p.dropped.length === 1 ? "" : "s"}`);
   if (p.disabledVariants.length)
     parts.push(`${p.disabledVariants.length} variant${p.disabledVariants.length === 1 ? "" : "s"}`);
   if (!parts.length) return `Switch to "${p.target.name}" — continue?`;
-  return `${parts.join(" and ")} move to the bench — continue?`;
+  return `Switching to "${p.target.name}" hides ${parts.join(" and ")} that it cannot display. Their contents are kept if you switch back. Continue?`;
 }

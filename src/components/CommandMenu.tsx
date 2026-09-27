@@ -1,6 +1,6 @@
 // CommandMenu.tsx — ⌘K palette exposing the app's actions.
 import { useEffect, useState } from "react";
-import { inDialog } from "@/keys";
+import { inDialog, isMacOS, shortcutLabel } from "@/keys";
 import {
   CommandDialog, CommandEmpty, CommandInput, CommandItem, CommandList, CommandShortcut,
 } from "@/components/ui/command";
@@ -26,8 +26,10 @@ export interface Command {
 
 /** The glyphs to show for a command, derived from the key it actually fires
  *  on so the two cannot drift. */
-export const shortcutOf = (c: Command) =>
-  c.shortcut ?? (c.key ? `${c.mods ?? ""}${c.key.toUpperCase()}` : undefined);
+export const shortcutOf = (c: Command, mac = isMacOS()) => {
+  const keys = c.shortcut ?? (c.key ? `${c.mods ?? ""}${c.key.toUpperCase()}` : undefined);
+  return keys ? (mac ? keys : shortcutLabel(keys, false)) : undefined;
+};
 
 export function CommandMenu(props: { actions: Command[] }) {
   const [open, setOpen] = useState(false);

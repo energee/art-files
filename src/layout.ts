@@ -344,8 +344,8 @@ setOutputDpi(DESIGN_DPI);
  *
  *  NOTE for callers: this affects only the current process. `npm run
  *  generate`'s Node harness (scripts/generate.ts) imports this module in a
- *  separate process with its own copy of this state and never calls
- *  setBleed — it always builds at the default bleed. */
+ *  separate process with its own state. It calls setBleed with the master’s
+ *  physical.bleedIn and does not read the app’s local Settings. */
 export function setBleed(inches: number) {
   BLEED = inches * 72;
   BLEED_SHIFT = BLEED - MEASURED_BLEED;

@@ -1,6 +1,7 @@
 // FileDrop.tsx — drag-and-drop/click file target built on react-dropzone
 // (keyboard, focus, and aria handled by the library), with an image
 // thumbnail on a checkerboard and inline error text.
+import { useState } from "react";
 import { useDropzone, type Accept } from "react-dropzone";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -27,10 +28,20 @@ export function FileDrop(props: {
    *  AND a handler is given, so drops without one look as before. */
   onClear?: () => void;
 }) {
+  const [rejection, setRejection] = useState("");
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: props.accept,
     multiple: false,
-    onDrop: (files) => files[0] && props.onFile(files[0]),
+    onDrop: (files, rejected) => {
+      if (rejected.length) {
+        setRejection(rejected.some((f) => f.errors.some((e) => e.code === "too-many-files"))
+          ? "Drop one file."
+          : `Choose ${Object.values(props.accept).flat().join(" or ")} for ${props.label}.`);
+        return;
+      }
+      setRejection("");
+      if (files[0]) props.onFile(files[0]);
+    },
   });
   return (
     <div className="flex-1">
@@ -76,7 +87,7 @@ export function FileDrop(props: {
         )}
         <input {...getInputProps()} />
       </div>
-      {props.error && <p className="mt-1 text-xs text-destructive-text">{props.error}</p>}
+      {(rejection || props.error) && <p role="alert" className="mt-1 text-xs text-destructive-text">{rejection || props.error}</p>}
     </div>
   );
 }
