@@ -3,13 +3,13 @@ title: Headless generate
 description: PDFs and PSDs from a master and JSON, no window
 ---
 
-Same resolve, plan, and build path as the app. No window.
+Same resolve, plan, and build path as the app. No window. The CLI uses the master’s bleed and 600-DPI PSD output; it does not read the app’s local Settings. WebP assets must be converted to PNG/JPEG first.
 
 ```bash
 npm run generate -- beer.master values.json ./out
 # writes {name}.pdf, {name}-mask.pdf, {name}.psd, {name}-mask.psd
 
-npm run generate -- beer.master --inspect
+npm run -s generate -- beer.master --inspect
 # prints the master's layer ids (the keys values.json uses)
 ```
 
@@ -28,7 +28,7 @@ npm run generate -- beer.master values.json ./out --set name=X
 - `--asset layerId=path`: attach an image file. `--asset background=` / `mask=` need a master with that role layer
 - `--format pdf` or `psd`: skip the other pair. Default is both
 - `--set id=value`: overlay one value on every job
-- `--inspect`: JSON on stdout, exit 0
+- `--inspect`: JSON on stdout, exit 0. Use `npm run -s` when piping output so npm does not add its banner
 
 Relative paths resolve against the directory you run `npm run generate` from, even though npm runs the script from the repo root.
 

@@ -8,11 +8,11 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { RGBELoader } from "three/addons/loaders/RGBELoader.js";
+import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 import type { LabelTextures } from "./labelTextures";
 import { DEFAULT_RENDER } from "@/settings";
 import {
-  ART, LABEL_HEIGHT_RATIO, LABEL_WRAP_RATIO, PAGE, PREVIEW_MAX_W, PREVIEW_OVERSAMPLE, TRIM_UV,
+  LABEL_HEIGHT_RATIO, LABEL_WRAP_RATIO, PAGE, PREVIEW_MAX_W, PREVIEW_OVERSAMPLE, TRIM_UV,
 } from "@/layout";
 
 /** How many cans the scene shows: one, or the 2x2 four-pack. */
@@ -195,6 +195,7 @@ export class CanScene {
     this.maxAnisotropy = this.renderer.capabilities.getMaxAnisotropy();
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.listenToKeyEvents(container);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.2;
     // The distance limits are not set here: every framing derives them from
@@ -236,7 +237,7 @@ export class CanScene {
   /** studio.hdr as scene.environment only — background stays the flat theme
    *  color; the HDRI exists for the metal's reflections. */
   private loadEnvironment() {
-    new RGBELoader().load(
+    new HDRLoader().load(
       `${import.meta.env.BASE_URL}studio.hdr`,
       (texture) => {
         if (this.disposed) { texture.dispose(); return; }
@@ -388,11 +389,11 @@ export class CanScene {
   }
 
   /** Adjust the die-cut corner radius (% of the label's short edge), the
-   *  label height (% of can height) and the foil-edge blur.
+   *  foil-edge blur.
    *
    *  Each knob is a scrub field emitting a change per dragged pixel, so this
-   *  redoes only what that knob feeds: the radius is one canvas redraw, the
-   *  height is one cylinder, and only the blur touches the three mask-derived
+   *  redoes only what that knob feeds: the radius is one canvas redraw,
+   *  and only the blur touches the three mask-derived
    *  maps. A full applyTextures would re-blur, re-lerp and re-upload five
    *  full-resolution textures per pixel of drag. */
   setLabelOptions(opts: {
@@ -442,11 +443,24 @@ export class CanScene {
     return this.canHeight * LABEL_HEIGHT_RATIO;
   }
 
-  /** The wrapped cylinder, sized to the current label height and width.
-   *  Separate from applyTextures so a size scrub rebuilds geometry without
-   *  touching a single texture — and it needs none, the wrap being an arc of
-   *  the circumference rather than something derived from the artwork. */
-  private rebuildLabelMesh() {
+  applyTextures(tex: LabelTextures) {
+    this.pendingTextures = tex;
+    if (!this.canModel) return; // replayed by loadCan on arrival
+
+    const soft = this.softMask(tex);
+    const oldMaterial = this.labelMaterial;
+    this.labelMaterial = new THREE.MeshStandardMaterial({
+      transparent: true, side: THREE.DoubleSide, metalness: 1.0, roughness: 1.0,
+      map: this.createTexture(tex.art, true),
+      metalnessMap: this.createTexture(soft),
+      roughnessMap: this.createTexture(roughnessCanvas(soft)),
+      bumpMap: this.createTexture(soft),
+      bumpScale: LAYER_DEPTH,
+      alphaMap: this.createTexture(this.alphaCanvas(tex)),
+      alphaTest: 0.5,
+    });
+    if (oldMaterial) { this.disposeMaterialMaps(oldMaterial); oldMaterial.dispose(); }
+
     const labelRadius = this.canRadius * 1.005;
     // No clamp: the wrap is the trim's width over the can's circumference,
     // which is 97.9% — short of meeting itself by construction, so there is
@@ -466,29 +480,6 @@ export class CanScene {
     this.labelMesh.rotation.y = wrapAngle / 2 + LABEL_BASE_ROTATION - LABEL_SEAM_OFFSET;
     this.frontAzimuth = wrapAngle + LABEL_BASE_ROTATION - LABEL_SEAM_OFFSET;
     this.scene.add(this.labelMesh);
-    // Caller re-frames: applyTextures does it once, so the 4-pack isn't
-    // cloned twice per build.
-  }
-
-  applyTextures(tex: LabelTextures) {
-    this.pendingTextures = tex;
-    if (!this.canModel) return; // replayed by loadCan on arrival
-
-    const soft = this.softMask(tex);
-    const oldMaterial = this.labelMaterial;
-    this.labelMaterial = new THREE.MeshStandardMaterial({
-      transparent: true, side: THREE.DoubleSide, metalness: 1.0, roughness: 1.0,
-      map: this.createTexture(tex.art, true),
-      metalnessMap: this.createTexture(soft),
-      roughnessMap: this.createTexture(roughnessCanvas(soft)),
-      bumpMap: this.createTexture(soft),
-      bumpScale: LAYER_DEPTH,
-      alphaMap: this.createTexture(this.alphaCanvas(tex)),
-      alphaTest: 0.5,
-    });
-    if (oldMaterial) { this.disposeMaterialMaps(oldMaterial); oldMaterial.dispose(); }
-
-    this.rebuildLabelMesh();
 
     // The opening view, once. frontAzimuth only becomes real after the first
     // cylinder exists, so the constructor's guess needs correcting — but only

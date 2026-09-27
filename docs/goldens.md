@@ -61,10 +61,12 @@ Afterwards the golden is byte-locked again.
    the change you meant to make — a moved description block should light up
    only the description and whatever is positioned relative to it.
 
-4. Once every red pixel is accounted for, take the new digests and byte lengths
-   (`shasum -a 256 Foo.pdf; wc -c Foo.pdf`) into the golden test, and commit the
-   diff PNGs from step 3 alongside them in the same commit, so the review is
-   reproducible from history.
+4. Once every red pixel is accounted for, run
+   `npx vitest run tests/collab-variant-goldens.test.ts` and take the new digests
+   and byte lengths from its **Received** values. Do not copy CLI PDF digests:
+   the CLI supplies a different document title, and the Collab-ON fixture also
+   binds its own tiny image assets. Use the test fixtures for exact byte inputs.
+   Commit the reviewed diff PNGs alongside the updated expectations.
 
 ## What the diff PNG means
 
@@ -77,18 +79,18 @@ pixel that differs from the old render painted solid red:
 - when the two pages differ in size, the diff runs over their union and the
   strip present in only one of them is red.
 
-Comparison is exact per channel. The two rasterizers below anti-alias
-differently, so both inputs of one diff always go through the same engine, and
-a PNG made with one engine is never compared against one made with the other.
+Comparison is exact per channel, so a raster made by any other engine (a
+pdf.js preview, Acrobat) is never diffed against a pdftoppm one — their
+anti-aliasing differs.
 
 ## Rasterizer
 
-`pdftoppm` (poppler) is used when it is on PATH, at `--dpi` (600 by default,
-the label's design DPI, so one raster pixel is one print pixel). Without it the
-script warns and falls back to `pdfjs-dist` rendering through
-`@napi-rs/canvas` (pdfjs-dist's optional dependency) — it takes ~10-15s to
-start and is a safety net for machines without poppler, not the reference.
-Force one with `--rasterizer pdftoppm|pdfjs`.
+`pdftoppm` (poppler) renders both PDFs at `--dpi` (600 by default, the
+label's design DPI, so one raster pixel is one print pixel). It is required:
+`brew install poppler` on macOS, `apt-get install poppler-utils` on Debian and
+Ubuntu; `ci.yml` installs it. Without it the script (and the PDF cases in
+`tests/golden-diff.test.ts`) stop with a "pdftoppm is not on PATH" error. There is no fallback engine — every golden raster in the repo
+comes from the same anti-aliasing rule.
 
 Only page 1 is rasterized; every label PDF is single-page.
 

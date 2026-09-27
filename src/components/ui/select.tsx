@@ -128,7 +128,8 @@ function SelectItem({
           <span className="pointer-events-none absolute right-2 flex size-4 items-center justify-center" />
         }
       >
-        <CheckIcon className="pointer-events-none" />
+        {/* success — the currently-selected value, settled state. */}
+        <CheckIcon className="pointer-events-none text-success-text" />
       </SelectPrimitive.ItemIndicator>
     </SelectPrimitive.Item>
   )

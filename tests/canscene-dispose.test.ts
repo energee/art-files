@@ -22,7 +22,7 @@ vi.mock("three", async (importOriginal) => {
 vi.mock("three/addons/controls/OrbitControls.js", () => ({
   OrbitControls: class {
     target = { set() {}, copy() {}, clone() { return this; }, x: 0, y: 0, z: 0 };
-    addEventListener() {} update() {} dispose() {}
+    addEventListener() {} listenToKeyEvents() {} update() {} dispose() {}
   },
 }));
 vi.mock("three/addons/loaders/GLTFLoader.js", () => ({ GLTFLoader: class { load() {} } }));

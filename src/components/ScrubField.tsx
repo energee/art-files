@@ -75,8 +75,11 @@ export function ScrubField(props: {
           const mult = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
           const inc = props.dragStep ?? props.step;
           setText(null);
-          props.onChange(snap(d.v + ((e.clientX - d.x) / PX_PER_STEP) * inc * mult));
+          d.v = Math.min(props.max, Math.max(props.min, d.v + ((e.clientX - d.x) / PX_PER_STEP) * inc * mult));
+          d.x = e.clientX;
+          props.onChange(snap(d.v));
         }}
+        onPointerCancel={() => { drag.current = null; }}
         onPointerUp={(e) => {
           drag.current = null;
           if (e.currentTarget.hasPointerCapture(e.pointerId))
@@ -86,7 +89,7 @@ export function ScrubField(props: {
         {props.icon && <props.icon className="size-3.5" aria-hidden="true" />}
         {props.label}
       </Label>
-      <InputGroup className="h-6 w-24">
+      <InputGroup className={props.unit === "mm" ? "h-6 w-28" : "h-6 w-24"}>
         <InputGroupInput
           id={props.id}
           type="number"

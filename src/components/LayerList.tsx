@@ -1,3 +1,4 @@
+import { isMacOS } from "@/keys";
 // LayerList.tsx — the ONE Layers list of the master-as-layers redesign
 // (spec: docs/superpowers/specs/2026-09-04-master-as-layers-design.md, "UI"
 // and "Removed"). A flat list of the resolved layers, FRONT TO BACK (the
@@ -6,24 +7,22 @@
 // bottom rows like any other. Each row: kind icon, name (double-click or the
 // row menu to rename inline), a variant badge when a variant ADDS the layer
 // (dimmed while that variant is off), a provenance mark when an enabled
-// variant overrides part of it, then the two per-layer switches — enabled
-// (absent on the background/mask rows: nothing to fill), power (`enabled`,
-// the only visibility switch — there is no session eye any more), lock —
+// variant overrides part of it, then power (`enabled`) and lock —
 // plus drag reordering and a "…" menu with
 // Rename / Remove. The header carries the title, the "Changed" filter
-// that replaced Fill mode, one chip per variant, and the "Add layer" menu.
+// that replaced Fill mode, and the "Add layer" menu.
 //
 // Props-only: no app state, no model imports beyond types. Every write goes
 // out through a callback — the caller decides where it lands (master or the
 // variant that owns the layer; spec: "Editing target selector" removed).
-import { gestureIds } from "@/selection";
+import { gestureIds, modsOf, type SelectMods } from "@/selection";
 import {
-  Barcode, Ellipsis, Image, ListFilter, Lock, Plus, Power,
+  Barcode, Ellipsis, Image, Wallpaper, ListFilter, Lock, Plus, Power,
   QrCode, Scan, Type, type LucideIcon,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { Layer, LayerKind } from "@/model/layers";
-import type { LayerRow, VariantChip } from "@/model/rows";
+import type { LayerRow } from "@/model/rows";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -33,11 +32,6 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 
-/** Click modifiers as the row reports them. `meta` is ⌘ on macOS and Ctrl
- *  elsewhere (the toggle-select gesture) — the platform rule lives here so
- *  the caller only ever sees one flag. */
-interface SelectMods { shift: boolean; meta: boolean }
-
 export interface LayerListProps {
   /** DRAW ORDER, back to front — exactly `Master.layers` plus any
    *  variant-added layers after them. The list renders them reversed, front
@@ -45,7 +39,7 @@ export interface LayerListProps {
   rows: LayerRow[];
   selected: readonly string[];
   onSelect: (id: string, mods: SelectMods) => void;
-  /** The three per-row switches. `enabled` off = the layer never draws
+  /** The two per-row switches. `enabled` off = the layer never draws
    *  (recorded, undoable — there is no session-only hide); `locked` = fillers
    *  cannot move it. */
   onToggle: (id: string, prop: "enabled" | "locked", value: boolean) => void;
@@ -82,7 +76,7 @@ function iconFor(layer: Layer): LucideIcon {
     case "text": return Type;
     case "barcode": return Barcode;
     case "qr": return QrCode;
-    case "image": return layer.role === "mask" ? Scan : Image;
+    case "image": return layer.role === "mask" ? Scan : layer.role === "background" ? Wallpaper : Image;
   }
 }
 
@@ -143,7 +137,21 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!isSelected) return;
     if (e.key === "Delete" || e.key === "Backspace") {
-      e.preventDefault(); p.onRemove(id);
+      e.preventDefault();
+      const current = e.currentTarget as HTMLElement;
+      const list = current.closest('[data-slot="sidebar-menu"]');
+      const buttons = [...(list?.querySelectorAll<HTMLElement>('[data-slot="sidebar-menu-button"]') ?? [])];
+      const at = buttons.indexOf(current);
+      const keep = (button: HTMLElement) => button.getAttribute("aria-pressed") !== "true";
+      const next = buttons.slice(at + 1).find(keep) ?? buttons.slice(0, at).reverse().find(keep);
+      // This list's own Add layer: every workspace tab mounts a LayerList, so
+      // a document-wide lookup would find the first (hidden) tab's.
+      const addLayer = current.closest('[data-slot="sidebar-group"]')
+        ?.querySelector<HTMLElement>('[aria-label="Add layer"]');
+      p.onRemove(id);
+      queueMicrotask(() => {
+        if (!current.isConnected) (next ?? addLayer)?.focus();
+      });
     } else if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       const delta = e.key === "ArrowUp" ? 1 : -1;
       if (delta === 1 ? !atFront : !atBack) { e.preventDefault(); p.onReorder(id, delta); }
@@ -162,7 +170,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
           the row's one focusable, named control — Enter on it fires a click
           that bubbles here the same way. */}
       <div
-        onClick={(e) => p.onSelect(id, { shift: e.shiftKey, meta: e.metaKey || e.ctrlKey })}
+        onClick={(e) => p.onSelect(id, modsOf(e))}
         className={cn(
           "flex cursor-pointer items-center gap-0.5 rounded-md pr-1 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           isSelected && "bg-sidebar-accent text-sidebar-accent-foreground",
@@ -172,6 +180,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
         <SidebarMenuButton
           size="sm"
           isActive={isSelected}
+          aria-pressed={isSelected}
           {...(!renaming ? dragHandlers : {})}
           // Rename lives on the button, not the name span: pointerdown's
           // setPointerCapture (the drag) retargets the follow-up dblclick to
@@ -262,7 +271,6 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
               <DropdownMenuItem onClick={() => setRenaming(true)}>Rename</DropdownMenuItem>
               <DropdownMenuItem
                 variant="destructive"
-                className="data-[variant=destructive]:text-destructive-text data-[variant=destructive]:focus:text-destructive-text"
                 onClick={() => p.onRemove(id)}
               >
                 Remove
@@ -301,7 +309,15 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
 }
 
 export function LayerList(props: LayerListProps): React.JSX.Element {
-  const { rows, selected } = props;
+  const { rows, selected, onReorder } = props;
+  const [announcement, setAnnouncement] = useState("");
+  const reorder = useCallback((id: string, delta: number) => {
+    onReorder(id, delta);
+    const text = `${rows.find((r) => r.layer.id === id)?.layer.name ?? "Layer"} moved ${delta > 0 ? "forward" : "backward"}.`;
+    // A live region speaks only when its text changes, so a repeat of the
+    // same move toggles a trailing no-break space to be announced again.
+    setAnnouncement((prev) => prev === text ? text + "\u00a0" : text);
+  }, [onReorder, rows]);
   // Rows grouped by owning container (master, or the variant that added the
   // layer), in VISIBLE order (front first): a layer only reorders among its
   // peers. Computed once per rows change; the drag and the ⌥↑/⌥↓ ends read it.
@@ -373,7 +389,7 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
     onPointerUp: () => {
       if (drag.current?.active) {
         suppressClick.current = true;
-        if (dropRef.current) props.onReorder(drag.current.id, dropRef.current.delta);
+        if (dropRef.current) reorder(drag.current.id, dropRef.current.delta);
       }
       clearDrag();
     },
@@ -391,12 +407,12 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
     });
     const byId = new Map(rows.map((r) => [r.layer.id, build(r)]));
     return (row: LayerRow) => byId.get(row.layer.id)!;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, peersOf, props.onReorder]);
+  }, [rows, peersOf, reorder]);
   const shown = (props.changedOnly ? rows.filter((r) => !!r.changed) : rows)
     .slice().reverse();
   return (
     <SidebarGroup>
+      <span role="status" aria-live="polite" className="sr-only">{announcement}</span>
       <SidebarGroupLabel className="justify-between">
         <span>Layers</span>
         <DropdownMenu>
@@ -405,7 +421,7 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
               <button
                 type="button"
                 aria-label="Add layer"
-                className="flex items-center gap-0.5 rounded-sm px-1 text-[11px] text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                className="flex items-center gap-0.5 rounded-sm px-1 text-[11px] text-attention-text hover:text-attention-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
               >
                 <Plus className="size-3" /> Add layer
               </button>
@@ -413,7 +429,7 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
           />
           <DropdownMenuContent align="end">
             {ADD_LAYER_KINDS.map(({ kind, label, Icon }) => (
-              <DropdownMenuItem key={kind} onClick={() => props.onAdd(kind)}>
+              <DropdownMenuItem key={kind} variant="attention" onClick={() => props.onAdd(kind)}>
                 <Icon className="size-3.5" /> {label}
               </DropdownMenuItem>
             ))}
@@ -429,7 +445,7 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
           type="button"
           aria-pressed={props.changedOnly}
           onClick={() => props.onChangedOnly(!props.changedOnly)}
-          title="Show only the layers a label fills"
+          title="Show only layers changed in this label"
           className={chip(props.changedOnly)}
         >
           <ListFilter /> Changed
@@ -451,7 +467,7 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
               onSelect={props.onSelect}
               onToggle={props.onToggle}
               onRename={props.onRename}
-              onReorder={props.onReorder}
+              onReorder={reorder}
               onRemove={props.onRemove}
             />
           ))}
@@ -464,7 +480,7 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
       </SidebarGroupContent>
       {selected.length > 0 && (
         <p className="px-2 pt-1 text-center text-[11px] text-sidebar-foreground/50">
-          ⇧ click for a range · ⌘ click to add
+          {isMacOS() ? "⇧ click for a range · ⌘ click to add" : "Shift-click for a range · Ctrl-click to add"}
         </p>
       )}
 

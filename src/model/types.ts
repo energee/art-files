@@ -1,7 +1,9 @@
-// Model types and parser for the Master/Variant label model (spec:
+// Model types and parser for the v1 Master/Variant label model (spec:
 // docs/superpowers/specs/2026-08-27-master-variation-design.md). Pure types +
-// a defensive parser; no DOM, no rendering. resolve.ts collapses these into
-// the existing LabelConfig, which stays the renderers' contract.
+// a defensive parser; no DOM, no rendering. Still live: files.ts parses a v1
+// .master with parseMaster before convert.ts lifts it into the layer model
+// (model/layers.ts), and FieldDecl/FieldValue/LabelFileV2 type the v2 label
+// readers (model/labelfile.ts, src/labelfile.ts) and model/fields.ts.
 import type { LabelConfig } from "../types";
 import type { DeepPartial } from "./merge";
 
@@ -60,11 +62,9 @@ export interface MasterLayer {
    *  appended list cannot express. */
   variant?: string;
   /** Custom layers only: which renderer shape this layer is. Absent = a
-   *  built-in layer whose id planLabel already knows. Set by `addLayer`
-   *  (document.ts) — Design mode's "Add layer" — and read by resolve()'s
-   *  materialization step, which uses it to reconstruct the CustomLayer's
-   *  `type` from the resolved config's styling at this layer's own id (see
-   *  resolve.ts). Never set on a built-in id. */
+   *  built-in layer whose id planLabel already knows. convert.ts reads it to
+   *  reconstruct the CustomLayer's `type` from the config's styling at this
+   *  layer's own id. Never set on a built-in id. */
   kind?: "text" | "image" | "barcode" | "qr";
 }
 
@@ -73,9 +73,8 @@ export interface Variant {
   id: string;
   name: string;
   /** DeepPartial, not Partial: a variant overrides LEAVES (an authored
-   *  `nameStyle.fill`, say), which is exactly what resolve()'s deepMerge
-   *  applies and what applyDesignEdit records. The shipped Collab variant
-   *  overrides nothing (`overrides: {}`) — see model/lolev.ts. */
+   *  `nameStyle.fill`, say), applied by deepMerge. The shipped v1 Collab
+   *  variant overrides nothing (`overrides: {}`). */
   overrides: DeepPartial<LabelConfig>;
   layerOverrides: Record<string, Partial<MasterLayer>>;
   fields: FieldDecl[];

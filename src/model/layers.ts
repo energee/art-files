@@ -264,7 +264,7 @@ export interface LabelFile {
   values: Record<string, LayerValue>;
   /** Label-level deviations from the resolved master, by layer id. */
   overrides?: Record<string, DeepPartial<Layer>>;
-  dormant?: { values: Record<string, LayerValue>; variants: string[] };
+  dormant?: { values: Record<string, LayerValue>; variants: string[]; variantOrder?: string[] };
 }
 
 function fail(msg: string): never { throw new Error(`Invalid master file: ${msg}`); }
@@ -273,7 +273,7 @@ const KINDS = new Set<LayerKind>(["text", "image", "barcode", "qr"]);
 const SYMBOLOGIES = new Set<Symbology>(["upc-a", "ean-13", "code-128"]);
 const ANCHORS = new Set<Anchor>(["left", "center", "right"]);
 
-function validateLayer(l: Layer, ctx: string): void {
+export function validateLayer(l: Layer, ctx: string): void {
   if (!l || typeof l !== "object") fail(`${ctx} layer is not an object`);
   if (!l.id || typeof l.id !== "string") fail(`${ctx} layer missing id`);
   if (!l.name || typeof l.name !== "string") fail(`${ctx} layer "${l.id}" missing name`);

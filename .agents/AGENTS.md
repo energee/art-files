@@ -15,12 +15,15 @@ blue = white ink and white = knockout. Operator guide is the Fumadocs site in
 - Build: `npm run build`
 - Test: `npm test`
 - Typecheck: `npx tsc --noEmit`
+- Lint: `npm run lint` (rules-of-hooks + exhaustive-deps + unused vars; zero warnings)
 - Dead code: `npx knip@6.38.0`, run by hand (not a devDependency or CI step; config in `knip.json`). `src/components/ui/**` is ignored because shadcn scaffolding carries unused variants; delete a whole ui component once nothing imports it.
 - Docs: `npm run dev --prefix docs-site` (the Fumadocs site has its own
   `package.json`; there is no root `docs:dev` script)
-- Verified at: `d10cddf` — the commit these commands were last *run* against.
-  A command recorded here ran at that revision; it is not a promise about now. If one
-  fails to run today, that is a finding, not a reason to guess a replacement.
+- Lint: `npm run lint` (zero warnings)
+- Release metadata: `node scripts/check-release.mjs <base-ref>`
+
+Validation results belong in `ledger.md` with the revision or branch tested;
+there is no blanket verification stamp for commands that changed independently.
 
 ## Conventions
 
@@ -39,8 +42,9 @@ findings here. Read it before auditing or improving anything.
 apply here alongside `principles.md`, with the same severity anchors and the lens name
 in the principle slot. Which fired, and on what evidence:
 
-- a11y — fired on authored UI markup (evidence: `index.html`; confirmed real
-  construct: file-drop labels, form inputs, and action buttons in `index.html`).
+- a11y — authored controls in `src/components/FileDrop.tsx`,
+  `src/components/LayerInspector.tsx`, and `src/components/LayerList.tsx`:
+  file targets, form inputs, and keyboard-operated action buttons.
 
 ## Ongoing work
 

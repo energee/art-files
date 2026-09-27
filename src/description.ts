@@ -58,7 +58,7 @@ function styleLine(raw: string, base: Style, bold = false): StyledLine {
   };
 }
 
-/** Strips the leading-`#` escape serializeDescription writes (`\#` -> `#`).
+/** Strips the persisted legacy leading-`#` escape (`\#` -> `#`).
  *  Only ever a single backslash immediately before a leading `#`. */
 const unescapeHash = (s: string) => s.replace(/^\\(?=#)/, "");
 
@@ -137,6 +137,17 @@ export function parseRuns(line: StyledLine): StyledLine[] {
   return out.length ? out : [{ ...line, text: "" }];
 }
 
+/** One line of text with the characters the renderers disagree on settled
+ *  (#282). pdf-lib prints a tab as FOUR spaces (U+0085/U+2028/U+2029 too),
+ *  drops \b/\v and breaks the run at \n/\v/\f/\r, while the canvas preview
+ *  paints \t\n\f\r as one space and the rest as nothing or a missing-glyph
+ *  box. The policy: line/tab separators become one space; every other C0 and
+ *  C1 control, DEL, the BOM and the zero-width space are dropped. */
+export function printableText(text: string): string {
+  return text.replace(/[\t\n\v\f\r\u0085\u2028\u2029]/g, " ")
+    .replace(/[\0-\x1f\x7f-\x9f\u200b\ufeff]/g, "");
+}
+
 /** Splits text into its space-separated words with every word's inline
  *  markers balanced on their own: a span crossing a space is closed at each
  *  word's end and reopened at the next (`**A B**` -> `**A**`, `**B**`).
@@ -182,26 +193,4 @@ export function markRun(text: string, s: { bold?: boolean; white?: boolean }): s
   const b = s.bold ? "**" : "";
   const w = s.white ? "_" : "";
   return `${b}${w}${text}${w}${b}`;
-}
-
-/** Inverse of parseDescription — the WYSIWYG editor edits styled lines and
- *  writes back the markdown string LabelConfig still stores. Canonicalizes
- *  marker order to white-inside/bold-outside (e.g., `**_text_**`), and drops
- *  the redundant `**` from headers since they are always bold. */
-export function serializeDescription(d: ParsedDescription): string {
-  const line = (l: StyledLine, header = false) => {
-    // markRun keeps the empty-line and marker-order rules (see there); a
-    // header is always bold, so it never writes its own `**`.
-    const s = markRun(l.text, { bold: !!l.bold && !header, white: l.layer === "white" });
-    if (!s && !header) return "";
-    return header ? `# ${s}` : s;
-  };
-  const head = d.header ? [line(d.header, true)] : [];
-  const body = d.lines.map((l) => line(l));
-  // Only a body line emitted FIRST can be misread as a header on the way
-  // back in (parseDescription only considers the first non-blank line), so
-  // that is the only place the escape is needed — every later `#` line
-  // survives verbatim without one.
-  if (!d.header && body.length && body[0].startsWith("#")) body[0] = `\\${body[0]}`;
-  return [...head, ...body].join("\n");
 }

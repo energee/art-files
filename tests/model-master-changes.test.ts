@@ -314,3 +314,29 @@ describe("promoting a layer binding", () => {
     expect(styleLine(r.master).y).toEqual({ below: "name", gap: 3 });
   });
 });
+
+it("lists changed master settings before saving (#268)", () => {
+  const base = lolevMaster();
+  const edited = { ...base, guides: { ...base.guides, top: 30 }, physical: { ...base.physical, bleedIn: 0.1 } };
+  expect(masterChanges(base, edited, newLabel(base))).toEqual(expect.arrayContaining([
+    expect.objectContaining({ kind: "property", path: "guides.top", to: 30 }),
+    expect.objectContaining({ kind: "property", path: "physical.bleedIn", to: 0.1 }),
+  ]));
+});
+it("reports a removed variant override as returning to the base value (#273)", () => {
+  const base = lolevMaster();
+  base.variants[0].layers.name = { x: 5 };
+  const edited = structuredClone(base);
+  delete edited.variants[0].layers.name;
+  const changes = masterChanges(base, edited, newLabel(base));
+  expect(changes).toEqual([expect.objectContaining({ kind: "property", layerId: "name", path: "x", from: 5,
+    to: base.layers.find((l) => l.id === "name")!.x })]);
+});
+
+it("automatic variant names stay unique after deletion (#341)", () => {
+  let m = lolevMaster();
+  m = addVariant(m, "Variant 1").master;
+  m = addVariant(m, "Variant 3").master;
+  const added = addVariant(m);
+  expect(added.master.variants.at(-1)?.name).toBe("Variant 2");
+});

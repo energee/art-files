@@ -6,8 +6,8 @@
 //   text bottom (for `below` bindings) = last baseline + FONT_DESC * size (0.35)
 // The collab block is the `collab` variant: three layers that exist only
 // while it is on, chained with `below` bindings exactly as collabLeftFlow /
-// collabCenterFrame chained them. Once the renderers draw from this data,
-// the layout constants and the built-in branches are deleted.
+// collabCenterFrame chained them. That historical layout now lives only in
+// tests/legacy as the migration oracle.
 import type { Choice, Master, TextLayer, ImageLayer } from "./layers";
 import {
   CENTER_X, GOLD, LEFT_X, PAGE, WARNING_TRACKING, DEFAULT_STROKE_PX, PX,
@@ -35,7 +35,7 @@ const image = (l: Omit<ImageLayer, "kind" | "enabled" | "style"> &
   kind: "image", enabled: true, style: { ...GOLD_METAL, strokeLayer: DEFAULT_STROKE_LAYER }, ...l,
 });
 
-/** UPC-A geometry in points, from layout.ts's BARCODE (29 modules deep =
+/** UPC-A geometry in points, from the historical reference barcode (29 modules deep =
  *  the reference plate's 29.88pt). */
 const UPC_MOD = 29.88 / 29;
 

@@ -1,15 +1,12 @@
 // labelfile.ts — pack/unpack the .label project file: a ZIP holding
-// config.json (the ConfigFile JSON, v1) or label.json (the LabelFileV2 JSON, v2)
+// config.json (the legacy v1 config, read by parseConfigFile) or label.json
+// (the LabelFileV2 JSON, v2)
 // plus the original source images under role directories (texture/<name>,
 // mask/<name>, and — READ-ONLY LEGACY — collab-left/<name>,
 // collab-center/<name>). Images are stored
 // uncompressed (level 0): PNG/JPG bytes are already compressed, and storing
 // them untouched keeps the file lossless and byte-identical on round-trip.
-import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from "fflate";
-import type { LabelConfig } from "@/types";
-import { toConfigFile } from "@/defaults";
-import { serializeLabelFile } from "@/model/labelfile";
-import type { LabelFileV2 } from "@/model/types";
+import { strFromU8, Unzip, UnzipInflate, type Zippable } from "fflate";
 
 /** The project file's suffix — owned here with the format itself, so the
  *  pickers, the hidden input, and the download names can't drift apart. */
@@ -55,8 +52,8 @@ const CUSTOM_DIR = "custom";
 
 /** Write the asset roles and per-id custom images into `zip` — the ONE
  *  spelling of the container's asset convention (role dirs, custom/<id>/,
- *  level-0 image entries), shared by both .label packers and .master's
- *  packMaster (model/masterfile.ts), so the two containers cannot drift. */
+ *  level-0 image entries, the size limits), shared by both .label packers and .master's
+ *  packMaster (model/files.ts), so the two containers cannot drift. */
 export function packAssets(zip: Zippable, assets: LabelAssets): void {
   for (const [role, dir] of Object.entries(ROLE_DIRS) as [FixedAssetRole, string][]) {
     const a = assets[role];
@@ -64,6 +61,64 @@ export function packAssets(zip: Zippable, assets: LabelAssets): void {
   }
   for (const [id, a] of Object.entries(assets.customImages ?? {}))
     zip[`${CUSTOM_DIR}/${id}/${a.name}`] = [a.bytes, { level: 0 }];
+  // The limits unpackArchive enforces on open, checked on save too, so a
+  // save never writes a file its own app refuses to reopen.
+  let total = 0;
+  for (const [name, entry] of Object.entries(zip)) {
+    // Every entry here is a file (bytes, or [bytes, options]), never a nested directory.
+    const size = ((Array.isArray(entry) ? entry[0] : entry) as Uint8Array).length;
+    total += size;
+    if (size > FILE_CAP || total > TOTAL_CAP) throw tooLarge(name);
+  }
+}
+
+/** Only real files in the container layout, excluding Finder metadata. */
+const assetEntry = (path: string) =>
+  /^(?:(?:texture|mask|collab-left|collab-center)\/[^/]+|custom\/[^/]+\/[^/]+)$/.test(path)
+  && path.split("/").every((part) => part !== "." && part !== ".." && part !== ".DS_Store" && !part.startsWith("._"));
+
+const FILE_CAP = 128 * 1024 * 1024;
+const TOTAL_CAP = 256 * 1024 * 1024;
+const tooLarge = (name: string) =>
+  new Error(`Archive is too large: "${name}" exceeds the 128 MiB file or 256 MiB total limit.`);
+
+/** Streams the archive through fflate's Unzip in 64 KiB slices, counting the
+ *  bytes each entry REALLY inflates to: a central directory can understate an
+ *  entry's size, so the declared size alone bounds neither memory nor the
+ *  work of inflating. Unknown files never inflate. The limits allow large
+ *  print assets without an unbounded ZIP; packAssets enforces the same ones
+ *  on save, so the app never writes a file it would refuse to reopen. */
+export function unpackArchive(bytes: Uint8Array): Record<string, Uint8Array> {
+  const files: Record<string, Uint8Array> = {};
+  let total = 0;
+  const unzip = new Unzip((file) => {
+    if (!/^(?:master|label|config)\.json$/.test(file.name) && !assetEntry(file.name)) return;
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    file.ondata = (err, chunk, final) => {
+      if (err) throw err;
+      size += chunk.length;
+      total += chunk.length;
+      if (size > FILE_CAP || total > TOTAL_CAP || (file.originalSize !== undefined && size > file.originalSize))
+        throw tooLarge(file.name);
+      chunks.push(chunk);
+      if (final) files[file.name] = chunks.length === 1 ? chunks[0] : concat(chunks, size);
+    };
+    // Refuse before inflating anything when the directory already admits it.
+    if ((file.originalSize ?? 0) > FILE_CAP) throw tooLarge(file.name);
+    file.start();
+  });
+  unzip.register(UnzipInflate);
+  for (let at = 0; at < bytes.length; at += 65536)
+    unzip.push(bytes.subarray(at, at + 65536), at + 65536 >= bytes.length);
+  return files;
+}
+
+function concat(chunks: Uint8Array[], size: number): Uint8Array {
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) { out.set(c, at); at += c.length; }
+  return out;
 }
 
 /** The unpack half of packAssets: pull every asset role and per-id custom
@@ -73,7 +128,7 @@ export function packAssets(zip: Zippable, assets: LabelAssets): void {
  *  ahead of `texture/<name>`, and it must not be taken as the asset (#100). */
 export function extractAssets(entries: Record<string, Uint8Array>): LabelAssets {
   const assets: LabelAssets = {};
-  const files = Object.keys(entries).filter((p) => !p.endsWith("/"));
+  const files = Object.keys(entries).filter(assetEntry);
   for (const [role, dir] of Object.entries(ROLE_DIRS) as [FixedAssetRole, string][]) {
     const path = files.find((p) => p.startsWith(`${dir}/`));
     if (path) assets[role] = { name: path.slice(dir.length + 1), bytes: entries[path] };
@@ -98,40 +153,4 @@ export function legacyJsonText(bytes: Uint8Array): string | undefined {
   let i = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf ? 3 : 0;
   while (bytes[i] === 0x20 || bytes[i] === 0x09 || bytes[i] === 0x0a || bytes[i] === 0x0d) i++;
   return bytes[i] === 0x7b ? strFromU8(bytes.subarray(i)) : undefined;
-}
-
-/** Pack a v1 label file: config.json (legacy writer kept for tests and Node
- *  harness until Plan 6). For new code, use packLabelV2. */
-export function packLabel(config: LabelConfig, assets: LabelAssets): Uint8Array {
-  const zip: Zippable = {
-    "config.json": strToU8(JSON.stringify(toConfigFile(config), null, 2)),
-  };
-  packAssets(zip, assets);
-  return zipSync(zip);
-}
-
-/** Pack a v2 label file: label.json (LabelFileV2 JSON) plus assets, including
- *  each custom image layer's bytes under `custom/<assetId>/<name>` (level 0,
- *  same as every other image role — already-compressed PNG/JPG/SVG bytes). */
-export function packLabelV2(label: LabelFileV2, assets: LabelAssets): Uint8Array {
-  const zip: Zippable = { "label.json": strToU8(serializeLabelFile(label)) };
-  packAssets(zip, assets);
-  return zipSync(zip);
-}
-
-/** Unpack a .label ZIP (either generation). Returns exactly one of config
- *  (v1, config.json) or label (v2, label.json) plus whichever assets the
- *  file holds. Throws a readable error when neither is present. */
-export function unpackLabel(bytes: Uint8Array): { config?: string; label?: string; assets: LabelAssets } {
-  const entries = unzipSync(bytes);
-  const configEntry = entries["config.json"];
-  const labelEntry = entries["label.json"];
-  if (!configEntry && !labelEntry) {
-    throw new Error("Not a .label file: missing label.json/config.json");
-  }
-  return {
-    config: configEntry ? strFromU8(configEntry) : undefined,
-    label: labelEntry ? strFromU8(labelEntry) : undefined,
-    assets: extractAssets(entries),
-  };
 }

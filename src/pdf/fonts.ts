@@ -1,8 +1,8 @@
 // fonts.ts — the three faces every build needs for a given family, fetched
 // once per context. URLs come from fonts.ts's FONT_URLS (the ?url side of
 // the catalog, shared with the DOM gate so the two never drift). Consumers
-// are the full-resolution export builds and the dev-only parity harness
-// (src/dev/parity.ts); each gets its own module instance, so each fetches
+// are the full-resolution export builds and the dev-only strokecap page
+// (src/dev/strokecap.ts); each gets its own module instance, so each fetches
 // once per family.
 import { FONT_URLS } from "../fonts";
 import type { FontFamilyId } from "../fontCatalog";

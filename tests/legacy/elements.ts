@@ -4,12 +4,12 @@
 // which config field backs it.
 import type { LabelConfig, Style, StyledLine } from "../../src/types";
 import type { CollabSlots } from "./plan";
-import type { Face, MeasureFace } from "../../src/plan";
+import type { Face, MeasureFace } from "./planShared";
 import {
   CUSTOM_BARCODE_DIGIT_GAP_RATIO, CUSTOM_BARCODE_DIGIT_SIZE_RATIO,
   encodeFor, quietModulesFor, validateFor,
-} from "../../src/barcode";
-import { DESC, FONT_ASC, FONT_DESC, HANDLE_ADDR, runsWidth } from "../../src/layout";
+} from "./barcode";
+import { DESC, FONT_ASC, FONT_DESC, HANDLE_ADDR, runsWidth } from "./layout";
 import { defaultConfig } from "../../src/defaults";
 import { strokeLayerOf } from "../../src/strokes";
 import { parseRuns } from "../../src/description";
@@ -25,7 +25,7 @@ export const SHIPPED: LabelConfig = defaultConfig();
  *  centre collab mark, but it is no longer gated on anything: the shipped
  *  `logo` declares no offsetY, so it is 0 on every label that has not
  *  authored one, and the Collab variant deliberately overrides nothing here
- *  (an explicit 0 would stomp a master-level nudge — see model/lolev.ts).
+ *  (an explicit 0 would stomp a master-level nudge — see model/lolevLayers.ts).
  *  Renderers and hit-testing still read the nudge through this one gate so
  *  they cannot disagree. */
 export function logoNudge(cfg: LabelConfig): number {
