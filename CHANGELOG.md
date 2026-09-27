@@ -4,7 +4,7 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
-## [Unreleased]
+## [0.1.99] - 2026-09-27
 
 ### Changed
 
@@ -14,6 +14,40 @@ that section to the new version (see .agents/release-steward.md).
   dialog, file and updater plugins move to their latest minor releases.
 - **Build toolchain updates.** The app is now bundled with Vite 8 (Rolldown)
   and tested with Vitest 5; no change to how it looks or behaves.
+- **Number fields in the inspector now accept only numbers.** Letters (like
+  the "e" in "1e2") can no longer be typed into a size, spacing, position,
+  or render setting. When you leave a field it always shows the value that was
+  applied, and text that isn't a number (a lone "-") goes back to it. Arrow
+  keys now step by the same amount as dragging the label (for example, letter
+  spacing moves 0.1 pt per press instead of 0.01 pt), in millimetres as well
+  as points; Alt+arrow steps finer. Dragging a label moves one step per pixel
+  at any pointer speed, so dragging back to the start restores the value.
+- Internal cleanup with no operator-visible change: a retired developer
+  comparison page, the unused PDF-rendering dependency it pulled in, and the
+  superseded first-generation master model are gone. Old `.master` and
+  `.label` files still open exactly as before.
+- Internal: the code is now linted (React hook rules and unused code) on
+  every change; a few unused imports and an unused font-measure state were
+  removed. No change in behavior.
+- **Faster startup and smoother typing.** The 3D can view now loads the
+  first time you open it instead of with the editor, cutting the startup
+  code by about 40%. The label preview also stops re-reading the logo and
+  QR shapes on every keystroke.
+- **A crash no longer blanks the window.** If the editor hits an error it
+  cannot recover from, it now shows the message and a Reload button instead
+  of an empty page.
+- **Opening files keeps working after an internal error.** If an internal
+  error interrupted queuing a double-clicked `.label`, every later file open
+  could crash the desktop app; it now carries on.
+- **Shared labels cannot point the app at arbitrary files.** A `.label`'s
+  remembered master path is only read when it sits beside the label or
+  beside a master you already registered; otherwise the error asks you to
+  open that `.master` once.
+- **The desktop window enforces a content security policy.** Only the app's
+  own bundled code and assets may load; nothing from the network.
+- **Internal cleanup, no visible change.** Unused code and an unused
+  interface component were removed from the app. Labels, exports, and the
+  editor behave exactly as before.
 
 ### Fixed
 
@@ -35,7 +69,6 @@ that section to the new version (see .agents/release-steward.md).
   additions use the attention accent; destructive controls use readable text colours.
 - **Windows and Linux offer Help → Check for Updates.** The comparison divider
   works by keyboard, and the sidebar uses the same collapsible layout at every width.
-
 - **Keyboard editing keeps its place.** Cancelling text restores the prior saved
   state; formatting preserves authored case; layer deletion and reordering keep
   focus and announce changes. Guides, swatches and the can preview work by keyboard.
@@ -48,7 +81,6 @@ that section to the new version (see .agents/release-steward.md).
   continuation lines, including rotated text, across preview and exports.
 - **Shortcut hints match the platform.** Windows and Linux show Ctrl and Shift,
   and Save Master As identifies the new file it creates.
-
 - **Saving protects edits made while a file is writing.** Newer edits remain
   unsaved, and Save Master preserves them. A failed browser write reports an
   error; cancelling Save As keeps the original save target.
@@ -61,7 +93,6 @@ that section to the new version (see .agents/release-steward.md).
 - **Switching masters preserves variant precedence on return.** New variants
   receive unused names. Each arrow-key press is its own undo step (a held key is
   one), and barcode resizing keeps module widths free of floating-point noise.
-
 - **Edits during a save and in-place cancels keep their state.** A promotion
   survives edits made while Save Master writes, and cancelling in-place text after
   a save marks the tab unsaved. A loaded image no longer hides other messages.
@@ -95,55 +126,44 @@ that section to the new version (see .agents/release-steward.md).
   when closed.
 - **The command line names unsupported image types** instead of only WebP.
 - **QR error correction shows the actual default, L.**
-
 - **Black text and vector artwork stay on the black plate.** PDF exports
   preserve neutral vector inks through CMYK conversion without turning
   colored artwork black. Raster images still use the printer’s color profile.
-
 - **A pasted tab prints the way the preview shows it.** Text pasted from a
   spreadsheet (or any tab or other invisible control character, whether
   pasted, in a saved label or set from the command line) used to print as
   several spaces, shifting a centred line and overlapping the next run. It
   now prints as the single space the preview shows.
-
 - **Closing a tab frees its images.** A closed tab used to keep its
   texture, mask, and image-layer art in memory for as long as the app stayed
   open. Closing it now releases them, and an image that fails to load no
   longer leaves a copy behind.
-
 - **Dragging a layer back to where it started puts it back exactly.** Moving
   a layer away and then returning the pointer to its starting point (on one
   axis or both) used to leave the layer at its last offset on that axis. It
   now lands back where the drag began, and the drag is still one undo step.
-
 - **The QR "followed by" picker shows what you picked.** It reads "nothing"
   or the text layer's name, matching its menu, instead of `none` or the
   layer's internal id.
-
 - **The inspector's other dropdowns show their labels too.** Input, Symbology,
   Fit, QR style and Error correction read "Rich text", "UPC-A", "Cover",
   "Rounded" or "M (default)" instead of the raw `text`, `upc-a`, `cover`,
   `rounded` or `M`.
-
 - **An image dropped on a switched-off variant's layer shows right away.** The
   layer's drop area names the loaded file instead of still saying "drop or
   click" until the variant is switched on.
-
 - **Reordering a version's own layers now counts as a master change.**
   Moving a layer that only a version adds (such as Collab's Lead-in) up or
   down the layer list now enables Save Master and shows as "Reordered" in
   the Save Master review, instead of being silently dropped unless something
   else changed.
-
 - **Deleting a version no longer hides the one you're working in.**
   Deleting any version other than the current one also switched off the
   current one; now only the deleted version goes away.
-
 - **Deleting a version whose layer another layer is bound to now goes
   through.** Binding a layer below one a version adds (Volume below the
   Collab lead-in), then deleting that version, was refused with "bound to
   missing layer"; the bound layer now lets go and stays where it was.
-
 - **Deleting a layer another layer is bound to on this label no longer
   freezes the preview.** A binding made in the inspector but not yet saved
   to the master (Volume bound below Logo, then Logo deleted) now lets go
@@ -151,64 +171,19 @@ that section to the new version (see .agents/release-steward.md).
   missing layer" with a stale preview. A binding saved to the master whose
   position was not also saved no longer jumps back to where it sat before
   it was bound.
-
 - **`⌘K` no longer opens the command palette on top of an open dialog.** With
   the Save Master review or Settings open, `⌘K` does nothing; from the label
   it still opens the palette, and inside the palette it still closes it.
-
 - **`⌘Z` inside an open dialog no longer undoes the label behind it.** With
   the Save Master review or Settings open, `⌘Z` / `⇧⌘Z` (and Edit → Undo /
   Redo) leave the canvas alone; in the inspector and its color picker they
   still undo your last edit.
-
 - **Shortcuts no longer act on the tab behind an open dialog.** With the Save
   Master review, Settings or the command palette open, `⌘W` no longer closes
   the tab underneath, and `⌘N`, `⌘O`, `⌘S`, `⇧⌘S`, `⌘E`, `⇧⌘E` (and their
   menu items), `⌘B` (sidebar), the arrow-key nudge and the view keys
   `1`/`2`/`3`/`R`/`G` do nothing until the dialog is closed. With no dialog
   open, `⌘S` still saves from inside a text field.
-
-### Changed
-
-- **Number fields in the inspector now accept only numbers.** Letters (like
-  the "e" in "1e2") can no longer be typed into a size, spacing, position,
-  or render setting. When you leave a field it always shows the value that was
-  applied, and text that isn't a number (a lone "-") goes back to it. Arrow
-  keys now step by the same amount as dragging the label (for example, letter
-  spacing moves 0.1 pt per press instead of 0.01 pt), in millimetres as well
-  as points; Alt+arrow steps finer. Dragging a label moves one step per pixel
-  at any pointer speed, so dragging back to the start restores the value.
-- Internal cleanup with no operator-visible change: a retired developer
-  comparison page, the unused PDF-rendering dependency it pulled in, and the
-  superseded first-generation master model are gone. Old `.master` and
-  `.label` files still open exactly as before.
-- Internal: the code is now linted (React hook rules and unused code) on
-  every change; a few unused imports and an unused font-measure state were
-  removed. No change in behavior.
-- **Faster startup and smoother typing.** The 3D can view now loads the
-  first time you open it instead of with the editor, cutting the startup
-  code by about 40%. The label preview also stops re-reading the logo and
-  QR shapes on every keystroke.
-- **A crash no longer blanks the window.** If the editor hits an error it
-  cannot recover from, it now shows the message and a Reload button instead
-  of an empty page.
-
-- **Opening files keeps working after an internal error.** If an internal
-  error interrupted queuing a double-clicked `.label`, every later file open
-  could crash the desktop app; it now carries on.
-
-- **Shared labels cannot point the app at arbitrary files.** A `.label`'s
-  remembered master path is only read when it sits beside the label or
-  beside a master you already registered; otherwise the error asks you to
-  open that `.master` once.
-
-
-- **The desktop window enforces a content security policy.** Only the app's
-  own bundled code and assets may load; nothing from the network.
-
-- **Internal cleanup, no visible change.** Unused code and an unused
-  interface component were removed from the app. Labels, exports, and the
-  editor behave exactly as before.
 
 ## [0.1.98] - 2026-09-25
 
