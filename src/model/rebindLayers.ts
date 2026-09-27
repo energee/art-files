@@ -1,7 +1,8 @@
 // src/model/rebindLayers.ts — re-aim a v3 .label at a different master (the
 // cross-brewery collab flow), the successor to rebind.ts on the layer model.
 // Values match by LAYER id against the layers the target HAS — in its own
-// layers or in any variant's diff. NON-DESTRUCTIVE: anything the target does
+// layers or in any variant's diff — plus the label-only legacy layers the
+// label carries in its own overrides (they travel with it). NON-DESTRUCTIVE: anything the target does
 // not have is REPORTED and benched on the label's `dormant`
 // store, and anything already benched gets another shot at the new target,
 // so A→B→A loses nothing (spec: `.label` file — dormant).
@@ -41,11 +42,25 @@ export function rebindLabel(
   label: LabelFile, _from: Master | undefined, to: Master,
 ): { label: LabelFile; dropped: { values: string[]; variants: string[] } } {
   // Live values win over benched ones with the same id (they are what the
-  // operator has been looking at); variant order keeps dormant first.
+  // operator has been looking at); dormant variants return beneath the variants that used to win over them.
   const candidateValues: Record<string, LayerValue> = { ...label.dormant?.values, ...label.values };
-  const candidateVariants = dedupe([...(label.dormant?.variants ?? []), ...label.enabledVariants]);
+  const order = label.dormant?.variantOrder;
+  const candidateVariants = order ? [...label.enabledVariants]
+    : dedupe([...(label.dormant?.variants ?? []), ...label.enabledVariants]);
+  // Each benched variant goes back just beneath the first variant that used
+  // to win over it (came after it in `order`) and is still enabled — relative
+  // to its old neighbours, since the live list may have changed while away.
+  if (order) for (const id of dedupe([...order, ...(label.dormant?.variants ?? [])])) {
+    if (!label.dormant?.variants.includes(id) || candidateVariants.includes(id)) continue;
+    const above = order.slice(order.indexOf(id) + 1).map((x) => candidateVariants.indexOf(x)).filter((i) => i >= 0);
+    candidateVariants.splice(above.length && order.includes(id) ? Math.min(...above) : candidateVariants.length, 0, id);
+  }
 
   const kinds = layerKinds(to);
+  // A label-only legacy layer (#264) is defined by the label's own whole-layer
+  // override, so it resolves on any target — its value is not stranded.
+  for (const [id, o] of Object.entries(label.overrides ?? {}))
+    if (o.kind && !kinds.has(id)) kinds.set(id, o.kind);
   const values: Record<string, LayerValue> = {};
   const dormantValues: Record<string, LayerValue> = {};
   for (const [id, v] of Object.entries(candidateValues)) {
@@ -62,7 +77,8 @@ export function rebindLabel(
   // that never left its master.
   const { dormant: _d, masterHint: _h, ...rest } = label;
   const bench = dropped.values.length > 0 || dormantVariants.length > 0
-    ? { dormant: { values: dormantValues, variants: dormantVariants } }
+    ? { dormant: { values: dormantValues, variants: dormantVariants,
+      ...(dormantVariants.length ? { variantOrder: candidateVariants } : {}) } }
     : {};
   return {
     label: { ...rest, masterId: to.id, enabledVariants, values, ...bench },

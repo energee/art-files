@@ -11,8 +11,8 @@ import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
 import { DocumentEditor, type DocumentMeta, type FileToOpen } from "@/App";
-import { LABEL_FILTER, LABEL_TYPES, isAbort, openPicker } from "@/filePickers";
-import { openNativeFile } from "@/files";
+import { LABEL_FILTER, LABEL_TYPES, isAbort } from "@/filePickers";
+import { openThrough } from "@/files";
 import {
   activateTab, addTab, closeTab, initialTabs, routeFileOpen, unsaved, updateTabMeta,
   type TabsState,
@@ -245,18 +245,11 @@ export default function TabsShell() {
    *  fileToOpen in App.tsx). */
   async function openProjectPicker() {
     try {
-      if (isTauri()) {
-        const path = await openNativeFile({ filter: LABEL_FILTER });
-        if (path === null) return; // dialog cancelled
-        setPickError("");
-        openRouted({ path });
-        return;
-      }
-      const pick = openPicker();
-      if (!pick) { fileInput.current?.click(); return; }
-      const [handle] = await pick({ types: LABEL_TYPES });
+      const target = await openThrough({ filter: LABEL_FILTER, types: LABEL_TYPES });
+      if (target === undefined) { fileInput.current?.click(); return; }
+      if (target === null) return;
       setPickError("");
-      openRouted({ handle });
+      openRouted(target);
     } catch (err) {
       // Failures AFTER a tab is chosen surface in that editor's own alert;
       // this is the picker itself failing, before any tab exists — shown in
@@ -339,7 +332,7 @@ export default function TabsShell() {
         setConfirmClose(first.id);
       }));
     return () => void stopping.then((stop) => stop());
-  }, []);
+  }, [apply]);
 
   // Browser window close: the generic prompt is all a page may show.
   useEffect(() => {
@@ -430,7 +423,7 @@ export default function TabsShell() {
           +
         </button>
         {pickError && (
-          <span className="shrink-0 px-2 text-xs text-destructive">{pickError}</span>
+          <span className="shrink-0 px-2 text-xs text-destructive-text">{pickError}</span>
         )}
     </div>
   ), [state.tabs, state.active, pickError, activate, closeReq, newTab]);

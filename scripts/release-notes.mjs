@@ -3,7 +3,6 @@
 import { randomUUID } from "node:crypto";
 import { appendFileSync, readFileSync } from "node:fs";
 
-import { isEntry } from "./is-entry.mjs";
 
 export function releaseNotes(version, changelog = readFileSync("CHANGELOG.md", "utf8")) {
   const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -86,4 +85,4 @@ function main() {
   }
 }
 
-if (isEntry(import.meta.url)) main();
+if (import.meta.main) main();

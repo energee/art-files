@@ -5,7 +5,10 @@ description: Menus, views, canvas, palette
 
 Single-key shortcuts stand aside while a text field, menu, dialog, or dropdown
 has focus. `⌘` shortcuts work everywhere, even while typing in a field, except
-Undo and Redo, which undo the field's own typing there.
+Undo and Redo, which undo the field's own typing there. While a dialog such as
+Settings or Save Master is open, every shortcut below (file, edit, view, the
+sidebar toggle and the arrow-key nudge) and the menu commands leave the tab
+behind it alone: close the dialog first.
 
 ## File and edit
 
@@ -33,6 +36,7 @@ On Windows and Linux, `⌘` is `Ctrl`.
 | Preview: Can | `3` |
 | Rulers | `R` |
 | Guides | `G` |
+| Layers sidebar | `⌘B` (outside fields and dialogs) |
 
 ## Canvas
 
@@ -40,7 +44,8 @@ On Windows and Linux, `⌘` is `Ctrl`.
 | --- | --- |
 | Nudge selection | Arrow keys (1 pt) |
 | Coarse nudge | `⇧` + arrow (10 pt) |
-| Remove selected layer | Delete / Backspace (from the Layers list) |
+| Remove selected layers | Delete / Backspace (from the Layers list) |
+| Reorder selected layers | `⌥↑` / `⌥↓` on macOS; `Alt+↑` / `Alt+↓` on Windows/Linux (focus a selected Layers row) |
 | Close inspector | Esc (when no field is being edited) |
 | Pan | Right-button drag |
 | Zoom | Scroll or pinch. Type a % in the status bar |

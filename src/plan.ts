@@ -97,7 +97,7 @@ export interface PlacedBarcode {
   readonly rotated: boolean;
   readonly digits: readonly { text: string; x: number; y: number; w: number }[];
   /** The white-ink footprint at S = 0 (bars + digit pills); the mask pass
-   *  outsets it by S as a border, matching barcodeFootprint's contract. */
+   *  outsets it by S as a border. */
   readonly footprint: readonly { x: number; yTop: number; w: number; h: number }[];
 }
 
@@ -114,8 +114,6 @@ export interface PlanAssets {
   guides?: Pick<GuideLines, "top" | "bottom"> & Partial<Pick<GuideLines, "left" | "right">>;
   /** Raw contents of logo2025.svg. */
   logoSvg: string;
-  collabLeft?: PlanArt | null;
-  collabCenter?: PlanArt | null;
   /** Custom image layers' loaded state, keyed by CustomImageLayer's `asset`.
    *  A layer whose key is absent here emits nothing (collab-art contract) —
    *  the asset hasn't loaded/isn't supplied. `aspect` is the intrinsic w/h,
@@ -127,19 +125,6 @@ export interface PlanAssets {
   custom?: Record<string, { aspect: number; art?: PlanArt }>;
 }
 
-/** The guide lines a custom layer's anchor resolves against: the label's
- *  safe-area edges (L.SAFE), center = the midpoint of left/right. The ONE
- *  place this is computed — Task 4's drag-to-position math (model/position.ts)
- *  uses the same GuideLines shape, so a custom layer's plotted position and
- *  its drag guides can never disagree. */
-export function labelGuides(): GuideLines {
-  return {
-    left: L.SAFE.left, right: L.SAFE.right,
-    center: (L.SAFE.left + L.SAFE.right) / 2,
-    top: L.SAFE.top, bottom: L.SAFE.bottom,
-  };
-}
-
 /** The element's outer stroke as data (width in points). Null when off —
  *  same rules as pdf/build.ts's strokeOf: no stroke, "none", or width <= 0.
  *  Colors stay unresolved: art mode paints `fill`, mask mode paints by
@@ -149,37 +134,6 @@ export function strokeSpec(style: Style): StrokeSpec | null {
   const px = style.strokeWidth ?? L.DEFAULT_STROKE_PX;
   if (px <= 0) return null;
   return { fill: style.stroke, layer: strokeLayerOf(style), w: px * L.PX };
-}
-
-/** One styled line as placed runs: walks the parsed runs left to right (or
- *  centered around `at.cx`), advancing x by each run's measured width plus
- *  tracking. `at.face` (the wordmark/name's forced Bold) wins over the bold
- *  flag on each run. This is the PDF backend's former drawLine, minus the
- *  drawing. */
-export function lineRuns(
-  id: string,
-  line: StyledLine,
-  m: MeasureFace,
-  at: ({ x: number } | { cx: number }) & { baseline: number; size: number; face?: Face },
-): PlacedText[] {
-  const runs = parseRuns(line);
-  const faceOf = (r: StyledLine): Face => at.face ?? (r.bold ? "semibold" : "regular");
-  const tracking = line.letterSpacing ?? 0;
-  const advances = L.runAdvances(runs, (r) => m(r.text, at.size, faceOf(r)), tracking);
-  const total = advances.reduce((a, b) => a + b, 0) - tracking;
-  let x = "cx" in at ? at.cx - total / 2 : at.x;
-  const stroke = strokeSpec(line);
-  return runs.map((run, i) => {
-    const placed: PlacedText = {
-      kind: "text", id, text: run.text, x, y: at.baseline,
-      // The run's drawn width is its advance minus the gap to the next run.
-      w: advances[i] - tracking,
-      size: at.size, face: faceOf(run), tracking,
-      fill: run.fill, layer: run.layer, stroke, rotated: false,
-    };
-    x += advances[i];
-    return placed;
-  });
 }
 
 /** Rotated 90° CCW text (reads bottom-to-top) as placed runs: walks the

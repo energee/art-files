@@ -1,12 +1,12 @@
 // Test-only pre-v3 layout oracle.
 import type {
-  CollabSlot, CustomBarcodeLayer, Fill, Style, StyledLine, LabelConfig,
+  CollabSlot, CustomBarcodeLayer, StyledLine, LabelConfig,
 } from "../../src/types";
 import { anchoredX, anchoredY, type GuideLines } from "../../src/model/position";
 import { logoNudge, type ElementId } from "./elements";
 import { parseRuns } from "../../src/description";
 import { strokeLayerOf } from "../../src/strokes";
-import * as L from "../../src/layout";
+import * as L from "./layout";
 import { displayAbv, displayName, displayStyle } from "../../src/defaults";
 import { parseDescription, parseInfoLine } from "../../src/description";
 import { warningMeasure, wrapWarning } from "../../src/warning";
@@ -16,11 +16,10 @@ import {
   barcodeDigitsFor, barcodeFootprint, barcodeGeometry, barcodeStrokePt,
   CUSTOM_BARCODE_DIGIT_GAP_RATIO, CUSTOM_BARCODE_DIGIT_SIZE_RATIO,
   encodeFor, quietModulesFor, validateFor, type BarcodeGeometry,
-} from "../../src/barcode";
+} from "./barcode";
 
 import { labelGuides, strokeSpec, lineRuns, rotatedRuns, justifiedRotatedRuns,
-  type Face, type MeasureFace, type Placed, type PlacedText, type PlacedPaths,
-  type PlacedImage, type PlacedBarcode, type PlanArt, type PlanAssets } from "../../src/plan";
+  type Face, type MeasureFace, type Placed, type PlacedBarcode, type PlanArt, type PlanAssets } from "./planShared";
 
 /** Which collab logo slots hold art — the same fact hittest tracks: the
  *  renderers skip an empty slot, so its text must not be planned either. */

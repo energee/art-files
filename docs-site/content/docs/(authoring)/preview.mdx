@@ -11,7 +11,7 @@ Both plates draw in place. Drag the divider and the **white-ink layer** slides o
 
 Live preview uses a downscaled texture and mask so typing doesn't churn print-size images. Downloads always rebuild at full resolution.
 
-While a rebuild is in flight the stale render blurs, and a small "rendering preview…" note shows up.
+While export files are being built, the preview blurs and displays a progress note. Ordinary preview edits do not show this export indicator.
 
 ## Zoom and pan
 
@@ -23,7 +23,7 @@ In 3D, 100% means "as framed" for that mode. 200% is twice as close. Typing 100 
 
 ## Can
 
-Same plates, wrapped around a can. **1 / 4** in the status bar is one can or a 2×2 four-pack. Orbit with the left button, pan with the right, same as 2D.
+Same plates, wrapped around a can. **1 / 4** in the status bar is one can or a 2×2 four-pack. Orbit with the left button and pan with the right. With the can view focused, arrow keys pan and Shift plus arrows rotates.
 
 Settings → corner radius and edge softness are how the die-cut and foil edge read on the can. Preview/press appearance. They don't redraw the 2D plates, aside from bleed and DPI.
 
@@ -34,7 +34,7 @@ View → **Rulers** (`R`) and **Guides** (`G`). 2D only.
 - Ruler zero is the **trimmed** art's top-left, so bleed reads negative
 - Click the trim-size readout in the status bar to cycle inches / points / 600-DPI pixels
 - Locked margin and centre guides come from the trim box. The margin control (ruler corner) sets the safe inset on all four sides
-- Drag from a ruler to add a **manual** guide. Kill it with the × in the ruler, by dragging it back into a ruler, or with Delete while it's focused. Manual guides snap to layers as you place them
+- Drag from a ruler to add a **manual** guide, or use **Add vertical guide** / **Add horizontal guide** in the ruler-corner settings. Arrow keys move a focused guide by 1 pt (Shift: 10 pt). Kill it with the × in the ruler, by dragging it back into a ruler, or with Delete while it's focused. Manual guides snap to layers as you place them
 - **Guides** is one switch: trim line, margin and centre, and your manual guides, together
 
 Session-only overlays. They never enter a `.label` or an export.

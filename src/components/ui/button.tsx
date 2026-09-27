@@ -16,7 +16,13 @@ const buttonVariants = cva(
         ghost:
           "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
         destructive:
-          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
+          "bg-destructive-soft text-destructive-text hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
+        // Master/variant promotion — the one class of action that writes the
+        // template instead of the label. Same soft-fill/-text pattern as
+        // destructive so neither is ever a raw accent on text (fails AA in
+        // light — see index.css's file header).
+        attention:
+          "bg-attention-soft text-attention-text hover:bg-attention/20 focus-visible:border-attention/40 focus-visible:ring-attention/20 dark:hover:bg-attention/30 dark:focus-visible:ring-attention/40",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {

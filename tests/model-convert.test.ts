@@ -10,10 +10,11 @@ import {
 import { lolevMaster as lolevV3 } from "../src/model/lolevLayers";
 import { resolveLayers } from "../src/model/resolveLayers";
 import { rebindLabel } from "../src/model/rebindLayers";
-import { lolevMaster as lolevV1 } from "../src/model/lolev";
+import { lolevMaster as lolevV1 } from "./fixtures/lolevV1";
 import type { LabelFileV2 } from "../src/model/types";
+import type { LabelConfig } from "../src/types";
 import { defaultConfig, KEYLINE } from "../src/defaults";
-import { GOLD } from "../src/layout";
+import { GOLD } from "./legacy/layout";
 
 const layer = <T extends Layer = Layer>(layers: Layer[], id: string) =>
   layers.find((l) => l.id === id) as T;
@@ -250,6 +251,16 @@ describe("convertLabelV2", () => {
 });
 
 describe("convertConfigV1", () => {
+  // A legacy config omits barcodeStrokeWidth deliberately (defaults.ts's
+  // parseConfigFile). configDiff records that absence as a removal marker,
+  // and since a v3 patch cannot express removal, the converter must say so
+  // rather than silently let defaultConfig()'s value stand unannounced.
+  it("reports a key the old file left unset instead of resurrecting the default silently", () => {
+    const cfg: Partial<LabelConfig> = structuredClone(defaultConfig());
+    delete cfg.barcodeStrokeWidth;
+    const { warnings } = convertConfigV1(cfg as LabelConfig, false);
+    expect(warnings).toContain('"barcodeStrokeWidth" was unset in the old file; the master\'s value stands.');
+  });
   it("a default config becomes an override-free label with its filled values", () => {
     const { label, warnings } = convertConfigV1(defaultConfig(), false);
     expect(warnings).toEqual([]);

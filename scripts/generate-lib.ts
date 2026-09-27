@@ -1,3 +1,4 @@
+import { isPlain } from "../src/model/merge";
 // generate-lib.ts — DOM-free headless generate: argv, inspect, coerce, build.
 // Lives under scripts/ so it is not a desktop binary input (src/ is).
 import { readFileSync } from "node:fs";
@@ -5,7 +6,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PDFDocument } from "pdf-lib";
 import { PNG } from "pngjs";
-import { rasterKind, tintRgba } from "../src/collab";
+import { EMBEDDABLE_RASTER, rasterKind, tintRgba } from "../src/collab";
 import { defaultConfig, parseConfigFile } from "../src/defaults";
 import { parseDescription } from "../src/description";
 import { FONT_FAMILIES, type FontFamilyId } from "../src/fontCatalog";
@@ -13,9 +14,9 @@ import { setBleed } from "../src/layout";
 import { svgAspect } from "../src/logo";
 import { convertConfigV1, guideLines } from "../src/model/convert";
 import { unpackLabel, unpackMaster, type MasterAssets } from "../src/model/files";
-import { PAGE_ART_ID, type LabelFile, type Layer, type LayerKind, type LayerValue, type Master, type TextLayer, type TextLine } from "../src/model/layers";
+import { PAGE_ART_ID, validateLayer, type LabelFile, type Layer, type LayerKind, type LayerValue, type Master, type TextLayer, type TextLine } from "../src/model/layers";
 import { lolevMaster } from "../src/model/lolevLayers";
-import { exportBase, resolveLayers, titleOf, widenValue } from "../src/model/resolveLayers";
+import { applyDiff, exportBase, resolveLayers, titleOf, widenValue } from "../src/model/resolveLayers";
 import type { PlanAssets } from "../src/plan";
 import { planLayers } from "../src/planLayers";
 import { buildArtPdf, buildMaskPdf, pdfMeasureFace, type Assets, type CollabImage } from "../src/pdf/build";
@@ -170,8 +171,7 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
 
 const JOB_KEYS = new Set(["values", "variants", "files", "overrides"]);
 
-const isPlain = (v: unknown): v is Record<string, unknown> =>
-  !!v && typeof v === "object" && !Array.isArray(v);
+
 
 export interface JobInput {
   values: Record<string, unknown>;
@@ -240,12 +240,15 @@ function addedLayers(master: Master): { layer: Layer; variant: string }[] {
     .map(([, p]) => ({ layer: p as Layer, variant: v.id })));
 }
 
-/** Layers a CLI job may fill: the master's, plus what the enabled variants add. */
-function fillableById(master: Master, enabledVariants: string[]): Map<string, Layer> {
-  const map = new Map(master.layers.map((l) => [l.id, l] as const));
-  for (const { layer, variant } of addedLayers(master))
-    if (enabledVariants.includes(variant)) map.set(layer.id, layer);
-  return map;
+/** Layers a CLI job may fill, exactly as resolveLayers builds them: the
+ *  master's and what the enabled variants add, with those variants' diffs
+ *  applied. Given the label's overrides, a label-only layer (a whole-layer
+ *  override carrying `kind`, which the app prints) is fillable too. */
+function fillableById(
+  master: Master, enabledVariants: string[], overrides?: LabelFile["overrides"],
+): Map<string, Layer> {
+  const { layers } = resolveLayers(master, enabledVariants, {}, overrides, { keepDisabled: true });
+  return new Map(layers.map((l) => [l.id, l] as const));
 }
 
 function coerceOne(layer: Layer, raw: unknown): { value: LayerValue } | { error: string } {
@@ -339,15 +342,18 @@ export function inspectMaster(master: Master): InspectReport {
   };
 }
 
-/** Override patches must fit the layer they patch: every field the layer
- *  already has keeps its type. Catches a hand-edited `size: "big"` here, with
- *  the layer id, instead of deep inside planning with no id at all. Fields
- *  the layer lacks pass — resolveLayers merges those as-is. */
+/** Override patches must fit the layer they patch — `layers` is that layer
+ *  after the enabled variants, before the label's overrides: every field the
+ *  layer already has keeps its type. Catches a hand-edited `size: "big"` here,
+ *  with the layer id, instead of deep inside planning with no id at all.
+ *  Fields the layer lacks pass — resolveLayers merges those as-is. A patch
+ *  carrying `kind` for an id the master lacks is a whole label-only layer. */
 export function checkOverrides(
   layers: Map<string, Layer>, overrides: LabelFile["overrides"],
 ): string[] {
   const errors: string[] = [];
   const walk = (path: string, have: unknown, patch: unknown) => {
+    if (patch === null) return; // Validate the resulting layer below: only optional fields may clear.
     if (!isPlain(patch) || !isPlain(have)) {
       if (have !== undefined && typeof have !== typeof patch)
         errors.push(`override ${path}: expected ${typeof have}, got ${typeof patch}`);
@@ -356,9 +362,11 @@ export function checkOverrides(
     for (const [k, v] of Object.entries(patch)) walk(`${path}.${k}`, have[k], v);
   };
   for (const [id, patch] of Object.entries(overrides ?? {})) {
-    const layer = layers.get(id);
+    const layer = layers.get(id) ?? (patch?.kind ? ({} as Layer) : undefined);
     if (!layer) { errors.push(`Unknown layer "${id}".`); continue; }
     walk(id, layer, patch);
+    try { validateLayer(applyDiff(layer, patch), `override ${id}`); }
+    catch (err) { errors.push(String(err)); }
   }
   return errors;
 }
@@ -412,6 +420,12 @@ function fontPack(assetRoot: string, id: FontFamilyId): Assets["fonts"] {
 
 function asImage(name: string, bytes: Uint8Array): CollabImage {
   if (/\.svg$/i.test(name)) return { kind: "svg", svg: new TextDecoder().decode(bytes) };
+  // The CLI has no browser to re-encode other types (the app turns WebP etc.
+  // into PNG on load), and rasterKind would send them to the PNG decoder. An
+  // extensionless name still reads as PNG, as it does in the app.
+  const ext = /\.([^./\\]+)$/.exec(name)?.[1];
+  if (ext && !EMBEDDABLE_RASTER.test(name))
+    throw new Error(`${name}: ${ext.toUpperCase()} is not supported by the CLI — convert to PNG/JPEG.`);
   return { kind: rasterKind(name), bytes };
 }
 
@@ -655,7 +669,7 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
   for (const w of warnings) warn(w);
 
   let jobs: JobInput[];
-  let labelExtras: GenerateInput["extraImages"] = {};
+  const labelExtras: GenerateInput["extraImages"] = {};
   if (args.source.kind === "label") {
     const unpacked = unpackLabel(io.readFile(resolve(io.cwd, args.source.path)));
     if (!unpacked.label)
@@ -690,10 +704,18 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     const variants = mergeVariants(job.variants, args.variants);
     try { assertVariants(master, variants); }
     catch (e) { fail(e); return null; }
-    const fillable = fillableById(master, variants);
-    const coerced = coerceValues(master, { ...job.values, ...args.set }, variants, fillable);
+    const base = fillableById(master, variants);
+    const fillable = fillableById(master, variants, job.overrides);
+    const activeEntries = <T>(entries: Record<string, T> = {}): Record<string, T> =>
+      Object.fromEntries(Object.entries(entries).filter(([id]) => {
+        if (args.source.kind !== "label" || fillable.has(id)) return true;
+        warn(`Dormant layer "${id}" skipped.`);
+        return false;
+      }));
+    const overrides = activeEntries(job.overrides);
+    const coerced = coerceValues(master, { ...activeEntries(job.values), ...args.set }, variants, fillable);
     if (Object.keys(coerced.errors).length) errors.push(errorText(coerced.errors));
-    errors.push(...checkOverrides(fillable, job.overrides));
+    errors.push(...checkOverrides(base, overrides));
     const files = { ...job.files, ...args.assets };
     const extraImages: GenerateInput["extraImages"] = { ...labelExtras };
     for (const [id, path] of Object.entries(files)) {
@@ -705,12 +727,12 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     // ponytail: resolves once here for the name and again inside buildLabel;
     // resolution is a pure data walk, so cheap. Pass resolved layers into
     // buildLabel if it ever shows up in a profile.
-    const stem = exportBase(resolveLayers(master, variants, coerced.values, job.overrides).layers);
+    const stem = exportBase(resolveLayers(master, variants, coerced.values, overrides).layers);
     for (const name of outputNames(stem, args.format)) {
       if (dests.has(name)) errors.push(`duplicate output file "${name}"`);
       dests.add(name);
     }
-    return { variants, values: coerced.values, extraImages, overrides: job.overrides };
+    return { variants, values: coerced.values, extraImages, overrides };
   });
   if (errors.length) throw new Error(errors.join("\n"));
 

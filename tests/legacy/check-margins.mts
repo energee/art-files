@@ -1,5 +1,6 @@
+// Historical reference geometry only; production positions live in the master.
 // check-margins.mts — report every element's DRAWN extent against the safe
-// margins, in PDF points. Run: npx tsx scripts/check-margins.mts
+// margins, in PDF points. Run: npx tsx tests/legacy/check-margins.mts
 //
 // This measures what actually hits the page, which is more than hittest.ts's
 // boxes describe: real glyph ink rather than the em box, the per-run face (an
@@ -10,15 +11,15 @@
 // makes an element look aligned here and overhang on press.
 import { readFileSync } from "node:fs";
 import fontkit from "@pdf-lib/fontkit";
-import { layoutGuides, DEFAULT_MARGIN_PT } from "../src/rulers";
-import { defaultConfig } from "../src/defaults";
-import { parseRuns } from "../src/description";
-import { warningMeasure, wrapWarning } from "../src/warning";
-import type { Style } from "../src/types";
-import * as L from "../src/layout";
+import { layoutGuides, DEFAULT_MARGIN_PT } from "../../src/rulers";
+import { defaultConfig } from "../../src/defaults";
+import { parseRuns } from "../../src/description";
+import { warningMeasure, wrapWarning } from "../../src/warning";
+import type { Style } from "../../src/types";
+import * as L from "./layout";
 
 const load = (n: string) =>
-  fontkit.create(readFileSync(new URL(`../src/assets/fonts/Poppins-${n}.ttf`, import.meta.url)));
+  fontkit.create(readFileSync(new URL(`../../src/assets/fonts/Poppins-${n}.ttf`, import.meta.url)));
 const REGULAR = load("Regular"), SEMIBOLD = load("SemiBold"), BOLD = load("Bold");
 type Face = ReturnType<typeof load>;
 type Line = Style & { text: string };

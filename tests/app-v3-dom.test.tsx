@@ -27,16 +27,17 @@ async function mountEditor() {
   document.body.appendChild(container);
   const root = createRoot(container);
   const onMeta = vi.fn();
+  const saveSlot: { current: (() => Promise<boolean>) | null } = { current: null };
   await act(async () => {
     root.render(createElement(DocumentEditor, {
       active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta,
-      saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+      saveSlot, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
       onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
       onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
     }));
   });
   const unmount = async () => { await act(async () => { root.unmount(); }); container.remove(); };
-  return { container, onMeta, unmount };
+  return { container, onMeta, saveSlot, unmount };
 }
 
 const pressUndo = () => act(async () => {
@@ -342,13 +343,16 @@ it("opens a fresh undo step for inspector typing instead of folding into the pre
  *  them), runs `body`, and unmounts. `p()` reads the latest PreviewCompare
  *  props, so it sees each re-render's layers. */
 async function withCanvasEditor(
-  body: (p: () => PreviewProps, container: HTMLElement, onMeta: ReturnType<typeof vi.fn>) => Promise<void>,
+  body: (
+    p: () => PreviewProps, container: HTMLElement, onMeta: ReturnType<typeof vi.fn>,
+    save: () => Promise<boolean>,
+  ) => Promise<void>,
 ) {
   perf.source = null; // so the wait below waits for THIS mount's assets
-  const { container, onMeta, unmount } = await mountEditor();
+  const { container, onMeta, saveSlot, unmount } = await mountEditor();
   try {
     await vi.waitFor(() => expect(perf.source).not.toBeNull(), { timeout: 30_000 });
-    await body(() => perf.preview!, container, onMeta);
+    await body(() => perf.preview!, container, onMeta, () => saveSlot.current!());
   } finally {
     await unmount();
   }
@@ -473,4 +477,162 @@ it("an in-place session whose first keystroke changes nothing never folds into t
     p.onEditText("abv", lines, true);
     p.onEditText("abv", [{ ...lines[0], text: "6.5" }], false);
   }, (p) => p.onEditCancel());
+}, 60_000);
+
+it("each arrow nudge has its own undo step (#287)", async () => {
+  const { container, unmount } = await mountEditor();
+  try {
+    await vi.waitFor(() => expect(perf.source).not.toBeNull());
+    const row = container.querySelector('[data-layer-id="name"] [data-slot="sidebar-menu-button"]') as HTMLButtonElement;
+    await act(async () => row.click());
+    const x = () => layerOf(perf.preview!, "name").x;
+    const start = x();
+    for (let n = 0; n < 2; n++) await act(async () => {
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    });
+    expect(x()).toBeCloseTo(start + 2);
+    await pressUndo();
+    expect(x()).toBeCloseTo(start + 1);
+    await pressUndo();
+    expect(x()).toBeCloseTo(start);
+  } finally { await unmount(); }
+});
+
+/** Stubs the browser save picker with a handle whose writes succeed. */
+function stubSavePicker() {
+  const handle = { name: "Beer.label", createWritable: async () => ({ write: async () => {}, close: async () => {} }) };
+  vi.stubGlobal("showSaveFilePicker", async () => handle);
+}
+
+// A held arrow key is ONE gesture: OS auto-repeat keydowns (e.repeat) fold
+// into the step the first press opened, so a long hold can't push the rest
+// of the history past its 100-step limit.
+it("a held arrow key nudges as one undo step", async () => {
+  const { container, unmount } = await mountEditor();
+  try {
+    await vi.waitFor(() => expect(perf.source).not.toBeNull());
+    const row = container.querySelector('[data-layer-id="name"] [data-slot="sidebar-menu-button"]') as HTMLButtonElement;
+    await act(async () => row.click());
+    const x = () => layerOf(perf.preview!, "name").x;
+    const start = x();
+    for (const repeat of [false, true, true]) await act(async () => {
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", repeat, bubbles: true }));
+    });
+    expect(x()).toBeCloseTo(start + 3);
+    await pressUndo();
+    expect(x()).toBeCloseTo(start);
+  } finally { await unmount(); }
+}, 60_000);
+
+// The 3D can's OrbitControls take the arrow keys (pan/rotate) and call
+// preventDefault: a handled arrow must not also nudge the selected layer.
+it("an arrow key something else already handled does not nudge", async () => {
+  const { container, unmount } = await mountEditor();
+  try {
+    await vi.waitFor(() => expect(perf.source).not.toBeNull());
+    const row = container.querySelector('[data-layer-id="name"] [data-slot="sidebar-menu-button"]') as HTMLButtonElement;
+    await act(async () => row.click());
+    const start = layerOf(perf.preview!, "name").x;
+    const owner = document.createElement("div");
+    document.body.append(owner);
+    owner.addEventListener("keydown", (e) => e.preventDefault());
+    await act(async () => {
+      owner.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
+    });
+    owner.remove();
+    expect(layerOf(perf.preview!, "name").x).toBe(start);
+  } finally { await unmount(); }
+}, 60_000);
+
+// React bubbles a portaled menu's click through the component tree, so the
+// sidebar's click-empty-space-to-deselect saw Add layer → Image and cleared
+// the selection onAddLayer had just set.
+it("Add layer from the portaled menu leaves the new layer selected", async () => {
+  const { container, unmount } = await mountEditor();
+  try {
+    await vi.waitFor(() => expect(perf.preview).not.toBeNull());
+    const trigger = container.querySelector('[aria-label="Add layer"]')!;
+    await act(async () => {
+      for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"])
+        trigger.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
+      (trigger as HTMLElement).click();
+      await Promise.resolve();
+    });
+    const image = Array.from(document.querySelectorAll('[role="menuitem"]'))
+      .find((el) => el.textContent?.trim() === "Image") as HTMLElement;
+    expect(container.contains(image)).toBe(false); // it really is portaled
+    await act(async () => { image.click(); await Promise.resolve(); });
+    expect(perf.preview!.selected).toHaveLength(1);
+  } finally { await unmount(); }
+}, 60_000);
+
+it("cancelling in-place text restores the pre-session dirty state (#278)", async () => {
+  stubSavePicker();
+  try {
+    await withCanvasEditor(async (p, _container, onMeta, save) => {
+      // Start from a saved, untouched doc so a cancel that leaves it dirty fails.
+      await act(async () => { expect(await save()).toBe(true); });
+      expect(onMeta.mock.calls.at(-1)![0]).toMatchObject({ dirty: false, edited: false });
+      const lines = (layerOf(p(), "name") as TextLayer).lines;
+      await act(async () => p().onEditSession?.("name"));
+      await act(async () => p().onEditText("name", [{ ...lines[0], text: "Temporary" }], true));
+      expect(onMeta.mock.calls.at(-1)![0]).toMatchObject({ dirty: true, edited: true });
+      await act(async () => p().onEditCancel());
+      await act(async () => p().onEditSession?.(null));
+      expect((layerOf(p(), "name") as TextLayer).lines).toEqual(lines);
+      expect(onMeta.mock.calls.at(-1)![0]).toMatchObject({ dirty: false, edited: false });
+    });
+  } finally {
+    vi.unstubAllGlobals();
+  }
+}, 60_000);
+
+it("cancelling in-place text after a mid-session save leaves the tab dirty", async () => {
+  stubSavePicker();
+  try {
+    await withCanvasEditor(async (p, _container, onMeta, save) => {
+      await act(async () => { expect(await save()).toBe(true); });
+      const lines = (layerOf(p(), "name") as TextLayer).lines;
+      await act(async () => p().onEditSession?.("name"));
+      await act(async () => p().onEditText("name", [{ ...lines[0], text: "TYPEDTEXT" }], true));
+      // ⌘S inside the field: the file now holds TYPEDTEXT.
+      await act(async () => { expect(await save()).toBe(true); });
+      expect(onMeta.mock.calls.at(-1)![0].dirty).toBe(false);
+      await act(async () => p().onEditCancel());
+      await act(async () => p().onEditSession?.(null));
+      expect((layerOf(p(), "name") as TextLayer).lines).toEqual(lines);
+      // The reverted doc no longer matches the file.
+      expect(onMeta.mock.calls.at(-1)![0]).toMatchObject({ dirty: true, edited: true });
+    });
+  } finally {
+    vi.unstubAllGlobals();
+  }
+}, 60_000);
+
+// Undoing an add leaves the added id in the selection. Delete on a still-
+// present selected row must drop that stale id, not throw "Unknown layer"
+// and delete nothing.
+it("Delete with a stale id in a multi-row selection removes the rows that exist", async () => {
+  const { container, unmount } = await mountEditor();
+  try {
+    await vi.waitFor(() => expect(perf.preview).not.toBeNull());
+    const trigger = container.querySelector('[aria-label="Add layer"]')!;
+    await act(async () => {
+      for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"])
+        trigger.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
+      (trigger as HTMLElement).click();
+      await Promise.resolve();
+    });
+    const text = Array.from(document.querySelectorAll('[role="menuitem"]'))
+      .find((el) => el.textContent?.trim() === "Text") as HTMLElement;
+    await act(async () => { text.click(); await Promise.resolve(); });
+    const added = perf.preview!.selected[0];
+    const nameRow = () => container.querySelector('[data-layer-id="name"] [data-slot="sidebar-menu-button"]') as HTMLButtonElement | null;
+    await act(async () => nameRow()!.dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true })));
+    expect(perf.preview!.selected).toEqual(expect.arrayContaining([added, "name"]));
+    await pressUndo();
+    expect(container.querySelector(`[data-layer-id="${added}"]`)).toBeNull();
+    await act(async () => nameRow()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true })));
+    expect(nameRow()).toBeNull();
+  } finally { await unmount(); }
 }, 60_000);

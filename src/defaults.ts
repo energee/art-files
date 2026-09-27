@@ -1,6 +1,6 @@
 // defaults.ts — default LabelConfig mirroring the Labradorite reference label,
 // plus the fixed template strings (warning text, address) used by the layout.
-import type { LabelConfig, ConfigFile } from "./types";
+import type { LabelConfig } from "./types";
 import { machineName } from "./qr";
 import { DEFAULT_STROKE_PX, GOLD, WARNING_TRACKING } from "./layout";
 import { markRun } from "./description";
@@ -83,7 +83,7 @@ export function defaultConfig(): LabelConfig {
     qrLayer: "metallic",
     qrStrokeLayer: DEFAULT_STROKE_LAYER,
     // The collab block's styling ships on every label; whether it DRAWS is
-    // the Collab variant's business (model/lolev.ts), not a flag here. Most
+    // the Collab variant's business (model/lolevLayers.ts), not a flag here. Most
     // releases are not collabs, so the variant is off and the resolver
     // disables these three layers.
     collabLead: { fill: GOLD, layer: "metallic", strokeLayer: DEFAULT_STROKE_LAYER },
@@ -126,10 +126,6 @@ export function defaultConfig(): LabelConfig {
   };
 }
 
-export function toConfigFile(c: LabelConfig): ConfigFile {
-  return { version: 1, ...c };
-}
-
 /** Was this v1 config JSON saved as a collab? `collabEnabled` no longer
  *  exists on LabelConfig — Collab is an ordinary master variant — so the
  *  open path reads the saved flag from the raw JSON here and turns a `true`
@@ -151,9 +147,7 @@ export function parseConfigFile(json: string): LabelConfig {
   if (data?.version !== 1) throw new Error("Unsupported config version");
   const { version: _v, ...cfg } = data;
   if (cfg.description === undefined && Array.isArray(cfg.descriptionLines)) {
-    // Through markRun, so this migration writes the markers in the same
-    // alphabet and canonical order serializeDescription does — the two have
-    // to agree for an old file to round-trip.
+    // Keep legacy markers compatible with the shared inline parser.
     const md = (l: { text: string; fill: string; layer: string; bold?: boolean }) =>
       markRun(l.text, { bold: l.bold, white: l.fill === "white" || l.layer === "white" });
     cfg.description = [
