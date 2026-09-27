@@ -250,6 +250,17 @@ describe("overrideBadges", () => {
     expect(b.variantName).toBe("Collab");
   });
 
+  // A label-only legacy layer's override IS its only definition — there is
+  // no master value to reset to, so a badge would delete a required field.
+  it("reports no resettable paths on a label-only legacy layer", () => {
+    const m = lolevMaster();
+    const own = { ...m.layers.find((l) => l.kind === "text")!, id: "legacy", name: "Stamp" };
+    const label = { ...newLabel(m), overrides: { legacy: own } } as LabelFile;
+    const b = overrideBadges(m, label, "legacy");
+    expect([...b.label]).toEqual([]);
+    expect([...b.variant]).toEqual([]);
+  });
+
   it("ignores a variant that is not switched on", () => {
     const m = setLayerIn(lolevMaster(), "collab", "name", { x: 222 });
     const b = overrideBadges(m, newLabel(m), "name");

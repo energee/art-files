@@ -1,7 +1,8 @@
 // src/model/rebindLayers.ts — re-aim a v3 .label at a different master (the
 // cross-brewery collab flow), the successor to rebind.ts on the layer model.
 // Values match by LAYER id against the layers the target HAS — in its own
-// layers or in any variant's diff. NON-DESTRUCTIVE: anything the target does
+// layers or in any variant's diff — plus the label-only legacy layers the
+// label carries in its own overrides (they travel with it). NON-DESTRUCTIVE: anything the target does
 // not have is REPORTED and benched on the label's `dormant`
 // store, and anything already benched gets another shot at the new target,
 // so A→B→A loses nothing (spec: `.label` file — dormant).
@@ -53,6 +54,10 @@ export function rebindLabel(
   }
 
   const kinds = layerKinds(to);
+  // A label-only legacy layer (#264) is defined by the label's own whole-layer
+  // override, so it resolves on any target — its value is not stranded.
+  for (const [id, o] of Object.entries(label.overrides ?? {}))
+    if (o.kind && !kinds.has(id)) kinds.set(id, o.kind);
   const values: Record<string, LayerValue> = {};
   const dormantValues: Record<string, LayerValue> = {};
   for (const [id, v] of Object.entries(candidateValues)) {

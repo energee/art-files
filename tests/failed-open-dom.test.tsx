@@ -58,6 +58,11 @@ it.each([
   { values: { name: ["oops"] } },
   { overrides: { name: { kind: "qr" } } },
   { overrides: { name: null } },
+  // Overrides the resolver tolerates but the UI can't draw (#267 follow-up):
+  // an unknown kind, a whole layer with no id, a required field nulled out.
+  { overrides: { stamp: { kind: "shape", id: "stamp", name: "Stamp" } } },
+  { overrides: { stamp: { kind: "text", name: "Stamp" } } },
+  { overrides: { name: { style: null } } },
 ])("a failed open keeps the tab and Save target: %j", async (bad) => {
   const a = fakeHandle("a.label", labelBytes("Alpha"));
   const b = fakeHandle("b.label", packLabel({

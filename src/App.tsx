@@ -44,7 +44,7 @@ import { useHistory, type Coalesce } from "@/history";
 import type {
   ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master,
 } from "@/model/layers";
-import { PAGE_ART_ID, uppercaseOf } from "@/model/layers";
+import { PAGE_ART_ID, uppercaseOf, validateLayer } from "@/model/layers";
 import { exportBase as exportBaseOf, titleOf, withStoredValue } from "@/model/resolveLayers";
 import type { DeepPartial } from "@/model/merge";
 import {
@@ -1891,7 +1891,16 @@ export const DocumentEditor = memo(function DocumentEditor({
       }
       // Resolve untrusted overrides/values before installing the document or
       // decoding its assets; a malformed label must leave the old tab intact.
-      layerRows(next.master, next.label);
+      // Resolving is not enough: the resolver tolerates layers the UI can't
+      // draw (an unknown kind, a required field nulled), which would crash
+      // the list or inspector past the open — so each resolved layer must
+      // pass the master's own layer check (an off variant's raw diff rows
+      // were checked by parseMaster already).
+      for (const { layer, variant } of layerRows(next.master, next.label).rows) {
+        if (variant && !variant.enabled) continue;
+        try { validateLayer(structuredClone(layer), "label"); }
+        catch (err) { throw new Error(errMsg(err).replace(/^Invalid master file: /, "invalid override: ")); }
+      }
       // Label-delta rule: the label's own embedded role wins; a missing one
       // falls back to the master's template asset. Image bytes merge the
       // same way, per id (spread order: master first, label last).

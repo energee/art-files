@@ -95,6 +95,17 @@ describe("rebindLabel", () => {
   });
 });
 
+// A label-only legacy layer (#264) travels in the label's own overrides, so
+// it exists on every master the label moves to — its value must too.
+it("keeps a value typed into a label-only legacy layer", () => {
+  const stamp = { ...lolevMaster().layers.find((l) => l.kind === "text")!, id: "custom-abc", name: "Stamp" };
+  const l: LabelFile = { ...label(), overrides: { "custom-abc": stamp }, values: { "custom-abc": line("TYPED") } };
+  const same = rebindLabel(l, lolevMaster(), lolevMaster());
+  expect(same.label.values["custom-abc"]).toEqual(line("TYPED"));
+  expect(same.dropped.values).toEqual([]);
+  expect(rebindLabel(l, lolevMaster(), other()).label.values["custom-abc"]).toEqual(line("TYPED"));
+});
+
 it("restores variant precedence after a saved partial rebind (#269)", () => {
   const a = lolevMaster();
   a.variants = [{ id: "v1", name: "One", layers: {} }, { id: "v2", name: "Two", layers: {} }];

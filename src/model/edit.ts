@@ -191,11 +191,18 @@ export function removeLayer(master: Master, id: string, boxes?: ReadonlyMap<stri
  *  patch lands in an override that holds one of the keys it writes, where it
  *  would otherwise win over the master's. A switched-off version's layers
  *  count too; unmeasured (no box), one bound to `id` refuses the removal. */
+/** A label-only legacy layer (#264): a whole-layer override (it carries
+ *  `kind`) whose id neither the master nor any variant defines. The override
+ *  is the layer's ONLY definition, so there is no master value under it. */
+export function isLabelOnly(master: Master, label: LabelFile, id: string): boolean {
+  return !!label.overrides?.[id]?.kind && !master.layers.some((l) => l.id === id)
+    && !master.variants.some((v) => id in v.layers);
+}
+
 export function removeLayerIn(doc: Doc, id: string, boxes?: ReadonlyMap<string, Box>): Doc {
   const overrides = doc.label.overrides;
   const own = overrides?.[id];
-  const labelOnly = !!own?.kind && !doc.master.layers.some((l) => l.id === id)
-    && !doc.master.variants.some((v) => id in v.layers);
+  const labelOnly = isLabelOnly(doc.master, doc.label, id);
   const source = labelOnly ? { ...doc.master, layers: [...doc.master.layers, own as Layer] } : doc.master;
   const master = labelOnly ? doc.master : removeLayer(doc.master, id, boxes);
   if (!overrides) return { ...doc, master };
@@ -410,8 +417,9 @@ export function labelOverriddenPaths(label: LabelFile, id: string): Set<string> 
  *
  *  A variant-ADDED layer has no variant-vs-master baseline to diff, so it
  *  shows no variant badge; its LABEL overrides are still the label's own and
- *  still resettable, exactly like a base layer's. Label-only legacy layers
- *  have no master or variant badges. */
+ *  still resettable, exactly like a base layer's. A label-only legacy layer
+ *  has no badges at all: its override is its only definition, so a "reset"
+ *  would delete a required field (x, y, anchor…) rather than restore one. */
 export interface OverrideBadges {
   variant: Set<string>;
   label: Set<string>;
@@ -427,7 +435,8 @@ export function overrideBadges(master: Master, label: LabelFile, id: string): Ov
       for (const p of overriddenPaths(master, v.id, id)) { variant.add(p); variantName = v.name; }
     }
   }
-  return { variant, label: labelOverriddenPaths(label, id), variantName };
+  const own = isLabelOnly(master, label, id) ? new Set<string>() : labelOverriddenPaths(label, id);
+  return { variant, label: own, variantName };
 }
 
 /** Rebinds the label onto `master`, which is what adopting a saved master
@@ -761,8 +770,7 @@ export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
   let resolves = resolvable(doc.label);
   return entries.reduce((d, [id, patch]) => {
     const keys = Object.keys(patch);
-    const labelOnly = !!d.label.overrides?.[id]?.kind && !masterIds.has(id)
-      && !d.master.variants.some((v) => id in v.layers);
+    const labelOnly = isLabelOnly(d.master, d.label, id);
     const contract = keys.filter((k) => !labelOnly && MASTER_PATHS.has(k));
     const rest = keys.filter((k) => labelOnly || !MASTER_PATHS.has(k));
     const pick = (ks: string[]) =>
