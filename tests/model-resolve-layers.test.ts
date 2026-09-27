@@ -167,6 +167,15 @@ describe("resolveLayers", () => {
     expect(uppercaseOf(byId<TextLayer>(resolveLayers(legacy, [], {}).layers, "name"))).toBe(true);
   });
 
+  it("cleans control characters out of a stored text value before anything reads it (#282)", () => {
+    // A .label or CLI value never passes the editor's paste handler: the tab
+    // must not reach validation, a {ref} expansion (the QR would encode it)
+    // or the title, not just the drawing.
+    const r = resolveLayers(lolevMaster(), [], { name: [line("Hops\tCitra\u0001")] }, { qr: { value: "{name}" } });
+    expect(byId<TextLayer>(r.layers, "name").lines.map((l) => l.text)).toEqual(["Hops Citra"]);
+    expect(byId<QrLayer>(r.layers, "qr").value).toBe("HOPS CITRA"); // name draws uppercase
+  });
+
   it("keeps the unexpanded template in `format` so an editor never round-trips the expansion", () => {
     const r = resolveLayers(lolevMaster(), [], { name: [line("Ultra Juice")] });
     const q = byId<QrLayer>(r.layers, "qr");

@@ -184,6 +184,17 @@ describe("single-line fields", () => {
     expect(emitted.at(-1)).toStrictEqual([line("Peregrine Falcon ")]);
   });
 
+  it("pastes a tab as a space and drops other control characters (#282)", () => {
+    const { emitted, el } = mountField([line("Pere")], { multiline: false });
+    window.getSelection()!.collapse(el.firstChild!.firstChild, 4);
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, "clipboardData", {
+      value: { getData: () => "grine\tFalcon\u0007" },
+    });
+    act(() => { el.dispatchEvent(paste); });
+    expect(emitted.at(-1)).toStrictEqual([line("Peregrine Falcon")]);
+  });
+
   it("emits only the first line even if the DOM grew a second one", () => {
     const { emitted, el, input } = mountField([line("one")], { multiline: false });
     const stray = document.createElement("div");

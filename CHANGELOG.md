@@ -8,6 +8,12 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 
+- **A pasted tab prints the way the preview shows it.** Text pasted from a
+  spreadsheet (or any tab or other invisible control character, whether
+  pasted, in a saved label or set from the command line) used to print as
+  several spaces, shifting a centred line and overlapping the next run. It
+  now prints as the single space the preview shows.
+
 - **Closing a tab frees its images.** A closed tab used to keep its
   texture, mask, and image-layer art in memory for as long as the app stayed
   open. Closing it now releases them, and an image that fails to load no

@@ -21,7 +21,7 @@ import {
   justifiedRotatedRuns, rotatedRuns, strokeSpec,
   type Face, type MeasureFace, type Placed, type PlacedBarcode, type PlacedText, type PlanAssets,
 } from "./plan";
-import { markedWords, parseRuns } from "./description";
+import { markedWords, parseRuns, printableText } from "./description";
 import { strokeLayerOf } from "./strokes";
 import { parseLogo } from "./logo";
 import { qrPaths, qrShapes } from "./qr";
@@ -71,11 +71,13 @@ interface Prepared { size: { w: number; h: number }; emit(box: Box): PlacedLayer
  *  empty, the suffix on the first line, uppercase applied, and every line
  *  carrying the layer's block style (stroke, tracking) under its own fill /
  *  layer / bold. A header line is bold, as the description's `# ` line has
- *  always been. */
+ *  always been. Control characters are settled here too (printableText):
+ *  label values arrive clean from resolveLayers, but master-authored lines,
+ *  placeholders and suffixes do not. */
 function drawableLines(l: TextLayer): TextLine[] {
   const s = l.style;
   let lines = l.lines;
-  if (l.placeholder && lines.every((ln) => !ln.text.trim()))
+  if (l.placeholder && lines.every((ln) => !printableText(ln.text).trim()))
     lines = [{ ...(lines[0] ?? { fill: s.fill, layer: s.layer }), text: l.placeholder }];
   if (l.suffix)
     lines = lines.length
@@ -83,7 +85,7 @@ function drawableLines(l: TextLayer): TextLine[] {
       : [{ fill: s.fill, layer: s.layer, text: l.suffix }];
   return lines.map((ln) => ({
     ...ln,
-    text: uppercaseOf(l) ? ln.text.toUpperCase() : ln.text,
+    text: printableText(uppercaseOf(l) ? ln.text.toUpperCase() : ln.text),
     bold: !!ln.bold || !!ln.header,
     stroke: s.stroke, strokeLayer: s.strokeLayer, strokeWidth: s.strokeWidth,
     letterSpacing: s.letterSpacing,
