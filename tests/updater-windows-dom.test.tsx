@@ -35,6 +35,12 @@ it("Windows rechecks dirty tabs after downloading and before its exiting install
     expect(update.install).not.toHaveBeenCalled();
     expect(mocks.invoke).not.toHaveBeenCalledWith("relaunch_app");
     expect(installButton().disabled).toBe(true);
+    // Once the tabs are saved, Install reuses the finished download rather
+    // than fetching (and holding) a second copy of the installer.
+    await act(async () => render(false, 1));
+    await act(async () => installButton().click());
+    expect(update.download).toHaveBeenCalledOnce();
+    expect(update.install).toHaveBeenCalledOnce();
   } finally {
     await act(async () => root.unmount()); host.remove(); bar.remove();
   }

@@ -264,3 +264,19 @@ it("keeps failed installs discoverable and offers a fresh check (#318)", async (
     expect(document.body.textContent).toContain("Update available");
   } finally { await act(async () => root.unmount()); host.remove(); bar.remove(); }
 });
+
+it("a failed manual check leaves no failure in the status bar once closed", async () => {
+  mocks.invoke.mockResolvedValue(true);
+  mocks.check.mockRejectedValue(new Error("offline"));
+  const host = document.createElement("div"); const bar = document.createElement("div"); document.body.append(host, bar);
+  const root = createRoot(host);
+  const button = (text: string) => [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === text)!;
+  try {
+    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
+    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={1} statusHost={bar} />));
+    expect(document.body.textContent).toContain("offline");
+    await act(async () => button("Close").click());
+    // Nothing failed to install, so there is nothing to retry from the bar.
+    expect(bar.textContent).not.toContain("Update failed");
+  } finally { await act(async () => root.unmount()); host.remove(); bar.remove(); }
+});

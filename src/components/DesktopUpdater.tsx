@@ -33,8 +33,10 @@ type Status =
   /** Installed on disk; the running process is still the old version until relaunch. */
   | { kind: "installed"; version: string }
   /** `installed` = a failed restart: the update is still on disk, so
-   *  dismissing the error returns to the installed state, not idle. */
-  | { kind: "error"; message: string; installed?: string };
+   *  dismissing the error returns to the installed state, not idle.
+   *  `install` = a failed install, which stays in the status bar with a
+   *  retry; a failed check just closes back to idle. */
+  | { kind: "error"; message: string; installed?: string; install?: true };
 
 async function checkForUpdate(): Promise<CheckResult> {
   try {
@@ -109,6 +111,9 @@ export function DesktopUpdater(props: {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const updateRef = useRef<Update | null>(null);
+  /** The update whose installer is already downloaded (Windows), so a retry
+   *  after the dirty-tab abort installs it instead of downloading again. */
+  const downloadedRef = useRef<Update | null>(null);
   const checkRef = useRef<Promise<CheckResult> | null>(null);
   const lastQuietCheckRef = useRef(0);
   const mountedRef = useRef(true);
@@ -197,7 +202,9 @@ export function DesktopUpdater(props: {
   const dismiss = () => {
     setOpen(false);
     if (status.kind === "error" && status.installed) setStatus({ kind: "installed", version: status.installed });
-    else if (!["available", "current", "installed", "downloading", "error"].includes(status.kind)) setStatus({ kind: "idle" });
+    else if (status.kind === "error" ? !status.install : !["available", "current", "installed", "downloading"].includes(status.kind)) {
+      setStatus({ kind: "idle" });
+    }
   };
 
   const install = async () => {
@@ -221,7 +228,10 @@ export function DesktopUpdater(props: {
     setOpen(false); // progress shows in the status bar; the dialog returns only on error
     try {
       if (INSTALL_EXITS_APP) {
-        await update.download(showProgress, { timeout: 120_000 });
+        if (downloadedRef.current !== update) {
+          await update.download(showProgress, { timeout: 120_000 });
+          downloadedRef.current = update;
+        }
         // Editing stays available during download; check the live workspace
         // again before handing control to the installer that closes it.
         if (dirtyRef.current) {
@@ -238,7 +248,7 @@ export function DesktopUpdater(props: {
       props.onInstalled?.();
     } catch (error) {
       dropUpdate();
-      setStatus({ kind: "error", message: `Could not install the update: ${String(error)}` });
+      setStatus({ kind: "error", message: `Could not install the update: ${String(error)}`, install: true });
       setOpen(true);
     }
   };
