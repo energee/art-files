@@ -9,7 +9,7 @@
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi, type Mock } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 
 vi.mock("../src/components/PreviewCompare", () => ({ PreviewCompare: () => null }));
@@ -25,9 +25,9 @@ import { DocumentEditor } from "../src/App";
 
 let container: HTMLDivElement;
 let root: Root;
-let onMeta: ReturnType<typeof vi.fn>;
-let onOpenProject: ReturnType<typeof vi.fn>;
-let onCloseTab: ReturnType<typeof vi.fn>;
+let onMeta: Mock<(...args: unknown[]) => void>;
+let onOpenProject: Mock<(...args: unknown[]) => void>;
+let onCloseTab: Mock<(...args: unknown[]) => void>;
 
 beforeEach(async () => {
   container = document.createElement("div");

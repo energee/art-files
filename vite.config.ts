@@ -15,5 +15,11 @@ export default defineConfig({
   // Scoped here rather than in the npm script's flags so EVERY entry point to
   // vitest (watch mode, IDE runners, bare `npx vitest`) skips suites in nested
   // git worktrees instead of failing against another tree's source.
-  test: { dir: "tests" },
+  // fakeTimers: vitest 3+ also fakes requestAnimationFrame/performance by
+  // default, which freezes Base UI's dialog exit animation under
+  // vi.useFakeTimers(); keep the vitest 2 set the timer tests were written for.
+  test: {
+    dir: "tests",
+    fakeTimers: { toFake: ["setTimeout", "clearTimeout", "setImmediate", "clearImmediate", "setInterval", "clearInterval", "Date"] },
+  },
 });
