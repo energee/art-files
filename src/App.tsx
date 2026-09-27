@@ -48,7 +48,7 @@ import { PAGE_ART_ID, uppercaseOf, validateLayer } from "@/model/layers";
 import { exportBase as exportBaseOf, titleOf, withStoredValue } from "@/model/resolveLayers";
 import type { DeepPartial } from "@/model/merge";
 import {
-  addLayer, addVariant, adoptMaster, assetReferenced, masterReferencesAsset, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
+  addLayer, addVariant, adoptMaster, assetReferenced, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
   applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
@@ -1578,12 +1578,17 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  (the art being authored IS the template art) plus the bytes of every
    *  image asset the master names — its layers and every variant entry,
    *  including a variant's `{ asset }` patch on an existing layer
-   *  (masterReferencesAsset). Label-only values stay label deltas. `m` is the
+   *  (masterAssetIds). Label-only values stay label deltas. `m` is the
    *  master being WRITTEN (promotions applied), so a promoted image value's
-   *  bytes ride along instead of leaving the file naming an asset it lacks. */
-  function masterAssetBundle(m: Master): MasterAssets {
-    const ids = Object.keys(customImages).filter((id) => masterReferencesAsset(m, id));
-    return { texture: textureAsset(), mask: maskAsset(), customImages: imageBundle(ids) };
+   *  bytes ride along instead of leaving the file naming an asset it lacks.
+   *  `missing` counts ids the store has no bytes for (a label whose zip lacked
+   *  them); saveMaster notes those, since no save can carry them. */
+  function masterAssetBundle(m: Master): { assets: MasterAssets; missing: number } {
+    const ids = [...masterAssetIds(m)];
+    return {
+      assets: { texture: textureAsset(), mask: maskAsset(), customImages: imageBundle(ids) },
+      missing: ids.filter((id) => !customImages[id]).length,
+    };
   }
 
   /** File → Save Master / Save Master As…, always downstream of the review
@@ -1611,7 +1616,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const forked = as
       ? { ...promoted.master, id: `master-${crypto.randomUUID().slice(0, 8)}` }
       : promoted.master;
-    const assets = masterAssetBundle(forked);
+    const { assets, missing } = masterAssetBundle(forked);
     const suggested = machineName(forked.name) || "master";
     /** A fork takes its display name from the file it was saved as — without
      *  this the library would list two masters called "Lolev" and no way to
@@ -1663,7 +1668,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (ours && saved.target && "path" in saved.target) masterFilePath.current = { id: forked.id, target: saved.target.path };
       else if (ours && saved.target && "handle" in saved.target) masterFileHandle.current = { id: forked.id, target: saved.target.handle };
       await commit(titled(saved.name), saved.name, ours, saved.bytes);
-      if (ours) setLoadError("");
+      if (ours) setLoadError(missing ? `Note: ${missing} image${missing === 1 ? " has" : "s have"} no file to save — ${missing === 1 ? "it" : "they"} will be blank when this master reopens` : "");
       return true;
     } catch (err) {
       setLoadError(`Could not save master: ${errMsg(err)}`);

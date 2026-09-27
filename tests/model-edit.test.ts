@@ -365,7 +365,7 @@ describe("masterDiff", () => {
 });
 
 // --- App write-path helpers -------------------------------------------------
-import { assetReferenced, labelOverriddenPaths, masterReferencesAsset, patchLayer, patchLayerIn, unsetLayerKeys } from "../src/model/edit";
+import { assetReferenced, labelOverriddenPaths, masterAssetIds, patchLayer, patchLayerIn, unsetLayerKeys } from "../src/model/edit";
 
 describe("patchLayer (inspector write path)", () => {
   it("merges defined keys and DELETES own-property undefineds", () => {
@@ -398,11 +398,11 @@ describe("labelOverriddenPaths / assetReferenced", () => {
     expect(assetReferenced(m, label, "a2")).toBe(true);
     expect(assetReferenced(m, { ...label, overrides: { logo: { asset: "a3" } } }, "a3")).toBe(true);
   });
-  it("masterReferencesAsset finds a kind-less variant patch on an existing layer, not label values", () => {
+  it("masterAssetIds lists kind-less variant patches, skips builtin and empty assets", () => {
     const m = lolevMaster();
-    expect(masterReferencesAsset(m, "a1")).toBe(false);
+    expect([...masterAssetIds(m)]).toEqual([]);
     m.variants[0].layers.logo = { asset: "a1" };
-    expect(masterReferencesAsset(m, "a1")).toBe(true);
+    expect([...masterAssetIds(m)]).toEqual(["a1"]);
   });
 });
 

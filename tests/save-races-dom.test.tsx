@@ -331,3 +331,26 @@ it.each([
   expect(assets.customImages?.img1?.name).toBe("script.svg");
   expect(assets.customImages?.img1?.bytes).toEqual(svg);
 });
+
+// A label whose value names an image its zip lacks: the promotion still
+// writes the id, but no save can carry bytes that don't exist — say so.
+it("Save Master notes a promoted image it has no file for", async () => {
+  const labelBytes = packLabel({
+    formatVersion: 3, masterId: lolevMaster().id, enabledVariants: [], values: { logo: "ghost" },
+  }, {});
+  const handle = { name: "a.label", getFile: async () => new File([labelBytes as unknown as BlobPart], "a.label") };
+  let written: Uint8Array | undefined;
+  vi.stubGlobal("showSaveFilePicker", async () => ({
+    name: "m.master",
+    createWritable: async () => ({ write: async (b: Uint8Array) => { written = b; }, close: async () => {} }),
+  }));
+  await mount({ seq: 1, handle: handle as unknown as FileSystemFileHandle });
+  await vi.waitFor(() => expect(document.querySelector('[data-layer-id="logo"]')).not.toBeNull());
+  await run("master-save");
+  const row = await vi.waitFor(() => document.querySelector('[data-row="promote-logo-asset-value"]')!);
+  await act(async () => (row.closest("label")!.querySelector("input") as HTMLInputElement).click());
+  const save = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Save Master" && b.closest("[role=dialog]"))!;
+  await act(async () => save.click());
+  await vi.waitFor(() => expect(written).toBeDefined());
+  await vi.waitFor(() => expect(document.body.textContent).toContain("1 image has no file to save"));
+});
