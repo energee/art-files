@@ -43,8 +43,22 @@ that section to the new version (see .agents/release-steward.md).
   Save Master also lists changed margins and document settings accurately,
   and distinguishes resetting a variant override from deleting a layer.
 - **Switching masters preserves variant precedence on return.** New variants
-  receive unused names. Each arrow-key nudge has its own undo step, and barcode
-  resizing keeps module widths free of floating-point noise.
+  receive unused names. Each arrow-key press is its own undo step (a held key is
+  one), and barcode resizing keeps module widths free of floating-point noise.
+
+- **Edits during a save and in-place cancels keep their state.** A promotion
+  survives edits made while Save Master writes, and cancelling in-place text after
+  a save marks the tab unsaved. A loaded image no longer hides other messages.
+- **Label-only layers keep their contents.** Their values survive a master
+  switch, the inspector no longer offers to reset their fields, and a label whose
+  layers can't be drawn fails to open instead of closing every tab.
+- **Editor input no longer changes the wrong thing.** Bold across a line break
+  keeps the text, typing a hex colour applies only complete colours, Add layer
+  keeps the new layer selected, and 3D can arrow keys no longer move the layer.
+- **Exports finish in more cases.** A slow browser export downloads when the
+  save picker is refused, and ™️ ©️ ®️ from the emoji picker print.
+- **The command line prints what the app prints.** It includes a label's own
+  legacy layers and accepts overrides valid under the label's enabled variants.
 - **QR error correction shows the actual default, L.**
 
 - **Black text and vector artwork stay on the black plate.** PDF exports
