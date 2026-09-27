@@ -65,7 +65,7 @@ function RulerSettings(props: {
         <ToggleGroupItem value="px" size="sm" className="min-w-0 flex-1">Pixels</ToggleGroupItem>
       </ToggleGroup>
       {/* The inspector's numeric field, so the inset scrubs like every other
-          number in the app and clamps/rounds through the same snap(). */}
+          number in the app and clamps/rounds the same way (NumberRoot). */}
       <ScrubField id="guide-margin" label="Margin inset" unit={unit}
         value={Number(marginValue.toFixed(unit === "in" ? 3 : 0))}
         min={0} max={marginMax} step={marginStep}

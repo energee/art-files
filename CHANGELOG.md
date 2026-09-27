@@ -68,8 +68,11 @@ that section to the new version (see .agents/release-steward.md).
 - **Number fields in the inspector now accept only numbers.** Letters (like
   the "e" in "1e2") can no longer be typed into a size, spacing, position,
   or render setting. When you leave a field it always shows the value that was
-  applied. Arrow keys now step by the same amount as dragging the label (for
-  example, letter spacing moves 0.1 pt per press instead of 0.01 pt).
+  applied, and text that isn't a number (a lone "-") goes back to it. Arrow
+  keys now step by the same amount as dragging the label (for example, letter
+  spacing moves 0.1 pt per press instead of 0.01 pt), in millimetres as well
+  as points; Alt+arrow steps finer. Dragging a label moves one step per pixel
+  at any pointer speed, so dragging back to the start restores the value.
 - Internal cleanup with no operator-visible change: a retired developer
   comparison page, the unused PDF-rendering dependency it pulled in, and the
   superseded first-generation master model are gone. Old `.master` and

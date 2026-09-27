@@ -206,9 +206,10 @@
   background-color: transparent;
 }
 
-/* No native number spinners on the one native number input left — a number
-   fill's PlainField (TextEditor). ScrubField and BlankableField are Base UI
-   NumberFields (text inputs), so this no longer reaches them. Arrow-key
+/* No native number spinners on the one visible native number input — a
+   number fill's PlainField (TextEditor). ScrubField and BlankableField type
+   into Base UI NumberField text inputs; each also renders a hidden
+   input[type=number] for forms, which this matches harmlessly. Arrow-key
    stepping is unaffected. */
 input[type="number"] {
   appearance: textfield;

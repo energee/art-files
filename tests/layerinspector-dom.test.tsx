@@ -645,3 +645,101 @@ describe("LayerInspector dropdown triggers show the option label (#232)", () => 
     expect(shown("Error correction")).toBe("M (default)");
   });
 });
+
+// The numeric fields are Base UI NumberFields (ScrubField.tsx). These pin the
+// behaviour the hand-rolled fields had, which NumberField's defaults changed.
+describe("LayerInspector numeric fields (NumberField)", () => {
+  const blur = (el: Element) =>
+    act(() => { el.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
+  const key = (el: Element, k: string, init: KeyboardEventInit = {}) => act(() => {
+    (el as HTMLElement).focus();
+    el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...init }));
+  });
+
+  it("focusing and leaving an off-grid imported value writes nothing", () => {
+    const { onChange } = render(text({ size: 15.829999923706056, width: 141.733333 }));
+    for (const sel of ["#name-size", "#name-width"]) {
+      const el = $(sel) as HTMLInputElement;
+      act(() => { el.focus(); });
+      blur(el);
+    }
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("Home and End move the caret instead of jumping to min or max", () => {
+    const { onChange } = render(text({ width: 200 }));
+    const width = $("#name-width")!;
+    key(width, "Home");
+    key(width, "End");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("Alt+arrow steps finely even when a tenth of the step is below the shown precision", () => {
+    const { onChange } = render(text({ leading: 1.2 }));
+    key($("#name-leading")!, "ArrowUp", { altKey: true });
+    expect(onChange).toHaveBeenLastCalledWith({ leading: 1.21 });
+  });
+
+  it("an unparseable half-typed draft reverts to the applied value on blur", () => {
+    render(text({ x: 100 }), { unit: "pt" });
+    const x = $("#name-x") as HTMLInputElement;
+    act(() => { x.focus(); });
+    type(x, "-");
+    blur(x);
+    expect(($("#name-x") as HTMLInputElement).value).toBe("100");
+  });
+
+  it("blur does not re-send a typed value the parent has since replaced", () => {
+    const props = render(text({ width: 200 }));
+    const width = $("#name-width") as HTMLInputElement;
+    act(() => { width.focus(); });
+    type(width, "250");
+    expect(props.onChange).toHaveBeenCalledTimes(1);
+    render(text({ width: 260 }), { onChange: props.onChange });
+    blur(width);
+    expect(props.onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("a typed reading past the shown precision shows the applied value after blur (#135)", () => {
+    const props = render(text({ width: 200 }));
+    const width = $("#name-width") as HTMLInputElement;
+    act(() => { width.focus(); });
+    type(width, "300.456");
+    expect(props.onChange).toHaveBeenLastCalledWith({ width: 300.46 });
+    render(text({ width: 300.46 }), { onChange: props.onChange });
+    blur(width);
+    expect(width.value).toBe("300.46");
+  });
+
+  it("a scrub moves one step per pixel whatever the event size, so dragging back restores the start", async () => {
+    // Base UI's default 2px sensitivity applied only the triggering event's
+    // movement, so small and large pointer events moved at different rates.
+    let tracking = 0;
+    const onChange = vi.fn((p: { style?: { letterSpacing?: number } }) => {
+      tracking = p.style?.letterSpacing ?? tracking;
+    });
+    render(text(), { onChange });
+    const label = container.querySelector('label[for="name-tracking"]')!;
+    const scrub = async (moves: number[]) => {
+      const o = { bubbles: true, cancelable: true, pointerType: "mouse", button: 0, buttons: 1, pointerId: 1 };
+      await act(async () => { label.dispatchEvent(new PointerEvent("pointerdown", o)); });
+      for (const movementX of moves) {
+        await act(async () => { window.dispatchEvent(new PointerEvent("pointermove", { ...o, movementX })); });
+        // Controlled field: feed each applied value back, as App does.
+        render(text({ style: { ...STYLE, letterSpacing: tracking } }), { onChange });
+      }
+      await act(async () => { window.dispatchEvent(new PointerEvent("pointerup", { ...o, buttons: 0 })); });
+    };
+    await scrub([3, 3, 3, 3, 3]);             // 15px in big events
+    expect(tracking).toBe(1.5);
+    await scrub(Array(15).fill(-1));           // 15px back in single pixels
+    expect(tracking).toBe(0);
+  });
+
+  it("arrow keys in mm step by the pt drag step converted, not a fixed 0.1mm", () => {
+    const { onChange } = render(barcode({ moduleW: 1 }), { unit: "mm" });
+    key($("#barcode-modulew")!, "ArrowUp");
+    // 0.05pt is 0.018mm; 0.1mm would land at 1.28pt.
+    expect(onChange).toHaveBeenLastCalledWith({ moduleW: 1.05 });
+  });
+});

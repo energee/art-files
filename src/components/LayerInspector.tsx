@@ -58,8 +58,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ColorField } from "./ColorField";
 import { MetallicToggle } from "./MetallicToggle";
-import { NumberField } from "@base-ui/react/number-field";
-import { ScrubField, UnitInput, numberRootProps } from "./ScrubField";
+import { NumberRoot, ScrubField, UnitInput } from "./ScrubField";
 import { decimalsOf, PT_STEP, roundToStep } from "@/numeric";
 import { CharacterHeight } from "./CharacterHeight";
 import { FONT_FAMILIES, fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
@@ -122,7 +121,10 @@ function unitProps(p: { unit: string; value: number; min: number; max: number; s
   const scale = mm ? MM_PER_PT : 1;
   return {
     value: displayValue(p.value, p.unit, p.step), min: p.min * scale, max: p.max * scale,
-    step: mm ? DISPLAY_STEP.mm : p.step, dragStep: mm ? 0.1 : p.dragStep,
+    // The pt drag step converted, so an arrow press moves the same physical
+    // distance in either unit (never below the mm display precision).
+    step: mm ? DISPLAY_STEP.mm : p.step,
+    dragStep: mm ? Math.max(DISPLAY_STEP.mm, roundToStep((p.dragStep ?? p.step) * MM_PER_PT, DISPLAY_STEP.mm)) : p.dragStep,
   };
 }
 
@@ -222,17 +224,17 @@ function BlankableField(props: {
   const shown = unitProps({ ...props, value: props.value ?? 0 });
   return (
     <Field id={props.id} label={props.label} badge={props.badge}>
-      <NumberField.Root
-        {...numberRootProps({ ...shown, id: props.id })}
+      <NumberRoot
+        {...shown} id={props.id} blankable
         value={props.value === undefined ? null : shown.value}
         // Back to points at the MODEL's precision before clamping, as
         // DimensionField does: without it a millimetre reading typed back
         // verbatim (35pt -> 12.347mm -> 34.99916pt) never re-matches the
         // master, so the override badge can't be cleared from this field.
-        onValueChange={(v) => props.onChange(v === null ? undefined : clampedPoints(v, props))}
+        onChange={(v) => props.onChange(v === null ? undefined : clampedPoints(v, props))}
       >
         <UnitInput unit={props.unit} placeholder={props.placeholder} />
-      </NumberField.Root>
+      </NumberRoot>
     </Field>
   );
 }
