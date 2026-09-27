@@ -65,6 +65,12 @@ it("renders a leading svg on Edit → Undo and View → Label", async () => {
     await openMenu(container, "Edit");
     const undo = menuItem("Undo");
     expect(undo.querySelector("svg")).not.toBeNull();
+    // Close Edit first: clicking another trigger while a menu is open closes it
+    // rather than switching (same in Chrome on Base UI 1.6 and 1.8).
+    await act(async () => {
+      document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await Promise.resolve();
+    });
     await openMenu(container, "View");
     const label = menuItem("Label");
     expect(label.querySelector("svg[aria-hidden=true]")).not.toBeNull();

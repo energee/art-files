@@ -381,7 +381,9 @@ it("measures repeated pointer moves over the same drop position", () => {
       bubbles: true, pointerId: 1, clientY: 21 + n % 4,
     })));
     console.log("PERF layer drag", JSON.stringify({ moves: 100, commits: commits.mock.calls.length, ms: performance.now() - started }));
-    expect(commits.mock.calls.length).toBe(1);
+    // A "nested-update" is a layout-effect re-render inside the same commit
+    // (Base UI 1.8 adds one); the guard is one top-level commit per position.
+    expect(commits.mock.calls.filter((c) => c[1] !== "nested-update").length).toBe(1);
   } finally { vi.restoreAllMocks(); }
 });
 
