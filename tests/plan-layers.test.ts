@@ -254,6 +254,29 @@ describe("planLayers barcode", () => {
     expect(item.footprint.slice(item.geo.bars.length)).toEqual(ref.footprint.slice(ref.geo.bars.length));
   });
 
+  // Along the scan direction the backing's fill (before its stroke halo) is
+  // the layer's own box — the box hit-testing, snapping and bindings use — so
+  // a right-anchored symbol at the trim keeps its quiet zone on the page, and
+  // every symbology reserves at least 8X of it.
+  it.each([
+    ["upc-a", "012345678905", 0], ["ean-13", "5901234123457", 0], ["code-128", "LOLEV-42", 0],
+    ["upc-a", "012345678905", 90], ["code-128", "LOLEV-42", 90],
+  ] as const)("%s %s at %s degrees: the backing fills exactly the layer box", (symbology, value, rotation) => {
+    const layer: BarcodeLayer = { ...upright, symbology, value, moduleW: 2.5, rotation };
+    const items = planLayers([layer], m, assets);
+    const backing = items[0] as PlacedPaths;
+    expect(backing.kind).toBe("paths");
+    const box = layerBoxes([layer], m, assets).get("bc")!;
+    const [, w, h] = backing.paths[0].match(/L([\d.]+) 0L[\d.]+ ([\d.]+)/)!.map(Number);
+    // Along the scan direction only: across it, the backing still covers
+    // the digit pills' descenders, which hang below the reserved band.
+    expect(rotation ? [r2(backing.y), r2(h)] : [r2(backing.x), r2(w)])
+      .toEqual(rotation ? [r2(box.y), r2(box.h)] : [r2(box.x), r2(box.w)]);
+    const bars = (items[1] as PlacedBarcode).geo.bars;
+    const lead = rotation ? box.y + box.h - Math.max(...bars.map((b) => b.yTop + b.h)) : Math.min(...bars.map((b) => b.x)) - box.x;
+    expect(lead).toBeGreaterThanOrEqual(8 * 2.5 - 1e-9);
+  });
+
   it("rotated: reproduces the template barcode item exactly", () => {
     const mod = 29.88 / 29;
     const rotated: BarcodeLayer = {

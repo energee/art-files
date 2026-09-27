@@ -206,7 +206,7 @@ function main(argv: string[]): number {
 }
 
 // Thin CLI wrapper: only run when this file is the process's entry point,
-// never on import from tests (scripts/is-entry.mjs).
+// never on import from tests (`import.meta.main`).
 if (import.meta.main) {
   let code: number;
   try {

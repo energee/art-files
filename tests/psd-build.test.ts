@@ -225,8 +225,8 @@ describe("added layers", () => {
     const art = await buildPsd(items, assets, "art", { layers });
     const mask = await buildPsd(items, assets, "mask", { layers });
     expect({ art: hash(art), artLen: art.length, mask: hash(mask), maskLen: mask.length }).toEqual({
-      art: "d99323cb8d1193a201fc5c505f0c635d79e2e21bb43c01ce81a89d876abcd7f4", artLen: 1156272,
-      mask: "19e5977530fa40a1ae2697a88437e11874fc7d35c4bed809096b510227399c27", maskLen: 1149490,
+      art: "c02044c7d223490340cdeea1562bbdaeecf49e00904a343750a9a368fe72e2c6", artLen: 1156272,
+      mask: "bf223d4c5d23fe9c8a01c44cb353d982cbf8c02d53aa8787944629ecf8c4c14e", maskLen: 1149490,
     });
   });
 

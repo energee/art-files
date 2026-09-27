@@ -296,13 +296,14 @@ function prepareBarcode(l: BarcodeLayer, m: MeasureFace): Prepared | null {
   });
   // A halo around individual bars leaves the quiet zone textured (#284).
   // Emit an ordinary path first: every backend paints the same backing on
-  // the stroke's plate, without moving a single bar or digit.
+  // the stroke's plate, without moving a single bar or digit. Along the scan
+  // direction it fills the layer's own box (quietModulesFor's zone on each
+  // side), so what the user snaps and anchors is what prints; its stroke
+  // halo adds S/2 beyond that.
   const withBacking = (barcode: PlacedBarcode): Placed[] => {
     if (S === 0) return [barcode];
     const bars = barcode.geo.bars;
-    // GS1 quiet zones: UPC-A 9X, EAN-13 11X/7X, Code 128 10X.
-    // Symmetric 11X also covers the EAN-13 leading digit.
-    const q = (l.symbology === "upc-a" ? 9 : l.symbology === "ean-13" ? 11 : 10) * mod;
+    const q = quiet * mod;
     const rects = barcode.footprint;
     const x = Math.min(...rects.map((r) => r.x), ...bars.map((r) => r.x - (rotated ? 0 : q)));
     const y = Math.min(...rects.map((r) => r.yTop), ...bars.map((r) => r.yTop - (rotated ? q : 0)));

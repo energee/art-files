@@ -335,8 +335,8 @@ interface FKGlyphRun {
  *  rotation about the PDF-space anchor with the PDF page's y-flip back into
  *  layout.ts's top-left/y-down space reduces to: label = (anchorX - v,
  *  anchorY - u) (see `pdf/build.ts`'s `drawBarcode`). `anchorX` is the digit
- *  column's fixed baseline x (all four groups share one, see barcodeGeometry
- *  `place`); `anchorY` is the label-space Y the string's start lands at,
+ *  column's fixed baseline x (every digit group shares one, see planLayers'
+ *  rotated barcode `emit`); `anchorY` is the label-space Y the string's start lands at,
  *  already the value the old text layer used as `baseline`
  *  (`geo.bottom - d.center * geo.mod + measure(d.text) / 2`).
  *

@@ -1,9 +1,9 @@
-// barcode.ts — barcode layout in label points (top-left origin, y down),
-// shared by both deliverable builders: bar geometry is symbology-agnostic
-// (any {modules, guards} pattern), while the human-readable digit layout
-// below stays UPC-A-specific. Each renderer only paints; the geometry lives
-// here, so the two can't silently disagree about the one element where drift
-// means a code that no longer scans.
+// barcode.ts — the symbology rules every barcode renderer shares: encoding
+// and validation dispatch, the quiet zone each symbology reserves, and the
+// human-readable digit groups (UPC-A, EAN-13, Code 128). planLayers turns
+// these into placed geometry; each renderer only paints it, so none can
+// silently disagree about the one element where drift means a code that no
+// longer scans.
 import { encodeUpc, encodeEan13, validateUpc, validateEan13, type UpcModules } from "./upc";
 import { encodeCode128, validateCode128 } from "./code128";
 
@@ -32,14 +32,18 @@ export const CUSTOM_BARCODE_DIGIT_GAP_RATIO = 4 / 15; // textMargin : barH
  *  where barcodeDigitsFor's leading/trailing digit sits, outside the guards. */
 const BARCODE_QUIET_MODULES = 8;
 
+/** GS1's minimum Code 128 quiet zone, in modules. */
+const CODE128_QUIET_MODULES = 10;
+
 /** The quiet zone `symbology` reserves on EACH side of its symbol, in modules.
  *  UPC-A and EAN-13 print their edge digits out there, so a custom layer's
  *  reported box must include both zones or those digits fall outside it (and
  *  a right-anchored symbol pushes its check digit past the trim). Code 128
- *  has no such digit, so its box is the bare symbol. The ONE place this rule
- *  lives: the planner uses it for both plotted geometry and hit boxes. */
+ *  has no edge digit but still needs its zone clear to scan. The ONE place
+ *  this rule lives: the planner uses it for plotted geometry, hit boxes and
+ *  the quiet-zone backing, so all three agree. */
 export function quietModulesFor(symbology: Symbology): number {
-  return symbology === "code-128" ? 0 : BARCODE_QUIET_MODULES;
+  return symbology === "code-128" ? CODE128_QUIET_MODULES : BARCODE_QUIET_MODULES;
 }
 
 /** Validate `value` under the named symbology — the gate a custom barcode
@@ -74,9 +78,9 @@ export function validateFor(
  *  one, positions each group's actual x/y from `center` itself; the `x` this
  *  function returns is a placeholder callers are expected to replace. The
  *  27.5/67.5 half-centers are the guard layout both encodeUpc/encodeEan13
- *  share (halves at modules [10,45) and [50,85) of a 95-module symbol), same
- *  not derived from `modulesLen`, since
- *  UPC-A/EAN-13's guard positions are fixed regardless of the value encoded. */
+ *  share (halves at modules [10,45) and [50,85) of a 95-module symbol). They
+ *  are not derived from `modulesLen`, since UPC-A/EAN-13's guard positions
+ *  are fixed regardless of the value encoded. */
 export function barcodeDigitsFor(
   symbology: Symbology, value: string, modulesLen: number, quiet: number,
   measure: (text: string) => number,

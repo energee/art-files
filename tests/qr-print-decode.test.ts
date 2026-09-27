@@ -58,10 +58,10 @@ it.each([0, 90])("decodes a backed UPC over dark texture at %s degrees (#284)", 
     expect(backing.kind).toBe("paths");
     if (backing.kind !== "paths" || barcode.kind !== "barcode") throw new Error("Missing barcode backing");
     expect(backing.layer).toBe(barcode.strokeLayer);
-    // Bars keep their original locations; the backing extends at least 9X
-    // beyond the guard on both ends of the scan direction.
+    // Bars keep their original locations; the backing fills the layer's 8X
+    // quiet zone (plus its stroke halo) on both ends of the scan direction.
     const first = Math.min(...barcode.geo.bars.map((r) => barcode.rotated ? r.yTop : r.x));
-    expect(first - (barcode.rotated ? backing.y : backing.x)).toBeCloseTo(9 * barcode.geo.mod, 5);
+    expect(first - (barcode.rotated ? backing.y : backing.x)).toBeCloseTo(8 * barcode.geo.mod, 5);
     const rects = barcode.footprint;
     const right = Math.max(...rects.map((r) => r.x + r.w)) + 15;
     const bottom = Math.max(...rects.map((r) => r.yTop + r.h)) + 15;

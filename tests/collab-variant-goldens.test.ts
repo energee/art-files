@@ -5,6 +5,11 @@
 // identical input builds byte-identical output and a sha256 IS byte
 // identity.
 //
+// All hashes re-baselined 2026-09-27 (#359 review): the barcode backing
+// fills the layer's 8X quiet zone instead of GS1's 9X. Zero changed pixels
+// at 600 DPI on these fixtures; over a dark flood, 5,844 px at the backing's
+// two ends only (see goldens/README.md).
+//
 // All hashes re-baselined 2026-09-27 (#284): barcode backing added.
 // The bare-stock/flood PDF fixtures have zero changed pixels at 600 DPI.
 // PSD backing geometry is tested; Photoshop visual review remains pending.
@@ -73,9 +78,9 @@ const digests = (r: Awaited<ReturnType<typeof shipped>>) => ({
 describe("collab byte-identity goldens — Collab variant OFF, both slots loaded", () => {
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped([]))).toEqual({
-      art: "e12543569db2f657b4248b27874238f4297d68b0f04bbe0e8d313e9a8f5088b9", artLen: 57943,
-      mask: "bff19add5e72a3bfb224e02d4cbf9315f2ddad43ebd1b3775e3690b5e36e5f91", maskLen: 57148,
-      psd: "d99323cb8d1193a201fc5c505f0c635d79e2e21bb43c01ce81a89d876abcd7f4", psdLen: 1156272,
+      art: "a5b6252d5fae630e5e5b3549204df0c35f9e9c4899cb3d94f1793564b1f75779", artLen: 57941,
+      mask: "c8b0e2c7d6322a736b30f13b7909140f11dcf04470fb64c36689e3c1c45569e0", maskLen: 57146,
+      psd: "c02044c7d223490340cdeea1562bbdaeecf49e00904a343750a9a368fe72e2c6", psdLen: 1156272,
     });
   });
 });
@@ -83,9 +88,9 @@ describe("collab byte-identity goldens — Collab variant OFF, both slots loaded
 describe("collab byte-identity goldens — Collab variant ON, both slots loaded", () => {
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped(["collab"]))).toEqual({
-      art: "bd84d06ee2a2ba00879379e9be93ecf742ad098570f10a94edbf35e5c9c8803e", artLen: 59830,
-      mask: "3d6e400224281750b7222d14e2b562ba3e2ab0bfa678848b84430ceefe9a9818", maskLen: 59001,
-      psd: "44c1457963ba689118cdb5842037e89f3c17fd58b58071f0bba4587b2f35c2d7", psdLen: 1166298,
+      art: "9005cb386689962732f41bc6690b0a77fab07bd546844bf889399a471ecc747e", artLen: 59827,
+      mask: "d687af782a7f3149c028fb189026400b537148c055135c2354c0ac2247355a4d", maskLen: 58996,
+      psd: "f773876b45569e513d410739b1d9bcecf6451493070e2cd87924d5762e7c0e48", psdLen: 1166298,
     });
   });
 });
