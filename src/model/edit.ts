@@ -454,14 +454,29 @@ export function adoptMaster(label: LabelFile, master: Master): LabelFile {
   return label.masterId === master.id ? label : { ...label, masterId: master.id };
 }
 
+/** Every custom image id the master names — a layer's `asset`, or any
+ *  variant's entry — whose bytes a .master must carry. No `kind` check: a
+ *  variant that patches an existing layer stores only the changed fields, so
+ *  `{ asset }` arrives without one. Empty and bundled (`builtin:`) assets are
+ *  left out; they have no bytes to carry. */
+export function masterAssetIds(master: Master): Set<string> {
+  const ids = new Set<string>();
+  const add = (e: DeepPartial<Layer> | undefined) => {
+    const a = (e as { asset?: string } | undefined)?.asset;
+    if (a && !a.startsWith("builtin:")) ids.add(a);
+  };
+  master.layers.forEach(add);
+  for (const v of master.variants) Object.values(v.layers).forEach(add);
+  return ids;
+}
+
 /** Is an image asset id still reachable from the document: an image layer's
  *  `asset` in the master, any variant's diff or the label's overrides, or a
  *  label value. App's liveImages filter: the in-memory store also keeps
  *  replaced/cleared art for undo, so not every stored id is referenced. */
 export function assetReferenced(master: Master, label: LabelFile, assetId: string): boolean {
+  if (masterAssetIds(master).has(assetId)) return true;
   const uses = (e: DeepPartial<Layer> | undefined) => !!e && (e as { asset?: string }).asset === assetId;
-  if (master.layers.some(uses)) return true;
-  if (master.variants.some((v) => Object.values(v.layers).some(uses))) return true;
   if (Object.values(label.overrides ?? {}).some(uses)) return true;
   return Object.values(label.values).some((v) => v === assetId);
 }
