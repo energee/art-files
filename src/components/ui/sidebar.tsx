@@ -1,6 +1,6 @@
 "use client"
 
-import { keyOwner } from "@/keys"
+import { dialogOpen, keyOwner } from "@/keys"
 
 import * as React from "react"
 import { mergeProps } from "@base-ui/react/merge-props"
@@ -93,11 +93,11 @@ function SidebarProvider({
   React.useEffect(() => {
     if (!hotkey) return
     const handleKeyDown = (event: KeyboardEvent) => {
-      const owner = keyOwner(event.target)
-      if (event.defaultPrevented || owner === "text" || owner === "dialog") return
+      if (event.defaultPrevented || keyOwner(event.target) === "text") return
       if (
         event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
-        (event.metaKey || event.ctrlKey)
+        (event.metaKey || event.ctrlKey) &&
+        !dialogOpen() // a modal dialog blocks the tab behind it (#244)
       ) {
         event.preventDefault()
         toggleSidebar()

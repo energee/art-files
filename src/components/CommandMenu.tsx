@@ -1,6 +1,6 @@
 // CommandMenu.tsx — ⌘K palette exposing the app's actions.
 import { useEffect, useState } from "react";
-import { inDialog, isMacOS, shortcutLabel } from "@/keys";
+import { dialogOpen, isMacOS, shortcutLabel } from "@/keys";
 import {
   CommandDialog, CommandEmpty, CommandInput, CommandItem, CommandList, CommandShortcut,
 } from "@/components/ui/command";
@@ -37,9 +37,11 @@ export function CommandMenu(props: { actions: Command[] }) {
     const down = (e: KeyboardEvent) => {
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        // Toggle, but never open over another modal dialog (#237). Focus is
-        // trapped in the palette while it is open, so ⌘K there still closes it.
-        setOpen((o) => !o && !inDialog(e.target));
+        // Toggle, but never open while a modal dialog is open (#237, #244);
+        // with the palette itself open, ⌘K closes it. Read the DOM now, at
+        // the key press — a state updater may run later, during render.
+        const blocked = dialogOpen();
+        setOpen((o) => !o && !blocked);
       }
     };
     document.addEventListener("keydown", down);

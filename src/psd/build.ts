@@ -802,6 +802,20 @@ export async function buildPsd(
   const psd: Psd = {
     width: PSD_DOC.w,
     height: PSD_DOC.h,
+    // The export DPI, stated twice because readers disagree on where to look:
+    // Photoshop/InDesign read ResolutionInfo (0x03ED); macOS ImageIO (Finder,
+    // Preview, sips) ignores it and reads the XMP tiff: tags. Without them a
+    // reader assumes 72 ppi and sizes the page ~8× too large (#338).
+    imageResources: {
+      resolutionInfo: {
+        horizontalResolution: L.OUTPUT_DPI, horizontalResolutionUnit: "PPI", widthUnit: "Inches",
+        verticalResolution: L.OUTPUT_DPI, verticalResolutionUnit: "PPI", heightUnit: "Inches",
+      },
+      xmpMetadata: `<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">`
+        + `<rdf:Description rdf:about="" xmlns:tiff="http://ns.adobe.com/tiff/1.0/">`
+        + `<tiff:XResolution>${L.OUTPUT_DPI}</tiff:XResolution><tiff:YResolution>${L.OUTPUT_DPI}</tiff:YResolution>`
+        + `<tiff:ResolutionUnit>2</tiff:ResolutionUnit></rdf:Description></rdf:RDF></x:xmpmeta>`,
+    },
     children: buildLayers(items, assets, digitFont, mode, opts),
   };
   return writePsdUint8Array(psd);

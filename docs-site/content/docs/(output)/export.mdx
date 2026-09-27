@@ -40,6 +40,8 @@ Export checks the code each barcode will actually print, after any `{layer}` ref
 
 Export PSDs is the editable handoff. Text becomes type layers. Logo and QR become vector shapes. Outer strokes are layer effects. The description is one type layer with style runs. The barcode is one merged shape (bars plus digit outlines), not editable type.
 
+The PSD declares the export resolution (600 ppi unless you change Resolution in Settings), so Photoshop, Preview and Finder all show it at the label's print size.
+
 Photoshop may prompt to **Update** text layers on open. ag-psd writes the text data without a rendered bitmap. Choose Update.
 
 The mask PSD mirrors the mask PDF: a knockout base, the recolored mask raster (or a solid white-ink flood), then every element by its plate.

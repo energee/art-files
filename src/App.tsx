@@ -28,7 +28,7 @@ import { RenderSettings as RenderSettingsFields } from "@/components/RenderSetti
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { MasterSaveReview } from "@/components/MasterSaveReview";
 import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isTypingTarget, keyOwner } from "@/keys";
+import { dialogOpen, isTypingTarget, keyOwner } from "@/keys";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
 import type { Fill } from "@/types";
@@ -867,15 +867,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   // ⌘Z / ⇧⌘Z (and ⌘Y) for the history, marking the document dirty like the
   // menu commands do. Inert while a text field has focus — there the
   // browser's own per-field undo is the one the user means — or a modal
-  // dialog does, which must not change the canvas behind it (#225).
+  // dialog is open, which must not change the canvas behind it (#225, #244).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!activeRef.current) return; // a hidden tab owns no shortcuts
       const key = e.key.toLowerCase();
       if (key !== "z" && key !== "y") return;
       if (!e.metaKey && !e.ctrlKey) return;
-      const owner = keyOwner(e.target);
-      if (owner === "text" || owner === "dialog") return;
+      if (isTypingTarget(e.target) || dialogOpen()) return;
       e.preventDefault();
       // History moves bypass `edit`; without mutating, ⌘Z after a save left the tab clean (#76).
       // Nothing to step over is a no-op, as the disabled menu item is.
@@ -897,8 +896,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (!mods && e.shiftKey) return;
       // The BARE keys (1/2/3/r/g) stand aside where they are someone else's
       // input: a text field, a dialog, or a popup — a menu, a Select's
-      // typeahead, the inspector. The ⌘ shortcuts stay live in all of them — ⌘S saves from
-      // inside a field.
+      // typeahead, the inspector. The ⌘ shortcuts stay live in fields and
+      // popups — ⌘S saves from inside a field.
       if (!mods) {
         const owner = keyOwner(e.target);
         if (owner && owner !== "widget") return;
@@ -908,7 +907,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       // The key is the app's even while its command is disabled: ⌘S on a
       // clean document must not fall through to the browser's Save Page.
       e.preventDefault();
-      if (!cmd.disabled) cmd.run();
+      // Nor does a modal dialog let ⌘W, ⌘S… reach the tab behind it (#244).
+      if (!cmd.disabled && !dialogOpen()) cmd.run();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -930,7 +930,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       // A field, popup, the inspector or a roving-focus widget owns the arrow
       // keys while it holds focus: nudging the canvas behind an open Select
       // (and eating the key the list needs) is never what the arrow meant.
-      if (keyOwner(e.target)) return;
+      // A modal dialog blocks the canvas wherever focus is (#244).
+      if (keyOwner(e.target) || dialogOpen()) return;
       // Already handled on the way up — the 3D can's OrbitControls pan and
       // rotate on the arrows and preventDefault them.
       if (e.defaultPrevented) return;

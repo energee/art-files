@@ -13,6 +13,10 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 
+- **Exported PSDs open at print size.** A PSD now records its export
+  resolution (600 ppi by default), so Photoshop, Preview and Finder show it
+  at the label's physical size instead of as a 72 ppi image roughly eight
+  times too large.
 - **Barcode backgrounds stay clear on textured labels.** A continuous backing
   covers the bars, digits and quiet zones across preview, PDF and PSD.
 - **Exports report cancellation and partial saves.** Cancelling artwork stops
@@ -149,6 +153,13 @@ that section to the new version (see .agents/release-steward.md).
   the Save Master review or Settings open, `⌘Z` / `⇧⌘Z` (and Edit → Undo /
   Redo) leave the canvas alone; in the inspector and its color picker they
   still undo your last edit.
+
+- **Shortcuts no longer act on the tab behind an open dialog.** With the Save
+  Master review, Settings or the command palette open, `⌘W` no longer closes
+  the tab underneath, and `⌘N`, `⌘O`, `⌘S`, `⇧⌘S`, `⌘E`, `⇧⌘E` (and their
+  menu items), `⌘B` (sidebar), the arrow-key nudge and the view keys
+  `1`/`2`/`3`/`R`/`G` do nothing until the dialog is closed. With no dialog
+  open, `⌘S` still saves from inside a text field.
 
 ### Changed
 

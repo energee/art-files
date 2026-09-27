@@ -15,8 +15,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       # poppler's pdftoppm rasterizes the PDF goldens (scripts/golden-diff.mts).
@@ -30,7 +30,7 @@ jobs:
     # macOS: terminate.rs and its objc2 dependency are built (and tested) only there.
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with:
           # Same pin as release.yml; upgrade both together.

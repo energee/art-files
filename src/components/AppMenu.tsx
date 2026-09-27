@@ -12,7 +12,7 @@ import {
   Settings, SquareArrowDown, SquareArrowUp, Undo2, X, type LucideIcon,
 } from "lucide-react";
 import { shortcutOf, type Command } from "@/components/CommandMenu";
-import { keyOwner } from "@/keys";
+import { dialogOpen, isTypingTarget } from "@/keys";
 import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu,
   MenubarSeparator, MenubarShortcut, MenubarSub, MenubarSubContent,
@@ -369,19 +369,20 @@ function useNativeMenu(
         const run = (id: string) => {
           const command = commandsRef.current[id];
           if (!command || command.disabled) return;
-          // Native Undo/Redo accelerators fire before the webview's keydown,
-          // so they follow the same owner rule as App's ⌘Z handler: the
-          // focused field keeps its own undo stack, and a modal dialog
-          // leaves the canvas behind it alone (#225).
-          if (id === "undo" || id === "redo") {
-            const owner = keyOwner(document.activeElement);
-            if (owner === "text") { document.execCommand(id); return; }
-            if (owner === "dialog") return;
-          }
+          // Re-assert the check even when nothing runs below.
           if (CHECK_IDS.has(id)) {
             appliedState.current.delete(id);
             setResync((n) => n + 1);
           }
+          // Native accelerators fire before the webview's keydown, so they
+          // follow App's key rules: the focused field keeps its own undo
+          // stack, and a modal dialog blocks every command on the tab behind
+          // it — ⌘Z (#225) as much as ⌘W, ⌘S or a menu click (#244).
+          if ((id === "undo" || id === "redo") && isTypingTarget(document.activeElement)) {
+            document.execCommand(id);
+            return;
+          }
+          if (dialogOpen()) return;
           command.run();
         };
         const roots = await Promise.all(APP_MENUS.map((entry) =>
