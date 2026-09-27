@@ -102,7 +102,9 @@ describe("drawPlate", () => {
       const next = fakeCtx();
       drawPlate(next.ctx, after, {}, "art", FONT);
       const drawn = pathObjects(next.log);
-      const qrDrawn = drawn.filter((p) => qr.has(p.d));
+      // Only the QR paths that changed: a same-size backing square (#283)
+      // keeps its string, so it rightly keeps its Path2D.
+      const qrDrawn = drawn.filter((p) => qr.has(p.d) && !pathStrings(before, isQr).has(p.d));
       const logoDrawn = drawn.filter((p) => logo.has(p.d));
       expect(qrDrawn.length).toBeGreaterThan(0);
       expect(logoDrawn.length).toBeGreaterThan(0);

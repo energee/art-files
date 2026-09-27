@@ -38,7 +38,7 @@ Export checks the code each barcode will actually print, after any `{layer}` ref
 
 ## Photoshop
 
-Export PSDs is the editable handoff. Text becomes type layers. Logo and QR become vector shapes. Outer strokes are layer effects. The description is one type layer with style runs. The barcode is one merged shape (bars plus digit outlines), not editable type.
+Export PSDs is the editable handoff. Text becomes type layers. Logo and QR become vector shapes. Outer strokes are layer effects, except the QR's: a stroked QR sits on a solid backing square in its stroke colour (the code plus a four-module quiet zone), exported as its own shape layer so the art never shows through. The description is one type layer with style runs. The barcode is one merged shape (bars plus digit outlines), not editable type.
 
 The PSD declares the export resolution (600 ppi unless you change Resolution in Settings), so Photoshop, Preview and Finder all show it at the label's print size.
 

@@ -17,6 +17,9 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 
+- **QR codes scan on any texture.** A stroked QR now sits on a solid square
+  of its stroke colour that covers the code and its four-module quiet zone,
+  in the preview, PDF and PSD, so light art no longer shows through it.
 - **Exported PSDs open at print size.** A PSD now records its export
   resolution (600 ppi by default), so Photoshop, Preview and Finder show it
   at the label's physical size instead of as a 72 ppi image roughly eight

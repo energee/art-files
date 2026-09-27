@@ -76,3 +76,36 @@ it.each([0, 90])("decodes a backed UPC over dark texture at %s degrees (#284)", 
     expect(decoded[0]?.text).toBe("0" + barcode.digits.map((d) => d.text).join(""));
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+it.each([["#F2D04B", 0], ["#FFFFFF", 0], ["#F2D04B", 90]] as const)("decodes the QR over a flat %s texture at %s degrees (#283)", async (texture, rotation) => {
+  const dir = mkdtempSync(join(tmpdir(), "qr-texture-"));
+  try {
+    const plan = await lolevPlan({ values: { name: "Lupula" }, overrides: { qr: { rotation } } });
+    const items = plan.filter((p) => p.id === "qr");
+    const layer = lolevMaster().layers.find((l) => l.id === "qr")!;
+    if (layer.kind !== "qr") throw new Error("Expected the QR layer");
+    // A stroked QR paints a backing in its stroke colour over the modules
+    // plus the four-module quiet zone, so the art never shows through.
+    const backing = items[0], modules = items[items.length - 1];
+    if (backing.kind !== "paths" || modules.kind !== "paths") throw new Error("Expected QR paths");
+    expect(backing.fill).toBe(layer.style.stroke);
+    const quiet = modules.x - backing.x;
+    expect(quiet).toBeGreaterThan(0);
+    expect(modules.y - backing.y).toBeCloseTo(quiet, 5);
+    const background = { ...backing, id: "texture", x: 0, y: 0, paths: ["M0 0L600 0L600 400L0 400Z"], fill: texture, stroke: null };
+    writeFileSync(join(dir, "qr.pdf"), await buildArtPdf([background, ...items], assets));
+    const scale = 600 / 72, margin = quiet + 10;
+    const side = Math.ceil((layer.size + 2 * margin) * scale);
+    const p = spawnSync("pdftoppm", ["-png", "-singlefile", "-r", "600", "-x", String(Math.floor((modules.x - margin) * scale)), "-y", String(Math.floor((modules.y - margin) * scale)), "-W", String(side), "-H", String(side), join(dir, "qr.pdf"), join(dir, "qr")]);
+    if (p.error) throw p.error;
+    expect(p.status, p.stderr.toString()).toBe(0);
+    const png = PNG.sync.read(readFileSync(join(dir, "qr.png")));
+    let data = new Uint8ClampedArray(png.data);
+    let decoded: string | undefined;
+    for (let turn = 0; turn < 4 && !decoded; turn++) {
+      decoded = (await readBarcodes({ data, width: png.width, height: png.height } as ImageData, { formats: ["QRCode"], tryHarder: true, isPure: false }))[0]?.text;
+      data = rotate(data, png.width);
+    }
+    expect(decoded).toBe("https://lolev.beer/beer/lupula");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

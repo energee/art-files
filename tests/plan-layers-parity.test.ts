@@ -220,13 +220,14 @@ describe("Lolev parity: planLabel vs planLayers", () => {
     expect(Math.abs(logoB.y - logoA.y)).toBeLessThanOrEqual(TOL);
     expect([logoB.fill, logoB.layer, logoB.stroke]).toEqual([logoA.fill, logoA.layer, logoA.stroke]);
 
-    const qrA = paths(a, "qr");
-    const qrB = paths(b, "qr");
-    expect(qrB).toHaveLength(qrA.length);
-    qrA.forEach((p, i) => {
-      expect(qrB[i].paths).toEqual(p.paths);
-      expect([qrB[i].x, qrB[i].y, qrB[i].fill, qrB[i].layer]).toEqual([p.x, p.y, p.fill, p.layer]);
-    });
+    // The modules match the historical plan; v3 swaps the old grown-module
+    // halo under them for a quiet-zone backing square (#283), so only the
+    // top (module) item is compared.
+    const qrA = paths(a, "qr").at(-1)!;
+    const qrB = paths(b, "qr").at(-1)!;
+    expect(paths(b, "qr")).toHaveLength(paths(a, "qr").length);
+    expect(qrB.paths).toEqual(qrA.paths);
+    expect([qrB.x, qrB.y, qrB.fill, qrB.layer]).toEqual([qrA.x, qrA.y, qrA.fill, qrA.layer]);
 
     const bcA = a.find((r): r is PlacedBarcode => r.kind === "barcode")!;
     const bcB = b.find((r): r is PlacedBarcode => r.kind === "barcode")!;
