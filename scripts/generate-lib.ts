@@ -240,12 +240,15 @@ function addedLayers(master: Master): { layer: Layer; variant: string }[] {
     .map(([, p]) => ({ layer: p as Layer, variant: v.id })));
 }
 
-/** Layers a CLI job may fill: the master's, plus what the enabled variants add. */
-function fillableById(master: Master, enabledVariants: string[]): Map<string, Layer> {
-  const map = new Map(master.layers.map((l) => [l.id, l] as const));
-  for (const { layer, variant } of addedLayers(master))
-    if (enabledVariants.includes(variant)) map.set(layer.id, layer);
-  return map;
+/** Layers a CLI job may fill, exactly as resolveLayers builds them: the
+ *  master's and what the enabled variants add, with those variants' diffs
+ *  applied. Given the label's overrides, a label-only layer (a whole-layer
+ *  override carrying `kind`, which the app prints) is fillable too. */
+function fillableById(
+  master: Master, enabledVariants: string[], overrides?: LabelFile["overrides"],
+): Map<string, Layer> {
+  const { layers } = resolveLayers(master, enabledVariants, {}, overrides, { keepDisabled: true });
+  return new Map(layers.map((l) => [l.id, l] as const));
 }
 
 function coerceOne(layer: Layer, raw: unknown): { value: LayerValue } | { error: string } {
@@ -339,10 +342,12 @@ export function inspectMaster(master: Master): InspectReport {
   };
 }
 
-/** Override patches must fit the layer they patch: every field the layer
- *  already has keeps its type. Catches a hand-edited `size: "big"` here, with
- *  the layer id, instead of deep inside planning with no id at all. Fields
- *  the layer lacks pass — resolveLayers merges those as-is. */
+/** Override patches must fit the layer they patch — `layers` is that layer
+ *  after the enabled variants, before the label's overrides: every field the
+ *  layer already has keeps its type. Catches a hand-edited `size: "big"` here,
+ *  with the layer id, instead of deep inside planning with no id at all.
+ *  Fields the layer lacks pass — resolveLayers merges those as-is. A patch
+ *  carrying `kind` for an id the master lacks is a whole label-only layer. */
 export function checkOverrides(
   layers: Map<string, Layer>, overrides: LabelFile["overrides"],
 ): string[] {
@@ -357,7 +362,7 @@ export function checkOverrides(
     for (const [k, v] of Object.entries(patch)) walk(`${path}.${k}`, have[k], v);
   };
   for (const [id, patch] of Object.entries(overrides ?? {})) {
-    const layer = layers.get(id);
+    const layer = layers.get(id) ?? (patch?.kind ? ({} as Layer) : undefined);
     if (!layer) { errors.push(`Unknown layer "${id}".`); continue; }
     walk(id, layer, patch);
     try { validateLayer(applyDiff(layer, patch), `override ${id}`); }
@@ -694,7 +699,8 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     const variants = mergeVariants(job.variants, args.variants);
     try { assertVariants(master, variants); }
     catch (e) { fail(e); return null; }
-    const fillable = fillableById(master, variants);
+    const base = fillableById(master, variants);
+    const fillable = fillableById(master, variants, job.overrides);
     const activeEntries = <T>(entries: Record<string, T> = {}): Record<string, T> =>
       Object.fromEntries(Object.entries(entries).filter(([id]) => {
         if (args.source.kind !== "label" || fillable.has(id)) return true;
@@ -704,7 +710,7 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     const overrides = activeEntries(job.overrides);
     const coerced = coerceValues(master, { ...activeEntries(job.values), ...args.set }, variants, fillable);
     if (Object.keys(coerced.errors).length) errors.push(errorText(coerced.errors));
-    errors.push(...checkOverrides(fillable, overrides));
+    errors.push(...checkOverrides(base, overrides));
     const files = { ...job.files, ...args.assets };
     const extraImages: GenerateInput["extraImages"] = { ...labelExtras };
     for (const [id, path] of Object.entries(files)) {
