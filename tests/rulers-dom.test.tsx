@@ -186,3 +186,39 @@ describe("Rulers background click — what reaches the pasteboard", () => {
     expect(escaped).toHaveBeenCalledTimes(1);
   });
 });
+
+// Guides off hides every guide, so a guide added then would be invisible yet
+// still snap layers: the settings' Add buttons follow the same switch.
+it("disables Add guide while Guides is off", async () => {
+  renderRulers({ showGuides: false });
+  const corner = container.querySelector<HTMLButtonElement>('[aria-label="Ruler settings, current unit in"]')!;
+  await act(async () => {
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"])
+      corner.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
+    corner.click();
+  });
+  const add = Array.from(document.querySelectorAll("button"))
+    .find((b) => b.textContent === "Add vertical guide") as HTMLButtonElement;
+  expect(add).toBeDefined();
+  expect(add.disabled).toBe(true);
+});
+
+// A new guide pulled onto the page and dropped back into the ruler is a
+// cancelled drag, not a click on the ruler: it must not reach the pasteboard.
+it("swallows the click after a new guide is dragged back into the ruler", () => {
+  renderRulers();
+  const seen = vi.fn();
+  document.body.addEventListener("click", seen);
+  listeners.push(seen);
+  const el = container.querySelector<HTMLDivElement>('[title="Drag down to create a horizontal guide"]')!;
+  el.setPointerCapture = vi.fn();
+  const fire = (type: string, clientY: number) => act(() => {
+    el.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1, clientX: 50, clientY }));
+  });
+  fire("pointerdown", 5);
+  fire("pointermove", 200);
+  fire("pointermove", 5);
+  fire("pointerup", 5);
+  act(() => { el.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+  expect(seen).not.toHaveBeenCalled();
+});

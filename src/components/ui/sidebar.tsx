@@ -87,11 +87,14 @@ function SidebarProvider({
     return setOpen((open) => !open)
   }, [setOpen])
 
-  // Adds a keyboard shortcut to toggle the sidebar.
+  // Adds a keyboard shortcut to toggle the sidebar. Like the app's other ⌘
+  // shortcuts it stays live in the inspector Sheet and a Select, standing
+  // aside only for a text field (⌘B is bold there) and a modal dialog.
   React.useEffect(() => {
     if (!hotkey) return
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || keyOwner(event.target)) return
+      const owner = keyOwner(event.target)
+      if (event.defaultPrevented || owner === "text" || owner === "dialog") return
       if (
         event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
         (event.metaKey || event.ctrlKey)

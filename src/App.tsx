@@ -2183,6 +2183,9 @@ export const DocumentEditor = memo(function DocumentEditor({
     );
   }
 
+  // A build "Note:" (a cancelled export) is only a warning: a render error outranks it.
+  const headerError = buildError && !(renderError && buildError.startsWith("Note: ")) ? buildError : renderError;
+
   return (
     <TooltipProvider>
       <Dialog open={active && settingsOpen} onOpenChange={setSettingsOpen}>
@@ -2247,7 +2250,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           }} />}
           {blocked && <HeaderAlert>{blockedWhy}</HeaderAlert>}
           {loadError && <HeaderAlert tone={loadError.startsWith("Note: ") ? "warning" : "destructive"}>{loadError}</HeaderAlert>}
-          {(buildError || renderError) && <HeaderAlert tone={buildError.startsWith("Note: ") ? "warning" : "destructive"}>{buildError || renderError}</HeaderAlert>}
+          {headerError && <HeaderAlert tone={headerError.startsWith("Note: ") ? "warning" : "destructive"}>{headerError}</HeaderAlert>}
           {resolveWarnings.length > 0 && <HeaderAlert tone="warning">{resolveWarnings.join(" · ")}</HeaderAlert>}
           {/* Open Master's fallback — see masterInput/openMasterPicker. */}
           <input ref={masterInput} type="file" accept={MASTER_EXT} hidden

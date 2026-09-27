@@ -22,24 +22,28 @@ export function FileDrop(props: {
   accept: Accept;
   fileName?: string;
   previewUrl?: string;
-  error?: string;
   onFile: (f: File) => void;
   /** Removes the loaded file. The X only renders while a file is loaded
    *  AND a handler is given, so drops without one look as before. */
   onClear?: () => void;
 }) {
-  const [rejection, setRejection] = useState("");
+  // The rejection belongs to the file shown when it happened: once another
+  // file loads (by the window overlay, Open, or Remove) it no longer applies.
+  const [rejection, setRejection] = useState<{ text: string; shown?: string } | null>(null);
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: props.accept,
     multiple: false,
     onDrop: (files, rejected) => {
       if (rejected.length) {
-        setRejection(rejected.some((f) => f.errors.some((e) => e.code === "too-many-files"))
-          ? "Drop one file."
-          : `Choose ${Object.values(props.accept).flat().join(" or ")} for ${props.label}.`);
+        setRejection({
+          shown: props.fileName,
+          text: rejected.some((f) => f.errors.some((e) => e.code === "too-many-files"))
+            ? "Drop one file."
+            : `Choose ${Object.values(props.accept).flat().join(" or ")} for ${props.label}.`,
+        });
         return;
       }
-      setRejection("");
+      setRejection(null);
       if (files[0]) props.onFile(files[0]);
     },
   });
@@ -87,7 +91,9 @@ export function FileDrop(props: {
         )}
         <input {...getInputProps()} />
       </div>
-      {(rejection || props.error) && <p role="alert" className="mt-1 text-xs text-destructive-text">{rejection || props.error}</p>}
+      {rejection && rejection.shown === props.fileName && (
+        <p role="alert" className="mt-1 text-xs text-destructive-text">{rejection.text}</p>
+      )}
     </div>
   );
 }

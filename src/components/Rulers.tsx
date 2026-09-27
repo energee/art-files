@@ -38,7 +38,9 @@ interface Geometry {
   pageHeight: number;
 }
 
-type Drag = { axis: GuideAxis; id?: number; point: number };
+/** `pulled`: the pointer has left the rulers for the page at least once, so
+ *  releasing back over a ruler is a cancelled drag rather than a click. */
+type Drag = { axis: GuideAxis; id?: number; point: number; pulled?: boolean };
 
 /** The compact form inside the ruler-corner settings popover. */
 function RulerSettings(props: {
@@ -47,16 +49,18 @@ function RulerSettings(props: {
   marginPt: number;
   onMarginChange: (points: number) => void;
   onAddManual: (axis: GuideAxis, point: number) => void;
+  /** Guides is on: with it off a new guide would be invisible yet still snap. */
+  canAdd: boolean;
 }) {
-  const { unit, onUnitChange, marginPt, onMarginChange } = props;
+  const { unit, onUnitChange, marginPt, onMarginChange, canAdd } = props;
   const marginValue = pointToUnit(marginPt, 0, unit);
   const marginMax = pointToUnit(Math.min(ART.w, ART.h) / 2, 0, unit);
   const marginStep = unit === "in" ? 0.125 : unit === "px" ? 25 : 1;
 
   return (
     <div className="flex flex-col gap-2.5">
-      <button type="button" className="text-xs" onClick={() => props.onAddManual("x", PAGE.w / 2)}>Add vertical guide</button>
-      <button type="button" className="text-xs" onClick={() => props.onAddManual("y", PAGE.h / 2)}>Add horizontal guide</button>
+      <button type="button" className="text-xs disabled:opacity-50" disabled={!canAdd} onClick={() => props.onAddManual("x", PAGE.w / 2)}>Add vertical guide</button>
+      <button type="button" className="text-xs disabled:opacity-50" disabled={!canAdd} onClick={() => props.onAddManual("y", PAGE.h / 2)}>Add horizontal guide</button>
       <Label className="text-xs text-muted-foreground">Measurement</Label>
       <ToggleGroup value={[unit]} spacing={0} variant="outline"
         className="w-full" aria-label="Ruler measurement units"
@@ -214,14 +218,17 @@ export function Rulers(props: {
   function moveDrag(event: PointerEvent<HTMLElement>) {
     if (!drag) return;
     const point = pointAt(drag.axis, event);
-    setDrag({ ...drag, point: onSnapGuide?.(drag.axis, point, drag.id) ?? point });
+    setDrag({
+      ...drag, point: onSnapGuide?.(drag.axis, point, drag.id) ?? point,
+      pulled: drag.pulled || !overRuler(event),
+    });
   }
 
   function endDrag(event: PointerEvent<HTMLElement>) {
     if (!drag) return;
     if (overRuler(event)) {
       if (drag.id !== undefined) onRemoveManual(drag.id);
-      suppressClick.current = drag.id !== undefined;
+      suppressClick.current = drag.id !== undefined || !!drag.pulled;
     } else {
       if (drag.id === undefined) onAddManual(drag.axis, drag.point);
       else onMoveManual(drag.id, drag.point);
@@ -407,7 +414,7 @@ export function Rulers(props: {
               <PopoverHeader>
                 <PopoverTitle>Ruler settings</PopoverTitle>
               </PopoverHeader>
-              <RulerSettings onAddManual={onAddManual} unit={unit} onUnitChange={onUnitChange}
+              <RulerSettings onAddManual={onAddManual} canAdd={showGuides} unit={unit} onUnitChange={onUnitChange}
                 marginPt={marginPt} onMarginChange={onMarginChange} />
             </PopoverContent>
           </Popover>

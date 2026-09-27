@@ -95,6 +95,9 @@ export function MasterPicker(props: {
     { target: Master; assets: MasterAssets; dropped: string[]; disabledVariants: string[] } | null
   >(null);
   const [error, setError] = useState("");
+  /** Continue is running onMaster (index write, asset decode): a second press
+   *  in that window would rebind the label twice. */
+  const [committing, setCommitting] = useState(false);
   /** The variant whose name is being edited inline, or null. */
   const [naming, setNaming] = useState<string | null>(null);
 
@@ -135,12 +138,15 @@ export function MasterPicker(props: {
   };
 
   const commit = async () => {
-    if (!preview) return;
+    if (!preview || committing) return;
+    setCommitting(true);
     try {
       await props.onMaster(preview.target, preview.assets);
       closeAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCommitting(false);
     }
   };
 
@@ -231,7 +237,7 @@ export function MasterPicker(props: {
               Cancel
             </Button>
             <Button
-              type="button" id="master-picker-continue" onClick={() => { void commit(); }} size="xs"
+              type="button" id="master-picker-continue" disabled={committing} onClick={() => { void commit(); }} size="xs"
             >
               Continue
             </Button>

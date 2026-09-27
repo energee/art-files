@@ -563,7 +563,8 @@ export const PreviewCompare = forwardRef<
     setReadout({ id: d.id, moved: null }); // a resize reads its own W x H below
   }
   function onHandleUp(e: React.PointerEvent<HTMLSpanElement>) {
-    swallowClick.current ||= !!resize.current?.started;
+    // A pointercancel fires no click, so only a real pointerup arms the swallow.
+    if (e.type === "pointerup") swallowClick.current ||= !!resize.current?.started;
     resize.current = null;
     setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
     e.stopPropagation();
@@ -595,8 +596,9 @@ export const PreviewCompare = forwardRef<
     setSnap(snapped);
     setReadout({ id: d.id, moved: { dx: snapped.dx, dy: snapped.dy } });
   }
-  function onPointerUp() {
-    swallowClick.current ||= !!drag.current?.started;
+  function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    // A pointercancel fires no click, so only a real pointerup arms the swallow.
+    if (e.type === "pointerup") swallowClick.current ||= !!drag.current?.started;
     drag.current = null; setSnap({ x: null, y: null, dx: 0, dy: 0 }); setReadout(null);
   }
 

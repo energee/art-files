@@ -7,8 +7,10 @@ import { DEFAULT_RENDER } from "../src/settings";
 import { fileDrag } from "./dom-drag";
 import type { Command } from "../src/components/CommandMenu";
 
-const menu = vi.hoisted(() => ({ actions: [] as Command[] }));
-vi.mock("../src/components/PreviewCompare", () => ({ PreviewCompare: () => null }));
+const menu = vi.hoisted(() => ({ actions: [] as Command[], renderError: null as null | ((m: string) => void) }));
+vi.mock("../src/components/PreviewCompare", () => ({
+  PreviewCompare: (p: { onRenderError: (m: string) => void }) => { menu.renderError = p.onRenderError; return null; },
+}));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
 vi.mock("../src/components/AppMenu", () => ({ AppMenu: (p: { actions: Command[] }) => { menu.actions = p.actions; return null; } }));
@@ -190,6 +192,9 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psd", "psd"
     });
     expect(pick, document.body.textContent ?? "").toHaveBeenCalledOnce();
     expect(document.body.textContent).toContain("Export cancelled before saving");
+    // The note is a warning, not an error: a later render failure must show.
+    await act(async () => menu.renderError!("Preview failed: boom"));
+    expect(document.body.textContent).toContain("Preview failed: boom");
   });
   it(`${extension}: a refused mask write reports the saved artwork (#254)`, async () => {
     let writes = 0;

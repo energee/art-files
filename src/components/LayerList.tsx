@@ -144,9 +144,13 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
       const at = buttons.indexOf(current);
       const keep = (button: HTMLElement) => button.getAttribute("aria-pressed") !== "true";
       const next = buttons.slice(at + 1).find(keep) ?? buttons.slice(0, at).reverse().find(keep);
+      // This list's own Add layer: every workspace tab mounts a LayerList, so
+      // a document-wide lookup would find the first (hidden) tab's.
+      const addLayer = current.closest('[data-slot="sidebar-group"]')
+        ?.querySelector<HTMLElement>('[aria-label="Add layer"]');
       p.onRemove(id);
       queueMicrotask(() => {
-        if (!current.isConnected) (next ?? document.querySelector<HTMLElement>('[aria-label="Add layer"]'))?.focus();
+        if (!current.isConnected) (next ?? addLayer)?.focus();
       });
     } else if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       const delta = e.key === "ArrowUp" ? 1 : -1;
@@ -309,7 +313,10 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
   const [announcement, setAnnouncement] = useState("");
   const reorder = useCallback((id: string, delta: number) => {
     onReorder(id, delta);
-    setAnnouncement(`${rows.find((r) => r.layer.id === id)?.layer.name ?? "Layer"} moved ${delta > 0 ? "forward" : "backward"}.`);
+    const text = `${rows.find((r) => r.layer.id === id)?.layer.name ?? "Layer"} moved ${delta > 0 ? "forward" : "backward"}.`;
+    // A live region speaks only when its text changes, so a repeat of the
+    // same move toggles a trailing no-break space to be announced again.
+    setAnnouncement((prev) => prev === text ? text + "\u00a0" : text);
   }, [onReorder, rows]);
   // Rows grouped by owning container (master, or the variant that added the
   // layer), in VISIBLE order (front first): a layer only reorders among its

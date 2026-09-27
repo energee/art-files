@@ -402,3 +402,37 @@ describe("ownership vs override", () => {
     expect(props.onReorder).toHaveBeenCalledWith("wordmark", -1);
   });
 });
+
+// Every workspace tab mounts its own LayerList, so a document-wide lookup for
+// "Add layer" found the FIRST tab's (hidden) button, not this list's.
+it("Delete of the only row focuses this list's Add layer, not another tab's", async () => {
+  const decoy = document.createElement("button");
+  decoy.setAttribute("aria-label", "Add layer");
+  document.body.prepend(decoy);
+  try {
+    const { rows } = lolevRows();
+    const only = [rows[0]];
+    const props = baseProps({ rows: only, selected: [only[0].layer.id] });
+    props.onRemove = vi.fn(() => render({ ...props, rows: [], selected: [] }));
+    render(props);
+    const button = rowFor(only[0].layer.id).querySelector("button")!;
+    button.focus();
+    keydown(button, "Delete");
+    await act(async () => { await Promise.resolve(); });
+    expect(document.activeElement).toBe(byLabel("Add layer"));
+  } finally { decoy.remove(); }
+});
+
+// A live region only speaks when its text changes: a second identical
+// "moved forward" was silent.
+it("announces each of two identical reorders", () => {
+  render(baseProps({ selected: ["wordmark"] }));
+  const status = container.querySelector('[role="status"]')!;
+  const button = rowFor("wordmark").querySelector("button")!;
+  keydown(button, "ArrowUp", { altKey: true });
+  const first = status.textContent;
+  keydown(button, "ArrowUp", { altKey: true });
+  expect(first).toContain("moved forward");
+  expect(status.textContent).toContain("moved forward");
+  expect(status.textContent).not.toBe(first);
+});

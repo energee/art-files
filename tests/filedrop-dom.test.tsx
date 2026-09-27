@@ -118,3 +118,19 @@ it("explains rejected file types and multiple files (#323)", async () => {
     expect(onFile).not.toHaveBeenCalled();
   }
 });
+// The rejection is about the drop that failed: once a file loads by another
+// route (the window overlay, Open), the stale "Choose .png" must go.
+it("drops a rejection once a different file is loaded", async () => {
+  const props = { label: "Mask", accept: { "image/png": [".png"] }, onFile: vi.fn() };
+  act(() => root.render(createElement(FileDrop, props)));
+  const well = container.querySelector(`[${FILE_DROP_ATTR}]`)!;
+  const event = new Event("drop", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "dataTransfer", { value: { types: ["Files"], files: [pdf], items: [{ kind: "file", type: pdf.type, getAsFile: () => pdf }] } });
+  await act(async () => {
+    well.dispatchEvent(event);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(container.querySelector('[role="alert"]')).not.toBeNull();
+  act(() => root.render(createElement(FileDrop, { ...props, fileName: "rock.png" })));
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+});

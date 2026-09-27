@@ -4,6 +4,7 @@
 // (no shadcn color-picker primitive exists). The popover also offers a
 // screen eyedropper where the browser supports the native EyeDropper API.
 import { useState } from "react";
+import { flushSync } from "react-dom";
 import { HexColorPicker } from "react-colorful";
 import { Pipette } from "lucide-react";
 import type { Fill } from "@/types";
@@ -119,7 +120,7 @@ export function ColorField(props: {
               affordance per chip would double the row's height for something
               used once in a while. */}
           <div className="mt-2 flex max-w-[200px] flex-wrap items-center gap-1">
-            {colors.map((c) => (
+            {colors.map((c, index) => (
               <button
                 key={c}
                 type="button"
@@ -130,9 +131,13 @@ export function ColorField(props: {
                 onKeyDown={(e) => {
                   if (e.key !== "Delete" && e.key !== "Backspace") return;
                   e.preventDefault(); e.stopPropagation();
-                  const next = e.currentTarget.nextElementSibling ?? e.currentTarget.previousElementSibling;
-                  setSwatches((cs) => cs.filter((x) => x !== c));
-                  (next as HTMLElement | null)?.focus();
+                  // Flush first, then focus what now sits in this slot (the
+                  // previous chip after the last one): the Save button next to
+                  // the last chip is disabled until this hex stops being saved.
+                  const row = e.currentTarget.parentElement!;
+                  flushSync(() => setSwatches((cs) => cs.filter((x) => x !== c)));
+                  const slot = index < colors.length - 1 ? index : Math.max(index - 1, 0);
+                  (row.children[slot] as HTMLElement | undefined)?.focus();
                 }}
                 onClick={(e) =>
                   e.shiftKey

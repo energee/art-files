@@ -59,3 +59,32 @@ it("applies a full #rrggbb as it is typed, a 3-digit hex only on commit", () => 
     expect(change).toHaveBeenLastCalledWith("#aabbcc");
   } finally { done(); }
 });
+// Delete on the last saved swatch moved focus to the Save button while it was
+// still disabled (this very hex was saved), so focus fell to <body>.
+it("keeps focus in the swatch row when the last swatch is deleted", async () => {
+  const { setSwatches } = await import("../src/settings");
+  setSwatches(() => ["#000000"]);
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    act(() => root.render(createElement(ColorField, { value: "#000000", onChange: vi.fn() })));
+    const trigger = host.querySelector('[aria-label="Pick color"]') as HTMLButtonElement;
+    await act(async () => {
+      for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"])
+        trigger.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
+      trigger.click();
+    });
+    // Browsers refuse focus to a disabled button; happy-dom does not, so say so.
+    const focus = HTMLButtonElement.prototype.focus;
+    vi.spyOn(HTMLButtonElement.prototype, "focus").mockImplementation(function (this: HTMLButtonElement) {
+      if (!this.disabled) focus.call(this);
+    });
+    const chip = document.querySelector('button[aria-label="#000000"]') as HTMLButtonElement;
+    chip.focus();
+    act(() => { chip.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true })); });
+    expect(document.querySelector('button[aria-label="#000000"]')).toBeNull();
+    const active = document.activeElement as HTMLElement;
+    expect(active.tagName).toBe("BUTTON");
+    expect(active.textContent).toBe("Save");
+  } finally { vi.restoreAllMocks(); act(() => root.unmount()); host.remove(); setSwatches(() => []); }
+});
