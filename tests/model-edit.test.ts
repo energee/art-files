@@ -365,7 +365,7 @@ describe("masterDiff", () => {
 });
 
 // --- App write-path helpers -------------------------------------------------
-import { assetReferenced, labelOverriddenPaths, masterAssetIds, patchLayer, patchLayerIn, unsetLayerKeys } from "../src/model/edit";
+import { referencedAssetIds, labelOverriddenPaths, masterAssetIds, patchLayer, patchLayerIn, unsetLayerKeys } from "../src/model/edit";
 
 describe("patchLayer (inspector write path)", () => {
   it("merges defined keys and DELETES own-property undefineds", () => {
@@ -383,7 +383,7 @@ describe("patchLayer (inspector write path)", () => {
   });
 });
 
-describe("labelOverriddenPaths / assetReferenced", () => {
+describe("labelOverriddenPaths / referencedAssetIds", () => {
   const label = { formatVersion: 3 as const, masterId: "lolev", enabledVariants: [], values: { collabLeft: "a1" },
     overrides: { name: { style: { fill: "#000000" as const }, x: 3 } } };
   it("flattens the label's overrides to leaf paths", () => {
@@ -392,11 +392,11 @@ describe("labelOverriddenPaths / assetReferenced", () => {
   });
   it("finds an asset in values, the master, a variant diff, or an override", () => {
     const m = lolevMaster();
-    expect(assetReferenced(m, label, "a1")).toBe(true);
-    expect(assetReferenced(m, label, "a2")).toBe(false);
+    expect(referencedAssetIds(m, label).has("a1")).toBe(true);
+    expect(referencedAssetIds(m, label).has("a2")).toBe(false);
     m.variants[0].layers.collabCenter = { ...m.variants[0].layers.collabCenter, asset: "a2" };
-    expect(assetReferenced(m, label, "a2")).toBe(true);
-    expect(assetReferenced(m, { ...label, overrides: { logo: { asset: "a3" } } }, "a3")).toBe(true);
+    expect(referencedAssetIds(m, label).has("a2")).toBe(true);
+    expect(referencedAssetIds(m, { ...label, overrides: { logo: { asset: "a3" } } }).has("a3")).toBe(true);
   });
   it("masterAssetIds lists kind-less variant patches, skips builtin and empty assets", () => {
     const m = lolevMaster();
