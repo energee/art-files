@@ -1627,14 +1627,16 @@ export const DocumentEditor = memo(function DocumentEditor({
      *
      *  A master edited during the write keeps that edit and gets the same
      *  promotions folded in, so the document still carries what the file
-     *  now holds. A document that moved to another master (Open Master
-     *  during the write) is left alone, baseline included. */
-    const commit = async (m: Master, where: string, bytes?: Uint8Array) => {
-      const ours = docRef.current.master.id === master.id;
+     *  now holds; a promotion whose layer or variant was deleted during the
+     *  write is skipped (the deletion wins) rather than costing the others.
+     *  A document that moved to another master (Open Master during the
+     *  write) is left alone: baseline, save target and header note. */
+    const commit = async (m: Master, where: string, ours: boolean, bytes?: Uint8Array) => {
       if (ours) edit((d) => {
         if (d.master.id !== master.id) return d;
-        const rebased = d.master === master ? m
-          : applyPromotions(d.master, label, promote, version ?? undefined).master;
+        const rebased = d.master === master ? m : promote.reduce((acc, c) => {
+          try { return applyPromotions(acc, label, [c], version ?? undefined).master; } catch { return acc; }
+        }, d.master);
         const liveMaster = as ? { ...rebased, id: m.id, name: m.name } : rebased;
         // Keep newer label edits, including a newly changed promoted field.
         // Redundant overrides can be promoted again on the next master save.
@@ -1653,10 +1655,11 @@ export const DocumentEditor = memo(function DocumentEditor({
         target: path ? { path } : handle ? { handle } : null,
       }, saveBytes);
       if (!saved) return false;
-      if (saved.target && "path" in saved.target) masterFilePath.current = { id: forked.id, target: saved.target.path };
-      else if (saved.target && "handle" in saved.target) masterFileHandle.current = { id: forked.id, target: saved.target.handle };
-      await commit(titled(saved.name), saved.name, saved.bytes);
-      setLoadError("");
+      const ours = docRef.current.master.id === master.id;
+      if (ours && saved.target && "path" in saved.target) masterFilePath.current = { id: forked.id, target: saved.target.path };
+      else if (ours && saved.target && "handle" in saved.target) masterFileHandle.current = { id: forked.id, target: saved.target.handle };
+      await commit(titled(saved.name), saved.name, ours, saved.bytes);
+      if (ours) setLoadError("");
       return true;
     } catch (err) {
       setLoadError(`Could not save master: ${errMsg(err)}`);

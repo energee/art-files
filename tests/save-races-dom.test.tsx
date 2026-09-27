@@ -20,7 +20,10 @@ vi.mock("../src/pdf/fonts", async () => {
 vi.mock("../src/psd/build", () => ({
   psdImages: async () => ({}), buildPsd: async () => new Uint8Array([3]),
 }));
-import { DocumentEditor } from "../src/App";
+import { DocumentEditor, type FileToOpen } from "../src/App";
+import { lolevMaster } from "../src/model/lolevLayers";
+import { packLabel, packMaster } from "../src/model/files";
+import type { Master } from "../src/model/layers";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
@@ -32,12 +35,12 @@ afterEach(async () => {
   vi.restoreAllMocks();
   localStorage.clear();
 });
-async function mount() {
+async function mount(fileToOpen: FileToOpen | null = null) {
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
   const saveSlot: { current: (() => Promise<boolean>) | null } = { current: null };
   const onMeta = vi.fn();
   await act(async () => root.render(createElement(DocumentEditor, {
-    active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta, saveSlot,
+    active: true, fileToOpen, onOpenSettled: vi.fn(), onMeta, saveSlot,
     render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(), onOpenProject: vi.fn(),
     onNewTab: vi.fn(), onCloseTab: vi.fn(), onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
   })));
@@ -205,3 +208,83 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psd", "psd"
     expect(document.body.textContent).toMatch(new RegExp(`Saved renamed-art\\.${extension}\\. Could not save .+-mask\\.${extension}: Disk full`));
   });
 }
+
+/** Stubs the browser open picker to hand back `m` packed as a .master, with
+ *  a handle whose writes succeed (so it can also be Save Master's target). */
+function openMasterFile(m: Master, assets: Parameters<typeof packMaster>[1] = {}) {
+  const bytes = packMaster(m, assets);
+  const handle = {
+    name: "other.master",
+    getFile: async () => new File([bytes as unknown as BlobPart], "other.master"),
+    createWritable: vi.fn(async () => ({ write: async () => {}, close: async () => {} })),
+  };
+  vi.stubGlobal("showOpenFilePicker", async () => [handle]);
+  return handle;
+}
+const run = (id: string) => act(async () => { await menu.actions.find((c) => c.id === id)!.run(); await new Promise((r) => setTimeout(r, 10)); });
+const reviewRows = () => document.querySelectorAll("[data-row]").length;
+
+it("Open Master during a Save Master write keeps the opened master, its baseline and its save target", async () => {
+  let finish!: () => void;
+  const { pick } = picker(() => new Promise<void>((resolve) => { finish = resolve; }));
+  await mount();
+  await toggle("warning");
+  await promoteWarning();
+  const other = openMasterFile({ ...lolevMaster(), id: "master-other", name: "Other" });
+  await run("master-open");
+  await act(async () => { finish(); await new Promise((r) => setTimeout(r, 10)); });
+  // The finished write must not pull the doc back to the saved master…
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
+  expect(document.body.textContent).not.toContain("Could not");
+  // …nor move Other's baseline: its review lists only this label's override.
+  await run("master-save");
+  expect(reviewRows()).toBe(1);
+  // …nor steal Other's save target: saving it writes to the file it came from.
+  const save = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Save Master")!;
+  await act(async () => { save.click(); await new Promise((r) => setTimeout(r, 10)); });
+  expect(pick).toHaveBeenCalledOnce();
+  expect(other.createWritable).toHaveBeenCalledOnce();
+});
+
+it("Open Master's benched-values note survives the master's texture loading (#11)", async () => {
+  class FakeBitmap { width = 10; height = 10; close() {} }
+  vi.stubGlobal("ImageBitmap", FakeBitmap);
+  vi.stubGlobal("createImageBitmap", async () => new FakeBitmap());
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage() {} } as never);
+  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((cb) => cb(new Blob(["png"])));
+  const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});
+  await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
+  await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  const base = lolevMaster();
+  openMasterFile({ ...base, id: "master-other", name: "Other", layers: base.layers.filter((l) => l.id !== "volume") },
+    { texture: { name: "art.png", bytes: new Uint8Array([137, 80, 78, 71]) } });
+  await run("master-open");
+  await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+  expect(document.body.textContent).toContain("1 value(s) benched: volume");
+});
+
+it("a promotion whose layer is deleted during the write doesn't cost the others", async () => {
+  let finish!: () => void;
+  picker(() => new Promise<void>((resolve) => { finish = resolve; }));
+  await mount();
+  await toggle("warning");
+  await toggle("storeCold");
+  await act(async () => menu.actions.find((c) => c.id === "master-save")!.run());
+  for (const id of ["promote-warning-enabled", "promote-storeCold-enabled"]) {
+    const row = document.querySelector(`[data-row="${id}"]`)!;
+    await act(async () => (row.closest("label")!.querySelector("input") as HTMLInputElement).click());
+  }
+  const save = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Save Master")!;
+  await act(async () => save.click());
+  const warning = document.querySelector('[data-layer-id="warning"] [data-slot="sidebar-menu-button"]') as HTMLElement;
+  await act(async () => warning.click());
+  await act(async () => { warning.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true })); });
+  expect(document.querySelector('[data-layer-id="warning"]')).toBeNull();
+  await act(async () => { finish(); await new Promise((r) => setTimeout(r, 10)); });
+  expect(document.body.textContent).not.toContain("Unknown layer");
+  // Store cold's promotion still stands in the document, so the next review
+  // can't offer to revert it — only the deletion the user really made.
+  expect(document.querySelector('[data-layer-id="storeCold"] button[aria-label$=": enabled"]')?.getAttribute("aria-pressed")).toBe("false");
+  await act(async () => menu.actions.find((c) => c.id === "master-save")!.run());
+  expect(document.querySelector('[data-row*="storeCold"]')).toBeNull();
+});
