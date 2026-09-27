@@ -915,7 +915,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Arrow-key nudge for the selection: 1pt a press, 10pt with shift. Inert
   // while typing, like undo and the bare-key commands; registered once and
   // reading the live move through a ref, like the command table above.
-  const nudgeRef = useRef<(dx: number, dy: number) => void>(() => {});
+  const nudgeRef = useRef<(dx: number, dy: number, held: boolean) => void>(() => {});
   useEffect(() => {
     const steps: Record<string, [number, number]> = {
       ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
@@ -929,9 +929,12 @@ export const DocumentEditor = memo(function DocumentEditor({
       // keys while it holds focus: nudging the canvas behind an open Select
       // (and eating the key the list needs) is never what the arrow meant.
       if (keyOwner(e.target)) return;
+      // Already handled on the way up — the 3D can's OrbitControls pan and
+      // rotate on the arrows and preventDefault them.
+      if (e.defaultPrevented) return;
       e.preventDefault();
       const by = e.shiftKey ? NUDGE_SHIFT_PT : 1;
-      nudgeRef.current(step[0] * by, step[1] * by);
+      nudgeRef.current(step[0] * by, step[1] * by, e.repeat);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -1297,15 +1300,16 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  by the same delta, through the same moveBy the pointer uses (so a bound
    *  layer moves its gap and a layer carried by another is left alone). No
    *  snapping — a nudge is a deliberate exact step, which is the whole reason
-   *  to reach for the arrow keys. One press is one undo step. */
-  nudgeRef.current = (dx, dy) => {
+   *  to reach for the arrow keys. One press is one undo step; a held key's
+   *  auto-repeats (`held`) fold into the step its first press opened. */
+  nudgeRef.current = (dx, dy, held) => {
     const moving = new Set(
       drawLayers.filter((l) => selected.includes(l.id) && !l.locked).map((l) => l.id));
     if (!moving.size) return;
     const entries = drawLayers.filter((l) => moving.has(l.id))
       .map((layer): [string, DeepPartial<Layer>] => [layer.id, moveBy(layer, dx, dy, moving)])
       .filter(([, p]) => Object.keys(p).length);
-    if (entries.length) patchMany(entries, false);
+    if (entries.length) patchMany(entries, held);
   };
 
   /** Handle resize: like onDrag, the patch is resizeBy against the layer
@@ -2199,9 +2203,12 @@ export const DocumentEditor = memo(function DocumentEditor({
           preview center, inspector sheet right. */}
       <SidebarProvider hotkey={active} className="min-h-0 h-full">
         <Sidebar>
+          {/* Click on empty sidebar space deselects. React bubbles a
+              PORTALED menu's click (Add layer, the master picker) through
+              here too, so only a target really inside the sidebar counts. */}
           <SidebarContent onClick={(event) => {
             const target = event.target;
-            if (target instanceof Element && !target.closest('[data-layer-id], button, a, input, [role="button"], [role="combobox"], [contenteditable="true"]')) clearSelection();
+            if (target instanceof Element && event.currentTarget.contains(target) && !target.closest('[data-layer-id], button, a, input, [role="button"], [role="combobox"], [contenteditable="true"]')) clearSelection();
           }}>
             {/* The master picker, then the ONE Layers list (spec: UI). */}
             <MasterPicker master={master} label={label}

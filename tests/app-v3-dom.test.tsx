@@ -504,6 +504,68 @@ function stubSavePicker() {
   vi.stubGlobal("showSaveFilePicker", async () => handle);
 }
 
+// A held arrow key is ONE gesture: OS auto-repeat keydowns (e.repeat) fold
+// into the step the first press opened, so a long hold can't push the rest
+// of the history past its 100-step limit.
+it("a held arrow key nudges as one undo step", async () => {
+  const { container, unmount } = await mountEditor();
+  try {
+    await vi.waitFor(() => expect(perf.source).not.toBeNull());
+    const row = container.querySelector('[data-layer-id="name"] [data-slot="sidebar-menu-button"]') as HTMLButtonElement;
+    await act(async () => row.click());
+    const x = () => layerOf(perf.preview!, "name").x;
+    const start = x();
+    for (const repeat of [false, true, true]) await act(async () => {
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", repeat, bubbles: true }));
+    });
+    expect(x()).toBeCloseTo(start + 3);
+    await pressUndo();
+    expect(x()).toBeCloseTo(start);
+  } finally { await unmount(); }
+}, 60_000);
+
+// The 3D can's OrbitControls take the arrow keys (pan/rotate) and call
+// preventDefault: a handled arrow must not also nudge the selected layer.
+it("an arrow key something else already handled does not nudge", async () => {
+  const { container, unmount } = await mountEditor();
+  try {
+    await vi.waitFor(() => expect(perf.source).not.toBeNull());
+    const row = container.querySelector('[data-layer-id="name"] [data-slot="sidebar-menu-button"]') as HTMLButtonElement;
+    await act(async () => row.click());
+    const start = layerOf(perf.preview!, "name").x;
+    const owner = document.createElement("div");
+    document.body.append(owner);
+    owner.addEventListener("keydown", (e) => e.preventDefault());
+    await act(async () => {
+      owner.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
+    });
+    owner.remove();
+    expect(layerOf(perf.preview!, "name").x).toBe(start);
+  } finally { await unmount(); }
+}, 60_000);
+
+// React bubbles a portaled menu's click through the component tree, so the
+// sidebar's click-empty-space-to-deselect saw Add layer → Image and cleared
+// the selection onAddLayer had just set.
+it("Add layer from the portaled menu leaves the new layer selected", async () => {
+  const { container, unmount } = await mountEditor();
+  try {
+    await vi.waitFor(() => expect(perf.preview).not.toBeNull());
+    const trigger = container.querySelector('[aria-label="Add layer"]')!;
+    await act(async () => {
+      for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"])
+        trigger.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
+      (trigger as HTMLElement).click();
+      await Promise.resolve();
+    });
+    const image = Array.from(document.querySelectorAll('[role="menuitem"]'))
+      .find((el) => el.textContent?.trim() === "Image") as HTMLElement;
+    expect(container.contains(image)).toBe(false); // it really is portaled
+    await act(async () => { image.click(); await Promise.resolve(); });
+    expect(perf.preview!.selected).toHaveLength(1);
+  } finally { await unmount(); }
+}, 60_000);
+
 it("cancelling in-place text restores the pre-session dirty state (#278)", async () => {
   stubSavePicker();
   try {

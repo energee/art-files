@@ -133,6 +133,25 @@ describe("Bold / White ink / Header toggles over the live field", () => {
     expect(emitted.at(-1)).toStrictEqual([line("a b")]);
   });
 
+  // Range.toString() has no "\n" at a line-div boundary, so a selection from
+  // mid-line to the START of the next line (Shift+End, Shift+→) looked
+  // single-line: extractContents moved the text into a span outside every
+  // line-div and readLines dropped it.
+  it("never runs-wraps a selection that ends at the start of the next line", () => {
+    const { emitted, toggle, el } = mountField([line("A Hazy beer"), line("Second line")]);
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const first = walker.nextNode()!;
+    const second = walker.nextNode()!;
+    const range = document.createRange();
+    range.setStart(first, "A Hazy ".length);
+    range.setEnd(second, 0);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    toggle("bold");
+    expect(emitted.at(-1)).toStrictEqual([line("A Hazy beer", { bold: true }), line("Second line")]);
+  });
+
   it("falls through to the whole line when the selection fills it", () => {
     const { emitted, toggle, el } = mountField([line("hello")]);
     select(el, "hello");

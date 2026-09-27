@@ -20,17 +20,42 @@ it("modifier changes affect only new scrub travel (#303)", () => {
     }
   } finally { act(() => root.unmount()); host.remove(); }
 });
-it.each([["FF0000", "#ff0000"], ["#f00", "#ff0000"], ["abc", "#aabbcc"]])("normalizes hex %s (#315)", (typed, expected) => {
+/** Types `typed` into the ColorField's hex box the way a keystroke does. */
+function typeHex(input: HTMLInputElement, typed: string) {
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, typed);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+function mountColor() {
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host); const change = vi.fn();
+  act(() => root.render(createElement(ColorField, { value: "#000000", onChange: change })));
+  const input = host.querySelector("input")!;
+  return { input, change, done: () => { act(() => root.unmount()); host.remove(); } };
+}
+it.each([["FF0000", "#ff0000"], ["#f00", "#ff0000"], ["abc", "#aabbcc"]])("normalizes hex %s on commit (#315)", (typed, expected) => {
+  const { input, change, done } = mountColor();
   try {
-    act(() => root.render(createElement(ColorField, { value: "#000000", onChange: change })));
-    const input = host.querySelector("input")!;
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, typed);
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    typeHex(input, typed);
+    act(() => { input.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
     expect(change).toHaveBeenLastCalledWith(expected);
     expect(input.getAttribute("aria-invalid")).toBeNull();
-  } finally { act(() => root.unmount()); host.remove(); }
+  } finally { done(); }
+});
+// Every 6-digit hex starts with a valid 3-digit one: committing it per
+// keystroke flashed #11ff22 while typing #1f2a3b, and left it applied if the
+// entry was abandoned at 4-5 digits.
+it("applies a full #rrggbb as it is typed, a 3-digit hex only on commit", () => {
+  const { input, change, done } = mountColor();
+  try {
+    typeHex(input, "#1f2");
+    expect(change).not.toHaveBeenCalled();
+    typeHex(input, "#1f2a3b");
+    expect(change).toHaveBeenLastCalledWith("#1f2a3b");
+    expect(change).toHaveBeenCalledTimes(1);
+    typeHex(input, "#abc");
+    act(() => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    expect(change).toHaveBeenLastCalledWith("#aabbcc");
+  } finally { done(); }
 });

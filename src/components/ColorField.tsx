@@ -52,6 +52,14 @@ export function ColorField(props: {
   const hex = props.value === "none" ? "#ffffff" : props.value;
   // Commit a picked color and drop any half-typed hex sitting in the Input.
   const apply = (v: string) => { setText(null); props.onChange(v as Fill); };
+  // Blur / Enter: apply a valid typed hex (the 3-digit form lands only here)
+  // and drop the local text; an invalid entry stays up, flagged.
+  const commitText = () => {
+    const parsed = text === null ? undefined : normalizeHex(text);
+    if (!parsed) return;
+    if (parsed === props.value) setText(null);
+    else apply(parsed);
+  };
   // Saved swatches are this operator's, not the element's, so a color saved
   // here is offered by every other ColorField the moment it lands — all the
   // fields read one shared list (see settings.ts).
@@ -153,14 +161,18 @@ export function ColorField(props: {
         value={none ? "none" : (text ?? (props.mixed ? "" : props.value))}
         placeholder={props.mixed ? "Mixed" : undefined}
         disabled={none}
+        // A full #rrggbb applies as it is typed; a 3-digit hex only on
+        // commit (blur / Enter) — every 6-digit entry passes through a valid
+        // 3-digit prefix, which must not flash onto the layer mid-typing.
         onChange={(e) => {
           setText(e.target.value);
           const parsed = normalizeHex(e.target.value);
-          if (parsed) props.onChange(parsed);
+          if (parsed && /[0-9a-f]{6}\s*$/i.test(e.target.value)) props.onChange(parsed);
         }}
         aria-invalid={text !== null && !normalizeHex(text) || undefined}
         title={text !== null && !normalizeHex(text) ? "Enter a 3- or 6-digit hex color." : undefined}
-        onBlur={() => { if (text === null || normalizeHex(text)) setText(null); }}
+        onKeyDown={(e) => { if (e.key === "Enter") commitText(); }}
+        onBlur={commitText}
         // w-24/px-2.5 = a ScrubField's value box, so the hex lands in the
         // same right-hand column as every numeric field in the panel.
         className="h-6 w-24 px-2.5 font-mono text-xs"

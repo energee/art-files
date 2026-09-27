@@ -380,8 +380,14 @@ export function useTextField(opts: {
     const root = rootRef.current;
     const sel = window.getSelection();
     if (!root || !sel || sel.rangeCount === 0) return false;
-    const selected = sel.getRangeAt(0).toString();
-    if (selected.includes("\n")) return false;
+    const range0 = sel.getRangeAt(0);
+    const selected = range0.toString();
+    // A run lives inside ONE line-div. Compare the range's line containers,
+    // not the text: Range.toString() has no "\n" at a div boundary, and a
+    // range ending at offset 0 of the next line (which linesInSelection
+    // drops as a graze) would otherwise extract text out of both lines.
+    if (closestLineEl(range0.startContainer, root) !== closestLineEl(range0.endContainer, root))
+      return false;
     const sels = linesInSelection(root);
     if (sels.length !== 1) return false;
     const line = sels[0];
