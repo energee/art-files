@@ -221,22 +221,21 @@ describe("LayerInspector geometry follows the kind", () => {
     expect(onChange).toHaveBeenLastCalledWith({ style: { uppercase: true } });
   });
 
-  it("a typed exponent shows the applied number after blur (#135)", () => {
-    // React leaves a number input's DOM text alone when it loosely equals
-    // the new value ("1e2" == 100), so clearing the draft alone kept "1e2".
+  it("after blur a field shows exactly the number it applied (#135)", () => {
+    // #135: the field kept "1e2" on screen after applying 100. NumberField
+    // now owns the text: it rejects what doesn't parse and reformats on blur.
     const blur = (el: Element) =>
       act(() => { el.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
     const props = render(text({ width: 200 }));
     const size = $("#name-size") as HTMLInputElement;
     type(size, "1e2");
-    expect(props.onChange).toHaveBeenLastCalledWith({ size: 100 });
-    render(text({ width: 200, size: 100 }), { onChange: props.onChange });
+    expect(props.onChange).not.toHaveBeenCalled();
     blur(size);
-    expect(size.value).toBe("100");
+    expect(size.value).toBe("15.83");
     const width = $("#name-width") as HTMLInputElement;
-    type(width, "3e2");
+    type(width, "300");
     expect(props.onChange).toHaveBeenLastCalledWith({ width: 300 });
-    render(text({ width: 300, size: 100 }), { onChange: props.onChange });
+    render(text({ width: 300 }), { onChange: props.onChange });
     blur(width);
     expect(width.value).toBe("300");
   });

@@ -49,9 +49,6 @@ import {
   DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import {
-  InputGroup, InputGroupAddon, InputGroupInput, InputGroupText,
-} from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -61,7 +58,8 @@ import { Toggle } from "@/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ColorField } from "./ColorField";
 import { MetallicToggle } from "./MetallicToggle";
-import { ScrubField } from "./ScrubField";
+import { NumberField } from "@base-ui/react/number-field";
+import { ScrubField, UnitInput, numberRootProps } from "./ScrubField";
 import { decimalsOf, PT_STEP, roundToStep } from "@/numeric";
 import { CharacterHeight } from "./CharacterHeight";
 import { FONT_FAMILIES, fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
@@ -204,53 +202,31 @@ function Badge(props: {
 
 /** A number that may be ABSENT (text wrap width, image height): blank means
  *  "none"/"auto" and emits `undefined` — see the file header for what the
- *  parent must do with that. Same half-typed guard as ScrubField, same
- *  InputGroup so it sits in the same right-hand column. */
+ *  parent must do with that. The same NumberField and InputGroup as
+ *  ScrubField, without the scrub, so it sits in the same right-hand column. */
 function BlankableField(props: {
   id: string; label: string; unit: string; placeholder: string;
   value: number | undefined; min: number; max: number; step: number;
   badge?: ReactNode;
   onChange: (v: number | undefined) => void;
 }) {
-  const [text, setText] = useState<string | null>(null);
   const scale = props.unit === "mm" ? MM_PER_PT : 1;
-  // Display granularity, matching DimensionField: mm needs a third decimal to
-  // carry the model's 0.01pt precision. The input's `step` has to agree with
-  // the rendered value or the browser reports a step mismatch on a number the
-  // field itself produced.
-  const displayStep = props.unit === "mm" ? DISPLAY_STEP.mm : props.step;
-  const shown = props.value === undefined ? "" : displayValue(props.value, props.unit, props.step);
   return (
     <Field id={props.id} label={props.label} badge={props.badge}>
-      <InputGroup className="h-6 w-24">
-        <InputGroupInput
-          id={props.id}
-          type="number"
-          min={props.min * scale}
-          max={props.max * scale}
-          step={displayStep}
-          placeholder={props.placeholder}
-          className="h-6 text-xs"
-          value={text ?? shown}
-          onChange={(e) => {
-            const s = e.target.value;
-            setText(s);
-            if (s === "") { props.onChange(undefined); return; }
-            const n = Number(s);
-            // Back to points at the MODEL's precision before clamping, as
-            // DimensionField does: without it a millimetre reading typed back
-            // verbatim (35pt -> 12.347mm -> 34.99916pt) never re-matches the
-            // master, so the override badge can't be cleared from this field.
-            if (Number.isFinite(n)) props.onChange(clampedPoints(n, props));
-          }}
-          // Write the shown value too: React won't replace "3e2" with 300,
-          // they're loosely equal (#135, see ScrubField).
-          onBlur={(e) => { setText(null); e.currentTarget.value = String(shown); }}
-        />
-        <InputGroupAddon align="inline-end">
-          <InputGroupText className="text-[10px]">{props.unit}</InputGroupText>
-        </InputGroupAddon>
-      </InputGroup>
+      <NumberField.Root
+        // Display granularity, matching DimensionField: mm needs a third
+        // decimal to carry the model's 0.01pt precision.
+        {...numberRootProps({ id: props.id, min: props.min * scale, max: props.max * scale,
+          step: props.unit === "mm" ? DISPLAY_STEP.mm : props.step })}
+        value={props.value === undefined ? null : displayValue(props.value, props.unit, props.step)}
+        // Back to points at the MODEL's precision before clamping, as
+        // DimensionField does: without it a millimetre reading typed back
+        // verbatim (35pt -> 12.347mm -> 34.99916pt) never re-matches the
+        // master, so the override badge can't be cleared from this field.
+        onValueChange={(v) => props.onChange(v === null ? undefined : clampedPoints(v, props))}
+      >
+        <UnitInput unit={props.unit} placeholder={props.placeholder} />
+      </NumberField.Root>
     </Field>
   );
 }

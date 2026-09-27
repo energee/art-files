@@ -206,10 +206,10 @@
   background-color: transparent;
 }
 
-/* No native number spinners. Every numeric field here is a ScrubField, which
-   already offers drag, type, arrow keys and a chevron — the browser's
-   stepper is a fifth affordance crowding the same box, and it collides with
-   the chevron. Arrow-key stepping is unaffected. */
+/* No native number spinners on the one native number input left — a number
+   fill's PlainField (TextEditor). ScrubField and BlankableField are Base UI
+   NumberFields (text inputs), so this no longer reaches them. Arrow-key
+   stepping is unaffected. */
 input[type="number"] {
   appearance: textfield;
   -moz-appearance: textfield;

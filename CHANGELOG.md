@@ -65,6 +65,11 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Changed
 
+- **Number fields in the inspector now accept only numbers.** Letters (like
+  the "e" in "1e2") can no longer be typed into a size, spacing, position,
+  or render setting. When you leave a field it always shows the value that was
+  applied. Arrow keys now step by the same amount as dragging the label (for
+  example, letter spacing moves 0.1 pt per press instead of 0.01 pt).
 - Internal cleanup with no operator-visible change: a retired developer
   comparison page, the unused PDF-rendering dependency it pulled in, and the
   superseded first-generation master model are gone. Old `.master` and

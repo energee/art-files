@@ -1,12 +1,12 @@
 // ScrubField.tsx — a numeric style field you tune by dragging its label, the
 // gesture Photoshop and Figma use for values judged against a live preview
-// (tracking, stroke width) rather than known in advance. The interface is
-// entirely shadcn — a Label as the scrub handle, an InputGroup holding the
-// Input and its unit addon — so this stays inside the mature-component rule;
-// only the pointer gesture is ours, since no shadcn primitive scrubs. Typing
-// still works, and the Input keeps its native arrow-key stepping.
-import { useRef, useState } from "react";
+// (tracking, stroke width) rather than known in advance. Built on Base UI's
+// NumberField, which owns the parts we used to hand-roll: the half-typed draft
+// ("0.", "-"), clamping, the scrub gesture (ScrubArea, with Shift/Alt for
+// coarse/fine), and reformatting on blur. Styling stays shadcn — a Label as the
+// scrub handle, an InputGroup holding the Input and its unit addon.
 import type { LucideIcon } from "lucide-react";
+import { NumberField } from "@base-ui/react/number-field";
 import { Label } from "@/components/ui/label";
 import {
   InputGroup, InputGroupAddon, InputGroupInput, InputGroupText,
@@ -14,12 +14,39 @@ import {
 // Round to the decimal places the step implies, so a drag can't accumulate float noise
 // (0.4 + 0.1 = 0.5000000000000001) straight into the saved config. Shared with
 // the callers that have to predict what this field commits — see numeric.ts.
-import { roundToStep } from "@/numeric";
+import { decimalsOf, roundToStep } from "@/numeric";
 
-/** Pixels of pointer travel per drag increment. Two keeps a full-range drag
- *  comfortable (tracking's -2..20 in 0.1s is ~440px) while leaving a single
- *  increment easy to land on. */
-const PX_PER_STEP = 2;
+/** The Root props every numeric field here shares: `step` is the typed
+ *  precision (shown and snapped to), `dragStep` what one arrow press or one
+ *  scrub increment moves. Fixed to en-US without grouping so a value reads
+ *  "1200.5" whatever the OS locale — the same text the old native number
+ *  input showed, and what a saved config holds. */
+export function numberRootProps(p: {
+  id: string; min: number; max: number; step: number; dragStep?: number;
+}) {
+  const inc = p.dragStep ?? p.step;
+  return {
+    id: p.id, min: p.min, max: p.max,
+    step: inc, smallStep: inc / 10, largeStep: inc * 10,
+    locale: "en-US",
+    format: { useGrouping: false, maximumFractionDigits: decimalsOf(p.step) },
+  };
+}
+
+/** The input and its unit addon; render inside a NumberField.Root. */
+export function UnitInput(props: { unit: string; placeholder?: string }) {
+  return (
+    <InputGroup className="h-6 w-24">
+      <NumberField.Input
+        render={<InputGroupInput className="h-6 text-xs" />}
+        placeholder={props.placeholder}
+      />
+      <InputGroupAddon align="inline-end">
+        <InputGroupText className="text-[10px]">{props.unit}</InputGroupText>
+      </InputGroupAddon>
+    </InputGroup>
+  );
+}
 
 export function ScrubField(props: {
   /** Ties the Label to the Input; callers prefix it per element. */
@@ -32,91 +59,40 @@ export function ScrubField(props: {
   value: number;
   min: number;
   max: number;
-  /** Typing and arrow-key granularity, and the precision values snap to. */
+  /** Typed precision: the decimals shown, and what values snap to. */
   step: number;
-  /** Drag granularity, when a finger-friendly increment is coarser than the
-   *  typed precision — tracking types in hundredths but scrubs in tenths,
-   *  since 0.01 per drag increment would make its full range ~4400px of
-   *  travel. Defaults to `step`, i.e. drag and type at the same granularity. */
+  /** Scrub and arrow-key granularity, when a finger-friendly increment is
+   *  coarser than the typed precision — tracking types in hundredths but
+   *  scrubs in tenths, since 0.01 per increment would make its full range
+   *  ~4400px of travel. Defaults to `step`. */
   dragStep?: number;
   /** The selection's elements disagree about this number (multi-select):
    *  show an empty field instead of one element's value. Typing or dragging
-   *  still writes the new value to every selected element — a drag starts
-   *  from `value`, which the caller sets to the first element's. */
+   *  still writes the new value to every selected element. */
+  // ponytail: a scrub on a Mixed field starts from 0 (or min), not the first
+  // element's value; pass an explicit start if anyone notices.
   mixed?: boolean;
   onChange: (v: number) => void;
 }) {
-  // Half-typed text ("0.", "-") would round-trip through Number() as a
-  // different value and fight the keystroke, so it lives here until it
-  // parses — the same guard ColorField's hex field uses.
-  const [text, setText] = useState<string | null>(null);
-  const drag = useRef<{ x: number; v: number } | null>(null);
-
-  const shown = props.mixed ? "" : roundToStep(props.value, props.step);
   const snap = (v: number) =>
     roundToStep(Math.min(props.max, Math.max(props.min, v)), props.step);
-
   return (
-    <div className="flex items-center justify-between gap-2">
-      <Label
-        htmlFor={props.id}
+    <NumberField.Root
+      {...numberRootProps(props)}
+      value={props.mixed ? null : roundToStep(props.value, props.step)}
+      // Blank is not a value here; the field restores the last one on blur.
+      onValueChange={(v) => { if (v !== null) props.onChange(snap(v)); }}
+      className="flex items-center justify-between gap-2"
+    >
+      <NumberField.ScrubArea
+        render={<Label htmlFor={props.id} />}
         title="Drag to change"
         className="cursor-ew-resize select-none gap-1 text-xs text-muted-foreground"
-        onPointerDown={(e) => {
-          // Left button only: a right-click on the label shouldn't scrub.
-          if (e.button !== 0) return;
-          drag.current = { x: e.clientX, v: props.value };
-          e.currentTarget.setPointerCapture(e.pointerId);
-        }}
-        onPointerMove={(e) => {
-          const d = drag.current;
-          if (!d) return;
-          // Coarse/fine modifiers, as on Photoshop's scrubby sliders.
-          const mult = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
-          const inc = props.dragStep ?? props.step;
-          setText(null);
-          props.onChange(snap(d.v + ((e.clientX - d.x) / PX_PER_STEP) * inc * mult));
-        }}
-        onPointerUp={(e) => {
-          drag.current = null;
-          if (e.currentTarget.hasPointerCapture(e.pointerId))
-            e.currentTarget.releasePointerCapture(e.pointerId);
-        }}
       >
         {props.icon && <props.icon className="size-3.5" aria-hidden="true" />}
         {props.label}
-      </Label>
-      <InputGroup className="h-6 w-24">
-        <InputGroupInput
-          id={props.id}
-          type="number"
-          min={props.min}
-          max={props.max}
-          step={props.step}
-          className="h-6 text-xs"
-          // Match editing precision without mutating imported geometry on render.
-          // Keep the draft untouched until blur so typing remains uninterrupted.
-          value={text ?? shown}
-          placeholder={props.mixed ? "Mixed" : undefined}
-          onChange={(e) => {
-            setText(e.target.value);
-            // Clamp on commit: `min`/`max` on a number input do not stop a
-            // typed value, and both fields feed straight into the renderer.
-            const n = Number(e.target.value);
-            if (e.target.value !== "" && Number.isFinite(n)) props.onChange(snap(n));
-          }}
-          onBlur={(e) => {
-            setText(null);
-            // React skips the DOM write when the input's text loosely equals
-            // the new value ("1e2" == 100), so a typed exponent would stay on
-            // screen after it applied as 100 (#135). Write the value we show.
-            e.currentTarget.value = String(shown);
-          }}
-        />
-        <InputGroupAddon align="inline-end">
-          <InputGroupText className="text-[10px]">{props.unit}</InputGroupText>
-        </InputGroupAddon>
-      </InputGroup>
-    </div>
+      </NumberField.ScrubArea>
+      <UnitInput unit={props.unit} placeholder={props.mixed ? "Mixed" : undefined} />
+    </NumberField.Root>
   );
 }
