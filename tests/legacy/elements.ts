@@ -4,12 +4,12 @@
 // which config field backs it.
 import type { LabelConfig, Style, StyledLine } from "../../src/types";
 import type { CollabSlots } from "./plan";
-import type { Face, MeasureFace } from "../../src/plan";
+import type { Face, MeasureFace } from "./planShared";
 import {
   CUSTOM_BARCODE_DIGIT_GAP_RATIO, CUSTOM_BARCODE_DIGIT_SIZE_RATIO,
   encodeFor, quietModulesFor, validateFor,
-} from "../../src/barcode";
-import { DESC, FONT_ASC, FONT_DESC, HANDLE_ADDR, runsWidth } from "../../src/layout";
+} from "./barcode";
+import { DESC, FONT_ASC, FONT_DESC, HANDLE_ADDR, runsWidth } from "./layout";
 import { defaultConfig } from "../../src/defaults";
 import { strokeLayerOf } from "../../src/strokes";
 import { parseRuns } from "../../src/description";

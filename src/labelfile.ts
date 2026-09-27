@@ -5,11 +5,7 @@
 // collab-center/<name>). Images are stored
 // uncompressed (level 0): PNG/JPG bytes are already compressed, and storing
 // them untouched keeps the file lossless and byte-identical on round-trip.
-import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from "fflate";
-import type { LabelConfig } from "@/types";
-import { toConfigFile } from "@/defaults";
-import { serializeLabelFile } from "@/model/labelfile";
-import type { LabelFileV2 } from "@/model/types";
+import { strFromU8, unzipSync, type Zippable } from "fflate";
 
 /** The project file's suffix — owned here with the format itself, so the
  *  pickers, the hidden input, and the download names can't drift apart. */
@@ -68,7 +64,8 @@ export function packAssets(zip: Zippable, assets: LabelAssets): void {
 
 /** Only real files in the container layout, excluding Finder metadata. */
 const assetEntry = (path: string) =>
-  /^(?:(?:texture|mask|collab-left|collab-center)\/[^/.][^/]*|custom\/[^/.][^/]*\/[^/.][^/]*)$/.test(path);
+  /^(?:(?:texture|mask|collab-left|collab-center)\/[^/]+|custom\/[^/]+\/[^/]+)$/.test(path)
+  && path.split("/").every((part) => part !== "." && part !== ".." && part !== ".DS_Store" && !part.startsWith("._"));
 
 /** Bound inflation before fflate allocates each output buffer. Unknown files
  *  never inflate. Limits allow large print assets without an unbounded ZIP. */
@@ -115,40 +112,4 @@ export function legacyJsonText(bytes: Uint8Array): string | undefined {
   let i = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf ? 3 : 0;
   while (bytes[i] === 0x20 || bytes[i] === 0x09 || bytes[i] === 0x0a || bytes[i] === 0x0d) i++;
   return bytes[i] === 0x7b ? strFromU8(bytes.subarray(i)) : undefined;
-}
-
-/** Pack a v1 label file: config.json (legacy writer kept for tests and Node
- *  harness until Plan 6). For new code, use packLabelV2. */
-export function packLabel(config: LabelConfig, assets: LabelAssets): Uint8Array {
-  const zip: Zippable = {
-    "config.json": strToU8(JSON.stringify(toConfigFile(config), null, 2)),
-  };
-  packAssets(zip, assets);
-  return zipSync(zip);
-}
-
-/** Pack a v2 label file: label.json (LabelFileV2 JSON) plus assets, including
- *  each custom image layer's bytes under `custom/<assetId>/<name>` (level 0,
- *  same as every other image role — already-compressed PNG/JPG/SVG bytes). */
-export function packLabelV2(label: LabelFileV2, assets: LabelAssets): Uint8Array {
-  const zip: Zippable = { "label.json": strToU8(serializeLabelFile(label)) };
-  packAssets(zip, assets);
-  return zipSync(zip);
-}
-
-/** Unpack a .label ZIP (either generation). Returns exactly one of config
- *  (v1, config.json) or label (v2, label.json) plus whichever assets the
- *  file holds. Throws a readable error when neither is present. */
-export function unpackLabel(bytes: Uint8Array): { config?: string; label?: string; assets: LabelAssets } {
-  const entries = unpackArchive(bytes);
-  const configEntry = entries["config.json"];
-  const labelEntry = entries["label.json"];
-  if (!configEntry && !labelEntry) {
-    throw new Error("Not a .label file: missing label.json/config.json");
-  }
-  return {
-    config: configEntry ? strFromU8(configEntry) : undefined,
-    label: labelEntry ? strFromU8(labelEntry) : undefined,
-    assets: extractAssets(entries),
-  };
 }

@@ -14,7 +14,7 @@ import { lolevMaster as lolevV1 } from "./fixtures/lolevV1";
 import type { LabelFileV2 } from "../src/model/types";
 import type { LabelConfig } from "../src/types";
 import { defaultConfig, KEYLINE } from "../src/defaults";
-import { GOLD } from "../src/layout";
+import { GOLD } from "./legacy/layout";
 
 const layer = <T extends Layer = Layer>(layers: Layer[], id: string) =>
   layers.find((l) => l.id === id) as T;

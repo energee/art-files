@@ -294,6 +294,27 @@ function prepareBarcode(l: BarcodeLayer, m: MeasureFace): Prepared | null {
     fillLayer: style.layer, strokeLayer: strokeLayerOf(style),
     textSize, digits, footprint,
   });
+  // A halo around individual bars leaves the quiet zone textured (#284).
+  // Emit an ordinary path first: every backend paints the same backing on
+  // the stroke's plate, without moving a single bar or digit.
+  const withBacking = (barcode: PlacedBarcode): Placed[] => {
+    if (S === 0) return [barcode];
+    const bars = barcode.geo.bars;
+    // GS1 quiet zones: UPC-A 9X, EAN-13 11X/7X, Code 128 10X.
+    // Symmetric 11X also covers the EAN-13 leading digit.
+    const q = (l.symbology === "upc-a" ? 9 : l.symbology === "ean-13" ? 11 : 10) * mod;
+    const rects = barcode.footprint;
+    const x = Math.min(...rects.map((r) => r.x), ...bars.map((r) => r.x - (rotated ? 0 : q)));
+    const y = Math.min(...rects.map((r) => r.yTop), ...bars.map((r) => r.yTop - (rotated ? q : 0)));
+    const right = Math.max(...rects.map((r) => r.x + r.w), ...bars.map((r) => r.x + r.w + (rotated ? 0 : q)));
+    const bottom = Math.max(...rects.map((r) => r.yTop + r.h), ...bars.map((r) => r.yTop + r.h + (rotated ? q : 0)));
+    return [{
+      kind: "paths", id, x, y,
+      paths: [`M0 0L${right - x} 0L${right - x} ${bottom - y}L0 ${bottom - y}Z`],
+      fill: barcode.stroke, layer: barcode.strokeLayer,
+      stroke: { fill: barcode.stroke, layer: barcode.strokeLayer, w: S },
+    }, barcode];
+  };
   if (rotated) {
     return {
       size: { w: depth, h: runLen },
@@ -316,7 +337,7 @@ function prepareBarcode(l: BarcodeLayer, m: MeasureFace): Prepared | null {
           const yc = bottom - d.center * mod;
           return { x: x0, yTop: yc - len / 2, w: (ASC + DESC) * textSize, h: len };
         });
-        return [item(geo, digits, [...bars, ...pills])];
+        return withBacking(item(geo, digits, [...bars, ...pills]));
       },
     };
   }
@@ -339,7 +360,7 @@ function prepareBarcode(l: BarcodeLayer, m: MeasureFace): Prepared | null {
       const pills = digits.map((d) => ({
         x: d.x - d.w / 2, yTop: d.y - ASC * textSize, w: d.w, h: (ASC + DESC) * textSize,
       }));
-      return [item(geo, digits, [...bars, ...pills])];
+      return withBacking(item(geo, digits, [...bars, ...pills]));
     },
   };
 }

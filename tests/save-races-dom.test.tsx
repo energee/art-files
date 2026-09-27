@@ -12,7 +12,14 @@ vi.mock("../src/components/PreviewCompare", () => ({ PreviewCompare: () => null 
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
 vi.mock("../src/components/AppMenu", () => ({ AppMenu: (p: { actions: Command[] }) => { menu.actions = p.actions; return null; } }));
-vi.mock("../src/fonts", () => ({ loadLabelFaces: async () => (t: string, s: number) => t.length * s * 0.55, labelFontCss: () => "sans-serif" }));
+vi.mock("../src/fonts", () => ({ loadLabelFaces: async () => (t: string, s: number) => t.length * s * 0.55, labelFontCss: () => "sans-serif", FONT_URLS: { poppins: {} } }));
+vi.mock("../src/pdf/fonts", async () => {
+  const { assets } = await import("./fixtures");
+  return { loadFonts: async () => assets.fonts };
+});
+vi.mock("../src/psd/build", () => ({
+  psdImages: async () => ({}), buildPsd: async () => new Uint8Array([3]),
+}));
 import { DocumentEditor } from "../src/App";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -103,3 +110,38 @@ it("reports a failed texture decode without an unhandled rejection (#266)", asyn
   await act(async () => { fileDrag("drop", new File(["bad"], "broken.png", { type: "image/png" })); });
   expect(document.body.textContent).toContain('Could not load texture "broken.png": Invalid image');
 });
+
+for (const [command, extension] of [["export-both", "pdf"], ["export-psd", "psd"]]) {
+  it(`${extension}: cancelling artwork stops the pair (#254)`, async () => {
+    const { pick } = picker();
+    pick.mockRejectedValueOnce(new DOMException("Cancelled", "AbortError"));
+    await mount();
+    // The PDF command is enabled only after the debounced preview setup.
+    await vi.waitFor(async () => {
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 25)); });
+      expect(menu.actions.find((c) => c.id === "export-both")!.disabled).toBe(false);
+    });
+    await act(async () => {
+      menu.actions.find((c) => c.id === command)!.run();
+      await vi.waitFor(() => expect(pick).toHaveBeenCalled(), { timeout: 4000 });
+    });
+    expect(pick, document.body.textContent ?? "").toHaveBeenCalledOnce();
+    expect(document.body.textContent).toContain("Export cancelled before saving");
+  });
+  it(`${extension}: a refused mask write reports the saved artwork (#254)`, async () => {
+    let writes = 0;
+    const { pick, handle } = picker(async () => { if (++writes === 2) throw new Error("Disk full"); });
+    handle.name = `renamed-art.${extension}`;
+    await mount();
+    // The PDF command is enabled only after the debounced preview setup.
+    await vi.waitFor(async () => {
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 25)); });
+      expect(menu.actions.find((c) => c.id === "export-both")!.disabled).toBe(false);
+    });
+    await act(async () => {
+      menu.actions.find((c) => c.id === command)!.run();
+      await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(2), { timeout: 4000 });
+    });
+    expect(document.body.textContent).toMatch(new RegExp(`Saved renamed-art\\.${extension}\\. Could not save .+-mask\\.${extension}: Disk full`));
+  });
+}

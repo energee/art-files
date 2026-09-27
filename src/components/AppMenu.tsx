@@ -396,6 +396,15 @@ function useNativeMenu(
             .then((m) => m.getCurrentWindow().close())
             .catch((error) => errorRef.current(`Could not quit: ${String(error)}`));
           roots.unshift(await macApplicationMenu(api, resources, () => updateRef.current(), quit));
+        } else {
+          const updater = await api.MenuItem.new({
+            id: "check-for-updates", text: UPDATE_ITEM_TEXT.check,
+            action: () => updateRef.current(),
+          });
+          resources.push(updater);
+          const help = await api.Submenu.new({ id: "help-menu", text: "Help", items: [updater] });
+          resources.push(help);
+          roots.push(help);
         }
         const menu = await api.Menu.new({ id: "label-lab-menu", items: roots });
         resources.push(menu);
@@ -435,7 +444,7 @@ function useNativeMenu(
 
   useEffect(() => {
     const item = items?.get("check-for-updates");
-    if (!item) return; // non-macOS menus have no updater item
+    if (!item) return;
     const text = updateInstalled ? UPDATE_ITEM_TEXT.restart : UPDATE_ITEM_TEXT.check;
     if (appliedState.current.get("check-for-updates:text") === text) return;
     appliedState.current.set("check-for-updates:text", text);

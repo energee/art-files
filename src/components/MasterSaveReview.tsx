@@ -183,7 +183,7 @@ export function MasterSaveReview(props: {
                     disabled={c.kind !== "promote"}
                     checked={c.kind !== "promote" || ticked.has(row)}
                     onCheckedChange={() => toggle(row)} />
-                  <span className={c.kind === "promote" ? ""
+                  <span className={c.kind === "promote" ? "text-attention-text"
                     : c.kind === "removed" ? "text-destructive-text" : "text-muted-foreground"}>
                     {rowText(c)}
                   </span>
@@ -195,7 +195,7 @@ export function MasterSaveReview(props: {
         </div>
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={props.onCancel}>Cancel</Button>
-          <Button size="sm" onClick={confirm}>{props.as ? "Save Master As" : "Save Master"}</Button>
+          <Button variant="attention" size="sm" onClick={confirm}>{props.as ? "Save Master As" : "Save Master"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

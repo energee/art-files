@@ -51,7 +51,7 @@ const box = (layer: BarcodeLayer) => {
   const b = layerBoxes([layer], m, assets).get(layer.id)!;
   return { w: r2(b.w), h: r2(b.h) };
 };
-const item = (layer: BarcodeLayer) => planLayers([layer], m, assets)[0] as PlacedBarcode | undefined;
+const item = (layer: BarcodeLayer) => planLayers([layer], m, assets).find((p): p is PlacedBarcode => p.kind === "barcode");
 
 describe("upright barcode geometry goldens", () => {
   describe("upc-a 012345678905", () => {

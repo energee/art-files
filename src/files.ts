@@ -1,3 +1,5 @@
+import { isTauri } from "@tauri-apps/api/core";
+import { isAbort, openPicker, savePicker, writeHandle } from "./filePickers";
 // files.ts — native desktop file-dialog and file I/O boundary. All
 // @tauri-apps/plugin-* imports stay here so the app's native surface is
 // visible in one place. Open and save both live here; the capability
@@ -53,4 +55,62 @@ export async function openNativeFile(
   const { open } = await import("@tauri-apps/plugin-dialog");
   const selected = await open({ multiple: false, filters: [options.filter] });
   return typeof selected === "string" ? selected : null;
+}
+
+/** A reusable save destination; downloads deliberately have no destination. */
+export type FileTarget = { path: string } | { handle: FileSystemFileHandle };
+type FileOptions = {
+  filter: NativeSaveOptions["filter"];
+  types: { description: string; accept: Record<string, string[]> }[];
+};
+
+/** Null means cancelled; undefined means use the caller's file-input fallback. */
+export async function openThrough(options: FileOptions): Promise<FileTarget | null | undefined> {
+  try {
+    if (isTauri()) {
+      const path = await openNativeFile(options);
+      return path ? { path } : null;
+    }
+    const pick = openPicker();
+    if (!pick) return undefined;
+    const [handle] = await pick({ types: options.types });
+    return handle ? { handle } : null;
+  } catch (error) {
+    if (isAbort(error)) return null;
+    throw error;
+  }
+}
+
+/** Choose once, build bytes with the chosen name, and write once. Cancellation
+ *  is null; write failures always propagate instead of becoming downloads. */
+export async function saveThrough(
+  content: Uint8Array | ((name: string) => Uint8Array),
+  options: FileOptions & { name: string; type: string; target?: FileTarget | null },
+  download: (bytes: Uint8Array, name: string, type: string) => void,
+): Promise<{ name: string; bytes: Uint8Array; target?: FileTarget } | null> {
+  try {
+    let target: FileTarget | undefined;
+    let name = options.name;
+    if (isTauri()) {
+      const path = options.target && "path" in options.target ? options.target.path
+        : await (await import("@tauri-apps/plugin-dialog")).save({ defaultPath: name, filters: [options.filter] });
+      if (!path) return null;
+      target = { path }; name = path;
+    } else {
+      const pick = savePicker();
+      const existing = options.target && "handle" in options.target ? options.target.handle : undefined;
+      if (existing || pick) {
+        const handle = existing ?? await pick!({ suggestedName: name, types: options.types });
+        target = { handle }; name = handle.name;
+      }
+    }
+    const bytes = typeof content === "function" ? content(name) : content;
+    if (target && "path" in target) await saveNativeFile(bytes, { ...options, defaultPath: name, path: target.path });
+    else if (target && "handle" in target) await writeHandle(target.handle, bytes);
+    else download(bytes, name, options.type);
+    return { name, bytes, target };
+  } catch (error) {
+    if (isAbort(error)) return null;
+    throw error;
+  }
 }

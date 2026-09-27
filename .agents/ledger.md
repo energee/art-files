@@ -513,3 +513,13 @@ no status, no attempts, no delta.
 - delta: restored cancelled text state; paragraph-aware justification; keyboard guide/can/swatch controls; stable scrub modifiers; selected-layer removal; platform hints; updater dirty gates and retry; readable rebind/Save As/drop errors; one plain-line field; shared PSD spacing decision; native file FIFO and CLI entry detection; Rust CI and declared Node/runtime dependencies; operator docs match current behavior; route suffix guards; recovered historical plan; corrected agent evidence
 - evidence: 1209 tests across 106 suites pass (four workers to avoid machine-contention timeouts); TypeScript, zero-warning lint and release gate pass; all 10 Rust tests pass; docs production build passes; valid markdown/image endpoints return 200 and invalid suffixes 404
 - release: binary-impacting; notes queued under Unreleased; version unchanged; no release published
+
+## 2026-09-27 issue-queue-export-and-cleanup
+- finding: #245, #254, #284, #289, #294–#295, #305–#309, #340, #348–#349 — export consistency, barcode backing, missing font coverage, semantic colour and redundant runtime code
+- status: implemented; review branch fix/issue-queue
+- attempts: 1/3
+- delta: shared file routing and paired-export cancellation/partial outcomes; Windows/Linux Help updater; font-coverage errors before export; continuous barcode backing through the shared plan; independent full barcode tables and 600-DPI dots-QR/UPC decode tests; semantic colour port with ruler-click tests; native keyboard divider; legacy oracle moved under tests; unused sidebar/font/model/container code removed
+- evidence: 1210 tests across 110 suites pass; TypeScript, zero-warning lint, production app build and release checks against main and stack parent pass. Windows download/edit race and renamed export destinations are covered. All three real labels' UPCs decode after the backing fix. Background-only experiment preserved every symbol pixel and rescued both textured cases. Four PDF golden raster diffs are empty; real Blue Agate changes stay inside the barcode backing.
+- browser: local light/dark smoke, keyboard divider, narrow sidebar toggle; collapsed controls are inert. No baseline for visual-regression certification; Photoshop raster certification remains pending.
+- remaining: #283 requires the printed Lupula phone scan before QR design changes. #244, #282, #338 already have green PRs #337, #358, #357. Full 95-issue disposition: docs/audits/2026-09-27-issue-queue.md.
+- release: binary-impacting; notes queued under Unreleased, version remains 0.1.98. No merge or release performed.

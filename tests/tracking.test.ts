@@ -9,7 +9,7 @@ import { buildArtPdf, buildMaskPdf } from "../src/pdf/build";
 import { parseDescription } from "../src/description";
 import { isDefaultStyle } from "./legacy/elements";
 import { defaultConfig } from "../src/defaults";
-import * as L from "../src/layout";
+import * as L from "./legacy/layout";
 import { assets, boxOfLayer, contentStreamText, measure, configPlan, configLayers, logoSvg } from "./fixtures";
 
 /** Show-text operators in a content stream. A stroked line draws bridge

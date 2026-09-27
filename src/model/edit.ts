@@ -453,20 +453,6 @@ export function assetReferenced(master: Master, label: LabelFile, assetId: strin
   return Object.values(label.values).some((v) => v === assetId);
 }
 
-/** Binds the layer's top edge below another layer's bottom. `vAnchor` is
- *  dropped (meaningless on a bound layer). Throws parseMaster's error for a
- *  binding the loader would reject (cycle, missing layer, a master layer
- *  below a variant-only one). */
-export function bindBelow(master: Master, id: string, below: string, gap: number): Master {
-  return parseMaster(withLayer(master, id, ({ vAnchor: _v, ...l }) => ({ ...l, y: { below, gap }, guideY: "none", binding: null })));
-}
-
-/** Writes the resolved top edge as a plain `y` (the inspector's "Unbind"),
- *  clearing `vAnchor` to top. Re-validated like bindBelow. */
-export function unbind(master: Master, id: string, computedTopY: number): Master {
-  return parseMaster(withLayer(master, id, ({ vAnchor: _v, ...l }) => ({ ...l, y: computedTopY, guideY: "none", binding: null })));
-}
-
 /** A position written from a gesture or a measurement, on the model's 0.01pt
  *  grid (#130). Pointer deltas and measured boxes are raw floats, and without
  *  this their noise went straight into the saved master (x: 193.08552000000003)

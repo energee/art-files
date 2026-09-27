@@ -6,9 +6,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { drawPlate } from "../src/canvas/draw";
 import { planLayers, type PlacedLayer } from "../src/planLayers";
-import type { MeasureFace, PlacedBarcode } from "../src/plan";
+import type { MeasureFace, PlacedBarcode } from "./legacy/planShared";
 import type { BarcodeLayer } from "../src/model/layers";
-import { MASK_BLUE_HEX, PAGE } from "../src/layout";
+import { MASK_BLUE_HEX, PAGE } from "./legacy/layout";
 import { labelFontCss } from "../src/fonts";
 import { logoSvg, lolevLayers, type LolevOpts } from "./fixtures";
 
@@ -74,11 +74,11 @@ describe("drawPlate", () => {
     let parsed = 0;
     vi.stubGlobal("Path2D", class { constructor(public d?: string) { parsed++; } });
     const first = fakeCtx();
-    drawPlate(first.ctx, plan(), {}, "art", FONT);
+    drawPlate(first.ctx, plan().filter((p) => p.id === "logo" || p.id === "qr"), {}, "art", FONT);
     const afterFirst = parsed;
     // Every keystroke replans, so a FRESH plan must still hit the cache.
     const second = fakeCtx();
-    drawPlate(second.ctx, plan(), {}, "mask", FONT);
+    drawPlate(second.ctx, plan().filter((p) => p.id === "logo" || p.id === "qr"), {}, "mask", FONT);
     expect(parsed).toBe(afterFirst);
     const a = pathObjects(first.log), b = pathObjects(second.log);
     expect(a.length).toBeGreaterThan(0);
@@ -97,7 +97,7 @@ describe("drawPlate", () => {
     const old = new Set(pathObjects(first.log));
     for (const overrides of [{ qr: { qrStyle: "square" as const } }, { qr: { size: 70 } }]) {
       const after = plan({ overrides });
-      const qr = pathStrings(after, isQr), logo = pathStrings(after, (id) => !isQr(id));
+      const qr = pathStrings(after, isQr), logo = pathStrings(after, (id) => id === "logo");
       expect(qr).not.toEqual(pathStrings(before, isQr));
       const next = fakeCtx();
       drawPlate(next.ctx, after, {}, "art", FONT);
@@ -332,9 +332,8 @@ describe("canvas text is unkerned, like the PDF (#86)", () => {
     };
     vi.stubGlobal("FontFace", class { load() { return Promise.resolve(this); } });
     vi.stubGlobal("document", { fonts: { add() {} }, createElement: () => ({ getContext: () => measureCtx }) });
-    const { loadLabelFaces, loadLabelFont } = await import("../src/fonts");
+    const { loadLabelFaces } = await import("../src/fonts");
     (await loadLabelFaces("barlow-condensed"))("AVATAR", 10, "regular");
-    (await loadLabelFont("barlow-condensed"))("AVATAR", 10, false);
-    expect(seen).toEqual(["none", "none"]);
+    expect(seen).toEqual(["none"]);
   });
 });

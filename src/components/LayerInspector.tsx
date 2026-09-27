@@ -342,9 +342,23 @@ const EC_LEVELS = [
   { value: "L", label: "L (default)" }, { value: "M", label: "M" }, { value: "Q", label: "Q" }, { value: "H", label: "H" },
 ] as const;
 
-/** One compact menu item per option list entry, for those Selects. */
-function SelectOptions({ items }: { items: readonly { value: string; label: string }[] }) {
-  return items.map((o) => <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>);
+/** Compact inspector dropdown with one null/option guard and label mapping. */
+function SelectField<T extends string>(props: {
+  id: string; label: string; ariaLabel?: string; badge?: ReactNode;
+  items: readonly { value: T; label: string }[]; value: T | undefined; onChange: (value: T) => void;
+}) {
+  return <Field id={props.id} label={props.label} badge={props.badge}>
+    <Select items={props.items} value={props.value} onValueChange={(value) => {
+      const option = props.items.find((item) => item.value === value);
+      if (option) props.onChange(option.value);
+    }}>
+      <SelectTrigger id={props.id} size="sm" aria-label={props.ariaLabel ?? props.label} className="h-6 w-24 text-xs">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>{props.items.map((o) =>
+        <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>)}</SelectContent>
+    </Select>
+  </Field>;
 }
 
 /** What every section receives: the layer, the one write, and the badge
@@ -683,20 +697,8 @@ function FillContract(props: Ctx & { layer: TextLayer }) {
           onChange={(v) => set({ placeholder: v || undefined })}
         />
       </Row>
-      <Field id={`${id}-input`} label="Input" badge={badge(["input"], "Input")}>
-        <Select
-          items={INPUTS}
-          value={layer.input ?? "text"}
-          onValueChange={(v) => { if (v) set({ input: v === "text" ? undefined : v as TextLayer["input"] }); }}
-        >
-          <SelectTrigger id={`${id}-input`} size="sm" aria-label="Input" className="h-6 w-24 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectOptions items={INPUTS} />
-          </SelectContent>
-        </Select>
-      </Field>
+      <SelectField id={`${id}-input`} label="Input" ariaLabel="Input" badge={badge(["input"], "Input")}
+        items={INPUTS} value={layer.input ?? "text"} onChange={(v) => set({ input: v === "text" ? undefined : v as TextLayer["input"] })} />
       {/* Range only bounds a number input; a code input is bounded by its
           symbology instead. Neither is meaningful for rich text. */}
       {numeric && (
@@ -716,20 +718,8 @@ function FillContract(props: Ctx & { layer: TextLayer }) {
         </>
       )}
       {layer.input === "code" && (
-        <Field id={`${id}-fill-symbology`} label="Symbology" badge={badge(["symbology"], "Symbology")}>
-          <Select
-            items={SYMBOLOGIES}
-            value={layer.symbology ?? "upc-a"}
-            onValueChange={(v) => { if (v) set({ symbology: v as Symbology }); }}
-          >
-            <SelectTrigger id={`${id}-fill-symbology`} size="sm" aria-label="Symbology" className="h-6 w-24 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectOptions items={SYMBOLOGIES} />
-            </SelectContent>
-          </Select>
-        </Field>
+        <SelectField id={`${id}-fill-symbology`} label="Symbology" ariaLabel="Symbology" badge={badge(["symbology"], "Symbology")}
+        items={SYMBOLOGIES} value={layer.symbology ?? "upc-a"} onChange={(v) => set({ symbology: v as Symbology })} />
       )}
       <Vocabulary layer={layer} set={set} badge={badge} unit={props.unit} />
       {/* Fixed text drawn after the filled value on the same line ("% alc by
@@ -772,20 +762,8 @@ function ImageGeometry(props: Ctx & { layer: ImageLayer }) {
   const id = layer.id;
   const page = layer.role === "background" || layer.role === "mask";
   const fit = (
-    <Field id={`${id}-fit`} label="Fit" badge={badge(["fit"], "Fit")}>
-      <Select
-        items={FITS}
-        value={layer.fit ?? "contain"}
-        onValueChange={(v) => { if (v) set({ fit: v as ImageLayer["fit"] }); }}
-      >
-        <SelectTrigger id={`${id}-fit`} size="sm" aria-label="Fit" className="h-6 w-24 text-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectOptions items={FITS} />
-        </SelectContent>
-      </Select>
-    </Field>
+    <SelectField id={`${id}-fit`} label="Fit" ariaLabel="Fit" badge={badge(["fit"], "Fit")}
+        items={FITS} value={layer.fit ?? "contain"} onChange={(v) => set({ fit: v as ImageLayer["fit"] })} />
   );
   // The page art (texture, metallic mask) covers the whole page: its box is
   // the page and it has no scale or tint to speak of — only how it meets
@@ -833,20 +811,8 @@ function BarcodeGeometry(props: Ctx & { layer: BarcodeLayer }) {
   return (
     <div className="space-y-1.5">
       <Heading>Barcode</Heading>
-      <Field id={`${id}-symbology`} label="Symbology" badge={badge(["symbology"], "Symbology")}>
-        <Select
-          items={SYMBOLOGIES}
-          value={layer.symbology}
-          onValueChange={(v) => { if (v) set({ symbology: v as Symbology }); }}
-        >
-          <SelectTrigger id={`${id}-symbology`} size="sm" aria-label="Symbology" className="h-6 w-24 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectOptions items={SYMBOLOGIES} />
-          </SelectContent>
-        </Select>
-      </Field>
+      <SelectField id={`${id}-symbology`} label="Symbology" ariaLabel="Symbology" badge={badge(["symbology"], "Symbology")}
+        items={SYMBOLOGIES} value={layer.symbology} onChange={(v) => set({ symbology: v as Symbology })} />
       {/* min > 0: a typed zero would collapse the symbol to nothing rather
           than reading as "very narrow". */}
       <Row badge={badge(["moduleW"], "Module width")}>
@@ -886,36 +852,11 @@ function QrGeometry(props: Ctx & { layer: QrLayer }) {
           onChange={(size) => set({ size })}
         />
       </Row>
-      <Field id={`${id}-qr-style`} label="Style" badge={badge(["qrStyle"], "QR style")}>
-        <Select
-          items={QR_STYLES}
-          value={layer.qrStyle}
-          onValueChange={(v) => { if (v) set({ qrStyle: v as QrLayer["qrStyle"] }); }}
-        >
-          <SelectTrigger id={`${id}-qr-style`} size="sm" aria-label="QR style" className="h-6 w-24 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectOptions items={QR_STYLES} />
-          </SelectContent>
-        </Select>
-      </Field>
-      {/* Absent means "M" for a layer — shown as such rather than as a blank
-          that would read as L. */}
-      <Field id={`${id}-ec`} label="Error correction" badge={badge(["ecLevel"], "Error correction")}>
-        <Select
-          items={EC_LEVELS}
-          value={layer.ecLevel ?? "L"}
-          onValueChange={(v) => { if (v) set({ ecLevel: v as QrLayer["ecLevel"] }); }}
-        >
-          <SelectTrigger id={`${id}-ec`} size="sm" aria-label="Error correction" className="h-6 w-24 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectOptions items={EC_LEVELS} />
-          </SelectContent>
-        </Select>
-      </Field>
+      <SelectField id={`${id}-qr-style`} label="Style" ariaLabel="QR style" badge={badge(["qrStyle"], "QR style")}
+        items={QR_STYLES} value={layer.qrStyle} onChange={(v) => set({ qrStyle: v as QrLayer["qrStyle"] })} />
+      {/* Match the renderer’s L default when the optional level is absent. */}
+      <SelectField id={`${id}-ec`} label="Error correction" ariaLabel="Error correction" badge={badge(["ecLevel"], "Error correction")}
+        items={EC_LEVELS} value={layer.ecLevel ?? "L"} onChange={(v) => set({ ecLevel: v as QrLayer["ecLevel"] })} />
     </div>
   );
 }

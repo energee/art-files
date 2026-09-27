@@ -267,7 +267,6 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
               <DropdownMenuItem onClick={() => setRenaming(true)}>Rename</DropdownMenuItem>
               <DropdownMenuItem
                 variant="destructive"
-                className="data-[variant=destructive]:text-destructive-text data-[variant=destructive]:focus:text-destructive-text"
                 onClick={() => p.onRemove(id)}
               >
                 Remove
@@ -415,7 +414,7 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
               <button
                 type="button"
                 aria-label="Add layer"
-                className="flex items-center gap-0.5 rounded-sm px-1 text-[11px] text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                className="flex items-center gap-0.5 rounded-sm px-1 text-[11px] text-attention-text hover:text-attention-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
               >
                 <Plus className="size-3" /> Add layer
               </button>
@@ -423,7 +422,7 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
           />
           <DropdownMenuContent align="end">
             {ADD_LAYER_KINDS.map(({ kind, label, Icon }) => (
-              <DropdownMenuItem key={kind} onClick={() => props.onAdd(kind)}>
+              <DropdownMenuItem key={kind} variant="attention" onClick={() => props.onAdd(kind)}>
                 <Icon className="size-3.5" /> {label}
               </DropdownMenuItem>
             ))}

@@ -10,7 +10,6 @@ import {
 } from "../src/model/files";
 import { lolevMaster as lolevV3 } from "../src/model/lolevLayers";
 import { lolevMaster as lolevV1 } from "./fixtures/lolevV1";
-import { packLabel as packLabelV1, packLabelV2 } from "../src/labelfile";
 import { defaultConfig } from "../src/defaults";
 import type { LabelFile } from "../src/model/layers";
 
@@ -101,15 +100,15 @@ describe(".label v3 container", () => {
   });
 
   it("a v2 label.json comes back as v2 (the master converts it)", () => {
-    const u = unpackLabel(packLabelV2(
-      { formatVersion: 2, masterId: "lolev", enabledVariants: [], values: { name: "X" } }, {}));
+    const u = unpackLabel(zipSync({ "label.json": strToU8(JSON.stringify(
+      { formatVersion: 2, masterId: "lolev", enabledVariants: [], values: { name: "X" } })) }));
     expect(u.v2).toMatchObject({ formatVersion: 2, masterId: "lolev", values: { name: "X" } });
     expect(u.label).toBeUndefined();
     expect(u.legacy).toBeUndefined();
   });
 
   it("a v1 config.json comes back as the legacy JSON string", () => {
-    const u = unpackLabel(packLabelV1(defaultConfig(), {}));
+    const u = unpackLabel(zipSync({ "config.json": strToU8(JSON.stringify({ version: 1, ...defaultConfig() })) }));
     expect(JSON.parse(u.legacy!).version).toBe(1);
     expect(u.label).toBeUndefined();
     expect(u.v2).toBeUndefined();
@@ -165,4 +164,9 @@ it("ignores Finder metadata and rejects oversized entries before inflation (#288
     }
   }
   expect(() => unpackMaster(bytes)).toThrow(/Archive is too large/);
+});
+
+it("round-trips a legitimate dot-prefixed asset name", () => {
+  const bytes = packMaster(lolevV3(), { texture: { name: ".texture.png", bytes: new Uint8Array([1, 2]) } });
+  expect(unpackMaster(bytes).assets.texture?.name).toBe(".texture.png");
 });

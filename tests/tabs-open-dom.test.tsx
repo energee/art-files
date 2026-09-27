@@ -23,7 +23,7 @@ const { mockIPC, mockWindows } = await import("@tauri-apps/api/mocks");
 mockWindows("main");
 mockIPC(() => null, { shouldMockEvents: true });
 (globalThis as { isTauri?: boolean }).isTauri = true; // what isTauri() reads
-vi.mock("../src/files", () => ({ openNativeFile: mocks.openNativeFile }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: mocks.openNativeFile }));
 vi.mock("../src/components/DesktopUpdater", () => ({ DesktopUpdater: () => null }));
 // Stub editor: records the shell's props so the test sees what open the
 // shell queued for each tab, without mounting the real document editor.
@@ -72,7 +72,7 @@ it("File → Open Project uses the native dialog and queues the picked path", as
 
   await openProject();
 
-  expect(mocks.openNativeFile).toHaveBeenCalledWith({ filter: LABEL_FILTER });
+  expect(mocks.openNativeFile).toHaveBeenCalledWith({ multiple: false, filters: [LABEL_FILTER] });
   expect(inputClick).not.toHaveBeenCalled();
   // Routed like an OS open: the pristine active tab is reused with a path,
   // so the editor records filePath and ⌘S saves in place.

@@ -13,7 +13,7 @@ import { convertConfigV1 } from "../model/convert";
 import { resolveLayers } from "../model/resolveLayers";
 import { lolevMaster } from "../model/lolevLayers";
 import { drawPlate } from "../canvas/draw";
-import { labelFontCss, loadLabelFont, loadLabelFaces } from "../fonts";
+import { labelFontCss, loadLabelFaces } from "../fonts";
 import { defaultConfig } from "../defaults";
 import { hitBoxesFromLayout } from "../hittestLayers";
 import { layerBoxes } from "../planLayers";
@@ -55,7 +55,7 @@ const b64 = (bytes: Uint8Array) => {
 async function run() {
   const report = document.getElementById("report")!;
   // Register browser faces before drawing; placement uses face-aware metrics.
-  const [fonts, mf] = await Promise.all([loadFonts(), loadLabelFaces(), loadLabelFont()]);
+  const [fonts, mf] = await Promise.all([loadFonts(), loadLabelFaces()]);
   const cfg = defaultConfig();
   cfg.abv = "8.5";
   const { label } = convertConfigV1(cfg, false);

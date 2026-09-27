@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TextEditor, TextToolbarButtons, useTextField } from "../src/components/TextEditor";
 import { TooltipProvider } from "../src/components/ui/tooltip";
 import type { TextLine } from "../src/model/layers";
-import { GOLD } from "../src/layout";
+import { GOLD } from "./legacy/layout";
 
 // React only honours act() when the environment opts in; without this every
 // act() call still works but logs "not configured to support act(...)".

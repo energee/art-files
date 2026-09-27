@@ -8,6 +8,18 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 
+- **Barcode backgrounds stay clear on textured labels.** A continuous backing
+  covers the bars, digits and quiet zones across preview, PDF and PSD.
+- **Exports report cancellation and partial saves.** Cancelling artwork stops
+  the paired export, and a failed mask save names the artwork already saved.
+  Unsupported font characters report their names before print files are written.
+- **File dialogs follow one save policy.** Native Master Save As writes the chosen
+  name once; cancelled and refused writes retain their existing save identity.
+- **Colours identify master-writing actions.** Save Master, promotions and layer
+  additions use the attention accent; destructive controls use readable text colours.
+- **Windows and Linux offer Help → Check for Updates.** The comparison divider
+  works by keyboard, and the sidebar uses the same collapsible layout at every width.
+
 - **Keyboard editing keeps its place.** Cancelling text restores the prior saved
   state; formatting preserves authored case; layer deletion and reordering keep
   focus and announce changes. Guides, swatches and the can preview work by keyboard.
@@ -20,7 +32,6 @@ that section to the new version (see .agents/release-steward.md).
   continuation lines, including rotated text, across preview and exports.
 - **Shortcut hints match the platform.** Windows and Linux show Ctrl and Shift,
   and Save Master As identifies the new file it creates.
-
 
 - **Saving protects edits made while a file is writing.** Newer edits remain
   unsaved, and Save Master preserves them. A failed browser write reports an

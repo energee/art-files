@@ -10,11 +10,11 @@ import type { LabelConfig } from "../src/types";
 import { drawBarcode } from "../src/pdf/build";
 import { barcodeItem } from "./legacy/plan";
 import { type MeasureFace } from "../src/plan";
-import { barcodeDigitsFor, barcodeGeometry, barcodeStrokePt } from "../src/barcode";
+import { barcodeDigitsFor, barcodeGeometry, barcodeStrokePt } from "./legacy/barcode";
 import { encodeUpc, encodeEan13 } from "../src/upc";
 import { encodeCode128 } from "../src/code128";
-import { defaultConfig, parseConfigFile, toConfigFile } from "../src/defaults";
-import { BARCODE as B, COLORS, FONT_ASC, FONT_DESC, PAGE, PX, parseHexFill } from "../src/layout";
+import { defaultConfig, parseConfigFile } from "../src/defaults";
+import { BARCODE as B, COLORS, FONT_ASC, FONT_DESC, PAGE, PX, parseHexFill } from "./legacy/layout";
 
 const UPC = "850051366224";
 
@@ -66,7 +66,7 @@ function drawnBlackRects(): Rect[] {
 
 /** A config as saved before the barcode carried any style of its own. */
 function preStyleConfig(): LabelConfig {
-  const raw = toConfigFile(defaultConfig()) as unknown as Record<string, unknown>;
+  const raw = ({ version: 1, ...defaultConfig() }) as unknown as Record<string, unknown>;
   delete raw.barcodeFill;
   delete raw.barcodeStroke;
   delete raw.barcodeLayer;

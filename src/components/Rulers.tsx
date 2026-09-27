@@ -4,7 +4,7 @@
 // guide is removed from the × that appears in the ruler when its handle is
 // hovered, by dragging it back into a ruler, or with Delete while focused.
 import {
-  useCallback, useEffect, useLayoutEffect, useMemo, useState, type PointerEvent, type RefObject,
+  useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type RefObject,
 } from "react";
 import { ART, PAGE } from "@/layout";
 import {
@@ -107,6 +107,7 @@ export function Rulers(props: {
   const [geometry, setGeometry] = useState<Geometry | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
+  const suppressClick = useRef(false);
 
   // Reads only refs and a state setter, so its identity is stable.
   const measure = useCallback(() => {
@@ -195,12 +196,14 @@ export function Rulers(props: {
   );
 
   function startNew(axis: GuideAxis, event: PointerEvent<HTMLDivElement>) {
+    suppressClick.current = false;
     if (!showGuides || event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     setDrag({ axis, point: pointAt(axis, event) });
   }
 
   function startExisting(guide: ManualGuide, event: PointerEvent<HTMLDivElement>) {
+    suppressClick.current = false;
     if (event.button !== 0) return;
     event.stopPropagation();
     event.currentTarget.focus();
@@ -218,13 +221,24 @@ export function Rulers(props: {
     if (!drag) return;
     if (overRuler(event)) {
       if (drag.id !== undefined) onRemoveManual(drag.id);
-    } else if (drag.id === undefined) onAddManual(drag.axis, drag.point);
-    else onMoveManual(drag.id, drag.point);
+      suppressClick.current = drag.id !== undefined;
+    } else {
+      if (drag.id === undefined) onAddManual(drag.axis, drag.point);
+      else onMoveManual(drag.id, drag.point);
+      suppressClick.current = true;
+    }
     setDrag(null);
   }
 
   function cancelDrag() {
+    suppressClick.current = true;
     setDrag(null);
+  }
+
+  function onStripClick(event: MouseEvent) {
+    if (!suppressClick.current) return;
+    suppressClick.current = false;
+    event.stopPropagation();
   }
 
   const shownManual = showGuides ? manual : [];
@@ -330,7 +344,7 @@ export function Rulers(props: {
                   ? "left-0 bottom-0 w-2 -translate-x-1 cursor-col-resize"
                   : "top-0 right-0 h-2 -translate-y-1 cursor-row-resize")}
               style={vertical ? { top: contentStart } : { left: contentStart }}
-              role="button" tabIndex={0}
+              data-guide-control role="button" tabIndex={0}
               aria-label={`${kind} manual guide; arrow keys move, Delete removes`}
               onPointerDown={(event) => startExisting(guide, event)}
               onKeyDown={(event) => {
@@ -342,16 +356,17 @@ export function Rulers(props: {
                   onMoveManual(guide.id, guide.point + (forward ? 1 : -1) * (event.shiftKey ? 10 : 1));
                 }
               }}
-              onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag} />
+              onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag}
+            onClick={onStripClick} />
             <button type="button"
-              aria-label={`Remove ${kind.toLowerCase()} manual guide`} title="Remove guide"
+              data-guide-control aria-label={`Remove ${kind.toLowerCase()} manual guide`} title="Remove guide"
               onClick={() => onRemoveManual(guide.id)}
               className={cn(
                 "absolute z-10 grid size-3.5 place-items-center rounded-sm bg-sidebar text-[10px] leading-none",
                 "pointer-events-none text-muted-foreground opacity-0",
                 "group-hover:pointer-events-auto group-hover:opacity-100",
                 "group-focus-within:pointer-events-auto group-focus-within:opacity-100",
-                "hover:bg-destructive hover:text-white focus-visible:ring-2 focus-visible:ring-ring",
+                "hover:bg-destructive-soft hover:text-destructive-text focus-visible:ring-2 focus-visible:ring-ring",
                 vertical ? "left-0 -translate-x-1/2" : "top-0 -translate-y-1/2")}
               style={vertical
                 ? { top: (RULER_SIZE - REMOVE_SIZE) / 2 }
@@ -372,13 +387,15 @@ export function Rulers(props: {
             style={{ left: RULER_SIZE, height: RULER_SIZE }}
             title={showGuides ? "Drag down to create a horizontal guide" : "Turn on Guides to add guides"}
             onPointerDown={(event) => startNew("y", event)}
-            onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag} />
+            onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag}
+            onClick={onStripClick} />
           <div className={cn("pointer-events-auto absolute bottom-0 left-0",
               showGuides ? "cursor-col-resize" : "cursor-default")}
             style={{ top: RULER_SIZE, width: RULER_SIZE }}
             title={showGuides ? "Drag right to create a vertical guide" : "Turn on Guides to add guides"}
             onPointerDown={(event) => startNew("x", event)}
-            onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag} />
+            onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={cancelDrag}
+            onClick={onStripClick} />
           <Popover>
             <PopoverTrigger
               style={{ height: RULER_SIZE, width: RULER_SIZE }}

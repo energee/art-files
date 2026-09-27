@@ -6,10 +6,10 @@
 // input.
 import { describe, expect, it } from "vitest";
 import {
-  addLayer, addVariant, bindBelow, checkLabelBindings, clearLabelOverride, clearOverride, clearValue,
+  addLayer, addVariant, checkLabelBindings, clearLabelOverride, clearOverride, clearValue,
   masterDiff, mintLayerId, moveBy, moveLayers, overriddenPaths, patchLayers, removeLayer,
   removeLayerIn, removeVariant, removeVariantIn, renameVariant, setLabelOverride, setLayer, setLayerIn, setValue,
-  structureOnlyMaster, toggleVariant, unbind, whereLayerLives, type Doc,
+  structureOnlyMaster, toggleVariant, whereLayerLives, type Doc,
 } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { PT_STEP, roundToStep } from "../src/numeric";
@@ -246,30 +246,6 @@ describe("moveLayers (single layer)", () => {
     const m = lolevMaster();
     expect(moveLayers(m, ["background"], "background", -1)).toBe(m);
     expect(moveLayers(m, ["collabCenter"], "collabCenter", 1)).toBe(m);
-  });
-});
-
-describe("bindBelow / unbind", () => {
-  it("binds a master layer below another and drops a stale vAnchor", () => {
-    const m = bindBelow(setLayer(lolevMaster(), "abv", { vAnchor: "bottom" }), "abv", "volume", 3);
-    const l = byId(m, "abv");
-    expect(l.y).toEqual({ below: "volume", gap: 3 });
-    expect(l.vAnchor).toBeUndefined();
-  });
-  it("to a cycle throws", () => {
-    const m = bindBelow(lolevMaster(), "abv", "volume", 0);
-    expect(() => bindBelow(m, "volume", "abv", 0)).toThrow(/cyclic/);
-  });
-  it("to a missing layer, or a master layer below a variant-only one, throws", () => {
-    expect(() => bindBelow(lolevMaster(), "abv", "nope", 0)).toThrow(/missing layer "nope"/);
-    expect(() => bindBelow(lolevMaster(), "logo", "collabLead", 0)).toThrow(/missing layer "collabLead"/);
-  });
-  it("unbind writes the passed y as the top edge", () => {
-    const m = unbind(lolevMaster(), "collabLeft", 123.4);
-    const l = collab(m).layers.collabLeft!;
-    expect(l.y).toBe(123.4);
-    expect(l.vAnchor).toBeUndefined();
-    expect(() => parseMaster(m)).not.toThrow();
   });
 });
 

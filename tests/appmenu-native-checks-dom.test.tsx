@@ -70,3 +70,27 @@ it("re-checks View → Label after choosing it while Label is already the view",
     container.remove();
   }
 });
+
+for (const platform of ["Win32", "Linux x86_64"]) {
+  it(`provides Help → Check for Updates on ${platform}`, async () => {
+    const platformSpy = vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
+    native.items.clear();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const check = vi.fn();
+    try {
+      await act(async () => { root.render(createElement(AppMenu, {
+        actions: actionsIn(APP_MENUS).map((entry) => ({ id: entry.id, label: entry.text, run: () => {} })),
+        checked: {}, onNativeError: (error) => { throw new Error(error); }, onCheckForUpdates: check,
+      })); });
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+      expect(native.items.has("help-menu")).toBe(true);
+      native.items.get("check-for-updates")!.action!();
+      expect(check).toHaveBeenCalledOnce();
+    } finally {
+      await act(async () => { root.unmount(); });
+      container.remove(); platformSpy.mockRestore();
+    }
+  });
+}

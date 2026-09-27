@@ -25,27 +25,3 @@ export function anchoredX(p: LayerPosition, w: number, g: GuideLines): number {
 export function anchoredY(p: LayerPosition, h: number, g: GuideLines): number {
   return g[p.vAnchor] - anchorFraction(p.vAnchor) * h + p.offsetY;
 }
-
-export function positionFromDrag(
-  x: number, y: number, w: number, h: number, g: GuideLines, threshold: number,
-): { position: LayerPosition; snappedX: Anchor | null; snappedY: VAnchor | null } {
-  const dx: [Anchor, number][] = [
-    ["left", x - g.left], ["center", x + w / 2 - g.center], ["right", x + w - g.right],
-  ];
-  dx.sort((a, b) => Math.abs(a[1]) - Math.abs(b[1]));
-  const [ax, adx] = dx[0];
-  const snappedX = Math.abs(adx) <= threshold ? ax : null;
-
-  const dy: [VAnchor, number][] = [["top", y - g.top], ["bottom", y + h - g.bottom]];
-  dy.sort((a, b) => Math.abs(a[1]) - Math.abs(b[1]));
-  const [ay, ady] = dy[0];
-  const snappedY = Math.abs(ady) <= threshold ? ay : null;
-
-  return {
-    position: {
-      anchor: ax, offsetX: snappedX ? 0 : adx,
-      vAnchor: ay, offsetY: snappedY ? 0 : ady,
-    },
-    snappedX, snappedY,
-  };
-}

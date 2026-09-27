@@ -29,3 +29,16 @@ exact; ordinary text remains one editable type layer. Page rasters now use the
 same planned cover-fit rectangle as PDF/canvas. Before certifying the spec's
 PSD visual gate, render the old and new PSDs in Photoshop at 600 DPI and commit
 the reviewed diff PNGs alongside these candidates.
+
+## 2026-09-27 barcode backing (#284)
+
+The new `*-backing.diff.png` files compare the four PDF golden fixtures before
+and after adding a continuous barcode backing. All four have **zero changed
+pixels** at 600 DPI: these fixtures already have bare white stock / a flooded
+white-ink mask. Their byte hashes change because the backing path is now explicit.
+The PSD hashes also change; the backing exports as a four-knot editable shape in
+the barcode group. Photoshop raster certification remains pending as above.
+
+The real Blue Agate art comparison has 54,340 changed pixels, all in the barcode
+backing (bounding box 3786,2627,850,253 on a 4876×3076 raster). Bars, digits and all
+other artwork remain in place. See the issue-queue audit for scan evidence.

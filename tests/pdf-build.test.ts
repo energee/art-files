@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import fontkit from "@pdf-lib/fontkit";
 import { buildArtPdf, buildMaskPdf, pdfMeasureFace } from "../src/pdf/build";
 import { warningColumnLen, warningMeasure, wrapWarning } from "../src/warning";
-import * as L from "../src/layout";
+import * as L from "./legacy/layout";
 import { assets, contentStreamText, lolevPlan, onePxPng } from "./fixtures";
 
 // Counts /Subtype /Image XObjects in a saved PDF's indirect object table —
@@ -271,4 +271,12 @@ it("uses DeviceGray for neutral vector ink and retains RGB for coloured ink", as
   expect(stream).toMatch(/^0.2 g$/m);
   expect(stream).toMatch(/^1 0 0 rg$/m);
   expect(stream).not.toMatch(/^0 0 0 [rR][gG]$/m);
+});
+
+it("rejects unsupported print glyphs in the actual family and face (#340)", async () => {
+  const m = await pdfMeasureFace({ poppins: assets.fonts }, "poppins");
+  for (const face of ["regular", "semibold", "bold"] as const) {
+    expect(m("Ale™ ½ é", 10, face)).toBeGreaterThan(0);
+    expect(() => m("Ale → 🍺 啤酒", 10, face)).toThrow(/Cannot print .*→.*🍺.*啤.*酒.*Poppins/);
+  }
 });

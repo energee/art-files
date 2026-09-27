@@ -10,10 +10,9 @@
 // deltas; App turns them into the layer's position patch (moveBy) and folds
 // the drag into one undo step the same way.
 import {
-  forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState,
+  forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from "react";
 import { createPortal } from "react-dom";
-import type { PanelImperativeHandle } from "react-resizable-panels";
 import { drawPlate, type CanvasRenderSource } from "@/canvas/draw";
 import { facesOf, planLayerScene } from "@/planLayers";
 import {
@@ -23,9 +22,6 @@ import type { Face } from "@/plan";
 import type { ResizeHandle } from "@/model/edit";
 import type { Layer, TextLayer, TextLine } from "@/model/layers";
 import { uppercaseOf } from "@/model/layers";
-import {
-  ResizableHandle, ResizablePanel, ResizablePanelGroup,
-} from "@/components/ui/resizable";
 import {
   ART, BLEED_SHIFT, FONT_ASC, FONT_DESC, PAGE, PREVIEW_MAX_W,
   PREVIEW_RASTER_MAX_EDGE, previewRasterScale, trackedWidth,
@@ -68,7 +64,7 @@ export const SNAP_PT = 6;
  *  the drag caught. App classifies the line (SnapMark.guide); comparing
  *  coordinates here could not tell a manual guide from a layer edge, nor an
  *  X guide's value landing on a Y line. */
-const snapColor = (mark: SnapMark) => (mark.guide ? "bg-sky-400" : "bg-fuchsia-500");
+const snapColor = (mark: SnapMark) => (mark.guide ? "bg-info" : "bg-primary");
 
 /** A snap that happened: the line (guide space), how far the indicator
  *  segment runs along it — from the moving box to the far end of what it
@@ -301,12 +297,6 @@ function InPlaceRichField(props: {
   );
 }
 
-// The installed react-resizable-panels major (Group/Panel/Separator, with
-// panelRef instead of a forwarded ref, and onLayoutChange reporting a
-// {[panelId]: percent} map instead of a sizes array) postdates the classic
-// PanelGroup/Panel/ImperativePanelHandle API; the left panel needs a fixed
-// id so its percentage can be read out of that map by key.
-const WHITE_INK_PANEL_ID = "white-ink";
 /** Wheel/pinch events arrive every frame. Keep the CSS transform immediate,
  *  then replace its backing bitmap once the gesture pauses. */
 const RASTER_DEBOUNCE_MS = 160;
@@ -394,8 +384,11 @@ export const PreviewCompare = forwardRef<
   const artCanvas = useRef<HTMLCanvasElement>(null);
   const maskCanvas = useRef<HTMLCanvasElement>(null);
   const pageElement = useRef<HTMLDivElement>(null);
-  const leftPanel = useRef<PanelImperativeHandle>(null);
   const [split, setSplit] = useState(0); // % width showing white-ink
+  const changeSplit = useCallback((value: number) => {
+    const next = Math.max(0, Math.min(100, value));
+    setSplit(next); onSplit?.(next);
+  }, [onSplit]);
   const [rasterScale, setRasterScale] = useState(() =>
     previewRasterScale(zoom, window.devicePixelRatio));
 
@@ -409,11 +402,10 @@ export const PreviewCompare = forwardRef<
   }, [zoom]);
 
   useImperativeHandle(ref, () => ({
-    // Numbers in resize() are pixels, not percent — units must be explicit.
-    showArt: () => leftPanel.current?.resize("0%"),
-    showMask: () => leftPanel.current?.resize("100%"),
+    showArt: () => changeSplit(0),
+    showMask: () => changeSplit(100),
     getPageElement: () => pageElement.current,
-  }), []);
+  }), [changeSplit]);
 
   // The display list and boxes, measured once per layers/source change. A throw here
   // (a bad binding, an unparsable payload) is caught by the paint effect
@@ -734,22 +726,30 @@ export const PreviewCompare = forwardRef<
         className="absolute inset-0 h-full w-full"
         style={{ clipPath: `inset(0 ${100 - split}% 0 0)` }}
       />
-      {/* ResizablePanelGroup is absolutely positioned over both canvases;
-          pointer-events-none here, restored on just the handle, keeps the
-          divider draggable while letting clicks fall through to the wrapper. */}
-      <ResizablePanelGroup
-        orientation="horizontal"
-        onLayoutChange={(layout) => {
-          const pct = layout[WHITE_INK_PANEL_ID] ?? 0;
-          setSplit(pct);
-          onSplit?.(pct);
+      <div role="separator" tabIndex={0} aria-label="White ink comparison"
+        aria-orientation="vertical" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(split)}
+        data-slot="resizable-handle"
+        className="absolute inset-y-0 z-10 w-3 -translate-x-1/2 cursor-col-resize touch-none focus-visible:outline focus-visible:outline-ring"
+        style={{ left: `${split}%` }}
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.focus(); e.currentTarget.setPointerCapture(e.pointerId); }}
+        onPointerMove={(e) => {
+          if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+          e.stopPropagation();
+          const box = pageElement.current!.getBoundingClientRect();
+          if (box.width) changeSplit((e.clientX - box.left) / box.width * 100);
         }}
-        className="absolute inset-0 pointer-events-none"
-      >
-        <ResizablePanel id={WHITE_INK_PANEL_ID} panelRef={leftPanel} defaultSize="0%" minSize="0%" />
-        <ResizableHandle withHandle className="bg-border/60 pointer-events-auto" />
-        <ResizablePanel minSize="0%" />
-      </ResizablePanelGroup>
+        onPointerUp={(e) => { e.stopPropagation(); e.currentTarget.releasePointerCapture(e.pointerId); }}
+        onPointerCancel={(e) => { e.stopPropagation(); e.currentTarget.releasePointerCapture(e.pointerId); }}
+        onKeyDown={(e) => {
+          const value = e.key === "Home" ? 0 : e.key === "End" ? 100
+            : e.key === "ArrowLeft" ? split - (e.shiftKey ? 10 : 1)
+            : e.key === "ArrowRight" ? split + (e.shiftKey ? 10 : 1) : undefined;
+          if (value === undefined) return;
+          e.preventDefault(); e.stopPropagation(); changeSplit(value);
+        }}>
+        <span className="absolute inset-y-0 left-1/2 w-px bg-border/60" />
+      </div>
       {/* Trim guide: the ART box. Percentages off PAGE so it tracks the
           wrapper at any size, same trick as the selection box below. */}
       {bleed && (
@@ -817,7 +817,7 @@ export const PreviewCompare = forwardRef<
           className="pointer-events-none absolute border border-dashed border-sky-400"
           style={pageBox(groupBox.x, groupBox.y, groupBox.w, groupBox.h, GROUP_PAD)}
         >
-          <span className="absolute -top-5 left-0 rounded-sm bg-sky-400 px-1 text-[10px] font-medium leading-4 text-black">
+          <span className="absolute -top-5 left-0 rounded-sm bg-info-soft px-1 text-[10px] font-medium leading-4 text-info-text">
             {selBoxes.length} layers
           </span>
         </div>

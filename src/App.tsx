@@ -37,10 +37,9 @@ import { machineName } from "@/qr";
 import { strToU8 } from "fflate";
 import { LABEL_EXT, type LabelAssets } from "@/labelfile";
 import {
-  LABEL_FILTER, LABEL_TYPES, MASTER_FILTER, MASTER_TYPES, isAbort, openPicker, savePicker,
-  writeHandle,
+  LABEL_FILTER, LABEL_TYPES, MASTER_FILTER, MASTER_TYPES, isAbort,
 } from "@/filePickers";
-import { openNativeFile, readNativeFile, saveNativeFile } from "@/files";
+import { openThrough, readNativeFile, saveThrough } from "@/files";
 import { useHistory, type Coalesce } from "@/history";
 import type {
   ImageLayer, LabelFile, Layer, LayerKind, LayerValue, Master,
@@ -1383,29 +1382,10 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  keep the plain-download fallback. */
   async function saveVia(bytes: Uint8Array, name: string, type: string) {
     const extension = name.slice(name.lastIndexOf(".") + 1);
-    if (isTauri()) {
-      await saveNativeFile(bytes, {
-        defaultPath: name,
-        filter: { name: `${extension.toUpperCase()} file`, extensions: [extension] },
-      });
-      return;
-    }
-    const pick = savePicker();
-    if (pick) {
-      const ext = `.${extension}`;
-      try {
-        const handle = await pick({
-          suggestedName: name,
-          types: [{ description: `${ext.slice(1).toUpperCase()} file`, accept: { [type]: [ext] } }],
-        });
-        await writeHandle(handle, bytes);
-        return;
-      } catch (err) {
-        if (isAbort(err)) return;
-        throw err;
-      }
-    }
-    saveBytes(bytes, name, type);
+    return await saveThrough(bytes, {
+      name, type, filter: { name: `${extension.toUpperCase()} file`, extensions: [extension] },
+      types: [{ description: `${extension.toUpperCase()} file`, accept: { [type]: [`.${extension}`] } }],
+    }, saveBytes);
   }
 
   // What the tab strip, window title and export names call this document.
@@ -1428,13 +1408,41 @@ export const DocumentEditor = memo(function DocumentEditor({
     return { plan, images: await imageAssets(), fontFamilies };
   }
 
-  /** Downloads rebuild from the full-resolution assets on demand — the
-   *  on-screen preview is deliberately preview-resolution (see Loaded). */
-  async function buildFull(which: "art" | "mask" | "both") {
-    if (building) return;
+  const exportRunning = useRef(false);
+  async function exportPair(
+    extension: "pdf" | "psd", type: string,
+    build: () => Promise<(Uint8Array | null)[]>,
+  ) {
+    if (exportRunning.current) return;
+    exportRunning.current = true;
     setBuilding(true);
     startSaveBatch();
+    const saved: string[] = [];
+    let pending = "";
     try {
+      const pair = await build();
+      for (const [index, bytes] of pair.entries()) {
+        if (!bytes) continue;
+        pending = `${exportBase}${index ? "-mask" : ""}.${extension}`;
+        const result = await saveVia(bytes, pending, type);
+        if (!result) {
+          setBuildError(`Note: ${saved.length ? `Saved ${saved.join(", ")}. ` : ""}Export cancelled before saving ${pending}.`);
+          return;
+        }
+        saved.push(result.name);
+      }
+      setBuildError("");
+    } catch (error) {
+      setBuildError(`${saved.length ? `Saved ${saved.join(", ")}. ` : ""}${pending ? `Could not save ${pending}: ` : ""}${errMsg(error)}`);
+    } finally {
+      exportRunning.current = false;
+      setBuilding(false);
+    }
+  }
+
+  /** Build full-resolution plates before opening either save dialog. */
+  async function buildFull(which: "art" | "mask" | "both") {
+    await exportPair("pdf", "application/pdf", async () => {
       const [{ buildArtPdf, buildMaskPdf }, fonts, { plan, images, fontFamilies }] = await Promise.all([
         import("@/pdf/build"), loadFonts(family), exportPlan(),
       ]);
@@ -1448,18 +1456,11 @@ export const DocumentEditor = memo(function DocumentEditor({
         },
       };
       // Both files build BEFORE the first dialog opens.
-      const [artPdf, maskPdf] = await Promise.all([
+      return await Promise.all([
         which !== "mask" ? buildArtPdf(plan, assets) : null,
         which !== "art" ? buildMaskPdf(plan, assets) : null,
       ]);
-      if (artPdf) await saveVia(artPdf, `${exportBase}.pdf`, "application/pdf");
-      if (maskPdf) await saveVia(maskPdf, `${exportBase}-mask.pdf`, "application/pdf");
-      setBuildError("");
-    } catch (err) {
-      setBuildError(String(err));
-    } finally {
-      setBuilding(false);
-    }
+    });
   }
   const downloadArt = () => void buildFull("art");
   const downloadMask = () => void buildFull("mask");
@@ -1539,38 +1540,22 @@ export const DocumentEditor = memo(function DocumentEditor({
       texture: textureAsset(), mask: maskAsset(),
       customImages: imageBundle(Object.keys(liveImages)),
     });
-    if (isTauri()) {
-      const existingPath = as ? null : projectPath.current;
-      try {
-        const path = await saveNativeFile(zip, {
-          defaultPath: exportBase + LABEL_EXT, filter: LABEL_FILTER, path: existingPath ?? undefined,
-        });
-        if (path === null) return false;
-        projectPath.current = path;
-        setFilePath(path);
-        return finish();
-      } catch (err) {
-        setLoadError(`Could not save project: ${errMsg(err)}`);
-        return false;
-      }
+    try {
+      startSaveBatch();
+      const saved = await saveThrough(zip, {
+        name: exportBase + LABEL_EXT, type: "application/zip", filter: LABEL_FILTER, types: LABEL_TYPES,
+        target: as ? null : projectPath.current ? { path: projectPath.current }
+          : projectHandle.current ? { handle: projectHandle.current } : null,
+      }, saveBytes);
+      if (!saved) return false;
+      if (saved.target && "path" in saved.target) {
+        projectPath.current = saved.target.path; setFilePath(saved.target.path);
+      } else if (saved.target && "handle" in saved.target) projectHandle.current = saved.target.handle;
+      return finish();
+    } catch (err) {
+      setLoadError(`Could not save project: ${errMsg(err)}`);
+      return false;
     }
-    const pick = savePicker();
-    if (pick) {
-      try {
-        const handle = (as ? null : projectHandle.current)
-          ?? await pick({ suggestedName: exportBase + LABEL_EXT, types: LABEL_TYPES });
-        await writeHandle(handle, zip);
-        projectHandle.current = handle;
-        return finish();
-      } catch (err) {
-        if (isAbort(err)) return false;
-        setLoadError(`Could not save project: ${errMsg(err)}`);
-        return false;
-      }
-    }
-    startSaveBatch();
-    saveBytes(zip, exportBase + LABEL_EXT, "application/zip");
-    return finish();
   }
   saveSlot.current = () => saveProject();
 
@@ -1618,7 +1603,7 @@ export const DocumentEditor = memo(function DocumentEditor({
      *
      *  Only a name the user actually TYPED counts: accepting the suggested
      *  filename must not rename "Lolev" to its own slug, and that is also the
-     *  common case, which then costs no second write below. */
+     *  common case, which keeps the original display name. */
     const titled = (file: string): Master => {
       const base = masterNameFromFile(file);
       return as && base && base !== suggested && base !== forked.name
@@ -1640,62 +1625,24 @@ export const DocumentEditor = memo(function DocumentEditor({
       pristineMaster.current = m;
       repaintMasterDirty((n) => n + 1);
     };
-    if (isTauri()) {
-      const existingPath = as ? null : saveTargetFor(masterFilePath.current, master.id);
-      try {
-        const packed = packMaster(forked, assets);
-        const path = await saveNativeFile(packed, {
-          defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path: existingPath ?? undefined,
-        });
-        if (path === null) return false;
-        const final = titled(path);
-        // ponytail: the name is only knowable after the picker returns, so a
-        // renamed fork rewrites the file it just wrote — same path, no second
-        // dialog, but a second zip of every asset. Split saveNativeFile into
-        // "pick a path" and "write bytes" if that ever bites.
-        let written = packed;
-        if (final !== forked) {
-          written = packMaster(final, assets);
-          await saveNativeFile(written, { defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path });
-        }
-        masterFilePath.current = { id: forked.id, target: path };
-        await commit(final, path, written);
-        setLoadError("");
-        return true;
-      } catch (err) {
-        setLoadError(`Could not save master: ${errMsg(err)}`);
-        return false;
-      }
+    try {
+      startSaveBatch();
+      const path = as ? null : saveTargetFor(masterFilePath.current, master.id);
+      const handle = as ? null : saveTargetFor(masterFileHandle.current, master.id);
+      const saved = await saveThrough((name) => packMaster(titled(name), assets), {
+        name: suggested + MASTER_EXT, type: "application/zip", filter: MASTER_FILTER, types: MASTER_TYPES,
+        target: path ? { path } : handle ? { handle } : null,
+      }, saveBytes);
+      if (!saved) return false;
+      if (saved.target && "path" in saved.target) masterFilePath.current = { id: forked.id, target: saved.target.path };
+      else if (saved.target && "handle" in saved.target) masterFileHandle.current = { id: forked.id, target: saved.target.handle };
+      await commit(titled(saved.name), saved.name, saved.bytes);
+      setLoadError("");
+      return true;
+    } catch (err) {
+      setLoadError(`Could not save master: ${errMsg(err)}`);
+      return false;
     }
-    const pick = savePicker();
-    if (pick) {
-      try {
-        const handle = (as ? null : saveTargetFor(masterFileHandle.current, master.id))
-          ?? await pick({ suggestedName: suggested + MASTER_EXT, types: MASTER_TYPES });
-        // The handle's name is known BEFORE the write here (unlike the Tauri
-        // branch above), so a renamed fork packs and writes exactly once.
-        const final = titled(handle.name);
-        const bytes = packMaster(final, assets);
-        await writeHandle(handle, bytes);
-        masterFileHandle.current = { id: forked.id, target: handle };
-        // The bytes go to the master cache too: a browser reload has no path
-        // to re-read this file from (masterCache.ts).
-        await commit(final, handle.name, bytes);
-        return true;
-      } catch (err) {
-        if (isAbort(err)) return false;
-        setLoadError(`Could not save master: ${errMsg(err)}`);
-        return false;
-      }
-    }
-    // The download fallback names the file itself, so `titled` is a no-op
-    // here — it stays in the line so all three branches read the same way.
-    const name = suggested + MASTER_EXT;
-    const bytes = packMaster(forked, assets);
-    startSaveBatch();
-    saveBytes(bytes, name, "application/zip");
-    await commit(titled(name), name, bytes);
-    return true;
   }
 
   /** Parse a candidate .master file (ZIP, legacy JSON, or a v1 file, which
@@ -1794,17 +1741,14 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  hidden-input fallback elsewhere. */
   async function openMasterPicker() {
     try {
-      if (isTauri()) {
-        const path = await openNativeFile({ filter: MASTER_FILTER });
-        if (path === null) return;
-        await openMasterBytes(await readNativeFile(path), path, { path });
-        return;
+      const target = await openThrough({ filter: MASTER_FILTER, types: MASTER_TYPES });
+      if (target === undefined) { masterInput.current?.click(); return; }
+      if (target === null) return;
+      if ("path" in target) await openMasterBytes(await readNativeFile(target.path), target.path, target);
+      else {
+        const file = await target.handle.getFile();
+        await openMasterBytes(new Uint8Array(await file.arrayBuffer()), file.name, target);
       }
-      const pick = openPicker();
-      if (!pick) { masterInput.current?.click(); return; }
-      const [handle] = await pick({ types: MASTER_TYPES });
-      const file = await handle.getFile();
-      await openMasterBytes(new Uint8Array(await file.arrayBuffer()), file.name, { handle });
     } catch (err) {
       if (!isAbort(err)) setLoadError(`Could not open master: ${errMsg(err)}`);
     }
@@ -2013,10 +1957,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Layered Photoshop files, built full-resolution on demand like the PDFs.
    *  `which` picks a single plate or (default) both. */
   async function exportPsd(which: "both" | "art" | "mask" = "both") {
-    if (building) return;
-    setBuilding(true);
-    startSaveBatch();
-    try {
+    await exportPair("psd", "image/vnd.adobe.photoshop", async () => {
       const [{ buildPsd, psdImages }, fonts, { plan, images }] = await Promise.all([
         import("@/psd/build"), loadFonts(family), exportPlan(),
       ]);
@@ -2025,18 +1966,11 @@ export const DocumentEditor = memo(function DocumentEditor({
         fonts, fontFamily: family,
         images: await psdImages(images, { texture: art.texture?.bytes, mask: art.maskPng }, rasterPixelsNatural),
       };
-      const [artPsd, maskPsd] = await Promise.all([
+      return await Promise.all([
         which !== "mask" ? buildPsd(plan, assets, "art", { layers: drawLayers }) : null,
         which !== "art" ? buildPsd(plan, assets, "mask", { layers: drawLayers }) : null,
       ]);
-      if (artPsd) await saveVia(artPsd, `${exportBase}.psd`, "image/vnd.adobe.photoshop");
-      if (maskPsd) await saveVia(maskPsd, `${exportBase}-mask.psd`, "image/vnd.adobe.photoshop");
-      setBuildError("");
-    } catch (err) {
-      setBuildError(String(err));
-    } finally {
-      setBuilding(false);
-    }
+    });
   }
 
   /** Every command the app exposes, once. The palette and AppMenu read this
@@ -2240,8 +2174,11 @@ export const DocumentEditor = memo(function DocumentEditor({
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
           preview center, inspector sheet right. */}
       <SidebarProvider hotkey={active} className="min-h-0 h-full">
-        <Sidebar collapsible="offcanvas">
-          <SidebarContent>
+        <Sidebar>
+          <SidebarContent onClick={(event) => {
+            const target = event.target;
+            if (target instanceof Element && !target.closest('[data-layer-id], button, a, input, [role="button"], [role="combobox"], [contenteditable="true"]')) clearSelection();
+          }}>
             {/* The master picker, then the ONE Layers list (spec: UI). */}
             <MasterPicker master={master} label={label}
               library={libraryEntries()} resolve={resolveMasterById}
@@ -2274,7 +2211,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           }} />}
           {blocked && <HeaderAlert>{blockedWhy}</HeaderAlert>}
           {loadError && <HeaderAlert tone={loadError.startsWith("Note: ") ? "warning" : "destructive"}>{loadError}</HeaderAlert>}
-          {(buildError || renderError) && <HeaderAlert>{buildError || renderError}</HeaderAlert>}
+          {(buildError || renderError) && <HeaderAlert tone={buildError.startsWith("Note: ") ? "warning" : "destructive"}>{buildError || renderError}</HeaderAlert>}
           {resolveWarnings.length > 0 && <HeaderAlert tone="warning">{resolveWarnings.join(" · ")}</HeaderAlert>}
           {/* Open Master's fallback — see masterInput/openMasterPicker. */}
           <input ref={masterInput} type="file" accept={MASTER_EXT} hidden
@@ -2314,7 +2251,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               if (viewMode !== "2d") return;
               const t = e.target;
               if (t instanceof Element
-                && !t.closest('[data-slot="label-sheet"],[data-slot="rulers"]')) clearSelection();
+                && !t.closest('[data-slot="label-sheet"], [data-guide-control]')) clearSelection();
             }}
             onPointerDown={onPanStart}
             onPointerMove={onPanMove}

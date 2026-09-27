@@ -8,13 +8,13 @@ import {
   planLayers, planLayerScene, layerBoxes, DEFAULT_FACES, type PlacedPage,
 } from "../src/planLayers";
 import { barcodeItem, customBarcodeItem } from "./legacy/plan";
-import { labelGuides, type MeasureFace, type PlacedBarcode, type PlacedImage, type PlacedPaths, type PlacedText,  } from "../src/plan";
+import { labelGuides, type MeasureFace, type PlacedBarcode, type PlacedImage, type PlacedPaths, type PlacedText,  } from "./legacy/planShared";
 import type {
   BarcodeLayer, ImageLayer, Layer, QrLayer, TextLayer, TextLine,
 } from "../src/model/layers";
 import { qrPath, qrShapes } from "../src/qr";
 import { defaultConfig } from "../src/defaults";
-import * as L from "../src/layout";
+import * as L from "./legacy/layout";
 
 const m: MeasureFace = (text, size, face) =>
   text.length * size * (face === "regular" ? 0.5 : face === "semibold" ? 0.55 : 0.6);
@@ -234,7 +234,7 @@ describe("planLayers barcode", () => {
   const r2 = (n: number) => Math.round(n * 100) / 100;
 
   it("upright: matches plan.ts's custom barcode geometry (print-geometry goldens), guards run long into the digit band", () => {
-    const [item] = planLayers([upright], m, assets) as PlacedBarcode[];
+    const item = planLayers([upright], m, assets).find((p): p is PlacedBarcode => p.kind === "barcode")!;
     const ref = customBarcodeItem({
       id: "custom-bc", name: "BC", type: "barcode", symbology: "upc-a", value: "012345678905", h: 30, moduleW: 1,
       position: { anchor: "left", vAnchor: "top", offsetX: 0, offsetY: 0 }, style: upright.style,
@@ -260,7 +260,7 @@ describe("planLayers barcode", () => {
       ...upright, id: "barcode", x: L.BARCODE.x, y: L.BARCODE.yTop, rotation: 90, value: "850051366224",
       h: 15 * mod, moduleW: mod, style: { fill: "#1A1A1A", layer: "white", stroke: "#FFFFFF", strokeWidth: 20, strokeLayer: "white" },
     };
-    const [item] = planLayers([rotated], m, assets) as PlacedBarcode[];
+    const item = planLayers([rotated], m, assets).find((p): p is PlacedBarcode => p.kind === "barcode")!;
     const ref = barcodeItem(defaultConfig(), m);
     expect(item.rotated).toBe(true);
     expect(item.S).toBeCloseTo(ref.S);
