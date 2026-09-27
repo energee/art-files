@@ -8,6 +8,8 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Changed
 
+- **Desktop runtime updates.** Tauri 2.11.6 and the dialog, file, updater and
+  single-instance plugins move to their latest patch and minor releases.
 - **Library updates.** React 19.3, Base UI 1.8, Three.js 0.186 and the Tauri
   dialog, file and updater plugins move to their latest minor releases.
 
