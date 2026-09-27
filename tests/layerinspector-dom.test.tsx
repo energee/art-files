@@ -240,6 +240,18 @@ describe("LayerInspector geometry follows the kind", () => {
     expect(width.value).toBe("300");
   });
 
+  it("arrow keys step a wrap width by the drag step, like X, Y and W", () => {
+    // BlankableField used to step by the typed precision (0.01pt) while its
+    // neighbours stepped by PT.dragStep; both now share unitProps.
+    const { onChange } = render(text({ width: 200 }));
+    const width = $("#name-width") as HTMLInputElement;
+    act(() => {
+      width.focus();
+      width.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true }));
+    });
+    expect(onChange).toHaveBeenLastCalledWith({ width: 200.5 });
+  });
+
   it("text: a cleared wrap width emits { width: undefined }", () => {
     const { onChange } = render(text({ width: 200 }));
     type($("#name-width")!, "");

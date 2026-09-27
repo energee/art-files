@@ -11,10 +11,10 @@ import { Label } from "@/components/ui/label";
 import {
   InputGroup, InputGroupAddon, InputGroupInput, InputGroupText,
 } from "@/components/ui/input-group";
-// Round to the decimal places the step implies, so a drag can't accumulate float noise
-// (0.4 + 0.1 = 0.5000000000000001) straight into the saved config. Shared with
-// the callers that have to predict what this field commits — see numeric.ts.
-import { decimalsOf, roundToStep } from "@/numeric";
+// The step's decimal places become NumberField's maximumFractionDigits, so it
+// clamps and rounds every typed or scrubbed value (no 0.5000000000000001 in a
+// saved config) — the rule numeric.ts states for callers that predict it.
+import { decimalsOf } from "@/numeric";
 
 /** The Root props every numeric field here shares: `step` is the typed
  *  precision (shown and snapped to), `dragStep` what one arrow press or one
@@ -74,14 +74,13 @@ export function ScrubField(props: {
   mixed?: boolean;
   onChange: (v: number) => void;
 }) {
-  const snap = (v: number) =>
-    roundToStep(Math.min(props.max, Math.max(props.min, v)), props.step);
   return (
     <NumberField.Root
       {...numberRootProps(props)}
-      value={props.mixed ? null : roundToStep(props.value, props.step)}
-      // Blank is not a value here; the field restores the last one on blur.
-      onValueChange={(v) => { if (v !== null) props.onChange(snap(v)); }}
+      value={props.mixed ? null : props.value}
+      // Already clamped and rounded to `step` by the Root. Blank is not a
+      // value here; the field restores the last one on blur.
+      onValueChange={(v) => { if (v !== null) props.onChange(v); }}
       className="flex items-center justify-between gap-2"
     >
       <NumberField.ScrubArea

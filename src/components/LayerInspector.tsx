@@ -73,8 +73,8 @@ const KIND_ICONS: Record<LayerKind, LucideIcon> = {
 };
 
 /** Points precision for positions and sizes: typing keeps the model's PT_STEP
- *  and a scrub moves in halves — fine enough to land a snap, coarse enough to
- *  cross the label. */
+ *  and a scrub or arrow press moves in halves — fine enough to land a snap,
+ *  coarse enough to cross the label. */
 const PT = { step: PT_STEP, dragStep: 0.5 } as const;
 
 // The model stays in PDF points; only dimensional controls convert for display.
@@ -114,11 +114,20 @@ function displayValue(points: number, unit: string, step: number): number {
   return roundToStep(exact, DISPLAY_STEP.mm);
 }
 
+/** A point-valued field's bounds, steps and shown value in its display unit
+ *  — the one pt->display mapping DimensionField and BlankableField share.
+ *  Coming back, clampedPoints returns a reading to points. */
+function unitProps(p: { unit: string; value: number; min: number; max: number; step: number; dragStep?: number }) {
+  const mm = p.unit === "mm";
+  const scale = mm ? MM_PER_PT : 1;
+  return {
+    value: displayValue(p.value, p.unit, p.step), min: p.min * scale, max: p.max * scale,
+    step: mm ? DISPLAY_STEP.mm : p.step, dragStep: mm ? 0.1 : p.dragStep,
+  };
+}
+
 function DimensionField(props: Omit<ComponentProps<typeof ScrubField>, "unit"> & { unit: DimensionUnit }) {
-  const scale = props.unit === "mm" ? MM_PER_PT : 1;
-  return <ScrubField {...props} key={props.unit}
-    value={displayValue(props.value, props.unit, props.step)} min={props.min * scale} max={props.max * scale}
-    step={DISPLAY_STEP[props.unit]} dragStep={props.unit === "mm" ? 0.1 : props.dragStep}
+  return <ScrubField {...props} key={props.unit} {...unitProps(props)}
     // Back to points at the MODEL's precision, then clamped (clampedPoints).
     onChange={(value) => props.onChange(clampedPoints(value, props))} />;
 }
@@ -206,19 +215,16 @@ function Badge(props: {
  *  ScrubField, without the scrub, so it sits in the same right-hand column. */
 function BlankableField(props: {
   id: string; label: string; unit: string; placeholder: string;
-  value: number | undefined; min: number; max: number; step: number;
+  value: number | undefined; min: number; max: number; step: number; dragStep?: number;
   badge?: ReactNode;
   onChange: (v: number | undefined) => void;
 }) {
-  const scale = props.unit === "mm" ? MM_PER_PT : 1;
+  const shown = unitProps({ ...props, value: props.value ?? 0 });
   return (
     <Field id={props.id} label={props.label} badge={props.badge}>
       <NumberField.Root
-        // Display granularity, matching DimensionField: mm needs a third
-        // decimal to carry the model's 0.01pt precision.
-        {...numberRootProps({ id: props.id, min: props.min * scale, max: props.max * scale,
-          step: props.unit === "mm" ? DISPLAY_STEP.mm : props.step })}
-        value={props.value === undefined ? null : displayValue(props.value, props.unit, props.step)}
+        {...numberRootProps({ ...shown, id: props.id })}
+        value={props.value === undefined ? null : shown.value}
         // Back to points at the MODEL's precision before clamping, as
         // DimensionField does: without it a millimetre reading typed back
         // verbatim (35pt -> 12.347mm -> 34.99916pt) never re-matches the
@@ -490,7 +496,7 @@ function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: string }) {
       />
       <BlankableField
         id={`${id}-width`} label="Wrap width" unit={props.unit} key={props.unit} placeholder="none"
-        value={layer.width} min={1} max={2000} step={PT.step}
+        value={layer.width} min={1} max={2000} {...PT}
         badge={badge(["width"], "Wrap width")}
         onChange={(width) => set({ width })}
       />
@@ -508,7 +514,7 @@ function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: string }) {
           onChange={(headerScale) => set({ headerScale })}
         />
       </Row>
-      {/* Clamped both ends by ScrubField: tracking wide enough to overrun
+      {/* Clamped both ends by the field: tracking wide enough to overrun
           the label reads as a broken line, not a style. */}
       <Row badge={badge(["style.letterSpacing"], "Letter Spacing")}>
         <ScrubField
@@ -787,7 +793,7 @@ function ImageGeometry(props: Ctx & { layer: ImageLayer }) {
       </Row>
       <BlankableField
         id={`${id}-h`} label="Height" unit={props.unit} key={props.unit} placeholder="auto"
-        value={layer.h} min={1} max={2000} step={PT.step}
+        value={layer.h} min={1} max={2000} {...PT}
         badge={badge(["h"], "Height")}
         onChange={(h) => set({ h })}
       />
