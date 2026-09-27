@@ -1,5 +1,6 @@
 // labelfile.ts — pack/unpack the .label project file: a ZIP holding
-// config.json (the ConfigFile JSON, v1) or label.json (the LabelFileV2 JSON, v2)
+// config.json (the legacy v1 config, read by parseConfigFile) or label.json
+// (the LabelFileV2 JSON, v2)
 // plus the original source images under role directories (texture/<name>,
 // mask/<name>, and — READ-ONLY LEGACY — collab-left/<name>,
 // collab-center/<name>). Images are stored

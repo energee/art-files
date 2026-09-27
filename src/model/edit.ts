@@ -194,7 +194,7 @@ export function removeLayer(master: Master, id: string, boxes?: ReadonlyMap<stri
 /** A label-only legacy layer (#264): a whole-layer override (it carries
  *  `kind`) whose id neither the master nor any variant defines. The override
  *  is the layer's ONLY definition, so there is no master value under it. */
-export function isLabelOnly(master: Master, label: LabelFile, id: string): boolean {
+function isLabelOnly(master: Master, label: LabelFile, id: string): boolean {
   return !!label.overrides?.[id]?.kind && !master.layers.some((l) => l.id === id)
     && !master.variants.some((v) => id in v.layers);
 }

@@ -59,6 +59,25 @@ that section to the new version (see .agents/release-steward.md).
   save picker is refused, and ™️ ©️ ®️ from the emoji picker print.
 - **The command line prints what the app prints.** It includes a label's own
   legacy layers and accepts overrides valid under the label's enabled variants.
+- **Saving a master while switching masters keeps each in its place.** Opening
+  another master during a Save Master write keeps its save target, and a promoted
+  layer deleted during the write no longer drops the other promotions.
+- **Layer and variant edits no longer fail on stale state.** Deleting with a
+  stale selection removes the rows that exist, reordering a label-only layer no
+  longer errors, restored variants keep their precedence, and a recreated variant
+  never inherits a deleted one's id.
+- **Label files stay openable.** Saving refuses an image over the size limits
+  that opening enforces, and opening checks each image's real unpacked size.
+- **Barcode backgrounds match the barcode box.** The backing fills exactly the
+  box used for selecting and snapping; Code 128 gains a 10-module quiet zone so
+  it never prints past the trim.
+- **Controls behave consistently.** ⌘B works from the inspector, a cancelled
+  touch no longer swallows the next tap, guides can't be added while hidden,
+  Continue runs once, render errors show after a cancelled export, focus stays
+  in place after deleting swatches and layers, and repeated reorders are announced.
+- **Updates retry without downloading twice**, and a failed update check clears
+  when closed.
+- **The command line names unsupported image types** instead of only WebP.
 - **QR error correction shows the actual default, L.**
 
 - **Black text and vector artwork stay on the black plate.** PDF exports
