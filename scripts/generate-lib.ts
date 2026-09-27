@@ -1,3 +1,4 @@
+import { isPlain } from "../src/model/merge";
 // generate-lib.ts — DOM-free headless generate: argv, inspect, coerce, build.
 // Lives under scripts/ so it is not a desktop binary input (src/ is).
 import { readFileSync } from "node:fs";
@@ -13,9 +14,9 @@ import { setBleed } from "../src/layout";
 import { svgAspect } from "../src/logo";
 import { convertConfigV1, guideLines } from "../src/model/convert";
 import { unpackLabel, unpackMaster, type MasterAssets } from "../src/model/files";
-import { PAGE_ART_ID, type LabelFile, type Layer, type LayerKind, type LayerValue, type Master, type TextLayer, type TextLine } from "../src/model/layers";
+import { PAGE_ART_ID, validateLayer, type LabelFile, type Layer, type LayerKind, type LayerValue, type Master, type TextLayer, type TextLine } from "../src/model/layers";
 import { lolevMaster } from "../src/model/lolevLayers";
-import { exportBase, resolveLayers, titleOf, widenValue } from "../src/model/resolveLayers";
+import { applyDiff, exportBase, resolveLayers, titleOf, widenValue } from "../src/model/resolveLayers";
 import type { PlanAssets } from "../src/plan";
 import { planLayers } from "../src/planLayers";
 import { buildArtPdf, buildMaskPdf, pdfMeasureFace, type Assets, type CollabImage } from "../src/pdf/build";
@@ -170,8 +171,7 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
 
 const JOB_KEYS = new Set(["values", "variants", "files", "overrides"]);
 
-const isPlain = (v: unknown): v is Record<string, unknown> =>
-  !!v && typeof v === "object" && !Array.isArray(v);
+
 
 export interface JobInput {
   values: Record<string, unknown>;
@@ -348,6 +348,7 @@ export function checkOverrides(
 ): string[] {
   const errors: string[] = [];
   const walk = (path: string, have: unknown, patch: unknown) => {
+    if (patch === null) return; // Validate the resulting layer below: only optional fields may clear.
     if (!isPlain(patch) || !isPlain(have)) {
       if (have !== undefined && typeof have !== typeof patch)
         errors.push(`override ${path}: expected ${typeof have}, got ${typeof patch}`);
@@ -359,6 +360,8 @@ export function checkOverrides(
     const layer = layers.get(id);
     if (!layer) { errors.push(`Unknown layer "${id}".`); continue; }
     walk(id, layer, patch);
+    try { validateLayer(applyDiff(layer, patch), `override ${id}`); }
+    catch (err) { errors.push(String(err)); }
   }
   return errors;
 }
@@ -411,6 +414,7 @@ function fontPack(assetRoot: string, id: FontFamilyId): Assets["fonts"] {
 }
 
 function asImage(name: string, bytes: Uint8Array): CollabImage {
+  if (/\.webp$/i.test(name)) throw new Error(`${name}: WebP is not supported by the CLI — convert to PNG/JPEG.`);
   if (/\.svg$/i.test(name)) return { kind: "svg", svg: new TextDecoder().decode(bytes) };
   return { kind: rasterKind(name), bytes };
 }
@@ -691,9 +695,16 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     try { assertVariants(master, variants); }
     catch (e) { fail(e); return null; }
     const fillable = fillableById(master, variants);
-    const coerced = coerceValues(master, { ...job.values, ...args.set }, variants, fillable);
+    const activeEntries = <T>(entries: Record<string, T> = {}): Record<string, T> =>
+      Object.fromEntries(Object.entries(entries).filter(([id]) => {
+        if (args.source.kind !== "label" || fillable.has(id)) return true;
+        warn(`Dormant layer "${id}" skipped.`);
+        return false;
+      }));
+    const overrides = activeEntries(job.overrides);
+    const coerced = coerceValues(master, { ...activeEntries(job.values), ...args.set }, variants, fillable);
     if (Object.keys(coerced.errors).length) errors.push(errorText(coerced.errors));
-    errors.push(...checkOverrides(fillable, job.overrides));
+    errors.push(...checkOverrides(fillable, overrides));
     const files = { ...job.files, ...args.assets };
     const extraImages: GenerateInput["extraImages"] = { ...labelExtras };
     for (const [id, path] of Object.entries(files)) {
@@ -705,12 +716,12 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     // ponytail: resolves once here for the name and again inside buildLabel;
     // resolution is a pure data walk, so cheap. Pass resolved layers into
     // buildLabel if it ever shows up in a profile.
-    const stem = exportBase(resolveLayers(master, variants, coerced.values, job.overrides).layers);
+    const stem = exportBase(resolveLayers(master, variants, coerced.values, overrides).layers);
     for (const name of outputNames(stem, args.format)) {
       if (dests.has(name)) errors.push(`duplicate output file "${name}"`);
       dests.add(name);
     }
-    return { variants, values: coerced.values, extraImages, overrides: job.overrides };
+    return { variants, values: coerced.values, extraImages, overrides };
   });
   if (errors.length) throw new Error(errors.join("\n"));
 

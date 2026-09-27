@@ -16,7 +16,7 @@ import type {
 } from "./layers";
 import type { Box } from "./place";
 import { bindingOf, hAnchorOf, parseMaster, validateBindings, vAnchorOf } from "./layers";
-import { deepMerge, type DeepPartial } from "./merge";
+import { isPlain, deepMerge, type DeepPartial } from "./merge";
 import { resolveLayers, valueOf, valuePath, widenValue } from "./resolveLayers";
 import { anchorFraction } from "./position";
 import { CENTER_X, GOLD } from "../layout";
@@ -31,8 +31,7 @@ type LayerPatch = DeepPartial<Layer>;
  *  override of a master layer. Same static shape either way. */
 type Entry = DeepPartial<Layer>;
 
-const isPlain = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
+
 const isBound = (y: unknown): y is RelativeY => isPlain(y) && typeof y.below === "string";
 
 function variantOf(master: Master, id: string): Variant {
@@ -193,10 +192,14 @@ export function removeLayer(master: Master, id: string, boxes?: ReadonlyMap<stri
  *  would otherwise win over the master's. A switched-off version's layers
  *  count too; unmeasured (no box), one bound to `id` refuses the removal. */
 export function removeLayerIn(doc: Doc, id: string, boxes?: ReadonlyMap<string, Box>): Doc {
-  const master = removeLayer(doc.master, id, boxes);
   const overrides = doc.label.overrides;
+  const own = overrides?.[id];
+  const labelOnly = !!own?.kind && !doc.master.layers.some((l) => l.id === id)
+    && !doc.master.variants.some((v) => id in v.layers);
+  const source = labelOnly ? { ...doc.master, layers: [...doc.master.layers, own as Layer] } : doc.master;
+  const master = labelOnly ? doc.master : removeLayer(doc.master, id, boxes);
   if (!overrides) return { ...doc, master };
-  const patchOf = detacher(doc.master, id, boxes);
+  const patchOf = detacher(source, id, boxes);
   // Switched-off versions too, their layers' overrides still bind; the
   // enabled resolve goes last so it wins for the layers you see.
   const resolve = (variants: string[]) =>
@@ -407,8 +410,8 @@ export function labelOverriddenPaths(label: LabelFile, id: string): Set<string> 
  *
  *  A variant-ADDED layer has no variant-vs-master baseline to diff, so it
  *  shows no variant badge; its LABEL overrides are still the label's own and
- *  still resettable, exactly like a base layer's. Throws for an unknown id
- *  (whereLayerLives), so callers pass a layer the document has. */
+ *  still resettable, exactly like a base layer's. Label-only legacy layers
+ *  have no master or variant badges. */
 export interface OverrideBadges {
   variant: Set<string>;
   label: Set<string>;
@@ -418,7 +421,7 @@ export interface OverrideBadges {
 export function overrideBadges(master: Master, label: LabelFile, id: string): OverrideBadges {
   const variant = new Set<string>();
   let variantName: string | undefined;
-  if (whereLayerLives(master, id) === "master") {
+  if (master.layers.some((l) => l.id === id)) {
     for (const v of master.variants) {
       if (!label.enabledVariants.includes(v.id)) continue;
       for (const p of overriddenPaths(master, v.id, id)) { variant.add(p); variantName = v.name; }
@@ -631,7 +634,13 @@ export function showVersion(
   return out;
 }
 
-export function addVariant(master: Master, name: string): { master: Master; id: string } {
+export function addVariant(master: Master, name?: string): { master: Master; id: string } {
+  if (name === undefined) {
+    const names = new Set(master.variants.map((v) => v.name));
+    let n = 1;
+    while (names.has(`Variant ${n}`)) n++;
+    name = `Variant ${n}`;
+  }
   const stem = slugify(name) || "variant";
   const ids = new Set(master.variants.map((v) => v.id));
   let id = stem;
@@ -760,13 +769,16 @@ export function patchLayers(doc: Doc, entries: [string, LayerPatch][]): Doc {
     const ids = new Set(masterIds);
     for (const v of doc.master.variants)
       if (label.enabledVariants.includes(v.id)) for (const k of Object.keys(v.layers)) ids.add(k);
+    for (const [id, patch] of Object.entries(label.overrides ?? {})) if (patch.kind) ids.add(id);
     return ids;
   };
   let resolves = resolvable(doc.label);
   return entries.reduce((d, [id, patch]) => {
     const keys = Object.keys(patch);
-    const contract = keys.filter((k) => MASTER_PATHS.has(k));
-    const rest = keys.filter((k) => !MASTER_PATHS.has(k));
+    const labelOnly = !!d.label.overrides?.[id]?.kind && !masterIds.has(id)
+      && !d.master.variants.some((v) => id in v.layers);
+    const contract = keys.filter((k) => !labelOnly && MASTER_PATHS.has(k));
+    const rest = keys.filter((k) => labelOnly || !MASTER_PATHS.has(k));
     const pick = (ks: string[]) =>
       Object.fromEntries(ks.map((k) => [k, (patch as Record<string, unknown>)[k]])) as LayerPatch;
 
@@ -1001,6 +1013,12 @@ export function masterChanges(
   const baseById = new Map(base.layers.map((l) => [l.id, l]));
   const editedById = new Map(edited.layers.map((l) => [l.id, l]));
   const out: MasterChange[] = [];
+  for (const key of ["guides", "physical", "fontFamily"] as const)
+    for (const path of changedPaths({ [key]: base[key] }, { [key]: edited[key] }))
+      out.push({ kind: "property", layerId: "master", layerName: "Master settings", path,
+        from: getPath(base, path), to: getPath(edited, path) });
+  if (base.name !== edited.name)
+    out.push({ kind: "renamed", layerId: "master", layerName: edited.name, from: base.name, to: edited.name });
 
   for (const l of base.layers)
     if (!editedById.has(l.id)) out.push({ kind: "removed", layerId: l.id, layerName: l.name });
@@ -1043,8 +1061,13 @@ export function masterChanges(
     const nameOf = (id: string, e: unknown) =>
       (e as { name?: string }).name ?? editedById.get(id)?.name ?? id;
     for (const id of Object.keys(was.layers))
-      if (!(id in v.layers))
-        out.push({ kind: "removed", layerId: id, layerName: nameOf(id, was.layers[id]) });
+      if (!(id in v.layers)) {
+        if (!baseById.has(id))
+          out.push({ kind: "removed", layerId: id, layerName: nameOf(id, was.layers[id]) });
+        else for (const path of changedPaths(was.layers[id], {}))
+          out.push({ kind: "property", layerId: id, layerName: nameOf(id, was.layers[id]), path,
+            from: getPath(was.layers[id], path), to: getPath(editedById.get(id), path) });
+      }
     // A variant's added layers draw in key order (moveLayers), so compare that
     // order the way the base layers' is compared above (#198).
     const wasIndex = new Map(addedIds(was, baseById).map((id, i) => [id, i]));
@@ -1183,7 +1206,7 @@ export function resizeBy(
       // finer precision (a module is under a point).
       case "text": return { width: pt(Math.max((layer.width ?? bw) + lw, 1)) };
       case "qr": return { size: pt(layer.size * sx) };
-      case "barcode": return { h: pt(layer.h * sy), moduleW: layer.moduleW * sx };
+      case "barcode": return { h: pt(layer.h * sy), moduleW: roundToStep(layer.moduleW * sx, 0.0001) };
       case "image": return { w: pt(layer.w * sx), ...(layer.h != null ? { h: pt(layer.h * sy) } : {}) };
     }
   })();

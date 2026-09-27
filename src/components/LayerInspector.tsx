@@ -339,7 +339,7 @@ const QR_STYLES = [
   { value: "square", label: "Square" }, { value: "rounded", label: "Rounded" }, { value: "dots", label: "Dots" },
 ] as const;
 const EC_LEVELS = [
-  { value: "L", label: "L" }, { value: "M", label: "M (default)" }, { value: "Q", label: "Q" }, { value: "H", label: "H" },
+  { value: "L", label: "L (default)" }, { value: "M", label: "M" }, { value: "Q", label: "Q" }, { value: "H", label: "H" },
 ] as const;
 
 /** One compact menu item per option list entry, for those Selects. */
@@ -913,7 +913,7 @@ function QrGeometry(props: Ctx & { layer: QrLayer }) {
       <Field id={`${id}-ec`} label="Error correction" badge={badge(["ecLevel"], "Error correction")}>
         <Select
           items={EC_LEVELS}
-          value={layer.ecLevel ?? "M"}
+          value={layer.ecLevel ?? "L"}
           onValueChange={(v) => { if (v) set({ ecLevel: v as QrLayer["ecLevel"] }); }}
         >
           <SelectTrigger id={`${id}-ec`} size="sm" aria-label="Error correction" className="h-6 w-24 text-xs">

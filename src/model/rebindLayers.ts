@@ -41,9 +41,16 @@ export function rebindLabel(
   label: LabelFile, _from: Master | undefined, to: Master,
 ): { label: LabelFile; dropped: { values: string[]; variants: string[] } } {
   // Live values win over benched ones with the same id (they are what the
-  // operator has been looking at); variant order keeps dormant first.
+  // operator has been looking at); dormant variants return to their old slots.
   const candidateValues: Record<string, LayerValue> = { ...label.dormant?.values, ...label.values };
-  const candidateVariants = dedupe([...(label.dormant?.variants ?? []), ...label.enabledVariants]);
+  const order = label.dormant?.variantOrder;
+  const candidateVariants = order ? [...label.enabledVariants]
+    : dedupe([...(label.dormant?.variants ?? []), ...label.enabledVariants]);
+  if (order) for (const id of dedupe([...order, ...(label.dormant?.variants ?? [])])) {
+    if (!label.dormant?.variants.includes(id) || candidateVariants.includes(id)) continue;
+    const at = order.indexOf(id);
+    candidateVariants.splice(at < 0 ? candidateVariants.length : Math.min(at, candidateVariants.length), 0, id);
+  }
 
   const kinds = layerKinds(to);
   const values: Record<string, LayerValue> = {};
@@ -62,7 +69,8 @@ export function rebindLabel(
   // that never left its master.
   const { dormant: _d, masterHint: _h, ...rest } = label;
   const bench = dropped.values.length > 0 || dormantVariants.length > 0
-    ? { dormant: { values: dormantValues, variants: dormantVariants } }
+    ? { dormant: { values: dormantValues, variants: dormantVariants,
+      ...(dormantVariants.length ? { variantOrder: candidateVariants } : {}) } }
     : {};
   return {
     label: { ...rest, masterId: to.id, enabledVariants, values, ...bench },

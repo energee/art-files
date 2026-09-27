@@ -631,6 +631,6 @@ describe("LayerInspector dropdown triggers show the option label (#232)", () => 
   it("QR style and Error correction", () => {
     render(qr({ qrStyle: "rounded" }));
     expect(shown("QR style")).toBe("Rounded");
-    expect(shown("Error correction")).toBe("M (default)");
+    expect(shown("Error correction")).toBe("L (default)");
   });
 });

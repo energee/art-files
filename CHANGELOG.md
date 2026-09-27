@@ -8,6 +8,20 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 
+- **Saving protects edits made while a file is writing.** Newer edits remain
+  unsaved, and Save Master preserves them. A failed browser write reports an
+  error; cancelling Save As keeps the original save target.
+- **Bad labels and image loads report errors without replacing the open work.**
+  Archives skip unrelated files and Finder metadata, and reject assets above
+  128 MiB or a combined unpacked size above 256 MiB.
+- **Legacy label-only layers can be inspected, moved, edited and removed.**
+  Save Master also lists changed margins and document settings accurately,
+  and distinguishes resetting a variant override from deleting a layer.
+- **Switching masters preserves variant precedence on return.** New variants
+  receive unused names. Each arrow-key nudge has its own undo step, and barcode
+  resizing keeps module widths free of floating-point noise.
+- **QR error correction shows the actual default, L.**
+
 - **Black text and vector artwork stay on the black plate.** PDF exports
   preserve neutral vector inks through CMYK conversion without turning
   colored artwork black. Raster images still use the printer’s color profile.

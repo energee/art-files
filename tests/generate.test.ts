@@ -453,3 +453,26 @@ describe("buildLabel missing art", () => {
     })).rejects.toThrow(/missing/i);
   });
 });
+
+it("CLI accepts optional null clears and dormant saved values, but rejects required clears (#270, #271)", async () => {
+  const io = memIo();
+  const master = lolevMaster();
+  const description = master.layers.find((l) => l.id === "description")!;
+  Object.assign(description, { width: 100 });
+  io.files.set("/m.master", packMaster(master, {}));
+  const label = { formatVersion: 3 as const, masterId: master.id, enabledVariants: [],
+    values: { collabLead: "Hidden" }, overrides: { description: { width: null }, collabLeft: { x: 50 } } };
+  io.files.set("/x.label", packLabel(label as unknown as Parameters<typeof packLabel>[0], {}));
+  expect(await io.run(["--master", "/m.master", "--label", "/x.label", "--out", "/out", "--format", "pdf"])).toBe(0);
+  expect(io.stderr.join("")).toContain("Dormant layer");
+  label.overrides.description = { width: null, size: null } as typeof label.overrides.description;
+  io.files.set("/x.label", packLabel(label as unknown as Parameters<typeof packLabel>[0], {}));
+  expect(await io.run(["--master", "/m.master", "--label", "/x.label", "--out", "/out", "--format", "pdf"])).toBe(1);
+  expect(io.stderr.join("")).toContain("missing size");
+});
+it("CLI names unsupported WebP assets instead of sending them to the PNG decoder (#272)", async () => {
+  const io = memIo();
+  io.files.set("/texture.webp", new Uint8Array([1, 2, 3]));
+  expect(await io.run(["--out", "/out", "--format", "pdf", "--asset", "background=/texture.webp"])).toBe(1);
+  expect(io.stderr.join("")).toContain("texture.webp: WebP is not supported");
+});

@@ -3,6 +3,7 @@
 // target HAS, anything unmatched is benched on `dormant`
 // instead of lost, and a round trip A→B→A restores everything.
 import { describe, expect, it } from "vitest";
+import { parseLabel, serializeLabel } from "../src/model/files";
 import { rebindLabel } from "../src/model/rebindLayers";
 import { lolevMaster } from "../src/model/lolevLayers";
 import type { LabelFile, Master, TextLine } from "../src/model/layers";
@@ -72,7 +73,7 @@ describe("rebindLabel", () => {
     expect(home.masterId).toBe("lolev");
     expect(home.values).toEqual({ name: line("HAZY"), abv: line("6.5"), collabLeft: "asset-1" });
     expect(home.enabledVariants).toEqual(["collab"]);
-    expect(home.dormant).toEqual({ values: { untappd: "u/x" }, variants: ["seasonal"] });
+    expect(home.dormant).toEqual({ values: { untappd: "u/x" }, variants: ["seasonal"], variantOrder: ["collab", "seasonal"] });
   });
   it("restores a benched text value stored as a plain string (#96)", () => {
     const l: LabelFile = { formatVersion: 3, masterId: "other", enabledVariants: [],
@@ -92,4 +93,14 @@ describe("rebindLabel", () => {
     expect(r.label.overrides).toEqual({ name: { size: 20 } });
     expect(l).toEqual(before);
   });
+});
+
+it("restores variant precedence after a saved partial rebind (#269)", () => {
+  const a = lolevMaster();
+  a.variants = [{ id: "v1", name: "One", layers: {} }, { id: "v2", name: "Two", layers: {} }];
+  const b = { ...a, id: "other", variants: [a.variants[1]] };
+  const original: LabelFile = { formatVersion: 3, masterId: a.id, enabledVariants: ["v2", "v1"], values: {} };
+  const away = rebindLabel(original, a, b).label;
+  const saved = parseLabel(JSON.parse(serializeLabel(away))) as LabelFile;
+  expect(rebindLabel(saved, b, a).label.enabledVariants).toEqual(["v2", "v1"]);
 });

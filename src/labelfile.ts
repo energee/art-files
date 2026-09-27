@@ -66,6 +66,23 @@ export function packAssets(zip: Zippable, assets: LabelAssets): void {
     zip[`${CUSTOM_DIR}/${id}/${a.name}`] = [a.bytes, { level: 0 }];
 }
 
+/** Only real files in the container layout, excluding Finder metadata. */
+const assetEntry = (path: string) =>
+  /^(?:(?:texture|mask|collab-left|collab-center)\/[^/.][^/]*|custom\/[^/.][^/]*\/[^/.][^/]*)$/.test(path);
+
+/** Bound inflation before fflate allocates each output buffer. Unknown files
+ *  never inflate. Limits allow large print assets without an unbounded ZIP. */
+export function unpackArchive(bytes: Uint8Array): Record<string, Uint8Array> {
+  let total = 0;
+  return unzipSync(bytes, { filter: (entry) => {
+    if (!/^(?:master|label|config)\.json$/.test(entry.name) && !assetEntry(entry.name)) return false;
+    total += entry.originalSize;
+    if (entry.originalSize > 128 * 1024 * 1024 || total > 256 * 1024 * 1024)
+      throw new Error(`Archive is too large: "${entry.name}" exceeds the 128 MiB file or 256 MiB total limit.`);
+    return true;
+  } });
+}
+
 /** The unpack half of packAssets: pull every asset role and per-id custom
  *  image out of an unzipped entry map. Shared with unpackMaster. Directory
  *  entries (names ending in `/`) are skipped: packAssets never writes them,
@@ -73,7 +90,7 @@ export function packAssets(zip: Zippable, assets: LabelAssets): void {
  *  ahead of `texture/<name>`, and it must not be taken as the asset (#100). */
 export function extractAssets(entries: Record<string, Uint8Array>): LabelAssets {
   const assets: LabelAssets = {};
-  const files = Object.keys(entries).filter((p) => !p.endsWith("/"));
+  const files = Object.keys(entries).filter(assetEntry);
   for (const [role, dir] of Object.entries(ROLE_DIRS) as [FixedAssetRole, string][]) {
     const path = files.find((p) => p.startsWith(`${dir}/`));
     if (path) assets[role] = { name: path.slice(dir.length + 1), bytes: entries[path] };
@@ -123,7 +140,7 @@ export function packLabelV2(label: LabelFileV2, assets: LabelAssets): Uint8Array
  *  (v1, config.json) or label (v2, label.json) plus whichever assets the
  *  file holds. Throws a readable error when neither is present. */
 export function unpackLabel(bytes: Uint8Array): { config?: string; label?: string; assets: LabelAssets } {
-  const entries = unzipSync(bytes);
+  const entries = unpackArchive(bytes);
   const configEntry = entries["config.json"];
   const labelEntry = entries["label.json"];
   if (!configEntry && !labelEntry) {

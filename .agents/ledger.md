@@ -497,3 +497,11 @@ no status, no attempts, no delta.
 - delta: neutral art fills/strokes use DeviceGray; coloured vectors and raster assets retain their existing colour handling
 - evidence: 1177 tests pass with NODE_OPTIONS=--no-experimental-webstorage (Node 26 otherwise shadows happy-dom localStorage); TypeScript, zero-warning lint and release gate pass; Ghostscript 10.08 preserves DeviceGray black and converts gold to coloured CMYK; both 600-DPI art golden diffs have zero changed pixels
 - release: binary-impacting; queued under Unreleased, no release published
+
+## 2026-09-27 issue-queue-document-safety
+- finding: [correctness/high] #263–#273, #287, #288, #290, #299, #304, #311, #341 — save races, malformed input and inconsistent model/CLI handling
+- status: done
+- attempts: 1/3
+- delta: snapshot-aware saves; stable cancelled/failed save targets; decode errors surfaced; preflight before document replacement; editable label-only layers; complete master review; variant-order round trips; bounded archive inflation; optional CLI clears and dormant values; useful WebP error; independent nudges; precise barcode resize; unique variant names; actual QR default; shared plain-object test and native cloning
+- evidence: 1195 tests pass; TypeScript, zero-warning lint and release metadata checks pass; focused DOM regressions retain the prior document and save target after each malformed open
+- release: binary-impacting; queued under Unreleased, no release published

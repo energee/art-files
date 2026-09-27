@@ -7,7 +7,7 @@
 // wrappers over it.
 import { describe, expect, it, vi } from "vitest";
 import {
-  adoptMaster, addVariant, checkLabelBindings, clearLabelOverride, overrideBadges, patchLayers, setContentIn, setLabelOverride,
+  adoptMaster, addVariant, removeLayerIn, checkLabelBindings, clearLabelOverride, overrideBadges, patchLayers, setContentIn, setLabelOverride,
   setLayerIn, showVersion, type Doc,
 } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
@@ -270,4 +270,17 @@ describe("adoptMaster", () => {
     const label = newLabel(m);
     expect(adoptMaster(label, m)).toBe(label);
   });
+});
+
+it("inspects, moves, edits and removes label-only legacy layers (#264)", () => {
+  const d = doc();
+  const own = { ...d.master.layers.find((l) => l.kind === "text")!, id: "legacy", name: "Stamp" };
+  d.label.overrides = { legacy: own };
+  expect(() => overrideBadges(d.master, d.label, "legacy")).not.toThrow();
+  const moved = patchLayers(d, [["legacy", { x: 50, placeholder: "Stamp text" }]]);
+  expect(byId<TextLayer>(moved, "legacy")).toMatchObject({ x: 50, placeholder: "Stamp text" });
+  expect(moved.master).toBe(d.master);
+  const removed = removeLayerIn(moved, "legacy");
+  expect(byId(removed, "legacy")).toBeUndefined();
+  expect(removed.master).toBe(d.master);
 });

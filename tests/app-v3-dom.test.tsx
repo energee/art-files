@@ -474,3 +474,22 @@ it("an in-place session whose first keystroke changes nothing never folds into t
     p.onEditText("abv", [{ ...lines[0], text: "6.5" }], false);
   }, (p) => p.onEditCancel());
 }, 60_000);
+
+it("each arrow nudge has its own undo step (#287)", async () => {
+  const { container, unmount } = await mountEditor();
+  try {
+    await vi.waitFor(() => expect(perf.source).not.toBeNull());
+    const row = container.querySelector('[data-layer-id="name"] [data-slot="sidebar-menu-button"]') as HTMLButtonElement;
+    await act(async () => row.click());
+    const x = () => layerOf(perf.preview!, "name").x;
+    const start = x();
+    for (let n = 0; n < 2; n++) await act(async () => {
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    });
+    expect(x()).toBeCloseTo(start + 2);
+    await pressUndo();
+    expect(x()).toBeCloseTo(start + 1);
+    await pressUndo();
+    expect(x()).toBeCloseTo(start);
+  } finally { await unmount(); }
+});

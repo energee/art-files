@@ -147,3 +147,22 @@ describe("masterNameFromFile", () => {
     expect(masterNameFromFile("/Users/ted/Masters/")).toBe("");
   });
 });
+
+it("ignores Finder metadata and rejects oversized entries before inflation (#288, #304)", () => {
+  const bytes = zipSync({
+    "master.json": strToU8(serializeMaster(lolevV3())),
+    "texture/.DS_Store": new Uint8Array([1]),
+    "texture/._rock.png": new Uint8Array([2]),
+    "texture/rock.png": png(3),
+  });
+  expect(unpackMaster(bytes).assets.texture).toEqual({ name: "rock.png", bytes: png(3) });
+  // Forge the central directory's advertised size, without allocating a bomb.
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (let i = 0; i <= bytes.length - 46; i++) {
+    if (view.getUint32(i, true) === 0x02014b50) {
+      view.setUint32(i + 24, 129 * 1024 * 1024, true);
+      break;
+    }
+  }
+  expect(() => unpackMaster(bytes)).toThrow(/Archive is too large/);
+});

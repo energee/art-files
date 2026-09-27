@@ -326,7 +326,7 @@ async function previewPng(src: ImageBitmap | HTMLCanvasElement): Promise<Uint8Ar
 
 type LoadedTexture = Loaded & { kind: "png" | "jpg" };
 // srcBytes: the original upload — the bytes Save writes.
-type LoadedMask = Loaded & { error?: string; srcBytes: Uint8Array };
+type LoadedMask = Loaded & { srcBytes: Uint8Array };
 
 /** Decode a texture file into its slot value; state-free, like readMask and
  *  readCustomImage, so an open can decode before it commits (#81). PNG and
@@ -530,6 +530,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Every per-id image asset this document carries: image layers' art,
   // collab logos included (an image layer's value is a key here).
   const [customImages, setCustomImages] = useState<Record<string, CustomFile>>({});
+  const savedAssetsRef = useRef({ texture, mask, customImages });
+  savedAssetsRef.current = { texture, mask, customImages };
   // The layers that DRAW: enabled, values applied, page art bound to the
   // loaded slots. What the preview, the hit boxes, the drag targets and the
   // exports all plan from.
@@ -794,10 +796,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Returns the minted id so the picker can open its rename box on the new
    *  row — MasterPicker.onNewVariant is typed `() => string` for that. */
   function onNewVariant(): string {
-    const name = `Variant ${master.variants.length + 1}`;
     // Minted outside the edit so the id is in hand for the version switch —
     // `edit`'s callback stays a pure Doc → Doc.
-    const { master: m, id } = addVariant(master, name);
+    const { master: m, id } = addVariant(master);
     // Switched to, like any other version: the new one is what you see.
     edit((d) => ({ master: m, label: showVersion(d.label, version, id) }));
     return id;
@@ -928,11 +929,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  // A loaded-but-invalid mask or an invalid filled value (a bad UPC) blocks
-  // exports; texture and mask are both optional.
+  // Invalid filled values (such as a bad UPC) block exports.
   const errorList = Object.entries(errors).map(([id, e]) => `${rowById.get(id)?.layer.name ?? id}: ${e}`);
-  const blocked = !!mask?.error || errorList.length > 0;
-  const blockedWhy = [mask?.error, ...errorList].filter(Boolean).join(" · ");
+  const blocked = errorList.length > 0;
+  const blockedWhy = errorList.join(" · ");
   const exportBlocked = blocked || building;
 
   /** Replaces (or, with null, removes) a loaded asset, revoking the old
@@ -944,8 +944,14 @@ export const DocumentEditor = memo(function DocumentEditor({
     set((old) => { if (old) URL.revokeObjectURL(old.previewUrl); return next; });
   };
 
-  async function onTexture(f: File) { swapLoaded(setTexture, await readTexture(f)); }
-  async function onMask(f: File) { swapLoaded(setMask, await readMask(f)); }
+  async function onTexture(f: File) {
+    try { swapLoaded(setTexture, await readTexture(f)); setLoadError(""); }
+    catch (err) { setLoadError(`Could not load texture "${f.name}": ${errMsg(err)}`); }
+  }
+  async function onMask(f: File) {
+    try { swapLoaded(setMask, await readMask(f)); setLoadError(""); }
+    catch (err) { setLoadError(`Could not load mask "${f.name}": ${errMsg(err)}`); }
+  }
 
   /** An image layer's well: read the dropped file into the per-id store
    *  and point the layer (its fill value, or the master's own asset) at the
@@ -1286,7 +1292,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     const entries = drawLayers.filter((l) => moving.has(l.id))
       .map((layer): [string, DeepPartial<Layer>] => [layer.id, moveBy(layer, dx, dy, moving)])
       .filter(([, p]) => Object.keys(p).length);
-    if (entries.length) patchMany(entries);
+    if (entries.length) patchMany(entries, false);
   };
 
   /** Handle resize: like onDrag, the patch is resizeBy against the layer
@@ -1387,6 +1393,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         return;
       } catch (err) {
         if (isAbort(err)) return;
+        throw err;
       }
     }
     saveBytes(bytes, name, type);
@@ -1510,6 +1517,15 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** File → Save / Save As…: the v3 label plus its embedded art, zipped as
    *  <name-slug>.label (model/files.ts). */
   async function saveProject(as = false): Promise<boolean> {
+    const finish = () => {
+      const current = savedAssetsRef.current;
+      const unchanged = docRef.current === doc && current.texture === texture
+        && current.mask === mask && current.customImages === customImages;
+      setDirty(!unchanged);
+      setLoadError("");
+      // The close-tab caller must not close over edits made during this write.
+      return unchanged;
+    };
     const zip = packLabel({ ...label, masterHint: masterIndex()[master.id]?.path }, {
       texture: textureAsset(), mask: maskAsset(),
       customImages: imageBundle(Object.keys(liveImages)),
@@ -1523,11 +1539,8 @@ export const DocumentEditor = memo(function DocumentEditor({
         if (path === null) return false;
         projectPath.current = path;
         setFilePath(path);
-        setDirty(false);
-        setLoadError("");
-        return true;
+        return finish();
       } catch (err) {
-        if (existingPath) { projectPath.current = null; setFilePath(null); }
         setLoadError(`Could not save project: ${errMsg(err)}`);
         return false;
       }
@@ -1535,21 +1548,20 @@ export const DocumentEditor = memo(function DocumentEditor({
     const pick = savePicker();
     if (pick) {
       try {
-        if (as || !projectHandle.current) {
-          projectHandle.current = await pick({ suggestedName: exportBase + LABEL_EXT, types: LABEL_TYPES });
-        }
-        await writeHandle(projectHandle.current, zip);
-        setDirty(false);
-        return true;
+        const handle = (as ? null : projectHandle.current)
+          ?? await pick({ suggestedName: exportBase + LABEL_EXT, types: LABEL_TYPES });
+        await writeHandle(handle, zip);
+        projectHandle.current = handle;
+        return finish();
       } catch (err) {
-        projectHandle.current = null;
         if (isAbort(err)) return false;
+        setLoadError(`Could not save project: ${errMsg(err)}`);
+        return false;
       }
     }
     startSaveBatch();
     saveBytes(zip, exportBase + LABEL_EXT, "application/zip");
-    setDirty(false);
-    return true;
+    return finish();
   }
   saveSlot.current = () => saveProject();
 
@@ -1607,7 +1619,14 @@ export const DocumentEditor = memo(function DocumentEditor({
      *  baseline the next review diffs against. A plain save with nothing
      *  promoted is a no-op edit and pushes no history entry. */
     const commit = async (m: Master, where: string, bytes?: Uint8Array) => {
-      edit(() => ({ master: m, label: adoptMaster(promoted.label, m) }));
+      edit((d) => {
+        if (d.master.id !== master.id) return d;
+        const liveMaster = d.master === master ? m
+          : as ? { ...d.master, id: m.id, name: m.name } : d.master;
+        // Keep newer label edits, including a newly changed promoted field.
+        // Redundant overrides can be promoted again on the next master save.
+        return { master: liveMaster, label: adoptMaster(d.label === label ? promoted.label : d.label, liveMaster) };
+      });
       await rememberMaster(m, where, bytes);
       pristineMaster.current = m;
       repaintMasterDirty((n) => n + 1);
@@ -1620,7 +1639,6 @@ export const DocumentEditor = memo(function DocumentEditor({
           defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path: existingPath ?? undefined,
         });
         if (path === null) return false;
-        masterFilePath.current = { id: forked.id, target: path };
         const final = titled(path);
         // ponytail: the name is only knowable after the picker returns, so a
         // renamed fork rewrites the file it just wrote — same path, no second
@@ -1631,11 +1649,11 @@ export const DocumentEditor = memo(function DocumentEditor({
           written = packMaster(final, assets);
           await saveNativeFile(written, { defaultPath: suggested + MASTER_EXT, filter: MASTER_FILTER, path });
         }
+        masterFilePath.current = { id: forked.id, target: path };
         await commit(final, path, written);
         setLoadError("");
         return true;
       } catch (err) {
-        if (existingPath) masterFilePath.current = null;
         setLoadError(`Could not save master: ${errMsg(err)}`);
         return false;
       }
@@ -1645,18 +1663,17 @@ export const DocumentEditor = memo(function DocumentEditor({
       try {
         const handle = (as ? null : saveTargetFor(masterFileHandle.current, master.id))
           ?? await pick({ suggestedName: suggested + MASTER_EXT, types: MASTER_TYPES });
-        masterFileHandle.current = { id: forked.id, target: handle };
         // The handle's name is known BEFORE the write here (unlike the Tauri
         // branch above), so a renamed fork packs and writes exactly once.
         const final = titled(handle.name);
         const bytes = packMaster(final, assets);
         await writeHandle(handle, bytes);
+        masterFileHandle.current = { id: forked.id, target: handle };
         // The bytes go to the master cache too: a browser reload has no path
         // to re-read this file from (masterCache.ts).
         await commit(final, handle.name, bytes);
         return true;
       } catch (err) {
-        masterFileHandle.current = null;
         if (isAbort(err)) return false;
         setLoadError(`Could not save master: ${errMsg(err)}`);
         return false;
@@ -1752,7 +1769,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     masterFileHandle.current = null;
     masterFilePath.current = isTauri() && path ? { id: target.id, target: path } : null;
     commitRebind(target);
-    void adoptMasterAssets(assets);
+    await adoptMasterAssets(assets);
   }
 
   /** MasterPicker's library listing: the shipped master plus every master
@@ -1904,6 +1921,9 @@ export const DocumentEditor = memo(function DocumentEditor({
         }
         next = { master: resolved.master, label: adoptLegacyCollab(l) };
       }
+      // Resolve untrusted overrides/values before installing the document or
+      // decoding its assets; a malformed label must leave the old tab intact.
+      notes.push(...layerRows(next.master, next.label).warnings);
       // Label-delta rule: the label's own embedded role wins; a missing one
       // falls back to the master's template asset. Image bytes merge the
       // same way, per id (spread order: master first, label last).
@@ -1925,7 +1945,6 @@ export const DocumentEditor = memo(function DocumentEditor({
         throw err;
       });
       resetDocument(next);
-      notes.push(...layerRows(next.master, next.label).warnings);
       if (tex) swapLoaded(setTexture, tex);
       if (msk) swapLoaded(setMask, msk);
       if (images.length) setCustomImages(Object.fromEntries(images));
@@ -2092,7 +2111,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       }
       if (layer.role === "mask") {
         return <FileDrop label="Metallic mask" accept={{ "image/png": [".png"] }}
-          fileName={mask?.name} previewUrl={mask?.previewUrl} error={mask?.error}
+          fileName={mask?.name} previewUrl={mask?.previewUrl}
           onFile={(f) => void onMask(f)} onClear={() => swapLoaded(setMask, null)} />;
       }
       if (layer.asset === "builtin:logo") return null;
@@ -2254,7 +2273,8 @@ export const DocumentEditor = memo(function DocumentEditor({
               const f = e.target.files?.[0];
               e.target.value = "";
               if (!f) return;
-              void f.arrayBuffer().then((buf) => openMasterBytes(new Uint8Array(buf), f.name, {}));
+              void f.arrayBuffer().then((buf) => openMasterBytes(new Uint8Array(buf), f.name, {}))
+                .catch((err) => setLoadError(`Could not open master: ${errMsg(err)}`));
             }} />
         </header>
       {/* The workspace tab strip's slot, under the menubar. */}
