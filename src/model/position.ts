@@ -4,7 +4,7 @@
 // drag to a guide SETS the anchor (offset 0); a free drop keeps the nearest
 // anchor with the offset that reproduces the dropped spot exactly.
 export type Anchor = "left" | "center" | "right";
-export type VAnchor = "top" | "bottom";
+type VAnchor = "top" | "bottom";
 export interface LayerPosition {
   anchor: Anchor; vAnchor: VAnchor; offsetX: number; offsetY: number;
 }

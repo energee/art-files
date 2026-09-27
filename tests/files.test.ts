@@ -7,25 +7,33 @@ const writeFile = vi.fn();
 const readFile = vi.fn();
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save, open }));
 vi.mock("@tauri-apps/plugin-fs", () => ({ writeFile, readFile }));
+let tauri = false;
+vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => tauri }));
 
-import { openNativeFile, saveNativeFile, saveThrough } from "@/files";
+import { openNativeFile, saveThrough } from "@/files";
 
 describe("native file saving", () => {
+  const options = {
+    name: "Labradorite.label", type: "application/octet-stream",
+    filter: { name: "Label project", extensions: ["label"] },
+    types: [],
+  };
+  const download = vi.fn();
   beforeEach(() => {
+    tauri = true;
     save.mockReset();
-    open.mockReset();
     writeFile.mockReset();
-    readFile.mockReset();
+    download.mockReset();
   });
+  afterEach(() => { tauri = false; });
 
   it("opens a native Save As dialog and writes its selected path", async () => {
     const bytes = new Uint8Array([1, 2, 3]);
     save.mockResolvedValue("/labels/Labradorite.label");
 
-    await expect(saveNativeFile(bytes, {
-      defaultPath: "Labradorite.label",
-      filter: { name: "Label project", extensions: ["label"] },
-    })).resolves.toBe("/labels/Labradorite.label");
+    await expect(saveThrough(bytes, options, download)).resolves.toEqual({
+      name: "/labels/Labradorite.label", bytes, target: { path: "/labels/Labradorite.label" },
+    });
 
     expect(save).toHaveBeenCalledWith({
       defaultPath: "Labradorite.label",
@@ -37,11 +45,8 @@ describe("native file saving", () => {
   it("reuses an existing Save path without opening another dialog", async () => {
     const bytes = new Uint8Array([4, 5, 6]);
 
-    await expect(saveNativeFile(bytes, {
-      defaultPath: "ignored.label",
-      filter: { name: "Label project", extensions: ["label"] },
-      path: "/labels/existing.label",
-    })).resolves.toBe("/labels/existing.label");
+    await expect(saveThrough(bytes, { ...options, target: { path: "/labels/existing.label" } }, download))
+      .resolves.toMatchObject({ name: "/labels/existing.label" });
 
     expect(save).not.toHaveBeenCalled();
     expect(writeFile).toHaveBeenCalledWith("/labels/existing.label", bytes);
@@ -50,22 +55,18 @@ describe("native file saving", () => {
   it("treats a cancelled dialog as no save", async () => {
     save.mockResolvedValue(null);
 
-    await expect(saveNativeFile(new Uint8Array([7]), {
-      defaultPath: "cancel.label",
-      filter: { name: "Label project", extensions: ["label"] },
-    })).resolves.toBeNull();
+    await expect(saveThrough(new Uint8Array([7]), options, download)).resolves.toBeNull();
 
     expect(writeFile).not.toHaveBeenCalled();
+    expect(download).not.toHaveBeenCalled();
   });
 
   it("propagates write failures instead of pretending the save completed", async () => {
     save.mockResolvedValue("/labels/unwritable.label");
     writeFile.mockRejectedValue(new Error("permission denied"));
 
-    await expect(saveNativeFile(new Uint8Array([8]), {
-      defaultPath: "unwritable.label",
-      filter: { name: "Label project", extensions: ["label"] },
-    })).rejects.toThrow("permission denied");
+    await expect(saveThrough(new Uint8Array([8]), options, download)).rejects.toThrow("permission denied");
+    expect(download).not.toHaveBeenCalled();
   });
 });
 

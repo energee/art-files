@@ -71,9 +71,13 @@ it("re-checks View → Label after choosing it while Label is already the view",
   }
 });
 
-for (const platform of ["Win32", "Linux x86_64"]) {
+// isMacOS() reads navigator.userAgent, so that is what each case pins.
+for (const [platform, userAgent] of [
+  ["Windows", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)"],
+  ["Linux", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko)"],
+]) {
   it(`provides Help → Check for Updates on ${platform}`, async () => {
-    const platformSpy = vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
+    const platformSpy = vi.spyOn(navigator, "userAgent", "get").mockReturnValue(userAgent);
     native.items.clear();
     const container = document.createElement("div");
     document.body.append(container);

@@ -27,8 +27,15 @@ jobs:
       - run: npm test
 
   rust:
+    # macOS: terminate.rs and its objc2 dependency are built (and tested) only there.
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          # Same pin as release.yml; upgrade both together.
+          toolchain: "1.98.1"
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
       - run: cargo test --manifest-path src-tauri/Cargo.toml

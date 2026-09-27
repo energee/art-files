@@ -765,9 +765,8 @@ function ImageGeometry(props: Ctx & { layer: ImageLayer }) {
     <SelectField id={`${id}-fit`} label="Fit" ariaLabel="Fit" badge={badge(["fit"], "Fit")}
         items={FITS} value={layer.fit ?? "contain"} onChange={(v) => set({ fit: v as ImageLayer["fit"] })} />
   );
-  // The page art (texture, metallic mask) covers the whole page: its box is
-  // the page and it has no scale or tint to speak of — only how it meets
-  // that box.
+  // The page art (texture, metallic mask) always covers the whole page, so it
+  // has no geometry to edit — not even Fit; the note says so instead.
   if (page) return <p className="text-xs text-muted-foreground">Page art always covers the full page.</p>;
   return (
     <div className="space-y-1.5">

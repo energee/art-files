@@ -5,39 +5,6 @@ import { isAbort, openPicker, savePicker, writeHandle } from "./filePickers";
 // visible in one place. Open and save both live here; the capability
 // scope allows reading and writing .label and .master paths.
 
-export type NativeSaveOptions = {
-  defaultPath: string;
-  filter: { name: string; extensions: string[] };
-  /** Reuse a path from an earlier Save As instead of prompting again. */
-  path?: string;
-};
-
-/** Save bytes through Tauri's native APIs. Dynamic imports keep both plugins
- *  out of the browser's initial chunk. A null result is an ordinary dialog
- *  cancellation; plugin and write errors propagate to the app's Alert.
- *  A dialog-chosen path is writable because the dialog plugin adds it to the
- *  runtime scope; a reused `path` (Finder/argv opens, remembered masters) is
- *  writable only through the .label/.master globs in
- *  src-tauri/capabilities/default.json. */
-export async function saveNativeFile(
-  bytes: Uint8Array,
-  options: NativeSaveOptions,
-): Promise<string | null> {
-  let path = options.path;
-  if (!path) {
-    const { save } = await import("@tauri-apps/plugin-dialog");
-    path = await save({
-      defaultPath: options.defaultPath,
-      filters: [options.filter],
-    }) ?? undefined;
-  }
-  if (!path) return null;
-
-  const { writeFile } = await import("@tauri-apps/plugin-fs");
-  await writeFile(path, bytes);
-  return path;
-}
-
 /** Read a file's bytes through Tauri's fs plugin — the read half of this
  *  boundary. The capability scope (src-tauri/capabilities/default.json)
  *  limits reads to .label and .master paths (including inside hidden folders:
@@ -48,7 +15,7 @@ export async function readNativeFile(path: string): Promise<Uint8Array> {
 }
 
 /** Open a native file dialog and return the selected path. Null is an
- *  ordinary cancellation, matching saveNativeFile. */
+ *  ordinary cancellation, matching saveThrough. */
 export async function openNativeFile(
   options: { filter: { name: string; extensions: string[] } },
 ): Promise<string | null> {
@@ -60,7 +27,7 @@ export async function openNativeFile(
 /** A reusable save destination; downloads deliberately have no destination. */
 export type FileTarget = { path: string } | { handle: FileSystemFileHandle };
 type FileOptions = {
-  filter: NativeSaveOptions["filter"];
+  filter: { name: string; extensions: string[] };
   types: { description: string; accept: Record<string, string[]> }[];
 };
 
@@ -83,7 +50,12 @@ export async function openThrough(options: FileOptions): Promise<FileTarget | nu
 
 /** Choose once, build bytes with the chosen name, and write once. Cancellation
  *  is null; a browser picker that fails to open downloads instead, but write
- *  failures always propagate rather than becoming downloads. */
+ *  failures always propagate rather than becoming downloads.
+ *  On desktop a dialog-chosen path is writable because the dialog plugin adds
+ *  it to the runtime scope; a reused `target.path` (Finder/argv opens,
+ *  remembered masters) is writable only through the .label/.master globs in
+ *  src-tauri/capabilities/default.json. Dynamic imports keep both plugins out
+ *  of the browser's initial chunk. */
 export async function saveThrough(
   content: Uint8Array | ((name: string) => Uint8Array),
   options: FileOptions & { name: string; type: string; target?: FileTarget | null },
@@ -108,7 +80,7 @@ export async function saveThrough(
       if (handle) { target = { handle }; name = handle.name; }
     }
     const bytes = typeof content === "function" ? content(name) : content;
-    if (target && "path" in target) await saveNativeFile(bytes, { ...options, defaultPath: name, path: target.path });
+    if (target && "path" in target) await (await import("@tauri-apps/plugin-fs")).writeFile(target.path, bytes);
     else if (target && "handle" in target) await writeHandle(target.handle, bytes);
     else download(bytes, name, options.type);
     return { name, bytes, target };
