@@ -454,31 +454,39 @@ export function adoptMaster(label: LabelFile, master: Master): LabelFile {
   return label.masterId === master.id ? label : { ...label, masterId: master.id };
 }
 
+/** Does an image `asset` value carry bytes of its own? Empty is unset and
+ *  `builtin:` art ships with the app, so neither has anything to bundle. */
+const ownsBytes = (asset: unknown): asset is string =>
+  typeof asset === "string" && !!asset && !asset.startsWith("builtin:");
+
 /** Every custom image id the master names — a layer's `asset`, or any
  *  variant's entry — whose bytes a .master must carry. No `kind` check: a
  *  variant that patches an existing layer stores only the changed fields, so
- *  `{ asset }` arrives without one. Empty and bundled (`builtin:`) assets are
- *  left out; they have no bytes to carry. */
+ *  `{ asset }` arrives without one. */
 export function masterAssetIds(master: Master): Set<string> {
   const ids = new Set<string>();
   const add = (e: DeepPartial<Layer> | undefined) => {
     const a = (e as { asset?: string } | undefined)?.asset;
-    if (a && !a.startsWith("builtin:")) ids.add(a);
+    if (ownsBytes(a)) ids.add(a);
   };
   master.layers.forEach(add);
   for (const v of master.variants) Object.values(v.layers).forEach(add);
   return ids;
 }
 
-/** Is an image asset id still reachable from the document: an image layer's
- *  `asset` in the master, any variant's diff or the label's overrides, or a
- *  label value. App's liveImages filter: the in-memory store also keeps
- *  replaced/cleared art for undo, so not every stored id is referenced. */
-export function assetReferenced(master: Master, label: LabelFile, assetId: string): boolean {
-  if (masterAssetIds(master).has(assetId)) return true;
-  const uses = (e: DeepPartial<Layer> | undefined) => !!e && (e as { asset?: string }).asset === assetId;
-  if (Object.values(label.overrides ?? {}).some(uses)) return true;
-  return Object.values(label.values).some((v) => v === assetId);
+/** Every image asset id still reachable from the document: the master's
+ *  (masterAssetIds), the label's overrides, and its values. App's liveImages
+ *  filter: the in-memory store also keeps replaced/cleared art for undo, so
+ *  not every stored id is referenced. One set per call, so filtering N stored
+ *  ids walks the document once, not N times. */
+export function referencedAssetIds(master: Master, label: LabelFile): Set<string> {
+  const ids = masterAssetIds(master);
+  for (const e of Object.values(label.overrides ?? {})) {
+    const a = (e as { asset?: string } | undefined)?.asset;
+    if (a) ids.add(a);
+  }
+  for (const v of Object.values(label.values)) if (typeof v === "string") ids.add(v);
+  return ids;
 }
 
 /** A position written from a gesture or a measurement, on the model's 0.01pt
@@ -953,7 +961,7 @@ function structureOnlyEntry(p: Entry, base?: Layer): Entry {
     next.lines = rec.lines.map((line) =>
       line && typeof line === "object" ? { ...line as object, text: "" } : line);
   }
-  if (typeof rec.asset === "string" && rec.asset && !rec.asset.startsWith("builtin:")) {
+  if (ownsBytes(rec.asset)) {
     next.asset = "";
   }
   return next;

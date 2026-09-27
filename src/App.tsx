@@ -48,7 +48,7 @@ import { PAGE_ART_ID, uppercaseOf, validateLayer } from "@/model/layers";
 import { exportBase as exportBaseOf, titleOf, withStoredValue } from "@/model/resolveLayers";
 import type { DeepPartial } from "@/model/merge";
 import {
-  addLayer, addVariant, adoptMaster, assetReferenced, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
+  addLayer, addVariant, adoptMaster, referencedAssetIds, masterAssetIds, bindingPatch, unbindPatch, clearLabelOverride, clearOverride,
   applyPromotions, checkLabelBindings, masterChanges, masterDiff, type MasterChange, moveBy, removeVariantIn, renameVariant, showVersion, nearestLine, snapDelta, type SnapTarget, moveLayers, resizeBy, type ResizeHandle, overrideBadges, overriddenPaths, patchLayers, removeLayerIn, setContentIn, setValue, structureOnlyMaster,
 } from "@/model/edit";
 import { layerRows } from "@/model/rows";
@@ -991,8 +991,10 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  read only this live subset, so kept art is never decoded or packed
    *  (#84). Keyed by the live-id list, so an edit that changes no image
    *  reference keeps the same object and the preview doesn't re-decode. */
-  const liveIds = useMemo(() => Object.keys(customImages)
-    .filter((id) => assetReferenced(master, label, id)).join("\n"), [customImages, master, label]);
+  const liveIds = useMemo(() => {
+    const refs = referencedAssetIds(master, label);
+    return Object.keys(customImages).filter((id) => refs.has(id)).join("\n");
+  }, [customImages, master, label]);
   const liveImages = useMemo(() => Object.fromEntries(
     liveIds ? liveIds.split("\n").map((id) => [id, customImages[id]]) : []), [customImages, liveIds]);
   /** The image layers whose raster art draws repainted in their fill
@@ -1668,7 +1670,9 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (ours && saved.target && "path" in saved.target) masterFilePath.current = { id: forked.id, target: saved.target.path };
       else if (ours && saved.target && "handle" in saved.target) masterFileHandle.current = { id: forked.id, target: saved.target.handle };
       await commit(titled(saved.name), saved.name, ours, saved.bytes);
-      if (ours) setLoadError(missing ? `Note: ${missing} image${missing === 1 ? " has" : "s have"} no file to save — ${missing === 1 ? "it" : "they"} will be blank when this master reopens` : "");
+      if (ours) setLoadError(!missing ? ""
+        : missing === 1 ? "Note: 1 image has no file to save — it will be blank when this master reopens"
+        : `Note: ${missing} images have no file to save — they will be blank when this master reopens`);
       return true;
     } catch (err) {
       setLoadError(`Could not save master: ${errMsg(err)}`);

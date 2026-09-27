@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { parseLabel, serializeLabel } from "../src/model/files";
 import { rebindLabel } from "../src/model/rebindLayers";
-import { assetReferenced } from "../src/model/edit";
+import { referencedAssetIds } from "../src/model/edit";
 import { lolevMaster } from "../src/model/lolevLayers";
 import type { LabelFile, Master, TextLine } from "../src/model/layers";
 import { GOLD } from "../src/layout";
@@ -108,14 +108,14 @@ it("keeps a value typed into a label-only legacy layer", () => {
 });
 
 // Its image stays reachable too: App's liveImages (and so the saved
-// archive) keeps only assets assetReferenced still finds.
+// archive) keeps only assets referencedAssetIds still finds.
 it("keeps a label-only image layer's asset referenced across a rebind", () => {
   const logo = lolevMaster().layers.find((l) => l.id === "logo") as Extract<Master["layers"][number], { kind: "image" }>;
   const l: LabelFile = { ...label(), overrides: { "custom-img": { ...logo, id: "custom-img", name: "Sticker", asset: "" } },
     values: { "custom-img": "img-123" } };
   const moved = rebindLabel(l, lolevMaster(), other());
   expect(moved.dropped.values).toEqual([]);
-  expect(assetReferenced(other(), moved.label, "img-123")).toBe(true);
+  expect(referencedAssetIds(other(), moved.label).has("img-123")).toBe(true);
 });
 
 it("restores variant precedence after a saved partial rebind (#269)", () => {
