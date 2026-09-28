@@ -278,6 +278,21 @@ describe("drawPlate", () => {
     expect(Math.max(...halo)).toBeLessThan(Math.min(...ink));
   });
 
+  it("strokes the mask plate with the same bars and digit glyphs as the art", () => {
+    const item = plan().find((r): r is PlacedBarcode => r.kind === "barcode")!;
+    const paint = (mode: "art" | "mask") => {
+      const { ctx, log } = fakeCtx();
+      drawPlate(ctx, [item], {}, mode, FONT);
+      return afterTranslate(log)
+        .filter((x) => x.op === "strokeRect" || x.op === "fillRect" || x.op === "strokeText" || x.op === "fillText")
+        .map((x) => x.op);
+    };
+    const ops = paint("mask");
+    expect(ops).toEqual(paint("art"));
+    expect(ops).toContain("strokeText");
+    expect(ops.filter((op) => op === "fillRect")).toHaveLength(item.geo.bars.length);
+  });
+
   it("draws an upright barcode layer's digits inside its own band, with no rotate call", () => {
     const layer: BarcodeLayer = {
       id: "bc1", name: "BC", kind: "barcode", enabled: true, x: 28.68, y: 28.68, anchor: "left",

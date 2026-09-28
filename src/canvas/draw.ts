@@ -273,30 +273,16 @@ function drawBarcode(ctx: Ctx, item: PlacedBarcode, mode: Mode, fontCss: string,
   ctx.font = `${FACE_WEIGHT.regular} ${item.textSize}px ${fontCss}`;
   ctx.letterSpacing = "0px";
 
-  if (mode === "mask") {
-    // Expanded stroke footprint first, exact fill footprint on top — same
-    // plate-independence rule as the PDF's mask branch.
-    const paintFootprint = (outset: number, color: string) => {
-      ctx.fillStyle = color;
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2 * outset;
-      for (const f of item.footprint) {
-        ctx.fillRect(f.x, f.yTop, f.w, f.h);
-        if (outset > 0) ctx.strokeRect(f.x, f.yTop, f.w, f.h);
-      }
-    };
-    if (item.S > 0) paintFootprint(item.S, cssMask(item.strokeLayer));
-    if (item.S === 0 || item.strokeLayer !== item.fillLayer)
-      paintFootprint(0, cssMask(item.fillLayer));
-    return;
-  }
-
+  // Same bars and digit glyphs as the PDF. Mask mode only swaps plate
+  // colours, so the preview's white-ink shape matches the stroke.
   const bars = item.geo.bars;
-  if (item.S > 0) {
+  const strokeInk = mode === "art" ? cssFill(item.stroke) : cssMask(item.strokeLayer);
+  const fillInk = mode === "art" ? cssFill(item.fill) : cssMask(item.fillLayer);
+  if (item.S > 0 && item.stroke !== "none") {
     // Halo only: the ink pass below repaints every bar body and digit, so
     // this pass strokes without filling (dead paint otherwise).
     // One ink for both: the digits' bridge copies FILL in the stroke colour.
-    ctx.fillStyle = ctx.strokeStyle = cssFill(item.stroke);
+    ctx.fillStyle = ctx.strokeStyle = strokeInk;
     ctx.lineWidth = 2 * item.S;
     // EVERY stroke shape before ANY fill — interleaving distorts module
     // widths until the code stops decoding (see pdf/build.ts).
@@ -305,7 +291,7 @@ function drawBarcode(ctx: Ctx, item: PlacedBarcode, mode: Mode, fontCss: string,
     const bridge = ring(item.S);
     for (const d of item.digits) digit(d, "stroke", bridge);
   }
-  ctx.fillStyle = cssFill(item.fill);
+  ctx.fillStyle = fillInk;
   for (const b of bars) ctx.fillRect(b.x, b.yTop, b.w, b.h);
   for (const d of item.digits) digit(d, "fill");
 }

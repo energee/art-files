@@ -150,6 +150,10 @@ describe("psd build", () => {
     expect(rgb(layer(psd.children as any[], "Name").text.style.fillColor)).toEqual({ r: 255, g: 255, b: 255 });
     // …white-layer elements print ink (mask blue): the barcode ships white.
     expect(rgb(layer(psd.children as any[], "Barcode").vectorFill.color)).toEqual({ r: 0, g: 156, b: 215 });
+    // The mask outline is the art outline: same bar rects and digit beziers.
+    const artBarcode = layer(doc.children as any[], "Barcode");
+    const maskBarcode = layer(psd.children as any[], "Barcode");
+    expect(maskBarcode.vectorMask.paths.length).toBe(artBarcode.vectorMask.paths.length);
     // Every shipped stroke layer is white/non-metallic, hence mask blue.
     for (const name of ["Volume", "Name", "Logo", "QR", "Barcode"]) {
       const stroke = layer(psd.children as any[], name).effects?.stroke?.[0];
@@ -243,9 +247,10 @@ describe("added layers", () => {
   // Candidate baseline: PSD raster review remains pending (goldens/README.md).
   // sha256 of buildPsd's bytes for the shipped Lolev master, art and mask.
   // The shipped label must keep building byte-identical output — this fails
-  // the moment the builder emits anything extra or differently. Re-pinned
-  // 2026-09-28 when the barcode quiet-zone plate left the group, and for
-  // #143: type layers now carry autoKerning: false.
+  // the moment the builder emits anything extra or differently. Mask
+  // re-pinned 2026-09-28: the barcode shape is the glyph outline on both
+  // plates. Art is unchanged. Re-pinned earlier that day when the quiet-zone
+  // plate left the group, and for #143 (autoKerning: false).
   it("builds byte-identical output for the shipped label", async () => {
     const hash = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
     const items = await lolevPlan();
@@ -254,7 +259,7 @@ describe("added layers", () => {
     const mask = await buildPsd(items, assets, "mask", { layers });
     expect({ art: hash(art), artLen: art.length, mask: hash(mask), maskLen: mask.length }).toEqual({
       art: "d3c39d261e7145566e4268a876060b2be9685311c86c662455a26f210de0aabc", artLen: 1155796,
-      mask: "04862265409ba7ddb9b5d2425df3fcfde0548623dac6f0f1bcdb9a72f343e2da", maskLen: 1149010,
+      mask: "00742f1def011454c39fd01003400a83a25a2ff6b8c2289062b7a779d2bd0f6a", maskLen: 1156318,
     });
   });
 

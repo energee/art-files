@@ -39,6 +39,16 @@ as the page, so only the PDF operators and the PSD shape (the four-knot plate)
 change. Over a dark texture the quiet zone shows the art again; the white
 around the bars and digits is the stroke halo.
 
+## 2026-09-28 mask follows the glyph stroke
+
+`collab-{off,on}-mask-glyph.diff.png` compare the mask PDFs before and after
+the barcode's white ink stopped using a pill around each digit group. Both
+have **zero changed pixels** at 600 DPI: these fixtures flood the plate blue,
+and the barcode's white ink is that same blue, so a smaller outline does not
+show. On a white mask the old plate was 9,220 px (22%) larger than the art
+stroke at 144 DPI, hanging 8.5 pt below the digits; after the change the two
+silhouettes match (0 px either way) for the upright UPC and the rotated template.
+
 ## 2026-09-27 barcode backing (#284)
 
 The new `*-backing.diff.png` files compare the four PDF golden fixtures before

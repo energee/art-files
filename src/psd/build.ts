@@ -699,24 +699,13 @@ function buildLayers(
 }
 
 /** One barcode's merged shape layer, from its placed item — bars and digit
- *  glyph outlines both bezier, in the item's own fill. Mask mode preserves
- *  the mask PDF's deliberate underprint geometry: exact bar rectangles plus
- *  one glyph-box pill per digit group, outset by S as a border. Art mode's
- *  halo is the same editable outside-stroke effect every other element
- *  carries, so Photoshop dilates bars and digit outlines alike and unions
- *  the result. `S` (resolved outer-stroke width; 0 = no halo) gates the
- *  stroke identically to the PDF's own `if (S > 0)`, so the two
- *  deliverables can't disagree on whether one exists. */
+ *  glyph outlines both bezier. Both plates use that same outline; mask mode
+ *  only swaps in the plate colours. The halo is the same editable outside
+ *  stroke every other element carries, so Photoshop dilates bars and digit
+ *  outlines alike. `S` (resolved outer-stroke width; 0 = no halo) gates the
+ *  stroke identically to the PDF's own `if (S > 0)`. */
 function barcodeLayer(name: string, bc: PlacedBarcode, fk: FKFont, mode: PsdMode): Layer {
   const S = bc.S;
-  if (mode === "mask") {
-    const footprint: BezierPath[] = bc.footprint
-      .map((r) => ({ ...rectPath(r.x, r.yTop, r.w, r.h), operation: "combine" as const }));
-    return shapeLayer(
-      name, footprint, paint(mode, bc.fill, bc.fillLayer),
-      S > 0 ? strokePaint(mode, bc.stroke, bc.strokeLayer) : undefined, S,
-    );
-  }
   // Rotated (the template): anchorY is the string-start Y a `rotate(90)`
   // PDF drawText lands at (see digitGroupPaths for the derivation). Upright
   // (every custom barcode layer): anchorX needs the run's LEFT edge, since

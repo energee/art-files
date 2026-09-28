@@ -531,3 +531,11 @@ no status, no attempts, no delta.
 - delta: the plate is a barcode switch, Solid background, off unless turned on. Preview, PDF and PSD paint the stroke halo either way, and the plate when the switch is on. The layer box still reserves the quiet zone.
 - evidence: 600 DPI collab diffs are 0 px on bare stock (plate matched the page). Over a dark field the rectangle is gone and the white follows the bars and digit groups. Branch fix/barcode-stroke-only.
 - release: binary-impacting; queued under Unreleased; version unchanged; no release published.
+
+## 2026-09-28 barcode-mask-matches-stroke
+- finding: the barcode mask strokes em-box pills around digit groups, so white ink hangs past the glyph halo (22% extra ink at 144 DPI on UPC 850051366040, 8.5 pt below the digits; the art ink was entirely inside the mask)
+- status: done
+- attempts: 1/3
+- delta: preview, PDF and PSD mask plates paint the same bars and digit glyphs as the art stroke, in plate colours
+- evidence: 1278 tests pass; tsc and eslint clean; release check against origin/fix/barcode-stroke-only passes. At 144 DPI, UPC 850051366040 and the rotated template go from 9220 / 6945 extra mask pixels to 0 either way. Shipped mask PDF flood diffs are 0 px at 600 DPI because the flood is the same blue. Art PDF and art PSD hashes unchanged.
+- release: binary-impacting; queued under Unreleased; version unchanged; no release published.

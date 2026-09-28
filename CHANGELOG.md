@@ -4,6 +4,12 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Fixed
+
+- **Barcode white ink follows the stroke.** The mask outlines each bar and each digit the way the artwork does. A box around the digits no longer prints white ink past the halo.
+
 ## [0.1.101] - 2026-09-28
 
 ### Changed

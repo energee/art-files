@@ -68,10 +68,9 @@ export interface PlacedImage {
 }
 
 /** The barcode as one item: shared geometry plus everything both plates
- *  paint from. Genuinely mode-asymmetric (art = stroked bars+digits, mask =
- *  the outset footprint), so it stays one item rather than mode-dependent
- *  primitives — the backends keep their paint logic, the geometry exists
- *  once. `digits` follow ONE of two conventions, gated by `rotated`: rotated
+ *  paint from. Both plates stroke the same bars and digit glyphs (mask mode
+ *  swaps plate colours), so it stays one item rather than mode-dependent
+ *  primitives. `digits` follow ONE of two conventions, gated by `rotated`: rotated
  *  (the template) reads bottom-to-top — x is the baseline's vertical line, y
  *  the run's start, extent -w; upright (every custom barcode layer) reads
  *  left-to-right like ordinary text — x is the run's CENTER (left edge is
@@ -96,8 +95,8 @@ export interface PlacedBarcode {
    *  canvas/draw.ts, psd/build.ts) branch their digit-drawing on this. */
   readonly rotated: boolean;
   readonly digits: readonly { text: string; x: number; y: number; w: number }[];
-  /** The white-ink footprint at S = 0 (bars + digit pills); the mask pass
-   *  outsets it by S as a border. */
+  /** Bars plus one em-box per digit group, at S = 0. The optional solid
+   *  background sizes itself from these; the plates paint the glyphs. */
   readonly footprint: readonly { x: number; yTop: number; w: number; h: number }[];
 }
 
