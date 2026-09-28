@@ -191,17 +191,14 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, item: PlacedBarcode, mo
     ? { size: item.textSize, font: fonts.regular, rotate: degrees(90) }
     : { size: item.textSize, font: fonts.regular };
 
-  // Both plates paint the same bars and the same digit glyphs. Mask mode
-  // only swaps in the plate colours, so the white-ink outline is the stroke
-  // the art shows — a box around each digit group hangs past that stroke.
-  // Stroke and fill keep independent plates: the halo is the stroke's plate,
-  // the bars and glyph bodies are the fill's. EVERY stroke shape draws
-  // before ANY fill. Interleaving the two lets a later stroke bite into an
-  // already-drawn neighbour, which distorted the module widths until the
-  // code stopped decoding. Between the dense bars the halo closes into a
-  // solid field. A solid background is a separate path the planner emits
-  // first, and only when the layer asks for one. The stroke block runs only
-  // when S > 0; a "none" stroke resolves to S = 0 in the plan, and a
+  // Both plates paint the same bars and digit glyphs. Mask mode only swaps
+  // plate colours: the halo takes the stroke plate, and the bars and glyph
+  // bodies take the fill plate. Draw every stroke shape before any fill. A
+  // later stroke bites into an already-drawn neighbour and distorts module
+  // widths until the code stops decoding. Between dense bars the halo closes
+  // into a solid field. A solid background is a separate path the planner
+  // emits first, and only when the layer asks for one. The stroke block runs
+  // only when S > 0 — a "none" stroke resolves to that in the plan, and a
   // zero-width stroke would still paint a hairline.
   const strokeColor = mode === "art" ? fillColor(item.stroke) : maskColor(item.strokeLayer);
   const ink = mode === "art" ? fillColor(item.fill) : maskColor(item.fillLayer);
