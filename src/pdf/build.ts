@@ -224,9 +224,9 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, item: PlacedBarcode, mo
   // neighbour, which distorted the module widths until the code stopped
   // decoding. Between the dense bars the stroke closes into a solid field
   // and around the digits it reads as a pill, matching the reference's
-  // white shape. A solid background, when the layer asks for one, is a
-  // separate path the planner emits first. Reached only when S > 0,
-  // which a "none" stroke never resolves to (see barcodeStrokePt).
+  // white shape. A solid background is a separate path the planner emits
+  // first, and only when the layer asks for one. This block runs only when
+  // S > 0; a "none" stroke resolves to S = 0 in the plan.
   if (S > 0 && item.stroke !== "none") {
     const strokeColor = fillColor(item.stroke);
     // A centered border at 2S extends S beyond the bar and — because the page

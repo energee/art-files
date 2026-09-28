@@ -294,24 +294,34 @@ function prepareBarcode(l: BarcodeLayer, m: MeasureFace): Prepared | null {
     fillLayer: style.layer, strokeLayer: strokeLayerOf(style),
     textSize, digits, footprint,
   });
-  // The halo is the stroke each backend paints behind the bars and digits.
-  // Solid background is optional: the same stroke colour as one rectangle
-  // covering the layer box (the quiet zone included), painted first. Absent
-  // leaves the halo alone. A "none" stroke has nothing to fill with.
-  const withPlate = (barcode: PlacedBarcode): PlacedLayer[] => {
+  // Optional rectangle in the stroke colour, painted before the barcode.
+  // The quiet zone is added on the scan axis only (X upright, Y rotated);
+  // digit pills are included unpadded so descenders past the layer box stay
+  // covered. Absent, or a "none" stroke (S === 0), leaves the halo alone.
+  const withSolidBackground = (barcode: PlacedBarcode): PlacedLayer[] => {
     if (S === 0 || !l.solidBackground) return [barcode];
-    const bars = barcode.geo.bars;
-    const q = quiet * mod;
-    const rects = barcode.footprint;
-    const x = Math.min(...rects.map((r) => r.x), ...bars.map((r) => r.x - (rotated ? 0 : q)));
-    const y = Math.min(...rects.map((r) => r.yTop), ...bars.map((r) => r.yTop - (rotated ? q : 0)));
-    const right = Math.max(...rects.map((r) => r.x + r.w), ...bars.map((r) => r.x + r.w + (rotated ? 0 : q)));
-    const bottom = Math.max(...rects.map((r) => r.yTop + r.h), ...bars.map((r) => r.yTop + r.h + (rotated ? q : 0)));
+    const alongX = rotated ? 0 : quiet * mod;
+    const alongY = rotated ? quiet * mod : 0;
+    const rects = [
+      ...barcode.footprint,
+      ...barcode.geo.bars.map((r) => ({
+        x: r.x - alongX,
+        yTop: r.yTop - alongY,
+        w: r.w + 2 * alongX,
+        h: r.h + 2 * alongY,
+      })),
+    ];
+    const x = Math.min(...rects.map((r) => r.x));
+    const y = Math.min(...rects.map((r) => r.yTop));
+    const right = Math.max(...rects.map((r) => r.x + r.w));
+    const bottom = Math.max(...rects.map((r) => r.yTop + r.h));
+    const stroke = barcode.stroke;
+    const layer = barcode.strokeLayer;
     return [{
       kind: "paths", id, x, y,
       paths: [`M0 0L${right - x} 0L${right - x} ${bottom - y}L0 ${bottom - y}Z`],
-      fill: barcode.stroke, layer: barcode.strokeLayer,
-      stroke: { fill: barcode.stroke, layer: barcode.strokeLayer, w: S },
+      fill: stroke, layer,
+      stroke: { fill: stroke, layer, w: S },
     }, barcode];
   };
   if (rotated) {
@@ -336,7 +346,7 @@ function prepareBarcode(l: BarcodeLayer, m: MeasureFace): Prepared | null {
           const yc = bottom - d.center * mod;
           return { x: x0, yTop: yc - len / 2, w: (ASC + DESC) * textSize, h: len };
         });
-        return withPlate(item(geo, digits, [...bars, ...pills]));
+        return withSolidBackground(item(geo, digits, [...bars, ...pills]));
       },
     };
   }
@@ -359,7 +369,7 @@ function prepareBarcode(l: BarcodeLayer, m: MeasureFace): Prepared | null {
       const pills = digits.map((d) => ({
         x: d.x - d.w / 2, yTop: d.y - ASC * textSize, w: d.w, h: (ASC + DESC) * textSize,
       }));
-      return withPlate(item(geo, digits, [...bars, ...pills]));
+      return withSolidBackground(item(geo, digits, [...bars, ...pills]));
     },
   };
 }
