@@ -227,18 +227,12 @@ export function customBarcodeItem(
   const digits = geoDigits.map((d) => ({
     text: d.text, x: d.x, y: yTop + layer.h + gap + textSize, w: measure(d.text),
   }));
-  // Bars, plus one white-ink pill per digit group — unlike barcodeFootprint
-  // (whose pill formula assumes the template's ROTATED layout, see its own
-  // comment), this item is UPRIGHT: each digit's pill spans its centered run
-  // width (x = d.x ± w/2, matching how the item is actually drawn — see
-  // PlacedBarcode.rotated) and the font box around its baseline (FONT_ASC
-  // above, FONT_DESC below, at this item's own textSize — not the template's
-  // fixed BARCODE.textSize). These are BASE ink, NOT pre-outset by the halo S
-  // — the same contract as the template's `barcodeFootprint(geo, 0, measure)`,
-  // and the one every consumer already assumes: pdf/build.ts draws a centred
-  // 2*S border on them, canvas/draw.ts strokes at lineWidth 2*outset, and
-  // psd/build.ts applies an outside stroke of px(S). Outsetting here too
-  // double-counted the halo on all three plates.
+  // Bars, plus one em-box per digit group. Unlike barcodeFootprint (whose
+  // formula assumes the template's ROTATED layout), this item is UPRIGHT:
+  // each box spans the centered run (x = d.x ± w/2) and the font box around
+  // its baseline. These are BASE ink, NOT pre-outset by the halo S — the
+  // same contract as `barcodeFootprint(geo, 0, measure)`. The solid
+  // background sizes itself from them. The plates paint the glyphs.
   const barFootprint = bars.map((b) => ({
     x: b.x, yTop: b.yTop, w: b.w, h: b.h,
   }));

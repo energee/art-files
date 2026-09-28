@@ -5,6 +5,10 @@
 // identical input builds byte-identical output and a sha256 IS byte
 // identity.
 //
+// Mask PDF hashes re-baselined 2026-09-28: the white-ink barcode follows the
+// glyph stroke instead of a pill around each digit group. Art PDF and art PSD
+// are unchanged. See tests/goldens/collab-*-mask-glyph.diff.png.
+//
 // All hashes re-baselined 2026-09-28: the quiet-zone backing plate is gone.
 // The halo is the per-bar and per-digit stroke again. On these untextured
 // fixtures the 600 DPI raster diff is 0 px (the plate was the same white as
@@ -91,7 +95,7 @@ describe("collab byte-identity goldens — Collab variant OFF, both slots loaded
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped([]))).toEqual({
       art: "d23ecbb45e6f6085edbc5348504686fe902b7a2f5f8eeaf401852e6c20966f69", artLen: 57891,
-      mask: "663472fc6d93ba8d9ed76f3834543c6520bf9a8d4378656abd071afb81de7e4d", maskLen: 57090,
+      mask: "6bbdcdbaec88b3e3dcbc94864fa5eaf04c075946a780a6306a9a7d3b2c4d2a74", maskLen: 58046,
       psd: "d3c39d261e7145566e4268a876060b2be9685311c86c662455a26f210de0aabc", psdLen: 1155796,
     });
   });
@@ -101,7 +105,7 @@ describe("collab byte-identity goldens — Collab variant ON, both slots loaded"
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped(["collab"]))).toEqual({
       art: "69012ea71288f4bf6184b672f2a48035f680af1c084b2a33610bd277f136a511", artLen: 59778,
-      mask: "bc6b233b530e7b04e5b45fbc984d89edb698ab683816741dd7f1196685a57a96", maskLen: 58946,
+      mask: "0ba4f80fd3d83d781983ecf0c4c42a9aaba3107b555fa1ac840c2f97fcf369d2", maskLen: 59842,
       psd: "d6d9f4d9222cc43d26bdc2bc7d0bd7d0bca1a7f573427ed66c5b5dd00eb39974", psdLen: 1165816,
     });
   });

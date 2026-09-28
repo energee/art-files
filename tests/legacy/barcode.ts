@@ -13,19 +13,10 @@ import * as L from "./layout";
  *  - UNSET keeps BARCODE.stroke, the ~1.8-module halo measured off the
  *    finished labels (NOT DEFAULT_STROKE_PX), so a config saved before the
  *    barcode was stylable still prints exactly as it always has. */
-/** The barcode's true white-ink footprint: one rect per bar plus one pill per
- *  digit group, each outset by the halo `S`, in the same top-left coordinates
- *  as BarcodeGeometry. Both plates paint exactly these rects — the PDF's mask
- *  branch flipping them into PDF space, the PSD unioning them into a shape
- *  layer — so the white-ink plate cannot drift from the ink it underlies. A
- *  single bounding rect used to stand in for all of this; that under-covered
- *  the gaps between bars and the digit column, which can unprint the code on
- *  a textured stock. At S = 0 (stroke "none") it reduces to the bars' and
- *  digits' own ink, still needed under the ink for scan contrast.
- *
- *  The bar outsets are square while the art's halo rounds those corners at
- *  radius S, so this over-covers by a hair there — the safe direction:
- *  under-coverage fringes, over-coverage hides. */
+/** Bars plus one em-box per digit group, each outset by `S`, in the same
+ *  top-left coordinates as BarcodeGeometry. The legacy plan stores this on
+ *  the item's footprint (pass S = 0). The plates paint the bar rects and the
+ *  digit glyphs, not these boxes. */
 export function barcodeFootprint(
   geo: BarcodeGeometry, S: number, measure: (text: string) => number,
 ): { x: number; yTop: number; w: number; h: number }[] {

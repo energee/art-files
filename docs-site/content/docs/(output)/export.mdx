@@ -32,7 +32,7 @@ No mask uploaded? The plate floods full blue. Print as a white label. Metallic e
 
 Each element has a **fill** (drawn in the art PDF; `none` for no ink) and a **plate** (metallic knocks out of the white layer; white gets a white-ink underlay). Outer strokes have their own independent plate. White-ink runs inside a text line (`_white ink_` / the White ink toggle) follow the same rule per span.
 
-Barcodes ship as near-black bars inside a white halo over white ink. The halo is an outset per bar plus a pill per digit group, unioned, so white ink doesn't fall short between bars. Solid background, off unless the layer turns it on, fills that same box with the stroke colour.
+Barcodes ship as near-black bars inside a white halo over white ink. The white-ink plate follows that halo: each bar, and each digit's own outline, so the mask matches the stroke. Where the halo is wider than the gap between bars it closes into one shape. Solid background, off unless the layer turns it on, fills the barcode box with the stroke colour.
 
 Export checks the code each barcode will actually print, after any `{layer}` refs expand, wherever it came from: this label, a variant, or the master. A code that isn't valid for the barcode's symbology blocks export with an error instead of leaving the barcode off. A blank or switched-off barcode doesn't block anything.
 

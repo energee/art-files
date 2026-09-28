@@ -2,7 +2,7 @@
 // area exactly as the encoded 95-module pattern, with nothing drawn outside
 // the run (regression for the double height-subtraction that smeared runs
 // below their slots); and, since the barcode became a styled element, the
-// art halo and the mask footprint must always resolve the SAME stroke width
+// art halo and the mask plate must stroke the same bars and digit glyphs
 // while a config saved before that change still prints what it always did.
 import { describe, expect, it } from "vitest";
 import type { PDFFont, PDFPage } from "pdf-lib";
@@ -14,17 +14,16 @@ import { barcodeDigitsFor, barcodeGeometry, barcodeStrokePt } from "./legacy/bar
 import { encodeUpc, encodeEan13 } from "../src/upc";
 import { encodeCode128 } from "../src/code128";
 import { defaultConfig, parseConfigFile } from "../src/defaults";
-import { BARCODE as B, COLORS, FONT_ASC, FONT_DESC, PAGE, PX, parseHexFill } from "./legacy/layout";
+import { BARCODE as B, COLORS, PAGE, PX, parseHexFill } from "./legacy/layout";
 
 const UPC = "850051366224";
 
 type Color = { red?: number; green?: number; blue?: number; gray?: number };
 type Rect = {
   x: number; y: number; width: number; height: number; color: Color;
-  // Set on the art pass's bar halos AND the mask's stroke footprint: both are
-  // the base shape's OWN rect drawn with a centered border of 2S, so their
-  // corners round at radius S the way Photoshop's outside stroke does. Read S
-  // back as borderWidth / 2.
+  // Set on each plate's bar halos: the bar's own rect drawn with a centered
+  // border of 2S, so the corners round at radius S the way Photoshop's
+  // outside stroke does. Read S back as borderWidth / 2.
   borderWidth?: number;
 };
 type Text = { txt: string; x: number; y: number; color: Color };
@@ -134,24 +133,23 @@ describe("drawBarcode back-compat", () => {
     });
   });
 
-  it("keeps that config's white-ink footprint at the mask blue it always used, now shaped to the true bars+digits union rather than one bounding rect", () => {
+  it("keeps that config's white ink on the same bars and digits as the art, in mask blue", () => {
     const cfg = preStyleConfig();
-    const { bars, digits } = split(cfg);
-    const { rects } = draw(cfg, "mask");
-    expect(rects).toHaveLength(bars.length + digits.length);
-    for (const r of rects) expect(sameColor(r.color, COLORS.maskBlue)).toBe(true);
-    // First `bars.length` rects are the per-bar footprints, in bar order:
-    // each the bar's own rect carrying a centered 2S border, exactly like the
-    // art halo, so the mask's corners round at the same radius S.
-    bars.forEach((bar, i) => {
-      expect(rects[i].x).toBeCloseTo(bar.x, 10);
-      expect(rects[i].y).toBeCloseTo(bar.y, 10);
-      expect(rects[i].width).toBeCloseTo(bar.width, 10);
-      expect(rects[i].height).toBeCloseTo(bar.height, 10);
-      expect(rects[i].borderWidth).toBeCloseTo(2 * B.stroke, 10);
-    });
+    const art = draw(cfg, "art");
+    const mask = draw(cfg, "mask");
+    expect(mask.rects.map(geom)).toEqual(art.rects.map(geom));
+    expect(mask.texts.map(placed)).toEqual(art.texts.map(placed));
+    for (const r of mask.rects) expect(sameColor(r.color, COLORS.maskBlue)).toBe(true);
+    for (const t of mask.texts) expect(sameColor(t.color, COLORS.maskBlue)).toBe(true);
+    // The halo rects lead, one per bar, each carrying the centered 2S border.
+    expect(mask.rects.length).toBeGreaterThan(split(cfg).bars.length);
+    for (const r of mask.rects.slice(0, split(cfg).bars.length))
+      expect(r.borderWidth).toBeCloseTo(2 * B.stroke, 10);
   });
 });
+
+const geom = (r: Rect) => [r.x, r.y, r.width, r.height, r.borderWidth ?? 0];
+const placed = (t: Text) => [t.txt, t.x, t.y];
 
 describe("drawBarcode styling", () => {
   // The one invariant worth a dedicated test: the mask plate sizes the white
@@ -175,8 +173,8 @@ describe("drawBarcode styling", () => {
     const { bars, halo } = split(cfg);
     // The art halo is the bar's own rect with a centered 2S border.
     const artS = halo.length ? halo[0].borderWidth! / 2 : 0;
-    // Mask rects are pushed bar-first, so rects[0] is the first bar's
-    // footprint — its centered border must track the same S as the art halo.
+    // Mask rects lead with the same bar halos. A stroke of 0 leaves only the
+    // fill rects, which carry no border.
     const maskRect = draw(cfg, "mask").rects[0];
     const maskS = (maskRect.borderWidth ?? 0) / 2;
     expect(artS).toBeCloseTo(expected, 10);
@@ -184,47 +182,15 @@ describe("drawBarcode styling", () => {
     expect(maskRect.height).toBeCloseTo(bars[0].height, 10);
   });
 
-  // Regression: the mask used to draw ONE bounding rect over the whole
-  // symbol. That covers the ink but wildly over-covers the space between
-  // bars and around the quiet zones — this asserts the new footprint is the
-  // true union instead: every bar rect sized to its own bar, not the
-  // symbol's full width/height.
-  it.each(cases)("mask footprint shapes to each bar individually, not one bounding rect: %s", (_name, patch, expected) => {
+  // The mask used to stroke a bounding pill around each digit group, which
+  // hung past the glyph stroke. It now draws the same text the art does.
+  it.each(cases)("mask digits are the art's glyphs, not em-box pills: %s", (_name, patch) => {
     const cfg = { ...defaultConfig(), ...patch };
-    const { bars, digits } = split(cfg);
-    const { rects } = draw(cfg, "mask");
-    expect(rects).toHaveLength(bars.length + digits.length);
-    bars.forEach((bar, i) => {
-      expect(rects[i].x).toBeCloseTo(bar.x, 10);
-      expect(rects[i].y).toBeCloseTo(bar.y, 10);
-      expect(rects[i].width).toBeCloseTo(bar.width, 10);
-      expect(rects[i].height).toBeCloseTo(bar.height, 10);
-      expect((rects[i].borderWidth ?? 0) / 2).toBeCloseTo(expected, 10);
-    });
-  });
-
-  // Digit pills: a rect around each digit group's glyph box (measured font
-  // width x the same ASC/DESC font-box ratio hittest.ts uses) expanded by S
-  // — the shape the art's stroked digit halo traces around text.
-  const DIGIT_ASC = FONT_ASC;
-  const DIGIT_DESC = FONT_DESC;
-  it.each(cases)("mask digit pills track the same S, sized to each digit's glyph box: %s", (_name, patch, expected) => {
-    const cfg = { ...defaultConfig(), ...patch };
-    const { bars, digits } = split(cfg);
-    const { rects } = draw(cfg, "mask");
-    const pills = rects.slice(bars.length); // digit pills follow the bar rects
-    expect(pills).toHaveLength(digits.length);
-    digits.forEach((d, i) => {
-      // Mock font: widthOfTextAtSize always returns 10, so every digit
-      // group's glyph run is 10pt regardless of text.
-      const w = 10;
-      const x0 = d.x - DIGIT_ASC * B.textSize;
-      const x1 = d.x + DIGIT_DESC * B.textSize;
-      expect(pills[i].x).toBeCloseTo(x0, 10);
-      expect(pills[i].width).toBeCloseTo(x1 - x0, 10);
-      expect(pills[i].height).toBeCloseTo(w, 10);
-      expect((pills[i].borderWidth ?? 0) / 2).toBeCloseTo(expected, 10);
-    });
+    const art = draw(cfg, "art");
+    const mask = draw(cfg, "mask");
+    expect(mask.rects.map(geom)).toEqual(art.rects.map(geom));
+    expect(mask.texts.map(placed)).toEqual(art.texts.map(placed));
+    expect(mask.texts.length).toBeGreaterThan(0);
   });
 
   it("emits no halo shapes at all when the stroke is off", () => {
@@ -249,14 +215,20 @@ describe("drawBarcode styling", () => {
 
   it("paints a white stroke outside a metallic barcode fill", () => {
     const cfg = { ...defaultConfig(), barcodeLayer: "metallic" as const };
-    const { bars, digits } = split(cfg);
-    const { rects } = draw(cfg, "mask");
-    const footprintCount = bars.length + digits.length;
-    expect(rects).toHaveLength(2 * footprintCount);
-    for (const r of rects.slice(0, footprintCount))
+    const art = split(cfg);
+    const mask = draw(cfg, "mask");
+    // Halo bars and halo digits first (white ink), then the metallic fill
+    // (knockout) over the same bars and digits.
+    expect(mask.rects).toHaveLength(art.halo.length + art.bars.length);
+    expect(mask.texts).toHaveLength(art.digitHalo.length + art.digits.length);
+    for (const r of mask.rects.slice(0, art.halo.length))
       expect(sameColor(r.color, COLORS.maskBlue)).toBe(true);
-    for (const r of rects.slice(footprintCount))
+    for (const t of mask.texts.slice(0, art.digitHalo.length))
+      expect(sameColor(t.color, COLORS.maskBlue)).toBe(true);
+    for (const r of mask.rects.slice(art.halo.length))
       expect(sameColor(r.color, COLORS.white)).toBe(true);
+    for (const t of mask.texts.slice(art.digitHalo.length))
+      expect(sameColor(t.color, COLORS.white)).toBe(true);
   });
 
   it("paints a metallic stroke outside a white barcode fill", () => {
@@ -264,13 +236,16 @@ describe("drawBarcode styling", () => {
       ...defaultConfig(), barcodeLayer: "white" as const,
       barcodeStrokeLayer: "metallic" as const,
     };
-    const { bars, digits } = split(cfg);
-    const { rects } = draw(cfg, "mask");
-    const footprintCount = bars.length + digits.length;
-    for (const r of rects.slice(0, footprintCount))
+    const art = split(cfg);
+    const mask = draw(cfg, "mask");
+    for (const r of mask.rects.slice(0, art.halo.length))
       expect(sameColor(r.color, COLORS.white)).toBe(true);
-    for (const r of rects.slice(footprintCount))
+    for (const t of mask.texts.slice(0, art.digitHalo.length))
+      expect(sameColor(t.color, COLORS.white)).toBe(true);
+    for (const r of mask.rects.slice(art.halo.length))
       expect(sameColor(r.color, COLORS.maskBlue)).toBe(true);
+    for (const t of mask.texts.slice(art.digitHalo.length))
+      expect(sameColor(t.color, COLORS.maskBlue)).toBe(true);
   });
 });
 
