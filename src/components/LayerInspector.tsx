@@ -921,6 +921,13 @@ function StyleSection(props: Ctx & { layer: Layer }) {
                 onChange={(strokeWidth) => setStyle({ strokeWidth })}
               />
             </Row>
+            {layer.kind === "barcode" && (
+              <SwitchRow
+                label="Solid background" checked={!!layer.solidBackground}
+                badge={badge(["solidBackground"], "Solid background")}
+                onChange={(solidBackground) => set({ solidBackground })}
+              />
+            )}
           </>
         )}
       </div>

@@ -4,6 +4,15 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Changed
+
+- **A barcode stroke can be a halo or a solid background.** The stroke
+  still outlines the bars and the digits. Solid background, off unless you
+  turn it on, fills the barcode box with the stroke colour so a textured
+  label stays clear around the code. Preview, PDF and PSD all follow it.
+
 ## [0.1.100] - 2026-09-27
 
 ### Changed

@@ -336,6 +336,16 @@ describe("LayerInspector style", () => {
     expect(onChange).toHaveBeenLastCalledWith({ style: { stroke: "#FFFFFF" } });
   });
 
+  it("a stroked barcode can turn on a solid background; other kinds cannot", () => {
+    render(barcode());
+    expect(byLabel("Solid background")).toBeNull();
+    const { onChange } = render(barcode({ style: { ...STYLE, stroke: "#FFFFFF" } }));
+    click(byLabel("Solid background")!);
+    expect(onChange).toHaveBeenLastCalledWith({ solidBackground: true });
+    render(qr({ style: { ...STYLE, stroke: "#FFFFFF" } }));
+    expect(byLabel("Solid background")).toBeNull();
+  });
+
   it("tracking is offered for text only", () => {
     render(text());
     expect($("#name-tracking")).not.toBeNull();

@@ -294,14 +294,12 @@ function prepareBarcode(l: BarcodeLayer, m: MeasureFace): Prepared | null {
     fillLayer: style.layer, strokeLayer: strokeLayerOf(style),
     textSize, digits, footprint,
   });
-  // A halo around individual bars leaves the quiet zone textured (#284).
-  // Emit an ordinary path first: every backend paints the same backing on
-  // the stroke's plate, without moving a single bar or digit. Along the scan
-  // direction it fills the layer's own box (quietModulesFor's zone on each
-  // side), so what the user snaps and anchors is what prints; its stroke
-  // halo adds S/2 beyond that.
-  const withBacking = (barcode: PlacedBarcode): Placed[] => {
-    if (S === 0) return [barcode];
+  // The halo is the stroke each backend paints behind the bars and digits.
+  // Solid background is optional: the same stroke colour as one rectangle
+  // covering the layer box (the quiet zone included), painted first. Absent
+  // leaves the halo alone. A "none" stroke has nothing to fill with.
+  const withPlate = (barcode: PlacedBarcode): PlacedLayer[] => {
+    if (S === 0 || !l.solidBackground) return [barcode];
     const bars = barcode.geo.bars;
     const q = quiet * mod;
     const rects = barcode.footprint;
@@ -338,7 +336,7 @@ function prepareBarcode(l: BarcodeLayer, m: MeasureFace): Prepared | null {
           const yc = bottom - d.center * mod;
           return { x: x0, yTop: yc - len / 2, w: (ASC + DESC) * textSize, h: len };
         });
-        return withBacking(item(geo, digits, [...bars, ...pills]));
+        return withPlate(item(geo, digits, [...bars, ...pills]));
       },
     };
   }
@@ -361,7 +359,7 @@ function prepareBarcode(l: BarcodeLayer, m: MeasureFace): Prepared | null {
       const pills = digits.map((d) => ({
         x: d.x - d.w / 2, yTop: d.y - ASC * textSize, w: d.w, h: (ASC + DESC) * textSize,
       }));
-      return withBacking(item(geo, digits, [...bars, ...pills]));
+      return withPlate(item(geo, digits, [...bars, ...pills]));
     },
   };
 }

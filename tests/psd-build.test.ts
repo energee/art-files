@@ -244,7 +244,8 @@ describe("added layers", () => {
   // sha256 of buildPsd's bytes for the shipped Lolev master, art and mask.
   // The shipped label must keep building byte-identical output — this fails
   // the moment the builder emits anything extra or differently. Re-pinned
-  // for #143: type layers now carry autoKerning: false.
+  // 2026-09-28 when the barcode quiet-zone plate left the group, and for
+  // #143: type layers now carry autoKerning: false.
   it("builds byte-identical output for the shipped label", async () => {
     const hash = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
     const items = await lolevPlan();
@@ -252,8 +253,8 @@ describe("added layers", () => {
     const art = await buildPsd(items, assets, "art", { layers });
     const mask = await buildPsd(items, assets, "mask", { layers });
     expect({ art: hash(art), artLen: art.length, mask: hash(mask), maskLen: mask.length }).toEqual({
-      art: "4b8d7ecf8fa2d3b56fe2ee93e22157a0c4b3ff9877bdbcf85afa17978bb11b65", artLen: 1156650,
-      mask: "09244f725711887525867caa2ff15ca710cf50ca1a9a6009196309ba5ff0c25f", maskLen: 1149868,
+      art: "d3c39d261e7145566e4268a876060b2be9685311c86c662455a26f210de0aabc", artLen: 1155796,
+      mask: "04862265409ba7ddb9b5d2425df3fcfde0548623dac6f0f1bcdb9a72f343e2da", maskLen: 1149010,
     });
   });
 
@@ -297,9 +298,8 @@ describe("added layers", () => {
       h: 30, moduleW: 1, style: { fill: "#000000", layer: "white" },
     }] });
     const barcodeShapes = flat(psd.children as any[]).filter((l) => l.name === "Barcode" && !l.children);
-    expect(barcodeShapes).toHaveLength(2); // backing, then the original bars/digits
-    expect(barcodeShapes[0].vectorMask.paths[0].knots).toHaveLength(4);
-    expect(barcodeShapes[1].vectorMask.paths.length).toBeGreaterThan(1);
+    expect(barcodeShapes).toHaveLength(1); // bars and digit outlines, no quiet-zone plate
+    expect(barcodeShapes[0].vectorMask.paths.length).toBeGreaterThan(1);
     expect(layer(psd.children as any[], "Custom Barcode").vectorMask?.paths?.length).toBeGreaterThan(0);
   });
 
