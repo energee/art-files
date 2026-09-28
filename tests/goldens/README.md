@@ -30,6 +30,15 @@ same planned cover-fit rectangle as PDF/canvas. Before certifying the spec's
 PSD visual gate, render the old and new PSDs in Photoshop at 600 DPI and commit
 the reviewed diff PNGs alongside these candidates.
 
+## 2026-09-28 quiet-zone plate removed
+
+`collab-{off,on}-{art,mask}-no-backing.diff.png` compare the four PDF fixtures
+before and after dropping the barcode's filled quiet-zone plate. All four have
+**zero changed pixels** at 600 DPI: on bare stock the plate was the same white
+as the page, so only the PDF operators and the PSD shape (the four-knot plate)
+change. Over a dark texture the quiet zone shows the art again; the white
+around the bars and digits is the stroke halo.
+
 ## 2026-09-27 barcode backing (#284)
 
 The new `*-backing.diff.png` files compare the four PDF golden fixtures before

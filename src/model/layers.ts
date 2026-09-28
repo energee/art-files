@@ -200,6 +200,9 @@ export interface BarcodeLayer extends LayerBase {
   moduleW: number;
   /** Human-readable digits. Absent = true. */
   showDigits?: boolean;
+  /** Fill the barcode box with the stroke colour, quiet zone included.
+   *  Absent = the stroke halo only. */
+  solidBackground?: boolean;
   /** Resolve-time only: the unexpanded `value` template, stashed by
    *  resolveLayers when `value` carried {ref}s so the inspector can edit the
    *  template instead of the expansion. Never authored, never persisted. */

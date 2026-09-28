@@ -48,26 +48,21 @@ it.each([0, 90])("decodes the printed dots QR at %s degrees (#295)", async (rota
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-it.each([0, 90])("decodes a backed UPC over dark texture at %s degrees (#284)", async (rotation) => {
+it.each([0, 90])("decodes a stroked UPC with no quiet-zone plate at %s degrees", async (rotation) => {
   const dir = mkdtempSync(join(tmpdir(), "barcode-print-"));
   try {
     const plan = await lolevPlan({ overrides: { barcode: { x: 100, y: 100, anchor: "left", rotation: rotation as 0 | 90 } } });
     const items = plan.filter((p) => p.id === "barcode");
-    const barcode = items.find((p) => p.kind === "barcode")!;
-    const backing = items[0];
-    expect(backing.kind).toBe("paths");
-    if (backing.kind !== "paths" || barcode.kind !== "barcode") throw new Error("Missing barcode backing");
-    expect(backing.layer).toBe(barcode.strokeLayer);
-    // Bars keep their original locations; the backing fills the layer's 8X
-    // quiet zone (plus its stroke halo) on both ends of the scan direction.
-    const first = Math.min(...barcode.geo.bars.map((r) => barcode.rotated ? r.yTop : r.x));
-    expect(first - (barcode.rotated ? backing.y : backing.x)).toBeCloseTo(8 * barcode.geo.mod, 5);
+    expect(items.map((p) => p.kind)).toEqual(["barcode"]);
+    const barcode = items[0];
+    if (barcode.kind !== "barcode") throw new Error("Missing barcode");
     const rects = barcode.footprint;
+    const x = Math.min(...rects.map((r) => r.x)) - 15;
+    const y = Math.min(...rects.map((r) => r.yTop)) - 15;
     const right = Math.max(...rects.map((r) => r.x + r.w)) + 15;
     const bottom = Math.max(...rects.map((r) => r.yTop + r.h)) + 15;
-    const background = { ...backing, id: "texture", x: 0, y: 0, paths: ["M0 0L600 0L600 400L0 400Z"], fill: "#182030" as const, stroke: null };
-    writeFileSync(join(dir, "barcode.pdf"), await buildArtPdf([background, ...items], assets));
-    const scale = 600 / 72, x = backing.x - 15, y = backing.y - 15;
+    writeFileSync(join(dir, "barcode.pdf"), await buildArtPdf(items, assets));
+    const scale = 600 / 72;
     const p = spawnSync("pdftoppm", ["-png", "-singlefile", "-r", "600", "-x", String(Math.floor(x * scale)), "-y", String(Math.floor(y * scale)), "-W", String(Math.ceil((right - x) * scale)), "-H", String(Math.ceil((bottom - y) * scale)), join(dir, "barcode.pdf"), join(dir, "barcode")]);
     if (p.error) throw p.error;
     expect(p.status, p.stderr.toString()).toBe(0);

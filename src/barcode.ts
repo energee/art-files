@@ -40,8 +40,8 @@ const CODE128_QUIET_MODULES = 10;
  *  reported box must include both zones or those digits fall outside it (and
  *  a right-anchored symbol pushes its check digit past the trim). Code 128
  *  has no edge digit but still needs its zone clear to scan. The ONE place
- *  this rule lives: the planner uses it for plotted geometry, hit boxes and
- *  the quiet-zone backing, so all three agree. */
+ *  this rule lives: the planner uses it for plotted geometry and hit boxes,
+ *  so both agree. */
 export function quietModulesFor(symbology: Symbology): number {
   return symbology === "code-128" ? CODE128_QUIET_MODULES : BARCODE_QUIET_MODULES;
 }

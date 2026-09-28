@@ -523,3 +523,11 @@ no status, no attempts, no delta.
 - browser: local light/dark smoke, keyboard divider, narrow sidebar toggle; collapsed controls are inert. No baseline for visual-regression certification; Photoshop raster certification remains pending.
 - remaining: #283 requires the printed Lupula phone scan before QR design changes. #244, #282, #338 already have green PRs #337, #358, #357. Full 95-issue disposition: docs/audits/2026-09-27-issue-queue.md.
 - release: binary-impacting; notes queued under Unreleased, version remains 0.1.98. No merge or release performed.
+
+## 2026-09-28 barcode-stroke-only
+- finding: the barcode quiet-zone plate paints a solid rectangle the stroke halo already covers between the bars and around the digits
+- status: done
+- attempts: 1/3
+- delta: the plate is a barcode switch, Solid background, off unless turned on. Preview, PDF and PSD paint the stroke halo either way, and the plate when the switch is on. The layer box still reserves the quiet zone.
+- evidence: 600 DPI collab diffs are 0 px on bare stock (plate matched the page). Over a dark field the rectangle is gone and the white follows the bars and digit groups. Branch fix/barcode-stroke-only.
+- release: binary-impacting; queued under Unreleased; version unchanged; no release published.

@@ -138,8 +138,8 @@ describe("upright barcode geometry goldens", () => {
   describe("code-128 LOLEV-123", () => {
     const layer = layerFor("code-128", "LOLEV-123");
 
-    // #359 review: was the bare symbol (134). The quiet-zone backing fills
-    // the box along the scan direction, so the box now reserves GS1's 10X.
+    // #359 review: was the bare symbol (134). The box reserves GS1's 10X
+    // quiet zone along the scan direction.
     it("reserves a 10-module quiet zone each side", () => {
       expect(box(layer)).toEqual({ w: 154, h: 58 });
     });
