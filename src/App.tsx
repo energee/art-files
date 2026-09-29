@@ -60,7 +60,7 @@ import {
   type MasterAssets,
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
-import { SHIPPED_MASTER_ID, hintTrusted, masterIndex, rememberMaster, resolveDefaultMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget } from "@/masters";
+import { SHIPPED_MASTER_ID, forgetMaster, hintTrusted, masterIndex, rememberMaster, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget } from "@/masters";
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
@@ -561,6 +561,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [buildError, setBuildError] = useState("");
   const [renderError, setRenderError] = useState("");
   const [loadError, setLoadError] = useState("");
+  // Bumps when a library row is removed. The index lives in localStorage, so
+  // nothing else in the document changes and the menu would keep the row.
+  const [libraryTick, setLibraryTick] = useState(0);
   // Divider position reported by PreviewCompare (% of width showing
   // white-ink), so the View menu can check off whichever end it sits at.
   const [split, setSplit] = useState(0);
@@ -1764,11 +1767,23 @@ export const DocumentEditor = memo(function DocumentEditor({
   }
 
   /** MasterPicker's library listing: the shipped master plus every master
-   *  the index remembers, id → name only (resolved lazily on pick). */
-  function libraryEntries(): Record<string, { name: string }> {
-    const entries: Record<string, { name: string }> = { [SHIPPED_MASTER_ID]: { name: lolevMaster().name } };
-    for (const [id, e] of Object.entries(masterIndex())) entries[id] = { name: e.name };
+   *  the index remembers, id → name only (resolved lazily on pick).
+   *  `inLibrary` is an index row, which is what Remove can drop. */
+  function libraryEntries(): Record<string, { name: string; inLibrary: boolean }> {
+    void libraryTick;
+    const idx = masterIndex();
+    const entries: Record<string, { name: string; inLibrary: boolean }> = {
+      [SHIPPED_MASTER_ID]: { name: lolevMaster().name, inLibrary: !!idx[SHIPPED_MASTER_ID] },
+    };
+    for (const [id, e] of Object.entries(idx)) entries[id] = { name: e.name, inLibrary: true };
     return entries;
+  }
+
+  /** Drop a remembered master from the library. The open document and the
+   *  file on disk stay as they are. */
+  function forgetLibraryMaster(id: string) {
+    void forgetMaster(id);
+    setLibraryTick((n) => n + 1);
   }
 
   /** File → Open Master…: native dialog on desktop (a real path, so the
@@ -1889,7 +1904,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       } else {
         const ref = unpacked.label ?? unpacked.v2!;
         const hint = ref.masterHint;
-        const resolved = await resolveMasterById(ref.masterId, hint, f.path);
+        const resolved = await resolveLabelMaster(ref.masterId, hint, f.path);
         if (!resolved) {
           // An untrusted hint was never read, so it must not read as a file
           // that was looked for and found missing.
@@ -1906,6 +1921,14 @@ export const DocumentEditor = memo(function DocumentEditor({
           const r = convertLabelV2(unpacked.v2!, resolved.master);
           l = r.label;
           notes = r.warnings;
+        }
+        // The file at this label's path was saved again under a new id. Follow
+        // that file; values that don't fit the new template are benched.
+        if (l.masterId !== resolved.master.id) {
+          const rebound = rebindLabel(l, undefined, resolved.master);
+          l = rebound.label;
+          if (rebound.dropped.values.length) notes.push(`${rebound.dropped.values.length} value(s) benched: ${rebound.dropped.values.join(", ")}`);
+          if (rebound.dropped.variants.length) notes.push(`${rebound.dropped.variants.length} variant(s) benched: ${rebound.dropped.variants.join(", ")}`);
         }
         next = { master: resolved.master, label: adoptLegacyCollab(l) };
       }
@@ -2235,6 +2258,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onMaster={pickLibraryMaster} onNewVariant={onNewVariant}
               onRenameVersion={onRenameVersion} onRemoveVersion={onRemoveVersion}
               onSaveMaster={() => setPendingSave({ as: false })} masterDirty={masterDirty}
+              onForget={forgetLibraryMaster}
               version={version} onVersion={switchVersion} />
             <LayerList rows={rows} selected={selected}
               onSelect={pick}

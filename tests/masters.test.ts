@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { hintTrusted, masterIndex, rememberMaster, resolveMasterById, SHIPPED_MASTER_ID } from "../src/masters";
+import { forgetMaster, hintTrusted, masterIndex, rememberMaster, resolveMasterById, SHIPPED_MASTER_ID } from "../src/masters";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { parseMasterJson, serializeMaster } from "../src/model/files";
 
@@ -7,6 +7,7 @@ const stored = new Map<string, string>();
 const fakeLocalStorage = {
   getItem: (k: string) => stored.get(k) ?? null,
   setItem: (k: string, v: string) => void stored.set(k, v),
+  removeItem: (k: string) => void stored.delete(k),
   clear: () => stored.clear(),
 };
 
@@ -39,6 +40,14 @@ describe("master library index", () => {
   // unchanged because rememberMaster itself didn't change — the real work of
   // Task 4 is App.tsx's save/open wiring, which has no automated harness
   // (see task-4-report.md).
+  it("forgets a library master and leaves the next launch unpinned from it", async () => {
+    await rememberMaster(lolevMaster(), "/tmp/lolev.master");
+    localStorage.setItem("labellab.lastMaster", SHIPPED_MASTER_ID);
+    await forgetMaster(SHIPPED_MASTER_ID);
+    expect(masterIndex()[SHIPPED_MASTER_ID]).toBeUndefined();
+    expect(localStorage.getItem("labellab.lastMaster")).toBeNull();
+  });
+
   it("a saved master registers in the library index under its own id", () => {
     const m = parseMasterJson(JSON.parse(serializeMaster(lolevMaster()))).master;
     rememberMaster(m, "/tmp/lolev.master");
@@ -117,10 +126,44 @@ describe("master library index", () => {
       "master-requested": { name: "Stale", path: "/tmp/stale.master", lastSeen: new Date().toISOString() },
     }));
     expect(await mod.resolveMasterById("master-requested")).toBeNull();
+    // The index row named a file that is a different master now.
+    expect(mod.masterIndex()["master-requested"]).toBeUndefined();
     // Same mismatch via the hint path (no index entry at all).
     expect(await mod.resolveMasterById("master-requested", "/tmp/stale.master")).toBeNull();
     vi.doUnmock("@tauri-apps/api/core");
     vi.doUnmock("@/files");
+  });
+
+  // Save Master As over the same path mints a new id. Labels still name the
+  // old one, and the browser cache still holds the old bytes. Opening the
+  // label follows the file; a library lookup by the old id does not revive it.
+  it("a label follows the master file when that file was saved under a new id", async () => {
+    vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+    const onDisk = { ...lolevMaster(), id: "master-newer", name: "Newer" };
+    vi.doMock("@/files", () => ({
+      readNativeFile: async () => new TextEncoder().encode(JSON.stringify(onDisk)),
+    }));
+    const held = new Map<string, Uint8Array>();
+    vi.doMock("@/masterCache", () => ({
+      cacheMaster: async (id: string, bytes: Uint8Array) => { held.set(id, bytes); },
+      cachedMaster: async (id: string) => held.get(id) ?? null,
+      dropCachedMaster: async (id: string) => { held.delete(id); },
+    }));
+    const { packMaster } = await import("../src/model/files");
+    const mod = await import("../src/masters");
+    const old = { ...lolevMaster(), id: "master-old", name: "Old" };
+    await mod.rememberMaster(old, "/tmp/lolev.master", packMaster(old, {}));
+    localStorage.setItem("labellab.lastMaster", "master-old");
+    expect(await mod.resolveMasterById("master-old")).toBeNull();
+    expect(held.has("master-old")).toBe(false);
+    expect(mod.masterIndex()["master-old"]).toBeUndefined();
+    expect(localStorage.getItem("labellab.lastMaster")).toBe("master-newer");
+    const followed = await mod.resolveLabelMaster("master-old", "/tmp/lolev.master", "/tmp/beer.label");
+    expect(followed?.master.id).toBe("master-newer");
+    expect(followed?.master.name).toBe("Newer");
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/files");
+    vi.doUnmock("@/masterCache");
   });
 
   // A .label is shared, so its masterHint is untrusted: only a path beside

@@ -44,7 +44,7 @@ const VERSION = "__version:";
  *  resolved lazily (see `resolve`), only once something is actually picked,
  *  so opening the menu never has to read every file the library index
  *  knows about. */
-export type LibraryEntry = { name: string };
+export type LibraryEntry = { name: string; inLibrary?: boolean };
 
 export function MasterPicker(props: {
   /** The master currently bound to this document. */
@@ -88,6 +88,8 @@ export function MasterPicker(props: {
   onSaveMaster: () => void;
   /** Whether a save would have anything to write (App's masterDirty). */
   masterDirty: boolean;
+  /** Drop a remembered master from this computer's library. The file stays. */
+  onForget: (id: string) => void;
 }): React.JSX.Element {
   const previewId = useId();
   const [resolvingId, setResolvingId] = useState<string | null>(null);
@@ -100,17 +102,22 @@ export function MasterPicker(props: {
   const [committing, setCommitting] = useState(false);
   /** The variant whose name is being edited inline, or null. */
   const [naming, setNaming] = useState<string | null>(null);
+  /** The library row chosen for a rebind, kept so Remove can drop it whether
+   *  or not the file opened. */
+  const [pickedId, setPickedId] = useState<string | null>(null);
 
   const closeAll = () => {
     setPreview(null);
     setResolvingId(null);
     setError("");
+    setPickedId(null);
   };
 
   /** Resolve the selected master and preview the rebind before committing. */
   const pickEntry = async (id: string) => {
     if (id === props.master.id) return;
     setError("");
+    setPickedId(id);
     setResolvingId(id);
     const r = await props.resolve(id);
     setResolvingId(null);
@@ -135,6 +142,13 @@ export function MasterPicker(props: {
     const next = value.trim();
     if (next) props.onRenameVersion(id, next);
     setNaming(null);
+  };
+
+  const canForget = !!pickedId && !!props.library[pickedId]?.inLibrary;
+  const forgetLabel = pickedId ? `Remove ${props.library[pickedId]?.name ?? "master"} from the library` : "Remove from library";
+  const forget = () => {
+    if (pickedId) props.onForget(pickedId);
+    closeAll();
   };
 
   const commit = async () => {
@@ -223,24 +237,41 @@ export function MasterPicker(props: {
       )}
       {resolvingId && <p role="status" className="mt-1 text-xs text-muted-foreground">Opening master…</p>}
       {error && (
-        <p id="master-picker-error" className="mt-1 px-1 text-[11px] text-destructive-text">{error}</p>
+        <div className="mt-1 px-1">
+          <p id="master-picker-error" className="text-[11px] text-destructive-text">{error}</p>
+          {canForget && !preview && (
+            <Button type="button" id="master-picker-forget" size="xs" variant="outline" className="mt-1.5 w-full"
+              aria-label={forgetLabel} title="The file stays where it is." onClick={forget}>
+              Remove from library
+            </Button>
+          )}
+        </div>
       )}
 
       {preview && (
         <div id="master-picker-preview" role="group" aria-labelledby={previewId}
           className="mt-1 rounded-md border border-sidebar-border p-2 text-xs text-sidebar-foreground">
           <p id={previewId}>{previewLine(preview)}</p>
-          <div className="mt-1.5 flex justify-end gap-1.5">
-            <Button
-              type="button" onClick={closeAll} variant="outline" size="xs"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button" id="master-picker-continue" disabled={committing} onClick={() => { void commit(); }} size="xs"
-            >
-              Continue
-            </Button>
+          <div className="mt-1.5 flex flex-wrap items-center justify-end gap-x-1.5 gap-y-1">
+            {canForget && (
+              <Button type="button" id="master-picker-forget" size="xs" variant="ghost"
+                className="mr-auto px-1.5 text-muted-foreground hover:text-destructive-text"
+                aria-label={forgetLabel} title="The file stays where it is." onClick={forget}>
+                Remove from library
+              </Button>
+            )}
+            <div className="flex gap-1.5">
+              <Button
+                type="button" onClick={closeAll} variant="outline" size="xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button" id="master-picker-continue" disabled={committing} onClick={() => { void commit(); }} size="xs"
+              >
+                Continue
+              </Button>
+            </div>
           </div>
         </div>
       )}

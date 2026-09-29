@@ -4,6 +4,22 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Added
+
+- **Remembered masters can be removed from the library.** Pick one in the
+  Master menu, then Remove. That drops it from the list on this computer,
+  including an older copy the app had remembered. The master file stays
+  where it is.
+
+### Fixed
+
+- **A label keeps the master file's latest save.** Opening a label whose
+  master was saved again over the same file uses that file. It no longer
+  reopens an older copy remembered from the previous save, and reopening
+  the label keeps the file's current template.
+
 ## [0.1.102] - 2026-09-28
 
 ### Fixed

@@ -48,7 +48,8 @@ function renderPicker(props: Partial<Parameters<typeof MasterPicker>[0]> = {}) {
     library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery" } },
     resolve: vi.fn().mockResolvedValue({ master: otherMaster, assets: {} }),
     onMaster: vi.fn(), onNewVariant: vi.fn().mockReturnValue("variant-2"),
-    onRenameVersion: vi.fn(), onRemoveVersion: vi.fn(), onSaveMaster: vi.fn(), masterDirty: true, version: null, onVersion: vi.fn(),
+    onRenameVersion: vi.fn(), onRemoveVersion: vi.fn(), onSaveMaster: vi.fn(), onForget: vi.fn(),
+    masterDirty: true, version: null, onVersion: vi.fn(),
     ...props,
   };
   act(() => { root.render(createElement(MasterPicker, full)); });
@@ -179,6 +180,43 @@ describe("MasterPicker", () => {
   it("cannot save when nothing would be written", () => {
     renderPicker({ masterDirty: false });
     expect((container.querySelector("#variant-save") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("removes a chosen library master from the rebind preview, without switching to it", async () => {
+    const onForget = vi.fn();
+    const onMaster = vi.fn();
+    renderPicker({
+      onForget, onMaster,
+      library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: true } },
+    });
+    openMenu();
+    await act(async () => {
+      itemStarting("Other Brewery")!.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    act(() => { (container.querySelector("#master-picker-forget") as HTMLButtonElement).click(); });
+    expect(onForget).toHaveBeenCalledWith("other");
+    expect(onMaster).not.toHaveBeenCalled();
+    expect(container.querySelector("#master-picker-preview")).toBeNull();
+  });
+
+  it("offers removal when the chosen master cannot be opened", async () => {
+    const onForget = vi.fn();
+    renderPicker({
+      onForget,
+      resolve: vi.fn().mockResolvedValue(null),
+      library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: true } },
+    });
+    openMenu();
+    await act(async () => {
+      itemStarting("Other Brewery")!.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(container.querySelector("#master-picker-error")!.textContent).toContain("Other Brewery");
+    act(() => { (container.querySelector("#master-picker-forget") as HTMLButtonElement).click(); });
+    expect(onForget).toHaveBeenCalledWith("other");
   });
 
   it("offers nothing but the library — file verbs live in the File menu", () => {

@@ -13,7 +13,7 @@ import type { Master } from "@/model/layers";
 import { lolevMaster } from "@/model/lolevLayers";
 import { unpackMaster, type MasterAssets } from "@/model/files";
 import { readNativeFile } from "@/files";
-import { cacheMaster, cachedMaster } from "@/masterCache";
+import { cacheMaster, cachedMaster, dropCachedMaster } from "@/masterCache";
 
 export const SHIPPED_MASTER_ID = lolevMaster().id;
 const KEY = "labellab.masters";
@@ -124,34 +124,93 @@ export function hintTrusted(hint: string, labelPath?: string): boolean {
   return roots.some((root) => root !== "" && h.startsWith(root + "/"));
 }
 
+/** Take `id` off this computer's library. The .master file is left where it
+ *  is; the index row and the remembered bytes are dropped, and a new tab
+ *  stops reopening this id. */
+export async function forgetMaster(id: string): Promise<void> {
+  const idx = masterIndex();
+  if (idx[id]) {
+    delete idx[id];
+    localStorage.setItem(KEY, JSON.stringify(idx));
+  }
+  try {
+    if (localStorage.getItem(LAST_KEY) === id) localStorage.removeItem(LAST_KEY);
+  } catch { /* no localStorage — same fallback as masterIndex */ }
+  await dropCachedMaster(id);
+}
+
+/** The index row for `id` named a file that now holds `replacementId` (Save
+ *  Master As over the same path). Drop the row and, when this id was the one
+ *  a new tab would reopen, point that at the file's id instead. */
+async function retireReplacedMaster(id: string, replacementId: string) {
+  let wasLast = false;
+  try { wasLast = localStorage.getItem(LAST_KEY) === id; } catch { /* no localStorage */ }
+  await forgetMaster(id);
+  if (!wasLast) return;
+  try { localStorage.setItem(LAST_KEY, replacementId); } catch { /* no localStorage */ }
+}
+
 /** `labelPath` is the native path of the .label being opened, when there is
- *  one — it widens where `hint` may be read (hintTrusted). */
-export async function resolveMasterById(id: string, hint?: string, labelPath?: string): Promise<ResolvedMaster | null> {
-  const entry = masterIndex()[id];
-  if (entry?.path) {
-    const r = await readMasterAt(entry.path);
-    if (r?.master.id === id) return r;
+ *  one — it widens where `hint` may be read (hintTrusted).
+ *
+ *  `followReplacement`: a label open. The file at the hint (or, when that is
+ *  the indexed path, the file the index named) wins even when its id changed.
+ *  The browser cache is an older copy of the id the label still names, and
+ *  must not stand in for a file that was read. A library pick passes false
+ *  and gets null instead of a different master. */
+async function resolveMaster(
+  id: string, hint: string | undefined, labelPath: string | undefined, followReplacement: boolean,
+): Promise<ResolvedMaster | null> {
+  const indexPath = masterIndex()[id]?.path ?? "";
+  const indexFile = indexPath ? await readMasterAt(indexPath) : null;
+  if (indexFile?.master.id === id) return indexFile;
+
+  const hintPath = hint && hintTrusted(hint, labelPath) && hint !== indexPath ? hint : "";
+  const hintFile = hintPath ? await readMasterAt(hintPath) : null;
+  if (hintFile?.master.id === id) return hintFile;
+
+  const indexReplaced = !!indexFile && indexFile.master.id !== id;
+  const hintReplaced = !!hintFile && hintFile.master.id !== id;
+  if (indexFile && indexFile.master.id !== id) {
+    await retireReplacedMaster(id, indexFile.master.id);
   }
-  if (hint && hintTrusted(hint, labelPath)) {
-    const r = await readMasterAt(hint);
-    if (r?.master.id === id) return r;
+  if (followReplacement) {
+    // No separate hint, or the hint is this same path: the indexed file is
+    // the one the label named. A different hint that parsed is `hintFile`.
+    const named = hintFile ?? (!hint || hint === indexPath ? indexFile : null);
+    if (named) return named;
   }
-  // Nothing on disk: in a browser there never is (readMasterAt bails), so the
-  // cached bytes of the master this operator last saved or opened stand in for
-  // the file — without this a reload silently swapped their template for the
-  // shipped fixture.
-  const held = await cachedMaster(id);
-  if (held) {
-    try {
-      const r = unpackMaster(held);
-      if (r.master.id === id) return r;
-    } catch { /* a stale or truncated entry falls through to the fixture */ }
+  // Nothing on disk matched this id. A browser never has a path (readMasterAt
+  // bails), and a desktop read can fail (scope, a moved file). The cached
+  // bytes then stand in for the file — without this a reload swapped the
+  // template for the shipped fixture. A file that was read and holds a
+  // different id is not "nothing on disk": the cache would be the previous
+  // copy of the id the file replaced.
+  if (!indexReplaced && !hintReplaced) {
+    const held = await cachedMaster(id);
+    if (held) {
+      try {
+        const r = unpackMaster(held);
+        if (r.master.id === id) return r;
+      } catch { /* a stale or truncated entry falls through to the fixture */ }
+    }
   }
   // Fall back to the built-in fixture only when nothing on disk resolved —
   // guarantees a fresh install with an empty index still works, without
   // letting the shipped id short-circuit a registered .master on disk.
   if (id === SHIPPED_MASTER_ID) return { master: lolevMaster(), assets: {} };
   return null;
+}
+
+export function resolveMasterById(id: string, hint?: string, labelPath?: string): Promise<ResolvedMaster | null> {
+  return resolveMaster(id, hint, labelPath, false);
+}
+
+/** The master a `.label` opens against. Same as resolveMasterById when the
+ *  file's id still matches. When that file was saved again under a new id,
+ *  follow the file so the label keeps the template that is on disk. */
+export function resolveLabelMaster(id: string, hint?: string, labelPath?: string): Promise<ResolvedMaster | null> {
+  return resolveMaster(id, hint, labelPath, true);
 }
 
 /** The last-applied master an untitled tab starts from, before
