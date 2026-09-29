@@ -36,6 +36,8 @@ import {
   Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 
+const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+
 /** The menu's non-library rows (see the header note). No master id can
  *  collide with either — a minted one is always `master-…`. */
 const NEW_VARIANT = "__new-variant";
@@ -191,10 +193,8 @@ export function MasterPicker(props: {
                 <button type="button" aria-label={`Remove ${entry.name} from the library`}
                   title="Remove from the library. The file stays where it is."
                   className="pointer-events-auto ml-auto rounded-sm p-0.5 text-muted-foreground hover:text-destructive-text"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onPointerUp={(e) => e.stopPropagation()}
-                  onMouseUp={(e) => e.stopPropagation()}
-                  onClick={(e) => { e.stopPropagation(); props.onForget(id); }}>
+                  onPointerDown={stop} onPointerUp={stop} onMouseUp={stop}
+                  onClick={(e) => { stop(e); props.onForget(id); }}>
                   <X className="size-3.5" aria-hidden />
                 </button>
               )}

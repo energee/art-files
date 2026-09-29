@@ -8,7 +8,7 @@ import type {
 } from "@tauri-apps/api/menu";
 import {
   Bookmark, BookmarkPlus, BookOpen, Columns2, Contrast, Cylinder, FileImage, Files, FolderOpen,
-  Layers, RectangleHorizontal, Redo2, RefreshCw, Ruler, Scan, Settings, SquareArrowDown,
+  Layers, RectangleHorizontal, Redo2, Ruler, Settings, SquareArrowDown,
   SquareArrowUp, SquarePlus, Undo2, X, type LucideIcon,
 } from "lucide-react";
 import { shortcutOf, type Command } from "@/components/CommandMenu";
@@ -34,7 +34,6 @@ const SYMBOL_GLYPH = {
   "doc.badge.plus": BookmarkPlus,
   "square.and.arrow.up": SquareArrowUp,
   "photo": FileImage,
-  "viewfinder": Scan,
   "circle.lefthalf.filled": Contrast,
   "square.3.layers.3d": Layers,
   "arrow.uturn.backward": Undo2,
@@ -44,24 +43,18 @@ const SYMBOL_GLYPH = {
   "cylinder": Cylinder,
   "ruler": Ruler,
   "rectangle.split.2x1": Columns2,
-  "arrow.clockwise": RefreshCw,
 } satisfies Record<string, LucideIcon>;
 type MenuSymbol = keyof typeof SYMBOL_GLYPH;
 
-type CheckAction = {
+type ActionEntry = {
   kind: "action";
   id: string;
   text: string;
-  check: true;
+  /** A checkmark row: its state comes from `checked`, not the command. */
+  check?: true;
   symbol: MenuSymbol;
 };
-type IconAction = {
-  kind: "action";
-  id: string;
-  text: string;
-  symbol: MenuSymbol;
-};
-type ActionEntry = CheckAction | IconAction;
+type CheckAction = ActionEntry & { check: true };
 type SeparatorEntry = { kind: "separator"; id: string };
 type PredefinedEntry = {
   kind: "predefined";
@@ -138,7 +131,7 @@ export const APP_MENUS: SubmenuEntry[] = [
 ];
 
 function isCheckAction(entry: ActionEntry): entry is CheckAction {
-  return "check" in entry;
+  return !!entry.check;
 }
 
 export function actionsIn(entries: MenuEntry[]): ActionEntry[] {
@@ -341,20 +334,20 @@ async function nativeEntry(
   return item;
 }
 
-/** Every row's title and SF Symbol, for menu_symbols.rs to set on the
- *  installed Mac menu. Titles are unique across APP_MENUS. Exported for tests. */
 /** Native-only rows with no in-window twin: the View menu's full-screen
  *  toggle, under both titles AppKit gives it. */
-const SYSTEM_ROWS: [string, MenuSymbol][] = [
-  ["Enter Full Screen", "viewfinder"], ["Exit Full Screen", "viewfinder"],
-];
+const SYSTEM_ROWS: [string, string][] =
+  ["Enter Full Screen", "Exit Full Screen"].map((title) => [title, "viewfinder"]);
 
-export function menuSymbols(entries: MenuEntry[] = APP_MENUS): [string, MenuSymbol][] {
-  return entries.flatMap((entry): [string, MenuSymbol][] =>
-    entry.kind === "submenu"
-      ? [...(entry.symbol ? [[entry.text, entry.symbol] as [string, MenuSymbol]] : []), ...menuSymbols(entry.items)]
-      : entry.kind === "action" ? [[entry.text, entry.symbol]]
-      : []);
+/** Every row's title and SF Symbol, for menu_symbols.rs to set on the
+ *  installed Mac menu. Titles are unique across APP_MENUS. Exported for tests. */
+export function menuSymbols(entries: MenuEntry[] = APP_MENUS): [string, string][] {
+  return entries.flatMap((entry): [string, string][] => {
+    if (entry.kind === "action") return [[entry.text, entry.symbol]];
+    if (entry.kind !== "submenu") return [];
+    const own: [string, string][] = entry.symbol ? [[entry.text, entry.symbol]] : [];
+    return [...own, ...menuSymbols(entry.items)];
+  });
 }
 
 /** The macOS application-menu item's two labels, toggled by `updateInstalled`. */

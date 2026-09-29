@@ -1786,9 +1786,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** MasterPicker's resolve. A lookup can retire an index row whose file now
    *  holds another master, so the menu re-reads the library afterwards. */
   async function resolveLibraryMaster(id: string) {
-    const before = Object.keys(masterIndex()).length;
     const r = await resolveMasterById(id);
-    if (Object.keys(masterIndex()).length !== before) refreshLibrary();
+    refreshLibrary();
     return r;
   }
 
