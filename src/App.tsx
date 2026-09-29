@@ -1783,6 +1783,14 @@ export const DocumentEditor = memo(function DocumentEditor({
     return entries;
   }
 
+  /** MasterPicker's resolve. A lookup can retire an index row whose file now
+   *  holds another master, so the menu re-reads the library afterwards. */
+  async function resolveLibraryMaster(id: string) {
+    const r = await resolveMasterById(id);
+    setLibraryTick((n) => n + 1);
+    return r;
+  }
+
   /** Drop a remembered master from the library. The open document and the
    *  file on disk stay as they are. */
   function forgetLibraryMaster(id: string) {
@@ -2257,7 +2265,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           }}>
             {/* The master picker, then the ONE Layers list (spec: UI). */}
             <MasterPicker master={master} label={label}
-              library={libraryEntries()} resolve={resolveMasterById}
+              library={libraryEntries()} resolve={resolveLibraryMaster}
               onMaster={pickLibraryMaster} onNewVariant={onNewVariant}
               onRenameVersion={onRenameVersion} onRemoveVersion={onRemoveVersion}
               onSaveMaster={() => setPendingSave({ as: false })} masterDirty={masterDirty}

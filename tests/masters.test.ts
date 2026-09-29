@@ -166,6 +166,51 @@ describe("master library index", () => {
     vi.doUnmock("@/masterCache");
   });
 
+  // The index path now holds some other master and the label's hint can't be
+  // read: the remembered copy of the label's own master still stands in, and
+  // the stale index row is retired without taking those bytes with it.
+  it("a label falls back to the remembered copy when its hint is unreadable and the index file is another master", async () => {
+    vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+    const other = { ...lolevMaster(), id: "master-other", name: "Other" };
+    vi.doMock("@/files", () => ({
+      readNativeFile: async (p: string) => {
+        if (p === "/tmp/indexed.master") return new TextEncoder().encode(JSON.stringify(other));
+        throw new Error("forbidden");
+      },
+    }));
+    const held = new Map<string, Uint8Array>();
+    vi.doMock("@/masterCache", () => ({
+      cacheMaster: async (id: string, bytes: Uint8Array) => { held.set(id, bytes); },
+      cachedMaster: async (id: string) => held.get(id) ?? null,
+      dropCachedMaster: async (id: string) => { held.delete(id); },
+    }));
+    const { packMaster } = await import("../src/model/files");
+    const mod = await import("../src/masters");
+    const mine = { ...lolevMaster(), id: "master-mine", name: "Mine" };
+    await mod.rememberMaster(mine, "/tmp/indexed.master", packMaster(mine, {}));
+    const r = await mod.resolveLabelMaster("master-mine", "/tmp/hint/mine.master", "/tmp/hint/beer.label");
+    expect(r?.master.name).toBe("Mine");
+    expect(mod.masterIndex()["master-mine"]).toBeUndefined();
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/files");
+    vi.doUnmock("@/masterCache");
+  });
+
+  it("forgetting a master still drops its remembered bytes when storage refuses the write", async () => {
+    const held = new Map<string, Uint8Array>([["m1", new Uint8Array([1])]]);
+    vi.doMock("@/masterCache", () => ({
+      cacheMaster: async () => {},
+      cachedMaster: async (id: string) => held.get(id) ?? null,
+      dropCachedMaster: async (id: string) => { held.delete(id); },
+    }));
+    const mod = await import("../src/masters");
+    localStorage.setItem("labellab.masters", JSON.stringify({ m1: { name: "M", path: "/a.master", lastSeen: "" } }));
+    vi.stubGlobal("localStorage", { ...fakeLocalStorage, setItem: () => { throw new Error("quota"); } });
+    await expect(mod.forgetMaster("m1")).resolves.toBeUndefined();
+    expect(held.has("m1")).toBe(false);
+    vi.doUnmock("@/masterCache");
+  });
+
   // A .label is shared, so its masterHint is untrusted: only a path beside
   // the label or beside an already-registered master may be read.
   it("reads a hint only when it sits beside the label or a registered master", async () => {

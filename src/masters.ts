@@ -129,12 +129,12 @@ export function hintTrusted(hint: string, labelPath?: string): boolean {
  *  reopening this id: it reopens `replacementId` when the file at its path now
  *  holds that id (Save Master As over the same path), otherwise nothing. */
 export async function forgetMaster(id: string, replacementId?: string): Promise<void> {
-  const idx = masterIndex();
-  if (idx[id]) {
-    delete idx[id];
-    localStorage.setItem(KEY, JSON.stringify(idx));
-  }
   try {
+    const idx = masterIndex();
+    if (idx[id]) {
+      delete idx[id];
+      localStorage.setItem(KEY, JSON.stringify(idx));
+    }
     if (localStorage.getItem(LAST_KEY) === id) {
       if (replacementId) localStorage.setItem(LAST_KEY, replacementId);
       else localStorage.removeItem(LAST_KEY);
@@ -148,9 +148,8 @@ export async function forgetMaster(id: string, replacementId?: string): Promise<
  *
  *  `followReplacement`: a label open. The file at the hint (or, when that is
  *  the indexed path, the file the index named) wins even when its id changed.
- *  The browser cache is an older copy of the id the label still names, and
- *  must not stand in for a file that was read. A library pick passes false
- *  and gets null instead of a different master. */
+ *  When no such file can be read, the remembered copy of the id stands in. A
+ *  library pick passes false and gets null instead of a different master. */
 async function resolveMaster(
   id: string, hint: string | undefined, labelPath: string | undefined, followReplacement: boolean,
 ): Promise<ResolvedMaster | null> {
@@ -163,27 +162,22 @@ async function resolveMaster(
   if (hintFile?.master.id === id) return hintFile;
 
   // Any file read here holds a different id: the early returns took the match.
+  // A label open follows the file it named. Otherwise the remembered bytes
+  // stand in for a file that could not be read (a browser has no path, a
+  // desktop read can fail: scope, a moved file) — without this a reload
+  // swapped the template for the shipped fixture. They are read before the
+  // stale index row is retired, which drops them. A library pick does not
+  // fall back once a file was read: the cache would be the previous copy of
+  // the id that file replaced.
+  const named = followReplacement ? hintFile ?? (!hint || hint === indexPath ? indexFile : null) : null;
+  const held = !named && (followReplacement || (!indexFile && !hintFile)) ? await cachedMaster(id) : null;
   if (indexFile) await forgetMaster(id, indexFile.master.id);
-  if (followReplacement) {
-    // No separate hint, or the hint is this same path: the indexed file is
-    // the one the label named. A different hint that parsed is `hintFile`.
-    const named = hintFile ?? (!hint || hint === indexPath ? indexFile : null);
-    if (named) return named;
-  }
-  // Nothing on disk matched this id. A browser never has a path (readMasterAt
-  // bails), and a desktop read can fail (scope, a moved file). The cached
-  // bytes then stand in for the file — without this a reload swapped the
-  // template for the shipped fixture. A file that was read and holds a
-  // different id is not "nothing on disk": the cache would be the previous
-  // copy of the id the file replaced.
-  if (!indexFile && !hintFile) {
-    const held = await cachedMaster(id);
-    if (held) {
-      try {
-        const r = unpackMaster(held);
-        if (r.master.id === id) return r;
-      } catch { /* a stale or truncated entry falls through to the fixture */ }
-    }
+  if (named) return named;
+  if (held) {
+    try {
+      const r = unpackMaster(held);
+      if (r.master.id === id) return r;
+    } catch { /* a stale or truncated entry falls through to the fixture */ }
   }
   // Fall back to the built-in fixture only when nothing on disk resolved —
   // guarantees a fresh install with an empty index still works, without
