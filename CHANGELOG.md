@@ -4,6 +4,15 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Fixed
+
+- **A restart reopens the master file that is on disk.** If the last master's
+  file had been saved again as a new master over the same path, a new tab
+  fell back to shipped Lolev on the first launch and only found the file on
+  the next one. It now opens the file straight away.
+
 ## [0.1.103] - 2026-09-29
 
 ### Added

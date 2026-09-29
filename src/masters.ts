@@ -198,8 +198,10 @@ export function resolveLabelMaster(id: string, hint?: string, labelPath?: string
 }
 
 /** The last-applied master an untitled tab starts from, before
- *  structureOnlyMaster drops fill values and raster art. Falls back to the
- *  shipped fixture when the last-applied id cannot be resolved. */
+ *  structureOnlyMaster drops fill values and raster art. Follows the file when
+ *  it was saved again under a new id, so a restart shows the master on disk.
+ *  Falls back to the shipped fixture when the last-applied id cannot be
+ *  resolved. */
 export async function resolveDefaultMaster(): Promise<ResolvedMaster> {
-  return (await resolveMasterById(lastMasterId())) ?? { master: lolevMaster(), assets: {} };
+  return (await resolveLabelMaster(lastMasterId())) ?? { master: lolevMaster(), assets: {} };
 }

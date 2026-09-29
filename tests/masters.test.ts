@@ -166,6 +166,24 @@ describe("master library index", () => {
     vi.doUnmock("@/masterCache");
   });
 
+  // A restart reopens the last master. When its file was saved again under a
+  // new id (Save Master As over the same path), the untitled tab follows the
+  // file instead of falling back to shipped Lolev for that launch.
+  it("an untitled restart follows the master file saved under a new id", async () => {
+    vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+    const onDisk = { ...lolevMaster(), id: "master-newer", name: "Newer" };
+    vi.doMock("@/files", () => ({
+      readNativeFile: async () => new TextEncoder().encode(JSON.stringify(onDisk)),
+    }));
+    const mod = await import("../src/masters");
+    const old = { ...lolevMaster(), id: "master-old", name: "Old" };
+    await mod.rememberMaster(old, "/tmp/lolev.master");
+    const resolved = await mod.resolveDefaultMaster();
+    expect(resolved.master.id).toBe("master-newer");
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/files");
+  });
+
   // The index path now holds some other master and the label's hint can't be
   // read: the remembered copy of the label's own master still stands in, and
   // the stale index row is retired without taking those bytes with it.
