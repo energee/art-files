@@ -18,6 +18,12 @@ that section to the new version (see .agents/release-steward.md).
   file had been saved again as a new master over the same path, a new tab
   fell back to shipped Lolev on the first launch and only found the file on
   the next one. It now opens the file straight away.
+- **A label keeps opening after its master file changed.** When the file a
+  master was remembered at now holds a different master, a label still opens
+  with its remembered copy every time, not just the first.
+- **A barcode's Solid background setting must be on or off.** A hand-edited
+  file with any other value is reported instead of printing differently from
+  what the inspector shows.
 
 ## [0.1.103] - 2026-09-29
 

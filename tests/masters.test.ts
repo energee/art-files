@@ -31,6 +31,12 @@ describe("master library index", () => {
   it("unknown id with no hint resolves null", async () => {
     expect(await resolveMasterById("nope")).toBeNull();
   });
+  it("rejects a barcode whose solidBackground is not a boolean", () => {
+    const m = lolevMaster();
+    const bc = m.layers.find((l) => l.kind === "barcode")!;
+    (bc as unknown as { solidBackground: unknown }).solidBackground = "false";
+    expect(() => parseMasterJson(JSON.parse(serializeMaster(m)))).toThrow(/solidBackground/);
+  });
   it("survives a mangled index entry", () => {
     localStorage.setItem("labellab.masters", "{not json");
     expect(masterIndex()).toEqual({});
@@ -209,6 +215,9 @@ describe("master library index", () => {
     const r = await mod.resolveLabelMaster("master-mine", "/tmp/hint/mine.master", "/tmp/hint/beer.label");
     expect(r?.master.name).toBe("Mine");
     expect(mod.masterIndex()["master-mine"]).toBeUndefined();
+    // The stand-in must outlive the open: the same label opens again.
+    const again = await mod.resolveLabelMaster("master-mine", "/tmp/hint/mine.master", "/tmp/hint/beer.label");
+    expect(again?.master.name).toBe("Mine");
     vi.doUnmock("@tauri-apps/api/core");
     vi.doUnmock("@/files");
     vi.doUnmock("@/masterCache");

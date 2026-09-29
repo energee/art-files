@@ -166,7 +166,7 @@ async function resolveMaster(
   // stand in for a file that could not be read (a browser has no path, a
   // desktop read can fail: scope, a moved file) — without this a reload
   // swapped the template for the shipped fixture. They are read before the
-  // stale index row is retired, which drops them. A library pick does not
+  // stale index row is retired, which drops them, then put back. A library pick does not
   // fall back once a file was read: the cache would be the previous copy of
   // the id that file replaced.
   const named = followReplacement ? hintFile ?? (!hint || hint === indexPath ? indexFile : null) : null;
@@ -176,7 +176,12 @@ async function resolveMaster(
   if (held) {
     try {
       const r = unpackMaster(held);
-      if (r.master.id === id) return r;
+      if (r.master.id === id) {
+        // forgetMaster dropped these bytes with the row; the same label opens
+        // again, so the stand-in has to outlive this open.
+        if (indexFile) await cacheMaster(id, held);
+        return r;
+      }
     } catch { /* a stale or truncated entry falls through to the fixture */ }
   }
   // Fall back to the built-in fixture only when nothing on disk resolved —

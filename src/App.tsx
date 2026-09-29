@@ -27,7 +27,7 @@
 import { RenderSettings as RenderSettingsFields } from "@/components/RenderSettings";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { MasterSaveReview } from "@/components/MasterSaveReview";
-import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { dialogOpen, isTypingTarget, keyOwner } from "@/keys";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
@@ -224,14 +224,14 @@ function loadViewToggles(): ViewToggles {
   return toggles;
 }
 
-/** One spelling for the "which error do I show?" expression the open paths
- *  share. */
 /** The "N value(s) benched" notes a rebind reports for what didn't fit. */
 const benchedNotes = (dropped: { values: string[]; variants: string[] }): string[] => [
   ...(dropped.values.length ? [`${dropped.values.length} value(s) benched: ${dropped.values.join(", ")}`] : []),
   ...(dropped.variants.length ? [`${dropped.variants.length} variant(s) benched: ${dropped.variants.join(", ")}`] : []),
 ];
 
+/** One spelling for the "which error do I show?" expression the open paths
+ *  share. */
 const errMsg = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** What every open path hands to openProject. Each entry point converts
@@ -567,9 +567,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [buildError, setBuildError] = useState("");
   const [renderError, setRenderError] = useState("");
   const [loadError, setLoadError] = useState("");
-  // Bumps when a library row is removed. The index lives in localStorage, so
-  // nothing else in the document changes and the menu would keep the row.
-  const [libraryTick, setLibraryTick] = useState(0);
+  // Re-renders after a library row is removed or retired. The index lives in
+  // localStorage, so nothing else in the document changes and the menu would
+  // keep the row; libraryEntries re-reads it on every render.
+  const [, refreshLibrary] = useReducer((n: number) => n + 1, 0);
   // Divider position reported by PreviewCompare (% of width showing
   // white-ink), so the View menu can check off whichever end it sits at.
   const [split, setSplit] = useState(0);
@@ -1774,7 +1775,6 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  the index remembers, id → name only (resolved lazily on pick).
    *  `inLibrary` is an index row, which is what Remove can drop. */
   function libraryEntries(): Record<string, { name: string; inLibrary: boolean }> {
-    void libraryTick;
     const idx = masterIndex();
     const entries: Record<string, { name: string; inLibrary: boolean }> = {
       [SHIPPED_MASTER_ID]: { name: lolevMaster().name, inLibrary: !!idx[SHIPPED_MASTER_ID] },
@@ -1786,8 +1786,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** MasterPicker's resolve. A lookup can retire an index row whose file now
    *  holds another master, so the menu re-reads the library afterwards. */
   async function resolveLibraryMaster(id: string) {
+    const before = Object.keys(masterIndex()).length;
     const r = await resolveMasterById(id);
-    setLibraryTick((n) => n + 1);
+    if (Object.keys(masterIndex()).length !== before) refreshLibrary();
     return r;
   }
 
@@ -1795,7 +1796,7 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  file on disk stay as they are. */
   function forgetLibraryMaster(id: string) {
     void forgetMaster(id);
-    setLibraryTick((n) => n + 1);
+    refreshLibrary();
   }
 
   /** File → Open Master…: native dialog on desktop (a real path, so the
