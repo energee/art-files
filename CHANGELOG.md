@@ -20,6 +20,10 @@ that section to the new version (see .agents/release-steward.md).
   reopens an older copy remembered from the previous save, and reopening
   the label keeps the file's current template.
 
+- **The browser matches the desktop icon and menu symbols.** The tab shows
+  the Label Lab mark. A menu row shows a symbol in the browser only when the
+  Mac menu shows one, and it is the same symbol.
+
 ## [0.1.102] - 2026-09-28
 
 ### Fixed

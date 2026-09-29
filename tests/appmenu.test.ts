@@ -48,17 +48,13 @@ describe("file menu", () => {
     expect(ids).not.toContain("project-new");
   });
 
-  it("gives every File action and the Export submenu a leading icon", () => {
+  it("gives the Mac menu templates to New Tab, Close Tab, Save Master and Export only", () => {
     const file = APP_MENUS.find((menu) => menu.id === "file-menu")!;
     const exportMenu = file.items.find((entry) =>
       entry.kind === "submenu" && entry.id === "export-menu");
     if (exportMenu?.kind !== "submenu") throw new Error("export-menu missing");
-    expect(exportMenu.icon).toBeTruthy();
     expect(exportMenu.nativeIcon).toBe("Share");
     const actions = actionsIn(file.items);
-    for (const action of actions) {
-      expect("icon" in action && action.icon, action.id).toBeTruthy();
-    }
     const byId = Object.fromEntries(actions.map((action) => [action.id, action]));
     expect(nativeIconOf(byId["tab-new"])).toBe("Add");
     expect(nativeIconOf(byId["project-open"])).toBeUndefined();
@@ -100,10 +96,9 @@ describe("view menu", () => {
     expect(ids).toEqual(["view-label", "view-mask", "view-can", "rulers", "guides"]);
   });
 
-  it("gives every View check a leading icon and no native glyph", () => {
+  it("leaves View checks to the checkmark, with no native glyph", () => {
     const view = APP_MENUS.find((menu) => menu.id === "view-menu")!;
     for (const action of actionsIn(view.items)) {
-      expect("icon" in action && action.icon, action.id).toBeTruthy();
       expect(nativeIconOf(action), action.id).toBeUndefined();
     }
   });
@@ -117,12 +112,9 @@ describe("native text editing menu", () => {
     expect(roles).toEqual(["Cut", "Copy", "Paste", "SelectAll"]);
   });
 
-  it("icons Undo, Redo and Settings", () => {
+  it("icons Undo and Redo and leaves Settings blank, matching the Mac menu", () => {
     const edit = APP_MENUS.find((menu) => menu.id === "edit-menu")!;
     const editActions = actionsIn(edit.items);
-    for (const action of editActions) {
-      expect("icon" in action && action.icon, action.id).toBeTruthy();
-    }
     expect(nativeIconOf(editActions.find((action) => action.id === "undo"))).toBe("GoLeft");
     expect(nativeIconOf(editActions.find((action) => action.id === "redo"))).toBe("GoRight");
     expect(nativeIconOf(editActions.find((action) => action.id === "settings")))

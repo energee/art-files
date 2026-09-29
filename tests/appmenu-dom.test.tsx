@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// appmenu-dom.test.tsx — the in-window File menu paints a leading icon on each action.
+// appmenu-dom.test.tsx — the in-window menu paints a glyph only where the Mac menu does.
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it } from "vitest";
@@ -59,7 +59,7 @@ it("renders a leading svg on File → New Tab", async () => {
   }
 });
 
-it("renders a leading svg on Edit → Undo and View → Label", async () => {
+it("renders a leading svg on Edit → Undo and none on View → Label", async () => {
   const { container, root } = await renderMenu();
   try {
     await openMenu(container, "Edit");
@@ -73,7 +73,7 @@ it("renders a leading svg on Edit → Undo and View → Label", async () => {
     });
     await openMenu(container, "View");
     const label = menuItem("Label");
-    expect(label.querySelector("svg[aria-hidden=true]")).not.toBeNull();
+    expect(label.querySelector("svg")).toBeNull();
   } finally {
     await act(async () => { root.unmount(); });
     container.remove();
