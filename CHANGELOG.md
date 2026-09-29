@@ -4,6 +4,11 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Changed
+- **A label whose master can't be found asks instead of failing.** Open it on the current master or locate its `.master` file; values the master lacks are set aside, not lost.
+
 ## [0.1.103] - 2026-09-29
 
 ### Added
