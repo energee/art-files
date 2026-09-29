@@ -11,6 +11,10 @@ that section to the new version (see .agents/release-steward.md).
 - **Remove a master from the Master menu with the × on its row.** It sits at
   the right of each remembered master, so it no longer takes picking the
   master and waiting for its preview first. The master file stays where it is.
+- **Every menu row has an icon, the ones macOS itself uses.** The Mac menu
+  bar now shows the system's standard symbols on File, Edit and View rows,
+  including the View checkmarks, and they follow light and dark mode. The
+  browser menu draws the closest match for each.
 
 ### Fixed
 
