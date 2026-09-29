@@ -4,6 +4,14 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Fixed
+
+- **The browser matches the desktop icon and menu symbols.** The tab shows
+  the Label Lab mark. A menu row shows a symbol in the browser only when the
+  Mac menu shows one, and it is the same symbol.
+
 ## [0.1.102] - 2026-09-28
 
 ### Fixed
