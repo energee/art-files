@@ -7,9 +7,8 @@ import type {
   CheckMenuItem, IconMenuItem, MenuItem, NativeIcon, PredefinedMenuItem, Submenu,
 } from "@tauri-apps/api/menu";
 import {
-  Bookmark, BookmarkPlus, Columns2, Cylinder, FileImage, FilePlus, Files,
-  FolderOpen, Layers, Library, RectangleHorizontal, Redo2, Ruler, Scan,
-  Settings, SquareArrowDown, SquareArrowUp, Undo2, X, type LucideIcon,
+  ArrowLeft, ArrowRight, Bookmark, Eye, LayoutGrid, List, Minus, Plus,
+  RefreshCw, Share, type LucideIcon,
 } from "lucide-react";
 import { shortcutOf, type Command } from "@/components/CommandMenu";
 import { dialogOpen, isTypingTarget } from "@/keys";
@@ -38,18 +37,23 @@ type NativeIconName = Extract<
   | "GoRight"
 >;
 
+/** The in-window drawing of each native symbol, so a row shows a symbol in the
+ *  browser only when the Mac menu shows one, and it is the same symbol. */
+const WEB_GLYPH: Record<NativeIconName, LucideIcon> = {
+  Add: Plus, Remove: Minus, Share, Bookmarks: Bookmark, IconView: LayoutGrid,
+  QuickLook: Eye, ListView: List, Refresh: RefreshCw, GoLeft: ArrowLeft, GoRight: ArrowRight,
+};
+
 type CheckAction = {
   kind: "action";
   id: string;
   text: string;
   check: true;
-  icon: LucideIcon;
 };
 type IconAction = {
   kind: "action";
   id: string;
   text: string;
-  icon: LucideIcon;
   nativeIcon?: NativeIconName;
 };
 type ActionEntry = CheckAction | IconAction;
@@ -62,49 +66,48 @@ type SubmenuEntry = {
   kind: "submenu";
   id: string;
   text: string;
-  icon?: LucideIcon;
   nativeIcon?: NativeIconName;
   items: MenuEntry[];
 };
 type MenuEntry = ActionEntry | SeparatorEntry | PredefinedEntry | SubmenuEntry;
 
-/** The application-owned menus. One table drives both renderers: Lucide
- *  icons in the in-window menubar, `nativeIcon` names in the macOS
- *  application menu. Exported for tests, which pin the wiring (e.g. the
- *  Edit menu's native clipboard roles) against this data. */
+/** The application-owned menus. One table drives both renderers. A row shows
+ *  a symbol only when macOS has a black-and-white template for it, and the
+ *  in-window glyph draws that same symbol. Exported for tests, which pin the
+ *  wiring (e.g. the Edit menu's native clipboard roles) against this data. */
 export const APP_MENUS: SubmenuEntry[] = [
   {
     kind: "submenu", id: "file-menu", text: "File", items: [
-      { kind: "action", id: "tab-new", text: "New Tab", icon: FilePlus, nativeIcon: "Add" },
-      { kind: "action", id: "project-open", text: "Open Project…", icon: FolderOpen },
-      { kind: "action", id: "tab-close", text: "Close Tab", icon: X, nativeIcon: "Remove" },
+      { kind: "action", id: "tab-new", text: "New Tab", nativeIcon: "Add" },
+      { kind: "action", id: "project-open", text: "Open Project…" },
+      { kind: "action", id: "tab-close", text: "Close Tab", nativeIcon: "Remove" },
       { kind: "separator", id: "file-new" },
-      { kind: "action", id: "project-save", text: "Save Project", icon: SquareArrowDown },
-      { kind: "action", id: "project-save-as", text: "Save Project As…", icon: Files },
+      { kind: "action", id: "project-save", text: "Save Project" },
+      { kind: "action", id: "project-save-as", text: "Save Project As…" },
       { kind: "separator", id: "file-master" },
-      { kind: "action", id: "master-open", text: "Open Master…", icon: Library },
-      { kind: "action", id: "master-save", text: "Save Master", icon: Bookmark, nativeIcon: "Bookmarks" },
-      { kind: "action", id: "master-save-as", text: "Save Master As…", icon: BookmarkPlus, nativeIcon: "Bookmarks" },
+      { kind: "action", id: "master-open", text: "Open Master…" },
+      { kind: "action", id: "master-save", text: "Save Master", nativeIcon: "Bookmarks" },
+      { kind: "action", id: "master-save-as", text: "Save Master As…", nativeIcon: "Bookmarks" },
       { kind: "separator", id: "file-projects" },
       {
-        kind: "submenu", id: "export-menu", text: "Export", icon: SquareArrowUp, nativeIcon: "Share", items: [
-          { kind: "action", id: "export-both", text: "Export PDFs", icon: Files, nativeIcon: "Share" },
-          { kind: "action", id: "export-art", text: "Export Artwork PDF", icon: FileImage, nativeIcon: "IconView" },
-          { kind: "action", id: "export-mask", text: "Export Mask PDF", icon: Scan, nativeIcon: "QuickLook" },
+        kind: "submenu", id: "export-menu", text: "Export", nativeIcon: "Share", items: [
+          { kind: "action", id: "export-both", text: "Export PDFs", nativeIcon: "Share" },
+          { kind: "action", id: "export-art", text: "Export Artwork PDF", nativeIcon: "IconView" },
+          { kind: "action", id: "export-mask", text: "Export Mask PDF", nativeIcon: "QuickLook" },
           { kind: "separator", id: "export-formats" },
-          { kind: "action", id: "export-psd", text: "Export PSDs", icon: Layers, nativeIcon: "ListView" },
-          { kind: "action", id: "export-psd-art", text: "Export Artwork PSD", icon: FileImage, nativeIcon: "IconView" },
-          { kind: "action", id: "export-psd-mask", text: "Export Mask PSD", icon: Scan, nativeIcon: "QuickLook" },
+          { kind: "action", id: "export-psd", text: "Export PSDs", nativeIcon: "ListView" },
+          { kind: "action", id: "export-psd-art", text: "Export Artwork PSD", nativeIcon: "IconView" },
+          { kind: "action", id: "export-psd-mask", text: "Export Mask PSD", nativeIcon: "QuickLook" },
         ],
       },
     ],
   },
   {
     kind: "submenu", id: "edit-menu", text: "Edit", items: [
-      { kind: "action", id: "undo", text: "Undo", icon: Undo2, nativeIcon: "GoLeft" },
-      { kind: "action", id: "redo", text: "Redo", icon: Redo2, nativeIcon: "GoRight" },
+      { kind: "action", id: "undo", text: "Undo", nativeIcon: "GoLeft" },
+      { kind: "action", id: "redo", text: "Redo", nativeIcon: "GoRight" },
       { kind: "separator", id: "edit-variants" },
-      { kind: "action", id: "settings", text: "Settings…", icon: Settings },
+      { kind: "action", id: "settings", text: "Settings…" },
       { kind: "predefined", item: "Separator" },
       { kind: "predefined", item: "Cut" },
       { kind: "predefined", item: "Copy" },
@@ -114,12 +117,12 @@ export const APP_MENUS: SubmenuEntry[] = [
   },
   {
     kind: "submenu", id: "view-menu", text: "View", items: [
-      { kind: "action", id: "view-label", text: "Label", check: true, icon: RectangleHorizontal },
-      { kind: "action", id: "view-mask", text: "Mask", check: true, icon: Scan },
-      { kind: "action", id: "view-can", text: "Can", check: true, icon: Cylinder },
+      { kind: "action", id: "view-label", text: "Label", check: true },
+      { kind: "action", id: "view-mask", text: "Mask", check: true },
+      { kind: "action", id: "view-can", text: "Can", check: true },
       { kind: "separator", id: "view-modes" },
-      { kind: "action", id: "rulers", text: "Rulers", check: true, icon: Ruler },
-      { kind: "action", id: "guides", text: "Guides", check: true, icon: Columns2 },
+      { kind: "action", id: "rulers", text: "Rulers", check: true },
+      { kind: "action", id: "guides", text: "Guides", check: true },
     ],
   },
 ];
@@ -146,8 +149,9 @@ const MENU_ITEMS =
 type CommandIndex = Record<string, Command>;
 type CheckedState = Partial<Record<string, boolean>>;
 
-function MenuGlyph({ icon: Icon }: { icon: LucideIcon }) {
-  return <Icon className="size-4 text-current" strokeWidth={2} aria-hidden="true" />;
+function MenuGlyph({ name }: { name: NativeIconName }) {
+  const Icon = WEB_GLYPH[name];
+  return <Icon aria-hidden="true" />;
 }
 
 function WebEntries(props: {
@@ -164,8 +168,9 @@ function WebEntries(props: {
     if (entry.kind === "submenu") {
       return (
         <MenubarSub key={entry.id}>
-          <MenubarSubTrigger>
-            {entry.icon && <MenuGlyph icon={entry.icon} />}
+          {/* inset reserves the glyph column, as AppKit does. */}
+          <MenubarSubTrigger inset={!entry.nativeIcon}>
+            {entry.nativeIcon && <MenuGlyph name={entry.nativeIcon} />}
             {entry.text}
           </MenubarSubTrigger>
           <MenubarSubContent className={MENU_ITEMS}>
@@ -181,15 +186,15 @@ function WebEntries(props: {
       return (
         <MenubarCheckboxItem key={entry.id} checked={!!props.checked[entry.id]}
           disabled={command.disabled} onClick={command.run}>
-          <MenuGlyph icon={entry.icon} />
           {entry.text}
           {keys && <MenubarShortcut>{keys}</MenubarShortcut>}
         </MenubarCheckboxItem>
       );
     }
     return (
-      <MenubarItem key={entry.id} disabled={command.disabled} onClick={command.run}>
-        <MenuGlyph icon={entry.icon} />
+      <MenubarItem key={entry.id} inset={!entry.nativeIcon}
+        disabled={command.disabled} onClick={command.run}>
+        {entry.nativeIcon && <MenuGlyph name={entry.nativeIcon} />}
         {entry.text}
         {keys && <MenubarShortcut>{keys}</MenubarShortcut>}
       </MenubarItem>
