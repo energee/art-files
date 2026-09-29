@@ -151,6 +151,15 @@ export function MasterPicker(props: {
     closeAll();
   };
 
+  /** Only one renders at a time: the error branch shows it when no preview is
+   *  open, the preview branch otherwise (they share an id). */
+  const forgetButton = (variant: "outline" | "ghost", className: string) => (
+    <Button type="button" id="master-picker-forget" size="xs" variant={variant} className={className}
+      aria-label={forgetLabel} title="The file stays where it is." onClick={forget}>
+      Remove from library
+    </Button>
+  );
+
   const commit = async () => {
     if (!preview || committing) return;
     setCommitting(true);
@@ -239,12 +248,7 @@ export function MasterPicker(props: {
       {error && (
         <div className="mt-1 px-1">
           <p id="master-picker-error" className="text-[11px] text-destructive-text">{error}</p>
-          {canForget && !preview && (
-            <Button type="button" id="master-picker-forget" size="xs" variant="outline" className="mt-1.5 w-full"
-              aria-label={forgetLabel} title="The file stays where it is." onClick={forget}>
-              Remove from library
-            </Button>
-          )}
+          {canForget && !preview && forgetButton("outline", "mt-1.5 w-full")}
         </div>
       )}
 
@@ -253,13 +257,7 @@ export function MasterPicker(props: {
           className="mt-1 rounded-md border border-sidebar-border p-2 text-xs text-sidebar-foreground">
           <p id={previewId}>{previewLine(preview)}</p>
           <div className="mt-1.5 flex flex-wrap items-center justify-end gap-x-1.5 gap-y-1">
-            {canForget && (
-              <Button type="button" id="master-picker-forget" size="xs" variant="ghost"
-                className="mr-auto px-1.5 text-muted-foreground hover:text-destructive-text"
-                aria-label={forgetLabel} title="The file stays where it is." onClick={forget}>
-                Remove from library
-              </Button>
-            )}
+            {canForget && forgetButton("ghost", "mr-auto px-1.5 text-muted-foreground hover:text-destructive-text")}
             <div className="flex gap-1.5">
               <Button
                 type="button" onClick={closeAll} variant="outline" size="xs"

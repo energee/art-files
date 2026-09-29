@@ -125,29 +125,22 @@ export function hintTrusted(hint: string, labelPath?: string): boolean {
 }
 
 /** Take `id` off this computer's library. The .master file is left where it
- *  is; the index row and the remembered bytes are dropped, and a new tab
- *  stops reopening this id. */
-export async function forgetMaster(id: string): Promise<void> {
+ *  is; the index row and the remembered bytes are dropped. A new tab stops
+ *  reopening this id: it reopens `replacementId` when the file at its path now
+ *  holds that id (Save Master As over the same path), otherwise nothing. */
+export async function forgetMaster(id: string, replacementId?: string): Promise<void> {
   const idx = masterIndex();
   if (idx[id]) {
     delete idx[id];
     localStorage.setItem(KEY, JSON.stringify(idx));
   }
   try {
-    if (localStorage.getItem(LAST_KEY) === id) localStorage.removeItem(LAST_KEY);
+    if (localStorage.getItem(LAST_KEY) === id) {
+      if (replacementId) localStorage.setItem(LAST_KEY, replacementId);
+      else localStorage.removeItem(LAST_KEY);
+    }
   } catch { /* no localStorage — same fallback as masterIndex */ }
   await dropCachedMaster(id);
-}
-
-/** The index row for `id` named a file that now holds `replacementId` (Save
- *  Master As over the same path). Drop the row and, when this id was the one
- *  a new tab would reopen, point that at the file's id instead. */
-async function retireReplacedMaster(id: string, replacementId: string) {
-  let wasLast = false;
-  try { wasLast = localStorage.getItem(LAST_KEY) === id; } catch { /* no localStorage */ }
-  await forgetMaster(id);
-  if (!wasLast) return;
-  try { localStorage.setItem(LAST_KEY, replacementId); } catch { /* no localStorage */ }
 }
 
 /** `labelPath` is the native path of the .label being opened, when there is
@@ -169,11 +162,8 @@ async function resolveMaster(
   const hintFile = hintPath ? await readMasterAt(hintPath) : null;
   if (hintFile?.master.id === id) return hintFile;
 
-  const indexReplaced = !!indexFile && indexFile.master.id !== id;
-  const hintReplaced = !!hintFile && hintFile.master.id !== id;
-  if (indexFile && indexFile.master.id !== id) {
-    await retireReplacedMaster(id, indexFile.master.id);
-  }
+  // Any file read here holds a different id: the early returns took the match.
+  if (indexFile) await forgetMaster(id, indexFile.master.id);
   if (followReplacement) {
     // No separate hint, or the hint is this same path: the indexed file is
     // the one the label named. A different hint that parsed is `hintFile`.
@@ -186,7 +176,7 @@ async function resolveMaster(
   // template for the shipped fixture. A file that was read and holds a
   // different id is not "nothing on disk": the cache would be the previous
   // copy of the id the file replaced.
-  if (!indexReplaced && !hintReplaced) {
+  if (!indexFile && !hintFile) {
     const held = await cachedMaster(id);
     if (held) {
       try {

@@ -226,6 +226,12 @@ function loadViewToggles(): ViewToggles {
 
 /** One spelling for the "which error do I show?" expression the open paths
  *  share. */
+/** The "N value(s) benched" notes a rebind reports for what didn't fit. */
+const benchedNotes = (dropped: { values: string[]; variants: string[] }): string[] => [
+  ...(dropped.values.length ? [`${dropped.values.length} value(s) benched: ${dropped.values.join(", ")}`] : []),
+  ...(dropped.variants.length ? [`${dropped.variants.length} variant(s) benched: ${dropped.variants.join(", ")}`] : []),
+];
+
 const errMsg = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** What every open path hands to openProject. Each entry point converts
@@ -1726,9 +1732,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     setDoc({ master: target, label: next });
     if (clean) { pristineMaster.current = target; repaintMasterDirty((n) => n + 1); }
     clearSelection();
-    const notes: string[] = [];
-    if (dropped.values.length) notes.push(`${dropped.values.length} value(s) benched: ${dropped.values.join(", ")}`);
-    if (dropped.variants.length) notes.push(`${dropped.variants.length} variant(s) benched: ${dropped.variants.join(", ")}`);
+    const notes = benchedNotes(dropped);
     setLoadError(notes.length ? "Note: " + notes.join(" · ") : "");
   }
 
@@ -1927,8 +1931,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         if (l.masterId !== resolved.master.id) {
           const rebound = rebindLabel(l, undefined, resolved.master);
           l = rebound.label;
-          if (rebound.dropped.values.length) notes.push(`${rebound.dropped.values.length} value(s) benched: ${rebound.dropped.values.join(", ")}`);
-          if (rebound.dropped.variants.length) notes.push(`${rebound.dropped.variants.length} variant(s) benched: ${rebound.dropped.variants.join(", ")}`);
+          notes.push(...benchedNotes(rebound.dropped));
         }
         next = { master: resolved.master, label: adoptLegacyCollab(l) };
       }
