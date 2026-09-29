@@ -6,6 +6,12 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Changed
+
+- **Remove a master from the Master menu with the × on its row.** It sits at
+  the right of each remembered master, so it no longer takes picking the
+  master and waiting for its preview first. The master file stays where it is.
+
 ### Fixed
 
 - **A restart reopens the master file that is on disk.** If the last master's
