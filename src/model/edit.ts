@@ -932,14 +932,16 @@ function addedIds(v: Variant, masterIds: { has(id: string): boolean }): string[]
 }
 
 /** Untitled restore: keep the template's layers and positions, drop fill
- *  values and raster art so a new tab is not the last beer. Template copy
- *  (volume, wordmark, warning) and bundled assets (`builtin:`) stay.
- *  Fillable text is anything with a placeholder or a number/code input. */
+ *  values and per-beer art so a new tab is not the last beer. Per-beer art
+ *  is a background/mask (`role`) or a variant's image (the Collab slots).
+ *  Template copy (volume, wordmark, warning) and the master's own images
+ *  (a script logo, `builtin:` assets) stay. Fillable text is anything with
+ *  a placeholder or a number/code input. */
 export function structureOnlyMaster(master: Master): Master {
   const byId = new Map(master.layers.map((l) => [l.id, l]));
   return {
     ...master,
-    layers: master.layers.map((l) => structureOnlyEntry(l) as Layer),
+    layers: master.layers.map((l) => structureOnlyEntry(l, undefined, l.kind === "image" && !l.role) as Layer),
     variants: master.variants.map((v) => withEntries(v, Object.fromEntries(
       Object.entries(v.layers).map(([id, patch]) =>
         [id, structureOnlyEntry(patch, byId.get(id))]),
@@ -954,14 +956,14 @@ function isFillableText(layer: unknown): boolean {
 /** A variant override is not a complete Layer (parseMaster validates the
  *  merge). Fillable is the merged layer: base placeholder/input, else the
  *  patch for a variant-added id. Blank `lines` only when they are present. */
-function structureOnlyEntry(p: Entry, base?: Layer): Entry {
+function structureOnlyEntry(p: Entry, base?: Layer, keepArt = false): Entry {
   const rec = p as Entry & { lines?: unknown; asset?: unknown };
   const next = { ...rec };
   if ((isFillableText(rec) || isFillableText(base)) && Array.isArray(rec.lines)) {
     next.lines = rec.lines.map((line) =>
       line && typeof line === "object" ? { ...line as object, text: "" } : line);
   }
-  if (ownsBytes(rec.asset)) {
+  if (!keepArt && ownsBytes(rec.asset)) {
     next.asset = "";
   }
   return next;

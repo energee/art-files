@@ -18,6 +18,9 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 
+- **A new tab keeps the master's own images.** Art placed in the master,
+  such as a script logo, now shows when the app opens or a tab is added. Only
+  the last beer's background, mask and Collab logos are left off.
 - **A restart reopens the master file that is on disk.** If the last master's
   file had been saved again as a new master over the same path, a new tab
   fell back to shipped Lolev on the first launch and only found the file on

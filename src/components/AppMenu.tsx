@@ -65,7 +65,7 @@ type ActionEntry = CheckAction | IconAction;
 type SeparatorEntry = { kind: "separator"; id: string };
 type PredefinedEntry = {
   kind: "predefined";
-  item: "Separator" | "Cut" | "Copy" | "Paste" | "SelectAll";
+  item: "Separator" | "Cut" | "Copy" | "Paste" | "SelectAll" | "Fullscreen";
 };
 type SubmenuEntry = {
   kind: "submenu";
@@ -129,6 +129,10 @@ export const APP_MENUS: SubmenuEntry[] = [
       { kind: "separator", id: "view-modes" },
       { kind: "action", id: "rulers", text: "Rulers", check: true, symbol: "ruler" },
       { kind: "action", id: "guides", text: "Guides", check: true, symbol: "rectangle.split.2x1" },
+      // Ours rather than the row AppKit inserts on first open, which arrives
+      // after menu_symbols.rs has run and so would stay without its icon.
+      { kind: "predefined", item: "Separator" },
+      { kind: "predefined", item: "Fullscreen" },
     ],
   },
 ];
@@ -300,6 +304,9 @@ async function nativeEntry(
   if (entry.kind === "predefined" || entry.kind === "separator") {
     const item = await api.PredefinedMenuItem.new({
       item: entry.kind === "predefined" ? entry.item : "Separator",
+      // AppKit's own wording (muda says "Toggle Full Screen"); SYSTEM_ROWS
+      // gives this title its symbol.
+      ...(entry.kind === "predefined" && entry.item === "Fullscreen" ? { text: "Enter Full Screen" } : {}),
     });
     resources.push(item);
     return item;
@@ -336,8 +343,8 @@ async function nativeEntry(
 
 /** Every row's title and SF Symbol, for menu_symbols.rs to set on the
  *  installed Mac menu. Titles are unique across APP_MENUS. Exported for tests. */
-/** Rows AppKit adds to our menus on its own (the View menu's full-screen
- *  toggle, under both of its titles). They have no in-window twin. */
+/** Native-only rows with no in-window twin: the View menu's full-screen
+ *  toggle, under both titles AppKit gives it. */
 const SYSTEM_ROWS: [string, MenuSymbol][] = [
   ["Enter Full Screen", "viewfinder"], ["Exit Full Screen", "viewfinder"],
 ];
