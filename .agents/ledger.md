@@ -539,3 +539,10 @@ no status, no attempts, no delta.
 - delta: preview, PDF and PSD mask plates paint the same bars and digit glyphs as the art stroke, in plate colours
 - evidence: 1278 tests pass; tsc and eslint clean; release check against origin/fix/barcode-stroke-only passes. At 144 DPI, UPC 850051366040 and the rotated template go from 9220 / 6945 extra mask pixels to 0 either way. Shipped mask PDF flood diffs are 0 px at 600 DPI because the flood is the same blue. Art PDF and art PSD hashes unchanged.
 - release: binary-impacting; queued under Unreleased; version unchanged; no release published.
+
+## 2026-09-28 label-follows-replaced-master
+- finding: [fail-fast/high] src/masters.ts — a label whose masterId no longer matches the file at its path (Save Master As over the same path) resolved the old IndexedDB bytes instead of the file
+- status: done
+- attempts: 1/3
+- delta: label open follows the file and rebinds; a by-id library lookup returns null, drops that cache entry, and removes the stale index row. The Master menu's Remove drops a chosen library row and its remembered bytes; the file stays. tests/masters.test.ts and tests/masterpicker-dom.test.tsx cover both.
+- release: binary-impacting; queued under Unreleased on fix/label-follows-master-file; version unchanged; no release published.

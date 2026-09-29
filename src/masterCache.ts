@@ -58,3 +58,9 @@ export async function cachedMaster(id: string): Promise<Uint8Array | null> {
   return held instanceof Uint8Array ? held
     : held instanceof ArrayBuffer ? new Uint8Array(held) : null;
 }
+
+/** Drop a cached master. The file at its path now holds a different id, so
+ *  these bytes are an older copy and must not resolve in its place. */
+export async function dropCachedMaster(id: string): Promise<void> {
+  await run("readwrite", (s) => s.delete(id));
+}

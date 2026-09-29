@@ -26,7 +26,7 @@ You can fill beers all day without drifting the brand. File → Save Master is t
 Top of the left sidebar. It answers "which version am I editing?"
 
 - The **current master** and its **variants as versions**. Switch a version and a later Save Master / promotion lands in that variant, not the base master.
-- **Other masters** in the library. Picking one is a rebind. You get a preview of what would move to the bench, then Continue.
+- **Other masters** in the library. Picking one is a rebind. You get a preview of what would move to the bench, then Continue. **Remove** on that preview takes the master off the library on this computer. The `.master` file stays where it is. If the file cannot be opened, the same Remove is offered there.
 - **New Variant** at the foot of the menu (same as New Variant in the `⌘K` palette).
 
 The master picker both shows the chosen version on this label and selects the destination for Save Master promotions.
@@ -44,6 +44,8 @@ One tick can promote everything. Confirm, and the `.master` file writes. Save Ma
 Save Master writes back to the file this master was opened from or last saved to. Undo back past Open Master, a library pick, or Save Master As, and Save Master asks where to save instead of reusing the other master's file.
 
 File → **Open Master…** loads a template from disk. The desktop app remembers the real path, so a restart finds it. The browser caches the last applied master, so a reload does not sneak you back to shipped Lolev.
+
+Opening a label reads that master file. If the file was saved again over the same path (Save Master As writes a new id), the label follows the file. It does not reopen an older copy remembered from the id the label still names. Saving the label records the new id.
 
 <Callout title="Untitled tabs">
   A new tab reopens the last master you applied — which layers exist and where they sit. Fillable text (name, style, ABV, and the like) and raster art stay off; those belong to a `.label`. Template copy such as the wordmark stays. Shipped Lolev is the fallback when you have never applied a master.
