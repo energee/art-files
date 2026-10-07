@@ -331,34 +331,28 @@ async function previewPng(src: ImageBitmap | HTMLCanvasElement): Promise<Uint8Ar
 
 // bytes: what the PDF embeds (PNG or JPEG). srcBytes: the original upload,
 // under its original name — the bytes Save writes.
-type LoadedTexture = Loaded & { kind: "png" | "jpg"; srcBytes: Uint8Array };
-type LoadedMask = Loaded & { srcBytes: Uint8Array };
+type LoadedRaster = Loaded & { kind: "png" | "jpg"; srcBytes: Uint8Array };
 
-/** The file's bytes, plus an embeddable copy: PNG and JPEG pass through;
- *  anything else the browser decodes (WebP) is re-encoded to PNG, because
- *  pdf-lib embeds PNG and JPEG only. Save keeps the original either way. */
-async function readRaster(f: File) {
-  const srcBytes = new Uint8Array(await f.arrayBuffer());
-  const canvas = await decodeToCanvas(f);
+/** Decode a texture or mask file into its slot value; state-free, like
+ *  readCustomImage, so an open can decode before it commits (#81). PNG and
+ *  JPEG embed as-is (a mask plate as-authored); anything else the browser
+ *  decodes (WebP) gets a PNG copy, because pdf-lib embeds PNG and JPEG only.
+ *  Save keeps the original either way. */
+async function readRaster(f: File): Promise<LoadedRaster> {
   const passthrough = EMBEDDABLE_RASTER.test(f.name);
-  const bytes = passthrough ? srcBytes : await canvasToPng(canvas);
+  const [srcBytes, decoded] = await Promise.all([
+    f.arrayBuffer().then((b) => new Uint8Array(b)),
+    passthrough ? createImageBitmap(f) : decodeToCanvas(f),
+  ]);
+  const [bytes, previewBytes] = await Promise.all([
+    passthrough ? srcBytes : canvasToPng(decoded as HTMLCanvasElement), previewPng(decoded),
+  ]);
+  const aspect = decoded.width / decoded.height;
+  if (decoded instanceof ImageBitmap) decoded.close();
   return {
-    srcBytes, bytes, kind: passthrough ? rasterKind(f.name) : "png" as const,
-    previewBytes: await previewPng(canvas), name: f.name,
-    previewUrl: URL.createObjectURL(f), aspect: canvas.width / canvas.height,
+    srcBytes, bytes, previewBytes, aspect, name: f.name,
+    kind: passthrough ? rasterKind(f.name) : "png", previewUrl: URL.createObjectURL(f),
   };
-}
-
-/** Decode a texture file into its slot value; state-free, like readMask and
- *  readCustomImage, so an open can decode before it commits (#81). */
-const readTexture = (f: File): Promise<LoadedTexture> => readRaster(f);
-
-/** Decode a mask file into its slot value. A PNG passes through untouched —
- *  the printer accepts these plates as-authored (the metalness map
- *  classifies pixels itself); a WebP is re-encoded losslessly to PNG. */
-async function readMask(f: File): Promise<LoadedMask> {
-  const { kind: _kind, ...m } = await readRaster(f);
-  return m;
 }
 
 // Blob snapshots the bytes at construction (no transfer), so no copy needed.
@@ -524,8 +518,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   const guides = useMemo(
     () => guideLines({ physical: master.physical, guides: master.guides }),
     [master.physical, master.guides]);
-  const [texture, setTexture] = useState<LoadedTexture | null>(null);
-  const [mask, setMask] = useState<LoadedMask | null>(null);
+  const [texture, setTexture] = useState<LoadedRaster | null>(null);
+  const [mask, setMask] = useState<LoadedRaster | null>(null);
   // Every per-id image asset this document carries: image layers' art,
   // collab logos included (an image layer's value is a key here).
   const [customImages, setCustomImages] = useState<Record<string, CustomFile>>({});
@@ -967,11 +961,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   const clearLoadErrorOf = (what: string) =>
     setLoadError((e) => e.startsWith(`Could not load ${what} `) ? "" : e);
   async function onTexture(f: File) {
-    try { swapLoaded(setTexture, await readTexture(f)); clearLoadErrorOf("texture"); }
+    try { swapLoaded(setTexture, await readRaster(f)); clearLoadErrorOf("texture"); }
     catch (err) { setLoadError(`Could not load texture "${f.name}": ${errMsg(err)}`); }
   }
   async function onMask(f: File) {
-    try { swapLoaded(setMask, await readMask(f)); clearLoadErrorOf("mask"); }
+    try { swapLoaded(setMask, await readRaster(f)); clearLoadErrorOf("mask"); }
     catch (err) { setLoadError(`Could not load mask "${f.name}": ${errMsg(err)}`); }
   }
 
@@ -1958,8 +1952,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       // Decode every asset before resetDocument: a failed decode must leave
       // the previous doc and its Save target (rebound by the caller only on
       // success) intact (#81).
-      const texP = t ? readTexture(assetToFile(t)) : undefined;
-      const mskP = m ? readMask(assetToFile(m)) : undefined;
+      const texP = t ? readRaster(assetToFile(t)) : undefined;
+      const mskP = m ? readRaster(assetToFile(m)) : undefined;
       const imgPs = Object.entries(ci).map(async ([id, a]) =>
         [id, await readCustomImage(assetToFile(a))] as const);
       const [tex, msk, images] = await Promise.all([texP, mskP, Promise.all(imgPs)]).catch((err) => {
