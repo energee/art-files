@@ -4,6 +4,12 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Fixed
+- **The metallic mask accepts WebP.** Drop a .webp on the mask field or the mask half of the window chooser. The PDF gets a lossless PNG copy.
+- **A WebP background stays WebP when you save.** The label and master files keep the image you dropped. Only the PDFs carry a PNG copy, because the PDF embed takes PNG and JPEG only.
+
 ## [0.1.103] - 2026-09-29
 
 ### Added

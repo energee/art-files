@@ -329,42 +329,36 @@ async function previewPng(src: ImageBitmap | HTMLCanvasElement): Promise<Uint8Ar
   return canvasToPng(c);
 }
 
-type LoadedTexture = Loaded & { kind: "png" | "jpg" };
-// srcBytes: the original upload — the bytes Save writes.
+// bytes: what the PDF embeds (PNG or JPEG). srcBytes: the original upload,
+// under its original name — the bytes Save writes.
+type LoadedTexture = Loaded & { kind: "png" | "jpg"; srcBytes: Uint8Array };
 type LoadedMask = Loaded & { srcBytes: Uint8Array };
 
-/** Decode a texture file into its slot value; state-free, like readMask and
- *  readCustomImage, so an open can decode before it commits (#81). PNG and
- *  JPEG pass through byte-for-byte; anything else the browser can decode
- *  (WebP) is re-encoded to PNG ONCE, here, and renamed to match — pdf-lib
- *  embeds PNG and JPEG only. */
-async function readTexture(f: File): Promise<LoadedTexture> {
+/** The file's bytes, plus an embeddable copy: PNG and JPEG pass through;
+ *  anything else the browser decodes (WebP) is re-encoded to PNG, because
+ *  pdf-lib embeds PNG and JPEG only. Save keeps the original either way. */
+async function readRaster(f: File) {
+  const srcBytes = new Uint8Array(await f.arrayBuffer());
+  const canvas = await decodeToCanvas(f);
   const passthrough = EMBEDDABLE_RASTER.test(f.name);
-  const decoded = passthrough ? await createImageBitmap(f) : await decodeToCanvas(f);
-  const bytes = passthrough
-    ? new Uint8Array(await f.arrayBuffer())
-    : await canvasToPng(decoded as HTMLCanvasElement);
-  const previewBytes = await previewPng(decoded);
-  const aspect = decoded.width / decoded.height;
-  if (decoded instanceof ImageBitmap) decoded.close();
-  const name = passthrough ? f.name : `${f.name.replace(/\.[^.]*$/, "")}.png`;
-  const previewUrl = URL.createObjectURL(f);
-  return { bytes, previewBytes, name, kind: rasterKind(name), previewUrl, aspect };
+  const bytes = passthrough ? srcBytes : await canvasToPng(canvas);
+  return {
+    srcBytes, bytes, kind: passthrough ? rasterKind(f.name) : "png" as const,
+    previewBytes: await previewPng(canvas), name: f.name,
+    previewUrl: URL.createObjectURL(f), aspect: canvas.width / canvas.height,
+  };
 }
 
-/** Decode a mask file into its slot value. The mask passes through
- *  untouched — the printer accepts these plates as-authored (the metalness
- *  map classifies pixels itself). */
+/** Decode a texture file into its slot value; state-free, like readMask and
+ *  readCustomImage, so an open can decode before it commits (#81). */
+const readTexture = (f: File): Promise<LoadedTexture> => readRaster(f);
+
+/** Decode a mask file into its slot value. A PNG passes through untouched —
+ *  the printer accepts these plates as-authored (the metalness map
+ *  classifies pixels itself); a WebP is re-encoded losslessly to PNG. */
 async function readMask(f: File): Promise<LoadedMask> {
-  const [srcBytes, canvas] = await Promise.all([
-    f.arrayBuffer().then((b) => new Uint8Array(b)), decodeToCanvas(f),
-  ]);
-  const previewBytes = await previewPng(canvas);
-  const previewUrl = URL.createObjectURL(f);
-  return {
-    bytes: srcBytes, previewBytes, name: f.name, previewUrl, srcBytes,
-    aspect: canvas.width / canvas.height,
-  };
+  const { kind: _kind, ...m } = await readRaster(f);
+  return m;
 }
 
 // Blob snapshots the bytes at construction (no transfer), so no copy needed.
@@ -1534,7 +1528,7 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** The texture/mask slots and a custom image's on-disk bytes, spelled ONCE
    *  for both containers. */
-  const textureAsset = () => texture ? { name: texture.name, bytes: texture.bytes } : undefined;
+  const textureAsset = () => texture ? { name: texture.name, bytes: texture.srcBytes } : undefined;
   const maskAsset = () => mask ? { name: mask.name, bytes: mask.srcBytes } : undefined;
   const imageAssetBytes = (c: CustomFile) =>
     c.image.kind === "svg" ? strToU8(c.image.svg) : c.image.bytes;
@@ -2131,7 +2125,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           onFile={(f) => void onTexture(f)} onClear={() => swapLoaded(setTexture, null)} />;
       }
       if (layer.role === "mask") {
-        return <FileDrop label="Metallic mask" accept={{ "image/png": [".png"] }}
+        return <FileDrop label="Metallic mask" accept={{ "image/png": [".png"], "image/webp": [".webp"] }}
           fileName={mask?.name} previewUrl={mask?.previewUrl}
           onFile={(f) => void onMask(f)} onClear={() => swapLoaded(setMask, null)} />;
       }
