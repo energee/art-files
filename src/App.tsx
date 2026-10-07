@@ -1849,6 +1849,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         } finally {
           restoringRef.current = false;
         }
+        if (claimed() || editedRef.current) return;
         // The template images structureOnlyMaster kept need their bytes. Not
         // the texture or mask: those are the last beer's, stripped above.
         await adoptMasterAssets({ customImages: r.assets.customImages });
