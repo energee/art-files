@@ -11,6 +11,7 @@ import { FONT_FAMILIES } from "../fontCatalog";
 import { strFromU8, strToU8, zipSync, type Zippable } from "fflate";
 import type { LabelFile, Master } from "./layers";
 import { parseMaster, validateLayer, type Layer, type LayerValue } from "./layers";
+import { applyDiff } from "./resolveLayers";
 import type { LabelFileV2 } from "./types";
 import { parseMaster as parseMasterV1 } from "./types";
 import { parseLabelFile } from "./labelfile";
@@ -94,8 +95,10 @@ function parseValues(v: unknown): Record<string, LayerValue> {
 const NUMERIC_KEYS = ["x", "size", "leading", "headerScale", "width", "min", "max", "w", "h", "scale", "moduleW"];
 
 /** Overrides by layer id (#392). A patch carrying `kind` is a whole added
- *  layer, checked with validateLayer like a master's; any other patch is a
- *  partial diff, so only its geometry and font are checked. */
+ *  layer: it must name its own id, and the layer resolveLayers builds from it
+ *  (applyDiff, so a null-cleared optional field is simply absent) must pass
+ *  validateLayer like a master's. Any other patch is a partial diff, so only
+ *  its geometry and font are checked. */
 function parseOverrides(v: unknown): LabelFile["overrides"] {
   if (v == null) return undefined;
   if (!isRecord(v)) badLabel("overrides is not an object");
@@ -104,7 +107,12 @@ function parseOverrides(v: unknown): LabelFile["overrides"] {
     const family = p.fontFamily;
     if (family != null && (typeof family !== "string" || !Object.hasOwn(FONT_FAMILIES, family)))
       throw new Error(`Unknown label font family: ${family}`);
-    if (p.kind !== undefined) { validateLayer({ ...p, id } as unknown as Layer, "label override"); continue; }
+    if (p.kind !== undefined) {
+      if (p.id !== id) badLabel(`added layer "${id}" has a mismatched id`);
+      try { validateLayer(applyDiff({} as Layer, p as never), "label override"); }
+      catch (err) { badLabel((err as Error).message.replace(/^Invalid master file: /, "")); }
+      continue;
+    }
     for (const k of NUMERIC_KEYS)
       if (p[k] != null && !Number.isFinite(p[k])) badLabel(`override "${id}" has invalid ${k}`);
     const y = p.y;
