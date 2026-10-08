@@ -16,6 +16,6 @@ src-tauri/tauri.release.generated.conf.json
 # pnpm here by habit; a second lockfile would drift from the real one.
 pnpm-lock.yaml
 pnpm-workspace.yaml
-# Session memory from the `remember` agent plugin — local scratch, and its
-# .ts files would otherwise be linted.
+# Session memory from the `remember` agent plugin — local scratch. ESLint's
+# flat config does not read this file, so eslint.config.js ignores it too.
 .remember/
