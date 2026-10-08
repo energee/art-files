@@ -19,6 +19,10 @@ export function classifyMetalness(d: Uint8ClampedArray<ArrayBuffer>): void {
   }
 }
 
+/** One worker round trip: the request id and the plate's RGBA pixels, which
+ *  are transferred each way (classified in place by the worker). */
+export interface MaskJob { id: number; pixels: Uint8ClampedArray<ArrayBuffer> }
+
 let worker: Worker | null = null;
 let nextId = 0;
 const pending = new Map<number, (d: Uint8ClampedArray<ArrayBuffer>) => void>();
@@ -32,7 +36,7 @@ export function deriveMetalnessPixels(pixels: Uint8ClampedArray<ArrayBuffer>): P
   }
   if (!worker) {
     worker = new Worker(new URL("./metalnessMask.worker.ts", import.meta.url), { type: "module" });
-    worker.onmessage = (e: MessageEvent<{ id: number; pixels: Uint8ClampedArray<ArrayBuffer> }>) => {
+    worker.onmessage = (e: MessageEvent<MaskJob>) => {
       pending.get(e.data.id)?.(e.data.pixels);
       pending.delete(e.data.id);
     };
@@ -40,6 +44,6 @@ export function deriveMetalnessPixels(pixels: Uint8ClampedArray<ArrayBuffer>): P
   const id = nextId++;
   return new Promise((resolve) => {
     pending.set(id, resolve);
-    worker!.postMessage({ id, pixels }, [pixels.buffer]);
+    worker!.postMessage({ id, pixels } satisfies MaskJob, [pixels.buffer]);
   });
 }

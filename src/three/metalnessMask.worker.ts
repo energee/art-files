@@ -1,8 +1,8 @@
 // metalnessMask.worker.ts — Web Worker entry: classifies one white-ink plate's
 // pixels (see classifyMetalness) and transfers them back with the request id.
-import { classifyMetalness } from "./metalnessMask";
+import { classifyMetalness, type MaskJob } from "./metalnessMask";
 
-self.onmessage = (e: MessageEvent<{ id: number; pixels: Uint8ClampedArray<ArrayBuffer> }>) => {
+self.onmessage = (e: MessageEvent<MaskJob>) => {
   classifyMetalness(e.data.pixels);
   (self as unknown as Worker).postMessage(e.data, [e.data.pixels.buffer]);
 };
