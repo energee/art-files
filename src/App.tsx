@@ -183,24 +183,26 @@ function withPageArt(layers: Layer[], hasTexture: boolean, hasMask: boolean): La
   });
 }
 
+/** Colour classes per HeaderAlert tone: [Alert border/background, text]. */
+const HEADER_ALERT_TONE = {
+  destructive: ["border-destructive/50", ""],
+  warning: ["border-warning/50 bg-warning-soft", "text-warning-text"],
+  success: ["border-success/50 bg-success-soft", "text-success-text"],
+} as const;
+
 /** Chrome-level error (or, with `tone="warning"`, a resolveLayers validation
- *  warning, or with `tone="success"` an export confirmation), sized for the menu bar: the shadcn Alert (the app's one
- *  notification surface — see ui/alert.tsx) compacted to fit inline beside
- *  the menus rather than as a full-width block. A warning uses `variant`
- *  "default" plus its own colour classes rather than the destructive variant,
- *  which paints its descendant text through a selector on Alert itself that
- *  a className override can't reach. */
-function HeaderAlert({ children, tone = "destructive" }: { children: React.ReactNode; tone?: "destructive" | "warning" | "success" }) {
+ *  warning; with `tone="success"`, an export confirmation), sized for the
+ *  menu bar: the shadcn Alert (the app's one notification surface — see
+ *  ui/alert.tsx) compacted to fit inline beside the menus rather than as a
+ *  full-width block. Warning and success use `variant` "default" plus their
+ *  own colour classes rather than the destructive variant, which paints its
+ *  descendant text through a selector on Alert itself that a className
+ *  override can't reach. */
+function HeaderAlert({ children, tone = "destructive" }: { children: React.ReactNode; tone?: keyof typeof HEADER_ALERT_TONE }) {
+  const [box, text] = HEADER_ALERT_TONE[tone];
   return (
-    <Alert
-      variant={tone === "destructive" ? "destructive" : "default"}
-      className={cn(
-        "w-auto px-2 py-0.5",
-        tone === "warning" ? "border-warning/50 bg-warning-soft"
-          : tone === "success" ? "border-success/50 bg-success-soft" : "border-destructive/50",
-      )}
-    >
-      <AlertDescription className={cn("text-xs", tone === "warning" && "text-warning-text", tone === "success" && "text-success-text")}>
+    <Alert variant={tone === "destructive" ? "destructive" : "default"} className={cn("w-auto px-2 py-0.5", box)}>
+      <AlertDescription className={cn("text-xs", text)}>
         {children}
       </AlertDescription>
     </Alert>
