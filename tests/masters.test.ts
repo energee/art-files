@@ -9,6 +9,8 @@ const fakeLocalStorage = {
   setItem: (k: string, v: string) => void stored.set(k, v),
   removeItem: (k: string) => void stored.delete(k),
   clear: () => stored.clear(),
+  key: (i: number) => [...stored.keys()][i] ?? null,
+  get length() { return stored.size; },
 };
 
 beforeEach(() => {
@@ -52,6 +54,44 @@ describe("master library index", () => {
     await forgetMaster(SHIPPED_MASTER_ID);
     expect(masterIndex()[SHIPPED_MASTER_ID]).toBeUndefined();
     expect(localStorage.getItem("labellab.lastMaster")).toBeNull();
+  });
+
+  // #408: two windows share localStorage. When another window's save lands
+  // between this window's read and write, whole-index read-modify-write
+  // dropped the other window's row. The hook below runs window B's save
+  // inside window A's first read and hands A the value it read before.
+  it("a concurrent save from another window keeps both rows", async () => {
+    const a = { ...lolevMaster(), id: "master-a", name: "A" };
+    const b = { ...lolevMaster(), id: "master-b", name: "B" };
+    let other: (() => void) | null = () => void rememberMaster(b, "/tmp/b.master");
+    vi.stubGlobal("localStorage", {
+      ...fakeLocalStorage,
+      key: fakeLocalStorage.key,
+      get length() { return stored.size; },
+      getItem: (k: string) => {
+        const v = stored.get(k) ?? null;
+        const run = other;
+        other = null;
+        run?.();
+        return v;
+      },
+    });
+    await rememberMaster(a, "/tmp/a.master");
+    expect(Object.keys(masterIndex()).sort()).toEqual(["master-a", "master-b"]);
+  });
+
+  // An index written before #408 (one JSON blob) still lists, and the next
+  // write moves its rows to per-master keys without losing any.
+  it("a pre-#408 index blob is read and migrated on the next write", async () => {
+    stored.set("labellab.masters", JSON.stringify({
+      old: { name: "Old", path: "/tmp/old.master", lastSeen: "2026-01-01T00:00:00.000Z" },
+    }));
+    expect(masterIndex().old).toMatchObject({ name: "Old", path: "/tmp/old.master" });
+    await rememberMaster(lolevMaster(), "/tmp/lolev.master");
+    expect(stored.has("labellab.masters")).toBe(false);
+    expect(Object.keys(masterIndex()).sort()).toEqual(["old", SHIPPED_MASTER_ID].sort());
+    await forgetMaster("old");
+    expect(masterIndex().old).toBeUndefined();
   });
 
   it("a saved master registers in the library index under its own id", () => {

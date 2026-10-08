@@ -8,6 +8,12 @@
 // view toggles and settings.ts): the index describes this machine's
 // filesystem. Untitled tabs call resolveDefaultMaster, then drop fill values
 // and raster art in structureOnlyMaster (model/edit.ts).
+//
+// One localStorage key per master (ROW_PREFIX + id), not one blob: every
+// window of the app shares localStorage, and a whole-index read-modify-write
+// let one window's save drop the row another window had just written (#408).
+// A row write touches only its own key. The pre-#408 blob (LEGACY_KEY) is
+// still read, and the next write splits it into rows.
 import { isTauri } from "@tauri-apps/api/core";
 import type { Master } from "@/model/layers";
 import { lolevMaster } from "@/model/lolevLayers";
@@ -16,17 +22,44 @@ import { readNativeFile } from "@/files";
 import { cacheMaster, cachedMaster, dropCachedMaster } from "@/masterCache";
 
 export const SHIPPED_MASTER_ID = lolevMaster().id;
-const KEY = "labellab.masters";
+const ROW_PREFIX = "labellab.master:";
+const LEGACY_KEY = "labellab.masters";
 const LAST_KEY = "labellab.lastMaster";
 
 export interface MasterIndexEntry { name: string; path: string; lastSeen: string }
 
-export function masterIndex(): Record<string, MasterIndexEntry> {
+/** The pre-#408 single-blob index, or {} when absent or mangled. */
+function legacyIndex(): Record<string, MasterIndexEntry> {
   try {
-    return JSON.parse(localStorage.getItem(KEY) ?? "{}") as Record<string, MasterIndexEntry>;
+    return JSON.parse(localStorage.getItem(LEGACY_KEY) ?? "{}") as Record<string, MasterIndexEntry>;
   } catch {
     return {}; // a mangled entry falls back rather than crashing open
   }
+}
+
+export function masterIndex(): Record<string, MasterIndexEntry> {
+  const idx = legacyIndex();
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k?.startsWith(ROW_PREFIX)) continue;
+      try {
+        idx[k.slice(ROW_PREFIX.length)] = JSON.parse(localStorage.getItem(k) ?? "") as MasterIndexEntry;
+      } catch { /* a mangled row is skipped, not fatal */ }
+    }
+  } catch { /* no localStorage — same fallback as legacyIndex */ }
+  return idx;
+}
+
+/** Move pre-#408 blob rows to their own keys before a row write, so the
+ *  blob can't resurrect a row that is later forgotten. A row another window
+ *  already wrote is newer than the blob, so it is kept. */
+function migrateLegacyIndex(): void {
+  if (localStorage.getItem(LEGACY_KEY) === null) return;
+  for (const [id, e] of Object.entries(legacyIndex())) {
+    if (localStorage.getItem(ROW_PREFIX + id) === null) localStorage.setItem(ROW_PREFIX + id, JSON.stringify(e));
+  }
+  localStorage.removeItem(LEGACY_KEY);
 }
 
 /** A Save Master target — a native path or an FS-Access handle — tagged
@@ -51,18 +84,18 @@ export async function rememberMaster(m: Master, path: string, bytes?: Uint8Array
   // reload can actually resolve it (void cacheMaster used to return while
   // IndexedDB was still empty, and the next launch fell back to Lolev).
   if (bytes) await cacheMaster(m.id, bytes);
-  const idx = masterIndex();
-  const cur = idx[m.id];
+  migrateLegacyIndex();
+  const cur = masterIndex()[m.id];
   // An apply that has no filesystem path (a library pick of the shipped
   // master, a browser handle whose name we already stored) must not wipe a
   // real path from an earlier Open/Save. Resolving a .label is not an apply:
   // keep lastSeen so it cannot steal the next untitled document.
-  idx[m.id] = {
+  const row: MasterIndexEntry = {
     name: m.name,
     path: path || cur?.path || "",
     lastSeen: applied ? new Date().toISOString() : (cur?.lastSeen ?? ""),
   };
-  localStorage.setItem(KEY, JSON.stringify(idx));
+  localStorage.setItem(ROW_PREFIX + m.id, JSON.stringify(row));
   if (applied) localStorage.setItem(LAST_KEY, m.id);
 }
 
@@ -137,11 +170,8 @@ export async function forgetMaster(id: string, replacementId?: string): Promise<
  *  the last-master key. */
 function retireIndexRow(id: string, replacementId?: string): void {
   try {
-    const idx = masterIndex();
-    if (idx[id]) {
-      delete idx[id];
-      localStorage.setItem(KEY, JSON.stringify(idx));
-    }
+    migrateLegacyIndex();
+    localStorage.removeItem(ROW_PREFIX + id);
     if (localStorage.getItem(LAST_KEY) === id) {
       if (replacementId) localStorage.setItem(LAST_KEY, replacementId);
       else localStorage.removeItem(LAST_KEY);

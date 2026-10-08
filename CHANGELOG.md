@@ -9,6 +9,9 @@ that section to the new version (see .agents/release-steward.md).
 ### Security
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.
 
+### Fixed
+- **Two windows saving masters at once no longer drop one from the library.** Each remembered master now has its own storage entry, so a save in one window can't overwrite a master another window just added. An existing library carries over on the next save.
+
 ## [0.1.104] - 2026-10-08
 
 ### Fixed
