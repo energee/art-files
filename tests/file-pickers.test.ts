@@ -18,5 +18,6 @@ it("writeHandle writes the bytes themselves, not a Blob", async () => {
     createWritable: async () => ({ write: async (b: unknown) => { writes.push(b); }, close: async () => {} }),
   } as unknown as FileSystemFileHandle;
   await writeHandle(handle, bytes);
-  expect(writes).toEqual([bytes]);
+  expect(writes).toHaveLength(1);
+  expect(writes[0]).toBe(bytes);
 });
