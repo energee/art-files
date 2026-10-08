@@ -9,6 +9,7 @@ that section to the new version (see .agents/release-steward.md).
 ### Fixed
 - **Removing a master from the library can be undone.** A note under the master picker says the `.master` file stays where it is, with Undo to put it back without browsing to the file.
 - **Masters save and open when browser storage is full.** Save Master wrote the file but reported a failure and left the master marked unsaved; Open Master and a library pick failed too, and a label could miss its master file on disk. A full storage quota now only skips updating the remembered-masters list.
+- **A label drops ids its master no longer has.** Opening a label on its own master, after that master lost a layer or a version, now sets those values and versions aside and says so, instead of carrying them in the file forever.
 - **Screen readers hear when a tab has unsaved work.** A tab's close button now reads "Close <title> (unsaved changes)" instead of just "Close <title>".
 - **Saving can no longer wipe out a label or master.** Desktop Save writes a temporary copy beside the file and swaps it in only once it is complete, so a crash or full disk mid-save leaves the previous file intact.
 - **Faster typing in the preview.** The white-ink plate is no longer repainted on every edit while the comparison divider hides it; it paints when the divider reveals it.
