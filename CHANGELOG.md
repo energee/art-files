@@ -8,6 +8,7 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 - **The browser's saved-master store no longer grows without limit.** It keeps the 20 masters most recently opened, saved or used and drops older copies, so a full store can't stop new masters from being kept. A copy that can't be stored is now logged.
+- **Masters save and open when browser storage is full.** Save Master wrote the file but reported a failure and left the master marked unsaved; Open Master and a library pick failed too, and a label could miss its master file on disk. A full storage quota now only skips updating the remembered-masters list.
 - **Screen readers hear when a tab has unsaved work.** A tab's close button now reads "Close <title> (unsaved changes)" instead of just "Close <title>".
 - **Saving can no longer wipe out a label or master.** Desktop Save writes a temporary copy beside the file and swaps it in only once it is complete, so a crash or full disk mid-save leaves the previous file intact.
 - **Faster typing in the preview.** The white-ink plate is no longer repainted on every edit while the comparison divider hides it; it paints when the divider reveals it.
