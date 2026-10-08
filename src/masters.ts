@@ -20,6 +20,7 @@ import { lolevMaster } from "@/model/lolevLayers";
 import { unpackMaster, type MasterAssets } from "@/model/files";
 import { readNativeFile } from "@/files";
 import { cacheMaster, cachedMaster, dropCachedMaster } from "@/masterCache";
+import { readJson } from "@/settings";
 
 export const SHIPPED_MASTER_ID = lolevMaster().id;
 const ROW_PREFIX = "labellab.master:";
@@ -28,49 +29,53 @@ const LAST_KEY = "labellab.lastMaster";
 
 export interface MasterIndexEntry { name: string; path: string; lastSeen: string }
 
-/** The pre-#408 single-blob index, or {} when absent or mangled. */
+/** A stored index row, or undefined when absent, mangled, or not an object
+ *  (skipped, not fatal). */
+function asRow(v: unknown): MasterIndexEntry | undefined {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as MasterIndexEntry) : undefined;
+}
+
+/** The pre-#408 single-blob index, or {} when absent, mangled, or not an
+ *  object (a blob of `null` must not break every later write). */
 function legacyIndex(): Record<string, MasterIndexEntry> {
-  try {
-    return JSON.parse(localStorage.getItem(LEGACY_KEY) ?? "{}") as Record<string, MasterIndexEntry>;
-  } catch {
-    return {}; // a mangled entry falls back rather than crashing open
-  }
+  return (asRow(readJson(LEGACY_KEY)) ?? {}) as unknown as Record<string, MasterIndexEntry>;
 }
 
-/** One master's row, or undefined when absent or mangled (skipped, not fatal). */
+/** One master's row, or undefined when absent or mangled. */
 function indexRow(id: string): MasterIndexEntry | undefined {
-  try {
-    const v = localStorage.getItem(ROW_PREFIX + id);
-    return v === null ? undefined : (JSON.parse(v) as MasterIndexEntry);
-  } catch {
-    return undefined;
-  }
+  return asRow(readJson(ROW_PREFIX + id));
 }
 
-/** Every remembered master, ordered by id: localStorage.key() order is the
- *  engine's hash order (WebKit), so without the sort the Master menu could
- *  reshuffle as rows are added. */
+/** Every remembered master, ordered by name (then id). localStorage.key()
+ *  order is the engine's hash order (WebKit) and ids are random, so neither
+ *  gives the Master menu a stable, readable order. Built in a Map so an id
+ *  such as "__proto__" stays an ordinary entry. */
 export function masterIndex(): Record<string, MasterIndexEntry> {
-  const merged = legacyIndex(); // a per-master row overrides its blob entry
+  // A per-master row overrides its blob entry.
+  const merged = new Map<string, MasterIndexEntry>();
+  for (const [id, e] of Object.entries(legacyIndex())) if (asRow(e)) merged.set(id, e);
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (!k?.startsWith(ROW_PREFIX)) continue;
-      const id = k.slice(ROW_PREFIX.length);
-      const row = indexRow(id);
-      if (row) merged[id] = row;
+      const row = asRow(readJson(k));
+      if (row) merged.set(k.slice(ROW_PREFIX.length), row);
     }
   } catch { /* no localStorage — same fallback as legacyIndex */ }
   // Sort the union, so ids from an unmigrated blob sort in with the rows.
-  return Object.fromEntries(Object.entries(merged).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  return Object.fromEntries([...merged].sort(([a, ea], [b, eb]) =>
+    String(ea.name).localeCompare(String(eb.name)) || (a < b ? -1 : a > b ? 1 : 0)));
 }
 
 /** Move pre-#408 blob rows to their own keys before a row write, so the
  *  blob can't resurrect a row that is later forgotten. A row another window
- *  already wrote is newer than the blob, so it is kept. */
+ *  already wrote is newer than the blob, so it is kept. The blob is checked
+ *  before each copy: once another window has migrated it (and perhaps
+ *  forgotten a row since), a missing row means forgotten, not unmigrated. */
 function migrateLegacyIndex(): void {
   for (const [id, e] of Object.entries(legacyIndex())) {
-    if (localStorage.getItem(ROW_PREFIX + id) === null) localStorage.setItem(ROW_PREFIX + id, JSON.stringify(e));
+    if (localStorage.getItem(LEGACY_KEY) === null) return;
+    if (asRow(e) && localStorage.getItem(ROW_PREFIX + id) === null) localStorage.setItem(ROW_PREFIX + id, JSON.stringify(e));
   }
   localStorage.removeItem(LEGACY_KEY);
 }

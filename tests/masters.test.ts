@@ -88,18 +88,60 @@ describe("master library index", () => {
     expect(masterIndex().old).toBeUndefined();
   });
 
-  // Storage key order is the engine's (hash order in WebKit), so the index
-  // sorts rows by id to keep the Master menu from reshuffling.
-  it("lists rows in id order whatever order storage returns them", async () => {
-    for (const id of ["master-c", "master-a", "master-b"]) {
-      await rememberMaster({ ...lolevMaster(), id, name: id }, `/tmp/${id}.master`);
+  // Storage key order is the engine's (hash order in WebKit) and ids are
+  // random, so the index sorts by name to keep the Master menu stable.
+  it("lists rows in name order whatever order storage returns them", async () => {
+    for (const [id, name] of [["master-1", "Cedar"], ["master-3", "Alder"], ["master-2", "Birch"]]) {
+      await rememberMaster({ ...lolevMaster(), id, name }, `/tmp/${id}.master`);
     }
-    expect(Object.keys(masterIndex())).toEqual(["master-a", "master-b", "master-c"]);
+    expect(Object.values(masterIndex()).map((e) => e.name)).toEqual(["Alder", "Birch", "Cedar"]);
   });
-  it("keeps id order when an unmigrated blob sits beside per-master rows", () => {
-    stored.set("labellab.master:master-a", JSON.stringify({ name: "A", path: "/a.master", lastSeen: "" }));
-    stored.set("labellab.masters", JSON.stringify({ "master-z": { name: "Z", path: "/z.master", lastSeen: "" } }));
-    expect(Object.keys(masterIndex())).toEqual(["master-a", "master-z"]);
+  it("keeps name order when an unmigrated blob sits beside per-master rows", () => {
+    stored.set("labellab.master:master-a", JSON.stringify({ name: "B", path: "/a.master", lastSeen: "" }));
+    stored.set("labellab.masters", JSON.stringify({ "master-z": { name: "A", path: "/z.master", lastSeen: "" } }));
+    expect(Object.keys(masterIndex())).toEqual(["master-z", "master-a"]);
+  });
+
+  // Review of #465: a blob that parses to null (or holds non-object rows)
+  // must not make every later save or Remove throw.
+  it("a null legacy blob neither lists nor blocks a save", async () => {
+    stored.set("labellab.masters", "null");
+    expect(masterIndex()).toEqual({});
+    await rememberMaster(lolevMaster(), "/tmp/lolev.master");
+    expect(masterIndex()[SHIPPED_MASTER_ID]?.path).toBe("/tmp/lolev.master");
+    expect(stored.has("labellab.masters")).toBe(false);
+  });
+
+  // An id from an untrusted .master is a plain key, never the prototype.
+  it("lists and forgets a master whose id is __proto__", async () => {
+    await rememberMaster({ ...lolevMaster(), id: "__proto__", name: "Odd" }, "/tmp/odd.master");
+    expect(Object.keys(masterIndex())).toEqual(["__proto__"]);
+    await forgetMaster("__proto__");
+    expect(Object.keys(masterIndex())).toEqual([]);
+  });
+
+  // Window A starts migrating the blob; before A copies X, window B migrates
+  // it and forgets X. A must not write X back.
+  it("a migration racing another window's forget does not resurrect the row", async () => {
+    stored.set("labellab.masters", JSON.stringify({
+      x: { name: "X", path: "/tmp/x.master", lastSeen: "" },
+    }));
+    let other: (() => void) | null = () => void forgetMaster("x");
+    vi.stubGlobal("localStorage", {
+      ...fakeLocalStorage,
+      get length() { return stored.size; },
+      getItem: (k: string) => {
+        const v = stored.get(k) ?? null;
+        if (k === "labellab.masters" && v !== null) {
+          const run = other;
+          other = null;
+          run?.();
+        }
+        return v;
+      },
+    });
+    await rememberMaster(lolevMaster(), "/tmp/lolev.master");
+    expect(masterIndex().x).toBeUndefined();
   });
 
   // Task 4's save/open round trip: a saved-then-reparsed master registers

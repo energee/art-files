@@ -118,7 +118,9 @@ export function addColor(list: string[], hex: string): string[] {
 const RENDER_KEY = "labellab.render";
 const SWATCHES_KEY = "labellab.swatches";
 
-function readJson(key: string): unknown {
+/** A guarded JSON read of one localStorage key: null when the key is absent,
+ *  mangled, or localStorage is missing. Shared with masters.ts. */
+export function readJson(key: string): unknown {
   try {
     return JSON.parse(localStorage.getItem(key) ?? "null");
   } catch {
