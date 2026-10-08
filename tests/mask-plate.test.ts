@@ -12,16 +12,11 @@ import { describe, expect, it } from "vitest";
 import { buildArtPdf, buildMaskPdf } from "../src/pdf/build";
 import * as L from "../src/layout";
 import type { PlacedLayer } from "../src/planLayers";
-import { assets, contentStreamText, lolevPlan, onePxPng } from "./fixtures";
+import { assets, contentStreamText, fillOps, lolevPlan, onePxPng } from "./fixtures";
 
 const BLUE = [0, 156 / 255, 215 / 255] as const;
 const WHITE = [1, 1, 1] as const;
 type Rgb = readonly [number, number, number];
-
-/** Every fill-colour operator ("r g b rg" or "k g") in emission order. */
-const fillOps = (stream: string): Rgb[] =>
-  [...stream.matchAll(/(-?[\d.]+)(?: (-?[\d.]+) (-?[\d.]+) rg| g)\b/g)]
-    .map((m) => [Number(m[1]), Number(m[2] ?? m[1]), Number(m[3] ?? m[1])] as const);
 
 const same = (a: Rgb, b: Rgb) => a.every((c, i) => Math.abs(c - b[i]) < 1e-9);
 

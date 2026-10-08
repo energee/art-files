@@ -116,6 +116,12 @@ export async function contentStreamText(bytes: Uint8Array): Promise<string> {
   return out;
 }
 
+/** Every fill-colour operator ("r g b rg", or grey "k g" widened to rgb) in
+ *  a content stream, in emission order. Not "RG": that's the stroke paint. */
+export const fillOps = (stream: string): (readonly [number, number, number])[] =>
+  [...stream.matchAll(/(-?[\d.]+)(?: (-?[\d.]+) (-?[\d.]+) rg| g)\b/g)]
+    .map((m) => [Number(m[1]), Number(m[2] ?? m[1]), Number(m[3] ?? m[1])] as const);
+
 /** Deterministic stand-in for real font metrics. */
 export const measure = (text: string, size: number) => text.length * size * 0.55;
 

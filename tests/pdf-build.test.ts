@@ -11,7 +11,7 @@ import fontkit from "@pdf-lib/fontkit";
 import { buildArtPdf, buildMaskPdf, pdfMeasureFace } from "../src/pdf/build";
 import { warningColumnLen, warningMeasure, wrapWarning } from "../src/warning";
 import * as L from "./legacy/layout";
-import { assets, contentStreamText, lolevPlan, onePxPng } from "./fixtures";
+import { assets, contentStreamText, fillOps, lolevPlan, onePxPng } from "./fixtures";
 
 // Counts /Subtype /Image XObjects in a saved PDF's indirect object table —
 // the thing an image whose item is not in the list must NOT contribute.
@@ -95,12 +95,7 @@ describe("the rotated column's stroke pass, on the live draw path", () => {
   // Isolate storeCold (a rotated element) by planning only its items, and
   // supply a mask so buildMaskPdf skips its own page-covering flood rect —
   // otherwise that flood's "rg" would land ahead of storeCold's in the
-  // stream and confuse the ordering check below. `rgOps` reads every
-  // fill-color-setting "r g b rg" operator (NOT "RG", the separate stroke-
-  // paint operator) in emission order.
-  const rgOps = (stream: string) =>
-    [...stream.matchAll(/(-?[\d.]+)(?: (-?[\d.]+) (-?[\d.]+) rg| g)\b/g)]
-      .map((m) => [Number(m[1]), Number(m[2] ?? m[1]), Number(m[3] ?? m[1])] as const);
+  // stream and confuse the ordering check below.
   const only = async (style: object) => (await lolevPlan({
     overrides: { storeCold: { lines: [{ text: "INK", ...style }], style }, mask: { asset: "msk" } },
     custom: { msk: { aspect: 1 } },
@@ -124,7 +119,7 @@ describe("the rotated column's stroke pass, on the live draw path", () => {
     // Drop the first match: buildMaskPdf's page-background rect (always
     // white, unconditionally, before the items ever draw) is not part of
     // storeCold's own draw and isn't the ordering this test is about.
-    const ops = rgOps(await contentStreamText(bytes)).slice(1);
+    const ops = fillOps(await contentStreamText(bytes)).slice(1);
     expect(ops.length).toBeGreaterThan(1);
     for (const op of ops.slice(0, -1)) for (const c of [0, 1, 2]) expect(op[c]).toBeCloseTo(stroke[c], 10);
     for (const c of [0, 1, 2]) expect(ops.at(-1)![c]).toBeCloseTo(fill[c], 10);
@@ -135,7 +130,7 @@ describe("the rotated column's stroke pass, on the live draw path", () => {
     const bytes = await buildArtPdf(await only(style), assets);
     // No page-level background paint in art mode (no texture bytes), so
     // every "rg" here belongs to storeCold's own draw — nothing to drop.
-    const ops = rgOps(await contentStreamText(bytes));
+    const ops = fillOps(await contentStreamText(bytes));
     expect(ops.length).toBeGreaterThan(1);
     const stroke = [0xee / 255, 0xee / 255, 0xee / 255];
     const fill = [0x11 / 255, 0x11 / 255, 0x11 / 255];
