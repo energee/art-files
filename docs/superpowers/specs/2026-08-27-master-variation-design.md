@@ -237,7 +237,9 @@ string is the storage format, visible under a "raw" toggle.
 
 `{ [masterId]: { name, path, lastSeen } }` — a resolver cache only; files on
 disk are the source of truth. The app remembers where masters live so `.label`
-files resolve by ID; a missing master falls back to `masterHint`, then a picker.
+files resolve by ID. A label reads its trusted `masterHint` (the exact file it
+was saved against) before the index's path for that id, since two files can
+share an id (#405); a missing master falls back to a picker.
 
 ## Resolution
 

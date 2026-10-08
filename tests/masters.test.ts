@@ -283,6 +283,9 @@ describe("master library index", () => {
     const r = await mod.resolveLabelMaster("master-dup", "/beers/ours.master", "/beers/beer.label");
     expect(r?.master.name).toBe("Ours");
     expect(reads[0]).toBe("/beers/ours.master");
+    // The index row now names the file the label opened, so the tab's Save
+    // Master (bound from the index in resetDocument) writes that file.
+    expect(mod.masterIndex()["master-dup"]?.path).toBe("/beers/ours.master");
     vi.doUnmock("@tauri-apps/api/core");
     vi.doUnmock("@/files");
   });
