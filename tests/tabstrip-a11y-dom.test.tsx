@@ -75,10 +75,8 @@ it("keeps keyboard focus on the strip when Enter switches tabs", async () => {
 
   // Switching re-hosts the strip in the new editor's slot; focus follows
   // the newly selected tab instead of dropping to <body>.
-  const active = document.activeElement as HTMLElement | null;
-  expect(active?.getAttribute("role")).toBe("tab");
-  expect(active?.getAttribute("aria-selected")).toBe("true");
-  expect(active).toBe(tabs()[0]);
+  expect(document.activeElement).toBe(tabs()[0]);
+  expect(tabs()[0].getAttribute("aria-selected")).toBe("true");
 });
 
 it("leaves focus alone when a mouse click switches tabs", async () => {
