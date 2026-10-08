@@ -26,6 +26,7 @@
 // and the updater.
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
 import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { dialogOpen, isTypingTarget, keyOwner } from "@/keys";
 import { isTauri } from "@tauri-apps/api/core";
@@ -133,29 +134,24 @@ const CanView = lazy<ComponentType<CanViewProps>>(() => import("@/components/Can
   })));
 
 // Settings and the Save Master review are opened rarely, so their modules
-// (and the checkbox they alone use) load on first open, not with the editor
-// (#410). The ⌘K palette does the same inside CommandMenu. Like CanView, a
-// chunk that fails to load says so where the surface would have opened
-// instead of unmounting the editor and its unsaved edits.
+// (and the checkbox only the review uses) load on first open, not with the
+// editor (#410). The ⌘K palette does the same inside CommandMenu. Like
+// CanView, a chunk that fails to load says so where the surface would have
+// opened instead of unmounting the editor and its unsaved edits; while one
+// loads, DialogLoading keeps the keys off the tab (LazyDialog.tsx).
 const RenderSettingsFields = lazy<typeof import("@/components/RenderSettings").RenderSettings>(() => import("@/components/RenderSettings").then(
   (m) => ({ default: m.RenderSettings }),
   (err: unknown) => ({
-    default: () => <p className="text-xs text-destructive-text">Settings failed to load: {String(err)}</p>,
+    default: () => <p className="text-xs text-destructive-text">{loadFailedMessage("Settings", err)}</p>,
   })));
 type MasterSaveReviewProps = Parameters<typeof import("@/components/MasterSaveReview").MasterSaveReview>[0];
 const MasterSaveReview = lazy<ComponentType<MasterSaveReviewProps>>(() => import("@/components/MasterSaveReview").then(
   (m) => ({ default: m.MasterSaveReview }),
   (err: unknown) => ({
-    default: function MasterSaveReviewLoadFailed({ open, onCancel }: MasterSaveReviewProps) {
-      return (
-        <Dialog open={open} onOpenChange={(o) => { if (!o) onCancel(); }}>
-          <DialogContent>
-            <DialogTitle>Save Master</DialogTitle>
-            <DialogDescription>The Save Master review failed to load: {String(err)}</DialogDescription>
-          </DialogContent>
-        </Dialog>
-      );
-    },
+    default: ({ open, onCancel }: MasterSaveReviewProps) => (
+      <DialogLoadFailed title="Save Master" what="The Save Master review" err={err}
+        open={open} onOpenChange={(o) => { if (!o) onCancel(); }} />
+    ),
   })));
 
 /** bytes = full print resolution (exports); previewBytes = downscaled PNG the
@@ -2329,8 +2325,9 @@ export const DocumentEditor = memo(function DocumentEditor({
     <TooltipProvider>
       {/* Suspense around the Dialog, not inside it: the first open then
           mounts the dialog with its fields already there, so it opens
-          focused on the first field rather than on Close. */}
-      <Suspense fallback={null}>
+          focused on the first field rather than on Close. Only an open
+          dialog renders its fields, so only an open one suspends. */}
+      <Suspense fallback={<DialogLoading />}>
         <Dialog open={active && settingsOpen} onOpenChange={setSettingsOpen}>
           <DialogContent className="sm:max-w-sm">
             <DialogTitle>Settings</DialogTitle>
@@ -2358,7 +2355,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           review stays with its tab (hidden while another tab is in front,
           back on return) so a confirm can only write the visible tab's master. */}
       {pendingSave && (
-        <Suspense fallback={null}>
+        <Suspense fallback={active ? <DialogLoading /> : null}>
           <MasterSaveReview open={active} as={pendingSave.as} changes={masterChangeList}
             target={master.variants.find((v) => v.id === version)?.name}
             onCancel={() => setPendingSave(null)}

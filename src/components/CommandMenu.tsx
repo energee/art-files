@@ -3,7 +3,7 @@
 // palette itself, and cmdk with it, loads on the first ⌘K (#410).
 import { Suspense, lazy, useEffect, useState, type ComponentType } from "react";
 import { dialogOpen, isMacOS, shortcutLabel } from "@/keys";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { DialogLoadFailed, DialogLoading } from "@/components/LazyDialog";
 
 // A palette chunk that fails to load says so in a dialog ⌘K or Escape closes,
 // instead of unmounting the editor (see App's CanView).
@@ -11,16 +11,9 @@ type CommandPaletteProps = Parameters<typeof import("@/components/CommandPalette
 const CommandPalette = lazy<ComponentType<CommandPaletteProps>>(() => import("@/components/CommandPalette").then(
   (m) => ({ default: m.CommandPalette }),
   (err: unknown) => ({
-    default: function CommandPaletteLoadFailed({ open, onOpenChange }: CommandPaletteProps) {
-      return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-          <DialogContent>
-            <DialogTitle>Commands</DialogTitle>
-            <DialogDescription>The command palette failed to load: {String(err)}</DialogDescription>
-          </DialogContent>
-        </Dialog>
-      );
-    },
+    default: ({ open, onOpenChange }: CommandPaletteProps) => (
+      <DialogLoadFailed title="Commands" what="The command palette" err={err} open={open} onOpenChange={onOpenChange} />
+    ),
   })));
 
 /** One entry in the app's command table (see App's `commands`). `key` is the
@@ -60,15 +53,16 @@ export function CommandMenu(props: { actions: Command[] }) {
         // Toggle, but never open while a modal dialog is open (#237, #244);
         // with the palette itself open, ⌘K closes it. Read the DOM now, at
         // the key press — a state updater may run later, during render.
+        // A blocked first ⌘K leaves the palette unloaded (null).
         const blocked = dialogOpen();
-        setOpen((o) => !o && !blocked);
+        setOpen((o) => (o === null && blocked ? null : !o && !blocked));
       }
     };
     document.addEventListener("keydown", down);
     return () => document.removeEventListener("keydown", down);
   }, []);
   return open === null ? null : (
-    <Suspense fallback={null}>
+    <Suspense fallback={open ? <DialogLoading /> : null}>
       <CommandPalette open={open} onOpenChange={setOpen} actions={props.actions} />
     </Suspense>
   );
