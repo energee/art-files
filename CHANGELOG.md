@@ -7,6 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Fixed
+- **The tab strip works with a keyboard and screen reader.** Document tabs show a focus ring when reached with Tab, Left/Right move between them, focus stays on the strip after you switch, add or close a tab with Enter or Space (closing focuses the next tab, and an unsaved close returns there once its dialog closes), and assistive tech announces them as tabs and says which one is active.
 - **A label opens the master file it was saved with.** When two `.master` files share an id, a label now opens the one beside it (or in your library folder) instead of whichever the library remembered last, and saves back to that file. Opening such a label leaves your library's own copy in place, and **Use** in the missing-master dialog opens the tab's own master file. Save Master As now gives each new master a full-length id, so two forks can no longer end up with the same one.
 - **The browser's saved-master store no longer grows without limit.** It keeps the 20 masters most recently opened, saved or used and drops older copies, so a full store can't stop new masters from being kept. A copy that can't be stored is now logged.
 - **Removing a master from the library can be undone.** A note under the master picker says the `.master` file stays where it is, with Undo to put it back without browsing to the file.
