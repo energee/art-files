@@ -10,7 +10,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.
 
 ### Fixed
-- **Save Master no longer looks unsaved when browser storage is full.** The master file was written, but a full storage quota made the save report as failed and left the master marked unsaved.
+- **Masters save and open when browser storage is full.** Save Master wrote the file but reported a failure and left the master marked unsaved; Open Master and a library pick failed too, and a label could miss its master file on disk. A full storage quota now only skips updating the remembered-masters list.
 
 ## [0.1.104] - 2026-10-08
 
