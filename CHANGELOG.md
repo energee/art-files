@@ -11,6 +11,7 @@ that section to the new version (see .agents/release-steward.md).
 - **The metallic mask accepts WebP.** Drop a .webp on the mask field or the mask half of the window chooser. The PDF gets a lossless PNG copy.
 - **A WebP background stays WebP when you save.** The label and master files keep the image you dropped. Only the PDFs carry a PNG copy, because the PDF embed takes PNG and JPEG only.
 ### Changed
+- **Node type definitions 26.** Build-time only; the app itself is unchanged.
 - **Tauri 2.12.** The app shell, dialogs, file access and updater move to Tauri 2.12 (Rust and JS sides together), with three.js 0.186.1.
 
 - **Remove a master from the Master menu with the × on its row.** It sits at
