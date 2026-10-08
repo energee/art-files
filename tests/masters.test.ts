@@ -96,6 +96,11 @@ describe("master library index", () => {
     }
     expect(Object.keys(masterIndex())).toEqual(["master-a", "master-b", "master-c"]);
   });
+  it("keeps id order when an unmigrated blob sits beside per-master rows", () => {
+    stored.set("labellab.master:master-a", JSON.stringify({ name: "A", path: "/a.master", lastSeen: "" }));
+    stored.set("labellab.masters", JSON.stringify({ "master-z": { name: "Z", path: "/z.master", lastSeen: "" } }));
+    expect(Object.keys(masterIndex())).toEqual(["master-a", "master-z"]);
+  });
 
   // Task 4's save/open round trip: a saved-then-reparsed master registers
   // under its own id, exactly as a freshly authored one would. This passes

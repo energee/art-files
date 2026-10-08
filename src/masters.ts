@@ -51,19 +51,18 @@ function indexRow(id: string): MasterIndexEntry | undefined {
  *  engine's hash order (WebKit), so without the sort the Master menu could
  *  reshuffle as rows are added. */
 export function masterIndex(): Record<string, MasterIndexEntry> {
-  const idx = legacyIndex();
+  const merged = legacyIndex(); // a per-master row overrides its blob entry
   try {
-    const ids: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k?.startsWith(ROW_PREFIX)) ids.push(k.slice(ROW_PREFIX.length));
-    }
-    for (const id of ids.sort()) {
+      if (!k?.startsWith(ROW_PREFIX)) continue;
+      const id = k.slice(ROW_PREFIX.length);
       const row = indexRow(id);
-      if (row) idx[id] = row;
+      if (row) merged[id] = row;
     }
   } catch { /* no localStorage — same fallback as legacyIndex */ }
-  return idx;
+  // Sort the union, so ids from an unmigrated blob sort in with the rows.
+  return Object.fromEntries(Object.entries(merged).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
 
 /** Move pre-#408 blob rows to their own keys before a row write, so the
