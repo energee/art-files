@@ -237,7 +237,18 @@ string is the storage format, visible under a "raw" toggle.
 
 `{ [masterId]: { name, path, lastSeen } }` — a resolver cache only; files on
 disk are the source of truth. The app remembers where masters live so `.label`
-files resolve by ID; a missing master falls back to `masterHint`, then a picker.
+files resolve by ID. A label reads its trusted `masterHint` (the exact file it
+was saved against) before the index's path for that id, since two files can
+share an id (#405). The tab's Save Master and the hint it saves name that file;
+the hint's file joins the index only when the index has no readable file for
+the id, so a shared label never takes over the operator's library entry. A
+missing master falls back to a picker.
+
+Stored as one localStorage key per master (`labellab.master:<id>`), not one
+blob: every app window shares localStorage, and a whole-index
+read-modify-write let one window's save drop another window's row (#408). An
+index written before #408 (the single `labellab.masters` blob) is still read
+and is split into per-master keys on the next write.
 
 ## Resolution
 

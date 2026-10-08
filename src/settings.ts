@@ -111,14 +111,18 @@ export function addColor(list: string[], hex: string): string[] {
 // Persistence. Two keys rather than one blob, so a swatch save never has to
 // read-modify-write the render knobs (or vice versa). Reads are guarded — a
 // hand-mangled entry, or a test without localStorage, falls back to the
-// defaults rather than crashing boot — while writes are plain: like
-// masters.ts, there is nothing useful to do about a failed localStorage write.
+// defaults rather than crashing boot — while writes are plain: there is
+// nothing useful to do about a failed localStorage write here. (masters.ts
+// guards its index writes, because Save Master awaits them after the file is
+// already written — #407.)
 // ---------------------------------------------------------------------------
 
 const RENDER_KEY = "labellab.render";
 const SWATCHES_KEY = "labellab.swatches";
 
-function readJson(key: string): unknown {
+/** A guarded JSON read of one localStorage key: null when the key is absent,
+ *  mangled, or localStorage is missing. Shared with masters.ts. */
+export function readJson(key: string): unknown {
   try {
     return JSON.parse(localStorage.getItem(key) ?? "null");
   } catch {

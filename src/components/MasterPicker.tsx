@@ -22,12 +22,14 @@
 //     shows that version on this label.
 //   * the other masters in the library, which are a REBIND and go through the
 //     bench preview below. A remembered one carries an X at the right of its
-//     row that takes it off the library without picking it.
+//     row that takes it off the library without picking it. The removal is
+//     said in plain view under the Select — the file stays where it is — with
+//     an Undo, since re-adding it would otherwise mean browsing to the file.
 //   * New Variant, an action at the foot.
 // Only the middle one resolves a file, so the two sentinels are intercepted
 // in onValueChange before any rebind is considered.
 import { CornerDownRight, X } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { rebindLabel } from "@/model/rebindLayers";
 import type { MasterAssets } from "@/model/files";
@@ -64,8 +66,8 @@ export function MasterPicker(props: {
    *  picker-driven resolve always has the index's own remembered path to
    *  fall back on, unlike resolveMasterById's optional second `hint`
    *  argument, which exists for a DIFFERENT caller — openProject, resolving
-   *  a `.label`'s masterHint when the index itself has nothing for that id
-   *  yet (e.g. a file received from someone else). */
+   *  a `.label`'s masterHint, the exact file that label was saved against,
+   *  before the index's path for that id (#405). */
   resolve: (id: string) => Promise<{ master: Master; assets: MasterAssets } | null>;
   /** Commits a rebind onto `target` — called ONLY after the inline preview's
    *  "Continue" is pressed. The caller re-runs rebind itself against its own
@@ -91,8 +93,9 @@ export function MasterPicker(props: {
   onSaveMaster: () => void;
   /** Whether a save would have anything to write (App's masterDirty). */
   masterDirty: boolean;
-  /** Drop a remembered master from this computer's library. The file stays. */
-  onForget: (id: string) => void;
+  /** Drop a remembered master from this computer's library. The file stays.
+   *  Resolves to an undo that puts it back (masters.ts's removeFromLibrary). */
+  onForget: (id: string) => Promise<() => Promise<void>>;
 }): React.JSX.Element {
   const previewId = useId();
   const [resolvingId, setResolvingId] = useState<string | null>(null);
@@ -103,6 +106,9 @@ export function MasterPicker(props: {
   /** Continue is running onMaster (index write, asset decode): a second press
    *  in that window would rebind the label twice. */
   const [committing, setCommitting] = useState(false);
+  /** The last library removal, shown with its Undo until the next one or
+   *  until the menu is used again. */
+  const [removed, setRemoved] = useState<{ name: string; undo: () => Promise<void> } | null>(null);
   /** The variant whose name is being edited inline, or null. */
   const [naming, setNaming] = useState<string | null>(null);
 
@@ -110,6 +116,28 @@ export function MasterPicker(props: {
     setPreview(null);
     setResolvingId(null);
     setError("");
+    setRemoved(null);
+  };
+
+  /** The ids whose removal is running. A ref, not state: two presses in one
+   *  tick would both read stale state, and the second removal's empty undo
+   *  would replace the real one. A set, so one finishing removal does not
+   *  clear another's guard. */
+  const forgetting = useRef(new Set<string>());
+  /** This picker's trigger. Not getElementById: every open tab keeps its
+   *  editor mounted, so the page holds one #master-picker per tab. */
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  const forget = async (id: string) => {
+    if (forgetting.current.has(id)) return;
+    forgetting.current.add(id);
+    const name = props.library[id]?.name ?? id;
+    try {
+      const undo = await props.onForget(id);
+      setRemoved({ name, undo });
+    } finally {
+      forgetting.current.delete(id);
+    }
   };
 
   /** Resolve the selected master and preview the rebind before committing. */
@@ -170,7 +198,7 @@ export function MasterPicker(props: {
           if (id === props.master.id) { props.onVersion(null); return; }
           void pickEntry(id);
         }}>
-        <SelectTrigger id="master-picker" aria-label="Master" size="sm" className="w-full">
+        <SelectTrigger ref={triggerRef} id="master-picker" aria-label="Master" size="sm" className="w-full">
           <span className="text-muted-foreground">Master:</span>
           <SelectValue>{editing}</SelectValue>
         </SelectTrigger>
@@ -192,7 +220,7 @@ export function MasterPicker(props: {
               aria-keyshortcuts={entry.inLibrary ? "Delete" : undefined}
               onKeyDown={entry.inLibrary ? (e) => {
                 if (e.key !== "Delete" || e.repeat) return;
-                e.preventDefault(); stop(e); props.onForget(id);
+                e.preventDefault(); stop(e); void forget(id);
               } : undefined}>
               {entry.name}
               {entry.inLibrary && (
@@ -202,7 +230,7 @@ export function MasterPicker(props: {
                   title="Remove from the library (Delete). The file stays where it is."
                   className="pointer-events-auto ml-auto rounded-sm p-0.5 text-muted-foreground hover:text-destructive-text"
                   onPointerDown={stop} onPointerUp={stop} onMouseUp={stop}
-                  onClick={(e) => { stop(e); props.onForget(id); }}>
+                  onClick={(e) => { stop(e); void forget(id); }}>
                   <X className="size-3.5" aria-hidden />
                 </button>
               )}
@@ -248,6 +276,23 @@ export function MasterPicker(props: {
         </div>
       )}
       {resolvingId && <p role="status" className="mt-1 text-xs text-muted-foreground">Opening master…</p>}
+      {/* Always mounted: screen readers announce a change inside a live
+          region that already exists, not one inserted with its text. */}
+      <div role="status">
+        {removed && (
+          <p id="master-picker-removed" className="mt-1 px-1 text-[11px] text-muted-foreground">
+            Removed “{removed.name}” from the library. The file stays where it is.{" "}
+            <Button type="button" size="xs" variant="link" className="h-auto p-0 text-[11px]"
+              onClick={() => {
+                // This button goes with the note: hand focus back to the picker.
+                triggerRef.current?.focus();
+                setRemoved(null); void removed.undo();
+              }}>
+              Undo
+            </Button>
+          </p>
+        )}
+      </div>
       {error && (
         <p id="master-picker-error" className="mt-1 px-1 text-[11px] text-destructive-text">{error}</p>
       )}
