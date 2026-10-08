@@ -25,14 +25,14 @@ File → Open Master / Save Master / Save Master As lives under [Masters and lab
 
 PNG, JPEG, or WebP dropped **anywhere** in the window opens the background/mask chooser:
 
-- Left half (or any JPEG/WebP): **texture**
-- Right half, PNG only: **mask**
+- Left half (or any JPEG): **texture**
+- Right half, PNG or WebP: **mask**
 
 Dropping on an inspector image field wins and loads that field. Clicking a field still opens its picker.
 
-Background takes PNG, JPEG, or WebP. A WebP is decoded and stored as PNG (the PDF embed handles PNG and JPEG only), so the project file and both PDFs carry PNG for it.
+Background takes PNG, JPEG, or WebP. The mask takes PNG or WebP. The project file keeps the image you dropped, WebP included. Only the PDFs get a PNG copy of a WebP, because the PDF embed handles PNG and JPEG only.
 
-The mask **must** be a PNG. It's embedded as-authored, no recoloring. A JPEG or WebP aimed at the mask half of the chooser lands on the background instead.
+A PNG mask is embedded as-authored, no recoloring. A JPEG aimed at the mask half of the chooser lands on the background instead.
 
 ## Older configs
 

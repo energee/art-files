@@ -330,41 +330,29 @@ async function previewPng(src: ImageBitmap | HTMLCanvasElement): Promise<Uint8Ar
   return canvasToPng(c);
 }
 
-type LoadedTexture = Loaded & { kind: "png" | "jpg" };
-// srcBytes: the original upload — the bytes Save writes.
-type LoadedMask = Loaded & { srcBytes: Uint8Array };
+// bytes: what the PDF embeds (PNG or JPEG). srcBytes: the original upload,
+// under its original name — the bytes Save writes.
+type LoadedRaster = Loaded & { kind: "png" | "jpg"; srcBytes: Uint8Array };
 
-/** Decode a texture file into its slot value; state-free, like readMask and
+/** Decode a texture or mask file into its slot value; state-free, like
  *  readCustomImage, so an open can decode before it commits (#81). PNG and
- *  JPEG pass through byte-for-byte; anything else the browser can decode
- *  (WebP) is re-encoded to PNG ONCE, here, and renamed to match — pdf-lib
- *  embeds PNG and JPEG only. */
-async function readTexture(f: File): Promise<LoadedTexture> {
+ *  JPEG embed as-is (a mask plate as-authored); anything else the browser
+ *  decodes (WebP) gets a PNG copy, because pdf-lib embeds PNG and JPEG only.
+ *  Save keeps the original either way. */
+async function readRaster(f: File): Promise<LoadedRaster> {
   const passthrough = EMBEDDABLE_RASTER.test(f.name);
-  const decoded = passthrough ? await createImageBitmap(f) : await decodeToCanvas(f);
-  const bytes = passthrough
-    ? new Uint8Array(await f.arrayBuffer())
-    : await canvasToPng(decoded as HTMLCanvasElement);
-  const previewBytes = await previewPng(decoded);
+  const [srcBytes, decoded] = await Promise.all([
+    f.arrayBuffer().then((b) => new Uint8Array(b)),
+    passthrough ? createImageBitmap(f) : decodeToCanvas(f),
+  ]);
+  const [bytes, previewBytes] = await Promise.all([
+    passthrough ? srcBytes : canvasToPng(decoded as HTMLCanvasElement), previewPng(decoded),
+  ]);
   const aspect = decoded.width / decoded.height;
   if (decoded instanceof ImageBitmap) decoded.close();
-  const name = passthrough ? f.name : `${f.name.replace(/\.[^.]*$/, "")}.png`;
-  const previewUrl = URL.createObjectURL(f);
-  return { bytes, previewBytes, name, kind: rasterKind(name), previewUrl, aspect };
-}
-
-/** Decode a mask file into its slot value. The mask passes through
- *  untouched — the printer accepts these plates as-authored (the metalness
- *  map classifies pixels itself). */
-async function readMask(f: File): Promise<LoadedMask> {
-  const [srcBytes, canvas] = await Promise.all([
-    f.arrayBuffer().then((b) => new Uint8Array(b)), decodeToCanvas(f),
-  ]);
-  const previewBytes = await previewPng(canvas);
-  const previewUrl = URL.createObjectURL(f);
   return {
-    bytes: srcBytes, previewBytes, name: f.name, previewUrl, srcBytes,
-    aspect: canvas.width / canvas.height,
+    srcBytes, bytes, previewBytes, aspect, name: f.name,
+    kind: passthrough ? rasterKind(f.name) : "png", previewUrl: URL.createObjectURL(f),
   };
 }
 
@@ -531,8 +519,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   const guides = useMemo(
     () => guideLines({ physical: master.physical, guides: master.guides }),
     [master.physical, master.guides]);
-  const [texture, setTexture] = useState<LoadedTexture | null>(null);
-  const [mask, setMask] = useState<LoadedMask | null>(null);
+  const [texture, setTexture] = useState<LoadedRaster | null>(null);
+  const [mask, setMask] = useState<LoadedRaster | null>(null);
   // Every per-id image asset this document carries: image layers' art,
   // collab logos included (an image layer's value is a key here).
   const [customImages, setCustomImages] = useState<Record<string, CustomFile>>({});
@@ -980,11 +968,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   const clearLoadErrorOf = (what: string) =>
     setLoadError((e) => e.startsWith(`Could not load ${what} `) ? "" : e);
   async function onTexture(f: File) {
-    try { swapLoaded(setTexture, await readTexture(f)); clearLoadErrorOf("texture"); }
+    try { swapLoaded(setTexture, await readRaster(f)); clearLoadErrorOf("texture"); }
     catch (err) { setLoadError(`Could not load texture "${f.name}": ${errMsg(err)}`); }
   }
   async function onMask(f: File) {
-    try { swapLoaded(setMask, await readMask(f)); clearLoadErrorOf("mask"); }
+    try { swapLoaded(setMask, await readRaster(f)); clearLoadErrorOf("mask"); }
     catch (err) { setLoadError(`Could not load mask "${f.name}": ${errMsg(err)}`); }
   }
 
@@ -1541,7 +1529,7 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** The texture/mask slots and a custom image's on-disk bytes, spelled ONCE
    *  for both containers. */
-  const textureAsset = () => texture ? { name: texture.name, bytes: texture.bytes } : undefined;
+  const textureAsset = () => texture ? { name: texture.name, bytes: texture.srcBytes } : undefined;
   const maskAsset = () => mask ? { name: mask.name, bytes: mask.srcBytes } : undefined;
   const imageAssetBytes = (c: CustomFile) =>
     c.image.kind === "svg" ? strToU8(c.image.svg) : c.image.bytes;
@@ -1993,8 +1981,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       // Decode every asset before resetDocument: a failed decode must leave
       // the previous doc and its Save target (rebound by the caller only on
       // success) intact (#81).
-      const texP = t ? readTexture(assetToFile(t)) : undefined;
-      const mskP = m ? readMask(assetToFile(m)) : undefined;
+      const texP = t ? readRaster(assetToFile(t)) : undefined;
+      const mskP = m ? readRaster(assetToFile(m)) : undefined;
       const imgPs = Object.entries(ci).map(async ([id, a]) =>
         [id, await readCustomImage(assetToFile(a))] as const);
       const [tex, msk, images] = await Promise.all([texP, mskP, Promise.all(imgPs)]).catch((err) => {
@@ -2160,7 +2148,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           onFile={(f) => void onTexture(f)} onClear={() => swapLoaded(setTexture, null)} />;
       }
       if (layer.role === "mask") {
-        return <FileDrop label="Metallic mask" accept={{ "image/png": [".png"] }}
+        return <FileDrop label="Metallic mask" accept={{ "image/png": [".png"], "image/webp": [".webp"] }}
           fileName={mask?.name} previewUrl={mask?.previewUrl}
           onFile={(f) => void onMask(f)} onClear={() => swapLoaded(setMask, null)} />;
       }
