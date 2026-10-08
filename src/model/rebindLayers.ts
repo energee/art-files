@@ -1,5 +1,7 @@
-// src/model/rebindLayers.ts — re-aim a v3 .label at a different master (the
-// cross-brewery collab flow), the successor to rebind.ts on the layer model.
+// src/model/rebindLayers.ts — re-aim a v3 .label at a master: a different one
+// (the cross-brewery collab flow), or on every open the one it already names,
+// whose layers or variants may since have changed (#409). The successor to
+// rebind.ts on the layer model.
 // Values match by LAYER id against the layers the target HAS — in its own
 // layers or in any variant's diff — plus the label-only legacy layers the
 // label carries in its own overrides (they travel with it). NON-DESTRUCTIVE: anything the target does
@@ -35,9 +37,11 @@ function layerKinds(master: Master): Map<string, Layer["kind"] | undefined> {
 const fits = (kind: Layer["kind"] | undefined, value: LayerValue): boolean =>
   typeof value === "string" || (kind === "text" && Array.isArray(value));
 
-/** `from` is the master the label is leaving; the v3 match is by layer id
- *  alone so it is not consulted, but it stays in the signature so the App
- *  call site (which has both) is stable. */
+/** Bind `label` to `to` (which may be the master it already names — the
+ *  open path calls this on every open). `dropped` is everything now benched,
+ *  including ids that were benched before. `from` is the master the label is
+ *  leaving; the v3 match is by layer id alone so it is not consulted, but it
+ *  stays in the signature so the App call site (which has both) is stable. */
 export function rebindLabel(
   label: LabelFile, _from: Master | undefined, to: Master,
 ): { label: LabelFile; dropped: { values: string[]; variants: string[] } } {
@@ -61,12 +65,14 @@ export function rebindLabel(
   // override, so it resolves on any target — its value is not stranded.
   for (const [id, o] of Object.entries(label.overrides ?? {}))
     if (o.kind && !kinds.has(id)) kinds.set(id, o.kind);
-  const values: Record<string, LayerValue> = {};
-  const dormantValues: Record<string, LayerValue> = {};
-  for (const [id, v] of Object.entries(candidateValues)) {
-    if (kinds.has(id) && fits(kinds.get(id), v)) values[id] = v;
-    else dormantValues[id] = v;
-  }
+  // fromEntries, not assignment: an id like "__proto__" (any string a file
+  // carries) must land as a key, not set the object's prototype.
+  const placed = Object.entries(candidateValues).map(([id, v]) =>
+    [id, v, kinds.has(id) && fits(kinds.get(id), v)] as const);
+  const values: Record<string, LayerValue> =
+    Object.fromEntries(placed.filter(([, , ok]) => ok).map(([id, v]) => [id, v]));
+  const dormantValues: Record<string, LayerValue> =
+    Object.fromEntries(placed.filter(([, , ok]) => !ok).map(([id, v]) => [id, v]));
 
   const variantIds = new Set(to.variants.map((v) => v.id));
   const enabledVariants = candidateVariants.filter((id) => variantIds.has(id));

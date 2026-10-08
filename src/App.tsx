@@ -60,7 +60,7 @@ import {
   type MasterAssets,
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
-import { SHIPPED_MASTER_ID, forgetMaster, hintTrusted, masterIndex, rememberMaster, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
+import { SHIPPED_MASTER_ID, hintTrusted, masterIndex, rememberMaster, removeFromLibrary, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
@@ -1830,10 +1830,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   }
 
   /** Drop a remembered master from the library. The open document and the
-   *  file on disk stay as they are. */
-  function forgetLibraryMaster(id: string) {
-    void forgetMaster(id);
+   *  file on disk stay as they are. Returns the picker's Undo, which puts the
+   *  library row back and re-lists it. */
+  async function forgetLibraryMaster(id: string) {
+    const undo = await removeFromLibrary(id);
     refreshLibrary();
+    return async () => { await undo(); refreshLibrary(); };
   }
 
   /** File → Open Master…: native dialog on desktop (a real path, so the
@@ -1968,6 +1970,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       const unpacked = unpackLabel(f.bytes);
       let notes: string[] = [];
       let masterAssets: MasterAssets = {};
+      let benched = false;
       // Legacy fixed collab ZIP roles (collab-left/, collab-center/) stay
       // READABLE: each is minted an id in the per-id store and becomes the
       // matching image layer's fill value.
@@ -2005,14 +2008,27 @@ export const DocumentEditor = memo(function DocumentEditor({
           l = r.label;
           notes = r.warnings;
         }
-        // The file at this label's path was saved again under a new id. Follow
-        // that file; values that don't fit the new template are benched.
-        if (l.masterId !== resolved.master.id) {
-          const rebound = rebindLabel(l, undefined, resolved.master);
-          l = rebound.label;
-          notes.push(...benchedNotes(rebound.dropped));
-        }
-        next = { master: resolved.master, label: adoptLegacyCollab(l) };
+        // Bind to the master actually resolved — always, not only when the
+        // id changed (the file was saved again under a new id): the label's
+        // own master may since have dropped a layer or variant, and those
+        // orphan ids are benched and reported instead of carried forever (#409).
+        // Legacy collab roles are adopted first so they get the same check.
+        // On its own master, a bench the FILE already carries (a collab
+        // rebind) is not news on every open; checked against the file as
+        // written, since convertLabelV2 benches a v2 label's orphans silently.
+        const { label: bound, dropped } = rebindLabel(adoptLegacyCollab(l), undefined, resolved.master);
+        const old = ref.masterId === resolved.master.id ? ref.dormant : undefined;
+        const fresh = {
+          values: dropped.values.filter((id) =>
+            !old || !Object.hasOwn(old.values, id) || Object.hasOwn(ref.values, id)),
+          variants: dropped.variants.filter((id) =>
+            !old?.variants.includes(id) || ref.enabledVariants.includes(id)),
+        };
+        notes.push(...benchedNotes(fresh));
+        // What was just benched is not in the file yet: Save stays live and a
+        // close asks, so the cleaned label reaches disk.
+        benched = fresh.values.length + fresh.variants.length > 0;
+        next = { master: resolved.master, label: bound };
       }
       // Resolve untrusted overrides/values before installing the document or
       // decoding its assets; a malformed label must leave the old tab intact.
@@ -2050,8 +2066,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (tex) swapLoaded(setTexture, tex);
       if (msk) swapLoaded(setMask, msk);
       if (images.length) setCustomImages(Object.fromEntries(images));
-      setDirty(false);
-      setEdited(false);
+      setDirty(benched);
+      setEdited(benched);
       setLoadError(notes.length ? "Note: " + notes.join(" · ") : "");
       return true;
     } catch (err) {
