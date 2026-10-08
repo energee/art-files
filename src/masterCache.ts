@@ -62,20 +62,21 @@ export async function cacheMaster(id: string, bytes: Uint8Array): Promise<void> 
     const put = s.put(bytes, id);
     const order = s.get(RECENCY);
     order.onsuccess = () => {
-      const keep = (prev: unknown[]) => [id, ...prev.filter((k) => k !== id && k !== RECENCY)];
-      if (Array.isArray(order.result)) return trim(s, keep(order.result));
+      if (Array.isArray(order.result)) return promote(s, id, order.result);
       // No record yet: a cache from before the bound. Its existing ids rank
       // oldest, so the overflow they already caused is evicted now.
       const all = s.getAllKeys();
-      all.onsuccess = () => trim(s, keep(all.result));
+      all.onsuccess = () => promote(s, id, all.result);
     };
     return put;
   });
   if (ok === null) console.warn(`Could not cache master ${id}; the browser store may be full.`);
 }
 
-/** Drop every id past the bound and store the remaining order. */
-function trim(s: IDBObjectStore, order: unknown[]): void {
+/** Put id at the head of the recency order, drop every id past the bound and
+ *  store what remains. */
+function promote(s: IDBObjectStore, id: string, prev: unknown[]): void {
+  const order = [id, ...prev.filter((k) => k !== id && k !== RECENCY)];
   for (const old of order.slice(MAX_CACHED_MASTERS)) s.delete(old as IDBValidKey);
   s.put(order.slice(0, MAX_CACHED_MASTERS), RECENCY);
 }
