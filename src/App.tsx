@@ -2317,8 +2317,6 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   // A build "Note:" (a cancelled export) is only a warning: a render error outranks it.
   const headerError = buildError && !(renderError && buildError.startsWith("Note: ")) ? buildError : renderError;
-  // An error in the header replaces the export confirmation.
-  const savedNote = headerError ? "" : exportNote;
 
   return (
     <TooltipProvider>
@@ -2402,10 +2400,13 @@ export const DocumentEditor = memo(function DocumentEditor({
           {blocked && <HeaderAlert>{blockedWhy}</HeaderAlert>}
           {loadError && <HeaderAlert tone={loadError.startsWith("Note: ") ? "warning" : "destructive"}>{loadError}</HeaderAlert>}
           {headerError && <HeaderAlert tone={headerError.startsWith("Note: ") ? "warning" : "destructive"}>{headerError}</HeaderAlert>}
-          {savedNote && <HeaderAlert tone="success">{savedNote}</HeaderAlert>}
+          {/* An error in the header replaces the export confirmation. */}
+          {exportNote && !headerError && <HeaderAlert tone="success">{exportNote}</HeaderAlert>}
           {/* The success note's announcement, from a region that exists
-              before the note lands (see HeaderAlert's success tone). */}
-          <span role="status" data-export-saved className="sr-only">{savedNote}</span>
+              before the note lands (see HeaderAlert's success tone). It
+              keeps the note while an error hides it, so a render error
+              clearing doesn't refill it and re-announce a stale "Saved …". */}
+          <span role="status" data-export-saved className="sr-only">{exportNote}</span>
           {resolveWarnings.length > 0 && <HeaderAlert tone="warning">{resolveWarnings.join(" · ")}</HeaderAlert>}
           {/* Open Master's fallback — see masterInput/openMasterPicker. */}
           <input ref={masterInput} type="file" accept={MASTER_EXT} hidden

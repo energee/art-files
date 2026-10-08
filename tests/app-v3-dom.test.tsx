@@ -695,7 +695,7 @@ it("the export note is announced through a pre-existing status region, preview r
     await act(async () => { for (const reject of exportFonts.rejects) reject(new Error("stop")); });
     await vi.waitFor(() => expect(region!.textContent).toBe(""));
     expect(perf.source).toBeNull(); // the preview never assembled
-  } finally { release(); perf.facesGate = null; await unmount(); }
+  } finally { await unmount(); release(); perf.facesGate = null; }
 }, 60_000);
 
 // Issue #401: an export blurred the preview under a "rendering preview…" note,

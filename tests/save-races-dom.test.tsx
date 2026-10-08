@@ -237,6 +237,15 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psd", "psd"
     await vi.waitFor(() => expect(document.body.textContent).toContain(`Saved ${art}, ${mask}.`));
     expect(document.querySelector("[data-export-saved]")).toBe(region);
     expect(region!.textContent).toBe(`Saved ${art}, ${mask}.`);
+    // A render error coming and going hides and restores the visible note,
+    // but the region's text never changes, so it isn't announced again.
+    const visibleNote = () => document.querySelector('[data-slot="alert"][aria-hidden="true"]');
+    await act(async () => menu.renderError!("Preview failed: boom"));
+    expect(visibleNote()).toBeNull();
+    expect(region!.textContent).toBe(`Saved ${art}, ${mask}.`);
+    await act(async () => menu.renderError!(""));
+    expect(visibleNote()?.textContent).toBe(`Saved ${art}, ${mask}.`);
+    expect(region!.textContent).toBe(`Saved ${art}, ${mask}.`);
     // A later edit makes the confirmation stale, so it goes.
     await toggle("warning");
     expect(document.body.textContent).not.toContain(`Saved ${art}`);
