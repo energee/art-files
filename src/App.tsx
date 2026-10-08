@@ -60,7 +60,7 @@ import {
   type MasterAssets,
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
-import { SHIPPED_MASTER_ID, hintTrusted, masterIndex, rememberMaster, removeFromLibrary, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
+import { SHIPPED_MASTER_ID, hintTrusted, masterIndex, newMasterId, rememberMaster, removeFromLibrary, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
@@ -1534,13 +1534,15 @@ export const DocumentEditor = memo(function DocumentEditor({
   const masterInput = useRef<HTMLInputElement>(null);
 
   /** Full-document replacement for Open: swap the whole Doc in (resetting
-   *  history) and clear every asset slot — an open is a full restore. */
-  function resetDocument(next: Doc) {
+   *  history) and clear every asset slot — an open is a full restore.
+   *  `masterPath` is the file the master was read from (ResolvedMaster.path);
+   *  without one, Save Master binds to the library's path for the id. */
+  function resetDocument(next: Doc, masterPath?: string) {
     resetDoc(next);
     pristineMaster.current = next.master;
     masterFileHandle.current = null;
-    const indexed = isTauri() ? masterIndex()[next.master.id]?.path : undefined;
-    masterFilePath.current = indexed ? { id: next.master.id, target: indexed } : null;
+    const bound = isTauri() ? masterPath ?? masterIndex()[next.master.id]?.path : undefined;
+    masterFilePath.current = bound ? { id: next.master.id, target: bound } : null;
     clearSelection();
     swapLoaded(setTexture, null);
     swapLoaded(setMask, null);
@@ -1566,11 +1568,16 @@ export const DocumentEditor = memo(function DocumentEditor({
   };
 
   /** This document as .label bytes: the v3 label plus its embedded art —
-   *  what Save writes and what a crash-recovery snapshot keeps. */
-  const packProject = () => packLabel({ ...label, masterHint: masterIndex()[master.id]?.path }, {
-    texture: textureAsset(), mask: maskAsset(),
-    customImages: imageBundle(Object.keys(liveImages)),
-  });
+   *  what Save writes and what a crash-recovery snapshot keeps. The hint names
+   *  this tab's own master file: another tab may have opened a different file
+   *  with the same id since (#405). */
+  const packProject = () => {
+    const masterHint = saveTargetFor(masterFilePath.current, master.id) ?? masterIndex()[master.id]?.path;
+    return packLabel({ ...label, masterHint }, {
+      texture: textureAsset(), mask: maskAsset(),
+      customImages: imageBundle(Object.keys(liveImages)),
+    });
+  };
 
   /** File → Save / Save As…: the v3 label plus its embedded art, zipped as
    *  <name-slug>.label (model/files.ts). */
@@ -1664,7 +1671,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       return false;
     }
     const forked = as
-      ? { ...promoted.master, id: `master-${crypto.randomUUID().slice(0, 8)}` }
+      ? { ...promoted.master, id: newMasterId() }
       : promoted.master;
     const { assets, missing } = masterAssetBundle(forked);
     const suggested = machineName(forked.name) || "master";
@@ -1921,8 +1928,12 @@ export const DocumentEditor = memo(function DocumentEditor({
     setMissingMaster(null);
     // Read after the dialog: the tab may have switched masters meanwhile.
     const current = docRef.current.master;
-    if (choice === "current")
-      return (await resolveMasterById(current.id)) ?? { master: current, assets: {} };
+    // Through this tab's own file: the library may name another file with the
+    // same id (#405). That file is its own trust root (hintTrusted).
+    if (choice === "current") {
+      const own = saveTargetFor(masterFilePath.current, current.id) ?? undefined;
+      return (await resolveMasterById(current.id, own, own)) ?? { master: current, assets: {} };
+    }
     if (choice !== "locate") return null;
     // Failures are reported here, never thrown: openWithRetry would swallow
     // one on a quiet attempt and ask again with no explanation.
@@ -1940,7 +1951,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     }
     const r = tryParseMaster(bytes);
     if (r) await rememberMaster(r.master, path, bytes, { applied: false });
-    return r;
+    return r && { ...r, path: path || undefined };
   }
 
   /** Open a .label with quiet retries — shared by ALL entry points. The
@@ -1970,6 +1981,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       const unpacked = unpackLabel(f.bytes);
       let notes: string[] = [];
       let masterAssets: MasterAssets = {};
+      let masterPath: string | undefined;
       let benched = false;
       // Legacy fixed collab ZIP roles (collab-left/, collab-center/) stay
       // READABLE: each is minted an id in the per-id store and becomes the
@@ -2001,6 +2013,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           ?? await missingMasterChoice(ref.masterId, hint, f.path);
         if (!resolved) return "cancelled";
         masterAssets = resolved.assets;
+        masterPath = resolved.path;
         let l: LabelFile;
         if (unpacked.label) l = unpacked.label;
         else {
@@ -2062,7 +2075,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           p?.then((x) => URL.revokeObjectURL(x.previewUrl), () => {});
         throw err;
       });
-      resetDocument(next);
+      resetDocument(next, masterPath);
       if (tex) swapLoaded(setTexture, tex);
       if (msk) swapLoaded(setMask, msk);
       if (images.length) setCustomImages(Object.fromEntries(images));

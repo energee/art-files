@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { forgetMaster, hintTrusted, masterIndex, rememberMaster, resolveMasterById, SHIPPED_MASTER_ID } from "../src/masters";
+import { forgetMaster, hintTrusted, masterIndex, newMasterId, rememberMaster, resolveMasterById, SHIPPED_MASTER_ID } from "../src/masters";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { parseMasterJson, serializeMaster } from "../src/model/files";
 
@@ -481,6 +481,106 @@ describe("master library index", () => {
     expect(reads).toEqual(["/Users/me/beers/masters/x.master", "/lib/x.master"]);
     vi.doUnmock("@tauri-apps/api/core");
     vi.doUnmock("@/files");
+  });
+  // Two files can carry one master id: the same shipped master edited and
+  // saved on two machines, or two legacy 8-hex forks that collided (#405).
+  // The index holds one path per id, so a label must open the file at its own
+  // trusted hint before the index's file for that id.
+  it("a label opens the master at its own hint path when another file holds the same id", async () => {
+    vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+    const theirs = { ...lolevMaster(), id: "master-dup", name: "Theirs" };
+    const ours = { ...lolevMaster(), id: "master-dup", name: "Ours" };
+    const reads: string[] = [];
+    vi.doMock("@/files", () => ({
+      readNativeFile: async (p: string) => {
+        reads.push(p);
+        return new TextEncoder().encode(JSON.stringify(p === "/beers/ours.master" ? ours : theirs));
+      },
+    }));
+    const mod = await import("../src/masters");
+    localStorage.setItem("labellab.masters", JSON.stringify({
+      "master-dup": { name: "Theirs", path: "/lib/theirs.master", lastSeen: "" },
+    }));
+    const r = await mod.resolveLabelMaster("master-dup", "/beers/ours.master", "/beers/beer.label");
+    expect(r?.master.name).toBe("Ours");
+    // The tab binds Save Master and its saved masterHint to this path.
+    expect(r?.path).toBe("/beers/ours.master");
+    expect(reads[0]).toBe("/beers/ours.master");
+    // The library keeps its own file for the id: a shared label does not
+    // take over the entry, so a library pick and other tabs still get it.
+    expect(mod.masterIndex()["master-dup"]?.path).toBe("/lib/theirs.master");
+    expect((await mod.resolveMasterById("master-dup"))?.master.name).toBe("Theirs");
+    // A second label with the same id opens its own file without moving the row.
+    const t = await mod.resolveLabelMaster("master-dup", "/lib/theirs.master", "/lib/b.label");
+    expect(t?.master.name).toBe("Theirs");
+    expect(mod.masterIndex()["master-dup"]?.path).toBe("/lib/theirs.master");
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/files");
+  });
+  // A label received from someone else, for a master this library has never
+  // seen: the file beside it joins the library so later opens find it.
+  it("a hinted master joins the library when the library has no file for its id", async () => {
+    vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+    const theirs = { ...lolevMaster(), id: "master-new", name: "New" };
+    vi.doMock("@/files", () => ({
+      readNativeFile: async () => new TextEncoder().encode(JSON.stringify(theirs)),
+    }));
+    const mod = await import("../src/masters");
+    const r = await mod.resolveLabelMaster("master-new", "/beers/new.master", "/beers/beer.label");
+    expect(r?.master.name).toBe("New");
+    expect(mod.masterIndex()["master-new"]?.path).toBe("/beers/new.master");
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/files");
+  });
+  // "Use current" in the missing-master dialog re-resolves the tab's master
+  // through the tab's own file, passed as its own trust root: the library's
+  // row for the id may name a different file (#405).
+  it("a file passed as its own trust root resolves over the library row for its id", async () => {
+    vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+    const theirs = { ...lolevMaster(), id: "master-dup", name: "Theirs" };
+    const ours = { ...lolevMaster(), id: "master-dup", name: "Ours" };
+    vi.doMock("@/files", () => ({
+      readNativeFile: async (p: string) =>
+        new TextEncoder().encode(JSON.stringify(p === "/elsewhere/ours.master" ? ours : theirs)),
+    }));
+    const mod = await import("../src/masters");
+    localStorage.setItem("labellab.masters", JSON.stringify({
+      "master-dup": { name: "Theirs", path: "/lib/theirs.master", lastSeen: "" },
+    }));
+    const own = "/elsewhere/ours.master";
+    const r = await mod.resolveMasterById("master-dup", own, own);
+    expect(r?.master.name).toBe("Ours");
+    expect(r?.path).toBe(own);
+    expect(mod.masterIndex()["master-dup"]?.path).toBe("/lib/theirs.master");
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/files");
+  });
+  // The library's file for the id was moved or deleted: the label's hint
+  // repairs the row instead of leaving it pointing at nothing.
+  it("a hinted master replaces a library row whose file is gone", async () => {
+    vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+    const moved = { ...lolevMaster(), id: "master-moved", name: "Moved" };
+    vi.doMock("@/files", () => ({
+      readNativeFile: async (p: string) => {
+        if (p !== "/beers/moved.master") throw new Error("not found");
+        return new TextEncoder().encode(JSON.stringify(moved));
+      },
+    }));
+    const mod = await import("../src/masters");
+    localStorage.setItem("labellab.masters", JSON.stringify({
+      "master-moved": { name: "Moved", path: "/lib/old.master", lastSeen: "" },
+    }));
+    const r = await mod.resolveLabelMaster("master-moved", "/beers/moved.master", "/beers/beer.label");
+    expect(r?.master.name).toBe("Moved");
+    expect(mod.masterIndex()["master-moved"]?.path).toBe("/beers/moved.master");
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/files");
+  });
+  // Save Master As used to mint 8 hex chars, few enough to collide (#405).
+  it("mints a full UUID for a forked master", () => {
+    const a = newMasterId();
+    expect(a).toMatch(/^master-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(newMasterId()).not.toBe(a);
   });
   it("hintTrusted is lexical and separator-agnostic", () => {
     expect(hintTrusted("/a/b/x.master", "/a/b/l.label")).toBe(true);
