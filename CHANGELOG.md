@@ -6,6 +6,9 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Changed
+- **Typing on a label with a texture or mask is lighter.** The preview paints the page art once per zoom level and reuses it, instead of rescaling the full-size image on every keystroke.
+
 ### Security
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.
 

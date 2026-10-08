@@ -74,6 +74,31 @@ const path2ds = (paths: readonly string[]): Path2D[] => {
   return p;
 };
 
+/** The page art resampled once at plate resolution, per bitmap (#412).
+ *  The texture and mask are static between keystrokes, but drawImage from a
+ *  full-size upload into a 600-DPI plate was a full resample on every repaint;
+ *  now a repaint is a 1:1 blit of this layer. One entry per bitmap, repainted
+ *  when the cover-fit rect or the plate's pixel size changes (a zoom re-raster,
+ *  or the 3D view drawing the same bitmap at texture size). WeakMap so a
+ *  replaced upload's layer goes with it. */
+interface PageLayer { key: string; canvas: HTMLCanvasElement }
+const pageLayerCache = new WeakMap<object, PageLayer>();
+function pageLayer(bmp: CanvasImageSource, r: PlacedPage, w: number, h: number): HTMLCanvasElement {
+  const key = `${r.x},${r.y},${r.w},${r.h},${w},${h}`;
+  let hit = pageLayerCache.get(bmp);
+  if (!hit || hit.key !== key) {
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const lc = canvas.getContext("2d")!;
+    const scale = w / L.PAGE.w;
+    lc.setTransform(scale, 0, 0, scale, 0, 0);
+    lc.drawImage(bmp, r.x, r.y, r.w, r.h);
+    pageLayerCache.set(bmp, (hit = { key, canvas }));
+  }
+  return hit.canvas;
+}
+
 /** Art-mode CSS color for a Fill — "none" is no ink, i.e. white, the same
  *  rule as pdf/build.ts's fillColor via parseHexFill. */
 const cssFill = (fill: Fill) => (fill === "none" ? "#FFFFFF" : fill);
@@ -161,12 +186,21 @@ export function drawPlate(
     } else if (r.kind === "page") {
       // Page art (the texture on the art plate, the mask on the mask plate)
       // at planLayers' cover-fit rect, in PAGE space — outside the bleed
-      // shift, like the PDF's withoutBleedShift.
+      // shift, like the PDF's withoutBleedShift — composited from the cached
+      // pageLayer rather than resampled per repaint.
       const bmp = pageDrawsOn(r, mode) ? bitmapOf(r.asset) : null;
       if (!bmp) continue;
       c.save();
-      c.translate(-L.BLEED_SHIFT, -L.BLEED_SHIFT);
-      c.drawImage(bmp, r.x, r.y, r.w, r.h);
+      if (typeof document === "undefined") {
+        // No DOM to hold a cached layer (Node: vitest's fake contexts, and
+        // nothing rasterizes there) — draw the bitmap directly.
+        c.translate(-L.BLEED_SHIFT, -L.BLEED_SHIFT);
+        c.drawImage(bmp, r.x, r.y, r.w, r.h);
+      } else {
+        // The layer is already at plate resolution in PAGE space: blit 1:1.
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.drawImage(pageLayer(bmp, r, c.canvas.width, c.canvas.height), 0, 0);
+      }
       c.restore();
     } else if (r.kind === "image") {
       // The plan places this rect from a stored aspect alone before its

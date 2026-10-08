@@ -352,3 +352,64 @@ describe("canvas text is unkerned, like the PDF (#86)", () => {
     expect(seen).toEqual(["none"]);
   });
 });
+
+/** Issue #412: the page art (texture on the art plate, mask on the mask
+ *  plate) is static between keystrokes, so it is painted once into a cached
+ *  layer and composited, not re-resampled from the full-size bitmap on every
+ *  repaint. Node has no canvas, so `document` is stubbed with one whose
+ *  contexts record their calls. */
+describe("cached page-art layer (#412)", () => {
+  /** A fresh bitmap per test: the cache is module-level and keys on identity. */
+  const freshBitmap = () => ({ width: 100, height: 100 }) as unknown as CanvasImageSource;
+  function stubDocument() {
+    const layers: ReturnType<typeof fakeCtx>[] = [];
+    vi.stubGlobal("document", {
+      createElement: () => {
+        const el = { width: 0, height: 0, getContext: () => layer.ctx };
+        const layer = fakeCtx();
+        (layer.ctx as unknown as { canvas: unknown }).canvas = el;
+        layers.push(layer);
+        return el;
+      },
+    });
+    return layers;
+  }
+  const drawn = (log: { op: string; args: unknown[] }[]) =>
+    log.filter((x) => x.op === "drawImage").map((x) => x.args[0]);
+
+  it("paints the texture once and composites it on later repaints", () => {
+    const layers = stubDocument();
+    const tex = freshBitmap();
+    const first = fakeCtx();
+    drawPlate(first.ctx, plan(withPages), { images: { tex } }, "art", FONT);
+    const second = fakeCtx();
+    drawPlate(second.ctx, plan(withPages), { images: { tex } }, "art", FONT);
+    // The texture was resampled exactly once, into the one cached layer.
+    expect(layers).toHaveLength(1);
+    expect(drawn(layers[0].log)).toEqual([tex]);
+    // Both plates composite that layer instead of the texture, before any text.
+    for (const { log } of [first, second]) {
+      expect(drawn(log)).toHaveLength(1);
+      expect(drawn(log)[0]).not.toBe(tex);
+      expect(log.findIndex((x) => x.op === "drawImage")).toBeLessThan(log.findIndex((x) => x.op === "fillText"));
+    }
+    expect(drawn(second.log)[0]).toBe(drawn(first.log)[0]);
+  });
+
+  it("repaints the layer when the bitmap or the raster size changes", () => {
+    const layers = stubDocument();
+    const a = freshBitmap(), b = freshBitmap();
+    drawPlate(fakeCtx().ctx, plan(withPages), { images: { msk: a } }, "mask", FONT);
+    drawPlate(fakeCtx().ctx, plan(withPages), { images: { msk: b } }, "mask", FONT);
+    const resized = fakeCtx();
+    (resized.ctx as unknown as { canvas: { width: number } }).canvas.width = PAGE.w * 3;
+    drawPlate(resized.ctx, plan(withPages), { images: { msk: b } }, "mask", FONT);
+    expect(layers.map((l) => drawn(l.log))).toEqual([[a], [b], [b]]);
+  });
+
+  it("does not cache a plate with no page bitmap to draw", () => {
+    const layers = stubDocument();
+    drawPlate(fakeCtx().ctx, plan(withPages), {}, "mask", FONT);
+    expect(layers).toHaveLength(0);
+  });
+});
