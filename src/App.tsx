@@ -38,7 +38,7 @@ import { machineName } from "@/qr";
 import { strToU8 } from "fflate";
 import { LABEL_EXT, type LabelAssets } from "@/labelfile";
 import {
-  LABEL_FILTER, LABEL_TYPES, MASTER_FILTER, MASTER_TYPES, isAbort,
+  LABEL_FILTER, LABEL_TYPES, MASTER_FILTER, MASTER_TYPES, bytesPart, isAbort,
 } from "@/filePickers";
 import { openThrough, readNativeFile, saveThrough } from "@/files";
 import { useHistory, type Coalesce } from "@/history";
@@ -268,8 +268,8 @@ async function decodeToCanvas(src: Blob): Promise<HTMLCanvasElement> {
   }
 }
 
-/** The bytes as a Blob, for decodeToCanvas. */
-const blobOf = (bytes: Uint8Array) => new Blob([bytes as unknown as BlobPart]);
+/** The bytes as a Blob, for decoding (decodeToCanvas, createImageBitmap). */
+const blobOf = (bytes: Uint8Array) => new Blob([bytesPart(bytes)]);
 
 /** Repaint a raster image in `fill`, keeping alpha, and re-encode it as PNG
  *  for embedding — the color-overlay path for PNG/JPG art an image layer's
@@ -299,7 +299,7 @@ function tintedPngCached(bytes: Uint8Array, fill: Fill): Promise<Uint8Array> {
  *  typeless blob as SVG. One spelling for the label-open and master-adopt
  *  paths. */
 function assetToFile(a: { name: string; bytes: Uint8Array }): File {
-  return new File([a.bytes as unknown as BlobPart], a.name, { type: mimeFor(a.name) });
+  return new File([bytesPart(a.bytes)], a.name, { type: mimeFor(a.name) });
 }
 
 /** Read a dropped image asset. SVG is kept as source text (so it can be
@@ -313,7 +313,7 @@ async function readCustomImage(f: File): Promise<CustomFile> {
     return { image: { kind: "svg", svg }, name: f.name, previewUrl: URL.createObjectURL(f), aspect: svgAspect(svg) };
   }
   const bytes = new Uint8Array(await f.arrayBuffer());
-  const bmp = await createImageBitmap(new Blob([bytes as unknown as BlobPart]));
+  const bmp = await createImageBitmap(blobOf(bytes));
   const aspect = bmp.width / bmp.height;
   bmp.close();
   return { image: { kind: rasterKind(f.name), bytes }, name: f.name, previewUrl: URL.createObjectURL(f), aspect };
@@ -360,7 +360,7 @@ async function readRaster(f: File): Promise<LoadedRaster> {
 
 // Blob snapshots the bytes at construction (no transfer), so no copy needed.
 const blobUrl = (bytes: Uint8Array, type: string) =>
-  URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type }));
+  URL.createObjectURL(new Blob([bytesPart(bytes)], { type }));
 
 /** Largest wheel delta any single event is allowed to contribute: a mouse
  *  notch reports 100 at once, which unclamped overshoots the zoom range. */
@@ -1091,7 +1091,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         const decoded: ImageBitmap[] = [];
         const bitmap = async (bytes: Uint8Array | undefined) => {
           if (!bytes) return null;
-          const bmp = await createImageBitmap(new Blob([bytes as BlobPart]));
+          const bmp = await createImageBitmap(blobOf(bytes));
           decoded.push(bmp);
           return bmp;
         };

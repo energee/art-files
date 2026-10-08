@@ -7,6 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Changed
+- **Internal cleanup, no visible change.** Image bytes become files and blobs through one shared helper instead of repeated casts.
 - **Export confirms what it saved.** When an export finishes, the header names the files it wrote, such as both the art and mask PDFs. The note clears on your next edit.
 - **Smoother typing in the 3D view.** The foil-mask pass over the label texture now runs in a background worker instead of stalling the editor on every rebuild.
 
