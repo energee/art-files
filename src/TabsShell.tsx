@@ -395,13 +395,53 @@ export default function TabsShell() {
   const [updateStatusHost, setUpdateStatusHost] = useState<HTMLDivElement | null>(null);
   const [stripHost, setStripHost] = useState<HTMLDivElement | null>(null);
   const tabStripHost = useCallback((el: HTMLDivElement | null) => setStripHost(el), []);
+  // Switching or adding a tab re-hosts the strip in the new editor's slot,
+  // and closing one removes the focused button; each drops focus to <body>.
+  // After a KEYBOARD switch, + or close (Enter/Space: a click with detail 0)
+  // focus goes to the tab at this index (#404): the one switched to, the new
+  // one, or the one after a closed tab (the last tab when it was last), per
+  // the WAI-ARIA tabs pattern. A mouse click lets go of focus so the arrows
+  // go on nudging the canvas. It waits while the unsaved-close dialog holds
+  // focus (its own focus return would land on a detached ×), and until the
+  // tab is in the live document: mid-switch the strip is still in the old,
+  // detached slot.
+  const refocusTab = useRef<number | null>(null);
+  useEffect(() => {
+    const i = refocusTab.current;
+    if (i === null || confirmClose !== null) return;
+    const tabs = stripHost?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [];
+    const tab = tabs[Math.min(i, tabs.length - 1)];
+    if (!tab?.isConnected) return;
+    refocusTab.current = null;
+    tab.focus();
+  }, [stripHost, state.tabs, state.active, confirmClose]);
   // useMemo so the strip element is rebuilt only when its content changes,
   // not on every unrelated shell state change.
   const tabStrip = useMemo(() => (
     <div className="flex h-9 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-sidebar">
-        {state.tabs.map((t) => (
+      {/* A tablist (#404) so assistive tech announces the active document;
+          each chip's title button is the tab. Its close button stays a plain
+          button inside the list: ARIA has no slot for a per-tab close, and
+          hiding it would drop the unsaved-changes label (#403). The + and the
+          pick error sit outside. No aria-controls: the editor isn't modelled
+          as a panel. keys.ts gives a tablist the arrow keys, so Left/Right
+          move focus between tabs here (Enter switches) instead of nudging. */}
+      <div role="tablist" aria-label="Open documents" className="flex shrink-0 items-center gap-1.5"
+        onKeyDown={(e) => {
+          // Bare arrows only: ⌘/Ctrl/Alt/Shift+arrow keep their own meanings.
+          const bare = !(e.metaKey || e.ctrlKey || e.altKey || e.shiftKey);
+          const step = !bare ? 0 : e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+          const tabs = [...e.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')];
+          // From a tab or its × alike: both sit in that tab's chip.
+          const i = tabs.findIndex((t) => t.parentElement?.contains(e.target as Node));
+          if (!step || i < 0) return;
+          e.preventDefault();
+          tabs[(i + step + tabs.length) % tabs.length].focus();
+        }}>
+        {state.tabs.map((t, i) => (
           <div
             key={t.id}
+            role="presentation"
             className={cn(
               "group flex h-6.5 min-w-0 max-w-48 shrink-0 items-center gap-1 rounded-md px-2.5",
               t.id === state.active
@@ -409,13 +449,26 @@ export default function TabsShell() {
                 : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}>
             <button
-              onClick={() => activate(t.id)}
+              role="tab"
+              aria-selected={t.id === state.active}
+              onClick={(e) => {
+                refocusTab.current = e.detail === 0 && t.id !== state.active ? i : null;
+                // Chromium focuses a clicked button; on the active tab nothing
+                // re-hosts, so that focus would keep the arrows from nudging.
+                if (e.detail > 0) e.currentTarget.blur();
+                activate(t.id);
+              }}
               title={t.filePath ?? t.title}
-              className="min-w-0 flex-1 truncate text-left text-xs outline-none">
+              className="min-w-0 flex-1 truncate rounded-sm text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring">
               {t.title}
             </button>
             <button
-              onClick={() => closeReq(t.id)}
+              onClick={(e) => {
+                // An unsaved tab opens the close dialog first; the refocus
+                // waits for it to close (Cancel keeps this tab at index i).
+                refocusTab.current = e.detail === 0 ? i : null;
+                closeReq(t.id);
+              }}
               // The button's own label replaces its children's, so the unsaved
               // state has to be named here, not on the • inside it (#403).
               aria-label={`Close ${t.title}${unsaved(t) ? " (unsaved changes)" : ""}`}
@@ -435,16 +488,20 @@ export default function TabsShell() {
             </button>
           </div>
         ))}
-        <button
-          onClick={newTab}
-          aria-label="New tab"
-          title="New tab (⌘N)"
-          className="shrink-0 rounded-md px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
-          +
-        </button>
-        {pickError && (
-          <span className="shrink-0 px-2 text-xs text-destructive-text">{pickError}</span>
-        )}
+      </div>
+      <button
+        onClick={(e) => {
+          refocusTab.current = e.detail === 0 ? state.tabs.length : null;
+          newTab();
+        }}
+        aria-label="New tab"
+        title="New tab (⌘N)"
+        className="shrink-0 rounded-md px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+        +
+      </button>
+      {pickError && (
+        <span className="shrink-0 px-2 text-xs text-destructive-text">{pickError}</span>
+      )}
     </div>
   ), [state.tabs, state.active, pickError, activate, closeReq, newTab]);
 
