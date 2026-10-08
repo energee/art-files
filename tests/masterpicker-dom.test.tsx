@@ -182,41 +182,32 @@ describe("MasterPicker", () => {
     expect((container.querySelector("#variant-save") as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("removes a chosen library master from the rebind preview, without switching to it", async () => {
+  it("removes a remembered master from its own row, without picking it", async () => {
     const onForget = vi.fn();
     const onMaster = vi.fn();
+    const resolve = vi.fn();
     renderPicker({
-      onForget, onMaster,
+      onForget, onMaster, resolve,
       library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: true } },
     });
     openMenu();
+    const x = document.querySelector('[aria-label="Remove Other Brewery from the library"]') as HTMLButtonElement;
     await act(async () => {
-      itemStarting("Other Brewery")!.click();
-      await Promise.resolve();
+      for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+        x.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
+      }
       await Promise.resolve();
     });
-    act(() => { (container.querySelector("#master-picker-forget") as HTMLButtonElement).click(); });
+    expect(onForget).toHaveBeenCalledTimes(1);
     expect(onForget).toHaveBeenCalledWith("other");
+    expect(resolve).not.toHaveBeenCalled();
     expect(onMaster).not.toHaveBeenCalled();
-    expect(container.querySelector("#master-picker-preview")).toBeNull();
   });
 
-  it("offers removal when the chosen master cannot be opened", async () => {
-    const onForget = vi.fn();
-    renderPicker({
-      onForget,
-      resolve: vi.fn().mockResolvedValue(null),
-      library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: true } },
-    });
+  it("shows no remove button on a master the library does not remember", () => {
+    renderPicker({ library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: false } } });
     openMenu();
-    await act(async () => {
-      itemStarting("Other Brewery")!.click();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(container.querySelector("#master-picker-error")!.textContent).toContain("Other Brewery");
-    act(() => { (container.querySelector("#master-picker-forget") as HTMLButtonElement).click(); });
-    expect(onForget).toHaveBeenCalledWith("other");
+    expect(document.querySelector('[aria-label^="Remove "]')).toBeNull();
   });
 
   it("offers nothing but the library — file verbs live in the File menu", () => {
