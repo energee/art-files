@@ -404,12 +404,15 @@ function download(url: string, name: string) {
 /** A file the shell wants this editor to open. seq is monotonic — a new
  *  value triggers the open, so a re-render can never re-open. Exactly one
  *  of path (Tauri), handle (FS-Access picker), or file (hidden-input
- *  fallback or a window-dropped .label, no save identity) is set. */
+ *  fallback, a window-dropped .label, or a crash-recovery snapshot — no
+ *  save identity) is set. `recovered` is that snapshot's recovery.ts key:
+ *  the opened tab stays unsaved, and takes the snapshot over from the key. */
 export type FileToOpen = {
   seq: number;
   path?: string;
   handle?: FileSystemFileHandle;
   file?: File;
+  recovered?: string;
 };
 
 /** What the tab strip shows for this document (src/tabs.ts TabMeta — one
@@ -1597,8 +1600,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   useEffect(() => {
     if (!recoveryKey) return;
     if (!hasUnsaved) { void dropRecovery(recoveryKey); return; }
-    const timer = setTimeout(() => void keepRecovery(recoveryKey,
-      { name: exportBase + LABEL_EXT, bytes: packProject(), savedAt: Date.now() }), 2000);
+    const timer = setTimeout(() => {
+      let bytes: Uint8Array;
+      try { bytes = packProject(); } catch { return; } // over the size caps: nothing Save could write either
+      void keepRecovery(recoveryKey, { name: exportBase + LABEL_EXT, bytes, savedAt: Date.now() });
+    }, 2000);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the snapshot reads this render's doc/assets
   }, [hasUnsaved, doc, texture, mask, customImages, recoveryKey]);
@@ -2047,7 +2053,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (!fileToOpen || fileToOpen.seq === openedSeq.current) return;
     openedSeq.current = fileToOpen.seq;
     const mySeq = fileToOpen.seq;
-    const { path, handle, file } = fileToOpen;
+    const { path, handle, file, recovered } = fileToOpen;
     openChain.current = openChain.current.then(async () => {
       if (openedSeq.current !== mySeq) return; // a newer open superseded us
       try {
@@ -2061,7 +2067,19 @@ export const DocumentEditor = memo(function DocumentEditor({
           if (await openWithRetry(async () => fileSource(await handle.getFile())))
             projectHandle.current = handle;
         } else if (file) {
-          if (await openWithRetry(() => fileSource(file))) forgetProjectFile();
+          if (await openWithRetry(() => fileSource(file))) {
+            forgetProjectFile();
+            if (recovered) {
+              // Still unsaved work: Save stays live, a close prompts, and the
+              // snapshot moves to this tab's key before the old one goes —
+              // a failed copy leaves it for the next launch to offer again.
+              setDirty(true);
+              setEdited(true);
+              const bytes = new Uint8Array(await file.arrayBuffer());
+              if (!recoveryKey || await keepRecovery(recoveryKey, { name: file.name, bytes, savedAt: Date.now() }))
+                void dropRecovery(recovered);
+            }
+          }
         }
       } catch (err) {
         reportOpenError(err);

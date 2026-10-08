@@ -7,7 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Added
-- **Unsaved tabs survive a crash.** Label Lab keeps a recovery copy of every tab with unsaved changes. After a crash or forced quit, the next launch offers to restore them; restored tabs open untitled, so Save asks where to write.
+- **Unsaved tabs survive a crash.** Label Lab keeps a recovery copy of every tab with unsaved changes. After a crash or forced quit, the next launch offers to restore them. A restored tab still counts as unsaved until you save it, and Save asks where to write. Dismissing the offer without choosing keeps the copies for the next launch.
 
 ### Security
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.

@@ -154,9 +154,10 @@ export default function TabsShell() {
   useEffect(() => { void earlierSnapshots().then(setRecoverable); }, []);
   const finishRecovery = (restore: boolean) => {
     for (const r of recoverable) {
-      // Opened like a dropped .label: no save identity, so Save asks where.
-      if (restore) openRouted({ file: new File([r.bytes as BlobPart], r.name) });
-      void dropRecovery(r.key);
+      // Opened like a dropped .label (no save identity, so Save asks where);
+      // the editor drops the old snapshot once the open succeeds.
+      if (restore) openRouted({ file: new File([r.bytes as BlobPart], r.name), recovered: r.key });
+      else void dropRecovery(r.key);
     }
     setRecoverable([]);
   };
@@ -522,7 +523,8 @@ export default function TabsShell() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog open={recoverable.length > 0} onOpenChange={(open) => !open && finishRecovery(false)}>
+      {/* Escape / outside click only hides it: the snapshots stay for the next launch. */}
+      <Dialog open={recoverable.length > 0} onOpenChange={(open) => !open && setRecoverable([])}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>Recover unsaved work?</DialogTitle>
