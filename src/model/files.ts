@@ -71,16 +71,19 @@ export function serializeLabel(l: LabelFile): string {
 
 function badLabel(msg: string): never { throw new Error(`Invalid label file: ${msg}`); }
 
+/** A JSON object (not null, not an array). */
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+
 /** Only the strings of an untrusted array; anything else becomes []. */
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
 
 /** A stored value is a string or text lines whose `text` is a string —
  *  the two shapes resolveLayers' putValue can place (#392). */
 function parseValues(v: unknown): Record<string, LayerValue> {
-  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  if (!isRecord(v)) return {};
   for (const [id, val] of Object.entries(v)) {
-    const ok = typeof val === "string" || (Array.isArray(val)
-      && val.every((ln) => ln && typeof ln === "object" && typeof (ln as { text?: unknown }).text === "string"));
+    const ok = typeof val === "string"
+      || (Array.isArray(val) && val.every((ln) => isRecord(ln) && typeof ln.text === "string"));
     if (!ok) badLabel(`value for "${id}" is not text or a string`);
   }
   return v as Record<string, LayerValue>;
@@ -95,18 +98,17 @@ const NUMERIC_KEYS = ["x", "size", "leading", "headerScale", "width", "min", "ma
  *  partial diff, so only its geometry and font are checked. */
 function parseOverrides(v: unknown): LabelFile["overrides"] {
   if (v == null) return undefined;
-  if (typeof v !== "object" || Array.isArray(v)) badLabel("overrides is not an object");
-  for (const [id, patch] of Object.entries(v)) {
-    if (!patch || typeof patch !== "object" || Array.isArray(patch)) badLabel(`override "${id}" is not an object`);
-    const p = patch as Record<string, unknown>;
+  if (!isRecord(v)) badLabel("overrides is not an object");
+  for (const [id, p] of Object.entries(v)) {
+    if (!isRecord(p)) badLabel(`override "${id}" is not an object`);
     const family = p.fontFamily;
     if (family != null && (typeof family !== "string" || !Object.hasOwn(FONT_FAMILIES, family)))
       throw new Error(`Unknown label font family: ${family}`);
     if (p.kind !== undefined) { validateLayer({ ...p, id } as unknown as Layer, "label override"); continue; }
     for (const k of NUMERIC_KEYS)
       if (p[k] != null && !Number.isFinite(p[k])) badLabel(`override "${id}" has invalid ${k}`);
-    const y = p.y as { below?: unknown; gap?: unknown } | null | undefined;
-    if (y != null && !Number.isFinite(y) && !(typeof y === "object" && typeof y.below === "string" && Number.isFinite(y.gap)))
+    const y = p.y;
+    if (y != null && !Number.isFinite(y) && !(isRecord(y) && typeof y.below === "string" && Number.isFinite(y.gap)))
       badLabel(`override "${id}" has invalid y`);
   }
   return v as LabelFile["overrides"];
