@@ -16,6 +16,13 @@ vi.mock("../src/components/Rulers", () => ({ Rulers: (props: { onMarginChange: (
 vi.mock("../src/fonts", () => ({
   loadLabelFaces: async () => { perf.fontLoads++; return (text: string, size: number) => text.length * size * 0.55; },
   labelFontCss: () => "sans-serif",
+  FONT_URLS: { poppins: {}, "barlow-condensed": {} },
+}));
+// Exports wait on loadFonts; the export test holds it open to read the
+// in-flight overlay, then rejects it to finish the export.
+const exportFonts = vi.hoisted(() => ({ reject: null as null | ((e: Error) => void) }));
+vi.mock("../src/pdf/fonts", () => ({
+  loadFonts: () => new Promise((_resolve, reject) => { exportFonts.reject = reject; }),
 }));
 import { DocumentEditor } from "../src/App";
 
@@ -635,4 +642,23 @@ it("Delete with a stale id in a multi-row selection removes the rows that exist"
     await act(async () => nameRow()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true })));
     expect(nameRow()).toBeNull();
   } finally { await unmount(); }
+}, 60_000);
+
+// Issue #401: an export blurred the preview under a "rendering preview…" note,
+// so a long export read as a stalled preview. The note names the export.
+it.each([
+  ["PDFs", { key: "e", metaKey: true }],
+  ["PSDs", { key: "e", metaKey: true, shiftKey: true }],
+])("an export in flight shows Building %s…, not rendering preview…", async (kind, keys) => {
+  await withCanvasEditor(async (_p, container) => {
+    exportFonts.reject = null;
+    await act(async () => {
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { ...keys, bubbles: true }));
+    });
+    expect(container.textContent).toContain(`Building ${kind}…`);
+    expect(container.textContent).not.toContain("rendering preview…");
+    await vi.waitFor(() => expect(exportFonts.reject).not.toBeNull());
+    await act(async () => { exportFonts.reject!(new Error("stop")); });
+    await vi.waitFor(() => expect(container.textContent).not.toContain(`Building ${kind}…`));
+  });
 }, 60_000);

@@ -549,7 +549,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   // PreviewCompare). While set, planLayers skips it via the render source's
   // skip set so the editor's live DOM text IS the layer — no doubled glyphs.
   const [editSession, setEditSession] = useState<string | null>(null);
-  const [building, setBuilding] = useState(false);
+  // The export in flight, if any: it blurs the preview under a note naming
+  // the files being built (#401), and blocks a second export.
+  const [exporting, setExporting] = useState<"pdf" | "psd" | null>(null);
   // Two error channels, split by who can clear them: renderError belongs to
   // the renderers (every good frame clears it); buildError to asset
   // assembly, exports and native menu failures.
@@ -951,7 +953,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   const errorList = Object.entries(errors).map(([id, e]) => `${rowById.get(id)?.layer.name ?? id}: ${e}`);
   const blocked = errorList.length > 0;
   const blockedWhy = errorList.join(" · ");
-  const exportBlocked = blocked || building;
+  const exportBlocked = blocked || exporting !== null;
 
   /** Replaces (or, with null, removes) a loaded asset, revoking the old
    *  thumbnail URL — the one shape every drop and every X share. */
@@ -1433,7 +1435,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   ) {
     if (exportRunning.current) return;
     exportRunning.current = true;
-    setBuilding(true);
+    setExporting(extension);
     startSaveBatch();
     const saved: string[] = [];
     let pending = "";
@@ -1454,7 +1456,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       setBuildError(`${saved.length ? `Saved ${saved.join(", ")}. ` : ""}${pending ? `Could not save ${pending}: ` : ""}${errMsg(error)}`);
     } finally {
       exportRunning.current = false;
-      setBuilding(false);
+      setExporting(null);
     }
   }
 
@@ -2387,7 +2389,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             onPointerCancel={onPanEnd}>
             <div
               className={cn("flex min-h-0 min-w-0 flex-1 transition-[filter,opacity] duration-200",
-                building && "blur-sm opacity-70")}>
+                exporting && "blur-sm opacity-70")}>
             {/* PreviewCompare stays mounted but hidden in 3D modes. The
                 pinch-zoom transform belongs to THIS div: the 3D views zoom
                 their own camera. */}
@@ -2445,13 +2447,13 @@ export const DocumentEditor = memo(function DocumentEditor({
                 onAddManual={addManualGuide} onMoveManual={moveManualGuide} onSnapGuide={snapGuidePoint}
                 onRemoveManual={removeManualGuide} />
             )}
-            {building && previewReady && (
+            {exporting && previewReady && (
               <span className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1.5 text-xs text-muted-foreground">
                 <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" />
-                rendering preview…
+                {exporting === "pdf" ? "Building PDFs…" : "Building PSDs…"}
               </span>
             )}
-            {!texture && !building && previewReady && (
+            {!texture && !exporting && previewReady && (
               <div className="pointer-events-none absolute inset-x-0 bottom-16 flex justify-center">
                 <span className="rounded-full border border-dashed border-border bg-background/85 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-sm">
                   drop a texture anywhere to fill the background
