@@ -8,6 +8,11 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 - **Saving can no longer wipe out a label or master.** Desktop Save writes a temporary copy beside the file and swaps it in only once it is complete, so a crash or full disk mid-save leaves the previous file intact.
+- **Faster typing in the preview.** The white-ink plate is no longer repainted on every edit while the comparison divider hides it; it paints when the divider reveals it.
+- **A malformed .label is refused instead of breaking the canvas.** A shared label whose values or overrides have the wrong shape (non-text values, non-numeric positions, an incomplete added layer) now fails to open with a clear error instead of crashing the preview or saving bad geometry back.
+
+### Changed
+- **Smoother typing in the 3D view.** The foil-mask pass over the label texture now runs in a background worker instead of stalling the editor on every rebuild.
 
 ### Security
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.
