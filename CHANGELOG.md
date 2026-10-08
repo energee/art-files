@@ -8,6 +8,7 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 - **A label opens the master file it was saved with.** When two `.master` files share an id, a label now opens the one beside it (or in your library folder) instead of whichever the library remembered last, and saves back to that file. Opening such a label leaves your library's own copy in place, and **Use** in the missing-master dialog opens the tab's own master file. Save Master As now gives each new master a full-length id, so two forks can no longer end up with the same one.
+- **Removing a master from the library can be undone.** A note under the master picker says the `.master` file stays where it is, with Undo to put it back without browsing to the file.
 - **Masters save and open when browser storage is full.** Save Master wrote the file but reported a failure and left the master marked unsaved; Open Master and a library pick failed too, and a label could miss its master file on disk. A full storage quota now only skips updating the remembered-masters list.
 - **A label drops ids its master no longer has.** Opening a label on its own master, after that master lost a layer or a version, now sets those values and versions aside and says so, instead of carrying them in the file forever.
 - **Screen readers hear when a tab has unsaved work.** A tab's close button now reads "Close <title> (unsaved changes)" instead of just "Close <title>".

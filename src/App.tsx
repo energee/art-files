@@ -61,7 +61,7 @@ import {
   type MasterAssets,
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
-import { SHIPPED_MASTER_ID, forgetMaster, hintTrusted, masterIndex, newMasterId, rememberMaster, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
+import { SHIPPED_MASTER_ID, hintTrusted, masterIndex, newMasterId, rememberMaster, removeFromLibrary, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
@@ -1817,10 +1817,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   }
 
   /** Drop a remembered master from the library. The open document and the
-   *  file on disk stay as they are. */
-  function forgetLibraryMaster(id: string) {
-    void forgetMaster(id);
+   *  file on disk stay as they are. Returns the picker's Undo, which puts the
+   *  library row back and re-lists it. */
+  async function forgetLibraryMaster(id: string) {
+    const undo = await removeFromLibrary(id);
     refreshLibrary();
+    return async () => { await undo(); refreshLibrary(); };
   }
 
   /** File → Open Master…: native dialog on desktop (a real path, so the
