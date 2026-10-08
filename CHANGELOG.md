@@ -6,6 +6,9 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Changed
+- **A little less code to load at startup.** Settings, the Save Master review and the ⌘K command palette now load the first time you open them instead of with the editor, trimming the startup code by about 60 kB.
+
 ### Security
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.
 

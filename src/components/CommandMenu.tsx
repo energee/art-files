@@ -1,9 +1,10 @@
-// CommandMenu.tsx — ⌘K palette exposing the app's actions.
-import { useEffect, useState } from "react";
+// CommandMenu.tsx — ⌘K palette exposing the app's actions. This module stays
+// small and eager (the Command type, shortcutOf, the ⌘K listener); the
+// palette itself, and cmdk with it, loads on the first ⌘K (#410).
+import { Suspense, lazy, useEffect, useState } from "react";
 import { dialogOpen, isMacOS, shortcutLabel } from "@/keys";
-import {
-  CommandDialog, CommandEmpty, CommandInput, CommandItem, CommandList, CommandShortcut,
-} from "@/components/ui/command";
+
+const CommandPalette = lazy(() => import("@/components/CommandPalette").then((m) => ({ default: m.CommandPalette })));
 
 /** One entry in the app's command table (see App's `commands`). `key` is the
  *  bare key that fires it, `shortcut` the glyphs shown to the user — separate
@@ -32,7 +33,9 @@ export const shortcutOf = (c: Command, mac = isMacOS()) => {
 };
 
 export function CommandMenu(props: { actions: Command[] }) {
-  const [open, setOpen] = useState(false);
+  // null until the first ⌘K, so the palette chunk is not fetched before it is
+  // wanted; after that it stays mounted so closing can animate out.
+  const [open, setOpen] = useState<boolean | null>(null);
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
@@ -47,25 +50,9 @@ export function CommandMenu(props: { actions: Command[] }) {
     document.addEventListener("keydown", down);
     return () => document.removeEventListener("keydown", down);
   }, []);
-  return (
-    <CommandDialog open={open} onOpenChange={setOpen}>
-      <CommandInput placeholder="Type a command…" />
-      <CommandList>
-        <CommandEmpty>No results.</CommandEmpty>
-        {props.actions.map((a) => {
-          const glyphs = shortcutOf(a);
-          return (
-            <CommandItem key={a.id} disabled={a.disabled}
-              onSelect={() => { setOpen(false); a.run(); }}>
-              {a.label}
-              {/* CommandShortcut, not a bare ml-auto span: its data-slot is what
-                  hides CommandItem's trailing check icon, whose own ml-auto
-                  would otherwise split the free space and park the hint mid-row. */}
-              {glyphs && <CommandShortcut>{glyphs}</CommandShortcut>}
-            </CommandItem>
-          );
-        })}
-      </CommandList>
-    </CommandDialog>
+  return open === null ? null : (
+    <Suspense fallback={null}>
+      <CommandPalette open={open} onOpenChange={setOpen} actions={props.actions} />
+    </Suspense>
   );
 }

@@ -3,7 +3,7 @@
 // ⌘K never stacks the palette on top of another modal dialog (#237).
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CommandMenu, shortcutOf } from "@/components/CommandMenu";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -22,6 +22,8 @@ it("renders each shortcut as the command-shortcut slot, so the row's spare check
   await act(async () => {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
   });
+  // The palette body loads on the first ⌘K (#410).
+  await vi.waitFor(() => expect(document.querySelector("[data-slot=command-item]")).not.toBeNull(), { timeout: 5000 });
 
   // CommandItem appends an invisible (opacity-0) ml-auto CheckIcon that is only
   // display:none when the row has a [data-slot=command-shortcut]. A plain span
@@ -79,7 +81,7 @@ describe("⌘K over an open dialog (#237)", () => {
 
   it("⌘K opens the palette from the app, and ⌘K inside the palette closes it", async () => {
     await pressK(document.body);
-    expect(palette()).not.toBeNull();
+    await vi.waitFor(() => expect(palette()).not.toBeNull(), { timeout: 5000 });
     const input = document.querySelector("[data-slot=command-input]") as HTMLInputElement;
     expect(input.closest('[data-slot="dialog-content"]')).not.toBeNull();
     await pressK(input);

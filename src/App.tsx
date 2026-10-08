@@ -24,10 +24,8 @@
 // the deactivation effect). The editor reports its DocumentMeta upward
 // through onMeta; the shell owns tabs, file-open routing, render settings,
 // and the updater.
-import { RenderSettings as RenderSettingsFields } from "@/components/RenderSettings";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { MasterSaveReview } from "@/components/MasterSaveReview";
 import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { dialogOpen, isTypingTarget, keyOwner } from "@/keys";
 import { isTauri } from "@tauri-apps/api/core";
@@ -131,6 +129,12 @@ const CanView = lazy<ComponentType<CanViewProps>>(() => import("@/components/Can
       return null;
     },
   })));
+
+// Settings and the Save Master review are opened rarely, so their modules
+// (and the checkbox they alone use) load on first open, not with the editor
+// (#410). The ⌘K palette does the same inside CommandMenu.
+const RenderSettingsFields = lazy(() => import("@/components/RenderSettings").then((m) => ({ default: m.RenderSettings })));
+const MasterSaveReview = lazy(() => import("@/components/MasterSaveReview").then((m) => ({ default: m.MasterSaveReview })));
 
 /** bytes = full print resolution (exports); previewBytes = downscaled PNG the
  *  assembly effect decodes into a bitmap, so keystroke-driven rebuilds never
@@ -2263,7 +2267,9 @@ export const DocumentEditor = memo(function DocumentEditor({
       <Dialog open={active && settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogTitle>Settings</DialogTitle>
-          <RenderSettingsFields value={render} onChange={onRenderChange} />
+          <Suspense fallback={null}>
+            <RenderSettingsFields value={render} onChange={onRenderChange} />
+          </Suspense>
         </DialogContent>
       </Dialog>
       <Dialog open={!!missingMaster} onOpenChange={(open) => !open && missingMaster?.choose(null)}>
@@ -2286,6 +2292,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           review stays with its tab (hidden while another tab is in front,
           back on return) so a confirm can only write the visible tab's master. */}
       {pendingSave && (
+        <Suspense fallback={null}>
         <MasterSaveReview open={active} as={pendingSave.as} changes={masterChangeList}
           target={master.variants.find((v) => v.id === version)?.name}
           onCancel={() => setPendingSave(null)}
@@ -2294,6 +2301,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             setPendingSave(null);
             void saveMaster(as, promote);
           }} />
+        </Suspense>
       )}
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
           preview center, inspector sheet right. */}

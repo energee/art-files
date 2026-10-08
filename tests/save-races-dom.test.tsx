@@ -94,13 +94,20 @@ it("a cancelled Save As preserves the original target (#265)", async () => {
   expect(handle.createWritable).toHaveBeenCalledTimes(2);
 });
 
+/** The Save Master review loads on first open (#410): wait for its row. */
+const reviewRow = (id: string) => vi.waitFor(() => {
+  const row = document.querySelector(`[data-row="${id}"]`);
+  if (!row) throw new Error(`no review row ${id}`);
+  return row;
+}, { timeout: 5000 });
+
 it("Save Master preserves a newer edit to a promoted field (#263)", async () => {
   let finish!: () => void;
   picker(() => new Promise<void>((resolve) => { finish = resolve; }));
   const { onMeta } = await mount();
   await toggle("warning");
   await act(async () => menu.actions.find((c) => c.id === "master-save")!.run());
-  const row = document.querySelector('[data-row="promote-warning-enabled"]')!;
+  const row = await reviewRow("promote-warning-enabled");
   await act(async () => (row.closest("label")!.querySelector("input") as HTMLInputElement).click());
   const save = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Save Master")!;
   await act(async () => save.click());
@@ -114,7 +121,7 @@ it("Save Master preserves a newer edit to a promoted field (#263)", async () => 
  *  starts the save; returns the review's warning rows afterwards. */
 async function promoteWarning() {
   await act(async () => menu.actions.find((c) => c.id === "master-save")!.run());
-  const row = document.querySelector('[data-row="promote-warning-enabled"]')!;
+  const row = await reviewRow("promote-warning-enabled");
   await act(async () => (row.closest("label")!.querySelector("input") as HTMLInputElement).click());
   const save = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Save Master")!;
   await act(async () => save.click());
