@@ -10,6 +10,7 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
 import type { Command } from "../src/components/CommandMenu";
+import { dialogOpen } from "../src/keys";
 
 const menu = vi.hoisted(() => ({ actions: [] as Command[] }));
 vi.mock("../src/components/PreviewCompare", () => ({ SNAP_PT: 6, PreviewCompare: () => null }));
@@ -49,6 +50,7 @@ it("a Settings, Save Master review or ⌘K palette that fails to load says so an
     await pressK();
     await vi.waitFor(() => expect(document.body.textContent).toContain("command palette failed to load"), { timeout: 5000 });
     await pressK(); // ⌘K still closes it
+    await vi.waitFor(() => expect(dialogOpen()).toBe(false), { timeout: 5000 });
 
     await act(async () => { menu.actions.find((c) => c.id === "settings")!.run(); });
     await vi.waitFor(() => expect(document.body.textContent).toContain("Settings failed to load"), { timeout: 5000 });
