@@ -239,7 +239,10 @@ string is the storage format, visible under a "raw" toggle.
 disk are the source of truth. The app remembers where masters live so `.label`
 files resolve by ID. A label reads its trusted `masterHint` (the exact file it
 was saved against) before the index's path for that id, since two files can
-share an id (#405); a missing master falls back to a picker.
+share an id (#405). The tab's Save Master and the hint it saves name that file;
+the hint's file joins the index only when the index has no readable file for
+the id, so a shared label never takes over the operator's library entry. A
+missing master falls back to a picker.
 
 ## Resolution
 

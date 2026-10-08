@@ -1511,13 +1511,15 @@ export const DocumentEditor = memo(function DocumentEditor({
   const masterInput = useRef<HTMLInputElement>(null);
 
   /** Full-document replacement for Open: swap the whole Doc in (resetting
-   *  history) and clear every asset slot — an open is a full restore. */
-  function resetDocument(next: Doc) {
+   *  history) and clear every asset slot — an open is a full restore.
+   *  `masterPath` is the file the master was read from (ResolvedMaster.path);
+   *  without one, Save Master binds to the library's path for the id. */
+  function resetDocument(next: Doc, masterPath?: string) {
     resetDoc(next);
     pristineMaster.current = next.master;
     masterFileHandle.current = null;
-    const indexed = isTauri() ? masterIndex()[next.master.id]?.path : undefined;
-    masterFilePath.current = indexed ? { id: next.master.id, target: indexed } : null;
+    const bound = isTauri() ? masterPath ?? masterIndex()[next.master.id]?.path : undefined;
+    masterFilePath.current = bound ? { id: next.master.id, target: bound } : null;
     clearSelection();
     swapLoaded(setTexture, null);
     swapLoaded(setMask, null);
@@ -1557,7 +1559,10 @@ export const DocumentEditor = memo(function DocumentEditor({
       // The close-tab caller must not close over edits made during this write.
       return unchanged;
     };
-    const zip = packLabel({ ...label, masterHint: masterIndex()[master.id]?.path }, {
+    // The hint names this tab's own master file: another tab may have opened
+    // a different file with the same id since (#405).
+    const masterHint = saveTargetFor(masterFilePath.current, master.id) ?? masterIndex()[master.id]?.path;
+    const zip = packLabel({ ...label, masterHint }, {
       texture: textureAsset(), mask: maskAsset(),
       customImages: imageBundle(Object.keys(liveImages)),
     });
@@ -1875,8 +1880,12 @@ export const DocumentEditor = memo(function DocumentEditor({
     setMissingMaster(null);
     // Read after the dialog: the tab may have switched masters meanwhile.
     const current = docRef.current.master;
-    if (choice === "current")
-      return (await resolveMasterById(current.id)) ?? { master: current, assets: {} };
+    // Through this tab's own file: the library may name another file with the
+    // same id (#405). That file is its own trust root (hintTrusted).
+    if (choice === "current") {
+      const own = saveTargetFor(masterFilePath.current, current.id) ?? undefined;
+      return (await resolveMasterById(current.id, own, own)) ?? { master: current, assets: {} };
+    }
     if (choice !== "locate") return null;
     // Failures are reported here, never thrown: openWithRetry would swallow
     // one on a quiet attempt and ask again with no explanation.
@@ -1894,7 +1903,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     }
     const r = tryParseMaster(bytes);
     if (r) await rememberMaster(r.master, path, bytes, { applied: false });
-    return r;
+    return r && { ...r, path: path || undefined };
   }
 
   /** Open a .label with quiet retries — shared by ALL entry points. The
@@ -1924,6 +1933,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       const unpacked = unpackLabel(f.bytes);
       let notes: string[] = [];
       let masterAssets: MasterAssets = {};
+      let masterPath: string | undefined;
       // Legacy fixed collab ZIP roles (collab-left/, collab-center/) stay
       // READABLE: each is minted an id in the per-id store and becomes the
       // matching image layer's fill value.
@@ -1954,6 +1964,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           ?? await missingMasterChoice(ref.masterId, hint, f.path);
         if (!resolved) return "cancelled";
         masterAssets = resolved.assets;
+        masterPath = resolved.path;
         let l: LabelFile;
         if (unpacked.label) l = unpacked.label;
         else {
@@ -2002,7 +2013,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           p?.then((x) => URL.revokeObjectURL(x.previewUrl), () => {});
         throw err;
       });
-      resetDocument(next);
+      resetDocument(next, masterPath);
       if (tex) swapLoaded(setTexture, tex);
       if (msk) swapLoaded(setMask, msk);
       if (images.length) setCustomImages(Object.fromEntries(images));
