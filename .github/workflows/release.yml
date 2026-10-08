@@ -8,6 +8,9 @@ on:
       - package.json
   workflow_dispatch:
 
+# Third-party actions are pinned to commit SHAs (Dependabot bumps them):
+# the release job holds the updater signing key, so a moved tag must not
+# be able to run new code there (#393).
 permissions:
   contents: write
 
@@ -24,6 +27,8 @@ jobs:
   version:
     name: Version unreleased?
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       unreleased: ${{ steps.check.outputs.unreleased }}
     steps:
@@ -101,13 +106,13 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev \
             libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           # Match the last successful release; upgrade deliberately to preserve caches.
           toolchain: "1.98.1"
           targets: ${{ matrix.target }}
 
-      - uses: swatinem/rust-cache@v2
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: ./src-tauri -> target
 
@@ -120,7 +125,7 @@ jobs:
           TAURI_UPDATER_PUBLIC_KEY: ${{ secrets.TAURI_UPDATER_PUBLIC_KEY }}
 
       - name: Build and publish GitHub release
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
