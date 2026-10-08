@@ -9,6 +9,9 @@ that section to the new version (see .agents/release-steward.md).
 ### Security
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.
 
+### Fixed
+- **Faster typing in the preview.** The white-ink plate is no longer repainted on every edit while the comparison divider hides it; it paints when the divider reveals it.
+
 ## [0.1.104] - 2026-10-08
 
 ### Fixed
