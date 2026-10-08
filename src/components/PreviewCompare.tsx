@@ -46,6 +46,13 @@ const HANDLES = ([-1, 0, 1] as const).flatMap((hy) => ([-1, 0, 1] as const)
     return { handle: { hx, hy } as ResizeHandle, key: `${hx},${hy}`, cls: `${base} pointer-events-auto touch-none ${cursor}`, clsLocked: base };
   }));
 
+/** The plates worth painting: the art always (it is the base the mask sits
+ *  over), the mask only once the divider reveals any of it (split > 0) — at
+ *  split 0 it is fully clipped, so painting it would double the per-keystroke
+ *  raster work for nothing (#395). */
+export const platesToPaint = (maskShown: boolean): ("art" | "mask")[] =>
+  maskShown ? ["art", "mask"] : ["art"];
+
 /** Pointer travel (px) before a press becomes a drag; below it is a click. */
 const DRAG_THRESHOLD_PX = 3;
 
@@ -389,6 +396,9 @@ export const PreviewCompare = forwardRef<
     const next = Math.max(0, Math.min(100, value));
     setSplit(next); onSplit?.(next);
   }, [onSplit]);
+  // Repaint trigger: a boolean, so dragging the divider repaints only when
+  // the mask plate is first revealed (or hidden again), not per pixel.
+  const maskShown = split > 0;
   const [rasterScale, setRasterScale] = useState(() =>
     previewRasterScale(zoom, window.devicePixelRatio));
 
@@ -423,7 +433,7 @@ export const PreviewCompare = forwardRef<
     ? hitBoxesFromLayout(layers, plan.boxes) : [], [layers, plan]);
   const boxesById = useMemo(() => new Map(hitBoxes.map((b) => [b.id, b])), [hitBoxes]);
 
-  // The one render path: repaint both plates straight from the display list
+  // The one render path: repaint the visible plates (platesToPaint) straight from the display list
   // on every change, on a rAF so a burst of keystrokes coalesces into one
   // paint per frame. null canvasRender (assets still assembling, or a 3D
   // view is up) paints nothing and the canvases keep their last frame.
@@ -438,8 +448,8 @@ export const PreviewCompare = forwardRef<
         // derived edge) never depends on which one triggered the cap.
         const rawW = PAGE.w * rasterScale, rawH = PAGE.h * rasterScale;
         const cap = Math.min(1, PREVIEW_RASTER_MAX_EDGE / Math.max(rawW, rawH));
-        for (const [canvas, mode] of
-            [[artCanvas.current, "art"], [maskCanvas.current, "mask"]] as const) {
+        for (const mode of platesToPaint(maskShown)) {
+          const canvas = mode === "art" ? artCanvas.current : maskCanvas.current;
           if (!canvas) continue;
           const w = Math.round(rawW * cap);
           const h = Math.round(rawH * cap);
@@ -459,7 +469,7 @@ export const PreviewCompare = forwardRef<
     return () => cancelAnimationFrame(raf);
     // onRenderError is a useState setter in App — identity-stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canvasRender, plan, rasterScale, bleedIn]);
+  }, [canvasRender, plan, rasterScale, bleedIn, maskShown]);
 
   // Click-to-select: the canvases fill the wrapper exactly and the wrapper's
   // aspect ratio is locked to PAGE.w/PAGE.h, so a click maps to label-space

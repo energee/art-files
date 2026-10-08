@@ -5,7 +5,7 @@
 // master with deterministic fake metrics.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { drawPlate } from "../src/canvas/draw";
-import { planLayers, type PlacedLayer } from "../src/planLayers";
+import { planLayers, type PlacedLayer, type PlacedPage } from "../src/planLayers";
 import type { MeasureFace, PlacedBarcode } from "./legacy/planShared";
 import type { BarcodeLayer } from "../src/model/layers";
 import { MASK_BLUE_HEX, PAGE } from "./legacy/layout";
@@ -398,5 +398,86 @@ describe("canvas text is unkerned, like the PDF (#86)", () => {
     const { loadLabelFaces } = await import("../src/fonts");
     (await loadLabelFaces("barlow-condensed"))("AVATAR", 10, "regular");
     expect(seen).toEqual(["none"]);
+  });
+});
+
+/** Issue #412: the page art (texture on the art plate, mask on the mask
+ *  plate) is static between keystrokes, so it is painted once into a cached
+ *  layer and composited, not re-resampled from the full-size bitmap on every
+ *  repaint. Node has no canvas, so `document` is stubbed with one whose
+ *  contexts record their calls. */
+describe("cached page-art layer (#412)", () => {
+  /** A fresh bitmap per test: the cache is module-level and keys on identity. */
+  const freshBitmap = () => ({ width: 100, height: 100 }) as unknown as CanvasImageSource;
+  function stubDocument() {
+    const layers: ReturnType<typeof fakeCtx>[] = [];
+    vi.stubGlobal("document", {
+      createElement: () => {
+        const layer = fakeCtx();
+        layers.push(layer);
+        return { width: 0, height: 0, getContext: () => layer.ctx };
+      },
+    });
+    return layers;
+  }
+  const drawn = (log: { op: string; args: unknown[] }[]) =>
+    log.filter((x) => x.op === "drawImage").map((x) => x.args[0]);
+
+  it("paints the texture once and composites it on later repaints", () => {
+    const layers = stubDocument();
+    const tex = freshBitmap();
+    const first = fakeCtx();
+    drawPlate(first.ctx, plan(withPages), { images: { tex } }, "art", FONT);
+    const second = fakeCtx();
+    drawPlate(second.ctx, plan(withPages), { images: { tex } }, "art", FONT);
+    // The texture was resampled exactly once, into the one cached layer.
+    expect(layers).toHaveLength(1);
+    expect(drawn(layers[0].log)).toEqual([tex]);
+    // Both plates composite that layer instead of the texture, before any text.
+    for (const { log } of [first, second]) {
+      expect(drawn(log)).toHaveLength(1);
+      expect(drawn(log)[0]).not.toBe(tex);
+      expect(log.findIndex((x) => x.op === "drawImage")).toBeLessThan(log.findIndex((x) => x.op === "fillText"));
+    }
+    expect(drawn(second.log)[0]).toBe(drawn(first.log)[0]);
+  });
+
+  it("paints the layer in PAGE space at plate scale and blits it 1:1 at the origin", () => {
+    const layers = stubDocument();
+    const tex = freshBitmap();
+    const { ctx, log } = fakeCtx();
+    const p = plan(withPages);
+    drawPlate(ctx, p, { images: { tex } }, "art", FONT);
+    // The layer: the plate's own scale, no bleed shift, then the cover-fit rect.
+    const page = p.find((r): r is PlacedPage => r.kind === "page" && r.role === "background")!;
+    const scale = ctx.canvas.width / PAGE.w;
+    const layerOps = layers[0].log.filter((x) => x.op === "setTransform" || x.op === "drawImage");
+    expect(layerOps.map((x) => x.args)).toEqual([
+      [scale, 0, 0, scale, 0, 0],
+      [tex, page.x, page.y, page.w, page.h],
+    ]);
+    // The plate: identity transform, then the layer at (0, 0) with no resize.
+    const blit = log.findIndex((x) => x.op === "drawImage");
+    expect(log[blit].args.slice(1)).toEqual([0, 0]);
+    const lastTransform = log.slice(0, blit).reverse().find((x) => x.op === "setTransform");
+    expect(lastTransform?.args).toEqual([1, 0, 0, 1, 0, 0]);
+  });
+
+  it("repaints the layer when the bitmap or the raster size changes", () => {
+    const layers = stubDocument();
+    const a = freshBitmap(), b = freshBitmap();
+    drawPlate(fakeCtx().ctx, plan(withPages), { images: { msk: a } }, "mask", FONT);
+    drawPlate(fakeCtx().ctx, plan(withPages), { images: { msk: b } }, "mask", FONT);
+    const resized = fakeCtx();
+    (resized.ctx as unknown as { canvas: { width: number } }).canvas.width = PAGE.w * 3;
+    drawPlate(resized.ctx, plan(withPages), { images: { msk: b } }, "mask", FONT);
+    // b's resize repaints into b's own canvas (no third canvas left for GC).
+    expect(layers.map((l) => drawn(l.log))).toEqual([[a], [b, b]]);
+  });
+
+  it("does not cache a plate with no page bitmap to draw", () => {
+    const layers = stubDocument();
+    drawPlate(fakeCtx().ctx, plan(withPages), {}, "mask", FONT);
+    expect(layers).toHaveLength(0);
   });
 });

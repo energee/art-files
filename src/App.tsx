@@ -38,7 +38,7 @@ import { machineName } from "@/qr";
 import { strToU8 } from "fflate";
 import { LABEL_EXT, type LabelAssets } from "@/labelfile";
 import {
-  LABEL_FILTER, LABEL_TYPES, MASTER_FILTER, MASTER_TYPES, isAbort,
+  LABEL_FILTER, LABEL_TYPES, MASTER_FILTER, MASTER_TYPES, bytesPart, isAbort,
 } from "@/filePickers";
 import { openThrough, readNativeFile, saveThrough } from "@/files";
 import { useHistory, type Coalesce } from "@/history";
@@ -65,7 +65,8 @@ import { SHIPPED_MASTER_ID, forgetMaster, hintTrusted, masterIndex, rememberMast
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
-import { makeHiddenPropsEqual, type TabMeta } from "@/tabs";
+import { makeHiddenPropsEqual, unsaved, type TabMeta } from "@/tabs";
+import { dropRecovery, keepRecovery } from "@/recovery";
 import { EMBEDDABLE_RASTER, mimeFor, rasterKind, tintRgba } from "@/collab";
 import { svgAspect } from "@/logo";
 // The builders are imported dynamically at export time (see buildFull /
@@ -108,9 +109,9 @@ import {
 } from "@/components/ui/select";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+import { cn, errMsg } from "@/lib/utils";
 import { FONT_URLS, loadLabelFaces, labelFontCss } from "@/fonts";
-import { fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
+import { fontFamilyOf, usedFontFamilies, type FontFamilyId } from "@/fontCatalog";
 import { loadFonts } from "@/pdf/fonts";
 import type { MeasureFace, PlanAssets } from "@/plan";
 import type { CanvasAssets, CanvasRenderSource } from "@/canvas/draw";
@@ -183,23 +184,28 @@ function withPageArt(layers: Layer[], hasTexture: boolean, hasMask: boolean): La
   });
 }
 
+/** Colour classes per HeaderAlert tone: [Alert border/background, text]. */
+const HEADER_ALERT_TONE = {
+  destructive: ["border-destructive/50", ""],
+  warning: ["border-warning/50 bg-warning-soft", "text-warning-text"],
+  success: ["border-success/50 bg-success-soft", "text-success-text"],
+} as const;
+
 /** Chrome-level error (or, with `tone="warning"`, a resolveLayers validation
- *  warning), sized for the menu bar: the shadcn Alert (the app's one
- *  notification surface — see ui/alert.tsx) compacted to fit inline beside
- *  the menus rather than as a full-width block. A warning uses `variant`
- *  "default" plus its own colour classes rather than the destructive variant,
- *  which paints its descendant text through a selector on Alert itself that
- *  a className override can't reach. */
-function HeaderAlert({ children, tone = "destructive" }: { children: React.ReactNode; tone?: "destructive" | "warning" }) {
+ *  warning; with `tone="success"`, an export confirmation), sized for the
+ *  menu bar: the shadcn Alert (the app's one notification surface — see
+ *  ui/alert.tsx) compacted to fit inline beside the menus rather than as a
+ *  full-width block. Warning and success use `variant` "default" plus their
+ *  own colour classes rather than the destructive variant, which paints its
+ *  descendant text through a selector on Alert itself that a className
+ *  override can't reach. A success note is a polite `status`, not an
+ *  interrupting `alert`. */
+function HeaderAlert({ children, tone = "destructive" }: { children: React.ReactNode; tone?: keyof typeof HEADER_ALERT_TONE }) {
+  const [box, text] = HEADER_ALERT_TONE[tone];
   return (
-    <Alert
-      variant={tone === "warning" ? "default" : "destructive"}
-      className={cn(
-        "w-auto px-2 py-0.5",
-        tone === "warning" ? "border-warning/50 bg-warning-soft" : "border-destructive/50",
-      )}
-    >
-      <AlertDescription className={cn("text-xs", tone === "warning" && "text-warning-text")}>
+    <Alert variant={tone === "destructive" ? "destructive" : "default"} className={cn("w-auto px-2 py-0.5", box)}
+      {...(tone === "success" && { role: "status" })}>
+      <AlertDescription className={cn("text-xs", text)}>
         {children}
       </AlertDescription>
     </Alert>
@@ -230,10 +236,6 @@ const benchedNotes = (dropped: { values: string[]; variants: string[] }): string
   ...(dropped.values.length ? [`${dropped.values.length} value(s) benched: ${dropped.values.join(", ")}`] : []),
   ...(dropped.variants.length ? [`${dropped.variants.length} variant(s) benched: ${dropped.variants.join(", ")}`] : []),
 ];
-
-/** One spelling for the "which error do I show?" expression the open paths
- *  share. */
-const errMsg = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** What every open path hands to openProject. Each entry point converts
  *  to this shape itself (fileSource for picked Files), so the shared
@@ -266,8 +268,8 @@ async function decodeToCanvas(src: Blob): Promise<HTMLCanvasElement> {
   }
 }
 
-/** The bytes as a Blob, for decodeToCanvas. */
-const blobOf = (bytes: Uint8Array) => new Blob([bytes as unknown as BlobPart]);
+/** The bytes as a Blob, for decoding (decodeToCanvas, createImageBitmap). */
+const blobOf = (bytes: Uint8Array) => new Blob([bytesPart(bytes)]);
 
 /** Repaint a raster image in `fill`, keeping alpha, and re-encode it as PNG
  *  for embedding — the color-overlay path for PNG/JPG art an image layer's
@@ -287,7 +289,7 @@ async function tintedPng(bytes: Uint8Array, fill: Fill): Promise<Uint8Array> {
  *  typeless blob as SVG. One spelling for the label-open and master-adopt
  *  paths. */
 function assetToFile(a: { name: string; bytes: Uint8Array }): File {
-  return new File([a.bytes as unknown as BlobPart], a.name, { type: mimeFor(a.name) });
+  return new File([bytesPart(a.bytes)], a.name, { type: mimeFor(a.name) });
 }
 
 /** Read a dropped image asset. SVG is kept as source text (so it can be
@@ -301,7 +303,7 @@ async function readCustomImage(f: File): Promise<CustomFile> {
     return { image: { kind: "svg", svg }, name: f.name, previewUrl: URL.createObjectURL(f), aspect: svgAspect(svg) };
   }
   const bytes = new Uint8Array(await f.arrayBuffer());
-  const bmp = await createImageBitmap(new Blob([bytes as unknown as BlobPart]));
+  const bmp = await createImageBitmap(blobOf(bytes));
   const aspect = bmp.width / bmp.height;
   bmp.close();
   return { image: { kind: rasterKind(f.name), bytes }, name: f.name, previewUrl: URL.createObjectURL(f), aspect };
@@ -348,7 +350,7 @@ async function readRaster(f: File): Promise<LoadedRaster> {
 
 // Blob snapshots the bytes at construction (no transfer), so no copy needed.
 const blobUrl = (bytes: Uint8Array, type: string) =>
-  URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type }));
+  URL.createObjectURL(new Blob([bytesPart(bytes)], { type }));
 
 /** Largest wheel delta any single event is allowed to contribute: a mouse
  *  notch reports 100 at once, which unclamped overshoots the zoom range. */
@@ -393,12 +395,15 @@ function download(url: string, name: string) {
 /** A file the shell wants this editor to open. seq is monotonic — a new
  *  value triggers the open, so a re-render can never re-open. Exactly one
  *  of path (Tauri), handle (FS-Access picker), or file (hidden-input
- *  fallback or a window-dropped .label, no save identity) is set. */
+ *  fallback, a window-dropped .label, or a crash-recovery snapshot — no
+ *  save identity) is set. `recovered` is that snapshot's recovery.ts key:
+ *  the opened tab stays unsaved, and takes the snapshot over from the key. */
 export type FileToOpen = {
   seq: number;
   path?: string;
   handle?: FileSystemFileHandle;
   file?: File;
+  recovered?: string;
 };
 
 /** What the tab strip shows for this document (src/tabs.ts TabMeta — one
@@ -429,6 +434,9 @@ type DocumentEditorProps = {
    *  slot just under its menubar row and the shell portals the strip into it. */
   updateStatusHost?: (el: HTMLDivElement | null) => void;
   tabStripHost: (el: HTMLDivElement | null) => void;
+  /** Where this tab's crash-recovery snapshot lives (recovery.ts); omitted
+   *  (tests mounting a lone editor) means no snapshots. */
+  recoveryKey?: string;
 };
 
 // memo is load-bearing: every keystroke in any tab updates the shell's tab
@@ -438,6 +446,7 @@ type DocumentEditorProps = {
 export const DocumentEditor = memo(function DocumentEditor({
   active, fileToOpen, onOpenSettled, onMeta, saveSlot, render, onRenderChange,
   onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, updateInstalled, tabStripHost, updateStatusHost,
+  recoveryKey,
 }: DocumentEditorProps) {
   // The document lives in a history stack, not plain useState — every edit
   // that goes through `edit` (all of them) is undoable, master and label
@@ -539,11 +548,20 @@ export const DocumentEditor = memo(function DocumentEditor({
   // PreviewCompare). While set, planLayers skips it via the render source's
   // skip set so the editor's live DOM text IS the layer — no doubled glyphs.
   const [editSession, setEditSession] = useState<string | null>(null);
-  const [building, setBuilding] = useState(false);
+  // The export in flight, if any: it blurs the preview under a note naming
+  // the files being built (#401), and blocks a second export.
+  const [exporting, setExporting] = useState<"pdf" | "psd" | null>(null);
   // Two error channels, split by who can clear them: renderError belongs to
   // the renderers (every good frame clears it); buildError to asset
   // assembly, exports and native menu failures.
   const [buildError, setBuildError] = useState("");
+  // The files the last export wrote (#400): shown until the next edit or
+  // export, since an edit makes those files stale. exportFresh goes false on
+  // any edit, so an export that an edit overlapped confirms nothing: its
+  // files hold the label as it was when the export began.
+  const [exportNote, setExportNote] = useState("");
+  const exportFresh = useRef(false);
+  const exportStale = () => { exportFresh.current = false; setExportNote(""); };
   const [renderError, setRenderError] = useState("");
   const [loadError, setLoadError] = useState("");
   // A .label whose master can't be found asks what to open it on; openProject
@@ -717,7 +735,7 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  stay pristine so an OS-open can reuse it, and a keystroke during the
    *  await must not be cleared afterwards. */
   const restoringRef = useRef(false);
-  const markDirty = () => { setDirty(true); if (!restoringRef.current) setEdited(true); };
+  const markDirty = () => { setDirty(true); exportStale(); if (!restoringRef.current) setEdited(true); };
 
   /** THE write path. Every document edit is a pure Doc → Doc transition
    *  (model/edit.ts), recorded as one history entry; `coalesce` folds a
@@ -741,6 +759,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // swapLoaded/onTexture, not a keystroke while assets are still loading.
     setDirty(true);
     setEdited(true);
+    exportStale();
     setDoc((d) => (d === doc ? next : checked(d)), coalesce);
     return true;
   };
@@ -843,16 +862,21 @@ export const DocumentEditor = memo(function DocumentEditor({
     });
   };
 
-  // Warm the face-aware measure for the master's family (the single font
-  // gate) and surface a font-load failure early. The planner callers below
-  // each await loadLabelFaces themselves, so nothing here is stored.
+  // Warm the face-aware measure for the families this label uses (the single
+  // font gate) and surface a font-load failure early. Only the master's
+  // family and the layers' overrides load (#411); picking another family
+  // changes fontKey and loads it. The planner callers below each await
+  // loadLabelFaces themselves, so nothing here is stored. Every listed row
+  // counts, disabled ones too, since the inspector measures those boxes.
   const family = fontFamilyOf(master);
+  const fontKey = useMemo(() => usedFontFamilies(family, rows.map((r) => r.layer)).join(","), [family, rows]);
+  const fontOverrides = useMemo(() => fontKey.split(",").slice(1) as FontFamilyId[], [fontKey]);
   useEffect(() => {
     let cancelled = false;
-    loadLabelFaces(family)
+    loadLabelFaces(family, fontOverrides)
       .catch((error) => { if (!cancelled) setBuildError(String(error)); });
     return () => { cancelled = true; };
-  }, [family]);
+  }, [family, fontOverrides]);
 
   // Which instance the window/document-level key listeners below belong to.
   const activeRef = useRef(active);
@@ -941,7 +965,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   const errorList = Object.entries(errors).map(([id, e]) => `${rowById.get(id)?.layer.name ?? id}: ${e}`);
   const blocked = errorList.length > 0;
   const blockedWhy = errorList.join(" · ");
-  const exportBlocked = blocked || building;
+  const exportBlocked = blocked || exporting !== null;
 
   /** Replaces (or, with null, removes) a loaded asset, revoking the old
    *  thumbnail URL — the one shape every drop and every X share. */
@@ -1038,6 +1062,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   // each re-assembly decodes every bitmap). Layer edits, a raster's tint
   // included, deliberately DON'T re-run this: the layers flow into the views
   // as a prop and repaint with these same bitmaps (drawPlate tints, #414).
+  // The one layer edit that does is a font pick that adds a family to
+  // fontOverrides, so its faces load (#411).
   const [decodedAssets, setDecodedAssets] = useState<{
     m: MeasureFace; planAssets: PlanAssets; drawAssets: CanvasAssets; fontCss: string;
   } | null>(null);
@@ -1053,13 +1079,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     let cancelled = false;
     const timer = setTimeout(() => {
       (async () => {
-        const m = await loadLabelFaces(family);
+        const m = await loadLabelFaces(family, fontOverrides);
         // Every decode this run makes is tracked here, so a throw partway
         // through can still close everything decoded so far.
         const decoded: ImageBitmap[] = [];
         const bitmap = async (bytes: Uint8Array | undefined) => {
           if (!bytes) return null;
-          const bmp = await createImageBitmap(new Blob([bytes as BlobPart]));
+          const bmp = await createImageBitmap(blobOf(bytes));
           decoded.push(bmp);
           return bmp;
         };
@@ -1094,9 +1120,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     }, 150);
     return () => { cancelled = true; clearTimeout(timer); };
     // Asset inputs only — the layers reach this effect through the two
-    // page-art switches (see the comment above).
+    // page-art switches (see the comment above); fontOverrides is the set of
+    // layer font families, so picking a new one reloads its faces.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [texture, mask, liveImages, family, bgOn, maskOn, active]);
+  }, [texture, mask, liveImages, family, fontOverrides, bgOn, maskOn, active]);
   // The bitmaps backing the CURRENTLY LIVE `canvasAssets` generation, closed
   // once the next generation has fully replaced them (bitmaps aren't GC'd
   // on their own). A bitmap can sit under two keys; close each once.
@@ -1419,7 +1446,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   ) {
     if (exportRunning.current) return;
     exportRunning.current = true;
-    setBuilding(true);
+    setExporting(extension);
+    setExportNote("");
+    exportFresh.current = true;
     startSaveBatch();
     const saved: string[] = [];
     let pending = "";
@@ -1436,11 +1465,12 @@ export const DocumentEditor = memo(function DocumentEditor({
         saved.push(result.name);
       }
       setBuildError("");
+      if (exportFresh.current) setExportNote(`Saved ${saved.join(", ")}.`);
     } catch (error) {
       setBuildError(`${saved.length ? `Saved ${saved.join(", ")}. ` : ""}${pending ? `Could not save ${pending}: ` : ""}${errMsg(error)}`);
     } finally {
       exportRunning.current = false;
-      setBuilding(false);
+      setExporting(null);
     }
   }
 
@@ -1528,6 +1558,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     return Object.keys(out).length ? out : undefined;
   };
 
+  /** This document as .label bytes: the v3 label plus its embedded art —
+   *  what Save writes and what a crash-recovery snapshot keeps. */
+  const packProject = () => packLabel({ ...label, masterHint: masterIndex()[master.id]?.path }, {
+    texture: textureAsset(), mask: maskAsset(),
+    customImages: imageBundle(Object.keys(liveImages)),
+  });
+
   /** File → Save / Save As…: the v3 label plus its embedded art, zipped as
    *  <name-slug>.label (model/files.ts). */
   async function saveProject(as = false): Promise<boolean> {
@@ -1543,10 +1580,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       // The close-tab caller must not close over edits made during this write.
       return unchanged;
     };
-    const zip = packLabel({ ...label, masterHint: masterIndex()[master.id]?.path }, {
-      texture: textureAsset(), mask: maskAsset(),
-      customImages: imageBundle(Object.keys(liveImages)),
-    });
+    const zip = packProject();
     try {
       startSaveBatch();
       const saved = await saveThrough(zip, {
@@ -1565,6 +1599,23 @@ export const DocumentEditor = memo(function DocumentEditor({
     }
   }
   saveSlot.current = () => saveProject();
+
+  // Crash recovery (#394): while this tab holds unsaved work, keep a packed
+  // .label of it a moment after each change; drop it once the work is saved.
+  // Never dropped on unmount — a render crash unmounts too, and that is the
+  // snapshot the next launch must find. The shell drops it on a tab close.
+  const hasUnsaved = unsaved({ dirty, edited, masterUnsaved: templateMoved });
+  useEffect(() => {
+    if (!recoveryKey) return;
+    if (!hasUnsaved) { void dropRecovery(recoveryKey); return; }
+    const timer = setTimeout(() => {
+      let bytes: Uint8Array;
+      try { bytes = packProject(); } catch { return; } // over the size caps: nothing Save could write either
+      void keepRecovery(recoveryKey, { name: exportBase + LABEL_EXT, bytes, savedAt: Date.now() });
+    }, 2000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the snapshot reads this render's doc/assets
+  }, [hasUnsaved, doc, texture, mask, customImages, recoveryKey]);
 
   /** The template assets a Save Master captures: the loaded texture/mask
    *  (the art being authored IS the template art) plus the bytes of every
@@ -2010,7 +2061,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (!fileToOpen || fileToOpen.seq === openedSeq.current) return;
     openedSeq.current = fileToOpen.seq;
     const mySeq = fileToOpen.seq;
-    const { path, handle, file } = fileToOpen;
+    const { path, handle, file, recovered } = fileToOpen;
     openChain.current = openChain.current.then(async () => {
       if (openedSeq.current !== mySeq) return; // a newer open superseded us
       try {
@@ -2024,7 +2075,19 @@ export const DocumentEditor = memo(function DocumentEditor({
           if (await openWithRetry(async () => fileSource(await handle.getFile())))
             projectHandle.current = handle;
         } else if (file) {
-          if (await openWithRetry(() => fileSource(file))) forgetProjectFile();
+          if (await openWithRetry(() => fileSource(file))) {
+            forgetProjectFile();
+            if (recovered) {
+              // Still unsaved work: Save stays live, a close prompts, and the
+              // snapshot moves to this tab's key before the old one goes —
+              // a failed copy leaves it for the next launch to offer again.
+              setDirty(true);
+              setEdited(true);
+              const bytes = new Uint8Array(await file.arrayBuffer());
+              if (!recoveryKey || await keepRecovery(recoveryKey, { name: file.name, bytes, savedAt: Date.now() }))
+                void dropRecovery(recovered);
+            }
+          }
         }
       } catch (err) {
         reportOpenError(err);
@@ -2326,6 +2389,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           {blocked && <HeaderAlert>{blockedWhy}</HeaderAlert>}
           {loadError && <HeaderAlert tone={loadError.startsWith("Note: ") ? "warning" : "destructive"}>{loadError}</HeaderAlert>}
           {headerError && <HeaderAlert tone={headerError.startsWith("Note: ") ? "warning" : "destructive"}>{headerError}</HeaderAlert>}
+          {exportNote && !headerError && <HeaderAlert tone="success">{exportNote}</HeaderAlert>}
           {resolveWarnings.length > 0 && <HeaderAlert tone="warning">{resolveWarnings.join(" · ")}</HeaderAlert>}
           {/* Open Master's fallback — see masterInput/openMasterPicker. */}
           <input ref={masterInput} type="file" accept={MASTER_EXT} hidden
@@ -2373,7 +2437,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             onPointerCancel={onPanEnd}>
             <div
               className={cn("flex min-h-0 min-w-0 flex-1 transition-[filter,opacity] duration-200",
-                building && "blur-sm opacity-70")}>
+                exporting && "blur-sm opacity-70")}>
             {/* PreviewCompare stays mounted but hidden in 3D modes. The
                 pinch-zoom transform belongs to THIS div: the 3D views zoom
                 their own camera. */}
@@ -2431,13 +2495,13 @@ export const DocumentEditor = memo(function DocumentEditor({
                 onAddManual={addManualGuide} onMoveManual={moveManualGuide} onSnapGuide={snapGuidePoint}
                 onRemoveManual={removeManualGuide} />
             )}
-            {building && previewReady && (
-              <span className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+            {exporting && previewReady && (
+              <span role="status" className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1.5 text-xs text-muted-foreground">
                 <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" />
-                rendering preview…
+                {exporting === "pdf" ? "Building PDFs…" : "Building PSDs…"}
               </span>
             )}
-            {!texture && !building && previewReady && (
+            {!texture && !exporting && previewReady && (
               <div className="pointer-events-none absolute inset-x-0 bottom-16 flex justify-center">
                 <span className="rounded-full border border-dashed border-border bg-background/85 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-sm">
                   drop a texture anywhere to fill the background

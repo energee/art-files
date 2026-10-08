@@ -21,6 +21,7 @@ import type { Layer, LayerValue, Master } from "../src/model/layers";
 import { convertConfigV1 } from "../src/model/convert";
 import type { LabelConfig } from "../src/types";
 import type { DeepPartial } from "../src/model/merge";
+import { PAGE } from "../src/layout";
 
 const asset = (p: string) => join(import.meta.dirname ?? __dirname, "..", "src", "assets", p);
 
@@ -115,6 +116,18 @@ export async function contentStreamText(bytes: Uint8Array): Promise<string> {
   }
   return out;
 }
+
+/** Every fill-colour operator ("r g b rg", or grey "k g" widened to rgb) in
+ *  a content stream, in emission order. Not "RG": that's the stroke paint. */
+export const fillOps = (stream: string): (readonly [number, number, number])[] =>
+  [...stream.matchAll(/(-?[\d.]+)(?: (-?[\d.]+) (-?[\d.]+) rg| g)\b/g)]
+    .map((m) => [Number(m[1]), Number(m[2] ?? m[1]), Number(m[3] ?? m[1])] as const);
+
+/** The path operators pdf-lib emits for a rect covering the whole PAGE (the
+ *  mask plate's white base and its no-mask flood). A function, not a const:
+ *  setBleed resizes PAGE, so read it at call time. */
+export const pageRectPath = () =>
+  `0 0 m\n0 ${PAGE.h} l\n${PAGE.w} ${PAGE.h} l\n${PAGE.w} 0 l\nh\nf`;
 
 /** Deterministic stand-in for real font metrics. */
 export const measure = (text: string, size: number) => text.length * size * 0.55;

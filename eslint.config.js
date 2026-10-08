@@ -6,7 +6,7 @@ import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 
 export default tseslint.config(
-  { ignores: ["dist/", "out/", "docs-site/", "src-tauri/", ".agents/", ".claude/"] },
+  { ignores: ["dist/", "out/", "docs-site/", "src-tauri/", ".agents/", ".claude/", ".remember/"] },
   ...tseslint.configs.recommended,
   {
     files: ["**/*.{ts,tsx,mts,mjs}"],
