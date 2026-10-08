@@ -1,10 +1,27 @@
 // CommandMenu.tsx — ⌘K palette exposing the app's actions. This module stays
 // small and eager (the Command type, shortcutOf, the ⌘K listener); the
 // palette itself, and cmdk with it, loads on the first ⌘K (#410).
-import { Suspense, lazy, useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState, type ComponentType } from "react";
 import { dialogOpen, isMacOS, shortcutLabel } from "@/keys";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
-const CommandPalette = lazy(() => import("@/components/CommandPalette").then((m) => ({ default: m.CommandPalette })));
+// A palette chunk that fails to load says so in a dialog ⌘K or Escape closes,
+// instead of unmounting the editor (see App's CanView).
+type CommandPaletteProps = Parameters<typeof import("@/components/CommandPalette").CommandPalette>[0];
+const CommandPalette = lazy<ComponentType<CommandPaletteProps>>(() => import("@/components/CommandPalette").then(
+  (m) => ({ default: m.CommandPalette }),
+  (err: unknown) => ({
+    default: function CommandPaletteLoadFailed({ open, onOpenChange }: CommandPaletteProps) {
+      return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+          <DialogContent>
+            <DialogTitle>Commands</DialogTitle>
+            <DialogDescription>The command palette failed to load: {String(err)}</DialogDescription>
+          </DialogContent>
+        </Dialog>
+      );
+    },
+  })));
 
 /** One entry in the app's command table (see App's `commands`). `key` is the
  *  bare key that fires it, `shortcut` the glyphs shown to the user — separate

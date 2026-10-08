@@ -132,9 +132,29 @@ const CanView = lazy<ComponentType<CanViewProps>>(() => import("@/components/Can
 
 // Settings and the Save Master review are opened rarely, so their modules
 // (and the checkbox they alone use) load on first open, not with the editor
-// (#410). The ⌘K palette does the same inside CommandMenu.
-const RenderSettingsFields = lazy(() => import("@/components/RenderSettings").then((m) => ({ default: m.RenderSettings })));
-const MasterSaveReview = lazy(() => import("@/components/MasterSaveReview").then((m) => ({ default: m.MasterSaveReview })));
+// (#410). The ⌘K palette does the same inside CommandMenu. Like CanView, a
+// chunk that fails to load says so where the surface would have opened
+// instead of unmounting the editor and its unsaved edits.
+const RenderSettingsFields = lazy<typeof import("@/components/RenderSettings").RenderSettings>(() => import("@/components/RenderSettings").then(
+  (m) => ({ default: m.RenderSettings }),
+  (err: unknown) => ({
+    default: () => <p className="text-xs text-destructive-text">Settings failed to load: {String(err)}</p>,
+  })));
+type MasterSaveReviewProps = Parameters<typeof import("@/components/MasterSaveReview").MasterSaveReview>[0];
+const MasterSaveReview = lazy<ComponentType<MasterSaveReviewProps>>(() => import("@/components/MasterSaveReview").then(
+  (m) => ({ default: m.MasterSaveReview }),
+  (err: unknown) => ({
+    default: function MasterSaveReviewLoadFailed({ open, onCancel }: MasterSaveReviewProps) {
+      return (
+        <Dialog open={open} onOpenChange={(o) => { if (!o) onCancel(); }}>
+          <DialogContent>
+            <DialogTitle>Save Master</DialogTitle>
+            <DialogDescription>The Save Master review failed to load: {String(err)}</DialogDescription>
+          </DialogContent>
+        </Dialog>
+      );
+    },
+  })));
 
 /** bytes = full print resolution (exports); previewBytes = downscaled PNG the
  *  assembly effect decodes into a bitmap, so keystroke-driven rebuilds never
@@ -2264,14 +2284,17 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   return (
     <TooltipProvider>
-      <Dialog open={active && settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogTitle>Settings</DialogTitle>
-          <Suspense fallback={null}>
+      {/* Suspense around the Dialog, not inside it: the first open then
+          mounts the dialog with its fields already there, so it opens
+          focused on the first field rather than on Close. */}
+      <Suspense fallback={null}>
+        <Dialog open={active && settingsOpen} onOpenChange={setSettingsOpen}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogTitle>Settings</DialogTitle>
             <RenderSettingsFields value={render} onChange={onRenderChange} />
-          </Suspense>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      </Suspense>
       <Dialog open={!!missingMaster} onOpenChange={(open) => !open && missingMaster?.choose(null)}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
