@@ -6,6 +6,9 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Fixed
+- **Screen readers hear when a tab has unsaved work.** A tab's close button now reads "Close <title> (unsaved changes)" instead of just "Close <title>".
+
 ### Security
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.
 

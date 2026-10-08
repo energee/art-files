@@ -24,13 +24,17 @@ mockIPC((cmd, args) => {
 (globalThis as { isTauri?: boolean }).isTauri = true; // what isTauri() reads
 vi.mock("../src/components/DesktopUpdater", () => ({ DesktopUpdater: () => null }));
 vi.mock("../src/App", async () => {
-  const { useRef } = await import("react");
+  const { createElement: h, useRef } = await import("react");
   return {
-    DocumentEditor: (props: { onMeta: (meta: DocumentMeta) => void }) => {
+    DocumentEditor: (props: {
+      onMeta: (meta: DocumentMeta) => void;
+      tabStripHost?: (el: HTMLDivElement | null) => void;
+    }) => {
       const slot = useRef(-1);
       if (slot.current < 0) slot.current = mocks.editors.push(props) - 1;
       else mocks.editors[slot.current] = props;
-      return null;
+      // Mount the strip host so the tab strip (and its close buttons) renders.
+      return h("div", { ref: props.tabStripHost });
     },
   };
 });
@@ -56,4 +60,19 @@ it("reports unsaved work to the Rust side as it comes and goes", async () => {
 
   await act(async () => { mocks.editors[0].onMeta(meta(false)); });
   expect(mocks.reported).toEqual([false, true, false]);
+});
+
+it("names unsaved work on the tab's close button (#403)", async () => {
+  const host = document.createElement("div");
+  root = createRoot(host);
+  await act(async () => { root.render(createElement(TabsShell)); });
+  const closeLabel = () =>
+    host.querySelector('[aria-label^="Close "]')?.getAttribute("aria-label");
+  const editor = mocks.editors[mocks.editors.length - 1];
+
+  await act(async () => { editor.onMeta(meta(true)); });
+  expect(closeLabel()).toBe("Close Labradorite (unsaved changes)");
+
+  await act(async () => { editor.onMeta(meta(false)); });
+  expect(closeLabel()).toBe("Close Labradorite");
 });

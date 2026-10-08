@@ -398,7 +398,9 @@ export default function TabsShell() {
             </button>
             <button
               onClick={() => closeReq(t.id)}
-              aria-label={`Close ${t.title}`}
+              // The button's own label replaces its children's, so the unsaved
+              // state has to be named here, not on the • inside it (#403).
+              aria-label={`Close ${t.title}${unsaved(t) ? " (unsaved changes)" : ""}`}
               className={cn(
                 // fraction-of-foreground, not bg-muted: it has to read on
                 // both chip fills (active bg-background, hovered bg-muted)
@@ -408,7 +410,7 @@ export default function TabsShell() {
               {unsaved(t) ? (
                 <>
                   <span className="block size-3 text-center leading-3 group-hover:hidden"
-                    aria-label="unsaved changes">•</span>
+                    aria-hidden="true">•</span>
                   <X className="hidden size-3 group-hover:block" />
                 </>
               ) : <X className="size-3" />}
