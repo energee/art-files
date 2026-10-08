@@ -223,15 +223,20 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psd", "psd"
       await act(async () => { await new Promise((resolve) => setTimeout(resolve, 25)); });
       expect(menu.actions.find((c) => c.id === "export-both")!.disabled).toBe(false);
     });
+    // A confirmation, not an error: announced politely, through a status
+    // region that exists before the note lands (one mounted already holding
+    // its text isn't announced).
+    const region = document.querySelector("[data-export-saved]");
+    expect(region?.getAttribute("role")).toBe("status");
+    expect(region?.textContent).toBe("");
     await act(async () => {
       menu.actions.find((c) => c.id === command)!.run();
       await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(2), { timeout: 4000 });
     });
     const [art, mask] = pick.mock.calls.map(([options]) => options.suggestedName);
     await vi.waitFor(() => expect(document.body.textContent).toContain(`Saved ${art}, ${mask}.`));
-    // A confirmation, not an error: announced politely.
-    const note = [...document.querySelectorAll('[data-slot="alert"]')].find((a) => a.textContent === `Saved ${art}, ${mask}.`);
-    expect(note?.getAttribute("role")).toBe("status");
+    expect(document.querySelector("[data-export-saved]")).toBe(region);
+    expect(region!.textContent).toBe(`Saved ${art}, ${mask}.`);
     // A later edit makes the confirmation stale, so it goes.
     await toggle("warning");
     expect(document.body.textContent).not.toContain(`Saved ${art}`);

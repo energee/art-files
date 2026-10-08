@@ -670,6 +670,31 @@ it("Delete with a stale id in a multi-row selection removes the rows that exist"
   } finally { await unmount(); }
 }, 60_000);
 
+// An export's status region exists before the export starts, so a screen
+// reader announces "Building …" (a live region mounted already holding its
+// text is not announced). PSD export isn't gated on the preview, so its note
+// shows, not "rendering label…", while the preview is still assembling.
+it("the export note is announced through a pre-existing status region, preview ready or not", async () => {
+  perf.source = null;
+  const { container, unmount } = await mountEditor();
+  try {
+    expect(perf.source).toBeNull(); // the debounced preview hasn't landed yet
+    const region = container.querySelector('[data-export-status]');
+    expect(region?.getAttribute("role")).toBe("status");
+    expect(region?.textContent).toBe("");
+    exportFonts.rejects = [];
+    await act(async () => {
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "e", metaKey: true, shiftKey: true, bubbles: true }));
+    });
+    expect(container.querySelector('[data-export-status]')).toBe(region);
+    expect(region!.textContent).toBe("Building PSDs…");
+    expect(container.textContent).not.toContain("rendering label…");
+    await vi.waitFor(() => expect(exportFonts.rejects.length).toBeGreaterThan(0));
+    await act(async () => { for (const reject of exportFonts.rejects) reject(new Error("stop")); });
+    await vi.waitFor(() => expect(region!.textContent).toBe(""));
+  } finally { await unmount(); }
+}, 60_000);
+
 // Issue #401: an export blurred the preview under a "rendering preview…" note,
 // so a long export read as a stalled preview. The note names the export.
 it.each([
