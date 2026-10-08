@@ -11,6 +11,7 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 - **Faster typing in the preview.** The white-ink plate is no longer repainted on every edit while the comparison divider hides it; it paints when the divider reveals it.
+- **A malformed .label is refused instead of breaking the canvas.** A shared label whose values or overrides have the wrong shape (non-text values, non-numeric positions, an incomplete added layer) now fails to open with a clear error instead of crashing the preview or saving bad geometry back.
 
 ## [0.1.104] - 2026-10-08
 

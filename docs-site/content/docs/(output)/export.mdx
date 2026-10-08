@@ -30,7 +30,7 @@ Uploaded masks are embedded as-authored. The 3D preview classifies pixels by bri
 
 No mask uploaded? The plate floods full blue. Print as a white label. Metallic elements still knock back out to bare stock on top of the flood.
 
-Each element has a **fill** (drawn in the art PDF; `none` for no ink) and a **plate** (metallic knocks out of the white layer; white gets a white-ink underlay). Outer strokes have their own independent plate. White-ink runs inside a text line (`_white ink_` / the White ink toggle) follow the same rule per span.
+Each element has a **fill** (drawn in the art PDF; `none` for no ink) and a **plate** (metallic knocks out of the white layer; white gets a white-ink underlay). Outer strokes have their own independent plate. White-ink runs inside a text line (`_white ink_` / the White ink underlay toggle) follow the same rule per span.
 
 Barcodes ship as near-black bars inside a white halo over white ink. The white-ink plate follows that halo: each bar, and each digit's own outline, so the mask matches the stroke. Where the halo is wider than the gap between bars it closes into one shape. Solid background, off unless the layer turns it on, fills the barcode box with the stroke colour.
 
