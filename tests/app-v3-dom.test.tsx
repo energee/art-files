@@ -11,10 +11,10 @@ import type { TextLayer } from "../src/model/layers";
 vi.mock("../src/components/PreviewCompare", () => ({ SNAP_PT: 6, PreviewCompare: (props: PreviewProps) => { perf.source = props.canvasRender; perf.preview = props; return null; } }));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
 type PreviewProps = import("react").ComponentProps<typeof import("../src/components/PreviewCompare").PreviewCompare>;
-const perf = vi.hoisted(() => ({ fontLoads: 0, fontArgs: [] as unknown[][], source: null as import("../src/canvas/draw").CanvasRenderSource | null, margin: null as null | ((n: number) => void), preview: null as PreviewProps | null }));
+const perf = vi.hoisted(() => ({ facesGate: null as Promise<void> | null, fontLoads: 0, fontArgs: [] as unknown[][], source: null as import("../src/canvas/draw").CanvasRenderSource | null, margin: null as null | ((n: number) => void), preview: null as PreviewProps | null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: (props: { onMarginChange: (n: number) => void }) => { perf.margin = props.onMarginChange; return null; } }));
 vi.mock("../src/fonts", () => ({
-  loadLabelFaces: async (...args: unknown[]) => { perf.fontLoads++; perf.fontArgs.push(args); return (text: string, size: number) => text.length * size * 0.55; },
+  loadLabelFaces: async (...args: unknown[]) => { perf.fontLoads++; perf.fontArgs.push(args); await perf.facesGate; return (text: string, size: number) => text.length * size * 0.55; },
   labelFontCss: () => "sans-serif",
   FONT_URLS: { poppins: {}, "barlow-condensed": {} },
 }));
@@ -675,10 +675,12 @@ it("Delete with a stale id in a multi-row selection removes the rows that exist"
 // text is not announced). PSD export isn't gated on the preview, so its note
 // shows, not "rendering label…", while the preview is still assembling.
 it("the export note is announced through a pre-existing status region, preview ready or not", async () => {
+  // Hold the font faces so the preview stays unassembled throughout.
+  let release!: () => void;
+  perf.facesGate = new Promise((r) => { release = r; });
   perf.source = null;
   const { container, unmount } = await mountEditor();
   try {
-    expect(perf.source).toBeNull(); // the debounced preview hasn't landed yet
     const region = container.querySelector('[data-export-status]');
     expect(region?.getAttribute("role")).toBe("status");
     expect(region?.textContent).toBe("");
@@ -692,7 +694,8 @@ it("the export note is announced through a pre-existing status region, preview r
     await vi.waitFor(() => expect(exportFonts.rejects.length).toBeGreaterThan(0));
     await act(async () => { for (const reject of exportFonts.rejects) reject(new Error("stop")); });
     await vi.waitFor(() => expect(region!.textContent).toBe(""));
-  } finally { await unmount(); }
+    expect(perf.source).toBeNull(); // the preview never assembled
+  } finally { release(); perf.facesGate = null; await unmount(); }
 }, 60_000);
 
 // Issue #401: an export blurred the preview under a "rendering preview…" note,
