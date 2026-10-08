@@ -54,6 +54,17 @@ describe("master library index", () => {
     expect(localStorage.getItem("labellab.lastMaster")).toBeNull();
   });
 
+  // #407: a full localStorage (QuotaExceededError) must not reject — the
+  // Save Master commit awaits this after the file is already written, and a
+  // throw there left the saved master marked unsaved. Same guard as forgetMaster.
+  it("rememberMaster resolves when localStorage.setItem throws", async () => {
+    vi.stubGlobal("localStorage", {
+      ...fakeLocalStorage,
+      setItem: () => { throw new DOMException("full", "QuotaExceededError"); },
+    });
+    await expect(rememberMaster(lolevMaster(), "/tmp/lolev.master")).resolves.toBeUndefined();
+  });
+
   it("a saved master registers in the library index under its own id", () => {
     const m = parseMasterJson(JSON.parse(serializeMaster(lolevMaster()))).master;
     rememberMaster(m, "/tmp/lolev.master");

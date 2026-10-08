@@ -62,8 +62,14 @@ export async function rememberMaster(m: Master, path: string, bytes?: Uint8Array
     path: path || cur?.path || "",
     lastSeen: applied ? new Date().toISOString() : (cur?.lastSeen ?? ""),
   };
-  localStorage.setItem(KEY, JSON.stringify(idx));
-  if (applied) localStorage.setItem(LAST_KEY, m.id);
+  // Guarded like retireIndexRow: callers await this after the file is already
+  // written (Save Master's commit), so a full or missing localStorage must
+  // not turn a saved master into an "unsaved" one (#407). The index is a
+  // resolver cache; losing one write only costs a re-locate later.
+  try {
+    localStorage.setItem(KEY, JSON.stringify(idx));
+    if (applied) localStorage.setItem(LAST_KEY, m.id);
+  } catch { /* no localStorage / quota exceeded — same fallback as masterIndex */ }
 }
 
 /** The master this operator last opened, saved, or picked — LAST_KEY when
