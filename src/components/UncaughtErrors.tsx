@@ -9,10 +9,7 @@ import { useEffect, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { isAbort } from "@/filePickers";
-
-/** Readable text for whatever was thrown or rejected with. */
-const describe = (reason: unknown) =>
-  reason instanceof Error ? reason.message : String(reason);
+import { errMsg } from "@/lib/utils";
 
 /** Chromium/WebKit report this when an observer's callback resizes what it
  *  observes; the next frame delivers it. Noise, not a failure. */
@@ -27,13 +24,13 @@ export function UncaughtErrors() {
       // saying no, not a failure.
       if (isAbort(e.reason)) return;
       console.error("Label Lab: unhandled promise rejection", e.reason);
-      setMessage(describe(e.reason));
+      setMessage(errMsg(e.reason));
     };
     const onError = (e: ErrorEvent) => {
       if (RESIZE_OBSERVER_NOTICE.test(e.message)) return;
       const reason = e.error ?? e.message;
       console.error("Label Lab: uncaught error", reason);
-      setMessage(describe(reason));
+      setMessage(errMsg(reason));
     };
     window.addEventListener("unhandledrejection", onRejection);
     window.addEventListener("error", onError);

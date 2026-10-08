@@ -47,6 +47,17 @@ it("shows an uncaught error event, and Dismiss clears it", () => {
   done();
 });
 
+it("falls back to the event message, and shows a non-Error rejection as text", () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const { host, done } = mount();
+  act(() => { window.dispatchEvent(new ErrorEvent("error", { message: "message only" })); });
+  expect(host.querySelector("[role=alert]")?.textContent).toContain("message only");
+  // Tauri's invoke rejects with a plain string.
+  act(() => { window.dispatchEvent(rejection("write_file: permission denied")); });
+  expect(host.querySelector("[role=alert]")?.textContent).toContain("write_file: permission denied");
+  done();
+});
+
 it("ignores a cancelled picker (AbortError) and the benign ResizeObserver loop notice", () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   const { host, done } = mount();

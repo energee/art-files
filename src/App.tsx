@@ -108,7 +108,7 @@ import {
 } from "@/components/ui/select";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+import { cn, errMsg } from "@/lib/utils";
 import { FONT_URLS, loadLabelFaces, labelFontCss } from "@/fonts";
 import { fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
 import { loadFonts } from "@/pdf/fonts";
@@ -230,10 +230,6 @@ const benchedNotes = (dropped: { values: string[]; variants: string[] }): string
   ...(dropped.values.length ? [`${dropped.values.length} value(s) benched: ${dropped.values.join(", ")}`] : []),
   ...(dropped.variants.length ? [`${dropped.variants.length} variant(s) benched: ${dropped.variants.join(", ")}`] : []),
 ];
-
-/** One spelling for the "which error do I show?" expression the open paths
- *  share. */
-const errMsg = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** What every open path hands to openProject. Each entry point converts
  *  to this shape itself (fileSource for picked Files), so the shared
