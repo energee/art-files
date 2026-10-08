@@ -244,6 +244,12 @@ the hint's file joins the index only when the index has no readable file for
 the id, so a shared label never takes over the operator's library entry. A
 missing master falls back to a picker.
 
+Stored as one localStorage key per master (`labellab.master:<id>`), not one
+blob: every app window shares localStorage, and a whole-index
+read-modify-write let one window's save drop another window's row (#408). An
+index written before #408 (the single `labellab.masters` blob) is still read
+and is split into per-master keys on the next write.
+
 ## Resolution
 
 One pure function is the heart of the design:

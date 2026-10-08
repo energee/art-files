@@ -9,6 +9,8 @@ const fakeLocalStorage = {
   setItem: (k: string, v: string) => void stored.set(k, v),
   removeItem: (k: string) => void stored.delete(k),
   clear: () => stored.clear(),
+  key: (i: number) => [...stored.keys()][i] ?? null,
+  get length() { return stored.size; },
 };
 
 beforeEach(() => {
@@ -41,11 +43,6 @@ describe("master library index", () => {
     localStorage.setItem("labellab.masters", "{not json");
     expect(masterIndex()).toEqual({});
   });
-  // Task 4's save/open round trip: a saved-then-reparsed master registers
-  // under its own id, exactly as a freshly authored one would. This passes
-  // unchanged because rememberMaster itself didn't change — the real work of
-  // Task 4 is App.tsx's save/open wiring, which has no automated harness
-  // (see task-4-report.md).
   it("forgets a library master and leaves the next launch unpinned from it", async () => {
     await rememberMaster(lolevMaster(), "/tmp/lolev.master");
     localStorage.setItem("labellab.lastMaster", SHIPPED_MASTER_ID);
@@ -71,15 +68,129 @@ describe("master library index", () => {
     vi.stubGlobal("localStorage", {
       ...fakeLocalStorage,
       setItem: (k: string, v: string) => {
-        if (k === "labellab.masters") throw new DOMException("full", "QuotaExceededError");
+        if (k.startsWith("labellab.master:")) throw new DOMException("full", "QuotaExceededError");
         fakeLocalStorage.setItem(k, v);
       },
     });
     await rememberMaster(lolevMaster(), "/tmp/lolev.master");
     expect(stored.get("labellab.lastMaster")).toBe(SHIPPED_MASTER_ID);
+    expect(stored.has(`labellab.master:${SHIPPED_MASTER_ID}`)).toBe(false);
+  });
+
+  // #407 with a pre-#408 blob: the migration's own writes can hit the quota
+  // too, and must not reject the save either.
+  it("rememberMaster resolves when migrating a legacy blob hits the quota", async () => {
+    stored.set("labellab.masters", JSON.stringify({ old: { name: "Old", path: "/tmp/old.master", lastSeen: "" } }));
+    vi.stubGlobal("localStorage", {
+      ...fakeLocalStorage,
+      get length() { return stored.size; },
+      setItem: (k: string, v: string) => {
+        if (k.startsWith("labellab.master:")) throw new DOMException("full", "QuotaExceededError");
+        fakeLocalStorage.setItem(k, v);
+      },
+    });
+    await expect(rememberMaster(lolevMaster(), "/tmp/lolev.master")).resolves.toBeUndefined();
+    expect(masterIndex().old).toMatchObject({ name: "Old" }); // the blob still lists
+  });
+
+  // #408: two windows share localStorage. When another window's save lands
+  // between this window's read and write, whole-index read-modify-write
+  // dropped the other window's row. The hook below runs window B's save
+  // inside window A's first read and hands A the value it read before.
+  it("a concurrent save from another window keeps both rows", async () => {
+    const a = { ...lolevMaster(), id: "master-a", name: "A" };
+    const b = { ...lolevMaster(), id: "master-b", name: "B" };
+    let other: (() => void) | null = () => void rememberMaster(b, "/tmp/b.master");
+    vi.stubGlobal("localStorage", {
+      ...fakeLocalStorage,
+      get length() { return stored.size; },
+      getItem: (k: string) => {
+        const v = stored.get(k) ?? null;
+        const run = other;
+        other = null;
+        run?.();
+        return v;
+      },
+    });
+    await rememberMaster(a, "/tmp/a.master");
+    expect(Object.keys(masterIndex()).sort()).toEqual(["master-a", "master-b"]);
+  });
+
+  // An index written before #408 (one JSON blob) still lists, and the next
+  // write moves its rows to per-master keys without losing any.
+  it("a pre-#408 index blob is read and migrated on the next write", async () => {
+    stored.set("labellab.masters", JSON.stringify({
+      old: { name: "Old", path: "/tmp/old.master", lastSeen: "2026-01-01T00:00:00.000Z" },
+    }));
+    expect(masterIndex().old).toMatchObject({ name: "Old", path: "/tmp/old.master" });
+    await rememberMaster(lolevMaster(), "/tmp/lolev.master");
+    expect(stored.has("labellab.masters")).toBe(false);
+    expect(Object.keys(masterIndex()).sort()).toEqual(["old", SHIPPED_MASTER_ID].sort());
+    await forgetMaster("old");
+    expect(masterIndex().old).toBeUndefined();
+  });
+
+  // Storage key order is the engine's (hash order in WebKit) and ids are
+  // random, so the index sorts by name to keep the Master menu stable.
+  it("lists rows in name order whatever order storage returns them", async () => {
+    for (const [id, name] of [["master-1", "Cedar"], ["master-3", "Alder"], ["master-2", "Birch"]]) {
+      await rememberMaster({ ...lolevMaster(), id, name }, `/tmp/${id}.master`);
+    }
+    expect(Object.values(masterIndex()).map((e) => e.name)).toEqual(["Alder", "Birch", "Cedar"]);
+  });
+  it("keeps name order when an unmigrated blob sits beside per-master rows", () => {
+    stored.set("labellab.master:master-a", JSON.stringify({ name: "B", path: "/a.master", lastSeen: "" }));
+    stored.set("labellab.masters", JSON.stringify({ "master-z": { name: "A", path: "/z.master", lastSeen: "" } }));
+    expect(Object.keys(masterIndex())).toEqual(["master-z", "master-a"]);
+  });
+
+  // Review of #465: a blob that parses to null (or holds non-object rows)
+  // must not make every later save or Remove throw.
+  it("a null legacy blob neither lists nor blocks a save", async () => {
+    stored.set("labellab.masters", "null");
+    expect(masterIndex()).toEqual({});
+    await rememberMaster(lolevMaster(), "/tmp/lolev.master");
+    expect(masterIndex()[SHIPPED_MASTER_ID]?.path).toBe("/tmp/lolev.master");
     expect(stored.has("labellab.masters")).toBe(false);
   });
 
+  // An id from an untrusted .master is a plain key, never the prototype.
+  it("lists and forgets a master whose id is __proto__", async () => {
+    await rememberMaster({ ...lolevMaster(), id: "__proto__", name: "Odd" }, "/tmp/odd.master");
+    expect(Object.keys(masterIndex())).toEqual(["__proto__"]);
+    await forgetMaster("__proto__");
+    expect(Object.keys(masterIndex())).toEqual([]);
+  });
+
+  // Window A starts migrating the blob; before A copies X, window B migrates
+  // it and forgets X. A must not write X back.
+  it("a migration racing another window's forget does not resurrect the row", async () => {
+    stored.set("labellab.masters", JSON.stringify({
+      x: { name: "X", path: "/tmp/x.master", lastSeen: "" },
+    }));
+    let other: (() => void) | null = () => void forgetMaster("x");
+    vi.stubGlobal("localStorage", {
+      ...fakeLocalStorage,
+      get length() { return stored.size; },
+      getItem: (k: string) => {
+        const v = stored.get(k) ?? null;
+        if (k === "labellab.masters" && v !== null) {
+          const run = other;
+          other = null;
+          run?.();
+        }
+        return v;
+      },
+    });
+    await rememberMaster(lolevMaster(), "/tmp/lolev.master");
+    expect(masterIndex().x).toBeUndefined();
+  });
+
+  // Task 4's save/open round trip: a saved-then-reparsed master registers
+  // under its own id, exactly as a freshly authored one would. This passes
+  // unchanged because rememberMaster itself didn't change — the real work of
+  // Task 4 is App.tsx's save/open wiring, which has no automated harness
+  // (see task-4-report.md).
   it("a saved master registers in the library index under its own id", () => {
     const m = parseMasterJson(JSON.parse(serializeMaster(lolevMaster()))).master;
     rememberMaster(m, "/tmp/lolev.master");
@@ -335,7 +446,7 @@ describe("master library index", () => {
     vi.doUnmock("@/masterCache");
   });
 
-  // libraryEntries lists the index in insertion order: Undo keeps the place.
+  // The index lists by name, so a restored row lands back in its place.
   it("an undo puts the master back where it was in the library", async () => {
     vi.doMock("@/masterCache", () => ({
       cacheMaster: async () => {}, cachedMaster: async () => null, dropCachedMaster: async () => {},
