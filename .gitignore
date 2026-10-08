@@ -12,3 +12,10 @@ out/
 # nature — the design that survives lands in the components, not here.
 .agents/mockups/
 src-tauri/tauri.release.generated.conf.json
+# This repo uses npm (package-lock.json). pnpm files appear when someone runs
+# pnpm here by habit; a second lockfile would drift from the real one.
+pnpm-lock.yaml
+pnpm-workspace.yaml
+# Session memory from the `remember` agent plugin — local scratch. ESLint's
+# flat config does not read this file, so eslint.config.js ignores it too.
+.remember/
