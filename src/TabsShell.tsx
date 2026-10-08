@@ -395,25 +395,42 @@ export default function TabsShell() {
   const [updateStatusHost, setUpdateStatusHost] = useState<HTMLDivElement | null>(null);
   const [stripHost, setStripHost] = useState<HTMLDivElement | null>(null);
   const tabStripHost = useCallback((el: HTMLDivElement | null) => setStripHost(el), []);
-  // Switching tabs re-hosts the strip in the new editor's slot, which drops
-  // focus to <body>. After a KEYBOARD switch (Enter/Space: a click with
-  // detail 0) put focus back on the newly selected tab (#404); a mouse
-  // switch leaves focus alone so the arrows go on nudging the canvas.
+  // Switching tabs re-hosts the strip in the new editor's slot, and closing
+  // one removes the focused button; either drops focus to <body>. After a
+  // KEYBOARD switch or close (Enter/Space: a click with detail 0) put focus
+  // back on the selected tab (#404); a mouse click lets go of focus so the
+  // arrows go on nudging the canvas. The flag waits until the selected tab
+  // is in the live document: mid-switch the strip is still in the old,
+  // detached slot.
   const refocusTab = useRef(false);
   useEffect(() => {
-    if (!refocusTab.current || !stripHost) return;
+    if (!refocusTab.current) return;
+    const tab = stripHost?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    if (!tab?.isConnected) return;
     refocusTab.current = false;
-    stripHost.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
-  }, [stripHost]);
+    tab.focus();
+  }, [stripHost, state.tabs, state.active]);
   // useMemo so the strip element is rebuilt only when its content changes,
   // not on every unrelated shell state change.
   const tabStrip = useMemo(() => (
     <div className="flex h-9 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-sidebar">
       {/* A tablist (#404) so assistive tech announces the active document;
-          each chip's title button is the tab, its close button a plain
-          button. The + and the pick error sit outside it: a tablist owns
-          only tabs. No aria-controls: the editor isn't modelled as a panel. */}
-      <div role="tablist" aria-label="Open documents" className="flex shrink-0 items-center gap-1.5">
+          each chip's title button is the tab. Its close button stays a plain
+          button inside the list: ARIA has no slot for a per-tab close, and
+          hiding it would drop the unsaved-changes label (#403). The + and the
+          pick error sit outside. No aria-controls: the editor isn't modelled
+          as a panel. keys.ts gives a tablist the arrow keys, so Left/Right
+          move focus between tabs here (Enter switches) instead of nudging. */}
+      <div role="tablist" aria-label="Open documents" className="flex shrink-0 items-center gap-1.5"
+        onKeyDown={(e) => {
+          const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+          const tabs = [...e.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')];
+          // From a tab or its × alike: both sit in that tab's chip.
+          const i = tabs.findIndex((t) => t.parentElement?.contains(e.target as Node));
+          if (!step || i < 0) return;
+          e.preventDefault();
+          tabs[(i + step + tabs.length) % tabs.length].focus();
+        }}>
         {state.tabs.map((t) => (
           <div
             key={t.id}
@@ -429,6 +446,9 @@ export default function TabsShell() {
               aria-selected={t.id === state.active}
               onClick={(e) => {
                 refocusTab.current = e.detail === 0 && t.id !== state.active;
+                // Chromium focuses a clicked button; on the active tab nothing
+                // re-hosts, so that focus would keep the arrows from nudging.
+                if (e.detail > 0) e.currentTarget.blur();
                 activate(t.id);
               }}
               title={t.filePath ?? t.title}
@@ -436,7 +456,11 @@ export default function TabsShell() {
               {t.title}
             </button>
             <button
-              onClick={() => closeReq(t.id)}
+              onClick={(e) => {
+                // An unsaved tab opens the close dialog, which owns focus.
+                refocusTab.current = e.detail === 0 && !unsaved(t);
+                closeReq(t.id);
+              }}
               // The button's own label replaces its children's, so the unsaved
               // state has to be named here, not on the • inside it (#403).
               aria-label={`Close ${t.title}${unsaved(t) ? " (unsaved changes)" : ""}`}

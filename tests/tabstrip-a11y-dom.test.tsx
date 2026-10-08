@@ -2,7 +2,8 @@
 // (#404): each document tab carries role="tab" and aria-selected, so a
 // screen reader announces which tab is active, shows a focus ring when
 // reached by keyboard, and keeps keyboard focus on the selected tab after an
-// Enter/Space switch re-hosts the strip. DocumentEditor is stubbed: it hands the shell a slot
+// Enter/Space switch or close re-hosts the strip, and Left/Right move focus
+// between tabs. DocumentEditor is stubbed: it hands the shell a slot
 // for the strip (the real tabStripHost contract) and exposes onNewTab.
 // @vitest-environment happy-dom
 import { act, createElement, useEffect } from "react";
@@ -87,4 +88,49 @@ it("leaves focus alone when a mouse click switches tabs", async () => {
   expect(tabs()[0].getAttribute("aria-selected")).toBe("true");
   // No forced focus: the arrows go back to nudging the canvas.
   expect(document.activeElement?.getAttribute("role")).not.toBe("tab");
+});
+
+it("lets go of focus when the mouse clicks the already-active tab", async () => {
+  // Chromium focuses a button on mouse click; nothing re-hosts for the
+  // active tab, so the click itself must release focus for the arrows.
+  tabs()[0].focus();
+  await act(async () => {
+    tabs()[0].dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+  });
+  expect(document.activeElement?.getAttribute("role")).not.toBe("tab");
+});
+
+it("moves focus between tabs with Left/Right, wrapping, without switching", async () => {
+  await act(async () => { mocks.newTab?.(); });
+  const press = (key: string) => act(async () => {
+    document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+  });
+  tabs()[0].focus();
+  await press("ArrowRight");
+  expect(document.activeElement).toBe(tabs()[1]);
+  await press("ArrowRight");
+  expect(document.activeElement).toBe(tabs()[0]);
+  await press("ArrowLeft");
+  expect(document.activeElement).toBe(tabs()[1]);
+  // From a tab's close button too: it sits in that tab's chip.
+  (document.querySelector('[aria-label^="Close "]') as HTMLElement).focus();
+  await press("ArrowRight");
+  expect(document.activeElement).toBe(tabs()[1]);
+  // Focus only: the second tab (from New Tab) is still the selected one.
+  expect(tabs().map((t) => t.getAttribute("aria-selected"))).toEqual(["false", "true"]);
+});
+
+it("keeps keyboard focus on the strip when Enter closes a tab", async () => {
+  await act(async () => { mocks.newTab?.(); });
+  await act(async () => { mocks.newTab?.(); });
+  const closeBtns = () => [...document.querySelectorAll<HTMLElement>('[aria-label^="Close "]')];
+  // Close the active (last) tab: its left neighbour takes over and the
+  // strip re-hosts in that editor's slot.
+  await act(async () => { closeBtns()[2].click(); });
+  expect(tabs()).toHaveLength(2);
+  expect(document.activeElement).toBe(tabs()[1]);
+  // Close an inactive tab: nothing re-hosts, but its × is gone.
+  await act(async () => { closeBtns()[0].click(); });
+  expect(tabs()).toHaveLength(1);
+  expect(document.activeElement).toBe(tabs()[0]);
 });
