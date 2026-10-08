@@ -7,7 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Fixed
-- **The browser's saved-master store no longer grows without limit.** It keeps the 20 masters most recently opened or saved and drops older copies, so a full store can't stop new masters from being kept. A copy that can't be stored is now logged.
+- **The browser's saved-master store no longer grows without limit.** It keeps the 20 masters most recently opened, saved or used and drops older copies, so a full store can't stop new masters from being kept. A copy that can't be stored is now logged.
 
 ### Security
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.

@@ -10,6 +10,28 @@ import { MAX_CACHED_MASTERS, cacheMaster, cachedMaster, dropCachedMaster } from 
 
 const bytes = (n: number) => new Uint8Array([n, n, n]);
 
+const LEGACY = MAX_CACHED_MASTERS + 5;
+
+/** Fill the store directly, as a build from before the bound did: no recency
+ *  record, more masters than the bound. */
+async function seedLegacyStore(): Promise<void> {
+  const db = await new Promise<IDBDatabase>((resolve) => {
+    const req = indexedDB.open("labellab", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("masters");
+    req.onsuccess = () => resolve(req.result);
+  });
+  const tx = db.transaction("masters", "readwrite");
+  for (let i = 0; i < LEGACY; i++) tx.objectStore("masters").put(bytes(i), `old${i}`);
+  await new Promise((r) => { tx.oncomplete = r; });
+  db.close();
+}
+
+/** How many of seedLegacyStore's masters are still cached. */
+async function legacyLeft(): Promise<number> {
+  const left = await Promise.all(Array.from({ length: LEGACY }, (_, i) => cachedMaster(`old${i}`)));
+  return left.filter(Boolean).length;
+}
+
 beforeEach(() => { globalThis.indexedDB = new IDBFactory(); });
 afterEach(() => { vi.restoreAllMocks(); });
 
@@ -38,22 +60,47 @@ describe("master cache bound (#406)", () => {
   });
 
   it("a cache from before the bound is trimmed on the next write", async () => {
-    // Fill the store directly, as an older build did: no recency record.
-    const db = await new Promise<IDBDatabase>((resolve) => {
-      const req = indexedDB.open("labellab", 1);
-      req.onupgradeneeded = () => req.result.createObjectStore("masters");
-      req.onsuccess = () => resolve(req.result);
-    });
-    const tx = db.transaction("masters", "readwrite");
-    for (let i = 0; i < MAX_CACHED_MASTERS + 5; i++) tx.objectStore("masters").put(bytes(i), `old${i}`);
-    await new Promise((r) => { tx.oncomplete = r; });
-    db.close();
+    await seedLegacyStore();
     await cacheMaster("new", bytes(9));
     expect(await cachedMaster("new")).toEqual(bytes(9));
-    const left = await Promise.all(
-      Array.from({ length: MAX_CACHED_MASTERS + 5 }, (_, i) => cachedMaster(`old${i}`)),
-    );
-    expect(left.filter(Boolean)).toHaveLength(MAX_CACHED_MASTERS - 1);
+    expect(await legacyLeft()).toBe(MAX_CACHED_MASTERS - 1);
+  });
+
+  it("a store already full still evicts, even though the new put fails", async () => {
+    // The quota was hit before the bound shipped. Eviction must not ride in
+    // the same transaction as the put, or the put's abort rolls it back and
+    // the store stays full for good.
+    await seedLegacyStore();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const realPut = IDBObjectStore.prototype.put;
+    vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (this: IDBObjectStore, v: unknown, k?: IDBValidKey) {
+      if (v instanceof Uint8Array) throw new DOMException("full", "QuotaExceededError");
+      return realPut.call(this, v, k);
+    });
+    await cacheMaster("new", bytes(9));
+    vi.restoreAllMocks();
+    expect(await legacyLeft()).toBe(MAX_CACHED_MASTERS - 1);
+  });
+
+  it("reading a cached master back counts as using it", async () => {
+    // A reload's default master is read every launch but cached only once;
+    // without this, twenty label opens later it was the first evicted.
+    for (let i = 0; i < MAX_CACHED_MASTERS; i++) await cacheMaster(`m${i}`, bytes(i));
+    expect(await cachedMaster("m0")).toEqual(bytes(0));
+    await cacheMaster("new", bytes(7));
+    expect(await cachedMaster("m0")).toEqual(bytes(0));
+    expect(await cachedMaster("m1")).toBeNull();
+  });
+
+  it("a read on a cache from before the bound keeps that master over the rest", async () => {
+    // The first thing a browser reload does is read its last master. With no
+    // recency record the others rank by key, where "old9" sorts last and
+    // would otherwise be among the first evicted.
+    await seedLegacyStore();
+    expect(await cachedMaster("old9")).toEqual(bytes(9));
+    await cacheMaster("new", bytes(1));
+    expect(await cachedMaster("old9")).toEqual(bytes(9));
+    expect(await legacyLeft()).toBe(MAX_CACHED_MASTERS - 1);
   });
 
   it("logs a put that fails instead of failing silently", async () => {
