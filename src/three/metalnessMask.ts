@@ -1,7 +1,7 @@
 // metalnessMask.ts — the white-ink plate's per-pixel foil classifier, and an
 // async wrapper that runs it in a Web Worker so the ~3.4Mpx loop doesn't
 // hitch the main thread while the operator types in the 3D view (#396).
-// Where Worker is unavailable (Node tests, the headless harness) it runs inline.
+// Where Worker is unavailable (Node tests) it runs inline.
 
 /** Brightness/saturation classifier (captiva's metalness rule): a pixel is
  *  the bare page — foil shows — when it is bright and nearly grey. Any
@@ -25,25 +25,38 @@ export interface MaskJob { id: number; pixels: Uint8ClampedArray<ArrayBuffer> }
 
 let worker: Worker | null = null;
 let nextId = 0;
-const pending = new Map<number, (d: Uint8ClampedArray<ArrayBuffer>) => void>();
+const pending = new Map<number, {
+  resolve: (d: Uint8ClampedArray<ArrayBuffer>) => void;
+  reject: (err: Error) => void;
+}>();
 
 /** Classify `pixels` off the main thread. The buffer is transferred, so the
- *  caller must not reuse it; the classified copy comes back. */
+ *  caller must not reuse it; the classified copy comes back. Rejects if the
+ *  worker fails to load or throws, so the caller can report it instead of
+ *  waiting forever; the next call starts a fresh worker. */
 export function deriveMetalnessPixels(pixels: Uint8ClampedArray<ArrayBuffer>): Promise<Uint8ClampedArray<ArrayBuffer>> {
   if (typeof Worker === "undefined") {
     classifyMetalness(pixels);
     return Promise.resolve(pixels);
   }
   if (!worker) {
-    worker = new Worker(new URL("./metalnessMask.worker.ts", import.meta.url), { type: "module" });
-    worker.onmessage = (e: MessageEvent<MaskJob>) => {
-      pending.get(e.data.id)?.(e.data.pixels);
+    const w = new Worker(new URL("./metalnessMask.worker.ts", import.meta.url), { type: "module" });
+    w.onmessage = (e: MessageEvent<MaskJob>) => {
+      pending.get(e.data.id)?.resolve(e.data.pixels);
       pending.delete(e.data.id);
     };
+    w.onerror = (e: ErrorEvent) => {
+      const err = new Error(`foil-mask worker failed: ${e.message || "could not load"}`);
+      for (const p of pending.values()) p.reject(err);
+      pending.clear();
+      w.terminate();
+      if (worker === w) worker = null;
+    };
+    worker = w;
   }
   const id = nextId++;
-  return new Promise((resolve) => {
-    pending.set(id, resolve);
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
     worker!.postMessage({ id, pixels } satisfies MaskJob, [pixels.buffer]);
   });
 }

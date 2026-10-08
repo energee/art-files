@@ -6,7 +6,7 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
-### Performance
+### Changed
 - **Smoother typing in the 3D view.** The foil-mask pass over the label texture now runs in a background worker instead of stalling the editor on every rebuild.
 
 ### Security
