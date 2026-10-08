@@ -365,11 +365,9 @@ describe("cached page-art layer (#412)", () => {
     const layers: ReturnType<typeof fakeCtx>[] = [];
     vi.stubGlobal("document", {
       createElement: () => {
-        const el = { width: 0, height: 0, getContext: () => layer.ctx };
         const layer = fakeCtx();
-        (layer.ctx as unknown as { canvas: unknown }).canvas = el;
         layers.push(layer);
-        return el;
+        return { width: 0, height: 0, getContext: () => layer.ctx };
       },
     });
     return layers;
