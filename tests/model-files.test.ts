@@ -189,3 +189,34 @@ it("round-trips a legitimate dot-prefixed asset name", () => {
   const bytes = packMaster(lolevV3(), { texture: { name: ".texture.png", bytes: new Uint8Array([1, 2]) } });
   expect(unpackMaster(bytes).assets.texture?.name).toBe(".texture.png");
 });
+
+describe("parseLabel rejects malformed untrusted fields (#392)", () => {
+  const base = { formatVersion: 3, masterId: "lolev" };
+  it("rejects a value that is neither a string nor text lines", () => {
+    expect(() => parseLabel({ ...base, values: { name: 42 } })).toThrow(/value/);
+    expect(() => parseLabel({ ...base, values: { name: [{ text: 1 }] } })).toThrow(/value/);
+    expect(() => parseLabel({ ...base, dormant: { values: { x: {} }, variants: [] } })).toThrow(/value/);
+  });
+  it("rejects an override with non-numeric geometry or a malformed added layer", () => {
+    expect(() => parseLabel({ ...base, overrides: { name: { x: "12" } } })).toThrow(/x/);
+    expect(() => parseLabel({ ...base, overrides: { name: { size: Infinity } } })).toThrow(/size/);
+    expect(() => parseLabel({ ...base, overrides: { name: [] } })).toThrow(/override/);
+    expect(() => parseLabel({ ...base, overrides: { name: { y: { below: "upc", gap: "2" } } } })).toThrow(/invalid y/);
+    expect(parseLabel({ ...base, overrides: { name: { y: { below: "upc", gap: 2 } } } })).toHaveProperty("overrides");
+    expect(() => parseLabel({ ...base, overrides: { extra: { kind: "text", name: "Extra" } } })).toThrow();
+  });
+  it("keeps null deletions and filters enabledVariants to strings", () => {
+    const l = parseLabel({ ...base, enabledVariants: ["a", 3, null], overrides: { name: { h: null } } });
+    expect(l).toMatchObject({ enabledVariants: ["a"], overrides: { name: { h: null } } });
+  });
+});
+
+// A label-only layer's cleared optional fields are saved as null
+// (setLabelOverride's "unset" spelling); the file must still open (#392).
+it("parseLabel accepts an added layer whose optional fields were cleared to null (#392)", () => {
+  const stamp = { ...structuredClone(lolevV3().layers.find((l) => l.id === "name")!), id: "stamp", name: "Stamp" };
+  const overrides = { stamp: { ...stamp, title: null, choices: null, fontFamily: null, width: null } };
+  expect(() => parseLabel({ formatVersion: 3, masterId: "lolev", overrides })).not.toThrow();
+  expect(() => parseLabel({ formatVersion: 3, masterId: "lolev", overrides: { stamp: { ...stamp, id: "other" } } }))
+    .toThrow(/id/);
+});

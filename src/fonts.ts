@@ -60,7 +60,6 @@ function registerFaces(id: FontFamilyId = "poppins"): Promise<void> {
     new FontFace(css, `url(${urls.bold})`, { weight: "700" }).load(),
   ]).then((faces) => {
     faces.forEach((face) => document.fonts.add(face));
-
   }).catch((error) => {
     registrationPromises.delete(id);
     throw error;
@@ -70,27 +69,29 @@ function registerFaces(id: FontFamilyId = "poppins"): Promise<void> {
 }
 
 /** Face-aware canvas measure for the plan and renderer. */
-const facesPromises = new Map<FontFamilyId, Promise<MeasureFace>>();
+const facesPromises = new Map<string, Promise<MeasureFace>>();
 
-export function loadLabelFaces(id: FontFamilyId = "poppins"): Promise<MeasureFace> {
-  const cached = facesPromises.get(id);
+/** The measure for a label whose default family is `id` and whose layers
+ *  also draw with `others` (see fontCatalog's usedFontFamilies). Only those
+ *  families' faces are fetched (#411); a family a layer picks later loads on
+ *  the next call that names it. Memoized per family set. */
+export function loadLabelFaces(id: FontFamilyId = "poppins", others: readonly FontFamilyId[] = []): Promise<MeasureFace> {
+  const families = [...new Set([id, ...others])];
+  const key = [id, ...families.slice(1).sort()].join(",");
+  const cached = facesPromises.get(key);
   if (cached) return cached;
   // Memoized like registerFaces: callers sit on hot paths (the dev preview
   // effect re-asks per rebuild), and the measurement canvas is reusable.
-  // Both bundled families are ready before editing; switching a layer cannot
-  // measure a fallback font while its actual face is still loading.
-  const p: Promise<MeasureFace> = Promise.all(
-    (Object.keys(FONT_URLS) as FontFamilyId[]).map(registerFaces),
-  ).then((): MeasureFace => {
+  const p: Promise<MeasureFace> = Promise.all(families.map(registerFaces)).then((): MeasureFace => {
     const ctx = unkernedContext();
     return (text, size, face, family = id) => {
       ctx.font = `${FACE_WEIGHT[face]} ${size}px ${labelFontCss(family)}`;
       return ctx.measureText(text).width;
     };
   }).catch((error) => {
-    facesPromises.delete(id);
+    facesPromises.delete(key);
     throw error;
   });
-  facesPromises.set(id, p);
+  facesPromises.set(key, p);
   return p;
 }

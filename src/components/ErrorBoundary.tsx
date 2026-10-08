@@ -31,7 +31,8 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
             <p className="break-words font-mono text-xs">{error.message}</p>
             <p>
               Reloading opens a fresh window. Files already saved to disk are
-              untouched; edits made since the last save are lost.
+              untouched; unsaved tabs are offered back after the reload
+              (changes from the last couple of seconds may be missing).
             </p>
           </AlertDescription>
         </Alert>
