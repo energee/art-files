@@ -7,6 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Fixed
+- **Locate .master… says why it failed.** If the picked master can't be read, the error shows instead of the dialog silently asking again. A browser with no file picker says so.
 - **Remove a master from the library by keyboard.** In the Master menu, highlight a remembered master and press Delete. Screen readers announce the shortcut. The ✕ button only worked with a mouse.
 - **The metallic mask accepts WebP.** Drop a .webp on the mask field or the mask half of the window chooser. The PDF gets a lossless PNG copy.
 - **A WebP background stays WebP when you save.** The label and master files keep the image you dropped. Only the PDFs carry a PNG copy, because the PDF embed takes PNG and JPEG only.
