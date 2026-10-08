@@ -20,6 +20,9 @@ that section to the new version (see .agents/release-steward.md).
 ### Security
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.
 
+### Fixed
+- **Background failures show up instead of vanishing.** A save, export or open that fails outside its own error handling now shows a dismissible alert with the reason, rather than failing silently.
+
 ## [0.1.104] - 2026-10-08
 
 ### Fixed
