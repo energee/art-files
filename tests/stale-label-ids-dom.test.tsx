@@ -34,7 +34,7 @@ afterEach(() => { localStorage.clear(); document.body.innerHTML = ""; });
  *  in `writes`. */
 async function openLabel(
   label: Parameters<typeof packLabel>[0],
-  check: (ctx: { container: HTMLElement; save: () => Promise<boolean>; writes: Uint8Array[] }) => Promise<void>,
+  check: (ctx: { container: HTMLElement; save: () => Promise<void>; writes: Uint8Array[] }) => Promise<void>,
 ) {
   const bytes = packLabel(label, {});
   const writes: Uint8Array[] = [];
@@ -58,7 +58,7 @@ async function openLabel(
     for (let i = 0; i < 400 && !onOpenSettled.mock.calls.length; i++)
       await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
     expect(onOpenSettled).toHaveBeenCalledWith(1);
-    const save = async () => { let ok = false; await act(async () => { ok = await saveSlot.current!(); }); return ok; };
+    const save = () => act(async () => { expect(await saveSlot.current!()).toBe(true); });
     await check({ container, save, writes });
   } finally {
     await act(async () => { root.unmount(); });
