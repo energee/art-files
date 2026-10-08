@@ -31,8 +31,9 @@ export function UncaughtErrors() {
     };
     const onError = (e: ErrorEvent) => {
       if (RESIZE_OBSERVER_NOTICE.test(e.message)) return;
-      console.error("Label Lab: uncaught error", e.error ?? e.message);
-      setMessage(e.error === undefined || e.error === null ? e.message : describe(e.error));
+      const reason = e.error ?? e.message;
+      console.error("Label Lab: uncaught error", reason);
+      setMessage(describe(reason));
     };
     window.addEventListener("unhandledrejection", onRejection);
     window.addEventListener("error", onError);
