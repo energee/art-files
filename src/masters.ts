@@ -70,7 +70,6 @@ export function masterIndex(): Record<string, MasterIndexEntry> {
  *  blob can't resurrect a row that is later forgotten. A row another window
  *  already wrote is newer than the blob, so it is kept. */
 function migrateLegacyIndex(): void {
-  if (localStorage.getItem(LEGACY_KEY) === null) return;
   for (const [id, e] of Object.entries(legacyIndex())) {
     if (localStorage.getItem(ROW_PREFIX + id) === null) localStorage.setItem(ROW_PREFIX + id, JSON.stringify(e));
   }
