@@ -5,7 +5,7 @@
 // master with deterministic fake metrics.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { drawPlate } from "../src/canvas/draw";
-import { planLayers, type PlacedLayer } from "../src/planLayers";
+import { planLayers, type PlacedLayer, type PlacedPage } from "../src/planLayers";
 import type { MeasureFace, PlacedBarcode } from "./legacy/planShared";
 import type { BarcodeLayer } from "../src/model/layers";
 import { MASK_BLUE_HEX, PAGE } from "./legacy/layout";
@@ -394,6 +394,27 @@ describe("cached page-art layer (#412)", () => {
     expect(drawn(second.log)[0]).toBe(drawn(first.log)[0]);
   });
 
+  it("paints the layer in PAGE space at plate scale and blits it 1:1 at the origin", () => {
+    const layers = stubDocument();
+    const tex = freshBitmap();
+    const { ctx, log } = fakeCtx();
+    const p = plan(withPages);
+    drawPlate(ctx, p, { images: { tex } }, "art", FONT);
+    // The layer: the plate's own scale, no bleed shift, then the cover-fit rect.
+    const page = p.find((r): r is PlacedPage => r.kind === "page" && r.role === "background")!;
+    const scale = ctx.canvas.width / PAGE.w;
+    const layerOps = layers[0].log.filter((x) => x.op === "setTransform" || x.op === "drawImage");
+    expect(layerOps.map((x) => x.args)).toEqual([
+      [scale, 0, 0, scale, 0, 0],
+      [tex, page.x, page.y, page.w, page.h],
+    ]);
+    // The plate: identity transform, then the layer at (0, 0) with no resize.
+    const blit = log.findIndex((x) => x.op === "drawImage");
+    expect(log[blit].args.slice(1)).toEqual([0, 0]);
+    const lastTransform = log.slice(0, blit).reverse().find((x) => x.op === "setTransform");
+    expect(lastTransform?.args).toEqual([1, 0, 0, 1, 0, 0]);
+  });
+
   it("repaints the layer when the bitmap or the raster size changes", () => {
     const layers = stubDocument();
     const a = freshBitmap(), b = freshBitmap();
@@ -402,7 +423,8 @@ describe("cached page-art layer (#412)", () => {
     const resized = fakeCtx();
     (resized.ctx as unknown as { canvas: { width: number } }).canvas.width = PAGE.w * 3;
     drawPlate(resized.ctx, plan(withPages), { images: { msk: b } }, "mask", FONT);
-    expect(layers.map((l) => drawn(l.log))).toEqual([[a], [b], [b]]);
+    // b's resize repaints into b's own canvas (no third canvas left for GC).
+    expect(layers.map((l) => drawn(l.log))).toEqual([[a], [b, b]]);
   });
 
   it("does not cache a plate with no page bitmap to draw", () => {

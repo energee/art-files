@@ -39,7 +39,9 @@ export interface CanvasAssets {
    *  or hasn't finished), stays a no-op — the plan places a rect from a
    *  stored aspect alone before/without bytes ever loading. The page roles
    *  fall back as before: no background bitmap = bare stock, no mask bitmap
-   *  = the white-ink flood. */
+   *  = the white-ink flood. A page bitmap is resampled once and cached by
+   *  identity (pageLayer, #412): pass a new object for new pixels, never a
+   *  canvas repainted in place. */
   images?: Record<string, CanvasImageSource | null | undefined>;
 }
 
@@ -79,15 +81,19 @@ const path2ds = (paths: readonly string[]): Path2D[] => {
  *  full-size upload into a 600-DPI plate was a full resample on every repaint;
  *  now a repaint is a 1:1 blit of this layer. One entry per bitmap, repainted
  *  when the cover-fit rect or the plate's pixel size changes (a zoom re-raster,
- *  or the 3D view drawing the same bitmap at texture size). WeakMap so a
- *  replaced upload's layer goes with it. */
+ *  or the 3D view drawing the same bitmap at texture size). Keyed on the
+ *  bitmap's identity, so a source must never be redrawn in place (see
+ *  CanvasAssets). WeakMap so a replaced upload's layer goes with it. */
 interface PageLayer { key: string; canvas: HTMLCanvasElement }
 const pageLayerCache = new WeakMap<object, PageLayer>();
 function pageLayer(bmp: CanvasImageSource, r: PlacedPage, w: number, h: number): HTMLCanvasElement {
   const key = `${r.x},${r.y},${r.w},${r.h},${w},${h}`;
   let hit = pageLayerCache.get(bmp);
   if (!hit || hit.key !== key) {
-    const canvas = document.createElement("canvas");
+    // Reuse this bitmap's canvas on a re-key: assigning width/height clears it
+    // and swaps its backing store now, where a fresh canvas per zoom settle
+    // would leave the old plate-sized one waiting on GC.
+    const canvas = hit?.canvas ?? document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
     const lc = canvas.getContext("2d")!;
