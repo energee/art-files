@@ -111,7 +111,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn, errMsg } from "@/lib/utils";
 import { FONT_URLS, loadLabelFaces, labelFontCss } from "@/fonts";
-import { fontFamilyOf, type FontFamilyId } from "@/fontCatalog";
+import { fontFamilyOf, usedFontFamilies, type FontFamilyId } from "@/fontCatalog";
 import { loadFonts } from "@/pdf/fonts";
 import type { MeasureFace, PlanAssets } from "@/plan";
 import type { CanvasAssets, CanvasRenderSource } from "@/canvas/draw";
@@ -872,16 +872,21 @@ export const DocumentEditor = memo(function DocumentEditor({
     });
   };
 
-  // Warm the face-aware measure for the master's family (the single font
-  // gate) and surface a font-load failure early. The planner callers below
-  // each await loadLabelFaces themselves, so nothing here is stored.
+  // Warm the face-aware measure for the families this label uses (the single
+  // font gate) and surface a font-load failure early. Only the master's
+  // family and the layers' overrides load (#411); picking another family
+  // changes fontKey and loads it. The planner callers below each await
+  // loadLabelFaces themselves, so nothing here is stored. Every listed row
+  // counts, disabled ones too, since the inspector measures those boxes.
   const family = fontFamilyOf(master);
+  const fontKey = useMemo(() => usedFontFamilies(family, rows.map((r) => r.layer)).join(","), [family, rows]);
+  const fontOverrides = useMemo(() => fontKey.split(",").slice(1) as FontFamilyId[], [fontKey]);
   useEffect(() => {
     let cancelled = false;
-    loadLabelFaces(family)
+    loadLabelFaces(family, fontOverrides)
       .catch((error) => { if (!cancelled) setBuildError(String(error)); });
     return () => { cancelled = true; };
-  }, [family]);
+  }, [family, fontOverrides]);
 
   // Which instance the window/document-level key listeners below belong to.
   const activeRef = useRef(active);
@@ -1069,7 +1074,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   // assembled off the asset inputs alone (debounced — uploads and tint
   // changes are rare and each re-assembly decodes every bitmap). Layer edits
   // deliberately DON'T re-run this: the layers flow into the views as a prop
-  // and repaint with these same bitmaps.
+  // and repaint with these same bitmaps. The one layer edit that does is a
+  // font pick that adds a family to fontOverrides, so its faces load (#411).
   const [decodedAssets, setDecodedAssets] = useState<{
     m: MeasureFace; planAssets: PlanAssets; drawAssets: CanvasAssets; fontCss: string;
   } | null>(null);
@@ -1085,7 +1091,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     let cancelled = false;
     const timer = setTimeout(() => {
       (async () => {
-        const m = await loadLabelFaces(family);
+        const m = await loadLabelFaces(family, fontOverrides);
         // Every decode this run makes is tracked here, so a throw partway
         // through can still close everything decoded so far.
         const decoded: ImageBitmap[] = [];
@@ -1127,9 +1133,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     }, 150);
     return () => { cancelled = true; clearTimeout(timer); };
     // Asset inputs only — the layers reach this effect through tintKey and
-    // the two page-art switches (see the comment above).
+    // the two page-art switches (see the comment above); fontOverrides is the
+    // set of layer font families, so picking a new one reloads its faces.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [texture, mask, liveImages, family, tintKey, bgOn, maskOn, active]);
+  }, [texture, mask, liveImages, family, fontOverrides, tintKey, bgOn, maskOn, active]);
   // The bitmaps backing the CURRENTLY LIVE `canvasAssets` generation, closed
   // once the next generation has fully replaced them (bitmaps aren't GC'd
   // on their own). A bitmap can sit under two keys; close each once.
