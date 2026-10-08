@@ -29,7 +29,7 @@
 // Only the middle one resolves a file, so the two sentinels are intercepted
 // in onValueChange before any rebind is considered.
 import { CornerDownRight, X } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { rebindLabel } from "@/model/rebindLayers";
 import type { MasterAssets } from "@/model/files";
@@ -119,10 +119,21 @@ export function MasterPicker(props: {
     setRemoved(null);
   };
 
+  /** The id whose removal is running. A ref, not state: two presses in one
+   *  tick would both read stale state, and the second removal's empty undo
+   *  would replace the real one. */
+  const forgetting = useRef<string | null>(null);
+
   const forget = async (id: string) => {
+    if (forgetting.current === id) return;
+    forgetting.current = id;
     const name = props.library[id]?.name ?? id;
-    const undo = await props.onForget(id);
-    setRemoved({ name, undo });
+    try {
+      const undo = await props.onForget(id);
+      setRemoved({ name, undo });
+    } finally {
+      forgetting.current = null;
+    }
   };
 
   /** Resolve the selected master and preview the rebind before committing. */
@@ -265,7 +276,11 @@ export function MasterPicker(props: {
         <p id="master-picker-removed" role="status" className="mt-1 px-1 text-[11px] text-muted-foreground">
           Removed “{removed.name}” from the library. The file stays where it is.{" "}
           <Button type="button" size="xs" variant="link" className="h-auto p-0 text-[11px]"
-            onClick={() => { setRemoved(null); void removed.undo(); }}>
+            onClick={() => {
+              // This button goes with the note: hand focus back to the picker.
+              document.getElementById("master-picker")?.focus();
+              setRemoved(null); void removed.undo();
+            }}>
             Undo
           </Button>
         </p>

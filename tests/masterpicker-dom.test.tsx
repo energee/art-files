@@ -247,6 +247,24 @@ describe("MasterPicker", () => {
     await act(async () => { undoButton.click(); await Promise.resolve(); });
     expect(undo).toHaveBeenCalledTimes(1);
     expect(container.querySelector("#master-picker-removed")).toBeNull();
+    // The note took the focused Undo with it: focus lands on the picker.
+    expect(document.activeElement).toBe(trigger());
+  });
+
+  // A second press while the first removal is still running would snapshot a
+  // row that is already gone, and its empty undo would replace the real one.
+  it("ignores a second remove of the same master while the first is running", async () => {
+    let finish: (undo: () => Promise<void>) => void = () => {};
+    const onForget = vi.fn(() => new Promise<() => Promise<void>>((r) => { finish = r; }));
+    renderPicker({
+      onForget,
+      library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: true } },
+    });
+    openMenu();
+    const x = document.querySelector('[aria-label="Remove Other Brewery from the library"]') as HTMLButtonElement;
+    await act(async () => { x.click(); x.click(); await Promise.resolve(); });
+    expect(onForget).toHaveBeenCalledTimes(1);
+    await act(async () => { finish(vi.fn()); await Promise.resolve(); });
   });
 
   it("shows no remove button on a master the library does not remember", () => {

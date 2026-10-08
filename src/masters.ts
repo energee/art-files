@@ -136,7 +136,9 @@ export async function forgetMaster(id: string, replacementId?: string): Promise<
 /** The picker's Remove: forgetMaster, but first keep what it drops — the
  *  index row, the last-master key and the remembered bytes — and return an
  *  undo that puts all three back (#402). The .master file is never touched,
- *  so undo is only ever restoring this computer's bookkeeping. */
+ *  so undo is only ever restoring this computer's bookkeeping. A late undo
+ *  yields to what happened since: a master re-added in the meantime keeps
+ *  its newer row and bytes, and a master applied since keeps the last key. */
 export async function removeFromLibrary(id: string): Promise<() => Promise<void>> {
   const row = masterIndex()[id];
   let wasLast = false;
@@ -144,10 +146,12 @@ export async function removeFromLibrary(id: string): Promise<() => Promise<void>
   const bytes = await cachedMaster(id);
   await forgetMaster(id);
   return async () => {
+    if (masterIndex()[id]) return; // re-added since: that copy is newer
     if (bytes) await cacheMaster(id, bytes);
     try {
       if (row) localStorage.setItem(KEY, JSON.stringify({ ...masterIndex(), [id]: row }));
-      if (wasLast) localStorage.setItem(LAST_KEY, id);
+      // Removal cleared the key, so a set key means a master applied since.
+      if (wasLast && !localStorage.getItem(LAST_KEY)) localStorage.setItem(LAST_KEY, id);
     } catch { /* no localStorage — same fallback as masterIndex */ }
   };
 }

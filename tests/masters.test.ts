@@ -262,6 +262,32 @@ describe("master library index", () => {
     vi.doUnmock("@/masterCache");
   });
 
+  // The Undo note outlives other actions (File → Open Master does not touch
+  // the picker), so a late Undo must not overwrite what happened since.
+  it("a late undo leaves a re-added master and a newer last master alone", async () => {
+    const held = new Map<string, Uint8Array>();
+    vi.doMock("@/masterCache", () => ({
+      cacheMaster: async (id: string, bytes: Uint8Array) => { held.set(id, bytes); },
+      cachedMaster: async (id: string) => held.get(id) ?? null,
+      dropCachedMaster: async (id: string) => { held.delete(id); },
+    }));
+    const mod = await import("../src/masters");
+    const m = { ...lolevMaster(), id: "m1", name: "M" };
+    await mod.rememberMaster(m, "/a.master", new Uint8Array([7]));
+    const undo = await mod.removeFromLibrary("m1");
+    await mod.rememberMaster({ ...m, name: "M2" }, "/b.master", new Uint8Array([8]));
+    await undo();
+    expect(mod.masterIndex().m1.path).toBe("/b.master");
+    expect(held.get("m1")).toEqual(new Uint8Array([8]));
+
+    const undo2 = await mod.removeFromLibrary("m1");
+    await mod.rememberMaster({ ...m, id: "m2", name: "Other" }, "/c.master");
+    await undo2();
+    expect(mod.masterIndex().m1.path).toBe("/b.master");
+    expect(localStorage.getItem("labellab.lastMaster")).toBe("m2");
+    vi.doUnmock("@/masterCache");
+  });
+
   // A .label is shared, so its masterHint is untrusted: only a path beside
   // the label or beside an already-registered master may be read.
   it("reads a hint only when it sits beside the label or a registered master", async () => {
