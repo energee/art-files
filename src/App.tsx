@@ -197,11 +197,13 @@ const HEADER_ALERT_TONE = {
  *  full-width block. Warning and success use `variant` "default" plus their
  *  own colour classes rather than the destructive variant, which paints its
  *  descendant text through a selector on Alert itself that a className
- *  override can't reach. */
+ *  override can't reach. A success note is a polite `status`, not an
+ *  interrupting `alert`. */
 function HeaderAlert({ children, tone = "destructive" }: { children: React.ReactNode; tone?: keyof typeof HEADER_ALERT_TONE }) {
   const [box, text] = HEADER_ALERT_TONE[tone];
   return (
-    <Alert variant={tone === "destructive" ? "destructive" : "default"} className={cn("w-auto px-2 py-0.5", box)}>
+    <Alert variant={tone === "destructive" ? "destructive" : "default"} className={cn("w-auto px-2 py-0.5", box)}
+      {...(tone === "success" && { role: "status" })}>
       <AlertDescription className={cn("text-xs", text)}>
         {children}
       </AlertDescription>
@@ -558,8 +560,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   // assembly, exports and native menu failures.
   const [buildError, setBuildError] = useState("");
   // The files the last export wrote (#400): shown until the next edit or
-  // export, since an edit makes those files stale.
+  // export, since an edit makes those files stale. exportFresh goes false on
+  // any edit, so an export that an edit overlapped confirms nothing: its
+  // files hold the label as it was when the export began.
   const [exportNote, setExportNote] = useState("");
+  const exportFresh = useRef(false);
+  const exportStale = () => { exportFresh.current = false; setExportNote(""); };
   const [renderError, setRenderError] = useState("");
   const [loadError, setLoadError] = useState("");
   // A .label whose master can't be found asks what to open it on; openProject
@@ -733,7 +739,7 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  stay pristine so an OS-open can reuse it, and a keystroke during the
    *  await must not be cleared afterwards. */
   const restoringRef = useRef(false);
-  const markDirty = () => { setDirty(true); setExportNote(""); if (!restoringRef.current) setEdited(true); };
+  const markDirty = () => { setDirty(true); exportStale(); if (!restoringRef.current) setEdited(true); };
 
   /** THE write path. Every document edit is a pure Doc → Doc transition
    *  (model/edit.ts), recorded as one history entry; `coalesce` folds a
@@ -757,7 +763,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // swapLoaded/onTexture, not a keystroke while assets are still loading.
     setDirty(true);
     setEdited(true);
-    setExportNote("");
+    exportStale();
     setDoc((d) => (d === doc ? next : checked(d)), coalesce);
     return true;
   };
@@ -1442,6 +1448,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     exportRunning.current = true;
     setBuilding(true);
     setExportNote("");
+    exportFresh.current = true;
     startSaveBatch();
     const saved: string[] = [];
     let pending = "";
@@ -1458,7 +1465,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         saved.push(result.name);
       }
       setBuildError("");
-      setExportNote(`Saved ${saved.join(", ")}.`);
+      if (exportFresh.current) setExportNote(`Saved ${saved.join(", ")}.`);
     } catch (error) {
       setBuildError(`${saved.length ? `Saved ${saved.join(", ")}. ` : ""}${pending ? `Could not save ${pending}: ` : ""}${errMsg(error)}`);
     } finally {

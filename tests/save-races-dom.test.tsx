@@ -229,9 +229,39 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psd", "psd"
     });
     const [art, mask] = pick.mock.calls.map(([options]) => options.suggestedName);
     await vi.waitFor(() => expect(document.body.textContent).toContain(`Saved ${art}, ${mask}.`));
+    // A confirmation, not an error: announced politely.
+    const note = [...document.querySelectorAll('[data-slot="alert"]')].find((a) => a.textContent === `Saved ${art}, ${mask}.`);
+    expect(note?.getAttribute("role")).toBe("status");
     // A later edit makes the confirmation stale, so it goes.
     await toggle("warning");
     expect(document.body.textContent).not.toContain(`Saved ${art}`);
+  });
+  it(`${extension}: an edit during the export withholds the confirmation (#400)`, async () => {
+    // The first dialog waits until released, so an edit lands mid-export.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const pick = vi.fn(async ({ suggestedName }: { suggestedName: string }) => {
+      if (pick.mock.calls.length === 1) await held;
+      return { name: suggestedName, createWritable: async () => ({ write: async () => {}, close: async () => {} }) };
+    });
+    vi.stubGlobal("showSaveFilePicker", pick);
+    await mount();
+    await vi.waitFor(async () => {
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 25)); });
+      expect(menu.actions.find((c) => c.id === "export-both")!.disabled).toBe(false);
+    });
+    await act(async () => {
+      menu.actions.find((c) => c.id === command)!.run();
+      await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(1), { timeout: 4000 });
+    });
+    await toggle("warning");
+    await act(async () => {
+      release();
+      await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(2), { timeout: 4000 });
+    });
+    // Let the export finish, then check it confirmed nothing.
+    await vi.waitFor(() => expect(menu.actions.find((c) => c.id === "export-both")!.disabled).toBe(false));
+    expect(document.body.textContent).not.toContain("Saved ");
   });
 }
 
