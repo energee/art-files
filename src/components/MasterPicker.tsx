@@ -21,11 +21,12 @@
 //     `variants.<id>.layers` instead of the base master. The same selection
 //     shows that version on this label.
 //   * the other masters in the library, which are a REBIND and go through the
-//     bench preview below.
+//     bench preview below. A remembered one carries an X at the right of its
+//     row that takes it off the library without picking it.
 //   * New Variant, an action at the foot.
 // Only the middle one resolves a file, so the two sentinels are intercepted
 // in onValueChange before any rebind is considered.
-import { CornerDownRight } from "lucide-react";
+import { CornerDownRight, X } from "lucide-react";
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { rebindLabel } from "@/model/rebindLayers";
@@ -34,6 +35,8 @@ import type { LabelFile, Master } from "@/model/layers";
 import {
   Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+
+const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
 /** The menu's non-library rows (see the header note). No master id can
  *  collide with either — a minted one is always `master-…`. */
@@ -102,22 +105,17 @@ export function MasterPicker(props: {
   const [committing, setCommitting] = useState(false);
   /** The variant whose name is being edited inline, or null. */
   const [naming, setNaming] = useState<string | null>(null);
-  /** The library row chosen for a rebind, kept so Remove can drop it whether
-   *  or not the file opened. */
-  const [pickedId, setPickedId] = useState<string | null>(null);
 
   const closeAll = () => {
     setPreview(null);
     setResolvingId(null);
     setError("");
-    setPickedId(null);
   };
 
   /** Resolve the selected master and preview the rebind before committing. */
   const pickEntry = async (id: string) => {
     if (id === props.master.id) return;
     setError("");
-    setPickedId(id);
     setResolvingId(id);
     const r = await props.resolve(id);
     setResolvingId(null);
@@ -143,22 +141,6 @@ export function MasterPicker(props: {
     if (next) props.onRenameVersion(id, next);
     setNaming(null);
   };
-
-  const canForget = !!pickedId && !!props.library[pickedId]?.inLibrary;
-  const forgetLabel = pickedId ? `Remove ${props.library[pickedId]?.name ?? "master"} from the library` : "Remove from library";
-  const forget = () => {
-    if (pickedId) props.onForget(pickedId);
-    closeAll();
-  };
-
-  /** Only one renders at a time: the error branch shows it when no preview is
-   *  open, the preview branch otherwise (they share an id). */
-  const forgetButton = (variant: "outline" | "ghost", className: string) => (
-    <Button type="button" id="master-picker-forget" size="xs" variant={variant} className={className}
-      aria-label={forgetLabel} title="The file stays where it is." onClick={forget}>
-      Remove from library
-    </Button>
-  );
 
   const commit = async () => {
     if (!preview || committing) return;
@@ -203,7 +185,20 @@ export function MasterPicker(props: {
           ))}
           {others.length > 0 && <SelectSeparator />}
           {others.map(([id, entry]) => (
-            <SelectItem key={id} value={id}>{entry.name}</SelectItem>
+            <SelectItem key={id} value={id}>
+              {entry.name}
+              {entry.inLibrary && (
+                // Remove is the row's own action, not a pick: every event it
+                // fires stops here so the Select never sees a selection.
+                <button type="button" aria-label={`Remove ${entry.name} from the library`}
+                  title="Remove from the library. The file stays where it is."
+                  className="pointer-events-auto ml-auto rounded-sm p-0.5 text-muted-foreground hover:text-destructive-text"
+                  onPointerDown={stop} onPointerUp={stop} onMouseUp={stop}
+                  onClick={(e) => { stop(e); props.onForget(id); }}>
+                  <X className="size-3.5" aria-hidden />
+                </button>
+              )}
+            </SelectItem>
           ))}
           <SelectSeparator />
           <SelectItem value={NEW_VARIANT} className="text-attention-text">New Variant</SelectItem>
@@ -246,30 +241,24 @@ export function MasterPicker(props: {
       )}
       {resolvingId && <p role="status" className="mt-1 text-xs text-muted-foreground">Opening master…</p>}
       {error && (
-        <div className="mt-1 px-1">
-          <p id="master-picker-error" className="text-[11px] text-destructive-text">{error}</p>
-          {canForget && !preview && forgetButton("outline", "mt-1.5 w-full")}
-        </div>
+        <p id="master-picker-error" className="mt-1 px-1 text-[11px] text-destructive-text">{error}</p>
       )}
 
       {preview && (
         <div id="master-picker-preview" role="group" aria-labelledby={previewId}
           className="mt-1 rounded-md border border-sidebar-border p-2 text-xs text-sidebar-foreground">
           <p id={previewId}>{previewLine(preview)}</p>
-          <div className="mt-1.5 flex flex-wrap items-center justify-end gap-x-1.5 gap-y-1">
-            {canForget && forgetButton("ghost", "mr-auto px-1.5 text-muted-foreground hover:text-destructive-text")}
-            <div className="flex gap-1.5">
-              <Button
-                type="button" onClick={closeAll} variant="outline" size="xs"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button" id="master-picker-continue" disabled={committing} onClick={() => { void commit(); }} size="xs"
-              >
-                Continue
-              </Button>
-            </div>
+          <div className="mt-1.5 flex justify-end gap-1.5">
+            <Button
+              type="button" onClick={closeAll} variant="outline" size="xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button" id="master-picker-continue" disabled={committing} onClick={() => { void commit(); }} size="xs"
+            >
+              Continue
+            </Button>
           </div>
         </div>
       )}
