@@ -255,8 +255,9 @@ export const PX = 72 / DESIGN_DPI;
  *  readout. Live-bound, so importers see the current value.
  *
  *  ponytail: one module-level output resolution, because the app edits one
- *  document at a time on the main thread. If a worker ever rasters, or two
- *  documents open at once, pass it as a parameter instead. */
+ *  document at a time. The PSD worker (psd/offThread.ts) has its own copy of
+ *  this module, so its job carries the DPI and bleed and re-applies them
+ *  there. If two documents open at once, pass it as a parameter instead. */
 export let OUTPUT_DPI = 0; // set by setOutputDpi(DESIGN_DPI) below
 /** Document dimensions for PSD raster layers, at OUTPUT_DPI. Mutated in place
  *  rather than replaced so the modules that read `PSD_DOC.w` keep working
