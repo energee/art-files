@@ -11,11 +11,20 @@ import type { TextLayer } from "../src/model/layers";
 vi.mock("../src/components/PreviewCompare", () => ({ SNAP_PT: 6, PreviewCompare: (props: PreviewProps) => { perf.source = props.canvasRender; perf.preview = props; return null; } }));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
 type PreviewProps = import("react").ComponentProps<typeof import("../src/components/PreviewCompare").PreviewCompare>;
-const perf = vi.hoisted(() => ({ fontLoads: 0, source: null as import("../src/canvas/draw").CanvasRenderSource | null, margin: null as null | ((n: number) => void), preview: null as PreviewProps | null }));
+const perf = vi.hoisted(() => ({ fontLoads: 0, fontArgs: [] as unknown[][], source: null as import("../src/canvas/draw").CanvasRenderSource | null, margin: null as null | ((n: number) => void), preview: null as PreviewProps | null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: (props: { onMarginChange: (n: number) => void }) => { perf.margin = props.onMarginChange; return null; } }));
 vi.mock("../src/fonts", () => ({
-  loadLabelFaces: async () => { perf.fontLoads++; return (text: string, size: number) => text.length * size * 0.55; },
+  loadLabelFaces: async (...args: unknown[]) => { perf.fontLoads++; perf.fontArgs.push(args); return (text: string, size: number) => text.length * size * 0.55; },
   labelFontCss: () => "sans-serif",
+  FONT_URLS: { poppins: {}, "barlow-condensed": {} },
+}));
+// Exports wait on loadFonts; the export test holds every call open to read
+// the in-flight overlay, then rejects them all to finish the export. Every
+// pending reject is kept: an export makes several loadFonts calls, and the
+// inspector's character-height readout may make another.
+const exportFonts = vi.hoisted(() => ({ rejects: [] as ((e: Error) => void)[] }));
+vi.mock("../src/pdf/fonts", () => ({
+  loadFonts: () => new Promise((_resolve, reject) => { exportFonts.rejects.push(reject); }),
 }));
 import { DocumentEditor } from "../src/App";
 
@@ -301,6 +310,30 @@ it("leaves focus out of the inspector when a layer selection opens it", async ()
   } finally {
     act(() => { root.unmount(); });
     container.remove();
+  }
+});
+
+// Issue #411 — the preview loads only the families a label uses, so picking a
+// new font on a layer must hand that family to the font gate.
+it("loads a layer's newly picked font family (#411)", async () => {
+  const { container, unmount } = await mountEditor();
+  try {
+    expect(perf.fontArgs.at(-1)).toEqual(["poppins", []]);
+    const row = container.querySelector('[data-layer-id="name"]')!;
+    await act(async () => {
+      (row.querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement).click();
+    });
+    const font = document.querySelector('[aria-label="Font"]')!;
+    await act(async () => { font.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    const option = Array.from(document.querySelectorAll('[role="option"]'))
+      .find((el) => el.textContent?.includes("Barlow Condensed"))!;
+    await act(async () => {
+      option.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" }));
+      option.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(perf.fontArgs.at(-1)).toEqual(["poppins", ["barlow-condensed"]]);
+  } finally {
+    await unmount();
   }
 });
 
@@ -635,4 +668,25 @@ it("Delete with a stale id in a multi-row selection removes the rows that exist"
     await act(async () => nameRow()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true })));
     expect(nameRow()).toBeNull();
   } finally { await unmount(); }
+}, 60_000);
+
+// Issue #401: an export blurred the preview under a "rendering preview…" note,
+// so a long export read as a stalled preview. The note names the export.
+it.each([
+  ["PDFs", { key: "e", metaKey: true }],
+  ["PSDs", { key: "e", metaKey: true, shiftKey: true }],
+])("an export in flight shows Building %s…, not rendering preview…", async (kind, keys) => {
+  await withCanvasEditor(async (_p, container) => {
+    exportFonts.rejects = [];
+    await act(async () => {
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { ...keys, bubbles: true }));
+    });
+    // Announced, not just drawn: a screen reader hears what the blur means.
+    expect([...container.querySelectorAll('[role="status"]')].map((el) => el.textContent))
+      .toContain(`Building ${kind}…`);
+    expect(container.textContent).not.toContain("rendering preview…");
+    await vi.waitFor(() => expect(exportFonts.rejects.length).toBeGreaterThan(0));
+    await act(async () => { for (const reject of exportFonts.rejects) reject(new Error("stop")); });
+    await vi.waitFor(() => expect(container.textContent).not.toContain(`Building ${kind}…`));
+  });
 }, 60_000);

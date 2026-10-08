@@ -4,10 +4,12 @@
 // every caller branches on these and keeps a download/input fallback —
 // after checking isTauri() first: the desktop webview has no FS Access API
 // and uses the native dialogs in src/files.ts with these filters instead. The
-// fiddly parts (the window casts, the ArrayBuffer cast, abort detection) live
-// here so save/export/open can't drift apart. Lives outside App.tsx so that
-// module exports only React components and Fast Refresh keeps working (a
-// mixed export forces Vite into full-reload HMR).
+// fiddly parts (the window casts, the bytes cast, abort detection) live
+// here so save/export/open can't drift apart; bytesPart is also the one
+// spelling of that cast for App.tsx's Blob and File construction (#417).
+// Lives outside App.tsx so that module exports only React components and
+// Fast Refresh keeps working (a mixed export forces Vite into full-reload
+// HMR).
 import { LABEL_EXT } from "@/labelfile";
 import { MASTER_EXT } from "@/model/files";
 
@@ -43,8 +45,13 @@ export const openPicker = () => (window as {
 export const isAbort = (err: unknown) =>
   err instanceof DOMException && err.name === "AbortError";
 
+/** Bytes as a Blob/File part or FS Access write chunk. The DOM types want an
+ *  ArrayBuffer-backed view; our Uint8Arrays are typed ArrayBufferLike (they
+ *  could be shared), so this is the one place that asserts they aren't. */
+export const bytesPart = (bytes: Uint8Array) => bytes as Uint8Array<ArrayBuffer>;
+
 export async function writeHandle(handle: FileSystemFileHandle, bytes: Uint8Array) {
   const writable = await handle.createWritable();
-  await writable.write(bytes as unknown as ArrayBuffer);
+  await writable.write(bytesPart(bytes));
   await writable.close();
 }
