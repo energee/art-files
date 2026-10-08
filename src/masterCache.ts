@@ -10,9 +10,16 @@
 //
 // Best-effort by construction: every call resolves to null/undefined rather
 // than throwing, so a private window, a full disk or a browser with the store
-// blocked degrades to exactly the old behaviour.
+// blocked degrades to exactly the old behaviour. A put that fails is logged.
+//
+// Bounded (#406): every open and save caches, and each Save As mints a new id,
+// so the store keeps only the MAX_CACHED_MASTERS most recently cached ids. Their
+// order lives in one RECENCY record in the same store, newest first.
 const DB = "labellab";
 const STORE = "masters";
+const RECENCY = "labellab:recency";
+/** How many masters' bytes the cache holds before it evicts the oldest. */
+export const MAX_CACHED_MASTERS = 20;
 
 function open(): Promise<IDBDatabase | null> {
   return new Promise((resolve) => {
@@ -47,9 +54,30 @@ function run<T>(mode: IDBTransactionMode, act: (s: IDBObjectStore) => IDBRequest
   }));
 }
 
-/** Keep the bytes of a .master this operator saved or opened. */
+/** Keep the bytes of a .master this operator saved or opened, as the newest
+ *  entry; the oldest beyond MAX_CACHED_MASTERS are dropped in the same
+ *  transaction. A failed write (a full quota) is logged, not thrown. */
 export async function cacheMaster(id: string, bytes: Uint8Array): Promise<void> {
-  await run("readwrite", (s) => s.put(bytes, id));
+  const ok = await run("readwrite", (s) => {
+    const put = s.put(bytes, id);
+    const order = s.get(RECENCY);
+    order.onsuccess = () => {
+      const keep = (prev: unknown[]) => [id, ...prev.filter((k) => k !== id && k !== RECENCY)];
+      if (Array.isArray(order.result)) return trim(s, keep(order.result));
+      // No record yet: a cache from before the bound. Its existing ids rank
+      // oldest, so the overflow they already caused is evicted now.
+      const all = s.getAllKeys();
+      all.onsuccess = () => trim(s, keep(all.result));
+    };
+    return put;
+  });
+  if (ok === null) console.warn(`Could not cache master ${id}; the browser store may be full.`);
+}
+
+/** Drop every id past the bound and store the remaining order. */
+function trim(s: IDBObjectStore, order: unknown[]): void {
+  for (const old of order.slice(MAX_CACHED_MASTERS)) s.delete(old as IDBValidKey);
+  s.put(order.slice(0, MAX_CACHED_MASTERS), RECENCY);
 }
 
 /** The cached bytes for a master id, or null when nothing is held. */
@@ -62,5 +90,12 @@ export async function cachedMaster(id: string): Promise<Uint8Array | null> {
 /** Drop a cached master. The file at its path now holds a different id, so
  *  these bytes are an older copy and must not resolve in its place. */
 export async function dropCachedMaster(id: string): Promise<void> {
-  await run("readwrite", (s) => s.delete(id));
+  await run("readwrite", (s) => {
+    const order = s.get(RECENCY);
+    // Off the recency list too, so the dropped id stops holding a slot.
+    order.onsuccess = () => {
+      if (Array.isArray(order.result)) s.put(order.result.filter((k) => k !== id), RECENCY);
+    };
+    return s.delete(id);
+  });
 }
