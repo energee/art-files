@@ -80,7 +80,7 @@ export async function saveThrough(
       if (handle) { target = { handle }; name = handle.name; }
     }
     const bytes = typeof content === "function" ? content(name) : content;
-    if (target && "path" in target) await (await import("@tauri-apps/plugin-fs")).writeFile(target.path, bytes);
+    if (target && "path" in target) await writeNativeAtomic(target.path, bytes);
     else if (target && "handle" in target) await writeHandle(target.handle, bytes);
     else download(bytes, name, options.type);
     return { name, bytes, target };
@@ -88,4 +88,20 @@ export async function saveThrough(
     if (isAbort(error)) return null;
     throw error;
   }
+}
+
+/** Write `bytes` beside `path` as `<stem>.saving.<ext>`, then rename it over
+ *  `path`, so a crash, power loss or full disk mid-write never truncates the
+ *  only copy. The temp keeps the extension so the .label/.master capability
+ *  globs cover it. A failed write removes the temp (best effort) and rethrows. */
+async function writeNativeAtomic(path: string, bytes: Uint8Array): Promise<void> {
+  const { writeFile, rename, remove } = await import("@tauri-apps/plugin-fs");
+  const temp = path.replace(/(\.[^./\\]+)?$/, ".saving$1");
+  try {
+    await writeFile(temp, bytes);
+  } catch (error) {
+    try { await remove(temp); } catch { /* temp may not exist */ }
+    throw error;
+  }
+  await rename(temp, path);
 }
