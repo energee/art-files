@@ -289,6 +289,40 @@ describe("MasterPicker", () => {
     await act(async () => { finish(vi.fn()); await Promise.resolve(); });
   });
 
+  // One removal finishing must not clear another's double-press guard.
+  it("still ignores a second remove of one master after another removal finishes", async () => {
+    const finish: Record<string, (undo: () => Promise<void>) => void> = {};
+    const onForget = vi.fn((id: string) => new Promise<() => Promise<void>>((r) => { finish[id] = r; }));
+    renderPicker({
+      onForget,
+      library: {
+        lolev: { name: "Lolev" },
+        a: { name: "A", inLibrary: true },
+        b: { name: "B", inLibrary: true },
+      },
+    });
+    openMenu();
+    const x = (name: string) => document.querySelector(`[aria-label="Remove ${name} from the library"]`) as HTMLButtonElement;
+    await act(async () => { x("A").click(); x("B").click(); await Promise.resolve(); });
+    await act(async () => { finish.a(vi.fn()); await Promise.resolve(); });
+    await act(async () => { x("B").click(); await Promise.resolve(); });
+    expect(onForget).toHaveBeenCalledTimes(2);
+    await act(async () => { finish.b(vi.fn()); await Promise.resolve(); });
+  });
+
+  // A live region inserted with its text is often not announced: the status
+  // container is there before the removal and only its contents change.
+  it("announces a removal through a live region that was already mounted", async () => {
+    renderPicker({
+      library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: true } },
+    });
+    const regions = [...container.querySelectorAll('[role="status"]')];
+    openMenu();
+    const x = document.querySelector('[aria-label="Remove Other Brewery from the library"]') as HTMLButtonElement;
+    await act(async () => { x.click(); await Promise.resolve(); });
+    expect(regions.some((r) => r.isConnected && r.textContent?.includes("The file stays where it is."))).toBe(true);
+  });
+
   it("shows no remove button on a master the library does not remember", () => {
     renderPicker({ library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: false } } });
     openMenu();

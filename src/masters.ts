@@ -141,6 +141,9 @@ export async function forgetMaster(id: string, replacementId?: string): Promise<
  *  its newer row and bytes, and a master applied since keeps the last key. */
 export async function removeFromLibrary(id: string): Promise<() => Promise<void>> {
   const row = masterIndex()[id];
+  // Where the row sat, so Undo puts it back in the same place in the menu
+  // (libraryEntries lists the index in insertion order).
+  const at = Object.keys(masterIndex()).indexOf(id);
   let wasLast = false;
   try { wasLast = localStorage.getItem(LAST_KEY) === id; } catch { /* no localStorage */ }
   const bytes = await cachedMaster(id);
@@ -148,8 +151,14 @@ export async function removeFromLibrary(id: string): Promise<() => Promise<void>
   return async () => {
     if (masterIndex()[id]) return; // re-added since: that copy is newer
     if (bytes) await cacheMaster(id, bytes);
+    // Checked again: a re-add can land while the bytes are being written.
+    if (masterIndex()[id]) return;
     try {
-      if (row) localStorage.setItem(KEY, JSON.stringify({ ...masterIndex(), [id]: row }));
+      if (row) {
+        const rows = Object.entries(masterIndex());
+        rows.splice(at < 0 ? rows.length : Math.min(at, rows.length), 0, [id, row]);
+        localStorage.setItem(KEY, JSON.stringify(Object.fromEntries(rows)));
+      }
       // Removal cleared the key, so a set key means a master applied since.
       if (wasLast && !localStorage.getItem(LAST_KEY)) localStorage.setItem(LAST_KEY, id);
     } catch { /* no localStorage — same fallback as masterIndex */ }

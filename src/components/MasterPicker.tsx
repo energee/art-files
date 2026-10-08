@@ -119,23 +119,24 @@ export function MasterPicker(props: {
     setRemoved(null);
   };
 
-  /** The id whose removal is running. A ref, not state: two presses in one
+  /** The ids whose removal is running. A ref, not state: two presses in one
    *  tick would both read stale state, and the second removal's empty undo
-   *  would replace the real one. */
-  const forgetting = useRef<string | null>(null);
+   *  would replace the real one. A set, so one finishing removal does not
+   *  clear another's guard. */
+  const forgetting = useRef(new Set<string>());
   /** This picker's trigger. Not getElementById: every open tab keeps its
    *  editor mounted, so the page holds one #master-picker per tab. */
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const forget = async (id: string) => {
-    if (forgetting.current === id) return;
-    forgetting.current = id;
+    if (forgetting.current.has(id)) return;
+    forgetting.current.add(id);
     const name = props.library[id]?.name ?? id;
     try {
       const undo = await props.onForget(id);
       setRemoved({ name, undo });
     } finally {
-      forgetting.current = null;
+      forgetting.current.delete(id);
     }
   };
 
@@ -275,19 +276,23 @@ export function MasterPicker(props: {
         </div>
       )}
       {resolvingId && <p role="status" className="mt-1 text-xs text-muted-foreground">Opening master…</p>}
-      {removed && (
-        <p id="master-picker-removed" role="status" className="mt-1 px-1 text-[11px] text-muted-foreground">
-          Removed “{removed.name}” from the library. The file stays where it is.{" "}
-          <Button type="button" size="xs" variant="link" className="h-auto p-0 text-[11px]"
-            onClick={() => {
-              // This button goes with the note: hand focus back to the picker.
-              triggerRef.current?.focus();
-              setRemoved(null); void removed.undo();
-            }}>
-            Undo
-          </Button>
-        </p>
-      )}
+      {/* Always mounted: screen readers announce a change inside a live
+          region that already exists, not one inserted with its text. */}
+      <div role="status">
+        {removed && (
+          <p id="master-picker-removed" className="mt-1 px-1 text-[11px] text-muted-foreground">
+            Removed “{removed.name}” from the library. The file stays where it is.{" "}
+            <Button type="button" size="xs" variant="link" className="h-auto p-0 text-[11px]"
+              onClick={() => {
+                // This button goes with the note: hand focus back to the picker.
+                triggerRef.current?.focus();
+                setRemoved(null); void removed.undo();
+              }}>
+              Undo
+            </Button>
+          </p>
+        )}
+      </div>
       {error && (
         <p id="master-picker-error" className="mt-1 px-1 text-[11px] text-destructive-text">{error}</p>
       )}
