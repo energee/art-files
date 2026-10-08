@@ -2,7 +2,7 @@
 // the macOS application menu's Quit routing.
 import { describe, expect, it, vi } from "vitest";
 import {
-  APP_MENUS, actionsIn, macApplicationMenu, nativeAccelerator,
+  APP_MENUS, actionsIn, macApplicationMenu, menuSymbols, nativeAccelerator,
 } from "@/components/AppMenu";
 import type { Command } from "@/components/CommandMenu";
 
@@ -30,11 +30,6 @@ describe("native menu accelerators", () => {
   });
 });
 
-type ActionNode = ReturnType<typeof actionsIn>[number];
-
-function nativeIconOf(action: ActionNode | undefined) {
-  return action && "nativeIcon" in action ? action.nativeIcon : undefined;
-}
 
 describe("file menu", () => {
   it("wires the workspace-tab commands in place of New Project", () => {
@@ -48,40 +43,19 @@ describe("file menu", () => {
     expect(ids).not.toContain("project-new");
   });
 
-  it("gives the Mac menu templates to New Tab, Close Tab, Save Master and Export only", () => {
-    const file = APP_MENUS.find((menu) => menu.id === "file-menu")!;
-    const exportMenu = file.items.find((entry) =>
-      entry.kind === "submenu" && entry.id === "export-menu");
-    if (exportMenu?.kind !== "submenu") throw new Error("export-menu missing");
-    expect(exportMenu.nativeIcon).toBe("Share");
-    const actions = actionsIn(file.items);
-    const byId = Object.fromEntries(actions.map((action) => [action.id, action]));
-    expect(nativeIconOf(byId["tab-new"])).toBe("Add");
-    expect(nativeIconOf(byId["project-open"])).toBeUndefined();
-    expect(nativeIconOf(byId["tab-close"])).toBe("Remove");
-    expect(nativeIconOf(byId["project-save"])).toBeUndefined();
-    expect(nativeIconOf(byId["project-save-as"])).toBeUndefined();
-    expect(nativeIconOf(byId["master-open"])).toBeUndefined();
-    expect(nativeIconOf(byId["master-save"])).toBe("Bookmarks");
-    expect(nativeIconOf(byId["master-save-as"])).toBe("Bookmarks");
-    expect(nativeIconOf(byId["export-both"])).toBe("Share");
-  });
-
-  it("uses only AppKit template names so native icons stay black-and-white", () => {
-    const templates = new Set([
-      "Add", "Remove", "Share", "Bookmarks", "IconView", "QuickLook", "ListView",
-      "Refresh", "GoLeft", "GoRight",
-    ]);
-    const file = APP_MENUS.find((menu) => menu.id === "file-menu")!;
-    const exportMenu = file.items.find((entry) =>
-      entry.kind === "submenu" && entry.id === "export-menu");
-    if (exportMenu?.kind === "submenu" && exportMenu.nativeIcon) {
-      expect(templates.has(exportMenu.nativeIcon)).toBe(true);
+  it("gives every row an SF Symbol, and every title is unique", () => {
+    const pairs = menuSymbols();
+    const actions = actionsIn(APP_MENUS);
+    // Unique: menu_symbols.rs finds each native row by its title.
+    expect(new Set(pairs.map(([title]) => title)).size).toBe(pairs.length);
+    for (const action of actions) {
+      expect(pairs.find(([title]) => title === action.text), action.id).toBeDefined();
     }
-    for (const action of actionsIn(APP_MENUS)) {
-      const name = nativeIconOf(action);
-      if (name) expect(templates.has(name), action.id).toBe(true);
-    }
+    expect(Object.fromEntries(pairs)).toMatchObject({
+      "New Tab": "plus.square.on.square", "Open Project…": "folder",
+      "Save Project": "square.and.arrow.down", "Export": "square.and.arrow.up",
+      "Undo": "arrow.uturn.backward", "Settings…": "gear", "Rulers": "ruler",
+    });
   });
 });
 
@@ -96,12 +70,6 @@ describe("view menu", () => {
     expect(ids).toEqual(["view-label", "view-mask", "view-can", "rulers", "guides"]);
   });
 
-  it("leaves View checks to the checkmark, with no native glyph", () => {
-    const view = APP_MENUS.find((menu) => menu.id === "view-menu")!;
-    for (const action of actionsIn(view.items)) {
-      expect(nativeIconOf(action), action.id).toBeUndefined();
-    }
-  });
 });
 
 describe("native text editing menu", () => {
@@ -112,14 +80,6 @@ describe("native text editing menu", () => {
     expect(roles).toEqual(["Cut", "Copy", "Paste", "SelectAll"]);
   });
 
-  it("icons Undo and Redo and leaves Settings blank, matching the Mac menu", () => {
-    const edit = APP_MENUS.find((menu) => menu.id === "edit-menu")!;
-    const editActions = actionsIn(edit.items);
-    expect(nativeIconOf(editActions.find((action) => action.id === "undo"))).toBe("GoLeft");
-    expect(nativeIconOf(editActions.find((action) => action.id === "redo"))).toBe("GoRight");
-    expect(nativeIconOf(editActions.find((action) => action.id === "settings")))
-      .toBeUndefined();
-  });
 });
 
 describe("macOS application menu", () => {
