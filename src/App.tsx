@@ -24,10 +24,9 @@
 // the deactivation effect). The editor reports its DocumentMeta upward
 // through onMeta; the shell owns tabs, file-open routing, render settings,
 // and the updater.
-import { RenderSettings as RenderSettingsFields } from "@/components/RenderSettings";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { MasterSaveReview } from "@/components/MasterSaveReview";
+import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
 import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { dialogOpen, isTypingTarget, keyOwner } from "@/keys";
 import { isTauri } from "@tauri-apps/api/core";
@@ -132,6 +131,27 @@ const CanView = lazy<ComponentType<CanViewProps>>(() => import("@/components/Can
       useEffect(() => onRenderError(`The 3D view failed to load: ${String(err)}`), [onRenderError]);
       return null;
     },
+  })));
+
+// Settings and the Save Master review are opened rarely, so their modules
+// (and the checkbox only the review uses) load on first open, not with the
+// editor (#410). The ⌘K palette does the same inside CommandMenu. Like
+// CanView, a chunk that fails to load says so where the surface would have
+// opened instead of unmounting the editor and its unsaved edits; while one
+// loads, DialogLoading keeps the keys off the tab (LazyDialog.tsx).
+const RenderSettingsFields = lazy<typeof import("@/components/RenderSettings").RenderSettings>(() => import("@/components/RenderSettings").then(
+  (m) => ({ default: m.RenderSettings }),
+  (err: unknown) => ({
+    default: () => <p className="text-xs text-destructive-text">{loadFailedMessage("Settings", err)}</p>,
+  })));
+type MasterSaveReviewProps = Parameters<typeof import("@/components/MasterSaveReview").MasterSaveReview>[0];
+const MasterSaveReview = lazy<ComponentType<MasterSaveReviewProps>>(() => import("@/components/MasterSaveReview").then(
+  (m) => ({ default: m.MasterSaveReview }),
+  (err: unknown) => ({
+    default: ({ open, onCancel }: MasterSaveReviewProps) => (
+      <DialogLoadFailed title="Save Master" what="The Save Master review" err={err}
+        open={open} onOpenChange={(o) => { if (!o) onCancel(); }} />
+    ),
   })));
 
 /** bytes = full print resolution (exports); previewBytes = downscaled PNG the
@@ -2332,12 +2352,18 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   return (
     <TooltipProvider>
-      <Dialog open={active && settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogTitle>Settings</DialogTitle>
-          <RenderSettingsFields value={render} onChange={onRenderChange} />
-        </DialogContent>
-      </Dialog>
+      {/* Suspense around the Dialog, not inside it: the first open then
+          mounts the dialog with its fields already there, so it opens
+          focused on the first field rather than on Close. Only an open
+          dialog renders its fields, so only an open one suspends. */}
+      <Suspense fallback={<DialogLoading />}>
+        <Dialog open={active && settingsOpen} onOpenChange={setSettingsOpen}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogTitle>Settings</DialogTitle>
+            <RenderSettingsFields value={render} onChange={onRenderChange} />
+          </DialogContent>
+        </Dialog>
+      </Suspense>
       <Dialog open={!!missingMaster} onOpenChange={(open) => !open && missingMaster?.choose(null)}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
@@ -2358,14 +2384,16 @@ export const DocumentEditor = memo(function DocumentEditor({
           review stays with its tab (hidden while another tab is in front,
           back on return) so a confirm can only write the visible tab's master. */}
       {pendingSave && (
-        <MasterSaveReview open={active} as={pendingSave.as} changes={masterChangeList}
-          target={master.variants.find((v) => v.id === version)?.name}
-          onCancel={() => setPendingSave(null)}
-          onConfirm={(promote) => {
-            const { as } = pendingSave;
-            setPendingSave(null);
-            void saveMaster(as, promote);
-          }} />
+        <Suspense fallback={active ? <DialogLoading /> : null}>
+          <MasterSaveReview open={active} as={pendingSave.as} changes={masterChangeList}
+            target={master.variants.find((v) => v.id === version)?.name}
+            onCancel={() => setPendingSave(null)}
+            onConfirm={(promote) => {
+              const { as } = pendingSave;
+              setPendingSave(null);
+              void saveMaster(as, promote);
+            }} />
+        </Suspense>
       )}
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
           preview center, inspector sheet right. */}
