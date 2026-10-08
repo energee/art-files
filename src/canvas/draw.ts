@@ -7,7 +7,8 @@
 // underpaints a wide stroke's interior just as pdf.js does (see
 // bridgeOffsets in strokes.ts). Fonts arrive through the fonts.ts
 // gate: callers must have awaited loadLabelFaces() for the
-// same family as the `fontCss` passed in, so that CSS family resolves — a
+// same family as the `fontCss` passed in, plus every family a text layer
+// overrides with (only those load, #411), so each CSS family resolves — a
 // missing face would silently measure wrong, which is exactly what the gate
 // exists to prevent.
 import { type Mode, type MeasureFace, type PlacedBarcode, type PlacedText, type PlanAssets } from "../plan";
@@ -39,7 +40,9 @@ export interface CanvasAssets {
    *  or hasn't finished), stays a no-op — the plan places a rect from a
    *  stored aspect alone before/without bytes ever loading. The page roles
    *  fall back as before: no background bitmap = bare stock, no mask bitmap
-   *  = the white-ink flood. */
+   *  = the white-ink flood. A page bitmap is resampled once and cached by
+   *  identity (pageLayer, #412): pass a new object for new pixels, never a
+   *  canvas repainted in place. */
   images?: Record<string, CanvasImageSource | null | undefined>;
 }
 
@@ -74,12 +77,61 @@ const path2ds = (paths: readonly string[]): Path2D[] => {
   return p;
 };
 
+/** The page art resampled once at plate resolution, per bitmap (#412).
+ *  The texture and mask are static between keystrokes, but drawImage from a
+ *  full-size upload into a 600-DPI plate was a full resample on every repaint;
+ *  now a repaint is a 1:1 blit of this layer. One entry per bitmap, repainted
+ *  when the cover-fit rect or the plate's pixel size changes (a zoom re-raster,
+ *  or the 3D view drawing the same bitmap at texture size). Keyed on the
+ *  bitmap's identity, so a source must never be redrawn in place (see
+ *  CanvasAssets). WeakMap so a replaced upload's layer goes with it. */
+interface PageLayer { key: string; canvas: HTMLCanvasElement }
+const pageLayerCache = new WeakMap<object, PageLayer>();
+function pageLayer(bmp: CanvasImageSource, r: PlacedPage, w: number, h: number): HTMLCanvasElement {
+  const key = `${r.x},${r.y},${r.w},${r.h},${w},${h}`;
+  let hit = pageLayerCache.get(bmp);
+  if (!hit || hit.key !== key) {
+    // Reuse this bitmap's canvas on a re-key: assigning width/height clears it
+    // and swaps its backing store now, where a fresh canvas per zoom settle
+    // would leave the old plate-sized one waiting on GC.
+    const canvas = hit?.canvas ?? document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const lc = canvas.getContext("2d")!;
+    const scale = w / L.PAGE.w;
+    lc.setTransform(scale, 0, 0, scale, 0, 0);
+    lc.drawImage(bmp, r.x, r.y, r.w, r.h);
+    pageLayerCache.set(bmp, (hit = { key, canvas }));
+  }
+  return hit.canvas;
+}
+
 /** Art-mode CSS color for a Fill — "none" is no ink, i.e. white, the same
  *  rule as pdf/build.ts's fillColor via parseHexFill. */
 const cssFill = (fill: Fill) => (fill === "none" ? "#FFFFFF" : fill);
 /** Mask-mode paint: knockout (white) or white-ink (blue). */
 const cssMask = (layer: Style["layer"]) =>
   layer === "metallic" ? "#FFFFFF" : L.MASK_BLUE_HEX;
+
+/** A bitmap repainted in `fill`, keeping its alpha — tintRgba's color
+ *  overlay done by the compositor (source-in) instead of a pixel loop, so a
+ *  fill edit costs a draw, not a decode/re-encode (#414). One entry per
+ *  bitmap: repaints at the same fill reuse it; a new fill redraws it. */
+const tintCache = new WeakMap<ImageBitmap, { fill: Fill; canvas: HTMLCanvasElement }>();
+function tinted(bmp: ImageBitmap, fill: Fill): HTMLCanvasElement {
+  const hit = tintCache.get(bmp);
+  if (hit?.fill === fill) return hit.canvas;
+  const canvas = hit?.canvas ?? document.createElement("canvas");
+  canvas.width = bmp.width;
+  canvas.height = bmp.height;
+  const c = canvas.getContext("2d")!;
+  c.drawImage(bmp, 0, 0);
+  c.globalCompositeOperation = "source-in";
+  c.fillStyle = cssFill(fill);
+  c.fillRect(0, 0, canvas.width, canvas.height);
+  tintCache.set(bmp, { fill, canvas });
+  return canvas;
+}
 
 /** Which plate a page item belongs to: the background texture is art-only,
  *  the metallic mask is mask-only. */
@@ -161,12 +213,21 @@ export function drawPlate(
     } else if (r.kind === "page") {
       // Page art (the texture on the art plate, the mask on the mask plate)
       // at planLayers' cover-fit rect, in PAGE space — outside the bleed
-      // shift, like the PDF's withoutBleedShift.
+      // shift, like the PDF's withoutBleedShift — composited from the cached
+      // pageLayer rather than resampled per repaint.
       const bmp = pageDrawsOn(r, mode) ? bitmapOf(r.asset) : null;
       if (!bmp) continue;
       c.save();
-      c.translate(-L.BLEED_SHIFT, -L.BLEED_SHIFT);
-      c.drawImage(bmp, r.x, r.y, r.w, r.h);
+      if (typeof document === "undefined") {
+        // No DOM to hold a cached layer (Node: vitest's fake contexts, and
+        // nothing rasterizes there) — draw the bitmap directly.
+        c.translate(-L.BLEED_SHIFT, -L.BLEED_SHIFT);
+        c.drawImage(bmp, r.x, r.y, r.w, r.h);
+      } else {
+        // The layer is already at plate resolution in PAGE space: blit 1:1.
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.drawImage(pageLayer(bmp, r, c.canvas.width, c.canvas.height), 0, 0);
+      }
       c.restore();
     } else if (r.kind === "image") {
       // The plan places this rect from a stored aspect alone before its
@@ -175,8 +236,10 @@ export function drawPlate(
       // missing-asset contract: no asset means no ink and no mask footprint.
       const bmp = r.asset ? bitmapOf(r.asset) : null;
       if (!bmp) continue;
-      if (mode === "art") c.drawImage(bmp, r.x, r.y, r.w, r.h);
-      else {
+      if (mode === "art") {
+        const src = r.tint ? tinted(bmp as ImageBitmap, r.tint) : bmp;
+        c.drawImage(src, r.x, r.y, r.w, r.h);
+      } else {
         // Raster art prints on white ink: the mask paints its footprint blue.
         c.fillStyle = L.MASK_BLUE_HEX;
         c.fillRect(r.x, r.y, r.w, r.h);

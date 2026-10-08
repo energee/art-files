@@ -21,3 +21,15 @@ export type FontFamilyId = keyof typeof FONT_FAMILIES;
  *  absent (every pre-0.1.22 file) and unknown ids both mean Poppins. */
 export const fontFamilyOf = (cfg: { fontFamily?: string }): FontFamilyId =>
   (cfg.fontFamily && Object.hasOwn(FONT_FAMILIES, cfg.fontFamily) ? cfg.fontFamily : "poppins") as FontFamilyId;
+
+/** The families a label draws with: the master's default first, then every
+ *  layer's override, deduplicated and sorted so layer order never changes the
+ *  set. The preview loads only these (#411); another family loads when a
+ *  layer first picks it. */
+export function usedFontFamilies(
+  master: FontFamilyId,
+  layers: readonly { kind: string; fontFamily?: FontFamilyId }[],
+): FontFamilyId[] {
+  const others = new Set(layers.flatMap((l) => l.fontFamily && l.fontFamily !== master ? [l.fontFamily] : []));
+  return [master, ...[...others].sort()];
+}

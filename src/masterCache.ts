@@ -13,12 +13,18 @@
 // blocked degrades to exactly the old behaviour.
 const DB = "labellab";
 const STORE = "masters";
+/** Crash-recovery snapshots of unsaved tabs (recovery.ts) share this DB. */
+export const RECOVERY_STORE = "recovery";
 
 function open(): Promise<IDBDatabase | null> {
   return new Promise((resolve) => {
     try {
-      const req = indexedDB.open(DB, 1);
-      req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+      // v2 added the recovery store; create whichever store is missing.
+      const req = indexedDB.open(DB, 2);
+      req.onupgradeneeded = () => {
+        for (const name of [STORE, RECOVERY_STORE])
+          if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name);
+      };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => resolve(null);
     } catch {
@@ -27,15 +33,18 @@ function open(): Promise<IDBDatabase | null> {
   });
 }
 
-function run<T>(mode: IDBTransactionMode, act: (s: IDBObjectStore) => IDBRequest<T>): Promise<T | null> {
+/** One request against one store of the app's IndexedDB; null on any failure. */
+export function run<T>(
+  mode: IDBTransactionMode, act: (s: IDBObjectStore) => IDBRequest<T>, store = STORE,
+): Promise<T | null> {
   return open().then((db) => db && new Promise<T | null>((resolve) => {
     // Close the connection on the way out, whichever way it goes: `open`
     // makes a fresh one per call, and a leaked one both holds memory and
     // blocks any later version upgrade indefinitely.
     const done = (v: T | null) => { try { db.close(); } catch { /* already gone */ } resolve(v); };
     try {
-      const tx = db.transaction(STORE, mode);
-      const req = act(tx.objectStore(STORE));
+      const tx = db.transaction(store, mode);
+      const req = act(tx.objectStore(store));
       // For a write the request settles before the transaction commits, so
       // the close waits on the transaction; for a read either is enough.
       tx.oncomplete = () => done(req.result ?? null);

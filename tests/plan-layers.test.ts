@@ -205,6 +205,14 @@ describe("planLayers image", () => {
     expect(free).toMatchObject({ w: 100, h: 50 });
   });
 
+  it("carries the layer's fill as `tint` only when tintRaster is on (#414)", () => {
+    const custom = { art1: { aspect: 2 } };
+    const [plain] = planLayers([image({ id: "i", asset: "art1", w: 70, x: 0, y: 0 })], m, { ...assets, custom }) as PlacedImage[];
+    expect(plain).not.toHaveProperty("tint");
+    const [tinted] = planLayers([image({ id: "i", asset: "art1", w: 70, x: 0, y: 0, tintRaster: true })], m, { ...assets, custom }) as PlacedImage[];
+    expect(tinted.tint).toBe(GOLD_METAL.fill);
+  });
+
   it("an SVG asset plans as ink-tight paths", () => {
     const custom = { art1: { aspect: 480 / 525, art: { kind: "svg" as const, svg: LOGO_SVG } } };
     const [item] = planLayers([image({ id: "i", asset: "art1", w: 36, h: 36, x: 0, y: 0 })], m, { ...assets, custom }) as PlacedPaths[];
