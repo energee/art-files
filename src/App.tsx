@@ -273,7 +273,8 @@ const blobOf = (bytes: Uint8Array) => new Blob([bytesPart(bytes)]);
 
 /** Repaint a raster image in `fill`, keeping alpha, and re-encode it as PNG
  *  for embedding — the color-overlay path for PNG/JPG art an image layer's
- *  `tintRaster` asks for. */
+ *  `tintRaster` asks for. Export-only: the preview tints at draw time
+ *  (canvas/draw.ts tinted), so a fill drag never re-encodes (#414). */
 async function tintedPng(bytes: Uint8Array, fill: Fill): Promise<Uint8Array> {
   const canvas = await decodeToCanvas(blobOf(bytes));
   const ctx = canvas.getContext("2d")!;
@@ -281,17 +282,6 @@ async function tintedPng(bytes: Uint8Array, fill: Fill): Promise<Uint8Array> {
   tintRgba(img.data, fill);
   ctx.putImageData(img, 0, 0);
   return canvasToPng(canvas);
-}
-
-/** tintedPng, memoized per source bytes and fill: the debounced preview
- *  rebuilds re-tint otherwise; WeakMap lets a replaced upload's cache go. */
-const tintCache = new WeakMap<Uint8Array, Map<Fill, Promise<Uint8Array>>>();
-function tintedPngCached(bytes: Uint8Array, fill: Fill): Promise<Uint8Array> {
-  let byFill = tintCache.get(bytes);
-  if (!byFill) tintCache.set(bytes, (byFill = new Map()));
-  let p = byFill.get(fill);
-  if (!p) byFill.set(fill, (p = tintedPng(bytes, fill)));
-  return p;
 }
 
 /** A packed container asset as a typed File — the type matters: FileDrop
@@ -1025,22 +1015,19 @@ export const DocumentEditor = memo(function DocumentEditor({
   }, [customImages, master, label]);
   const liveImages = useMemo(() => Object.fromEntries(
     liveIds ? liveIds.split("\n").map((id) => [id, customImages[id]]) : []), [customImages, liveIds]);
-  /** The image layers whose raster art draws repainted in their fill
-   *  (`tintRaster`), keyed by asset — the one per-layer knob the render
-   *  assets depend on, spelled as a string so the assembly effect can key
-   *  on it by value. */
-  const tintKey = useMemo(() => JSON.stringify(drawLayers.flatMap((l) =>
-    l.kind === "image" && l.tintRaster && l.asset ? [[l.asset, l.style.fill]] : [])), [drawLayers]);
-  /** Every image asset's embed bytes, tinted where a layer asks: what the
-   *  preview decodes and the exports embed. Async because a tinted raster
-   *  has to be decoded and re-encoded; SVG and untinted rasters pass through. */
+  /** Every image asset's embed bytes, tinted where a layer asks
+   *  (`tintRaster`): what the exports embed. Async because a tinted raster
+   *  has to be decoded and re-encoded; SVG and untinted rasters pass through.
+   *  The preview decodes liveImages as-is and tints at draw time instead
+   *  (the plan's image items carry `tint`), so it never calls this (#414). */
   async function imageAssets(): Promise<Record<string, CollabImage>> {
-    const tints = new Map<string, Fill>(JSON.parse(tintKey) as [string, Fill][]);
+    const tints = new Map<string, Fill>(drawLayers.flatMap((l) =>
+      l.kind === "image" && l.tintRaster && l.asset ? [[l.asset, l.style.fill] as const] : []));
     const out: Record<string, CollabImage> = {};
     for (const [id, c] of Object.entries(liveImages)) {
       const fill = tints.get(id);
       out[id] = c.image.kind !== "svg" && fill
-        ? { kind: "png", bytes: await tintedPngCached(c.image.bytes, fill) }
+        ? { kind: "png", bytes: await tintedPng(c.image.bytes, fill) }
         : c.image;
     }
     return out;
@@ -1071,11 +1058,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   });
 
   // The render source for BOTH views: fonts + decoded bitmaps for drawPlate,
-  // assembled off the asset inputs alone (debounced — uploads and tint
-  // changes are rare and each re-assembly decodes every bitmap). Layer edits
-  // deliberately DON'T re-run this: the layers flow into the views as a prop
-  // and repaint with these same bitmaps. The one layer edit that does is a
-  // font pick that adds a family to fontOverrides, so its faces load (#411).
+  // assembled off the asset inputs alone (debounced — uploads are rare and
+  // each re-assembly decodes every bitmap). Layer edits, a raster's tint
+  // included, deliberately DON'T re-run this: the layers flow into the views
+  // as a prop and repaint with these same bitmaps (drawPlate tints, #414).
+  // The one layer edit that does is a font pick that adds a family to
+  // fontOverrides, so its faces load (#411).
   const [decodedAssets, setDecodedAssets] = useState<{
     m: MeasureFace; planAssets: PlanAssets; drawAssets: CanvasAssets; fontCss: string;
   } | null>(null);
@@ -1103,11 +1091,10 @@ export const DocumentEditor = memo(function DocumentEditor({
         };
         let drawAssets: CanvasAssets;
         try {
-          const images = await imageAssets();
           // Raster bytes become a bitmap for the canvas to draw; an SVG
           // source stays undecoded (it plans as paths) and is absent here.
           const customBitmaps: Record<string, ImageBitmap | null> = Object.fromEntries(
-            await Promise.all(Object.entries(images).map(async ([id, img]) =>
+            await Promise.all(Object.entries(liveImages).map(async ([id, { image: img }]) =>
               [id, img.kind === "svg" ? null : await bitmap(img.bytes)] as const)));
           const art = pageArt(true);
           const textureBmp = await bitmap(art.texture?.bytes);
@@ -1132,11 +1119,11 @@ export const DocumentEditor = memo(function DocumentEditor({
       });
     }, 150);
     return () => { cancelled = true; clearTimeout(timer); };
-    // Asset inputs only — the layers reach this effect through tintKey and
-    // the two page-art switches (see the comment above); fontOverrides is the
-    // set of layer font families, so picking a new one reloads its faces.
+    // Asset inputs only — the layers reach this effect through the two
+    // page-art switches (see the comment above); fontOverrides is the set of
+    // layer font families, so picking a new one reloads its faces.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [texture, mask, liveImages, family, fontOverrides, tintKey, bgOn, maskOn, active]);
+  }, [texture, mask, liveImages, family, fontOverrides, bgOn, maskOn, active]);
   // The bitmaps backing the CURRENTLY LIVE `canvasAssets` generation, closed
   // once the next generation has fully replaced them (bitmaps aren't GC'd
   // on their own). A bitmap can sit under two keys; close each once.
