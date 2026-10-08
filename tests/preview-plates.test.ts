@@ -3,8 +3,7 @@
 import { expect, it } from "vitest";
 import { platesToPaint } from "../src/components/PreviewCompare";
 
-it("skips the mask plate at split 0 and paints it once revealed", () => {
-  expect(platesToPaint(0)).toEqual(["art"]);
-  expect(platesToPaint(1)).toEqual(["art", "mask"]);
-  expect(platesToPaint(100)).toEqual(["art", "mask"]);
+it("skips the mask plate while hidden and paints it once revealed", () => {
+  expect(platesToPaint(false)).toEqual(["art"]);
+  expect(platesToPaint(true)).toEqual(["art", "mask"]);
 });

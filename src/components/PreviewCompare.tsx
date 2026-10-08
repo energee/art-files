@@ -46,12 +46,12 @@ const HANDLES = ([-1, 0, 1] as const).flatMap((hy) => ([-1, 0, 1] as const)
     return { handle: { hx, hy } as ResizeHandle, key: `${hx},${hy}`, cls: `${base} pointer-events-auto touch-none ${cursor}`, clsLocked: base };
   }));
 
-/** The plates worth painting at a split: the art always (it is the base the
- *  mask sits over), the mask only once the divider reveals any of it — at
+/** The plates worth painting: the art always (it is the base the mask sits
+ *  over), the mask only once the divider reveals any of it (split > 0) — at
  *  split 0 it is fully clipped, so painting it would double the per-keystroke
  *  raster work for nothing (#395). */
-export const platesToPaint = (split: number): ("art" | "mask")[] =>
-  split > 0 ? ["art", "mask"] : ["art"];
+export const platesToPaint = (maskShown: boolean): ("art" | "mask")[] =>
+  maskShown ? ["art", "mask"] : ["art"];
 
 /** Pointer travel (px) before a press becomes a drag; below it is a click. */
 const DRAG_THRESHOLD_PX = 3;
@@ -448,7 +448,7 @@ export const PreviewCompare = forwardRef<
         // derived edge) never depends on which one triggered the cap.
         const rawW = PAGE.w * rasterScale, rawH = PAGE.h * rasterScale;
         const cap = Math.min(1, PREVIEW_RASTER_MAX_EDGE / Math.max(rawW, rawH));
-        for (const mode of platesToPaint(maskShown ? 100 : 0)) {
+        for (const mode of platesToPaint(maskShown)) {
           const canvas = mode === "art" ? artCanvas.current : maskCanvas.current;
           if (!canvas) continue;
           const w = Math.round(rawW * cap);
