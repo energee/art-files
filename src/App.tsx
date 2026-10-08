@@ -1055,7 +1055,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   // assembled off the asset inputs alone (debounced — uploads and tint
   // changes are rare and each re-assembly decodes every bitmap). Layer edits
   // deliberately DON'T re-run this: the layers flow into the views as a prop
-  // and repaint with these same bitmaps.
+  // and repaint with these same bitmaps. The one layer edit that does is a
+  // font pick that adds a family to fontOverrides, so its faces load (#411).
   const [decodedAssets, setDecodedAssets] = useState<{
     m: MeasureFace; planAssets: PlanAssets; drawAssets: CanvasAssets; fontCss: string;
   } | null>(null);

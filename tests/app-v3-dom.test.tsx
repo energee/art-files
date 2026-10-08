@@ -11,10 +11,10 @@ import type { TextLayer } from "../src/model/layers";
 vi.mock("../src/components/PreviewCompare", () => ({ SNAP_PT: 6, PreviewCompare: (props: PreviewProps) => { perf.source = props.canvasRender; perf.preview = props; return null; } }));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
 type PreviewProps = import("react").ComponentProps<typeof import("../src/components/PreviewCompare").PreviewCompare>;
-const perf = vi.hoisted(() => ({ fontLoads: 0, source: null as import("../src/canvas/draw").CanvasRenderSource | null, margin: null as null | ((n: number) => void), preview: null as PreviewProps | null }));
+const perf = vi.hoisted(() => ({ fontLoads: 0, fontArgs: [] as unknown[][], source: null as import("../src/canvas/draw").CanvasRenderSource | null, margin: null as null | ((n: number) => void), preview: null as PreviewProps | null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: (props: { onMarginChange: (n: number) => void }) => { perf.margin = props.onMarginChange; return null; } }));
 vi.mock("../src/fonts", () => ({
-  loadLabelFaces: async () => { perf.fontLoads++; return (text: string, size: number) => text.length * size * 0.55; },
+  loadLabelFaces: async (...args: unknown[]) => { perf.fontLoads++; perf.fontArgs.push(args); return (text: string, size: number) => text.length * size * 0.55; },
   labelFontCss: () => "sans-serif",
 }));
 import { DocumentEditor } from "../src/App";
@@ -301,6 +301,30 @@ it("leaves focus out of the inspector when a layer selection opens it", async ()
   } finally {
     act(() => { root.unmount(); });
     container.remove();
+  }
+});
+
+// Issue #411 — the preview loads only the families a label uses, so picking a
+// new font on a layer must hand that family to the font gate.
+it("loads a layer's newly picked font family (#411)", async () => {
+  const { container, unmount } = await mountEditor();
+  try {
+    expect(perf.fontArgs.at(-1)).toEqual(["poppins", []]);
+    const row = container.querySelector('[data-layer-id="name"]')!;
+    await act(async () => {
+      (row.querySelector('[data-slot="sidebar-menu-button"]') as HTMLButtonElement).click();
+    });
+    const font = document.querySelector('[aria-label="Font"]')!;
+    await act(async () => { font.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    const option = Array.from(document.querySelectorAll('[role="option"]'))
+      .find((el) => el.textContent?.includes("Barlow Condensed"))!;
+    await act(async () => {
+      option.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" }));
+      option.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(perf.fontArgs.at(-1)).toEqual(["poppins", ["barlow-condensed"]]);
+  } finally {
+    await unmount();
   }
 });
 
