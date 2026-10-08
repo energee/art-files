@@ -29,14 +29,14 @@ const { DocumentEditor } = await import("../src/App");
 
 afterEach(() => { localStorage.clear(); document.body.innerHTML = ""; });
 
-it("benches and reports orphan value and variant ids when a label opens on its own master (#409)", async () => {
-  const bytes = packLabel({
-    formatVersion: 3, masterId: "lolev", enabledVariants: ["collab", "gone-variant"],
-    values: {
-      name: [{ text: "Alpha", fill: "#F3CD80", layer: "metallic" }],
-      "gone-layer": "stale",
-    },
-  }, {});
+/** Mount a DocumentEditor opening `label` (packed as a.label) on the shipped
+ *  master, wait for the open to settle, run `check`, then unmount. Saves land
+ *  in `writes`. */
+async function openLabel(
+  label: Parameters<typeof packLabel>[0],
+  check: (ctx: { container: HTMLElement; save: () => Promise<boolean>; writes: Uint8Array[] }) => Promise<void>,
+) {
+  const bytes = packLabel(label, {});
   const writes: Uint8Array[] = [];
   const handle = {
     name: "a.label",
@@ -58,17 +58,45 @@ it("benches and reports orphan value and variant ids when a label opens on its o
     for (let i = 0; i < 400 && !onOpenSettled.mock.calls.length; i++)
       await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
     expect(onOpenSettled).toHaveBeenCalledWith(1);
+    const save = async () => { let ok = false; await act(async () => { ok = await saveSlot.current!(); }); return ok; };
+    await check({ container, save, writes });
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+  }
+}
+
+it("benches and reports orphan value and variant ids when a label opens on its own master (#409)", async () => {
+  await openLabel({
+    formatVersion: 3, masterId: "lolev", enabledVariants: ["collab", "gone-variant"],
+    values: {
+      name: [{ text: "Alpha", fill: "#F3CD80", layer: "metallic" }],
+      "gone-layer": "stale",
+    },
+  }, async ({ container, save, writes }) => {
     expect(container.textContent).toContain("1 value(s) benched: gone-layer");
     expect(container.textContent).toContain("1 variant(s) benched: gone-variant");
 
-    await act(async () => { await saveSlot.current!(); });
+    await save();
     const saved = unpackLabel(writes.at(-1)!).label!;
     expect(saved.enabledVariants).toEqual(["collab"]);
     expect(saved.values["gone-layer"]).toBeUndefined();
     expect(saved.values.name?.[0]).toMatchObject({ text: "Alpha" });
     expect(saved.dormant).toMatchObject({ values: { "gone-layer": "stale" }, variants: ["gone-variant"] });
-  } finally {
-    await act(async () => { root.unmount(); });
-    container.remove();
-  }
+  });
+}, 30_000);
+
+// A bench the label already carries (a collab rebind off another master) is
+// not news: reopening it must not announce "benched" every time (#409 review).
+it("does not re-announce values and variants the label already had benched", async () => {
+  await openLabel({
+    formatVersion: 3, masterId: "lolev", enabledVariants: [],
+    values: { name: "Alpha" },
+    dormant: { values: { "other-layer": "x" }, variants: ["other-variant"] },
+  }, async ({ container, save, writes }) => {
+    expect(container.textContent).not.toContain("benched");
+    await save();
+    const saved = unpackLabel(writes.at(-1)!).label!;
+    expect(saved.dormant).toMatchObject({ values: { "other-layer": "x" }, variants: ["other-variant"] });
+  });
 }, 30_000);

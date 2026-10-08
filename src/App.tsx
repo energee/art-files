@@ -1965,8 +1965,13 @@ export const DocumentEditor = memo(function DocumentEditor({
         // id changed (the file was saved again under a new id): the label's
         // own master may since have dropped a layer or variant, and those
         // orphan ids are benched and reported instead of carried forever (#409).
+        // Only ids that were LIVE are reported: a bench the file already
+        // carries (a collab rebind) is not news on every open.
         const { label: bound, dropped } = rebindLabel(l, undefined, resolved.master);
-        notes.push(...benchedNotes(dropped));
+        notes.push(...benchedNotes({
+          values: dropped.values.filter((id) => id in l.values),
+          variants: dropped.variants.filter((id) => l.enabledVariants.includes(id)),
+        }));
         next = { master: resolved.master, label: adoptLegacyCollab(bound) };
       }
       // Resolve untrusted overrides/values before installing the document or
