@@ -6,8 +6,8 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
-### Performance
-- **Tinted raster art recolors instantly.** Changing the fill of an image layer with Tint raster on now repaints the preview directly instead of re-encoding the image on every color step; exports are unchanged.
+### Changed
+- **Smoother fill changes on tinted raster art.** Changing the fill of an image layer with Tint raster on no longer stalls the preview on every color step; exports are unchanged.
 
 ### Security
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.
