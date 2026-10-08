@@ -10,7 +10,7 @@ import { FONT_FAMILIES } from "../fontCatalog";
 // stays. Replaces the v1 .master packer and the v2 half of src/labelfile.ts.
 import { strFromU8, strToU8, zipSync, type Zippable } from "fflate";
 import type { LabelFile, Master } from "./layers";
-import { parseMaster } from "./layers";
+import { parseMaster, validateLayer, type Layer, type LayerValue } from "./layers";
 import type { LabelFileV2 } from "./types";
 import { parseMaster as parseMasterV1 } from "./types";
 import { parseLabelFile } from "./labelfile";
@@ -69,12 +69,55 @@ export function serializeLabel(l: LabelFile): string {
   return JSON.stringify(l, null, 2);
 }
 
+function badLabel(msg: string): never { throw new Error(`Invalid label file: ${msg}`); }
+
+/** Only the strings of an untrusted array; anything else becomes []. */
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
+
+/** A stored value is a string or text lines whose `text` is a string —
+ *  the two shapes resolveLayers' putValue can place (#392). */
+function parseValues(v: unknown): Record<string, LayerValue> {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  for (const [id, val] of Object.entries(v)) {
+    const ok = typeof val === "string" || (Array.isArray(val)
+      && val.every((ln) => ln && typeof ln === "object" && typeof (ln as { text?: unknown }).text === "string"));
+    if (!ok) badLabel(`value for "${id}" is not text or a string`);
+  }
+  return v as Record<string, LayerValue>;
+}
+
+/** Override keys the renderer does geometry with: a finite number, or null
+ *  (applyDiff's "delete this key"). */
+const NUMERIC_KEYS = ["x", "size", "leading", "headerScale", "width", "min", "max", "w", "h", "scale", "moduleW"];
+
+/** Overrides by layer id (#392). A patch carrying `kind` is a whole added
+ *  layer, checked with validateLayer like a master's; any other patch is a
+ *  partial diff, so only its geometry and font are checked. */
+function parseOverrides(v: unknown): LabelFile["overrides"] {
+  if (v == null) return undefined;
+  if (typeof v !== "object" || Array.isArray(v)) badLabel("overrides is not an object");
+  for (const [id, patch] of Object.entries(v)) {
+    if (!patch || typeof patch !== "object" || Array.isArray(patch)) badLabel(`override "${id}" is not an object`);
+    const p = patch as Record<string, unknown>;
+    const family = p.fontFamily;
+    if (family != null && (typeof family !== "string" || !Object.hasOwn(FONT_FAMILIES, family)))
+      throw new Error(`Unknown label font family: ${family}`);
+    if (p.kind !== undefined) { validateLayer({ ...p, id } as unknown as Layer, "label override"); continue; }
+    for (const k of NUMERIC_KEYS)
+      if (p[k] != null && !Number.isFinite(p[k])) badLabel(`override "${id}" has invalid ${k}`);
+    const y = p.y as { below?: unknown; gap?: unknown } | null | undefined;
+    if (y != null && !Number.isFinite(y) && !(typeof y === "object" && typeof y.below === "string" && Number.isFinite(y.gap)))
+      badLabel(`override "${id}" has invalid y`);
+  }
+  return v as LabelFile["overrides"];
+}
+
 function parseDormant(v: unknown): LabelFile["dormant"] {
   if (!v || typeof v !== "object") return undefined;
   const d = v as Record<string, unknown>;
   return {
-    values: (d.values && typeof d.values === "object" ? d.values : {}) as LabelFile["values"],
-    variants: Array.isArray(d.variants) ? (d.variants as string[]) : [],
+    values: parseValues(d.values),
+    variants: strings(d.variants),
     ...(Array.isArray(d.variantOrder) && d.variantOrder.every((id) => typeof id === "string")
       ? { variantOrder: d.variantOrder as string[] } : {}),
   };
@@ -88,20 +131,16 @@ export function parseLabel(json: unknown): LabelFile | { v2: LabelFileV2 } | { l
   const o = json as Record<string, unknown>;
   if (o.formatVersion === 2) return { v2: parseLabelFile(json) as LabelFileV2 };
   if (o.formatVersion !== 3) return { legacy: json };
-  for (const patch of Object.values(o.overrides ?? {})) {
-    const family = (patch as { fontFamily?: unknown } | null)?.fontFamily;
-    if (family != null && (typeof family !== "string" || !Object.hasOwn(FONT_FAMILIES, family)))
-      throw new Error(`Unknown label font family: ${family}`);
-  }
   if (typeof o.masterId !== "string" || !o.masterId) throw new Error("Label file is missing its masterId.");
   const dormant = parseDormant(o.dormant);
+  const overrides = parseOverrides(o.overrides);
   return {
     formatVersion: 3,
     masterId: o.masterId,
     ...(typeof o.masterHint === "string" ? { masterHint: o.masterHint } : {}),
-    enabledVariants: Array.isArray(o.enabledVariants) ? (o.enabledVariants as string[]) : [],
-    values: (o.values && typeof o.values === "object" ? o.values : {}) as LabelFile["values"],
-    ...(o.overrides && typeof o.overrides === "object" ? { overrides: o.overrides as LabelFile["overrides"] } : {}),
+    enabledVariants: strings(o.enabledVariants),
+    values: parseValues(o.values),
+    ...(overrides ? { overrides } : {}),
     ...(dormant ? { dormant } : {}),
   };
 }
