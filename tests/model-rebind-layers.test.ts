@@ -61,6 +61,16 @@ describe("rebindLabel", () => {
     expect(r.dropped.values).toContain("name");
     expect(r.label.dormant!.values.name).toEqual(line("HAZY"));
   });
+  it("benches a value whose id is __proto__ as a key instead of losing it", () => {
+    // JSON.parse makes "__proto__" an own key; plain assignment would set the
+    // prototype and drop the value. Every open rebinds now (#409 review).
+    const l = parseLabel(JSON.parse(
+      '{"formatVersion":3,"masterId":"lolev","enabledVariants":[],"values":{"__proto__":"x"}}')) as LabelFile;
+    const r = rebindLabel(l, undefined, lolevMaster());
+    expect(r.dropped.values).toEqual(["__proto__"]);
+    expect(Object.hasOwn(r.label.dormant!.values, "__proto__")).toBe(true);
+    expect(JSON.parse(serializeLabel(r.label)).dormant.values).toEqual(JSON.parse('{"__proto__":"x"}'));
+  });
   it("a clean rebind carries no dormant key", () => {
     const l: LabelFile = { formatVersion: 3, masterId: "x", enabledVariants: ["collab"],
       values: { name: line("HAZY") } };
