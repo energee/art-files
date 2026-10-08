@@ -204,6 +204,29 @@ describe("MasterPicker", () => {
     expect(onMaster).not.toHaveBeenCalled();
   });
 
+  it("removes the highlighted remembered master with Delete, for keyboard users", async () => {
+    const onForget = vi.fn();
+    const onMaster = vi.fn();
+    renderPicker({
+      onForget, onMaster,
+      library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: true } },
+    });
+    openMenu();
+    const row = document.querySelector('[aria-label="Remove Other Brewery from the library"]')!.closest('[role="option"]') as HTMLElement;
+    expect(row.getAttribute("aria-keyshortcuts")).toBe("Delete");
+    const press = (key: string, repeat = false) => act(async () => {
+      row.dispatchEvent(new KeyboardEvent("keydown", { key, repeat, bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+    await press("Backspace");
+    await press("Delete", true);
+    expect(onForget).not.toHaveBeenCalled();
+    await press("Delete");
+    expect(onForget).toHaveBeenCalledTimes(1);
+    expect(onForget).toHaveBeenCalledWith("other");
+    expect(onMaster).not.toHaveBeenCalled();
+  });
+
   it("shows no remove button on a master the library does not remember", () => {
     renderPicker({ library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: false } } });
     openMenu();
