@@ -247,7 +247,8 @@ function prepareImage(l: ImageLayer, assets: PlanAssets): Prepared | null {
   const s = Math.min(maxW / entry.aspect, maxH);
   const w = entry.aspect * s;
   const h = s;
-  return { size, emit: (box) => [{ kind: "image", id, asset: l.asset, x: placeX(box, w), y: box.y, w, h }] };
+  const tint = l.tintRaster ? { tint: l.style.fill } : {};
+  return { size, emit: (box) => [{ kind: "image", id, asset: l.asset, x: placeX(box, w), y: box.y, w, h, ...tint }] };
 }
 
 // --- barcode --------------------------------------------------------------

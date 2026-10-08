@@ -18,7 +18,7 @@ import { sizeLabel } from "../src/rulers";
 import {
   BLEED_STEP_IN, DEFAULT_RENDER, commitBleedIn, displayBleedIn,
 } from "../src/settings";
-import { assets, boxOfLayer, contentStreamText, flatLayers, measureBW, psdAssets, lolevLayers, lolevPlan, logoSvg } from "./fixtures";
+import { assets, boxOfLayer, contentStreamText, flatLayers, measureBW, psdAssets, lolevLayers, lolevPlan, logoSvg, pageRectPath } from "./fixtures";
 
 /** A press-standard 1/8" bleed — nearly double the shipped one, so anything
  *  that quietly ignores the knob shows up as a large, obvious error rather
@@ -228,7 +228,7 @@ describe("bleed — the PDF boundary", () => {
     // buildMaskPdf (flood, then shiftForBleed, then drawElements) protects.
     L.setBleed(WIDE_IN);
     const text = await contentStreamText(await buildMaskPdf(await lolevPlan(), assets));
-    const flood = `0 0 m\n0 ${L.PAGE.h} l\n${L.PAGE.w} ${L.PAGE.h} l\n${L.PAGE.w} 0 l\nh\nf`;
+    const flood = pageRectPath();
     expect(text).toContain(flood);
     // The design after it is translated by the shift, exactly once.
     const shift = "1 0 0 1 4.44 -4.44 cm";
