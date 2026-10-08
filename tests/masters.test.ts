@@ -446,7 +446,7 @@ describe("master library index", () => {
     vi.doUnmock("@/masterCache");
   });
 
-  // libraryEntries lists the index in insertion order: Undo keeps the place.
+  // The index lists by name, so a restored row lands back in its place.
   it("an undo puts the master back where it was in the library", async () => {
     vi.doMock("@/masterCache", () => ({
       cacheMaster: async () => {}, cachedMaster: async () => null, dropCachedMaster: async () => {},
