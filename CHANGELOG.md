@@ -4,40 +4,38 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
-## [Unreleased]
+## [0.1.104] - 2026-10-08
 
 ### Fixed
+- **A label whose master can't be found asks instead of failing.** Open it on the current master or locate its `.master` file; values the master lacks are set aside, not lost.
 - **Locate .master… says why it failed.** If the picked master can't be read, the error shows instead of the dialog silently asking again. A browser with no file picker says so.
-- **Remove a master from the library by keyboard.** In the Master menu, highlight a remembered master and press Delete. Screen readers announce the shortcut. The ✕ button only worked with a mouse.
-- **The metallic mask accepts WebP.** Drop a .webp on the mask field or the mask half of the window chooser. The PDF gets a lossless PNG copy.
-- **A WebP background stays WebP when you save.** The label and master files keep the image you dropped. Only the PDFs carry a PNG copy, because the PDF embed takes PNG and JPEG only.
-### Changed
-- **Node type definitions 26.** Build-time only; the app itself is unchanged.
-- **Tauri 2.12.** The app shell, dialogs, file access and updater move to Tauri 2.12 (Rust and JS sides together), with three.js 0.186.1.
-
-- **Remove a master from the Master menu with the × on its row.** It sits at
-  the right of each remembered master, so it no longer takes picking the
-  master and waiting for its preview first. The master file stays where it is.
-- **Every menu row has an icon, the ones macOS itself uses.** The Mac menu
-  bar now shows the system's standard symbols on File, Edit and View rows,
-  including the View checkmarks, and they follow light and dark mode. The
-  browser menu draws the closest match for each.
-
-
-- **A new tab keeps the master's own images.** Art placed in the master,
-  such as a script logo, now shows when the app opens or a tab is added. Only
-  the last beer's background, mask and Collab logos are left off.
+- **A label keeps opening after its master file changed.** When the file a
+  master was remembered at now holds a different master, a label still opens
+  with its remembered copy every time, not just the first.
 - **A restart reopens the master file that is on disk.** If the last master's
   file had been saved again as a new master over the same path, a new tab
   fell back to shipped Lolev on the first launch and only found the file on
   the next one. It now opens the file straight away.
-- **A label keeps opening after its master file changed.** When the file a
-  master was remembered at now holds a different master, a label still opens
-  with its remembered copy every time, not just the first.
+- **A new tab keeps the master's own images.** Art placed in the master,
+  such as a script logo, now shows when the app opens or a tab is added. Only
+  the last beer's background, mask and Collab logos are left off.
+- **The metallic mask accepts WebP.** Drop a .webp on the mask field or the mask half of the window chooser. The PDF gets a lossless PNG copy.
+- **A WebP background stays WebP when you save.** The label and master files keep the image you dropped. Only the PDFs carry a PNG copy, because the PDF embed takes PNG and JPEG only.
 - **A barcode's Solid background setting must be on or off.** A hand-edited
   file with any other value is reported instead of printing differently from
   what the inspector shows.
-- **A label whose master can't be found asks instead of failing.** Open it on the current master or locate its `.master` file; values the master lacks are set aside, not lost.
+
+### Changed
+- **Remove a master from the Master menu with the × on its row.** It sits at
+  the right of each remembered master, so it no longer takes picking the
+  master and waiting for its preview first. The master file stays where it is.
+  From the keyboard, highlight the row and press Delete.
+- **Every menu row has an icon, the ones macOS itself uses.** The Mac menu
+  bar now shows the system's standard symbols on File, Edit and View rows,
+  including the View checkmarks, and they follow light and dark mode. The
+  browser menu draws the closest match for each.
+- **Tauri 2.12.** The app shell, dialogs, file access and updater move to Tauri 2.12 (Rust and JS sides together), with three.js 0.186.1.
+- **Node type definitions 26.** Build-time only; the app itself is unchanged.
 
 ## [0.1.103] - 2026-09-29
 
