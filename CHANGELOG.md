@@ -6,6 +6,9 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Changed
+- **Export confirms what it saved.** When an export finishes, the header names the files it wrote, such as both the art and mask PDFs. The note clears on your next edit.
+
 ### Security
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.
 

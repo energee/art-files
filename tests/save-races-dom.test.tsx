@@ -213,6 +213,26 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psd", "psd"
     });
     expect(document.body.textContent).toMatch(new RegExp(`Saved renamed-art\\.${extension}\\. Could not save .+-mask\\.${extension}: Disk full`));
   });
+  it(`${extension}: a finished export names both saved files (#400)`, async () => {
+    // Each pick saves under the name the app suggested.
+    const pick = vi.fn(async ({ suggestedName }: { suggestedName: string }) => (
+      { name: suggestedName, createWritable: async () => ({ write: async () => {}, close: async () => {} }) }));
+    vi.stubGlobal("showSaveFilePicker", pick);
+    await mount();
+    await vi.waitFor(async () => {
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 25)); });
+      expect(menu.actions.find((c) => c.id === "export-both")!.disabled).toBe(false);
+    });
+    await act(async () => {
+      menu.actions.find((c) => c.id === command)!.run();
+      await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(2), { timeout: 4000 });
+    });
+    const [art, mask] = pick.mock.calls.map(([options]) => options.suggestedName);
+    await vi.waitFor(() => expect(document.body.textContent).toContain(`Saved ${art}, ${mask}.`));
+    // A later edit makes the confirmation stale, so it goes.
+    await toggle("warning");
+    expect(document.body.textContent).not.toContain(`Saved ${art}`);
+  });
 }
 
 /** Stubs the browser open picker to hand back `m` packed as a .master, with
