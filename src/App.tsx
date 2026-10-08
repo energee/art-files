@@ -1054,7 +1054,6 @@ export const DocumentEditor = memo(function DocumentEditor({
   // keyed by source bytes, so a re-assembly decodes only new or changed
   // assets (#413); `sources` lists the bytes this generation draws from.
   const [bitmaps] = useState(createBitmapCache);
-  const unmounted = useRef(false);
   const [decodedAssets, setDecodedAssets] = useState<{
     m: MeasureFace; planAssets: PlanAssets; drawAssets: CanvasAssets; fontCss: string;
     sources: Uint8Array[];
@@ -1073,10 +1072,12 @@ export const DocumentEditor = memo(function DocumentEditor({
       (async () => {
         const m = await loadLabelFaces(family);
         // The cache owns every bitmap: a throw or a cancelled run leaves its
-        // decodes there for the next committed generation to keep or close.
+        // decodes there for the next committed generation (or unmount) to
+        // keep or close. A cancelled run asks for nothing more, so it can't
+        // add bitmaps after that settling already ran (#413).
         const sources: Uint8Array[] = [];
         const bitmap = (bytes: Uint8Array | undefined) => {
-          if (!bytes) return null;
+          if (!bytes || cancelled) return null;
           sources.push(bytes);
           return bitmaps.get(bytes);
         };
@@ -1094,9 +1095,8 @@ export const DocumentEditor = memo(function DocumentEditor({
         // that draws the `page` items by asset id finds the same bitmaps.
         if (textureBmp) customBitmaps[PAGE_ART_ID.background] = textureBmp;
         if (maskBmp) customBitmaps[PAGE_ART_ID.mask] = maskBmp;
-        // Superseded: a newer run or the live generation settles the cache —
-        // unless the editor is gone, when nothing else will close these.
-        if (cancelled) { if (unmounted.current) bitmaps.retain([]); return; }
+        // Superseded: a newer run, a background tab or unmount settles the cache.
+        if (cancelled) return;
         setDecodedAssets({
           m, planAssets: planAssetsOf(), drawAssets: { images: customBitmaps }, fontCss: labelFontCss(family), sources,
         });
@@ -1114,10 +1114,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   // (bitmaps aren't GC'd on their own); unchanged assets keep theirs. No
   // generation (a background tab) or unmount closes them all.
   useEffect(() => { bitmaps.retain(decodedAssets?.sources ?? []); }, [bitmaps, decodedAssets]);
-  useEffect(() => {
-    unmounted.current = false;
-    return () => { unmounted.current = true; bitmaps.retain([]); };
-  }, [bitmaps]);
+  useEffect(() => () => bitmaps.retain([]), [bitmaps]);
 
   // What the preview omits: the in-place edit session's layer — hidden
   // while its live editor floats over it. Preview-only: meaningless for a
