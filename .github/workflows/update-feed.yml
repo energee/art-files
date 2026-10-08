@@ -1,13 +1,20 @@
-# Republish the auto-update feed from the LATEST GitHub release, without
-# rebuilding anything. Exists because the feed publish can fail after a
-# release's binaries are already up (as it did for v0.1.10/v0.1.11), and
-# release.yml's version guard rightly refuses to rebuild an existing version — this is the
-# re-runnable half. Keep the steps in lockstep with release.yml's
-# publish-update-feed job.
+# Republish the auto-update feed from ONE NAMED GitHub release, without
+# rebuilding anything. The tag is explicit (blank = the version in package.json
+# on the dispatched ref), never "the latest release": a broken or out-of-order
+# latest release must not be pushed to every installed app (#399).
+# Exists because the feed publish can fail after a release's binaries are
+# already up (as it did for v0.1.10/v0.1.11), and release.yml's version guard
+# rightly refuses to rebuild an existing version — this is the re-runnable half.
+# Keep the steps in lockstep with release.yml's publish-update-feed job.
 name: Republish update feed
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to republish (e.g. label-lab-v0.1.104). Blank = label-lab-v<package.json version>.
+        required: false
+        default: ''
 
 jobs:
   publish-update-feed:
@@ -23,15 +30,23 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: scripts/build-update-feed.sh
+          sparse-checkout: |
+            package.json
+            scripts/build-update-feed.sh
           sparse-checkout-cone-mode: false
 
       - name: Download updater assets and build latest.json
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           mkdir site
-          tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+          tag="${INPUT_TAG:-label-lab-v$(node -p 'require("./package.json").version')}"
+          if [[ ! "$tag" =~ ^label-lab-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Not a label-lab release tag: $tag" >&2
+            exit 1
+          fi
+          echo "Republishing the update feed from $tag"
           gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir site \
             --pattern '*.app.tar.gz' \
             --pattern '*.app.tar.gz.sig' \

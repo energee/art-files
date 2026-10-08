@@ -7,7 +7,8 @@
 // underpaints a wide stroke's interior just as pdf.js does (see
 // bridgeOffsets in strokes.ts). Fonts arrive through the fonts.ts
 // gate: callers must have awaited loadLabelFaces() for the
-// same family as the `fontCss` passed in, so that CSS family resolves — a
+// same family as the `fontCss` passed in, plus every family a text layer
+// overrides with (only those load, #411), so each CSS family resolves — a
 // missing face would silently measure wrong, which is exactly what the gate
 // exists to prevent.
 import { type Mode, type MeasureFace, type PlacedBarcode, type PlacedText, type PlanAssets } from "../plan";
