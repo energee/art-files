@@ -577,3 +577,11 @@ no status, no attempts, no delta.
 - delta: investigation complete; runtime unchanged, fix remains open
 - release: non-binary-impacting documentation and agent memory only; no release queued
 - evidence: git diff --cached --check and node scripts/check-release.mjs origin/main passed on audit/ux-decimal-input documentation diff based on 1b00249; no application suite run
+
+## 2026-10-08 issue-419-webstorage
+- finding: [maint/med] #419 — Node 26 reportedly needs NODE_OPTIONS=--no-experimental-webstorage for `npm test` (2026-09-27 issue-queue-339 evidence)
+- status: done
+- attempts: 1/3
+- delta: no flag added. Vitest 5 (#362) adds `localStorage`/`sessionStorage` to populateGlobal's override keys (Vitest 2 skipped keys Node already defined), so happy-dom's Storage replaces Node's native global, so the 2026-09-27 note is stale; tests/webstorage-dom.test.ts now fails if the native global ever wins again
+- evidence: on fix/419 based on 361a4f9, full suite 114 files / 1290 tests pass on Node 26.8.2 with NODE_OPTIONS unset; new test passes on Node 24.19.0 and 26.8.2; tsc and zero-warning lint pass
+- release: non-binary-impacting (tests and agent memory only); no release queued
