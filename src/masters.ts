@@ -37,15 +37,25 @@ function legacyIndex(): Record<string, MasterIndexEntry> {
   }
 }
 
+/** One master's row, or undefined when absent or mangled (skipped, not fatal). */
+function indexRow(id: string): MasterIndexEntry | undefined {
+  try {
+    const v = localStorage.getItem(ROW_PREFIX + id);
+    return v === null ? undefined : (JSON.parse(v) as MasterIndexEntry);
+  } catch {
+    return undefined;
+  }
+}
+
 export function masterIndex(): Record<string, MasterIndexEntry> {
   const idx = legacyIndex();
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (!k?.startsWith(ROW_PREFIX)) continue;
-      try {
-        idx[k.slice(ROW_PREFIX.length)] = JSON.parse(localStorage.getItem(k) ?? "") as MasterIndexEntry;
-      } catch { /* a mangled row is skipped, not fatal */ }
+      const id = k.slice(ROW_PREFIX.length);
+      const row = indexRow(id);
+      if (row) idx[id] = row;
     }
   } catch { /* no localStorage — same fallback as legacyIndex */ }
   return idx;
@@ -85,7 +95,7 @@ export async function rememberMaster(m: Master, path: string, bytes?: Uint8Array
   // IndexedDB was still empty, and the next launch fell back to Lolev).
   if (bytes) await cacheMaster(m.id, bytes);
   migrateLegacyIndex();
-  const cur = masterIndex()[m.id];
+  const cur = indexRow(m.id); // the blob is migrated, so the row is the whole truth
   // An apply that has no filesystem path (a library pick of the shipped
   // master, a browser handle whose name we already stored) must not wipe a
   // real path from an earlier Open/Save. Resolving a .label is not an apply:

@@ -66,7 +66,6 @@ describe("master library index", () => {
     let other: (() => void) | null = () => void rememberMaster(b, "/tmp/b.master");
     vi.stubGlobal("localStorage", {
       ...fakeLocalStorage,
-      key: fakeLocalStorage.key,
       get length() { return stored.size; },
       getItem: (k: string) => {
         const v = stored.get(k) ?? null;
