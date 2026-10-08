@@ -48,7 +48,7 @@ function renderPicker(props: Partial<Parameters<typeof MasterPicker>[0]> = {}) {
     library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery" } },
     resolve: vi.fn().mockResolvedValue({ master: otherMaster, assets: {} }),
     onMaster: vi.fn(), onNewVariant: vi.fn().mockReturnValue("variant-2"),
-    onRenameVersion: vi.fn(), onRemoveVersion: vi.fn(), onSaveMaster: vi.fn(), onForget: vi.fn(),
+    onRenameVersion: vi.fn(), onRemoveVersion: vi.fn(), onSaveMaster: vi.fn(), onForget: vi.fn().mockResolvedValue(vi.fn()),
     masterDirty: true, version: null, onVersion: vi.fn(),
     ...props,
   };
@@ -183,7 +183,7 @@ describe("MasterPicker", () => {
   });
 
   it("removes a remembered master from its own row, without picking it", async () => {
-    const onForget = vi.fn();
+    const onForget = vi.fn().mockResolvedValue(vi.fn());
     const onMaster = vi.fn();
     const resolve = vi.fn();
     renderPicker({
@@ -205,7 +205,7 @@ describe("MasterPicker", () => {
   });
 
   it("removes the highlighted remembered master with Delete, for keyboard users", async () => {
-    const onForget = vi.fn();
+    const onForget = vi.fn().mockResolvedValue(vi.fn());
     const onMaster = vi.fn();
     renderPicker({
       onForget, onMaster,
@@ -225,6 +225,102 @@ describe("MasterPicker", () => {
     expect(onForget).toHaveBeenCalledTimes(1);
     expect(onForget).toHaveBeenCalledWith("other");
     expect(onMaster).not.toHaveBeenCalled();
+  });
+
+  // #402: a removal says, in plain view, that the file is untouched, and
+  // can be undone without browsing back to the file.
+  it("says the file stays after a removal, and Undo puts the master back", async () => {
+    const undo = vi.fn().mockResolvedValue(undefined);
+    const onForget = vi.fn().mockResolvedValue(undo);
+    renderPicker({
+      onForget,
+      library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: true } },
+    });
+    openMenu();
+    const x = document.querySelector('[aria-label="Remove Other Brewery from the library"]') as HTMLButtonElement;
+    await act(async () => { x.click(); await Promise.resolve(); });
+    const note = container.querySelector("#master-picker-removed") as HTMLElement;
+    expect(note.textContent).toContain("Removed \u201cOther Brewery\u201d from the library");
+    expect(note.textContent).toContain("The file stays where it is.");
+    const undoButton = note.querySelector("button") as HTMLButtonElement;
+    expect(undoButton.textContent).toBe("Undo");
+    await act(async () => { undoButton.click(); await Promise.resolve(); });
+    expect(undo).toHaveBeenCalledTimes(1);
+    expect(container.querySelector("#master-picker-removed")).toBeNull();
+    // The note took the focused Undo with it: focus lands on the picker.
+    expect(document.activeElement).toBe(trigger());
+  });
+
+  // Every open tab keeps its editor mounted (TabsShell hides inactive ones), so
+  // the page holds one #master-picker per tab: Undo must focus its own picker,
+  // not the first one in the document.
+  it("Undo focuses its own picker when another tab's picker comes first", async () => {
+    const otherTab = document.createElement("button");
+    otherTab.id = "master-picker";
+    document.body.prepend(otherTab);
+    try {
+      renderPicker({
+        library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: true } },
+      });
+      openMenu();
+      const x = document.querySelector('[aria-label="Remove Other Brewery from the library"]') as HTMLButtonElement;
+      await act(async () => { x.click(); await Promise.resolve(); });
+      const undoButton = container.querySelector("#master-picker-removed button") as HTMLButtonElement;
+      await act(async () => { undoButton.click(); await Promise.resolve(); });
+      expect(document.activeElement).toBe(trigger());
+    } finally {
+      otherTab.remove();
+    }
+  });
+
+  // A second press while the first removal is still running would snapshot a
+  // row that is already gone, and its empty undo would replace the real one.
+  it("ignores a second remove of the same master while the first is running", async () => {
+    let finish: (undo: () => Promise<void>) => void = () => {};
+    const onForget = vi.fn(() => new Promise<() => Promise<void>>((r) => { finish = r; }));
+    renderPicker({
+      onForget,
+      library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: true } },
+    });
+    openMenu();
+    const x = document.querySelector('[aria-label="Remove Other Brewery from the library"]') as HTMLButtonElement;
+    await act(async () => { x.click(); x.click(); await Promise.resolve(); });
+    expect(onForget).toHaveBeenCalledTimes(1);
+    await act(async () => { finish(vi.fn()); await Promise.resolve(); });
+  });
+
+  // One removal finishing must not clear another's double-press guard.
+  it("still ignores a second remove of one master after another removal finishes", async () => {
+    const finish: Record<string, (undo: () => Promise<void>) => void> = {};
+    const onForget = vi.fn((id: string) => new Promise<() => Promise<void>>((r) => { finish[id] = r; }));
+    renderPicker({
+      onForget,
+      library: {
+        lolev: { name: "Lolev" },
+        a: { name: "A", inLibrary: true },
+        b: { name: "B", inLibrary: true },
+      },
+    });
+    openMenu();
+    const x = (name: string) => document.querySelector(`[aria-label="Remove ${name} from the library"]`) as HTMLButtonElement;
+    await act(async () => { x("A").click(); x("B").click(); await Promise.resolve(); });
+    await act(async () => { finish.a(vi.fn()); await Promise.resolve(); });
+    await act(async () => { x("B").click(); await Promise.resolve(); });
+    expect(onForget).toHaveBeenCalledTimes(2);
+    await act(async () => { finish.b(vi.fn()); await Promise.resolve(); });
+  });
+
+  // A live region inserted with its text is often not announced: the status
+  // container is there before the removal and only its contents change.
+  it("announces a removal through a live region that was already mounted", async () => {
+    renderPicker({
+      library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: true } },
+    });
+    const regions = [...container.querySelectorAll('[role="status"]')];
+    openMenu();
+    const x = document.querySelector('[aria-label="Remove Other Brewery from the library"]') as HTMLButtonElement;
+    await act(async () => { x.click(); await Promise.resolve(); });
+    expect(regions.some((r) => r.isConnected && r.textContent?.includes("The file stays where it is."))).toBe(true);
   });
 
   it("shows no remove button on a master the library does not remember", () => {

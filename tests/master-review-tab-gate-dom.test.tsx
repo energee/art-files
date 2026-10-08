@@ -39,7 +39,8 @@ it("hides the Save Master review when its tab goes inactive", async () => {
   try {
     await act(async () => { root.render(createElement(DocumentEditor, props(true))); });
     await act(async () => { menu.actions.find((c) => c.id === "master-save-as")!.run(); });
-    expect(reviewOpen()).toBe(true);
+    // The review loads on first open (#410).
+    await vi.waitFor(() => expect(reviewOpen()).toBe(true), { timeout: 5000 });
     await act(async () => { root.render(createElement(DocumentEditor, props(false))); });
     expect(reviewOpen()).toBe(false);
   } finally {
