@@ -18,6 +18,7 @@ import {
   type TabsState,
 } from "@/tabs";
 import { LABEL_EXT } from "@/labelfile";
+import { dropRecovery, earlierSnapshots, recoveryKey, type RecoverySnapshot } from "@/recovery";
 import { loadRenderSettings, saveRenderSettings, type RenderSettings } from "@/settings";
 import { DesktopUpdater } from "@/components/DesktopUpdater";
 import { isFieldDrop } from "@/components/AssetDropOverlay";
@@ -145,6 +146,22 @@ export default function TabsShell() {
   const [render, setRender] = useState<RenderSettings>(loadRenderSettings);
   useEffect(() => { saveRenderSettings(render); }, [render]);
 
+  // ---- crash recovery (#394) ----
+
+  // Unsaved tabs an earlier launch left behind (a crash, a WebView kill, a
+  // forced quit — a clean close drops them). Offered once at boot.
+  const [recoverable, setRecoverable] =
+    useState<Array<RecoverySnapshot & { key: string }>>([]);
+  useEffect(() => { void earlierSnapshots().then(setRecoverable); }, []);
+  const finishRecovery = (restore: boolean) => {
+    for (const r of recoverable) {
+      // Opened like a dropped .label: no save identity, so Save asks where.
+      if (restore) openRouted({ file: new File([r.bytes as BlobPart], r.name) });
+      void dropRecovery(r.key);
+    }
+    setRecoverable([]);
+  };
+
   // ---- open routing ----
 
   /** Queue an open for tab `id`; the editor's fileToOpen effect runs it.
@@ -262,6 +279,7 @@ export default function TabsShell() {
   // ---- closing ----
 
   const doClose = (id: number) => {
+    void dropRecovery(recoveryKey(id)); // closed on purpose: nothing to recover
     extras.current.delete(id);
     delete pendingRef.current[id];
     setPending(({ [id]: _dropped, ...rest }) => rest);
@@ -454,7 +472,8 @@ export default function TabsShell() {
                 onNewTab={newTab}
                 onCloseTab={e.onCloseTab}
                 onCheckForUpdates={checkForUpdates}
-                updateInstalled={updateInstalled} />
+                updateInstalled={updateInstalled}
+                recoveryKey={recoveryKey(t.id)} />
             </div>
         );
       })}
@@ -501,6 +520,22 @@ export default function TabsShell() {
               onClick={() => confirmClose !== null && void saveAndClose(confirmClose)}>
               {saving ? "Saving…" : "Save"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={recoverable.length > 0} onOpenChange={(open) => !open && finishRecovery(false)}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Recover unsaved work?</DialogTitle>
+            <DialogDescription>
+              Label Lab closed with unsaved changes in {recoverable.length === 1
+                ? "1 tab" : `${recoverable.length} tabs`}: {recoverable.map((r) => r.name).join(", ")}.
+              Restore opens each in a tab; save it to keep it.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="destructive" onClick={() => finishRecovery(false)}>Discard</Button>
+            <Button onClick={() => finishRecovery(true)}>Restore</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

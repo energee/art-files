@@ -65,7 +65,8 @@ import { SHIPPED_MASTER_ID, forgetMaster, hintTrusted, masterIndex, rememberMast
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
-import { makeHiddenPropsEqual, type TabMeta } from "@/tabs";
+import { makeHiddenPropsEqual, unsaved, type TabMeta } from "@/tabs";
+import { dropRecovery, keepRecovery } from "@/recovery";
 import { EMBEDDABLE_RASTER, mimeFor, rasterKind, tintRgba } from "@/collab";
 import { svgAspect } from "@/logo";
 // The builders are imported dynamically at export time (see buildFull /
@@ -439,6 +440,9 @@ type DocumentEditorProps = {
    *  slot just under its menubar row and the shell portals the strip into it. */
   updateStatusHost?: (el: HTMLDivElement | null) => void;
   tabStripHost: (el: HTMLDivElement | null) => void;
+  /** Where this tab's crash-recovery snapshot lives (recovery.ts); omitted
+   *  (tests mounting a lone editor) means no snapshots. */
+  recoveryKey?: string;
 };
 
 // memo is load-bearing: every keystroke in any tab updates the shell's tab
@@ -448,6 +452,7 @@ type DocumentEditorProps = {
 export const DocumentEditor = memo(function DocumentEditor({
   active, fileToOpen, onOpenSettled, onMeta, saveSlot, render, onRenderChange,
   onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, updateInstalled, tabStripHost, updateStatusHost,
+  recoveryKey,
 }: DocumentEditorProps) {
   // The document lives in a history stack, not plain useState — every edit
   // that goes through `edit` (all of them) is undoable, master and label
@@ -1579,6 +1584,25 @@ export const DocumentEditor = memo(function DocumentEditor({
     }
   }
   saveSlot.current = () => saveProject();
+
+  // Crash recovery (#394): while this tab holds unsaved work, keep a packed
+  // .label of it a moment after each change; drop it once the work is saved.
+  // Never dropped on unmount — a render crash unmounts too, and that is the
+  // snapshot the next launch must find. The shell drops it on a tab close.
+  const hasUnsaved = unsaved({ dirty, edited, masterUnsaved: templateMoved });
+  useEffect(() => {
+    if (!recoveryKey) return;
+    if (!hasUnsaved) { void dropRecovery(recoveryKey); return; }
+    const timer = setTimeout(() => {
+      const bytes = packLabel({ ...label, masterHint: masterIndex()[master.id]?.path }, {
+        texture: textureAsset(), mask: maskAsset(),
+        customImages: imageBundle(Object.keys(liveImages)),
+      });
+      void keepRecovery(recoveryKey, { name: exportBase + LABEL_EXT, bytes, savedAt: Date.now() });
+    }, 2000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the snapshot reads this render's doc/assets
+  }, [hasUnsaved, doc, texture, mask, customImages, recoveryKey]);
 
   /** The template assets a Save Master captures: the loaded texture/mask
    *  (the art being authored IS the template art) plus the bytes of every
