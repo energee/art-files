@@ -11,7 +11,7 @@ import fontkit from "@pdf-lib/fontkit";
 import { buildArtPdf, buildMaskPdf, pdfMeasureFace } from "../src/pdf/build";
 import { warningColumnLen, warningMeasure, wrapWarning } from "../src/warning";
 import * as L from "./legacy/layout";
-import { assets, contentStreamText, fillOps, lolevPlan, onePxPng } from "./fixtures";
+import { assets, contentStreamText, fillOps, lolevPlan, onePxPng, pageRectPath } from "./fixtures";
 
 // Counts /Subtype /Image XObjects in a saved PDF's indirect object table —
 // the thing an image whose item is not in the list must NOT contribute.
@@ -39,8 +39,7 @@ const showOps = (s: string) => (s.match(/\bTj\b/g) ?? []).length;
 // footprint, which is a much smaller rect elsewhere in the same stream.
 const floodPath =
   "0.611764705882353 0.8431372549019608 rg\n0 w\n[] 0 d\n" +
-  "1 0 0 1 0 0 cm\n1 0 0 1 0 0 cm\n1 0 0 1 0 0 cm\n" +
-  `0 0 m\n0 ${L.PAGE.h} l\n${L.PAGE.w} ${L.PAGE.h} l\n${L.PAGE.w} 0 l\nh\nf`;
+  "1 0 0 1 0 0 cm\n1 0 0 1 0 0 cm\n1 0 0 1 0 0 cm\n" + pageRectPath();
 
 /** The label with both page assets bound: the texture under id "tex", the
  *  mask under "msk", each a 1x1 PNG (aspect 1). */
