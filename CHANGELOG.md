@@ -7,7 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Fixed
-- **Saving can no longer wipe out a label or master.** Desktop Save writes a temporary copy beside the file and swaps it in only once it is complete, so a crash, power loss or full disk mid-save leaves the previous file intact.
+- **Saving can no longer wipe out a label or master.** Desktop Save writes a temporary copy beside the file and swaps it in only once it is complete, so a crash or full disk mid-save leaves the previous file intact.
 
 ### Security
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.

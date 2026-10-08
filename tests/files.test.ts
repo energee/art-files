@@ -87,6 +87,24 @@ describe("native file saving", () => {
     expect(rename).not.toHaveBeenCalled();
     expect(remove).toHaveBeenCalledWith(writeFile.mock.calls[0][0]);
   });
+
+  it("removes the temp when the rename fails", async () => {
+    rename.mockRejectedValue(new Error("rename refused"));
+
+    await expect(saveThrough(new Uint8Array([7]), { ...options, target: { path: "/labels/x.label" } }, download))
+      .rejects.toThrow("rename refused");
+    expect(remove).toHaveBeenCalledWith(writeFile.mock.calls[0][0]);
+  });
+
+  // The dialog scopes only the exact file it returned and the capability
+  // globs cover only .label/.master, so an export's temp would be forbidden.
+  it("writes a PDF/PSD export straight to the dialog-chosen path", async () => {
+    save.mockResolvedValue("/exports/Labradorite.pdf");
+
+    await saveThrough(new Uint8Array([6]), { ...options, name: "Labradorite.pdf" }, download);
+    expect(writeFile).toHaveBeenCalledWith("/exports/Labradorite.pdf", new Uint8Array([6]));
+    expect(rename).not.toHaveBeenCalled();
+  });
 });
 
 describe("native file opening", () => {
