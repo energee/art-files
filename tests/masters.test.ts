@@ -51,6 +51,48 @@ describe("master library index", () => {
     expect(localStorage.getItem("labellab.lastMaster")).toBeNull();
   });
 
+  // #407: a full localStorage (QuotaExceededError) must not reject — the
+  // Save Master commit awaits this after the file is already written, and a
+  // throw there left the saved master marked unsaved. Same guard as
+  // retireIndexRow (which forgetMaster calls).
+  it("rememberMaster resolves when localStorage.setItem throws", async () => {
+    vi.stubGlobal("localStorage", {
+      ...fakeLocalStorage,
+      setItem: () => { throw new DOMException("full", "QuotaExceededError"); },
+    });
+    await expect(rememberMaster(lolevMaster(), "/tmp/lolev.master")).resolves.toBeUndefined();
+  });
+  // The index can outgrow the quota while the short last-master key still
+  // fits: a failed index write must not skip pinning the applied master.
+  it("rememberMaster still pins the last master when the index write throws", async () => {
+    vi.stubGlobal("localStorage", {
+      ...fakeLocalStorage,
+      setItem: (k: string, v: string) => {
+        if (k.startsWith("labellab.master:")) throw new DOMException("full", "QuotaExceededError");
+        fakeLocalStorage.setItem(k, v);
+      },
+    });
+    await rememberMaster(lolevMaster(), "/tmp/lolev.master");
+    expect(stored.get("labellab.lastMaster")).toBe(SHIPPED_MASTER_ID);
+    expect(stored.has(`labellab.master:${SHIPPED_MASTER_ID}`)).toBe(false);
+  });
+
+  // #407 with a pre-#408 blob: the migration's own writes can hit the quota
+  // too, and must not reject the save either.
+  it("rememberMaster resolves when migrating a legacy blob hits the quota", async () => {
+    stored.set("labellab.masters", JSON.stringify({ old: { name: "Old", path: "/tmp/old.master", lastSeen: "" } }));
+    vi.stubGlobal("localStorage", {
+      ...fakeLocalStorage,
+      get length() { return stored.size; },
+      setItem: (k: string, v: string) => {
+        if (k.startsWith("labellab.master:")) throw new DOMException("full", "QuotaExceededError");
+        fakeLocalStorage.setItem(k, v);
+      },
+    });
+    await expect(rememberMaster(lolevMaster(), "/tmp/lolev.master")).resolves.toBeUndefined();
+    expect(masterIndex().old).toMatchObject({ name: "Old" }); // the blob still lists
+  });
+
   // #408: two windows share localStorage. When another window's save lands
   // between this window's read and write, whole-index read-modify-write
   // dropped the other window's row. The hook below runs window B's save

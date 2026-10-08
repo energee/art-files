@@ -102,8 +102,10 @@ export async function rememberMaster(m: Master, path: string, bytes?: Uint8Array
   // reload can actually resolve it (void cacheMaster used to return while
   // IndexedDB was still empty, and the next launch fell back to Lolev).
   if (bytes) await cacheMaster(m.id, bytes);
-  migrateLegacyIndex();
-  const cur = indexRow(m.id); // the blob is migrated, so the row is the whole truth
+  // A failed migration leaves the blob in place, so masterIndex still lists
+  // it; this master's own row is still attempted below.
+  try { migrateLegacyIndex(); } catch { /* no localStorage / quota exceeded */ }
+  const cur = indexRow(m.id) ?? legacyIndex()[m.id];
   // An apply that has no filesystem path (a library pick of the shipped
   // master, a browser handle whose name we already stored) must not wipe a
   // real path from an earlier Open/Save. Resolving a .label is not an apply:
@@ -113,8 +115,21 @@ export async function rememberMaster(m: Master, path: string, bytes?: Uint8Array
     path: path || cur?.path || "",
     lastSeen: applied ? new Date().toISOString() : (cur?.lastSeen ?? ""),
   };
-  localStorage.setItem(ROW_PREFIX + m.id, JSON.stringify(row));
-  if (applied) localStorage.setItem(LAST_KEY, m.id);
+  // Guarded like retireIndexRow: Save Master's commit awaits this after the
+  // file is already written, and Open Master / library picks / readMasterAt
+  // await it mid-flow, so a full or missing localStorage must not fail any of
+  // them (#407). The index is a resolver cache; losing one write only costs a
+  // re-locate later. Each write has its own guard: the index can outgrow the
+  // quota while the short LAST_KEY still fits, and the last-applied master
+  // should stay pinned for the next launch.
+  try {
+    localStorage.setItem(ROW_PREFIX + m.id, JSON.stringify(row));
+  } catch { /* no localStorage / quota exceeded — same fallback as masterIndex */ }
+  if (applied) {
+    try {
+      localStorage.setItem(LAST_KEY, m.id);
+    } catch { /* no localStorage / quota exceeded */ }
+  }
 }
 
 /** The master this operator last opened, saved, or picked — LAST_KEY when
