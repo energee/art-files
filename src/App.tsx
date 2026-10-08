@@ -2448,7 +2448,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 onRemoveManual={removeManualGuide} />
             )}
             {exporting && previewReady && (
-              <span className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span role="status" className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1.5 text-xs text-muted-foreground">
                 <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" />
                 {exporting === "pdf" ? "Building PDFs…" : "Building PSDs…"}
               </span>

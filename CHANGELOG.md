@@ -10,7 +10,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.
 
 ### Fixed
-- **Exports say what they're building.** While PDFs or PSDs export, the blurred preview reads "Building PDFs…" or "Building PSDs…" instead of "rendering preview…", so a long export no longer looks like a stalled preview.
+- **Exports say what they're building.** While PDFs or PSDs export, the blurred preview reads "Building PDFs…" or "Building PSDs…" instead of "rendering preview…", so a long export no longer looks like a stalled preview. Screen readers announce the note too.
 
 ## [0.1.104] - 2026-10-08
 

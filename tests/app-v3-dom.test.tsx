@@ -18,11 +18,13 @@ vi.mock("../src/fonts", () => ({
   labelFontCss: () => "sans-serif",
   FONT_URLS: { poppins: {}, "barlow-condensed": {} },
 }));
-// Exports wait on loadFonts; the export test holds it open to read the
-// in-flight overlay, then rejects it to finish the export.
-const exportFonts = vi.hoisted(() => ({ reject: null as null | ((e: Error) => void) }));
+// Exports wait on loadFonts; the export test holds every call open to read
+// the in-flight overlay, then rejects them all to finish the export. Every
+// pending reject is kept: an export makes several loadFonts calls, and the
+// inspector's character-height readout may make another.
+const exportFonts = vi.hoisted(() => ({ rejects: [] as ((e: Error) => void)[] }));
 vi.mock("../src/pdf/fonts", () => ({
-  loadFonts: () => new Promise((_resolve, reject) => { exportFonts.reject = reject; }),
+  loadFonts: () => new Promise((_resolve, reject) => { exportFonts.rejects.push(reject); }),
 }));
 import { DocumentEditor } from "../src/App";
 
@@ -651,14 +653,16 @@ it.each([
   ["PSDs", { key: "e", metaKey: true, shiftKey: true }],
 ])("an export in flight shows Building %s…, not rendering preview…", async (kind, keys) => {
   await withCanvasEditor(async (_p, container) => {
-    exportFonts.reject = null;
+    exportFonts.rejects = [];
     await act(async () => {
       document.body.dispatchEvent(new KeyboardEvent("keydown", { ...keys, bubbles: true }));
     });
-    expect(container.textContent).toContain(`Building ${kind}…`);
+    // Announced, not just drawn: a screen reader hears what the blur means.
+    expect([...container.querySelectorAll('[role="status"]')].map((el) => el.textContent))
+      .toContain(`Building ${kind}…`);
     expect(container.textContent).not.toContain("rendering preview…");
-    await vi.waitFor(() => expect(exportFonts.reject).not.toBeNull());
-    await act(async () => { exportFonts.reject!(new Error("stop")); });
+    await vi.waitFor(() => expect(exportFonts.rejects.length).toBeGreaterThan(0));
+    await act(async () => { for (const reject of exportFonts.rejects) reject(new Error("stop")); });
     await vi.waitFor(() => expect(container.textContent).not.toContain(`Building ${kind}…`));
   });
 }, 60_000);
