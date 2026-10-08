@@ -1080,15 +1080,16 @@ export const DocumentEditor = memo(function DocumentEditor({
           sources.push(bytes);
           return bitmaps.get(bytes);
         };
-        const images = await imageAssets();
+        // The page art decodes while the images tint; neither waits on the other.
+        const art = pageArt(true);
+        const [images, textureBmp, maskBmp] = await Promise.all([
+          imageAssets(), bitmap(art.texture?.bytes), bitmap(art.maskPng),
+        ]);
         // Raster bytes become a bitmap for the canvas to draw; an SVG
         // source stays undecoded (it plans as paths) and is absent here.
         const customBitmaps: Record<string, ImageBitmap | null> = Object.fromEntries(
           await Promise.all(Object.entries(images).map(async ([id, img]) =>
             [id, img.kind === "svg" ? null : await bitmap(img.bytes)] as const)));
-        const art = pageArt(true);
-        const textureBmp = await bitmap(art.texture?.bytes);
-        const maskBmp = await bitmap(art.maskPng);
         // The page art rides under its PAGE_ART_ID keys too, so a backend
         // that draws the `page` items by asset id finds the same bitmaps.
         if (textureBmp) customBitmaps[PAGE_ART_ID.background] = textureBmp;
