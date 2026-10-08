@@ -123,6 +123,9 @@ export function MasterPicker(props: {
    *  tick would both read stale state, and the second removal's empty undo
    *  would replace the real one. */
   const forgetting = useRef<string | null>(null);
+  /** This picker's trigger. Not getElementById: every open tab keeps its
+   *  editor mounted, so the page holds one #master-picker per tab. */
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const forget = async (id: string) => {
     if (forgetting.current === id) return;
@@ -194,7 +197,7 @@ export function MasterPicker(props: {
           if (id === props.master.id) { props.onVersion(null); return; }
           void pickEntry(id);
         }}>
-        <SelectTrigger id="master-picker" aria-label="Master" size="sm" className="w-full">
+        <SelectTrigger ref={triggerRef} id="master-picker" aria-label="Master" size="sm" className="w-full">
           <span className="text-muted-foreground">Master:</span>
           <SelectValue>{editing}</SelectValue>
         </SelectTrigger>
@@ -278,7 +281,7 @@ export function MasterPicker(props: {
           <Button type="button" size="xs" variant="link" className="h-auto p-0 text-[11px]"
             onClick={() => {
               // This button goes with the note: hand focus back to the picker.
-              document.getElementById("master-picker")?.focus();
+              triggerRef.current?.focus();
               setRemoved(null); void removed.undo();
             }}>
             Undo

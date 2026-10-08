@@ -251,6 +251,28 @@ describe("MasterPicker", () => {
     expect(document.activeElement).toBe(trigger());
   });
 
+  // Every open tab keeps its editor mounted (TabsShell hides inactive ones), so
+  // the page holds one #master-picker per tab: Undo must focus its own picker,
+  // not the first one in the document.
+  it("Undo focuses its own picker when another tab's picker comes first", async () => {
+    const otherTab = document.createElement("button");
+    otherTab.id = "master-picker";
+    document.body.prepend(otherTab);
+    try {
+      renderPicker({
+        library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: true } },
+      });
+      openMenu();
+      const x = document.querySelector('[aria-label="Remove Other Brewery from the library"]') as HTMLButtonElement;
+      await act(async () => { x.click(); await Promise.resolve(); });
+      const undoButton = container.querySelector("#master-picker-removed button") as HTMLButtonElement;
+      await act(async () => { undoButton.click(); await Promise.resolve(); });
+      expect(document.activeElement).toBe(trigger());
+    } finally {
+      otherTab.remove();
+    }
+  });
+
   // A second press while the first removal is still running would snapshot a
   // row that is already gone, and its empty undo would replace the real one.
   it("ignores a second remove of the same master while the first is running", async () => {
