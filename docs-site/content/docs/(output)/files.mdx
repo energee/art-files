@@ -9,7 +9,7 @@ File → **Save Project** (`⌘S`) / **Save Project As…** (`⇧⌘S`) writes a
 
 On Chromium and in the desktop app, Save is a real dialog and later Save rewrites that file in place. Everywhere else it falls back to a download.
 
-File → **Open Project…** unpacks a `.label`. If the master it names is already in your library, that template is used. Otherwise the file's `masterHint` is tried, but only when it points inside the label's own folder or the folder of a master already in your library; a hint anywhere else is not read, and the error asks you to open that `.master` once. Values that no longer match the master sit on a **bench** (dormant) instead of getting dropped, so a rebind can bring them back.
+File → **Open Project…** unpacks a `.label`. If the master it names is already in your library, that template is used. Otherwise the file's `masterHint` is tried, but only when it points inside the label's own folder or the folder of a master already in your library; a hint anywhere else is not read. When no master is found, a dialog asks what to do: **Use** the tab's current master, **Locate .master…** to pick the file (it joins your library), or **Cancel**. Values that no longer match the master sit on a **bench** (dormant) instead of getting dropped, so a rebind can bring them back.
 
 Double-click a `.label` on desktop and it opens in Label Lab. Details in [Getting started](/docs/getting-started).
 

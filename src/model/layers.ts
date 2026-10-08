@@ -320,6 +320,8 @@ export function validateLayer(l: Layer, ctx: string): void {
     if (!SYMBOLOGIES.has(l.symbology)) fail(`barcode layer "${l.id}" has unknown symbology "${l.symbology}"`);
     if (typeof l.value !== "string") fail(`barcode layer "${l.id}" missing value`);
     if (typeof l.h !== "number" || typeof l.moduleW !== "number") fail(`barcode layer "${l.id}" missing h/moduleW`);
+    if (l.solidBackground !== undefined && typeof l.solidBackground !== "boolean")
+      fail(`barcode layer "${l.id}" has invalid solidBackground`);
   } else {
     if (typeof l.value !== "string") fail(`qr layer "${l.id}" missing value`);
     if (typeof l.size !== "number") fail(`qr layer "${l.id}" missing size`);
