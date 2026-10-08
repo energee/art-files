@@ -5,7 +5,7 @@ description: One layer. Content, type, position, colour
 
 Pick a layer in the list or on the preview and the right-hand inspector opens. Esc or a click on the empty pasteboard clears the selection and shuts it. One panel at a time. Esc inside a field, an on-preview text edit, or a drag only cancels that; the inspector stays open.
 
-The mm / pt toggle (**Dimensions**, in Geometry) is display only. Under the hood it's still PDF points.
+The mm / pt toggle (**Dimensions**, under the Enabled and Locked switches) is display only. Under the hood it's still PDF points.
 
 ## Header
 
@@ -54,11 +54,11 @@ A **filled dot** means an enabled variant sets this property. A **ring** means t
 
 ## Fill contract
 
-This is what someone filling the layer is allowed to put in. It belongs to the master and shows up in Save Master review:
+**Template field settings**, folded at the foot of a text layer's inspector. This is what someone filling the layer is allowed to put in. It belongs to the master and shows up in Save Master review:
 
 - Field label (caption above the fill widget)
 - **Input**: Rich text, Number, or Code. Number makes the fill a number box; Code validates it like a barcode, with its **Symbology**
 - **Minimum** and **Maximum** for a Number input (blank means no limit)
 - Choices (a list you can pick from; typing something new is still allowed and can be learned)
 - Placeholder on empty text
-- Suffix after a number (`% alc by vol` and friends)
+- Suffix after a Number or Code value (`% alc by vol` and friends)
