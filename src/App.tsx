@@ -2293,14 +2293,14 @@ export const DocumentEditor = memo(function DocumentEditor({
           back on return) so a confirm can only write the visible tab's master. */}
       {pendingSave && (
         <Suspense fallback={null}>
-        <MasterSaveReview open={active} as={pendingSave.as} changes={masterChangeList}
-          target={master.variants.find((v) => v.id === version)?.name}
-          onCancel={() => setPendingSave(null)}
-          onConfirm={(promote) => {
-            const { as } = pendingSave;
-            setPendingSave(null);
-            void saveMaster(as, promote);
-          }} />
+          <MasterSaveReview open={active} as={pendingSave.as} changes={masterChangeList}
+            target={master.variants.find((v) => v.id === version)?.name}
+            onCancel={() => setPendingSave(null)}
+            onConfirm={(promote) => {
+              const { as } = pendingSave;
+              setPendingSave(null);
+              void saveMaster(as, promote);
+            }} />
         </Suspense>
       )}
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
