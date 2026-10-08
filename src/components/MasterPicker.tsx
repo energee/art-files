@@ -185,13 +185,21 @@ export function MasterPicker(props: {
           ))}
           {others.length > 0 && <SelectSeparator />}
           {others.map(([id, entry]) => (
-            <SelectItem key={id} value={id}>
+            <SelectItem key={id} value={id}
+              // The ✕ isn't focusable inside the listbox; Delete on the
+              // highlighted row is its keyboard path. A held key is ignored so
+              // it can't sweep through the rows below.
+              aria-keyshortcuts={entry.inLibrary ? "Delete" : undefined}
+              onKeyDown={entry.inLibrary ? (e) => {
+                if (e.key !== "Delete" || e.repeat) return;
+                e.preventDefault(); stop(e); props.onForget(id);
+              } : undefined}>
               {entry.name}
               {entry.inLibrary && (
                 // Remove is the row's own action, not a pick: every event it
                 // fires stops here so the Select never sees a selection.
                 <button type="button" aria-label={`Remove ${entry.name} from the library`}
-                  title="Remove from the library. The file stays where it is."
+                  title="Remove from the library (Delete). The file stays where it is."
                   className="pointer-events-auto ml-auto rounded-sm p-0.5 text-muted-foreground hover:text-destructive-text"
                   onPointerDown={stop} onPointerUp={stop} onMouseUp={stop}
                   onClick={(e) => { stop(e); props.onForget(id); }}>
