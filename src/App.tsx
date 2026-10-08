@@ -25,7 +25,8 @@
 // through onMeta; the shell owns tabs, file-open routing, render settings,
 // and the updater.
 import { RenderSettings as RenderSettingsFields } from "@/components/RenderSettings";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { MasterSaveReview } from "@/components/MasterSaveReview";
 import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { dialogOpen, isTypingTarget, keyOwner } from "@/keys";
@@ -60,7 +61,7 @@ import {
   type MasterAssets,
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
-import { SHIPPED_MASTER_ID, forgetMaster, hintTrusted, masterIndex, rememberMaster, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget } from "@/masters";
+import { SHIPPED_MASTER_ID, forgetMaster, hintTrusted, masterIndex, rememberMaster, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
@@ -567,6 +568,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [buildError, setBuildError] = useState("");
   const [renderError, setRenderError] = useState("");
   const [loadError, setLoadError] = useState("");
+  // A .label whose master can't be found asks what to open it on; openProject
+  // awaits `choose` (missingMasterChoice).
+  const [missingMaster, setMissingMaster] = useState<{
+    id: string; where: string; current: string; choose: (c: "current" | "locate" | null) => void;
+  } | null>(null);
   // Re-renders after a library row is removed or retired. The index lives in
   // localStorage, so nothing else in the document changes and the menu would
   // keep the row; libraryEntries re-reads it on every render.
@@ -1868,6 +1874,31 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (!isAbort(err)) setLoadError(`Could not open project: ${errMsg(err)}`);
   };
 
+  /** A .label's master couldn't be resolved: ask the operator. "Use current"
+   *  opens it on this tab's master; "Locate…" registers a picked .master and
+   *  opens on that. Either way openProject rebinds the label onto the result
+   *  (values the master lacks are benched, not lost). null = cancelled. */
+  async function missingMasterChoice(id: string, hint: string | undefined, labelPath?: string): Promise<ResolvedMaster | null> {
+    // An untrusted hint was never read, so it must not read as a file that
+    // was looked for and found missing.
+    const where = !hint ? "" : hintTrusted(hint, labelPath) ? ` (last seen at ${hint})` : ` (remembered at ${hint}, which was not read)`;
+    const current = docRef.current.master;
+    const choice = await new Promise<"current" | "locate" | null>((choose) =>
+      setMissingMaster({ id, where, current: current.name, choose }));
+    setMissingMaster(null);
+    if (choice === "current")
+      return (await resolveMasterById(current.id)) ?? { master: current, assets: {} };
+    if (choice !== "locate") return null;
+    const target = await openThrough({ filter: MASTER_FILTER, types: MASTER_TYPES });
+    if (!target) return null;
+    const [bytes, path] = "path" in target
+      ? [await readNativeFile(target.path), target.path]
+      : [new Uint8Array(await (await target.handle.getFile()).arrayBuffer()), ""];
+    const r = tryParseMaster(bytes);
+    if (r) await rememberMaster(r.master, path, bytes, { applied: false });
+    return r;
+  }
+
   /** Open a .label with quiet retries — shared by ALL entry points. The
    *  first read of a freshly saved, cloud-synced, or large just-downloaded
    *  file can fail while the OS materializes the bytes. */
@@ -1877,7 +1908,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (delays[i]) await new Promise((r) => setTimeout(r, delays[i]));
       const quiet = i < delays.length - 1;
       try {
-        if (await openProject(await getFile(), { quiet })) return true;
+        const r = await openProject(await getFile(), { quiet });
+        if (r !== false) return r === true; // "cancelled": the operator said no — don't ask again
       } catch (err) {
         if (!quiet) reportOpenError(err);
       }
@@ -1889,7 +1921,7 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  — v3 label.json direct, v2 through convertLabelV2 against the resolved
    *  master, a v1 config.json through convertConfigV1), then feed each
    *  embedded image through the exact handler a manual drop uses. */
-  async function openProject(f: LabelSource, opts?: { quiet?: boolean }): Promise<boolean> {
+  async function openProject(f: LabelSource, opts?: { quiet?: boolean }): Promise<boolean | "cancelled"> {
     try {
       const unpacked = unpackLabel(f.bytes);
       let notes: string[] = [];
@@ -1920,16 +1952,9 @@ export const DocumentEditor = memo(function DocumentEditor({
       } else {
         const ref = unpacked.label ?? unpacked.v2!;
         const hint = ref.masterHint;
-        const resolved = await resolveLabelMaster(ref.masterId, hint, f.path);
-        if (!resolved) {
-          // An untrusted hint was never read, so it must not read as a file
-          // that was looked for and found missing.
-          const where = !hint ? ""
-            : hintTrusted(hint, f.path) ? ` (last seen at ${hint})`
-            : ` (its remembered path ${hint} is outside this label's folder and the master library, so it was not read)`;
-          setLoadError(`Could not find master "${ref.masterId}"${where} — open its .master file once to register it.`);
-          return false;
-        }
+        const resolved = await resolveLabelMaster(ref.masterId, hint, f.path)
+          ?? await missingMasterChoice(ref.masterId, hint, f.path);
+        if (!resolved) return "cancelled";
         masterAssets = resolved.assets;
         let l: LabelFile;
         if (unpacked.label) l = unpacked.label;
@@ -2241,6 +2266,22 @@ export const DocumentEditor = memo(function DocumentEditor({
         <DialogContent className="sm:max-w-sm">
           <DialogTitle>Settings</DialogTitle>
           <RenderSettingsFields value={render} onChange={onRenderChange} />
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!missingMaster} onOpenChange={(open) => !open && missingMaster?.choose(null)}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>This label was made with a different master</DialogTitle>
+            <DialogDescription>
+              Master “{missingMaster?.id}”{missingMaster?.where} isn’t in your library.
+              Open the label on “{missingMaster?.current}”, or locate its .master file.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => missingMaster?.choose(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => missingMaster?.choose("locate")}>Locate .master…</Button>
+            <Button onClick={() => missingMaster?.choose("current")}>Use “{missingMaster?.current}”</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       {/* Gated on `active` like Settings and the inspector Sheet: a pending

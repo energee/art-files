@@ -31,6 +31,7 @@ that section to the new version (see .agents/release-steward.md).
 - **A barcode's Solid background setting must be on or off.** A hand-edited
   file with any other value is reported instead of printing differently from
   what the inspector shows.
+- **A label whose master can't be found asks instead of failing.** Open it on the current master or locate its `.master` file; values the master lacks are set aside, not lost.
 
 ## [0.1.103] - 2026-09-29
 
