@@ -8,8 +8,9 @@
 // runPsdJob applies it before building. Anything else module-level that
 // buildPsd reads must travel the same way.
 //
-// No Worker (Node, tests) or a worker script that fails to load falls back
-// to building on the main thread — slower, never broken. A build that throws
+// No Worker (Node, tests), a Worker constructor that throws (WebKit throws a
+// SecurityError for a worker CSP blocks) or a worker script that fails to
+// load falls back to building on the main thread — slower, never broken. A build that throws
 // inside the worker rejects with its own message, like the in-thread call.
 import { buildPsd, type PsdAssets, type PsdMode, type PsdOpts } from "./build";
 import type { PlacedLayer } from "../planLayers";
@@ -48,12 +49,14 @@ const spawn = (): PsdWorkerLike | null => typeof Worker === "undefined" ? null
   : new Worker(new URL("./worker.ts", import.meta.url), { type: "module" }) as unknown as PsdWorkerLike;
 
 /** buildPsd in a fresh worker, terminated when the job settles. `create`
- *  is the test seam; returning null means "no worker", build in-thread. */
+ *  is the test seam; returning null or throwing means "no worker", build
+ *  in-thread. */
 export function buildPsdOffThread(
   job: PsdJob, create: () => PsdWorkerLike | null = spawn,
 ): Promise<Uint8Array> {
   const inThread = () => buildPsd(job.items, job.assets, job.mode, job.opts);
-  const worker = create();
+  let worker: PsdWorkerLike | null = null;
+  try { worker = create(); } catch { /* blocked worker: build in-thread */ }
   if (!worker) return inThread();
   return new Promise<Uint8Array>((resolve, reject) => {
     worker.onmessage = ({ data }) => {
@@ -63,10 +66,13 @@ export function buildPsdOffThread(
     };
     // Load failure (CSP, missing chunk) or a crash the worker couldn't
     // report: build here instead of failing the export.
-    worker.onerror = () => {
+    const fallBack = () => {
       worker.terminate();
       inThread().then(resolve, reject);
     };
-    worker.postMessage(job);
+    worker.onerror = fallBack;
+    // A job that can't be cloned (DataCloneError) builds here too, and the
+    // idle worker is torn down rather than leaked.
+    try { worker.postMessage(job); } catch { fallBack(); }
   });
 }
