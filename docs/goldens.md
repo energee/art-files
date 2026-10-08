@@ -7,7 +7,8 @@
   ON. PDF timestamps are pinned (`PDF_EPOCH` in `src/pdf/build.ts`), so the same
   input builds byte-identical output and a digest IS byte identity.
 - `tests/print-geometry-goldens.test.ts` pins concrete plotted numbers (bar
-  rects, digit baselines, white-ink footprints) rather than digests.
+  rects, digit baselines, the footprint that sizes a barcode's solid
+  background) rather than digests.
 - `tests/psd-collab.test.ts` pins the PSD layer tree for a Collab label.
 
 Outside an approved rendering change, a digest that moves is a regression, not a

@@ -59,7 +59,7 @@ it("renders a leading svg on File → New Tab", async () => {
   }
 });
 
-it("renders a leading svg on Edit → Undo and none on View → Label", async () => {
+it("renders a leading svg on Edit → Undo and on the View → Label check", async () => {
   const { container, root } = await renderMenu();
   try {
     await openMenu(container, "Edit");
@@ -73,7 +73,8 @@ it("renders a leading svg on Edit → Undo and none on View → Label", async ()
     });
     await openMenu(container, "View");
     const label = menuItem("Label");
-    expect(label.querySelector("svg")).toBeNull();
+    // Its own glyph, not only the checkmark indicator.
+    expect(label.querySelector("svg.lucide-rectangle-horizontal")).not.toBeNull();
   } finally {
     await act(async () => { root.unmount(); });
     container.remove();

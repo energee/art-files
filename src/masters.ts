@@ -129,6 +129,13 @@ export function hintTrusted(hint: string, labelPath?: string): boolean {
  *  reopening this id: it reopens `replacementId` when the file at its path now
  *  holds that id (Save Master As over the same path), otherwise nothing. */
 export async function forgetMaster(id: string, replacementId?: string): Promise<void> {
+  retireIndexRow(id, replacementId);
+  await dropCachedMaster(id);
+}
+
+/** forgetMaster without the remembered bytes: drops the index row and repoints
+ *  the last-master key. */
+function retireIndexRow(id: string, replacementId?: string): void {
   try {
     const idx = masterIndex();
     if (idx[id]) {
@@ -140,7 +147,6 @@ export async function forgetMaster(id: string, replacementId?: string): Promise<
       else localStorage.removeItem(LAST_KEY);
     }
   } catch { /* no localStorage — same fallback as masterIndex */ }
-  await dropCachedMaster(id);
 }
 
 /** `labelPath` is the native path of the .label being opened, when there is
@@ -165,13 +171,14 @@ async function resolveMaster(
   // A label open follows the file it named. Otherwise the remembered bytes
   // stand in for a file that could not be read (a browser has no path, a
   // desktop read can fail: scope, a moved file) — without this a reload
-  // swapped the template for the shipped fixture. They are read before the
-  // stale index row is retired, which drops them. A library pick does not
+  // swapped the template for the shipped fixture. They outlive the
+  // stale index row that is retired. A library pick does not
   // fall back once a file was read: the cache would be the previous copy of
   // the id that file replaced.
   const named = followReplacement ? hintFile ?? (!hint || hint === indexPath ? indexFile : null) : null;
   const held = !named && (followReplacement || (!indexFile && !hintFile)) ? await cachedMaster(id) : null;
-  if (indexFile) await forgetMaster(id, indexFile.master.id);
+  // A remembered copy is about to stand in, so it stays for the next open.
+  if (indexFile) await (held ? retireIndexRow : forgetMaster)(id, indexFile.master.id);
   if (named) return named;
   if (held) {
     try {
@@ -198,8 +205,10 @@ export function resolveLabelMaster(id: string, hint?: string, labelPath?: string
 }
 
 /** The last-applied master an untitled tab starts from, before
- *  structureOnlyMaster drops fill values and raster art. Falls back to the
- *  shipped fixture when the last-applied id cannot be resolved. */
+ *  structureOnlyMaster drops fill values and raster art. Follows the file when
+ *  it was saved again under a new id, so a restart shows the master on disk.
+ *  Falls back to the shipped fixture when the last-applied id cannot be
+ *  resolved. */
 export async function resolveDefaultMaster(): Promise<ResolvedMaster> {
-  return (await resolveMasterById(lastMasterId())) ?? { master: lolevMaster(), assets: {} };
+  return (await resolveLabelMaster(lastMasterId())) ?? { master: lolevMaster(), assets: {} };
 }

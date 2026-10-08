@@ -548,6 +548,16 @@ no status, no attempts, no delta.
 - release: binary-impacting; queued under Unreleased on fix/label-follows-master-file; version unchanged; no release published.
 
 
+## 2026-10-05 ux-narrow-inspector
+- finding: [UX/high] src/App.tsx:2326 — Narrow windows lose the preview when the inspector opens
+- status: open
+- attempts: 0/3
+- observed-at: 1b0024900e92d56e90b3f212865e15ecb99fd260
+- evidence: Chrome browser reproduction and DOM/accessibility measurements; full steps and source trace in docs/audits/2026-10-05-ux-narrow-inspector.md
+- delta: investigation complete; runtime unchanged, fix remains open
+- release: non-binary-impacting documentation and agent memory only; no release queued
+- evidence: git diff --cached --check and node scripts/check-release.mjs origin/main passed on audit/ux-narrow-inspector documentation diff based on 1b00249; no application suite run
+
 ## 2026-10-05 ux-decimal-input
 - finding: [UX/low] src/components/TextEditor.tsx:731 — ABV decimals conflict with native input validation and stepping
 - status: open
