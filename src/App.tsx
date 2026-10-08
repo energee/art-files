@@ -70,8 +70,8 @@ import { dropRecovery, keepRecovery } from "@/recovery";
 import { EMBEDDABLE_RASTER, mimeFor, rasterKind, tintRgba } from "@/collab";
 import { svgAspect } from "@/logo";
 // The builders are imported dynamically at export time (see buildFull /
-// exportPsd) so they stay out of the initial bundle; only their types are
-// needed up front.
+// exportPsd, which runs buildPsd in a worker) so they stay out of the initial
+// bundle; only their types are needed up front.
 import type { Assets, CollabImage } from "@/pdf/build";
 import type { PsdAssets } from "@/psd/build";
 // setBleed is aliased so the call site reads as what it writes: the
@@ -2095,21 +2095,28 @@ export const DocumentEditor = memo(function DocumentEditor({
     return { data: new Uint8Array(img.data.buffer), width: img.width, height: img.height };
   }
 
-  /** Layered Photoshop files, built full-resolution on demand like the PDFs.
-   *  `which` picks a single plate or (default) both. */
+  /** Layered Photoshop files, built full-resolution on demand like the PDFs,
+   *  off the main thread (psd/offThread.ts). Image decoding (psdImages) still
+   *  runs here: it needs a canvas. `which` picks a single plate or (default)
+   *  both. */
   async function exportPsd(which: "both" | "art" | "mask" = "both") {
     await exportPair("psd", "image/vnd.adobe.photoshop", async () => {
-      const [{ buildPsd, psdImages }, fonts, { plan, images }] = await Promise.all([
-        import("@/psd/build"), loadFonts(family), exportPlan(),
+      const [{ psdImages }, { buildPsdOffThread }, fonts, { plan, images }] = await Promise.all([
+        import("@/psd/build"), import("@/psd/offThread"), loadFonts(family), exportPlan(),
       ]);
       const art = pageArt(false);
       const assets: PsdAssets = {
         fonts, fontFamily: family,
         images: await psdImages(images, { texture: art.texture?.bytes, mask: art.maskPng }, rasterPixelsNatural),
       };
+      // Each plate builds in its own worker (#415); the worker's layout.ts
+      // gets this editor's bleed and DPI with the job.
+      const geometry = { bleedIn: render.bleedIn, dpi: render.dpi };
+      const plate = (mode: "art" | "mask") =>
+        buildPsdOffThread({ items: plan, assets, mode, opts: { layers: drawLayers }, geometry });
       return await Promise.all([
-        which !== "mask" ? buildPsd(plan, assets, "art", { layers: drawLayers }) : null,
-        which !== "art" ? buildPsd(plan, assets, "mask", { layers: drawLayers }) : null,
+        which !== "mask" ? plate("art") : null,
+        which !== "art" ? plate("mask") : null,
       ]);
     });
   }
