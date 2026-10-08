@@ -10,16 +10,17 @@ export const rasterKind = (name: string): "jpg" | "png" =>
   /\.jpe?g$/i.test(name) ? "jpg" : "png";
 
 /** The two rasters pdf-lib can embed as-is, and so the test for "needs no
- *  transcode". Everything else a browser can decode (WebP) is re-encoded to
- *  PNG as it is loaded — see onTexture — because rasterKind above answers for
- *  the STORED bytes, and only these two extensions keep it truthful. */
+ *  transcode". Everything else a browser can decode (WebP) keeps its own
+ *  bytes for Save and gets a PNG copy for embedding — see readRaster in
+ *  App.tsx. rasterKind is only truthful for these two extensions. */
 export const EMBEDDABLE_RASTER = /\.(png|jpe?g)$/i;
 
-/** Filename → browser MIME, for the same three kinds. Lives beside
+/** Filename → browser MIME: SVG, WebP, PNG or JPEG. Lives beside
  *  rasterKind so there is one home for "what image is this name" — the
  *  svg test had already started forking into call sites. */
 export const mimeFor = (name: string): string =>
   /\.svg$/i.test(name) ? "image/svg+xml"
+    : /\.webp$/i.test(name) ? "image/webp"
     : rasterKind(name) === "png" ? "image/png" : "image/jpeg";
 
 /** Recolor every pixel to `fill`, keeping its alpha — the "color overlay" a

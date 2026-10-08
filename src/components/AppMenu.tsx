@@ -2,13 +2,14 @@ import { isMacOS } from "@/keys";
 // AppMenu.tsx — one File/Edit/View menu layout, rendered as shadcn chrome in
 // the browser and installed as the native application menu under Tauri.
 import { useEffect, useRef, useState } from "react";
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import type {
-  CheckMenuItem, IconMenuItem, MenuItem, NativeIcon, PredefinedMenuItem, Submenu,
+  CheckMenuItem, IconMenuItem, MenuItem, PredefinedMenuItem, Submenu,
 } from "@tauri-apps/api/menu";
 import {
-  ArrowLeft, ArrowRight, Bookmark, Eye, LayoutGrid, List, Minus, Plus,
-  RefreshCw, Share, type LucideIcon,
+  Bookmark, BookmarkPlus, BookOpen, Columns2, Contrast, Cylinder, FileImage, Files, FolderOpen,
+  Layers, RectangleHorizontal, Redo2, Ruler, Settings, SquareArrowDown,
+  SquareArrowUp, SquarePlus, Undo2, X, type LucideIcon,
 } from "lucide-react";
 import { shortcutOf, type Command } from "@/components/CommandMenu";
 import { dialogOpen, isTypingTarget } from "@/keys";
@@ -18,96 +19,94 @@ import {
   MenubarSubTrigger, MenubarTrigger,
 } from "@/components/ui/menubar";
 
-/** AppKit *Template* NSImage names only — they tint with the menu (black in
- *  light, white in dark). Color icons like Folder and PreferencesGeneral are
- *  excluded so the bar stays black-and-white. Windows and Linux ignore them.
- *  Items without one still align: AppKit reserves the image column once any
- *  sibling has an image. */
-type NativeIconName = Extract<
-  `${NativeIcon}`,
-  | "Add"
-  | "Remove"
-  | "Share"
-  | "Bookmarks"
-  | "IconView"
-  | "QuickLook"
-  | "ListView"
-  | "Refresh"
-  | "GoLeft"
-  | "GoRight"
->;
+/** SF Symbols, the icons macOS itself uses in menus. The Mac menu shows the
+ *  symbol (set natively after install, so it tints with light and dark mode;
+ *  src-tauri/src/menu_symbols.rs) and the in-window menu draws the closest
+ *  Lucide glyph, so every row carries the same picture in both. */
+const SYMBOL_GLYPH = {
+  "plus.square.on.square": SquarePlus,
+  "folder": FolderOpen,
+  "xmark": X,
+  "square.and.arrow.down": SquareArrowDown,
+  "doc.on.doc": Files,
+  "books.vertical": BookOpen,
+  "bookmark": Bookmark,
+  "doc.badge.plus": BookmarkPlus,
+  "square.and.arrow.up": SquareArrowUp,
+  "photo": FileImage,
+  "circle.lefthalf.filled": Contrast,
+  "square.3.layers.3d": Layers,
+  "arrow.uturn.backward": Undo2,
+  "arrow.uturn.forward": Redo2,
+  "gear": Settings,
+  "rectangle": RectangleHorizontal,
+  "cylinder": Cylinder,
+  "ruler": Ruler,
+  "rectangle.split.2x1": Columns2,
+} satisfies Record<string, LucideIcon>;
+type MenuSymbol = keyof typeof SYMBOL_GLYPH;
 
-/** The in-window drawing of each native symbol, so a row shows a symbol in the
- *  browser only when the Mac menu shows one, and it is the same symbol. */
-const WEB_GLYPH: Record<NativeIconName, LucideIcon> = {
-  Add: Plus, Remove: Minus, Share, Bookmarks: Bookmark, IconView: LayoutGrid,
-  QuickLook: Eye, ListView: List, Refresh: RefreshCw, GoLeft: ArrowLeft, GoRight: ArrowRight,
-};
-
-type CheckAction = {
+type ActionEntry = {
   kind: "action";
   id: string;
   text: string;
-  check: true;
+  /** A checkmark row: its state comes from `checked`, not the command. */
+  check?: true;
+  symbol: MenuSymbol;
 };
-type IconAction = {
-  kind: "action";
-  id: string;
-  text: string;
-  nativeIcon?: NativeIconName;
-};
-type ActionEntry = CheckAction | IconAction;
+type CheckAction = ActionEntry & { check: true };
 type SeparatorEntry = { kind: "separator"; id: string };
 type PredefinedEntry = {
   kind: "predefined";
-  item: "Separator" | "Cut" | "Copy" | "Paste" | "SelectAll";
+  item: "Separator" | "Cut" | "Copy" | "Paste" | "SelectAll" | "Fullscreen";
 };
 type SubmenuEntry = {
   kind: "submenu";
   id: string;
   text: string;
-  nativeIcon?: NativeIconName;
+  /** Absent on the top-level File/Edit/View titles, which carry no icon. */
+  symbol?: MenuSymbol;
   items: MenuEntry[];
 };
 type MenuEntry = ActionEntry | SeparatorEntry | PredefinedEntry | SubmenuEntry;
 
-/** The application-owned menus. One table drives both renderers. A row shows
- *  a symbol only when macOS has a black-and-white template for it, and the
- *  in-window glyph draws that same symbol. Exported for tests, which pin the
+/** The application-owned menus. One table drives both renderers: every row
+ *  names an SF Symbol, which the Mac menu shows and the in-window menu draws
+ *  as its Lucide match (SYMBOL_GLYPH). Exported for tests, which pin the
  *  wiring (e.g. the Edit menu's native clipboard roles) against this data. */
 export const APP_MENUS: SubmenuEntry[] = [
   {
     kind: "submenu", id: "file-menu", text: "File", items: [
-      { kind: "action", id: "tab-new", text: "New Tab", nativeIcon: "Add" },
-      { kind: "action", id: "project-open", text: "Open Project…" },
-      { kind: "action", id: "tab-close", text: "Close Tab", nativeIcon: "Remove" },
+      { kind: "action", id: "tab-new", text: "New Tab", symbol: "plus.square.on.square" },
+      { kind: "action", id: "project-open", text: "Open Project…", symbol: "folder" },
+      { kind: "action", id: "tab-close", text: "Close Tab", symbol: "xmark" },
       { kind: "separator", id: "file-new" },
-      { kind: "action", id: "project-save", text: "Save Project" },
-      { kind: "action", id: "project-save-as", text: "Save Project As…" },
+      { kind: "action", id: "project-save", text: "Save Project", symbol: "square.and.arrow.down" },
+      { kind: "action", id: "project-save-as", text: "Save Project As…", symbol: "doc.on.doc" },
       { kind: "separator", id: "file-master" },
-      { kind: "action", id: "master-open", text: "Open Master…" },
-      { kind: "action", id: "master-save", text: "Save Master", nativeIcon: "Bookmarks" },
-      { kind: "action", id: "master-save-as", text: "Save Master As…", nativeIcon: "Bookmarks" },
+      { kind: "action", id: "master-open", text: "Open Master…", symbol: "books.vertical" },
+      { kind: "action", id: "master-save", text: "Save Master", symbol: "bookmark" },
+      { kind: "action", id: "master-save-as", text: "Save Master As…", symbol: "doc.badge.plus" },
       { kind: "separator", id: "file-projects" },
       {
-        kind: "submenu", id: "export-menu", text: "Export", nativeIcon: "Share", items: [
-          { kind: "action", id: "export-both", text: "Export PDFs", nativeIcon: "Share" },
-          { kind: "action", id: "export-art", text: "Export Artwork PDF", nativeIcon: "IconView" },
-          { kind: "action", id: "export-mask", text: "Export Mask PDF", nativeIcon: "QuickLook" },
+        kind: "submenu", id: "export-menu", text: "Export", symbol: "square.and.arrow.up", items: [
+          { kind: "action", id: "export-both", text: "Export PDFs", symbol: "doc.on.doc" },
+          { kind: "action", id: "export-art", text: "Export Artwork PDF", symbol: "photo" },
+          { kind: "action", id: "export-mask", text: "Export Mask PDF", symbol: "circle.lefthalf.filled" },
           { kind: "separator", id: "export-formats" },
-          { kind: "action", id: "export-psd", text: "Export PSDs", nativeIcon: "ListView" },
-          { kind: "action", id: "export-psd-art", text: "Export Artwork PSD", nativeIcon: "IconView" },
-          { kind: "action", id: "export-psd-mask", text: "Export Mask PSD", nativeIcon: "QuickLook" },
+          { kind: "action", id: "export-psd", text: "Export PSDs", symbol: "square.3.layers.3d" },
+          { kind: "action", id: "export-psd-art", text: "Export Artwork PSD", symbol: "photo" },
+          { kind: "action", id: "export-psd-mask", text: "Export Mask PSD", symbol: "circle.lefthalf.filled" },
         ],
       },
     ],
   },
   {
     kind: "submenu", id: "edit-menu", text: "Edit", items: [
-      { kind: "action", id: "undo", text: "Undo", nativeIcon: "GoLeft" },
-      { kind: "action", id: "redo", text: "Redo", nativeIcon: "GoRight" },
+      { kind: "action", id: "undo", text: "Undo", symbol: "arrow.uturn.backward" },
+      { kind: "action", id: "redo", text: "Redo", symbol: "arrow.uturn.forward" },
       { kind: "separator", id: "edit-variants" },
-      { kind: "action", id: "settings", text: "Settings…" },
+      { kind: "action", id: "settings", text: "Settings…", symbol: "gear" },
       { kind: "predefined", item: "Separator" },
       { kind: "predefined", item: "Cut" },
       { kind: "predefined", item: "Copy" },
@@ -117,18 +116,22 @@ export const APP_MENUS: SubmenuEntry[] = [
   },
   {
     kind: "submenu", id: "view-menu", text: "View", items: [
-      { kind: "action", id: "view-label", text: "Label", check: true },
-      { kind: "action", id: "view-mask", text: "Mask", check: true },
-      { kind: "action", id: "view-can", text: "Can", check: true },
+      { kind: "action", id: "view-label", text: "Label", check: true, symbol: "rectangle" },
+      { kind: "action", id: "view-mask", text: "Mask", check: true, symbol: "circle.lefthalf.filled" },
+      { kind: "action", id: "view-can", text: "Can", check: true, symbol: "cylinder" },
       { kind: "separator", id: "view-modes" },
-      { kind: "action", id: "rulers", text: "Rulers", check: true },
-      { kind: "action", id: "guides", text: "Guides", check: true },
+      { kind: "action", id: "rulers", text: "Rulers", check: true, symbol: "ruler" },
+      { kind: "action", id: "guides", text: "Guides", check: true, symbol: "rectangle.split.2x1" },
+      // Ours rather than the row AppKit inserts on first open, which arrives
+      // after menu_symbols.rs has run and so would stay without its icon.
+      { kind: "predefined", item: "Separator" },
+      { kind: "predefined", item: "Fullscreen" },
     ],
   },
 ];
 
 function isCheckAction(entry: ActionEntry): entry is CheckAction {
-  return "check" in entry;
+  return !!entry.check;
 }
 
 export function actionsIn(entries: MenuEntry[]): ActionEntry[] {
@@ -149,8 +152,8 @@ const MENU_ITEMS =
 type CommandIndex = Record<string, Command>;
 type CheckedState = Partial<Record<string, boolean>>;
 
-function MenuGlyph({ name }: { name: NativeIconName }) {
-  const Icon = WEB_GLYPH[name];
+function MenuGlyph({ name }: { name: MenuSymbol }) {
+  const Icon = SYMBOL_GLYPH[name];
   return <Icon aria-hidden="true" />;
 }
 
@@ -168,9 +171,8 @@ function WebEntries(props: {
     if (entry.kind === "submenu") {
       return (
         <MenubarSub key={entry.id}>
-          {/* inset reserves the glyph column, as AppKit does. */}
-          <MenubarSubTrigger inset={!entry.nativeIcon}>
-            {entry.nativeIcon && <MenuGlyph name={entry.nativeIcon} />}
+          <MenubarSubTrigger>
+            {entry.symbol && <MenuGlyph name={entry.symbol} />}
             {entry.text}
           </MenubarSubTrigger>
           <MenubarSubContent className={MENU_ITEMS}>
@@ -186,15 +188,15 @@ function WebEntries(props: {
       return (
         <MenubarCheckboxItem key={entry.id} checked={!!props.checked[entry.id]}
           disabled={command.disabled} onClick={command.run}>
+          <MenuGlyph name={entry.symbol} />
           {entry.text}
           {keys && <MenubarShortcut>{keys}</MenubarShortcut>}
         </MenubarCheckboxItem>
       );
     }
     return (
-      <MenubarItem key={entry.id} inset={!entry.nativeIcon}
-        disabled={command.disabled} onClick={command.run}>
-        {entry.nativeIcon && <MenuGlyph name={entry.nativeIcon} />}
+      <MenubarItem key={entry.id} disabled={command.disabled} onClick={command.run}>
+        <MenuGlyph name={entry.symbol} />
         {entry.text}
         {keys && <MenubarShortcut>{keys}</MenubarShortcut>}
       </MenubarItem>
@@ -295,6 +297,9 @@ async function nativeEntry(
   if (entry.kind === "predefined" || entry.kind === "separator") {
     const item = await api.PredefinedMenuItem.new({
       item: entry.kind === "predefined" ? entry.item : "Separator",
+      // AppKit's own wording (muda says "Toggle Full Screen"); SYSTEM_ROWS
+      // gives this title its symbol.
+      ...(entry.kind === "predefined" && entry.item === "Fullscreen" ? { text: "Enter Full Screen" } : {}),
     });
     resources.push(item);
     return item;
@@ -306,7 +311,6 @@ async function nativeEntry(
       id: entry.id,
       text: entry.text,
       items,
-      icon: isMacOS() ? entry.nativeIcon : undefined,
     });
     resources.push(submenu);
     return submenu;
@@ -323,13 +327,27 @@ async function nativeEntry(
   let item: NativeAction;
   if (isCheckAction(entry)) {
     item = await api.CheckMenuItem.new({ ...options, checked: !!checked[entry.id] });
-  } else if (isMacOS() && entry.nativeIcon) {
-    item = await api.IconMenuItem.new({ ...options, icon: entry.nativeIcon });
   } else {
     item = await api.MenuItem.new(options);
   }
   resources.push(item);
   return item;
+}
+
+/** Native-only rows with no in-window twin: the View menu's full-screen
+ *  toggle, under both titles AppKit gives it. */
+const SYSTEM_ROWS: [string, string][] =
+  ["Enter Full Screen", "Exit Full Screen"].map((title) => [title, "viewfinder"]);
+
+/** Every row's title and SF Symbol, for menu_symbols.rs to set on the
+ *  installed Mac menu. Titles are unique across APP_MENUS. Exported for tests. */
+export function menuSymbols(entries: MenuEntry[] = APP_MENUS): [string, string][] {
+  return entries.flatMap((entry): [string, string][] => {
+    if (entry.kind === "action") return [[entry.text, entry.symbol]];
+    if (entry.kind !== "submenu") return [];
+    const own: [string, string][] = entry.symbol ? [[entry.text, entry.symbol]] : [];
+    return [...own, ...menuSymbols(entry.items)];
+  });
 }
 
 /** The macOS application-menu item's two labels, toggled by `updateInstalled`. */
@@ -420,6 +438,12 @@ function useNativeMenu(
         }
         const previous = await menu.setAsAppMenu();
         if (previous) await previous.close();
+        // The Tauri menu API only knows AppKit's old template icons; the SF
+        // Symbols go on natively. A failure leaves the rows without icons.
+        if (isMacOS()) {
+          await invoke("set_menu_symbols", { symbols: [...menuSymbols(), ...SYSTEM_ROWS] })
+            .catch((error: unknown) => console.warn("menu symbols:", error));
+        }
         if (!live) {
           await closeResources(resources);
           return;
