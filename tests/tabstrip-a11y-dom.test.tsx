@@ -1,7 +1,8 @@
 // tabstrip-a11y-dom.test.tsx — the shell's tab strip is a real tablist
 // (#404): each document tab carries role="tab" and aria-selected, so a
-// screen reader announces which tab is active, and shows a focus ring when
-// reached by keyboard. DocumentEditor is stubbed: it hands the shell a slot
+// screen reader announces which tab is active, shows a focus ring when
+// reached by keyboard, and keeps keyboard focus on the selected tab after an
+// Enter/Space switch re-hosts the strip. DocumentEditor is stubbed: it hands the shell a slot
 // for the strip (the real tabStripHost contract) and exposes onNewTab.
 // @vitest-environment happy-dom
 import { act, createElement, useEffect } from "react";
@@ -63,4 +64,29 @@ it("renders the strip as a tablist with one selected tab", async () => {
 it("gives each tab a keyboard focus ring", () => {
   expect(tabs()).toHaveLength(1);
   expect(tabs()[0].className).toContain("focus-visible:ring-2");
+});
+
+it("keeps keyboard focus on the strip when Enter switches tabs", async () => {
+  await act(async () => { mocks.newTab?.(); });
+  const first = tabs()[0];
+  first.focus();
+  // A keyboard activation is a click with detail 0 — what .click() sends.
+  await act(async () => { first.click(); });
+
+  // Switching re-hosts the strip in the new editor's slot; focus follows
+  // the newly selected tab instead of dropping to <body>.
+  const active = document.activeElement as HTMLElement | null;
+  expect(active?.getAttribute("role")).toBe("tab");
+  expect(active?.getAttribute("aria-selected")).toBe("true");
+  expect(active).toBe(tabs()[0]);
+});
+
+it("leaves focus alone when a mouse click switches tabs", async () => {
+  await act(async () => { mocks.newTab?.(); });
+  await act(async () => {
+    tabs()[0].dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+  });
+  expect(tabs()[0].getAttribute("aria-selected")).toBe("true");
+  // No forced focus: the arrows go back to nudging the canvas.
+  expect(document.activeElement?.getAttribute("role")).not.toBe("tab");
 });

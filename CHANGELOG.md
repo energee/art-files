@@ -7,7 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Fixed
-- **The tab strip works with a keyboard and screen reader.** Document tabs show a focus ring when reached with Tab, and assistive tech announces them as tabs and says which one is active.
+- **The tab strip works with a keyboard and screen reader.** Document tabs show a focus ring when reached with Tab, keep focus after you switch tabs with Enter or Space, and assistive tech announces them as tabs and says which one is active.
 
 ### Security
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.

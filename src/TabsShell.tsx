@@ -377,6 +377,16 @@ export default function TabsShell() {
   const [updateStatusHost, setUpdateStatusHost] = useState<HTMLDivElement | null>(null);
   const [stripHost, setStripHost] = useState<HTMLDivElement | null>(null);
   const tabStripHost = useCallback((el: HTMLDivElement | null) => setStripHost(el), []);
+  // Switching tabs re-hosts the strip in the new editor's slot, which drops
+  // focus to <body>. After a KEYBOARD switch (Enter/Space: a click with
+  // detail 0) put focus back on the newly selected tab (#404); a mouse
+  // switch leaves focus alone so the arrows go on nudging the canvas.
+  const refocusTab = useRef(false);
+  useEffect(() => {
+    if (!refocusTab.current || !stripHost) return;
+    refocusTab.current = false;
+    stripHost.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+  }, [stripHost]);
   // useMemo so the strip element is rebuilt only when its content changes,
   // not on every unrelated shell state change.
   const tabStrip = useMemo(() => (
@@ -399,7 +409,10 @@ export default function TabsShell() {
             <button
               role="tab"
               aria-selected={t.id === state.active}
-              onClick={() => activate(t.id)}
+              onClick={(e) => {
+                refocusTab.current = e.detail === 0 && t.id !== state.active;
+                activate(t.id);
+              }}
               title={t.filePath ?? t.title}
               className="min-w-0 flex-1 truncate rounded-sm text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring">
               {t.title}
