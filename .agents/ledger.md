@@ -585,3 +585,11 @@ no status, no attempts, no delta.
 - delta: no flag added. Vitest 5 (#362) adds `localStorage`/`sessionStorage` to populateGlobal's override keys (Vitest 2 skipped keys Node already defined), so happy-dom's Storage replaces Node's native global, so the 2026-09-27 note is stale; tests/webstorage-dom.test.ts now fails if the native global ever wins again
 - evidence: on fix/419 based on 361a4f9, full suite 114 files / 1290 tests pass on Node 26.8.2 with NODE_OPTIONS unset; new test passes on Node 24.19.0 and 26.8.2; tsc and zero-warning lint pass
 - release: non-binary-impacting (tests and agent memory only); no release queued
+
+## 2026-10-08 issue-410-lazy-dialogs
+- finding: [perf/med] #410 — Settings, the Save Master review and the ⌘K palette (with cmdk) shipped in the entry chunk
+- status: done
+- attempts: 1/3
+- delta: the three surfaces load on first open (PR #468). Entry chunk 892.6 kB → 764.1 kB at first measure; eager JS total about -60 kB. Review fixes: while a dialog's chunk loads, a hidden dialog-content placeholder (LazyDialog.tsx) keeps dialogOpen() true so keys stay off the tab (#244); a blocked first ⌘K no longer fetches the palette; a failed load names the way out (reload), and one DialogLoadFailed replaces two copies
+- evidence: on fix/410, npx tsc --noEmit and npm run lint (zero warnings) clean; 20 related vitest files / 105 tests pass (app-v3-dom hit a 5 s timeout once under parallel load, then 27/27 passed alone); new tests/commandmenu-loading-dom.test.tsx fails on the pre-fix CommandMenu
+- release: binary-impacting; CHANGELOG [Unreleased] / Changed bullet present

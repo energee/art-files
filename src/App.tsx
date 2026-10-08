@@ -24,10 +24,9 @@
 // the deactivation effect). The editor reports its DocumentMeta upward
 // through onMeta; the shell owns tabs, file-open routing, render settings,
 // and the updater.
-import { RenderSettings as RenderSettingsFields } from "@/components/RenderSettings";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { MasterSaveReview } from "@/components/MasterSaveReview";
+import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
 import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { dialogOpen, isTypingTarget, keyOwner } from "@/keys";
 import { isTauri } from "@tauri-apps/api/core";
@@ -61,7 +60,7 @@ import {
   type MasterAssets,
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
-import { SHIPPED_MASTER_ID, forgetMaster, hintTrusted, masterIndex, rememberMaster, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
+import { SHIPPED_MASTER_ID, hintTrusted, masterIndex, rememberMaster, removeFromLibrary, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
@@ -132,6 +131,27 @@ const CanView = lazy<ComponentType<CanViewProps>>(() => import("@/components/Can
       useEffect(() => onRenderError(`The 3D view failed to load: ${String(err)}`), [onRenderError]);
       return null;
     },
+  })));
+
+// Settings and the Save Master review are opened rarely, so their modules
+// (and the checkbox only the review uses) load on first open, not with the
+// editor (#410). The ⌘K palette does the same inside CommandMenu. Like
+// CanView, a chunk that fails to load says so where the surface would have
+// opened instead of unmounting the editor and its unsaved edits; while one
+// loads, DialogLoading keeps the keys off the tab (LazyDialog.tsx).
+const RenderSettingsFields = lazy<typeof import("@/components/RenderSettings").RenderSettings>(() => import("@/components/RenderSettings").then(
+  (m) => ({ default: m.RenderSettings }),
+  (err: unknown) => ({
+    default: () => <p className="text-xs text-destructive-text">{loadFailedMessage("Settings", err)}</p>,
+  })));
+type MasterSaveReviewProps = Parameters<typeof import("@/components/MasterSaveReview").MasterSaveReview>[0];
+const MasterSaveReview = lazy<ComponentType<MasterSaveReviewProps>>(() => import("@/components/MasterSaveReview").then(
+  (m) => ({ default: m.MasterSaveReview }),
+  (err: unknown) => ({
+    default: ({ open, onCancel }: MasterSaveReviewProps) => (
+      <DialogLoadFailed title="Save Master" what="The Save Master review" err={err}
+        open={open} onOpenChange={(o) => { if (!o) onCancel(); }} />
+    ),
   })));
 
 /** bytes = full print resolution (exports); previewBytes = downscaled PNG the
@@ -1810,10 +1830,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   }
 
   /** Drop a remembered master from the library. The open document and the
-   *  file on disk stay as they are. */
-  function forgetLibraryMaster(id: string) {
-    void forgetMaster(id);
+   *  file on disk stay as they are. Returns the picker's Undo, which puts the
+   *  library row back and re-lists it. */
+  async function forgetLibraryMaster(id: string) {
+    const undo = await removeFromLibrary(id);
     refreshLibrary();
+    return async () => { await undo(); refreshLibrary(); };
   }
 
   /** File → Open Master…: native dialog on desktop (a real path, so the
@@ -1948,6 +1970,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       const unpacked = unpackLabel(f.bytes);
       let notes: string[] = [];
       let masterAssets: MasterAssets = {};
+      let benched = false;
       // Legacy fixed collab ZIP roles (collab-left/, collab-center/) stay
       // READABLE: each is minted an id in the per-id store and becomes the
       // matching image layer's fill value.
@@ -1985,14 +2008,27 @@ export const DocumentEditor = memo(function DocumentEditor({
           l = r.label;
           notes = r.warnings;
         }
-        // The file at this label's path was saved again under a new id. Follow
-        // that file; values that don't fit the new template are benched.
-        if (l.masterId !== resolved.master.id) {
-          const rebound = rebindLabel(l, undefined, resolved.master);
-          l = rebound.label;
-          notes.push(...benchedNotes(rebound.dropped));
-        }
-        next = { master: resolved.master, label: adoptLegacyCollab(l) };
+        // Bind to the master actually resolved — always, not only when the
+        // id changed (the file was saved again under a new id): the label's
+        // own master may since have dropped a layer or variant, and those
+        // orphan ids are benched and reported instead of carried forever (#409).
+        // Legacy collab roles are adopted first so they get the same check.
+        // On its own master, a bench the FILE already carries (a collab
+        // rebind) is not news on every open; checked against the file as
+        // written, since convertLabelV2 benches a v2 label's orphans silently.
+        const { label: bound, dropped } = rebindLabel(adoptLegacyCollab(l), undefined, resolved.master);
+        const old = ref.masterId === resolved.master.id ? ref.dormant : undefined;
+        const fresh = {
+          values: dropped.values.filter((id) =>
+            !old || !Object.hasOwn(old.values, id) || Object.hasOwn(ref.values, id)),
+          variants: dropped.variants.filter((id) =>
+            !old?.variants.includes(id) || ref.enabledVariants.includes(id)),
+        };
+        notes.push(...benchedNotes(fresh));
+        // What was just benched is not in the file yet: Save stays live and a
+        // close asks, so the cleaned label reaches disk.
+        benched = fresh.values.length + fresh.variants.length > 0;
+        next = { master: resolved.master, label: bound };
       }
       // Resolve untrusted overrides/values before installing the document or
       // decoding its assets; a malformed label must leave the old tab intact.
@@ -2030,8 +2066,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (tex) swapLoaded(setTexture, tex);
       if (msk) swapLoaded(setMask, msk);
       if (images.length) setCustomImages(Object.fromEntries(images));
-      setDirty(false);
-      setEdited(false);
+      setDirty(benched);
+      setEdited(benched);
       setLoadError(notes.length ? "Note: " + notes.join(" · ") : "");
       return true;
     } catch (err) {
@@ -2303,12 +2339,18 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   return (
     <TooltipProvider>
-      <Dialog open={active && settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogTitle>Settings</DialogTitle>
-          <RenderSettingsFields value={render} onChange={onRenderChange} />
-        </DialogContent>
-      </Dialog>
+      {/* Suspense around the Dialog, not inside it: the first open then
+          mounts the dialog with its fields already there, so it opens
+          focused on the first field rather than on Close. Only an open
+          dialog renders its fields, so only an open one suspends. */}
+      <Suspense fallback={<DialogLoading />}>
+        <Dialog open={active && settingsOpen} onOpenChange={setSettingsOpen}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogTitle>Settings</DialogTitle>
+            <RenderSettingsFields value={render} onChange={onRenderChange} />
+          </DialogContent>
+        </Dialog>
+      </Suspense>
       <Dialog open={!!missingMaster} onOpenChange={(open) => !open && missingMaster?.choose(null)}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
@@ -2329,14 +2371,16 @@ export const DocumentEditor = memo(function DocumentEditor({
           review stays with its tab (hidden while another tab is in front,
           back on return) so a confirm can only write the visible tab's master. */}
       {pendingSave && (
-        <MasterSaveReview open={active} as={pendingSave.as} changes={masterChangeList}
-          target={master.variants.find((v) => v.id === version)?.name}
-          onCancel={() => setPendingSave(null)}
-          onConfirm={(promote) => {
-            const { as } = pendingSave;
-            setPendingSave(null);
-            void saveMaster(as, promote);
-          }} />
+        <Suspense fallback={active ? <DialogLoading /> : null}>
+          <MasterSaveReview open={active} as={pendingSave.as} changes={masterChangeList}
+            target={master.variants.find((v) => v.id === version)?.name}
+            onCancel={() => setPendingSave(null)}
+            onConfirm={(promote) => {
+              const { as } = pendingSave;
+              setPendingSave(null);
+              void saveMaster(as, promote);
+            }} />
+        </Suspense>
       )}
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
           preview center, inspector sheet right. */}
