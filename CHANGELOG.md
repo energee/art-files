@@ -7,7 +7,23 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Changed
-- **Faster preview after art changes.** Swapping one image, tint or page-art switch re-decodes only that asset; the others keep their decoded copies.
+- **Faster preview after art changes.** Swapping one image or page-art switch re-decodes only that asset; the others keep their decoded copies.
+- **Smoother fill changes on tinted raster art.** Changing the fill of an image layer with Tint raster on no longer stalls the preview on every color step; exports are unchanged.
+- **Typing on a label with a texture or mask is lighter.** The preview paints the page art once per zoom level and reuses it, instead of rescaling the full-size image on every keystroke.
+- **The first preview loads only the fonts the label uses.** Opening a label fetches its master font and any layer font overrides instead of every bundled family; another font loads when a layer first picks it.
+- **Internal cleanup, no visible change.** Image bytes become files and blobs through one shared helper instead of repeated casts.
+- **Export confirms what it saved.** When an export finishes, the header names the files it wrote, such as both the art and mask PDFs. The note clears on your next edit.
+- **Smoother typing in the 3D view.** The foil-mask pass over the label texture now runs in a background worker instead of stalling the editor on every rebuild.
+
+### Added
+- **Unsaved tabs survive a crash.** Label Lab keeps a recovery copy of every tab with unsaved changes. After a crash or forced quit, the next launch offers to restore them. A restored tab still counts as unsaved until you save it, and Save asks where to write. Dismissing the offer without choosing keeps the copies for the next launch.
+
+### Fixed
+- **Saving can no longer wipe out a label or master.** Desktop Save writes a temporary copy beside the file and swaps it in only once it is complete, so a crash or full disk mid-save leaves the previous file intact.
+- **Faster typing in the preview.** The white-ink plate is no longer repainted on every edit while the comparison divider hides it; it paints when the divider reveals it.
+- **A malformed .label is refused instead of breaking the canvas.** A shared label whose values or overrides have the wrong shape (non-text values, non-numeric positions, an incomplete added layer) now fails to open with a clear error instead of crashing the preview or saving bad geometry back.
+- **Exports say what they're building.** While PDFs or PSDs export, the blurred preview reads "Building PDFs…" or "Building PSDs…" instead of "rendering preview…", so a long export no longer looks like a stalled preview. Screen readers announce the note too.
+- **Background failures show up instead of vanishing.** A save, export or open that fails outside its own error handling now shows a dismissible alert with the reason, rather than failing silently.
 
 ### Security
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.
