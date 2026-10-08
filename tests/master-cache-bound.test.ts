@@ -103,6 +103,23 @@ describe("master cache bound (#406)", () => {
     expect(await legacyLeft()).toBe(MAX_CACHED_MASTERS - 1);
   });
 
+  it("bytes the recency record does not list are still evicted", async () => {
+    // A touch that failed while its put landed leaves bytes the record never
+    // names; without reconciling against the store they escape the bound.
+    for (let i = 0; i < MAX_CACHED_MASTERS; i++) await cacheMaster(`m${i}`, bytes(i));
+    const db = await new Promise<IDBDatabase>((resolve) => {
+      const req = indexedDB.open("labellab");
+      req.onsuccess = () => resolve(req.result);
+    });
+    const tx = db.transaction("masters", "readwrite");
+    tx.objectStore("masters").put(bytes(99), "orphan");
+    await new Promise((r) => { tx.oncomplete = r; });
+    db.close();
+    await cacheMaster("new", bytes(7));
+    expect(await cachedMaster("orphan")).toBeNull();
+    expect(await cachedMaster("m1")).toEqual(bytes(1));
+  });
+
   it("logs a put that fails instead of failing silently", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(() => {

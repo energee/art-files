@@ -21,12 +21,18 @@ const STORE = "masters";
 const RECENCY = "labellab:recency";
 /** How many masters' bytes the cache holds before it evicts the oldest. */
 export const MAX_CACHED_MASTERS = 20;
+/** Crash-recovery snapshots of unsaved tabs (recovery.ts) share this DB. */
+export const RECOVERY_STORE = "recovery";
 
 function open(): Promise<IDBDatabase | null> {
   return new Promise((resolve) => {
     try {
-      const req = indexedDB.open(DB, 1);
-      req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+      // v2 added the recovery store; create whichever store is missing.
+      const req = indexedDB.open(DB, 2);
+      req.onupgradeneeded = () => {
+        for (const name of [STORE, RECOVERY_STORE])
+          if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name);
+      };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => resolve(null);
     } catch {
@@ -35,15 +41,18 @@ function open(): Promise<IDBDatabase | null> {
   });
 }
 
-function run<T>(mode: IDBTransactionMode, act: (s: IDBObjectStore) => IDBRequest<T>): Promise<T | null> {
+/** One request against one store of the app's IndexedDB; null on any failure. */
+export function run<T>(
+  mode: IDBTransactionMode, act: (s: IDBObjectStore) => IDBRequest<T>, store = STORE,
+): Promise<T | null> {
   return open().then((db) => db && new Promise<T | null>((resolve) => {
     // Close the connection on the way out, whichever way it goes: `open`
     // makes a fresh one per call, and a leaked one both holds memory and
     // blocks any later version upgrade indefinitely.
     const done = (v: T | null) => { try { db.close(); } catch { /* already gone */ } resolve(v); };
     try {
-      const tx = db.transaction(STORE, mode);
-      const req = act(tx.objectStore(STORE));
+      const tx = db.transaction(store, mode);
+      const req = act(tx.objectStore(store));
       // For a write the request settles before the transaction commits, so
       // the close waits on the transaction; for a read either is enough.
       tx.oncomplete = () => done(req.result ?? null);
@@ -62,33 +71,31 @@ export async function cacheMaster(id: string, bytes: Uint8Array): Promise<void> 
   // Make room in its own transaction: a put that fails on a full quota aborts
   // its transaction, and an eviction riding in it would roll back too, leaving
   // a store that was already full stuck full. If the put then fails, the id
-  // holds a recency slot with no bytes until it ages out; reads return null.
+  // stays in the order with no bytes until the next touch reconciles it out.
   await run("readwrite", (s) => touch(s, id));
   const ok = await run("readwrite", (s) => s.put(bytes, id));
-  if (ok === null) console.warn(`Could not cache master ${id}; the browser store may be full.`);
+  if (ok === null) console.warn(`Could not cache master ${id}; the browser store may be full or unavailable.`);
 }
 
 /** Move id to the head of the recency order and evict every id past the
- *  bound. Returns the recency read so `run` has a request to settle on. */
+ *  bound. The order is reconciled against the keys actually held: ids with no
+ *  bytes (a put that failed, a drop) leave it, and bytes it does not list (a
+ *  cache from before the bound, a touch that failed) rank behind the listed
+ *  ones, in key order, so nothing escapes the bound. Returns the recency read
+ *  so `run` has a request to settle on. */
 function touch(s: IDBObjectStore, id: string): IDBRequest {
   const order = s.get(RECENCY);
   order.onsuccess = () => {
-    if (Array.isArray(order.result)) return promote(s, id, order.result);
-    // No record yet: a cache from before the bound. Its existing ids rank
-    // behind this one, in key order (an older build kept no age), so the
-    // overflow they already caused is evicted now.
     const all = s.getAllKeys();
-    all.onsuccess = () => promote(s, id, all.result);
+    all.onsuccess = () => {
+      const held = all.result.filter((k) => k !== RECENCY && k !== id);
+      const listed = Array.isArray(order.result) ? order.result.filter((k) => held.includes(k)) : [];
+      const ranked = [id, ...listed, ...held.filter((k) => !listed.includes(k))];
+      for (const old of ranked.slice(MAX_CACHED_MASTERS)) s.delete(old);
+      s.put(ranked.slice(0, MAX_CACHED_MASTERS), RECENCY);
+    };
   };
   return order;
-}
-
-/** Put id at the head of the recency order, drop every id past the bound and
- *  store what remains. */
-function promote(s: IDBObjectStore, id: string, prev: unknown[]): void {
-  const order = [id, ...prev.filter((k) => k !== id && k !== RECENCY)];
-  for (const old of order.slice(MAX_CACHED_MASTERS)) s.delete(old as IDBValidKey);
-  s.put(order.slice(0, MAX_CACHED_MASTERS), RECENCY);
 }
 
 /** The cached bytes for a master id, or null when nothing is held. A hit
@@ -107,12 +114,6 @@ export async function cachedMaster(id: string): Promise<Uint8Array | null> {
 /** Drop a cached master. The file at its path now holds a different id, so
  *  these bytes are an older copy and must not resolve in its place. */
 export async function dropCachedMaster(id: string): Promise<void> {
-  await run("readwrite", (s) => {
-    const order = s.get(RECENCY);
-    // Off the recency list too, so the dropped id stops holding a slot.
-    order.onsuccess = () => {
-      if (Array.isArray(order.result)) s.put(order.result.filter((k) => k !== id), RECENCY);
-    };
-    return s.delete(id);
-  });
+  // The recency order sheds the id on the next touch, which drops ids with no bytes.
+  await run("readwrite", (s) => s.delete(id));
 }

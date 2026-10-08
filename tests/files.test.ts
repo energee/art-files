@@ -5,8 +5,12 @@ const save = vi.fn();
 const open = vi.fn();
 const writeFile = vi.fn();
 const readFile = vi.fn();
+const rename = vi.fn();
+const remove = vi.fn();
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save, open }));
-vi.mock("@tauri-apps/plugin-fs", () => ({ writeFile, readFile }));
+vi.mock("@tauri-apps/plugin-fs", () => ({ writeFile, readFile, rename, remove }));
+/** Matches the random `<stem>.saving-<uuid>.<ext>` temp path writeNativeAtomic uses. */
+const temp = (stem: string, ext: string) => expect.stringMatching(new RegExp(`^${stem}\\.saving-[0-9a-f-]{36}\\.${ext}$`));
 let tauri = false;
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => tauri }));
 
@@ -23,6 +27,8 @@ describe("native file saving", () => {
     tauri = true;
     save.mockReset();
     writeFile.mockReset();
+    rename.mockReset();
+    remove.mockReset();
     download.mockReset();
   });
   afterEach(() => { tauri = false; });
@@ -39,7 +45,8 @@ describe("native file saving", () => {
       defaultPath: "Labradorite.label",
       filters: [{ name: "Label project", extensions: ["label"] }],
     });
-    expect(writeFile).toHaveBeenCalledWith("/labels/Labradorite.label", bytes);
+    expect(writeFile).toHaveBeenCalledWith(temp("/labels/Labradorite", "label"), bytes, { createNew: true });
+    expect(rename).toHaveBeenCalledWith(temp("/labels/Labradorite", "label"), "/labels/Labradorite.label");
   });
 
   it("reuses an existing Save path without opening another dialog", async () => {
@@ -49,7 +56,8 @@ describe("native file saving", () => {
       .resolves.toMatchObject({ name: "/labels/existing.label" });
 
     expect(save).not.toHaveBeenCalled();
-    expect(writeFile).toHaveBeenCalledWith("/labels/existing.label", bytes);
+    expect(writeFile).toHaveBeenCalledWith(temp("/labels/existing", "label"), bytes, { createNew: true });
+    expect(rename).toHaveBeenCalledWith(temp("/labels/existing", "label"), "/labels/existing.label");
   });
 
   it("treats a cancelled dialog as no save", async () => {
@@ -67,6 +75,35 @@ describe("native file saving", () => {
 
     await expect(saveThrough(new Uint8Array([8]), options, download)).rejects.toThrow("permission denied");
     expect(download).not.toHaveBeenCalled();
+    expect(rename).not.toHaveBeenCalled();
+  });
+
+  it("never overwrites the original when the temp write fails, and cleans up the temp", async () => {
+    writeFile.mockRejectedValue(new Error("disk full"));
+
+    await expect(saveThrough(new Uint8Array([9]), { ...options, target: { path: "/m/Big.MASTER" } }, download))
+      .rejects.toThrow("disk full");
+    expect(writeFile).toHaveBeenCalledWith(temp("/m/Big", "MASTER"), expect.any(Uint8Array), { createNew: true });
+    expect(rename).not.toHaveBeenCalled();
+    expect(remove).toHaveBeenCalledWith(writeFile.mock.calls[0][0]);
+  });
+
+  it("removes the temp when the rename fails", async () => {
+    rename.mockRejectedValue(new Error("rename refused"));
+
+    await expect(saveThrough(new Uint8Array([7]), { ...options, target: { path: "/labels/x.label" } }, download))
+      .rejects.toThrow("rename refused");
+    expect(remove).toHaveBeenCalledWith(writeFile.mock.calls[0][0]);
+  });
+
+  // The dialog scopes only the exact file it returned and the capability
+  // globs cover only .label/.master, so an export's temp would be forbidden.
+  it("writes a PDF/PSD export straight to the dialog-chosen path", async () => {
+    save.mockResolvedValue("/exports/Labradorite.pdf");
+
+    await saveThrough(new Uint8Array([6]), { ...options, name: "Labradorite.pdf" }, download);
+    expect(writeFile).toHaveBeenCalledWith("/exports/Labradorite.pdf", new Uint8Array([6]));
+    expect(rename).not.toHaveBeenCalled();
   });
 });
 
