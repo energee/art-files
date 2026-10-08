@@ -115,6 +115,7 @@ import { fontFamilyOf, usedFontFamilies, type FontFamilyId } from "@/fontCatalog
 import { loadFonts } from "@/pdf/fonts";
 import type { MeasureFace, PlanAssets } from "@/plan";
 import type { CanvasAssets, CanvasRenderSource } from "@/canvas/draw";
+import { createBitmapCache } from "@/canvas/bitmapCache";
 import logoSvg from "@/assets/logo2025.svg?raw";
 
 // three.js is the largest thing in the bundle and most sessions never leave
@@ -1058,14 +1059,17 @@ export const DocumentEditor = memo(function DocumentEditor({
   });
 
   // The render source for BOTH views: fonts + decoded bitmaps for drawPlate,
-  // assembled off the asset inputs alone (debounced — uploads are rare and
-  // each re-assembly decodes every bitmap). Layer edits, a raster's tint
-  // included, deliberately DON'T re-run this: the layers flow into the views
-  // as a prop and repaint with these same bitmaps (drawPlate tints, #414).
-  // The one layer edit that does is a font pick that adds a family to
-  // fontOverrides, so its faces load (#411).
+  // assembled off the asset inputs alone (debounced). Layer edits, a raster's
+  // tint included, deliberately DON'T re-run this: the layers flow into the
+  // views as a prop and repaint with these same bitmaps (drawPlate tints,
+  // #414). The one layer edit that does is a font pick that adds a family to
+  // fontOverrides, so its faces load (#411). Bitmaps come from a per-editor
+  // cache keyed by source bytes, so a re-assembly decodes only new or changed
+  // assets (#413); `sources` lists the bytes this generation draws from.
+  const [bitmaps] = useState(createBitmapCache);
   const [decodedAssets, setDecodedAssets] = useState<{
     m: MeasureFace; planAssets: PlanAssets; drawAssets: CanvasAssets; fontCss: string;
+    sources: Uint8Array[];
   } | null>(null);
   // Guide movement changes placement immediately, without decoding image bytes again.
   const canvasAssets = useMemo(() => decodedAssets ? {
@@ -1080,39 +1084,34 @@ export const DocumentEditor = memo(function DocumentEditor({
     const timer = setTimeout(() => {
       (async () => {
         const m = await loadLabelFaces(family, fontOverrides);
-        // Every decode this run makes is tracked here, so a throw partway
-        // through can still close everything decoded so far.
-        const decoded: ImageBitmap[] = [];
-        const bitmap = async (bytes: Uint8Array | undefined) => {
-          if (!bytes) return null;
-          const bmp = await createImageBitmap(blobOf(bytes));
-          decoded.push(bmp);
-          return bmp;
+        // The cache owns every bitmap: a throw or a cancelled run leaves its
+        // decodes there for the next committed generation (or unmount) to
+        // keep or close. A cancelled run asks for nothing more, so it can't
+        // add bitmaps after that settling already ran (#413).
+        const sources: Uint8Array[] = [];
+        const bitmap = (bytes: Uint8Array | undefined) => {
+          if (!bytes || cancelled) return null;
+          sources.push(bytes);
+          return bitmaps.get(bytes);
         };
-        let drawAssets: CanvasAssets;
-        try {
-          // Raster bytes become a bitmap for the canvas to draw; an SVG
-          // source stays undecoded (it plans as paths) and is absent here.
-          const customBitmaps: Record<string, ImageBitmap | null> = Object.fromEntries(
-            await Promise.all(Object.entries(liveImages).map(async ([id, { image: img }]) =>
-              [id, img.kind === "svg" ? null : await bitmap(img.bytes)] as const)));
-          const art = pageArt(true);
-          const textureBmp = await bitmap(art.texture?.bytes);
-          const maskBmp = await bitmap(art.maskPng);
-          // The page art rides under its PAGE_ART_ID keys too, so a backend
-          // that draws the `page` items by asset id finds the same bitmaps.
-          if (textureBmp) customBitmaps[PAGE_ART_ID.background] = textureBmp;
-          if (maskBmp) customBitmaps[PAGE_ART_ID.mask] = maskBmp;
-          drawAssets = { images: customBitmaps };
-        } catch (err) {
-          for (const bmp of decoded) bmp.close();
-          throw err;
-        }
-        if (cancelled) {
-          closeCanvasBitmaps(drawAssets);
-          return;
-        }
-        setDecodedAssets({ m, planAssets: planAssetsOf(), drawAssets, fontCss: labelFontCss(family) });
+        const art = pageArt(true);
+        // Raster bytes become a bitmap for the canvas to draw; an SVG
+        // source stays undecoded (it plans as paths) and is absent here.
+        const [customBitmaps, textureBmp, maskBmp] = await Promise.all([
+          Promise.all(Object.entries(liveImages).map(async ([id, { image: img }]) =>
+            [id, img.kind === "svg" ? null : await bitmap(img.bytes)] as const))
+            .then((entries): Record<string, ImageBitmap | null> => Object.fromEntries(entries)),
+          bitmap(art.texture?.bytes), bitmap(art.maskPng),
+        ]);
+        // The page art rides under its PAGE_ART_ID keys too, so a backend
+        // that draws the `page` items by asset id finds the same bitmaps.
+        if (textureBmp) customBitmaps[PAGE_ART_ID.background] = textureBmp;
+        if (maskBmp) customBitmaps[PAGE_ART_ID.mask] = maskBmp;
+        // Superseded: a newer run, a background tab or unmount settles the cache.
+        if (cancelled) return;
+        setDecodedAssets({
+          m, planAssets: planAssetsOf(), drawAssets: { images: customBitmaps }, fontCss: labelFontCss(family), sources,
+        });
         setBuildError("");
       })().catch((err) => {
         if (!cancelled) setBuildError(String(err));
@@ -1124,23 +1123,11 @@ export const DocumentEditor = memo(function DocumentEditor({
     // layer font families, so picking a new one reloads its faces.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [texture, mask, liveImages, family, fontOverrides, bgOn, maskOn, active]);
-  // The bitmaps backing the CURRENTLY LIVE `canvasAssets` generation, closed
-  // once the next generation has fully replaced them (bitmaps aren't GC'd
-  // on their own). A bitmap can sit under two keys; close each once.
-  const canvasBitmaps = useRef<CanvasAssets | null>(null);
-  const closeCanvasBitmaps = (a: CanvasAssets | null | undefined) => {
-    if (!a) return;
-    const seen = new Set<ImageBitmap>();
-    for (const b of Object.values(a.images ?? {})) {
-      if (b instanceof ImageBitmap && !seen.has(b)) { seen.add(b); b.close(); }
-    }
-  };
-  useEffect(() => {
-    const prev = canvasBitmaps.current;
-    if (prev && prev !== canvasAssets?.drawAssets) closeCanvasBitmaps(prev);
-    canvasBitmaps.current = canvasAssets?.drawAssets ?? null;
-  }, [canvasAssets]);
-  useEffect(() => () => closeCanvasBitmaps(canvasBitmaps.current), []);
+  // Once a generation is live, close the cached bitmaps it no longer draws
+  // (bitmaps aren't GC'd on their own); unchanged assets keep theirs. No
+  // generation (a background tab) or unmount closes them all.
+  useEffect(() => { bitmaps.retain(decodedAssets?.sources ?? []); }, [bitmaps, decodedAssets]);
+  useEffect(() => () => bitmaps.retain([]), [bitmaps]);
 
   // What the preview omits: the in-place edit session's layer — hidden
   // while its live editor floats over it. Preview-only: meaningless for a

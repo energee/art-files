@@ -7,6 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Changed
+- **Faster preview after art changes.** Swapping one image or page-art switch re-decodes only that asset; the others keep their decoded copies.
 - **Smoother fill changes on tinted raster art.** Changing the fill of an image layer with Tint raster on no longer stalls the preview on every color step; exports are unchanged.
 - **Typing on a label with a texture or mask is lighter.** The preview paints the page art once per zoom level and reuses it, instead of rescaling the full-size image on every keystroke.
 - **The first preview loads only the fonts the label uses.** Opening a label fetches its master font and any layer font overrides instead of every bundled family; another font loads when a layer first picks it.
