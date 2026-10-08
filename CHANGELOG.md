@@ -6,6 +6,14 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Fixed
+- **Screen readers hear when a tab has unsaved work.** A tab's close button now reads "Close <title> (unsaved changes)" instead of just "Close <title>".
+- **Saving can no longer wipe out a label or master.** Desktop Save writes a temporary copy beside the file and swaps it in only once it is complete, so a crash or full disk mid-save leaves the previous file intact.
+- **Faster typing in the preview.** The white-ink plate is no longer repainted on every edit while the comparison divider hides it; it paints when the divider reveals it.
+- **A malformed .label is refused instead of breaking the canvas.** A shared label whose values or overrides have the wrong shape (non-text values, non-numeric positions, an incomplete added layer) now fails to open with a clear error instead of crashing the preview or saving bad geometry back.
+- **Exports say what they're building.** While PDFs or PSDs export, the blurred preview reads "Building PDFs…" or "Building PSDs…" instead of "rendering preview…", so a long export no longer looks like a stalled preview. Screen readers announce the note too.
+- **Background failures show up instead of vanishing.** A save, export or open that fails outside its own error handling now shows a dismissible alert with the reason, rather than failing silently.
+
 ### Changed
 - **PSD export no longer freezes the window.** The layered PSD is built in a background worker, so the editor stays responsive while a full-resolution file is written. Image decoding and PDF export still run on the main thread.
 - **Faster preview after art changes.** Swapping one image or page-art switch re-decodes only that asset; the others keep their decoded copies.
@@ -18,13 +26,6 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Added
 - **Unsaved tabs survive a crash.** Label Lab keeps a recovery copy of every tab with unsaved changes. After a crash or forced quit, the next launch offers to restore them. A restored tab still counts as unsaved until you save it, and Save asks where to write. Dismissing the offer without choosing keeps the copies for the next launch.
-
-### Fixed
-- **Saving can no longer wipe out a label or master.** Desktop Save writes a temporary copy beside the file and swaps it in only once it is complete, so a crash or full disk mid-save leaves the previous file intact.
-- **Faster typing in the preview.** The white-ink plate is no longer repainted on every edit while the comparison divider hides it; it paints when the divider reveals it.
-- **A malformed .label is refused instead of breaking the canvas.** A shared label whose values or overrides have the wrong shape (non-text values, non-numeric positions, an incomplete added layer) now fails to open with a clear error instead of crashing the preview or saving bad geometry back.
-- **Exports say what they're building.** While PDFs or PSDs export, the blurred preview reads "Building PDFs…" or "Building PSDs…" instead of "rendering preview…", so a long export no longer looks like a stalled preview. Screen readers announce the note too.
-- **Background failures show up instead of vanishing.** A save, export or open that fails outside its own error handling now shows a dismissible alert with the reason, rather than failing silently.
 
 ### Security
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.
