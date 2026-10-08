@@ -125,12 +125,6 @@ export function MasterPicker(props: {
     setRemoved({ name, undo });
   };
 
-  const undoRemove = async () => {
-    if (!removed) return;
-    setRemoved(null);
-    await removed.undo();
-  };
-
   /** Resolve the selected master and preview the rebind before committing. */
   const pickEntry = async (id: string) => {
     if (id === props.master.id) return;
@@ -271,7 +265,7 @@ export function MasterPicker(props: {
         <p id="master-picker-removed" role="status" className="mt-1 px-1 text-[11px] text-muted-foreground">
           Removed “{removed.name}” from the library. The file stays where it is.{" "}
           <Button type="button" size="xs" variant="link" className="h-auto p-0 text-[11px]"
-            onClick={() => { void undoRemove(); }}>
+            onClick={() => { setRemoved(null); void removed.undo(); }}>
             Undo
           </Button>
         </p>
