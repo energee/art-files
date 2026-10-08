@@ -2,6 +2,8 @@
 // tab holds unsaved work (issue #151), so macOS app-level quits (Dock → Quit,
 // logout, AppleScript) can cancel and run the unsaved prompt — and let a
 // clean quit through untouched (see src-tauri/src/terminate.rs).
+// It also checks the tab close button names that unsaved work to screen
+// readers (issue #403).
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
