@@ -43,11 +43,6 @@ describe("master library index", () => {
     localStorage.setItem("labellab.masters", "{not json");
     expect(masterIndex()).toEqual({});
   });
-  // Task 4's save/open round trip: a saved-then-reparsed master registers
-  // under its own id, exactly as a freshly authored one would. This passes
-  // unchanged because rememberMaster itself didn't change — the real work of
-  // Task 4 is App.tsx's save/open wiring, which has no automated harness
-  // (see task-4-report.md).
   it("forgets a library master and leaves the next launch unpinned from it", async () => {
     await rememberMaster(lolevMaster(), "/tmp/lolev.master");
     localStorage.setItem("labellab.lastMaster", SHIPPED_MASTER_ID);
@@ -93,6 +88,20 @@ describe("master library index", () => {
     expect(masterIndex().old).toBeUndefined();
   });
 
+  // Storage key order is the engine's (hash order in WebKit), so the index
+  // sorts rows by id to keep the Master menu from reshuffling.
+  it("lists rows in id order whatever order storage returns them", async () => {
+    for (const id of ["master-c", "master-a", "master-b"]) {
+      await rememberMaster({ ...lolevMaster(), id, name: id }, `/tmp/${id}.master`);
+    }
+    expect(Object.keys(masterIndex())).toEqual(["master-a", "master-b", "master-c"]);
+  });
+
+  // Task 4's save/open round trip: a saved-then-reparsed master registers
+  // under its own id, exactly as a freshly authored one would. This passes
+  // unchanged because rememberMaster itself didn't change — the real work of
+  // Task 4 is App.tsx's save/open wiring, which has no automated harness
+  // (see task-4-report.md).
   it("a saved master registers in the library index under its own id", () => {
     const m = parseMasterJson(JSON.parse(serializeMaster(lolevMaster()))).master;
     rememberMaster(m, "/tmp/lolev.master");

@@ -47,13 +47,18 @@ function indexRow(id: string): MasterIndexEntry | undefined {
   }
 }
 
+/** Every remembered master, ordered by id: localStorage.key() order is the
+ *  engine's hash order (WebKit), so without the sort the Master menu could
+ *  reshuffle as rows are added. */
 export function masterIndex(): Record<string, MasterIndexEntry> {
   const idx = legacyIndex();
   try {
+    const ids: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (!k?.startsWith(ROW_PREFIX)) continue;
-      const id = k.slice(ROW_PREFIX.length);
+      if (k?.startsWith(ROW_PREFIX)) ids.push(k.slice(ROW_PREFIX.length));
+    }
+    for (const id of ids.sort()) {
       const row = indexRow(id);
       if (row) idx[id] = row;
     }
