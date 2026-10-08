@@ -9,9 +9,8 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { FILE_DROP_ATTR } from "@/components/FileDrop";
 
-/** MIME types the overlay claims. JPEG and WebP are texture-only — the mask
- *  must be a PNG — so either one dropped on the mask half still lands on the
- *  texture. */
+/** MIME types the overlay claims. JPEG is texture-only, so it lands on the
+ *  texture from either half; PNG and WebP follow the half they're dropped on. */
 const CLAIMED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
 type DropKind = "texture" | "mask";
@@ -31,8 +30,8 @@ export function globalAssetKind(
   const jpeg = type === "image/jpeg" || name.endsWith(".jpg") || name.endsWith(".jpeg");
   const webp = type === "image/webp" || name.endsWith(".webp");
   if (!png && !jpeg && !webp) return null;
-  // Only a PNG can be a mask, so only a PNG reads the drop's side.
-  return png && clientX >= viewportWidth / 2 ? "mask" : "texture";
+  // A JPEG can't be a mask, so only PNG and WebP read the drop's side.
+  return !jpeg && clientX >= viewportWidth / 2 ? "mask" : "texture";
 }
 
 /** FileDrop marks its root with this attribute. Drag events bubble to window,
@@ -124,7 +123,7 @@ export function AssetDropOverlay(props: {
     <div aria-hidden="true"
       className="pointer-events-none fixed inset-0 z-50 flex gap-3 bg-background/85 p-6 backdrop-blur-sm">
       {half("texture", "Background texture", "PNG, JPG or WebP")}
-      {half("mask", "Metallic mask", "PNG only")}
+      {half("mask", "Metallic mask", "PNG or WebP")}
     </div>
   );
 }
