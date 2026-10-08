@@ -85,8 +85,8 @@ const cssMask = (layer: Style["layer"]) =>
  *  overlay done by the compositor (source-in) instead of a pixel loop, so a
  *  fill edit costs a draw, not a decode/re-encode (#414). One entry per
  *  bitmap: repaints at the same fill reuse it; a new fill redraws it. */
-const tintCache = new WeakMap<object, { fill: Fill; canvas: HTMLCanvasElement }>();
-function tinted(bmp: CanvasImageSource & { width: number; height: number }, fill: Fill): HTMLCanvasElement {
+const tintCache = new WeakMap<ImageBitmap, { fill: Fill; canvas: HTMLCanvasElement }>();
+function tinted(bmp: ImageBitmap, fill: Fill): HTMLCanvasElement {
   const hit = tintCache.get(bmp);
   if (hit?.fill === fill) return hit.canvas;
   const canvas = hit?.canvas ?? document.createElement("canvas");
@@ -198,8 +198,7 @@ export function drawPlate(
       if (mode === "art") {
         const src = r.tint ? tinted(bmp as ImageBitmap, r.tint) : bmp;
         c.drawImage(src, r.x, r.y, r.w, r.h);
-      }
-      else {
+      } else {
         // Raster art prints on white ink: the mask paints its footprint blue.
         c.fillStyle = L.MASK_BLUE_HEX;
         c.fillRect(r.x, r.y, r.w, r.h);
