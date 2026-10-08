@@ -556,6 +556,14 @@ describe("structureOnlyMaster", () => {
     expect((collab(next).layers.collabLeft as ImageLayer).asset).toBe("");
   });
 
+  // A master's own image with no role (a script logo placed in the template)
+  // is template art, not the last beer: it stays.
+  it("keeps the art of a master image layer that has no role", () => {
+    const filled = lolevMaster();
+    filled.layers.push({ ...byId<ImageLayer>(filled, "logo"), id: "image-script", name: "Script", asset: "custom-asset-script" });
+    expect(byId<ImageLayer>(structureOnlyMaster(filled), "image-script").asset).toBe("custom-asset-script");
+  });
+
   it("a kind+placeholder variant patch without lines does not throw", () => {
     const filled = lolevMaster();
     collab(filled).layers.name = { kind: "text", placeholder: "Name", x: 12 };

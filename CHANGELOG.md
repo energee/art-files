@@ -7,6 +7,30 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Changed
+
+- **Remove a master from the Master menu with the × on its row.** It sits at
+  the right of each remembered master, so it no longer takes picking the
+  master and waiting for its preview first. The master file stays where it is.
+- **Every menu row has an icon, the ones macOS itself uses.** The Mac menu
+  bar now shows the system's standard symbols on File, Edit and View rows,
+  including the View checkmarks, and they follow light and dark mode. The
+  browser menu draws the closest match for each.
+
+### Fixed
+
+- **A new tab keeps the master's own images.** Art placed in the master,
+  such as a script logo, now shows when the app opens or a tab is added. Only
+  the last beer's background, mask and Collab logos are left off.
+- **A restart reopens the master file that is on disk.** If the last master's
+  file had been saved again as a new master over the same path, a new tab
+  fell back to shipped Lolev on the first launch and only found the file on
+  the next one. It now opens the file straight away.
+- **A label keeps opening after its master file changed.** When the file a
+  master was remembered at now holds a different master, a label still opens
+  with its remembered copy every time, not just the first.
+- **A barcode's Solid background setting must be on or off.** A hand-edited
+  file with any other value is reported instead of printing differently from
+  what the inspector shows.
 - **A label whose master can't be found asks instead of failing.** Open it on the current master or locate its `.master` file; values the master lacks are set aside, not lost.
 
 ## [0.1.103] - 2026-09-29

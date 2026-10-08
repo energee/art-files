@@ -191,8 +191,8 @@ export function parseHexFill(fill: `#${string}` | "none"): { r: number; g: numbe
 
 /** Poppins' font box, measured with `pdftotext -bbox` off the reference PDF:
  *  ascender 1.05em above the baseline, descender 0.35em below. Shared by the
- *  hit-tester's glyph boxes, the barcode digits' mask pills (pdf/build.ts)
- *  and their tests, so one measured value can't drift into three. */
+ *  hit-tester's glyph boxes, the barcode digits' pills that size the solid
+ *  background (planLayers.ts) and their tests, so one measured value can't drift into three. */
 export const FONT_ASC = 1.05;
 export const FONT_DESC = 0.35;
 
