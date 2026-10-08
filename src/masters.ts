@@ -8,25 +8,76 @@
 // view toggles and settings.ts): the index describes this machine's
 // filesystem. Untitled tabs call resolveDefaultMaster, then drop fill values
 // and raster art in structureOnlyMaster (model/edit.ts).
+//
+// One localStorage key per master (ROW_PREFIX + id), not one blob: every
+// window of the app shares localStorage, and a whole-index read-modify-write
+// let one window's save drop the row another window had just written (#408).
+// A row write touches only its own key. The pre-#408 blob (LEGACY_KEY) is
+// still read, and the next write splits it into rows.
 import { isTauri } from "@tauri-apps/api/core";
 import type { Master } from "@/model/layers";
 import { lolevMaster } from "@/model/lolevLayers";
 import { unpackMaster, type MasterAssets } from "@/model/files";
 import { readNativeFile } from "@/files";
 import { cacheMaster, cachedMaster, dropCachedMaster } from "@/masterCache";
+import { readJson } from "@/settings";
 
 export const SHIPPED_MASTER_ID = lolevMaster().id;
-const KEY = "labellab.masters";
+const ROW_PREFIX = "labellab.master:";
+const LEGACY_KEY = "labellab.masters";
 const LAST_KEY = "labellab.lastMaster";
 
 export interface MasterIndexEntry { name: string; path: string; lastSeen: string }
 
+/** A stored index row, or undefined when absent, mangled, or not an object
+ *  (skipped, not fatal). */
+function asRow(v: unknown): MasterIndexEntry | undefined {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as MasterIndexEntry) : undefined;
+}
+
+/** The pre-#408 single-blob index, or {} when absent, mangled, or not an
+ *  object (a blob of `null` must not break every later write). */
+function legacyIndex(): Record<string, MasterIndexEntry> {
+  return (asRow(readJson(LEGACY_KEY)) ?? {}) as unknown as Record<string, MasterIndexEntry>;
+}
+
+/** One master's row, or undefined when absent or mangled. */
+function indexRow(id: string): MasterIndexEntry | undefined {
+  return asRow(readJson(ROW_PREFIX + id));
+}
+
+/** Every remembered master, ordered by name (then id). localStorage.key()
+ *  order is the engine's hash order (WebKit) and ids are random, so neither
+ *  gives the Master menu a stable, readable order. Built in a Map so an id
+ *  such as "__proto__" stays an ordinary entry. */
 export function masterIndex(): Record<string, MasterIndexEntry> {
+  // A per-master row overrides its blob entry.
+  const merged = new Map<string, MasterIndexEntry>();
+  for (const [id, e] of Object.entries(legacyIndex())) if (asRow(e)) merged.set(id, e);
   try {
-    return JSON.parse(localStorage.getItem(KEY) ?? "{}") as Record<string, MasterIndexEntry>;
-  } catch {
-    return {}; // a mangled entry falls back rather than crashing open
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k?.startsWith(ROW_PREFIX)) continue;
+      const row = asRow(readJson(k));
+      if (row) merged.set(k.slice(ROW_PREFIX.length), row);
+    }
+  } catch { /* no localStorage — same fallback as legacyIndex */ }
+  // Sort the union, so ids from an unmigrated blob sort in with the rows.
+  return Object.fromEntries([...merged].sort(([a, ea], [b, eb]) =>
+    String(ea.name).localeCompare(String(eb.name)) || (a < b ? -1 : a > b ? 1 : 0)));
+}
+
+/** Move pre-#408 blob rows to their own keys before a row write, so the
+ *  blob can't resurrect a row that is later forgotten. A row another window
+ *  already wrote is newer than the blob, so it is kept. The blob is checked
+ *  before each copy: once another window has migrated it (and perhaps
+ *  forgotten a row since), a missing row means forgotten, not unmigrated. */
+function migrateLegacyIndex(): void {
+  for (const [id, e] of Object.entries(legacyIndex())) {
+    if (localStorage.getItem(LEGACY_KEY) === null) return;
+    if (asRow(e) && localStorage.getItem(ROW_PREFIX + id) === null) localStorage.setItem(ROW_PREFIX + id, JSON.stringify(e));
   }
+  localStorage.removeItem(LEGACY_KEY);
 }
 
 /** A Save Master target — a native path or an FS-Access handle — tagged
@@ -51,13 +102,15 @@ export async function rememberMaster(m: Master, path: string, bytes?: Uint8Array
   // reload can actually resolve it (void cacheMaster used to return while
   // IndexedDB was still empty, and the next launch fell back to Lolev).
   if (bytes) await cacheMaster(m.id, bytes);
-  const idx = masterIndex();
-  const cur = idx[m.id];
+  // A failed migration leaves the blob in place, so masterIndex still lists
+  // it; this master's own row is still attempted below.
+  try { migrateLegacyIndex(); } catch { /* no localStorage / quota exceeded */ }
+  const cur = indexRow(m.id) ?? legacyIndex()[m.id];
   // An apply that has no filesystem path (a library pick of the shipped
   // master, a browser handle whose name we already stored) must not wipe a
   // real path from an earlier Open/Save. Resolving a .label is not an apply:
   // keep lastSeen so it cannot steal the next untitled document.
-  idx[m.id] = {
+  const row: MasterIndexEntry = {
     name: m.name,
     path: path || cur?.path || "",
     lastSeen: applied ? new Date().toISOString() : (cur?.lastSeen ?? ""),
@@ -70,7 +123,7 @@ export async function rememberMaster(m: Master, path: string, bytes?: Uint8Array
   // quota while the short LAST_KEY still fits, and the last-applied master
   // should stay pinned for the next launch.
   try {
-    localStorage.setItem(KEY, JSON.stringify(idx));
+    localStorage.setItem(ROW_PREFIX + m.id, JSON.stringify(row));
   } catch { /* no localStorage / quota exceeded — same fallback as masterIndex */ }
   if (applied) {
     try {
@@ -153,10 +206,8 @@ export async function forgetMaster(id: string, replacementId?: string): Promise<
  *  yields to what happened since: a master re-added in the meantime keeps
  *  its newer row and bytes, and a master applied since keeps the last key. */
 export async function removeFromLibrary(id: string): Promise<() => Promise<void>> {
+  // Restoring the row also restores its place: masterIndex sorts by name.
   const row = masterIndex()[id];
-  // Where the row sat, so Undo puts it back in the same place in the menu
-  // (libraryEntries lists the index in insertion order).
-  const at = Object.keys(masterIndex()).indexOf(id);
   let wasLast = false;
   try { wasLast = localStorage.getItem(LAST_KEY) === id; } catch { /* no localStorage */ }
   const bytes = await cachedMaster(id);
@@ -167,11 +218,7 @@ export async function removeFromLibrary(id: string): Promise<() => Promise<void>
     // Checked again: a re-add can land while the bytes are being written.
     if (masterIndex()[id]) return;
     try {
-      if (row) {
-        const rows = Object.entries(masterIndex());
-        rows.splice(at < 0 ? rows.length : Math.min(at, rows.length), 0, [id, row]);
-        localStorage.setItem(KEY, JSON.stringify(Object.fromEntries(rows)));
-      }
+      if (row) localStorage.setItem(ROW_PREFIX + id, JSON.stringify(row));
       // Removal cleared the key, so a set key means a master applied since.
       if (wasLast && !localStorage.getItem(LAST_KEY)) localStorage.setItem(LAST_KEY, id);
     } catch { /* no localStorage — same fallback as masterIndex */ }
@@ -182,11 +229,8 @@ export async function removeFromLibrary(id: string): Promise<() => Promise<void>
  *  the last-master key. */
 function retireIndexRow(id: string, replacementId?: string): void {
   try {
-    const idx = masterIndex();
-    if (idx[id]) {
-      delete idx[id];
-      localStorage.setItem(KEY, JSON.stringify(idx));
-    }
+    migrateLegacyIndex();
+    localStorage.removeItem(ROW_PREFIX + id);
     if (localStorage.getItem(LAST_KEY) === id) {
       if (replacementId) localStorage.setItem(LAST_KEY, replacementId);
       else localStorage.removeItem(LAST_KEY);
