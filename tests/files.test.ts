@@ -8,6 +8,7 @@ const readFile = vi.fn();
 const rename = vi.fn();
 const remove = vi.fn();
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save, open }));
+const temp = (stem: string, ext: string) => expect.stringMatching(new RegExp(`^${stem}\\.saving-[0-9a-f-]{36}\\.${ext}$`));
 vi.mock("@tauri-apps/plugin-fs", () => ({ writeFile, readFile, rename, remove }));
 let tauri = false;
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => tauri }));
@@ -43,8 +44,8 @@ describe("native file saving", () => {
       defaultPath: "Labradorite.label",
       filters: [{ name: "Label project", extensions: ["label"] }],
     });
-    expect(writeFile).toHaveBeenCalledWith("/labels/Labradorite.saving.label", bytes);
-    expect(rename).toHaveBeenCalledWith("/labels/Labradorite.saving.label", "/labels/Labradorite.label");
+    expect(writeFile).toHaveBeenCalledWith(temp("/labels/Labradorite", "label"), bytes, { createNew: true });
+    expect(rename).toHaveBeenCalledWith(temp("/labels/Labradorite", "label"), "/labels/Labradorite.label");
   });
 
   it("reuses an existing Save path without opening another dialog", async () => {
@@ -54,8 +55,8 @@ describe("native file saving", () => {
       .resolves.toMatchObject({ name: "/labels/existing.label" });
 
     expect(save).not.toHaveBeenCalled();
-    expect(writeFile).toHaveBeenCalledWith("/labels/existing.saving.label", bytes);
-    expect(rename).toHaveBeenCalledWith("/labels/existing.saving.label", "/labels/existing.label");
+    expect(writeFile).toHaveBeenCalledWith(temp("/labels/existing", "label"), bytes, { createNew: true });
+    expect(rename).toHaveBeenCalledWith(temp("/labels/existing", "label"), "/labels/existing.label");
   });
 
   it("treats a cancelled dialog as no save", async () => {
@@ -81,9 +82,9 @@ describe("native file saving", () => {
 
     await expect(saveThrough(new Uint8Array([9]), { ...options, target: { path: "/m/Big.MASTER" } }, download))
       .rejects.toThrow("disk full");
-    expect(writeFile).toHaveBeenCalledWith("/m/Big.saving.MASTER", expect.any(Uint8Array));
+    expect(writeFile).toHaveBeenCalledWith(temp("/m/Big", "MASTER"), expect.any(Uint8Array), { createNew: true });
     expect(rename).not.toHaveBeenCalled();
-    expect(remove).toHaveBeenCalledWith("/m/Big.saving.MASTER");
+    expect(remove).toHaveBeenCalledWith(writeFile.mock.calls[0][0]);
   });
 });
 

@@ -90,15 +90,16 @@ export async function saveThrough(
   }
 }
 
-/** Write `bytes` beside `path` as `<stem>.saving.<ext>`, then rename it over
+/** Write `bytes` beside `path` as `<stem>.saving-<random>.<ext>`, then rename it over
  *  `path`, so a crash, power loss or full disk mid-write never truncates the
  *  only copy. The temp keeps the extension so the .label/.master capability
- *  globs cover it. A failed write removes the temp (best effort) and rethrows. */
+ *  globs cover it; the random suffix plus `createNew` (O_EXCL) means a pre-planted
+ *  file or symlink at the temp path fails the write instead of being followed. A failed write removes the temp (best effort) and rethrows. */
 async function writeNativeAtomic(path: string, bytes: Uint8Array): Promise<void> {
   const { writeFile, rename, remove } = await import("@tauri-apps/plugin-fs");
-  const temp = path.replace(/(\.[^./\\]+)?$/, ".saving$1");
+  const temp = path.replace(/(\.[^./\\]+)?$/, `.saving-${crypto.randomUUID()}$1`);
   try {
-    await writeFile(temp, bytes);
+    await writeFile(temp, bytes, { createNew: true });
   } catch (error) {
     try { await remove(temp); } catch { /* temp may not exist */ }
     throw error;
