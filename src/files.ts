@@ -3,7 +3,8 @@ import { isAbort, openPicker, savePicker, writeHandle } from "./filePickers";
 // files.ts — native desktop file-dialog and file I/O boundary. All
 // @tauri-apps/plugin-* imports stay here so the app's native surface is
 // visible in one place. Open and save both live here; the capability
-// scope allows reading and writing .label and .master paths.
+// scope allows reading, writing, renaming and removing .label and .master
+// paths (rename/remove serve the atomic save).
 
 /** Read a file's bytes through Tauri's fs plugin — the read half of this
  *  boundary. The capability scope (src-tauri/capabilities/default.json)
@@ -53,7 +54,8 @@ export async function openThrough(options: FileOptions): Promise<FileTarget | nu
  *  failures always propagate rather than becoming downloads.
  *  On desktop a dialog-chosen path is writable because the dialog plugin adds
  *  it to the runtime scope; a reused `target.path` (Finder/argv opens,
- *  remembered masters) is writable only through the .label/.master globs in
+ *  remembered masters) and the atomic-save temp beside a .label/.master are
+ *  writable only through the .label/.master globs in
  *  src-tauri/capabilities/default.json. Dynamic imports keep both plugins out
  *  of the browser's initial chunk. */
 export async function saveThrough(
@@ -80,12 +82,41 @@ export async function saveThrough(
       if (handle) { target = { handle }; name = handle.name; }
     }
     const bytes = typeof content === "function" ? content(name) : content;
-    if (target && "path" in target) await (await import("@tauri-apps/plugin-fs")).writeFile(target.path, bytes);
+    if (target && "path" in target) await writeNative(target.path, bytes);
     else if (target && "handle" in target) await writeHandle(target.handle, bytes);
     else download(bytes, name, options.type);
     return { name, bytes, target };
   } catch (error) {
     if (isAbort(error)) return null;
+    throw error;
+  }
+}
+
+/** Write a desktop save. .label/.master paths go through the atomic temp +
+ *  rename; anything else (PDF/PSD exports) is written directly, because the
+ *  dialog scopes only the exact file it returned and the capability globs
+ *  cover only .label/.master, so a temp beside an export would be forbidden. */
+async function writeNative(path: string, bytes: Uint8Array): Promise<void> {
+  if (/\.(label|master)$/i.test(path)) return writeNativeAtomic(path, bytes);
+  await (await import("@tauri-apps/plugin-fs")).writeFile(path, bytes);
+}
+
+/** Write `bytes` beside `path` as `<stem>.saving-<random>.<ext>`, then rename
+ *  it over `path`, so a crash or full disk mid-write never truncates the
+ *  only copy. (plugin-fs exposes no fsync, so the temp's bytes are not
+ *  forced to disk before the rename; power loss is not fully covered.) The temp keeps the extension so the .label/.master capability globs
+ *  cover it; the random suffix plus `createNew` (O_EXCL) means a pre-planted
+ *  file or symlink at the temp path fails the write instead of being
+ *  followed. A failed write or rename removes the temp (best effort) and
+ *  rethrows. */
+async function writeNativeAtomic(path: string, bytes: Uint8Array): Promise<void> {
+  const { writeFile, rename, remove } = await import("@tauri-apps/plugin-fs");
+  const temp = path.replace(/(\.[^./\\]+)?$/, `.saving-${crypto.randomUUID()}$1`);
+  try {
+    await writeFile(temp, bytes, { createNew: true });
+    await rename(temp, path);
+  } catch (error) {
+    try { await remove(temp); } catch { /* temp may not exist */ }
     throw error;
   }
 }
