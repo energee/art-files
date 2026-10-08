@@ -65,7 +65,8 @@ import { SHIPPED_MASTER_ID, forgetMaster, hintTrusted, masterIndex, rememberMast
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
-import { makeHiddenPropsEqual, type TabMeta } from "@/tabs";
+import { makeHiddenPropsEqual, unsaved, type TabMeta } from "@/tabs";
+import { dropRecovery, keepRecovery } from "@/recovery";
 import { EMBEDDABLE_RASTER, mimeFor, rasterKind, tintRgba } from "@/collab";
 import { svgAspect } from "@/logo";
 // The builders are imported dynamically at export time (see buildFull /
@@ -403,12 +404,15 @@ function download(url: string, name: string) {
 /** A file the shell wants this editor to open. seq is monotonic — a new
  *  value triggers the open, so a re-render can never re-open. Exactly one
  *  of path (Tauri), handle (FS-Access picker), or file (hidden-input
- *  fallback or a window-dropped .label, no save identity) is set. */
+ *  fallback, a window-dropped .label, or a crash-recovery snapshot — no
+ *  save identity) is set. `recovered` is that snapshot's recovery.ts key:
+ *  the opened tab stays unsaved, and takes the snapshot over from the key. */
 export type FileToOpen = {
   seq: number;
   path?: string;
   handle?: FileSystemFileHandle;
   file?: File;
+  recovered?: string;
 };
 
 /** What the tab strip shows for this document (src/tabs.ts TabMeta — one
@@ -439,6 +443,9 @@ type DocumentEditorProps = {
    *  slot just under its menubar row and the shell portals the strip into it. */
   updateStatusHost?: (el: HTMLDivElement | null) => void;
   tabStripHost: (el: HTMLDivElement | null) => void;
+  /** Where this tab's crash-recovery snapshot lives (recovery.ts); omitted
+   *  (tests mounting a lone editor) means no snapshots. */
+  recoveryKey?: string;
 };
 
 // memo is load-bearing: every keystroke in any tab updates the shell's tab
@@ -448,6 +455,7 @@ type DocumentEditorProps = {
 export const DocumentEditor = memo(function DocumentEditor({
   active, fileToOpen, onOpenSettled, onMeta, saveSlot, render, onRenderChange,
   onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, updateInstalled, tabStripHost, updateStatusHost,
+  recoveryKey,
 }: DocumentEditorProps) {
   // The document lives in a history stack, not plain useState — every edit
   // that goes through `edit` (all of them) is undoable, master and label
@@ -1542,6 +1550,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     return Object.keys(out).length ? out : undefined;
   };
 
+  /** This document as .label bytes: the v3 label plus its embedded art —
+   *  what Save writes and what a crash-recovery snapshot keeps. */
+  const packProject = () => packLabel({ ...label, masterHint: masterIndex()[master.id]?.path }, {
+    texture: textureAsset(), mask: maskAsset(),
+    customImages: imageBundle(Object.keys(liveImages)),
+  });
+
   /** File → Save / Save As…: the v3 label plus its embedded art, zipped as
    *  <name-slug>.label (model/files.ts). */
   async function saveProject(as = false): Promise<boolean> {
@@ -1557,10 +1572,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       // The close-tab caller must not close over edits made during this write.
       return unchanged;
     };
-    const zip = packLabel({ ...label, masterHint: masterIndex()[master.id]?.path }, {
-      texture: textureAsset(), mask: maskAsset(),
-      customImages: imageBundle(Object.keys(liveImages)),
-    });
+    const zip = packProject();
     try {
       startSaveBatch();
       const saved = await saveThrough(zip, {
@@ -1579,6 +1591,23 @@ export const DocumentEditor = memo(function DocumentEditor({
     }
   }
   saveSlot.current = () => saveProject();
+
+  // Crash recovery (#394): while this tab holds unsaved work, keep a packed
+  // .label of it a moment after each change; drop it once the work is saved.
+  // Never dropped on unmount — a render crash unmounts too, and that is the
+  // snapshot the next launch must find. The shell drops it on a tab close.
+  const hasUnsaved = unsaved({ dirty, edited, masterUnsaved: templateMoved });
+  useEffect(() => {
+    if (!recoveryKey) return;
+    if (!hasUnsaved) { void dropRecovery(recoveryKey); return; }
+    const timer = setTimeout(() => {
+      let bytes: Uint8Array;
+      try { bytes = packProject(); } catch { return; } // over the size caps: nothing Save could write either
+      void keepRecovery(recoveryKey, { name: exportBase + LABEL_EXT, bytes, savedAt: Date.now() });
+    }, 2000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the snapshot reads this render's doc/assets
+  }, [hasUnsaved, doc, texture, mask, customImages, recoveryKey]);
 
   /** The template assets a Save Master captures: the loaded texture/mask
    *  (the art being authored IS the template art) plus the bytes of every
@@ -2024,7 +2053,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (!fileToOpen || fileToOpen.seq === openedSeq.current) return;
     openedSeq.current = fileToOpen.seq;
     const mySeq = fileToOpen.seq;
-    const { path, handle, file } = fileToOpen;
+    const { path, handle, file, recovered } = fileToOpen;
     openChain.current = openChain.current.then(async () => {
       if (openedSeq.current !== mySeq) return; // a newer open superseded us
       try {
@@ -2038,7 +2067,19 @@ export const DocumentEditor = memo(function DocumentEditor({
           if (await openWithRetry(async () => fileSource(await handle.getFile())))
             projectHandle.current = handle;
         } else if (file) {
-          if (await openWithRetry(() => fileSource(file))) forgetProjectFile();
+          if (await openWithRetry(() => fileSource(file))) {
+            forgetProjectFile();
+            if (recovered) {
+              // Still unsaved work: Save stays live, a close prompts, and the
+              // snapshot moves to this tab's key before the old one goes —
+              // a failed copy leaves it for the next launch to offer again.
+              setDirty(true);
+              setEdited(true);
+              const bytes = new Uint8Array(await file.arrayBuffer());
+              if (!recoveryKey || await keepRecovery(recoveryKey, { name: file.name, bytes, savedAt: Date.now() }))
+                void dropRecovery(recovered);
+            }
+          }
         }
       } catch (err) {
         reportOpenError(err);

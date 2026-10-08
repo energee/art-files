@@ -6,6 +6,9 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Added
+- **Unsaved tabs survive a crash.** Label Lab keeps a recovery copy of every tab with unsaved changes. After a crash or forced quit, the next launch offers to restore them. A restored tab still counts as unsaved until you save it, and Save asks where to write. Dismissing the offer without choosing keeps the copies for the next launch.
+
 ### Fixed
 - **Saving can no longer wipe out a label or master.** Desktop Save writes a temporary copy beside the file and swaps it in only once it is complete, so a crash or full disk mid-save leaves the previous file intact.
 - **Faster typing in the preview.** The white-ink plate is no longer repainted on every edit while the comparison divider hides it; it paints when the divider reveals it.
