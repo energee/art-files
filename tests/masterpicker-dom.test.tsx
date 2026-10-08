@@ -48,7 +48,7 @@ function renderPicker(props: Partial<Parameters<typeof MasterPicker>[0]> = {}) {
     library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery" } },
     resolve: vi.fn().mockResolvedValue({ master: otherMaster, assets: {} }),
     onMaster: vi.fn(), onNewVariant: vi.fn().mockReturnValue("variant-2"),
-    onRenameVersion: vi.fn(), onRemoveVersion: vi.fn(), onSaveMaster: vi.fn(), onForget: vi.fn(),
+    onRenameVersion: vi.fn(), onRemoveVersion: vi.fn(), onSaveMaster: vi.fn(), onForget: vi.fn().mockResolvedValue(vi.fn()),
     masterDirty: true, version: null, onVersion: vi.fn(),
     ...props,
   };
@@ -183,7 +183,7 @@ describe("MasterPicker", () => {
   });
 
   it("removes a remembered master from its own row, without picking it", async () => {
-    const onForget = vi.fn();
+    const onForget = vi.fn().mockResolvedValue(vi.fn());
     const onMaster = vi.fn();
     const resolve = vi.fn();
     renderPicker({
@@ -205,7 +205,7 @@ describe("MasterPicker", () => {
   });
 
   it("removes the highlighted remembered master with Delete, for keyboard users", async () => {
-    const onForget = vi.fn();
+    const onForget = vi.fn().mockResolvedValue(vi.fn());
     const onMaster = vi.fn();
     renderPicker({
       onForget, onMaster,
@@ -225,6 +225,28 @@ describe("MasterPicker", () => {
     expect(onForget).toHaveBeenCalledTimes(1);
     expect(onForget).toHaveBeenCalledWith("other");
     expect(onMaster).not.toHaveBeenCalled();
+  });
+
+  // #402: a removal says, in plain view, that the file is untouched, and
+  // can be undone without browsing back to the file.
+  it("says the file stays after a removal, and Undo puts the master back", async () => {
+    const undo = vi.fn().mockResolvedValue(undefined);
+    const onForget = vi.fn().mockResolvedValue(undo);
+    renderPicker({
+      onForget,
+      library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: true } },
+    });
+    openMenu();
+    const x = document.querySelector('[aria-label="Remove Other Brewery from the library"]') as HTMLButtonElement;
+    await act(async () => { x.click(); await Promise.resolve(); });
+    const note = container.querySelector("#master-picker-removed") as HTMLElement;
+    expect(note.textContent).toContain("Removed \u201cOther Brewery\u201d from the library");
+    expect(note.textContent).toContain("The file stays where it is.");
+    const undoButton = note.querySelector("button") as HTMLButtonElement;
+    expect(undoButton.textContent).toBe("Undo");
+    await act(async () => { undoButton.click(); await Promise.resolve(); });
+    expect(undo).toHaveBeenCalledTimes(1);
+    expect(container.querySelector("#master-picker-removed")).toBeNull();
   });
 
   it("shows no remove button on a master the library does not remember", () => {

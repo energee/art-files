@@ -238,6 +238,30 @@ describe("master library index", () => {
     vi.doUnmock("@/masterCache");
   });
 
+  // #402: removing a master from the library is undoable — the index row,
+  // the last-master key and the remembered bytes all come back as they were.
+  it("undoing a library removal puts the row, the last master and the bytes back", async () => {
+    const held = new Map<string, Uint8Array>();
+    vi.doMock("@/masterCache", () => ({
+      cacheMaster: async (id: string, bytes: Uint8Array) => { held.set(id, bytes); },
+      cachedMaster: async (id: string) => held.get(id) ?? null,
+      dropCachedMaster: async (id: string) => { held.delete(id); },
+    }));
+    const mod = await import("../src/masters");
+    const m = { ...lolevMaster(), id: "m1", name: "M" };
+    await mod.rememberMaster(m, "/a.master", new Uint8Array([7]));
+    const before = mod.masterIndex().m1;
+    const undo = await mod.removeFromLibrary("m1");
+    expect(mod.masterIndex().m1).toBeUndefined();
+    expect(held.has("m1")).toBe(false);
+    expect(localStorage.getItem("labellab.lastMaster")).toBeNull();
+    await undo();
+    expect(mod.masterIndex().m1).toEqual(before);
+    expect(held.get("m1")).toEqual(new Uint8Array([7]));
+    expect(localStorage.getItem("labellab.lastMaster")).toBe("m1");
+    vi.doUnmock("@/masterCache");
+  });
+
   // A .label is shared, so its masterHint is untrusted: only a path beside
   // the label or beside an already-registered master may be read.
   it("reads a hint only when it sits beside the label or a registered master", async () => {

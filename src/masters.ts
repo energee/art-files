@@ -133,6 +133,25 @@ export async function forgetMaster(id: string, replacementId?: string): Promise<
   await dropCachedMaster(id);
 }
 
+/** The picker's Remove: forgetMaster, but first keep what it drops — the
+ *  index row, the last-master key and the remembered bytes — and return an
+ *  undo that puts all three back (#402). The .master file is never touched,
+ *  so undo is only ever restoring this computer's bookkeeping. */
+export async function removeFromLibrary(id: string): Promise<() => Promise<void>> {
+  const row = masterIndex()[id];
+  let wasLast = false;
+  try { wasLast = localStorage.getItem(LAST_KEY) === id; } catch { /* no localStorage */ }
+  const bytes = await cachedMaster(id);
+  await forgetMaster(id);
+  return async () => {
+    if (bytes) await cacheMaster(id, bytes);
+    try {
+      if (row) localStorage.setItem(KEY, JSON.stringify({ ...masterIndex(), [id]: row }));
+      if (wasLast) localStorage.setItem(LAST_KEY, id);
+    } catch { /* no localStorage — same fallback as masterIndex */ }
+  };
+}
+
 /** forgetMaster without the remembered bytes: drops the index row and repoints
  *  the last-master key. */
 function retireIndexRow(id: string, replacementId?: string): void {
