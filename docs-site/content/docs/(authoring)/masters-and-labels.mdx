@@ -44,7 +44,7 @@ One tick can promote everything. Confirm, and the `.master` file writes. Save Ma
 
 Save Master writes back to the file this master was opened from or last saved to. Undo back past Open Master, a library pick, or Save Master As, and Save Master asks where to save instead of reusing the other master's file.
 
-File → **Open Master…** loads a template from disk. The desktop app remembers the real path, so a restart finds it. The browser caches the last applied master, so a reload does not sneak you back to shipped Lolev.
+File → **Open Master…** loads a template from disk. The desktop app remembers the real path, so a restart finds it. The browser keeps copies of the 20 masters you most recently opened, saved or used, so a reload does not sneak you back to shipped Lolev. A master you haven't touched in 20 others is dropped from the browser; open its file again to bring it back.
 
 Opening a label reads that master file. If the file was saved again over the same path (Save Master As writes a new id), the label follows the file. It does not reopen an older copy remembered from the id the label still names. Saving the label records the new id.
 

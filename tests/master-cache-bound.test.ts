@@ -82,6 +82,30 @@ describe("master cache bound (#406)", () => {
     expect(await legacyLeft()).toBe(MAX_CACHED_MASTERS - 1);
   });
 
+  it("a store already full still evicts when the recency write fails too", async () => {
+    // The recency record is a put as well: if it shared a transaction with
+    // the evicting deletes, its quota failure would roll them back.
+    await seedLegacyStore();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(() => {
+      throw new DOMException("full", "QuotaExceededError");
+    });
+    await cacheMaster("new", bytes(9));
+    vi.restoreAllMocks();
+    expect(await legacyLeft()).toBe(MAX_CACHED_MASTERS - 1);
+  });
+
+  it("two masters cached at once both keep their place", async () => {
+    // Two tabs, or two opens in flight: the second must not drop the first
+    // from the order while the first's bytes are still on their way in.
+    for (let i = 0; i < MAX_CACHED_MASTERS - 2; i++) await cacheMaster(`m${i}`, bytes(i));
+    await Promise.all([cacheMaster("a", bytes(1)), cacheMaster("b", bytes(2))]);
+    await cacheMaster("c", bytes(3));
+    expect(await cachedMaster("a")).toEqual(bytes(1));
+    expect(await cachedMaster("b")).toEqual(bytes(2));
+    expect(await cachedMaster("m0")).toBeNull();
+  });
+
   it("reading a cached master back counts as using it", async () => {
     // A reload's default master is read every launch but cached only once;
     // without this, twenty label opens later it was the first evicted.

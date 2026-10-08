@@ -68,34 +68,40 @@ export function run<T>(
  *  entry; the oldest beyond MAX_CACHED_MASTERS are dropped first. A failed
  *  write (a full quota) is logged, not thrown. */
 export async function cacheMaster(id: string, bytes: Uint8Array): Promise<void> {
-  // Make room in its own transaction: a put that fails on a full quota aborts
-  // its transaction, and an eviction riding in it would roll back too, leaving
-  // a store that was already full stuck full. If the put then fails, the id
-  // stays in the order with no bytes until the next touch reconciles it out.
-  await run("readwrite", (s) => touch(s, id));
+  // Make room before the put, in its own transaction: a put that fails on a
+  // full quota aborts its transaction, and an eviction riding in it would
+  // roll back too, leaving a store that was already full stuck full. If the
+  // put then fails, the id holds its slot with no bytes until it ages out.
+  await reorder((ids) => [id, ...ids.filter((k) => k !== id)]);
   const ok = await run("readwrite", (s) => s.put(bytes, id));
   if (ok === null) console.warn(`Could not cache master ${id}; the browser store may be full or unavailable.`);
 }
 
-/** Move id to the head of the recency order and evict every id past the
- *  bound. The order is reconciled against the keys actually held: ids with no
- *  bytes (a put that failed, a drop) leave it, and bytes it does not list (a
- *  cache from before the bound, a touch that failed) rank behind the listed
- *  ones, in key order, so nothing escapes the bound. Returns the recency read
- *  so `run` has a request to settle on. */
-function touch(s: IDBObjectStore, id: string): IDBRequest {
+/** Rewrite the recency order with `edit` and evict every id past the bound.
+ *  The recency put can itself fail on a full quota and take the evicting
+ *  deletes down with it, so a failed write is followed by an eviction alone. */
+async function reorder(edit: (ids: IDBValidKey[]) => IDBValidKey[]): Promise<void> {
+  if (await run("readwrite", (s) => rerank(s, edit, true)) === null) {
+    await run("readwrite", (s) => rerank(s, edit, false));
+  }
+}
+
+/** One reorder pass inside a transaction. Bytes the order does not list (a
+ *  cache from before the bound, a recency write that failed) rank behind the
+ *  listed ids in key order, so nothing escapes the bound. A listed id with no
+ *  bytes keeps its place: another tab's put may still be on its way. Returns
+ *  the key read, which always has a result, so `run` reports success. */
+function rerank(s: IDBObjectStore, edit: (ids: IDBValidKey[]) => IDBValidKey[], record: boolean): IDBRequest {
+  const all = s.getAllKeys();
   const order = s.get(RECENCY);
   order.onsuccess = () => {
-    const all = s.getAllKeys();
-    all.onsuccess = () => {
-      const held = all.result.filter((k) => k !== RECENCY && k !== id);
-      const listed = Array.isArray(order.result) ? order.result.filter((k) => held.includes(k)) : [];
-      const ranked = [id, ...listed, ...held.filter((k) => !listed.includes(k))];
-      for (const old of ranked.slice(MAX_CACHED_MASTERS)) s.delete(old);
-      s.put(ranked.slice(0, MAX_CACHED_MASTERS), RECENCY);
-    };
+    const listed: IDBValidKey[] = Array.isArray(order.result) ? order.result : [];
+    const known = new Set(listed);
+    const ranked = edit([...listed, ...all.result.filter((k) => k !== RECENCY && !known.has(k))]);
+    for (const old of ranked.slice(MAX_CACHED_MASTERS)) s.delete(old);
+    if (record) s.put(ranked.slice(0, MAX_CACHED_MASTERS), RECENCY);
   };
-  return order;
+  return all;
 }
 
 /** The cached bytes for a master id, or null when nothing is held. A hit
@@ -107,13 +113,14 @@ export async function cachedMaster(id: string): Promise<Uint8Array | null> {
   const bytes = held instanceof Uint8Array ? held
     : held instanceof ArrayBuffer ? new Uint8Array(held) : null;
   // A separate write: a failed touch (a full quota) must not lose the read.
-  if (bytes) await run("readwrite", (s) => touch(s, id));
+  if (bytes) await reorder((ids) => [id, ...ids.filter((k) => k !== id)]);
   return bytes;
 }
 
 /** Drop a cached master. The file at its path now holds a different id, so
  *  these bytes are an older copy and must not resolve in its place. */
 export async function dropCachedMaster(id: string): Promise<void> {
-  // The recency order sheds the id on the next touch, which drops ids with no bytes.
   await run("readwrite", (s) => s.delete(id));
+  // Then free its slot in the order; a listed id with no bytes would hold it.
+  await reorder((ids) => ids.filter((k) => k !== id));
 }
