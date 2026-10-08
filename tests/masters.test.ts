@@ -56,13 +56,28 @@ describe("master library index", () => {
 
   // #407: a full localStorage (QuotaExceededError) must not reject — the
   // Save Master commit awaits this after the file is already written, and a
-  // throw there left the saved master marked unsaved. Same guard as forgetMaster.
+  // throw there left the saved master marked unsaved. Same guard as
+  // retireIndexRow (which forgetMaster calls).
   it("rememberMaster resolves when localStorage.setItem throws", async () => {
     vi.stubGlobal("localStorage", {
       ...fakeLocalStorage,
       setItem: () => { throw new DOMException("full", "QuotaExceededError"); },
     });
     await expect(rememberMaster(lolevMaster(), "/tmp/lolev.master")).resolves.toBeUndefined();
+  });
+  // The index can outgrow the quota while the short last-master key still
+  // fits: a failed index write must not skip pinning the applied master.
+  it("rememberMaster still pins the last master when the index write throws", async () => {
+    vi.stubGlobal("localStorage", {
+      ...fakeLocalStorage,
+      setItem: (k: string, v: string) => {
+        if (k === "labellab.masters") throw new DOMException("full", "QuotaExceededError");
+        fakeLocalStorage.setItem(k, v);
+      },
+    });
+    await rememberMaster(lolevMaster(), "/tmp/lolev.master");
+    expect(stored.get("labellab.lastMaster")).toBe(SHIPPED_MASTER_ID);
+    expect(stored.has("labellab.masters")).toBe(false);
   });
 
   it("a saved master registers in the library index under its own id", () => {
