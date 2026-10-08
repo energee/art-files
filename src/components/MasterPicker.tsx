@@ -66,8 +66,8 @@ export function MasterPicker(props: {
    *  picker-driven resolve always has the index's own remembered path to
    *  fall back on, unlike resolveMasterById's optional second `hint`
    *  argument, which exists for a DIFFERENT caller — openProject, resolving
-   *  a `.label`'s masterHint when the index itself has nothing for that id
-   *  yet (e.g. a file received from someone else). */
+   *  a `.label`'s masterHint, the exact file that label was saved against,
+   *  before the index's path for that id (#405). */
   resolve: (id: string) => Promise<{ master: Master; assets: MasterAssets } | null>;
   /** Commits a rebind onto `target` — called ONLY after the inline preview's
    *  "Continue" is pressed. The caller re-runs rebind itself against its own

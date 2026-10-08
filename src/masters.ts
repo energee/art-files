@@ -1,32 +1,90 @@
 // src/masters.ts — the master library index: {id -> {name, path, lastSeen}}.
 // A RESOLVER CACHE ONLY — .master files on disk are the source of truth
-// (spec: Library index). resolveMasterById always consults the index (and a
-// trusted hint) first, so a registered .master on disk wins even when its id
-// is the shipped id; the built-in Lolev fixture is used only as a last-resort
-// fallback when nothing on disk resolves, guaranteeing a fresh install with
-// an empty index still works. localStorage (per-operator app state, like the
-// view toggles and settings.ts): the index describes this machine's
-// filesystem. Untitled tabs call resolveDefaultMaster, then drop fill values
-// and raster art in structureOnlyMaster (model/edit.ts).
+// (spec: Library index). resolveMasterById always consults a trusted hint
+// (the exact file a label names), then the index, so a .master on disk wins
+// even when its id is the shipped id; the built-in Lolev fixture is used only
+// as a last-resort fallback when nothing on disk resolves, guaranteeing a
+// fresh install with an empty index still works. localStorage (per-operator
+// app state, like the view toggles and settings.ts): the index describes this
+// machine's filesystem. Untitled tabs call resolveDefaultMaster, then drop
+// fill values and raster art in structureOnlyMaster (model/edit.ts).
+//
+// One localStorage key per master (ROW_PREFIX + id), not one blob: every
+// window of the app shares localStorage, and a whole-index read-modify-write
+// let one window's save drop the row another window had just written (#408).
+// A row write touches only its own key. The pre-#408 blob (LEGACY_KEY) is
+// still read, and the next write splits it into rows.
 import { isTauri } from "@tauri-apps/api/core";
 import type { Master } from "@/model/layers";
 import { lolevMaster } from "@/model/lolevLayers";
 import { unpackMaster, type MasterAssets } from "@/model/files";
 import { readNativeFile } from "@/files";
 import { cacheMaster, cachedMaster, dropCachedMaster } from "@/masterCache";
+import { readJson } from "@/settings";
 
 export const SHIPPED_MASTER_ID = lolevMaster().id;
-const KEY = "labellab.masters";
+const ROW_PREFIX = "labellab.master:";
+const LEGACY_KEY = "labellab.masters";
 const LAST_KEY = "labellab.lastMaster";
 
 export interface MasterIndexEntry { name: string; path: string; lastSeen: string }
 
+/** A stored index row, or undefined when absent, mangled, or not an object
+ *  (skipped, not fatal). */
+function asRow(v: unknown): MasterIndexEntry | undefined {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as MasterIndexEntry) : undefined;
+}
+
+/** The pre-#408 single-blob index, or {} when absent, mangled, or not an
+ *  object (a blob of `null` must not break every later write). */
+function legacyIndex(): Record<string, MasterIndexEntry> {
+  return (asRow(readJson(LEGACY_KEY)) ?? {}) as unknown as Record<string, MasterIndexEntry>;
+}
+
+/** One master's row, or undefined when absent or mangled. */
+function indexRow(id: string): MasterIndexEntry | undefined {
+  return asRow(readJson(ROW_PREFIX + id));
+}
+
+/** Every remembered master, ordered by name (then id). localStorage.key()
+ *  order is the engine's hash order (WebKit) and ids are random, so neither
+ *  gives the Master menu a stable, readable order. Built in a Map so an id
+ *  such as "__proto__" stays an ordinary entry. */
 export function masterIndex(): Record<string, MasterIndexEntry> {
+  // A per-master row overrides its blob entry.
+  const merged = new Map<string, MasterIndexEntry>();
+  for (const [id, e] of Object.entries(legacyIndex())) if (asRow(e)) merged.set(id, e);
   try {
-    return JSON.parse(localStorage.getItem(KEY) ?? "{}") as Record<string, MasterIndexEntry>;
-  } catch {
-    return {}; // a mangled entry falls back rather than crashing open
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k?.startsWith(ROW_PREFIX)) continue;
+      const row = asRow(readJson(k));
+      if (row) merged.set(k.slice(ROW_PREFIX.length), row);
+    }
+  } catch { /* no localStorage — same fallback as legacyIndex */ }
+  // Sort the union, so ids from an unmigrated blob sort in with the rows.
+  return Object.fromEntries([...merged].sort(([a, ea], [b, eb]) =>
+    String(ea.name).localeCompare(String(eb.name)) || (a < b ? -1 : a > b ? 1 : 0)));
+}
+
+/** Move pre-#408 blob rows to their own keys before a row write, so the
+ *  blob can't resurrect a row that is later forgotten. A row another window
+ *  already wrote is newer than the blob, so it is kept. The blob is checked
+ *  before each copy: once another window has migrated it (and perhaps
+ *  forgotten a row since), a missing row means forgotten, not unmigrated. */
+function migrateLegacyIndex(): void {
+  for (const [id, e] of Object.entries(legacyIndex())) {
+    if (localStorage.getItem(LEGACY_KEY) === null) return;
+    if (asRow(e) && localStorage.getItem(ROW_PREFIX + id) === null) localStorage.setItem(ROW_PREFIX + id, JSON.stringify(e));
   }
+  localStorage.removeItem(LEGACY_KEY);
+}
+
+/** A fresh id for a forked master (Save Master As). A full UUID: the old
+ *  8-hex-char suffix could collide, and a colliding id resolves the other
+ *  master's file (#405). */
+export function newMasterId(): string {
+  return `master-${crypto.randomUUID()}`;
 }
 
 /** A Save Master target — a native path or an FS-Access handle — tagged
@@ -51,13 +109,15 @@ export async function rememberMaster(m: Master, path: string, bytes?: Uint8Array
   // reload can actually resolve it (void cacheMaster used to return while
   // IndexedDB was still empty, and the next launch fell back to Lolev).
   if (bytes) await cacheMaster(m.id, bytes);
-  const idx = masterIndex();
-  const cur = idx[m.id];
+  // A failed migration leaves the blob in place, so masterIndex still lists
+  // it; this master's own row is still attempted below.
+  try { migrateLegacyIndex(); } catch { /* no localStorage / quota exceeded */ }
+  const cur = indexRow(m.id) ?? legacyIndex()[m.id];
   // An apply that has no filesystem path (a library pick of the shipped
   // master, a browser handle whose name we already stored) must not wipe a
   // real path from an earlier Open/Save. Resolving a .label is not an apply:
   // keep lastSeen so it cannot steal the next untitled document.
-  idx[m.id] = {
+  const row: MasterIndexEntry = {
     name: m.name,
     path: path || cur?.path || "",
     lastSeen: applied ? new Date().toISOString() : (cur?.lastSeen ?? ""),
@@ -70,7 +130,7 @@ export async function rememberMaster(m: Master, path: string, bytes?: Uint8Array
   // quota while the short LAST_KEY still fits, and the last-applied master
   // should stay pinned for the next launch.
   try {
-    localStorage.setItem(KEY, JSON.stringify(idx));
+    localStorage.setItem(ROW_PREFIX + m.id, JSON.stringify(row));
   } catch { /* no localStorage / quota exceeded — same fallback as masterIndex */ }
   if (applied) {
     try {
@@ -103,19 +163,27 @@ function lastMasterId(): string {
 
 /** A resolved master with its template assets — what unpackMaster returns
  *  (a legacy JSON master resolves with empty assets; a v1 file is converted
- *  on the way in, see model/files.ts). */
-export type ResolvedMaster = { master: Master; assets: MasterAssets };
+ *  on the way in, see model/files.ts). `path` is the native file it was read
+ *  from, when it was read from one: the tab binds Save Master and the saved
+ *  label's masterHint to that file, not to the index row for the id (#405). */
+export type ResolvedMaster = { master: Master; assets: MasterAssets; path?: string };
 
-async function readMasterAt(path: string): Promise<ResolvedMaster | null> {
+/** Read and parse the .master at `path`, without touching the library. */
+async function readMasterFile(path: string): Promise<{ resolved: ResolvedMaster; bytes: Uint8Array } | null> {
   if (!isTauri()) return null; // browser: no filesystem paths to read
   try {
     const bytes = await readNativeFile(path); // ZIP or legacy JSON
-    const r = unpackMaster(bytes);
-    await rememberMaster(r.master, path, bytes, { applied: false });
-    return r;
+    return { resolved: { ...unpackMaster(bytes), path }, bytes };
   } catch {
-    return null; // moved/deleted/corrupt — caller falls through to the hint
+    return null; // moved/deleted/corrupt — the caller falls through
   }
+}
+
+/** readMasterFile, then register the file in the library index and cache. */
+async function readMasterAt(path: string): Promise<ResolvedMaster | null> {
+  const f = await readMasterFile(path);
+  if (f) await rememberMaster(f.resolved.master, path, f.bytes, { applied: false });
+  return f?.resolved ?? null;
 }
 
 /** Folder of a native path with `/` separators; "" for a bare name. */
@@ -153,10 +221,8 @@ export async function forgetMaster(id: string, replacementId?: string): Promise<
  *  yields to what happened since: a master re-added in the meantime keeps
  *  its newer row and bytes, and a master applied since keeps the last key. */
 export async function removeFromLibrary(id: string): Promise<() => Promise<void>> {
+  // Restoring the row also restores its place: masterIndex sorts by name.
   const row = masterIndex()[id];
-  // Where the row sat, so Undo puts it back in the same place in the menu
-  // (libraryEntries lists the index in insertion order).
-  const at = Object.keys(masterIndex()).indexOf(id);
   let wasLast = false;
   try { wasLast = localStorage.getItem(LAST_KEY) === id; } catch { /* no localStorage */ }
   const bytes = await cachedMaster(id);
@@ -167,11 +233,7 @@ export async function removeFromLibrary(id: string): Promise<() => Promise<void>
     // Checked again: a re-add can land while the bytes are being written.
     if (masterIndex()[id]) return;
     try {
-      if (row) {
-        const rows = Object.entries(masterIndex());
-        rows.splice(at < 0 ? rows.length : Math.min(at, rows.length), 0, [id, row]);
-        localStorage.setItem(KEY, JSON.stringify(Object.fromEntries(rows)));
-      }
+      if (row) localStorage.setItem(ROW_PREFIX + id, JSON.stringify(row));
       // Removal cleared the key, so a set key means a master applied since.
       if (wasLast && !localStorage.getItem(LAST_KEY)) localStorage.setItem(LAST_KEY, id);
     } catch { /* no localStorage — same fallback as masterIndex */ }
@@ -182,11 +244,8 @@ export async function removeFromLibrary(id: string): Promise<() => Promise<void>
  *  the last-master key. */
 function retireIndexRow(id: string, replacementId?: string): void {
   try {
-    const idx = masterIndex();
-    if (idx[id]) {
-      delete idx[id];
-      localStorage.setItem(KEY, JSON.stringify(idx));
-    }
+    migrateLegacyIndex();
+    localStorage.removeItem(ROW_PREFIX + id);
     if (localStorage.getItem(LAST_KEY) === id) {
       if (replacementId) localStorage.setItem(LAST_KEY, replacementId);
       else localStorage.removeItem(LAST_KEY);
@@ -197,20 +256,42 @@ function retireIndexRow(id: string, replacementId?: string): void {
 /** `labelPath` is the native path of the .label being opened, when there is
  *  one — it widens where `hint` may be read (hintTrusted).
  *
- *  `followReplacement`: a label open. The file at the hint (or, when that is
- *  the indexed path, the file the index named) wins even when its id changed.
+ *  `followReplacement`: a label open. A file holding `id` wins, the hint's
+ *  first. When none does, the file at the hint (or, when that is the indexed
+ *  path, the file the index named) is followed even though its id changed.
  *  When no such file can be read, the remembered copy of the id stands in. A
  *  library pick passes false and gets null instead of a different master. */
 async function resolveMaster(
   id: string, hint: string | undefined, labelPath: string | undefined, followReplacement: boolean,
 ): Promise<ResolvedMaster | null> {
+  // The trusted hint is read before the index: it names the exact file this
+  // label was saved against, while the index keeps one path per id, so two
+  // files that share an id (a shipped master edited on two machines, legacy
+  // short fork ids that collided — #405) would otherwise open the wrong one.
+  // The returned `path` binds the tab to that file. The hint's file joins the
+  // library only when the library has no readable file for its id: a shared
+  // label must not take over the operator's entry or its remembered bytes,
+  // and two labels sharing an id must not flip the row between their files on
+  // every open. A row whose file was moved, deleted, or now holds another id
+  // is repaired to the hint, as it was when the index was read first.
   const indexPath = masterIndex()[id]?.path ?? "";
+  const hintPath = hint && hintTrusted(hint, labelPath) && hint !== indexPath ? hint : "";
+  const hinted = hintPath ? await readMasterFile(hintPath) : null;
+  const hintFile = hinted?.resolved ?? null;
+  const adoptHint = async () => {
+    if (!hinted) return;
+    const hid = hinted.resolved.master.id;
+    const row = masterIndex()[hid]?.path;
+    if (row && (await readMasterFile(row))?.resolved.master.id === hid) return;
+    await rememberMaster(hinted.resolved.master, hintPath, hinted.bytes, { applied: false });
+  };
+  if (hintFile?.master.id === id) {
+    await adoptHint();
+    return hintFile;
+  }
+
   const indexFile = indexPath ? await readMasterAt(indexPath) : null;
   if (indexFile?.master.id === id) return indexFile;
-
-  const hintPath = hint && hintTrusted(hint, labelPath) && hint !== indexPath ? hint : "";
-  const hintFile = hintPath ? await readMasterAt(hintPath) : null;
-  if (hintFile?.master.id === id) return hintFile;
 
   // Any file read here holds a different id: the early returns took the match.
   // A label open follows the file it named. Otherwise the remembered bytes
@@ -224,6 +305,7 @@ async function resolveMaster(
   const held = !named && (followReplacement || (!indexFile && !hintFile)) ? await cachedMaster(id) : null;
   // A remembered copy is about to stand in, so it stays for the next open.
   if (indexFile) await (held ? retireIndexRow : forgetMaster)(id, indexFile.master.id);
+  if (named && named === hintFile) await adoptHint();
   if (named) return named;
   if (held) {
     try {

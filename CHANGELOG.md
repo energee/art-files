@@ -7,6 +7,8 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Fixed
+- **A label opens the master file it was saved with.** When two `.master` files share an id, a label now opens the one beside it (or in your library folder) instead of whichever the library remembered last, and saves back to that file. Opening such a label leaves your library's own copy in place, and **Use** in the missing-master dialog opens the tab's own master file. Save Master As now gives each new master a full-length id, so two forks can no longer end up with the same one.
+- **The browser's saved-master store no longer grows without limit.** It keeps the 20 masters most recently opened, saved or used and drops older copies, so a full store can't stop new masters from being kept. A copy that can't be stored is now logged.
 - **Removing a master from the library can be undone.** A note under the master picker says the `.master` file stays where it is, with Undo to put it back without browsing to the file.
 - **Masters save and open when browser storage is full.** Save Master wrote the file but reported a failure and left the master marked unsaved; Open Master and a library pick failed too, and a label could miss its master file on disk. A full storage quota now only skips updating the remembered-masters list.
 - **A label drops ids its master no longer has.** Opening a label on its own master, after that master lost a layer or a version, now sets those values and versions aside and says so, instead of carrying them in the file forever.
@@ -16,6 +18,7 @@ that section to the new version (see .agents/release-steward.md).
 - **A malformed .label is refused instead of breaking the canvas.** A shared label whose values or overrides have the wrong shape (non-text values, non-numeric positions, an incomplete added layer) now fails to open with a clear error instead of crashing the preview or saving bad geometry back.
 - **Exports say what they're building.** While PDFs or PSDs export, the blurred preview reads "Building PDFs…" or "Building PSDs…" instead of "rendering preview…", so a long export no longer looks like a stalled preview. A PSD export shows the note even while the preview is still loading, and screen readers announce it.
 - **Background failures show up instead of vanishing.** A save, export or open that fails outside its own error handling now shows a dismissible alert with the reason, rather than failing silently.
+- **Two windows saving masters at once no longer drop one from the library.** Each remembered master now has its own storage entry, so a save in one window can't overwrite a master another window just added. An existing library carries over on the next save. The Master menu now lists remembered masters by name.
 
 ### Changed
 - **PSD export no longer freezes the window.** The layered PSD is built in a background worker, so the editor stays responsive while a full-resolution file is written. Image decoding and PDF export still run on the main thread.
@@ -26,6 +29,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Internal cleanup, no visible change.** Image bytes become files and blobs through one shared helper instead of repeated casts.
 - **Export confirms what it saved.** When an export finishes, the header names the files it wrote, such as both the art and mask PDFs, and screen readers announce it. The note clears on your next edit.
 - **Smoother typing in the 3D view.** The foil-mask pass over the label texture now runs in a background worker instead of stalling the editor on every rebuild.
+- **A little less code to load at startup.** Settings, the Save Master review and the ⌘K command palette now load the first time you open them instead of with the editor, trimming the startup code by about 60 kB.
 
 ### Added
 - **Unsaved tabs survive a crash.** Label Lab keeps a recovery copy of every tab with unsaved changes. After a crash or forced quit, the next launch offers to restore them. A restored tab still counts as unsaved until you save it, and Save asks where to write. Dismissing the offer without choosing keeps the copies for the next launch.
