@@ -81,6 +81,26 @@ const cssFill = (fill: Fill) => (fill === "none" ? "#FFFFFF" : fill);
 const cssMask = (layer: Style["layer"]) =>
   layer === "metallic" ? "#FFFFFF" : L.MASK_BLUE_HEX;
 
+/** A bitmap repainted in `fill`, keeping its alpha — tintRgba's color
+ *  overlay done by the compositor (source-in) instead of a pixel loop, so a
+ *  fill edit costs a draw, not a decode/re-encode (#414). One entry per
+ *  bitmap: repaints at the same fill reuse it; a new fill redraws it. */
+const tintCache = new WeakMap<object, { fill: Fill; canvas: HTMLCanvasElement }>();
+function tinted(bmp: CanvasImageSource & { width: number; height: number }, fill: Fill): HTMLCanvasElement {
+  const hit = tintCache.get(bmp);
+  if (hit?.fill === fill) return hit.canvas;
+  const canvas = hit?.canvas ?? document.createElement("canvas");
+  canvas.width = bmp.width;
+  canvas.height = bmp.height;
+  const c = canvas.getContext("2d")!;
+  c.drawImage(bmp, 0, 0);
+  c.globalCompositeOperation = "source-in";
+  c.fillStyle = cssFill(fill);
+  c.fillRect(0, 0, canvas.width, canvas.height);
+  tintCache.set(bmp, { fill, canvas });
+  return canvas;
+}
+
 /** Which plate a page item belongs to: the background texture is art-only,
  *  the metallic mask is mask-only. */
 const pageDrawsOn = (p: PlacedPage, mode: Mode) =>
@@ -175,7 +195,10 @@ export function drawPlate(
       // missing-asset contract: no asset means no ink and no mask footprint.
       const bmp = r.asset ? bitmapOf(r.asset) : null;
       if (!bmp) continue;
-      if (mode === "art") c.drawImage(bmp, r.x, r.y, r.w, r.h);
+      if (mode === "art") {
+        const src = r.tint ? tinted(bmp as ImageBitmap, r.tint) : bmp;
+        c.drawImage(src, r.x, r.y, r.w, r.h);
+      }
       else {
         // Raster art prints on white ink: the mask paints its footprint blue.
         c.fillStyle = L.MASK_BLUE_HEX;

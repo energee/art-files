@@ -200,6 +200,32 @@ describe("drawPlate", () => {
     expect(items.find((x) => x.op === "set:fillStyle")!.args[0]).toBe(MASK_BLUE_HEX);
   });
 
+  it("a tinted image is recolored at draw time: source-in on a scratch canvas, then drawn (#414)", () => {
+    const scratch = fakeCtx();
+    const scratchCanvas = { width: 0, height: 0, getContext: () => scratch.ctx };
+    vi.stubGlobal("document", { createElement: () => scratchCanvas });
+    const item = { kind: "image" as const, id: "i1", asset: "c", x: 10, y: 10, w: 20, h: 10, tint: GOLD as `#${string}` };
+    const art = fakeCtx();
+    drawPlate(art.ctx, [item], { images: { c: bitmap } }, "art", FONT);
+    // The scratch holds the bitmap at its own size, then the fill composited
+    // source-in: the fill color wherever the art has alpha, like tintRgba.
+    expect([scratchCanvas.width, scratchCanvas.height]).toEqual([100, 100]);
+    const ops = scratch.log.map((x) => x.op);
+    expect(ops.indexOf("drawImage")).toBeLessThan(ops.indexOf("set:globalCompositeOperation"));
+    expect(scratch.log.find((x) => x.op === "set:globalCompositeOperation")!.args[0]).toBe("source-in");
+    expect(scratch.log.find((x) => x.op === "set:fillStyle")!.args[0]).toBe(GOLD);
+    expect(ops.indexOf("set:globalCompositeOperation")).toBeLessThan(ops.indexOf("fillRect"));
+    // The plate draws the tinted scratch, never the raw bitmap.
+    const drawn = art.log.filter((x) => x.op === "drawImage");
+    expect(drawn).toHaveLength(1);
+    expect(drawn[0].args).toEqual([scratchCanvas, 10, 10, 20, 10]);
+    // Mask plate is unaffected: the same blue footprint as an untinted image.
+    const mask = fakeCtx();
+    drawPlate(mask.ctx, [item], { images: { c: bitmap } }, "mask", FONT);
+    expect(mask.log.some((x) => x.op === "drawImage")).toBe(false);
+    expect(afterTranslate(mask.log).find((x) => x.op === "set:fillStyle")!.args[0]).toBe(MASK_BLUE_HEX);
+  });
+
   it("an image item whose bitmap never loaded is a quiet no-op on either plate", () => {
     const custom = { kind: "image" as const, id: "i1", asset: "missing", x: 10, y: 10, w: 20, h: 10 };
     const art = fakeCtx();
