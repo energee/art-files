@@ -424,16 +424,16 @@ export default function TabsShell() {
           </div>
         ))}
       </div>
-        <button
-          onClick={newTab}
-          aria-label="New tab"
-          title="New tab (⌘N)"
-          className="shrink-0 rounded-md px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
-          +
-        </button>
-        {pickError && (
-          <span className="shrink-0 px-2 text-xs text-destructive-text">{pickError}</span>
-        )}
+      <button
+        onClick={newTab}
+        aria-label="New tab"
+        title="New tab (⌘N)"
+        className="shrink-0 rounded-md px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+        +
+      </button>
+      {pickError && (
+        <span className="shrink-0 px-2 text-xs text-destructive-text">{pickError}</span>
+      )}
     </div>
   ), [state.tabs, state.active, pickError, activate, closeReq, newTab]);
 

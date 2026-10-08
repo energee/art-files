@@ -62,7 +62,5 @@ it("renders the strip as a tablist with one selected tab", async () => {
 
 it("gives each tab a keyboard focus ring", () => {
   expect(tabs()).toHaveLength(1);
-  for (const t of tabs()) {
-    expect(t.className).toContain("focus-visible:ring-2");
-  }
+  expect(tabs()[0].className).toContain("focus-visible:ring-2");
 });
