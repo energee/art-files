@@ -100,28 +100,29 @@ export const CanView = forwardRef<CanViewHandle, {
   }, []);
 
   // Texture rebuilds are debounced: each one is a synchronous two-plate draw
-  // plus deriveMetalness' per-pixel pass over ~3.4M px — fine per pause,
-  // too heavy per keystroke. A superseded rebuild simply never fires
-  // (clearTimeout), so stale textures can't overwrite newer ones.
+  // plus a per-pixel mask pass over ~3.4M px (run in a worker — see
+  // metalnessMask.ts) — fine per pause, too heavy per keystroke. A superseded
+  // rebuild never fires (clearTimeout), and one already awaiting the worker
+  // is dropped (`stale`), so stale textures can't overwrite newer ones.
   useEffect(() => {
     if (!source) return;
     setLoading(true);
-    let done = false;
-    const timer = setTimeout(() => {
-      done = true;
+    let stale = false;
+    const timer = setTimeout(async () => {
       try {
         const plan = planLayers(layers, source.m, source.planAssets, { skip: source.skip });
-        sceneRef.current?.applyTextures(
-          buildLabelTextures(drawPlates(plan, source.drawAssets, source.fontCss)));
+        const textures = await buildLabelTextures(drawPlates(plan, source.drawAssets, source.fontCss));
+        if (stale) return;
+        sceneRef.current?.applyTextures(textures);
         onRenderError("");
       } catch (err) {
         // The can keeps its last textures; the strip says why they're stale.
-        onRenderError(String(err));
+        if (!stale) onRenderError(String(err));
       } finally {
-        setLoading(false);
+        if (!stale) setLoading(false);
       }
     }, 150);
-    return () => { clearTimeout(timer); if (!done) setLoading(false); };
+    return () => { stale = true; clearTimeout(timer); setLoading(false); };
     // onRenderError is a useState setter in App — identity-stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source, layers, bleedIn]);

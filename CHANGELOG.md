@@ -6,6 +6,9 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Performance
+- **Smoother typing in the 3D view.** The foil-mask pass over the label texture now runs in a background worker instead of stalling the editor on every rebuild.
+
 ### Security
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.
 
