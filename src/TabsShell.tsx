@@ -381,9 +381,15 @@ export default function TabsShell() {
   // not on every unrelated shell state change.
   const tabStrip = useMemo(() => (
     <div className="flex h-9 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-sidebar">
+      {/* A tablist (#404) so assistive tech announces the active document;
+          each chip's title button is the tab, its close button a plain
+          button. The + and the pick error sit outside it: a tablist owns
+          only tabs. No aria-controls: the editor isn't modelled as a panel. */}
+      <div role="tablist" aria-label="Open documents" className="flex shrink-0 items-center gap-1.5">
         {state.tabs.map((t) => (
           <div
             key={t.id}
+            role="presentation"
             className={cn(
               "group flex h-6.5 min-w-0 max-w-48 shrink-0 items-center gap-1 rounded-md px-2.5",
               t.id === state.active
@@ -391,9 +397,11 @@ export default function TabsShell() {
                 : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}>
             <button
+              role="tab"
+              aria-selected={t.id === state.active}
               onClick={() => activate(t.id)}
               title={t.filePath ?? t.title}
-              className="min-w-0 flex-1 truncate text-left text-xs outline-none">
+              className="min-w-0 flex-1 truncate rounded-sm text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring">
               {t.title}
             </button>
             <button
@@ -415,6 +423,7 @@ export default function TabsShell() {
             </button>
           </div>
         ))}
+      </div>
         <button
           onClick={newTab}
           aria-label="New tab"
