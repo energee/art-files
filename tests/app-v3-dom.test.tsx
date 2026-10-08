@@ -16,6 +16,15 @@ vi.mock("../src/components/Rulers", () => ({ Rulers: (props: { onMarginChange: (
 vi.mock("../src/fonts", () => ({
   loadLabelFaces: async () => { perf.fontLoads++; return (text: string, size: number) => text.length * size * 0.55; },
   labelFontCss: () => "sans-serif",
+  FONT_URLS: { poppins: {}, "barlow-condensed": {} },
+}));
+// Exports wait on loadFonts; the export test holds every call open to read
+// the in-flight overlay, then rejects them all to finish the export. Every
+// pending reject is kept: an export makes several loadFonts calls, and the
+// inspector's character-height readout may make another.
+const exportFonts = vi.hoisted(() => ({ rejects: [] as ((e: Error) => void)[] }));
+vi.mock("../src/pdf/fonts", () => ({
+  loadFonts: () => new Promise((_resolve, reject) => { exportFonts.rejects.push(reject); }),
 }));
 import { DocumentEditor } from "../src/App";
 
@@ -635,4 +644,25 @@ it("Delete with a stale id in a multi-row selection removes the rows that exist"
     await act(async () => nameRow()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true })));
     expect(nameRow()).toBeNull();
   } finally { await unmount(); }
+}, 60_000);
+
+// Issue #401: an export blurred the preview under a "rendering preview…" note,
+// so a long export read as a stalled preview. The note names the export.
+it.each([
+  ["PDFs", { key: "e", metaKey: true }],
+  ["PSDs", { key: "e", metaKey: true, shiftKey: true }],
+])("an export in flight shows Building %s…, not rendering preview…", async (kind, keys) => {
+  await withCanvasEditor(async (_p, container) => {
+    exportFonts.rejects = [];
+    await act(async () => {
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { ...keys, bubbles: true }));
+    });
+    // Announced, not just drawn: a screen reader hears what the blur means.
+    expect([...container.querySelectorAll('[role="status"]')].map((el) => el.textContent))
+      .toContain(`Building ${kind}…`);
+    expect(container.textContent).not.toContain("rendering preview…");
+    await vi.waitFor(() => expect(exportFonts.rejects.length).toBeGreaterThan(0));
+    await act(async () => { for (const reject of exportFonts.rejects) reject(new Error("stop")); });
+    await vi.waitFor(() => expect(container.textContent).not.toContain(`Building ${kind}…`));
+  });
 }, 60_000);
