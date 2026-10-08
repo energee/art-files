@@ -1961,13 +1961,13 @@ export const DocumentEditor = memo(function DocumentEditor({
           l = r.label;
           notes = r.warnings;
         }
-        // The file at this label's path was saved again under a new id. Follow
-        // that file; values that don't fit the new template are benched.
-        if (l.masterId !== resolved.master.id) {
-          const rebound = rebindLabel(l, undefined, resolved.master);
-          l = rebound.label;
-          notes.push(...benchedNotes(rebound.dropped));
-        }
+        // Bind to the master actually resolved — always, not only when the
+        // id changed (the file was saved again under a new id): the label's
+        // own master may since have dropped a layer or variant, and those
+        // orphan ids are benched and reported instead of carried forever (#409).
+        const rebound = rebindLabel(l, undefined, resolved.master);
+        l = rebound.label;
+        notes.push(...benchedNotes(rebound.dropped));
         next = { master: resolved.master, label: adoptLegacyCollab(l) };
       }
       // Resolve untrusted overrides/values before installing the document or

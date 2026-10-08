@@ -9,6 +9,9 @@ that section to the new version (see .agents/release-steward.md).
 ### Security
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.
 
+### Fixed
+- **A label drops ids its master no longer has.** Opening a label on its own master, after that master lost a layer or a version, now sets those values and versions aside and says so, instead of carrying them in the file forever.
+
 ## [0.1.104] - 2026-10-08
 
 ### Fixed
