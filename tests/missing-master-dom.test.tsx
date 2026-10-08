@@ -1,7 +1,8 @@
 // missing-master-dom.test.tsx — a .label whose master can't be found asks
 // what to open it on instead of failing: "Use current" opens the label on the
 // tab's master (values kept), Cancel leaves the tab as it was and does not
-// re-ask on the quiet retries.
+// re-ask on the quiet retries, and a failed Locate says why instead of
+// re-asking.
 // @vitest-environment happy-dom
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
@@ -59,8 +60,9 @@ async function openOrphan(pick: string) {
   for (let i = 0; i < 400 && !onOpenSettled.mock.calls.length; i++) await tick();
   const title = onMeta.mock.calls.at(-1)?.[0]?.title;
   const reasked = !!button(pick);
+  const text = document.body.textContent ?? "";
   await act(async () => { root.unmount(); });
-  return { title, reasked };
+  return { title, reasked, text };
 }
 
 it("Use current opens the label on this tab's master", async () => {
@@ -73,4 +75,17 @@ it("Cancel leaves the tab alone and does not ask again", async () => {
   const r = await openOrphan("Cancel");
   expect(r.title).not.toBe("Orphan");
   expect(r.reasked).toBe(false);
+}, 30_000);
+
+it("Locate shows why it failed instead of quietly asking again", async () => {
+  const broken = { getFile: async () => { throw new Error("disk went away"); } };
+  (window as unknown as { showOpenFilePicker: () => Promise<unknown[]> }).showOpenFilePicker = async () => [broken];
+  try {
+    const r = await openOrphan("Locate");
+    expect(r.title).not.toBe("Orphan");
+    expect(r.reasked).toBe(false);
+    expect(r.text).toContain("Could not open master: disk went away");
+  } finally {
+    delete (window as unknown as { showOpenFilePicker?: unknown }).showOpenFilePicker;
+  }
 }, 30_000);

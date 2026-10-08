@@ -1863,25 +1863,35 @@ export const DocumentEditor = memo(function DocumentEditor({
   };
 
   /** A .label's master couldn't be resolved: ask the operator. "Use current"
-   *  opens it on this tab's master; "Locate…" registers a picked .master and
+   *  opens it on this tab's master (as last saved); "Locate…" registers a picked .master and
    *  opens on that. Either way openProject rebinds the label onto the result
    *  (values the master lacks are benched, not lost). null = cancelled. */
   async function missingMasterChoice(id: string, hint: string | undefined, labelPath?: string): Promise<ResolvedMaster | null> {
     // An untrusted hint was never read, so it must not read as a file that
     // was looked for and found missing.
     const where = !hint ? "" : hintTrusted(hint, labelPath) ? ` (last seen at ${hint})` : ` (remembered at ${hint}, which was not read)`;
-    const current = docRef.current.master;
     const choice = await new Promise<"current" | "locate" | null>((choose) =>
-      setMissingMaster({ id, where, current: current.name, choose }));
+      setMissingMaster({ id, where, current: docRef.current.master.name, choose }));
     setMissingMaster(null);
+    // Read after the dialog: the tab may have switched masters meanwhile.
+    const current = docRef.current.master;
     if (choice === "current")
       return (await resolveMasterById(current.id)) ?? { master: current, assets: {} };
     if (choice !== "locate") return null;
-    const target = await openThrough({ filter: MASTER_FILTER, types: MASTER_TYPES });
-    if (!target) return null;
-    const [bytes, path] = "path" in target
-      ? [await readNativeFile(target.path), target.path]
-      : [new Uint8Array(await (await target.handle.getFile()).arrayBuffer()), ""];
+    // Failures are reported here, never thrown: openWithRetry would swallow
+    // one on a quiet attempt and ask again with no explanation.
+    let bytes: Uint8Array, path: string;
+    try {
+      const target = await openThrough({ filter: MASTER_FILTER, types: MASTER_TYPES });
+      if (target === undefined) { setLoadError("Could not open master: this browser has no file picker. Use File → Open Master… first."); return null; }
+      if (target === null) return null;
+      [bytes, path] = "path" in target
+        ? [await readNativeFile(target.path), target.path]
+        : [new Uint8Array(await (await target.handle.getFile()).arrayBuffer()), ""];
+    } catch (err) {
+      if (!isAbort(err)) setLoadError(`Could not open master: ${errMsg(err)}`);
+      return null;
+    }
     const r = tryParseMaster(bytes);
     if (r) await rememberMaster(r.master, path, bytes, { applied: false });
     return r;
