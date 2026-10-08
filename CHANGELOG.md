@@ -6,6 +6,9 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Fixed
+- **A label opens the master file it was saved with.** When two `.master` files share an id, a label now opens the one beside it (or in your library folder) instead of whichever the library remembered last. Save Master As now gives each new master a full-length id, so two forks can no longer end up with the same one.
+
 ### Security
 - **Updater TLS fix.** rustls 0.23.45 closes RUSTSEC-2026-0285 in the update check's HTTPS connection.
 

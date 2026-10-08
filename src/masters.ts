@@ -1,13 +1,13 @@
 // src/masters.ts — the master library index: {id -> {name, path, lastSeen}}.
 // A RESOLVER CACHE ONLY — .master files on disk are the source of truth
-// (spec: Library index). resolveMasterById always consults the index (and a
-// trusted hint) first, so a registered .master on disk wins even when its id
-// is the shipped id; the built-in Lolev fixture is used only as a last-resort
-// fallback when nothing on disk resolves, guaranteeing a fresh install with
-// an empty index still works. localStorage (per-operator app state, like the
-// view toggles and settings.ts): the index describes this machine's
-// filesystem. Untitled tabs call resolveDefaultMaster, then drop fill values
-// and raster art in structureOnlyMaster (model/edit.ts).
+// (spec: Library index). resolveMasterById always consults a trusted hint
+// (the exact file a label names), then the index, so a .master on disk wins
+// even when its id is the shipped id; the built-in Lolev fixture is used only
+// as a last-resort fallback when nothing on disk resolves, guaranteeing a
+// fresh install with an empty index still works. localStorage (per-operator
+// app state, like the view toggles and settings.ts): the index describes this
+// machine's filesystem. Untitled tabs call resolveDefaultMaster, then drop
+// fill values and raster art in structureOnlyMaster (model/edit.ts).
 import { isTauri } from "@tauri-apps/api/core";
 import type { Master } from "@/model/layers";
 import { lolevMaster } from "@/model/lolevLayers";
@@ -27,6 +27,13 @@ export function masterIndex(): Record<string, MasterIndexEntry> {
   } catch {
     return {}; // a mangled entry falls back rather than crashing open
   }
+}
+
+/** A fresh id for a forked master (Save Master As). A full UUID: the old
+ *  8-hex-char suffix could collide, and a colliding id resolves the other
+ *  master's file (#405). */
+export function newMasterId(): string {
+  return `master-${crypto.randomUUID()}`;
 }
 
 /** A Save Master target — a native path or an FS-Access handle — tagged
@@ -159,13 +166,17 @@ function retireIndexRow(id: string, replacementId?: string): void {
 async function resolveMaster(
   id: string, hint: string | undefined, labelPath: string | undefined, followReplacement: boolean,
 ): Promise<ResolvedMaster | null> {
+  // The trusted hint is read before the index: it names the exact file this
+  // label was saved against, while the index keeps one path per id, so two
+  // files that share an id (a shipped master edited on two machines, legacy
+  // short fork ids that collided — #405) would otherwise open the wrong one.
   const indexPath = masterIndex()[id]?.path ?? "";
-  const indexFile = indexPath ? await readMasterAt(indexPath) : null;
-  if (indexFile?.master.id === id) return indexFile;
-
   const hintPath = hint && hintTrusted(hint, labelPath) && hint !== indexPath ? hint : "";
   const hintFile = hintPath ? await readMasterAt(hintPath) : null;
   if (hintFile?.master.id === id) return hintFile;
+
+  const indexFile = indexPath ? await readMasterAt(indexPath) : null;
+  if (indexFile?.master.id === id) return indexFile;
 
   // Any file read here holds a different id: the early returns took the match.
   // A label open follows the file it named. Otherwise the remembered bytes

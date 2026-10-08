@@ -61,7 +61,7 @@ import {
   type MasterAssets,
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
-import { SHIPPED_MASTER_ID, forgetMaster, hintTrusted, masterIndex, rememberMaster, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
+import { SHIPPED_MASTER_ID, forgetMaster, hintTrusted, masterIndex, newMasterId, rememberMaster, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
 import { layerBoxes, type PlacedLayer } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { planLayers } from "@/planLayers";
@@ -1620,7 +1620,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       return false;
     }
     const forked = as
-      ? { ...promoted.master, id: `master-${crypto.randomUUID().slice(0, 8)}` }
+      ? { ...promoted.master, id: newMasterId() }
       : promoted.master;
     const { assets, missing } = masterAssetBundle(forked);
     const suggested = machineName(forked.name) || "master";

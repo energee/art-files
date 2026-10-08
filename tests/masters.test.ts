@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { forgetMaster, hintTrusted, masterIndex, rememberMaster, resolveMasterById, SHIPPED_MASTER_ID } from "../src/masters";
+import { forgetMaster, hintTrusted, masterIndex, newMasterId, rememberMaster, resolveMasterById, SHIPPED_MASTER_ID } from "../src/masters";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { parseMasterJson, serializeMaster } from "../src/model/files";
 
@@ -260,6 +260,37 @@ describe("master library index", () => {
     expect(reads).toEqual(["/Users/me/beers/masters/x.master", "/lib/x.master"]);
     vi.doUnmock("@tauri-apps/api/core");
     vi.doUnmock("@/files");
+  });
+  // Two files can carry one master id: the same shipped master edited and
+  // saved on two machines, or two legacy 8-hex forks that collided (#405).
+  // The index holds one path per id, so a label must open the file at its own
+  // trusted hint before the index's file for that id.
+  it("a label opens the master at its own hint path when another file holds the same id", async () => {
+    vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+    const theirs = { ...lolevMaster(), id: "master-dup", name: "Theirs" };
+    const ours = { ...lolevMaster(), id: "master-dup", name: "Ours" };
+    const reads: string[] = [];
+    vi.doMock("@/files", () => ({
+      readNativeFile: async (p: string) => {
+        reads.push(p);
+        return new TextEncoder().encode(JSON.stringify(p === "/beers/ours.master" ? ours : theirs));
+      },
+    }));
+    const mod = await import("../src/masters");
+    localStorage.setItem("labellab.masters", JSON.stringify({
+      "master-dup": { name: "Theirs", path: "/lib/theirs.master", lastSeen: "" },
+    }));
+    const r = await mod.resolveLabelMaster("master-dup", "/beers/ours.master", "/beers/beer.label");
+    expect(r?.master.name).toBe("Ours");
+    expect(reads[0]).toBe("/beers/ours.master");
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/files");
+  });
+  // Save Master As used to mint 8 hex chars, few enough to collide (#405).
+  it("mints a full UUID for a forked master", () => {
+    const a = newMasterId();
+    expect(a).toMatch(/^master-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(newMasterId()).not.toBe(a);
   });
   it("hintTrusted is lexical and separator-agnostic", () => {
     expect(hintTrusted("/a/b/x.master", "/a/b/l.label")).toBe(true);
