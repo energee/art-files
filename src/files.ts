@@ -3,7 +3,8 @@ import { isAbort, openPicker, savePicker, writeHandle } from "./filePickers";
 // files.ts — native desktop file-dialog and file I/O boundary. All
 // @tauri-apps/plugin-* imports stay here so the app's native surface is
 // visible in one place. Open and save both live here; the capability
-// scope allows reading and writing .label and .master paths.
+// scope allows reading, writing, renaming and removing .label and .master
+// paths (rename/remove serve the atomic save).
 
 /** Read a file's bytes through Tauri's fs plugin — the read half of this
  *  boundary. The capability scope (src-tauri/capabilities/default.json)
@@ -90,11 +91,13 @@ export async function saveThrough(
   }
 }
 
-/** Write `bytes` beside `path` as `<stem>.saving-<random>.<ext>`, then rename it over
- *  `path`, so a crash, power loss or full disk mid-write never truncates the
- *  only copy. The temp keeps the extension so the .label/.master capability
- *  globs cover it; the random suffix plus `createNew` (O_EXCL) means a pre-planted
- *  file or symlink at the temp path fails the write instead of being followed. A failed write removes the temp (best effort) and rethrows. */
+/** Write `bytes` beside `path` as `<stem>.saving-<random>.<ext>`, then rename
+ *  it over `path`, so a crash, power loss or full disk mid-write never
+ *  truncates the only copy. The temp keeps the extension so the .label/.master
+ *  capability globs cover it; the random suffix plus `createNew` (O_EXCL)
+ *  means a pre-planted file or symlink at the temp path fails the write
+ *  instead of being followed. A failed write removes the temp (best effort)
+ *  and rethrows. */
 async function writeNativeAtomic(path: string, bytes: Uint8Array): Promise<void> {
   const { writeFile, rename, remove } = await import("@tauri-apps/plugin-fs");
   const temp = path.replace(/(\.[^./\\]+)?$/, `.saving-${crypto.randomUUID()}$1`);

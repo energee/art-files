@@ -8,8 +8,9 @@ const readFile = vi.fn();
 const rename = vi.fn();
 const remove = vi.fn();
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save, open }));
-const temp = (stem: string, ext: string) => expect.stringMatching(new RegExp(`^${stem}\\.saving-[0-9a-f-]{36}\\.${ext}$`));
 vi.mock("@tauri-apps/plugin-fs", () => ({ writeFile, readFile, rename, remove }));
+/** Matches the random `<stem>.saving-<uuid>.<ext>` temp path writeNativeAtomic uses. */
+const temp = (stem: string, ext: string) => expect.stringMatching(new RegExp(`^${stem}\\.saving-[0-9a-f-]{36}\\.${ext}$`));
 let tauri = false;
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => tauri }));
 
