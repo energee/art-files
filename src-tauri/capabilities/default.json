@@ -26,6 +26,20 @@
         { "path": "**/*.[mM][aA][sS][tT][eE][rR]" }
       ]
     },
+    {
+      "identifier": "fs:allow-rename",
+      "allow": [
+        { "path": "**/*.[lL][aA][bB][eE][lL]" },
+        { "path": "**/*.[mM][aA][sS][tT][eE][rR]" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-remove",
+      "allow": [
+        { "path": "**/*.[lL][aA][bB][eE][lL]" },
+        { "path": "**/*.[mM][aA][sS][tT][eE][rR]" }
+      ]
+    },
     "updater:default"
   ]
 }

@@ -6,6 +6,7 @@
 // under (see fonts.ts's gate); drawPlates just forwards it to drawPlate.
 import { drawPlate, type CanvasAssets } from "@/canvas/draw";
 
+import { deriveMetalnessPixels } from "./metalnessMask";
 import type { PlacedLayer } from "@/planLayers";
 import { PAGE } from "@/layout";
 
@@ -18,16 +19,6 @@ const MAX_EDGE = 4096;
  *  MAX_EDGE this is what sets the label's texel density: preview pages are
  *  small enough that this factor, not MAX_EDGE, is usually what binds. */
 const MAX_SCALE = 4;
-
-/** Brightness/saturation classifier (captiva's metalness rule): a pixel is
- *  the bare page — foil shows — when it is bright and nearly grey. Any
- *  colored or dark pixel is ink, whatever color it was authored in, so
- *  uploaded masks work regardless of their exact ink color. */
-function isPage(r: number, g: number, b: number): boolean {
-  const max = Math.max(r, g, b);
-  const saturation = max > 0 ? (max - Math.min(r, g, b)) / max : 0;
-  return max > 180 && saturation < 0.15;
-}
 
 export interface LabelTextures {
   /** Art plate rendered to a canvas (used as the sRGB color map). */
@@ -48,23 +39,17 @@ export interface LabelTextures {
  * mask dropped, the plate floods solid ink = all matte = all black here,
  * which is the correct "no foil" default.
  */
-function deriveMetalness(
+async function deriveMetalness(
   maskRender: HTMLCanvasElement,
-): HTMLCanvasElement {
+): Promise<HTMLCanvasElement> {
   const { width, height } = maskRender;
+  const src = maskRender.getContext("2d")!.getImageData(0, 0, width, height);
+  // The per-pixel classification runs in a worker (see metalnessMask.ts).
+  const pixels = await deriveMetalnessPixels(src.data);
   const out = document.createElement("canvas");
   out.width = width;
   out.height = height;
-  const ctx = out.getContext("2d")!;
-  const src = maskRender.getContext("2d")!.getImageData(0, 0, width, height);
-  const dst = ctx.createImageData(width, height);
-  const s = src.data, d = dst.data;
-  for (let i = 0; i < s.length; i += 4) {
-    const v = isPage(s[i], s[i + 1], s[i + 2]) ? 255 : 0;
-    d[i] = d[i + 1] = d[i + 2] = v;
-    d[i + 3] = 255;
-  }
-  ctx.putImageData(dst, 0, 0);
+  out.getContext("2d")!.putImageData(new ImageData(pixels, width, height), 0, 0);
   return out;
 }
 
@@ -89,10 +74,11 @@ export function drawPlates(
 
 /**
  * Build the 3D label's texture inputs from the two rendered plates. Pixel
- * work only — synchronous; drawing the plates is drawPlates' job.
+ * work only — async because the mask classification runs in a worker;
+ * drawing the plates is drawPlates' job.
  */
-export function buildLabelTextures(
+export async function buildLabelTextures(
   { art, mask }: { art: HTMLCanvasElement; mask: HTMLCanvasElement },
-): LabelTextures {
-  return { art, metalness: deriveMetalness(mask) };
+): Promise<LabelTextures> {
+  return { art, metalness: await deriveMetalness(mask) };
 }
