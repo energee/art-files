@@ -1547,6 +1547,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     return Object.keys(out).length ? out : undefined;
   };
 
+  /** This document as .label bytes: the v3 label plus its embedded art —
+   *  what Save writes and what a crash-recovery snapshot keeps. */
+  const packProject = () => packLabel({ ...label, masterHint: masterIndex()[master.id]?.path }, {
+    texture: textureAsset(), mask: maskAsset(),
+    customImages: imageBundle(Object.keys(liveImages)),
+  });
+
   /** File → Save / Save As…: the v3 label plus its embedded art, zipped as
    *  <name-slug>.label (model/files.ts). */
   async function saveProject(as = false): Promise<boolean> {
@@ -1562,10 +1569,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       // The close-tab caller must not close over edits made during this write.
       return unchanged;
     };
-    const zip = packLabel({ ...label, masterHint: masterIndex()[master.id]?.path }, {
-      texture: textureAsset(), mask: maskAsset(),
-      customImages: imageBundle(Object.keys(liveImages)),
-    });
+    const zip = packProject();
     try {
       startSaveBatch();
       const saved = await saveThrough(zip, {
@@ -1593,13 +1597,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   useEffect(() => {
     if (!recoveryKey) return;
     if (!hasUnsaved) { void dropRecovery(recoveryKey); return; }
-    const timer = setTimeout(() => {
-      const bytes = packLabel({ ...label, masterHint: masterIndex()[master.id]?.path }, {
-        texture: textureAsset(), mask: maskAsset(),
-        customImages: imageBundle(Object.keys(liveImages)),
-      });
-      void keepRecovery(recoveryKey, { name: exportBase + LABEL_EXT, bytes, savedAt: Date.now() });
-    }, 2000);
+    const timer = setTimeout(() => void keepRecovery(recoveryKey,
+      { name: exportBase + LABEL_EXT, bytes: packProject(), savedAt: Date.now() }), 2000);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the snapshot reads this render's doc/assets
   }, [hasUnsaved, doc, texture, mask, customImages, recoveryKey]);

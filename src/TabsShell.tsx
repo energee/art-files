@@ -18,7 +18,7 @@ import {
   type TabsState,
 } from "@/tabs";
 import { LABEL_EXT } from "@/labelfile";
-import { dropRecovery, earlierSnapshots, recoveryKey, type RecoverySnapshot } from "@/recovery";
+import { dropRecovery, earlierSnapshots, recoveryKey, type Recoverable } from "@/recovery";
 import { loadRenderSettings, saveRenderSettings, type RenderSettings } from "@/settings";
 import { DesktopUpdater } from "@/components/DesktopUpdater";
 import { isFieldDrop } from "@/components/AssetDropOverlay";
@@ -150,8 +150,7 @@ export default function TabsShell() {
 
   // Unsaved tabs an earlier launch left behind (a crash, a WebView kill, a
   // forced quit — a clean close drops them). Offered once at boot.
-  const [recoverable, setRecoverable] =
-    useState<Array<RecoverySnapshot & { key: string }>>([]);
+  const [recoverable, setRecoverable] = useState<Recoverable[]>([]);
   useEffect(() => { void earlierSnapshots().then(setRecoverable); }, []);
   const finishRecovery = (restore: boolean) => {
     for (const r of recoverable) {
