@@ -2,22 +2,28 @@
 // (#404): each document tab carries role="tab" and aria-selected, so a
 // screen reader announces which tab is active, shows a focus ring when
 // reached by keyboard, and keeps keyboard focus on the selected tab after an
-// Enter/Space switch or close re-hosts the strip, and Left/Right move focus
-// between tabs. DocumentEditor is stubbed: it hands the shell a slot
-// for the strip (the real tabStripHost contract) and exposes onNewTab.
+// Enter/Space switch, + or close re-hosts the strip, and bare Left/Right move
+// focus between tabs. DocumentEditor is stubbed: it hands the shell a slot
+// for the strip (the real tabStripHost contract) and exposes onNewTab and
+// the active tab's onMeta.
 // @vitest-environment happy-dom
 import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type { DocumentMeta } from "../src/App";
 
-const mocks = vi.hoisted(() => ({ newTab: null as null | (() => void) }));
+const mocks = vi.hoisted(() => ({
+  newTab: null as null | (() => void),
+  onMeta: null as null | ((meta: DocumentMeta) => void),
+}));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => false, invoke: vi.fn() }));
 vi.mock("../src/components/DesktopUpdater", () => ({ DesktopUpdater: () => null }));
 vi.mock("../src/App", () => ({
-  DocumentEditor: ({ active, tabStripHost, onNewTab }: {
+  DocumentEditor: ({ active, tabStripHost, onNewTab, onMeta }: {
     active: boolean; tabStripHost: (el: HTMLDivElement | null) => void; onNewTab: () => void;
+    onMeta: (meta: DocumentMeta) => void;
   }) => {
-    if (active) mocks.newTab = onNewTab;
+    if (active) { mocks.newTab = onNewTab; mocks.onMeta = onMeta; }
     useEffect(() => {
       if (!active) return;
       const slot = document.createElement("div");
@@ -118,6 +124,37 @@ it("moves focus between tabs with Left/Right, wrapping, without switching", asyn
   expect(document.activeElement).toBe(tabs()[1]);
   // Focus only: the second tab (from New Tab) is still the selected one.
   expect(tabs().map((t) => t.getAttribute("aria-selected"))).toEqual(["false", "true"]);
+  // A modified arrow (⌘← is "go back") is not the strip's to take.
+  const modified = new KeyboardEvent("keydown", { key: "ArrowRight", metaKey: true, bubbles: true, cancelable: true });
+  await act(async () => { document.activeElement?.dispatchEvent(modified); });
+  expect(document.activeElement).toBe(tabs()[1]);
+  expect(modified.defaultPrevented).toBe(false);
+});
+
+it("keeps keyboard focus on the strip when Enter on + adds a tab", async () => {
+  const plus = document.querySelector<HTMLElement>('[aria-label="New tab"]')!;
+  plus.focus();
+  await act(async () => { plus.click(); });
+  // The new tab is selected and the strip re-hosted; focus follows it.
+  expect(tabs()).toHaveLength(2);
+  expect(document.activeElement).toBe(tabs()[1]);
+});
+
+it("refocuses the strip once the unsaved-close dialog is cancelled", async () => {
+  await act(async () => { mocks.newTab?.(); });
+  await act(async () => {
+    mocks.onMeta?.({ title: "Draft", dirty: true, edited: true, masterUnsaved: false, filePath: null });
+  });
+  const close = document.querySelector<HTMLElement>('[aria-label="Close Draft (unsaved changes)"]')!;
+  close.focus();
+  await act(async () => { close.click(); });
+  const cancel = [...document.querySelectorAll<HTMLElement>('[data-slot="dialog-content"] button')]
+    .find((b) => b.textContent === "Cancel")!;
+  await act(async () => { cancel.click(); });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  // The tab stays, and focus lands on it rather than a detached ×.
+  expect(tabs()).toHaveLength(2);
+  expect(document.activeElement).toBe(tabs()[1]);
 });
 
 it("keeps keyboard focus on the strip when Enter closes a tab", async () => {
@@ -129,8 +166,11 @@ it("keeps keyboard focus on the strip when Enter closes a tab", async () => {
   await act(async () => { closeBtns()[2].click(); });
   expect(tabs()).toHaveLength(2);
   expect(document.activeElement).toBe(tabs()[1]);
-  // Close an inactive tab: nothing re-hosts, but its × is gone.
+  // Close an inactive tab: nothing re-hosts, but its × is gone. Focus goes
+  // to the tab that took its place, not back to the selected one.
+  await act(async () => { mocks.newTab?.(); });
   await act(async () => { closeBtns()[0].click(); });
-  expect(tabs()).toHaveLength(1);
+  expect(tabs()).toHaveLength(2);
+  expect(tabs()[1].getAttribute("aria-selected")).toBe("true");
   expect(document.activeElement).toBe(tabs()[0]);
 });

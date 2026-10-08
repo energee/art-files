@@ -7,7 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Fixed
-- **The tab strip works with a keyboard and screen reader.** Document tabs show a focus ring when reached with Tab, Left/Right move between them, focus stays on the strip after you switch or close a tab with Enter or Space, and assistive tech announces them as tabs and says which one is active.
+- **The tab strip works with a keyboard and screen reader.** Document tabs show a focus ring when reached with Tab, Left/Right move between them, focus stays on the strip after you switch, add or close a tab with Enter or Space (closing focuses the next tab, and an unsaved close returns there once its dialog closes), and assistive tech announces them as tabs and says which one is active.
 - **Screen readers hear when a tab has unsaved work.** A tab's close button now reads "Close <title> (unsaved changes)" instead of just "Close <title>".
 - **Saving can no longer wipe out a label or master.** Desktop Save writes a temporary copy beside the file and swaps it in only once it is complete, so a crash or full disk mid-save leaves the previous file intact.
 - **Faster typing in the preview.** The white-ink plate is no longer repainted on every edit while the comparison divider hides it; it paints when the divider reveals it.

@@ -395,21 +395,26 @@ export default function TabsShell() {
   const [updateStatusHost, setUpdateStatusHost] = useState<HTMLDivElement | null>(null);
   const [stripHost, setStripHost] = useState<HTMLDivElement | null>(null);
   const tabStripHost = useCallback((el: HTMLDivElement | null) => setStripHost(el), []);
-  // Switching tabs re-hosts the strip in the new editor's slot, and closing
-  // one removes the focused button; either drops focus to <body>. After a
-  // KEYBOARD switch or close (Enter/Space: a click with detail 0) put focus
-  // back on the selected tab (#404); a mouse click lets go of focus so the
-  // arrows go on nudging the canvas. The flag waits until the selected tab
-  // is in the live document: mid-switch the strip is still in the old,
+  // Switching or adding a tab re-hosts the strip in the new editor's slot,
+  // and closing one removes the focused button; each drops focus to <body>.
+  // After a KEYBOARD switch, + or close (Enter/Space: a click with detail 0)
+  // focus goes to the tab at this index (#404): the one switched to, the new
+  // one, or the one after a closed tab (the last tab when it was last), per
+  // the WAI-ARIA tabs pattern. A mouse click lets go of focus so the arrows
+  // go on nudging the canvas. It waits while the unsaved-close dialog holds
+  // focus (its own focus return would land on a detached ×), and until the
+  // tab is in the live document: mid-switch the strip is still in the old,
   // detached slot.
-  const refocusTab = useRef(false);
+  const refocusTab = useRef<number | null>(null);
   useEffect(() => {
-    if (!refocusTab.current) return;
-    const tab = stripHost?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    const i = refocusTab.current;
+    if (i === null || confirmClose !== null) return;
+    const tabs = stripHost?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [];
+    const tab = tabs[Math.min(i, tabs.length - 1)];
     if (!tab?.isConnected) return;
-    refocusTab.current = false;
+    refocusTab.current = null;
     tab.focus();
-  }, [stripHost, state.tabs, state.active]);
+  }, [stripHost, state.tabs, state.active, confirmClose]);
   // useMemo so the strip element is rebuilt only when its content changes,
   // not on every unrelated shell state change.
   const tabStrip = useMemo(() => (
@@ -423,7 +428,9 @@ export default function TabsShell() {
           move focus between tabs here (Enter switches) instead of nudging. */}
       <div role="tablist" aria-label="Open documents" className="flex shrink-0 items-center gap-1.5"
         onKeyDown={(e) => {
-          const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+          // Bare arrows only: ⌘/Ctrl/Alt/Shift+arrow keep their own meanings.
+          const bare = !(e.metaKey || e.ctrlKey || e.altKey || e.shiftKey);
+          const step = !bare ? 0 : e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
           const tabs = [...e.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')];
           // From a tab or its × alike: both sit in that tab's chip.
           const i = tabs.findIndex((t) => t.parentElement?.contains(e.target as Node));
@@ -431,7 +438,7 @@ export default function TabsShell() {
           e.preventDefault();
           tabs[(i + step + tabs.length) % tabs.length].focus();
         }}>
-        {state.tabs.map((t) => (
+        {state.tabs.map((t, i) => (
           <div
             key={t.id}
             role="presentation"
@@ -445,7 +452,7 @@ export default function TabsShell() {
               role="tab"
               aria-selected={t.id === state.active}
               onClick={(e) => {
-                refocusTab.current = e.detail === 0 && t.id !== state.active;
+                refocusTab.current = e.detail === 0 && t.id !== state.active ? i : null;
                 // Chromium focuses a clicked button; on the active tab nothing
                 // re-hosts, so that focus would keep the arrows from nudging.
                 if (e.detail > 0) e.currentTarget.blur();
@@ -457,8 +464,9 @@ export default function TabsShell() {
             </button>
             <button
               onClick={(e) => {
-                // An unsaved tab opens the close dialog, which owns focus.
-                refocusTab.current = e.detail === 0 && !unsaved(t);
+                // An unsaved tab opens the close dialog first; the refocus
+                // waits for it to close (Cancel keeps this tab at index i).
+                refocusTab.current = e.detail === 0 ? i : null;
                 closeReq(t.id);
               }}
               // The button's own label replaces its children's, so the unsaved
@@ -482,7 +490,10 @@ export default function TabsShell() {
         ))}
       </div>
       <button
-        onClick={newTab}
+        onClick={(e) => {
+          refocusTab.current = e.detail === 0 ? state.tabs.length : null;
+          newTab();
+        }}
         aria-label="New tab"
         title="New tab (⌘N)"
         className="shrink-0 rounded-md px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
