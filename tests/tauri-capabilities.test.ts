@@ -35,6 +35,14 @@ describe("desktop master-file access", () => {
     expect(scopedPaths("fs:allow-write-file")).toEqual(read);
   });
 
+  // #390: the atomic save writes a temp .label/.master beside the target,
+  // renames it over the original and removes it on failure.
+  it("can rename and remove the atomic-save temp wherever it can write", () => {
+    const write = scopedPaths("fs:allow-write-file");
+    expect(scopedPaths("fs:allow-rename")).toEqual(write);
+    expect(scopedPaths("fs:allow-remove")).toEqual(write);
+  });
+
   // #112: on unix `**` skips dot-directories unless this is false, so a
   // .label under ~/.something/ was forbidden for both read and write.
   it("matches .label/.master files inside hidden folders", () => {
