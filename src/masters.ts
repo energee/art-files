@@ -17,7 +17,7 @@
 import { isTauri } from "@tauri-apps/api/core";
 import type { Master } from "@/model/layers";
 import { lolevMaster } from "@/model/lolevLayers";
-import { unpackMaster, type MasterAssets } from "@/model/files";
+import { isRecord, unpackMaster, type MasterAssets } from "@/model/files";
 import { readNativeFile } from "@/files";
 import { cacheMaster, cachedMaster, dropCachedMaster } from "@/masterCache";
 import { readJson } from "@/settings";
@@ -29,25 +29,20 @@ const LAST_KEY = "labellab.lastMaster";
 
 export interface MasterIndexEntry { name: string; path: string; lastSeen: string }
 
-/** A plain JSON object, or undefined for null, arrays and primitives. */
-function asObject(v: unknown): Record<string, unknown> | undefined {
-  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
-}
-
 /** A stored index row, or undefined when absent, mangled, or missing a
  *  string name/path/lastSeen (skipped, not fatal — a row without a string
  *  path made hintTrusted's folderOf throw, #427). */
 function asRow(v: unknown): MasterIndexEntry | undefined {
-  const o = asObject(v);
-  return o && typeof o.name === "string" && typeof o.path === "string" && typeof o.lastSeen === "string"
-    ? (o as unknown as MasterIndexEntry) : undefined;
+  return isRecord(v) && typeof v.name === "string" && typeof v.path === "string" && typeof v.lastSeen === "string"
+    ? (v as unknown as MasterIndexEntry) : undefined;
 }
 
 /** The pre-#408 single-blob index, or {} when absent, mangled, or not an
  *  object (a blob of `null` must not break every later write). Its rows are
  *  unchecked: callers keep only those asRow accepts. */
 function legacyIndex(): Record<string, unknown> {
-  return asObject(readJson(LEGACY_KEY)) ?? {};
+  const blob = readJson(LEGACY_KEY);
+  return isRecord(blob) ? blob : {};
 }
 
 /** One master's row, or undefined when absent or mangled. */
@@ -76,7 +71,7 @@ export function masterIndex(): Record<string, MasterIndexEntry> {
   } catch { /* no localStorage — same fallback as legacyIndex */ }
   // Sort the union, so ids from an unmigrated blob sort in with the rows.
   return Object.fromEntries([...merged].sort(([a, ea], [b, eb]) =>
-    String(ea.name).localeCompare(String(eb.name)) || (a < b ? -1 : a > b ? 1 : 0)));
+    ea.name.localeCompare(eb.name) || (a < b ? -1 : a > b ? 1 : 0)));
 }
 
 /** Move pre-#408 blob rows to their own keys before a row write, so the
