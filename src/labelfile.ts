@@ -41,7 +41,7 @@ type FixedAssetRole = "texture" | "mask" | "collabLeft" | "collabCenter";
 /** The fixed roles packAssets still writes. The collab roles are READ-ONLY
  *  legacy (see LabelAssets.collabLeft): extractAssets reads them, pack skips
  *  them even when present, so no new file carries them (#430). */
-const WRITTEN_ROLES: FixedAssetRole[] = ["texture", "mask"];
+const WRITTEN_ROLES: readonly FixedAssetRole[] = ["texture", "mask"];
 
 /** ZIP directory name for each fixed asset role. The original filename lives
  *  as the entry's basename, so a re-save round-trips it for free. */
@@ -77,15 +77,21 @@ export function packAssets(zip: Zippable, assets: LabelAssets): void {
   }
 }
 
-/** Only real files in the container layout, excluding Finder metadata. */
+/** OS metadata a re-zip can drop beside an asset: Finder's `.DS_Store` and
+ *  `._*` forks, Explorer's `Thumbs.db` and `desktop.ini`. Never an asset, and
+ *  never a second file in a one-file slot (#430). */
+const osJunk = (part: string) =>
+  part === ".DS_Store" || part.startsWith("._") || /^(?:thumbs\.db|desktop\.ini)$/i.test(part);
+
+/** Only real files in the container layout, excluding OS metadata. */
 const assetEntry = (path: string) =>
   /^(?:(?:texture|mask|collab-left|collab-center)\/[^/]+|custom\/[^/]+\/[^/]+)$/.test(path)
-  && path.split("/").every((part) => part !== "." && part !== ".." && part !== ".DS_Store" && !part.startsWith("._"));
+  && path.split("/").every((part) => part !== "." && part !== ".." && !osJunk(part));
 
 const FILE_CAP = 128 * 1024 * 1024;
 const TOTAL_CAP = 256 * 1024 * 1024;
-const duplicateAsset = (dir: string) =>
-  new Error(`Archive is malformed: "${dir}" holds more than one file, and each asset is exactly one.`);
+const duplicateAsset = (dir: string, a: string, b: string) =>
+  new Error(`Archive is malformed: "${dir}" holds two images ("${a}" and "${b}"), but each image slot holds exactly one. Remove one and re-zip.`);
 const tooLarge = (name: string) =>
   new Error(`Archive is too large: "${name}" exceeds the 128 MiB file or 256 MiB total limit.`);
 
@@ -137,25 +143,22 @@ function concat(chunks: Uint8Array[], size: number): Uint8Array {
  *  one throws rather than silently picking either (#430). */
 export function extractAssets(entries: Record<string, Uint8Array>): LabelAssets {
   const assets: LabelAssets = {};
-  const files = Object.keys(entries).filter(assetEntry);
-  // assetEntry admits only `<role>/<name>` and `custom/<id>/<name>`, so an
-  // entry's directory is everything up to its last slash.
-  const dirs = new Set<string>();
-  for (const path of files) {
-    const dir = path.slice(0, path.lastIndexOf("/") + 1);
-    if (dirs.has(dir)) throw duplicateAsset(dir);
-    dirs.add(dir);
-  }
-  for (const [role, dir] of Object.entries(ROLE_DIRS) as [FixedAssetRole, string][]) {
-    const path = files.find((p) => p.startsWith(`${dir}/`));
-    if (path) assets[role] = { name: path.slice(dir.length + 1), bytes: entries[path] };
-  }
-  // Custom image assets: one directory per assetId under custom/, each
-  // holding exactly one file (name is whatever comes after the id).
   const customImages: Record<string, CustomImageAsset> = {};
-  for (const path of files) {
-    const m = /^custom\/([^/]+)\/(.+)$/.exec(path);
-    if (m) customImages[m[1]] = { name: m[2], bytes: entries[path] };
+  const roleOf = new Map(Object.entries(ROLE_DIRS).map(([role, dir]) => [dir, role as FixedAssetRole]));
+  const taken = new Map<string, string>(); // dir -> the file name already in it
+  // assetEntry admits only `<role>/<name>` and `custom/<id>/<name>`, so an
+  // entry's directory is everything before its last slash.
+  for (const path of Object.keys(entries).filter(assetEntry)) {
+    const cut = path.lastIndexOf("/");
+    const dir = path.slice(0, cut);
+    const name = path.slice(cut + 1);
+    const seen = taken.get(dir);
+    if (seen !== undefined) throw duplicateAsset(`${dir}/`, seen, name);
+    taken.set(dir, name);
+    const asset = { name, bytes: entries[path] };
+    const role = roleOf.get(dir);
+    if (role) assets[role] = asset;
+    else customImages[dir.slice(CUSTOM_DIR.length + 1)] = asset;
   }
   if (Object.keys(customImages).length) assets.customImages = customImages;
   return assets;

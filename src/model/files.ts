@@ -168,10 +168,12 @@ export function unpackLabel(bytes: Uint8Array): {
   label?: LabelFile; v2?: LabelFileV2; legacy?: string; assets: LabelAssets;
 } {
   const entries = unpackArchive(bytes);
-  const assets = extractAssets(entries);
   const configEntry = entries["config.json"];
   const labelEntry = entries["label.json"];
+  // Checked before extractAssets, so a wrong ZIP says "not a .label" rather
+  // than an asset error (same order as unpackMaster).
   if (!configEntry && !labelEntry) throw new Error("Not a .label file: missing label.json/config.json");
+  const assets = extractAssets(entries);
   if (!labelEntry) return { legacy: strFromU8(configEntry), assets };
   const text = strFromU8(labelEntry);
   const parsed = parseLabel(JSON.parse(text));
