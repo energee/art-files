@@ -36,7 +36,9 @@ export type CustomFile = { image: CollabImage; name: string; previewUrl: string;
 /** Encode a canvas's pixels as PNG bytes — the shared tail of every
  *  decode/recolor/re-encode pipeline in this file. */
 async function canvasToPng(canvas: HTMLCanvasElement): Promise<Uint8Array> {
-  const blob = await new Promise<Blob>((res) => canvas.toBlob((b) => res(b!), "image/png"));
+  const blob = await new Promise<Blob>((res, rej) => canvas.toBlob(
+    (b) => b ? res(b) : rej(new Error(`Could not encode a ${canvas.width}×${canvas.height} image as PNG.`)),
+    "image/png"));
   return new Uint8Array(await blob.arrayBuffer());
 }
 
@@ -130,11 +132,15 @@ export async function readRaster(f: File): Promise<LoadedRaster> {
     f.arrayBuffer().then((b) => new Uint8Array(b)),
     passthrough ? createImageBitmap(f) : decodeToCanvas(f),
   ]);
-  const [bytes, previewBytes] = await Promise.all([
-    passthrough ? srcBytes : canvasToPng(decoded as HTMLCanvasElement), previewPng(decoded),
-  ]);
+  let bytes: Uint8Array, previewBytes: Uint8Array;
+  try {
+    [bytes, previewBytes] = await Promise.all([
+      passthrough ? srcBytes : canvasToPng(decoded as HTMLCanvasElement), previewPng(decoded),
+    ]);
+  } finally {
+    if (decoded instanceof ImageBitmap) decoded.close();
+  }
   const aspect = decoded.width / decoded.height;
-  if (decoded instanceof ImageBitmap) decoded.close();
   return {
     srcBytes, bytes, previewBytes, aspect, name: f.name,
     kind: passthrough ? rasterKind(f.name) : "png", previewUrl: URL.createObjectURL(f),

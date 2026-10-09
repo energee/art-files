@@ -20,6 +20,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Exports say what they're building.** While PDFs or PSDs export, the blurred preview reads "Building PDFs…" or "Building PSDs…" instead of "rendering preview…", so a long export no longer looks like a stalled preview. A PSD export shows the note even while the preview is still loading, and screen readers announce it.
 - **Background failures show up instead of vanishing.** A save, export or open that fails outside its own error handling now shows a dismissible alert with the reason, rather than failing silently.
 - **Two windows saving masters at once no longer drop one from the library.** Each remembered master now has its own storage entry, so a save in one window can't overwrite a master another window just added. An existing library carries over on the next save. The Master menu now lists remembered masters by name.
+- **Saving an oversized label says why.** A label whose art exceeds the file size limit now shows "Could not save project" instead of failing silently, and Save in the close-tab prompt keeps the tab open. An image too large to encode reports its size instead of a cryptic error.
 
 ### Changed
 - **PSD export no longer freezes the window.** The layered PSD is built in a background worker, so the editor stays responsive while a full-resolution file is written. Image decoding and PDF export still run on the main thread.

@@ -5,7 +5,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { strToU8 } from "fflate";
 import {
-  assetToFile, download, imageBundle, readCustomImage, slotAsset, type CustomFile, type LoadedRaster,
+  assetToFile, download, imageBundle, readCustomImage, readRaster, slotAsset, type CustomFile, type LoadedRaster,
 } from "../src/assets/io";
 
 afterEach(() => vi.restoreAllMocks());
@@ -52,4 +52,16 @@ it("download clicks an anchor naming the file", () => {
   const a = click.mock.contexts[0] as HTMLAnchorElement;
   expect(a.href).toBe("blob:test/2");
   expect(a.download).toBe("label.pdf");
+});
+
+it("readRaster closes the decoded bitmap even when the preview encode fails", async () => {
+  const close = vi.fn();
+  class FakeBitmap { width = 4; height = 2; close = close; }
+  vi.stubGlobal("ImageBitmap", FakeBitmap);
+  vi.stubGlobal("createImageBitmap", vi.fn(async () => new FakeBitmap()));
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage() {} } as never);
+  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((cb) => cb(null));
+  await expect(readRaster(new File([new Uint8Array([1])], "t.png"))).rejects.toThrow(/encode/i);
+  expect(close).toHaveBeenCalledOnce();
+  vi.unstubAllGlobals();
 });

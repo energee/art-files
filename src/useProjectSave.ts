@@ -10,7 +10,7 @@ import { LABEL_FILTER, LABEL_TYPES } from "@/filePickers";
 import { LABEL_EXT } from "@/labelfile";
 import { errMsg } from "@/lib/utils";
 
-export type ProjectSaveInputs = {
+type ProjectSaveInputs = {
   /** This document as .label bytes (App.tsx packProject). */
   pack: () => Uint8Array;
   /** The suggested file name, without the extension. */
@@ -55,8 +55,11 @@ export function useProjectSave({
    *  <name-slug>.label (model/files.ts). Resolves false when the user
    *  cancels the dialog or the write fails. */
   async function saveProject(as = false): Promise<boolean> {
-    const zip = pack();
     try {
+      // Inside the try: packing throws past the archive size caps, and a
+      // rejection would leave the close-tab Save neither closing nor
+      // cancelling.
+      const zip = pack();
       startSaveBatch();
       const saved = await saveThrough(zip, {
         name: exportBase + LABEL_EXT, type: "application/zip", filter: LABEL_FILTER, types: LABEL_TYPES,
