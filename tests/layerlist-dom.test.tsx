@@ -154,6 +154,19 @@ describe("LayerList", () => {
     expect(rowFor("wordmark").textContent).not.toContain("Collab");
   });
 
+  it("keeps the variant badge text at /70 in both states and marks off with a strikethrough (#440)", () => {
+    const badgeClass = () => Array.from(rowFor("collabLead").querySelectorAll("span[title]"))
+      .find((el) => el.textContent === "Collab")!.className;
+    render(baseProps());
+    expect(badgeClass()).toContain("text-sidebar-foreground/70");
+    expect(badgeClass()).not.toContain("/40");
+    expect(badgeClass()).toContain("line-through");
+
+    render(baseProps({ rows: lolevRows(true).rows }));
+    expect(badgeClass()).toContain("text-sidebar-foreground/70");
+    expect(badgeClass()).not.toContain("line-through");
+  });
+
   it("titles the variant chip by what the variant does: adds the layer, or changes a master one", () => {
     // layerRows sets `variant` on BOTH a layer the variant adds and a master
     // layer it only overrides (then with `variantOverridden`); the chip said
