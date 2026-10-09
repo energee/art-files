@@ -54,7 +54,7 @@ export const onePxPng = new Uint8Array(Buffer.from(
 let pdfMeasurePromise: Promise<MeasureFace> | null = null;
 /** The PDF backend's own metrics: pdf-lib's embedded Poppins widths, the
  *  measure App hands planLayers when it builds for export. Embedded once. */
-export function pdfMeasure(): Promise<MeasureFace> {
+function pdfMeasure(): Promise<MeasureFace> {
   return (pdfMeasurePromise ??= (async () => {
     const doc = await PDFDocument.create();
     doc.registerFontkit(fontkit);

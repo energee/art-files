@@ -12,10 +12,10 @@ import { strFromU8, Unzip, UnzipInflate, type Zippable } from "fflate";
  *  pickers, the hidden input, and the download names can't drift apart. */
 export const LABEL_EXT = ".label";
 
-export type LabelAsset = { name: string; bytes: Uint8Array };
+type LabelAsset = { name: string; bytes: Uint8Array };
 /** A custom-layer image asset — same shape as LabelAsset, named separately
  *  since it's stored one per assetId rather than one per fixed role. */
-export type CustomImageAsset = { name: string; bytes: Uint8Array };
+type CustomImageAsset = { name: string; bytes: Uint8Array };
 export type LabelAssets = {
   texture?: LabelAsset;
   mask?: LabelAsset;

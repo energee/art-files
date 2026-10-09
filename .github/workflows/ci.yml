@@ -24,6 +24,8 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm run lint
+      # Dead code: unused files, exports and dependencies (config in knip.json).
+      - run: npx --yes knip@6.38.0
       - run: npm test
 
   rust:

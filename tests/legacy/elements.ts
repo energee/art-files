@@ -19,7 +19,7 @@ import type { LayerPosition } from "../../src/model/position";
  *  defaultConfig() allocates a whole config (description lines included), and
  *  isDefaultStyle runs on every inspector render — i.e. per keystroke while a
  *  layer is selected. Never mutated; the panel edits App's config, not this. */
-export const SHIPPED: LabelConfig = defaultConfig();
+const SHIPPED: LabelConfig = defaultConfig();
 
 /** The laurel's effective stack nudge. The nudge exists to make room for the
  *  centre collab mark, but it is no longer gated on anything: the shipped

@@ -251,7 +251,7 @@ export function hitTest(
  *  included — so asking per element made an N-layer selection N full
  *  measurement passes, on a path that re-runs per pointer-move frame while
  *  the compare divider is dragged. */
-export function boxesFor(
+function boxesFor(
   ids: readonly ElementId[], cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SLOTS,
 ): Box[] {
   const want = new Set(ids);
