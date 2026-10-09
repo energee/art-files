@@ -100,9 +100,9 @@ no status, no attempts, no delta.
 ## Standing rules
 
 - Never delete entries — mark them done or parked instead; the history is the point.
-- Archive, don't delete: an entry closed (done, or implemented on a branch that has
-  merged) more than 30 days ago moves verbatim to `ledger-archive.md`. Open, parked
-  and in-progress entries stay here regardless of age.
+  An entry closed (done, or implemented on a branch that has merged) more than 30
+  days ago moves verbatim to `ledger-archive.md`; open, parked and in-progress
+  entries stay here regardless of age.
 - Parked requires a written ruling: which gap, what evidence, what would unpark it.
 - One failed run never establishes "worker limitation" — retry before concluding
   anything about capability.
