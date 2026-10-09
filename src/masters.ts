@@ -29,16 +29,25 @@ const LAST_KEY = "labellab.lastMaster";
 
 export interface MasterIndexEntry { name: string; path: string; lastSeen: string }
 
-/** A stored index row, or undefined when absent, mangled, or not an object
- *  (skipped, not fatal). */
+/** A plain JSON object, or undefined for null, arrays and primitives. */
+function asObject(v: unknown): Record<string, unknown> | undefined {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
+}
+
+/** A stored index row, or undefined when absent, mangled, or missing a
+ *  string name/path/lastSeen (skipped, not fatal — a row without a string
+ *  path made hintTrusted's folderOf throw, #427). */
 function asRow(v: unknown): MasterIndexEntry | undefined {
-  return v && typeof v === "object" && !Array.isArray(v) ? (v as MasterIndexEntry) : undefined;
+  const o = asObject(v);
+  return o && typeof o.name === "string" && typeof o.path === "string" && typeof o.lastSeen === "string"
+    ? (o as unknown as MasterIndexEntry) : undefined;
 }
 
 /** The pre-#408 single-blob index, or {} when absent, mangled, or not an
- *  object (a blob of `null` must not break every later write). */
-function legacyIndex(): Record<string, MasterIndexEntry> {
-  return (asRow(readJson(LEGACY_KEY)) ?? {}) as unknown as Record<string, MasterIndexEntry>;
+ *  object (a blob of `null` must not break every later write). Its rows are
+ *  unchecked: callers keep only those asRow accepts. */
+function legacyIndex(): Record<string, unknown> {
+  return asObject(readJson(LEGACY_KEY)) ?? {};
 }
 
 /** One master's row, or undefined when absent or mangled. */
@@ -53,7 +62,10 @@ function indexRow(id: string): MasterIndexEntry | undefined {
 export function masterIndex(): Record<string, MasterIndexEntry> {
   // A per-master row overrides its blob entry.
   const merged = new Map<string, MasterIndexEntry>();
-  for (const [id, e] of Object.entries(legacyIndex())) if (asRow(e)) merged.set(id, e);
+  for (const [id, e] of Object.entries(legacyIndex())) {
+    const row = asRow(e);
+    if (row) merged.set(id, row);
+  }
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
@@ -112,7 +124,7 @@ export async function rememberMaster(m: Master, path: string, bytes?: Uint8Array
   // A failed migration leaves the blob in place, so masterIndex still lists
   // it; this master's own row is still attempted below.
   try { migrateLegacyIndex(); } catch { /* no localStorage / quota exceeded */ }
-  const cur = indexRow(m.id) ?? legacyIndex()[m.id];
+  const cur = indexRow(m.id) ?? asRow(legacyIndex()[m.id]);
   // An apply that has no filesystem path (a library pick of the shipped
   // master, a browser handle whose name we already stored) must not wipe a
   // real path from an earlier Open/Save. Resolving a .label is not an apply:
