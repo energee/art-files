@@ -363,3 +363,11 @@ no status, no attempts, no delta.
 - delta: `.nvmrc` (24) is the one pin; every setup-node step uses `node-version-file: .nvmrc` (PR #474). tests/node-version-pin.test.ts fails if a workflow names its own node-version or `.nvmrc` falls below engines `>=24.2.0`. Left as-is: the two publish-update-feed jobs only run `node -p` to read package.json's version on the runner's Node; `.nvmrc` pins the major, not the patch
 - evidence: on fix/423, npx vitest run tests/node-version-pin.test.ts (6 passed), npx tsc --noEmit and npm run lint (zero warnings) clean, node scripts/check-release.mjs origin/main passed
 - release: non-binary-impacting (CI config, tests, docs and agent memory); no release queued
+
+## 2026-10-09 issue-433-module-split
+- finding: [maint/low] #433 — six modules over 750 lines (production-readiness audit, 2026-10-08)
+- status: in-progress
+- attempts: 1/3
+- delta: PR #490 splits three of them with no behavior change: model/edit.ts 1247 → 43 (editRecords, editLayers, editGestures, editVariants, editLabel, editSave), LayerInspector.tsx 1045 → 160 (Controls, Sections, Template), PreviewCompare.tsx 977 → 744 (previewOverlay.ts, InPlaceRichField.tsx). edit.ts's runtime export list is unchanged. tests/module-size.test.ts holds each split module and its parts at or under 750 lines. Still open: src/three/canScene.ts (848), src/psd/build.ts (811), src/components/TextEditor.tsx (780)
+- evidence: on fix/433, npx tsc --noEmit and npm run lint clean, npm run build OK, related vitest files green (see PR #490)
+- release: binary-impacting (app source moved, no visible change); CHANGELOG [Unreleased] / Changed bullet present

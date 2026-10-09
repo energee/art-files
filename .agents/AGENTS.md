@@ -47,7 +47,8 @@ apply here alongside `principles.md`, with the same severity anchors and the len
 in the principle slot. Which fired, and on what evidence:
 
 - a11y — authored controls in `src/components/FileDrop.tsx`,
-  `src/components/LayerInspector.tsx`, and `src/components/LayerList.tsx`:
+  `src/components/LayerInspector*.tsx` (the shell and its Controls, Sections and
+  Template parts), and `src/components/LayerList.tsx`:
   file targets, form inputs, and keyboard-operated action buttons.
 
 ## Ongoing work
