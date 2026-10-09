@@ -1,11 +1,11 @@
 // asset-io-dom.test.ts — the asset I/O helpers split out of App.tsx (#416):
-// typed Files for packed assets, SVG reads, the bytes a Save packs per slot
-// and per image, and the plain-download anchor.
+// typed Files for packed assets, SVG reads, the commit-time thumbnail minter,
+// the bytes a Save packs per slot and per image, and the plain-download anchor.
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from "vitest";
 import { strToU8 } from "fflate";
 import {
-  assetToFile, download, imageBundle, readCustomImage, readRaster, slotAsset, type CustomFile, type LoadedRaster,
+  assetToFile, download, imageBundle, previewOnce, readCustomImage, readRaster, slotAsset, type CustomFile, type LoadedRaster,
 } from "../src/assets/io";
 
 afterEach(() => vi.restoreAllMocks());
@@ -16,14 +16,26 @@ it("assetToFile types a packed asset by its name, so an SVG thumbnails as itself
   expect(f.type).toBe("image/svg+xml");
 });
 
-it("readCustomImage keeps an SVG as source text with its own thumbnail URL", async () => {
-  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test/1");
+it("readCustomImage keeps an SVG as source text and mints no thumbnail URL (#432)", async () => {
+  const mint = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test/1");
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10"><rect width="20" height="10"/></svg>';
   const c = await readCustomImage(new File([svg], "logo.svg", { type: "image/svg+xml" }));
   expect(c.image).toEqual({ kind: "svg", svg });
   expect(c.name).toBe("logo.svg");
-  expect(c.previewUrl).toBe("blob:test/1");
   expect(c.aspect).toBeCloseTo(2);
+  expect(mint).not.toHaveBeenCalled();
+});
+
+it("previewOnce mints its thumbnail URL on the first call only (#432)", () => {
+  const mint = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test/4");
+  const f = new File(["x"], "a.png");
+  const commit = previewOnce({ name: "a.png" }, f);
+  expect(mint).not.toHaveBeenCalled(); // a decode that never commits mints nothing
+  const a = commit();
+  expect(a).toEqual({ name: "a.png", previewUrl: "blob:test/4" });
+  expect(commit()).toBe(a); // StrictMode's second updater run reuses it
+  expect(mint).toHaveBeenCalledOnce();
+  expect(mint).toHaveBeenCalledWith(f);
 });
 
 it("slotAsset packs a slot's original upload, not its embed copy", () => {
