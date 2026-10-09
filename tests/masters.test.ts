@@ -154,6 +154,21 @@ describe("master library index", () => {
     expect(stored.has("labellab.masters")).toBe(false);
   });
 
+  // #427: a stored row that is an object but lacks a string path (or name /
+  // lastSeen) is skipped, not listed — hintTrusted's folderOf threw on it.
+  it("skips stored rows whose fields are not strings", async () => {
+    stored.set("labellab.master:no-path", JSON.stringify({ name: "NoPath", lastSeen: "" }));
+    stored.set("labellab.master:num-name", JSON.stringify({ name: 5, path: "/n.master", lastSeen: "" }));
+    stored.set("labellab.masters", JSON.stringify({
+      legacy: { name: "L", path: null, lastSeen: "" },
+      ok: { name: "Ok", path: "/ok/ok.master", lastSeen: "" },
+    }));
+    expect(Object.keys(masterIndex())).toEqual(["ok"]);
+    expect(hintTrusted("/ok/x.master")).toBe(true);
+    await rememberMaster(lolevMaster(), "/tmp/lolev.master");
+    expect(Object.keys(masterIndex()).sort()).toEqual(["ok", SHIPPED_MASTER_ID].sort());
+  });
+
   // An id from an untrusted .master is a plain key, never the prototype.
   it("lists and forgets a master whose id is __proto__", async () => {
     await rememberMaster({ ...lolevMaster(), id: "__proto__", name: "Odd" }, "/tmp/odd.master");

@@ -24,6 +24,16 @@ export type MasterAssets = Pick<LabelAssets, "texture" | "mask" | "customImages"
 
 export const MASTER_EXT = ".master";
 
+/** The newest file format this build reads and writes. */
+const FORMAT_VERSION = 3;
+
+/** A file saved by a later Label Lab must not be read as an older format:
+ *  converting it as legacy, then saving, would silently downgrade it (#429). */
+function rejectNewerFormat(version: unknown, kind: string): void {
+  if (typeof version === "number" && version > FORMAT_VERSION)
+    throw new Error(`This ${kind} was made by a newer version of Label Lab (format ${version}). Update Label Lab to open it.`);
+}
+
 // --- .master --------------------------------------------------------------
 
 export function serializeMaster(m: Master): string {
@@ -31,11 +41,12 @@ export function serializeMaster(m: Master): string {
 }
 
 /** A master.json of either generation → v3. A v1 file converts (with the
- *  converter's warnings); anything else must already be v3 and goes through
- *  parseMaster's own loud fail(). */
+ *  converter's warnings); a newer format is refused; anything else must
+ *  already be v3 and goes through parseMaster's own loud fail(). */
 export function parseMasterJson(json: unknown): { master: Master; warnings: string[] } {
-  if ((json as { formatVersion?: unknown } | null)?.formatVersion === 1)
-    return convertMasterV1(parseMasterV1(json));
+  const version = (json as { formatVersion?: unknown } | null)?.formatVersion;
+  if (version === 1) return convertMasterV1(parseMasterV1(json));
+  rejectNewerFormat(version, "master");
   return { master: parseMaster(json), warnings: [] };
 }
 
@@ -73,7 +84,7 @@ export function serializeLabel(l: LabelFile): string {
 function badLabel(msg: string): never { throw new Error(`Invalid label file: ${msg}`); }
 
 /** A JSON object (not null, not an array). */
-const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+export const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
 /** Only the strings of an untrusted array; anything else becomes []. */
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
@@ -134,13 +145,16 @@ function parseDormant(v: unknown): LabelFile["dormant"] {
 }
 
 /** A label.json of any generation: v3 parses here; v2 comes back tagged
- *  (convertLabelV2 needs the master); `{version: 1}` is tagged legacy for
- *  parseConfigFile + convertConfigV1. */
+ *  (convertLabelV2 needs the master); only a missing formatVersion (the v1
+ *  `{version: 1}` config) or 1 is tagged legacy for parseConfigFile +
+ *  convertConfigV1. A newer or unrecognized formatVersion throws (#429). */
 export function parseLabel(json: unknown): LabelFile | { v2: LabelFileV2 } | { legacy: unknown } {
   if (!json || typeof json !== "object") throw new Error("Not a label file.");
   const o = json as Record<string, unknown>;
   if (o.formatVersion === 2) return { v2: parseLabelFile(json) as LabelFileV2 };
-  if (o.formatVersion !== 3) return { legacy: json };
+  if (o.formatVersion === undefined || o.formatVersion === 1) return { legacy: json };
+  rejectNewerFormat(o.formatVersion, "label");
+  if (o.formatVersion !== 3) throw new Error(`Unsupported label formatVersion: ${JSON.stringify(o.formatVersion)}`);
   if (typeof o.masterId !== "string" || !o.masterId) throw new Error("Label file is missing its masterId.");
   const dormant = parseDormant(o.dormant);
   const overrides = parseOverrides(o.overrides);
@@ -163,7 +177,8 @@ export function packLabel(l: LabelFile, assets: LabelAssets): Uint8Array {
 
 /** Unpack a .label ZIP of any generation: exactly one of `label` (v3),
  *  `v2` (label.json v2) or `legacy` (the raw config.json v1 string, or a
- *  label.json that is neither v2 nor v3), plus whatever assets it holds. */
+ *  label.json with no formatVersion or formatVersion 1), plus whatever assets
+ *  it holds. A newer or unrecognized label.json formatVersion throws. */
 export function unpackLabel(bytes: Uint8Array): {
   label?: LabelFile; v2?: LabelFileV2; legacy?: string; assets: LabelAssets;
 } {

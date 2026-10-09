@@ -6,6 +6,17 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Changed
+- **Internal cleanup, no visible change.** The dev-only stroke magnifier page moved from the repo root to `tools/strokecap.html`; `npm run strokecap` opens it there.
+
+### Fixed
+- **The active tab's close button shows without hovering.** It rests dimmed on the selected tab so it can be found and tapped on touch; other tabs still show theirs on hover.
+- **Deleting a variant or removing a well's file says how to undo it.** Delete under the master picker now leaves a note that ⌘Z brings the variant back. Removing a texture or mask with its × was not undoable at all; the well now offers Undo to put the file back. An image layer's well notes that ⌘Z restores its art.
+- **A damaged remembered-masters entry no longer breaks opening labels.** A library entry missing its file path or name is now skipped instead of making a label open fail.
+- **A label or master from a newer Label Lab is refused instead of downgraded.** Opening a file saved in a newer format now says it was made by a newer version and asks you to update, rather than reading it as an old-format file that saving would then overwrite with less.
+
+## [0.1.105] - 2026-10-09
+
 ### Fixed
 - **The tab strip works with a keyboard and screen reader.** Document tabs show a focus ring when reached with Tab, Left/Right move between them, focus stays on the strip after you switch, add or close a tab with Enter or Space (closing focuses the next tab, and an unsaved close returns there once its dialog closes), and assistive tech announces them as tabs and says which one is active.
 - **A label opens the master file it was saved with.** When two `.master` files share an id, a label now opens the one beside it (or in your library folder) instead of whichever the library remembered last, and saves back to that file. Opening such a label leaves your library's own copy in place, and **Use** in the missing-master dialog opens the tab's own master file. Save Master As now gives each new master a full-length id, so two forks can no longer end up with the same one.
@@ -21,6 +32,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Exports say what they're building.** While PDFs or PSDs export, the blurred preview reads "Building PDFs…" or "Building PSDs…" instead of "rendering preview…", so a long export no longer looks like a stalled preview. A PSD export shows the note even while the preview is still loading, and screen readers announce it.
 - **Background failures show up instead of vanishing.** A save, export or open that fails outside its own error handling now shows a dismissible alert with the reason, rather than failing silently.
 - **Two windows saving masters at once no longer drop one from the library.** Each remembered master now has its own storage entry, so a save in one window can't overwrite a master another window just added. An existing library carries over on the next save. The Master menu now lists remembered masters by name.
+- **Saving an oversized label says why.** A label whose art exceeds the file size limit now shows "Could not save project" instead of failing silently, and Save in the close-tab prompt keeps the tab open. An image too large to encode reports its size instead of a cryptic error.
 
 ### Changed
 - **PSD export no longer freezes the window.** The layered PSD is built in a background worker, so the editor stays responsive while a full-resolution file is written. Image decoding and PDF export still run on the main thread.
@@ -28,7 +40,6 @@ that section to the new version (see .agents/release-steward.md).
 - **Smoother fill changes on tinted raster art.** Changing the fill of an image layer with Tint raster on no longer stalls the preview on every color step; exports are unchanged.
 - **Typing on a label with a texture or mask is lighter.** The preview paints the page art once per zoom level and reuses it, instead of rescaling the full-size image on every keystroke.
 - **The first preview loads only the fonts the label uses.** Opening a label fetches its master font and any layer font overrides instead of every bundled family; another font loads when a layer first picks it.
-- **Internal cleanup, no visible change.** Image bytes become files and blobs through one shared helper instead of repeated casts.
 - **Export confirms what it saved.** When an export finishes, the header names the files it wrote, such as both the art and mask PDFs, and screen readers announce it. The note clears on your next edit.
 - **Smoother typing in the 3D view.** The foil-mask pass over the label texture now runs in a background worker instead of stalling the editor on every rebuild.
 - **A little less code to load at startup.** Settings, the Save Master review and the ⌘K command palette now load the first time you open them instead of with the editor, trimming the startup code by about 60 kB.

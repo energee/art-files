@@ -26,11 +26,16 @@
 //     said in plain view under the Select — the file stays where it is — with
 //     an Undo, since re-adding it would otherwise mean browsing to the file.
 //   * New Variant, an action at the foot.
+// Deleting a variant (the Delete beside Rename) is one undoable edit, so it
+// asks no confirm; the same status line says so, naming ⌘Z, while the master
+// is still the one the delete left — not after an undo, another edit to the
+// master, or an Open — and until the menu is used again (#426).
 // Only the middle one resolves a file, so the two sentinels are intercepted
 // in onValueChange before any rebind is considered.
 import { CornerDownRight, X } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { shortcutLabel } from "@/keys";
 import { rebindLabel } from "@/model/rebindLayers";
 import type { MasterAssets } from "@/model/files";
 import type { LabelFile, Master } from "@/model/layers";
@@ -109,6 +114,16 @@ export function MasterPicker(props: {
   /** The last library removal, shown with its Undo until the next one or
    *  until the menu is used again. */
   const [removed, setRemoved] = useState<{ name: string; undo: () => Promise<void> } | null>(null);
+  /** The last variant deleted here, named in the status line with its ⌘Z
+   *  until the menu is used again. `after` is the master the delete produced
+   *  (the first one seen without the variant); the note shows only while that
+   *  very master is current, so an undo, a later master edit or an Open —
+   *  which resets the history, so ⌘Z could no longer bring it back — all
+   *  retire it. A redo returns the same object and shows it again. */
+  const [deleted, setDeleted] = useState<{ id: string; name: string; after?: Master } | null>(null);
+  // State adjusted during render, React's pattern for reacting to a prop.
+  if (deleted && !deleted.after && !props.master.variants.some((v) => v.id === deleted.id))
+    setDeleted({ ...deleted, after: props.master });
   /** The variant whose name is being edited inline, or null. */
   const [naming, setNaming] = useState<string | null>(null);
 
@@ -117,6 +132,7 @@ export function MasterPicker(props: {
     setResolvingId(null);
     setError("");
     setRemoved(null);
+    setDeleted(null);
   };
 
   /** The ids whose removal is running. A ref, not state: two presses in one
@@ -134,6 +150,7 @@ export function MasterPicker(props: {
     const name = props.library[id]?.name ?? id;
     try {
       const undo = await props.onForget(id);
+      setDeleted(null);
       setRemoved({ name, undo });
     } finally {
       forgetting.current.delete(id);
@@ -264,7 +281,11 @@ export function MasterPicker(props: {
                 Rename
               </Button>
               <Button type="button" id="variant-remove" size="xs" variant="destructive"
-                onClick={() => props.onRemoveVersion(version)}>
+                onClick={() => {
+                  setRemoved(null);
+                  setDeleted({ id: version, name: versionName ?? version });
+                  props.onRemoveVersion(version);
+                }}>
                 Delete
               </Button>
             </>
@@ -290,6 +311,11 @@ export function MasterPicker(props: {
               }}>
               Undo
             </Button>
+          </p>
+        )}
+        {deleted?.after === props.master && (
+          <p id="master-picker-deleted" className="mt-1 px-1 text-[11px] text-muted-foreground">
+            Deleted “{deleted.name}”. {shortcutLabel("⌘Z")} brings it back.
           </p>
         )}
       </div>

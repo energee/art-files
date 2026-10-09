@@ -389,7 +389,8 @@ export default function TabsShell() {
   // the strip with a gap from its neighbors — contrast comes from fill, not
   // borders: the active chip in the editor background, a muted wash on
   // hover. The dirty dot lives in the close slot: a dot until hover, then
-  // the ×.
+  // the ×. A saved tab's × shows on hover, and dimmed at rest on the active
+  // tab (#424).
   // The active editor mounts the slot div and hands it up through this
   // stable ref callback; null while no editor is active (startup teardown).
   const [updateStatusHost, setUpdateStatusHost] = useState<HTMLDivElement | null>(null);
@@ -476,7 +477,15 @@ export default function TabsShell() {
                 // fraction-of-foreground, not bg-muted: it has to read on
                 // both chip fills (active bg-background, hovered bg-muted)
                 "rounded p-0.5 outline-none hover:bg-foreground/10 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring",
-                !unsaved(t) && "opacity-0 group-hover:opacity-100",
+                // A saved tab's × waits for hover, except on the active tab,
+                // where it rests dimmed (opacity-40, like the selected layer
+                // row's menu in LayerList): touch has no hover, and a fully
+                // hidden × was never discovered (#424). A hidden × also takes
+                // no taps, so touching an inactive tab's end switches to it
+                // instead of closing it. An unsaved tab always shows its •.
+                !unsaved(t) && ["group-hover:opacity-100", t.id === state.active
+                  ? "opacity-40"
+                  : "pointer-events-none opacity-0 group-hover:pointer-events-auto"],
               )}>
               {unsaved(t) ? (
                 <>
