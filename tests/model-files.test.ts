@@ -74,7 +74,8 @@ describe(".master v3 container", () => {
 
   it("rejects a ZIP with no master.json, and an unsupported version, loudly", () => {
     expect(() => unpackMaster(zipSync({ "label.json": strToU8("{}") }))).toThrow(/master/i);
-    expect(() => unpackMaster(strToU8('{"formatVersion":9}'))).toThrow(/formatVersion/);
+    expect(() => unpackMaster(strToU8('{"formatVersion":9}'))).toThrow(/newer version of Label Lab/);
+    expect(() => unpackMaster(strToU8('{"formatVersion":2}'))).toThrow(/formatVersion/);
     expect(() => unpackMaster(new Uint8Array([0x50, 0x4b, 3, 4, 9, 9, 9]))).toThrow();
   });
 });
@@ -121,6 +122,15 @@ describe(".label v3 container", () => {
     expect(parseLabel({ version: 1, beerName: "x" })).toEqual({ legacy: { version: 1, beerName: "x" } });
     expect(() => parseLabel({ formatVersion: 3 })).toThrow(/masterId/);
     expect(() => parseLabel("nope")).toThrow();
+  });
+
+  it("refuses a label or master from a newer Label Lab instead of treating it as legacy (#429)", () => {
+    expect(() => parseLabel({ formatVersion: 4, masterId: "lolev" })).toThrow(/newer version of Label Lab/);
+    expect(() => parseLabel({ formatVersion: "3", masterId: "lolev" })).toThrow(/formatVersion/);
+    expect(parseLabel({ formatVersion: 1, beerName: "x" })).toEqual({ legacy: { formatVersion: 1, beerName: "x" } });
+    expect(() => unpackLabel(zipSync({ "label.json": strToU8(JSON.stringify({ formatVersion: 4, masterId: "lolev" })) })))
+      .toThrow(/newer version of Label Lab/);
+    expect(() => unpackMaster(strToU8('{"formatVersion":4}'))).toThrow(/newer version of Label Lab/);
   });
 
   it("serializeLabel writes v3 and drops nothing the file carries", () => {

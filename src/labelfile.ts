@@ -12,10 +12,11 @@ import { strFromU8, Unzip, UnzipInflate, type Zippable } from "fflate";
  *  pickers, the hidden input, and the download names can't drift apart. */
 export const LABEL_EXT = ".label";
 
+/** One packed asset: its file name and raw bytes. */
 export type LabelAsset = { name: string; bytes: Uint8Array };
-/** A custom-layer image asset — same shape as LabelAsset, named separately
+/** A custom-layer image asset — an alias of LabelAsset, named separately
  *  since it's stored one per assetId rather than one per fixed role. */
-export type CustomImageAsset = { name: string; bytes: Uint8Array };
+type CustomImageAsset = LabelAsset;
 export type LabelAssets = {
   texture?: LabelAsset;
   mask?: LabelAsset;
@@ -24,7 +25,7 @@ export type LabelAssets = {
    *  bytes now ride in `customImages` under a minted asset id like any other
    *  per-id image. Unpack still reads these two so a file saved before that
    *  change opens with its art (App.tsx mints an id for each on open); pack
-   *  never writes them again. */
+   *  skips them even when set (WRITTEN_ROLES). */
   collabLeft?: LabelAsset;
   collabCenter?: LabelAsset;
   /** Master-variant custom image layers' bytes, keyed by CustomImageLayer's
@@ -37,6 +38,11 @@ export type LabelAssets = {
 /** The fixed one-per-project asset roles — everything in LabelAssets except
  *  customImages, which is dynamically keyed and packed/unpacked separately. */
 type FixedAssetRole = "texture" | "mask" | "collabLeft" | "collabCenter";
+
+/** The fixed roles packAssets still writes. The collab roles are READ-ONLY
+ *  legacy (see LabelAssets.collabLeft): extractAssets reads them, pack skips
+ *  them even when present, so no new file carries them (#430). */
+const WRITTEN_ROLES: readonly FixedAssetRole[] = ["texture", "mask"];
 
 /** ZIP directory name for each fixed asset role. The original filename lives
  *  as the entry's basename, so a re-save round-trips it for free. */
@@ -55,9 +61,9 @@ const CUSTOM_DIR = "custom";
  *  level-0 image entries, the size limits), shared by both .label packers and .master's
  *  packMaster (model/files.ts), so the two containers cannot drift. */
 export function packAssets(zip: Zippable, assets: LabelAssets): void {
-  for (const [role, dir] of Object.entries(ROLE_DIRS) as [FixedAssetRole, string][]) {
+  for (const role of WRITTEN_ROLES) {
     const a = assets[role];
-    if (a) zip[`${dir}/${a.name}`] = [a.bytes, { level: 0 }];
+    if (a) zip[`${ROLE_DIRS[role]}/${a.name}`] = [a.bytes, { level: 0 }];
   }
   for (const [id, a] of Object.entries(assets.customImages ?? {}))
     zip[`${CUSTOM_DIR}/${id}/${a.name}`] = [a.bytes, { level: 0 }];
@@ -72,13 +78,21 @@ export function packAssets(zip: Zippable, assets: LabelAssets): void {
   }
 }
 
-/** Only real files in the container layout, excluding Finder metadata. */
+/** OS metadata a re-zip can drop beside an asset: Finder's `.DS_Store` and
+ *  `._*` forks, Explorer's `Thumbs.db` and `desktop.ini`. Never an asset, and
+ *  never a second file in a one-file slot (#430). */
+const osJunk = (part: string) =>
+  part === ".DS_Store" || part.startsWith("._") || /^(?:thumbs\.db|desktop\.ini)$/i.test(part);
+
+/** Only real files in the container layout, excluding OS metadata. */
 const assetEntry = (path: string) =>
   /^(?:(?:texture|mask|collab-left|collab-center)\/[^/]+|custom\/[^/]+\/[^/]+)$/.test(path)
-  && path.split("/").every((part) => part !== "." && part !== ".." && part !== ".DS_Store" && !part.startsWith("._"));
+  && path.split("/").every((part) => part !== "." && part !== ".." && !osJunk(part));
 
 const FILE_CAP = 128 * 1024 * 1024;
 const TOTAL_CAP = 256 * 1024 * 1024;
+const duplicateAsset = (dir: string, a: string, b: string) =>
+  new Error(`Archive is malformed: "${dir}" holds two images ("${a}" and "${b}"), but each image slot holds exactly one. Remove one and re-zip.`);
 const tooLarge = (name: string) =>
   new Error(`Archive is too large: "${name}" exceeds the 128 MiB file or 256 MiB total limit.`);
 
@@ -125,20 +139,27 @@ function concat(chunks: Uint8Array[], size: number): Uint8Array {
  *  image out of an unzipped entry map. Shared with unpackMaster. Directory
  *  entries (names ending in `/`) are skipped: packAssets never writes them,
  *  but a file re-zipped by Finder or `zip -r` carries a zero-byte `texture/`
- *  ahead of `texture/<name>`, and it must not be taken as the asset (#100). */
+ *  ahead of `texture/<name>`, and it must not be taken as the asset (#100).
+ *  Each role directory and each custom/<id>/ holds exactly one file; a second
+ *  one throws rather than silently picking either (#430). */
 export function extractAssets(entries: Record<string, Uint8Array>): LabelAssets {
   const assets: LabelAssets = {};
-  const files = Object.keys(entries).filter(assetEntry);
-  for (const [role, dir] of Object.entries(ROLE_DIRS) as [FixedAssetRole, string][]) {
-    const path = files.find((p) => p.startsWith(`${dir}/`));
-    if (path) assets[role] = { name: path.slice(dir.length + 1), bytes: entries[path] };
-  }
-  // Custom image assets: one directory per assetId under custom/, each
-  // holding exactly one file (name is whatever comes after the id).
   const customImages: Record<string, CustomImageAsset> = {};
-  for (const path of files) {
-    const m = /^custom\/([^/]+)\/(.+)$/.exec(path);
-    if (m) customImages[m[1]] = { name: m[2], bytes: entries[path] };
+  const roleOf = new Map(Object.entries(ROLE_DIRS).map(([role, dir]) => [dir, role as FixedAssetRole]));
+  const taken = new Map<string, string>(); // dir -> the file name already in it
+  // assetEntry admits only `<role>/<name>` and `custom/<id>/<name>`, so an
+  // entry's directory is everything before its last slash.
+  for (const path of Object.keys(entries).filter(assetEntry)) {
+    const cut = path.lastIndexOf("/");
+    const dir = path.slice(0, cut);
+    const name = path.slice(cut + 1);
+    const seen = taken.get(dir);
+    if (seen !== undefined) throw duplicateAsset(`${dir}/`, seen, name);
+    taken.set(dir, name);
+    const asset = { name, bytes: entries[path] };
+    const role = roleOf.get(dir);
+    if (role) assets[role] = asset;
+    else customImages[dir.slice(CUSTOM_DIR.length + 1)] = asset;
   }
   if (Object.keys(customImages).length) assets.customImages = customImages;
   return assets;
