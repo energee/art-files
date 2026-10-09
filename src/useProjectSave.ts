@@ -11,8 +11,12 @@ import { LABEL_EXT } from "@/labelfile";
 import { errMsg } from "@/lib/utils";
 
 type ProjectSaveInputs = {
-  /** This document as .label bytes (App.tsx packProject). */
-  pack: () => Uint8Array;
+  /** This document as .label bytes (App.tsx packProject), for the file at
+   *  `labelPath` — the native path on desktop, a bare file name in a browser
+   *  — so the master hint can be written relative to it (#428). Called with
+   *  the bound path (or nothing) before any dialog, to fail an oversized
+   *  label early; those bytes are written only when that is the target. */
+  pack: (labelPath?: string) => Uint8Array;
   /** The suggested file name, without the extension. */
   exportBase: string;
   /** Marks the document saved; returns whether it was unchanged during the
@@ -58,10 +62,13 @@ export function useProjectSave({
     try {
       // Inside the try: packing throws past the archive size caps, and a
       // rejection would leave the close-tab Save neither closing nor
-      // cancelling.
-      const zip = pack();
+      // cancelling. Packed before any dialog, so an oversized label fails
+      // first; packed again for a newly chosen destination, because the
+      // master hint is written relative to the file actually saved.
+      const bound = projectPath.current ?? undefined;
+      const zip = pack(bound);
       startSaveBatch();
-      const saved = await saveThrough(zip, {
+      const saved = await saveThrough((name) => name === bound ? zip : pack(name), {
         name: exportBase + LABEL_EXT, type: "application/zip", filter: LABEL_FILTER, types: LABEL_TYPES,
         target: as ? null : projectPath.current ? { path: projectPath.current }
           : projectHandle.current ? { handle: projectHandle.current } : null,

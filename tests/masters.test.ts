@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { forgetMaster, hintTrusted, masterIndex, newMasterId, rememberMaster, resolveMasterById, SHIPPED_MASTER_ID } from "../src/masters";
+import { forgetMaster, hintPath, hintTrusted, labelRelativeHint, masterIndex, newMasterId, rememberMaster, resolveMasterById, SHIPPED_MASTER_ID } from "../src/masters";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { parseMasterJson, serializeMaster } from "../src/model/files";
 
@@ -604,5 +604,140 @@ describe("master library index", () => {
     expect(hintTrusted("/a/b/../c/x.master", "/a/b/l.label")).toBe(false);
     expect(hintTrusted("x.master", "l.label")).toBe(false); // a bare name has no folder
     expect(hintTrusted("/a/b/x.master")).toBe(false);
+  });
+  // #428: a saved label names its master relative to itself, so a shared
+  // .label no longer carries this machine's absolute path (and username).
+  it("labelRelativeHint writes the master's path relative to the label", () => {
+    expect(labelRelativeHint("/Users/me/beers/x.master", "/Users/me/beers/a.label")).toBe("./x.master");
+    expect(labelRelativeHint("/Users/me/beers/m/x.master", "/Users/me/beers/a.label")).toBe("./m/x.master");
+    expect(labelRelativeHint("/Users/me/lib/x.master", "/Users/me/beers/a.label")).toBe("../lib/x.master");
+    expect(labelRelativeHint("C:\\x\\lib\\x.master", "C:\\x\\beers\\a.label")).toBe("../lib/x.master");
+    expect(labelRelativeHint("C:\\x\\lib\\x.master", "c:\\x\\beers\\a.label")).toBe("../lib/x.master");
+    // No relative path between drives: no hint rather than an absolute one.
+    expect(labelRelativeHint("D:\\lib\\x.master", "C:\\beers\\a.label")).toBeUndefined();
+    // Sharing only the root, a relative path would climb to it and spell out
+    // the master's absolute folders (username included): no hint either.
+    expect(labelRelativeHint("/Users/ted/m/x.master", "/Volumes/Share/a.label")).toBeUndefined();
+    expect(labelRelativeHint("C:\\Users\\ted\\x.master", "C:\\Shared\\a.label")).toBeUndefined();
+    // A browser basename has nothing local in it; a recovery snapshot (no
+    // label path) never leaves this machine.
+    expect(labelRelativeHint("x.master", "a.label")).toBe("x.master");
+    expect(labelRelativeHint("/Users/me/lib/x.master")).toBe("/Users/me/lib/x.master");
+    expect(labelRelativeHint(undefined, "/a/b.label")).toBeUndefined();
+  });
+  it("hintPath resolves a label-relative hint against the label's folder", () => {
+    expect(hintPath("./x.master", "/Users/me/beers/a.label")).toBe("/Users/me/beers/x.master");
+    // A bare name is a browser file name, not a file beside this label.
+    expect(hintPath("x.master", "/Users/me/beers/a.label")).toBe("x.master");
+    expect(hintPath("../lib/x.master", "/Users/me/beers/a.label")).toBe("/Users/me/lib/x.master");
+    expect(hintPath("../lib/x.master", "C:\\beers\\a.label")).toBe("C:\\lib\\x.master");
+    // An absolute hint from an older version is used as written.
+    expect(hintPath("/Users/me/lib/x.master", "/Users/me/beers/a.label")).toBe("/Users/me/lib/x.master");
+    // Climbing past the root, or no label path to resolve against: unchanged
+    // (and so untrusted by hintTrusted).
+    expect(hintPath("../../../x.master", "/beers/a.label")).toBe("../../../x.master");
+    expect(hintPath("x.master")).toBe("x.master");
+  });
+  it("a label-relative hint is read beside the label or a library master, never above them", async () => {
+    vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+    const reads: string[] = [];
+    vi.doMock("@/files", () => ({
+      readNativeFile: async (p: string) => { reads.push(p); throw new Error("not found"); },
+    }));
+    const mod = await import("../src/masters");
+    const label = "/Users/me/beers/a.label";
+    await mod.resolveLabelMaster("x", "../../../etc/x.master", label);
+    await mod.resolveLabelMaster("x", "../elsewhere/x.master", label);
+    expect(reads).toEqual([]);
+    await mod.resolveLabelMaster("x", "masters/x.master", label);
+    localStorage.setItem("labellab.master:other", JSON.stringify({ name: "Other", path: "/Users/me/lib/other.master", lastSeen: "" }));
+    await mod.resolveLabelMaster("x", "../lib/x.master", label);
+    expect(reads).toEqual(["/Users/me/beers/masters/x.master", "/Users/me/lib/x.master"]);
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/files");
+  });
+  it("a label-relative hint opens its master and binds the tab to the full path", async () => {
+    vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+    const ours = { ...lolevMaster(), id: "master-rel", name: "Ours" };
+    vi.doMock("@/files", () => ({
+      readNativeFile: async (p: string) => {
+        if (p !== "/beers/ours.master") throw new Error("not found");
+        return new TextEncoder().encode(JSON.stringify(ours));
+      },
+    }));
+    const mod = await import("../src/masters");
+    const r = await mod.resolveLabelMaster("master-rel", "./ours.master", "/beers/beer.label");
+    expect(r?.master.name).toBe("Ours");
+    expect(r?.path).toBe("/beers/ours.master");
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/files");
+  });
+  // #428: a row whose file the OS reports gone, with no remembered copy to
+  // stand in, would list a master that can never open — drop it. A refused
+  // read (scope) is not "gone", so that row stays.
+  it("drops a library row whose file is gone and has no remembered copy", async () => {
+    vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+    vi.doMock("@/files", () => ({
+      readNativeFile: async (p: string) => {
+        throw new Error(p.includes("gone")
+          ? `failed to open file at path: ${p} with error: No such file or directory (os error 2)`
+          : `forbidden path: ${p}`);
+      },
+    }));
+    vi.doMock("@/masterCache", () => ({
+      cacheMaster: async () => {}, cachedMaster: async () => null, dropCachedMaster: async () => {},
+    }));
+    const mod = await import("../src/masters");
+    localStorage.setItem("labellab.master:master-gone", JSON.stringify({ name: "Gone", path: "/lib/gone.master", lastSeen: "" }));
+    localStorage.setItem("labellab.master:master-locked", JSON.stringify({ name: "Locked", path: "/lib/locked.master", lastSeen: "" }));
+    expect(await mod.resolveMasterById("master-gone")).toBeNull();
+    expect(await mod.resolveMasterById("master-locked")).toBeNull();
+    expect(mod.masterIndex()["master-gone"]).toBeUndefined();
+    expect(mod.masterIndex()["master-locked"]?.path).toBe("/lib/locked.master");
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/files");
+    vi.doUnmock("@/masterCache");
+  });
+  // A label open, or the launch-time default master, reports nothing to the
+  // operator: a share or volume that isn't mounted yet reads as "gone" too,
+  // so only a library pick (which says it could not open) drops the row.
+  it("keeps a gone row on a label open or the launch-time default", async () => {
+    vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+    vi.doMock("@/files", () => ({
+      readNativeFile: async (p: string) => { throw new Error(`failed to open file at path: ${p} with error: (os error 2)`); },
+    }));
+    vi.doMock("@/masterCache", () => ({
+      cacheMaster: async () => {}, cachedMaster: async () => null, dropCachedMaster: async () => {},
+    }));
+    const mod = await import("../src/masters");
+    localStorage.setItem("labellab.master:master-share", JSON.stringify({ name: "Share", path: "/Volumes/Share/s.master", lastSeen: "" }));
+    localStorage.setItem("labellab.lastMaster", "master-share");
+    expect(await mod.resolveLabelMaster("master-share")).toBeNull();
+    await mod.resolveDefaultMaster();
+    expect(mod.masterIndex()["master-share"]?.path).toBe("/Volumes/Share/s.master");
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/files");
+    vi.doUnmock("@/masterCache");
+  });
+  it("keeps a row whose file is gone while a remembered copy stands in", async () => {
+    vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+    vi.doMock("@/files", () => ({
+      readNativeFile: async (p: string) => { throw new Error(`failed to open file at path: ${p} with error: (os error 2)`); },
+    }));
+    const held = new Map<string, Uint8Array>();
+    vi.doMock("@/masterCache", () => ({
+      cacheMaster: async (id: string, b: Uint8Array) => { held.set(id, b); },
+      cachedMaster: async (id: string) => held.get(id) ?? null,
+      dropCachedMaster: async () => {},
+    }));
+    const { packMaster } = await import("../src/model/files");
+    const mod = await import("../src/masters");
+    const m = { ...lolevMaster(), id: "master-held", name: "Held" };
+    await mod.rememberMaster(m, "/lib/held.master", packMaster(m, {}));
+    expect((await mod.resolveMasterById("master-held"))?.master.name).toBe("Held");
+    expect(mod.masterIndex()["master-held"]?.path).toBe("/lib/held.master");
+    vi.doUnmock("@tauri-apps/api/core");
+    vi.doUnmock("@/files");
+    vi.doUnmock("@/masterCache");
   });
 });

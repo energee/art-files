@@ -60,7 +60,7 @@ import {
   type MasterAssets,
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
-import { SHIPPED_MASTER_ID, hintTrusted, masterIndex, newMasterId, rememberMaster, removeFromLibrary, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
+import { SHIPPED_MASTER_ID, hintPath, hintTrusted, labelRelativeHint, masterIndex, newMasterId, rememberMaster, removeFromLibrary, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
 import { layerBoxes } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { makeHiddenPropsEqual, unsaved, type TabMeta } from "@/tabs";
@@ -1319,9 +1319,12 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** This document as .label bytes: the v3 label plus its embedded art —
    *  what Save writes and what a crash-recovery snapshot keeps. The hint names
    *  this tab's own master file: another tab may have opened a different file
-   *  with the same id since (#405). */
-  const packProject = () => {
-    const masterHint = saveTargetFor(masterFilePath.current, master.id) ?? masterIndex()[master.id]?.path;
+   *  with the same id since (#405). Saved to `labelPath`, it is written
+   *  relative to that label, so a shared .label carries no absolute path
+   *  (#428); a snapshot (no labelPath) stays on this machine and keeps it. */
+  const packProject = (labelPath?: string) => {
+    const masterHint = labelRelativeHint(
+      saveTargetFor(masterFilePath.current, master.id) ?? masterIndex()[master.id]?.path, labelPath);
     return packLabel({ ...label, masterHint }, {
       texture: slotAsset(texture), mask: slotAsset(mask),
       customImages: imageBundle(customImages, Object.keys(liveImages)),
@@ -1572,7 +1575,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   }
 
   /** MasterPicker's resolve. A lookup can retire an index row whose file now
-   *  holds another master, so the menu re-reads the library afterwards. */
+   *  holds another master, or whose file is gone with no remembered copy
+   *  (#428), so the menu re-reads the library afterwards. */
   async function resolveLibraryMaster(id: string) {
     const r = await resolveMasterById(id);
     refreshLibrary();
@@ -1664,7 +1668,9 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  (values the master lacks are benched, not lost). null = cancelled. */
   async function missingMasterChoice(id: string, hint: string | undefined, labelPath?: string): Promise<ResolvedMaster | null> {
     // An untrusted hint was never read, so it must not read as a file that
-    // was looked for and found missing.
+    // was looked for and found missing. A label-relative hint is shown as
+    // the full path it was looked for at.
+    if (hint) hint = hintPath(hint, labelPath);
     const where = !hint ? "" : hintTrusted(hint, labelPath) ? ` (last seen at ${hint})` : ` (remembered at ${hint}, which was not read)`;
     const choice = await new Promise<"current" | "locate" | null>((choose) =>
       setMissingMaster({ id, where, current: docRef.current.master.name, choose }));

@@ -20,6 +20,7 @@ that section to the new version (see .agents/release-steward.md).
 - **The variant badge in the layer list is clearer while its variant is off.** It no longer fades to a faint grey on top of its dimmed row; it keeps its normal colour and is struck through instead.
 - **Screen readers name the View Mode button and saved color swatches.** The status bar's View Mode button now says which view a click switches to and announces keys 1–3; a saved swatch reads "Saved color #rrggbb" and announces Delete to remove it. Holding Delete removes one swatch instead of sweeping the whole saved list.
 - **A failed or superseded image load no longer holds memory.** When opening a master whose images partly fail to load, when a master's template image arrives after that image is already loaded, or when a tab is closed while its master's images are still loading, the thumbnails for those images were kept in memory until the app closed. They are now only created for an image that actually lands in an open document.
+- **A shared label no longer carries your folder names.** Saving a label now records its master's location relative to the label instead of the full path (which could include your user name); labels saved by older versions still find their master. Picking a remembered master whose file has been deleted, with no saved copy to fall back on, now drops it from the library instead of leaving it listed forever.
 
 ## [0.1.105] - 2026-10-09
 
