@@ -103,8 +103,7 @@ export function FileDrop(props: {
             // zone; the X must clear, not open the file picker.
             onClick={(e) => {
               e.stopPropagation();
-              const name = props.fileName!;
-              setCleared({ name, undo: props.onClear?.() ?? undefined });
+              setCleared({ name: props.fileName!, undo: props.onClear?.() ?? undefined });
             }}
             className="ml-auto size-5 shrink-0 text-muted-foreground hover:text-foreground"
           >
@@ -121,7 +120,7 @@ export function FileDrop(props: {
             Removed {cleared.name}.{" "}
             {cleared.undo ? (
               <Button type="button" size="xs" variant="link" className="h-auto p-0 text-xs"
-                onClick={() => { const undo = cleared.undo!; setCleared(null); undo(); }}>
+                onClick={() => { setCleared(null); cleared.undo!(); }}>
                 Undo
               </Button>
             ) : "⌘Z brings it back."}
