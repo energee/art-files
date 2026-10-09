@@ -9,7 +9,7 @@
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { MasterPicker } from "../src/components/MasterPicker";
 import { lolevMaster } from "../src/model/lolevLayers";
 import type { LabelFile, Master } from "../src/model/layers";
@@ -166,6 +166,37 @@ describe("MasterPicker", () => {
     renderPicker({ version: "collab", onRemoveVersion });
     act(() => { (container.querySelector("#variant-remove") as HTMLButtonElement).click(); });
     expect(onRemoveVersion).toHaveBeenCalledWith("collab");
+  });
+
+  it("says a deleted variant comes back with Undo (#426)", () => {
+    // isMacOS() reads the user agent; happy-dom's is Linux (Ctrl+Z).
+    const ua = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Macintosh");
+    onTestFinished(() => ua.mockRestore());
+    const props = renderPicker({ version: "collab" });
+    act(() => { (container.querySelector("#variant-remove") as HTMLButtonElement).click(); });
+    // App's delete drops the variant from the master and the version.
+    const without = { ...props.master, variants: [] };
+    act(() => { root.render(createElement(MasterPicker, { ...props, master: without, version: null })); });
+    const status = () => container.querySelector('[role="status"]')!.textContent!;
+    expect(status()).toContain("Deleted “Collab”");
+    expect(status()).toContain("⌘Z");
+    // ⌘Z puts it back; the note goes with it.
+    act(() => { root.render(createElement(MasterPicker, props)); });
+    expect(status()).toBe("");
+  });
+
+  it("drops the delete note once another master replaces the one the delete left (#426)", () => {
+    const props = renderPicker({ version: "collab" });
+    act(() => { (container.querySelector("#variant-remove") as HTMLButtonElement).click(); });
+    const without = { ...props.master, variants: [] };
+    act(() => { root.render(createElement(MasterPicker, { ...props, master: without, version: null })); });
+    const status = () => container.querySelector('[role="status"]')!.textContent!;
+    expect(status()).toContain("Deleted “Collab”");
+    // File → Open (or any later master edit) brings a different master that
+    // also lacks the variant; Open resets the history, so ⌘Z can't help.
+    const opened = { ...props.master, id: "other", variants: [] };
+    act(() => { root.render(createElement(MasterPicker, { ...props, master: opened, version: null })); });
+    expect(status()).toBe("");
   });
 
   it("opens the Save Master review from the picker, for the named version", () => {
