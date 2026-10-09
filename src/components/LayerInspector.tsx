@@ -33,7 +33,6 @@ import type { ReactNode } from "react";
 import { Barcode, Image, QrCode, Type, type LucideIcon } from "lucide-react";
 import type { BindingSide, Layer, LayerKind } from "@/model/layers";
 import type { OverrideBadges as Overridden } from "@/model/edit";
-import type { DeepPartial } from "@/model/merge";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -65,7 +64,7 @@ export function LayerInspector(props: {
   overridden: Overridden;
   /** Every edit is one minimal partial patch; the parent decides where it
    *  lands. See the file header for the two patches that need care. */
-  onChange: (patch: DeepPartial<Layer>) => void;
+  onChange: (patch: Patch) => void;
   onReset: (path: string, source: "variant" | "label") => void;
   /** Unbind: the parent freezes the resolved coordinates before clearing the binding. */
   onUnbind: () => void; onBind?: (to: string, side: BindingSide) => void;
@@ -76,7 +75,7 @@ export function LayerInspector(props: {
   fontFamily?: string;
 }) {
   const { layer } = props;
-  const set = (patch: Patch) => props.onChange(patch);
+  const set = props.onChange;
   const badge = (paths: readonly string[], label: string) => (
     <Badge paths={paths} overridden={props.overridden} label={label} onReset={props.onReset} />
   );
