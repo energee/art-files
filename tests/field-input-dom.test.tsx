@@ -95,3 +95,29 @@ it("keeps focus in the swatch row when the last swatch is deleted", async () => 
     expect(active.textContent).toBe("Save");
   } finally { vi.restoreAllMocks(); act(() => root.unmount()); host.remove(); setSwatches(() => []); }
 });
+// A held Delete auto-repeats onto the chip that takes the deleted one's place;
+// without an e.repeat guard it swept the whole saved list (#425 review).
+it("deletes one saved swatch per Delete press, not on auto-repeat", async () => {
+  const { setSwatches } = await import("../src/settings");
+  setSwatches(() => ["#000000", "#111111", "#222222"]);
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    act(() => root.render(createElement(ColorField, { value: "#ffffff", onChange: vi.fn() })));
+    const trigger = host.querySelector('[aria-label="Pick color"]') as HTMLButtonElement;
+    await act(async () => {
+      for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"])
+        trigger.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
+      trigger.click();
+    });
+    const chip = document.querySelector('button[aria-label="Saved color #000000"]') as HTMLButtonElement;
+    chip.focus();
+    act(() => { chip.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true })); });
+    for (let i = 0; i < 2; i++) {
+      const at = document.activeElement as HTMLElement;
+      act(() => { at.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", repeat: true, bubbles: true })); });
+    }
+    const left = [...document.querySelectorAll('button[aria-label^="Saved color"]')].map((b) => b.getAttribute("aria-label"));
+    expect(left).toEqual(["Saved color #111111", "Saved color #222222"]);
+  } finally { act(() => root.unmount()); host.remove(); setSwatches(() => []); }
+});
