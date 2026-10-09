@@ -12,6 +12,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Unused exports removed, no visible change.** Types used only in the file that defines them are no longer exported.
 
 ### Fixed
+- **A shared label no longer carries your folder names.** Saving a label now records its master's location relative to the label instead of the full path (which could include your user name); labels saved by older versions still find their master. A remembered master whose file has been deleted, with no saved copy to fall back on, is now dropped from the library instead of staying listed forever.
 - **The active tab's close button shows without hovering.** It rests dimmed on the selected tab so it can be found and tapped on touch; other tabs still show theirs on hover.
 - **Deleting a variant or removing a well's file says how to undo it.** Delete under the master picker now leaves a note that ⌘Z brings the variant back. Removing a texture or mask with its × was not undoable at all; the well now offers Undo to put the file back. An image layer's well notes that ⌘Z restores its art.
 - **A damaged remembered-masters entry no longer breaks opening labels.** A library entry missing its file path or name is now skipped instead of making a label open fail.

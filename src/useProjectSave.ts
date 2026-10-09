@@ -11,8 +11,10 @@ import { LABEL_EXT } from "@/labelfile";
 import { errMsg } from "@/lib/utils";
 
 type ProjectSaveInputs = {
-  /** This document as .label bytes (App.tsx packProject). */
-  pack: () => Uint8Array;
+  /** This document as .label bytes (App.tsx packProject), for the file at
+   *  `labelPath` — the native path on desktop, a bare file name in a browser
+   *  — so the master hint can be written relative to it (#428). */
+  pack: (labelPath: string) => Uint8Array;
   /** The suggested file name, without the extension. */
   exportBase: string;
   /** Marks the document saved; returns whether it was unchanged during the
@@ -58,10 +60,10 @@ export function useProjectSave({
     try {
       // Inside the try: packing throws past the archive size caps, and a
       // rejection would leave the close-tab Save neither closing nor
-      // cancelling.
-      const zip = pack();
+      // cancelling. Packed once the destination is chosen: the master hint
+      // is written relative to it.
       startSaveBatch();
-      const saved = await saveThrough(zip, {
+      const saved = await saveThrough(pack, {
         name: exportBase + LABEL_EXT, type: "application/zip", filter: LABEL_FILTER, types: LABEL_TYPES,
         target: as ? null : projectPath.current ? { path: projectPath.current }
           : projectHandle.current ? { handle: projectHandle.current } : null,

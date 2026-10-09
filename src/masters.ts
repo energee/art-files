@@ -21,6 +21,7 @@ import { isRecord, unpackMaster, type MasterAssets } from "@/model/files";
 import { readNativeFile } from "@/files";
 import { cacheMaster, cachedMaster, dropCachedMaster } from "@/masterCache";
 import { readJson } from "@/settings";
+import { errMsg } from "@/lib/utils";
 
 export const SHIPPED_MASTER_ID = lolevMaster().id;
 const ROW_PREFIX = "labellab.master:";
@@ -175,20 +176,24 @@ function lastMasterId(): string {
  *  label's masterHint to that file, not to the index row for the id (#405). */
 export type ResolvedMaster = { master: Master; assets: MasterAssets; path?: string };
 
-/** Read and parse the .master at `path`, without touching the library. */
-async function readMasterFile(path: string): Promise<{ resolved: ResolvedMaster; bytes: Uint8Array } | null> {
+/** Read and parse the .master at `path`, without touching the library.
+ *  `onGone` runs when the OS says the file (or a folder on its path) does
+ *  not exist — "(os error 2)"/"(os error 3)" from tauri-plugin-fs — as
+ *  opposed to a refused or corrupt read, which may succeed another time. */
+async function readMasterFile(path: string, onGone?: () => void): Promise<{ resolved: ResolvedMaster; bytes: Uint8Array } | null> {
   if (!isTauri()) return null; // browser: no filesystem paths to read
   try {
     const bytes = await readNativeFile(path); // ZIP or legacy JSON
     return { resolved: { ...unpackMaster(bytes), path }, bytes };
-  } catch {
+  } catch (err) {
+    if (/\(os error [23]\)/.test(errMsg(err))) onGone?.();
     return null; // moved/deleted/corrupt — the caller falls through
   }
 }
 
 /** readMasterFile, then register the file in the library index and cache. */
-async function readMasterAt(path: string): Promise<ResolvedMaster | null> {
-  const f = await readMasterFile(path);
+async function readMasterAt(path: string, onGone?: () => void): Promise<ResolvedMaster | null> {
+  const f = await readMasterFile(path, onGone);
   if (f) await rememberMaster(f.resolved.master, path, f.bytes, { applied: false });
   return f?.resolved ?? null;
 }
@@ -198,6 +203,44 @@ const folderOf = (p: string): string => {
   const n = p.replace(/\\/g, "/");
   return n.slice(0, Math.max(n.lastIndexOf("/"), 0));
 };
+
+/** Path segments with `/` separators; an absolute posix path starts with "". */
+const segmentsOf = (p: string): string[] => p.replace(/\\/g, "/").split("/");
+
+/** The masterHint a .label saved at `labelPath` stores for the master file at
+ *  `masterPath`: relative to the label's folder (`x.master`, `../lib/x.master`),
+ *  so a shared label carries no absolute path or username (#428). Undefined
+ *  when no relative path exists (another drive). A bare name (a browser file)
+ *  is kept as is, and so is the full path when there is no label path — a
+ *  crash-recovery snapshot, which never leaves this machine. */
+export function labelRelativeHint(masterPath: string | undefined, labelPath?: string): string | undefined {
+  if (!masterPath || !labelPath) return masterPath;
+  const to = segmentsOf(masterPath);
+  if (to.length === 1) return masterPath;
+  const from = segmentsOf(labelPath).slice(0, -1);
+  if (!from.length || from[0] !== to[0]) return undefined;
+  let common = 1;
+  while (common < from.length && common < to.length - 1 && from[common] === to[common]) common++;
+  return [...Array(from.length - common).fill(".."), ...to.slice(common)].join("/");
+}
+
+/** A .label's masterHint as a full path: a label-relative hint (what Save
+ *  writes since #428) joined to the folder of `labelPath`, in that path's
+ *  separator. An absolute hint (older saves), or one with no label path to
+ *  resolve against or that climbs above the root, is returned unchanged —
+ *  hintTrusted then decides whether it may be read. */
+export function hintPath(hint: string, labelPath?: string): string {
+  if (!labelPath || /^([\\/]|[A-Za-z]:)/.test(hint)) return hint;
+  const out = segmentsOf(labelPath).slice(0, -1);
+  if (!out.length) return hint;
+  for (const s of segmentsOf(hint)) {
+    if (s === "..") {
+      if (out.length <= 1) return hint;
+      out.pop();
+    } else if (s !== "." && s !== "") out.push(s);
+  }
+  return out.join(labelPath.includes("\\") && !labelPath.includes("/") ? "\\" : "/");
+}
 
 /** Whether a `.label`'s masterHint may be read. A .label is shared, so the
  *  hint is untrusted: it is read only when it sits lexically inside the
@@ -281,23 +324,25 @@ async function resolveMaster(
   // and two labels sharing an id must not flip the row between their files on
   // every open. A row whose file was moved, deleted, or now holds another id
   // is repaired to the hint, as it was when the index was read first.
+  if (hint) hint = hintPath(hint, labelPath);
   const indexPath = masterIndex()[id]?.path ?? "";
-  const hintPath = hint && hintTrusted(hint, labelPath) && hint !== indexPath ? hint : "";
-  const hinted = hintPath ? await readMasterFile(hintPath) : null;
-  const hintFile = hinted?.resolved ?? null;
+  const hinted = hint && hintTrusted(hint, labelPath) && hint !== indexPath ? hint : "";
+  const hintRead = hinted ? await readMasterFile(hinted) : null;
+  const hintFile = hintRead?.resolved ?? null;
   const adoptHint = async () => {
-    if (!hinted) return;
-    const hid = hinted.resolved.master.id;
+    if (!hintRead) return;
+    const hid = hintRead.resolved.master.id;
     const row = masterIndex()[hid]?.path;
     if (row && (await readMasterFile(row))?.resolved.master.id === hid) return;
-    await rememberMaster(hinted.resolved.master, hintPath, hinted.bytes, { applied: false });
+    await rememberMaster(hintRead.resolved.master, hinted, hintRead.bytes, { applied: false });
   };
   if (hintFile?.master.id === id) {
     await adoptHint();
     return hintFile;
   }
 
-  const indexFile = indexPath ? await readMasterAt(indexPath) : null;
+  let indexGone = false;
+  const indexFile = indexPath ? await readMasterAt(indexPath, () => { indexGone = true; }) : null;
   if (indexFile?.master.id === id) return indexFile;
 
   // Any file read here holds a different id: the early returns took the match.
@@ -312,6 +357,9 @@ async function resolveMaster(
   const held = !named && (followReplacement || (!indexFile && !hintFile)) ? await cachedMaster(id) : null;
   // A remembered copy is about to stand in, so it stays for the next open.
   if (indexFile) await (held ? retireIndexRow : forgetMaster)(id, indexFile.master.id);
+  // A row whose file no longer exists, with no remembered copy to stand in,
+  // names a master that can never open: drop it rather than list it forever.
+  else if (indexGone && !(held ?? await cachedMaster(id))) retireIndexRow(id);
   if (named && named === hintFile) await adoptHint();
   if (named) return named;
   if (held) {

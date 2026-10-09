@@ -26,3 +26,36 @@ it("saveProject resolves false with a load error when packing throws", async () 
   expect(setLoadError).toHaveBeenCalledWith("Could not save project: Archive is too large");
   act(() => root.unmount());
 });
+
+// #428: the label is packed once its destination is known, so the master hint
+// can be written relative to the file actually saved (not an absolute path).
+it("saveProject packs for the path the label is written to", async () => {
+  vi.resetModules();
+  vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+  const written: string[] = [];
+  vi.doMock("@tauri-apps/plugin-fs", () => ({
+    writeFile: async () => undefined,
+    rename: async (_from: string, to: string) => { written.push(to); },
+    remove: async () => undefined,
+  }));
+  const { useProjectSave: hook } = await import("@/useProjectSave");
+  const packedFor: string[] = [];
+  let api: ReturnType<typeof hook> | undefined;
+  function Probe() {
+    api = hook({
+      pack: (p) => { packedFor.push(p); return new Uint8Array([1]); },
+      exportBase: "x", onSaved: () => true, setLoadError: vi.fn(),
+      startSaveBatch: () => undefined, saveBytes: () => undefined,
+    });
+    return null;
+  }
+  const root = createRoot(document.createElement("div"));
+  await act(async () => { root.render(createElement(Probe)); });
+  act(() => api!.bindPath("/Users/me/beers/a.label"));
+  await expect(api!.saveProject()).resolves.toBe(true);
+  expect(packedFor).toEqual(["/Users/me/beers/a.label"]);
+  expect(written).toEqual(["/Users/me/beers/a.label"]);
+  act(() => root.unmount());
+  vi.doUnmock("@tauri-apps/api/core");
+  vi.doUnmock("@tauri-apps/plugin-fs");
+});

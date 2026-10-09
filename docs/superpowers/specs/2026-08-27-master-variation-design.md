@@ -241,7 +241,11 @@ files resolve by ID. A label reads its trusted `masterHint` (the exact file it
 was saved against) before the index's path for that id, since two files can
 share an id (#405). The tab's Save Master and the hint it saves name that file;
 the hint's file joins the index only when the index has no readable file for
-the id, so a shared label never takes over the operator's library entry. A
+the id, so a shared label never takes over the operator's library entry. Save
+writes the hint relative to the label (`x.master`, `../lib/x.master`), so a
+shared label carries no absolute path or username (#428); an absolute hint
+from an older save is still read as written. A row whose file the OS reports
+missing, with no remembered copy to stand in, is dropped from the index. A
 missing master falls back to a picker.
 
 Stored as one localStorage key per master (`labellab.master:<id>`), not one
