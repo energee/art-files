@@ -105,6 +105,8 @@ it("Save packs only the image art the document still references (#84)", async ()
   await act(async () => { await wells.image!.onFile(svg("a.svg", "M0 0 L10 0 L10 10 Z")); });
   await act(async () => { await wells.image!.onFile(svg("b.svg", "M0 0 L10 10 L0 10 Z")); });
   await act(async () => { await saveSlot.current!(); });
-  expect(packed.ids).toHaveLength(1);
-  expect(packed.ids[0]).toHaveLength(1);
+  // An unsaved label is packed twice — before the dialog (size check) and
+  // again for the chosen destination (#428) — and every pack holds one image.
+  expect(packed.ids.length).toBeGreaterThan(0);
+  for (const ids of packed.ids) expect(ids).toHaveLength(1);
 });

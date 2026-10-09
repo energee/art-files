@@ -1,13 +1,18 @@
 // object-urls-dom.test.tsx — a DocumentEditor must release every blob URL it
 // mints: a closed tab (unmount) revokes its thumbnails and export URLs, and a
 // custom image that fails to decode never leaves its preview URL behind (#85).
+// Decoders mint no URL; one is minted only as a decode commits to state, so a
+// decode that is discarded (a sibling failed, or the slot was already
+// filled) leaves nothing to revoke (#432).
 // @vitest-environment happy-dom
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DEFAULT_RENDER } from "../src/settings";
-import { packLabel } from "../src/model/files";
 import type { LabelAssets } from "../src/labelfile";
+import type { Command } from "../src/components/CommandMenu";
+import { lolevMaster } from "../src/model/lolevLayers";
+import type { MasterAssets } from "../src/model/files";
 
 vi.mock("../src/masterCache", () => ({
   cacheMaster: async () => {},
@@ -17,12 +22,15 @@ vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => false }));
 vi.mock("../src/components/PreviewCompare", () => ({ PreviewCompare: () => null }));
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
+const menu = vi.hoisted(() => ({ actions: [] as Command[] }));
+vi.mock("../src/components/AppMenu", () => ({ AppMenu: (p: { actions: Command[] }) => { menu.actions = p.actions; return null; } }));
 vi.mock("../src/fonts", () => ({
   loadLabelFaces: async () => (text: string, size: number) => text.length * size * 0.55,
   labelFontCss: () => "sans-serif",
 }));
 
 const { DocumentEditor } = await import("../src/App");
+const { packLabel, packMaster } = await import("../src/model/files");
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -99,8 +107,78 @@ it("never leaves a URL behind for a custom image that fails to decode", async ()
   await openThen(labelHandle("b.label", {
     customImages: { good: { name: "logo.svg", bytes: SVG }, bad: { name: "bad.png", bytes: new Uint8Array([1, 2, 3]) } },
   }), async () => {
-    // The open failed on bad.png; nothing it minted reached state.
-    expect(created.length).toBeGreaterThan(0);
+    // The open failed on bad.png, so logo.svg's decode never committed and
+    // never minted its thumbnail (#432).
+    expect(created).toEqual([]);
+  });
+}, 30_000);
+
+it("a master whose images fail to decode leaves no URL from the ones that decoded (#432)", async () => {
+  await openThen(labelHandle("c.label", {}), async () => {
+    openMaster({
+      customImages: { good: { name: "logo.svg", bytes: SVG }, bad: { name: "bad.png", bytes: new Uint8Array([1, 2, 3]) } },
+    });
+    await until(() => document.body.textContent!.includes("Could not open master"));
+    // bad.png failed the adopt, so logo.svg's decode never reached state.
     expect(leaked()).toEqual([]);
+  });
+}, 30_000);
+
+/** Open Master… on a .master packing `assets` (fired, not awaited: its run returns void). */
+function openMaster(assets: MasterAssets) {
+  const bytes = packMaster({ ...lolevMaster(), id: "master-other", name: "Other" }, assets);
+  vi.stubGlobal("showOpenFilePicker", async () => [{
+    name: "other.master", getFile: async () => new File([bytes as unknown as BlobPart], "other.master"),
+  }]);
+  menu.actions.find((c) => c.id === "master-open")!.run();
+}
+
+/** Flush React until `cond` holds (or give up after ~4s). */
+async function until(cond: () => boolean) {
+  for (let i = 0; i < 400 && !cond(); i++)
+    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  expect(cond()).toBe(true);
+}
+
+/** Hold every SVG decode (File.text) until the returned release is called. */
+function holdSvgReads() {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const text = File.prototype.text;
+  const spy = vi.spyOn(File.prototype, "text").mockImplementation(async function (this: File) {
+    await gate;
+    return text.call(this);
+  });
+  return { held: () => spy.mock.calls.length > 0, calls: () => spy.mock.calls.length, release };
+}
+
+it("a master image that finishes decoding after its tab closed mints no URL (#432)", async () => {
+  await openThen(labelHandle("d.label", {}), async (unmount) => {
+    const svg = holdSvgReads();
+    openMaster({ customImages: { late: { name: "logo.svg", bytes: SVG } } });
+    await until(svg.held);
+    await unmount();
+    svg.release();
+    await new Promise((r) => setTimeout(r, 20));
+    // React 19 runs a setState updater eagerly even on an unmounted
+    // component, so the commit must not reach the minter at all.
+    expect(created).toEqual([]);
+  });
+}, 30_000);
+
+it("a master image whose id filled in while it decoded mints no second URL (#432)", async () => {
+  await openThen(labelHandle("e.label", {}), async () => {
+    const svg = holdSvgReads();
+    // Open the same master twice before either decode lands: both adopts
+    // decode id "same", but only the first to commit may mint its thumbnail.
+    const assets = { customImages: { same: { name: "logo.svg", bytes: SVG } } };
+    openMaster(assets);
+    openMaster(assets);
+    await until(() => svg.calls() >= 2);
+    svg.release();
+    await until(() => created.length > 0);
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(created).toHaveLength(1);
+    expect(leaked()).toEqual(created); // the one on screen, not an orphan
   });
 }, 30_000);
