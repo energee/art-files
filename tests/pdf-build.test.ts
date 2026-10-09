@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { PDFDocument, PDFName } from "pdf-lib";
 import { readFileSync } from "node:fs";
-import fontkit from "@pdf-lib/fontkit";
+import { openFont } from "../src/fontkit";
 import { buildArtPdf, buildMaskPdf, pdfMeasureFace } from "../src/pdf/build";
 import { warningColumnLen, warningMeasure, wrapWarning } from "../src/warning";
 import * as L from "./legacy/layout";
@@ -232,7 +232,7 @@ describe("pdfMeasureFace — plans with the widths drawText draws (#86)", () => 
     bold: font("BarlowCondensed-Bold.ttf"),
   };
   const kerned = (bytes: Uint8Array, text: string) => {
-    const f = fontkit.create(bytes);
+    const f = openFont(bytes);
     return f.layout(text).positions.reduce((s, p) => s + p.xAdvance, 0) * 1000 / f.unitsPerEm;
   };
 
