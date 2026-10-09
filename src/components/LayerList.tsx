@@ -8,10 +8,9 @@ import { isMacOS } from "@/keys";
 // row menu to rename inline), a variant badge when a variant ADDS the layer
 // (struck through, its row dimmed, while that variant is off), a provenance
 // mark when an enabled variant overrides part of it, then power (`enabled`)
-// and lock —
-// plus drag reordering and a "…" menu with
-// Rename / Remove. The header carries the title, the "Changed" filter
-// that replaced Fill mode, and the "Add layer" menu.
+// and lock — plus drag reordering and a "…" menu with Rename / Remove. The
+// header carries the title, the "Changed" filter that replaced Fill mode,
+// and the "Add layer" menu.
 //
 // Props-only: no app state, no model imports beyond types. Every write goes
 // out through a callback — the caller decides where it lands (master or the
