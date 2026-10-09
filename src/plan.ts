@@ -67,7 +67,7 @@ export interface PlacedImage {
   readonly asset?: string;
   /** The layer's fill when it asks for `tintRaster`: the canvas backend
    *  recolors the bitmap at draw time (#414). The exports ignore it — they
-   *  embed bytes already tinted with tintRgba (App imageAssets, generate-lib). */
+   *  embed bytes already tinted with tintRgba (useExport imageAssets, generate-lib). */
   readonly tint?: Fill;
 }
 

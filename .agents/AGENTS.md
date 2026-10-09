@@ -16,11 +16,15 @@ blue = white ink and white = knockout. Operator guide is the Fumadocs site in
 - Test: `npm test`
 - Typecheck: `npx tsc --noEmit`
 - Lint: `npm run lint` (rules-of-hooks + exhaustive-deps + unused vars; zero warnings)
+- Dependency audit (CI `audit` job): `npm audit --omit=dev --audit-level=high`, and
+  `cargo audit` in `src-tauri` (install with `cargo install cargo-audit --locked`)
 - Dead code: `npx knip@6.38.0`, run by hand (not a devDependency or CI step; config in `knip.json`). `src/components/ui/**` is ignored because shadcn scaffolding carries unused variants; delete a whole ui component once nothing imports it.
 - Docs: `npm run dev --prefix docs-site` (the Fumadocs site has its own
   `package.json`; there is no root `docs:dev` script)
 - Lint: `npm run lint` (zero warnings)
 - Release metadata: `node scripts/check-release.mjs <base-ref>`
+- Node version: `.nvmrc` is the one pin; every workflow's setup-node reads it
+  (`node-version-file`), and it must satisfy `engines` in `package.json`.
 
 Validation results belong in `ledger.md` with the revision or branch tested;
 there is no blanket verification stamp for commands that changed independently.

@@ -346,3 +346,11 @@ no status, no attempts, no delta.
 - delta: 41 closed entries dated before 2026-09-08 moved verbatim to .agents/ledger-archive.md (canvas-preview-swap-phase3, release-build-performance and cli-generate kept: they still list deferred or open follow-ups); ledger 595 → 345 lines; archiving rule added under Standing rules. Correction to parity-harness-retired: pnpm-lock.yaml was deleted from the repo in 41c10f2 (#247) and is gitignored since 67bb1c7 (#449), so nothing still lists pdfjs-dist and no pnpm-lock work remains
 - evidence: on fix/437 based on 860b4be, every line of the old ledger appears in ledger.md or ledger-archive.md (sorted comm diff empty); no tests or scripts read the ledger
 - release: non-binary-impacting (agent memory only); no release queued
+
+## 2026-10-08 issue-423-node-pin
+- finding: [maint/med] #423 — ci.yml ran Node 24 while release.yml and release-metadata.yml ran lts/*, so a new LTS could build a release on a Node major CI never tested
+- status: done
+- attempts: 1/3
+- delta: `.nvmrc` (24) is the one pin; every setup-node step uses `node-version-file: .nvmrc` (PR #474). tests/node-version-pin.test.ts fails if a workflow names its own node-version or `.nvmrc` falls below engines `>=24.2.0`. Left as-is: the two publish-update-feed jobs only run `node -p` to read package.json's version on the runner's Node; `.nvmrc` pins the major, not the patch
+- evidence: on fix/423, npx vitest run tests/node-version-pin.test.ts (6 passed), npx tsc --noEmit and npm run lint (zero warnings) clean, node scripts/check-release.mjs origin/main passed
+- release: non-binary-impacting (CI config, tests, docs and agent memory); no release queued
