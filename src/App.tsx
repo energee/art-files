@@ -857,7 +857,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Delete a variant and stop showing it. One undoable edit, so it needs no
    *  confirm of its own. */
   function onRemoveVersion(id: string) {
-    edit((d) => removeVariantIn(d, id, rowBoxes()));
+    // Its own undo step, never folded into a quick edit before it: the
+    // picker's note promises one ⌘Z brings the variant back (#426).
+    edit((d) => removeVariantIn(d, id, rowBoxes()), false);
   }
 
   /** The dot-paths deviating from the master on the inspected layer, kept
@@ -999,15 +1001,18 @@ export const DocumentEditor = memo(function DocumentEditor({
   };
 
   /** The texture/mask well's X. Those slots are outside the history (see
-   *  history.ts), so ⌘Z can't bring a cleared file back; this returns the
-   *  well's Undo instead (#426). The cleared value keeps its bytes, and the
-   *  undo mints a fresh thumbnail URL, since the clear revoked the old one. */
-  const clearLoaded = (current: LoadedRaster | null, set: (fn: (old: LoadedRaster | null) => LoadedRaster | null) => void) => {
-    swapLoaded(set, null);
-    if (!current) return undefined;
-    return () => swapLoaded(set, {
-      ...current, previewUrl: blobUrl(current.srcBytes, mimeFor(current.name)),
-    });
+   *  history.ts), so ⌘Z can't bring a cleared file back; this always returns
+   *  the well's Undo instead (#426). It restores the value the clear actually
+   *  removed (read in the updater, not a render's closure, so a decode landing
+   *  in between can't swap in an older file), keeping its bytes and minting a
+   *  fresh thumbnail URL, since the clear revoked the old one. */
+  const clearLoaded = (set: (fn: (old: LoadedRaster | null) => LoadedRaster | null) => void) => {
+    let gone: LoadedRaster | null = null;
+    swapLoaded<LoadedRaster>((fn) => set((old) => { gone = old; return fn(old); }), null);
+    return () => {
+      const was: LoadedRaster | null = gone;
+      if (was) swapLoaded(set, { ...was, previewUrl: blobUrl(was.srcBytes, mimeFor(was.name)) });
+    };
   };
 
   /** A successful decode clears only its own slot's earlier failure — not a
@@ -1028,13 +1033,10 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  and point the layer (its fill value, or the master's own asset) at the
    *  minted id. The previous asset's bytes are deliberately KEPT: undo can
    *  point the layer back at it (#75); see liveImages. */
-  async function onLayerImage(layer: ImageLayer, f: File | null) {
-    let assetId = "";
-    if (f) {
-      assetId = mintCustomAssetId();
-      const file = await readCustomImage(f);
-      setCustomImages((old) => ({ ...old, [assetId]: file }));
-    }
+  async function onLayerImage(layer: ImageLayer, f: File) {
+    const assetId = mintCustomAssetId();
+    const file = await readCustomImage(f);
+    setCustomImages((old) => ({ ...old, [assetId]: file }));
     setContent(layer, assetId);
   }
 
@@ -2260,20 +2262,22 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (layer.role === "background") {
         return <FileDrop label="Texture" accept={{ "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"], "image/webp": [".webp"] }}
           fileName={texture?.name} previewUrl={texture?.previewUrl}
-          onFile={(f) => void onTexture(f)} onClear={() => clearLoaded(texture, setTexture)} />;
+          onFile={(f) => void onTexture(f)} onClear={() => clearLoaded(setTexture)} />;
       }
       if (layer.role === "mask") {
         return <FileDrop label="Metallic mask" accept={{ "image/png": [".png"], "image/webp": [".webp"] }}
           fileName={mask?.name} previewUrl={mask?.previewUrl}
-          onFile={(f) => void onMask(f)} onClear={() => clearLoaded(mask, setMask)} />;
+          onFile={(f) => void onMask(f)} onClear={() => clearLoaded(setMask)} />;
       }
       if (layer.asset === "builtin:logo") return null;
       const file = customImages[layer.asset];
       return <FileDrop label="Image" accept={{ "image/svg+xml": [".svg"], "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] }}
         fileName={file?.name} previewUrl={file?.previewUrl}
         onFile={(f) => onLayerImage(layer, f).catch((err) => setBuildError(`Could not load image: ${errMsg(err)}`))}
-        // In history (the well names ⌘Z): returns no undo of its own.
-        onClear={() => { void onLayerImage(layer, null); }} />;
+        // In history (the well names ⌘Z): returns no undo of its own. Its own
+        // step (coalesce false), so ⌘Z right after a fast drop-then-X brings
+        // the art back instead of undoing the drop too.
+        onClear={() => { setContent(layer, "", false); }} />;
     }
     // A code layer edits its TEMPLATE (`format`, stashed by resolveLayers when
     // the value carried {ref}s), never the expansion — typing into the

@@ -2,10 +2,11 @@
 // (keyboard, focus, and aria handled by the library), with an image
 // thumbnail on a checkerboard and inline error text. Its X clears at once
 // with no confirm, so the emptied well says how to get the file back (#426).
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useDropzone, type Accept } from "react-dropzone";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { shortcutLabel } from "@/keys";
 import { cn } from "@/lib/utils";
 
 // The classic light transparency checker, deliberately NOT theme-tinted: a
@@ -48,7 +49,10 @@ export function FileDrop(props: {
     setShown(props.fileName);
     if (props.fileName) setCleared(null);
   }
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  /** Set by the X when it offers an Undo: the X unmounts with the file, so
+   *  focus moves to the Undo once it mounts instead of falling to <body>. */
+  const focusUndo = useRef(false);
+  const { getRootProps, getInputProps, isDragActive, rootRef } = useDropzone({
     accept: props.accept,
     multiple: false,
     onDrop: (files, rejected) => {
@@ -103,7 +107,11 @@ export function FileDrop(props: {
             // zone; the X must clear, not open the file picker.
             onClick={(e) => {
               e.stopPropagation();
-              setCleared({ name: props.fileName!, undo: props.onClear?.() ?? undefined });
+              const undo = props.onClear?.() ?? undefined;
+              setCleared({ name: props.fileName!, undo });
+              // The X goes with the file: keep keyboard focus in the well.
+              if (undo) focusUndo.current = true;
+              else rootRef.current?.focus();
             }}
             className="ml-auto size-5 shrink-0 text-muted-foreground hover:text-foreground"
           >
@@ -120,10 +128,15 @@ export function FileDrop(props: {
             Removed {cleared.name}.{" "}
             {cleared.undo ? (
               <Button type="button" size="xs" variant="link" className="h-auto p-0 text-xs"
-                onClick={() => { setCleared(null); cleared.undo!(); }}>
+                ref={(el) => { if (el && focusUndo.current) { focusUndo.current = false; el.focus(); } }}
+                onClick={() => {
+                  // This button goes with the note: hand focus back to the well.
+                  rootRef.current?.focus();
+                  setCleared(null); cleared.undo!();
+                }}>
                 Undo
               </Button>
-            ) : "⌘Z brings it back."}
+            ) : `${shortcutLabel("⌘Z")} brings it back.`}
           </p>
         )}
       </div>

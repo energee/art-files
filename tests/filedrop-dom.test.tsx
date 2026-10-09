@@ -6,7 +6,7 @@
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { AssetDropOverlay } from "../src/components/AssetDropOverlay";
 import { FileDrop, FILE_DROP_ATTR } from "../src/components/FileDrop";
 import { fieldWell, fileDrag, label, pdf, png } from "./dom-drag";
@@ -157,6 +157,9 @@ describe("FileDrop remove cue (#426)", () => {
   });
 
   it("names ⌘Z when the clear is in history", () => {
+    // isMacOS() reads the user agent; happy-dom's is Linux (Ctrl+Z).
+    const ua = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Macintosh");
+    onTestFinished(() => ua.mockRestore());
     const onClear = vi.fn();
     act(() => root.render(createElement(FileDrop, { ...props, onClear })));
     clickRemove();
@@ -164,6 +167,34 @@ describe("FileDrop remove cue (#426)", () => {
     const note = container.querySelector('[role="status"]')!.textContent!;
     expect(note).toContain("⌘Z");
     expect(Array.from(container.querySelectorAll("button")).some((b) => b.textContent === "Undo")).toBe(false);
+  });
+
+  it("names Ctrl+Z off macOS", () => {
+    const ua = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (X11; Linux x86_64)");
+    onTestFinished(() => ua.mockRestore());
+    const onClear = vi.fn();
+    act(() => root.render(createElement(FileDrop, { ...props, onClear })));
+    clickRemove();
+    act(() => root.render(createElement(FileDrop, { ...props, onClear, fileName: undefined })));
+    expect(container.querySelector('[role="status"]')!.textContent).toContain("Ctrl+Z brings it back");
+  });
+
+  it("keeps keyboard focus in the well across the X and its Undo", () => {
+    const onClear = vi.fn(() => vi.fn());
+    act(() => root.render(createElement(FileDrop, { ...props, onClear })));
+    clickRemove();
+    act(() => root.render(createElement(FileDrop, { ...props, onClear, fileName: undefined })));
+    // The X unmounted with the file; focus went to its Undo, not <body>.
+    expect(document.activeElement?.textContent).toBe("Undo");
+    act(() => (document.activeElement as HTMLButtonElement).click());
+    expect(document.activeElement?.hasAttribute(FILE_DROP_ATTR)).toBe(true);
+  });
+
+  it("returns focus to the well when the clear has no undo of its own", () => {
+    const onClear = vi.fn();
+    act(() => root.render(createElement(FileDrop, { ...props, onClear })));
+    clickRemove();
+    expect(document.activeElement?.hasAttribute(FILE_DROP_ATTR)).toBe(true);
   });
 
   it("drops the note once a file is loaded again", () => {

@@ -77,6 +77,22 @@ it("the texture well's X returns an undo that puts the file back", async () => {
   expect(wells.Texture.fileName).toBe("rock.png");
 });
 
+it("the mask well's X returns an undo that puts its own file back", async () => {
+  await select("mask");
+  await act(async () => { await wells["Metallic mask"].onFile(new File(["png"], "foil.png", { type: "image/png" })); });
+  await select("background");
+  await act(async () => { await wells.Texture.onFile(new File(["png"], "rock.png", { type: "image/png" })); });
+  await select("mask");
+  let undo: unknown;
+  await act(async () => { undo = wells["Metallic mask"].onClear!(); });
+  expect(wells["Metallic mask"].fileName).toBeUndefined();
+  await act(async () => { (undo as () => void)(); });
+  expect(wells["Metallic mask"].fileName).toBe("foil.png");
+  // The texture slot was never touched.
+  await select("background");
+  expect(wells.Texture.fileName).toBe("rock.png");
+});
+
 it("an image layer's clear is in history: ⌘Z restores it", async () => {
   // collabLeft is an image layer (the Collab variant's, off by default).
   await select("collabLeft");
@@ -84,10 +100,8 @@ it("an image layer's clear is in history: ⌘Z restores it", async () => {
     "logo.svg", { type: "image/svg+xml" });
   await act(async () => { await wells.Image.onFile(svg); });
   expect(wells.Image.fileName).toBe("logo.svg");
-  // A real click comes well after the drop; past history's 500 ms window
-  // the clear is its own step rather than folding into the drop's.
-  const now = performance.now();
-  vi.spyOn(performance, "now").mockReturnValue(now + 1000);
+  // Cleared at once, inside history's 500 ms window: the clear still opens
+  // its own step, so ⌘Z brings the art back rather than undoing the drop too.
   let undo: unknown;
   await act(async () => { undo = wells.Image.onClear!(); await Promise.resolve(); });
   expect(wells.Image.fileName).toBeUndefined();
