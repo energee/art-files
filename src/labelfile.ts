@@ -138,19 +138,24 @@ function concat(chunks: Uint8Array[], size: number): Uint8Array {
 export function extractAssets(entries: Record<string, Uint8Array>): LabelAssets {
   const assets: LabelAssets = {};
   const files = Object.keys(entries).filter(assetEntry);
+  // assetEntry admits only `<role>/<name>` and `custom/<id>/<name>`, so an
+  // entry's directory is everything up to its last slash.
+  const dirs = new Set<string>();
+  for (const path of files) {
+    const dir = path.slice(0, path.lastIndexOf("/") + 1);
+    if (dirs.has(dir)) throw duplicateAsset(dir);
+    dirs.add(dir);
+  }
   for (const [role, dir] of Object.entries(ROLE_DIRS) as [FixedAssetRole, string][]) {
-    const paths = files.filter((p) => p.startsWith(`${dir}/`));
-    if (paths.length > 1) throw duplicateAsset(`${dir}/`);
-    if (paths[0]) assets[role] = { name: paths[0].slice(dir.length + 1), bytes: entries[paths[0]] };
+    const path = files.find((p) => p.startsWith(`${dir}/`));
+    if (path) assets[role] = { name: path.slice(dir.length + 1), bytes: entries[path] };
   }
   // Custom image assets: one directory per assetId under custom/, each
   // holding exactly one file (name is whatever comes after the id).
   const customImages: Record<string, CustomImageAsset> = {};
   for (const path of files) {
     const m = /^custom\/([^/]+)\/(.+)$/.exec(path);
-    if (!m) continue;
-    if (m[1] in customImages) throw duplicateAsset(`${CUSTOM_DIR}/${m[1]}/`);
-    customImages[m[1]] = { name: m[2], bytes: entries[path] };
+    if (m) customImages[m[1]] = { name: m[2], bytes: entries[path] };
   }
   if (Object.keys(customImages).length) assets.customImages = customImages;
   return assets;
