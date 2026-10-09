@@ -91,21 +91,46 @@ export function assetToFile(a: LabelAsset): File {
   return new File([bytesPart(a.bytes)], a.name, { type: mimeFor(a.name) });
 }
 
+/** A decoder's result: the slot value minus its thumbnail URL. Decoders
+ *  mint no URL; the commit does (previewOnce), so a decode that is failed
+ *  or discarded leaves nothing to revoke (#85, #432). */
+type Decoded<T> = Omit<T, "previewUrl">;
+
+/** A minter for one decoded asset's thumbnail URL (an object URL of `src`,
+ *  the file it was read from): returns the value with its previewUrl,
+ *  minting on the first call and returning that same value after. Call it
+ *  inside the state updater that commits the value: an updater that never
+ *  runs (unmounted) or drops the value mints nothing, and StrictMode's
+ *  second run of the updater reuses the first URL instead of leaking one. */
+export function previewOnce<T extends object>(a: T, src: Blob): () => T & { previewUrl: string } {
+  let v: (T & { previewUrl: string }) | undefined;
+  return () => v ??= { ...a, previewUrl: URL.createObjectURL(src) };
+}
+
+/** Decode a packed container asset with `read` (readRaster or
+ *  readCustomImage) into its previewOnce minter — how an open or a master's
+ *  adopt loads the assets it carries. */
+export async function readPacked<T extends object>(
+  a: LabelAsset, read: (f: File) => Promise<T>,
+): Promise<() => T & { previewUrl: string }> {
+  const f = assetToFile(a);
+  return previewOnce(await read(f), f);
+}
+
 /** Read a dropped image asset. SVG is kept as source text (so it can be
  *  recolored per its layer's style), anything else as raster bytes, plus
  *  the intrinsic aspect (w/h): an SVG's ink box, a raster's bitmap size.
- *  The thumbnail URL is minted only once decoding succeeds, so a file that
- *  fails to decode leaves no URL behind to revoke (#85). */
-export async function readCustomImage(f: File): Promise<CustomFile> {
+ *  No thumbnail URL: the commit mints it from `f` (previewOnce). */
+export async function readCustomImage(f: File): Promise<Decoded<CustomFile>> {
   if (mimeFor(f.name) === "image/svg+xml") {
     const svg = await f.text();
-    return { image: { kind: "svg", svg }, name: f.name, previewUrl: URL.createObjectURL(f), aspect: svgAspect(svg) };
+    return { image: { kind: "svg", svg }, name: f.name, aspect: svgAspect(svg) };
   }
   const bytes = new Uint8Array(await f.arrayBuffer());
   const bmp = await createImageBitmap(blobOf(bytes));
   const aspect = bmp.width / bmp.height;
   bmp.close();
-  return { image: { kind: rasterKind(f.name), bytes }, name: f.name, previewUrl: URL.createObjectURL(f), aspect };
+  return { image: { kind: rasterKind(f.name), bytes }, name: f.name, aspect };
 }
 
 /** Longest preview-texture edge in px. Sized to the 3D label texture
@@ -125,8 +150,9 @@ async function previewPng(src: ImageBitmap | HTMLCanvasElement): Promise<Uint8Ar
  *  readCustomImage, so an open can decode before it commits (#81). PNG and
  *  JPEG embed as-is (a mask plate as-authored); anything else the browser
  *  decodes (WebP) gets a PNG copy, because pdf-lib embeds PNG and JPEG only.
- *  Save keeps the original either way. */
-export async function readRaster(f: File): Promise<LoadedRaster> {
+ *  Save keeps the original either way. No thumbnail URL, as for
+ *  readCustomImage: the commit mints it (previewOnce). */
+export async function readRaster(f: File): Promise<Decoded<LoadedRaster>> {
   const passthrough = EMBEDDABLE_RASTER.test(f.name);
   const [srcBytes, decoded] = await Promise.all([
     f.arrayBuffer().then((b) => new Uint8Array(b)),
@@ -144,7 +170,7 @@ export async function readRaster(f: File): Promise<LoadedRaster> {
   }
   return {
     srcBytes, bytes, previewBytes, aspect, name: f.name,
-    kind: passthrough ? rasterKind(f.name) : "png", previewUrl: URL.createObjectURL(f),
+    kind: passthrough ? rasterKind(f.name) : "png",
   };
 }
 

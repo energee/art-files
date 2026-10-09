@@ -65,9 +65,9 @@ import { layerBoxes } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { makeHiddenPropsEqual, unsaved, type TabMeta } from "@/tabs";
 import { dropRecovery, keepRecovery } from "@/recovery";
-import { mimeFor } from "@/collab";
 import {
-  assetToFile, blobUrl, imageBundle, readCustomImage, readRaster, slotAsset, type CustomFile, type LoadedRaster,
+  assetToFile, imageBundle, previewOnce, readCustomImage, readPacked, readRaster, slotAsset,
+  type CustomFile, type LoadedRaster,
 } from "@/assets/io";
 import { useExport } from "@/useExport";
 import { useProjectSave } from "@/useProjectSave";
@@ -850,12 +850,14 @@ export const DocumentEditor = memo(function DocumentEditor({
   const blockedWhy = errorList.join(" · ");
 
   /** Replaces (or, with null, removes) a loaded asset, revoking the old
-   *  thumbnail URL — the one shape every drop and every X share. */
+   *  thumbnail URL — the one shape every drop and every X share. `next` is a
+   *  previewOnce minter, called in the updater, so the new thumbnail URL is
+   *  minted only as the value commits (#432). */
   const swapLoaded = <T extends { previewUrl: string }>(
-    set: (fn: (old: T | null) => T | null) => void, next: T | null,
+    set: (fn: (old: T | null) => T | null) => void, next: (() => T) | null,
   ) => {
     markDirty();
-    set((old) => { if (old) URL.revokeObjectURL(old.previewUrl); return next; });
+    set((old) => { if (old) URL.revokeObjectURL(old.previewUrl); return next?.() ?? null; });
   };
 
   /** The texture/mask well's X. Those slots are outside the history (see
@@ -869,7 +871,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     swapLoaded<LoadedRaster>((fn) => set((old) => { gone = old; return fn(old); }), null);
     return () => {
       const was: LoadedRaster | null = gone;
-      if (was) swapLoaded(set, { ...was, previewUrl: blobUrl(was.srcBytes, mimeFor(was.name)) });
+      if (was) swapLoaded(set, previewOnce(was, assetToFile({ name: was.name, bytes: was.srcBytes })));
     };
   };
 
@@ -879,11 +881,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   const clearLoadErrorOf = (what: string) =>
     setLoadError((e) => e.startsWith(`Could not load ${what} `) ? "" : e);
   async function onTexture(f: File) {
-    try { swapLoaded(setTexture, await readRaster(f)); clearLoadErrorOf("texture"); }
+    try { swapLoaded(setTexture, previewOnce(await readRaster(f), f)); clearLoadErrorOf("texture"); }
     catch (err) { setLoadError(`Could not load texture "${f.name}": ${errMsg(err)}`); }
   }
   async function onMask(f: File) {
-    try { swapLoaded(setMask, await readRaster(f)); clearLoadErrorOf("mask"); }
+    try { swapLoaded(setMask, previewOnce(await readRaster(f), f)); clearLoadErrorOf("mask"); }
     catch (err) { setLoadError(`Could not load mask "${f.name}": ${errMsg(err)}`); }
   }
 
@@ -893,8 +895,8 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  point the layer back at it (#75); see liveImages. */
   async function onLayerImage(layer: ImageLayer, f: File) {
     const assetId = mintCustomAssetId();
-    const file = await readCustomImage(f);
-    setCustomImages((old) => ({ ...old, [assetId]: file }));
+    const file = previewOnce(await readCustomImage(f), f);
+    setCustomImages((old) => ({ ...old, [assetId]: file() }));
     setContent(layer, assetId);
   }
 
@@ -1475,7 +1477,8 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** Adopt a master's template assets under the label-delta rule: art the
    *  label already loaded wins — only EMPTY slots fall back to the master's,
-   *  and image bytes fill in only for ids the store doesn't hold. */
+   *  and image bytes fill in only for ids the store doesn't hold (checked
+   *  again as they commit, so an id filled meanwhile mints no thumbnail). */
   async function adoptMasterAssets(a: MasterAssets): Promise<void> {
     await Promise.all([
       !texture && a.texture ? onTexture(assetToFile(a.texture)) : null,
@@ -1484,8 +1487,10 @@ export const DocumentEditor = memo(function DocumentEditor({
         const missing = Object.entries(a.customImages ?? {}).filter(([id]) => !customImages[id]);
         if (!missing.length) return;
         const entries = await Promise.all(missing.map(async ([id, x]) =>
-          [id, await readCustomImage(assetToFile(x))] as const));
-        setCustomImages((prev) => ({ ...Object.fromEntries(entries), ...prev }));
+          [id, await readPacked(x, readCustomImage)] as const));
+        setCustomImages((prev) => ({
+          ...Object.fromEntries(entries.filter(([id]) => !prev[id]).map(([id, mint]) => [id, mint()])), ...prev,
+        }));
       })(),
     ]);
   }
@@ -1787,22 +1792,17 @@ export const DocumentEditor = memo(function DocumentEditor({
       const ci = { ...masterAssets.customImages, ...unpacked.assets.customImages, ...legacyAssets };
       // Decode every asset before resetDocument: a failed decode must leave
       // the previous doc and its Save target (rebound by the caller only on
-      // success) intact (#81).
-      const texP = t ? readRaster(assetToFile(t)) : undefined;
-      const mskP = m ? readRaster(assetToFile(m)) : undefined;
-      const imgPs = Object.entries(ci).map(async ([id, a]) =>
-        [id, await readCustomImage(assetToFile(a))] as const);
-      const [tex, msk, images] = await Promise.all([texP, mskP, Promise.all(imgPs)]).catch((err) => {
-        // Nothing reached state, so nothing would revoke the previews the
-        // successful decodes minted — release them here.
-        for (const p of [texP, mskP, ...imgPs.map((q) => q.then(([, c]) => c))])
-          p?.then((x) => URL.revokeObjectURL(x.previewUrl), () => {});
-        throw err;
-      });
+      // success) intact (#81). Decoding mints no thumbnail URL (the commit
+      // below does), so a failure here has none to release (#432).
+      const [tex, msk, images] = await Promise.all([
+        t && readPacked(t, readRaster),
+        m && readPacked(m, readRaster),
+        Promise.all(Object.entries(ci).map(async ([id, a]) => [id, await readPacked(a, readCustomImage)] as const)),
+      ]);
       resetDocument(next, masterPath);
       if (tex) swapLoaded(setTexture, tex);
       if (msk) swapLoaded(setMask, msk);
-      if (images.length) setCustomImages(Object.fromEntries(images));
+      if (images.length) setCustomImages(() => Object.fromEntries(images.map(([id, mint]) => [id, mint()])));
       setDirty(benched);
       setEdited(benched);
       setLoadError(notes.length ? "Note: " + notes.join(" · ") : "");
