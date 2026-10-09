@@ -20,6 +20,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Exports say what they're building.** While PDFs or PSDs export, the blurred preview reads "Building PDFs…" or "Building PSDs…" instead of "rendering preview…", so a long export no longer looks like a stalled preview. A PSD export shows the note even while the preview is still loading, and screen readers announce it.
 - **Background failures show up instead of vanishing.** A save, export or open that fails outside its own error handling now shows a dismissible alert with the reason, rather than failing silently.
 - **Two windows saving masters at once no longer drop one from the library.** Each remembered master now has its own storage entry, so a save in one window can't overwrite a master another window just added. An existing library carries over on the next save. The Master menu now lists remembered masters by name.
+- **A label or master from a newer Label Lab is refused instead of downgraded.** Opening a file saved in a newer format now says it was made by a newer version and asks you to update, rather than reading it as an old-format file that saving would then overwrite with less.
 
 ### Changed
 - **PSD export no longer freezes the window.** The layered PSD is built in a background worker, so the editor stays responsive while a full-resolution file is written. Image decoding and PDF export still run on the main thread.
