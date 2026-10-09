@@ -168,6 +168,20 @@ describe("MasterPicker", () => {
     expect(onRemoveVersion).toHaveBeenCalledWith("collab");
   });
 
+  it("says a deleted variant comes back with Undo (#426)", () => {
+    const props = renderPicker({ version: "collab" });
+    act(() => { (container.querySelector("#variant-remove") as HTMLButtonElement).click(); });
+    // App's delete drops the variant from the master and the version.
+    const without = { ...props.master, variants: [] };
+    act(() => { root.render(createElement(MasterPicker, { ...props, master: without, version: null })); });
+    const status = () => container.querySelector('[role="status"]')!.textContent!;
+    expect(status()).toContain("Deleted “Collab”");
+    expect(status()).toContain("⌘Z");
+    // ⌘Z puts it back; the note goes with it.
+    act(() => { root.render(createElement(MasterPicker, props)); });
+    expect(status()).toBe("");
+  });
+
   it("opens the Save Master review from the picker, for the named version", () => {
     const onSaveMaster = vi.fn();
     renderPicker({ version: "collab", onSaveMaster });

@@ -26,6 +26,9 @@
 //     said in plain view under the Select — the file stays where it is — with
 //     an Undo, since re-adding it would otherwise mean browsing to the file.
 //   * New Variant, an action at the foot.
+// Deleting a variant (the Delete beside Rename) is one undoable edit, so it
+// asks no confirm; the same status line says so, naming ⌘Z, until the
+// variant is back or the menu is used again (#426).
 // Only the middle one resolves a file, so the two sentinels are intercepted
 // in onValueChange before any rebind is considered.
 import { CornerDownRight, X } from "lucide-react";
@@ -109,6 +112,10 @@ export function MasterPicker(props: {
   /** The last library removal, shown with its Undo until the next one or
    *  until the menu is used again. */
   const [removed, setRemoved] = useState<{ name: string; undo: () => Promise<void> } | null>(null);
+  /** The last variant deleted here, named in the status line with its ⌘Z
+   *  until the menu is used again. Shown only while it is still gone, so an
+   *  undo clears the note by itself. */
+  const [deleted, setDeleted] = useState<{ id: string; name: string } | null>(null);
   /** The variant whose name is being edited inline, or null. */
   const [naming, setNaming] = useState<string | null>(null);
 
@@ -117,6 +124,7 @@ export function MasterPicker(props: {
     setResolvingId(null);
     setError("");
     setRemoved(null);
+    setDeleted(null);
   };
 
   /** The ids whose removal is running. A ref, not state: two presses in one
@@ -134,6 +142,7 @@ export function MasterPicker(props: {
     const name = props.library[id]?.name ?? id;
     try {
       const undo = await props.onForget(id);
+      setDeleted(null);
       setRemoved({ name, undo });
     } finally {
       forgetting.current.delete(id);
@@ -264,7 +273,11 @@ export function MasterPicker(props: {
                 Rename
               </Button>
               <Button type="button" id="variant-remove" size="xs" variant="destructive"
-                onClick={() => props.onRemoveVersion(version)}>
+                onClick={() => {
+                  setRemoved(null);
+                  setDeleted({ id: version, name: versionName ?? version });
+                  props.onRemoveVersion(version);
+                }}>
                 Delete
               </Button>
             </>
@@ -290,6 +303,11 @@ export function MasterPicker(props: {
               }}>
               Undo
             </Button>
+          </p>
+        )}
+        {deleted && !props.master.variants.some((v) => v.id === deleted.id) && (
+          <p id="master-picker-deleted" className="mt-1 px-1 text-[11px] text-muted-foreground">
+            Deleted “{deleted.name}”. ⌘Z brings it back.
           </p>
         )}
       </div>

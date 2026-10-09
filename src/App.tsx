@@ -998,6 +998,18 @@ export const DocumentEditor = memo(function DocumentEditor({
     set((old) => { if (old) URL.revokeObjectURL(old.previewUrl); return next; });
   };
 
+  /** The texture/mask well's X. Those slots are outside the history (see
+   *  history.ts), so ⌘Z can't bring a cleared file back; this returns the
+   *  well's Undo instead (#426). The cleared value keeps its bytes, and the
+   *  undo mints a fresh thumbnail URL, since the clear revoked the old one. */
+  const clearLoaded = (current: LoadedRaster | null, set: (fn: (old: LoadedRaster | null) => LoadedRaster | null) => void) => {
+    swapLoaded(set, null);
+    if (!current) return undefined;
+    return () => swapLoaded(set, {
+      ...current, previewUrl: blobUrl(current.srcBytes, mimeFor(current.name)),
+    });
+  };
+
   /** A successful decode clears only its own slot's earlier failure — not a
    *  benched-values note or the other slot's error, which it may land beside
    *  (adoptMasterAssets decodes both at once, right after commitRebind's note). */
@@ -2248,19 +2260,20 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (layer.role === "background") {
         return <FileDrop label="Texture" accept={{ "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"], "image/webp": [".webp"] }}
           fileName={texture?.name} previewUrl={texture?.previewUrl}
-          onFile={(f) => void onTexture(f)} onClear={() => swapLoaded(setTexture, null)} />;
+          onFile={(f) => void onTexture(f)} onClear={() => clearLoaded(texture, setTexture)} />;
       }
       if (layer.role === "mask") {
         return <FileDrop label="Metallic mask" accept={{ "image/png": [".png"], "image/webp": [".webp"] }}
           fileName={mask?.name} previewUrl={mask?.previewUrl}
-          onFile={(f) => void onMask(f)} onClear={() => swapLoaded(setMask, null)} />;
+          onFile={(f) => void onMask(f)} onClear={() => clearLoaded(mask, setMask)} />;
       }
       if (layer.asset === "builtin:logo") return null;
       const file = customImages[layer.asset];
       return <FileDrop label="Image" accept={{ "image/svg+xml": [".svg"], "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] }}
         fileName={file?.name} previewUrl={file?.previewUrl}
         onFile={(f) => onLayerImage(layer, f).catch((err) => setBuildError(`Could not load image: ${errMsg(err)}`))}
-        onClear={() => void onLayerImage(layer, null)} />;
+        // In history (the well names ⌘Z): returns no undo of its own.
+        onClear={() => { void onLayerImage(layer, null); }} />;
     }
     // A code layer edits its TEMPLATE (`format`, stashed by resolveLayers when
     // the value carried {ref}s), never the expansion — typing into the

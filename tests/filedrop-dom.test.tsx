@@ -134,3 +134,46 @@ it("drops a rejection once a different file is loaded", async () => {
   act(() => root.render(createElement(FileDrop, { ...props, fileName: "rock.png" })));
   expect(container.querySelector('[role="alert"]')).toBeNull();
 });
+
+// #426: the X clears at once, so the well says how to get the file back —
+// the caller's own undo when it returns one (texture/mask live outside
+// history), otherwise the history's ⌘Z.
+describe("FileDrop remove cue (#426)", () => {
+  const props = { label: "Texture", accept: { "image/png": [".png"] }, onFile: vi.fn(), fileName: "rock.png" };
+  const clickRemove = () => act(() => {
+    (container.querySelector('[aria-label="Remove Texture"]') as HTMLButtonElement).click();
+  });
+
+  it("offers the caller's undo while the well is empty", () => {
+    const undo = vi.fn();
+    const onClear = vi.fn(() => undo);
+    act(() => root.render(createElement(FileDrop, { ...props, onClear })));
+    clickRemove();
+    act(() => root.render(createElement(FileDrop, { ...props, onClear, fileName: undefined })));
+    expect(container.querySelector('[role="status"]')!.textContent).toContain("Removed rock.png");
+    const button = Array.from(container.querySelectorAll("button")).find((b) => b.textContent === "Undo")!;
+    act(() => button.click());
+    expect(undo).toHaveBeenCalledOnce();
+  });
+
+  it("names ⌘Z when the clear is in history", () => {
+    const onClear = vi.fn();
+    act(() => root.render(createElement(FileDrop, { ...props, onClear })));
+    clickRemove();
+    act(() => root.render(createElement(FileDrop, { ...props, onClear, fileName: undefined })));
+    const note = container.querySelector('[role="status"]')!.textContent!;
+    expect(note).toContain("⌘Z");
+    expect(Array.from(container.querySelectorAll("button")).some((b) => b.textContent === "Undo")).toBe(false);
+  });
+
+  it("drops the note once a file is loaded again", () => {
+    const onClear = vi.fn();
+    act(() => root.render(createElement(FileDrop, { ...props, onClear })));
+    clickRemove();
+    act(() => root.render(createElement(FileDrop, { ...props, onClear, fileName: "other.png" })));
+    expect(container.querySelector('[role="status"]')!.textContent).toBe("");
+    // Emptied by another route later (an Open without this asset): no stale note.
+    act(() => root.render(createElement(FileDrop, { ...props, onClear, fileName: undefined })));
+    expect(container.querySelector('[role="status"]')!.textContent).toBe("");
+  });
+});
