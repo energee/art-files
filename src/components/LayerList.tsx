@@ -6,7 +6,7 @@ import { isMacOS } from "@/keys";
 // reverses them), no Document group — background and mask are the two
 // bottom rows like any other. Each row: kind icon, name (double-click or the
 // row menu to rename inline), a variant badge when a variant ADDS the layer
-// (dimmed while that variant is off), a provenance mark when an enabled
+// (struck through, its row dimmed, while that variant is off), a provenance mark when an enabled
 // variant overrides part of it, then power (`enabled`) and lock —
 // plus drag reordering and a "…" menu with
 // Rename / Remove. The header carries the title, the "Changed" filter
@@ -216,9 +216,12 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             <span
               title={`${row.variantOverridden ? "Changed" : "Added"} by the ${row.variant.name} variant${
                 row.variant.enabled ? "" : " (off)"}`}
+              // Same /70 ink in both states: /40 for "off" measured 2.47:1
+              // (light) and 3.35:1 (dark), under WCAG AA's 4.5:1 (#440). Off
+              // shows as a strikethrough instead of a fainter colour.
               className={cn(
-                "shrink-0 rounded-sm border border-sidebar-border px-1 text-[10px] leading-4",
-                row.variant.enabled ? "text-sidebar-foreground/70" : "text-sidebar-foreground/40",
+                "shrink-0 rounded-sm border border-sidebar-border px-1 text-[10px] leading-4 text-sidebar-foreground/70",
+                !row.variant.enabled && "line-through",
               )}
             >
               {row.variant.name}
