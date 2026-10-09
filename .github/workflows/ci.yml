@@ -1,4 +1,4 @@
-# ci.yml — frontend and desktop tests on every PR and push to main.
+# ci.yml — frontend and desktop tests, plus dependency audits, on every PR and push to main.
 name: Tests
 
 on:
@@ -39,3 +39,22 @@ jobs:
         with:
           workspaces: ./src-tauri -> target
       - run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  audit:
+    # Fails on known advisories: high/critical in shipped npm deps (devDependencies
+    # are not packaged), and any RustSec vulnerability in src-tauri/Cargo.lock.
+    # RustSec warnings (unmaintained/unsound) are reported but do not fail.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write # audit-check posts its report as a check run
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm audit --omit=dev --audit-level=high
+      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: src-tauri
