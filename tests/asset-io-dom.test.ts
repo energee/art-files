@@ -65,3 +65,20 @@ it("readRaster closes the decoded bitmap even when the preview encode fails", as
   expect(close).toHaveBeenCalledOnce();
   vi.unstubAllGlobals();
 });
+
+it("readRaster reads the aspect before closing the bitmap (a closed bitmap reports 0×0)", async () => {
+  class FakeBitmap {
+    w = 4; h = 2;
+    get width() { return this.w; }
+    get height() { return this.h; }
+    close() { this.w = 0; this.h = 0; }
+  }
+  vi.stubGlobal("ImageBitmap", FakeBitmap);
+  vi.stubGlobal("createImageBitmap", vi.fn(async () => new FakeBitmap()));
+  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test/3");
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage() {} } as never);
+  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((cb) => cb(new Blob([new Uint8Array([7])])));
+  const r = await readRaster(new File([new Uint8Array([1])], "t.png"));
+  expect(r.aspect).toBe(2);
+  vi.unstubAllGlobals();
+});

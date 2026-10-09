@@ -132,6 +132,8 @@ export async function readRaster(f: File): Promise<LoadedRaster> {
     f.arrayBuffer().then((b) => new Uint8Array(b)),
     passthrough ? createImageBitmap(f) : decodeToCanvas(f),
   ]);
+  // Read before the close below: a closed ImageBitmap reports 0×0.
+  const aspect = decoded.width / decoded.height;
   let bytes: Uint8Array, previewBytes: Uint8Array;
   try {
     [bytes, previewBytes] = await Promise.all([
@@ -140,7 +142,6 @@ export async function readRaster(f: File): Promise<LoadedRaster> {
   } finally {
     if (decoded instanceof ImageBitmap) decoded.close();
   }
-  const aspect = decoded.width / decoded.height;
   return {
     srcBytes, bytes, previewBytes, aspect, name: f.name,
     kind: passthrough ? rasterKind(f.name) : "png", previewUrl: URL.createObjectURL(f),
