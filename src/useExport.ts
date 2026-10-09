@@ -81,9 +81,10 @@ export function useExport({
    *  keep the plain-download fallback. */
   async function saveVia(bytes: Uint8Array, name: string, type: string) {
     const extension = name.slice(name.lastIndexOf(".") + 1);
+    const description = `${extension.toUpperCase()} file`;
     return await saveThrough(bytes, {
-      name, type, filter: { name: `${extension.toUpperCase()} file`, extensions: [extension] },
-      types: [{ description: `${extension.toUpperCase()} file`, accept: { [type]: [`.${extension}`] } }],
+      name, type, filter: { name: description, extensions: [extension] },
+      types: [{ description, accept: { [type]: [`.${extension}`] } }],
     }, saveBytes);
   }
 
