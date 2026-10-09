@@ -8,10 +8,24 @@ import { describe, expect, it } from "vitest";
 const ROOT = resolve(__dirname, "..");
 const WORKFLOWS = resolve(ROOT, ".github/workflows");
 
+/** "24", "v24.11" or "24.11.0" as [major, minor, patch]; a missing part is
+ * Infinity because setup-node resolves it to the newest release. */
+function nvmrcVersion(text: string): number[] {
+  const match = /^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?$/.exec(text.trim());
+  if (!match) throw new Error(`.nvmrc must name a version number, got ${JSON.stringify(text)}`);
+  return match.slice(1).map((part) => (part === undefined ? Infinity : Number(part)));
+}
+
+/** True when version `a` is at least `b`, part by part. */
+function atLeast(a: number[], b: number[]): boolean {
+  for (let i = 0; i < 3; i += 1) if (a[i] !== b[i]) return a[i] > b[i];
+  return true;
+}
+
 describe("one pinned Node version (#423)", () => {
   const text = new Map(
     readdirSync(WORKFLOWS)
-      .filter((f) => f.endsWith(".yml"))
+      .filter((f) => /\.ya?ml$/.test(f))
       .map((f) => [f, readFileSync(resolve(WORKFLOWS, f), "utf8")]),
   );
   const withSetupNode = [...text.keys()].filter((f) => text.get(f)!.includes("actions/setup-node"));
@@ -28,15 +42,26 @@ describe("one pinned Node version (#423)", () => {
       .filter((step) => step.includes("actions/setup-node"));
     for (const step of steps) {
       expect(step).toMatch(/node-version-file:\s*\.nvmrc/);
-      expect(step).not.toMatch(/node-version:/);
+      // A key at line start, so a comment that mentions it doesn't count.
+      expect(step).not.toMatch(/^\s*node-version:/m);
     }
   });
 
-  it(".nvmrc names a major that package.json engines accepts", () => {
-    const major = Number(readFileSync(resolve(ROOT, ".nvmrc"), "utf8").trim());
+  it(".nvmrc names a version that package.json engines accepts", () => {
+    const pinned = nvmrcVersion(readFileSync(resolve(ROOT, ".nvmrc"), "utf8"));
     const engines = JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8")).engines.node as string;
-    const floor = Number(/>=\s*(\d+)/.exec(engines)?.[1]);
-    expect(Number.isInteger(major)).toBe(true);
-    expect(major).toBeGreaterThanOrEqual(floor);
+    const floor = /^>=\s*(\d+)\.(\d+)\.(\d+)$/.exec(engines.trim());
+    expect(floor, `engines.node ${engines} is not a >=x.y.z floor; update this test`).not.toBeNull();
+    expect(atLeast(pinned, floor!.slice(1).map(Number))).toBe(true);
+  });
+
+  it("parses the .nvmrc forms setup-node accepts", () => {
+    expect(nvmrcVersion("24\n")).toEqual([24, Infinity, Infinity]);
+    expect(nvmrcVersion("v24.11.0")).toEqual([24, 11, 0]);
+    expect(atLeast(nvmrcVersion("24"), [24, 2, 0])).toBe(true);
+    expect(atLeast(nvmrcVersion("24.11.0"), [24, 2, 0])).toBe(true);
+    expect(atLeast(nvmrcVersion("24.1.0"), [24, 2, 0])).toBe(false);
+    expect(atLeast(nvmrcVersion("23"), [24, 2, 0])).toBe(false);
+    expect(() => nvmrcVersion("lts/jod")).toThrow();
   });
 });
