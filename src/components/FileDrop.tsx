@@ -1,10 +1,12 @@
 // FileDrop.tsx — drag-and-drop/click file target built on react-dropzone
 // (keyboard, focus, and aria handled by the library), with an image
-// thumbnail on a checkerboard and inline error text.
-import { useState } from "react";
+// thumbnail on a checkerboard and inline error text. Its X clears at once
+// with no confirm, so the emptied well says how to get the file back (#426).
+import { useRef, useState } from "react";
 import { useDropzone, type Accept } from "react-dropzone";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { shortcutLabel } from "@/keys";
 import { cn } from "@/lib/utils";
 
 // The classic light transparency checker, deliberately NOT theme-tinted: a
@@ -24,13 +26,33 @@ export function FileDrop(props: {
   previewUrl?: string;
   onFile: (f: File) => void;
   /** Removes the loaded file. The X only renders while a file is loaded
-   *  AND a handler is given, so drops without one look as before. */
-  onClear?: () => void;
+   *  AND a handler is given, so drops without one look as before. Return an
+   *  undo when the clear is NOT in the document history (the texture and
+   *  mask slots): the well offers it as an Undo button. Return nothing when
+   *  it is, and the note names ⌘Z instead. */
+  onClear?: () => (() => void) | void;
 }) {
   // The rejection belongs to the file shown when it happened: once another
   // file loads (by the window overlay, Open, or Remove) it no longer applies.
   const [rejection, setRejection] = useState<{ text: string; shown?: string } | null>(null);
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  /** The file the X just removed, and the caller's undo if it gave one.
+   *  Shown only while the well stays empty: a drop, an Open or an undo that
+   *  fills it makes the note moot. */
+  const [cleared, setCleared] = useState<{ name: string; undo?: () => void } | null>(null);
+  // A file loading AFTER the clear retires the note for good, so a later
+  // empty well (an Open without this asset) never revives a stale name and
+  // undo. Keyed on the file name changing, not on it being set: the X's own
+  // render still shows the old file until the caller's clear lands. State
+  // adjusted during render, React's pattern for resetting on a prop change.
+  const [shown, setShown] = useState(props.fileName);
+  if (shown !== props.fileName) {
+    setShown(props.fileName);
+    if (props.fileName) setCleared(null);
+  }
+  /** Set by the X when it offers an Undo: the X unmounts with the file, so
+   *  focus moves to the Undo once it mounts instead of falling to <body>. */
+  const focusUndo = useRef(false);
+  const { getRootProps, getInputProps, isDragActive, rootRef } = useDropzone({
     accept: props.accept,
     multiple: false,
     onDrop: (files, rejected) => {
@@ -83,13 +105,40 @@ export function FileDrop(props: {
             title="Remove"
             // stopPropagation: the whole drop target is a click-to-browse
             // zone; the X must clear, not open the file picker.
-            onClick={(e) => { e.stopPropagation(); props.onClear?.(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              const undo = props.onClear?.() ?? undefined;
+              setCleared({ name: props.fileName!, undo });
+              // The X goes with the file: keep keyboard focus in the well.
+              if (undo) focusUndo.current = true;
+              else rootRef.current?.focus();
+            }}
             className="ml-auto size-5 shrink-0 text-muted-foreground hover:text-foreground"
           >
             <X className="size-3.5" />
           </Button>
         )}
         <input {...getInputProps()} />
+      </div>
+      {/* Always mounted: a live region announces text added to it, not one
+          inserted with its text. */}
+      <div role="status">
+        {cleared && !props.fileName && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Removed {cleared.name}.{" "}
+            {cleared.undo ? (
+              <Button type="button" size="xs" variant="link" className="h-auto p-0 text-xs"
+                ref={(el) => { if (el && focusUndo.current) { focusUndo.current = false; el.focus(); } }}
+                onClick={() => {
+                  // This button goes with the note: hand focus back to the well.
+                  rootRef.current?.focus();
+                  setCleared(null); cleared.undo!();
+                }}>
+                Undo
+              </Button>
+            ) : `${shortcutLabel("⌘Z")} brings it back.`}
+          </p>
+        )}
       </div>
       {rejection && rejection.shown === props.fileName && (
         <p role="alert" className="mt-1 text-xs text-destructive-text">{rejection.text}</p>

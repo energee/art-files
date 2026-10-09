@@ -46,7 +46,7 @@ around user-visible capability; the engineering endgame is deferred:
   element migrates only when keeping its branch blocks a user-facing change,
   each behind its existing byte-identity golden, branch deletion last. It is
   acceptable for some branches to never migrate. Tracked in
-  `.agents/ledger.md` (`builtin-to-generic-layer-migration`).
+  `.agents/ledger-archive.md` (`builtin-to-generic-layer-migration`).
 - **v1 order**: (1) parity locks, including a Collab PSD golden that carries
   REAL partner art (the current one is vacuous); (2) `.master` ZIP;
   (3) master-ordered draw order — renderers interleave `customLayers` at

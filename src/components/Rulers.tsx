@@ -2,7 +2,8 @@
 // registered to the transformed 2D PDF page. Guides is one switch for every
 // guide kind here (margin, center, manual) and for creating new ones; a manual
 // guide is removed from the × that appears in the ruler when its handle is
-// hovered, by dragging it back into a ruler, or with Delete while focused.
+// hovered or selected (pressed or tabbed to, so a tap shows it on touch), by
+// dragging it back into a ruler, or with Delete while focused.
 import {
   useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type RefObject,
 } from "react";
