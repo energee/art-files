@@ -593,3 +593,11 @@ no status, no attempts, no delta.
 - delta: the three surfaces load on first open (PR #468). Entry chunk 892.6 kB → 764.1 kB at first measure; eager JS total about -60 kB. Review fixes: while a dialog's chunk loads, a hidden dialog-content placeholder (LazyDialog.tsx) keeps dialogOpen() true so keys stay off the tab (#244); a blocked first ⌘K no longer fetches the palette; a failed load names the way out (reload), and one DialogLoadFailed replaces two copies
 - evidence: on fix/410, npx tsc --noEmit and npm run lint (zero warnings) clean; 20 related vitest files / 105 tests pass (app-v3-dom hit a 5 s timeout once under parallel load, then 27/27 passed alone); new tests/commandmenu-loading-dom.test.tsx fails on the pre-fix CommandMenu
 - release: binary-impacting; CHANGELOG [Unreleased] / Changed bullet present
+
+## 2026-10-08 issue-423-node-pin
+- finding: [maint/med] #423 — ci.yml ran Node 24 while release.yml and release-metadata.yml ran lts/*, so a new LTS could build a release on a Node major CI never tested
+- status: done
+- attempts: 1/3
+- delta: `.nvmrc` (24) is the one pin; every setup-node step uses `node-version-file: .nvmrc` (PR #474). tests/node-version-pin.test.ts fails if a workflow names its own node-version or `.nvmrc` falls below engines `>=24.2.0`. Left as-is: the two publish-update-feed jobs only run `node -p` to read package.json's version on the runner's Node; `.nvmrc` pins the major, not the patch
+- evidence: on fix/423, npx vitest run tests/node-version-pin.test.ts (6 passed), npx tsc --noEmit and npm run lint (zero warnings) clean, node scripts/check-release.mjs origin/main passed
+- release: non-binary-impacting (CI config, tests, docs and agent memory); no release queued

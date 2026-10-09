@@ -23,6 +23,8 @@ blue = white ink and white = knockout. Operator guide is the Fumadocs site in
   `package.json`; there is no root `docs:dev` script)
 - Lint: `npm run lint` (zero warnings)
 - Release metadata: `node scripts/check-release.mjs <base-ref>`
+- Node version: `.nvmrc` is the one pin; every workflow's setup-node reads it
+  (`node-version-file`), and it must satisfy `engines` in `package.json`.
 
 Validation results belong in `ledger.md` with the revision or branch tested;
 there is no blanket verification stamp for commands that changed independently.
