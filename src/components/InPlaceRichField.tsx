@@ -37,7 +37,7 @@ function paintFor(faces: { base: Face; bold: Face }, st: Style): LinePaint {
  *  the sidebar field (useTextField), but the contenteditable sits over the
  *  layer's own spot on the sheet at label metrics, so `**bold**` and
  *  `_white ink_` show as bold and white ink rather than as punctuation. The
- *  canvas skips the layer for the session (see onEditSession), so this DOM
+ *  canvas skips the layer for the session (see PreviewCompare's onEditSession), so this DOM
  *  text IS the layer while you type, and the Header/Bold/White-ink toggles
  *  float above it as a fixed pill, portaled to <body> so App's CSS zoom
  *  scales the text with the artwork but never the toolbar chrome. */
@@ -53,7 +53,7 @@ export function InPlaceRichField(props: {
   /** Ends the session: Escape asks to undo it (`cancel`). */
   onClose: (cancel: boolean) => void;
   /** Click-away guards — the field wrapper and the portaled pill both count
-   *  as "inside the session" (see the pointerdown capture effect). */
+   *  as "inside the session" (see PreviewCompare's pointerdown capture effect). */
   fieldRef: React.RefObject<HTMLDivElement | null>;
   toolbarRef: React.RefObject<HTMLDivElement | null>;
 }) {

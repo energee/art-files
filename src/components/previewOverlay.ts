@@ -8,7 +8,6 @@ import type { ResizeHandle } from "@/model/edit";
 import { ART, PAGE } from "@/layout";
 import type { Style } from "@/types";
 
-/** The selection box's four corner ticks, each already placed. */
 /** The eight selection ticks, which double as resize handles. hx/hy name
  *  the grabbed edge (-1 left/top, 0 not grabbed, 1 right/bottom); position
  *  and cursor follow from them. */

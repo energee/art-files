@@ -18,7 +18,9 @@
 //                  clearing and reset badges, referenced asset ids
 //   editGestures — bind/unbind, snapping, the drag and resize patches
 //   editVariants — enabled versions; add/remove/rename a variant
-//   editLabel    — label values/overrides and THE ROUTING RULE (patchLayers)
+//   editLabel    — label values/overrides and the label-first rule
+//                  (patchLayers: an inspector edit lands on the label, only
+//                  the fill contract on the master)
 //   editSave     — dirty check, Untitled restore, Save Master review
 export type { Doc } from "./editRecords";
 export {

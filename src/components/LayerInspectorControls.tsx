@@ -169,8 +169,8 @@ export function Badge(props: {
 }
 
 /** A number that may be ABSENT (text wrap width, image height): blank means
- *  "none"/"auto" and emits `undefined` — see the file header for what the
- *  parent must do with that. The same NumberField and InputGroup as
+ *  "none"/"auto" and emits `undefined` — see LayerInspector.tsx's header for
+ *  what the parent must do with that. The same NumberField and InputGroup as
  *  ScrubField, without the scrub, so it sits in the same right-hand column. */
 export function BlankableField(props: {
   id: string; label: string; unit: string; placeholder: string;

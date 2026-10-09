@@ -1,6 +1,7 @@
 // src/model/editLabel.ts — edit.ts's label family: a label's values and
-// overrides, and THE ROUTING RULE (patchLayers) that sends a property edit to
-// the label and only the fill contract to the master. checkLabelBindings is
+// overrides, and the label-first rule (patchLayers) that sends a property
+// edit to the label and only the fill contract to the master; patchLayer, the
+// Design write path it hands the fill contract to, is editLayers'. checkLabelBindings is
 // the label-side twin of parseMaster's binding check.
 import type { LabelFile, LayerValue, Master } from "./layers";
 import { validateBindings } from "./layers";
