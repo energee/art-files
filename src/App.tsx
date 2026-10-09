@@ -895,8 +895,8 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  point the layer back at it (#75); see liveImages. */
   async function onLayerImage(layer: ImageLayer, f: File) {
     const assetId = mintCustomAssetId();
-    const file = previewOnce(await readCustomImage(f), f);
-    setCustomImages((old) => ({ ...old, [assetId]: file() }));
+    const mint = previewOnce(await readCustomImage(f), f);
+    setCustomImages((old) => ({ ...old, [assetId]: mint() }));
     setContent(layer, assetId);
   }
 
