@@ -21,7 +21,7 @@ import {
 import { labelGuides, strokeSpec, lineRuns, rotatedRuns, justifiedRotatedRuns,
   type Face, type MeasureFace, type Placed, type PlacedBarcode, type PlanArt, type PlanAssets } from "./planShared";
 
-/** Which collab logo slots hold art — the same fact hittest tracks: the
+/** Which collab logo slots hold art: the
  *  renderers skip an empty slot, so its text must not be planned either. */
 export interface CollabSlots { left: boolean; center: boolean }
 
@@ -37,7 +37,7 @@ export interface PlanOpts {
   collab?: CollabSlots;
   /** With assets, planLabel emits the COMPLETE display list — text, laurel,
    *  QR, collab art, barcode — in drawElements' historical draw order.
-   *  Without assets: text only, gated by opts.collab — hittest's contract. */
+   *  Without assets: text only, gated by opts.collab. */
   assets?: PlanAssets;
 }
 
@@ -47,17 +47,16 @@ export interface PlanOpts {
  *  intrinsic aspect. */
 /** The two collab slots' fit ENVELOPES — the unscaled frame each slot's art
  *  aspect-fits into. The ONE spelling shared by collabItems' call sites
- *  below and the hit-tester's envelope boxes (hittest.ts), so slot placement
- *  cannot drift between draw and hit-test. The slot's scale/offsetY knobs
+ *  below. The slot's scale/offsetY knobs
  *  are applied by each consumer on top, identically (see collabItems). */
-export function collabLeftFrame(descLineCount: number) {
+function collabLeftFrame(descLineCount: number) {
   const flow = L.collabLeftFlow(descLineCount);
   return {
     x: L.COLLAB_LEFT.x, top: flow.logoTop,
     maxW: L.COLLAB_LEFT.maxW, maxH: L.COLLAB_LEFT.maxH,
   };
 }
-export function collabCenterFrame(logoBottom: number) {
+function collabCenterFrame(logoBottom: number) {
   return {
     cx: L.COLLAB_CENTER.cx, top: logoBottom + L.COLLAB_CENTER.gapAbove,
     maxW: L.COLLAB_CENTER.maxW, maxH: L.COLLAB_CENTER.maxH,
@@ -144,16 +143,14 @@ function customBarcodeBars(
  *  zones (quietModulesFor; zero for code-128) wide, `h` tall plus the digit
  *  band when shown — or null when its (raw,
  *  possibly unexpanded — see CustomBarcodeLayer.value) payload fails the
- *  symbology's own validator, so hittest/dragTarget2 and customBarcodeItem
- *  below can't disagree about which layers are even present. Exported so
- *  hittest.ts shares this exact sizing instead of re-deriving the digit-band
- *  math; elements.ts's dragTarget2 keeps its own small local copy of this
+ *  symbology's own validator, so dragTarget2 and customBarcodeItem
+ *  below can't disagree about which layers are even present. elements.ts's dragTarget2 keeps its own small local copy of this
  *  function (customBarcodeDragBox — a runtime value-import back into plan.ts
  *  would make the two modules mutually dependent), but imports the SAME two
  *  ratio constants from barcode.ts that this function uses below, so the two
  *  copies' math cannot drift apart even though the functions themselves
  *  aren't shared. */
-export function customBarcodeBox(
+function customBarcodeBox(
   layer: CustomBarcodeLayer,
 ): { w: number; h: number; quiet: number; pattern: ReturnType<typeof encodeFor> } | null {
   if (!validateFor(layer.symbology, layer.value).ok) return null;
@@ -254,14 +251,14 @@ export function customBarcodeItem(
 }
 
 /** Every display-list item of the label, in drawElements' order. Without
- *  `opts.assets` the list is text only — hittest's contract, and the numbers
+ *  `opts.assets` the list is text only, and the numbers
  *  match what planLabel has always produced. With it, the laurel, QR, collab
  *  art and barcode interleave at their historical draw positions. */
 export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {}): Placed[] {
   const skip = (id: ElementId) => !!opts.skip?.has(id);
   const A = opts.assets;
   // One source for the slot gates: opts.collab when the caller knows which
-  // slots HOLD art (hittest's booleans; the PDF build, whose art is nulled
+  // slots HOLD art (the PDF build, whose art is nulled
   // out for a hidden layer), the art itself otherwise.
   const slots = opts.collab ?? { left: !!A?.collabLeft, center: !!A?.collabCenter };
   const out: Placed[] = [];
@@ -333,7 +330,7 @@ export function planLabel(cfg: LabelConfig, m: MeasureFace, opts: PlanOpts = {})
     }));
 
   // Wrapping measures with the warning's own tracking and inline runs — the
-  // exact measure both renderers and hittest wrap with today.
+  // exact measure the renderers wrap with today.
   if (!skip("warning")) {
     const warnLines = wrapWarning(
       warningMeasure((t, bold) => m(t, L.WARNING.size, bold ? "bold" : "regular"),
