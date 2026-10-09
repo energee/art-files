@@ -339,6 +339,14 @@ no status, no attempts, no delta.
 - evidence: on fix/410, npx tsc --noEmit and npm run lint (zero warnings) clean; 20 related vitest files / 105 tests pass (app-v3-dom hit a 5 s timeout once under parallel load, then 27/27 passed alone); new tests/commandmenu-loading-dom.test.tsx fails on the pre-fix CommandMenu
 - release: binary-impacting; CHANGELOG [Unreleased] / Changed bullet present
 
+## 2026-10-08 issue-438-strokecap-tools
+- finding: [maint/low] #438 — dev-only strokecap.html sat in the repo root beside index.html
+- status: done
+- attempts: 1/3
+- delta: page moved to tools/strokecap.html (PR #482); npm run strokecap opens /tools/strokecap.html; README Develop names it; tests/dev-pages.test.ts guards the script path and the page's module script. Review fixes: test resolves paths from __dirname, regex accepts --open with or without the leading slash
+- evidence: on fix/438 based on b40a2c2, npx vitest run tests/dev-pages.test.ts passes (2 tests); npx tsc --noEmit and npm run lint (zero warnings) clean; node scripts/check-release.mjs origin/main passes
+- release: non-binary-impacting in effect (dev page, tests, docs); package.json script change counts as a build input, so the CHANGELOG [Unreleased] / Changed bullet is present
+
 ## 2026-10-08 issue-437-ledger-archive
 - finding: [KISS/low] #437 — .agents/ledger.md had grown to 595 lines, mostly entries closed more than a month ago, and the parity-harness-retired delta still pointed at "pnpm-lock hygiene work" that is finished
 - status: done
