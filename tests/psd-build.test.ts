@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import { readPsd } from "ag-psd";
 import { readFileSync } from "node:fs";
-import fontkit from "@pdf-lib/fontkit";
+import { openFont } from "../src/fontkit";
 import { buildPsd, digitGroupPaths, qrBeziers, PSD_DOC, type PsdAssets } from "../src/psd/build";
 import { qrShapes } from "../src/qr";
 import * as L from "../src/layout";
@@ -336,7 +336,7 @@ describe("added layers", () => {
  *  digits must advance the same way, or a kern-table master font (Barlow
  *  Condensed kerns "41" by 46/1000 em) lands its digits off the PDF's. */
 describe("barcode digit outlines advance unkerned, like the PDF (#86)", () => {
-  const fk = fontkit.create(readFileSync(new URL("../src/assets/fonts/BarlowCondensed-Regular.ttf", import.meta.url))) as any;
+  const fk = openFont(readFileSync(new URL("../src/assets/fonts/BarlowCondensed-Regular.ttf", import.meta.url)));
   it("places each digit at the previous digits' raw advance", () => {
     const size = 10;
     const pair = digitGroupPaths(fk, "41", size, false, 0, 0).bbox;

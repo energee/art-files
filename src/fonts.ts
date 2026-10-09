@@ -5,6 +5,9 @@
 // share. Measurement is unkerned, matching the PDF's drawText (#86). Text
 // layers may override the master family; the same family choice reaches
 // measurement, drawing, the editor and export. Loaded faces are cached.
+// Parsing font bytes with fontkit (glyph outlines and metrics) goes through
+// fontkit.ts instead: it must stay Node-safe, and this module's ?url imports
+// are not.
 import poppinsRegular from "./assets/fonts/Poppins-Regular.ttf?url";
 import poppinsSemiBold from "./assets/fonts/Poppins-SemiBold.ttf?url";
 import poppinsBold from "./assets/fonts/Poppins-Bold.ttf?url";
