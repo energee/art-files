@@ -1,11 +1,11 @@
 // textheight.ts — physical glyph heights from the same font outlines as export.
 // Loaded lazily by the inspector; point geometry makes this independent of DPI.
-import fontkit, { type Font } from "@pdf-lib/fontkit";
 import type { Face, PlacedText } from "./plan";
 import type { TextLayer } from "./model/layers";
 import type { FontFamilyId } from "./fontCatalog";
 import { planText } from "./planLayers";
 import { loadFonts } from "./pdf/fonts";
+import { openFont, type OutlineFont } from "./fontkit";
 
 export interface CharacterHeights { min: number; max: number; cpi: number }
 export type HeightMeasure = (layer: TextLayer) => CharacterHeights | null;
@@ -37,7 +37,7 @@ export function charactersPerInch(runs: readonly PlacedText[]): number {
 
 export function createHeightMeasure(bytes: Record<Face, Uint8Array>): HeightMeasure {
   const fonts = Object.fromEntries(Object.entries(bytes).map(([face, data]) =>
-    [face, fontkit.create(data)])) as Record<Face, Font>;
+    [face, openFont(data)])) as Record<Face, OutlineFont>;
   return (layer) => {
     const runs = planText(layer, (text, size, face) =>
       fonts[face].layout(text).glyphs.reduce((sum, glyph) => sum + glyph.advanceWidth, 0)

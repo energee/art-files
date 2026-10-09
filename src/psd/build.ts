@@ -30,12 +30,12 @@
 // Rotated text rides on the layer's affine transform. Do NOT reach for
 // ag-psd's `orientation: 'vertical'` — that is CJK vertical writing and its
 // own docs warn it can emit a broken file.
-import fontkit from "@pdf-lib/fontkit";
 // writePsdUint8Array, not writePsdBuffer — the latter returns a Node Buffer
 // and throws "Buffer not supported on this platform" in the browser.
 import { writePsdUint8Array, type BezierPath, type Layer, type Psd } from "ag-psd";
 import type { Fill } from "../types";
 import { FONT_FAMILIES, type FontFamilyId } from "../fontCatalog";
+import { openFont, type OutlineFont } from "../fontkit";
 import * as L from "../layout";
 import type { Face, PlacedBarcode, PlacedPaths, PlacedText } from "../plan";
 import type { CollabImage } from "../pdf/build";
@@ -310,16 +310,6 @@ function svgToPaths(d: string, dx: number, dy: number): BezierPath[] {
   return out;
 }
 
-/** One glyph-outline command as fontkit's Path emits it at runtime — the
- *  public `Path` interface only exposes builder methods, but every glyph's
- *  outline is really this recorded command list (`path.commands`). */
-type GlyphCmd = { command: string; args: number[] };
-type FKFont = { unitsPerEm: number; layout(text: string): FKGlyphRun };
-interface FKGlyphRun {
-  glyphs: { advanceWidth: number; path: { commands: GlyphCmd[] } }[];
-  positions: { xOffset: number; yOffset: number }[];
-}
-
 /** One digit group's glyph outlines as closed bezier subpaths in label
  *  points, algebraically reproducing one of the two placements
  *  PlacedBarcode.rotated selects between (see that field's own doc) instead
@@ -354,7 +344,7 @@ interface FKGlyphRun {
  *  because both maps are affine, and affine maps preserve the barycentric
  *  combination the elevation formula is built from. */
 export function digitGroupPaths(
-  font: FKFont,
+  font: OutlineFont,
   text: string,
   size: number,
   rotated: boolean,
@@ -620,7 +610,7 @@ function pageLayer(name: string, item: PlacedPage, pixels: Rgba): Layer {
 }
 
 function buildLayers(
-  items: readonly PlacedLayer[], assets: PsdAssets, fk: FKFont, mode: PsdMode, opts: PsdOpts,
+  items: readonly PlacedLayer[], assets: PsdAssets, fk: OutlineFont, mode: PsdMode, opts: PsdOpts,
 ): Layer[] {
   const groups: Layer[] = [];
   const byId = new Map((opts.layers ?? []).map((l) => [l.id, l]));
@@ -704,7 +694,7 @@ function buildLayers(
  *  stroke every other element carries, so Photoshop dilates bars and digit
  *  outlines alike. `S` (resolved outer-stroke width; 0 = no halo) gates the
  *  stroke identically to the PDF's own `if (S > 0)`. */
-function barcodeLayer(name: string, bc: PlacedBarcode, fk: FKFont, mode: PsdMode): Layer {
+function barcodeLayer(name: string, bc: PlacedBarcode, fk: OutlineFont, mode: PsdMode): Layer {
   const S = bc.S;
   // Rotated (the template): anchorY is the string-start Y a `rotate(90)`
   // PDF drawText lands at (see digitGroupPaths for the derivation). Upright
@@ -781,13 +771,9 @@ export async function buildPsd(
   items: readonly PlacedLayer[], assets: PsdAssets, mode: PsdMode = "art", opts: PsdOpts = {},
 ): Promise<Uint8Array> {
   // The merged barcode layer needs fontkit's raw glyph outlines for the
-  // digits, which pdf-lib's PDFFont wrapper doesn't expose — @pdf-lib/
-  // fontkit's own `create` gives back the underlying Font directly. Its
-  // public `.d.ts` types `Glyph.path` as the builder-method-only `Path`
-  // interface and omits the `commands` array those methods actually record
-  // to (see digitGroupPaths); the cast bridges that gap in the type
-  // declarations, not the runtime shape, which fontkit has always recorded.
-  const digitFont = fontkit.create(assets.fonts.regular) as unknown as FKFont;
+  // digits, which pdf-lib's PDFFont wrapper doesn't expose; openFont gives
+  // back the underlying Font with its recorded outline commands typed.
+  const digitFont = openFont(assets.fonts.regular);
   const psd: Psd = {
     width: PSD_DOC.w,
     height: PSD_DOC.h,
