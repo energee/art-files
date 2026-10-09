@@ -478,10 +478,14 @@ export default function TabsShell() {
                 // both chip fills (active bg-background, hovered bg-muted)
                 "rounded p-0.5 outline-none hover:bg-foreground/10 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring",
                 // A saved tab's × waits for hover, except on the active tab,
-                // where it rests dimmed: touch has no hover, and a fully
-                // hidden × was never discovered (#424). An unsaved tab
-                // always shows its •.
-                !unsaved(t) && ["group-hover:opacity-100", t.id === state.active ? "opacity-60" : "opacity-0"],
+                // where it rests dimmed (opacity-40, like the selected layer
+                // row's menu in LayerList): touch has no hover, and a fully
+                // hidden × was never discovered (#424). A hidden × also takes
+                // no taps, so touching an inactive tab's end switches to it
+                // instead of closing it. An unsaved tab always shows its •.
+                !unsaved(t) && ["group-hover:opacity-100", t.id === state.active
+                  ? "opacity-40"
+                  : "pointer-events-none opacity-0 group-hover:pointer-events-auto"],
               )}>
               {unsaved(t) ? (
                 <>

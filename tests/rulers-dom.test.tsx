@@ -238,4 +238,5 @@ it("focuses a guide's handle when it is pressed, revealing its ×", () => {
   const remove = removeButton("vertical")!;
   expect(remove.parentElement!.contains(handle)).toBe(true);
   expect(remove.className).toContain("group-focus-within:opacity-100");
+  expect(remove.className).toContain("group-focus-within:pointer-events-auto");
 });

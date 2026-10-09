@@ -183,5 +183,9 @@ it("shows the active tab's close button without hover", async () => {
   const closeBtns = [...document.querySelectorAll<HTMLElement>('[aria-label^="Close "]')];
   expect(tabs()[1].getAttribute("aria-selected")).toBe("true");
   expect(closeBtns[1].classList.contains("opacity-0")).toBe(false);
+  expect(closeBtns[1].classList.contains("opacity-40")).toBe(true);
   expect(closeBtns[0].classList.contains("opacity-0")).toBe(true);
+  // the hidden × must not catch a tap meant to switch to that tab
+  expect(closeBtns[0].classList.contains("pointer-events-none")).toBe(true);
+  expect(closeBtns[1].classList.contains("pointer-events-none")).toBe(false);
 });
