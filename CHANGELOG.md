@@ -9,6 +9,9 @@ that section to the new version (see .agents/release-steward.md).
 ### Changed
 - **Internal cleanup, no visible change.** The dev-only stroke magnifier page moved from the repo root to `tools/strokecap.html`; `npm run strokecap` opens it there.
 
+### Fixed
+- **The active tab's close button shows without hovering.** It rests dimmed on the selected tab so it can be found and tapped on touch; other tabs still show theirs on hover.
+
 ## [0.1.105] - 2026-10-09
 
 ### Fixed
@@ -23,7 +26,6 @@ that section to the new version (see .agents/release-steward.md).
 - **Faster typing in the preview.** The white-ink plate is no longer repainted on every edit while the comparison divider hides it; it paints when the divider reveals it.
 - **A malformed .label is refused instead of breaking the canvas.** A shared label whose values or overrides have the wrong shape (non-text values, non-numeric positions, an incomplete added layer) now fails to open with a clear error instead of crashing the preview or saving bad geometry back.
 - **Exports say what they're building.** While PDFs or PSDs export, the blurred preview reads "Building PDFs…" or "Building PSDs…" instead of "rendering preview…", so a long export no longer looks like a stalled preview. A PSD export shows the note even while the preview is still loading, and screen readers announce it.
-- **The active tab's close button shows without hovering.** It rests dimmed on the selected tab so it can be found and tapped on touch; other tabs still show theirs on hover.
 - **Background failures show up instead of vanishing.** A save, export or open that fails outside its own error handling now shows a dismissible alert with the reason, rather than failing silently.
 - **Two windows saving masters at once no longer drop one from the library.** Each remembered master now has its own storage entry, so a save in one window can't overwrite a master another window just added. An existing library carries over on the next save. The Master menu now lists remembered masters by name.
 - **Saving an oversized label says why.** A label whose art exceeds the file size limit now shows "Could not save project" instead of failing silently, and Save in the close-tab prompt keeps the tab open. An image too large to encode reports its size instead of a cryptic error.
