@@ -205,29 +205,36 @@ const segmentsOf = (p: string): string[] => p.replace(/\\/g, "/").split("/");
 const folderOf = (p: string): string => segmentsOf(p).slice(0, -1).join("/");
 
 /** The masterHint a .label saved at `labelPath` stores for the master file at
- *  `masterPath`: relative to the label's folder (`x.master`, `../lib/x.master`),
- *  so a shared label carries no absolute path or username (#428). Undefined
- *  when no relative path exists (another drive). A bare name (a browser file)
- *  is kept as is, and so is the full path when there is no label path — a
+ *  `masterPath`: relative to the label's folder (`./x.master`,
+ *  `../lib/x.master`), so a shared label carries no absolute path or username
+ *  (#428). The `./` keeps it apart from a bare browser file name, which
+ *  hintPath leaves unresolved. Undefined when the two share nothing but the
+ *  root or drive (another drive, or a path that would climb to the root and
+ *  back down through the user's folders). A bare name (a browser file) is
+ *  kept as is, and so is the full path when there is no label path — a
  *  crash-recovery snapshot, which never leaves this machine. */
 export function labelRelativeHint(masterPath: string | undefined, labelPath?: string): string | undefined {
   if (!masterPath || !labelPath) return masterPath;
   const to = segmentsOf(masterPath);
   if (to.length === 1) return masterPath;
   const from = segmentsOf(labelPath).slice(0, -1);
-  if (!from.length || from[0] !== to[0]) return undefined;
+  // Drive letters compare case-insensitively: a dialog may return `c:`.
+  if (!from.length || from[0].toLowerCase() !== to[0].toLowerCase()) return undefined;
   let common = 1;
   while (common < from.length && common < to.length - 1 && from[common] === to[common]) common++;
-  return [...Array(from.length - common).fill(".."), ...to.slice(common)].join("/");
+  if (common === 1) return undefined;
+  const up = from.length - common;
+  return [...(up ? Array(up).fill("..") : ["."]), ...to.slice(common)].join("/");
 }
 
 /** A .label's masterHint as a full path: a label-relative hint (what Save
  *  writes since #428) joined to the folder of `labelPath`, in that path's
- *  separator. An absolute hint (older saves), or one with no label path to
- *  resolve against or that climbs above the root, is returned unchanged —
- *  hintTrusted then decides whether it may be read. */
+ *  separator. An absolute hint (older saves), a bare name with no separator
+ *  (a browser file name, never a path beside this label), or one with no
+ *  label path to resolve against or that climbs above the root, is returned
+ *  unchanged — hintTrusted then decides whether it may be read. */
 export function hintPath(hint: string, labelPath?: string): string {
-  if (!labelPath || /^([\\/]|[A-Za-z]:)/.test(hint)) return hint;
+  if (!labelPath || !/[\\/]/.test(hint) || /^([\\/]|[A-Za-z]:)/.test(hint)) return hint;
   const out = segmentsOf(labelPath).slice(0, -1);
   if (!out.length) return hint;
   for (const s of segmentsOf(hint)) {
@@ -355,9 +362,13 @@ async function resolveMaster(
   const held = !named && (followReplacement || (!indexFile && !hintFile)) ? await cachedMaster(id) : null;
   // A remembered copy is about to stand in, so it stays for the next open.
   if (indexFile) await (held ? retireIndexRow : forgetMaster)(id, indexFile.master.id);
-  // A row whose file no longer exists, with no remembered copy to stand in,
-  // names a master that can never open: drop it rather than list it forever.
-  else if (indexGone && !(held ?? await cachedMaster(id))) retireIndexRow(id);
+  // A library pick (id alone, no hint) of a row whose file no longer exists,
+  // with no remembered copy to stand in, names a master that can never open:
+  // drop it rather than list it forever. Only on a pick, which reports the
+  // failure: a label open or the launch-time default must not silently drop
+  // a row whose volume or share just isn't mounted yet. With no hint and no
+  // index file, `held` was looked up, so null means nothing is remembered.
+  else if (indexGone && !followReplacement && !hint && !held) retireIndexRow(id);
   if (named && named === hintFile) await adoptHint();
   if (named) return named;
   if (held) {

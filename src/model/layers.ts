@@ -264,7 +264,7 @@ export interface LabelFile {
   formatVersion: 3;
   masterId: string;
   /** The master file this label was saved against, relative to the label
-   *  (`x.master`, `../lib/x.master`) since #428; older saves hold an
+   *  (`./x.master`, `../lib/x.master`) since #428; older saves hold an
    *  absolute path. Read through masters.ts hintPath + hintTrusted. */
   masterHint?: string;
   enabledVariants: string[];

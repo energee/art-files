@@ -67,7 +67,9 @@ export function MasterPicker(props: {
   library: Record<string, LibraryEntry>;
   /** Resolves a library id to its Master (masters.ts's resolveMasterById) —
    *  async, since a library master may live on disk. Null means it could not
-   *  be read (moved, deleted, or corrupt). Called with the id alone: a
+   *  be read (moved, deleted, or corrupt); a row whose file is gone with no
+   *  remembered copy is dropped from the library then (#428). Called with
+   *  the id alone: a
    *  picker-driven resolve always has the index's own remembered path to
    *  fall back on, unlike resolveMasterById's optional second `hint`
    *  argument, which exists for a DIFFERENT caller — openProject, resolving

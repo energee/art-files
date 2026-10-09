@@ -242,10 +242,14 @@ was saved against) before the index's path for that id, since two files can
 share an id (#405). The tab's Save Master and the hint it saves name that file;
 the hint's file joins the index only when the index has no readable file for
 the id, so a shared label never takes over the operator's library entry. Save
-writes the hint relative to the label (`x.master`, `../lib/x.master`), so a
-shared label carries no absolute path or username (#428); an absolute hint
-from an older save is still read as written. A row whose file the OS reports
-missing, with no remembered copy to stand in, is dropped from the index. A
+writes the hint relative to the label (`./x.master`, `../lib/x.master`), so a
+shared label carries no absolute path or username (#428); when the two share
+only the root or are on different drives, no hint is written. An absolute hint
+from an older save is still read as written; a bare name (a browser file) is
+not resolved beside the label. A library pick of a row whose file the OS
+reports missing, with no remembered copy to stand in, drops the row; a label
+open or the launch-time default keeps it, since an unmounted volume reads as
+missing too. A
 missing master falls back to a picker.
 
 Stored as one localStorage key per master (`labellab.master:<id>`), not one

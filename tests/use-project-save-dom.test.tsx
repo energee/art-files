@@ -39,7 +39,7 @@ it("saveProject packs for the path the label is written to", async () => {
     remove: async () => undefined,
   }));
   const { useProjectSave: hook } = await import("@/useProjectSave");
-  const packedFor: string[] = [];
+  const packedFor: (string | undefined)[] = [];
   let api: ReturnType<typeof hook> | undefined;
   function Probe() {
     api = hook({
@@ -57,5 +57,46 @@ it("saveProject packs for the path the label is written to", async () => {
   expect(written).toEqual(["/Users/me/beers/a.label"]);
   act(() => root.unmount());
   vi.doUnmock("@tauri-apps/api/core");
+  vi.doUnmock("@tauri-apps/plugin-fs");
+});
+
+// #428 review: packing for the chosen destination must not move the size-cap
+// failure after the dialog. An oversized label fails before Save As asks
+// where; a new destination is packed again for its own path.
+it("saveProject fails an oversized label before the dialog, and repacks for Save As", async () => {
+  vi.resetModules();
+  vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+  const dialog = vi.fn(async () => "/Users/me/other/b.label");
+  vi.doMock("@tauri-apps/plugin-dialog", () => ({ save: dialog }));
+  vi.doMock("@tauri-apps/plugin-fs", () => ({
+    writeFile: async () => undefined, rename: async () => undefined, remove: async () => undefined,
+  }));
+  const { useProjectSave: hook } = await import("@/useProjectSave");
+  let tooBig = true;
+  const packedFor: (string | undefined)[] = [];
+  let api: ReturnType<typeof hook> | undefined;
+  function Probe() {
+    api = hook({
+      pack: (p) => {
+        packedFor.push(p);
+        if (tooBig) throw new Error("Archive is too large");
+        return new Uint8Array([1]);
+      },
+      exportBase: "x", onSaved: () => true, setLoadError: vi.fn(),
+      startSaveBatch: () => undefined, saveBytes: () => undefined,
+    });
+    return null;
+  }
+  const root = createRoot(document.createElement("div"));
+  await act(async () => { root.render(createElement(Probe)); });
+  await expect(api!.saveProject(true)).resolves.toBe(false);
+  expect(dialog).not.toHaveBeenCalled();
+  tooBig = false;
+  packedFor.length = 0;
+  await expect(api!.saveProject(true)).resolves.toBe(true);
+  expect(packedFor).toEqual([undefined, "/Users/me/other/b.label"]);
+  act(() => root.unmount());
+  vi.doUnmock("@tauri-apps/api/core");
+  vi.doUnmock("@tauri-apps/plugin-dialog");
   vi.doUnmock("@tauri-apps/plugin-fs");
 });
