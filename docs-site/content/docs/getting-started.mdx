@@ -7,7 +7,7 @@ Same editor, two shells: a local web app, and **Label Lab** on macOS, Windows, a
 
 ## Browser
 
-From the repo root:
+From the repo root, with Node.js 24 (the version in `.nvmrc`, so `nvm use` picks it):
 
 ```bash
 npm install
@@ -22,7 +22,7 @@ The label is already on screen, type on bare stock, until you drop a texture. Ty
 
 Same UI, native menus, real open/save dialogs, and double-click for `.label` files.
 
-A development window wants Node.js plus a stable Rust toolchain. On macOS: `xcode-select --install`. On Linux: the WebKitGTK dev packages.
+A development window wants Node.js 24 (see `.nvmrc`) plus a stable Rust toolchain. On macOS: `xcode-select --install`. On Linux: the WebKitGTK dev packages.
 
 ```bash
 rustup toolchain install stable

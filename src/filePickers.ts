@@ -6,7 +6,8 @@
 // and uses the native dialogs in src/files.ts with these filters instead. The
 // fiddly parts (the window casts, the bytes cast, abort detection) live
 // here so save/export/open can't drift apart; bytesPart is also the one
-// spelling of that cast for App.tsx's Blob and File construction (#417).
+// spelling of that cast for the asset I/O's Blob and File construction
+// (assets/io.ts, #417).
 // Lives outside App.tsx so that module exports only React components and
 // Fast Refresh keeps working (a mixed export forces Vite into full-reload
 // HMR).
