@@ -12,7 +12,6 @@ that section to the new version (see .agents/release-steward.md).
 - **Unused exports removed, no visible change.** Types used only in the file that defines them are no longer exported.
 
 ### Fixed
-- **A shared label no longer carries your folder names.** Saving a label now records its master's location relative to the label instead of the full path (which could include your user name); labels saved by older versions still find their master. Picking a remembered master whose file has been deleted, with no saved copy to fall back on, now drops it from the library instead of leaving it listed forever.
 - **The active tab's close button shows without hovering.** It rests dimmed on the selected tab so it can be found and tapped on touch; other tabs still show theirs on hover.
 - **Deleting a variant or removing a well's file says how to undo it.** Delete under the master picker now leaves a note that ⌘Z brings the variant back. Removing a texture or mask with its × was not undoable at all; the well now offers Undo to put the file back. An image layer's well notes that ⌘Z restores its art.
 - **A damaged remembered-masters entry no longer breaks opening labels.** A library entry missing its file path or name is now skipped instead of making a label open fail.
@@ -21,6 +20,7 @@ that section to the new version (see .agents/release-steward.md).
 - **The variant badge in the layer list is clearer while its variant is off.** It no longer fades to a faint grey on top of its dimmed row; it keeps its normal colour and is struck through instead.
 - **Screen readers name the View Mode button and saved color swatches.** The status bar's View Mode button now says which view a click switches to and announces keys 1–3; a saved swatch reads "Saved color #rrggbb" and announces Delete to remove it. Holding Delete removes one swatch instead of sweeping the whole saved list.
 - **A failed or superseded image load no longer holds memory.** When opening a master whose images partly fail to load, when a master's template image arrives after that image is already loaded, or when a tab is closed while its master's images are still loading, the thumbnails for those images were kept in memory until the app closed. They are now only created for an image that actually lands in an open document.
+- **A shared label no longer carries your folder names.** Saving a label now records its master's location relative to the label instead of the full path (which could include your user name); labels saved by older versions still find their master. Picking a remembered master whose file has been deleted, with no saved copy to fall back on, now drops it from the library instead of leaving it listed forever.
 
 ## [0.1.105] - 2026-10-09
 
