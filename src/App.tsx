@@ -14,11 +14,12 @@
 //
 // There is ONE mode (spec 2026-09-04: Removed): the Layers list (LayerList)
 // with its Changed filter replaces Fill mode, and the inspector
-// (LayerInspector) edits the selected layer. Every edit lands in the LABEL — a property edit as an override, a
-// text/image/code edit as a fill value (model/edit.ts's patchLayers /
-// setContentIn). The master is the template and changes only through the
-// reviewed Save Master, so it never drifts under an operator filling a
-// label. Master and label edits share one undo stack.
+// (LayerInspector) edits the selected layer. Every edit lands in the LABEL —
+// a property edit as an override, a text/image/code edit as a fill value
+// (model/edit.ts's patchLayers / setContentIn). The master is the template
+// and changes only through the reviewed Save Master, so it never drifts
+// under an operator filling a label. Master and label edits share one undo
+// stack.
 //
 // TabsShell mounts one DocumentEditor per workspace tab and hides the
 // inactive ones, so anything here that registers window/document-level

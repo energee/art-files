@@ -7,8 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { saveThrough } from "@/files";
 import { errMsg } from "@/lib/utils";
 import type { Fill } from "@/types";
-import type { Layer } from "@/model/layers";
-import { PAGE_ART_ID } from "@/model/layers";
+import { PAGE_ART_ID, type Layer } from "@/model/layers";
 import { planLayers, type PlacedLayer } from "@/planLayers";
 import type { PlanAssets } from "@/plan";
 import type { RenderSettings } from "@/settings";
@@ -24,12 +23,12 @@ import { blobUrl, download, rasterPixelsNatural, tintedPng, type CustomFile } fr
 
 /** The texture/mask bytes for a build (App.tsx pageArt): absent when the
  *  slot is empty or its page-art layer is switched off. */
-export type PageArt = {
+type PageArt = {
   texture?: { bytes: Uint8Array; kind: "png" | "jpg" };
   maskPng?: Uint8Array;
 };
 
-export type ExportInputs = {
+type ExportInputs = {
   /** The layers that draw — what the preview plans from, and so the exports. */
   drawLayers: Layer[];
   /** The master's font family (fontCatalog fontFamilyOf). */
