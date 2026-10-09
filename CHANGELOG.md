@@ -17,11 +17,11 @@ that section to the new version (see .agents/release-steward.md).
 - **A damaged remembered-masters entry no longer breaks opening labels.** A library entry missing its file path or name is now skipped instead of making a label open fail.
 - **A label or master from a newer Label Lab is refused instead of downgraded.** Opening a file saved in a newer format now says it was made by a newer version and asks you to update, rather than reading it as an old-format file that saving would then overwrite with less.
 - **A file with two images in one asset slot is refused.** A `.label` or `.master` whose texture, mask or custom image slot holds more than one file (for example after hand-editing the ZIP) is now refused instead of silently keeping one of the images. The open error names the slot and both files; Windows `Thumbs.db` and `desktop.ini` files left by a re-zip are ignored.
+- **The variant badge in the layer list is clearer while its variant is off.** It no longer fades to a faint grey on top of its dimmed row; it keeps its normal colour and is struck through instead.
 
 ## [0.1.105] - 2026-10-09
 
 ### Fixed
-- **The variant badge in the layer list is clearer while its variant is off.** It no longer fades to a faint grey on top of its dimmed row; it keeps its normal colour and is struck through instead.
 - **The tab strip works with a keyboard and screen reader.** Document tabs show a focus ring when reached with Tab, Left/Right move between them, focus stays on the strip after you switch, add or close a tab with Enter or Space (closing focuses the next tab, and an unsaved close returns there once its dialog closes), and assistive tech announces them as tabs and says which one is active.
 - **A label opens the master file it was saved with.** When two `.master` files share an id, a label now opens the one beside it (or in your library folder) instead of whichever the library remembered last, and saves back to that file. Opening such a label leaves your library's own copy in place, and **Use** in the missing-master dialog opens the tab's own master file. Save Master As now gives each new master a full-length id, so two forks can no longer end up with the same one.
 - **The browser's saved-master store no longer grows without limit.** It keeps the 20 masters most recently opened, saved or used and drops older copies, so a full store can't stop new masters from being kept. A copy that can't be stored is now logged.
