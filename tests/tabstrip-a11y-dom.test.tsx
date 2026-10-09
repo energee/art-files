@@ -174,3 +174,14 @@ it("keeps keyboard focus on the strip when Enter closes a tab", async () => {
   expect(tabs()[1].getAttribute("aria-selected")).toBe("true");
   expect(document.activeElement).toBe(tabs()[0]);
 });
+
+// #424: a hover-only × is invisible to touch and to anyone who hasn't found
+// it. The active tab shows its × dimmed at rest; inactive tabs keep it for
+// hover so the strip doesn't fill with ×s.
+it("shows the active tab's close button without hover", async () => {
+  await act(async () => { mocks.newTab?.(); });
+  const closeBtns = [...document.querySelectorAll<HTMLElement>('[aria-label^="Close "]')];
+  expect(tabs()[1].getAttribute("aria-selected")).toBe("true");
+  expect(closeBtns[1].className).not.toMatch(/(^|\s)opacity-0(\s|$)/);
+  expect(closeBtns[0].className).toMatch(/(^|\s)opacity-0(\s|$)/);
+});

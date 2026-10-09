@@ -222,3 +222,20 @@ it("swallows the click after a new guide is dragged back into the ruler", () => 
   act(() => { el.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
   expect(seen).not.toHaveBeenCalled();
 });
+
+// #424: the guide × is revealed by focus-within as well as hover, so a tap
+// that selects a guide (touch has no hover) has to leave its handle focused.
+it("focuses a guide's handle when it is pressed, revealing its ×", () => {
+  renderRulers();
+  const handle = container.querySelector<HTMLDivElement>('[aria-label^="Vertical manual guide;"]')!;
+  handle.setPointerCapture = vi.fn();
+  const fire = (type: string) => act(() => {
+    handle.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1, clientX: 100, clientY: 200 }));
+  });
+  fire("pointerdown");
+  fire("pointerup");
+  expect(document.activeElement).toBe(handle);
+  const remove = removeButton("vertical")!;
+  expect(remove.parentElement!.contains(handle)).toBe(true);
+  expect(remove.className).toContain("group-focus-within:opacity-100");
+});
