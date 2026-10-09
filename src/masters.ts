@@ -198,14 +198,11 @@ async function readMasterAt(path: string, onGone?: () => void): Promise<Resolved
   return f?.resolved ?? null;
 }
 
-/** Folder of a native path with `/` separators; "" for a bare name. */
-const folderOf = (p: string): string => {
-  const n = p.replace(/\\/g, "/");
-  return n.slice(0, Math.max(n.lastIndexOf("/"), 0));
-};
-
 /** Path segments with `/` separators; an absolute posix path starts with "". */
 const segmentsOf = (p: string): string[] => p.replace(/\\/g, "/").split("/");
+
+/** Folder of a native path with `/` separators; "" for a bare name. */
+const folderOf = (p: string): string => segmentsOf(p).slice(0, -1).join("/");
 
 /** The masterHint a .label saved at `labelPath` stores for the master file at
  *  `masterPath`: relative to the label's folder (`x.master`, `../lib/x.master`),
@@ -248,8 +245,9 @@ export function hintPath(hint: string, labelPath?: string): string {
  *  library — no `..` segments, either separator. Anything else falls through
  *  to the cache and the shipped fixture. */
 export function hintTrusted(hint: string, labelPath?: string): boolean {
-  const h = hint.replace(/\\/g, "/");
-  if (h.split("/").includes("..")) return false;
+  const parts = segmentsOf(hint);
+  if (parts.includes("..")) return false;
+  const h = parts.join("/");
   const roots = Object.values(masterIndex()).map((e) => folderOf(e.path));
   if (labelPath) roots.push(folderOf(labelPath));
   return roots.some((root) => root !== "" && h.startsWith(root + "/"));
