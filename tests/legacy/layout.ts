@@ -37,11 +37,6 @@ export function collabLeftFlow(descLineCount: number) {
 // sit on the 0.335in top margin instead of 6.73pt above it.
 export const WORDMARK = { cx: CENTER_X, baseline: 44.96, size: 22, text: "Lolev Beer" };
 export const LOGO = { cx: CENTER_X, cy: 183, w: 33.5 }; // h follows the SVG aspect
-/** logo2025.svg's viewBox aspect (0 0 480 525) — height per unit width. The
- *  renderers derive this live via parseLogo; the hit-tester (no SVG in hand)
- *  reads it from here, so a new logo asset means updating this one ratio
- *  alongside the file. */
-export const LOGO_ASPECT = 525 / 480;
 // baseline 317.16, not the reference's 323.28: carries the -6.12pt the
 // bottom-anchored style line below moved up when the margin grew, keeping
 // the name/style gap at the reference's 20.14pt instead of squeezing to 14.
@@ -65,8 +60,10 @@ export const QR = { x: LEFT_X, yTop: SAFE.bottom - 59, size: 59 }; // yTop 281.4
 // longer than the glyphs alone: the inline **handle** run sets in Bold,
 // the element ships tracked at 0.38, and the outer stroke paints 1.8pt beyond
 // the ink at each end. yStart (the run's bottom) is one stroke width inside the
-// bottom margin for the same reason. Re-solve with tests/legacy/check-margins.mts if
-// the text, the tracking, the margin or the default stroke changes.
+// bottom margin for the same reason. Frozen: the live position is the
+// master's handleAddress layer, not this constant. The ink-and-stroke solver
+// that produced these numbers was removed in #435; to re-solve the master's
+// layer, start from `git show 1a9b1a9^:tests/legacy/check-margins.mts`.
 // x 487, in from the reference's 505: the warning grew to 4 columns of 8.2pt
 // type (see WARNING below) and pushed the whole rotated block left so its
 // last column clears the barcode halo. Info keeps its slot at the block's

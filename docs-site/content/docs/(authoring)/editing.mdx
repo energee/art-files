@@ -46,7 +46,7 @@ Locked layers don't move on the canvas. Powered-off layers don't draw and you ca
 
 `⌘Z` / `⇧⌘Z` (or `⌘Y`) cover the document: fills, style, position, structure. Edits within half a second collapse into one step, so a scrub undoes as a single move. Typing in one inspector field is one step of its own, however slowly you type, and never merges with the edit before it.
 
-Loaded texture and mask **files** are not on that stack. Stepping back never re-decodes an image. While a text field has focus, that field's own undo wins.
+Loaded texture and mask **files** are not on that stack. Stepping back never re-decodes an image. Removing one with its well's **×** leaves a note with its own **Undo**, until the slot is filled again. An image layer's art is on the stack: the note under its well points to `⌘Z`. While a text field has focus, that field's own undo wins.
 
 ## What you're actually changing
 

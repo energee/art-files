@@ -15,19 +15,16 @@ import { strokeLayerOf } from "../../src/strokes";
 import { parseRuns } from "../../src/description";
 import type { LayerPosition } from "../../src/model/position";
 
-/** The shipped config, for reading any element's factory style. Built once:
- *  defaultConfig() allocates a whole config (description lines included), and
- *  isDefaultStyle runs on every inspector render — i.e. per keystroke while a
- *  layer is selected. Never mutated; the panel edits App's config, not this. */
-export const SHIPPED: LabelConfig = defaultConfig();
+/** The shipped config, for reading any element's factory style. Built once
+ *  because defaultConfig() allocates a whole config. Never mutated. */
+const SHIPPED: LabelConfig = defaultConfig();
 
 /** The laurel's effective stack nudge. The nudge exists to make room for the
  *  centre collab mark, but it is no longer gated on anything: the shipped
  *  `logo` declares no offsetY, so it is 0 on every label that has not
  *  authored one, and the Collab variant deliberately overrides nothing here
  *  (an explicit 0 would stomp a master-level nudge — see model/lolevLayers.ts).
- *  Renderers and hit-testing still read the nudge through this one gate so
- *  they cannot disagree. */
+ *  plan.ts reads the nudge through this one gate. */
 export function logoNudge(cfg: LabelConfig): number {
   return cfg.logo.offsetY ?? 0;
 }
