@@ -87,7 +87,7 @@ export async function rasterPixelsNatural(bytes: Uint8Array): Promise<Rgba> {
  *  thumbnails are createObjectURL(file), and an <img> won't render a
  *  typeless blob as SVG. One spelling for the label-open and master-adopt
  *  paths. */
-export function assetToFile(a: { name: string; bytes: Uint8Array }): File {
+export function assetToFile(a: LabelAsset): File {
   return new File([bytesPart(a.bytes)], a.name, { type: mimeFor(a.name) });
 }
 

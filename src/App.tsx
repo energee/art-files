@@ -37,7 +37,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
 import { legacyCollabEnabled, parseConfigFile } from "@/defaults";
 import { machineName } from "@/qr";
-import { LABEL_EXT } from "@/labelfile";
+import { LABEL_EXT, type LabelAsset } from "@/labelfile";
 import { MASTER_FILTER, MASTER_TYPES, isAbort } from "@/filePickers";
 import { openThrough, readNativeFile, saveThrough } from "@/files";
 import { useHistory, type Coalesce } from "@/history";
@@ -1710,7 +1710,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       // Legacy fixed collab ZIP roles (collab-left/, collab-center/) stay
       // READABLE: each is minted an id in the per-id store and becomes the
       // matching image layer's fill value.
-      const legacyAssets: Record<string, { name: string; bytes: Uint8Array }> = {};
+      const legacyAssets: Record<string, LabelAsset> = {};
       const adoptLegacyCollab = (l: LabelFile): LabelFile => {
         let out = l;
         for (const slot of ["collabLeft", "collabCenter"] as const) {

@@ -9,6 +9,7 @@ that section to the new version (see .agents/release-steward.md).
 ### Changed
 - **Internal cleanup, no visible change.** The dev-only stroke magnifier page moved from the repo root to `tools/strokecap.html`; `npm run strokecap` opens it there.
 - **Internal cleanup, no visible change.** PSD barcode digits and the character-height check read font outlines through one typed font helper instead of a cast.
+- **Unused exports removed, no visible change.** Types used only in the file that defines them are no longer exported.
 
 ### Fixed
 - **The active tab's close button shows without hovering.** It rests dimmed on the selected tab so it can be found and tapped on touch; other tabs still show theirs on hover.
