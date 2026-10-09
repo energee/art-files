@@ -84,10 +84,12 @@ it("keeps focus in the swatch row when the last swatch is deleted", async () => 
     vi.spyOn(HTMLButtonElement.prototype, "focus").mockImplementation(function (this: HTMLButtonElement) {
       if (!this.disabled) focus.call(this);
     });
-    const chip = document.querySelector('button[aria-label="#000000"]') as HTMLButtonElement;
+    const chip = document.querySelector('button[aria-label="Saved color #000000"]') as HTMLButtonElement;
+    // The Delete gesture is announced, not only in the hover title (#425).
+    expect(chip.getAttribute("aria-keyshortcuts")).toBe("Delete Backspace");
     chip.focus();
     act(() => { chip.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true })); });
-    expect(document.querySelector('button[aria-label="#000000"]')).toBeNull();
+    expect(document.querySelector('button[aria-label="Saved color #000000"]')).toBeNull();
     const active = document.activeElement as HTMLElement;
     expect(active.tagName).toBe("BUTTON");
     expect(active.textContent).toBe("Save");

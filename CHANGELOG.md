@@ -10,6 +10,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Internal cleanup, no visible change.** The dev-only stroke magnifier page moved from the repo root to `tools/strokecap.html`; `npm run strokecap` opens it there.
 
 ### Fixed
+- **Screen readers name the View Mode button and saved color swatches.** The status bar's View Mode button now says which view a click switches to and announces keys 1–3; a saved swatch reads "Saved color #rrggbb" and announces Delete to remove it.
 - **The active tab's close button shows without hovering.** It rests dimmed on the selected tab so it can be found and tapped on touch; other tabs still show theirs on hover.
 
 ## [0.1.105] - 2026-10-09

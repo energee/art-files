@@ -125,7 +125,8 @@ export function ColorField(props: {
                 key={c}
                 type="button"
                 title={`${c} (Delete or shift-click to remove)`}
-                aria-label={c}
+                aria-label={`Saved color ${c}`}
+                aria-keyshortcuts="Delete Backspace"
                 className="size-5 rounded-sm border border-border"
                 style={{ background: c }}
                 onKeyDown={(e) => {
