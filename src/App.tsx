@@ -219,13 +219,14 @@ const HEADER_ALERT_TONE = {
  *  full-width block. Warning and success use `variant` "default" plus their
  *  own colour classes rather than the destructive variant, which paints its
  *  descendant text through a selector on Alert itself that a className
- *  override can't reach. A success note is a polite `status`, not an
- *  interrupting `alert`. */
+ *  override can't reach. A success note is hidden from screen readers here:
+ *  it is announced politely through the always-mounted status region beside
+ *  it, since a live region mounted already holding its text is not read. */
 function HeaderAlert({ children, tone = "destructive" }: { children: React.ReactNode; tone?: keyof typeof HEADER_ALERT_TONE }) {
   const [box, text] = HEADER_ALERT_TONE[tone];
   return (
     <Alert variant={tone === "destructive" ? "destructive" : "default"} className={cn("w-auto px-2 py-0.5", box)}
-      {...(tone === "success" && { role: "status" })}>
+      {...(tone === "success" && { role: undefined, "aria-hidden": true })}>
       <AlertDescription className={cn("text-xs", text)}>
         {children}
       </AlertDescription>
@@ -2440,7 +2441,13 @@ export const DocumentEditor = memo(function DocumentEditor({
           {blocked && <HeaderAlert>{blockedWhy}</HeaderAlert>}
           {loadError && <HeaderAlert tone={loadError.startsWith("Note: ") ? "warning" : "destructive"}>{loadError}</HeaderAlert>}
           {headerError && <HeaderAlert tone={headerError.startsWith("Note: ") ? "warning" : "destructive"}>{headerError}</HeaderAlert>}
+          {/* An error in the header replaces the export confirmation. */}
           {exportNote && !headerError && <HeaderAlert tone="success">{exportNote}</HeaderAlert>}
+          {/* The success note's announcement, from a region that exists
+              before the note lands (see HeaderAlert's success tone). It
+              keeps the note while an error hides it, so a render error
+              clearing doesn't refill it and re-announce a stale "Saved …". */}
+          <span role="status" data-export-saved className="sr-only">{exportNote}</span>
           {resolveWarnings.length > 0 && <HeaderAlert tone="warning">{resolveWarnings.join(" · ")}</HeaderAlert>}
           {/* Open Master's fallback — see masterInput/openMasterPicker. */}
           <input ref={masterInput} type="file" accept={MASTER_EXT} hidden
@@ -2546,12 +2553,16 @@ export const DocumentEditor = memo(function DocumentEditor({
                 onAddManual={addManualGuide} onMoveManual={moveManualGuide} onSnapGuide={snapGuidePoint}
                 onRemoveManual={removeManualGuide} />
             )}
-            {exporting && previewReady && (
-              <span role="status" className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+            {/* Always mounted, so a screen reader announces the note when
+                an export fills it: a live region that mounts already holding
+                its text is not announced. Shown whether or not the preview
+                is ready — PSD export doesn't wait for it. */}
+            <span role="status" data-export-status className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+              {exporting && <>
                 <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" />
                 {exporting === "pdf" ? "Building PDFs…" : "Building PSDs…"}
-              </span>
-            )}
+              </>}
+            </span>
             {!texture && !exporting && previewReady && (
               <div className="pointer-events-none absolute inset-x-0 bottom-16 flex justify-center">
                 <span className="rounded-full border border-dashed border-border bg-background/85 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-sm">
@@ -2559,7 +2570,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 </span>
               </div>
             )}
-            {!previewReady && !buildError && !renderError && (
+            {!previewReady && !exporting && !buildError && !renderError && (
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
                   <span className="size-6 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-foreground" />
