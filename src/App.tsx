@@ -414,6 +414,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Every per-id image asset this document carries: image layers' art,
   // collab logos included (an image layer's value is a key here).
   const [customImages, setCustomImages] = useState<Record<string, CustomFile>>({});
+  /** False once this tab has unmounted (set by the unmount cleanup that
+   *  releases `held`): every asset commit checks it (#432). */
+  const alive = useRef(true);
   const savedAssetsRef = useRef({ texture, mask, customImages });
   savedAssetsRef.current = { texture, mask, customImages };
   // The layers that DRAW: enabled, values applied, page art bound to the
@@ -852,10 +855,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Replaces (or, with null, removes) a loaded asset, revoking the old
    *  thumbnail URL — the one shape every drop and every X share. `next` is a
    *  previewOnce minter, called in the updater, so the new thumbnail URL is
-   *  minted only as the value commits (#432). */
+   *  minted only as the value commits (#432); a closed tab commits nothing. */
   const swapLoaded = <T extends { previewUrl: string }>(
     set: (fn: (old: T | null) => T | null) => void, next: (() => T) | null,
   ) => {
+    if (!alive.current) return;
     markDirty();
     set((old) => { if (old) URL.revokeObjectURL(old.previewUrl); return next?.() ?? null; });
   };
@@ -896,6 +900,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   async function onLayerImage(layer: ImageLayer, f: File) {
     const assetId = mintCustomAssetId();
     const mint = previewOnce(await readCustomImage(f), f);
+    if (!alive.current) return;
     setCustomImages((old) => ({ ...old, [assetId]: mint() }));
     setContent(layer, assetId);
   }
@@ -1264,12 +1269,19 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** The assets this tab holds right now, read by the unmount cleanup: a
    *  closed tab releases their thumbnails, or each one pins its file's bytes
-   *  for the rest of the session (#85). useExport releases its export URLs. */
+   *  for the rest of the session (#85). useExport releases its export URLs.
+   *  `alive` goes false with it, so a decode that lands after the tab closed
+   *  commits nothing: React 19 still runs a setState updater on an unmounted
+   *  component, and the updater is where the thumbnail is minted (#432). */
   const held = useRef({ texture, mask, customImages });
   held.current = { texture, mask, customImages };
-  useEffect(() => () => {
-    const { texture, mask, customImages } = held.current;
-    for (const a of [texture, mask, ...Object.values(customImages)]) if (a) URL.revokeObjectURL(a.previewUrl);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      const { texture, mask, customImages } = held.current;
+      for (const a of [texture, mask, ...Object.values(customImages)]) if (a) URL.revokeObjectURL(a.previewUrl);
+    };
   }, []);
 
   const downloadArt = () => void buildFull("art");
@@ -1488,6 +1500,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         if (!missing.length) return;
         const entries = await Promise.all(missing.map(async ([id, x]) =>
           [id, await readPacked(x, readCustomImage)] as const));
+        if (!alive.current) return;
         setCustomImages((prev) => ({
           ...Object.fromEntries(entries.filter(([id]) => !prev[id]).map(([id, mint]) => [id, mint()])), ...prev,
         }));
@@ -1793,12 +1806,14 @@ export const DocumentEditor = memo(function DocumentEditor({
       // Decode every asset before resetDocument: a failed decode must leave
       // the previous doc and its Save target (rebound by the caller only on
       // success) intact (#81). Decoding mints no thumbnail URL (the commit
-      // below does), so a failure here has none to release (#432).
+      // below does), so a failure here, or a tab closed meanwhile, has none
+      // to release (#432).
       const [tex, msk, images] = await Promise.all([
         t && readPacked(t, readRaster),
         m && readPacked(m, readRaster),
         Promise.all(Object.entries(ci).map(async ([id, a]) => [id, await readPacked(a, readCustomImage)] as const)),
       ]);
+      if (!alive.current) return "cancelled"; // the tab closed: no retry
       resetDocument(next, masterPath);
       if (tex) swapLoaded(setTexture, tex);
       if (msk) swapLoaded(setMask, msk);

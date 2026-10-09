@@ -99,17 +99,20 @@ type Decoded<T> = Omit<T, "previewUrl">;
 /** A minter for one decoded asset's thumbnail URL (an object URL of `src`,
  *  the file it was read from): returns the value with its previewUrl,
  *  minting on the first call and returning that same value after. Call it
- *  inside the state updater that commits the value: an updater that never
- *  runs (unmounted) or drops the value mints nothing, and StrictMode's
- *  second run of the updater reuses the first URL instead of leaking one. */
+ *  inside the state updater that commits the value: an updater that drops
+ *  the value mints nothing, and StrictMode's second run of the updater
+ *  reuses the first URL instead of leaking one. React 19 still runs an
+ *  updater on an unmounted component, so the caller must not commit once
+ *  its tab has closed (DocumentEditor's `alive`). */
 export function previewOnce<T extends object>(a: T, src: Blob): () => T & { previewUrl: string } {
   let v: (T & { previewUrl: string }) | undefined;
   return () => v ??= { ...a, previewUrl: URL.createObjectURL(src) };
 }
 
 /** Decode a packed container asset with `read` (readRaster or
- *  readCustomImage) into its previewOnce minter — how an open or a master's
- *  adopt loads the assets it carries. */
+ *  readCustomImage) into its previewOnce minter: how a label open loads every
+ *  asset it carries, and a master's adopt its custom images (its texture and
+ *  mask go through onTexture/onMask, the drop path). */
 export async function readPacked<T extends object>(
   a: LabelAsset, read: (f: File) => Promise<T>,
 ): Promise<() => T & { previewUrl: string }> {
