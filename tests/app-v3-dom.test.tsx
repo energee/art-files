@@ -718,3 +718,19 @@ it.each([
     await vi.waitFor(() => expect(container.textContent).not.toContain(`Building ${kind}…`));
   });
 }, 60_000);
+
+// Issue #425: the status-bar view button gave a screen reader only its visible
+// text — not that a click cycles the view, nor the 1–3 keys.
+it("names the view-mode button's action and its keyboard shortcuts", async () => {
+  const { container, unmount } = await mountEditor();
+  try {
+    const button = [...container.querySelectorAll("button")]
+      .find((b) => b.textContent?.startsWith("View Mode:")) as HTMLButtonElement;
+    expect(button.getAttribute("aria-label")).toBe("View Mode: Label — switch to Mask");
+    expect(button.getAttribute("aria-keyshortcuts")).toBe("1 2 3");
+    // PreviewCompare is mocked, so report the divider at the mask end the way
+    // its showMask() would.
+    await act(async () => perf.preview!.onSplit!(100));
+    expect(button.getAttribute("aria-label")).toBe("View Mode: Mask — switch to Can");
+  } finally { await unmount(); }
+});

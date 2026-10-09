@@ -116,7 +116,7 @@ export function ColorField(props: {
               <Pipette /> Pick from screen
             </Button>
           )}
-          {/* Saved swatches. Click applies, shift-click removes — a delete
+          {/* Saved swatches. Click applies, shift-click or Delete removes — a delete
               affordance per chip would double the row's height for something
               used once in a while. */}
           <div className="mt-2 flex max-w-[200px] flex-wrap items-center gap-1">
@@ -125,11 +125,13 @@ export function ColorField(props: {
                 key={c}
                 type="button"
                 title={`${c} (Delete or shift-click to remove)`}
-                aria-label={c}
+                aria-label={`Saved color ${c}`}
+                aria-keyshortcuts="Delete Backspace"
                 className="size-5 rounded-sm border border-border"
                 style={{ background: c }}
                 onKeyDown={(e) => {
-                  if (e.key !== "Delete" && e.key !== "Backspace") return;
+                  // A held key must not auto-repeat through the chips that slide into this slot.
+                  if ((e.key !== "Delete" && e.key !== "Backspace") || e.repeat) return;
                   e.preventDefault(); e.stopPropagation();
                   // Flush first, then focus what now sits in this slot (the
                   // previous chip after the last one): the Save button next to
