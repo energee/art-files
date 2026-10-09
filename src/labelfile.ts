@@ -24,7 +24,7 @@ export type LabelAssets = {
    *  bytes now ride in `customImages` under a minted asset id like any other
    *  per-id image. Unpack still reads these two so a file saved before that
    *  change opens with its art (App.tsx mints an id for each on open); pack
-   *  never writes them again. */
+   *  skips them even when set (WRITTEN_ROLES). */
   collabLeft?: LabelAsset;
   collabCenter?: LabelAsset;
   /** Master-variant custom image layers' bytes, keyed by CustomImageLayer's
@@ -37,6 +37,11 @@ export type LabelAssets = {
 /** The fixed one-per-project asset roles — everything in LabelAssets except
  *  customImages, which is dynamically keyed and packed/unpacked separately. */
 type FixedAssetRole = "texture" | "mask" | "collabLeft" | "collabCenter";
+
+/** The fixed roles packAssets still writes. The collab roles are READ-ONLY
+ *  legacy (see LabelAssets.collabLeft): extractAssets reads them, pack skips
+ *  them even when present, so no new file carries them (#430). */
+const WRITTEN_ROLES: FixedAssetRole[] = ["texture", "mask"];
 
 /** ZIP directory name for each fixed asset role. The original filename lives
  *  as the entry's basename, so a re-save round-trips it for free. */
@@ -55,9 +60,9 @@ const CUSTOM_DIR = "custom";
  *  level-0 image entries, the size limits), shared by both .label packers and .master's
  *  packMaster (model/files.ts), so the two containers cannot drift. */
 export function packAssets(zip: Zippable, assets: LabelAssets): void {
-  for (const [role, dir] of Object.entries(ROLE_DIRS) as [FixedAssetRole, string][]) {
+  for (const role of WRITTEN_ROLES) {
     const a = assets[role];
-    if (a) zip[`${dir}/${a.name}`] = [a.bytes, { level: 0 }];
+    if (a) zip[`${ROLE_DIRS[role]}/${a.name}`] = [a.bytes, { level: 0 }];
   }
   for (const [id, a] of Object.entries(assets.customImages ?? {}))
     zip[`${CUSTOM_DIR}/${id}/${a.name}`] = [a.bytes, { level: 0 }];
@@ -79,6 +84,8 @@ const assetEntry = (path: string) =>
 
 const FILE_CAP = 128 * 1024 * 1024;
 const TOTAL_CAP = 256 * 1024 * 1024;
+const duplicateAsset = (dir: string) =>
+  new Error(`Archive is malformed: "${dir}" holds more than one file, and each asset is exactly one.`);
 const tooLarge = (name: string) =>
   new Error(`Archive is too large: "${name}" exceeds the 128 MiB file or 256 MiB total limit.`);
 
@@ -125,20 +132,25 @@ function concat(chunks: Uint8Array[], size: number): Uint8Array {
  *  image out of an unzipped entry map. Shared with unpackMaster. Directory
  *  entries (names ending in `/`) are skipped: packAssets never writes them,
  *  but a file re-zipped by Finder or `zip -r` carries a zero-byte `texture/`
- *  ahead of `texture/<name>`, and it must not be taken as the asset (#100). */
+ *  ahead of `texture/<name>`, and it must not be taken as the asset (#100).
+ *  Each role directory and each custom/<id>/ holds exactly one file; a second
+ *  one throws rather than silently picking either (#430). */
 export function extractAssets(entries: Record<string, Uint8Array>): LabelAssets {
   const assets: LabelAssets = {};
   const files = Object.keys(entries).filter(assetEntry);
   for (const [role, dir] of Object.entries(ROLE_DIRS) as [FixedAssetRole, string][]) {
-    const path = files.find((p) => p.startsWith(`${dir}/`));
-    if (path) assets[role] = { name: path.slice(dir.length + 1), bytes: entries[path] };
+    const paths = files.filter((p) => p.startsWith(`${dir}/`));
+    if (paths.length > 1) throw duplicateAsset(`${dir}/`);
+    if (paths[0]) assets[role] = { name: paths[0].slice(dir.length + 1), bytes: entries[paths[0]] };
   }
   // Custom image assets: one directory per assetId under custom/, each
   // holding exactly one file (name is whatever comes after the id).
   const customImages: Record<string, CustomImageAsset> = {};
   for (const path of files) {
     const m = /^custom\/([^/]+)\/(.+)$/.exec(path);
-    if (m) customImages[m[1]] = { name: m[2], bytes: entries[path] };
+    if (!m) continue;
+    if (m[1] in customImages) throw duplicateAsset(`${CUSTOM_DIR}/${m[1]}/`);
+    customImages[m[1]] = { name: m[2], bytes: entries[path] };
   }
   if (Object.keys(customImages).length) assets.customImages = customImages;
   return assets;
