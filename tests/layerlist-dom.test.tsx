@@ -155,17 +155,16 @@ describe("LayerList", () => {
   });
 
   it("keeps the variant badge text at /70 in both states and marks off with a strikethrough (#440)", () => {
-    // /40 measured 2.47:1 (light) and 3.35:1 (dark) — below WCAG AA's 4.5:1.
-    const badge = (id: string) => Array.from(rowFor(id).querySelectorAll("span[title]"))
-      .find((el) => el.textContent === "Collab")!;
+    const badgeClass = () => Array.from(rowFor("collabLead").querySelectorAll("span[title]"))
+      .find((el) => el.textContent === "Collab")!.className;
     render(baseProps());
-    expect(badge("collabLead").className).toContain("text-sidebar-foreground/70");
-    expect(badge("collabLead").className).not.toContain("/40");
-    expect(badge("collabLead").className).toContain("line-through");
+    expect(badgeClass()).toContain("text-sidebar-foreground/70");
+    expect(badgeClass()).not.toContain("/40");
+    expect(badgeClass()).toContain("line-through");
 
     render(baseProps({ rows: lolevRows(true).rows }));
-    expect(badge("collabLead").className).toContain("text-sidebar-foreground/70");
-    expect(badge("collabLead").className).not.toContain("line-through");
+    expect(badgeClass()).toContain("text-sidebar-foreground/70");
+    expect(badgeClass()).not.toContain("line-through");
   });
 
   it("titles the variant chip by what the variant does: adds the layer, or changes a master one", () => {

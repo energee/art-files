@@ -6,8 +6,9 @@ import { isMacOS } from "@/keys";
 // reverses them), no Document group — background and mask are the two
 // bottom rows like any other. Each row: kind icon, name (double-click or the
 // row menu to rename inline), a variant badge when a variant ADDS the layer
-// (struck through, its row dimmed, while that variant is off), a provenance mark when an enabled
-// variant overrides part of it, then power (`enabled`) and lock —
+// (struck through, its row dimmed, while that variant is off), a provenance
+// mark when an enabled variant overrides part of it, then power (`enabled`)
+// and lock —
 // plus drag reordering and a "…" menu with
 // Rename / Remove. The header carries the title, the "Changed" filter
 // that replaced Fill mode, and the "Add layer" menu.
