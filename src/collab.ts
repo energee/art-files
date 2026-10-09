@@ -12,7 +12,7 @@ export const rasterKind = (name: string): "jpg" | "png" =>
 /** The two rasters pdf-lib can embed as-is, and so the test for "needs no
  *  transcode". Everything else a browser can decode (WebP) keeps its own
  *  bytes for Save and gets a PNG copy for embedding — see readRaster in
- *  App.tsx. rasterKind is only truthful for these two extensions. */
+ *  assets/io.ts. rasterKind is only truthful for these two extensions. */
 export const EMBEDDABLE_RASTER = /\.(png|jpe?g)$/i;
 
 /** Filename → browser MIME: SVG, WebP, PNG or JPEG. Lives beside

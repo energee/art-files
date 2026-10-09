@@ -84,7 +84,7 @@ export function serializeLabel(l: LabelFile): string {
 function badLabel(msg: string): never { throw new Error(`Invalid label file: ${msg}`); }
 
 /** A JSON object (not null, not an array). */
-const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+export const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
 /** Only the strings of an untrusted array; anything else becomes []. */
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);

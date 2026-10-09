@@ -23,6 +23,9 @@ npx tsc --noEmit
 npm run lint           # eslint: react-hooks rules, zero warnings
 ```
 
+`npm run strokecap` opens the dev-only stroke magnifier, `tools/strokecap.html`,
+through the Vite dev server (the page needs it; opening the file directly fails).
+
 `npm run desktop:build` writes the platform installer under
 `src-tauri/target/release/bundle/`. Release process (version lockstep,
 changelog, updater keys, GitHub Release) is `.agents/release-steward.md`.

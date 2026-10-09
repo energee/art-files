@@ -8,14 +8,18 @@
 // Rendering is one pipeline for every surface: resolveLayers → the drawing
 // layers (page art bound to the loaded texture/mask slots, see withPageArt)
 // → planLayers' display list → drawPlate on the 2D preview and the 3D can,
-// buildArtPdf / buildMaskPdf / buildPsd on export. There is ONE mode (spec
-// 2026-09-04: Removed): the Layers list (LayerList) with its Changed filter
-// replaces Fill mode, and the inspector (LayerInspector) edits the selected
-// layer. Every edit lands in the LABEL — a property edit as an override, a
-// text/image/code edit as a fill value (model/edit.ts's patchLayers /
-// setContentIn). The master is the template and changes only through the
-// reviewed Save Master, so it never drifts under an operator filling a
-// label. Master and label edits share one undo stack.
+// buildArtPdf / buildMaskPdf / buildPsd on export (useExport.ts). The asset
+// file I/O (decoding drops and packed assets, the bytes a Save packs) is
+// assets/io.ts; the .label Save/Save As binding is useProjectSave.ts.
+//
+// There is ONE mode (spec 2026-09-04: Removed): the Layers list (LayerList)
+// with its Changed filter replaces Fill mode, and the inspector
+// (LayerInspector) edits the selected layer. Every edit lands in the LABEL —
+// a property edit as an override, a text/image/code edit as a fill value
+// (model/edit.ts's patchLayers / setContentIn). The master is the template
+// and changes only through the reviewed Save Master, so it never drifts
+// under an operator filling a label. Master and label edits share one undo
+// stack.
 //
 // TabsShell mounts one DocumentEditor per workspace tab and hides the
 // inactive ones, so anything here that registers window/document-level
@@ -31,14 +35,10 @@ import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, u
 import { dialogOpen, isTypingTarget, keyOwner } from "@/keys";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
-import type { Fill } from "@/types";
 import { legacyCollabEnabled, parseConfigFile } from "@/defaults";
 import { machineName } from "@/qr";
-import { strToU8 } from "fflate";
-import { LABEL_EXT, type LabelAssets } from "@/labelfile";
-import {
-  LABEL_FILTER, LABEL_TYPES, MASTER_FILTER, MASTER_TYPES, bytesPart, isAbort,
-} from "@/filePickers";
+import { LABEL_EXT } from "@/labelfile";
+import { MASTER_FILTER, MASTER_TYPES, isAbort } from "@/filePickers";
 import { openThrough, readNativeFile, saveThrough } from "@/files";
 import { useHistory, type Coalesce } from "@/history";
 import type {
@@ -61,18 +61,16 @@ import {
 } from "@/model/files";
 import { lolevMaster } from "@/model/lolevLayers";
 import { SHIPPED_MASTER_ID, hintTrusted, masterIndex, newMasterId, rememberMaster, removeFromLibrary, resolveDefaultMaster, resolveLabelMaster, resolveMasterById, saveTargetFor, type MasterSaveTarget, type ResolvedMaster } from "@/masters";
-import { layerBoxes, type PlacedLayer } from "@/planLayers";
+import { layerBoxes } from "@/planLayers";
 import type { Box } from "@/model/place";
-import { planLayers } from "@/planLayers";
 import { makeHiddenPropsEqual, unsaved, type TabMeta } from "@/tabs";
 import { dropRecovery, keepRecovery } from "@/recovery";
-import { EMBEDDABLE_RASTER, mimeFor, rasterKind, tintRgba } from "@/collab";
-import { svgAspect } from "@/logo";
-// The builders are imported dynamically at export time (see buildFull /
-// exportPsd, which runs buildPsd in a worker) so they stay out of the initial
-// bundle; only their types are needed up front.
-import type { Assets, CollabImage } from "@/pdf/build";
-import type { PsdAssets } from "@/psd/build";
+import { mimeFor } from "@/collab";
+import {
+  assetToFile, blobUrl, imageBundle, readCustomImage, readRaster, slotAsset, type CustomFile, type LoadedRaster,
+} from "@/assets/io";
+import { useExport } from "@/useExport";
+import { useProjectSave } from "@/useProjectSave";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
 import {
@@ -109,9 +107,8 @@ import {
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn, errMsg } from "@/lib/utils";
-import { FONT_URLS, loadLabelFaces, labelFontCss } from "@/fonts";
+import { loadLabelFaces, labelFontCss } from "@/fonts";
 import { fontFamilyOf, usedFontFamilies, type FontFamilyId } from "@/fontCatalog";
-import { loadFonts } from "@/pdf/fonts";
 import type { MeasureFace, PlanAssets } from "@/plan";
 import type { CanvasAssets, CanvasRenderSource } from "@/canvas/draw";
 import { createBitmapCache } from "@/canvas/bitmapCache";
@@ -153,21 +150,6 @@ const MasterSaveReview = lazy<ComponentType<MasterSaveReviewProps>>(() => import
         open={open} onOpenChange={(o) => { if (!o) onCancel(); }} />
     ),
   })));
-
-/** bytes = full print resolution (exports); previewBytes = downscaled PNG the
- *  assembly effect decodes into a bitmap, so keystroke-driven rebuilds never
- *  churn the print-size image (a burst of those OOMs the tab). `aspect` is
- *  the intrinsic w/h the planner cover-fits the page art by. */
-type Loaded = {
-  bytes: Uint8Array; previewBytes: Uint8Array; name: string; previewUrl: string; aspect: number;
-};
-
-/** One loaded per-id image asset: an image layer's art (a collab logo is
- *  one, filling an image layer). `image` is what the renderer needs;
- *  previewUrl is the raw file, so an SVG thumbnails as itself; `aspect` is
- *  the intrinsic w/h the planner sizes the box by before/without a decoded
- *  bitmap. Keyed by the id minted at drop (mintCustomAssetId). */
-type CustomFile = { image: CollabImage; name: string; previewUrl: string; aspect: number };
 
 /** The document: the master being authored and the label filling it. One
  *  history entry holds both, so a master edit and a value edit undo alike. */
@@ -268,112 +250,6 @@ type LabelSource = { name: string; bytes: Uint8Array; path?: string };
 const fileSource = async (f: File): Promise<LabelSource> =>
   ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
 
-/** Encode a canvas's pixels as PNG bytes — the shared tail of every
- *  decode/recolor/re-encode pipeline in this file. */
-async function canvasToPng(canvas: HTMLCanvasElement): Promise<Uint8Array> {
-  const blob = await new Promise<Blob>((res) => canvas.toBlob((b) => res(b!), "image/png"));
-  return new Uint8Array(await blob.arrayBuffer());
-}
-
-/** Decode an image into a fresh 2D canvas at its natural size — the front
- *  half of every pixel pipeline here. The bitmap is always closed. */
-async function decodeToCanvas(src: Blob): Promise<HTMLCanvasElement> {
-  const bmp = await createImageBitmap(src);
-  try {
-    const canvas = document.createElement("canvas");
-    canvas.width = bmp.width;
-    canvas.height = bmp.height;
-    canvas.getContext("2d")!.drawImage(bmp, 0, 0);
-    return canvas;
-  } finally {
-    bmp.close();
-  }
-}
-
-/** The bytes as a Blob, for decoding (decodeToCanvas, createImageBitmap). */
-const blobOf = (bytes: Uint8Array) => new Blob([bytesPart(bytes)]);
-
-/** Repaint a raster image in `fill`, keeping alpha, and re-encode it as PNG
- *  for embedding — the color-overlay path for PNG/JPG art an image layer's
- *  `tintRaster` asks for. Export-only: the preview tints at draw time
- *  (canvas/draw.ts tinted), so a fill drag never re-encodes (#414). */
-async function tintedPng(bytes: Uint8Array, fill: Fill): Promise<Uint8Array> {
-  const canvas = await decodeToCanvas(blobOf(bytes));
-  const ctx = canvas.getContext("2d")!;
-  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  tintRgba(img.data, fill);
-  ctx.putImageData(img, 0, 0);
-  return canvasToPng(canvas);
-}
-
-/** A packed container asset as a typed File — the type matters: FileDrop
- *  thumbnails are createObjectURL(file), and an <img> won't render a
- *  typeless blob as SVG. One spelling for the label-open and master-adopt
- *  paths. */
-function assetToFile(a: { name: string; bytes: Uint8Array }): File {
-  return new File([bytesPart(a.bytes)], a.name, { type: mimeFor(a.name) });
-}
-
-/** Read a dropped image asset. SVG is kept as source text (so it can be
- *  recolored per its layer's style), anything else as raster bytes, plus
- *  the intrinsic aspect (w/h): an SVG's ink box, a raster's bitmap size.
- *  The thumbnail URL is minted only once decoding succeeds, so a file that
- *  fails to decode leaves no URL behind to revoke (#85). */
-async function readCustomImage(f: File): Promise<CustomFile> {
-  if (mimeFor(f.name) === "image/svg+xml") {
-    const svg = await f.text();
-    return { image: { kind: "svg", svg }, name: f.name, previewUrl: URL.createObjectURL(f), aspect: svgAspect(svg) };
-  }
-  const bytes = new Uint8Array(await f.arrayBuffer());
-  const bmp = await createImageBitmap(blobOf(bytes));
-  const aspect = bmp.width / bmp.height;
-  bmp.close();
-  return { image: { kind: rasterKind(f.name), bytes }, name: f.name, previewUrl: URL.createObjectURL(f), aspect };
-}
-
-/** Longest preview-texture edge in px. Sized to the 3D label texture
- *  (~2340px) so the mask plate is never upscaled into it. */
-const PREVIEW_PX = 2400;
-
-async function previewPng(src: ImageBitmap | HTMLCanvasElement): Promise<Uint8Array> {
-  const scale = Math.min(1, PREVIEW_PX / Math.max(src.width, src.height));
-  const c = document.createElement("canvas");
-  c.width = Math.round(src.width * scale);
-  c.height = Math.round(src.height * scale);
-  c.getContext("2d")!.drawImage(src, 0, 0, c.width, c.height);
-  return canvasToPng(c);
-}
-
-// bytes: what the PDF embeds (PNG or JPEG). srcBytes: the original upload,
-// under its original name — the bytes Save writes.
-type LoadedRaster = Loaded & { kind: "png" | "jpg"; srcBytes: Uint8Array };
-
-/** Decode a texture or mask file into its slot value; state-free, like
- *  readCustomImage, so an open can decode before it commits (#81). PNG and
- *  JPEG embed as-is (a mask plate as-authored); anything else the browser
- *  decodes (WebP) gets a PNG copy, because pdf-lib embeds PNG and JPEG only.
- *  Save keeps the original either way. */
-async function readRaster(f: File): Promise<LoadedRaster> {
-  const passthrough = EMBEDDABLE_RASTER.test(f.name);
-  const [srcBytes, decoded] = await Promise.all([
-    f.arrayBuffer().then((b) => new Uint8Array(b)),
-    passthrough ? createImageBitmap(f) : decodeToCanvas(f),
-  ]);
-  const [bytes, previewBytes] = await Promise.all([
-    passthrough ? srcBytes : canvasToPng(decoded as HTMLCanvasElement), previewPng(decoded),
-  ]);
-  const aspect = decoded.width / decoded.height;
-  if (decoded instanceof ImageBitmap) decoded.close();
-  return {
-    srcBytes, bytes, previewBytes, aspect, name: f.name,
-    kind: passthrough ? rasterKind(f.name) : "png", previewUrl: URL.createObjectURL(f),
-  };
-}
-
-// Blob snapshots the bytes at construction (no transfer), so no copy needed.
-const blobUrl = (bytes: Uint8Array, type: string) =>
-  URL.createObjectURL(new Blob([bytesPart(bytes)], { type }));
-
 /** Largest wheel delta any single event is allowed to contribute: a mouse
  *  notch reports 100 at once, which unclamped overshoots the zoom range. */
 const ZOOM_STEP_CAP = 50;
@@ -406,13 +282,6 @@ const VIEW_CYCLE: { label: string; id: string; at: (m: ViewMode, split: number) 
   { label: "Mask", id: "view-mask", at: (m, s) => m === "2d" && s === 100 },
   { label: "Can", id: "view-can", at: (m) => m === "can" },
 ];
-
-function download(url: string, name: string) {
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  a.click();
-}
 
 /** A file the shell wants this editor to open. seq is monotonic — a new
  *  value triggers the open, so a re-render can never re-open. Exactly one
@@ -570,20 +439,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   // PreviewCompare). While set, planLayers skips it via the render source's
   // skip set so the editor's live DOM text IS the layer — no doubled glyphs.
   const [editSession, setEditSession] = useState<string | null>(null);
-  // The export in flight, if any: it blurs the preview under a note naming
-  // the files being built (#401), and blocks a second export.
-  const [exporting, setExporting] = useState<"pdf" | "psd" | null>(null);
   // Two error channels, split by who can clear them: renderError belongs to
   // the renderers (every good frame clears it); buildError to asset
   // assembly, exports and native menu failures.
   const [buildError, setBuildError] = useState("");
-  // The files the last export wrote (#400): shown until the next edit or
-  // export, since an edit makes those files stale. exportFresh goes false on
-  // any edit, so an export that an edit overlapped confirms nothing: its
-  // files hold the label as it was when the export began.
-  const [exportNote, setExportNote] = useState("");
-  const exportFresh = useRef(false);
-  const exportStale = () => { exportFresh.current = false; setExportNote(""); };
   const [renderError, setRenderError] = useState("");
   const [loadError, setLoadError] = useState("");
   // A .label whose master can't be found asks what to open it on; openProject
@@ -857,7 +716,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Delete a variant and stop showing it. One undoable edit, so it needs no
    *  confirm of its own. */
   function onRemoveVersion(id: string) {
-    edit((d) => removeVariantIn(d, id, rowBoxes()));
+    // Its own undo step, never folded into a quick edit before it: the
+    // picker's note promises one ⌘Z brings the variant back (#426).
+    edit((d) => removeVariantIn(d, id, rowBoxes()), false);
   }
 
   /** The dot-paths deviating from the master on the inspected layer, kept
@@ -987,7 +848,6 @@ export const DocumentEditor = memo(function DocumentEditor({
   const errorList = Object.entries(errors).map(([id, e]) => `${rowById.get(id)?.layer.name ?? id}: ${e}`);
   const blocked = errorList.length > 0;
   const blockedWhy = errorList.join(" · ");
-  const exportBlocked = blocked || exporting !== null;
 
   /** Replaces (or, with null, removes) a loaded asset, revoking the old
    *  thumbnail URL — the one shape every drop and every X share. */
@@ -996,6 +856,21 @@ export const DocumentEditor = memo(function DocumentEditor({
   ) => {
     markDirty();
     set((old) => { if (old) URL.revokeObjectURL(old.previewUrl); return next; });
+  };
+
+  /** The texture/mask well's X. Those slots are outside the history (see
+   *  history.ts), so ⌘Z can't bring a cleared file back; this always returns
+   *  the well's Undo instead (#426). It restores the value the clear actually
+   *  removed (read in the updater, not a render's closure, so a decode landing
+   *  in between can't swap in an older file), keeping its bytes and minting a
+   *  fresh thumbnail URL, since the clear revoked the old one. */
+  const clearLoaded = (set: (fn: (old: LoadedRaster | null) => LoadedRaster | null) => void) => {
+    let gone: LoadedRaster | null = null;
+    swapLoaded<LoadedRaster>((fn) => set((old) => { gone = old; return fn(old); }), null);
+    return () => {
+      const was: LoadedRaster | null = gone;
+      if (was) swapLoaded(set, { ...was, previewUrl: blobUrl(was.srcBytes, mimeFor(was.name)) });
+    };
   };
 
   /** A successful decode clears only its own slot's earlier failure — not a
@@ -1016,13 +891,10 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  and point the layer (its fill value, or the master's own asset) at the
    *  minted id. The previous asset's bytes are deliberately KEPT: undo can
    *  point the layer back at it (#75); see liveImages. */
-  async function onLayerImage(layer: ImageLayer, f: File | null) {
-    let assetId = "";
-    if (f) {
-      assetId = mintCustomAssetId();
-      const file = await readCustomImage(f);
-      setCustomImages((old) => ({ ...old, [assetId]: file }));
-    }
+  async function onLayerImage(layer: ImageLayer, f: File) {
+    const assetId = mintCustomAssetId();
+    const file = await readCustomImage(f);
+    setCustomImages((old) => ({ ...old, [assetId]: file }));
     setContent(layer, assetId);
   }
 
@@ -1037,23 +909,6 @@ export const DocumentEditor = memo(function DocumentEditor({
   }, [customImages, master, label]);
   const liveImages = useMemo(() => Object.fromEntries(
     liveIds ? liveIds.split("\n").map((id) => [id, customImages[id]]) : []), [customImages, liveIds]);
-  /** Every image asset's embed bytes, tinted where a layer asks
-   *  (`tintRaster`): what the exports embed. Async because a tinted raster
-   *  has to be decoded and re-encoded; SVG and untinted rasters pass through.
-   *  The preview decodes liveImages as-is and tints at draw time instead
-   *  (the plan's image items carry `tint`), so it never calls this (#414). */
-  async function imageAssets(): Promise<Record<string, CollabImage>> {
-    const tints = new Map<string, Fill>(drawLayers.flatMap((l) =>
-      l.kind === "image" && l.tintRaster && l.asset ? [[l.asset, l.style.fill] as const] : []));
-    const out: Record<string, CollabImage> = {};
-    for (const [id, c] of Object.entries(liveImages)) {
-      const fill = tints.get(id);
-      out[id] = c.image.kind !== "svg" && fill
-        ? { kind: "png", bytes: await tintedPng(c.image.bytes, fill) }
-        : c.image;
-    }
-    return out;
-  }
   /** The planner's asset descriptors: every image's intrinsic aspect (an
    *  SVG source's ink too, so it plans as paths), plus the page art under
    *  PAGE_ART_ID while the slots hold it. */
@@ -1078,6 +933,17 @@ export const DocumentEditor = memo(function DocumentEditor({
         : { bytes: texture.bytes, kind: texture.kind },
     maskPng: !mask || !pageOn("mask") ? undefined : preview ? mask.previewBytes : mask.bytes,
   });
+
+  // What the tab strip, window title and export names call this document.
+  const title = titleOf(drawLayers) || "Untitled";
+  const exportBase = exportBaseOf(drawLayers);
+  // The PDF/PSD exports and the export-in-flight state (useExport.ts). Its
+  // exportStale runs from markDirty and edit above, which only fire from
+  // handlers, after this render has declared it.
+  const { exporting, exportNote, exportStale, startSaveBatch, saveBytes, buildFull, exportPsd } = useExport({
+    drawLayers, family, liveImages, planAssets: planAssetsOf, pageArt, title, exportBase, render, setBuildError,
+  });
+  const exportBlocked = blocked || exporting !== null;
 
   // The render source for BOTH views: fonts + decoded bitmaps for drawPlate,
   // assembled off the asset inputs alone (debounced). Layer edits, a raster's
@@ -1394,138 +1260,20 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (box && layer) patch(id, unbindPatch(layer, box));
   };
 
-  // Revoking immediately can abort a large download, so each URL lives until
-  // the NEXT export batch — or until the tab closes (below).
-  const lastSaved = useRef<string[]>([]);
   /** The assets this tab holds right now, read by the unmount cleanup: a
-   *  closed tab releases their thumbnails and its export URLs, or each one
-   *  pins its file's bytes for the rest of the session (#85). */
+   *  closed tab releases their thumbnails, or each one pins its file's bytes
+   *  for the rest of the session (#85). useExport releases its export URLs. */
   const held = useRef({ texture, mask, customImages });
   held.current = { texture, mask, customImages };
   useEffect(() => () => {
     const { texture, mask, customImages } = held.current;
     for (const a of [texture, mask, ...Object.values(customImages)]) if (a) URL.revokeObjectURL(a.previewUrl);
-    lastSaved.current.forEach((u) => URL.revokeObjectURL(u));
   }, []);
-  function startSaveBatch() {
-    lastSaved.current.forEach((u) => URL.revokeObjectURL(u));
-    lastSaved.current = [];
-  }
-  function saveBytes(bytes: Uint8Array, name: string, type = "application/pdf") {
-    const url = blobUrl(bytes, type);
-    lastSaved.current.push(url);
-    download(url, name);
-  }
-  /** Save one exported file through the platform's save dialog. Tauri uses
-   *  the OS dialog; supported browsers use File System Access; Safari/Firefox
-   *  keep the plain-download fallback. */
-  async function saveVia(bytes: Uint8Array, name: string, type: string) {
-    const extension = name.slice(name.lastIndexOf(".") + 1);
-    return await saveThrough(bytes, {
-      name, type, filter: { name: `${extension.toUpperCase()} file`, extensions: [extension] },
-      types: [{ description: `${extension.toUpperCase()} file`, accept: { [type]: [`.${extension}`] } }],
-    }, saveBytes);
-  }
 
-  // What the tab strip, window title and export names call this document.
-  const title = titleOf(drawLayers) || "Untitled";
-  const exportBase = exportBaseOf(drawLayers);
-
-  /** The full-resolution display list for an export: the same layers the
-   *  preview draws, planned with the pdf-lib widths the PDF draws with
-   *  (pdfMeasureFace — unkerned, #86) and the full-size asset descriptors.
-   *  Every bundled family is loaded so a layer's own font measures true. */
-  async function exportPlan(): Promise<{ plan: PlacedLayer[]; images: Record<string, CollabImage>; fontFamilies: Assets["fontFamilies"] }> {
-    const [{ pdfMeasureFace }, loaded] = await Promise.all([
-      import("@/pdf/build"),
-      Promise.all((Object.keys(FONT_URLS) as FontFamilyId[]).map(async (id) => [id, await loadFonts(id)] as const)),
-    ]);
-    const packs = Object.fromEntries(loaded) as Record<FontFamilyId, Assets["fonts"]>;
-    const plan = planLayers(drawLayers, await pdfMeasureFace(packs, family), planAssetsOf());
-    const families = new Set(plan.flatMap((run) => run.kind === "text" && run.fontFamily ? [run.fontFamily] : []));
-    const fontFamilies = Object.fromEntries([...families].map((id) => [id, packs[id]]));
-    return { plan, images: await imageAssets(), fontFamilies };
-  }
-
-  const exportRunning = useRef(false);
-  async function exportPair(
-    extension: "pdf" | "psd", type: string,
-    build: () => Promise<(Uint8Array | null)[]>,
-  ) {
-    if (exportRunning.current) return;
-    exportRunning.current = true;
-    setExporting(extension);
-    setExportNote("");
-    exportFresh.current = true;
-    startSaveBatch();
-    const saved: string[] = [];
-    let pending = "";
-    try {
-      const pair = await build();
-      for (const [index, bytes] of pair.entries()) {
-        if (!bytes) continue;
-        pending = `${exportBase}${index ? "-mask" : ""}.${extension}`;
-        const result = await saveVia(bytes, pending, type);
-        if (!result) {
-          setBuildError(`Note: ${saved.length ? `Saved ${saved.join(", ")}. ` : ""}Export cancelled before saving ${pending}.`);
-          return;
-        }
-        saved.push(result.name);
-      }
-      setBuildError("");
-      if (exportFresh.current) setExportNote(`Saved ${saved.join(", ")}.`);
-    } catch (error) {
-      setBuildError(`${saved.length ? `Saved ${saved.join(", ")}. ` : ""}${pending ? `Could not save ${pending}: ` : ""}${errMsg(error)}`);
-    } finally {
-      exportRunning.current = false;
-      setExporting(null);
-    }
-  }
-
-  /** Build full-resolution plates before opening either save dialog. */
-  async function buildFull(which: "art" | "mask" | "both") {
-    await exportPair("pdf", "application/pdf", async () => {
-      const [{ buildArtPdf, buildMaskPdf }, fonts, { plan, images, fontFamilies }] = await Promise.all([
-        import("@/pdf/build"), loadFonts(family), exportPlan(),
-      ]);
-      const art = pageArt(false);
-      const assets: Assets = {
-        fonts, fontFamilies, title,
-        images: {
-          ...images,
-          ...(art.texture ? { [PAGE_ART_ID.background]: art.texture } : {}),
-          ...(art.maskPng ? { [PAGE_ART_ID.mask]: { kind: "png" as const, bytes: art.maskPng } } : {}),
-        },
-      };
-      // Both files build BEFORE the first dialog opens.
-      return await Promise.all([
-        which !== "mask" ? buildArtPdf(plan, assets) : null,
-        which !== "art" ? buildMaskPdf(plan, assets) : null,
-      ]);
-    });
-  }
   const downloadArt = () => void buildFull("art");
   const downloadMask = () => void buildFull("mask");
   const exportPdfs = () => void buildFull("both");
 
-  /** The file Save rewrites in place: set by Save As and picker-based Open.
-   *  Null until then, so plain Save falls through to the Save As dialog. */
-  const projectHandle = useRef<FileSystemFileHandle | null>(null);
-  /** Tauri's equivalent of projectHandle. */
-  const projectPath = useRef<string | null>(null);
-  /** State mirror of projectPath (a ref, which can't drive onMeta). */
-  const [filePath, setFilePath] = useState<string | null>(null);
-  // masterUnsaved is templateMoved, NOT the Save Master `masterDirty` above:
-  // label overrides ride in the .label, so ⌘S already saves them.
-  useEffect(() => {
-    onMeta({ title, dirty, edited, masterUnsaved: templateMoved, filePath });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, dirty, edited, templateMoved, filePath]);
-  function forgetProjectFile() {
-    projectHandle.current = null;
-    projectPath.current = null;
-    setFilePath(null);
-  }
   /** The same save-identity pattern for the .master this document's master
    *  was last saved to or opened from — tagged with that master's id, since
    *  undo can swap the document's master without touching these refs. Read
@@ -1553,21 +1301,6 @@ export const DocumentEditor = memo(function DocumentEditor({
     });
   }
 
-  /** The texture/mask slots and a custom image's on-disk bytes, spelled ONCE
-   *  for both containers. */
-  const textureAsset = () => texture ? { name: texture.name, bytes: texture.srcBytes } : undefined;
-  const maskAsset = () => mask ? { name: mask.name, bytes: mask.srcBytes } : undefined;
-  const imageAssetBytes = (c: CustomFile) =>
-    c.image.kind === "svg" ? strToU8(c.image.svg) : c.image.bytes;
-  const imageBundle = (ids: Iterable<string>) => {
-    const out: NonNullable<LabelAssets["customImages"]> = {};
-    for (const id of ids) {
-      const c = customImages[id];
-      if (c) out[id] = { name: c.name, bytes: imageAssetBytes(c) };
-    }
-    return Object.keys(out).length ? out : undefined;
-  };
-
   /** This document as .label bytes: the v3 label plus its embedded art —
    *  what Save writes and what a crash-recovery snapshot keeps. The hint names
    *  this tab's own master file: another tab may have opened a different file
@@ -1575,44 +1308,34 @@ export const DocumentEditor = memo(function DocumentEditor({
   const packProject = () => {
     const masterHint = saveTargetFor(masterFilePath.current, master.id) ?? masterIndex()[master.id]?.path;
     return packLabel({ ...label, masterHint }, {
-      texture: textureAsset(), mask: maskAsset(),
-      customImages: imageBundle(Object.keys(liveImages)),
+      texture: slotAsset(texture), mask: slotAsset(mask),
+      customImages: imageBundle(customImages, Object.keys(liveImages)),
     });
   };
 
-  /** File → Save / Save As…: the v3 label plus its embedded art, zipped as
-   *  <name-slug>.label (model/files.ts). */
-  async function saveProject(as = false): Promise<boolean> {
-    const finish = () => {
-      const current = savedAssetsRef.current;
-      const unchanged = docRef.current === doc && current.texture === texture
-        && current.mask === mask && current.customImages === customImages;
-      setDirty(!unchanged);
-      // A save inside an in-place text session moves the baseline its cancel
-      // would restore: the reverted text no longer matches the file.
-      beforeTextEdit.current = { dirty: true, edited: true };
-      setLoadError("");
-      // The close-tab caller must not close over edits made during this write.
-      return unchanged;
-    };
-    const zip = packProject();
-    try {
-      startSaveBatch();
-      const saved = await saveThrough(zip, {
-        name: exportBase + LABEL_EXT, type: "application/zip", filter: LABEL_FILTER, types: LABEL_TYPES,
-        target: as ? null : projectPath.current ? { path: projectPath.current }
-          : projectHandle.current ? { handle: projectHandle.current } : null,
-      }, saveBytes);
-      if (!saved) return false;
-      if (saved.target && "path" in saved.target) {
-        projectPath.current = saved.target.path; setFilePath(saved.target.path);
-      } else if (saved.target && "handle" in saved.target) projectHandle.current = saved.target.handle;
-      return finish();
-    } catch (err) {
-      setLoadError(`Could not save project: ${errMsg(err)}`);
-      return false;
-    }
-  }
+  /** What a completed Save means here: the document reads saved unless it
+   *  changed during the write. */
+  const onProjectSaved = () => {
+    const current = savedAssetsRef.current;
+    const unchanged = docRef.current === doc && current.texture === texture
+      && current.mask === mask && current.customImages === customImages;
+    setDirty(!unchanged);
+    // A save inside an in-place text session moves the baseline its cancel
+    // would restore: the reverted text no longer matches the file.
+    beforeTextEdit.current = { dirty: true, edited: true };
+    setLoadError("");
+    // The close-tab caller must not close over edits made during this write.
+    return unchanged;
+  };
+  const { filePath, bindPath, bindHandle, forgetProjectFile, saveProject } = useProjectSave({
+    pack: packProject, exportBase, onSaved: onProjectSaved, setLoadError, startSaveBatch, saveBytes,
+  });
+  // masterUnsaved is templateMoved, NOT the Save Master `masterDirty` above:
+  // label overrides ride in the .label, so ⌘S already saves them.
+  useEffect(() => {
+    onMeta({ title, dirty, edited, masterUnsaved: templateMoved, filePath });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, dirty, edited, templateMoved, filePath]);
   saveSlot.current = () => saveProject();
 
   // Crash recovery (#394): while this tab holds unsaved work, keep a packed
@@ -1644,7 +1367,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   function masterAssetBundle(m: Master): { assets: MasterAssets; missing: number } {
     const ids = [...masterAssetIds(m)];
     return {
-      assets: { texture: textureAsset(), mask: maskAsset(), customImages: imageBundle(ids) },
+      assets: { texture: slotAsset(texture), mask: slotAsset(mask), customImages: imageBundle(customImages, ids) },
       missing: ids.filter((id) => !customImages[id]).length,
     };
   }
@@ -2104,13 +1827,11 @@ export const DocumentEditor = memo(function DocumentEditor({
       try {
         if (path) {
           const name = await basename(path);
-          if (await openWithRetry(async () => ({ name, bytes: await readNativeFile(path), path }))) {
-            projectPath.current = path;
-            setFilePath(path);
-          }
+          if (await openWithRetry(async () => ({ name, bytes: await readNativeFile(path), path })))
+            bindPath(path);
         } else if (handle) {
           if (await openWithRetry(async () => fileSource(await handle.getFile())))
-            projectHandle.current = handle;
+            bindHandle(handle);
         } else if (file) {
           if (await openWithRetry(() => fileSource(file))) {
             forgetProjectFile();
@@ -2134,42 +1855,6 @@ export const DocumentEditor = memo(function DocumentEditor({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileToOpen]);
-
-  /** An image's raster bytes as RGBA at NATURAL size — buildPsd resamples
-   *  every raster (page texture and mask included) to its placed rect
-   *  itself, so nothing is pre-fit here (#88). Export only: a full-res
-   *  texture decodes to tens of MB. */
-  async function rasterPixelsNatural(bytes: Uint8Array): Promise<import("@/psd/build").Rgba> {
-    const canvas = await decodeToCanvas(blobOf(bytes));
-    const img = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
-    return { data: new Uint8Array(img.data.buffer), width: img.width, height: img.height };
-  }
-
-  /** Layered Photoshop files, built full-resolution on demand like the PDFs,
-   *  off the main thread (psd/offThread.ts). Image decoding (psdImages) still
-   *  runs here: it needs a canvas. `which` picks a single plate or (default)
-   *  both. */
-  async function exportPsd(which: "both" | "art" | "mask" = "both") {
-    await exportPair("psd", "image/vnd.adobe.photoshop", async () => {
-      const [{ psdImages }, { buildPsdOffThread }, fonts, { plan, images }] = await Promise.all([
-        import("@/psd/build"), import("@/psd/offThread"), loadFonts(family), exportPlan(),
-      ]);
-      const art = pageArt(false);
-      const assets: PsdAssets = {
-        fonts, fontFamily: family,
-        images: await psdImages(images, { texture: art.texture?.bytes, mask: art.maskPng }, rasterPixelsNatural),
-      };
-      // Each plate builds in its own worker (#415); the worker's layout.ts
-      // gets this editor's bleed and DPI with the job.
-      const geometry = { bleedIn: render.bleedIn, dpi: render.dpi };
-      const plate = (mode: "art" | "mask") =>
-        buildPsdOffThread({ items: plan, assets, mode, opts: { layers: drawLayers }, geometry });
-      return await Promise.all([
-        which !== "mask" ? plate("art") : null,
-        which !== "art" ? plate("mask") : null,
-      ]);
-    });
-  }
 
   /** Every command the app exposes, once. The palette and AppMenu read this
    *  list, while the key listener dispatches off `key`. A ⌘ key here fires
@@ -2248,19 +1933,22 @@ export const DocumentEditor = memo(function DocumentEditor({
       if (layer.role === "background") {
         return <FileDrop label="Texture" accept={{ "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"], "image/webp": [".webp"] }}
           fileName={texture?.name} previewUrl={texture?.previewUrl}
-          onFile={(f) => void onTexture(f)} onClear={() => swapLoaded(setTexture, null)} />;
+          onFile={(f) => void onTexture(f)} onClear={() => clearLoaded(setTexture)} />;
       }
       if (layer.role === "mask") {
         return <FileDrop label="Metallic mask" accept={{ "image/png": [".png"], "image/webp": [".webp"] }}
           fileName={mask?.name} previewUrl={mask?.previewUrl}
-          onFile={(f) => void onMask(f)} onClear={() => swapLoaded(setMask, null)} />;
+          onFile={(f) => void onMask(f)} onClear={() => clearLoaded(setMask)} />;
       }
       if (layer.asset === "builtin:logo") return null;
       const file = customImages[layer.asset];
       return <FileDrop label="Image" accept={{ "image/svg+xml": [".svg"], "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] }}
         fileName={file?.name} previewUrl={file?.previewUrl}
         onFile={(f) => onLayerImage(layer, f).catch((err) => setBuildError(`Could not load image: ${errMsg(err)}`))}
-        onClear={() => void onLayerImage(layer, null)} />;
+        // In history (the well names ⌘Z): returns no undo of its own. Its own
+        // step (coalesce false), so ⌘Z right after a fast drop-then-X brings
+        // the art back instead of undoing the drop too.
+        onClear={() => { setContent(layer, "", false); }} />;
     }
     // A code layer edits its TEMPLATE (`format`, stashed by resolveLayers when
     // the value carried {ref}s), never the expansion — typing into the
