@@ -220,9 +220,9 @@ export function boxesOf(cfg: LabelConfig, m: Measure, slots: CollabSlots = NO_SL
   // file's whole share of that (see layout.BLEED_SHIFT) — the two renderers do
   // the same thing once each, so a box can't drift off the art it describes.
   //
-  // Deliberately here rather than on hitTest's incoming point: boxOf hands
-  // these straight to the selection-outline renderer, so shifting the
-  // point alone would fix clicking and leave the outlines behind.
+  // Deliberately here rather than on hitTest's incoming point: boxOf returns
+  // these boxes too, mirroring the live outline boxes in src/hittestLayers.ts,
+  // so shifting the point alone would fix clicking and leave boxOf behind.
   return boxes.map((b) => ({
     ...b,
     x0: b.x0 + L.BLEED_SHIFT, x1: b.x1 + L.BLEED_SHIFT,

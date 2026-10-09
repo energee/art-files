@@ -35,7 +35,7 @@ import type { Fill } from "@/types";
 import { legacyCollabEnabled, parseConfigFile } from "@/defaults";
 import { machineName } from "@/qr";
 import { strToU8 } from "fflate";
-import { LABEL_EXT, type LabelAssets } from "@/labelfile";
+import { LABEL_EXT, type LabelAsset, type LabelAssets } from "@/labelfile";
 import {
   LABEL_FILTER, LABEL_TYPES, MASTER_FILTER, MASTER_TYPES, bytesPart, isAbort,
 } from "@/filePickers";
@@ -310,7 +310,7 @@ async function tintedPng(bytes: Uint8Array, fill: Fill): Promise<Uint8Array> {
  *  thumbnails are createObjectURL(file), and an <img> won't render a
  *  typeless blob as SVG. One spelling for the label-open and master-adopt
  *  paths. */
-function assetToFile(a: { name: string; bytes: Uint8Array }): File {
+function assetToFile(a: LabelAsset): File {
   return new File([bytesPart(a.bytes)], a.name, { type: mimeFor(a.name) });
 }
 
@@ -1987,7 +1987,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       // Legacy fixed collab ZIP roles (collab-left/, collab-center/) stay
       // READABLE: each is minted an id in the per-id store and becomes the
       // matching image layer's fill value.
-      const legacyAssets: Record<string, { name: string; bytes: Uint8Array }> = {};
+      const legacyAssets: Record<string, LabelAsset> = {};
       const adoptLegacyCollab = (l: LabelFile): LabelFile => {
         let out = l;
         for (const slot of ["collabLeft", "collabCenter"] as const) {

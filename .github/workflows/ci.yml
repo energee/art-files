@@ -24,9 +24,10 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm run lint
-      # Dead code: unused files, exports and dependencies (config in knip.json).
-      - run: npx --yes knip@6.38.0
       - run: npm test
+      # Dead code: unused files, exports and dependencies (config in knip.json).
+      # After the tests, so a dead-code finding never hides a test result.
+      - run: npx --yes knip@6.38.0
 
   rust:
     # macOS: terminate.rs and its objc2 dependency are built (and tested) only there.
