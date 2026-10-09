@@ -20,6 +20,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Exports say what they're building.** While PDFs or PSDs export, the blurred preview reads "Building PDFs…" or "Building PSDs…" instead of "rendering preview…", so a long export no longer looks like a stalled preview. A PSD export shows the note even while the preview is still loading, and screen readers announce it.
 - **Background failures show up instead of vanishing.** A save, export or open that fails outside its own error handling now shows a dismissible alert with the reason, rather than failing silently.
 - **Two windows saving masters at once no longer drop one from the library.** Each remembered master now has its own storage entry, so a save in one window can't overwrite a master another window just added. An existing library carries over on the next save. The Master menu now lists remembered masters by name.
+- **Saving an oversized label says why.** A label whose art exceeds the file size limit now shows "Could not save project" instead of failing silently, and Save in the close-tab prompt keeps the tab open. An image too large to encode reports its size instead of a cryptic error.
 
 ### Changed
 - **PSD export no longer freezes the window.** The layered PSD is built in a background worker, so the editor stays responsive while a full-resolution file is written. Image decoding and PDF export still run on the main thread.
@@ -28,6 +29,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Typing on a label with a texture or mask is lighter.** The preview paints the page art once per zoom level and reuses it, instead of rescaling the full-size image on every keystroke.
 - **The first preview loads only the fonts the label uses.** Opening a label fetches its master font and any layer font overrides instead of every bundled family; another font loads when a layer first picks it.
 - **Internal cleanup, no visible change.** Image bytes become files and blobs through one shared helper instead of repeated casts.
+- **Internal restructuring, no visible change.** The editor's file reading, export and project-save code moved into separate modules; opening, saving and exporting behave as before.
 - **Export confirms what it saved.** When an export finishes, the header names the files it wrote, such as both the art and mask PDFs, and screen readers announce it. The note clears on your next edit.
 - **Smoother typing in the 3D view.** The foil-mask pass over the label texture now runs in a background worker instead of stalling the editor on every rebuild.
 - **A little less code to load at startup.** Settings, the Save Master review and the ⌘K command palette now load the first time you open them instead of with the editor, trimming the startup code by about 60 kB.
