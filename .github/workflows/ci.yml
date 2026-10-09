@@ -1,4 +1,4 @@
-# ci.yml — frontend and desktop tests on every PR and push to main.
+# ci.yml — frontend and desktop tests, plus dependency audits, on every PR and push to main.
 name: Tests
 
 on:
@@ -18,13 +18,16 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .nvmrc
       # poppler's pdftoppm rasterizes the PDF goldens (scripts/golden-diff.mts).
       - run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends poppler-utils
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm run lint
       - run: npm test
+      # Dead code: unused files, exports and dependencies (config in knip.json).
+      # After the tests, so a dead-code finding never hides a test result.
+      - run: npx --yes knip@6.38.0
 
   rust:
     # macOS: terminate.rs and its objc2 dependency are built (and tested) only there.
@@ -39,3 +42,23 @@ jobs:
         with:
           workspaces: ./src-tauri -> target
       - run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  audit:
+    # Fails on known advisories: high/critical in runtime npm deps (--omit=dev skips
+    # build and test tooling), and any RustSec vulnerability in src-tauri/Cargo.lock.
+    # RustSec warnings (unmaintained/unsound) are printed but do not fail.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: npm audit --omit=dev --audit-level=high
+      # Prebuilt, version-pinned cargo-audit (compiling it costs ~5 minutes a run).
+      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        with:
+          tool: cargo-audit@0.22.2
+      - run: cargo audit
+        working-directory: src-tauri

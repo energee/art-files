@@ -23,4 +23,12 @@ export default tseslint.config(
       "@typescript-eslint/no-explicit-any": "off",
     },
   },
+  {
+    // tests/legacy is a test-only oracle (see its README); the app must never
+    // import it.
+    files: ["src/**"],
+    rules: {
+      "no-restricted-imports": ["error", { patterns: ["**/tests/legacy/**"] }],
+    },
+  },
 );

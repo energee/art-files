@@ -4,7 +4,8 @@
 // updater argument, and every accepted change pushes the previous value onto
 // an undo stack. Only the config goes through here — loaded texture/mask
 // files and the transient preview state are deliberately outside it, so undo
-// never re-runs an image decode.
+// never re-runs an image decode. Their wells' X offers its own Undo instead
+// (App.tsx clearLoaded, #426).
 import { useCallback, useRef, useState } from "react";
 
 // Consecutive edits closer together than this collapse into one undo step, so

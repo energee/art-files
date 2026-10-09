@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { psdImages, type Rgba } from "../src/psd/build";
 import { PAGE_ART_ID } from "../src/model/layers";
 
-/** Stand-in for App.tsx's natural-size decoder: every image is 1000x1000. */
+/** Stand-in for assets/io.ts rasterPixelsNatural: every image is 1000x1000. */
 const NATURAL = { width: 1000, height: 1000 };
 const decode = async (): Promise<Rgba> =>
   ({ data: new Uint8Array(NATURAL.width * NATURAL.height * 4), ...NATURAL });

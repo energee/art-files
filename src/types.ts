@@ -51,7 +51,7 @@ export interface StyledLine extends Style {
  *  baselines in layout.ts, and the left collab block deliberately FLOWS under
  *  the description (see collabLeftFlow) rather than sitting at a fixed y —
  *  offsetY nudges that computed position, it does not replace it. */
-export interface Positioned {
+interface Positioned {
   /** Vertical nudge in PDF points, positive = down. Absent/0 = as laid out.
    *  For the laurel this is the "stack nudge": it exists to clear the centre
    *  collab mark. Applied UNCONDITIONALLY — logoNudge in elements.ts is just
@@ -167,7 +167,7 @@ export interface LabelConfig {
 /** Shared shape of every custom layer: identity, display name, and anchored
  *  position. `id` is `custom-${string}` (see isCustomId in elements.ts) so
  *  it can never collide with a fixed ElementId. */
-export interface CustomLayerBase {
+interface CustomLayerBase {
   /** Unique per layer, e.g. "custom-a1b2c3". */
   id: `custom-${string}`;
   /** Shown in the layers panel. */

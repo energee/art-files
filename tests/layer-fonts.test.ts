@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
-import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, PDFName } from "pdf-lib";
 import { readPsd } from "ag-psd";
 import { FONT_FAMILIES, type FontFamilyId } from "../src/fontCatalog";
 import { planText } from "../src/planLayers";
 import type { Face, MeasureFace } from "../src/plan";
 import { createHeightMeasure } from "../src/textheight";
+import { openFont } from "../src/fontkit";
 import { buildArtPdf, buildMaskPdf } from "../src/pdf/build";
 import { buildPsd } from "../src/psd/build";
 import { lolevMaster } from "../src/model/lolevLayers";
@@ -21,10 +21,10 @@ const bytes = (family: FontFamilyId): Record<Face, Uint8Array> => {
 };
 const poppins = bytes("poppins"), condensed = bytes("barlow-condensed");
 const parsed = Object.fromEntries(Object.entries({ poppins, "barlow-condensed": condensed }).map(([id, faces]) =>
-  [id, Object.fromEntries(Object.entries(faces).map(([face, data]) => [face, fontkit.create(data)]))]));
+  [id, Object.fromEntries(Object.entries(faces).map(([face, data]) => [face, openFont(data)]))]));
 const measure: MeasureFace = (text, size, face, family = "poppins") => {
   const f = parsed[family][face];
-  return f.layout(text).glyphs.reduce((sum: number, g: { advanceWidth: number }) => sum + g.advanceWidth, 0) * size / f.unitsPerEm;
+  return f.layout(text).glyphs.reduce((sum, g) => sum + g.advanceWidth, 0) * size / f.unitsPerEm;
 };
 const style = { fill: "#000000", layer: "white" } as const;
 const text: TextLayer = { id: "warning", name: "Warning", kind: "text", enabled: true,

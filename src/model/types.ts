@@ -6,8 +6,9 @@
 // readers (model/labelfile.ts, src/labelfile.ts) and model/fields.ts.
 import type { LabelConfig } from "../types";
 import type { DeepPartial } from "./merge";
+import type { Guides } from "./layers";
 
-export type FieldKind = "text" | "number" | "image" | "code" | "select" | "toggle";
+type FieldKind = "text" | "number" | "image" | "code" | "select" | "toggle";
 export type FieldValue = string | number | boolean;
 
 /** What a .label may fill. `path` binds the value into the resolved
@@ -28,11 +29,6 @@ export interface FieldDecl {
   /** code kind: which validator applies. Mirrors barcode.ts's `Symbology`
    *  (re-declared, not imported, to avoid a circular import). */
   symbology?: "upc-a" | "ean-13" | "code-128";
-}
-
-export interface Guides {
-  left: number | null; center: "auto" | null; right: number | null;
-  top: number | null; bottom: number | null;   // null = guide removed
 }
 
 /** One layer on the master: identity and POLICY only — never style or

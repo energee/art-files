@@ -492,7 +492,7 @@ export async function buildLabel(input: GenerateInput): Promise<GenerateResult> 
   const put = async (id: string, img: CollabImage, imageDoc: PDFDocument) => {
     images[id] = img;
     if (img.kind === "svg") {
-      // The SVG's ink-box aspect, as the App's readCustomImage takes it (#91).
+      // The SVG's ink-box aspect, as the editor's readCustomImage (assets/io.ts) takes it (#91).
       planCustom[id] = { aspect: svgAspect(img.svg), art: img };
       return;
     }
