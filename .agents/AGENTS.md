@@ -16,6 +16,8 @@ blue = white ink and white = knockout. Operator guide is the Fumadocs site in
 - Test: `npm test`
 - Typecheck: `npx tsc --noEmit`
 - Lint: `npm run lint` (rules-of-hooks + exhaustive-deps + unused vars; zero warnings)
+- Dependency audit (CI `audit` job): `npm audit --omit=dev --audit-level=high`, and
+  `cargo audit` in `src-tauri` (install with `cargo install cargo-audit --locked`)
 - Dead code: `npx knip@6.38.0`, run by hand (not a devDependency or CI step; config in `knip.json`). `src/components/ui/**` is ignored because shadcn scaffolding carries unused variants; delete a whole ui component once nothing imports it.
 - Docs: `npm run dev --prefix docs-site` (the Fumadocs site has its own
   `package.json`; there is no root `docs:dev` script)
