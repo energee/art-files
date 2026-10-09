@@ -481,9 +481,7 @@ export default function TabsShell() {
                 // where it rests dimmed: touch has no hover, and a fully
                 // hidden × was never discovered (#424). An unsaved tab
                 // always shows its •.
-                !unsaved(t) && (t.id === state.active
-                  ? "opacity-60 group-hover:opacity-100"
-                  : "opacity-0 group-hover:opacity-100"),
+                !unsaved(t) && ["group-hover:opacity-100", t.id === state.active ? "opacity-60" : "opacity-0"],
               )}>
               {unsaved(t) ? (
                 <>

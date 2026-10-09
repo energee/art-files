@@ -182,6 +182,6 @@ it("shows the active tab's close button without hover", async () => {
   await act(async () => { mocks.newTab?.(); });
   const closeBtns = [...document.querySelectorAll<HTMLElement>('[aria-label^="Close "]')];
   expect(tabs()[1].getAttribute("aria-selected")).toBe("true");
-  expect(closeBtns[1].className).not.toMatch(/(^|\s)opacity-0(\s|$)/);
-  expect(closeBtns[0].className).toMatch(/(^|\s)opacity-0(\s|$)/);
+  expect(closeBtns[1].classList.contains("opacity-0")).toBe(false);
+  expect(closeBtns[0].classList.contains("opacity-0")).toBe(true);
 });
