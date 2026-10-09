@@ -65,8 +65,9 @@ import { layerBoxes } from "@/planLayers";
 import type { Box } from "@/model/place";
 import { makeHiddenPropsEqual, unsaved, type TabMeta } from "@/tabs";
 import { dropRecovery, keepRecovery } from "@/recovery";
+import { mimeFor } from "@/collab";
 import {
-  assetToFile, imageBundle, readCustomImage, readRaster, slotAsset, type CustomFile, type LoadedRaster,
+  assetToFile, blobUrl, imageBundle, readCustomImage, readRaster, slotAsset, type CustomFile, type LoadedRaster,
 } from "@/assets/io";
 import { useExport } from "@/useExport";
 import { useProjectSave } from "@/useProjectSave";
