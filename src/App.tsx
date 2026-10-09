@@ -471,6 +471,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   const viewIndex = VIEW_CYCLE.findIndex((v) => v.at(viewMode, split));
   const viewLabel = viewMode === "2d" && split > 0 && split < 100
     ? "Compare" : VIEW_CYCLE[viewIndex].label;
+  const nextView = VIEW_CYCLE[(viewIndex + 1) % VIEW_CYCLE.length];
   // Zoom level follows you across views (see CanView's initialView). A ref:
   // only a view change hands it over.
   const carried = useRef({ zoom: 1, pan: { x: 0, y: 0 } });
@@ -2296,9 +2297,13 @@ export const DocumentEditor = memo(function DocumentEditor({
               {render.dpi} DPI
             </span>
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
+            {/* The aria-label starts with the visible text (label-in-name) and
+                adds what a click does; keys 1–3 jump straight to a view. */}
             <button
-              onClick={() => byId(VIEW_CYCLE[(viewIndex + 1) % VIEW_CYCLE.length].id).run()}
+              onClick={() => byId(nextView.id).run()}
               title="Current preview view — click for the next (View menu, keys 1–3)"
+              aria-label={`View Mode: ${viewLabel} — switch to ${nextView.label}`}
+              aria-keyshortcuts="1 2 3"
               className="shrink-0 rounded px-1 py-0.5 text-xs whitespace-nowrap text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
               View Mode: {viewLabel}
             </button>
