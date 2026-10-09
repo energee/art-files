@@ -13,6 +13,7 @@ that section to the new version (see .agents/release-steward.md).
 - **The active tab's close button shows without hovering.** It rests dimmed on the selected tab so it can be found and tapped on touch; other tabs still show theirs on hover.
 - **Deleting a variant or removing a well's file says how to undo it.** Delete under the master picker now leaves a note that ⌘Z brings the variant back. Removing a texture or mask with its × was not undoable at all; the well now offers Undo to put the file back. An image layer's well notes that ⌘Z restores its art.
 - **A damaged remembered-masters entry no longer breaks opening labels.** A library entry missing its file path or name is now skipped instead of making a label open fail.
+- **A label or master from a newer Label Lab is refused instead of downgraded.** Opening a file saved in a newer format now says it was made by a newer version and asks you to update, rather than reading it as an old-format file that saving would then overwrite with less.
 
 ## [0.1.105] - 2026-10-09
 
