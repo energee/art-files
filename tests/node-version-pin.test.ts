@@ -9,8 +9,12 @@ const ROOT = resolve(__dirname, "..");
 const WORKFLOWS = resolve(ROOT, ".github/workflows");
 
 describe("one pinned Node version (#423)", () => {
-  const files = readdirSync(WORKFLOWS).filter((f) => f.endsWith(".yml"));
-  const withSetupNode = files.filter((f) => readFileSync(resolve(WORKFLOWS, f), "utf8").includes("actions/setup-node"));
+  const text = new Map(
+    readdirSync(WORKFLOWS)
+      .filter((f) => f.endsWith(".yml"))
+      .map((f) => [f, readFileSync(resolve(WORKFLOWS, f), "utf8")]),
+  );
+  const withSetupNode = [...text.keys()].filter((f) => text.get(f)!.includes("actions/setup-node"));
 
   it("covers the CI and release workflows", () => {
     expect(withSetupNode).toEqual(expect.arrayContaining(["ci.yml", "release.yml", "release-metadata.yml"]));
@@ -18,7 +22,8 @@ describe("one pinned Node version (#423)", () => {
 
   it.each(withSetupNode)("%s reads the version from .nvmrc", (file) => {
     // Split the workflow into its `- ` list items and keep the setup-node steps.
-    const steps = readFileSync(resolve(WORKFLOWS, file), "utf8")
+    const steps = text
+      .get(file)!
       .split(/\n\s*- /)
       .filter((step) => step.includes("actions/setup-node"));
     for (const step of steps) {
