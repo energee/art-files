@@ -12,13 +12,13 @@ that section to the new version (see .agents/release-steward.md).
 - **Unused exports removed, no visible change.** Types used only in the file that defines them are no longer exported.
 
 ### Fixed
-- **Screen readers name the View Mode button and saved color swatches.** The status bar's View Mode button now says which view a click switches to and announces keys 1–3; a saved swatch reads "Saved color #rrggbb" and announces Delete to remove it. Holding Delete removes one swatch instead of sweeping the whole saved list.
 - **The active tab's close button shows without hovering.** It rests dimmed on the selected tab so it can be found and tapped on touch; other tabs still show theirs on hover.
 - **Deleting a variant or removing a well's file says how to undo it.** Delete under the master picker now leaves a note that ⌘Z brings the variant back. Removing a texture or mask with its × was not undoable at all; the well now offers Undo to put the file back. An image layer's well notes that ⌘Z restores its art.
 - **A damaged remembered-masters entry no longer breaks opening labels.** A library entry missing its file path or name is now skipped instead of making a label open fail.
 - **A label or master from a newer Label Lab is refused instead of downgraded.** Opening a file saved in a newer format now says it was made by a newer version and asks you to update, rather than reading it as an old-format file that saving would then overwrite with less.
 - **A file with two images in one asset slot is refused.** A `.label` or `.master` whose texture, mask or custom image slot holds more than one file (for example after hand-editing the ZIP) is now refused instead of silently keeping one of the images. The open error names the slot and both files; Windows `Thumbs.db` and `desktop.ini` files left by a re-zip are ignored.
 - **The variant badge in the layer list is clearer while its variant is off.** It no longer fades to a faint grey on top of its dimmed row; it keeps its normal colour and is struck through instead.
+- **Screen readers name the View Mode button and saved color swatches.** The status bar's View Mode button now says which view a click switches to and announces keys 1–3; a saved swatch reads "Saved color #rrggbb" and announces Delete to remove it. Holding Delete removes one swatch instead of sweeping the whole saved list.
 
 ## [0.1.105] - 2026-10-09
 
