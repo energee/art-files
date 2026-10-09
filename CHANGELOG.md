@@ -28,6 +28,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Typing on a label with a texture or mask is lighter.** The preview paints the page art once per zoom level and reuses it, instead of rescaling the full-size image on every keystroke.
 - **The first preview loads only the fonts the label uses.** Opening a label fetches its master font and any layer font overrides instead of every bundled family; another font loads when a layer first picks it.
 - **Internal cleanup, no visible change.** Image bytes become files and blobs through one shared helper instead of repeated casts.
+- **Internal restructuring, no visible change.** The editor's file reading, export and project-save code moved into separate modules; opening, saving and exporting behave as before.
 - **Export confirms what it saved.** When an export finishes, the header names the files it wrote, such as both the art and mask PDFs, and screen readers announce it. The note clears on your next edit.
 - **Smoother typing in the 3D view.** The foil-mask pass over the label texture now runs in a background worker instead of stalling the editor on every rebuild.
 - **A little less code to load at startup.** Settings, the Save Master review and the ⌘K command palette now load the first time you open them instead of with the editor, trimming the startup code by about 60 kB.
