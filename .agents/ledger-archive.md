@@ -1,10 +1,11 @@
 # Ledger archive
 
-Closed `ledger.md` entries moved here verbatim once they were more than 30 days old,
-so the live ledger stays short enough to read before every session. Nothing here is
-rewritten; newest at the bottom, as in the ledger. Archived 2026-10-08 (#437): entries
-dated before 2026-09-08 whose status was `done`, or `implemented`/`fixed` on a branch
-that has since merged.
+Closed `ledger.md` entries moved here verbatim once their heading date was more than
+30 days old (see the ledger's Standing rules), so the live ledger stays short enough to
+read before every session. Nothing here is rewritten; newest at the bottom, as in the
+ledger. Statuses like `implemented in <branch>` or `fixed in <branch>` name branches
+that had merged when the entry was archived. A cross-reference such as "below" can
+point at an entry still in `ledger.md`.
 
 ---
 
@@ -85,14 +86,6 @@ that has since merged.
 - status: done
 - attempts: 1/3
 - delta: plan.ts text-only -> full Placed union (paths/image/barcode); pdf/build.ts one plan walk (LEFT seam, drawCollab, strokeOf, dead imports deleted); new src/canvas/draw.ts + tests; parity page (npm run parity, observed 2.04-2.48% diff, threshold 5%); dev toggle localStorage.canvasPreview (DEV only); exports pixel-identical (0 diff px at 200/400dpi); 242 -> 258 tests green; v0.1.18. Carried to Phase 3: silent drawImage skip on missing canvas asset (draw.ts), close-race on ImageBitmap swap (App.tsx dev effect), pin barcode/paths stroke-before-fill in fake-ctx tests, route canvas render errors to buildError, textBaseline/textAlign ownership in drawPlate, box.x! in collabItems.
-
-## 2026-08-25 canvas-preview-swap-phase3
-- finding: [user request] canvas preview renderer Phase 3 — the swap, plus 3D-from-canvas pulled forward from Phase 4 (user decision)
-- status: done
-- attempts: 1/3
-- delta: 2D preview renders per keystroke from planLabel+drawPlate (no worker, no debounce; asset assembly split off with asset-only deps); in-place editing = planLabel skip flag, v0.1.16 hide-and-rebuild plumbing deleted; 3D views texture via new drawPlates/sync buildLabelTextures (pdf.js retained only for the dev parity page); DELETED pdf/client.ts, pdf/worker.ts, tests/preview-client.test.ts, App's pdfs/needMask/inputs/built/buildChain machinery, TabsShell dispose; all six Phase-2 carried items landed; final review restored the dropped PREVIEW_RASTER_MAX_EDGE cap (backing store measured 5040px at bleed 0.2, now clamps at 4876). Verified in real Chrome (per-keystroke paint, same-frame edit skip, mask plate, eyes, 3D can from canvas plates, zoom ratchet, bleed repaint, zero worker traffic), parity 2.04-2.48% (max 5%), npm run generate builds all four exports; 260 tests + tsc green; v0.1.19. Commits e552d35..7e262a1 + docs.
-- learning: replacing a rendering pipeline must port the old call's guard OPTIONS, not just its happy path — scaleCap's maxEdge half was silently dropped and only the final whole-branch review caught it
-- Carried to Phase 4: PSD-on-plan (priority), drag-to-move, dynamic fonts via src/fonts.ts; deferred minors — half-painted plate if drawPlate ever throws mid-walk (unreachable today; offscreen+blit if it matters), shared buildError channel cleared by any successful frame (split per-source state before Phase 4 adds writers), mask plate repaints at split 0 (gate on split>0 if keystroke latency regresses at max zoom), planFrom() helper to dedupe the two planLabel spellings, unit pin on drawPlates scale math (needs DOM stub), barcode-halo test's translate-index scoping invariant, CanView 3D texture failures warn-only (spec amended to record this).
 
 ## 2026-08-25 psd-on-plan-phase4a
 - finding: [user request] canvas preview Phase 4a — PSD placement from shared display list
@@ -210,14 +203,6 @@ that has since merged.
 - delta: hint follows list; master picker uses existing shadcn Select, Button and Input; Open Master and Duplicate remain below selector; rebind confirmation retained
 - evidence: 15 layer-list and 4 master-picker DOM tests pass; TypeScript and 0.1.51 release metadata gate pass; changes local
 
-## 2026-09-05 release-build-performance
-- finding: [user request] optimize builds after Windows release 33962816055 took 6m 2s, including 3m 22s in Cargo despite a cache hit
-- status: done
-- delta: release Rust pinned to 1.98.1 (the compiler in that successful run); superseded PR test runs cancel while main/release jobs remain protected; release jobs emit and upload per-target Cargo timing HTML for 14 days
-- experiment: macOS arm64, rustc 1.97.1, existing 0.1.51 source/dist; initial dependency warm-up excluded (274 seconds). Alternating two default release app rebuilds and two with --config profile.release.package.label-lab.opt-level=1, touching src-tauri/src/main.rs before each; cargo build --manifest-path src-tauri/Cargo.toml --release --timings. Default: 71.55/81.96 seconds, 11262192 bytes. Candidate: 103.35/99.34 seconds, 13784848 bytes. Candidate averages 32% slower and is 22% larger; rejected, no profile change retained. Local results are not a Windows speedup claim; no startup comparison needed after rejection.
-- evidence: four measured release builds pass; Actionlint 1.7.12 validates both workflows (shellcheck unavailable); YAML parsing, diff check and 0.1.51 release gate pass. No workflow dispatched or release published. Existing sidebar edits preserved.
-- deferred: shared frontend build adds artifact transfer/dependency overhead for a small wall-clock saving; revisit if new timings show frontend dominating
-
 ## 2026-09-05 draggable-layer-order
 - finding: [user request] replace per-row up/down buttons with drag reordering
 - status: done
@@ -284,11 +269,3 @@ that has since merged.
 - delta: print-size CPI readout beside character heights, using the highest line-average count divided by occupied run width; excludes whitespace from character count but retains its width and justified gaps; supports rotated text, font/size/case/spacing/wrap changes
 - scope: explicitly labeled estimate/highest line average, not a sliding one-inch maximum or compliance verdict. TTB 16.22 defines letters, numbers and marks but retrieved guidance did not establish an averaging protocol.
 - evidence: 9 focused real-font/geometry/DOM tests pass, including half-inch count, justified gaps, rotation, densest line, inverse size scaling and invalid widths; production build, diff and binary-impacting 0.1.61 release gate pass. No release published.
-
-## 2026-09-07 cli-generate
-
-- status: implemented in feat/cli-generate (PR #58)
-- delta: `scripts/generate-lib.ts` (DOM-free argv/inspect/coerce/build, kept under scripts/ so it is not a desktop bundle input) with `scripts/generate.ts` as the fs wrapper; `.master` + values JSON (single job or batch, `--variant/--asset/--set/--format/--label`, `--inspect`), legacy argv retained; title/export-name rule and PAGE_ART_ID moved into src/model so app and CLI name exports identically
-- review follow-ups: page art on a master without that role layer is an error; a batch is validated, read and built whole before the first write; job overrides are type-checked per field against the target layer; FormatSet and the values/label source are closed unions
-- evidence: 1015 tests pass (41 in tests/generate.test.ts incl. --label, --set, exit 2, tint, new-form page art, legacy config + collab, half-write, mistyped override); tsc clean; goldens unchanged; 0.1.64 release metadata gate passes. No release published.
-- open: no non-default font-family test — the catalog ships only Poppins; add one when a second family lands

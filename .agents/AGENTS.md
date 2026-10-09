@@ -55,8 +55,8 @@ provenance. When using Ultraharness, run
 `bash <ultraharness>/scripts/ledger-graph.sh .agents/ledger.md` to inspect ready work and
 conflicts; a serial-fallback report keeps legacy entries in their existing
 one-at-a-time flow.
-Entries closed more than 30 days ago move verbatim to `ledger-archive.md`; search it
-only when you need older history.
+Closed entries older than 30 days move verbatim to `ledger-archive.md` (rule under the
+ledger's Standing rules); search it only when you need older history.
 `learnings.md` holds lessons from past sessions — check it for known traps.
 
 ## Release steward

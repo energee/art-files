@@ -100,14 +100,24 @@ no status, no attempts, no delta.
 ## Standing rules
 
 - Never delete entries — mark them done or parked instead; the history is the point.
-  An entry closed (done, or implemented on a branch that has merged) more than 30
-  days ago moves verbatim to `ledger-archive.md`; open, parked and in-progress
-  entries stay here regardless of age.
+  A closed entry (done, or implemented/fixed on a branch that has merged) whose
+  heading date is more than 30 days old moves verbatim to `ledger-archive.md`,
+  unless it still lists an open or deferred follow-up or a live entry names its
+  `id` in `depends-on`. Open, parked and in-progress entries stay here regardless
+  of age.
 - Parked requires a written ruling: which gap, what evidence, what would unpark it.
 - One failed run never establishes "worker limitation" — retry before concluding
   anything about capability.
 
 ---
+
+## 2026-08-25 canvas-preview-swap-phase3
+- finding: [user request] canvas preview renderer Phase 3 — the swap, plus 3D-from-canvas pulled forward from Phase 4 (user decision)
+- status: done
+- attempts: 1/3
+- delta: 2D preview renders per keystroke from planLabel+drawPlate (no worker, no debounce; asset assembly split off with asset-only deps); in-place editing = planLabel skip flag, v0.1.16 hide-and-rebuild plumbing deleted; 3D views texture via new drawPlates/sync buildLabelTextures (pdf.js retained only for the dev parity page); DELETED pdf/client.ts, pdf/worker.ts, tests/preview-client.test.ts, App's pdfs/needMask/inputs/built/buildChain machinery, TabsShell dispose; all six Phase-2 carried items landed; final review restored the dropped PREVIEW_RASTER_MAX_EDGE cap (backing store measured 5040px at bleed 0.2, now clamps at 4876). Verified in real Chrome (per-keystroke paint, same-frame edit skip, mask plate, eyes, 3D can from canvas plates, zoom ratchet, bleed repaint, zero worker traffic), parity 2.04-2.48% (max 5%), npm run generate builds all four exports; 260 tests + tsc green; v0.1.19. Commits e552d35..7e262a1 + docs.
+- learning: replacing a rendering pipeline must port the old call's guard OPTIONS, not just its happy path — scaleCap's maxEdge half was silently dropped and only the final whole-branch review caught it
+- Carried to Phase 4: PSD-on-plan (priority), drag-to-move, dynamic fonts via src/fonts.ts; deferred minors — half-painted plate if drawPlate ever throws mid-walk (unreachable today; offscreen+blit if it matters), shared buildError channel cleared by any successful frame (split per-source state before Phase 4 adds writers), mask plate repaints at split 0 (gate on split>0 if keystroke latency regresses at max zoom), planFrom() helper to dedupe the two planLabel spellings, unit pin on drawPlates scale math (needs DOM stub), barcode-halo test's translate-index scoping invariant, CanView 3D texture failures warn-only (spec amended to record this).
 
 ## 2026-09-04 master-as-layers-session-resume
 - finding: [user request] Claude session 0bff2b49-40ae-4dac-b567-b62a13afff54 stopped at its session limit during v3 App/backend integration
@@ -117,6 +127,14 @@ no status, no attempts, no delta.
 - evidence: 765/765 tests across 60 suites, production build (including TypeScript), Cargo check, diff check and 0.1.43 release metadata gate pass; CLI generated all four exports with and without art; App DOM test exercises selection, content edit and undo
 - ruling: remaining visual acceptance requires live browser access and Photoshop-rendered old/new PSD rasters; CUA returned no browser available, and ag-psd does not render editable text/vector/effects composites. PDF 600-DPI diff review is complete in tests/goldens/README.md. No release published.
 - notes: horizontal/above/baseline binding and variant draw order remain deferred per approved spec; relative below bindings and chains implemented
+
+## 2026-09-05 release-build-performance
+- finding: [user request] optimize builds after Windows release 33962816055 took 6m 2s, including 3m 22s in Cargo despite a cache hit
+- status: done
+- delta: release Rust pinned to 1.98.1 (the compiler in that successful run); superseded PR test runs cancel while main/release jobs remain protected; release jobs emit and upload per-target Cargo timing HTML for 14 days
+- experiment: macOS arm64, rustc 1.97.1, existing 0.1.51 source/dist; initial dependency warm-up excluded (274 seconds). Alternating two default release app rebuilds and two with --config profile.release.package.label-lab.opt-level=1, touching src-tauri/src/main.rs before each; cargo build --manifest-path src-tauri/Cargo.toml --release --timings. Default: 71.55/81.96 seconds, 11262192 bytes. Candidate: 103.35/99.34 seconds, 13784848 bytes. Candidate averages 32% slower and is 22% larger; rejected, no profile change retained. Local results are not a Windows speedup claim; no startup comparison needed after rejection.
+- evidence: four measured release builds pass; Actionlint 1.7.12 validates both workflows (shellcheck unavailable); YAML parsing, diff check and 0.1.51 release gate pass. No workflow dispatched or release published. Existing sidebar edits preserved.
+- deferred: shared frontend build adds artifact transfer/dependency overhead for a small wall-clock saving; revisit if new timings show frontend dominating
 
 ## 2026-09-05 native-desktop-files
 - finding: [Fail fast/high] src/masters.ts:40, src/App.tsx:1114,1441,1720 — custom masters cannot resolve on desktop; masterHint reads are uncontained; export prompts twice; the platform save is spelled three times
@@ -194,6 +212,14 @@ no status, no attempts, no delta.
 - attempts: 0/3
 - depends-on: native-desktop-files
 
+## 2026-09-07 cli-generate
+
+- status: implemented in feat/cli-generate (PR #58)
+- delta: `scripts/generate-lib.ts` (DOM-free argv/inspect/coerce/build, kept under scripts/ so it is not a desktop bundle input) with `scripts/generate.ts` as the fs wrapper; `.master` + values JSON (single job or batch, `--variant/--asset/--set/--format/--label`, `--inspect`), legacy argv retained; title/export-name rule and PAGE_ART_ID moved into src/model so app and CLI name exports identically
+- review follow-ups: page art on a master without that role layer is an error; a batch is validated, read and built whole before the first write; job overrides are type-checked per field against the target layer; FormatSet and the values/label source are closed unions
+- evidence: 1015 tests pass (41 in tests/generate.test.ts incl. --label, --set, exit 2, tint, new-form page art, legacy config + collab, half-write, mistyped override); tsc clean; goldens unchanged; 0.1.64 release metadata gate passes. No release published.
+- open: no non-default font-family test — the catalog ships only Poppins; add one when a second family lands
+
 ## 2026-09-25 v1-model-deleted
 - finding: [YAGNI/med] src/model/document.ts, resolve.ts, lolev.ts, masterfile.ts — dead v1 authoring model kept alive by six test suites (audit 2026-09-05 #6, #7, #10); re-applied from stale PR #65 (005ce9b) onto current main
 - status: done
@@ -207,6 +233,7 @@ no status, no attempts, no delta.
 - attempts: 1/3
 - delta: parity page + pdf.js raster path deleted; pdfjs-dist removed from dependencies (package-lock -278 lines); golden-diff requires pdftoppm (ci.yml installs poppler-utils; a missing binary is the script's own "install poppler" error, no probe spawn); strokecap page kept; pnpm-lock.yaml still lists pdfjs-dist (left to the pnpm-lock hygiene work)
 - fixed-by: chore/65-retire-dead
+- note: the pnpm-lock.yaml clause above is stale; see 2026-10-08 issue-437-ledger-archive
 
 ## 2026-09-27 issue-queue-339
 - finding: [correctness/high] #339 — neutral PDF vectors converted to four-colour black
@@ -316,6 +343,6 @@ no status, no attempts, no delta.
 - finding: [KISS/low] #437 — .agents/ledger.md had grown to 595 lines, mostly entries closed more than a month ago, and the parity-harness-retired delta still pointed at "pnpm-lock hygiene work" that is finished
 - status: done
 - attempts: 1/3
-- delta: 44 closed entries dated before 2026-09-08 moved verbatim to .agents/ledger-archive.md; ledger 595 → 321 lines; archiving rule added under Standing rules. Correction to parity-harness-retired: pnpm-lock.yaml was deleted from the repo in 41c10f2 (#247) and is gitignored since 67bb1c7 (#449), so nothing still lists pdfjs-dist and no pnpm-lock work remains
+- delta: 41 closed entries dated before 2026-09-08 moved verbatim to .agents/ledger-archive.md (canvas-preview-swap-phase3, release-build-performance and cli-generate kept: they still list deferred or open follow-ups); ledger 595 → 345 lines; archiving rule added under Standing rules. Correction to parity-harness-retired: pnpm-lock.yaml was deleted from the repo in 41c10f2 (#247) and is gitignored since 67bb1c7 (#449), so nothing still lists pdfjs-dist and no pnpm-lock work remains
 - evidence: on fix/437 based on 860b4be, every line of the old ledger appears in ledger.md or ledger-archive.md (sorted comm diff empty); no tests or scripts read the ledger
 - release: non-binary-impacting (agent memory only); no release queued
