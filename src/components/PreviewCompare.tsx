@@ -9,42 +9,31 @@
 // down on an unlocked layer arms a two-axis drag that reports cumulative
 // deltas; App turns them into the layer's position patch (moveBy) and folds
 // the drag into one undo step the same way.
+//
+// The overlay geometry (page-space boxes, trim guide, selection ticks) lives
+// in previewOverlay.ts and the rich-text in-place session in
+// InPlaceRichField.tsx (#433); this file owns the plates, hit-testing and the
+// pointer gestures.
 import {
   forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from "react";
-import { createPortal } from "react-dom";
 import { drawPlate, type CanvasRenderSource } from "@/canvas/draw";
 import { facesOf, planLayerScene } from "@/planLayers";
-import {
-  hitBoxesFromLayout, hitTestBoxes, type LayerBox,
-} from "@/hittestLayers";
-import type { Face } from "@/plan";
+import { hitBoxesFromLayout, hitTestBoxes, type LayerBox } from "@/hittestLayers";
 import type { ResizeHandle } from "@/model/edit";
-import type { Layer, TextLayer, TextLine } from "@/model/layers";
+import type { Layer, TextLine } from "@/model/layers";
 import { uppercaseOf } from "@/model/layers";
 import {
-  ART, BLEED_SHIFT, FONT_ASC, FONT_DESC, PAGE, PREVIEW_MAX_W,
-  PREVIEW_RASTER_MAX_EDGE, previewRasterScale, trackedWidth,
+  ART, BLEED_SHIFT, PAGE, PREVIEW_MAX_W, PREVIEW_RASTER_MAX_EDGE, previewRasterScale, trackedWidth,
 } from "@/layout";
-import type { Style } from "@/types";
 import { FACE_WEIGHT, labelFontCss } from "@/fonts";
-import { TextToolbarButtons, useTextField, type LinePaint } from "@/components/TextEditor";
 import { modsOf, type SelectMods } from "@/selection";
 import { cn } from "@/lib/utils";
-
-/** The selection box's four corner ticks, each already placed. */
-/** The eight selection ticks, which double as resize handles. hx/hy name
- *  the grabbed edge (-1 left/top, 0 not grabbed, 1 right/bottom); position
- *  and cursor follow from them. */
-const HANDLES = ([-1, 0, 1] as const).flatMap((hy) => ([-1, 0, 1] as const)
-  .filter((hx) => hx || hy)
-  .map((hx) => {
-    const at = `${hy < 0 ? "-top-[3px]" : hy > 0 ? "-bottom-[3px]" : "top-1/2 -translate-y-1/2"} ${
-      hx < 0 ? "-left-[3px]" : hx > 0 ? "-right-[3px]" : "left-1/2 -translate-x-1/2"}`;
-    const cursor = !hx ? "cursor-ns-resize" : !hy ? "cursor-ew-resize" : hx === hy ? "cursor-nwse-resize" : "cursor-nesw-resize";
-    const base = `absolute size-2 rounded-[1px] border border-sky-400 bg-background ${at}`;
-    return { handle: { hx, hy } as ResizeHandle, key: `${hx},${hy}`, cls: `${base} pointer-events-auto touch-none ${cursor}`, clsLocked: base };
-  }));
+import {
+  BLEED, BLEED_STROKE, cornerRadius, cqh, dieRadius, GROUP_PAD, HANDLES, inches, inkOf, pageBox,
+  SEL_PAD,
+} from "./previewOverlay";
+import { InPlaceRichField } from "./InPlaceRichField";
 
 /** The plates worth painting: the art always (it is the base the mask sits
  *  over), the mask only once the divider reveals any of it (split > 0) — at
@@ -56,11 +45,6 @@ export const platesToPaint = (maskShown: boolean): ("art" | "mask")[] =>
 /** Pointer travel (px) before a press becomes a drag; below it is a click. */
 const DRAG_THRESHOLD_PX = 3;
 
-/** Breathing room between a layer's measured box and its selection
- *  outline, in screen px. */
-const SEL_PAD = 4;
-/** The multi-selection group frame sits outside the per-layer rings. */
-const GROUP_PAD = SEL_PAD * 3;
 
 /** Drag snap distance to a guide or another layer's edge/middle, in label points. */
 export const SNAP_PT = 6;
@@ -86,223 +70,6 @@ export interface SnapLines {
   dx: number; dy: number;
 }
 
-/** Label points as the inches the readout speaks in — Photoshop's move/resize
- *  badge, three decimals. */
-const inches = (pt: number) => `${(pt / 72).toFixed(3)} in`;
-
-/** Bleed per side, in label-space points: the gap between the trimmed art box
- *  and the printed page. The die cuts at ART, so the sheet's own corners are
- *  the die's, offset outward by this much. */
-const BLEED = ART.x;
-
-/** A circular corner of `r` points, expressed against a box of `w` x `h`
- *  points. Percentages rather than px so the corner tracks the preview at any
- *  on-screen size (same reason pageBox works in percentages); the two-value
- *  `x / y` form keeps it circular in page space instead of letting each axis
- *  scale to its own edge, which is what a single percentage would do. */
-const cornerRadius = (r: number, w: number, h: number): React.CSSProperties => ({
-  borderRadius: `${(r / w) * 100}% / ${(r / h) * 100}%`,
-});
-
-/** The die-cut radius in label-space points. The knob is a share of the
- *  label's short side (see settings.ts), and the label is the trimmed piece —
- *  so it measures against ART, not the bleed-inclusive page, and matches the
- *  same computation the 3D die uses in canScene. */
-const dieRadius = (pct: number) => (pct / 100) * Math.min(ART.w, ART.h);
-
-const DASH = 6; // px per tone, so the cycle repeats every 2 * DASH
-const dashes = (dir: string) =>
-  `repeating-linear-gradient(${dir}, #000 0 ${DASH}px, #fff ${DASH}px ${DASH * 2}px)`;
-/** The trim guide's stroke: alternating black and white dashes, one 1px line
- *  per edge — the marquee convention, for the reason the convention exists:
- *  black and white are the one pair with no shared blind spot over
- *  arbitrary label art (measured 4.60:1 worst case over a real texture). */
-const BLEED_STROKE: React.CSSProperties = {
-  backgroundImage: [dashes("90deg"), dashes("90deg"), dashes("180deg"), dashes("180deg")].join(","),
-  backgroundSize: "100% 1px, 100% 1px, 1px 100%, 1px 100%",
-  backgroundPosition: "0 0, 0 100%, 0 0, 100% 0",
-  backgroundRepeat: "no-repeat",
-};
-
-/** An overlay box positioned in page space: label-space points in, CSS
- *  percentages of the preview frame out, so it tracks the container at any
- *  on-screen size without its own resize handling. `pad` grows the box by n
- *  screen px on every side. Shared by the trim guide and the selection
- *  outlines, which must agree about the coordinate basis. */
-const pageBox = (
-  x: number, y: number, w: number, h: number, pad = 0,
-): React.CSSProperties => ({
-  left: `calc(${(x / PAGE.w) * 100}% - ${pad}px)`,
-  top: `calc(${(y / PAGE.h) * 100}% - ${pad}px)`,
-  width: `calc(${(w / PAGE.w) * 100}% + ${pad * 2}px)`,
-  height: `calc(${(h / PAGE.h) * 100}% + ${pad * 2}px)`,
-});
-
-/** Label-space points as a container-query length — a share of the preview's
- *  HEIGHT, which is the unit the in-place editors size glyphs, tracking and
- *  rotated rows in so they track the sheet at any zoom. Page x and y are the
- *  same points against a wrapper whose aspect ratio is locked to the page,
- *  so this is the right unit on both axes. */
-const cqh = (pt: number) => `${(pt / PAGE.h) * 100}cqh`;
-
-/** Just pageBox's top-left corner, for an overlay that sizes itself. */
-const corner = (x: number, y: number): React.CSSProperties => ({
-  left: `${(x / PAGE.w) * 100}%`,
-  top: `${(y / PAGE.h) * 100}%`,
-});
-
-/** What a style paints as on screen: white-plate text renders white,
- *  anything else shows its fill (flat — the metallic sheen is the print's,
- *  not the screen's). */
-const inkOf = (st: Style) =>
-  (st.layer === "white" || st.fill === "none" ? "#FFFFFF" : st.fill);
-
-/** An in-place field's painter for a text layer: plain runs in the layer's
- *  base face, bold runs / header lines in its bold face (facesOf — the same
- *  pair planLayers draws with), white-ink lines white, everything else in
- *  the layer's ink. FACE_WEIGHT is the one face→CSS-weight table measure and
- *  draw already share. whitespace-pre because the renderer wraps only by an
- *  explicit `width`, so the editor must not wrap on its own. */
-function paintFor(faces: { base: Face; bold: Face }, st: Style): LinePaint {
-  const plainWeight = String(FACE_WEIGHT[faces.base]);
-  const boldWeight = String(FACE_WEIGHT[faces.bold]);
-  const ink = inkOf(st);
-  return (el, l) => {
-    el.className = "whitespace-pre outline-none";
-    el.style.fontWeight = l.bold || l.header ? boldWeight : plainWeight;
-    el.style.color = l.white ? "#FFFFFF" : ink;
-  };
-}
-
-/** The IN-PLACE session for a rich text layer: the same rich-lines engine as
- *  the sidebar field (useTextField), but the contenteditable sits over the
- *  layer's own spot on the sheet at label metrics, so `**bold**` and
- *  `_white ink_` show as bold and white ink rather than as punctuation. The
- *  canvas skips the layer for the session (see onEditSession), so this DOM
- *  text IS the layer while you type, and the Header/Bold/White-ink toggles
- *  float above it as a fixed pill, portaled to <body> so App's CSS zoom
- *  scales the text with the artwork but never the toolbar chrome. */
-function InPlaceRichField(props: {
-  layer: TextLayer;
-  fontCss: string;
-  /** The layer's drawn box, label-space points, BLEED_SHIFT applied. */
-  box: LayerBox;
-  /** Pill position, viewport px, captured once at open. */
-  toolbarPos: { left: number; top: number };
-  onApply: (lines: TextLine[]) => void;
-  onUppercase: (uppercase: boolean) => void;
-  /** Ends the session: Escape asks to undo it (`cancel`). */
-  onClose: (cancel: boolean) => void;
-  /** Click-away guards — the field wrapper and the portaled pill both count
-   *  as "inside the session" (see the pointerdown capture effect). */
-  fieldRef: React.RefObject<HTMLDivElement | null>;
-  toolbarRef: React.RefObject<HTMLDivElement | null>;
-}) {
-  const { layer, fontCss, box, toolbarPos, onApply, onClose, fieldRef, toolbarRef } = props;
-  const size = layer.size;
-  const leading = (layer.leading ?? 1.2) * size;
-  const faces = facesOf(layer);
-  const rotated = layer.rotation === 90;
-  // Rebuilt only when the layer's faces or ink change — the field seeds
-  // from it, and every reseed repaints every line and run through it.
-  const paint = useMemo(
-    () => paintFor(faces, layer.style),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [faces.base, faces.bold, layer.style.fill, layer.style.layer],
-  );
-  const { rootRef, caret, toggle, toggleHeader, fieldProps } = useTextField({
-    lines: layer.lines, onChange: onApply, base: layer.style, multiline: true,
-    uppercase: uppercaseOf(layer), paint,
-  });
-
-  // Focus with the caret at the end once on open — the hook's seed effect
-  // registered first, so the line-divs exist by the time this runs.
-  useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-    root.focus();
-    const sel = window.getSelection();
-    if (sel) {
-      sel.selectAllChildren(root);
-      sel.collapseToEnd();
-    }
-  }, [rootRef]);
-
-  // CSS positions the first BASELINE where the canvas drew it: the box's
-  // leading edge is FONT_ASC beyond the baseline (see planLayers), while a
-  // CSS line box of `leading` height centers the font's (FONT_ASC+FONT_DESC)
-  // content area inside it — the half-leading difference is the offset
-  // between the two. Rotated, that edge is the box's LEFT (the column grows
-  // rightward from the baseline) rather than its top.
-  const cross = ((FONT_ASC + FONT_DESC) * size - leading) / 2;
-  // The room to type INTO, where the text grows: from the anchor point
-  // outward per the layer's alignment — to the sheet's right edge for a
-  // left-aligned block, symmetric about the anchor for a centred one, back
-  // to the sheet's left edge for a right-aligned one. A declared wrap width
-  // is the field's width instead. The rotated column reads bottom-to-top
-  // from its own start, up to the sheet's top edge.
-  const ax = box.x + (layer.align === "center" ? box.w / 2 : box.w);
-  const align = layer.align === "justify" ? "left" : layer.align;
-  let place: React.CSSProperties;
-  if (rotated) {
-    const bottom = box.y + box.h;
-    place = {
-      ...corner(box.x + cross, bottom),
-      width: cqh(layer.width ?? bottom),
-      transformOrigin: "0 0",
-      transform: "rotate(-90deg)",
-    };
-  } else if (layer.width !== undefined) {
-    place = { ...corner(box.x, box.y + cross), width: `${(layer.width / PAGE.w) * 100}%` };
-  } else if (align === "center") {
-    const half = Math.min(ax, PAGE.w - ax);
-    place = { ...corner(ax - half, box.y + cross), width: `${((2 * half) / PAGE.w) * 100}%` };
-  } else if (align === "right") {
-    place = { ...corner(0, box.y + cross), width: `${(ax / PAGE.w) * 100}%` };
-  } else {
-    place = { ...corner(box.x, box.y + cross), width: `${((PAGE.w - box.x) / PAGE.w) * 100}%` };
-  }
-  return (
-    <>
-      <div
-        ref={fieldRef}
-        className="absolute"
-        style={{
-          ...place,
-          fontSize: cqh(size),
-          lineHeight: leading / size,
-          fontFamily: fontCss,
-          // Unkerned, like the canvas under it and the PDF (#86, #144).
-          fontKerning: "none",
-          letterSpacing: cqh(layer.style.letterSpacing ?? 0),
-          textAlign: align,
-        }}
-        // The wrapper's click/dblclick handlers hit-test the canvas;
-        // interacting with the editor must not re-select or reopen.
-        onClick={(e) => e.stopPropagation()}
-        onDoubleClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => { if (e.key === "Escape") onClose(true); }}
-      >
-        <div
-          {...fieldProps}
-          aria-label={`Edit ${layer.name.toLowerCase()} text`}
-          className="outline-none caret-sky-400"
-        />
-      </div>
-      {createPortal(
-        <div
-          ref={toolbarRef}
-          className="fixed z-50 flex items-center gap-1 rounded-lg border border-border bg-background p-1 shadow-md"
-          style={toolbarPos}
-        >
-          <TextToolbarButtons caret={caret} toggle={toggle} toggleHeader={toggleHeader}
-            uppercase={uppercaseOf(layer)} onUppercase={props.onUppercase} />
-        </div>,
-        document.body,
-      )}
-    </>
-  );
-}
 
 /** Wheel/pinch events arrive every frame. Keep the CSS transform immediate,
  *  then replace its backing bitmap once the gesture pauses. */
