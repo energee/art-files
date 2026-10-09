@@ -1,7 +1,7 @@
 // The collab slots' fit contract: an uploaded SVG's INK is scaled into
 // maxW x maxH and translated to the box origin, whatever its viewBox says —
 // a corner-of-a-huge-viewBox icon must not render tiny or off-center. The
-// laurel path (no maxH) still sizes by viewBox, which LOGO_ASPECT depends on.
+// laurel path (no maxH) still sizes by viewBox (480 x 525 for the laurel).
 import { describe, expect, it } from "vitest";
 import { parseLogo } from "../src/logo";
 

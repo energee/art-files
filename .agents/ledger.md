@@ -396,8 +396,8 @@ no status, no attempts, no delta.
 - finding: [YAGNI/med] tests/legacy/plan.ts:1 — 1,220-line pre-v3 layout oracle and 8 suites
 - status: parked(context)
 - attempts: 0/3
-- ruling: still the pixel-parity check for plan.ts; unparks when master-as-layers (2026-09-04 spec) replaces plan.ts
-- delta (2026-10-08, #435): pruned what no suite reaches — tests/legacy/check-margins.mts (a manual re-solve script for constants the master now owns) and the unused exports SHIPPED/boxesFor; tests/legacy/README.md says why the directory exists and its rules. The 6 remaining files are all imported by parity suites, so full deletion still waits on golden data
+- ruling: still the pixel-parity check for plan.ts; unparks when master-as-layers (2026-09-04 spec) replaces plan.ts, at which point the parity suites snapshot to golden data and tests/legacy goes
+- delta (2026-10-08, branch fix/435): knip hits under tests/legacy 3 → 0; tests/legacy 7 files → 5 (+README). Deleted check-margins.mts (manual re-solve script; live positions are the master's) and hittest.ts with its self-testing suite tests/hittest.test.ts (no src counterpart; live hit-testing is covered by hittest-layers.test.ts); un-exported SHIPPED and the knip cascade (LOGO_ASPECT, collabLeftFrame, collabCenterFrame, customBarcodeBox). elements.ts stays only because elements/custom-layers/tracking suites test it against itself (README says so). tsc, lint and the 14 tests/legacy-importing suites green
 
 ## 2026-09-05 eslint-react-hooks
 - finding: [evidence/high] package.json — no ESLint; 12 eslint-disable comments unverified
