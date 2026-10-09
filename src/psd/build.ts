@@ -35,7 +35,8 @@
 import { writePsdUint8Array, type BezierPath, type Layer, type Psd } from "ag-psd";
 import type { Fill } from "../types";
 import { FONT_FAMILIES, type FontFamilyId } from "../fontCatalog";
-import { openFont, type OutlineFont } from "../fontkit";
+import type { Font } from "@pdf-lib/fontkit";
+import { openFont } from "../fontkit";
 import * as L from "../layout";
 import type { Face, PlacedBarcode, PlacedPaths, PlacedText } from "../plan";
 import type { CollabImage } from "../pdf/build";
@@ -344,7 +345,7 @@ function svgToPaths(d: string, dx: number, dy: number): BezierPath[] {
  *  because both maps are affine, and affine maps preserve the barycentric
  *  combination the elevation formula is built from. */
 export function digitGroupPaths(
-  font: OutlineFont,
+  font: Pick<Font, "unitsPerEm" | "layout">,
   text: string,
   size: number,
   rotated: boolean,
@@ -610,7 +611,7 @@ function pageLayer(name: string, item: PlacedPage, pixels: Rgba): Layer {
 }
 
 function buildLayers(
-  items: readonly PlacedLayer[], assets: PsdAssets, fk: OutlineFont, mode: PsdMode, opts: PsdOpts,
+  items: readonly PlacedLayer[], assets: PsdAssets, fk: Font, mode: PsdMode, opts: PsdOpts,
 ): Layer[] {
   const groups: Layer[] = [];
   const byId = new Map((opts.layers ?? []).map((l) => [l.id, l]));
@@ -694,7 +695,7 @@ function buildLayers(
  *  stroke every other element carries, so Photoshop dilates bars and digit
  *  outlines alike. `S` (resolved outer-stroke width; 0 = no halo) gates the
  *  stroke identically to the PDF's own `if (S > 0)`. */
-function barcodeLayer(name: string, bc: PlacedBarcode, fk: OutlineFont, mode: PsdMode): Layer {
+function barcodeLayer(name: string, bc: PlacedBarcode, fk: Font, mode: PsdMode): Layer {
   const S = bc.S;
   // Rotated (the template): anchorY is the string-start Y a `rotate(90)`
   // PDF drawText lands at (see digitGroupPaths for the derivation). Upright
@@ -772,7 +773,7 @@ export async function buildPsd(
 ): Promise<Uint8Array> {
   // The merged barcode layer needs fontkit's raw glyph outlines for the
   // digits, which pdf-lib's PDFFont wrapper doesn't expose; openFont gives
-  // back the underlying Font with its recorded outline commands typed.
+  // back the underlying Font, whose glyph paths carry their outline commands.
   const digitFont = openFont(assets.fonts.regular);
   const psd: Psd = {
     width: PSD_DOC.w,

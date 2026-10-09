@@ -10,7 +10,7 @@
 // extends the ink by its full width on every side. Getting any of those wrong
 // makes an element look aligned here and overhang on press.
 import { readFileSync } from "node:fs";
-import fontkit from "@pdf-lib/fontkit";
+import { openFont } from "../../src/fontkit";
 import { layoutGuides, DEFAULT_MARGIN_PT } from "../../src/rulers";
 import { defaultConfig } from "../../src/defaults";
 import { parseRuns } from "../../src/description";
@@ -19,7 +19,7 @@ import type { Style } from "../../src/types";
 import * as L from "./layout";
 
 const load = (n: string) =>
-  fontkit.create(readFileSync(new URL(`../../src/assets/fonts/Poppins-${n}.ttf`, import.meta.url)));
+  openFont(readFileSync(new URL(`../../src/assets/fonts/Poppins-${n}.ttf`, import.meta.url)));
 const REGULAR = load("Regular"), SEMIBOLD = load("SemiBold"), BOLD = load("Bold");
 type Face = ReturnType<typeof load>;
 type Line = Style & { text: string };

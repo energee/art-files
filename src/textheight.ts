@@ -5,7 +5,7 @@ import type { TextLayer } from "./model/layers";
 import type { FontFamilyId } from "./fontCatalog";
 import { planText } from "./planLayers";
 import { loadFonts } from "./pdf/fonts";
-import { openFont, type OutlineFont } from "./fontkit";
+import { openFont } from "./fontkit";
 
 export interface CharacterHeights { min: number; max: number; cpi: number }
 export type HeightMeasure = (layer: TextLayer) => CharacterHeights | null;
@@ -36,8 +36,9 @@ export function charactersPerInch(runs: readonly PlacedText[]): number {
 }
 
 export function createHeightMeasure(bytes: Record<Face, Uint8Array>): HeightMeasure {
-  const fonts = Object.fromEntries(Object.entries(bytes).map(([face, data]) =>
-    [face, openFont(data)])) as Record<Face, OutlineFont>;
+  const fonts: Record<Face, ReturnType<typeof openFont>> = {
+    regular: openFont(bytes.regular), semibold: openFont(bytes.semibold), bold: openFont(bytes.bold),
+  };
   return (layer) => {
     const runs = planText(layer, (text, size, face) =>
       fonts[face].layout(text).glyphs.reduce((sum, glyph) => sum + glyph.advanceWidth, 0)

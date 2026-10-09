@@ -3,22 +3,21 @@
 // Node-safe on purpose (no ?url imports), unlike the DOM gate in fonts.ts,
 // because the headless harness builds PSDs too. pdf-lib's own embedding
 // registers fontkit separately (pdf/build.ts) and never comes through here.
-import fontkit, { type Font, type Glyph, type GlyphRun, type Path } from "@pdf-lib/fontkit";
+import fontkit, { type Font } from "@pdf-lib/fontkit";
 
-/** One glyph-outline command as fontkit's Path records it at runtime. */
-type GlyphCmd = { command: string; args: number[] };
-
-/** A glyph whose path exposes its recorded `commands`. @pdf-lib/fontkit's
- *  `.d.ts` types `Glyph.path` as the builder-method-only `Path` interface and
- *  omits the `commands` array those methods record to; this type adds what
- *  the runtime has always carried. */
-type OutlineGlyph = Glyph & { path: Path & { commands: GlyphCmd[] } };
-
-/** A fontkit Font whose shaped runs carry OutlineGlyphs. */
-export interface OutlineFont extends Font {
-  layout(text: string, features?: Parameters<Font["layout"]>[1]): GlyphRun & { glyphs: OutlineGlyph[] };
+// @pdf-lib/fontkit's `.d.ts` types `Glyph.path` as the builder-method-only
+// `Path` interface and omits the `commands` array those methods record to.
+// Declaring it here types every glyph's path (layout runs, getGlyph, ...)
+// with no cast; the runtime has always carried it.
+declare module "@pdf-lib/fontkit" {
+  interface Path {
+    /** The outline as recorded, one entry per builder call. */
+    commands: {
+      command: "moveTo" | "lineTo" | "quadraticCurveTo" | "bezierCurveTo" | "closePath";
+      args: number[];
+    }[];
+  }
 }
 
-/** Parse font bytes. The cast bridges the declaration gap described on
- *  OutlineGlyph, not a runtime difference. */
-export const openFont = (bytes: Uint8Array): OutlineFont => fontkit.create(bytes) as OutlineFont;
+/** Parse font bytes into a fontkit Font. */
+export const openFont = (bytes: Uint8Array): Font => fontkit.create(bytes);
