@@ -9,6 +9,9 @@ that section to the new version (see .agents/release-steward.md).
 ### Changed
 - **Internal cleanup, no visible change.** The dev-only stroke magnifier page moved from the repo root to `tools/strokecap.html`; `npm run strokecap` opens it there.
 
+### Fixed
+- **The active tab's close button shows without hovering.** It rests dimmed on the selected tab so it can be found and tapped on touch; other tabs still show theirs on hover.
+
 ## [0.1.105] - 2026-10-09
 
 ### Fixed
