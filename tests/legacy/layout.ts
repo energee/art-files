@@ -65,8 +65,8 @@ export const QR = { x: LEFT_X, yTop: SAFE.bottom - 59, size: 59 }; // yTop 281.4
 // longer than the glyphs alone: the inline **handle** run sets in Bold,
 // the element ships tracked at 0.38, and the outer stroke paints 1.8pt beyond
 // the ink at each end. yStart (the run's bottom) is one stroke width inside the
-// bottom margin for the same reason. Re-solve with tests/legacy/check-margins.mts if
-// the text, the tracking, the margin or the default stroke changes.
+// bottom margin for the same reason. Frozen: the live position is the
+// master's handleAddress layer, not this constant.
 // x 487, in from the reference's 505: the warning grew to 4 columns of 8.2pt
 // type (see WARNING below) and pushed the whole rotated block left so its
 // last column clears the barcode halo. Info keeps its slot at the block's

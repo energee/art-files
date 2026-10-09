@@ -397,6 +397,7 @@ no status, no attempts, no delta.
 - status: parked(context)
 - attempts: 0/3
 - ruling: still the pixel-parity check for plan.ts; unparks when master-as-layers (2026-09-04 spec) replaces plan.ts
+- delta (2026-10-08, #435): pruned what no suite reaches — tests/legacy/check-margins.mts (a manual re-solve script for constants the master now owns) and the unused exports SHIPPED/boxesFor; tests/legacy/README.md says why the directory exists and its rules. The 6 remaining files are all imported by parity suites, so full deletion still waits on golden data
 
 ## 2026-09-05 eslint-react-hooks
 - finding: [evidence/high] package.json — no ESLint; 12 eslint-disable comments unverified
