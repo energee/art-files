@@ -69,7 +69,9 @@ mod macos {
         unsafe {
             let ns_app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
             let delegate: *mut AnyObject = msg_send![ns_app, delegate];
-            let Some(delegate) = delegate.as_ref() else { return };
+            let Some(delegate) = delegate.as_ref() else {
+                return;
+            };
             let imp: extern "C-unwind" fn(&AnyObject, Sel, *mut AnyObject) -> usize =
                 should_terminate;
             // Encoding: returns NSUInteger (Q), takes self (@), _cmd (:),

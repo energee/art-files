@@ -9,7 +9,10 @@
 // does not know leaves that row without an icon. Elsewhere it does nothing.
 
 #[tauri::command]
-pub fn set_menu_symbols(app: tauri::AppHandle, symbols: Vec<(String, String)>) -> Result<(), String> {
+pub fn set_menu_symbols(
+    app: tauri::AppHandle,
+    symbols: Vec<(String, String)>,
+) -> Result<(), String> {
     // AppKit menus may only be touched on the main thread.
     #[cfg(target_os = "macos")]
     app.run_on_main_thread(move || unsafe { macos::apply(&symbols) })
@@ -40,13 +43,17 @@ mod macos {
             let item: *mut AnyObject = msg_send![items, objectAtIndex: i];
             let title: *mut AnyObject = msg_send![item, title];
             let utf8: *const c_char = msg_send![title, UTF8String];
-            let title = if utf8.is_null() { None } else { CStr::from_ptr(utf8).to_str().ok() };
+            let title = if utf8.is_null() {
+                None
+            } else {
+                CStr::from_ptr(utf8).to_str().ok()
+            };
             if let Some((_, name)) = title.and_then(|t| symbols.iter().find(|(s, _)| s == t)) {
                 let name = CString::new(name.as_str()).unwrap_or_default();
-                let name: *mut AnyObject = msg_send![class!(NSString), stringWithUTF8String: name.as_ptr()];
+                let name: *mut AnyObject =
+                    msg_send![class!(NSString), stringWithUTF8String: name.as_ptr()];
                 let none: *mut AnyObject = std::ptr::null_mut();
-                let image: *mut AnyObject =
-                    msg_send![class!(NSImage), imageWithSystemSymbolName: name, accessibilityDescription: none];
+                let image: *mut AnyObject = msg_send![class!(NSImage), imageWithSystemSymbolName: name, accessibilityDescription: none];
                 if !image.is_null() {
                     let _: () = msg_send![item, setImage: image];
                 }

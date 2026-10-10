@@ -7,7 +7,12 @@
 mod menu_symbols;
 mod terminate;
 
-use std::{collections::VecDeque, ffi::OsString, path::PathBuf, sync::{Mutex, PoisonError}};
+use std::{
+    collections::VecDeque,
+    ffi::OsString,
+    path::PathBuf,
+    sync::{Mutex, PoisonError},
+};
 use tauri::Manager;
 
 /** Release builds set the public updater key at compile time. Local builds do
@@ -60,7 +65,10 @@ impl OpenedFile {
     fn push(&self, path: PathBuf) -> bool {
         match path.into_os_string().into_string() {
             Ok(path) => {
-                self.0.lock().unwrap_or_else(PoisonError::into_inner).push_back(path);
+                self.0
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .push_back(path);
                 true
             }
             Err(_) => false,
@@ -70,7 +78,10 @@ impl OpenedFile {
     /** Pop the oldest queued path — FIFO, so files open in the order the
      * OS delivered them. Plain method (not the command) so tests reach it. */
     fn take(&self) -> Option<String> {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner).pop_front()
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .pop_front()
     }
 }
 
@@ -254,7 +265,10 @@ mod tests {
         ]);
         assert_eq!(
             paths,
-            vec![PathBuf::from("/beers/a.label"), PathBuf::from("/beers/b.label")]
+            vec![
+                PathBuf::from("/beers/a.label"),
+                PathBuf::from("/beers/b.label")
+            ]
         );
     }
 
