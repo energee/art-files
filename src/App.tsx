@@ -205,15 +205,16 @@ const HEADER_ALERT_TONE = {
  *  override can't reach. A success note is hidden from screen readers here:
  *  it is announced politely through the always-mounted status region beside
  *  it, since a live region mounted already holding its text is not read.
- *  The blocked-export note (tone "blocked") looks like an error but is a
- *  polite status: it changes with every keystroke that keeps a value
- *  invalid, and an alert would interrupt the reader each time. */
+ *  The blocked-export note (tone "blocked") looks like an error but is no
+ *  alert: it changes with every keystroke that keeps a value invalid, and an
+ *  alert would interrupt the reader each time. Its own always-mounted polite
+ *  status region announces it; the note itself stays a plain button. */
 function HeaderAlert({ children, tone = "destructive" }: { children: React.ReactNode; tone?: keyof typeof HEADER_ALERT_TONE }) {
   const [box, text] = HEADER_ALERT_TONE[tone];
   return (
     <Alert variant={tone === "destructive" || tone === "blocked" ? "destructive" : "default"} className={cn("w-auto px-2 py-0.5", box)}
       {...(tone === "success" && { role: undefined, "aria-hidden": true })}
-      {...(tone === "blocked" && { role: "status" })}>
+      {...(tone === "blocked" && { role: undefined })}>
       <AlertDescription className={cn("text-xs", text)}>
         {children}
       </AlertDescription>
@@ -823,7 +824,11 @@ export const DocumentEditor = memo(function DocumentEditor({
         const owner = keyOwner(e.target);
         if (owner && owner !== "widget") return;
       }
-      const cmd = commandsRef.current.find((c) => c.key === e.key.toLowerCase() && c.mods === mods);
+      // ⌘+ is Zoom In as well as ⌘=: "+" is Shift+= on a US keyboard (so it
+      // arrives as ⇧⌘) and a key of its own on many others.
+      const cmd = e.key === "+" && mods
+        ? commandsRef.current.find((c) => c.id === "zoom-in")
+        : commandsRef.current.find((c) => c.key === e.key.toLowerCase() && c.mods === mods);
       if (!cmd) return;
       // The key is the app's even while its command is disabled: ⌘S on a
       // clean document must not fall through to the browser's Save Page.
@@ -867,13 +872,16 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Delete / Backspace removes the selected layers (the Remove Layer
   // command) when focus is on the canvas or the page. Gated like the nudge:
   // a field, popup, the inspector or a widget owns the key, and so does a
-  // focused Layers row, which removes with its own focus hand-off.
+  // focused Layers row, which removes with its own focus hand-off. So does
+  // any other focused button (the header's blocked-export note, a toolbar
+  // control): Backspace on the note that just selected a layer must not
+  // delete it.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!activeRef.current || (e.key !== "Delete" && e.key !== "Backspace")) return;
       if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
       if (keyOwner(e.target) || dialogOpen()) return;
-      if ((e.target as Element | null)?.closest?.("[data-layer-id]")) return;
+      if ((e.target as Element | null)?.closest?.("[data-layer-id], button")) return;
       const cmd = commandsRef.current.find((c) => c.id === "layer-remove");
       if (!cmd || cmd.disabled) return;
       e.preventDefault();
@@ -2233,6 +2241,11 @@ export const DocumentEditor = memo(function DocumentEditor({
               keeps the note while an error hides it, so a render error
               clearing doesn't refill it and re-announce a stale "Saved …". */}
           <span role="status" data-export-saved className="sr-only">{exportNote}</span>
+          {/* The blocked-export reason's announcement, mounted before the
+              label is blocked for the same reason. */}
+          <span role="status" data-export-blocked-status className="sr-only">
+            {blocked ? `Export blocked: ${blockedWhy}` : ""}
+          </span>
           {resolveWarnings.length > 0 && <HeaderAlert tone="warning">{resolveWarnings.join(" · ")}</HeaderAlert>}
           {/* Open Master's fallback — see masterInput/openMasterPicker. */}
           <input ref={masterInput} type="file" accept={MASTER_EXT} hidden

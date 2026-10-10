@@ -1,10 +1,11 @@
 // app-ux-commands-dom.test.tsx — the editor's command table and header, end
-// to end: ⌘= / ⌘- / ⌘0 zoom the preview; the palette offers Add … Layer and
-// Remove Layer, and Delete/Backspace removes the selection outside a text
-// field; a blocked export's header note is a polite status whose text selects
-// the first invalid layer, which the Layers list marks with an error dot; the
-// PDF export entries say "rendering…" until the preview is ready; and the
-// master library is not re-read from localStorage on every render.
+// to end: ⌘= (or ⌘+) / ⌘- / ⌘0 zoom the preview; the palette offers Add …
+// Layer and Remove Layer, and Delete/Backspace removes the selection outside
+// a text field or a focused button; a blocked export's reason is announced
+// through a polite status region and its header note selects the first
+// invalid layer, which the Layers list marks with an error dot; the PDF
+// export entries say "rendering…" until the preview is ready; and the master
+// library is re-read from localStorage only when it changes, not per render.
 // @vitest-environment happy-dom
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
@@ -16,7 +17,7 @@ const counts = vi.hoisted(() => ({ masterIndex: 0 }));
 // The preview's font load never settles here (unless a test makes it fail),
 // so the preview stays "rendering" and the PDF exports keep their note.
 const fonts = vi.hoisted(() => ({ pending: new Promise<never>(() => {}), fail: false }));
-vi.mock("../src/masterCache", () => ({ cacheMaster: async () => {}, cachedMaster: async () => null }));
+vi.mock("../src/masterCache", () => ({ cacheMaster: async () => {}, cachedMaster: async () => null, dropCachedMaster: async () => {} }));
 vi.mock("../src/masters", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/masters")>();
   return { ...real, masterIndex: () => { counts.masterIndex++; return real.masterIndex(); } };
@@ -89,6 +90,17 @@ it("zooms the preview in, out and back to fit with ⌘=, ⌘- and ⌘0", async (
   expect(zoomPct(container)).toBe(100);
 });
 
+// ⌘+ is Zoom In too: "+" is Shift+= on a US keyboard and its own key on
+// many others, and it is the zoom-in key every other app answers to.
+it("zooms in with ⌘+ as well as ⌘=", async () => {
+  const { container } = await mount();
+  expect(await press({ key: "+", metaKey: true, shiftKey: true })).toBe(true);
+  expect(zoomPct(container)).toBeGreaterThan(100);
+  const zoomed = zoomPct(container);
+  await press({ key: "+", metaKey: true });
+  expect(zoomPct(container)).toBeGreaterThan(zoomed);
+});
+
 it("leaves the zoom keys to the tab behind an open dialog", async () => {
   const { container } = await mount();
   const dialog = document.createElement("div");
@@ -150,21 +162,38 @@ it("adds a layer from the palette", async () => {
   expect(container.querySelectorAll("[data-layer-id]").length).toBe(before + 1);
 });
 
-it("makes the blocked-export note a polite status that selects the invalid layer", async () => {
+const badLabel = () => {
   const bytes = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { barcode: "123" } }, {});
-  const { container } = await mount({ fileToOpen: { seq: 1, file: new File([bytes as unknown as BlobPart], "bad.label") } });
+  return { seq: 1, file: new File([bytes as unknown as BlobPart], "bad.label") };
+};
+
+it("makes the blocked-export note a polite status that selects the invalid layer", async () => {
+  const { container, rerender } = await mount();
+  // The status region exists, empty, before the label is blocked: a live
+  // region mounted already holding its text is not read at all.
+  const region = container.querySelector("[data-export-blocked-status]")!;
+  expect(region.getAttribute("role")).toBe("status");
+  expect(region.textContent).toBe("");
+  await rerender({ fileToOpen: badLabel() });
   await vi.waitFor(() => expect(container.querySelector("[data-blocked-export]")).not.toBeNull());
+  expect(container.querySelector("[data-export-blocked-status]")).toBe(region);
+  expect(region.textContent).toContain("Barcode");
   const note = container.querySelector("[data-blocked-export]")!;
-  // Not re-announced as an alert on every keystroke that keeps it invalid.
+  // Not re-announced as an alert on every keystroke that keeps it invalid,
+  // and not a second live region reading the same words.
   expect(note.closest('[role="alert"]')).toBeNull();
-  expect(note.closest('[role="status"]')).not.toBeNull();
+  expect(note.closest('[role="status"]')).toBeNull();
   expect(note.textContent).toContain("Barcode");
   // The Layers list marks the invalid row.
   expect(container.querySelector('[data-layer-id="barcode"] [aria-label="Invalid value"]')).not.toBeNull();
   expect(container.querySelector('[data-layer-id="name"] [aria-label="Invalid value"]')).toBeNull();
   expect(rowSelected(container, "barcode")).toBe(false);
-  await act(async () => { (note as HTMLElement).click(); });
+  await act(async () => { (note as HTMLElement).focus(); (note as HTMLElement).click(); });
   expect(rowSelected(container, "barcode")).toBe(true);
+  // Focus is still on the note it just clicked: Backspace there must not
+  // delete the layer the note selected. The header is not the canvas.
+  expect(await press({ key: "Backspace" }, note)).toBe(false);
+  expect(container.querySelector('[data-layer-id="barcode"]')).not.toBeNull();
 });
 
 it("reads the master library once, not on every render", async () => {
@@ -184,4 +213,28 @@ it("re-reads the library when its tab comes back to the front", async () => {
   await rerender({ active: true });
   await act(async () => { (container.querySelector("#master-picker") as HTMLElement).click(); });
   expect([...document.querySelectorAll("[role=option]")].some((o) => o.textContent?.includes("Another Brewery"))).toBe(true);
+});
+
+// The library memo re-reads storage only when refreshLibrary bumps it, so
+// every path that changes the library must bump it: here Remove and its Undo.
+it("re-lists a master the picker removed and then put back", async () => {
+  const { rememberMaster } = await import("../src/masters");
+  const { lolevMaster } = await import("../src/model/lolevLayers");
+  await rememberMaster({ ...lolevMaster(), id: "master-other", name: "Another Brewery" }, "other.master", undefined, { applied: false });
+  const { container } = await mount();
+  const listed = () => [...document.querySelectorAll("[role=option]")].some((o) => o.textContent?.includes("Another Brewery"));
+  const openPicker = () => act(async () => { (container.querySelector("#master-picker") as HTMLElement).click(); });
+  await openPicker();
+  expect(listed()).toBe(true);
+  const x = document.querySelector('[aria-label="Remove Another Brewery from the library"]') as HTMLElement;
+  await act(async () => {
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"])
+      x.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
+  });
+  await vi.waitFor(() => expect([...container.querySelectorAll("button")].some((b) => b.textContent === "Undo")).toBe(true));
+  await vi.waitFor(() => expect(listed()).toBe(false));
+  const undo = [...container.querySelectorAll("button")].find((b) => b.textContent === "Undo")!;
+  await act(async () => { undo.click(); });
+  await openPicker();
+  await vi.waitFor(() => expect(listed()).toBe(true));
 });

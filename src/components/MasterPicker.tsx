@@ -213,7 +213,9 @@ export function MasterPicker(props: {
     <div className="px-2 py-2">
       <Select
         value={props.version === null ? props.master.id : VERSION + props.version}
-        disabled={resolvingId !== null}
+        // Also while a switch with nothing to confirm commits: there is no
+        // Continue to disable then, and commit would drop a second pick.
+        disabled={resolvingId !== null || committing}
         onValueChange={(id) => {
           if (!id) return;
           closeAll();

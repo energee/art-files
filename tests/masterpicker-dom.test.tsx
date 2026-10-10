@@ -110,6 +110,28 @@ describe("MasterPicker", () => {
     expect(onMaster).toHaveBeenCalledWith(same, {});
   });
 
+  // With no preview there is no Continue to disable, so the Select itself
+  // stays disabled until the switch lands: a second pick in that window was
+  // silently dropped by commit's guard.
+  it("keeps the picker disabled while a switch with nothing to confirm commits", async () => {
+    let finish!: () => void;
+    const onMaster = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    const same: Master = { ...lolevMaster(), id: "other", name: "Other Brewery" };
+    const resolve = vi.fn().mockResolvedValue({ master: same, assets: {} });
+    renderPicker({ onMaster, resolve, label: { ...label, enabledVariants: [] } });
+    openMenu();
+    await act(async () => {
+      itemStarting("Other Brewery")!.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const trigger = () => container.querySelector("#master-picker") as HTMLButtonElement;
+    expect(onMaster).toHaveBeenCalledTimes(1);
+    expect(trigger().disabled).toBe(true);
+    await act(async () => { finish(); await Promise.resolve(); });
+    expect(trigger().disabled).toBe(false);
+  });
+
   // onMaster awaits the index write and the asset decode; a second Continue
   // in that window rebound the label twice.
   it("commits once however often Continue is pressed while it runs", async () => {
