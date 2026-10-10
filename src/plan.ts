@@ -78,7 +78,7 @@ export interface PlacedImage {
  *  (the template) reads bottom-to-top — x is the baseline's vertical line, y
  *  the run's start, extent -w; upright (every custom barcode layer) reads
  *  left-to-right like ordinary text — x is the run's CENTER (left edge is
- *  x - w/2), y is the baseline. Widened from the literal "barcode" to
+ *  x - w/2), y is the baseline. digitStartX resolves either to the draw x. Widened from the literal "barcode" to
  *  any layer id so every barcode uses the same placed item. */
 export interface PlacedBarcode {
   readonly kind: "barcode";
@@ -103,6 +103,12 @@ export interface PlacedBarcode {
    *  background sizes itself from these; the plates paint the glyphs. */
   readonly footprint: readonly { x: number; yTop: number; w: number; h: number }[];
 }
+
+/** Where a barcode digit run's drawing starts, per PlacedBarcode's two
+ *  conventions: the baseline x when rotated, the left edge (x is the run's
+ *  centre) when upright. The one spelling every backend draws from. */
+export const digitStartX = (d: { x: number; w: number }, rotated: boolean) =>
+  rotated ? d.x : d.x - d.w / 2;
 
 export type Placed = PlacedText | PlacedPaths | PlacedImage | PlacedBarcode;
 
