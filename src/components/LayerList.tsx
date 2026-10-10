@@ -59,6 +59,9 @@ export interface LayerListProps {
    *  change?" is the question worth filtering on. */
   changedOnly: boolean;
   onChangedOnly: (v: boolean) => void;
+  /** Layers whose filled value is invalid (it blocks export): each row gets
+   *  an error dot. */
+  invalid?: ReadonlySet<string>;
 }
 
 /** "Add layer" menu entries — the same icons the rows use for each kind. */
@@ -102,8 +105,10 @@ const chip = (pressed: boolean) => cn(
 
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
-function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted, ...p }: {
+function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted, invalid, ...p }: {
   dragHandlers: React.HTMLAttributes<HTMLButtonElement>;
+  /** Its filled value is invalid and blocks export. */
+  invalid?: boolean;
   dropEdge?: "top" | "bottom";
   /** Part of the block an in-flight drag is carrying — every selected row
    *  when a selected row is dragged — shown lifted so the group reads as one. */
@@ -247,6 +252,10 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
               title="Changed in this label"
               className="size-1.5 shrink-0 rounded-full border border-current text-info-text"
             />
+          )}
+          {invalid && (
+            <span role="img" aria-label="Invalid value" title="Invalid value — export is blocked"
+              className="size-1.5 shrink-0 rounded-full bg-destructive" />
           )}
         </SidebarMenuButton>
 
@@ -467,6 +476,7 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
               dragHandlers={dragHandlers(row)}
               dropEdge={drop?.id === row.layer.id ? drop.edge : undefined}
               lifted={liftedIds?.has(row.layer.id)}
+              invalid={props.invalid?.has(row.layer.id)}
               onSelect={props.onSelect}
               onToggle={props.onToggle}
               onRename={props.onRename}

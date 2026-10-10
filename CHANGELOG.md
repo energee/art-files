@@ -6,6 +6,10 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Added
+- **Zoom from the keyboard and the View menu.** View → Zoom In (⌘=), Zoom Out (⌘-) and Zoom to Fit (⌘0) zoom the preview about its middle, in the 2D and 3D views.
+- **Layer commands in the palette.** ⌘K now offers Add Text, Image, Barcode and QR Layer, and Remove Layer. Delete or Backspace removes the selected layers from the canvas too, not only from the Layers list; it still does nothing while you type in a field.
+
 ### Changed
 - **Internal cleanup, no visible change.** The dev-only stroke magnifier page moved from the repo root to `tools/strokecap.html`; `npm run strokecap` opens it there.
 - **Internal cleanup, no visible change.** PSD barcode digits and the character-height check read font outlines through one typed font helper instead of a cast.
@@ -13,6 +17,12 @@ that section to the new version (see .agents/release-steward.md).
 - **Internal cleanup, no visible change.** The layer editing, inspector and preview code is reorganised into smaller files; the app behaves exactly as before.
 
 ### Fixed
+- **A blocked export shows where the problem is.** Clicking the reason in the header selects the first invalid layer and opens it in the inspector, and the Layers list marks each invalid layer with a red dot. Screen readers no longer re-announce the reason as an alert on every keystroke.
+- **PDF exports say when they are waiting for the preview.** Until the preview finishes rendering, the export entries in the menus and the palette read "(rendering…)" instead of just being greyed out.
+- **Switching to a master that hides nothing skips the confirmation.** The master picker only asks to Continue when the switch would set filled fields or variants aside; otherwise it switches at once, and ⌘Z undoes it.
+- **Panning and zooming stay smooth with a large master library.** The remembered-masters list is no longer re-read from storage on every pan or scroll step.
+- **Raster images no longer offer a Metallic toggle that does nothing.** PNG and JPEG art always prints on white ink, so its inspector now says so instead; SVG art keeps the toggle.
+- **Error messages read cleanly.** A failed 3D view load, font load or preview build no longer prefixes the reason with "Error:".
 - **The active tab's close button shows without hovering.** It rests dimmed on the selected tab so it can be found and tapped on touch; other tabs still show theirs on hover.
 - **Deleting a variant or removing a well's file says how to undo it.** Delete under the master picker now leaves a note that ⌘Z brings the variant back. Removing a texture or mask with its × was not undoable at all; the well now offers Undo to put the file back. An image layer's well notes that ⌘Z restores its art.
 - **A damaged remembered-masters entry no longer breaks opening labels.** A library entry missing its file path or name is now skipped instead of making a label open fail.

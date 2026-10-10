@@ -338,7 +338,7 @@ export function QrGeometry(props: Ctx & { layer: QrLayer }) {
 /** Fill + plate, tracking (text only), and the stroke stack — the same
  *  controls StyleProperties' ElementStyle offered, written as `style.*`
  *  patches. */
-export function StyleSection(props: Ctx & { layer: Layer }) {
+export function StyleSection(props: Ctx & { layer: Layer; rasterArt?: boolean }) {
   const { layer, set, badge } = props;
   const id = layer.id;
   const style: Style = layer.style;
@@ -359,13 +359,25 @@ export function StyleSection(props: Ctx & { layer: Layer }) {
             />
           </div>
           {badge(["style.fill"], "Fill")}
-          <MetallicToggle
-            pressed={style.layer === "metallic"}
-            onPressedChange={(on) => setStyle({ layer: on ? "metallic" : "white" })}
-            className="size-6 border border-input"
-          />
-          {badge(["style.layer"], "Plate")}
+          {/* Raster art prints its whole footprint on white ink whatever the
+              plate says (the mask paints it solid), so the toggle would do
+              nothing there. SVG art plans as paths and keeps it. */}
+          {!props.rasterArt && (
+            <>
+              <MetallicToggle
+                pressed={style.layer === "metallic"}
+                onPressedChange={(on) => setStyle({ layer: on ? "metallic" : "white" })}
+                className="size-6 border border-input"
+              />
+              {badge(["style.layer"], "Plate")}
+            </>
+          )}
         </div>
+        {props.rasterArt && (
+          <p className="text-[11px] text-muted-foreground">
+            Raster art always prints on white ink. Use an SVG for metallic.
+          </p>
+        )}
       </div>
 
 

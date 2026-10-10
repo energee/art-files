@@ -3,7 +3,8 @@
 // Picking another library master previews the rebind (model/rebindLayers.ts)
 // — the counts of what would move to the bench — before committing: the one
 // confirmation the spec's no-dialogs rule permits, because a rebind is not a
-// single undoable canvas act.
+// single undoable canvas act. A rebind that would bench nothing commits at
+// once, with no preview.
 //
 // The file verbs stay in the File menu — Open Master…, and forking the
 // template with File → Save Master As…, which mints a new master id, rebinds
@@ -76,8 +77,9 @@ export function MasterPicker(props: {
    *  a `.label`'s masterHint, the exact file that label was saved against,
    *  before the index's path for that id (#405). */
   resolve: (id: string) => Promise<{ master: Master; assets: MasterAssets } | null>;
-  /** Commits a rebind onto `target` — called ONLY after the inline preview's
-   *  "Continue" is pressed. The caller re-runs rebind itself against its own
+  /** Commits a rebind onto `target` — called after the inline preview's
+   *  "Continue" is pressed, or straight away when the rebind would bench
+   *  nothing. The caller re-runs rebind itself against its own
    *  live document snapshot (App.tsx's commitRebind), so this never trusts a
    *  rebind result computed against a possibly-stale `label` prop. The
    *  resolved template assets ride along so the caller adopts them without
@@ -168,7 +170,11 @@ export function MasterPicker(props: {
     setResolvingId(null);
     if (!r) { setError(`Could not open master "${props.library[id]?.name ?? id}".`); return; }
     const { dropped } = rebindLabel(props.label, props.master, r.master);
-    setPreview({ target: r.master, assets: r.assets, dropped: dropped.values, disabledVariants: dropped.variants });
+    const next = { target: r.master, assets: r.assets, dropped: dropped.values, disabledVariants: dropped.variants };
+    // Nothing would be benched, so there is nothing to confirm: switch now.
+    // ⌘Z undoes it like any other edit.
+    if (!next.dropped.length && !next.disabledVariants.length) await commit(next);
+    else setPreview(next);
   };
 
   /** The working version, narrowed once so the verb buttons below need no
@@ -189,11 +195,11 @@ export function MasterPicker(props: {
     setNaming(null);
   };
 
-  const commit = async () => {
-    if (!preview || committing) return;
+  const commit = async (target = preview) => {
+    if (!target || committing) return;
     setCommitting(true);
     try {
-      await props.onMaster(preview.target, preview.assets);
+      await props.onMaster(target.target, target.assets);
       closeAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

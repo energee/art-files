@@ -92,6 +92,23 @@ describe("MasterPicker", () => {
     expect(onMaster).toHaveBeenCalledWith(otherMaster, {});
   });
 
+  // Nothing would be benched, so there is nothing to confirm: the switch
+  // commits at once (⌘Z undoes it like any other edit).
+  it("switches straight to a master that would bench nothing", async () => {
+    const onMaster = vi.fn();
+    const same: Master = { ...lolevMaster(), id: "other", name: "Other Brewery" };
+    const resolve = vi.fn().mockResolvedValue({ master: same, assets: {} });
+    renderPicker({ onMaster, resolve, label: { ...label, enabledVariants: [] } });
+    openMenu();
+    await act(async () => {
+      itemStarting("Other Brewery")!.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(container.querySelector("#master-picker-preview")).toBeNull();
+    expect(onMaster).toHaveBeenCalledWith(same, {});
+  });
+
   // onMaster awaits the index write and the asset decode; a second Continue
   // in that window rebound the label twice.
   it("commits once however often Continue is pressed while it runs", async () => {
