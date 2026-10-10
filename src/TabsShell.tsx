@@ -538,7 +538,7 @@ export default function TabsShell() {
         +
       </button>
       {pickError && (
-        <span className="shrink-0 px-2 text-xs text-destructive-text">{pickError}</span>
+        <span role="alert" className="shrink-0 px-2 text-xs text-destructive-text">{pickError}</span>
       )}
     </div>
   ), [state.tabs, state.active, pickError, activate, closeReq, newTab]);

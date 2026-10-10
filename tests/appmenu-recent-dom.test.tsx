@@ -10,25 +10,37 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const native = vi.hoisted(() => {
   type Opts = { id?: string; text?: string; enabled?: boolean; items?: unknown[]; action?: () => void };
   class Resource {
-    opts: Opts; children: Resource[];
+    opts: Opts; children: Resource[]; closed = false;
     constructor(opts: Opts) { this.opts = opts; this.children = (opts.items ?? []) as Resource[]; }
     static async new(opts: Opts) {
+      await native.hold.new;
       const item = new this(opts);
+      native.created.push(item);
       if (opts.id) native.items.set(opts.id, item);
       return item;
     }
     get id() { return this.opts.id ?? "predefined"; }
-    async close() {}
+    async close() { this.closed = true; }
     async setEnabled() {}
     async setChecked() {}
     async setText() {}
     async setAsAppMenu() { native.onInstall(); return null; }
     async items() { return [...this.children]; }
-    async remove(item: Resource) { this.children = this.children.filter((c) => c !== item); }
-    async append(items: Resource | Resource[]) { this.children.push(...[items].flat()); }
+    // Like Tauri, a closed resource rejects; `hold` stalls a step mid-rebuild.
+    async remove(item: Resource) {
+      await native.hold.remove;
+      if (this.closed) throw new Error("resource closed");
+      this.children = this.children.filter((c) => c !== item);
+    }
+    async append(items: Resource | Resource[]) {
+      if (this.closed) throw new Error("resource closed");
+      this.children.push(...[items].flat());
+    }
   }
   return {
     items: new Map<string, Resource>(),
+    created: [] as Resource[],
+    hold: { new: Promise.resolve(), remove: Promise.resolve() } as Record<"new" | "remove", Promise<unknown>>,
     onInstall: () => {},
     api: {
       MenuItem: class extends Resource {}, IconMenuItem: class extends Resource {},
@@ -46,7 +58,13 @@ import { recentLabels, rememberRecent, setRecentOpener } from "@/recent";
 
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
-beforeEach(() => { localStorage.clear(); native.items.clear(); native.onInstall = () => {}; });
+beforeEach(() => {
+  localStorage.clear();
+  native.items.clear();
+  native.created.length = 0;
+  native.hold = { new: Promise.resolve(), remove: Promise.resolve() };
+  native.onInstall = () => {};
+});
 afterEach(() => { document.body.replaceChildren(); });
 
 async function mount() {
@@ -109,3 +127,29 @@ it("catches a change made while the menu is still installing", async () => {
     await unmount();
   }
 });
+
+it("escapes & so a file name keeps it (menus read a lone & as a mnemonic)", async () => {
+  rememberRecent("/labels/Salt & Pepper.label");
+  const unmount = await mount();
+  try {
+    expect(rows()[0]).toBe("Salt && Pepper.label");
+  } finally {
+    await unmount();
+  }
+});
+
+it.each(["remove", "new"] as const)(
+  "a rebuild cut off by unmounting (during %s) reports no error and leaks no rows",
+  async (step) => {
+    rememberRecent("/labels/One.label");
+    const unmount = await mount();
+    let release = () => {};
+    native.hold[step] = new Promise<void>((r) => { release = r; });
+    await act(async () => { rememberRecent("/labels/Two.label"); });
+    // The rebuild is now stalled mid-step; the tab switches away.
+    await unmount();
+    release();
+    await settle(); // onNativeError throws, so a reported error fails here
+    expect(native.created.filter((r) => !r.closed)).toEqual([]);
+  },
+);

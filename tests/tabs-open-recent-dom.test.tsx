@@ -96,6 +96,8 @@ it("a missing recent file shows the open error and leaves the list", async () =>
   await act(async () => { openRecent("/labels/Gone.label"); });
   await act(async () => { await Promise.resolve(); });
   expect(mocks.editors[0].fileToOpen).toBeNull();
-  expect(container.textContent).toContain("Could not open project: /labels/Gone.label no longer exists.");
+  // role="alert": the menu click leaves focus elsewhere, so it is announced.
+  expect(container.querySelector('[role="alert"]')?.textContent)
+    .toBe("Could not open project: /labels/Gone.label no longer exists.");
   expect(recentLabels()).toEqual(["/labels/Here.label"]);
 });

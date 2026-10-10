@@ -7,7 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Added
-- **File → Open Recent.** The desktop app remembers the last ten `.label` files you opened or saved. Pick one to reopen it, or choose Clear Menu to empty the list. A file that has moved or been deleted shows a readable error and leaves the list.
+- **File → Open Recent.** The desktop app remembers the last ten `.label` files you opened or saved to a new file (Save As, or the first Save). Pick one to reopen it, or choose Clear Menu to empty the list. A file that has moved or been deleted shows a readable error, announced to screen readers, and leaves the list.
 
 ### Changed
 - **Dependency patch updates.** Tauri JS 2.12.1, Lucide icons 1.52 and barcode-reading updates, plus newer build tooling; no change in behaviour.

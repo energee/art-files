@@ -303,7 +303,8 @@ async function recentRows(api: MenuApi, resources: NativeResource[]): Promise<Na
   const paths = recentLabels();
   const titles = recentTitles(paths);
   const rows: NativeEntry[] = await Promise.all(paths.map((path, i) => api.MenuItem.new({
-    id: `recent-${i}`, text: titles[i],
+    // Native menus read a lone & as a mnemonic marker; && shows one.
+    id: `recent-${i}`, text: titles[i].replaceAll("&", "&&"),
     // A modal dialog blocks this like every other menu command (#244).
     action: () => { if (!dialogOpen()) openRecent(path); },
   })));
@@ -514,12 +515,16 @@ function useNativeMenu(
           const gone = new Set<NativeResource>(old);
           resources.splice(0, resources.length, ...resources.filter((r) => !gone.has(r)));
           const rows = await recentRows(api, resources);
+          // Torn down while the rows were made: the cleanup has already run.
+          if (!live) return closeResources(resources);
           recentRowsOf.set(recent, rows);
           await recent.append(rows);
         };
         const queueRebuild = () => {
-          rebuilding = rebuilding.then(rebuild).catch((error) =>
-            errorRef.current(`Could not update the native menu: ${String(error)}`));
+          // A teardown mid-rebuild closes the submenu under it; not an error.
+          rebuilding = rebuilding.then(rebuild).catch((error) => {
+            if (live) errorRef.current(`Could not update the native menu: ${String(error)}`);
+          });
         };
         stopRecent = subscribeRecent(queueRebuild);
         if (JSON.stringify(recentLabels()) !== recentBuiltFrom) queueRebuild();
