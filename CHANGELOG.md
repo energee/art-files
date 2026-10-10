@@ -15,6 +15,8 @@ that section to the new version (see .agents/release-steward.md).
 - **Internal cleanup, no visible change.** The layer editing, inspector and preview code is reorganised into smaller files; the app behaves exactly as before.
 
 ### Fixed
+- **Quitting from the Dock a second time always quits.** On macOS, if the unsaved-tabs prompt never appears after Dock → Quit or logout (for example because the window has stopped responding), choosing Quit again within a few seconds now quits instead of being cancelled every time.
+- **Opening the same label from the command line no longer opens it twice.** A `.label` passed as a relative path, or spelled with `./` or `..`, is now recognised as the file that is already open instead of getting a second tab.
 - **The active tab's close button shows without hovering.** It rests dimmed on the selected tab so it can be found and tapped on touch; other tabs still show theirs on hover.
 - **Deleting a variant or removing a well's file says how to undo it.** Delete under the master picker now leaves a note that ⌘Z brings the variant back. Removing a texture or mask with its × was not undoable at all; the well now offers Undo to put the file back. An image layer's well notes that ⌘Z restores its art.
 - **A damaged remembered-masters entry no longer breaks opening labels.** A library entry missing its file path or name is now skipped instead of making a label open fail.

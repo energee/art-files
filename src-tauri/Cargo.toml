@@ -9,6 +9,9 @@ rust-version = "1.77.2"
 tauri-build = { version = "2.6.3", features = [] }
 
 [dependencies]
+# Canonicalises opened .label paths without Windows' \\?\ prefix (src/main.rs
+# OpenedFile::push). Already in the tree via tauri.
+dunce = "1.0.5"
 serde_json = "1.0"
 tauri = { version = "2.11.3", features = [] }
 tauri-plugin-dialog = "2.7.2"
