@@ -7,6 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Changed
+- **Dependency patch updates.** Tauri JS 2.12.1, Lucide icons 1.52 and barcode-reading updates, plus newer build tooling; no change in behaviour.
 - **Internal cleanup, no visible change.** The dev-only stroke magnifier page moved from the repo root to `tools/strokecap.html`; `npm run strokecap` opens it there.
 - **Internal cleanup, no visible change.** PSD barcode digits and the character-height check read font outlines through one typed font helper instead of a cast.
 - **Unused exports removed, no visible change.** Types used only in the file that defines them are no longer exported.
