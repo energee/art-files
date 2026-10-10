@@ -11,8 +11,6 @@ import { Rulers } from "../src/components/Rulers";
 import type { PreviewCompareHandle } from "../src/components/PreviewCompare";
 import { DEFAULT_MARGIN_PT, type ManualGuide } from "../src/rulers";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 let container: HTMLDivElement;
 let root: Root;
 

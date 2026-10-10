@@ -16,8 +16,6 @@ vi.mock("../src/fonts", () => ({
 }));
 import { DocumentEditor } from "../src/App";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 const trigger = () => document.querySelector<HTMLElement>('[aria-label="Link suffix"]')!;

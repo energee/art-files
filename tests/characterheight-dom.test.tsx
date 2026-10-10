@@ -10,7 +10,6 @@ vi.mock("../src/textheight", () => ({
   loadHeightMeasure: async () => (layer: TextLayer) => layer.lines[0]?.text ? { min: layer.size / 10, max: layer.size / 5, cpi: 24.56 } : null,
   sizeForMinimum: (size: number, min: number, target: number) => size * target / min,
 }));
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 it("edits the minimum through point size, updates the maximum and handles empty text", async () => {
   const container = document.createElement("div");

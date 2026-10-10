@@ -7,6 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Changed
+- **Internal cleanup, no visible change.** The desktop shell's Rust source is reformatted to the standard style and declares the minimum Rust version its dependencies need.
 - **Dependency patch updates.** Tauri JS 2.12.1, Lucide icons 1.52 and barcode-reading updates, plus newer build tooling; no change in behaviour.
 - **Tauri 2.12.1.** Patch updates to the app shell, file dialogs, updater and single-instance handling (Rust and JS sides together); no change in behaviour.
 - **Internal cleanup, no visible change.** The dev-only stroke magnifier page moved from the repo root to `tools/strokecap.html`; `npm run strokecap` opens it there.

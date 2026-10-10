@@ -17,8 +17,6 @@ import type {
   BarcodeLayer, ImageLayer, Layer, QrLayer, TextLayer,
 } from "../src/model/layers";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 let container: HTMLDivElement;
 let root: Root;
 

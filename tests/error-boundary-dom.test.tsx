@@ -6,8 +6,6 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 afterEach(() => vi.restoreAllMocks());
 
 function Boom(): never {

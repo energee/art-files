@@ -8,7 +8,6 @@ vi.mock("@tauri-apps/plugin-updater", () => ({ check: mocks.check }));
 const agent = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Windows");
 const { DesktopUpdater } = await import("../src/components/DesktopUpdater");
 agent.mockRestore();
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 it("Windows rechecks dirty tabs after downloading and before its exiting installer (#292)", async () => {
   let finish!: () => void;

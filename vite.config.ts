@@ -20,6 +20,8 @@ export default defineConfig({
   // vi.useFakeTimers(); keep the vitest 2 set the timer tests were written for.
   test: {
     dir: "tests",
+    // Marks every suite as a React act() environment (see tests/setup.ts).
+    setupFiles: ["tests/setup.ts"],
     fakeTimers: { toFake: ["setTimeout", "clearTimeout", "setImmediate", "clearImmediate", "setInterval", "clearInterval", "Date"] },
   },
 });

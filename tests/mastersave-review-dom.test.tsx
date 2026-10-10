@@ -13,8 +13,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MasterSaveReview } from "../src/components/MasterSaveReview";
 import type { MasterChange } from "../src/model/edit";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 let container: HTMLDivElement;
 let root: Root;
 

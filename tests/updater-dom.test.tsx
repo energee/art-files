@@ -7,7 +7,6 @@ import { AUTO_CHECK_DELAY_MS, DesktopUpdater, RECHECK_MIN_INTERVAL_MS } from "..
 const mocks = vi.hoisted(() => ({ check: vi.fn(), invoke: vi.fn(), desktop: vi.fn(() => true) }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke, isTauri: mocks.desktop }));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: mocks.check }));
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 beforeEach(() => vi.clearAllMocks());
 
