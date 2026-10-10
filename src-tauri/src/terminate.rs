@@ -10,7 +10,9 @@
 // otherwise it proceeds, so logout is never interrupted needlessly. A second
 // quit within REPEAT_QUIT of a cancelled one always proceeds: a hung webview
 // never answers the close sweep, and without that escape hatch every Dock
-// Quit and logout would be cancelled forever.
+// Quit and logout would be cancelled forever. The cost: choosing Cancel in a
+// responsive prompt and quitting again within REPEAT_QUIT skips the prompt;
+// the unsaved tabs then survive only as recovery snapshots (src/recovery.ts).
 
 // Only macOS installs the hook; elsewhere the decision helper is test-only.
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -63,15 +65,21 @@ mod macos {
     /** `- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender` */
     extern "C-unwind" fn should_terminate(_: &AnyObject, _: Sel, _: *mut AnyObject) -> usize {
         let window = APP.get().and_then(|app| app.get_webview_window("main"));
-        let mut last_cancel = LAST_CANCEL.lock().unwrap_or_else(PoisonError::into_inner);
-        let recently_cancelled = last_cancel.is_some_and(|at| at.elapsed() < REPEAT_QUIT);
-        let reply = terminate_reply(
-            UNSAVED.load(Ordering::Relaxed),
-            window.is_some(),
-            recently_cancelled,
-        );
+        let reply = {
+            // Scoped so the lock is released before window.close() below.
+            let mut last_cancel = LAST_CANCEL.lock().unwrap_or_else(PoisonError::into_inner);
+            let recently_cancelled = last_cancel.is_some_and(|at| at.elapsed() < REPEAT_QUIT);
+            let reply = terminate_reply(
+                UNSAVED.load(Ordering::Relaxed),
+                window.is_some(),
+                recently_cancelled,
+            );
+            if reply == TERMINATE_CANCEL {
+                *last_cancel = Some(Instant::now());
+            }
+            reply
+        };
         if reply == TERMINATE_CANCEL {
-            *last_cancel = Some(Instant::now());
             // close() emits CloseRequested like the red button, so the
             // frontend's sweep prompts for each unsaved tab.
             if let Some(window) = window {

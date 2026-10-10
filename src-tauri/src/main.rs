@@ -332,7 +332,7 @@ mod tests {
             .into_string()
             .unwrap();
 
-        let relative = pathdiff_from_cwd(&file);
+        let relative = relative_to_cwd(&file);
         let dotdot = dir.join("sub").join("..").join("beer.label");
         let state = OpenedFile::new([relative, dotdot]);
         assert_eq!(state.take().as_deref(), Some(canonical.as_str()));
@@ -348,16 +348,19 @@ mod tests {
         assert_eq!(state.take().as_deref(), Some("/no/such/dir/x.label"));
     }
 
-    /** `file` spelled relative to the test process's cwd: `..` up to the
-     *  filesystem root, then the absolute path's components. */
-    fn pathdiff_from_cwd(file: &std::path::Path) -> PathBuf {
+    /** `file` spelled relative to the test process's cwd: one `..` per cwd
+     *  directory up to the root, then the file's directories. Only Normal
+     *  components are counted, so a Windows `C:` prefix and the root are
+     *  skipped (both paths must be on the same drive there). */
+    fn relative_to_cwd(file: &std::path::Path) -> PathBuf {
+        use std::path::Component::Normal;
         let cwd = dunce::canonicalize(std::env::current_dir().unwrap()).unwrap();
+        let file = dunce::canonicalize(file).unwrap();
         let mut rel = PathBuf::new();
-        for _ in cwd.components().skip(1) {
+        for _ in cwd.components().filter(|c| matches!(c, Normal(_))) {
             rel.push("..");
         }
-        let file = dunce::canonicalize(file).unwrap();
-        rel.extend(file.components().skip(1));
+        rel.extend(file.components().filter(|c| matches!(c, Normal(_))));
         assert!(rel.is_relative());
         rel
     }
