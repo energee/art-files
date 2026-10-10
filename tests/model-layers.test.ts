@@ -128,6 +128,14 @@ describe("style colours", () => {
     expect(() => parseMaster(withStyle({ stroke: "red" }))).toThrow(/stroke "red"/);
     expect(() => parseMaster(withStyle({ layer: "silver" }))).toThrow(/layer "silver"/);
   });
+  it("checks and widens a variant patch's colours too", () => {
+    const m = lolevMaster();
+    m.variants[0].layers.name = { style: { fill: "#abc" } };
+    const patch = parseMaster(m).variants[0].layers.name as { style: { fill: string } };
+    expect(patch.style.fill).toBe("#aabbcc");
+    m.variants[0].layers.name = { style: { fill: "gold" as never } };
+    expect(() => parseMaster(m)).toThrow(/variant "collab" layer "name" style has fill "gold"/);
+  });
   it("accepts \"none\" for fill and stroke", () => {
     expect(() => parseMaster(withStyle({ fill: "none", stroke: "none" }))).not.toThrow();
   });

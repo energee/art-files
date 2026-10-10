@@ -14,7 +14,7 @@ import { setBleed } from "../src/layout";
 import { svgAspect } from "../src/logo";
 import { convertConfigV1, guideLines } from "../src/model/convert";
 import { unpackLabel, unpackMaster, type MasterAssets } from "../src/model/files";
-import { PAGE_ART_ID, validateLayer, type LabelFile, type Layer, type LayerKind, type LayerValue, type Master, type TextLayer, type TextLine } from "../src/model/layers";
+import { linesProblem, PAGE_ART_ID, validateLayer, type LabelFile, type Layer, type LayerKind, type LayerValue, type Master, type TextLayer, type TextLine } from "../src/model/layers";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { applyDiff, exportBase, resolveLayers, titleOf, widenValue } from "../src/model/resolveLayers";
 import type { PlanAssets } from "../src/plan";
@@ -225,12 +225,6 @@ function linesFromText(src: string, base: Style): TextLine[] {
   return out;
 }
 
-function isTextLines(v: unknown): v is TextLine[] {
-  return Array.isArray(v) && v.every((l) =>
-    isPlain(l) && typeof l.text === "string" && typeof l.fill === "string"
-    && (l.layer === "metallic" || l.layer === "white"));
-}
-
 /** Whole layers each variant adds (an id the master already has is just an
  *  override of the master layer, not an addition). */
 function addedLayers(master: Master): { layer: Layer; variant: string }[] {
@@ -253,7 +247,13 @@ function fillableById(
 
 function coerceOne(layer: Layer, raw: unknown): { value: LayerValue } | { error: string } {
   if (layer.kind === "text") {
-    if (isTextLines(raw)) return { value: raw };
+    // Lines get the check a .label's stored lines get (linesProblem): a
+    // "#fff" is widened and a "gold" refused, so the PDF prints what the
+    // preview shows.
+    if (Array.isArray(raw)) {
+      const problem = linesProblem(raw);
+      return problem ? { error: `Text ${problem}.` } : { value: raw as TextLine[] };
+    }
     if (typeof raw === "string" || typeof raw === "number") {
       const s = String(raw);
       if (layer.input === "number" || layer.input === "code") return { value: widenValue(layer, s) };

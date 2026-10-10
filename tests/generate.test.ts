@@ -141,6 +141,11 @@ describe("coerceValues", () => {
     const r = coerceValues(m, { name: [{ text: "Hello" }] }, []);
     expect(r.errors.name).toMatch(/text/i);
   });
+  it("text lines get the .label colour check: short hex widened, named colour refused", () => {
+    const run = { text: "Hi", fill: "#fff", layer: "white" };
+    expect(coerceValues(m, { name: [run] }, []).values.name).toEqual([{ ...run, fill: "#ffffff" }]);
+    expect(coerceValues(m, { name: [{ ...run, fill: "gold" }] }, []).errors.name).toMatch(/fill "gold"/);
+  });
 });
 
 describe("inspectMaster", () => {
