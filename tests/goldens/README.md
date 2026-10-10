@@ -87,7 +87,8 @@ quiet zone in their box, which moves their bars 10X in from the anchor.
 
 `collab-{off,on}-{art,mask}-boxes.diff.png` compare the four PDF plates from
 `main` (54c6997) with the plates that declare a TrimBox (the 8 x 5in die inside
-the bleed), a BleedBox (the full page) and a `Label Lab <version>` Producer.
+the bleed, written as `layout.ts`'s `ART` box), a BleedBox (the full page) and
+a `Label Lab <version>` Producer.
 All four have **zero changed pixels** at 600 DPI; both PSDs are byte-identical.
 The goldens test pins the version (`vi.mock` of `package.json`), so a release
 bump does not move the PDF digests.

@@ -71,7 +71,10 @@ export function createHeightMeasure(bytes: Record<Face, Uint8Array>): HeightMeas
   };
 }
 
-const VARIATION_SELECTOR = /^[\uFE00-\uFE0F\u{E0100}-\u{E01EF}]$/u;
+/** One variation selector (the emoji picker's ™️). fontkit folds it into the
+ *  base glyph, so it is never a missing character. Shared with pdf/build's
+ *  export check so the inspector and export agree on what cannot print. */
+export const VARIATION_SELECTOR = /^[\uFE00-\uFE0F\u{E0100}-\u{E01EF}]$/u;
 
 /** Codepoints in a layer's printed text that its font maps to glyph 0
  *  (.notdef), in first-seen order. Each run is checked in the face it prints
@@ -91,7 +94,8 @@ export function createMissingGlyphCheck(bytes: Record<Face, Uint8Array>): (layer
   };
 }
 
-/** "“→” (U+2192), …" — how a missing-glyph list reads to the operator. */
+/** "“→” (U+2192), …" — how a missing-glyph list reads to the operator, in
+ *  the inspector, the CLI and the export error alike. */
 export function describeCodepoints(codepoints: readonly number[]): string {
   return codepoints.map((cp) => `“${String.fromCodePoint(cp)}” (U+${cp.toString(16).toUpperCase().padStart(4, "0")})`).join(", ");
 }

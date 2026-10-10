@@ -8,7 +8,8 @@
 // PDF hashes re-baselined 2026-10-10: both plates now declare a TrimBox (the
 // die inside the bleed) and BleedBox (the page) and a "Label Lab <version>"
 // Producer. 0 px changed at 600 DPI on all four plates; PSDs are unchanged.
-// See tests/goldens/collab-*-boxes.diff.png. The version is pinned below so a
+// The TrimBox is layout.ts's ART exactly. See tests/goldens/collab-*-boxes.diff.png
+// (main vs. these plates). The version is pinned below so a
 // release bump does not move these digests.
 //
 // Mask PDF hashes re-baselined 2026-09-28: the white-ink barcode follows the
@@ -104,8 +105,8 @@ const digests = (r: Awaited<ReturnType<typeof shipped>>) => ({
 describe("collab byte-identity goldens — Collab variant OFF, both slots loaded", () => {
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped([]))).toEqual({
-      art: "19c04d028e894c5709d8f39898f75ef6006f94376b888d510635fb708b616e8a", artLen: 57947,
-      mask: "9236d126c7269f8a51a49fa5c4a3d740cf82af14b8c2becc612b879ed8602ec4", maskLen: 58094,
+      art: "9a440de8a254c67eed2d60f1c665a2c6e73dff94313d37b714e8402e4fdfbf27", artLen: 57939,
+      mask: "d52eaaae29a208389a62870731cba1a2f1f6aa6865ac2d4889b3006371159fba", maskLen: 58089,
       psd: "d3c39d261e7145566e4268a876060b2be9685311c86c662455a26f210de0aabc", psdLen: 1155796,
     });
   });
@@ -114,8 +115,8 @@ describe("collab byte-identity goldens — Collab variant OFF, both slots loaded
 describe("collab byte-identity goldens — Collab variant ON, both slots loaded", () => {
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped(["collab"]))).toEqual({
-      art: "11b8f787b041170cf6570c1f56c55ae70c8ebf2b58ea616988d813c62d5f015d", artLen: 59823,
-      mask: "764efcbc3330d61567487a0480cb11fe9ea13f9366838ea374a2d043742cff02", maskLen: 59887,
+      art: "2a45b2369ec67c7378db92b4696fcfd5eadad801896a359bb8348b0e44c79fd5", artLen: 59815,
+      mask: "57d92abc989e066a88d273e898454a8059b958333bc0dc7942bdd2e8ad2a59c7", maskLen: 59886,
       psd: "d6d9f4d9222cc43d26bdc2bc7d0bd7d0bca1a7f573427ed66c5b5dd00eb39974", psdLen: 1165816,
     });
   });

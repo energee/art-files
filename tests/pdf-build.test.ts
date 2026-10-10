@@ -11,6 +11,7 @@ import { openFont } from "../src/fontkit";
 import { buildArtPdf, buildMaskPdf, pdfMeasureFace } from "../src/pdf/build";
 import { warningColumnLen, warningMeasure, wrapWarning } from "../src/warning";
 import * as L from "./legacy/layout";
+import { ART, PAGE } from "../src/layout";
 import { assets, contentStreamText, fillOps, lolevPlan, onePxPng, pageRectPath } from "./fixtures";
 
 // Counts /Subtype /Image XObjects in a saved PDF's indirect object table —
@@ -201,13 +202,10 @@ describe("printer boxes and provenance", () => {
     const items = await lolevPlan();
     for (const bytes of [await buildArtPdf(items, assets), await buildMaskPdf(items, assets)]) {
       const page = (await PDFDocument.load(bytes, { updateMetadata: false })).getPage(0);
-      const bleed = (L.PAGE.w - 576) / 2;
-      expect(page.getBleedBox()).toEqual({ x: 0, y: 0, width: L.PAGE.w, height: L.PAGE.h });
-      const trim = page.getTrimBox();
-      expect(trim.x).toBeCloseTo(bleed, 6);
-      expect(trim.y).toBeCloseTo(bleed, 6);
-      expect(trim.width).toBe(576);
-      expect(trim.height).toBe(360);
+      expect(page.getBleedBox()).toEqual({ x: 0, y: 0, width: PAGE.w, height: PAGE.h });
+      // Exactly the art box: a re-derived (PAGE.w - TRIM.w) / 2 serializes as
+      // 4.560000000000002, which a close-to check would let through.
+      expect(page.getTrimBox()).toEqual({ x: ART.x, y: ART.y, width: 576, height: 360 });
     }
   });
 

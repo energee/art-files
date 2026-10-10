@@ -77,6 +77,11 @@ it("lists the characters a layer's font has no glyph for, once each, ignoring sp
   expect(missing(text("Ale → 🍺 → 啤"))).toEqual([0x2192, 0x1f37a, 0x5564]);
   // Placeholder text prints when the layer is empty, so it is checked too.
   expect(missing(text("", { placeholder: "→" }))).toEqual([0x2192]);
-  // Bold runs are checked in the bold face.
-  expect(missing(text("**→**"))).toEqual([0x2192]);
+  // Each run is checked in the face it prints in (bold runs default to
+  // semibold). The bundled faces share one character set, so pin it with a
+  // pack whose semibold face (Barlow) lacks "₹".
+  const barlow = readFileSync(new URL("../src/assets/fonts/BarlowCondensed-SemiBold.ttf", import.meta.url));
+  const mixed = createMissingGlyphCheck({ regular: bytes("Regular"), semibold: barlow, bold: bytes("Bold") });
+  expect(mixed(text("₹"))).toEqual([]);
+  expect(mixed(text("**₹**"))).toEqual([0x20b9]);
 });

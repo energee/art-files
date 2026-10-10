@@ -144,8 +144,9 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
     let outDir = singles.out;
     const leftover = [...rest];
     // --check writes nothing, so it needs no output directory: a lone
-    // positional is the values file.
-    if (!outDir && !check) {
+    // positional is the values file. Two still read as values + out, so
+    // appending --check to a working command line just checks it.
+    if (!outDir && (!check || leftover.length > 1)) {
       if (!leftover.length) throw new Error(USAGE);
       outDir = leftover.pop()!;
     }

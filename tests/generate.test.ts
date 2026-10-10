@@ -389,6 +389,10 @@ describe("runGenerate", () => {
       mode: "generate", check: true, source: { kind: "values", path: "v.json" },
     });
     expect(parseGenerateArgs(["--check"])).toMatchObject({ mode: "generate", check: true });
+    // Appending --check to a working command line checks it, out dir and all.
+    expect(parseGenerateArgs(["v.json", "out", "--check"])).toMatchObject({
+      mode: "generate", check: true, source: { kind: "values", path: "v.json" }, outDir: "out",
+    });
   });
 
   it("--check reports characters the label font cannot print", async () => {
