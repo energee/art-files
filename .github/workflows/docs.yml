@@ -3,7 +3,8 @@ name: Docs
 
 on:
   pull_request:
-    paths: ['docs-site/**']
+    # Also this file and the Node pin, so a change to either is exercised here.
+    paths: ['docs-site/**', '.github/workflows/docs.yml', '.nvmrc']
 
 concurrency:
   group: docs-${{ github.event.pull_request.number }}
