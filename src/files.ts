@@ -4,7 +4,8 @@ import { isAbort, openPicker, savePicker, writeHandle } from "./filePickers";
 // @tauri-apps/plugin-* imports stay here so the app's native surface is
 // visible in one place. Open and save both live here; the capability
 // scope allows reading, writing, renaming and removing .label and .master
-// paths (rename/remove serve the atomic save).
+// paths (rename/remove serve the atomic save), plus checking for and writing
+// an export pair's `-mask.pdf`/`-mask.psd` beside the art file.
 
 /** Read a file's bytes through Tauri's fs plugin — the read half of this
  *  boundary. The capability scope (src-tauri/capabilities/default.json)
@@ -105,7 +106,8 @@ export async function saveThrough(
 /** Write a desktop save. .label/.master paths go through the atomic temp +
  *  rename; anything else (PDF/PSD exports) is written directly, because the
  *  dialog scopes only the exact file it returned and the capability globs
- *  cover only .label/.master, so a temp beside an export would be forbidden. */
+ *  cover only .label/.master and `-mask.pdf`/`-mask.psd` (no rename/remove),
+ *  so a temp beside an export would be forbidden. */
 async function writeNative(path: string, bytes: Uint8Array): Promise<void> {
   if (/\.(label|master)$/i.test(path)) return writeNativeAtomic(path, bytes);
   await (await import("@tauri-apps/plugin-fs")).writeFile(path, bytes);

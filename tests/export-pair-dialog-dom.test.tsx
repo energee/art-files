@@ -71,3 +71,18 @@ it("asks for the mask when a file already sits at the derived path", async () =>
   expect(written("/labels/other-mask.pdf")).toBe(true);
   expect(written("/labels/beer-mask.pdf")).toBe(false);
 }, 30000);
+
+it("names the mask with the export's own extension, whatever the art file was called", async () => {
+  save.mockResolvedValue("/labels/Renamed");
+  await exportBoth();
+  expect(save).toHaveBeenCalledTimes(1);
+  expect(writeFile.mock.calls.map(([p]) => p)).toEqual(["/labels/Renamed", "/labels/Renamed-mask.pdf"]);
+}, 30000);
+
+it("asks for the mask when it cannot tell whether the derived path is free", async () => {
+  exists.mockRejectedValue(new Error("forbidden"));
+  save.mockResolvedValueOnce("/labels/beer.pdf").mockResolvedValueOnce("/labels/beer-mask.pdf");
+  await exportBoth();
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ defaultPath: "beer-mask.pdf" }));
+}, 30000);

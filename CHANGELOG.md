@@ -7,7 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Changed
-- **Exporting PDFs or PSDs asks where to save once.** In the desktop app the mask is saved beside the art file you choose, named after it with `-mask`. If a file with that name is already there, you are asked where to put the mask rather than having it overwritten.
+- **Exporting both PDFs or both PSDs asks where to save once.** In the desktop app the mask is saved beside the art file you choose, named after it with `-mask`. If a file with that name is already there, you are asked where to put the mask rather than having it overwritten.
 - **Dependency patch updates.** Tauri JS 2.12.1, Lucide icons 1.52 and barcode-reading updates, plus newer build tooling; no change in behaviour.
 - **Tauri 2.12.1.** Patch updates to the app shell, file dialogs, updater and single-instance handling (Rust and JS sides together); no change in behaviour.
 - **Internal cleanup, no visible change.** The dev-only stroke magnifier page moved from the repo root to `tools/strokecap.html`; `npm run strokecap` opens it there.

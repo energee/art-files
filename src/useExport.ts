@@ -138,7 +138,9 @@ export function useExport({
     try {
       const pair = await build();
       // On desktop the mask follows the art file the dialog chose
-      // (`<stem>-mask.<ext>` in the same folder) rather than asking again.
+      // (`<stem>-mask.<extension>` in the same folder, keeping the export's
+      // own extension so the capability globs cover it) rather than asking
+      // again.
       // A file already there was not covered by that dialog's overwrite
       // prompt, so the mask then gets its own dialog (as it does if the
       // check itself fails).
@@ -153,7 +155,7 @@ export function useExport({
         }
         saved.push(result.name);
         if (!index && result.target && "path" in result.target) {
-          const maskPath = result.target.path.replace(/(\.[^./\\]+)?$/, "-mask$1");
+          const maskPath = result.target.path.replace(/(\.[^./\\]+)?$/, `-mask.${extension}`);
           if (!(await nativePathExists(maskPath).catch(() => true))) maskTarget = { path: maskPath };
         }
       }
