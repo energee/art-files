@@ -137,13 +137,11 @@ export function useExport({
     let pending = "";
     try {
       const pair = await build();
-      // On desktop the mask follows the art file the dialog chose
-      // (`<stem>-mask.<extension>` in the same folder, keeping the export's
-      // own extension so the capability globs cover it) rather than asking
-      // again.
-      // A file already there was not covered by that dialog's overwrite
-      // prompt, so the mask then gets its own dialog (as it does if the
-      // check itself fails).
+      // On desktop the mask is written beside the art file the dialog chose,
+      // as `<stem>-mask.<extension>` (the export's own extension, so the
+      // capability globs cover it), without asking again. If a file is
+      // already there, or the check fails, the mask gets its own dialog:
+      // the art dialog's overwrite prompt covered only the art file.
       let maskTarget: FileTarget | undefined;
       for (const [index, bytes] of pair.entries()) {
         if (!bytes) continue;
