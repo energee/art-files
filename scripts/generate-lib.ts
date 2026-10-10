@@ -710,7 +710,6 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
   // name before anything is built or written, so a batch fails whole.
   // `--check` stops after this pass.
   const errors: string[] = [];
-  const checkWarnings: string[] = [];
   const glyphChecks = new Map<FontFamilyId, ReturnType<typeof createMissingGlyphCheck>>();
   const missingGlyphs = (layer: TextLayer, family: FontFamilyId): number[] => {
     let fn = glyphChecks.get(family);
@@ -748,7 +747,8 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     // buildLabel if it ever shows up in a profile.
     const resolved = resolveLayers(master, variants, coerced.values, overrides);
     if (Object.keys(resolved.errors).length) errors.push(errorText(resolved.errors));
-    checkWarnings.push(...resolved.warnings);
+    // Without --check, buildLabel reports these warnings as it builds.
+    if (args.check) for (const w of resolved.warnings) warn(w);
     // A character the font lacks would print as an empty box; the build
     // refuses it, so name the layer now rather than mid-batch.
     for (const l of resolved.layers) {
@@ -764,7 +764,6 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     }
     return { variants, values: coerced.values, extraImages, overrides };
   });
-  if (args.check) for (const w of checkWarnings) warn(w);
   if (errors.length) throw new Error(errors.join("\n"));
   if (args.check) {
     io.stdout(`check: ${jobs.length} job${jobs.length === 1 ? "" : "s"} OK\n`);
