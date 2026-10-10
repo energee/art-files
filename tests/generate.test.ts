@@ -393,6 +393,13 @@ describe("runGenerate", () => {
     expect(parseGenerateArgs(["v.json", "out", "--check"])).toMatchObject({
       mode: "generate", check: true, source: { kind: "values", path: "v.json" }, outDir: "out",
     });
+    // With the source already named by flag, a lone positional can only be the out dir.
+    expect(parseGenerateArgs(["--values", "v.json", "out", "--check"])).toMatchObject({
+      check: true, source: { kind: "values", path: "v.json" }, outDir: "out",
+    });
+    expect(parseGenerateArgs(["--label", "a.label", "out", "--check"])).toMatchObject({
+      check: true, source: { kind: "label", path: "a.label" }, outDir: "out",
+    });
   });
 
   it("--check reports characters the label font cannot print", async () => {
