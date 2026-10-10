@@ -52,4 +52,12 @@ describe("validateField", () => {
     expect(validateField(d("code-128"), "BEER-123").ok).toBe(true);
     expect(validateField(d("code-128"), "").ok).toBe(false);
   });
+  it("accepts only plain decimal numbers, so the printed abv reads as typed", () => {
+    const d = decl({ kind: "number" });
+    for (const v of ["1e1", "0x10", "6.", ".5", "1 2", "+3"]) expect(validateField(d, v).ok, v).toBe(false);
+    for (const v of ["6", " 6.5 ", "-1", "0.25"]) expect(validateField(d, v).ok, v).toBe(true);
+  });
+  it("treats a blank number as not filled yet", () => {
+    expect(validateField(decl({ kind: "number", min: 1 }), "  ").ok).toBe(true);
+  });
 });

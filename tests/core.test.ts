@@ -46,6 +46,13 @@ describe("upc", () => {
     expect(validateUpc("850051366225").ok).toBe(false);
     expect(validateUpc("12345").ok).toBe(false);
   });
+  it("says what the check digit should be", () => {
+    expect(validateUpc("850051366225").error).toMatch(/check digit should be 4/);
+  });
+  it("accepts the spaces and hyphens a UPC is printed with", () => {
+    expect(validateUpc("0 36000 29145 2").ok).toBe(true);
+    expect(validateUpc("0-36000-29145-2").ok).toBe(true);
+  });
   it("encodes 95 modules with correct guards", () => {
     const { modules, guards } = encodeUpc("850051366224");
     expect(modules).toHaveLength(95);

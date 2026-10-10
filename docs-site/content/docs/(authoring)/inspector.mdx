@@ -15,9 +15,9 @@ Kind icon, inline rename, enabled, locked. Same switches as the list row.
 
 Depends on the kind:
 
-- **Text.** The WYSIWYG editor ([Editing](/docs/editing)). Number layers (ABV) are a number box. Code-as-text layers validate like a barcode.
+- **Text.** The WYSIWYG editor ([Editing](/docs/editing)). Number layers (ABV) are a number box that takes plain decimals (`6`, `6.5`, `-1`), not `1e1` or `6.`; blank counts as not filled yet. Code-as-text layers validate like a barcode.
 - **Image.** Drop or pick a file. SVG logos take the slot's fill. Rasters print as you authored them.
-- **Barcode.** The code string, plus a choice list if the master offers tiers.
+- **Barcode.** The code string, plus a choice list if the master offers tiers. A UPC-A can be typed as printed (`0 36000 29145 2` or with hyphens); it is stored as bare digits. A wrong check digit says which digit it should be.
 - **QR.** A **Link** box and a **followed by** picker of text layers (or “nothing”). The selected text is made safe for a link. Lolev ships as `https://lolev.beer/beer/{name|slug}`; that derived URL is what gets encoded.
 
 ## Typography (text)
@@ -44,7 +44,7 @@ QR: square size, style (square, rounded, dots), and error correction (L, M, Q, H
 
 ## Colour
 
-- **Fill.** Colour picker (screen eyedropper on Chromium), hex field, and **no ink**, except on barcodes and QR. Those have to scan.
+- **Fill.** Colour picker (screen eyedropper on Chromium), hex field, and **no ink**, except on barcodes and QR. Those have to scan. Colours are 3- or 6-digit hex (`#fff` reads as `#ffffff`); a hand-edited `.label` or `.master` with a named colour such as `gold` is refused on open, naming the layer.
 - **Metallic.** On knocks out of the white-ink plate (bare stock). Off lays white ink under it.
 - **Stroke.** Optional outer stroke with its own colour, metallic flag, and width in px at 600 DPI (15px = 1.8pt). The physical width holds at any export DPI. Codes default the halo to white. Everything else defaults a dark keyline. A barcode can also turn on **Solid background**: the stroke colour fills the whole barcode box, quiet zone included, instead of only outlining the bars and digits.
 

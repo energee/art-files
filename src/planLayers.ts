@@ -25,6 +25,7 @@ import { markedWords, parseRuns, printableText } from "./description";
 import { strokeLayerOf } from "./strokes";
 import { parseLogo } from "./logo";
 import { qrPaths, qrShapes } from "./qr";
+import { upcDigits } from "./upc";
 import {
   barcodeDigitsFor, CUSTOM_BARCODE_DIGIT_GAP_RATIO, CUSTOM_BARCODE_DIGIT_SIZE_RATIO,
   encodeFor, quietModulesFor, validateFor, type BarcodeGeometry,
@@ -259,8 +260,11 @@ function prepareImage(l: ImageLayer, assets: PlanAssets): Prepared | null {
  *  them, baseline at the plate's right edge). JsBarcode's UPC-A/EAN-13 rule
  *  for the guards applies in both: with digits shown, start/center/end
  *  guards run long through the digit band. */
-function prepareBarcode(l: BarcodeLayer, m: MeasureFace): Prepared | null {
-  if (!validateFor(l.symbology, l.value).ok) return null;
+function prepareBarcode(layer: BarcodeLayer, m: MeasureFace): Prepared | null {
+  if (!validateFor(layer.symbology, layer.value).ok) return null;
+  // validateUpc accepts a UPC as printed ("0 36000 29145 2"); the encoder and
+  // the digit groups need the bare digits a master or CLI value may lack.
+  const l = layer.symbology === "upc-a" ? { ...layer, value: upcDigits(layer.value) } : layer;
   const id = l.id;
   const { modules, guards } = encodeFor(l.symbology, l.value);
   const inGuard = (i: number) => guards.some(([a, b]) => i >= a && i < b);

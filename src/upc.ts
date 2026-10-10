@@ -18,11 +18,17 @@ export function upcCheckDigit(first11: string): number {
   return (10 - ((odd * 3 + even) % 10)) % 10;
 }
 
+/** A UPC as printed under its bars ("0 36000 29145 2", or hyphenated) to the
+ *  bare digits the encoder takes. editLabel's setContentIn stores this form. */
+export const upcDigits = (value: string): string => value.replace(/[\s-]/g, "");
+
 export function validateUpc(value: string): { ok: boolean; error?: string } {
-  if (!/^\d{12}$/.test(value))
+  const digits = upcDigits(value);
+  if (!/^\d{12}$/.test(digits))
     return { ok: false, error: `"${value}" is not a valid UPC-A code (12 digits).` };
-  if (upcCheckDigit(value.slice(0, 11)) !== +value[11])
-    return { ok: false, error: "UPC-A check digit does not match." };
+  const check = upcCheckDigit(digits.slice(0, 11));
+  if (check !== +digits[11])
+    return { ok: false, error: `UPC-A check digit does not match: check digit should be ${check}.` };
   return { ok: true };
 }
 

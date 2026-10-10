@@ -15,6 +15,10 @@ that section to the new version (see .agents/release-steward.md).
 - **Internal cleanup, no visible change.** The layer editing, inspector and preview code is reorganised into smaller files; the app behaves exactly as before.
 
 ### Fixed
+- **Short hex colours print as they show, and unprintable colours are refused.** A `.label` or `.master` holding a 3-digit colour such as `#fff` used to look right on screen but print a different colour in the PDF; it now prints the colour you see. A file with a named colour (`gold`), a text line without a colour, or an ink plate other than white or metallic is refused on open with a message naming the layer, instead of printing black or failing at export. The document you had open stays open.
+- **One bad set-aside value no longer refuses a whole label.** A value benched by switching masters that is damaged is now dropped on open, and the rest of the label opens.
+- **Number fields accept only plain numbers.** An ABV like `1e1`, `0x10` or `6.` is now flagged instead of printing as typed; a blank number field counts as not filled yet.
+- **UPC entry is friendlier.** A UPC-A typed with the spaces or hyphens printed under the bars is accepted and stored as bare digits, and a wrong check digit now says what the digit should be.
 - **The active tab's close button shows without hovering.** It rests dimmed on the selected tab so it can be found and tapped on touch; other tabs still show theirs on hover.
 - **Deleting a variant or removing a well's file says how to undo it.** Delete under the master picker now leaves a note that ⌘Z brings the variant back. Removing a texture or mask with its × was not undoable at all; the well now offers Undo to put the file back. An image layer's well notes that ⌘Z restores its art.
 - **A damaged remembered-masters entry no longer breaks opening labels.** A library entry missing its file path or name is now skipped instead of making a label open fail.

@@ -197,6 +197,12 @@ describe("content routes to the label for any layer", () => {
     ]);
     expect({ ...d.master, layers: undefined }).toEqual({ ...before, layers: undefined });
   });
+
+  it("stores a UPC typed with its printed spaces as bare digits", () => {
+    const d = setContentIn(doc(), "barcode", "0 36000 29145-2");
+    expect(d.label.values.barcode).toBe("036000291452");
+    expect(byId<{ value: string }>(d, "barcode").value).toBe("036000291452");
+  });
 });
 
 // docs/plans/choice-input.md, Task 3. The vocabulary and the caption declare

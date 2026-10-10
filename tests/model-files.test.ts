@@ -205,7 +205,6 @@ describe("parseLabel rejects malformed untrusted fields (#392)", () => {
   it("rejects a value that is neither a string nor text lines", () => {
     expect(() => parseLabel({ ...base, values: { name: 42 } })).toThrow(/value/);
     expect(() => parseLabel({ ...base, values: { name: [{ text: 1 }] } })).toThrow(/value/);
-    expect(() => parseLabel({ ...base, dormant: { values: { x: {} }, variants: [] } })).toThrow(/value/);
   });
   it("rejects an override with non-numeric geometry or a malformed added layer", () => {
     expect(() => parseLabel({ ...base, overrides: { name: { x: "12" } } })).toThrow(/x/);
@@ -229,4 +228,35 @@ it("parseLabel accepts an added layer whose optional fields were cleared to null
   expect(() => parseLabel({ formatVersion: 3, masterId: "lolev", overrides })).not.toThrow();
   expect(() => parseLabel({ formatVersion: 3, masterId: "lolev", overrides: { stamp: { ...stamp, id: "other" } } }))
     .toThrow(/id/);
+});
+
+describe("parseLabel checks the colours and text a value or override carries", () => {
+  const base = { formatVersion: 3, masterId: "lolev" };
+  const run = (over: Record<string, unknown>) => ({ text: "Hazy", fill: "#F3CD80", layer: "metallic", ...over });
+  it("widens a 3-digit hex so the PDF prints the colour the canvas shows", () => {
+    const l = parseLabel({ ...base, values: { name: [run({ fill: "#fff" })] },
+      overrides: { name: { style: { fill: "#0a0", stroke: "#123" } } } }) as LabelFile;
+    expect((l.values.name as { fill: string }[])[0].fill).toBe("#ffffff");
+    expect(l.overrides!.name).toMatchObject({ style: { fill: "#00aa00", stroke: "#112233" } });
+  });
+  it("keeps a 6-digit hex and \"none\" exactly as saved", () => {
+    const l = parseLabel({ ...base, values: { name: [run({ fill: "none" })] },
+      overrides: { name: { style: { stroke: "#ABCDEF" } } } }) as LabelFile;
+    expect((l.values.name as { fill: string }[])[0].fill).toBe("none");
+    expect(l.overrides!.name).toMatchObject({ style: { stroke: "#ABCDEF" } });
+  });
+  it("rejects a named colour, a run without a fill, and an unknown ink plate", () => {
+    expect(() => parseLabel({ ...base, values: { name: [run({ fill: "gold" })] } })).toThrow(/value for "name".*fill "gold"/);
+    expect(() => parseLabel({ ...base, values: { name: [{ text: "x", layer: "metallic" }] } })).toThrow(/missing fill/);
+    expect(() => parseLabel({ ...base, values: { name: [run({ layer: "silver" })] } })).toThrow(/layer "silver"/);
+    expect(() => parseLabel({ ...base, overrides: { name: { style: { fill: "gold" } } } })).toThrow(/override "name".*fill "gold"/);
+    expect(() => parseLabel({ ...base, overrides: { name: { style: { layer: "silver" } } } })).toThrow(/layer "silver"/);
+  });
+  it("rejects override lines whose text is not a string", () => {
+    expect(() => parseLabel({ ...base, overrides: { name: { lines: [run({ text: 5 })] } } })).toThrow(/override "name"/);
+  });
+  it("drops a bad benched value rather than refusing the whole file", () => {
+    const l = parseLabel({ ...base, dormant: { values: { x: {}, y: [run({ fill: "gold" })], ok: "kept" }, variants: [] } }) as LabelFile;
+    expect(l.dormant!.values).toEqual({ ok: "kept" });
+  });
 });

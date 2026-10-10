@@ -113,3 +113,22 @@ describe("choices", () => {
     expect(back.layers.find((l) => l.id === "styleLine")).not.toHaveProperty("choices");
   });
 });
+
+describe("style colours", () => {
+  const withStyle = (style: Record<string, unknown>) => {
+    const m = lolevMaster();
+    return { ...m, layers: m.layers.map((l) => (l.id === "name" ? { ...l, style: { ...l.style, ...style } } : l)) };
+  };
+  it("widens a 3-digit hex fill and stroke on read", () => {
+    const name = parseMaster(withStyle({ fill: "#FFF", stroke: "#000" })).layers.find((l) => l.id === "name")!;
+    expect(name.style).toMatchObject({ fill: "#ffffff", stroke: "#000000" });
+  });
+  it("names the layer and the colour it cannot print", () => {
+    expect(() => parseMaster(withStyle({ fill: "gold" }))).toThrow(/layer "name".*fill "gold"/);
+    expect(() => parseMaster(withStyle({ stroke: "red" }))).toThrow(/stroke "red"/);
+    expect(() => parseMaster(withStyle({ layer: "silver" }))).toThrow(/layer "silver"/);
+  });
+  it("accepts \"none\" for fill and stroke", () => {
+    expect(() => parseMaster(withStyle({ fill: "none", stroke: "none" }))).not.toThrow();
+  });
+});

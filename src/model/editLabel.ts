@@ -8,6 +8,7 @@ import { validateBindings } from "./layers";
 import { deepMerge, type DeepPartial } from "./merge";
 import { resolveLayers } from "./resolveLayers";
 import { validateFor } from "../barcode";
+import { upcDigits } from "../upc";
 import { fieldRefs } from "./format";
 import { without, type Doc, type Entry, type LayerPatch } from "./editRecords";
 import { clearEntry, isLabelOnly, patchLayer } from "./editLayers";
@@ -179,8 +180,14 @@ export function learnChoice(master: Master, id: string, text: string): Master {
  *  it offered. That is the fill contract's rule (MASTER_PATHS above) rather
  *  than an exception to routing — the vocabulary declares what a filler may
  *  put in a layer, which is master data — and the Save Master review is what
- *  stands between it and the file. */
+ *  stands between it and the file. A UPC-A code is stored without the
+ *  spaces and hyphens it is printed with. */
 export function setContentIn(doc: Doc, id: string, value: LayerValue): Doc {
+  // A UPC typed as printed ("0 36000 29145 2") is stored as its bare digits,
+  // the form the encoder draws; a {ref} template is left for expansion.
+  const layer = doc.master.layers.find((l) => l.id === id);
+  if (layer?.kind === "barcode" && layer.symbology === "upc-a"
+    && typeof value === "string" && !fieldRefs(value).length) value = upcDigits(value);
   return {
     master: doc.master.layers.some((l) => l.id === id && l.choices)
       ? learnChoice(doc.master, id, drawnText(value)) : doc.master,
