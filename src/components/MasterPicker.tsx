@@ -360,6 +360,5 @@ function previewLine(p: { target: Master; dropped: string[]; disabledVariants: s
     parts.push(`${p.dropped.length} filled field${p.dropped.length === 1 ? "" : "s"}`);
   if (p.disabledVariants.length)
     parts.push(`${p.disabledVariants.length} variant${p.disabledVariants.length === 1 ? "" : "s"}`);
-  if (!parts.length) return `Switch to "${p.target.name}" — continue?`;
   return `Switching to "${p.target.name}" hides ${parts.join(" and ")} that it cannot display. Their contents are kept if you switch back. Continue?`;
 }

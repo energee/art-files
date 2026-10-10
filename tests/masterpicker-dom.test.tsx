@@ -2,7 +2,8 @@
 // (src/components/MasterPicker.tsx): the Design sidebar's "Master: Lolev ▾"
 // selector. Choosing another library master previews the rebind
 // (model/rebindLayers.ts) — the counts of what would move to the bench — and
-// must NOT call onMaster until the inline "Continue" is pressed.
+// must NOT call onMaster until the inline "Continue" is pressed; a rebind
+// that would bench nothing commits at once.
 // Scoped to a DOM environment per-file, matching tests/fieldlist-dom.test.ts's
 // setup — no @testing-library/react in this repo, so this drives real DOM
 // nodes through react-dom/client + act, the same as that suite.

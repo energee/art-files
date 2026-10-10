@@ -213,7 +213,7 @@ function HeaderAlert({ children, tone = "destructive" }: { children: React.React
   return (
     <Alert variant={tone === "destructive" || tone === "blocked" ? "destructive" : "default"} className={cn("w-auto px-2 py-0.5", box)}
       {...(tone === "success" && { role: undefined, "aria-hidden": true })}
-      {...(tone === "blocked" && { role: "status", "aria-live": "polite" as const })}>
+      {...(tone === "blocked" && { role: "status" })}>
       <AlertDescription className={cn("text-xs", text)}>
         {children}
       </AlertDescription>
@@ -1729,9 +1729,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // same id (#405). That file is its own trust root (hintTrusted).
     if (choice === "current") {
       const own = saveTargetFor(masterFilePath.current, current.id) ?? undefined;
-      const r = await resolveMasterById(current.id, own, own);
-      refreshLibrary();
-      return r ?? { master: current, assets: {} };
+      return (await resolveMasterById(current.id, own, own)) ?? { master: current, assets: {} };
     }
     if (choice !== "locate") return null;
     // Failures are reported here, never thrown: openWithRetry would swallow
@@ -1749,7 +1747,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       return null;
     }
     const r = tryParseMaster(bytes);
-    if (r) { await rememberMaster(r.master, path, bytes, { applied: false }); refreshLibrary(); }
+    if (r) await rememberMaster(r.master, path, bytes, { applied: false });
     return r && { ...r, path: path || undefined };
   }
 
@@ -1810,7 +1808,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         const hint = ref.masterHint;
         const resolved = await resolveLabelMaster(ref.masterId, hint, f.path)
           ?? await missingMasterChoice(ref.masterId, hint, f.path);
-        refreshLibrary(); // resolving can remember or retire library rows
+        refreshLibrary(); // resolving (or the missing-master prompt) can remember or retire library rows
         if (!resolved) return "cancelled";
         masterAssets = resolved.assets;
         masterPath = resolved.path;
@@ -2470,8 +2468,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 }}
                 content={contentFor(inspected.layer)}
                 rasterArt={inspected.layer.kind === "image"
-                  && !!customImages[inspected.layer.asset]
-                  && customImages[inspected.layer.asset].image.kind !== "svg"}
+                  && (customImages[inspected.layer.asset]?.image.kind ?? "svg") !== "svg"}
                 fontFamily={family} />
             )}
           </SheetContent>
