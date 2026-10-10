@@ -13,7 +13,7 @@ npm run -s generate -- beer.master --inspect
 # prints the master's layer ids (the keys values.json uses)
 ```
 
-`values.json` is keyed by layer id (`name`, `abv`, `description`, `barcode`, …). Text layers take a string. Rich layers still understand the markdown subset: `# header`, `**bold**`, `_white ink_`. A JSON array is a batch, one output set per job. A job can also be `{values, variants, files, overrides}`. `overrides` patches layer fields and is type-checked against the layer before anything builds. A batch is validated, read, and built whole before the first file is written. A bad job anywhere leaves nothing on disk.
+`values.json` is keyed by layer id (`name`, `abv`, `description`, `barcode`, …). Text layers take a string. Rich layers still understand the markdown subset: `# header`, `**bold**`, `_white ink_`. A JSON array is a batch, one output set per job. A job can also be `{values, variants, files, overrides}`. `overrides` patches layer fields and is type-checked against the layer before anything builds. Colours there, and in styled lines, take 3- or 6-digit hex (`#fff` reads as `#ffffff`) or `none`; a named colour such as `gold` is an error. A batch is validated, read, and built whole before the first file is written. A bad job anywhere leaves nothing on disk.
 
 ```bash
 npm run generate -- beer.master values.json ./out --variant collab \

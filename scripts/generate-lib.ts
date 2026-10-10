@@ -14,7 +14,7 @@ import { setBleed } from "../src/layout";
 import { svgAspect } from "../src/logo";
 import { convertConfigV1, guideLines } from "../src/model/convert";
 import { unpackLabel, unpackMaster, type MasterAssets } from "../src/model/files";
-import { linesProblem, PAGE_ART_ID, validateLayer, type LabelFile, type Layer, type LayerKind, type LayerValue, type Master, type TextLayer, type TextLine } from "../src/model/layers";
+import { linesProblem, PAGE_ART_ID, patchProblem, validateLayer, type LabelFile, type Layer, type LayerKind, type LayerValue, type Master, type TextLayer, type TextLine } from "../src/model/layers";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { applyDiff, exportBase, resolveLayers, titleOf, widenValue } from "../src/model/resolveLayers";
 import type { PlanAssets } from "../src/plan";
@@ -347,7 +347,8 @@ export function inspectMaster(master: Master): InspectReport {
  *  layer already has keeps its type. Catches a hand-edited `size: "big"` here,
  *  with the layer id, instead of deep inside planning with no id at all.
  *  Fields the layer lacks pass — resolveLayers merges those as-is. A patch
- *  carrying `kind` for an id the master lacks is a whole label-only layer. */
+ *  carrying `kind` for an id the master lacks is a whole label-only layer.
+ *  Colours get patchProblem's check, which widens a 3-digit hex in place. */
 export function checkOverrides(
   layers: Map<string, Layer>, overrides: LabelFile["overrides"],
 ): string[] {
@@ -365,6 +366,11 @@ export function checkOverrides(
     const layer = layers.get(id) ?? (patch?.kind ? ({} as Layer) : undefined);
     if (!layer) { errors.push(`Unknown layer "${id}".`); continue; }
     walk(id, layer, patch);
+    // The .label rule (files.ts's parseOverrides): a short hex is widened in
+    // the stored patch, not just the merged copy validateLayer sees, so the
+    // PDF prints the colour the preview shows; a "gold" is refused.
+    const problem = patchProblem(patch as Record<string, unknown>);
+    if (problem) { errors.push(`override ${id} ${problem}`); continue; }
     try { validateLayer(applyDiff(layer, patch), `override ${id}`); }
     catch (err) { errors.push(String(err)); }
   }
