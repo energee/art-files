@@ -444,7 +444,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [editSession, setEditSession] = useState<string | null>(null);
   // Two error channels, split by who can clear them: renderError belongs to
   // the renderers (every good frame clears it); buildError to asset
-  // assembly, exports and native menu failures.
+  // assembly, exports and native menu failures. A successful export clears
+  // it only while it still holds that export's own message (#473).
   const [buildError, setBuildError] = useState("");
   const [renderError, setRenderError] = useState("");
   const [loadError, setLoadError] = useState("");

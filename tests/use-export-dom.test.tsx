@@ -66,6 +66,9 @@ it("reports the first file saved and the second that failed", async () => {
   await act(async () => { await api.buildFull("both"); });
   expect(buildError).toBe("Saved beer.pdf. Could not save beer-mask.pdf: disk full");
   expect(api.exportNote).toBe("");
+  // The failure is the export's own message, so the next good export clears it.
+  await act(async () => { await api.buildFull("both"); });
+  expect(buildError).toBe("");
   act(() => root.unmount());
 });
 
