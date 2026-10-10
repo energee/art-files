@@ -445,6 +445,9 @@ function useNativeMenu(
           if (dialogOpen()) return;
           command.run();
         };
+        // What Open Recent's first rows show; a change before the subscribe
+        // below would otherwise never reach the menu.
+        const recentBuiltFrom = JSON.stringify(recentLabels());
         const roots = await Promise.all(APP_MENUS.map((entry) =>
           nativeEntry(api, entry, commandsRef.current, checkedRef.current, run, resources)));
         // On macOS the first submenu is the conventional application menu;
@@ -501,6 +504,7 @@ function useNativeMenu(
           r instanceof api.Submenu && r.id === "recent-menu")!;
         let rebuilding = Promise.resolve();
         const rebuild = async () => {
+          if (!live) return; // torn down: the cleanup closed every row
           const old = recentRowsOf.get(recent) ?? [];
           for (const row of old) {
             await recent.remove(row);
@@ -513,10 +517,12 @@ function useNativeMenu(
           recentRowsOf.set(recent, rows);
           await recent.append(rows);
         };
-        stopRecent = subscribeRecent(() => {
+        const queueRebuild = () => {
           rebuilding = rebuilding.then(rebuild).catch((error) =>
             errorRef.current(`Could not update the native menu: ${String(error)}`));
-        });
+        };
+        stopRecent = subscribeRecent(queueRebuild);
+        if (JSON.stringify(recentLabels()) !== recentBuiltFrom) queueRebuild();
         appliedState.current.clear();
         setItems(actionItems);
       } catch (error) {

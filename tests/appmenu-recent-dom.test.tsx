@@ -22,13 +22,14 @@ const native = vi.hoisted(() => {
     async setEnabled() {}
     async setChecked() {}
     async setText() {}
-    async setAsAppMenu() { return null; }
+    async setAsAppMenu() { native.onInstall(); return null; }
     async items() { return [...this.children]; }
     async remove(item: Resource) { this.children = this.children.filter((c) => c !== item); }
     async append(items: Resource | Resource[]) { this.children.push(...[items].flat()); }
   }
   return {
     items: new Map<string, Resource>(),
+    onInstall: () => {},
     api: {
       MenuItem: class extends Resource {}, IconMenuItem: class extends Resource {},
       PredefinedMenuItem: class extends Resource {}, Submenu: class extends Resource {},
@@ -45,7 +46,7 @@ import { recentLabels, rememberRecent, setRecentOpener } from "@/recent";
 
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
-beforeEach(() => { localStorage.clear(); native.items.clear(); });
+beforeEach(() => { localStorage.clear(); native.items.clear(); native.onInstall = () => {}; });
 afterEach(() => { document.body.replaceChildren(); });
 
 async function mount() {
@@ -93,6 +94,18 @@ it("lists recent labels by name, opens one, rebuilds on change, and clears", asy
     expect(native.items.get("recent-menu")!.children[0].opts.enabled).toBe(false);
   } finally {
     unregister();
+    await unmount();
+  }
+});
+
+it("catches a change made while the menu is still installing", async () => {
+  // e.g. a file opened in a new tab finishes while that tab's menu installs.
+  native.onInstall = () => rememberRecent("/labels/Late.label");
+  const unmount = await mount();
+  try {
+    await settle();
+    expect(rows()).toEqual(["Late.label", "—", "Clear Menu"]);
+  } finally {
     await unmount();
   }
 });
