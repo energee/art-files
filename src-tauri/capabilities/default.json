@@ -27,6 +27,20 @@
       ]
     },
     {
+      "identifier": "fs:allow-write-file",
+      "allow": [
+        { "path": "**/*-mask.[pP][dD][fF]" },
+        { "path": "**/*-mask.[pP][sS][dD]" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-exists",
+      "allow": [
+        { "path": "**/*-mask.[pP][dD][fF]" },
+        { "path": "**/*-mask.[pP][sS][dD]" }
+      ]
+    },
+    {
       "identifier": "fs:allow-rename",
       "allow": [
         { "path": "**/*.[lL][aA][bB][eE][lL]" },

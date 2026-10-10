@@ -15,6 +15,15 @@ export async function readNativeFile(path: string): Promise<Uint8Array> {
   return readFile(path);
 }
 
+/** Whether a desktop path already holds a file. Export pairs use it before
+ *  writing the mask beside the art file the dialog chose: that dialog's
+ *  overwrite prompt covered only the art file. Scoped by fs:allow-exists in
+ *  src-tauri/capabilities/default.json. */
+export async function nativePathExists(path: string): Promise<boolean> {
+  const { exists } = await import("@tauri-apps/plugin-fs");
+  return exists(path);
+}
+
 /** Open a native file dialog and return the selected path. Null is an
  *  ordinary cancellation, matching saveThrough. */
 export async function openNativeFile(
@@ -54,8 +63,9 @@ export async function openThrough(options: FileOptions): Promise<FileTarget | nu
  *  failures always propagate rather than becoming downloads.
  *  On desktop a dialog-chosen path is writable because the dialog plugin adds
  *  it to the runtime scope; a reused `target.path` (Finder/argv opens,
- *  remembered masters) and the atomic-save temp beside a .label/.master are
- *  writable only through the .label/.master globs in
+ *  remembered masters), an export pair's mask beside its art file, and the
+ *  atomic-save temp beside a .label/.master are writable only through the
+ *  globs in
  *  src-tauri/capabilities/default.json. Dynamic imports keep both plugins out
  *  of the browser's initial chunk. */
 export async function saveThrough(

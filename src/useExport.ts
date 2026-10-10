@@ -4,7 +4,7 @@
 // shows, and the batch of download URLs every save (exports, Save Project,
 // Save Master) hands its plain-download fallback through.
 import { useEffect, useRef, useState } from "react";
-import { saveThrough } from "@/files";
+import { nativePathExists, saveThrough, type FileTarget } from "@/files";
 import { errMsg } from "@/lib/utils";
 import type { Fill } from "@/types";
 import { PAGE_ART_ID, type Layer } from "@/model/layers";
@@ -77,12 +77,13 @@ export function useExport({
   }
   /** Save one exported file through the platform's save dialog. Tauri uses
    *  the OS dialog; supported browsers use File System Access; Safari/Firefox
-   *  keep the plain-download fallback. */
-  async function saveVia(bytes: Uint8Array, name: string, type: string) {
+   *  keep the plain-download fallback. A `target` writes there with no
+   *  dialog. */
+  async function saveVia(bytes: Uint8Array, name: string, type: string, target?: FileTarget) {
     const extension = name.slice(name.lastIndexOf(".") + 1);
     const description = `${extension.toUpperCase()} file`;
     return await saveThrough(bytes, {
-      name, type, filter: { name: description, extensions: [extension] },
+      name, type, target, filter: { name: description, extensions: [extension] },
       types: [{ description, accept: { [type]: [`.${extension}`] } }],
     }, saveBytes);
   }
@@ -136,15 +137,25 @@ export function useExport({
     let pending = "";
     try {
       const pair = await build();
+      // On desktop the mask follows the art file the dialog chose
+      // (`<stem>-mask.<ext>` in the same folder) rather than asking again.
+      // A file already there was not covered by that dialog's overwrite
+      // prompt, so the mask then gets its own dialog (as it does if the
+      // check itself fails).
+      let maskTarget: FileTarget | undefined;
       for (const [index, bytes] of pair.entries()) {
         if (!bytes) continue;
         pending = `${exportBase}${index ? "-mask" : ""}.${extension}`;
-        const result = await saveVia(bytes, pending, type);
+        const result = await saveVia(bytes, pending, type, index ? maskTarget : undefined);
         if (!result) {
           setBuildError(`Note: ${saved.length ? `Saved ${saved.join(", ")}. ` : ""}Export cancelled before saving ${pending}.`);
           return;
         }
         saved.push(result.name);
+        if (!index && result.target && "path" in result.target) {
+          const maskPath = result.target.path.replace(/(\.[^./\\]+)?$/, "-mask$1");
+          if (!(await nativePathExists(maskPath).catch(() => true))) maskTarget = { path: maskPath };
+        }
       }
       setBuildError("");
       if (exportFresh.current) setExportNote(`Saved ${saved.join(", ")}.`);
