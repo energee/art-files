@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
+import { cn, errMsg } from "@/lib/utils";
 
 export const AUTO_CHECK_DELAY_MS = 2_000;
 // ponytail: quiet re-checks are focus-driven, not a timer — zero network while idle;
@@ -47,7 +47,7 @@ async function checkForUpdate(): Promise<CheckResult> {
     const update = await check({ timeout: 15_000 });
     return update ? { kind: "available", update } : { kind: "current" };
   } catch (error) {
-    return { kind: "error", message: String(error) };
+    return { kind: "error", message: errMsg(error) };
   }
 }
 
@@ -90,7 +90,7 @@ function downloadPct(downloaded: number, total?: number) {
 
 function releaseUpdate(update: Update) {
   void update.close().catch((error) => {
-    console.error(`Could not release the updater resource: ${String(error)}`);
+    console.error(`Could not release the updater resource: ${errMsg(error)}`);
   });
 }
 
@@ -248,7 +248,7 @@ export function DesktopUpdater(props: {
       props.onInstalled?.();
     } catch (error) {
       dropUpdate();
-      setStatus({ kind: "error", message: `Could not install the update: ${String(error)}`, install: true });
+      setStatus({ kind: "error", message: `Could not install the update: ${errMsg(error)}`, install: true });
       setOpen(true);
     }
   };
@@ -354,7 +354,7 @@ export function DesktopUpdater(props: {
           <DialogFooter>
             <Button variant="outline" onClick={dismiss}>Later</Button>
             <Button disabled={props.dirty} onClick={() => void invoke("relaunch_app").catch((error: unknown) => {
-              setStatus({ kind: "error", message: `Could not restart: ${String(error)}`, installed: status.version });
+              setStatus({ kind: "error", message: `Could not restart: ${errMsg(error)}`, installed: status.version });
             })}>Restart Now</Button>
           </DialogFooter>
         )}
