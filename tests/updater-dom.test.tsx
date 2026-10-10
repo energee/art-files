@@ -132,6 +132,8 @@ it("installs without relaunching, then offers Restart to finish from the status 
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
     await act(async () => button("Update available").click());
     await act(async () => button("Install").click());
+    // The download timeout caps the whole transfer, so slow links get 15 minutes.
+    expect(update.downloadAndInstall).toHaveBeenCalledWith(expect.any(Function), { timeout: 900_000 });
     expect(mocks.invoke).not.toHaveBeenCalledWith("relaunch_app");
     expect(onInstalled).toHaveBeenCalledTimes(1);
     expect(bar.textContent).toContain("Restart to finish · 0.2.0");

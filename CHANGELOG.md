@@ -14,6 +14,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Internal cleanup, no visible change.** The layer editing, inspector and preview code is reorganised into smaller files; the app behaves exactly as before.
 
 ### Fixed
+- **Updates no longer fail on slow connections.** Downloading an update gave up after two minutes, so on a connection slower than about 1 Mbps every attempt failed. The download now has 15 minutes to finish.
 - **The active tab's close button shows without hovering.** It rests dimmed on the selected tab so it can be found and tapped on touch; other tabs still show theirs on hover.
 - **Deleting a variant or removing a well's file says how to undo it.** Delete under the master picker now leaves a note that ⌘Z brings the variant back. Removing a texture or mask with its × was not undoable at all; the well now offers Undo to put the file back. An image layer's well notes that ⌘Z restores its art.
 - **A damaged remembered-masters entry no longer breaks opening labels.** A library entry missing its file path or name is now skipped instead of making a label open fail.

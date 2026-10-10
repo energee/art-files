@@ -16,6 +16,11 @@ export const AUTO_CHECK_DELAY_MS = 2_000;
 // ponytail: quiet re-checks are focus-driven, not a timer — zero network while idle;
 // add a daily interval only if a never-blurred window turns out to miss releases.
 export const RECHECK_MIN_INTERVAL_MS = 6 * 60 * 60 * 1000;
+// The updater plugin applies this as a whole-request timeout, not an idle one:
+// the entire installer must arrive within it, and a timed-out download starts
+// over. 15 minutes lets a ~0.1 Mbps link finish where 2 minutes failed below
+// ~0.8 Mbps. check() keeps its own short timeout.
+const DOWNLOAD_TIMEOUT_MS = 15 * 60 * 1000;
 
 type CheckResult =
   | { kind: "available"; update: Update }
@@ -229,7 +234,7 @@ export function DesktopUpdater(props: {
     try {
       if (INSTALL_EXITS_APP) {
         if (downloadedRef.current !== update) {
-          await update.download(showProgress, { timeout: 120_000 });
+          await update.download(showProgress, { timeout: DOWNLOAD_TIMEOUT_MS });
           downloadedRef.current = update;
         }
         // Editing stays available during download; check the live workspace
@@ -241,7 +246,7 @@ export function DesktopUpdater(props: {
         }
         await update.install();
       } else {
-        await update.downloadAndInstall(showProgress, { timeout: 120_000 });
+        await update.downloadAndInstall(showProgress, { timeout: DOWNLOAD_TIMEOUT_MS });
       }
       if (INSTALL_EXITS_APP) { await invoke("relaunch_app"); return; }
       setStatus({ kind: "installed", version: update.version });
