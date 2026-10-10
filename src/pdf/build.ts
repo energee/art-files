@@ -38,6 +38,7 @@ import { bridgeOffsets } from "../strokes";
 import { type Face, type MeasureFace, type Mode, type PlacedBarcode, type PlacedText } from "../plan";
 import type { PlacedLayer, PlacedPage } from "../planLayers";
 import * as L from "../layout";
+import { version } from "../../package.json";
 
 /** An image asset's source: vector text (already planned as `paths` items by
  *  planLayers, so this backend never draws it) or raster bytes, embedded
@@ -361,7 +362,15 @@ async function newDoc(assets: Assets): Promise<{ doc: PDFDocument; page: PDFPage
   for (const [family, bytes] of Object.entries(assets.fontFamilies ?? {})) {
     (fonts.families ??= {})[family as FontFamilyId] = bytes === assets.fonts ? fonts : await embed(bytes);
   }
+  // Provenance for the printer's preflight: the release version, never a
+  // build time, so identical input still builds identical bytes.
+  doc.setProducer(`Label Lab ${version}`);
   const page = doc.addPage([L.PAGE.w, L.PAGE.h]);
+  // Printer boxes: the 8x5in die sits centred in the bleed; the bleed is the
+  // whole page. Without them, RIPs and preflight tools assume trim = page.
+  const bleed = (L.PAGE.w - L.TRIM.w) / 2;
+  page.setBleedBox(0, 0, L.PAGE.w, L.PAGE.h);
+  page.setTrimBox(bleed, bleed, L.TRIM.w, L.TRIM.h);
   // Round every stroke join and cap for the whole page. pdf-lib has no
   // per-draw option for this, so it goes in as a graphics-state operator up
   // front; PDF's default is a MITER join, which shoots long spikes off any

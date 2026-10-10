@@ -6,6 +6,11 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Added
+- **PDFs tell the printer where the die cut is.** Both the art and mask PDFs now declare a TrimBox (the 8 × 5in label, inside the bleed) and a BleedBox (the full page), so preflight and RIP software no longer assume the trim is the page edge. The PDF also names the Label Lab version that made it. What prints is unchanged.
+- **A warning for characters the font cannot print.** The inspector's character-height section now names any character in a text layer that its font has no glyph for, as you type, instead of only at export.
+- **`npm run generate -- --check`.** Validates every job in a batch and prints its errors and warnings without writing any files; it exits 0 only when every job would build.
+
 ### Changed
 - **Dependency patch updates.** Tauri JS 2.12.1, Lucide icons 1.52 and barcode-reading updates, plus newer build tooling; no change in behaviour.
 - **Tauri 2.12.1.** Patch updates to the app shell, file dialogs, updater and single-instance handling (Rust and JS sides together); no change in behaviour.

@@ -370,6 +370,35 @@ describe("runGenerate", () => {
     expect(io.files.has("/out/old-way.pdf")).toBe(true);
   });
 
+  it("--check validates every job, prints problems, writes nothing", async () => {
+    const io = memIo();
+    io.files.set("/ok.json", json([{ name: "A", barcode: "850051366224" }, { name: "B" }]));
+    expect(await io.run(["--values", "/ok.json", "--out", "/out", "--check"])).toBe(0);
+    expect([...io.files.keys()]).toEqual(["/ok.json"]);
+    expect(io.stdout.join("")).toMatch(/2 jobs? OK/);
+
+    io.files.set("/bad.json", json([{ name: "A", barcode: "123" }, { nope: "x" }]));
+    expect(await io.run(["--values", "/bad.json", "--out", "/out", "--check"])).toBe(1);
+    expect(io.stderr.join("")).toMatch(/barcode/i);
+    expect(io.stderr.join("")).toMatch(/nope/);
+    expect([...io.files.keys()]).toEqual(["/ok.json", "/bad.json"]);
+  });
+
+  it("--check needs no output directory", async () => {
+    expect(parseGenerateArgs(["beer.master", "v.json", "--check"])).toMatchObject({
+      mode: "generate", check: true, source: { kind: "values", path: "v.json" },
+    });
+    expect(parseGenerateArgs(["--check"])).toMatchObject({ mode: "generate", check: true });
+  });
+
+  it("--check reports characters the label font cannot print", async () => {
+    const io = memIo();
+    io.files.set("/v.json", json({ name: "Ale → 🍺" }));
+    expect(await io.run(["--values", "/v.json", "--check"])).toBe(1);
+    expect(io.stderr.join("")).toMatch(/name: .*U\+2192.*U\+1F37A/);
+    expect(io.files.size).toBe(1);
+  });
+
   it("rejects a batch whose files would overwrite (night vs night-mask)", async () => {
     const io = memIo();
     io.files.set("/v.json", new TextEncoder().encode(JSON.stringify([

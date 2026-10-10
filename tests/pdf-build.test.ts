@@ -196,6 +196,32 @@ describe("PDF timestamp determinism", () => {
   });
 });
 
+describe("printer boxes and provenance", () => {
+  it("both plates carry TrimBox = the die inside the bleed, BleedBox = the full page", async () => {
+    const items = await lolevPlan();
+    for (const bytes of [await buildArtPdf(items, assets), await buildMaskPdf(items, assets)]) {
+      const page = (await PDFDocument.load(bytes, { updateMetadata: false })).getPage(0);
+      const bleed = (L.PAGE.w - 576) / 2;
+      expect(page.getBleedBox()).toEqual({ x: 0, y: 0, width: L.PAGE.w, height: L.PAGE.h });
+      const trim = page.getTrimBox();
+      expect(trim.x).toBeCloseTo(bleed, 6);
+      expect(trim.y).toBeCloseTo(bleed, 6);
+      expect(trim.width).toBe(576);
+      expect(trim.height).toBe(360);
+    }
+  });
+
+  it("names Label Lab and its version as the Producer, keeping the pinned dates", async () => {
+    const items = await lolevPlan();
+    const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+    for (const bytes of [await buildArtPdf(items, assets), await buildMaskPdf(items, assets)]) {
+      const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+      expect(doc.getProducer()).toBe(`Label Lab ${version}`);
+      expect(doc.getModificationDate()).toEqual(new Date("2000-01-01T00:00:00Z"));
+    }
+  });
+});
+
 describe("added layers", () => {
   it("an added text layer draws through the shared display list", async () => {
     const plain = await lolevPlan();
