@@ -3,7 +3,8 @@
 // intact but their rendered previews dropped (see App.tsx's active gating).
 // The shell owns everything that outlives or spans documents: the tab list
 // (src/tabs.ts), OS file-open and dropped-.label routing, the File → Open
-// picker (an open must be able to target a new tab), the dirty-close confirm
+// picker (an open must be able to target a new tab), File → Open Recent
+// (src/recent.ts), the dirty-close confirm
 // flow, shared render settings (persisted per operator — see settings.ts),
 // the desktop updater, and window title/close integration.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,6 +21,7 @@ import {
 import { LABEL_EXT } from "@/labelfile";
 import { dropRecovery, earlierSnapshots, recoveryKey, type Recoverable } from "@/recovery";
 import { loadRenderSettings, saveRenderSettings, type RenderSettings } from "@/settings";
+import { forgetRecent, rememberRecent, setRecentOpener } from "@/recent";
 import { DesktopUpdater } from "@/components/DesktopUpdater";
 import { isFieldDrop } from "@/components/AssetDropOverlay";
 import { Button } from "@/components/ui/button";
@@ -86,7 +88,13 @@ export default function TabsShell() {
     let e = extras.current.get(id);
     if (!e) extras.current.set(id, (e = {
       saveSlot: { current: null },
-      onMeta: (meta) => apply((s) => updateTabMeta(s, id, meta)),
+      onMeta: (meta) => {
+        // A tab bound to a new path (an open, or a Save As) goes to the top
+        // of File → Open Recent; repeat reports of the same path don't.
+        const before = stateRef.current.tabs.find((t) => t.id === id)?.filePath;
+        if (meta.filePath && meta.filePath !== before) rememberRecent(meta.filePath);
+        apply((s) => updateTabMeta(s, id, meta));
+      },
       onCloseTab: () => api.current.requestClose(id),
       // The editor reports its open attempt finished (success or failure).
       // seq-guarded: a newer open queued to this tab owns the entry now.
@@ -275,6 +283,27 @@ export default function TabsShell() {
         setPickError(`Could not open project: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+
+  /** File → Open Recent: routed exactly like a Finder open. A file that is
+   *  gone gets the strip's open error and leaves the list (checked here,
+   *  before a tab is chosen, so no tab is spent on it). */
+  async function openRecentPath(path: string) {
+    try {
+      const { exists } = await import("@tauri-apps/plugin-fs");
+      if (!await exists(path)) {
+        forgetRecent(path);
+        setPickError(`Could not open project: ${path} no longer exists.`);
+        return;
+      }
+      setPickError("");
+      openRouted({ path });
+    } catch (err) {
+      setPickError(`Could not open project: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  const openRecentRef = useRef(openRecentPath);
+  openRecentRef.current = openRecentPath;
+  useEffect(() => setRecentOpener((path) => void openRecentRef.current(path)), []);
 
   // ---- closing ----
 

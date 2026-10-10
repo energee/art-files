@@ -43,6 +43,12 @@ describe("desktop master-file access", () => {
     expect(scopedPaths("fs:allow-remove")).toEqual(write);
   });
 
+  // File → Open Recent checks a remembered .label still exists before
+  // opening it, so a moved file gets a readable error.
+  it("can check whether a readable .label/.master still exists", () => {
+    expect(scopedPaths("fs:allow-exists")).toEqual(scopedPaths("fs:allow-read-file"));
+  });
+
   // #112: on unix `**` skips dot-directories unless this is false, so a
   // .label under ~/.something/ was forbidden for both read and write.
   it("matches .label/.master files inside hidden folders", () => {

@@ -20,6 +20,13 @@
       ]
     },
     {
+      "identifier": "fs:allow-exists",
+      "allow": [
+        { "path": "**/*.[lL][aA][bB][eE][lL]" },
+        { "path": "**/*.[mM][aA][sS][tT][eE][rR]" }
+      ]
+    },
+    {
       "identifier": "fs:allow-write-file",
       "allow": [
         { "path": "**/*.[lL][aA][bB][eE][lL]" },
