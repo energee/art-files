@@ -3,7 +3,7 @@
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { pushed, redone, resetTo, undone, useHistory, type Stacks } from "../src/history";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -47,6 +47,14 @@ describe("history stacks", () => {
 });
 
 describe("useHistory step grouping", () => {
+  // Pin the clock so every edit lands inside the 500 ms window; without the
+  // fix the first case folds, so it fails rather than passing on slow runs.
+  beforeEach(() => {
+    let clock = 10_000;
+    vi.spyOn(performance, "now").mockImplementation(() => (clock += 10));
+  });
+  afterEach(() => vi.restoreAllMocks());
+
   // Mounts the hook and hands back a live handle to its latest render.
   function mount() {
     const h: { current: ReturnType<typeof useHistory<string>> | null } = { current: null };

@@ -24,7 +24,8 @@ export type Stacks<T> = { past: T[]; present: T; future: T[] };
  *  - string — a field session key (an inspector field's id): folds only into
  *    a step the SAME key opened with the immediately preceding edit, so a
  *    field's typing is one step however slowly the user types, yet never
- *    merges into an unrelated earlier edit (#73). */
+ *    merges into an unrelated earlier edit (#73). An unkeyed edit straight
+ *    after a field session opens its own step too, whatever the timing. */
 export type Coalesce = boolean | string;
 
 /** Establish a new document boundary: the value becomes current and neither
