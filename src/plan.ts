@@ -78,8 +78,9 @@ export interface PlacedImage {
  *  (the template) reads bottom-to-top — x is the baseline's vertical line, y
  *  the run's start, extent -w; upright (every custom barcode layer) reads
  *  left-to-right like ordinary text — x is the run's CENTER (left edge is
- *  x - w/2), y is the baseline. digitStartX resolves either to the draw x. Widened from the literal "barcode" to
- *  any layer id so every barcode uses the same placed item. */
+ *  x - w/2), y is the baseline. digitStartX resolves either to the draw x.
+ *  Widened from the literal "barcode" to any layer id so every barcode uses
+ *  the same placed item. */
 export interface PlacedBarcode {
   readonly kind: "barcode";
   readonly id: string;
