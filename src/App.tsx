@@ -1934,8 +1934,9 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  even inside a text field, so never bind one a field needs (A/C/V/X/Z). */
   const twoD = viewMode === "2d";
   // The PDF exports wait for the preview's render source; say why they are
-  // greyed out until it lands.
-  const pdfNote = previewReady ? undefined : "rendering…";
+  // greyed out until it lands. A failed build is not "rendering": its
+  // reason is in the header, like the preview's own spinner gives way to it.
+  const pdfNote = previewReady || buildError ? undefined : "rendering…";
   const removable = selected.some((id) => rowById.has(id));
   const commands: Command[] = [
     { id: "tab-new", label: "New Tab", key: "n", mods: "⌘", run: onNewTab },
@@ -2217,7 +2218,8 @@ export const DocumentEditor = memo(function DocumentEditor({
           }} />}
           {blocked && (
             <HeaderAlert tone="blocked">
-              <button type="button" data-blocked-export className="text-left hover:underline"
+              <button type="button" data-blocked-export
+                className="rounded-sm text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 title="Export is blocked. Click to select the invalid layer."
                 onClick={() => { const id = Object.keys(errors)[0]; setSelection({ ids: [id], anchor: id }); }}>
                 {blockedWhy}

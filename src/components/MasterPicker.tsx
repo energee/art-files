@@ -161,7 +161,8 @@ export function MasterPicker(props: {
     }
   };
 
-  /** Resolve the selected master and preview the rebind before committing. */
+  /** Resolve the selected master and preview the rebind before committing,
+   *  or commit at once when the rebind would bench nothing. */
   const pickEntry = async (id: string) => {
     if (id === props.master.id) return;
     setError("");

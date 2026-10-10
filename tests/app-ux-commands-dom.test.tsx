@@ -13,9 +13,9 @@ import { DEFAULT_RENDER } from "../src/settings";
 import { packLabel } from "../src/model/files";
 
 const counts = vi.hoisted(() => ({ masterIndex: 0 }));
-// The preview's font load never settles here, so the preview stays
-// "rendering" for the whole file and the PDF exports keep their note.
-const fontsPending = vi.hoisted(() => new Promise<never>(() => {}));
+// The preview's font load never settles here (unless a test makes it fail),
+// so the preview stays "rendering" and the PDF exports keep their note.
+const fonts = vi.hoisted(() => ({ pending: new Promise<never>(() => {}), fail: false }));
 vi.mock("../src/masterCache", () => ({ cacheMaster: async () => {}, cachedMaster: async () => null }));
 vi.mock("../src/masters", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/masters")>();
@@ -26,7 +26,7 @@ vi.mock("../src/components/PreviewCompare", () => ({ SNAP_PT: 6, PreviewCompare:
 vi.mock("../src/components/CanView", () => ({ CanView: () => null }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
 vi.mock("../src/fonts", () => ({
-  loadLabelFaces: () => fontsPending,
+  loadLabelFaces: () => fonts.fail ? Promise.reject(new Error("font file is gone")) : fonts.pending,
   labelFontCss: () => "sans-serif",
 }));
 const { DocumentEditor } = await import("../src/App");
@@ -42,7 +42,7 @@ const editorProps = (): ComponentProps<typeof DocumentEditor> => ({
 });
 
 let cleanup: (() => Promise<void>) | null = null;
-beforeEach(() => { localStorage.clear(); counts.masterIndex = 0; });
+beforeEach(() => { localStorage.clear(); counts.masterIndex = 0; fonts.fail = false; });
 afterEach(async () => { await cleanup?.(); cleanup = null; document.body.replaceChildren(); localStorage.clear(); });
 
 async function mount(over: Partial<ComponentProps<typeof DocumentEditor>> = {}) {
@@ -128,6 +128,16 @@ it("offers Add … Layer and Remove Layer in the palette, and the PDF exports wa
     expect(rows.some((r) => r.startsWith(label)), label).toBe(true);
   expect(rows.some((r) => r.startsWith("Export PDFs (rendering…)"))).toBe(true);
   expect(rows.some((r) => r.startsWith("Export PSDs (rendering"))).toBe(false);
+});
+
+it("drops the rendering note once the preview build has failed, and shows the bare reason", async () => {
+  fonts.fail = true;
+  const { container } = await mount();
+  await vi.waitFor(() => expect(container.textContent).toContain("font file is gone"), { timeout: 5000 });
+  expect(container.textContent).not.toContain("Error: font file is gone");
+  const rows = await paletteRows();
+  expect(rows.some((r) => r.startsWith("Export PDFs"))).toBe(true);
+  expect(rows.some((r) => r.includes("rendering…"))).toBe(false);
 });
 
 it("adds a layer from the palette", async () => {
