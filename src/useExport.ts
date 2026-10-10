@@ -140,21 +140,23 @@ export function useExport({
       // On desktop the mask is written beside the art file the dialog chose,
       // as `<stem>-mask.<extension>` (the export's own extension, so the
       // capability globs cover it), without asking again. If a file is
-      // already there, or the check fails, the mask gets its own dialog:
-      // the art dialog's overwrite prompt covered only the art file.
-      let maskTarget: FileTarget | undefined;
+      // already there, or the check fails, the mask gets its own dialog,
+      // opened on that path: the art dialog's overwrite prompt covered only
+      // the art file. Notes and errors name the derived path either way.
+      let mask: { path: string; target?: FileTarget } | undefined;
       for (const [index, bytes] of pair.entries()) {
         if (!bytes) continue;
-        pending = `${exportBase}${index ? "-mask" : ""}.${extension}`;
-        const result = await saveVia(bytes, pending, type, index ? maskTarget : undefined);
+        pending = index && mask ? mask.path : `${exportBase}${index ? "-mask" : ""}.${extension}`;
+        const result = await saveVia(bytes, pending, type, index ? mask?.target : undefined);
         if (!result) {
           setBuildError(`Note: ${saved.length ? `Saved ${saved.join(", ")}. ` : ""}Export cancelled before saving ${pending}.`);
           return;
         }
         saved.push(result.name);
-        if (!index && result.target && "path" in result.target) {
-          const maskPath = result.target.path.replace(/(\.[^./\\]+)?$/, `-mask.${extension}`);
-          if (!(await nativePathExists(maskPath).catch(() => true))) maskTarget = { path: maskPath };
+        if (!index && pair[1] && result.target && "path" in result.target) {
+          const path = result.target.path.replace(/(\.[^./\\]+)?$/, `-mask.${extension}`);
+          const taken = await nativePathExists(path).catch(() => true);
+          mask = { path, target: taken ? undefined : { path } };
         }
       }
       setBuildError("");
