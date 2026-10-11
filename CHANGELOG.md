@@ -13,6 +13,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Internal cleanup, no visible change.** PSD barcode digits and the character-height check read font outlines through one typed font helper instead of a cast.
 - **Unused exports removed, no visible change.** Types used only in the file that defines them are no longer exported.
 - **Internal cleanup, no visible change.** The layer editing, inspector and preview code is reorganised into smaller files; the app behaves exactly as before.
+- **Internal cleanup, no visible change.** The preview, PDF and PSD renderers share one rule for which plate the texture and mask print on, where barcode digits start, and how each plate picks its colours; printed output is unchanged.
 
 ### Fixed
 - **Quitting from the Dock a second time always quits.** On macOS, if the unsaved-tabs prompt never appears after Dock → Quit or logout (for example because the window has stopped responding), choosing Quit again within a few seconds now quits instead of being cancelled every time.
