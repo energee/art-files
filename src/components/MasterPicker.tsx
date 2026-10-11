@@ -42,6 +42,7 @@ import type { LabelFile, Master } from "@/model/layers";
 import {
   Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { errMsg } from "@/lib/utils";
 
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
@@ -196,7 +197,7 @@ export function MasterPicker(props: {
       await props.onMaster(preview.target, preview.assets);
       closeAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errMsg(err));
     } finally {
       setCommitting(false);
     }
