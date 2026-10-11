@@ -41,7 +41,7 @@ describe("desktop master-file access", () => {
   it("can check for and write an export's mask beside its art file", () => {
     const mask = ["**/*-mask.[pP][dD][fF]", "**/*-mask.[pP][sS][dD]"];
     expect(scopedPaths("fs:allow-write-file")).toEqual(expect.arrayContaining(mask));
-    expect(scopedPaths("fs:allow-exists")).toEqual(mask);
+    expect(scopedPaths("fs:allow-exists")).toEqual(expect.arrayContaining(mask));
   });
 
   // #390: the atomic save writes a temp .label/.master beside the target,
@@ -50,6 +50,12 @@ describe("desktop master-file access", () => {
     const read = scopedPaths("fs:allow-read-file");
     expect(scopedPaths("fs:allow-rename")).toEqual(read);
     expect(scopedPaths("fs:allow-remove")).toEqual(read);
+  });
+
+  // File → Open Recent checks a remembered .label still exists before
+  // opening it, so a moved file gets a readable error.
+  it("can check whether a readable .label/.master still exists", () => {
+    expect(scopedPaths("fs:allow-exists")).toEqual(expect.arrayContaining(scopedPaths("fs:allow-read-file")));
   });
 
   // #112: on unix `**` skips dot-directories unless this is false, so a

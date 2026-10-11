@@ -7,6 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Added
+- **File → Open Recent.** The desktop app remembers the last ten `.label` files you opened or saved to a new file (Save As, or the first Save). Pick one to reopen it, or choose Clear Menu to empty the list. A file that has moved or been deleted shows a readable error, announced to screen readers, and leaves the list.
 - **Zoom from the keyboard and the View menu.** View → Zoom In (⌘= or ⌘+), Zoom Out (⌘-) and Zoom to Fit (⌘0) zoom the preview about its middle, in the 2D and 3D views.
 - **Layer commands in the palette.** ⌘K now offers Add Text, Image, Barcode and QR Layer, and Remove Layer. Delete or Backspace removes the selected layers from the canvas too, not only from the Layers list; it still does nothing while you type in a field or while a button has focus.
 
