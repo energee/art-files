@@ -28,8 +28,6 @@ vi.mock("../src/pdf/fonts", () => ({
 }));
 import { DocumentEditor } from "../src/App";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 /** Mount a real DocumentEditor; `onMeta` records the tab metadata it reports. */
 async function mountEditor() {
   const container = document.createElement("div");

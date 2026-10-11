@@ -21,8 +21,6 @@ vi.mock("@/components/CommandPalette", async () => {
 });
 import { CommandMenu } from "@/components/CommandMenu";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 it("a blocked ⌘K fetches nothing; a loading palette already blocks the tab's keys", async () => {
   const container = document.createElement("div");
   document.body.append(container);

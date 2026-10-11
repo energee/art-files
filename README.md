@@ -21,6 +21,8 @@ npm run desktop:dev    # Label Lab native window (needs a stable Rust toolchain)
 npm test               # vitest
 npx tsc --noEmit
 npm run lint           # eslint: react-hooks rules, zero warnings
+npx knip@6.38.0        # dead code (CI runs it after the tests)
+npm run build          # production bundle (vite build)
 ```
 
 `npm run strokecap` opens the dev-only stroke magnifier, `tools/strokecap.html`,

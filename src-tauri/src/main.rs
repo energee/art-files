@@ -7,7 +7,12 @@
 mod menu_symbols;
 mod terminate;
 
-use std::{collections::VecDeque, ffi::OsString, path::PathBuf, sync::{Mutex, PoisonError}};
+use std::{
+    collections::VecDeque,
+    ffi::OsString,
+    path::PathBuf,
+    sync::{Mutex, PoisonError},
+};
 use tauri::Manager;
 
 /** Release builds set the public updater key at compile time. Local builds do
@@ -52,15 +57,25 @@ impl OpenedFile {
      * ponytail: dropping is the ceiling — opening these needs an opaque
      * document handle through the whole open/save pipeline.
      *
+     * The path is canonicalised first (dunce, so Windows keeps plain
+     * `C:\` paths rather than `\\?\`), so a relative argv path or a
+     * `./..` spelling of an open file matches the tab's filePath instead of
+     * opening a duplicate. A path that cannot be canonicalised (missing,
+     * unreadable) is queued as given, and the open reports the error.
+     *
      * Returns whether it was queued. Plain method so tests reach it.
      *
      * Both push and take read through a poisoned lock (a panic elsewhere
      * while it was held) rather than aborting the app: every mutation is a
      * single VecDeque push/pop, so the queue is never left half-written. */
     fn push(&self, path: PathBuf) -> bool {
+        let path = dunce::canonicalize(&path).unwrap_or(path);
         match path.into_os_string().into_string() {
             Ok(path) => {
-                self.0.lock().unwrap_or_else(PoisonError::into_inner).push_back(path);
+                self.0
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .push_back(path);
                 true
             }
             Err(_) => false,
@@ -70,7 +85,10 @@ impl OpenedFile {
     /** Pop the oldest queued path — FIFO, so files open in the order the
      * OS delivered them. Plain method (not the command) so tests reach it. */
     fn take(&self) -> Option<String> {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner).pop_front()
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .pop_front()
     }
 }
 
@@ -254,7 +272,10 @@ mod tests {
         ]);
         assert_eq!(
             paths,
-            vec![PathBuf::from("/beers/a.label"), PathBuf::from("/beers/b.label")]
+            vec![
+                PathBuf::from("/beers/a.label"),
+                PathBuf::from("/beers/b.label")
+            ]
         );
     }
 
@@ -295,6 +316,53 @@ mod tests {
         let state = OpenedFile::new([bad, PathBuf::from("/x/ok.label")]);
         assert_eq!(state.take().as_deref(), Some("/x/ok.label"));
         assert_eq!(state.take(), None);
+    }
+
+    /** A relative argv path and a `..` spelling of the same file resolve to
+     *  one canonical path, so opening it twice does not open two tabs. */
+    #[test]
+    fn opened_file_queue_canonicalises_relative_and_dotdot_paths() {
+        let dir = std::env::temp_dir().join(format!("label-lab-canon-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        let file = dir.join("beer.label");
+        std::fs::write(&file, b"").unwrap();
+        let canonical = dunce::canonicalize(&file)
+            .unwrap()
+            .into_os_string()
+            .into_string()
+            .unwrap();
+
+        let relative = relative_to_cwd(&file);
+        let dotdot = dir.join("sub").join("..").join("beer.label");
+        let state = OpenedFile::new([relative, dotdot]);
+        assert_eq!(state.take().as_deref(), Some(canonical.as_str()));
+        assert_eq!(state.take().as_deref(), Some(canonical.as_str()));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /** A path that cannot be canonicalised (it does not exist) is queued
+     *  as given rather than dropped — the frontend reports the open error. */
+    #[test]
+    fn opened_file_queue_keeps_a_missing_path_as_given() {
+        let state = OpenedFile::new([PathBuf::from("/no/such/dir/x.label")]);
+        assert_eq!(state.take().as_deref(), Some("/no/such/dir/x.label"));
+    }
+
+    /** `file` spelled relative to the test process's cwd: one `..` per cwd
+     *  directory up to the root, then the file's directories. Only Normal
+     *  components are counted, so a Windows `C:` prefix and the root are
+     *  skipped (both paths must be on the same drive there). */
+    fn relative_to_cwd(file: &std::path::Path) -> PathBuf {
+        use std::path::Component::Normal;
+        let cwd = dunce::canonicalize(std::env::current_dir().unwrap()).unwrap();
+        let file = dunce::canonicalize(file).unwrap();
+        let mut rel = PathBuf::new();
+        for _ in cwd.components().filter(|c| matches!(c, Normal(_))) {
+            rel.push("..");
+        }
+        rel.extend(file.components().filter(|c| matches!(c, Normal(_))));
+        assert!(rel.is_relative());
+        rel
     }
 
     /** Records the calls raise_window makes, in order. */

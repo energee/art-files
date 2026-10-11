@@ -20,8 +20,6 @@ vi.mock("../src/fonts", () => ({
 import { DocumentEditor } from "../src/App";
 import TabsShell from "../src/TabsShell";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 // The browser download fallback (no FS-Access picker in happy-dom) ends in an
 // <a download> click; record the file names instead of navigating.
 let savedNames: string[] = [];

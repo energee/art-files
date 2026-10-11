@@ -34,8 +34,6 @@ vi.mock("../src/model/files", async (orig) => {
 });
 import { DocumentEditor } from "../src/App";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 const svg = (name: string, d: string) =>
   new File([`<svg viewBox="0 0 10 10"><path d="${d}"/></svg>`], name, { type: "image/svg+xml" });
 

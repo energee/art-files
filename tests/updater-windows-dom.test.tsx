@@ -8,7 +8,6 @@ vi.mock("@tauri-apps/plugin-updater", () => ({ check: mocks.check }));
 const agent = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Windows");
 const { DesktopUpdater } = await import("../src/components/DesktopUpdater");
 agent.mockRestore();
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 it("Windows rechecks dirty tabs after downloading and before its exiting installer (#292)", async () => {
   let finish!: () => void;
@@ -30,6 +29,7 @@ it("Windows rechecks dirty tabs after downloading and before its exiting install
     await act(async () => render(false, 1));
     await act(async () => installButton().click());
     expect(update.download).toHaveBeenCalledOnce();
+    expect(update.download).toHaveBeenCalledWith(expect.any(Function), { timeout: 900_000 });
     await act(async () => render(true, 1));
     await act(async () => { finish(); });
     expect(update.install).not.toHaveBeenCalled();

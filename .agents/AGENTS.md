@@ -18,10 +18,9 @@ blue = white ink and white = knockout. Operator guide is the Fumadocs site in
 - Lint: `npm run lint` (rules-of-hooks + exhaustive-deps + unused vars; zero warnings)
 - Dependency audit (CI `audit` job): `npm audit --omit=dev --audit-level=high`, and
   `cargo audit` in `src-tauri` (install with `cargo install cargo-audit --locked`)
-- Dead code: `npx knip@6.38.0` (not a devDependency; CI runs it after the tests and fails on any finding; config in `knip.json`). `src/components/ui/**` is ignored because shadcn scaffolding carries unused variants; delete a whole ui component once nothing imports it.
+- Dead code: `npx knip@6.38.0` (not a devDependency; knip runs in CI after the tests and fails on any finding; config in `knip.json`). `src/components/ui/**` is ignored because shadcn scaffolding carries unused variants; delete a whole ui component once nothing imports it.
 - Docs: `npm run dev --prefix docs-site` (the Fumadocs site has its own
   `package.json`; there is no root `docs:dev` script)
-- Lint: `npm run lint` (zero warnings)
 - Release metadata: `node scripts/check-release.mjs <base-ref>`
 - Node version: `.nvmrc` is the one pin; every workflow's setup-node reads it
   (`node-version-file`), and it must satisfy `engines` in `package.json`.

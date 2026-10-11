@@ -3,7 +3,7 @@
 // preview draws, the export-in-flight and "Saved …" note state the header
 // shows, and the batch of download URLs every save (exports, Save Project,
 // Save Master) hands its plain-download fallback through.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { nativePathExists, saveThrough, type FileTarget } from "@/files";
 import { errMsg } from "@/lib/utils";
 import type { Fill } from "@/types";
@@ -43,8 +43,11 @@ type ExportInputs = {
   exportBase: string;
   /** Bleed and DPI, handed to the PSD workers with each job. */
   render: RenderSettings;
-  /** The header's build-error channel: export failures and cancel notes. */
-  setBuildError: (error: string) => void;
+  /** The header's build-error channel: export failures and cancel notes.
+   *  Shared with asset, master and menu errors, so it takes App's raw setter:
+   *  a successful export clears the slot only while it still holds the
+   *  export's own message (#473). */
+  setBuildError: Dispatch<SetStateAction<string>>;
 };
 
 export function useExport({
@@ -123,6 +126,13 @@ export function useExport({
   }
 
   const exportRunning = useRef(false);
+  // The last message an export put in the shared build-error slot: the only
+  // one a later successful export may clear (#473).
+  const lastExportError = useRef("");
+  function setExportError(message: string) {
+    lastExportError.current = message;
+    setBuildError(message);
+  }
   async function exportPair(
     extension: "pdf" | "psd", type: string,
     build: () => Promise<(Uint8Array | null)[]>,
@@ -149,7 +159,7 @@ export function useExport({
         pending = index && mask ? mask.path : `${exportBase}${index ? "-mask" : ""}.${extension}`;
         const result = await saveVia(bytes, pending, type, index ? mask?.target : undefined);
         if (!result) {
-          setBuildError(`Note: ${saved.length ? `Saved ${saved.join(", ")}. ` : ""}Export cancelled before saving ${pending}.`);
+          setExportError(`Note: ${saved.length ? `Saved ${saved.join(", ")}. ` : ""}Export cancelled before saving ${pending}.`);
           return;
         }
         saved.push(result.name);
@@ -159,10 +169,12 @@ export function useExport({
           mask = { path, target: taken ? undefined : { path } };
         }
       }
-      setBuildError("");
+      const own = lastExportError.current;
+      setBuildError((current) => (current === own ? "" : current));
+      lastExportError.current = "";
       if (exportFresh.current) setExportNote(`Saved ${saved.join(", ")}.`);
     } catch (error) {
-      setBuildError(`${saved.length ? `Saved ${saved.join(", ")}. ` : ""}${pending ? `Could not save ${pending}: ` : ""}${errMsg(error)}`);
+      setExportError(`${saved.length ? `Saved ${saved.join(", ")}. ` : ""}${pending ? `Could not save ${pending}: ` : ""}${errMsg(error)}`);
     } finally {
       exportRunning.current = false;
       setExporting(null);
