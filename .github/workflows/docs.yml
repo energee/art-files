@@ -1,0 +1,32 @@
+# docs.yml — type-check and build the Fumadocs operator guide when it changes.
+name: Docs
+
+on:
+  pull_request:
+    # Also this file and the Node pin, so a change to either is exercised here.
+    paths: ['docs-site/**', '.github/workflows/docs.yml', '.nvmrc']
+
+concurrency:
+  group: docs-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: docs-site
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+      - run: npm ci
+      - run: npm run types:check
+      - run: npm run build

@@ -23,8 +23,6 @@ vi.mock("../src/fonts", () => ({
 
 const { DocumentEditor } = await import("../src/App");
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 type Props = ComponentProps<typeof DocumentEditor>;
 const editorProps: Props = {
   active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),

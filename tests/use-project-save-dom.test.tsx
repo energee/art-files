@@ -7,8 +7,6 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { useProjectSave } from "@/useProjectSave";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 it("saveProject resolves false with a load error when packing throws", async () => {
   const setLoadError = vi.fn();
   let save: (as?: boolean) => Promise<boolean> = async () => true;

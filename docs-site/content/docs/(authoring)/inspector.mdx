@@ -23,7 +23,7 @@ Depends on the kind:
 ## Typography (text)
 
 - Font: Poppins or Barlow Condensed, or the master default
-- Size in points, and **printed character height** in millimetres (tallest letter or numeral at export size)
+- Size in points, and **printed character height** in millimetres (tallest letter or numeral at export size). A warning names any character the layer's font cannot print; export refuses those until they are replaced or the font changes
 - Align: left, centre, right, justify. A last or only justified line falls back to left
 - Wrap width. Blank means no wrap
 - Line spacing and heading scale
@@ -45,7 +45,7 @@ QR: square size, style (square, rounded, dots), and error correction (L, M, Q, H
 ## Colour
 
 - **Fill.** Colour picker (screen eyedropper on Chromium), hex field, and **no ink**, except on barcodes and QR. Those have to scan. Colours are 3- or 6-digit hex (`#fff` reads as `#ffffff`); a hand-edited `.label` or `.master` with a named colour such as `gold` is refused on open, naming the layer.
-- **Metallic.** On knocks out of the white-ink plate (bare stock). Off lays white ink under it.
+- **Metallic.** On knocks out of the white-ink plate (bare stock). Off lays white ink under it. Raster images (PNG, JPEG) always print on white ink, so their inspector has no Metallic toggle; use an SVG for metallic art.
 - **Stroke.** Optional outer stroke with its own colour, metallic flag, and width in px at 600 DPI (15px = 1.8pt). The physical width holds at any export DPI. Codes default the halo to white. Everything else defaults a dark keyline. A barcode can also turn on **Solid background**: the stroke colour fills the whole barcode box, quiet zone included, instead of only outlining the bars and digits.
 
 ## Override badges

@@ -11,6 +11,7 @@ import { openFont } from "../src/fontkit";
 import { buildArtPdf, buildMaskPdf, pdfMeasureFace } from "../src/pdf/build";
 import { warningColumnLen, warningMeasure, wrapWarning } from "../src/warning";
 import * as L from "./legacy/layout";
+import { ART, PAGE, SHIPPED_BLEED_IN, setBleed } from "../src/layout";
 import { assets, contentStreamText, fillOps, lolevPlan, onePxPng, pageRectPath } from "./fixtures";
 
 // Counts /Subtype /Image XObjects in a saved PDF's indirect object table —
@@ -193,6 +194,38 @@ describe("PDF timestamp determinism", () => {
     const items = await lolevPlan();
     for (const bytes of [await buildArtPdf(items, assets), await buildMaskPdf(items, assets)])
       expect((await PDFDocument.load(bytes)).getCreationDate()).toEqual(PDF_EPOCH);
+  });
+});
+
+describe("printer boxes and provenance", () => {
+  it("both plates carry TrimBox = the die inside the bleed, BleedBox = the full page", async () => {
+    const items = await lolevPlan();
+    for (const bytes of [await buildArtPdf(items, assets), await buildMaskPdf(items, assets)]) {
+      const page = (await PDFDocument.load(bytes, { updateMetadata: false })).getPage(0);
+      expect(page.getBleedBox()).toEqual({ x: 0, y: 0, width: PAGE.w, height: PAGE.h });
+      // Exactly the art box: a re-derived (PAGE.w - TRIM.w) / 2 serializes as
+      // 4.560000000000002, which a close-to check would let through.
+      expect(page.getTrimBox()).toEqual({ x: ART.x, y: ART.y, width: 576, height: 360 });
+    }
+  });
+
+  it("the boxes follow the bleed knob: the trim stays 8x5in, centred in the bigger page", async () => {
+    setBleed(0.125);
+    try {
+      const page = (await PDFDocument.load(await buildArtPdf(await lolevPlan(), assets), { updateMetadata: false })).getPage(0);
+      expect(page.getBleedBox()).toEqual({ x: 0, y: 0, width: 594, height: 378 });
+      expect(page.getTrimBox()).toEqual({ x: 9, y: 9, width: 576, height: 360 });
+    } finally { setBleed(SHIPPED_BLEED_IN); }
+  });
+
+  it("names Label Lab and its version as the Producer, keeping the pinned dates", async () => {
+    const items = await lolevPlan();
+    const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+    for (const bytes of [await buildArtPdf(items, assets), await buildMaskPdf(items, assets)]) {
+      const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+      expect(doc.getProducer()).toBe(`Label Lab ${version}`);
+      expect(doc.getModificationDate()).toEqual(new Date("2000-01-01T00:00:00Z"));
+    }
   });
 });
 

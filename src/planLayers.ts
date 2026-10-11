@@ -18,8 +18,8 @@ import type { StyledLine } from "./types";
 import { placeLayers, type Box } from "./model/place";
 import { anchorFraction } from "./model/position";
 import {
-  justifiedRotatedRuns, rotatedRuns, strokeSpec,
-  type Face, type MeasureFace, type Placed, type PlacedBarcode, type PlacedText, type PlanAssets,
+  digitStartX, justifiedRotatedRuns, rotatedRuns, strokeSpec,
+  type Face, type MeasureFace, type Mode, type Placed, type PlacedBarcode, type PlacedText, type PlanAssets,
 } from "./plan";
 import { markedWords, parseRuns, printableText } from "./description";
 import { strokeLayerOf } from "./strokes";
@@ -53,9 +53,14 @@ export interface PlacedPage {
 
 export type PlacedLayer = Placed | PlacedPage;
 
+/** Which plate a page item belongs to: the background texture is art-only,
+ *  the metallic mask is mask-only. Shared by every renderer. */
+export const pageDrawsOn = (p: PlacedPage, mode: Mode) =>
+  mode === "art" ? p.role === "background" : p.role === "mask";
+
 /** Plain and bold run faces; the master owns the family. */
 export interface TextFaces { base: Face; bold: Face }
-export const DEFAULT_FACES: TextFaces = { base: "regular", bold: "semibold" };
+const DEFAULT_FACES: TextFaces = { base: "regular", bold: "semibold" };
 export const facesOf = (l: TextLayer): TextFaces => l.faces ?? DEFAULT_FACES;
 
 const ASC = L.FONT_ASC;
@@ -372,7 +377,7 @@ function prepareBarcode(layer: BarcodeLayer, m: MeasureFace): Prepared | null {
         text: d.text, x: d.x, y: box.y + l.h + gap + textSize, w: measure(d.text),
       }));
       const pills = digits.map((d) => ({
-        x: d.x - d.w / 2, yTop: d.y - ASC * textSize, w: d.w, h: (ASC + DESC) * textSize,
+        x: digitStartX(d, false), yTop: d.y - ASC * textSize, w: d.w, h: (ASC + DESC) * textSize,
       }));
       return withSolidBackground(item(geo, digits, [...bars, ...pills]));
     },

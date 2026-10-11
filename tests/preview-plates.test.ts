@@ -17,8 +17,6 @@ vi.mock("../src/canvas/draw", async (orig) => ({
   drawPlate: vi.fn(),
 }));
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 it("skips the mask plate while hidden and paints it once revealed", () => {
   expect(platesToPaint(false)).toEqual(["art"]);
   expect(platesToPaint(true)).toEqual(["art", "mask"]);

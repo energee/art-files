@@ -35,9 +35,11 @@ import fontkit from "@pdf-lib/fontkit";
 import type { FontFamilyId } from "../fontCatalog";
 import type { Fill } from "../types";
 import { bridgeOffsets } from "../strokes";
-import { type Face, type MeasureFace, type Mode, type PlacedBarcode, type PlacedText } from "../plan";
-import type { PlacedLayer, PlacedPage } from "../planLayers";
+import { digitStartX, type Face, type MeasureFace, type Mode, type PlacedBarcode, type PlacedText } from "../plan";
+import { pageDrawsOn, type PlacedLayer, type PlacedPage } from "../planLayers";
 import * as L from "../layout";
+import { describeCodepoints, VARIATION_SELECTOR } from "../textheight";
+import { version } from "../../package.json";
 
 /** An image asset's source: vector text (already planned as `paths` items by
  *  planLayers, so this backend never draws it) or raster bytes, embedded
@@ -84,6 +86,11 @@ function fillColor(fill: Fill) {
 function maskColor(layer: "metallic" | "white") {
   return layer === "metallic" ? toRgb(L.COLORS.white) : toRgb(L.COLORS.maskBlue);
 }
+
+/** An element's paint for the plate: its fill on the art plate, its plate
+ *  layer's knockout/white-ink colour on the mask (psd/build.ts's paint()). */
+const ink = (mode: Mode, fill: Fill, layer: "metallic" | "white") =>
+  mode === "art" ? fillColor(fill) : maskColor(layer);
 
 /** drawText has no stroke option, but PDF's text rendering mode does the job:
  *  Tr 2 (FillAndOutline) with a 2w line width paints the glyph body plus a
@@ -183,9 +190,9 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, item: PlacedBarcode, mo
   // the plan already centred `y`. Upright (every custom barcode layer, Task
   // 3): ordinary horizontal drawText, so `x` needs the left edge — the plan
   // hands back the run's CENTER (see PlacedBarcode's own doc) — and no
-  // rotation.
+  // rotation. digitStartX picks between the two.
   const digits = item.digits.map((d) => ({
-    txt: d.text, x: item.rotated ? d.x : d.x - d.w / 2, y: y(d.y), w: d.w,
+    txt: d.text, x: digitStartX(d, item.rotated), y: y(d.y), w: d.w,
   }));
   const glyph = item.rotated
     ? { size: item.textSize, font: fonts.regular, rotate: degrees(90) }
@@ -200,8 +207,8 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, item: PlacedBarcode, mo
   // emits first, and only when the layer asks for one. The stroke block runs
   // only when S > 0 — a "none" stroke resolves to that in the plan, and a
   // zero-width stroke would still paint a hairline.
-  const strokeColor = mode === "art" ? fillColor(item.stroke) : maskColor(item.strokeLayer);
-  const ink = mode === "art" ? fillColor(item.fill) : maskColor(item.fillLayer);
+  const strokeColor = ink(mode, item.stroke, item.strokeLayer);
+  const fillInk = ink(mode, item.fill, item.fillLayer);
   if (S > 0 && item.stroke !== "none") {
     // A centered border at 2S extends S beyond the bar and — because the page
     // sets a ROUND line join (see newDoc) — rounds each corner at radius S,
@@ -218,8 +225,8 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, item: PlacedBarcode, mo
   }
 
   // The artwork itself, at its exact geometry.
-  for (const r of bars) page.drawRectangle({ ...r, color: ink });
-  for (const d of digits) page.drawText(d.txt, { ...glyph, x: d.x, y: d.y, color: ink });
+  for (const r of bars) page.drawRectangle({ ...r, color: fillInk });
+  for (const d of digits) page.drawText(d.txt, { ...glyph, x: d.x, y: d.y, color: fillInk });
 }
 
 /** Embedded raster XObjects by asset id, one embed per asset however many
@@ -240,11 +247,6 @@ async function embedRasters(doc: PDFDocument, items: readonly PlacedLayer[], ass
   return embedded;
 }
 
-/** Which plate a page item belongs to: the background texture is art-only,
- *  the metallic mask is mask-only. */
-const pageDrawsOn = (p: PlacedPage, mode: Mode) =>
-  mode === "art" ? p.role === "background" : p.role === "mask";
-
 function drawItems(
   page: PDFPage,
   fonts: Fonts,
@@ -259,9 +261,9 @@ function drawItems(
   };
 
   const drawText = (r: PlacedText) => {
-    const color = mode === "art" ? fillColor(r.fill) : maskColor(r.layer);
+    const color = ink(mode, r.fill, r.layer);
     const stroke = r.stroke
-      ? { color: mode === "art" ? fillColor(r.stroke.fill) : maskColor(r.stroke.layer), w: r.stroke.w }
+      ? { color: ink(mode, r.stroke.fill, r.stroke.layer), w: r.stroke.w }
       : null;
     withTracking(page, r.tracking || undefined, () =>
       strokedText(page, stroke, r.text, {
@@ -273,12 +275,12 @@ function drawItems(
   for (const r of items) {
     if (r.kind === "text") drawText(r);
     else if (r.kind === "paths") {
-      const color = mode === "art" ? fillColor(r.fill) : maskColor(r.layer);
+      const color = ink(mode, r.fill, r.layer);
       const at = { x: r.x, y: y(r.y) };
       // Every stroke path before any fill, so overlapping strokes can't
       // paint over a neighbour's fill (the laurel-branch rule).
       if (r.stroke) {
-        const sc = mode === "art" ? fillColor(r.stroke.fill) : maskColor(r.stroke.layer);
+        const sc = ink(mode, r.stroke.fill, r.stroke.layer);
         for (const d of r.paths)
           page.drawSvgPath(d, { ...at, color: sc, borderColor: sc, borderWidth: 2 * r.stroke.w });
       }
@@ -316,8 +318,6 @@ async function embedFaces(doc: PDFDocument, pack: Assets["fonts"], subset = fals
   };
 }
 
-const VARIATION_SELECTOR = /^[\uFE00-\uFE0F\u{E0100}-\u{E01EF}]$/u;
-
 /** The plan measure for a PDF/PSD export: each face's width from the pdf-lib
  *  font drawText draws it with. drawText places glyphs by their raw advances
  *  and emits no kerning, so a kerned measure (canvas measureText's default)
@@ -345,8 +345,8 @@ export async function pdfMeasureFace(
     // Variation selectors (the emoji picker's ™️) are folded into the base
     // glyph by fontkit, so they are never missing.
     const missing = [...new Set([...text].filter((ch) =>
-      !VARIATION_SELECTOR.test(ch) && !supported.has(ch.codePointAt(0)!)))];
-    if (missing.length) throw new Error(`Cannot print ${missing.map((ch) => `“${ch}” (U+${ch.codePointAt(0)!.toString(16).toUpperCase()})`).join(", ")} in ${font.name}. Replace these characters or choose a font that supports them.`);
+      !VARIATION_SELECTOR.test(ch) && !supported.has(ch.codePointAt(0)!)).map((ch) => ch.codePointAt(0)!))];
+    if (missing.length) throw new Error(`Cannot print ${describeCodepoints(missing)} in ${font.name}. Replace these characters or choose a font that supports them.`);
     return font.widthOfTextAtSize(text, size);
   };
 }
@@ -361,7 +361,16 @@ async function newDoc(assets: Assets): Promise<{ doc: PDFDocument; page: PDFPage
   for (const [family, bytes] of Object.entries(assets.fontFamilies ?? {})) {
     (fonts.families ??= {})[family as FontFamilyId] = bytes === assets.fonts ? fonts : await embed(bytes);
   }
+  // Provenance for the printer's preflight: the release version, never a
+  // build time, so identical input still builds identical bytes.
+  doc.setProducer(`Label Lab ${version}`);
   const page = doc.addPage([L.PAGE.w, L.PAGE.h]);
+  // Printer boxes: the 8x5in die (ART, the trim inside the bleed) and the
+  // whole page as the bleed. Without them, RIPs and preflight tools assume
+  // trim = page. ART is inset equally on all sides, so its top-left y is
+  // also its bottom-left y.
+  page.setBleedBox(0, 0, L.PAGE.w, L.PAGE.h);
+  page.setTrimBox(L.ART.x, L.ART.y, L.ART.w, L.ART.h);
   // Round every stroke join and cap for the whole page. pdf-lib has no
   // per-draw option for this, so it goes in as a graphics-state operator up
   // front; PDF's default is a MITER join, which shoots long spikes off any

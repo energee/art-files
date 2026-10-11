@@ -15,10 +15,11 @@ const tauriConf = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8")) 
   app: { security: { csp: string | null } };
 };
 
-/** Glob paths a scoped fs permission allows; [] when missing or unscoped. */
+/** Glob paths a scoped fs permission allows, across every entry for it;
+ *  [] when missing or unscoped. */
 function scopedPaths(identifier: string): string[] {
-  const perm = caps.permissions.find((p) => typeof p === "object" && p.identifier === identifier);
-  return perm && typeof perm === "object" ? (perm.allow ?? []).map((a) => a.path) : [];
+  return caps.permissions.flatMap((p) =>
+    typeof p === "object" && p.identifier === identifier ? (p.allow ?? []).map((a) => a.path) : []);
 }
 
 describe("desktop master-file access", () => {
@@ -32,15 +33,29 @@ describe("desktop master-file access", () => {
   it("can write back to every .label/.master path it can read", () => {
     const read = scopedPaths("fs:allow-read-file");
     expect(read.length).toBeGreaterThan(0);
-    expect(scopedPaths("fs:allow-write-file")).toEqual(read);
+    expect(scopedPaths("fs:allow-write-file")).toEqual(expect.arrayContaining(read));
+  });
+
+  // An export pair asks once: the mask is written beside the art file the
+  // dialog chose, after checking nothing is already there (useExport.ts).
+  it("can check for and write an export's mask beside its art file", () => {
+    const mask = ["**/*-mask.[pP][dD][fF]", "**/*-mask.[pP][sS][dD]"];
+    expect(scopedPaths("fs:allow-write-file")).toEqual(expect.arrayContaining(mask));
+    expect(scopedPaths("fs:allow-exists")).toEqual(expect.arrayContaining(mask));
   });
 
   // #390: the atomic save writes a temp .label/.master beside the target,
   // renames it over the original and removes it on failure.
-  it("can rename and remove the atomic-save temp wherever it can write", () => {
-    const write = scopedPaths("fs:allow-write-file");
-    expect(scopedPaths("fs:allow-rename")).toEqual(write);
-    expect(scopedPaths("fs:allow-remove")).toEqual(write);
+  it("can rename and remove the atomic-save temp wherever it can read", () => {
+    const read = scopedPaths("fs:allow-read-file");
+    expect(scopedPaths("fs:allow-rename")).toEqual(read);
+    expect(scopedPaths("fs:allow-remove")).toEqual(read);
+  });
+
+  // File → Open Recent checks a remembered .label still exists before
+  // opening it, so a moved file gets a readable error.
+  it("can check whether a readable .label/.master still exists", () => {
+    expect(scopedPaths("fs:allow-exists")).toEqual(expect.arrayContaining(scopedPaths("fs:allow-read-file")));
   });
 
   // #112: on unix `**` skips dot-directories unless this is false, so a

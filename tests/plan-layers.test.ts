@@ -5,7 +5,7 @@
 // arithmetic, not a font fact.
 import { describe, expect, it } from "vitest";
 import {
-  planLayers, planLayerScene, layerBoxes, DEFAULT_FACES, type PlacedPage,
+  planLayers, planLayerScene, layerBoxes, facesOf, type PlacedPage,
 } from "../src/planLayers";
 import { barcodeItem, customBarcodeItem } from "./legacy/plan";
 import { labelGuides, type MeasureFace, type PlacedBarcode, type PlacedImage, type PlacedPaths, type PlacedText,  } from "./legacy/planShared";
@@ -85,7 +85,7 @@ describe("planLayers text", () => {
   });
 
   it("the faces hint sets the base weight; bold runs step up from it, capped at bold", () => {
-    expect(DEFAULT_FACES).toEqual({ base: "regular", bold: "semibold" });
+    expect(facesOf(text({ id: "d", x: 0, y: 0 }))).toEqual({ base: "regular", bold: "semibold" });
     const bold = { ...text({ id: "n", x: 0, y: 0, lines: [line("HAZY")] }), faces: { base: "bold", bold: "bold" } as const };
     expect((planLayers([bold], m, assets)[0] as PlacedText).face).toBe("bold");
     const semi = { ...text({ id: "h", x: 0, y: 0, lines: [line("**@X** Y")] }), faces: { base: "semibold", bold: "bold" } as const };

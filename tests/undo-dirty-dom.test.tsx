@@ -16,8 +16,6 @@ vi.mock("../src/fonts", () => ({
 }));
 import { DocumentEditor } from "../src/App";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 it("⌘Z and ⇧⌘Z from the keyboard mark a saved document dirty", async () => {
   URL.createObjectURL ??= () => "blob:test";
   URL.revokeObjectURL ??= () => {};

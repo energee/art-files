@@ -13,13 +13,19 @@ File → Export, the palette, `⌘E` and `⇧⌘E`:
 | Export PSDs | `{name}.psd` and `{name}-mask.psd` |
 | Export Artwork / Mask PSD | one plate |
 
-Export greys out while the label is invalid. The reason sits in the header next to the menus.
+Exporting both plates asks where to save once, for the art file. In the desktop app the mask goes beside it as `{chosen name}-mask.pdf` (or `.psd`). If a file with that name is already there, a second dialog opens on that name, so you can confirm replacing it or pick another, rather than it being overwritten silently. In a browser each file still has its own save dialog or download.
+
+Export greys out while the label is invalid. The reason sits in the header next to the menus. Click it to select and inspect the first invalid layer. The Layers list marks every invalid layer with a red dot.
+
+The PDF exports also wait for the preview to finish rendering; until then their menu and palette entries read **(rendering…)**.
 
 When an export finishes, the header names the files it saved, and screen readers announce it. The note clears on your next edit, since the files no longer match the label. An export you edit during shows no note, because its files hold the label as it was when the export began.
 
 Exports rebuild from the full-size assets. PDFs preserve vector geometry and embed uploaded images at their original resolution. **Settings → Resolution** controls PSD raster resolution (default 600 DPI). Live preview uses downscaled images.
 
 The filename is the beer name, slugged like the QR. The PDF title is `{Name} label art` (and the mask equivalent).
+
+Both PDFs declare their printer boxes: the **TrimBox** is the 8 × 5in die, centred in the bleed, and the **BleedBox** is the whole page. The PDF **Producer** names the Label Lab version that built it.
 
 ## White-ink plate
 

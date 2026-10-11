@@ -29,10 +29,23 @@ npm run generate -- beer.master values.json ./out --set name=X
 - `--format pdf` or `psd`: skip the other pair. Default is both
 - `--set id=value`: overlay one value on every job
 - `--inspect`: JSON on stdout, exit 0. Use `npm run -s` when piping output so npm does not add its banner
+- `--check`: validate every job and print its errors and warnings, then stop. Nothing is built or written, so no output directory is needed (one given is ignored). Exit 0 when every job passes
+
+`--check` catches what a full run would reject: unknown layer ids, bad values and overrides, invalid barcodes, missing image files, two jobs writing the same file, and characters the layer's font has no glyph for (they would print as empty boxes, so export refuses them). It does not decode images, so a corrupt or unsupported image file still fails only in the full run.
+
+```bash
+npm run generate -- beer.master batch.json --check
+```
+
+A spreadsheet becomes a batch with any CSV-to-JSON tool. Name the columns after layer ids, export CSV, then, for example:
+
+```bash
+npx csvtojson batch.csv > batch.json
+```
 
 Relative paths resolve against the directory you run `npm run generate` from, even though npm runs the script from the repo root.
 
-Exit codes: **0** wrote everything, **1** a job or input was rejected, **2** bad argv.
+Exit codes: **0** wrote everything (with `--check`: every job is valid), **1** a job or input was rejected, **2** bad argv.
 
 The older texture/mask/config.json argv still works for golden re-baselines:
 

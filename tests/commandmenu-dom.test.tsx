@@ -6,7 +6,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CommandMenu, shortcutOf } from "@/components/CommandMenu";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView ??= () => undefined;
 
 it("renders each shortcut as the command-shortcut slot, so the row's spare check icon steps aside", async () => {

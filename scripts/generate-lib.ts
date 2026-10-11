@@ -21,11 +21,13 @@ import type { PlanAssets } from "../src/plan";
 import { planLayers } from "../src/planLayers";
 import { buildArtPdf, buildMaskPdf, pdfMeasureFace, type Assets, type CollabImage } from "../src/pdf/build";
 import { buildPsd, type PsdAssets } from "../src/psd/build";
+import { createMissingGlyphCheck, describeCodepoints } from "../src/textheight";
 import type { Style } from "../src/types";
 
 export const USAGE =
   "usage: npm run generate -- [master.master] [values.json|-] <outDir> " +
   "[--variant id] [--asset layerId=path] [--set id=value] [--format pdf|psd|all] [--label file.label]\n" +
+  "       npm run generate -- [master.master] [values.json|-] --check [same flags; writes nothing]\n" +
   "       npm run generate -- [master.master] --inspect\n" +
   "       npm run generate -- <texture|none> <mask.png|none> <outDir> [config.json] " +
   "[--collab-left=file] [--collab-center=file]";
@@ -56,7 +58,10 @@ export type GenerateArgs =
       /** Where the fill comes from: a values JSON (path, "-" for stdin, or
        *  nothing for an empty fill) or one saved .label — never both. */
       source: { kind: "values"; path?: string } | { kind: "label"; path: string };
-      outDir: string;
+      /** Absent only under `check`, which writes nothing. */
+      outDir?: string;
+      /** Validate every job and report errors and warnings; build nothing. */
+      check?: true;
       variants: string[];
       assets: Record<string, string>;
       set: Record<string, string>;
@@ -64,7 +69,7 @@ export type GenerateArgs =
     };
 
 const KNOWN_FLAGS = new Set([
-  "inspect", "master", "values", "label", "out", "variant", "asset", "set", "format",
+  "inspect", "check", "master", "values", "label", "out", "variant", "asset", "set", "format",
   "collab-left", "collab-center",
 ]);
 
@@ -80,8 +85,8 @@ function kv(flag: string, raw: string): [string, string] {
 }
 
 /** Parse argv into a generate / inspect / legacy job. `--flag value` and
- *  `--flag=value` both work; `--inspect` is a bare switch. Throws USAGE on
- *  anything malformed. */
+ *  `--flag=value` both work; `--inspect` and `--check` are bare switches.
+ *  Throws USAGE on anything malformed. */
 export function parseGenerateArgs(argv: string[]): GenerateArgs {
   const positional: string[] = [];
   const singles: Record<string, string> = {};
@@ -89,6 +94,7 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
   const assets: Record<string, string> = {};
   const set: Record<string, string> = {};
   let inspect = false;
+  let check = false;
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -96,9 +102,10 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
     const eq = a.indexOf("=");
     const name = eq >= 0 ? a.slice(2, eq) : a.slice(2);
     if (!KNOWN_FLAGS.has(name)) throw new Error(`unknown flag --${name}\n${USAGE}`);
-    if (name === "inspect") {
-      if (eq >= 0) throw new Error(`--inspect does not take a value\n${USAGE}`);
-      inspect = true;
+    if (name === "inspect" || name === "check") {
+      if (eq >= 0) throw new Error(`--${name} does not take a value\n${USAGE}`);
+      if (name === "inspect") inspect = true;
+      else check = true;
       continue;
     }
     const value = eq >= 0 ? a.slice(eq + 1) : argv[++i];
@@ -117,7 +124,7 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
   const rest = positional.filter((p) => p !== masterPath);
 
   if (inspect) {
-    if (singles.values || singles.label || singles.out || rest.length
+    if (check || singles.values || singles.label || singles.out || rest.length
       || singles.format || variants.length || Object.keys(assets).length || Object.keys(set).length
       || singles["collab-left"] || singles["collab-center"])
       throw new Error(USAGE);
@@ -126,7 +133,7 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
 
   // Fewer than three positionals can only be the new form (`[values|-] <out>`
   // on the shipped master): the legacy argv needs texture, mask and out (#105).
-  const newForm = !!(singles.master || singles.values || singles.label || masterPath
+  const newForm = !!(check || singles.master || singles.values || singles.label || masterPath
     || singles.out || singles.format || variants.length || Object.keys(assets).length || Object.keys(set).length
     || positional.length < 3);
   if (newForm) {
@@ -136,7 +143,12 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
     let valuesPath = singles.values;
     let outDir = singles.out;
     const leftover = [...rest];
-    if (!outDir) {
+    // --check writes nothing, so it needs no output directory: a lone
+    // positional is the values file unless --values/--label already named
+    // the source. Otherwise it reads as before (values + out), so appending
+    // --check to a working command line just checks it.
+    const sourceNamed = valuesPath !== undefined || !!singles.label;
+    if (!outDir && (!check || leftover.length > (sourceNamed ? 0 : 1))) {
       if (!leftover.length) throw new Error(USAGE);
       outDir = leftover.pop()!;
     }
@@ -149,11 +161,12 @@ export function parseGenerateArgs(argv: string[]): GenerateArgs {
       source: singles.label
         ? { kind: "label", path: singles.label }
         : { kind: "values", ...(valuesPath !== undefined ? { path: valuesPath } : {}) },
-      outDir,
+      ...(outDir ? { outDir } : {}),
       variants,
       assets,
       set,
       format: singles.format ? parseFormat(singles.format) : "all",
+      ...(check ? { check: true as const } : {}),
     };
   }
 
@@ -703,7 +716,14 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
 
   // Pass 1: validate every job, read every input, and claim every output
   // name before anything is built or written, so a batch fails whole.
+  // `--check` stops after this pass.
   const errors: string[] = [];
+  const glyphChecks = new Map<FontFamilyId, ReturnType<typeof createMissingGlyphCheck>>();
+  const missingGlyphs = (layer: TextLayer, family: FontFamilyId): number[] => {
+    let fn = glyphChecks.get(family);
+    if (!fn) glyphChecks.set(family, fn = createMissingGlyphCheck(fontPack(assetRoot, family)));
+    return fn(layer);
+  };
   const fail = (e: unknown) => { errors.push(e instanceof Error ? e.message : String(e)); };
   const dests = new Set<string>();
   const prepared = jobs.map((job) => {
@@ -733,7 +753,19 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     // ponytail: resolves once here for the name and again inside buildLabel;
     // resolution is a pure data walk, so cheap. Pass resolved layers into
     // buildLabel if it ever shows up in a profile.
-    const stem = exportBase(resolveLayers(master, variants, coerced.values, overrides).layers);
+    const resolved = resolveLayers(master, variants, coerced.values, overrides);
+    if (Object.keys(resolved.errors).length) errors.push(errorText(resolved.errors));
+    // Without --check, buildLabel reports these warnings as it builds.
+    if (args.check) for (const w of resolved.warnings) warn(w);
+    // A character the font lacks would print as an empty box; the build
+    // refuses it, so name the layer now rather than mid-batch.
+    for (const l of resolved.layers) {
+      if (l.kind !== "text") continue;
+      const family = l.fontFamily ?? master.fontFamily ?? "poppins";
+      const missing = missingGlyphs(l, family);
+      if (missing.length) errors.push(`${l.id}: cannot print ${describeCodepoints(missing)} in ${FONT_FAMILIES[family].label}`);
+    }
+    const stem = exportBase(resolved.layers);
     for (const name of outputNames(stem, args.format)) {
       if (dests.has(name)) errors.push(`duplicate output file "${name}"`);
       dests.add(name);
@@ -741,6 +773,10 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
     return { variants, values: coerced.values, extraImages, overrides };
   });
   if (errors.length) throw new Error(errors.join("\n"));
+  if (args.check) {
+    io.stdout(`check: ${jobs.length} job${jobs.length === 1 ? "" : "s"} OK\n`);
+    return 0;
+  }
 
   // Pass 2: build every job in memory, then write. A decode or build failure
   // in job N leaves nothing of jobs 1..N-1 on disk. (ponytail: whole batch
@@ -753,7 +789,8 @@ async function runGenerateJob(io: GenerateIo, args: GenerateArgs): Promise<numbe
       overrides: p.overrides, extraImages: p.extraImages, format: args.format, assetRoot,
     }));
   }
-  const outDir = resolve(io.cwd, args.outDir);
+  // parseGenerateArgs guarantees an outDir whenever check is off.
+  const outDir = resolve(io.cwd, args.outDir!);
   io.mkdir(outDir);
   for (const r of results) emit(r, outDir);
   return 0;

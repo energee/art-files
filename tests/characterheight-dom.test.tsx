@@ -7,10 +7,13 @@ import { CharacterHeight } from "../src/components/CharacterHeight";
 import type { TextLayer } from "../src/model/layers";
 
 vi.mock("../src/textheight", () => ({
-  loadHeightMeasure: async () => (layer: TextLayer) => layer.lines[0]?.text ? { min: layer.size / 10, max: layer.size / 5, cpi: 24.56 } : null,
+  loadTextChecks: async () => ({
+    measure: (layer: TextLayer) => layer.lines[0]?.text ? { min: layer.size / 10, max: layer.size / 5, cpi: 24.56 } : null,
+    missingGlyphs: (layer: TextLayer) => [...(layer.lines[0]?.text ?? "")].filter((ch) => ch === "→").map((ch) => ch.codePointAt(0)!),
+  }),
   sizeForMinimum: (size: number, min: number, target: number) => size * target / min,
+  describeCodepoints: (cps: number[]) => cps.map((cp) => `“${String.fromCodePoint(cp)}” (U+${cp.toString(16).toUpperCase()})`).join(", "),
 }));
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 it("edits the minimum through point size, updates the maximum and handles empty text", async () => {
   const container = document.createElement("div");
@@ -35,6 +38,9 @@ it("edits the minimum through point size, updates the maximum and handles empty 
     expect(onChange).toHaveBeenLastCalledWith(20);
     await render({ ...layer, size: 20 });
     expect(container.textContent).toContain("Tallest character: 4.00 mm");
+    expect(container.textContent).not.toContain("cannot print");
+    await render({ ...layer, lines: [{ text: "Hx →", ...style }] });
+    expect(container.querySelector("[role=alert]")?.textContent).toContain("cannot print “→” (U+2192)");
     await render({ ...layer, lines: [] });
     expect(container.querySelector("input")).toBeNull();
     expect(container.textContent).toContain("Add letters or numbers");
