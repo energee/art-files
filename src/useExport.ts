@@ -4,7 +4,7 @@
 // shows, and the batch of download URLs every save (exports, Save Project,
 // Save Master) hands its plain-download fallback through.
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { saveThrough } from "@/files";
+import { nativePathExists, saveThrough, type FileTarget } from "@/files";
 import { errMsg } from "@/lib/utils";
 import type { Fill } from "@/types";
 import { PAGE_ART_ID, type Layer } from "@/model/layers";
@@ -80,12 +80,13 @@ export function useExport({
   }
   /** Save one exported file through the platform's save dialog. Tauri uses
    *  the OS dialog; supported browsers use File System Access; Safari/Firefox
-   *  keep the plain-download fallback. */
-  async function saveVia(bytes: Uint8Array, name: string, type: string) {
+   *  keep the plain-download fallback. A `target` writes there with no
+   *  dialog. */
+  async function saveVia(bytes: Uint8Array, name: string, type: string, target?: FileTarget) {
     const extension = name.slice(name.lastIndexOf(".") + 1);
     const description = `${extension.toUpperCase()} file`;
     return await saveThrough(bytes, {
-      name, type, filter: { name: description, extensions: [extension] },
+      name, type, target, filter: { name: description, extensions: [extension] },
       types: [{ description, accept: { [type]: [`.${extension}`] } }],
     }, saveBytes);
   }
@@ -146,15 +147,27 @@ export function useExport({
     let pending = "";
     try {
       const pair = await build();
+      // On desktop the mask is written beside the art file the dialog chose,
+      // as `<stem>-mask.<extension>` (the export's own extension, so the
+      // capability globs cover it), without asking again. If a file is
+      // already there, or the check fails, the mask gets its own dialog,
+      // opened on that path: the art dialog's overwrite prompt covered only
+      // the art file. Notes and errors name the derived path either way.
+      let mask: { path: string; target?: FileTarget } | undefined;
       for (const [index, bytes] of pair.entries()) {
         if (!bytes) continue;
-        pending = `${exportBase}${index ? "-mask" : ""}.${extension}`;
-        const result = await saveVia(bytes, pending, type);
+        pending = index && mask ? mask.path : `${exportBase}${index ? "-mask" : ""}.${extension}`;
+        const result = await saveVia(bytes, pending, type, index ? mask?.target : undefined);
         if (!result) {
           setExportError(`Note: ${saved.length ? `Saved ${saved.join(", ")}. ` : ""}Export cancelled before saving ${pending}.`);
           return;
         }
         saved.push(result.name);
+        if (!index && pair[1] && result.target && "path" in result.target) {
+          const path = result.target.path.replace(/(\.[^./\\]+)?$/, `-mask.${extension}`);
+          const taken = await nativePathExists(path).catch(() => true);
+          mask = { path, target: taken ? undefined : { path } };
+        }
       }
       const own = lastExportError.current;
       setBuildError((current) => (current === own ? "" : current));
