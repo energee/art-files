@@ -44,6 +44,7 @@ import { shortcutLabel } from "@/keys";
 import { rebindLabel } from "@/model/rebindLayers";
 import type { MasterAssets } from "@/model/files";
 import type { LabelFile, Master } from "@/model/layers";
+import type { MasterIndexEntry } from "@/masters";
 import {
   Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -60,12 +61,10 @@ const VERSION = "__version:";
  *  resolved lazily (see `resolve`), only once something is actually picked,
  *  so opening the menu never has to read every file the library index
  *  knows about. */
-export type LibraryEntry = {
-  name: string; inLibrary?: boolean;
-  /** The index row's file path and lastSeen (masters.ts), for the detail
-   *  line. Absent for the shipped master when no file backs it. */
-  path?: string; lastSeen?: string;
-};
+export type LibraryEntry = { name: string; inLibrary?: boolean }
+  // The index row's file path and lastSeen, for the detail line. Absent for
+  // the shipped master when no file backs it.
+  & Partial<Pick<MasterIndexEntry, "path" | "lastSeen">>;
 
 /** A row's second line: "lolev.master · Used Oct 11, 2026", or "Built in"
  *  for a master with no file behind it. */
@@ -78,10 +77,10 @@ export function entryDetail(e: LibraryEntry | undefined): string {
 }
 
 /** Name over its detail line, for a master row. */
-function MasterRow({ name, entry }: { name: string; entry: LibraryEntry | undefined }) {
+function MasterRow({ entry }: { entry: LibraryEntry }) {
   return (
     <span className="flex min-w-0 flex-col">
-      <span className="truncate">{name}</span>
+      <span className="truncate">{entry.name}</span>
       <span className="truncate text-[11px] text-muted-foreground">{entryDetail(entry)}</span>
     </span>
   );
@@ -264,7 +263,7 @@ export function MasterPicker(props: {
           <SelectGroup>
             <SelectLabel>Current master</SelectLabel>
             <SelectItem value={props.master.id}>
-              <MasterRow name={props.master.name} entry={props.library[props.master.id]} />
+              <MasterRow entry={{ ...props.library[props.master.id], name: props.master.name }} />
             </SelectItem>
             {props.master.variants.map((v) => (
               // The icon, not an indent, says "a version OF the row above".
@@ -274,8 +273,8 @@ export function MasterPicker(props: {
               </SelectItem>
             ))}
           </SelectGroup>
-          {others.length > 0 && <SelectSeparator />}
-          {others.length > 0 && (
+          {others.length > 0 && (<>
+            <SelectSeparator />
             <SelectGroup>
               <SelectLabel>Other masters</SelectLabel>
               {others.map(([id, entry]) => (
@@ -287,25 +286,25 @@ export function MasterPicker(props: {
                   onKeyDown={entry.inLibrary ? (e) => {
                     if (e.key !== "Delete" || e.repeat) return;
                     e.preventDefault(); stop(e); void forget(id);
-                  } : undefined}>
-                  <MasterRow name={entry.name} entry={entry} />
-                  {entry.inLibrary && (
-                    // Remove is the row's own action, not a pick: every event it
-                    // fires stops here so the Select never sees a selection. It
-                    // sits in the check mark's slot at the row's right edge — an
-                    // other-master row is never the checked one.
+                  } : undefined}
+                  // Remove is the row's own action, not a pick: every event it
+                  // fires stops here so the Select never sees a selection. An
+                  // other-master row is never the checked one, so it can take
+                  // the check mark's slot.
+                  action={entry.inLibrary && (
                     <button type="button" aria-label={`Remove ${entry.name} from the library`}
                       title="Remove from the library (Delete). The file stays where it is."
-                      className="pointer-events-auto absolute top-1/2 right-1.5 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground hover:text-destructive-text"
+                      className="pointer-events-auto rounded-sm p-0.5 text-muted-foreground hover:text-destructive-text"
                       onPointerDown={stop} onPointerUp={stop} onMouseUp={stop}
                       onClick={(e) => { stop(e); void forget(id); }}>
                       <X className="size-3.5" aria-hidden />
                     </button>
-                  )}
+                  )}>
+                  <MasterRow entry={entry} />
                 </SelectItem>
               ))}
             </SelectGroup>
-          )}
+          </>)}
           <SelectSeparator />
           <SelectItem value={NEW_VARIANT} className="text-attention-text">New Variant</SelectItem>
         </SelectContent>

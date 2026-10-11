@@ -1620,7 +1620,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   const library = useMemo(() => {
     const idx = masterIndex();
     const entries: Record<string, LibraryEntry> = {
-      [SHIPPED_MASTER_ID]: { name: lolevMaster().name, inLibrary: false },
+      // Always listed; the loop below replaces it when the index has a row.
+      [SHIPPED_MASTER_ID]: { name: lolevMaster().name },
     };
     for (const [id, e] of Object.entries(idx)) entries[id] = { ...e, inLibrary: true };
     return entries;
