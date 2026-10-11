@@ -7,6 +7,8 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Changed
+- **Dependency patch updates.** Tauri JS 2.12.1, Lucide icons 1.52 and barcode-reading updates, plus newer build tooling; no change in behaviour.
+- **Tauri 2.12.1.** Patch updates to the app shell, file dialogs, updater and single-instance handling (Rust and JS sides together); no change in behaviour.
 - **Internal cleanup, no visible change.** The dev-only stroke magnifier page moved from the repo root to `tools/strokecap.html`; `npm run strokecap` opens it there.
 - **Internal cleanup, no visible change.** PSD barcode digits and the character-height check read font outlines through one typed font helper instead of a cast.
 - **Unused exports removed, no visible change.** Types used only in the file that defines them are no longer exported.
@@ -14,6 +16,8 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 - **A click right after typing in a field is its own undo step.** An edit made within half a second of finishing a field no longer folds into that field's step, so one ⌘Z undoes only the click instead of both.
+- **Error messages no longer start with a stray "Error:".** Update, restart, native-menu, 3D view, preview, character-height and dialog-load failures now show just the reason, matching the rest of the app.
+- **Updates no longer fail on slow connections.** Downloading an update gave up after two minutes, so on a connection slower than about 1 Mbps every attempt failed. The download now has 15 minutes to finish.
 - **The active tab's close button shows without hovering.** It rests dimmed on the selected tab so it can be found and tapped on touch; other tabs still show theirs on hover.
 - **Deleting a variant or removing a well's file says how to undo it.** Delete under the master picker now leaves a note that ⌘Z brings the variant back. Removing a texture or mask with its × was not undoable at all; the well now offers Undo to put the file back. An image layer's well notes that ⌘Z restores its art.
 - **A damaged remembered-masters entry no longer breaks opening labels.** A library entry missing its file path or name is now skipped instead of making a label open fail.
