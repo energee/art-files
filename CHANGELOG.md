@@ -15,6 +15,7 @@ that section to the new version (see .agents/release-steward.md).
 - **Internal cleanup, no visible change.** The layer editing, inspector and preview code is reorganised into smaller files; the app behaves exactly as before.
 
 ### Fixed
+- **A click right after typing in a field is its own undo step.** An edit made within half a second of finishing a field no longer folds into that field's step, so one ⌘Z undoes only the click instead of both.
 - **Error messages no longer start with a stray "Error:".** Update, restart, native-menu, 3D view, preview, character-height and dialog-load failures now show just the reason, matching the rest of the app.
 - **Updates no longer fail on slow connections.** Downloading an update gave up after two minutes, so on a connection slower than about 1 Mbps every attempt failed. The download now has 15 minutes to finish.
 - **The active tab's close button shows without hovering.** It rests dimmed on the selected tab so it can be found and tapped on touch; other tabs still show theirs on hover.
