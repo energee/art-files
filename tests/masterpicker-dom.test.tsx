@@ -11,7 +11,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { MasterPicker } from "../src/components/MasterPicker";
+import { MasterPicker, entryDetail } from "../src/components/MasterPicker";
 import { lolevMaster } from "../src/model/lolevLayers";
 import type { LabelFile, Master } from "../src/model/layers";
 
@@ -400,5 +400,25 @@ describe("MasterPicker", () => {
     renderPicker();
     expect(itemStarting("Open Master")).toBeUndefined();
     expect(itemStarting("Duplicate as new master")).toBeUndefined();
+  });
+
+  it("labels the current master and the others, each row with its file and last use", () => {
+    renderPicker({ library: {
+      lolev: { name: "Lolev" },
+      other: { name: "Lolev", inLibrary: true, path: "/Users/x/Labels/collab.master", lastSeen: "2026-10-01T12:00:00Z" },
+    } });
+    openMenu();
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("Current master");
+    expect(text).toContain("Other masters");
+    // Two masters named "Lolev" are told apart by file.
+    expect(text).toContain("collab.master · Used");
+    expect(text).toContain("Built in");
+  });
+
+  it("entryDetail falls back to Built in and skips a bad date", () => {
+    expect(entryDetail(undefined)).toBe("Built in");
+    expect(entryDetail({ name: "A", path: "C:\\m\\a.master", lastSeen: "nope" })).toBe("a.master");
+    expect(entryDetail({ name: "A", path: "", lastSeen: "2026-10-01T12:00:00Z" })).toMatch(/^Built in · Used /);
   });
 });

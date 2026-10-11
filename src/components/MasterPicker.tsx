@@ -27,6 +27,10 @@
 //     said in plain view under the Select — the file stays where it is — with
 //     an Undo, since re-adding it would otherwise mean browsing to the file.
 //   * New Variant, an action at the foot.
+// The first two sit under "Current master" / "Other masters" headings, and
+// every master row carries a second line — its file name and the day it was
+// last opened, saved or picked here (the index's lastSeen) — because two
+// masters can share a name (a fork keeps it until renamed).
 // Deleting a variant (the Delete beside Rename) is one undoable edit, so it
 // asks no confirm; the same status line says so, naming ⌘Z, while the master
 // is still the one the delete left — not after an undo, another edit to the
@@ -41,7 +45,7 @@ import { rebindLabel } from "@/model/rebindLayers";
 import type { MasterAssets } from "@/model/files";
 import type { LabelFile, Master } from "@/model/layers";
 import {
-  Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue,
+  Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { errMsg } from "@/lib/utils";
 
@@ -56,7 +60,32 @@ const VERSION = "__version:";
  *  resolved lazily (see `resolve`), only once something is actually picked,
  *  so opening the menu never has to read every file the library index
  *  knows about. */
-export type LibraryEntry = { name: string; inLibrary?: boolean };
+export type LibraryEntry = {
+  name: string; inLibrary?: boolean;
+  /** The index row's file path and lastSeen (masters.ts), for the detail
+   *  line. Absent for the shipped master when no file backs it. */
+  path?: string; lastSeen?: string;
+};
+
+/** A row's second line: "lolev.master · Used Oct 11, 2026", or "Built in"
+ *  for a master with no file behind it. */
+export function entryDetail(e: LibraryEntry | undefined): string {
+  const file = e?.path?.split(/[\\/]/).pop() || "Built in";
+  const seen = e?.lastSeen ? new Date(e.lastSeen) : null;
+  return seen && !isNaN(seen.getTime())
+    ? `${file} · Used ${seen.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`
+    : file;
+}
+
+/** Name over its detail line, for a master row. */
+function MasterRow({ name, entry }: { name: string; entry: LibraryEntry | undefined }) {
+  return (
+    <span className="flex min-w-0 flex-col">
+      <span className="truncate">{name}</span>
+      <span className="truncate text-[11px] text-muted-foreground">{entryDetail(entry)}</span>
+    </span>
+  );
+}
 
 export function MasterPicker(props: {
   /** The master currently bound to this document. */
@@ -232,39 +261,51 @@ export function MasterPicker(props: {
           <SelectValue>{editing}</SelectValue>
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={props.master.id}>{props.master.name}</SelectItem>
-          {props.master.variants.map((v) => (
-            // The icon, not an indent, says "a version OF the row above".
-            <SelectItem key={v.id} value={VERSION + v.id}>
-              <CornerDownRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-              {v.name}
+          <SelectGroup>
+            <SelectLabel>Current master</SelectLabel>
+            <SelectItem value={props.master.id}>
+              <MasterRow name={props.master.name} entry={props.library[props.master.id]} />
             </SelectItem>
-          ))}
+            {props.master.variants.map((v) => (
+              // The icon, not an indent, says "a version OF the row above".
+              <SelectItem key={v.id} value={VERSION + v.id}>
+                <CornerDownRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                {v.name}
+              </SelectItem>
+            ))}
+          </SelectGroup>
           {others.length > 0 && <SelectSeparator />}
-          {others.map(([id, entry]) => (
-            <SelectItem key={id} value={id}
-              // The ✕ isn't focusable inside the listbox; Delete on the
-              // highlighted row is its keyboard path. A held key is ignored so
-              // it can't sweep through the rows below.
-              aria-keyshortcuts={entry.inLibrary ? "Delete" : undefined}
-              onKeyDown={entry.inLibrary ? (e) => {
-                if (e.key !== "Delete" || e.repeat) return;
-                e.preventDefault(); stop(e); void forget(id);
-              } : undefined}>
-              {entry.name}
-              {entry.inLibrary && (
-                // Remove is the row's own action, not a pick: every event it
-                // fires stops here so the Select never sees a selection.
-                <button type="button" aria-label={`Remove ${entry.name} from the library`}
-                  title="Remove from the library (Delete). The file stays where it is."
-                  className="pointer-events-auto ml-auto rounded-sm p-0.5 text-muted-foreground hover:text-destructive-text"
-                  onPointerDown={stop} onPointerUp={stop} onMouseUp={stop}
-                  onClick={(e) => { stop(e); void forget(id); }}>
-                  <X className="size-3.5" aria-hidden />
-                </button>
-              )}
-            </SelectItem>
-          ))}
+          {others.length > 0 && (
+            <SelectGroup>
+              <SelectLabel>Other masters</SelectLabel>
+              {others.map(([id, entry]) => (
+                <SelectItem key={id} value={id}
+                  // The ✕ isn't focusable inside the listbox; Delete on the
+                  // highlighted row is its keyboard path. A held key is ignored so
+                  // it can't sweep through the rows below.
+                  aria-keyshortcuts={entry.inLibrary ? "Delete" : undefined}
+                  onKeyDown={entry.inLibrary ? (e) => {
+                    if (e.key !== "Delete" || e.repeat) return;
+                    e.preventDefault(); stop(e); void forget(id);
+                  } : undefined}>
+                  <MasterRow name={entry.name} entry={entry} />
+                  {entry.inLibrary && (
+                    // Remove is the row's own action, not a pick: every event it
+                    // fires stops here so the Select never sees a selection. It
+                    // sits in the check mark's slot at the row's right edge — an
+                    // other-master row is never the checked one.
+                    <button type="button" aria-label={`Remove ${entry.name} from the library`}
+                      title="Remove from the library (Delete). The file stays where it is."
+                      className="pointer-events-auto absolute top-1/2 right-1.5 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground hover:text-destructive-text"
+                      onPointerDown={stop} onPointerUp={stop} onMouseUp={stop}
+                      onClick={(e) => { stop(e); void forget(id); }}>
+                      <X className="size-3.5" aria-hidden />
+                    </button>
+                  )}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          )}
           <SelectSeparator />
           <SelectItem value={NEW_VARIANT} className="text-attention-text">New Variant</SelectItem>
         </SelectContent>
