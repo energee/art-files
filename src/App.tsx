@@ -1621,9 +1621,9 @@ export const DocumentEditor = memo(function DocumentEditor({
     const idx = masterIndex();
     const entries: Record<string, LibraryEntry> = {
       // Always listed; the loop below replaces it when the index has a row.
-      [SHIPPED_MASTER_ID]: { name: lolevMaster().name },
+      [SHIPPED_MASTER_ID]: { name: lolevMaster().name, builtIn: true },
     };
-    for (const [id, e] of Object.entries(idx)) entries[id] = { ...e, inLibrary: true };
+    for (const [id, e] of Object.entries(idx)) entries[id] = { ...entries[id], ...e, inLibrary: true };
     return entries;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the inputs live in localStorage; libraryTick and active say when to re-read
   }, [libraryTick, active]);

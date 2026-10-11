@@ -48,7 +48,8 @@ import type { MasterIndexEntry } from "@/masters";
 import {
   Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { errMsg } from "@/lib/utils";
+import { errMsg, shortDate } from "@/lib/utils";
+import { recentTitles } from "@/recent";
 
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
@@ -61,27 +62,33 @@ const VERSION = "__version:";
  *  resolved lazily (see `resolve`), only once something is actually picked,
  *  so opening the menu never has to read every file the library index
  *  knows about. */
-export type LibraryEntry = { name: string; inLibrary?: boolean }
-  // The index row's file path and lastSeen, for the detail line. Absent for
-  // the shipped master when no file backs it.
+export type LibraryEntry = { name: string; inLibrary?: boolean; builtIn?: boolean }
+  // The index row's file path and lastSeen, for the detail line. `builtIn`
+  // marks the shipped master, which may have no file behind it.
   & Partial<Pick<MasterIndexEntry, "path" | "lastSeen">>;
 
-/** A row's second line: "lolev.master · Used Oct 11, 2026", or "Built in"
- *  for a master with no file behind it. */
-export function entryDetail(e: LibraryEntry | undefined): string {
-  const file = e?.path?.split(/[\\/]/).pop() || "Built in";
-  const seen = e?.lastSeen ? new Date(e.lastSeen) : null;
-  return seen && !isNaN(seen.getTime())
-    ? `${file} · Used ${seen.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`
-    : file;
+/** Each row's second line, by id: "lolev.master · Used Oct 11, 2026". The
+ *  file name gains its folder when two rows share one (recentTitles), so
+ *  same-named masters stay apart. No path reads "Built in" for the shipped
+ *  master and "No file" for any other. */
+export function entryDetails(entries: [string, LibraryEntry][]): Record<string, string> {
+  const withPath = entries.filter(([, e]) => e.path);
+  const titles = recentTitles(withPath.map(([, e]) => e.path!));
+  const file = new Map(withPath.map(([id], i) => [id, titles[i]]));
+  return Object.fromEntries(entries.map(([id, e]) => {
+    const name = file.get(id) ?? (e.builtIn ? "Built in" : "No file");
+    const used = e.lastSeen ? shortDate(e.lastSeen) : "";
+    return [id, used ? `${name} · Used ${used}` : name];
+  }));
 }
 
-/** Name over its detail line, for a master row. */
-function MasterRow({ entry }: { entry: LibraryEntry }) {
+/** Name over its detail line, for a master row. The sr-only comma keeps a
+ *  screen reader from running the two together. */
+function MasterRow({ name, detail }: { name: string; detail: string }) {
   return (
     <span className="flex min-w-0 flex-col">
-      <span className="truncate">{entry.name}</span>
-      <span className="truncate text-[11px] text-muted-foreground">{entryDetail(entry)}</span>
+      <span className="truncate">{name}<span className="sr-only">, </span></span>
+      <span className="truncate text-[11px] text-muted-foreground">{detail}</span>
     </span>
   );
 }
@@ -92,8 +99,9 @@ export function MasterPicker(props: {
   /** The document's label — values, enabled variants, dormant bench — which
    *  is what the preview's rebind runs against. */
   label: LabelFile;
-  /** Library listing: every master this machine knows about, id -> name
-   *  (masters.ts's masterIndex() plus the shipped master). */
+  /** Library listing: every master this machine knows about, id -> name,
+   *  file path and lastSeen (masters.ts's masterIndex() plus the shipped
+   *  master), for the rows and their detail lines. */
   library: Record<string, LibraryEntry>;
   /** Resolves a library id to its Master (masters.ts's resolveMasterById) —
    *  async, since a library master may live on disk. Null means it could not
@@ -215,6 +223,9 @@ export function MasterPicker(props: {
   const editing = versionName ? `${props.master.name} / ${versionName}` : props.master.name;
   /** Every OTHER master in the library — this one already heads the menu. */
   const others = Object.entries(props.library).filter(([id]) => id !== props.master.id);
+  const details = entryDetails([
+    [props.master.id, { ...props.library[props.master.id], name: props.master.name }], ...others,
+  ]);
 
   /** Enter or blur on the name field: a trimmed non-empty change lands, an
    *  empty one just closes — the auto "Variant N" name stands. `id` comes
@@ -262,14 +273,14 @@ export function MasterPicker(props: {
         <SelectContent>
           <SelectGroup>
             <SelectLabel>Current master</SelectLabel>
-            <SelectItem value={props.master.id}>
-              <MasterRow entry={{ ...props.library[props.master.id], name: props.master.name }} />
+            <SelectItem value={props.master.id} label={props.master.name}>
+              <MasterRow name={props.master.name} detail={details[props.master.id]} />
             </SelectItem>
             {props.master.variants.map((v) => (
               // The icon, not an indent, says "a version OF the row above".
               <SelectItem key={v.id} value={VERSION + v.id}>
                 <CornerDownRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-                {v.name}
+                <span className="truncate">{v.name}</span>
               </SelectItem>
             ))}
           </SelectGroup>
@@ -278,7 +289,7 @@ export function MasterPicker(props: {
             <SelectGroup>
               <SelectLabel>Other masters</SelectLabel>
               {others.map(([id, entry]) => (
-                <SelectItem key={id} value={id}
+                <SelectItem key={id} value={id} label={entry.name}
                   // The ✕ isn't focusable inside the listbox; Delete on the
                   // highlighted row is its keyboard path. A held key is ignored so
                   // it can't sweep through the rows below.
@@ -288,9 +299,7 @@ export function MasterPicker(props: {
                     e.preventDefault(); stop(e); void forget(id);
                   } : undefined}
                   // Remove is the row's own action, not a pick: every event it
-                  // fires stops here so the Select never sees a selection. An
-                  // other-master row is never the checked one, so it can take
-                  // the check mark's slot.
+                  // fires stops here so the Select never sees a selection.
                   action={entry.inLibrary && (
                     <button type="button" aria-label={`Remove ${entry.name} from the library`}
                       title="Remove from the library (Delete). The file stays where it is."
@@ -300,7 +309,7 @@ export function MasterPicker(props: {
                       <X className="size-3.5" aria-hidden />
                     </button>
                   )}>
-                  <MasterRow entry={entry} />
+                  <MasterRow name={entry.name} detail={details[id]} />
                 </SelectItem>
               ))}
             </SelectGroup>

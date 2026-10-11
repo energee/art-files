@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { cn, errMsg } from "@/lib/utils";
+import { cn, errMsg, shortDate } from "@/lib/utils";
 
 export const AUTO_CHECK_DELAY_MS = 2_000;
 // ponytail: quiet re-checks are focus-driven, not a timer — zero network while idle;
@@ -265,9 +265,7 @@ export function DesktopUpdater(props: {
     : status.kind === "error" ? { Icon: Download, label: "Update failed — try again", version: undefined }
     : null;
   const releasedOn = status.kind === "available" && status.date
-    ? ` · Released ${new Date(status.date).toLocaleDateString(undefined, {
-        month: "short", day: "numeric", year: "numeric",
-      })}`
+    ? ` · Released ${shortDate(status.date)}`
     : "";
   const busy = status.kind === "checking";
 
