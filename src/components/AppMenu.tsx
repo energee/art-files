@@ -18,6 +18,7 @@ import {
   MenubarSeparator, MenubarShortcut, MenubarSub, MenubarSubContent,
   MenubarSubTrigger, MenubarTrigger,
 } from "@/components/ui/menubar";
+import { errMsg } from "@/lib/utils";
 
 /** SF Symbols, the icons macOS itself uses in menus. The Mac menu shows the
  *  symbol (set natively after install, so it tints with light and dark mode;
@@ -427,7 +428,7 @@ function useNativeMenu(
           // onCloseRequested sweep prompts for unsaved tabs before exit.
           const quit = () => void import("@tauri-apps/api/window")
             .then((m) => m.getCurrentWindow().close())
-            .catch((error) => errorRef.current(`Could not quit: ${String(error)}`));
+            .catch((error) => errorRef.current(`Could not quit: ${errMsg(error)}`));
           roots.unshift(await macApplicationMenu(api, resources, () => updateRef.current(), quit));
         } else {
           const updater = await api.MenuItem.new({
@@ -471,7 +472,7 @@ function useNativeMenu(
         setItems(actionItems);
       } catch (error) {
         await closeResources(resources);
-        if (live) errorRef.current(`Could not install the native menu: ${String(error)}`);
+        if (live) errorRef.current(`Could not install the native menu: ${errMsg(error)}`);
       }
     })();
 
@@ -489,7 +490,7 @@ function useNativeMenu(
     appliedState.current.set("check-for-updates:text", text);
     if (!updateInstalled) return; // the item is created with the check label
     void item.setText(text).catch((error) => {
-      errorRef.current(`Could not update the native menu: ${String(error)}`);
+      errorRef.current(`Could not update the native menu: ${errMsg(error)}`);
     });
   }, [items, updateInstalled]);
 
@@ -527,7 +528,7 @@ function useNativeMenu(
     // Preserve render order across IPC: a slow prior update must never land
     // after a newer checked/disabled state.
     updateQueue.current = updateQueue.current.then(apply, apply).catch((error) => {
-      errorRef.current(`Could not update the native menu: ${String(error)}`);
+      errorRef.current(`Could not update the native menu: ${errMsg(error)}`);
     });
   // signature is the compact set of native-visible state; ordinary App
   // renders do not produce 26 IPC updates. resync re-runs it after a native

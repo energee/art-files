@@ -43,8 +43,6 @@ vi.mock("../src/App", async () => {
 
 const { default: TabsShell } = await import("../src/TabsShell");
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 let root: ReturnType<typeof createRoot>;
 afterEach(async () => { await act(async () => { root.unmount(); }); });
 

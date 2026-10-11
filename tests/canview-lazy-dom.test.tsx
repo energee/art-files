@@ -23,8 +23,6 @@ vi.mock("../src/fonts", () => ({
 }));
 import { DocumentEditor } from "../src/App";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 it("imports the 3D view only when the Can view opens, then mounts it", async () => {
   const container = document.createElement("div");
   document.body.appendChild(container);

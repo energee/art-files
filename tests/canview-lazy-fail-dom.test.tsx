@@ -17,8 +17,6 @@ vi.mock("../src/fonts", () => ({
 }));
 import { DocumentEditor } from "../src/App";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 it("a 3D view that fails to load reports an error and keeps the editor", async () => {
   const container = document.createElement("div");
   document.body.appendChild(container);

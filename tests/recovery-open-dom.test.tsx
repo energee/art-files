@@ -30,8 +30,6 @@ vi.mock("../src/fonts", () => ({
 
 const { DocumentEditor } = await import("../src/App");
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 it("a restored snapshot opens unsaved and takes the snapshot over", async () => {
   const bytes = packLabel({
     formatVersion: 3, masterId: "lolev", enabledVariants: [],

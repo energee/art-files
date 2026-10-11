@@ -26,8 +26,6 @@ vi.mock("../src/fonts", () => ({
 const { rememberMaster } = await import("../src/masters");
 const { DocumentEditor } = await import("../src/App");
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 const editorProps = {
   active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta: vi.fn(),
   saveSlot: { current: null }, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),

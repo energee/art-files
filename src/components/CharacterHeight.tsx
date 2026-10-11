@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { TextLayer } from "@/model/layers";
 import type { FontFamilyId } from "@/fontCatalog";
 import type * as Heights from "@/textheight";
+import { errMsg } from "@/lib/utils";
 import { ScrubField } from "./ScrubField";
 
 export function CharacterHeight({ layer, family, onChange }: {
@@ -17,14 +18,14 @@ export function CharacterHeight({ layer, family, onChange }: {
     void import("@/textheight").then(async (module) => ({
       measure: await module.loadHeightMeasure(family), sizeForMinimum: module.sizeForMinimum,
     })).then((result) => { if (!cancelled) setLoaded(result); })
-      .catch((reason) => { if (!cancelled) setError(String(reason)); });
+      .catch((reason) => { if (!cancelled) setError(errMsg(reason)); });
     return () => { cancelled = true; };
   }, [family]);
   let range: Heights.CharacterHeights | null = null;
   let message = error;
   if (loaded) {
     try { range = loaded.measure(layer); }
-    catch (reason) { message = String(reason); }
+    catch (reason) { message = errMsg(reason); }
   }
   if (message) return <p role="status" className="text-xs text-warning-text">Character height unavailable: {message}</p>;
   if (!loaded) return <p role="status" className="text-xs text-muted-foreground">Measuring character height…</p>;

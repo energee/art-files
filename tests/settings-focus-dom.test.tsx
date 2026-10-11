@@ -22,8 +22,6 @@ vi.mock("../src/fonts", () => ({
 }));
 import { DocumentEditor } from "../src/App";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 it("Settings opens focused on its first field the first time", async () => {
   const container = document.createElement("div");
   document.body.appendChild(container);

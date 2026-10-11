@@ -176,9 +176,11 @@ export const GOLD = "#F3CD80" as const;
 /** The white-ink plate's ink colour. Hex is the form the PSD writes and the
  *  press specifies; the 0-1 triple below is derived so the two can't drift. */
 export const MASK_BLUE_HEX = "#009CD7" as const;
+/** No ink: the knockout / bare-stock colour, as hex for the canvas and PSD. */
+export const WHITE_HEX = "#FFFFFF" as const;
 
 export const COLORS = {
-  white: { r: 1, g: 1, b: 1 },
+  white: parseHexFill(WHITE_HEX),
   maskBlue: parseHexFill(MASK_BLUE_HEX),
 };
 

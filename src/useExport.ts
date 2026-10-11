@@ -3,8 +3,8 @@
 // preview draws, the export-in-flight and "Saved …" note state the header
 // shows, and the batch of download URLs every save (exports, Save Project,
 // Save Master) hands its plain-download fallback through.
-import { useEffect, useRef, useState } from "react";
-import { saveThrough } from "@/files";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { nativePathExists, saveThrough, type FileTarget } from "@/files";
 import { errMsg } from "@/lib/utils";
 import type { Fill } from "@/types";
 import { PAGE_ART_ID, type Layer } from "@/model/layers";
@@ -43,8 +43,11 @@ type ExportInputs = {
   exportBase: string;
   /** Bleed and DPI, handed to the PSD workers with each job. */
   render: RenderSettings;
-  /** The header's build-error channel: export failures and cancel notes. */
-  setBuildError: (error: string) => void;
+  /** The header's build-error channel: export failures and cancel notes.
+   *  Shared with asset, master and menu errors, so it takes App's raw setter:
+   *  a successful export clears the slot only while it still holds the
+   *  export's own message (#473). */
+  setBuildError: Dispatch<SetStateAction<string>>;
 };
 
 export function useExport({
@@ -77,12 +80,13 @@ export function useExport({
   }
   /** Save one exported file through the platform's save dialog. Tauri uses
    *  the OS dialog; supported browsers use File System Access; Safari/Firefox
-   *  keep the plain-download fallback. */
-  async function saveVia(bytes: Uint8Array, name: string, type: string) {
+   *  keep the plain-download fallback. A `target` writes there with no
+   *  dialog. */
+  async function saveVia(bytes: Uint8Array, name: string, type: string, target?: FileTarget) {
     const extension = name.slice(name.lastIndexOf(".") + 1);
     const description = `${extension.toUpperCase()} file`;
     return await saveThrough(bytes, {
-      name, type, filter: { name: description, extensions: [extension] },
+      name, type, target, filter: { name: description, extensions: [extension] },
       types: [{ description, accept: { [type]: [`.${extension}`] } }],
     }, saveBytes);
   }
@@ -122,6 +126,13 @@ export function useExport({
   }
 
   const exportRunning = useRef(false);
+  // The last message an export put in the shared build-error slot: the only
+  // one a later successful export may clear (#473).
+  const lastExportError = useRef("");
+  function setExportError(message: string) {
+    lastExportError.current = message;
+    setBuildError(message);
+  }
   async function exportPair(
     extension: "pdf" | "psd", type: string,
     build: () => Promise<(Uint8Array | null)[]>,
@@ -136,20 +147,34 @@ export function useExport({
     let pending = "";
     try {
       const pair = await build();
+      // On desktop the mask is written beside the art file the dialog chose,
+      // as `<stem>-mask.<extension>` (the export's own extension, so the
+      // capability globs cover it), without asking again. If a file is
+      // already there, or the check fails, the mask gets its own dialog,
+      // opened on that path: the art dialog's overwrite prompt covered only
+      // the art file. Notes and errors name the derived path either way.
+      let mask: { path: string; target?: FileTarget } | undefined;
       for (const [index, bytes] of pair.entries()) {
         if (!bytes) continue;
-        pending = `${exportBase}${index ? "-mask" : ""}.${extension}`;
-        const result = await saveVia(bytes, pending, type);
+        pending = index && mask ? mask.path : `${exportBase}${index ? "-mask" : ""}.${extension}`;
+        const result = await saveVia(bytes, pending, type, index ? mask?.target : undefined);
         if (!result) {
-          setBuildError(`Note: ${saved.length ? `Saved ${saved.join(", ")}. ` : ""}Export cancelled before saving ${pending}.`);
+          setExportError(`Note: ${saved.length ? `Saved ${saved.join(", ")}. ` : ""}Export cancelled before saving ${pending}.`);
           return;
         }
         saved.push(result.name);
+        if (!index && pair[1] && result.target && "path" in result.target) {
+          const path = result.target.path.replace(/(\.[^./\\]+)?$/, `-mask.${extension}`);
+          const taken = await nativePathExists(path).catch(() => true);
+          mask = { path, target: taken ? undefined : { path } };
+        }
       }
-      setBuildError("");
+      const own = lastExportError.current;
+      setBuildError((current) => (current === own ? "" : current));
+      lastExportError.current = "";
       if (exportFresh.current) setExportNote(`Saved ${saved.join(", ")}.`);
     } catch (error) {
-      setBuildError(`${saved.length ? `Saved ${saved.join(", ")}. ` : ""}${pending ? `Could not save ${pending}: ` : ""}${errMsg(error)}`);
+      setExportError(`${saved.length ? `Saved ${saved.join(", ")}. ` : ""}${pending ? `Could not save ${pending}: ` : ""}${errMsg(error)}`);
     } finally {
       exportRunning.current = false;
       setExporting(null);

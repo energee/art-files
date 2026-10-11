@@ -15,10 +15,6 @@ import { MasterPicker } from "../src/components/MasterPicker";
 import { lolevMaster } from "../src/model/lolevLayers";
 import type { LabelFile, Master } from "../src/model/layers";
 
-// React only honours act() when the environment opts in (see
-// fieldlist-dom.test.ts for the same line).
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 let container: HTMLDivElement;
 let root: Root;
 
