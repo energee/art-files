@@ -82,3 +82,13 @@ one module off each end of the backing, as `collab-{off,on}-art-quiet.diff.png`
 shows. Bars and digits do not move, and the backed UPC still decodes
 (`tests/qr-print-decode.test.ts`). Custom Code 128 layers now reserve a 10X
 quiet zone in their box, which moves their bars 10X in from the anchor.
+
+## 2026-10-10 printer boxes and Producer
+
+`collab-{off,on}-{art,mask}-boxes.diff.png` compare the four PDF plates from
+`main` (54c6997) with the plates that declare a TrimBox (the 8 x 5in die inside
+the bleed, written as `layout.ts`'s `ART` box), a BleedBox (the full page) and
+a `Label Lab <version>` Producer.
+All four have **zero changed pixels** at 600 DPI; both PSDs are byte-identical.
+The goldens test pins the version (`vi.mock` of `package.json`), so a release
+bump does not move the PDF digests.

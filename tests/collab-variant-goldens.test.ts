@@ -5,6 +5,13 @@
 // identical input builds byte-identical output and a sha256 IS byte
 // identity.
 //
+// PDF hashes re-baselined 2026-10-10: both plates now declare a TrimBox (the
+// die inside the bleed) and BleedBox (the page) and a "Label Lab <version>"
+// Producer. 0 px changed at 600 DPI on all four plates; PSDs are unchanged.
+// The TrimBox is layout.ts's ART exactly. See tests/goldens/collab-*-boxes.diff.png
+// (main vs. these plates). The version is pinned below so a
+// release bump does not move these digests.
+//
 // Mask PDF hashes re-baselined 2026-09-28: the white-ink barcode follows the
 // glyph stroke instead of a pill around each digit group. Art PDF and art PSD
 // are unchanged. See tests/goldens/collab-*-mask-glyph.diff.png.
@@ -58,11 +65,15 @@
 // A digest that moves is NOT a golden to regenerate outside an approved
 // rendering change: it is proof that what prints changed. Stop and report
 // it, or re-baseline per docs/goldens.md with a reviewed diff PNG.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { buildArtPdf, buildMaskPdf, type Assets } from "../src/pdf/build";
 import { buildPsd } from "../src/psd/build";
 import { assets as pdfFixture, lolevLayers, lolevPlan, onePxPng, psdAssets, type LolevOpts } from "./fixtures";
+
+// The PDF Producer carries the app version; pin it so a release bump is not
+// a golden change.
+vi.mock("../package.json", () => ({ version: "0.0.0-golden" }));
 
 const hash = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 
@@ -94,8 +105,8 @@ const digests = (r: Awaited<ReturnType<typeof shipped>>) => ({
 describe("collab byte-identity goldens — Collab variant OFF, both slots loaded", () => {
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped([]))).toEqual({
-      art: "d23ecbb45e6f6085edbc5348504686fe902b7a2f5f8eeaf401852e6c20966f69", artLen: 57891,
-      mask: "6bbdcdbaec88b3e3dcbc94864fa5eaf04c075946a780a6306a9a7d3b2c4d2a74", maskLen: 58046,
+      art: "9a440de8a254c67eed2d60f1c665a2c6e73dff94313d37b714e8402e4fdfbf27", artLen: 57939,
+      mask: "d52eaaae29a208389a62870731cba1a2f1f6aa6865ac2d4889b3006371159fba", maskLen: 58089,
       psd: "d3c39d261e7145566e4268a876060b2be9685311c86c662455a26f210de0aabc", psdLen: 1155796,
     });
   });
@@ -104,8 +115,8 @@ describe("collab byte-identity goldens — Collab variant OFF, both slots loaded
 describe("collab byte-identity goldens — Collab variant ON, both slots loaded", () => {
   it("art PDF, mask PDF and PSD are byte-for-byte the re-baselined goldens", async () => {
     expect(digests(await shipped(["collab"]))).toEqual({
-      art: "69012ea71288f4bf6184b672f2a48035f680af1c084b2a33610bd277f136a511", artLen: 59778,
-      mask: "0ba4f80fd3d83d781983ecf0c4c42a9aaba3107b555fa1ac840c2f97fcf369d2", maskLen: 59842,
+      art: "2a45b2369ec67c7378db92b4696fcfd5eadad801896a359bb8348b0e44c79fd5", artLen: 59815,
+      mask: "57d92abc989e066a88d273e898454a8059b958333bc0dc7942bdd2e8ad2a59c7", maskLen: 59886,
       psd: "d6d9f4d9222cc43d26bdc2bc7d0bd7d0bca1a7f573427ed66c5b5dd00eb39974", psdLen: 1165816,
     });
   });

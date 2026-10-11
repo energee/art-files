@@ -1,7 +1,7 @@
 // textheight.test.ts — printed heights against the bundled font's outline units.
 import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
-import { charactersPerInch, createHeightMeasure, sizeForMinimum } from "../src/textheight";
+import { charactersPerInch, createHeightMeasure, createMissingGlyphCheck, sizeForMinimum } from "../src/textheight";
 import { OUTPUT_DPI, setOutputDpi } from "../src/layout";
 import type { TextLayer } from "../src/model/layers";
 
@@ -69,4 +69,19 @@ it("computes the densest line from placed widths, including justified gaps and r
   expect(() => charactersPerInch([{ ...run, w: 0 }])).toThrow(/width/);
   const layer = text("Hello world");
   expect(measure({ ...layer, size: 20 })!.cpi).toBeCloseTo(measure(layer)!.cpi / 2);
+});
+
+it("lists the characters a layer's font has no glyph for, once each, ignoring spaces and variation selectors", () => {
+  const missing = createMissingGlyphCheck({ regular: bytes("Regular"), semibold: bytes("SemiBold"), bold: bytes("Bold") });
+  expect(missing(text("Ale™ ½ é ©️"))).toEqual([]);
+  expect(missing(text("Ale → 🍺 → 啤"))).toEqual([0x2192, 0x1f37a, 0x5564]);
+  // Placeholder text prints when the layer is empty, so it is checked too.
+  expect(missing(text("", { placeholder: "→" }))).toEqual([0x2192]);
+  // Each run is checked in the face it prints in (bold runs default to
+  // semibold). The bundled faces share one character set, so pin it with a
+  // pack whose semibold face (Barlow) lacks "₹".
+  const barlow = readFileSync(new URL("../src/assets/fonts/BarlowCondensed-SemiBold.ttf", import.meta.url));
+  const mixed = createMissingGlyphCheck({ regular: bytes("Regular"), semibold: barlow, bold: bytes("Bold") });
+  expect(mixed(text("₹"))).toEqual([]);
+  expect(mixed(text("**₹**"))).toEqual([0x20b9]);
 });

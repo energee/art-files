@@ -38,6 +38,8 @@ import { bridgeOffsets } from "../strokes";
 import { digitStartX, type Face, type MeasureFace, type Mode, type PlacedBarcode, type PlacedText } from "../plan";
 import { pageDrawsOn, type PlacedLayer, type PlacedPage } from "../planLayers";
 import * as L from "../layout";
+import { describeCodepoints, VARIATION_SELECTOR } from "../textheight";
+import { version } from "../../package.json";
 
 /** An image asset's source: vector text (already planned as `paths` items by
  *  planLayers, so this backend never draws it) or raster bytes, embedded
@@ -316,8 +318,6 @@ async function embedFaces(doc: PDFDocument, pack: Assets["fonts"], subset = fals
   };
 }
 
-const VARIATION_SELECTOR = /^[\uFE00-\uFE0F\u{E0100}-\u{E01EF}]$/u;
-
 /** The plan measure for a PDF/PSD export: each face's width from the pdf-lib
  *  font drawText draws it with. drawText places glyphs by their raw advances
  *  and emits no kerning, so a kerned measure (canvas measureText's default)
@@ -345,8 +345,8 @@ export async function pdfMeasureFace(
     // Variation selectors (the emoji picker's ™️) are folded into the base
     // glyph by fontkit, so they are never missing.
     const missing = [...new Set([...text].filter((ch) =>
-      !VARIATION_SELECTOR.test(ch) && !supported.has(ch.codePointAt(0)!)))];
-    if (missing.length) throw new Error(`Cannot print ${missing.map((ch) => `“${ch}” (U+${ch.codePointAt(0)!.toString(16).toUpperCase()})`).join(", ")} in ${font.name}. Replace these characters or choose a font that supports them.`);
+      !VARIATION_SELECTOR.test(ch) && !supported.has(ch.codePointAt(0)!)).map((ch) => ch.codePointAt(0)!))];
+    if (missing.length) throw new Error(`Cannot print ${describeCodepoints(missing)} in ${font.name}. Replace these characters or choose a font that supports them.`);
     return font.widthOfTextAtSize(text, size);
   };
 }
@@ -361,7 +361,16 @@ async function newDoc(assets: Assets): Promise<{ doc: PDFDocument; page: PDFPage
   for (const [family, bytes] of Object.entries(assets.fontFamilies ?? {})) {
     (fonts.families ??= {})[family as FontFamilyId] = bytes === assets.fonts ? fonts : await embed(bytes);
   }
+  // Provenance for the printer's preflight: the release version, never a
+  // build time, so identical input still builds identical bytes.
+  doc.setProducer(`Label Lab ${version}`);
   const page = doc.addPage([L.PAGE.w, L.PAGE.h]);
+  // Printer boxes: the 8x5in die (ART, the trim inside the bleed) and the
+  // whole page as the bleed. Without them, RIPs and preflight tools assume
+  // trim = page. ART is inset equally on all sides, so its top-left y is
+  // also its bottom-left y.
+  page.setBleedBox(0, 0, L.PAGE.w, L.PAGE.h);
+  page.setTrimBox(L.ART.x, L.ART.y, L.ART.w, L.ART.h);
   // Round every stroke join and cap for the whole page. pdf-lib has no
   // per-draw option for this, so it goes in as a graphics-state operator up
   // front; PDF's default is a MITER join, which shoots long spikes off any
