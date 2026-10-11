@@ -182,7 +182,7 @@ it("a manual check during a download shows the download, and Restart Now reports
     mocks.invoke.mockRejectedValueOnce(new Error("no permission"));
     await act(async () => button("Restart to finish").click());
     await act(async () => button("Restart Now").click());
-    expect(dialog()).toContain("Could not restart: Error: no permission");
+    expect(dialog()).toContain("Could not restart: no permission");
     // Closing that error keeps the installed update: the status bar still
     // offers the restart, and the menu's Restart to Update reopens a titled
     // dialog rather than a blank one (issue #123).
