@@ -2,7 +2,8 @@
 // (src/components/MasterPicker.tsx): the Design sidebar's "Master: Lolev ▾"
 // selector. Choosing another library master previews the rebind
 // (model/rebindLayers.ts) — the counts of what would move to the bench — and
-// must NOT call onMaster until the inline "Continue" is pressed.
+// must NOT call onMaster until the inline "Continue" is pressed; a rebind
+// that would bench nothing commits at once.
 // Scoped to a DOM environment per-file, matching tests/fieldlist-dom.test.ts's
 // setup — no @testing-library/react in this repo, so this drives real DOM
 // nodes through react-dom/client + act, the same as that suite.
@@ -86,6 +87,45 @@ describe("MasterPicker", () => {
       (container.querySelector("#master-picker-continue") as HTMLButtonElement).click();
     });
     expect(onMaster).toHaveBeenCalledWith(otherMaster, {});
+  });
+
+  // Nothing would be benched, so there is nothing to confirm: the switch
+  // commits at once (⌘Z undoes it like any other edit).
+  it("switches straight to a master that would bench nothing", async () => {
+    const onMaster = vi.fn();
+    const same: Master = { ...lolevMaster(), id: "other", name: "Other Brewery" };
+    const resolve = vi.fn().mockResolvedValue({ master: same, assets: {} });
+    renderPicker({ onMaster, resolve, label: { ...label, enabledVariants: [] } });
+    openMenu();
+    await act(async () => {
+      itemStarting("Other Brewery")!.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(container.querySelector("#master-picker-preview")).toBeNull();
+    expect(onMaster).toHaveBeenCalledWith(same, {});
+  });
+
+  // With no preview there is no Continue to disable, so the Select itself
+  // stays disabled until the switch lands: a second pick in that window was
+  // silently dropped by commit's guard.
+  it("keeps the picker disabled while a switch with nothing to confirm commits", async () => {
+    let finish!: () => void;
+    const onMaster = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    const same: Master = { ...lolevMaster(), id: "other", name: "Other Brewery" };
+    const resolve = vi.fn().mockResolvedValue({ master: same, assets: {} });
+    renderPicker({ onMaster, resolve, label: { ...label, enabledVariants: [] } });
+    openMenu();
+    await act(async () => {
+      itemStarting("Other Brewery")!.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const trigger = () => container.querySelector("#master-picker") as HTMLButtonElement;
+    expect(onMaster).toHaveBeenCalledTimes(1);
+    expect(trigger().disabled).toBe(true);
+    await act(async () => { finish(); await Promise.resolve(); });
+    expect(trigger().disabled).toBe(false);
   });
 
   // onMaster awaits the index write and the asset decode; a second Continue

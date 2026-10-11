@@ -34,6 +34,8 @@ it("a 3D view that fails to load reports an error and keeps the editor", async (
       document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "3", bubbles: true }));
     });
     await vi.waitFor(() => expect(container.textContent).toContain("3D view failed to load"));
+    // The reason reads as a message, not an "Error: …" dump (errMsg).
+    expect(container.textContent).not.toContain("failed to load: Error:");
     expect(container.querySelector("#master-picker")).not.toBeNull();
   } finally {
     await act(async () => { root.unmount(); });

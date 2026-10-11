@@ -6,6 +6,10 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Added
+- **Zoom from the keyboard and the View menu.** View → Zoom In (⌘= or ⌘+), Zoom Out (⌘-) and Zoom to Fit (⌘0) zoom the preview about its middle, in the 2D and 3D views.
+- **Layer commands in the palette.** ⌘K now offers Add Text, Image, Barcode and QR Layer, and Remove Layer. Delete or Backspace removes the selected layers from the canvas too, not only from the Layers list; it still does nothing while you type in a field or while a button has focus.
+
 ### Changed
 - **Exporting both PDFs or both PSDs asks where to save once.** In the desktop app the mask is saved beside the art file you choose, named after it with `-mask`. If a file with that name is already there, a save dialog opens on it so you can confirm replacing it or choose another name.
 - **Internal cleanup, no visible change.** The desktop shell's Rust source is reformatted to the standard style and declares the minimum Rust version its dependencies need.
@@ -18,6 +22,12 @@ that section to the new version (see .agents/release-steward.md).
 - **Internal cleanup, no visible change.** The preview, PDF and PSD renderers share one rule for which plate the texture and mask print on, where barcode digits start, and how each plate picks its colours; printed output is unchanged.
 
 ### Fixed
+- **A blocked export shows where the problem is.** Clicking the reason in the header selects the first invalid layer and opens it in the inspector, and the Layers list marks each invalid layer with a red dot. Screen readers hear the reason politely when export becomes blocked, instead of as an alert re-read on every keystroke.
+- **PDF exports say when they are waiting for the preview.** Until the preview finishes rendering, the export entries in the menus and the palette read "(rendering…)" instead of just being greyed out.
+- **Switching to a master that hides nothing skips the confirmation.** The master picker only asks to Continue when the switch would set filled fields or variants aside; otherwise it switches at once, and ⌘Z undoes it.
+- **Panning and zooming stay smooth with a large master library.** The remembered-masters list is no longer re-read from storage on every pan or scroll step.
+- **Raster images no longer offer a Metallic toggle that does nothing.** PNG and JPEG art always prints on white ink, so its inspector now says so instead; SVG art keeps the toggle.
+- **Error messages read cleanly.** A failed 3D view load, font load or preview build no longer prefixes the reason with "Error:".
 - **Quitting from the Dock a second time always quits.** On macOS, if the unsaved-tabs prompt never appears after Dock → Quit or logout (for example because the window has stopped responding), choosing Quit again within a few seconds now quits instead of being cancelled every time.
 - **Opening the same label from the command line no longer opens it twice.** A `.label` passed as a relative path, or spelled with `./` or `..`, is now recognised as the file that is already open instead of getting a second tab.
 - **A successful export no longer hides other errors.** Exporting a PDF or PSD used to clear the header's error message even when it was about something else, such as an image that failed to load, a refused master or a menu error. An export now only clears a message from an earlier export.

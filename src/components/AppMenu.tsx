@@ -8,10 +8,10 @@ import type {
 } from "@tauri-apps/api/menu";
 import {
   Bookmark, BookmarkPlus, BookOpen, Columns2, Contrast, Cylinder, FileImage, Files, FolderOpen,
-  Layers, RectangleHorizontal, Redo2, Ruler, Settings, SquareArrowDown,
-  SquareArrowUp, SquarePlus, Undo2, X, type LucideIcon,
+  Layers, Maximize2, RectangleHorizontal, Redo2, Ruler, Settings, SquareArrowDown,
+  SquareArrowUp, SquarePlus, Undo2, X, ZoomIn, ZoomOut, type LucideIcon,
 } from "lucide-react";
-import { shortcutOf, type Command } from "@/components/CommandMenu";
+import { shortcutOf, titleOf, type Command } from "@/components/CommandMenu";
 import { dialogOpen, isTypingTarget } from "@/keys";
 import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu,
@@ -44,6 +44,9 @@ const SYMBOL_GLYPH = {
   "cylinder": Cylinder,
   "ruler": Ruler,
   "rectangle.split.2x1": Columns2,
+  "plus.magnifyingglass": ZoomIn,
+  "minus.magnifyingglass": ZoomOut,
+  "arrow.up.left.and.down.right.magnifyingglass": Maximize2,
 } satisfies Record<string, LucideIcon>;
 type MenuSymbol = keyof typeof SYMBOL_GLYPH;
 
@@ -123,6 +126,10 @@ export const APP_MENUS: SubmenuEntry[] = [
       { kind: "separator", id: "view-modes" },
       { kind: "action", id: "rulers", text: "Rulers", check: true, symbol: "ruler" },
       { kind: "action", id: "guides", text: "Guides", check: true, symbol: "rectangle.split.2x1" },
+      { kind: "separator", id: "view-zoom" },
+      { kind: "action", id: "zoom-in", text: "Zoom In", symbol: "plus.magnifyingglass" },
+      { kind: "action", id: "zoom-out", text: "Zoom Out", symbol: "minus.magnifyingglass" },
+      { kind: "action", id: "zoom-fit", text: "Zoom to Fit", symbol: "arrow.up.left.and.down.right.magnifyingglass" },
       // Ours rather than the row AppKit inserts on first open, which arrives
       // after menu_symbols.rs has run and so would stay without its icon.
       { kind: "predefined", item: "Separator" },
@@ -190,7 +197,7 @@ function WebEntries(props: {
         <MenubarCheckboxItem key={entry.id} checked={!!props.checked[entry.id]}
           disabled={command.disabled} onClick={command.run}>
           <MenuGlyph name={entry.symbol} />
-          {entry.text}
+          {titleOf(command, entry.text)}
           {keys && <MenubarShortcut>{keys}</MenubarShortcut>}
         </MenubarCheckboxItem>
       );
@@ -198,7 +205,7 @@ function WebEntries(props: {
     return (
       <MenubarItem key={entry.id} disabled={command.disabled} onClick={command.run}>
         <MenuGlyph name={entry.symbol} />
-        {entry.text}
+        {titleOf(command, entry.text)}
         {keys && <MenubarShortcut>{keys}</MenubarShortcut>}
       </MenubarItem>
     );
@@ -320,6 +327,8 @@ async function nativeEntry(
   const command = commands[entry.id];
   const options = {
     id: entry.id,
+    // The plain title: menu_symbols.rs finds the row by it. A command's note
+    // goes on afterwards, through the state sync's setText.
     text: entry.text,
     enabled: !command.disabled,
     accelerator: nativeAccelerator(command),
@@ -489,6 +498,8 @@ function useNativeMenu(
     id: entry.id,
     enabled: !commands[entry.id].disabled,
     checked: isCheckAction(entry) ? !!checked[entry.id] : null,
+    plain: entry.text,
+    text: titleOf(commands[entry.id], entry.text),
   }));
   const signature = JSON.stringify(snapshot);
 
@@ -499,6 +510,13 @@ function useNativeMenu(
         const item = items.get(state.id);
         if (!item) throw new Error(`Native menu item is missing: ${state.id}`);
         const stateKey = `${state.enabled}:${state.checked ?? "-"}`;
+        // The title is tracked apart, so a check or enable change costs no
+        // setText; an item is installed under its plain title.
+        const textKey = `${state.id}:text`;
+        if ((appliedState.current.get(textKey) ?? state.plain) !== state.text) {
+          await item.setText(state.text);
+          appliedState.current.set(textKey, state.text);
+        }
         if (appliedState.current.get(state.id) === stateKey) return;
         await item.setEnabled(state.enabled);
         if (state.checked !== null && "setChecked" in item) {

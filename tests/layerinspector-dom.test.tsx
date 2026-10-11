@@ -344,6 +344,17 @@ describe("LayerInspector style", () => {
     expect(byLabel("Solid background")).toBeNull();
   });
 
+  // Raster art prints on solid white ink whatever its plate says (the mask
+  // paints its whole footprint), so the Metallic toggle would do nothing.
+  it("hides the plate toggle on raster image art, with a note; SVG art keeps it", () => {
+    render(image({ asset: "img-1" }), { rasterArt: true });
+    expect(byLabel("Metallic")).toBeNull();
+    expect(container.textContent).toContain("Raster art always prints on white ink");
+    render(image());
+    expect(byLabel("Metallic")).not.toBeNull();
+    expect(container.textContent).not.toContain("Raster art always prints on white ink");
+  });
+
   it("tracking is offered for text only", () => {
     render(text());
     expect($("#name-tracking")).not.toBeNull();

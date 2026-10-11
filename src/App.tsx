@@ -125,7 +125,7 @@ const CanView = lazy<ComponentType<CanViewProps>>(() => import("@/components/Can
   (m) => ({ default: m.CanView }),
   (err: unknown) => ({
     default: function CanViewLoadFailed({ onRenderError }: CanViewProps) {
-      useEffect(() => onRenderError(`The 3D view failed to load: ${String(err)}`), [onRenderError]);
+      useEffect(() => onRenderError(`The 3D view failed to load: ${errMsg(err)}`), [onRenderError]);
       return null;
     },
   })));
@@ -192,6 +192,7 @@ const HEADER_ALERT_TONE = {
   destructive: ["border-destructive/50", ""],
   warning: ["border-warning/50 bg-warning-soft", "text-warning-text"],
   success: ["border-success/50 bg-success-soft", "text-success-text"],
+  blocked: ["border-destructive/50", ""],
 } as const;
 
 /** Chrome-level error (or, with `tone="warning"`, a resolveLayers validation
@@ -203,12 +204,17 @@ const HEADER_ALERT_TONE = {
  *  descendant text through a selector on Alert itself that a className
  *  override can't reach. A success note is hidden from screen readers here:
  *  it is announced politely through the always-mounted status region beside
- *  it, since a live region mounted already holding its text is not read. */
+ *  it, since a live region mounted already holding its text is not read.
+ *  The blocked-export note (tone "blocked") looks like an error but is no
+ *  alert: it changes with every keystroke that keeps a value invalid, and an
+ *  alert would interrupt the reader each time. Its own always-mounted polite
+ *  status region announces it; the note itself stays a plain button. */
 function HeaderAlert({ children, tone = "destructive" }: { children: React.ReactNode; tone?: keyof typeof HEADER_ALERT_TONE }) {
   const [box, text] = HEADER_ALERT_TONE[tone];
   return (
-    <Alert variant={tone === "destructive" ? "destructive" : "default"} className={cn("w-auto px-2 py-0.5", box)}
-      {...(tone === "success" && { role: undefined, "aria-hidden": true })}>
+    <Alert variant={tone === "destructive" || tone === "blocked" ? "destructive" : "default"} className={cn("w-auto px-2 py-0.5", box)}
+      {...(tone === "success" && { role: undefined, "aria-hidden": true })}
+      {...(tone === "blocked" && { role: undefined })}>
       <AlertDescription className={cn("text-xs", text)}>
         {children}
       </AlertDescription>
@@ -261,6 +267,9 @@ const clampView = (r: DOMRect, z: number, x: number, y: number) => ({
   x: Math.min(0, Math.max(r.width * (1 - z), x)),
   y: Math.min(0, Math.max(r.height * (1 - z), y)),
 });
+
+/** One Zoom In / Zoom Out step (⌘= / ⌘-). */
+const ZOOM_FACTOR = 1.25;
 
 /** The pane's zoom range: 1 (fitted) through the 3D dolly's ceiling. */
 const clampZoom = (z: number) => Math.min(PREVIEW_OVERSAMPLE, Math.max(1, z));
@@ -454,10 +463,13 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [missingMaster, setMissingMaster] = useState<{
     id: string; where: string; current: string; choose: (c: "current" | "locate" | null) => void;
   } | null>(null);
-  // Re-renders after a library row is removed or retired. The index lives in
-  // localStorage, so nothing else in the document changes and the menu would
-  // keep the row; libraryEntries re-reads it on every render.
-  const [, refreshLibrary] = useReducer((n: number) => n + 1, 0);
+  // Bumped wherever this tab changes the library (a row remembered, removed
+  // or retired): the index lives in localStorage, so nothing else in the
+  // document changes. `library` below is read once per bump, not on every
+  // render (a pan or wheel renders per event). Another tab's changes are
+  // picked up when this tab comes to the front, another window's through
+  // the storage event.
+  const [libraryTick, refreshLibrary] = useReducer((n: number) => n + 1, 0);
   // Divider position reported by PreviewCompare (% of width showing
   // white-ink), so the View menu can check off whichever end it sits at.
   const [split, setSplit] = useState(0);
@@ -504,17 +516,22 @@ export const DocumentEditor = memo(function DocumentEditor({
       r.height * (1 - z) / 2 - pan.y * r.height));
   }, [viewMode]);
   const [zoomDraft, setZoomDraft] = useState<string | null>(null);
+  /** Zoom to `next(current)`, clamped, about the pane's centre — the 3D
+   *  views dolly their camera instead. Shared by the typed field and the
+   *  Zoom In / Out / to Fit commands. */
+  const zoomTo = (next: (z: number) => number) => {
+    if (viewMode === "2d") {
+      const r = previewPane.current?.getBoundingClientRect();
+      setZoom((v) => {
+        const z = clampZoom(next(v.z));
+        return r?.width ? zoomAbout(r, v, z, r.width / 2, r.height / 2) : { z, x: 0, y: 0 };
+      });
+    } else canView.current?.setZoom(clampZoom(next(camZoomPct / 100)));
+  };
   const applyTypedZoom = () => {
     const pct = parseFloat(zoomDraft ?? "");
     setZoomDraft(null);
-    if (!isFinite(pct)) return;
-    const z = clampZoom(pct / 100);
-    if (viewMode === "2d") {
-      const r = previewPane.current?.getBoundingClientRect();
-      setZoom((v) => r?.width
-        ? zoomAbout(r, v, z, r.width / 2, r.height / 2)
-        : { z, x: 0, y: 0 });
-    } else canView.current?.setZoom(z);
+    if (isFinite(pct)) zoomTo(() => pct / 100);
   };
   // Published to layout.ts during render, not from an effect: the rulers
   // and the toolbar's size readout read PAGE and OUTPUT_DPI while rendering.
@@ -762,7 +779,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   useEffect(() => {
     let cancelled = false;
     loadLabelFaces(family, fontOverrides)
-      .catch((error) => { if (!cancelled) setBuildError(String(error)); });
+      .catch((error) => { if (!cancelled) setBuildError(errMsg(error)); });
     return () => { cancelled = true; };
   }, [family, fontOverrides]);
 
@@ -808,7 +825,11 @@ export const DocumentEditor = memo(function DocumentEditor({
         const owner = keyOwner(e.target);
         if (owner && owner !== "widget") return;
       }
-      const cmd = commandsRef.current.find((c) => c.key === e.key.toLowerCase() && c.mods === mods);
+      // ⌘+ is Zoom In as well as ⌘=: "+" is Shift+= on a US keyboard (so it
+      // arrives as ⇧⌘) and a key of its own on many others.
+      const cmd = e.key === "+" && mods
+        ? commandsRef.current.find((c) => c.id === "zoom-in")
+        : commandsRef.current.find((c) => c.key === e.key.toLowerCase() && c.mods === mods);
       if (!cmd) return;
       // The key is the app's even while its command is disabled: ⌘S on a
       // clean document must not fall through to the browser's Save Page.
@@ -849,10 +870,34 @@ export const DocumentEditor = memo(function DocumentEditor({
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  // Invalid filled values (such as a bad UPC) block exports.
+  // Delete / Backspace removes the selected layers (the Remove Layer
+  // command) when focus is on the canvas or the page. Gated like the nudge:
+  // a field, popup, the inspector or a widget owns the key, and so does a
+  // focused Layers row, which removes with its own focus hand-off. So does
+  // any other focused button (the header's blocked-export note, a toolbar
+  // control): Backspace on the note that just selected a layer must not
+  // delete it.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!activeRef.current || (e.key !== "Delete" && e.key !== "Backspace")) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+      if (keyOwner(e.target) || dialogOpen()) return;
+      if ((e.target as Element | null)?.closest?.("[data-layer-id], button")) return;
+      const cmd = commandsRef.current.find((c) => c.id === "layer-remove");
+      if (!cmd || cmd.disabled) return;
+      e.preventDefault();
+      cmd.run();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Invalid filled values (such as a bad UPC) block exports. The header note
+  // selects the first of them; the Layers list marks each with a dot.
   const errorList = Object.entries(errors).map(([id, e]) => `${rowById.get(id)?.layer.name ?? id}: ${e}`);
   const blocked = errorList.length > 0;
   const blockedWhy = errorList.join(" · ");
+  const errorIds = useMemo(() => new Set(Object.keys(errors)), [errors]);
 
   /** Replaces (or, with null, removes) a loaded asset, revoking the old
    *  thumbnail URL — the one shape every drop and every X share. `next` is a
@@ -1010,7 +1055,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         });
         setBuildError("");
       })().catch((err) => {
-        if (!cancelled) setBuildError(String(err));
+        if (!cancelled) setBuildError(errMsg(err));
       });
     }, 150);
     return () => { cancelled = true; clearTimeout(timer); };
@@ -1452,6 +1497,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         return { master: liveMaster, label: adoptMaster(d.label === label ? promoted.label : d.label, liveMaster) };
       });
       await rememberMaster(m, where, bytes);
+      refreshLibrary();
       if (ours) pristineMaster.current = m;
       repaintMasterDirty((n) => n + 1);
     };
@@ -1533,6 +1579,7 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  index, then commitRebind onto it. */
   async function applyOpenedMaster(m: Master, path: string, bytes?: Uint8Array) {
     await rememberMaster(m, path, bytes);
+    refreshLibrary();
     commitRebind(m);
   }
 
@@ -1557,6 +1604,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   async function pickLibraryMaster(target: Master, assets: MasterAssets) {
     const path = masterIndex()[target.id]?.path ?? "";
     await rememberMaster(target, path);
+    refreshLibrary();
     masterFileHandle.current = null;
     masterFilePath.current = isTauri() && path ? { id: target.id, target: path } : null;
     commitRebind(target);
@@ -1565,15 +1613,22 @@ export const DocumentEditor = memo(function DocumentEditor({
 
   /** MasterPicker's library listing: the shipped master plus every master
    *  the index remembers, id → name only (resolved lazily on pick).
-   *  `inLibrary` is an index row, which is what Remove can drop. */
-  function libraryEntries(): Record<string, { name: string; inLibrary: boolean }> {
+   *  `inLibrary` is an index row, which is what Remove can drop. Re-read
+   *  only on a libraryTick bump or when this tab comes to the front — see
+   *  refreshLibrary. */
+  const library = useMemo(() => {
     const idx = masterIndex();
     const entries: Record<string, { name: string; inLibrary: boolean }> = {
       [SHIPPED_MASTER_ID]: { name: lolevMaster().name, inLibrary: !!idx[SHIPPED_MASTER_ID] },
     };
     for (const [id, e] of Object.entries(idx)) entries[id] = { name: e.name, inLibrary: true };
     return entries;
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the inputs live in localStorage; libraryTick and active say when to re-read
+  }, [libraryTick, active]);
+  useEffect(() => {
+    window.addEventListener("storage", refreshLibrary);
+    return () => window.removeEventListener("storage", refreshLibrary);
+  }, []);
 
   /** MasterPicker's resolve. A lookup can retire an index row whose file now
    *  holds another master, or whose file is gone with no remembered copy
@@ -1626,6 +1681,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       try {
         if (claimed()) return;
         const r = await resolveDefaultMaster();
+        refreshLibrary(); // a resolve can remember or retire library rows
         if (claimed() || editedRef.current) return;
         const current = docRef.current;
         const untouched = current.master.id === SHIPPED_MASTER_ID
@@ -1761,6 +1817,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         const hint = ref.masterHint;
         const resolved = await resolveLabelMaster(ref.masterId, hint, f.path)
           ?? await missingMasterChoice(ref.masterId, hint, f.path);
+        refreshLibrary(); // resolving (or the missing-master prompt) can remember or retire library rows
         if (!resolved) return "cancelled";
         masterAssets = resolved.assets;
         masterPath = resolved.path;
@@ -1883,6 +1940,11 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  list, while the key listener dispatches off `key`. A ⌘ key here fires
    *  even inside a text field, so never bind one a field needs (A/C/V/X/Z). */
   const twoD = viewMode === "2d";
+  // The PDF exports wait for the preview's render source; say why they are
+  // greyed out until it lands. A failed build is not "rendering": its
+  // reason is in the header, like the preview's own spinner gives way to it.
+  const pdfNote = previewReady || buildError ? undefined : "rendering…";
+  const removable = selected.some((id) => rowById.has(id));
   const commands: Command[] = [
     { id: "tab-new", label: "New Tab", key: "n", mods: "⌘", run: onNewTab },
     { id: "tab-close", label: "Close Tab", key: "w", mods: "⌘", run: onCloseTab },
@@ -1896,9 +1958,9 @@ export const DocumentEditor = memo(function DocumentEditor({
       run: () => setPendingSave({ as: false }) },
     { id: "master-save-as", label: "Save Master As…", run: () => setPendingSave({ as: true }) },
     { id: "export-both", label: "Export PDFs", key: "e", mods: "⌘",
-      disabled: pdfExportBlocked, run: exportPdfs },
-    { id: "export-art", label: "Export Artwork PDF", disabled: pdfExportBlocked, run: downloadArt },
-    { id: "export-mask", label: "Export Mask PDF", disabled: pdfExportBlocked, run: downloadMask },
+      disabled: pdfExportBlocked, note: pdfNote, run: exportPdfs },
+    { id: "export-art", label: "Export Artwork PDF", disabled: pdfExportBlocked, note: pdfNote, run: downloadArt },
+    { id: "export-mask", label: "Export Mask PDF", disabled: pdfExportBlocked, note: pdfNote, run: downloadMask },
     { id: "export-psd", label: "Export PSDs", key: "e", mods: "⇧⌘",
       disabled: exportBlocked, run: () => void exportPsd() },
     { id: "export-psd-art", label: "Export Artwork PSD", disabled: exportBlocked, run: () => void exportPsd("art") },
@@ -1906,6 +1968,14 @@ export const DocumentEditor = memo(function DocumentEditor({
     { id: "undo", label: "Undo", shortcut: "⌘Z", disabled: !canUndo, run: mutating(undo) },
     { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: !canRedo, run: mutating(redo) },
     { id: "variant-new", label: "New Variant", run: onNewVariant },
+    { id: "layer-add-text", label: "Add Text Layer", run: () => onAddLayer("text") },
+    { id: "layer-add-image", label: "Add Image Layer", run: () => onAddLayer("image") },
+    { id: "layer-add-barcode", label: "Add Barcode Layer", run: () => onAddLayer("barcode") },
+    { id: "layer-add-qr", label: "Add QR Layer", run: () => onAddLayer("qr") },
+    // Delete/Backspace reach this through their own listener (see above),
+    // which stands aside in text fields; the shortcut here is display-only.
+    { id: "layer-remove", label: "Remove Layer", shortcut: "⌫", disabled: !removable,
+      run: () => onRemoveLayer(selected[selected.length - 1]) },
     { id: "settings", label: "Settings…", run: () => setSettingsOpen(true) },
     { id: "view-label", label: "Preview: Label", key: "1", run: () => show2d("art") },
     { id: "view-mask", label: "Preview: Mask", key: "2", run: () => show2d("mask") },
@@ -1914,6 +1984,10 @@ export const DocumentEditor = memo(function DocumentEditor({
       disabled: !twoD, run: () => setShowRulers((shown) => !shown) },
     { id: "guides", label: showGuides ? "Hide guides" : "Show guides", key: "g",
       disabled: !twoD, run: () => setShowGuides((shown) => !shown) },
+    // Zoom about the pane centre (the 3D views dolly their camera).
+    { id: "zoom-in", label: "Zoom In", key: "=", mods: "⌘", run: () => zoomTo((z) => z * ZOOM_FACTOR) },
+    { id: "zoom-out", label: "Zoom Out", key: "-", mods: "⌘", run: () => zoomTo((z) => z / ZOOM_FACTOR) },
+    { id: "zoom-fit", label: "Zoom to Fit", key: "0", mods: "⌘", run: () => zoomTo(() => 1) },
   ];
   const index = Object.fromEntries(commands.map((c) => [c.id, c])) as Record<string, Command>;
   const byId = (id: string): Command => {
@@ -2120,7 +2194,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           }}>
             {/* The master picker, then the ONE Layers list (spec: UI). */}
             <MasterPicker master={master} label={label}
-              library={libraryEntries()} resolve={resolveLibraryMaster}
+              library={library} resolve={resolveLibraryMaster}
               onMaster={pickLibraryMaster} onNewVariant={onNewVariant}
               onRenameVersion={onRenameVersion} onRemoveVersion={onRemoveVersion}
               onSaveMaster={() => setPendingSave({ as: false })} masterDirty={masterDirty}
@@ -2131,7 +2205,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onToggle={(id, prop, value) => patch(id, { [prop]: value })}
               onRename={(id, name) => patch(id, { name })}
               onReorder={(id, delta) => editMaster((m) => moveLayers(m, gestureIds(selected, id), id, delta))}
-              onAdd={onAddLayer} onRemove={onRemoveLayer}
+              onAdd={onAddLayer} onRemove={onRemoveLayer} invalid={errorIds}
               changedOnly={changedOnly} onChangedOnly={setChangedOnly}
               />
           </SidebarContent>
@@ -2149,7 +2223,16 @@ export const DocumentEditor = memo(function DocumentEditor({
             rulers: showRulers,
             guides: showGuides,
           }} />}
-          {blocked && <HeaderAlert>{blockedWhy}</HeaderAlert>}
+          {blocked && (
+            <HeaderAlert tone="blocked">
+              <button type="button" data-blocked-export
+                className="rounded-sm text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                title="Export is blocked. Click to select the invalid layer."
+                onClick={() => { const id = Object.keys(errors)[0]; setSelection({ ids: [id], anchor: id }); }}>
+                {blockedWhy}
+              </button>
+            </HeaderAlert>
+          )}
           {loadError && <HeaderAlert tone={loadError.startsWith("Note: ") ? "warning" : "destructive"}>{loadError}</HeaderAlert>}
           {headerError && <HeaderAlert tone={headerError.startsWith("Note: ") ? "warning" : "destructive"}>{headerError}</HeaderAlert>}
           {/* An error in the header replaces the export confirmation. */}
@@ -2159,6 +2242,11 @@ export const DocumentEditor = memo(function DocumentEditor({
               keeps the note while an error hides it, so a render error
               clearing doesn't refill it and re-announce a stale "Saved …". */}
           <span role="status" data-export-saved className="sr-only">{exportNote}</span>
+          {/* The blocked-export reason's announcement, mounted before the
+              label is blocked for the same reason. */}
+          <span role="status" data-export-blocked-status className="sr-only">
+            {blocked ? `Export blocked: ${blockedWhy}` : ""}
+          </span>
           {resolveWarnings.length > 0 && <HeaderAlert tone="warning">{resolveWarnings.join(" · ")}</HeaderAlert>}
           {/* Open Master's fallback — see masterInput/openMasterPicker. */}
           <input ref={masterInput} type="file" accept={MASTER_EXT} hidden
@@ -2393,6 +2481,8 @@ export const DocumentEditor = memo(function DocumentEditor({
                   if (box) patch(inspected.layer.id, bindingPatch(inspected.layer, to, side, box));
                 }}
                 content={contentFor(inspected.layer)}
+                rasterArt={inspected.layer.kind === "image"
+                  && (customImages[inspected.layer.asset]?.image.kind ?? "svg") !== "svg"}
                 fontFamily={family} />
             )}
           </SheetContent>
