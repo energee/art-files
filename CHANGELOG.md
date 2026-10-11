@@ -4,7 +4,7 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
-## [Unreleased]
+## [0.1.106] - 2026-10-11
 
 ### Added
 - **PDFs tell the printer where the die cut is.** Both the art and mask PDFs now declare a TrimBox (the 8 × 5in label, inside the bleed) and a BleedBox (the full page), so preflight and RIP software no longer assume the trim is the page edge. The PDF also names the Label Lab version that made it. What prints is unchanged.
