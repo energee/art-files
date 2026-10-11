@@ -28,7 +28,7 @@ import {
 } from "@/layout";
 import { FACE_WEIGHT, labelFontCss } from "@/fonts";
 import { modsOf, type SelectMods } from "@/selection";
-import { cn } from "@/lib/utils";
+import { cn, errMsg } from "@/lib/utils";
 import {
   BLEED, BLEED_STROKE, cornerRadius, cqh, dieRadius, GROUP_PAD, HANDLES, inches, inkOf, pageBox,
   SEL_PAD,
@@ -230,7 +230,7 @@ export const PreviewCompare = forwardRef<
       } catch (err) {
         // Routed to App's error strip; the canvases keep whatever frame
         // last painted successfully.
-        onRenderError?.(String(err));
+        onRenderError?.(errMsg(err));
       }
     });
     return () => cancelAnimationFrame(raf);

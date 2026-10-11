@@ -1,6 +1,12 @@
-// history.test.ts — the undo/redo stack transitions behind useHistory.
-import { describe, expect, it } from "vitest";
-import { pushed, redone, resetTo, undone, type Stacks } from "../src/history";
+// history.test.ts — the undo/redo stack transitions behind useHistory, and
+// the hook's step grouping (mounted through react-dom/client + act).
+// @vitest-environment happy-dom
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { pushed, redone, resetTo, undone, useHistory, type Stacks } from "../src/history";
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("history stacks", () => {
   it("undo returns the previous value and redo puts it back", () => {
@@ -37,5 +43,47 @@ describe("history stacks", () => {
 
   it("resets both stacks at a new project boundary", () => {
     expect(resetTo("new")).toEqual({ past: [], present: "new", future: [] });
+  });
+});
+
+describe("useHistory step grouping", () => {
+  // Pin the clock so every edit lands inside the 500 ms window; without the
+  // fix the first case folds, so it fails rather than passing on slow runs.
+  beforeEach(() => {
+    let clock = 10_000;
+    vi.spyOn(performance, "now").mockImplementation(() => (clock += 10));
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  // Mounts the hook and hands back a live handle to its latest render.
+  function mount() {
+    const h: { current: ReturnType<typeof useHistory<string>> | null } = { current: null };
+    function Probe() {
+      h.current = useHistory("a");
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    act(() => root.render(createElement(Probe)));
+    return { h, unmount: () => act(() => root.unmount()) };
+  }
+
+  it("an unkeyed edit right after a field session opens its own step", () => {
+    const { h, unmount } = mount();
+    act(() => h.current!.set("b", "field-name")); // field commit
+    act(() => h.current!.set("c")); // unrelated click, inside the 500 ms window
+    act(() => h.current!.undo());
+    expect(h.current!.value).toBe("b"); // only the click is undone
+    act(() => h.current!.undo());
+    expect(h.current!.value).toBe("a");
+    unmount();
+  });
+
+  it("unkeyed edits inside the window still coalesce", () => {
+    const { h, unmount } = mount();
+    act(() => h.current!.set("b"));
+    act(() => h.current!.set("c"));
+    act(() => h.current!.undo());
+    expect(h.current!.value).toBe("a");
+    unmount();
   });
 });

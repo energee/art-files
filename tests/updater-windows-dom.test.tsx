@@ -29,6 +29,7 @@ it("Windows rechecks dirty tabs after downloading and before its exiting install
     await act(async () => render(false, 1));
     await act(async () => installButton().click());
     expect(update.download).toHaveBeenCalledOnce();
+    expect(update.download).toHaveBeenCalledWith(expect.any(Function), { timeout: 900_000 });
     await act(async () => render(true, 1));
     await act(async () => { finish(); });
     expect(update.install).not.toHaveBeenCalled();

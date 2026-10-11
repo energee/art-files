@@ -125,8 +125,28 @@ describe("LayerList", () => {
       r.layer.id === "wordmark" ? { layer: { ...r.layer, enabled: false } } : r);
     render(off);
     expect(byLabel("Brand: enabled").getAttribute("aria-pressed")).toBe("false");
-    expect(rowFor("wordmark").querySelector(".opacity-50")).not.toBeNull();
-    expect(rowFor("name").querySelector(".opacity-50")).toBeNull();
+    // Dimmed with muted ink, not row opacity: opacity-50 multiplied into the
+    // badge's own /70 and composited text under 4.5:1 (#440).
+    expect(rowFor("wordmark").querySelector(".opacity-50")).toBeNull();
+    expect(rowFor("wordmark").querySelector(".text-muted-foreground")).not.toBeNull();
+    expect(rowFor("name").querySelector(".text-muted-foreground")).toBeNull();
+  });
+
+  it("keeps an inactive row's muted ink when it is selected or hovered (#440)", () => {
+    const off = baseProps({ selected: ["wordmark"] });
+    off.rows = off.rows.map((r) =>
+      r.layer.id === "wordmark" ? { layer: { ...r.layer, enabled: false } } : r);
+    render(off);
+    const button = rowFor("wordmark").querySelector('[data-sidebar="menu-button"]')!;
+    const row = button.parentElement!;
+    for (const el of [row, button]) {
+      expect(el.className).not.toMatch(/(^|\s)opacity-50/);
+      expect(el.className).not.toMatch(/(^|\s)text-sidebar-accent-foreground/);
+      expect(el.className).not.toMatch(/hover:text-sidebar-accent-foreground/);
+      expect(el.className).toContain("text-muted-foreground");
+    }
+    expect(button.className).not.toMatch(/data-active:text-sidebar-accent-foreground/);
+    expect(button.className).not.toMatch(/active:text-sidebar-accent-foreground/);
   });
 
   it("the lock switch reports onToggle with the flipped value", () => {
@@ -140,21 +160,23 @@ describe("LayerList", () => {
     const lead = rowFor("collabLead");
     expect(lead.textContent).toContain("Lead-in");
     expect(lead.textContent).toContain("Collab");
-    expect(lead.querySelector(".opacity-50")).not.toBeNull();
+    expect(lead.querySelector(".opacity-50")).toBeNull();
+    expect(lead.querySelector(".text-muted-foreground")).not.toBeNull();
 
     const on = lolevRows(true);
     render(baseProps({ rows: on.rows }));
     expect(rowFor("collabLead").textContent).toContain("Collab");
-    expect(rowFor("collabLead").querySelector(".opacity-50")).toBeNull();
+    expect(rowFor("collabLead").querySelector(".text-muted-foreground")).toBeNull();
     // A master row never carries a badge.
     expect(rowFor("wordmark").textContent).not.toContain("Collab");
   });
 
-  it("keeps the variant badge text at /70 in both states and marks off with a strikethrough (#440)", () => {
+  it("inks the variant badge with the row's muted colour while off, /70 while on, and strikes off through (#440)", () => {
     const badgeClass = () => Array.from(rowFor("collabLead").querySelectorAll("span[title]"))
       .find((el) => el.textContent === "Collab")!.className;
     render(baseProps());
-    expect(badgeClass()).toContain("text-sidebar-foreground/70");
+    // Off: inherits the inactive row's muted ink, no extra alpha on top.
+    expect(badgeClass()).not.toContain("text-sidebar-foreground/70");
     expect(badgeClass()).not.toContain("/40");
     expect(badgeClass()).toContain("line-through");
 

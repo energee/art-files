@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { readPsd } from "ag-psd";
 import { readFileSync } from "node:fs";
 import { openFont } from "../src/fontkit";
-import { buildPsd, digitGroupPaths, qrBeziers, PSD_DOC, type PsdAssets } from "../src/psd/build";
+import { buildPsd, digitGroupPaths, qrBeziers, type PsdAssets } from "../src/psd/build";
 import { qrShapes } from "../src/qr";
 import * as L from "../src/layout";
 import { DESIGN_DPI, setOutputDpi } from "../src/layout";
@@ -220,7 +220,7 @@ describe("psd build", () => {
     const art = await build(opts, "art", { ...assets, images: { tex: px, msk: px } });
     expect(groups(art.children as any[])[0]).toBe("Background");
     // A square raster cover-fits the page width, like the PDF and canvas.
-    expect(art.children![0].right! - art.children![0].left!).toBe(PSD_DOC.w);
+    expect(art.children![0].right! - art.children![0].left!).toBe(L.PSD_DOC.w);
     const mask = await build(opts, "mask", { ...assets, images: { tex: px, msk: px } });
     expect(groups(mask.children as any[]).slice(0, 3)).toEqual(["Knockout base", "Metallic mask", "Volume"]);
   });

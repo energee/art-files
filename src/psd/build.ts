@@ -40,8 +40,8 @@ import { openFont } from "../fontkit";
 import * as L from "../layout";
 import type { Face, PlacedBarcode, PlacedPaths, PlacedText } from "../plan";
 import type { CollabImage } from "../pdf/build";
-import { strokeSpec } from "../plan";
-import type { PlacedLayer, PlacedPage } from "../planLayers";
+import { digitStartX, strokeSpec } from "../plan";
+import { pageDrawsOn, type PlacedLayer, type PlacedPage } from "../planLayers";
 import { facesOf } from "../planLayers";
 import { PAGE_ART_ID, type Layer as AppLayer, type TextLayer } from "../model/layers";
 import { qrShapes, type QrShapes } from "../qr";
@@ -127,7 +127,7 @@ const px = (n: number) => (n / 72) * L.OUTPUT_DPI;
 const pos = (n: number) => px(n + L.BLEED_SHIFT);
 /** Document size in pixels. Page rasters are NOT pre-fit to it — hand them
  *  over at natural size; pageLayer cover-fits them (see psdImages). */
-export const PSD_DOC = L.PSD_DOC;
+const PSD_DOC = L.PSD_DOC;
 
 const color255 = (fill: Fill) => {
   const c = L.parseHexFill(fill);
@@ -141,7 +141,7 @@ const MASK_BLUE = L.MASK_BLUE_HEX;
  *  in mask mode metallic knocks out (white) and white-layer prints ink
  *  (mask blue); art mode is just the fill. */
 const paint = (mode: PsdMode, fill: Fill, layer: "metallic" | "white"): Fill =>
-  mode === "art" ? fill : layer === "metallic" ? "#FFFFFF" : MASK_BLUE;
+  mode === "art" ? fill : layer === "metallic" ? L.WHITE_HEX : MASK_BLUE;
 
 /** Resolve an enabled stroke's art or mask color. Missing legacy plate data
  *  is deliberately white/non-metallic through the shared resolver. */
@@ -621,7 +621,7 @@ function buildLayers(
   // Base coats precede the list, while page rasters retain authored draw order.
   const hasMask = items.some((r) => r.kind === "page" && r.role === "mask" && pixelsOf(r.asset));
   if (mode === "mask") {
-    groups.push(floodLayer("Knockout base", "#FFFFFF"));
+    groups.push(floodLayer("Knockout base", L.WHITE_HEX));
     if (!hasMask) groups.push(floodLayer("White ink flood", MASK_BLUE));
   }
 
@@ -629,7 +629,7 @@ function buildLayers(
     const page = its[0];
     if (page.kind === "page") {
       const pixels = pixelsOf(page.asset);
-      if (pixels && page.role === (mode === "art" ? "background" : "mask"))
+      if (pixels && pageDrawsOn(page, mode))
         groups.push(pageLayer(nameOf(id), page, pixels));
       continue;
     }
@@ -662,6 +662,10 @@ function buildLayers(
       }
     } else {
       for (const r of its) {
+        // Text runs became the type layer above; a page item never shares an
+        // id with these (its group continued). Every remaining kind is named,
+        // so a new PlacedLayer kind fails to compile at the final else.
+        if (r.kind === "text" || r.kind === "page") continue;
         if (r.kind === "paths") {
           if (!layer && r.paths.some((d) => /[aA]/.test(d)))
             throw new Error(`PSD: layer "${id}" draws arc paths (a QR?) and needs its layer data — pass opts.layers.`);
@@ -678,7 +682,7 @@ function buildLayers(
           // ink under art the art plate never prints.
           const pixels = pixelsOf(r.asset);
           if (pixels) children.push(rasterItemLayer(name, r, pixels, mode));
-        } else if (r.kind === "barcode") {
+        } else {
           children.push(barcodeLayer(name, r, fk, mode));
         }
       }
@@ -704,7 +708,7 @@ function barcodeLayer(name: string, bc: PlacedBarcode, fk: Font, mode: PsdMode):
   const digitGroups = bc.digits.map((d) =>
     digitGroupPaths(
       fk, d.text, bc.textSize, bc.rotated,
-      bc.rotated ? d.x : d.x - d.w / 2, d.y,
+      digitStartX(d, bc.rotated), d.y,
     ),
   );
   const barcodePaths: BezierPath[] = [
