@@ -269,3 +269,17 @@ point at an entry still in `ledger.md`.
 - delta: print-size CPI readout beside character heights, using the highest line-average count divided by occupied run width; excludes whitespace from character count but retains its width and justified gaps; supports rotated text, font/size/case/spacing/wrap changes
 - scope: explicitly labeled estimate/highest line average, not a sliding one-inch maximum or compliance verdict. TTB 16.22 defines letters, numbers and marks but retrieved guidance did not establish an averaging protocol.
 - evidence: 9 focused real-font/geometry/DOM tests pass, including half-inch count, justified gaps, rotation, densest line, inverse size scaling and invalid widths; production build, diff and binary-impacting 0.1.61 release gate pass. No release published.
+
+## 2026-09-05 restrictive-csp
+- finding: [security/med] src-tauri/tauri.conf.json:28 — app.security.csp is null
+- status: done
+- attempts: 1/3
+- id: restrictive-csp
+- depends-on: native-desktop-files
+- read-path: src-tauri/tauri.conf.json
+- write-path: src-tauri/tauri.conf.json
+- acceptance: preview, workers and updater work under a CSP allowing self, blob:, worker-src blob:, ipc:
+- evidence: re-checked 2026-10-11 @ 0bb506c. tauri.conf.json:28 sets default-src 'self', img-src blob: data:, connect-src ipc: http://ipc.localhost, worker-src 'self' (the two workers are bundled module workers via new URL, so 'self' suffices; no blob: worker needed); added in 739a778 (#249). tests/tauri-capabilities.test.ts asserts it is enforced with no eval or remote host. Shipped in every release since; desktop runtime not re-run in this check
+- delta: csp null → enforced policy
+- fixed-by: 739a778
+- verified-by: same-context fallback @ 739a778

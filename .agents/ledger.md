@@ -121,12 +121,13 @@ no status, no attempts, no delta.
 
 ## 2026-09-04 master-as-layers-session-resume
 - finding: [user request] Claude session 0bff2b49-40ae-4dac-b567-b62a13afff54 stopped at its session limit during v3 App/backend integration
-- status: in-progress
+- status: parked(proof)
 - attempts: 1/3
 - delta: unfinished App/backend contracts integrated; unified Layers list, rich multiline editors, variant-targeted edits, binding validation, Settings, PDF/PSD/canvas shared placement, legacy CLI conversion and four-format generation completed; version 0.1.43 prepared
 - evidence: 765/765 tests across 60 suites, production build (including TypeScript), Cargo check, diff check and 0.1.43 release metadata gate pass; CLI generated all four exports with and without art; App DOM test exercises selection, content edit and undo
 - ruling: remaining visual acceptance requires live browser access and Photoshop-rendered old/new PSD rasters; CUA returned no browser available, and ag-psd does not render editable text/vector/effects composites. PDF 600-DPI diff review is complete in tests/goldens/README.md. No release published.
 - notes: horizontal/above/baseline binding and variant draw order remain deferred per approved spec; relative below bindings and chains implemented
+- re-check 2026-10-11 @ 0bb506c: in-progress → parked(proof). The integration shipped and has been released through 0.1.106; the only remaining item is the Photoshop raster certification, still recorded as pending in tests/goldens/README.md (lines 22-30, 59). Unparks when someone renders the old/new PSDs in Photoshop at 600 DPI and commits the pair.
 
 ## 2026-09-05 release-build-performance
 - finding: [user request] optimize builds after Windows release 33962816055 took 6m 2s, including 3m 22s in Cargo despite a cache hit
@@ -138,8 +139,8 @@ no status, no attempts, no delta.
 
 ## 2026-09-05 native-desktop-files
 - finding: [Fail fast/high] src/masters.ts:40, src/App.tsx:1114,1441,1720 — custom masters cannot resolve on desktop; masterHint reads are uncontained; export prompts twice; the platform save is spelled three times
-- status: open
-- attempts: 0/3
+- status: done
+- attempts: 1/3
 - id: native-desktop-files
 - depends-on: none
 - read-path: src/files.ts
@@ -157,16 +158,10 @@ no status, no attempts, no delta.
 - write-path: tests
 - acceptance: a .label whose masterHint escapes both roots opens to a named error plus a picker with no fs read; Export PDFs asks once and writes both plates or nothing; Open Master remembers a real path on desktop
 - observed-at: 35bac01
-
-## 2026-09-05 restrictive-csp
-- finding: [security/med] src-tauri/tauri.conf.json:28 — app.security.csp is null
-- status: open
-- attempts: 0/3
-- id: restrictive-csp
-- depends-on: native-desktop-files
-- read-path: src-tauri/tauri.conf.json
-- write-path: src-tauri/tauri.conf.json
-- acceptance: preview, workers and updater work under a CSP allowing self, blob:, worker-src blob:, ipc:
+- evidence: re-checked 2026-10-11 on 802d645. masterHint reads go through hintTrusted (src/masters.ts:254, added 739a778 #249); an untrusted hint is never read and missingMasterChoice names it "which was not read" with Locate/Use current (ace61a5 #376). Open Master uses the native dialog and keeps target.path (openMasterPicker, 74ec29c #59). Platform save is one saveThrough in src/files.ts (2325374 #359). Export pairs ask once on desktop, mask written beside the art file (802d645 #505)
+- delta: all four parts closed. "Both plates or nothing" was superseded: a cancelled or failed second file reports the partial save by design (2026-09-27 issue-queue-export-and-cleanup, #359), not rolled back
+- fixed-by: 802d645
+- verified-by: same-context fallback @ 802d645
 
 ## 2026-09-05 masters-library-list
 - finding: [KISS/med] src/masters.ts:20 — localStorage index is a single point of failure; a Rust list_masters over the library folder retires it and drives New Label from Master
@@ -178,6 +173,7 @@ no status, no attempts, no delta.
 - write-path: src/masters.ts
 - write-path: src-tauri/src/main.rs
 - acceptance: a .master copied into the library folder appears in New Label from Master with no registration step
+- re-check 2026-10-11 @ 0bb506c: still open. src/masters.ts is still the localStorage row index (one key per master since #408); no list_masters command in src-tauri/src. #507 only memoised libraryEntries() reads
 
 ## 2026-09-05 updater-failure-tests
 - finding: [tests/med] src/components/DesktopUpdater.tsx:142-145,203-211 — check() and downloadAndInstall() rejections untested
@@ -188,6 +184,7 @@ no status, no attempts, no delta.
 - read-path: src/components/DesktopUpdater.tsx
 - write-path: tests
 - acceptance: DOM tests assert the silent-log path and the "Could not install the update" reopen
+- re-check 2026-10-11 @ 0bb506c: still open, half done. tests/updater-dom.test.tsx covers a rejected downloadAndInstall ("Could not install", Update failed, Try again; #359) and a rejected manual check(). The automatic-check silent path (DesktopUpdater.tsx:164 console.error, checkRequest 0) has no test: no updater test spies on console
 
 ## 2026-09-05 legacy-oracle-deletion
 - finding: [YAGNI/med] tests/legacy/plan.ts:1 — 1,220-line pre-v3 layout oracle and 8 suites
@@ -206,12 +203,14 @@ no status, no attempts, no delta.
 - write-path: package.json
 - write-path: .github/workflows/ci.yml
 - acceptance: `npm run lint` passes in CI with react-hooks and jsx-a11y enabled
+- re-check 2026-10-11 @ 0bb506c: still open, half done. ESLint with react-hooks rules-of-hooks/exhaustive-deps runs in CI (`npm run lint`, ci.yml:27; added 0606d97 #252). jsx-a11y is not a dependency and not in eslint.config.js
 
 ## 2026-09-05 vision-items
 - finding: [UX/low] five delight items, each under 30 minutes: Reveal in Finder after export; drop a .master onto the window to register it; Recent Masters submenu; greyed Export explains itself via one shared gate and a tooltip; non-destructive dismissable warning alert (top-ten #10)
 - status: open
 - attempts: 0/3
 - depends-on: native-desktop-files
+- re-check 2026-10-11 @ 0bb506c: still open. Partly met: the blocked-export reason is a button that selects the invalid layer and PDF exports say "(rendering…)" (c66934b #507); Open Recent covers .label only (45c726e #506), not masters. No reveal-in-Finder, no .master drop handling (TabsShell/FileDrop), no dismissable warning alert found
 
 ## 2026-09-07 cli-generate
 
@@ -303,6 +302,7 @@ no status, no attempts, no delta.
 - delta: investigation complete; runtime unchanged, fix remains open
 - release: non-binary-impacting documentation and agent memory only; no release queued
 - evidence: git diff --cached --check and node scripts/check-release.mjs origin/main passed on audit/ux-narrow-inspector documentation diff based on 1b00249; no application suite run
+- re-check 2026-10-11 @ 0bb506c: still open. src/App.tsx:2276 still adds mr-[300px] whenever a layer is inspected and SheetContent stays fixed at w-[300px] (:2470); no narrow-window policy added
 
 ## 2026-10-05 ux-color-labels
 - finding: [a11y/high] src/components/ColorField.tsx:164 — Fill and stroke hex fields have no accessible names
@@ -313,6 +313,7 @@ no status, no attempts, no delta.
 - delta: investigation complete; runtime unchanged, fix remains open
 - release: non-binary-impacting documentation and agent memory only; no release queued
 - evidence: git diff --cached --check and node scripts/check-release.mjs origin/main passed on audit/ux-color-labels documentation diff based on 1b00249; no application suite run
+- re-check 2026-10-11 @ 0bb506c: still open. ColorField's hex Input (ColorField.tsx:160) has an id but no aria-label, and LayerInspectorSections.tsx:351/386 label the groups with an h2 Heading, not a <label htmlFor>
 
 ## 2026-10-05 ux-decimal-input
 - finding: [UX/low] src/components/TextEditor.tsx:731 — ABV decimals conflict with native input validation and stepping
@@ -323,6 +324,7 @@ no status, no attempts, no delta.
 - delta: investigation complete; runtime unchanged, fix remains open
 - release: non-binary-impacting documentation and agent memory only; no release queued
 - evidence: git diff --cached --check and node scripts/check-release.mjs origin/main passed on audit/ux-decimal-input documentation diff based on 1b00249; no application suite run
+- re-check 2026-10-11 @ 0bb506c: still open. TextEditor.tsx:731 still renders type="number" with no step; #509 tightened validateField to plain decimals but the native step grid is unchanged
 
 ## 2026-10-08 issue-419-webstorage
 - finding: [maint/med] #419 — Node 26 reportedly needs NODE_OPTIONS=--no-experimental-webstorage for `npm test` (2026-09-27 issue-queue-339 evidence)
@@ -370,4 +372,123 @@ no status, no attempts, no delta.
 - attempts: 1/3
 - delta: PR #490 splits three of them with no behavior change: model/edit.ts 1247 → 43 (editRecords, editLayers, editGestures, editVariants, editLabel, editSave), LayerInspector.tsx 1045 → 160 (Controls, Sections, Template), PreviewCompare.tsx 977 → 744 (previewOverlay.ts, InPlaceRichField.tsx). edit.ts's runtime export list is unchanged. tests/module-size.test.ts holds each split module and its parts at or under 750 lines. Still open: src/three/canScene.ts (848), src/psd/build.ts (811), src/components/TextEditor.tsx (780)
 - evidence: on fix/433, npx tsc --noEmit and npm run lint clean, npm run build OK, related vitest files green (see PR #490)
+- re-check 2026-10-11 @ 0bb506c: still in-progress. PR #490 merged as 94cb40b. Remaining three still over 750: src/three/canScene.ts 848, src/psd/build.ts 802 (811 → 802 after b37a27d #501), src/components/TextEditor.tsx 780
 - release: binary-impacting (app source moved, no visible change); CHANGELOG [Unreleased] / Changed bullet present
+
+## 2026-10-11 updater-download-timeout
+- finding: [correctness/med] src/components/DesktopUpdater.tsx — update downloads had a 120 s whole-transfer timeout, so links slower than ~0.8 Mbps never finished
+- status: done
+- delta: one DOWNLOAD_TIMEOUT_MS = 15 min for download and downloadAndInstall; check() keeps 15 s; both updater DOM suites assert 900_000
+- evidence: merged as 5c671b5 (#499)
+
+## 2026-10-11 errmsg-everywhere
+- finding: [consistency/low] AppMenu, DesktopUpdater, CanView, PreviewCompare, CharacterHeight, LazyDialog, TabsShell, MasterPicker, psd/worker — String(err) put a stray "Error:" prefix on user-visible messages
+- status: done
+- delta: every site outside App routes through errMsg; tests/errmsg.test.ts added
+- evidence: merged as 53a3050 (#498)
+
+## 2026-10-11 history-keyed-fold
+- finding: [correctness/med] src/history.ts — an unkeyed edit within 500 ms of a keyed field session folded into that field's undo step
+- status: done
+- delta: an unkeyed edit after a keyed session opens its own step; plain scrub coalescing unchanged; tests/history.test.ts mounts useHistory
+- evidence: merged as 1065c10 (#500)
+
+## 2026-10-11 inactive-row-ink
+- finding: [a11y/med] #440 src/components/LayerList.tsx — opacity-50 on inactive rows stacked onto the variant badge (2.15:1 light, 2.90:1 dark)
+- status: done
+- delta: inactive rows use text-muted-foreground (5.70:1 / 7.09:1 on the sidebar, 4.66:1 / 6.83:1 on the accent); hover/active accent ink overridden while inactive
+- evidence: merged as ada3af5 (#497)
+
+## 2026-10-11 export-error-scope
+- finding: [correctness/med] #473 src/useExport.ts — a successful export cleared the shared buildError slot, wiping unrelated asset, master and menu errors
+- status: done
+- delta: success clears only the export's own last message (lastExportError ref); tests/use-export-dom.test.tsx is the hook's first coverage
+- evidence: merged as 9af2082 (#504)
+
+## 2026-10-11 desktop-quit-open-paths
+- finding: [correctness/med] src-tauri/src/terminate.rs, main.rs — a hung webview cancelled every Dock quit forever; relative or dotted argv paths opened duplicate tabs
+- status: done
+- delta: a second terminate within 5 s quits (pure terminate_reply, unit-tested); opened paths canonicalised with dunce; non-macOS quit comment and workspace docs corrected (Windows logout skips the unsaved prompt)
+- evidence: merged as dcf911f (#502)
+
+## 2026-10-11 renderer-shared-plate-rules
+- finding: [DRY/low] src/pdf/build.ts, canvas/draw.ts, psd/build.ts — pageDrawsOn, barcode digit start x and plate ink choice spelled per renderer
+- status: done
+- delta: pageDrawsOn exported once from planLayers.ts; digitStartX in plan.ts; local ink() helpers; L.WHITE_HEX replaces hardcoded #FFFFFF; PSD item loop exhaustive; no output change (goldens untouched)
+- evidence: merged as b37a27d (#501)
+
+## 2026-10-11 ci-hardening
+- finding: [evidence/med] .github/workflows — no vite build or cargo fmt in CI; the macOS-only rust job never compiled the non-macOS cfg code; docs-site unbuilt in CI
+- status: done
+- delta: npm cache, npm run build, cargo fmt --check, rust-cross job (ubuntu + windows cargo check), docs.yml, persist-credentials false on release legs; cargo fmt applied; rust-version 1.77.2 → 1.90; tests/setup.ts sets IS_REACT_ACT_ENVIRONMENT once (54 copies removed)
+- evidence: merged as 99e8964 (#503)
+
+## 2026-10-11 export-pair-one-dialog
+- finding: [UX/med] src/useExport.ts — Export PDFs/PSDs opened two native save dialogs on desktop
+- status: done
+- delta: the mask is written beside the chosen art file as <stem>-mask.<ext>; an existing file there falls back to its own dialog (nativePathExists); capability globs add *-mask.pdf/psd write and exists. Closes the last part of native-desktop-files
+- evidence: merged as 802d645 (#505)
+
+## 2026-10-11 app-ux-commands
+- finding: [UX/med] src/App.tsx — no zoom or layer commands, blocked-export reason not actionable, libraryEntries() scanned localStorage on every render
+- status: done
+- delta: View → Zoom In/Out/Fit (⌘= ⌘- ⌘0) on every menu surface; palette Add/Remove Layer and a gated Delete key; blocked note is a button that selects the invalid layer (red dot in Layers, polite status); PDF exports read "(rendering…)"; a no-bench master switch commits directly; library read memoised on a refresh tick; raster images hide the Metallic toggle
+- evidence: merged as c66934b (#507)
+
+## 2026-10-11 zoom-command-leftovers
+- finding: [UX/low] src/App.tsx:529 — 3D zoom steps from the rounded camZoomPct, so rapid presses can drift about 1%; Zoom In/Out menu items stay enabled at the clamp limits
+- status: open
+- attempts: 0/3
+- observed-at: 0bb506c
+- evidence: review leftover from #507 (c66934b)
+
+## 2026-10-11 open-recent
+- finding: [UX/med] desktop had no File → Open Recent for .label files
+- status: done
+- delta: src/recent.ts keeps the last ten paths in localStorage; TabsShell records on open and Save As; native submenu with Clear Menu; a missing file shows the open error and drops off; fs:allow-exists added on the .label/.master globs
+- evidence: merged as 45c726e (#506)
+
+## 2026-10-11 open-recent-menu-symbols
+- finding: [UX/low] src/components/AppMenu.tsx:495 — set_menu_symbols is not re-applied after the Open Recent submenu rebuilds, so rebuilt rows can lose their SF Symbols
+- status: open
+- attempts: 0/3
+- observed-at: 0bb506c
+- evidence: review leftover from #506 (45c726e)
+
+## 2026-10-11 print-preflight
+- finding: [print/med] src/pdf/build.ts, src/textheight.ts, scripts/generate-lib.ts — PDFs declared no TrimBox/BleedBox, unprintable characters surfaced only at export, and the CLI had no dry run
+- status: done
+- delta: TrimBox (die inset by bleed) and BleedBox on both plates, Producer "Label Lab <version>"; inspector warns on missing glyphs; `generate --check` runs pass 1 for every job and writes nothing. 600-DPI golden diffs 0 px on all four plates; PSDs byte-identical
+- evidence: merged as 3701179 (#508)
+
+## 2026-10-11 print-preflight-leftovers
+- finding: [correctness/low] src/textheight.ts, scripts/generate-lib.ts:122-147 — U+FFFF is the one codepoint where fontkit and pdf-lib disagree on a missing glyph; `generate --check` reads a lone positional after the master path as the values file
+- status: open
+- attempts: 0/3
+- observed-at: 0bb506c
+- evidence: review leftovers from #508 (3701179)
+
+## 2026-10-11 label-file-validation
+- finding: [fail-fast/high] src/model/layers.ts, files.ts, fields.ts — colours, numbers and UPCs in .label/.master files were only shape-checked (#fff printed blue in the PDF, gold printed black, 1e1 passed as a number, spaced UPCs encoded garbage)
+- status: done
+- delta: fill/stroke must be 3- or 6-digit hex or none (3-digit widened on read), plates white|metallic, numbers plain decimals, UPC spaces/hyphens stripped and the check-digit message names the expected digit; bad dormant values dropped instead of refusing the label
+- evidence: merged as 6f3f799 (#509)
+
+## 2026-10-11 number-message-clarity
+- finding: [UX/low] src/model/fields.ts:27 — "Expected a number." does not explain why inputs like `1e1` or `0x10` are refused
+- status: open
+- attempts: 0/3
+- observed-at: 0bb506c
+- evidence: review leftover from #509 (6f3f799)
+
+## 2026-10-11 issue-511-asset-assembly-clears-errors
+- finding: [correctness/med] #511 src/App.tsx:1056 — the asset assembly effect calls setBuildError("") on success, clearing unrelated header errors (export failure, refused master); the same shared-slot bug #504 fixed for exports
+- status: open
+- attempts: 0/3
+- observed-at: 0bb506c
+
+## 2026-10-11 release-0.1.106
+- finding: [release] cut 0.1.106 from [Unreleased] after the 2026-10-11 merges
+- status: done
+- delta: version set in package.json, package-lock.json, Cargo.toml, Cargo.lock and tauri.conf.json; check-release against origin/main and label-lab-v0.1.105 passed
+- evidence: merged as 0bb506c (#510)
