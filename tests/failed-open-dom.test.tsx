@@ -24,8 +24,6 @@ vi.mock("../src/fonts", () => ({
 
 const { DocumentEditor } = await import("../src/App");
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 beforeEach(() => {
   localStorage.clear();
   // Every raster decode fails, so b.label's embedded texture throws mid-open.

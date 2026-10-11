@@ -14,7 +14,6 @@ vi.mock("../src/textheight", () => ({
   sizeForMinimum: (size: number, min: number, target: number) => size * target / min,
   describeCodepoints: (cps: number[]) => cps.map((cp) => `“${String.fromCodePoint(cp)}” (U+${cp.toString(16).toUpperCase()})`).join(", "),
 }));
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 it("edits the minimum through point size, updates the maximum and handles empty text", async () => {
   const container = document.createElement("div");

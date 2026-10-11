@@ -1,6 +1,7 @@
 import { isMacOS } from "@/keys";
 // AppMenu.tsx — one File/Edit/View menu layout, rendered as shadcn chrome in
-// the browser and installed as the native application menu under Tauri.
+// the browser and installed as the native application menu under Tauri. The
+// desktop menu also carries File → Open Recent, rebuilt from src/recent.ts.
 import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type {
@@ -8,16 +9,18 @@ import type {
 } from "@tauri-apps/api/menu";
 import {
   Bookmark, BookmarkPlus, BookOpen, Columns2, Contrast, Cylinder, FileImage, Files, FolderOpen,
-  Layers, RectangleHorizontal, Redo2, Ruler, Settings, SquareArrowDown,
-  SquareArrowUp, SquarePlus, Undo2, X, type LucideIcon,
+  History, Layers, Maximize2, RectangleHorizontal, Redo2, Ruler, Settings, SquareArrowDown,
+  SquareArrowUp, SquarePlus, Undo2, X, ZoomIn, ZoomOut, type LucideIcon,
 } from "lucide-react";
-import { shortcutOf, type Command } from "@/components/CommandMenu";
+import { shortcutOf, titleOf, type Command } from "@/components/CommandMenu";
 import { dialogOpen, isTypingTarget } from "@/keys";
+import { clearRecent, openRecent, recentLabels, recentTitles, subscribeRecent } from "@/recent";
 import {
   Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu,
   MenubarSeparator, MenubarShortcut, MenubarSub, MenubarSubContent,
   MenubarSubTrigger, MenubarTrigger,
 } from "@/components/ui/menubar";
+import { errMsg } from "@/lib/utils";
 
 /** SF Symbols, the icons macOS itself uses in menus. The Mac menu shows the
  *  symbol (set natively after install, so it tints with light and dark mode;
@@ -26,6 +29,7 @@ import {
 const SYMBOL_GLYPH = {
   "plus.square.on.square": SquarePlus,
   "folder": FolderOpen,
+  "clock.arrow.circlepath": History,
   "xmark": X,
   "square.and.arrow.down": SquareArrowDown,
   "doc.on.doc": Files,
@@ -43,6 +47,9 @@ const SYMBOL_GLYPH = {
   "cylinder": Cylinder,
   "ruler": Ruler,
   "rectangle.split.2x1": Columns2,
+  "plus.magnifyingglass": ZoomIn,
+  "minus.magnifyingglass": ZoomOut,
+  "arrow.up.left.and.down.right.magnifyingglass": Maximize2,
 } satisfies Record<string, LucideIcon>;
 type MenuSymbol = keyof typeof SYMBOL_GLYPH;
 
@@ -68,7 +75,9 @@ type SubmenuEntry = {
   symbol?: MenuSymbol;
   items: MenuEntry[];
 };
-type MenuEntry = ActionEntry | SeparatorEntry | PredefinedEntry | SubmenuEntry;
+/** File → Open Recent: desktop only, its rows built from src/recent.ts. */
+type RecentEntry = { kind: "recent"; id: string; text: string; symbol: MenuSymbol };
+type MenuEntry = ActionEntry | SeparatorEntry | PredefinedEntry | SubmenuEntry | RecentEntry;
 
 /** The application-owned menus. One table drives both renderers: every row
  *  names an SF Symbol, which the Mac menu shows and the in-window menu draws
@@ -79,6 +88,7 @@ export const APP_MENUS: SubmenuEntry[] = [
     kind: "submenu", id: "file-menu", text: "File", items: [
       { kind: "action", id: "tab-new", text: "New Tab", symbol: "plus.square.on.square" },
       { kind: "action", id: "project-open", text: "Open Project…", symbol: "folder" },
+      { kind: "recent", id: "recent-menu", text: "Open Recent", symbol: "clock.arrow.circlepath" },
       { kind: "action", id: "tab-close", text: "Close Tab", symbol: "xmark" },
       { kind: "separator", id: "file-new" },
       { kind: "action", id: "project-save", text: "Save Project", symbol: "square.and.arrow.down" },
@@ -122,6 +132,10 @@ export const APP_MENUS: SubmenuEntry[] = [
       { kind: "separator", id: "view-modes" },
       { kind: "action", id: "rulers", text: "Rulers", check: true, symbol: "ruler" },
       { kind: "action", id: "guides", text: "Guides", check: true, symbol: "rectangle.split.2x1" },
+      { kind: "separator", id: "view-zoom" },
+      { kind: "action", id: "zoom-in", text: "Zoom In", symbol: "plus.magnifyingglass" },
+      { kind: "action", id: "zoom-out", text: "Zoom Out", symbol: "minus.magnifyingglass" },
+      { kind: "action", id: "zoom-fit", text: "Zoom to Fit", symbol: "arrow.up.left.and.down.right.magnifyingglass" },
       // Ours rather than the row AppKit inserts on first open, which arrives
       // after menu_symbols.rs has run and so would stay without its icon.
       { kind: "predefined", item: "Separator" },
@@ -166,7 +180,8 @@ function WebEntries(props: {
     // Native-only edit items are omitted in the browser build: the browser
     // already owns text-edit shortcuts, while Tauri needs the corresponding OS
     // responder-chain items for those shortcuts to reach the focused field.
-    if (entry.kind === "predefined") return null;
+    // Open Recent lists desktop paths, which a browser cannot reopen.
+    if (entry.kind === "predefined" || entry.kind === "recent") return null;
     if (entry.kind === "separator") return <MenubarSeparator key={entry.id} />;
     if (entry.kind === "submenu") {
       return (
@@ -189,7 +204,7 @@ function WebEntries(props: {
         <MenubarCheckboxItem key={entry.id} checked={!!props.checked[entry.id]}
           disabled={command.disabled} onClick={command.run}>
           <MenuGlyph name={entry.symbol} />
-          {entry.text}
+          {titleOf(command, entry.text)}
           {keys && <MenubarShortcut>{keys}</MenubarShortcut>}
         </MenubarCheckboxItem>
       );
@@ -197,7 +212,7 @@ function WebEntries(props: {
     return (
       <MenubarItem key={entry.id} disabled={command.disabled} onClick={command.run}>
         <MenuGlyph name={entry.symbol} />
-        {entry.text}
+        {titleOf(command, entry.text)}
         {keys && <MenubarShortcut>{keys}</MenubarShortcut>}
       </MenubarItem>
     );
@@ -286,6 +301,29 @@ export async function macApplicationMenu(
   return menu;
 }
 
+/** Each installed Open Recent submenu's current rows, so a rebuild can
+ *  remove exactly them (the menu API's items() returns new wrappers). */
+const recentRowsOf = new WeakMap<object, NativeEntry[]>();
+
+/** Open Recent's rows: one per remembered path (newest first), a separator,
+ *  and Clear Menu — alone and disabled while the list is empty. */
+async function recentRows(api: MenuApi, resources: NativeResource[]): Promise<NativeEntry[]> {
+  const paths = recentLabels();
+  const titles = recentTitles(paths);
+  const rows: NativeEntry[] = await Promise.all(paths.map((path, i) => api.MenuItem.new({
+    // Native menus read a lone & as a mnemonic marker; && shows one.
+    id: `recent-${i}`, text: titles[i].replaceAll("&", "&&"),
+    // A modal dialog blocks this like every other menu command (#244).
+    action: () => { if (!dialogOpen()) openRecent(path); },
+  })));
+  if (paths.length) rows.push(await api.PredefinedMenuItem.new({ item: "Separator" }));
+  rows.push(await api.MenuItem.new({
+    id: "recent-clear", text: "Clear Menu", enabled: paths.length > 0, action: clearRecent,
+  }));
+  resources.push(...rows);
+  return rows;
+}
+
 async function nativeEntry(
   api: MenuApi,
   entry: MenuEntry,
@@ -315,10 +353,19 @@ async function nativeEntry(
     resources.push(submenu);
     return submenu;
   }
+  if (entry.kind === "recent") {
+    const rows = await recentRows(api, resources);
+    const submenu = await api.Submenu.new({ id: entry.id, text: entry.text, items: rows });
+    recentRowsOf.set(submenu, rows);
+    resources.push(submenu);
+    return submenu;
+  }
 
   const command = commands[entry.id];
   const options = {
     id: entry.id,
+    // The plain title: menu_symbols.rs finds the row by it. A command's note
+    // goes on afterwards, through the state sync's setText.
     text: entry.text,
     enabled: !command.disabled,
     accelerator: nativeAccelerator(command),
@@ -343,7 +390,7 @@ const SYSTEM_ROWS: [string, string][] =
  *  installed Mac menu. Titles are unique across APP_MENUS. Exported for tests. */
 export function menuSymbols(entries: MenuEntry[] = APP_MENUS): [string, string][] {
   return entries.flatMap((entry): [string, string][] => {
-    if (entry.kind === "action") return [[entry.text, entry.symbol]];
+    if (entry.kind === "action" || entry.kind === "recent") return [[entry.text, entry.symbol]];
     if (entry.kind !== "submenu") return [];
     const own: [string, string][] = entry.symbol ? [[entry.text, entry.symbol]] : [];
     return [...own, ...menuSymbols(entry.items)];
@@ -383,6 +430,7 @@ function useNativeMenu(
     if (!desktop) return;
     let live = true;
     const resources: NativeResource[] = [];
+    let stopRecent = () => {};
 
     void (async () => {
       try {
@@ -408,6 +456,9 @@ function useNativeMenu(
           if (dialogOpen()) return;
           command.run();
         };
+        // What Open Recent's first rows show; a change before the subscribe
+        // below would otherwise never reach the menu.
+        const recentBuiltFrom = JSON.stringify(recentLabels());
         const roots = await Promise.all(APP_MENUS.map((entry) =>
           nativeEntry(api, entry, commandsRef.current, checkedRef.current, run, resources)));
         // On macOS the first submenu is the conventional application menu;
@@ -418,7 +469,7 @@ function useNativeMenu(
           // onCloseRequested sweep prompts for unsaved tabs before exit.
           const quit = () => void import("@tauri-apps/api/window")
             .then((m) => m.getCurrentWindow().close())
-            .catch((error) => errorRef.current(`Could not quit: ${String(error)}`));
+            .catch((error) => errorRef.current(`Could not quit: ${errMsg(error)}`));
           roots.unshift(await macApplicationMenu(api, resources, () => updateRef.current(), quit));
         } else {
           const updater = await api.MenuItem.new({
@@ -458,16 +509,46 @@ function useNativeMenu(
             actionItems.set(resource.id, resource);
           }
         }
+        // Rebuild Open Recent's rows whenever the list changes, one rebuild
+        // at a time so two quick changes can't interleave their rows.
+        const recent = resources.find((r): r is Submenu =>
+          r instanceof api.Submenu && r.id === "recent-menu")!;
+        let rebuilding = Promise.resolve();
+        const rebuild = async () => {
+          if (!live) return; // torn down: the cleanup closed every row
+          const old = recentRowsOf.get(recent) ?? [];
+          for (const row of old) {
+            await recent.remove(row);
+            await row.close();
+          }
+          // Closed rows leave the teardown list; recentRows adds the new ones.
+          const gone = new Set<NativeResource>(old);
+          resources.splice(0, resources.length, ...resources.filter((r) => !gone.has(r)));
+          const rows = await recentRows(api, resources);
+          // Torn down while the rows were made: the cleanup has already run.
+          if (!live) return closeResources(resources);
+          recentRowsOf.set(recent, rows);
+          await recent.append(rows);
+        };
+        const queueRebuild = () => {
+          // A teardown mid-rebuild closes the submenu under it; not an error.
+          rebuilding = rebuilding.then(rebuild).catch((error) => {
+            if (live) errorRef.current(`Could not update the native menu: ${String(error)}`);
+          });
+        };
+        stopRecent = subscribeRecent(queueRebuild);
+        if (JSON.stringify(recentLabels()) !== recentBuiltFrom) queueRebuild();
         appliedState.current.clear();
         setItems(actionItems);
       } catch (error) {
         await closeResources(resources);
-        if (live) errorRef.current(`Could not install the native menu: ${String(error)}`);
+        if (live) errorRef.current(`Could not install the native menu: ${errMsg(error)}`);
       }
     })();
 
     return () => {
       live = false;
+      stopRecent();
       void closeResources(resources);
     };
   }, [desktop]);
@@ -480,7 +561,7 @@ function useNativeMenu(
     appliedState.current.set("check-for-updates:text", text);
     if (!updateInstalled) return; // the item is created with the check label
     void item.setText(text).catch((error) => {
-      errorRef.current(`Could not update the native menu: ${String(error)}`);
+      errorRef.current(`Could not update the native menu: ${errMsg(error)}`);
     });
   }, [items, updateInstalled]);
 
@@ -488,6 +569,8 @@ function useNativeMenu(
     id: entry.id,
     enabled: !commands[entry.id].disabled,
     checked: isCheckAction(entry) ? !!checked[entry.id] : null,
+    plain: entry.text,
+    text: titleOf(commands[entry.id], entry.text),
   }));
   const signature = JSON.stringify(snapshot);
 
@@ -498,6 +581,13 @@ function useNativeMenu(
         const item = items.get(state.id);
         if (!item) throw new Error(`Native menu item is missing: ${state.id}`);
         const stateKey = `${state.enabled}:${state.checked ?? "-"}`;
+        // The title is tracked apart, so a check or enable change costs no
+        // setText; an item is installed under its plain title.
+        const textKey = `${state.id}:text`;
+        if ((appliedState.current.get(textKey) ?? state.plain) !== state.text) {
+          await item.setText(state.text);
+          appliedState.current.set(textKey, state.text);
+        }
         if (appliedState.current.get(state.id) === stateKey) return;
         await item.setEnabled(state.enabled);
         if (state.checked !== null && "setChecked" in item) {
@@ -509,7 +599,7 @@ function useNativeMenu(
     // Preserve render order across IPC: a slow prior update must never land
     // after a newer checked/disabled state.
     updateQueue.current = updateQueue.current.then(apply, apply).catch((error) => {
-      errorRef.current(`Could not update the native menu: ${String(error)}`);
+      errorRef.current(`Could not update the native menu: ${errMsg(error)}`);
     });
   // signature is the compact set of native-visible state; ordinary App
   // renders do not produce 26 IPC updates. resync re-runs it after a native

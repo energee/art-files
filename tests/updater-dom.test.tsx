@@ -7,7 +7,6 @@ import { AUTO_CHECK_DELAY_MS, DesktopUpdater, RECHECK_MIN_INTERVAL_MS } from "..
 const mocks = vi.hoisted(() => ({ check: vi.fn(), invoke: vi.fn(), desktop: vi.fn(() => true) }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke, isTauri: mocks.desktop }));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: mocks.check }));
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -132,6 +131,8 @@ it("installs without relaunching, then offers Restart to finish from the status 
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
     await act(async () => button("Update available").click());
     await act(async () => button("Install").click());
+    // The download timeout caps the whole transfer, so slow links get 15 minutes.
+    expect(update.downloadAndInstall).toHaveBeenCalledWith(expect.any(Function), { timeout: 900_000 });
     expect(mocks.invoke).not.toHaveBeenCalledWith("relaunch_app");
     expect(onInstalled).toHaveBeenCalledTimes(1);
     expect(bar.textContent).toContain("Restart to finish · 0.2.0");
@@ -180,7 +181,7 @@ it("a manual check during a download shows the download, and Restart Now reports
     mocks.invoke.mockRejectedValueOnce(new Error("no permission"));
     await act(async () => button("Restart to finish").click());
     await act(async () => button("Restart Now").click());
-    expect(dialog()).toContain("Could not restart: Error: no permission");
+    expect(dialog()).toContain("Could not restart: no permission");
     // Closing that error keeps the installed update: the status bar still
     // offers the restart, and the menu's Restart to Update reopens a titled
     // dialog rather than a blank one (issue #123).

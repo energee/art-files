@@ -32,6 +32,7 @@ jobs:
     outputs:
       unreleased: ${{ steps.check.outputs.unreleased }}
     steps:
+      # Keeps its persisted credentials: git ls-remote reads this private repo's tags.
       - uses: actions/checkout@v7
       - id: check
         shell: bash
@@ -71,9 +72,11 @@ jobs:
             target: x86_64-unknown-linux-gnu
 
     steps:
+      # Nothing here pushes (tauri-action tags through the API with GITHUB_TOKEN).
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-node@v7
         with:
@@ -184,6 +187,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           sparse-checkout: |
             package.json
             scripts/build-update-feed.sh

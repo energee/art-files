@@ -11,7 +11,7 @@ import { drawPlates, buildLabelTextures } from "@/three/labelTextures";
 import type { CanvasRenderSource } from "@/canvas/draw";
 import { planLayers } from "@/planLayers";
 import type { Layer } from "@/model/layers";
-import { cn } from "@/lib/utils";
+import { cn, errMsg } from "@/lib/utils";
 
 export interface CanViewHandle {
   /** Dolly to a multiple of the mode's framing distance — 1 is "as framed", 2
@@ -117,7 +117,7 @@ export const CanView = forwardRef<CanViewHandle, {
         onRenderError("");
       } catch (err) {
         // The can keeps its last textures; the strip says why they're stale.
-        if (!stale) onRenderError(String(err));
+        if (!stale) onRenderError(errMsg(err));
       } finally {
         if (!stale) setLoading(false);
       }

@@ -35,8 +35,8 @@ import fontkit from "@pdf-lib/fontkit";
 import type { FontFamilyId } from "../fontCatalog";
 import type { Fill } from "../types";
 import { bridgeOffsets } from "../strokes";
-import { type Face, type MeasureFace, type Mode, type PlacedBarcode, type PlacedText } from "../plan";
-import type { PlacedLayer, PlacedPage } from "../planLayers";
+import { digitStartX, type Face, type MeasureFace, type Mode, type PlacedBarcode, type PlacedText } from "../plan";
+import { pageDrawsOn, type PlacedLayer, type PlacedPage } from "../planLayers";
 import * as L from "../layout";
 import { describeCodepoints, VARIATION_SELECTOR } from "../textheight";
 import { version } from "../../package.json";
@@ -86,6 +86,11 @@ function fillColor(fill: Fill) {
 function maskColor(layer: "metallic" | "white") {
   return layer === "metallic" ? toRgb(L.COLORS.white) : toRgb(L.COLORS.maskBlue);
 }
+
+/** An element's paint for the plate: its fill on the art plate, its plate
+ *  layer's knockout/white-ink colour on the mask (psd/build.ts's paint()). */
+const ink = (mode: Mode, fill: Fill, layer: "metallic" | "white") =>
+  mode === "art" ? fillColor(fill) : maskColor(layer);
 
 /** drawText has no stroke option, but PDF's text rendering mode does the job:
  *  Tr 2 (FillAndOutline) with a 2w line width paints the glyph body plus a
@@ -185,9 +190,9 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, item: PlacedBarcode, mo
   // the plan already centred `y`. Upright (every custom barcode layer, Task
   // 3): ordinary horizontal drawText, so `x` needs the left edge — the plan
   // hands back the run's CENTER (see PlacedBarcode's own doc) — and no
-  // rotation.
+  // rotation. digitStartX picks between the two.
   const digits = item.digits.map((d) => ({
-    txt: d.text, x: item.rotated ? d.x : d.x - d.w / 2, y: y(d.y), w: d.w,
+    txt: d.text, x: digitStartX(d, item.rotated), y: y(d.y), w: d.w,
   }));
   const glyph = item.rotated
     ? { size: item.textSize, font: fonts.regular, rotate: degrees(90) }
@@ -202,8 +207,8 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, item: PlacedBarcode, mo
   // emits first, and only when the layer asks for one. The stroke block runs
   // only when S > 0 — a "none" stroke resolves to that in the plan, and a
   // zero-width stroke would still paint a hairline.
-  const strokeColor = mode === "art" ? fillColor(item.stroke) : maskColor(item.strokeLayer);
-  const ink = mode === "art" ? fillColor(item.fill) : maskColor(item.fillLayer);
+  const strokeColor = ink(mode, item.stroke, item.strokeLayer);
+  const fillInk = ink(mode, item.fill, item.fillLayer);
   if (S > 0 && item.stroke !== "none") {
     // A centered border at 2S extends S beyond the bar and — because the page
     // sets a ROUND line join (see newDoc) — rounds each corner at radius S,
@@ -220,8 +225,8 @@ export function drawBarcode(page: PDFPage, fonts: Fonts, item: PlacedBarcode, mo
   }
 
   // The artwork itself, at its exact geometry.
-  for (const r of bars) page.drawRectangle({ ...r, color: ink });
-  for (const d of digits) page.drawText(d.txt, { ...glyph, x: d.x, y: d.y, color: ink });
+  for (const r of bars) page.drawRectangle({ ...r, color: fillInk });
+  for (const d of digits) page.drawText(d.txt, { ...glyph, x: d.x, y: d.y, color: fillInk });
 }
 
 /** Embedded raster XObjects by asset id, one embed per asset however many
@@ -242,11 +247,6 @@ async function embedRasters(doc: PDFDocument, items: readonly PlacedLayer[], ass
   return embedded;
 }
 
-/** Which plate a page item belongs to: the background texture is art-only,
- *  the metallic mask is mask-only. */
-const pageDrawsOn = (p: PlacedPage, mode: Mode) =>
-  mode === "art" ? p.role === "background" : p.role === "mask";
-
 function drawItems(
   page: PDFPage,
   fonts: Fonts,
@@ -261,9 +261,9 @@ function drawItems(
   };
 
   const drawText = (r: PlacedText) => {
-    const color = mode === "art" ? fillColor(r.fill) : maskColor(r.layer);
+    const color = ink(mode, r.fill, r.layer);
     const stroke = r.stroke
-      ? { color: mode === "art" ? fillColor(r.stroke.fill) : maskColor(r.stroke.layer), w: r.stroke.w }
+      ? { color: ink(mode, r.stroke.fill, r.stroke.layer), w: r.stroke.w }
       : null;
     withTracking(page, r.tracking || undefined, () =>
       strokedText(page, stroke, r.text, {
@@ -275,12 +275,12 @@ function drawItems(
   for (const r of items) {
     if (r.kind === "text") drawText(r);
     else if (r.kind === "paths") {
-      const color = mode === "art" ? fillColor(r.fill) : maskColor(r.layer);
+      const color = ink(mode, r.fill, r.layer);
       const at = { x: r.x, y: y(r.y) };
       // Every stroke path before any fill, so overlapping strokes can't
       // paint over a neighbour's fill (the laurel-branch rule).
       if (r.stroke) {
-        const sc = mode === "art" ? fillColor(r.stroke.fill) : maskColor(r.stroke.layer);
+        const sc = ink(mode, r.stroke.fill, r.stroke.layer);
         for (const d of r.paths)
           page.drawSvgPath(d, { ...at, color: sc, borderColor: sc, borderWidth: 2 * r.stroke.w });
       }

@@ -12,18 +12,18 @@ import { afterEach, expect, it, vi } from "vitest";
 
 const native = vi.hoisted(() => {
   class Resource {
-    id: string; checked: boolean; action?: () => void;
-    constructor(opts: { id?: string; checked?: boolean; action?: () => void }) {
-      this.id = opts.id ?? "predefined"; this.checked = !!opts.checked; this.action = opts.action;
+    id: string; checked: boolean; action?: () => void; text?: string;
+    constructor(opts: { id?: string; checked?: boolean; action?: () => void; text?: string }) {
+      this.id = opts.id ?? "predefined"; this.checked = !!opts.checked; this.action = opts.action; this.text = opts.text;
     }
-    static async new(opts: { id?: string; checked?: boolean; action?: () => void }) {
+    static async new(opts: { id?: string; checked?: boolean; action?: () => void; text?: string }) {
       const item = new this(opts);
       native.items.set(item.id, item);
       return item;
     }
     async close() {}
     async setEnabled() {}
-    async setText() {}
+    async setText(text: string) { this.text = text; }
     async setAsAppMenu() { return null; }
   }
   class CheckMenuItem extends Resource {
@@ -43,8 +43,6 @@ const native = vi.hoisted(() => {
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
 vi.mock("@tauri-apps/api/menu", () => native.api);
 import { APP_MENUS, AppMenu, actionsIn } from "@/components/AppMenu";
-
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => { document.body.replaceChildren(); });
 
@@ -152,3 +150,32 @@ for (const [platform, userAgent] of [
     }
   });
 }
+
+// A command's note (the PDF exports' "rendering…") rides on the native row's
+// title, and the row goes back to its plain title once the note clears.
+it("adds and clears a command's note on its native row", async () => {
+  native.items.clear();
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const render = (note?: string) => act(async () => {
+    root.render(createElement(AppMenu, {
+      actions: actionsIn(APP_MENUS).map((entry) => ({
+        id: entry.id, label: entry.text, run: () => {}, ...(entry.id === "export-both" && note ? { note } : {}),
+      })),
+      checked: {}, onNativeError: (error) => { throw new Error(error); }, onCheckForUpdates: () => undefined,
+    }));
+    await new Promise((r) => setTimeout(r, 0));
+  });
+  try {
+    await render("rendering…");
+    await render("rendering…");
+    expect(native.items.get("export-both")!.text).toBe("Export PDFs (rendering…)");
+    expect(native.items.get("export-art")!.text).toBe("Export Artwork PDF");
+    await render();
+    expect(native.items.get("export-both")!.text).toBe("Export PDFs");
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+  }
+});

@@ -27,8 +27,6 @@ vi.mock("../src/fonts", () => ({
 
 const { DocumentEditor } = await import("../src/App");
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 afterEach(() => { localStorage.clear(); document.body.innerHTML = ""; });
 
 type Ctx = {

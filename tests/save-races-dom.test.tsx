@@ -28,7 +28,6 @@ import { lolevMaster } from "../src/model/lolevLayers";
 import { packLabel, packMaster, unpackMaster } from "../src/model/files";
 import type { Master } from "../src/model/layers";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
 let container: HTMLDivElement;
 afterEach(async () => {

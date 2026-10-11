@@ -39,8 +39,6 @@ vi.mock("../src/components/CommandPalette", async () => {
 });
 import { DocumentEditor } from "../src/App";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 it("imports Settings, the Save Master review and the ⌘K palette only when each opens", async () => {
   const container = document.createElement("div");
   document.body.appendChild(container);

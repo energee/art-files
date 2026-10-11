@@ -42,8 +42,6 @@ vi.mock("../src/App", async () => {
 const { default: TabsShell } = await import("../src/TabsShell");
 const { LABEL_FILTER } = await import("../src/filePickers");
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 

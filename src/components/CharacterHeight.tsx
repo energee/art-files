@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { TextLayer } from "@/model/layers";
 import type { FontFamilyId } from "@/fontCatalog";
 import type * as Heights from "@/textheight";
+import { errMsg } from "@/lib/utils";
 import { ScrubField } from "./ScrubField";
 
 export function CharacterHeight({ layer, family, onChange }: {
@@ -21,7 +22,7 @@ export function CharacterHeight({ layer, family, onChange }: {
       ...await module.loadTextChecks(family),
       sizeForMinimum: module.sizeForMinimum, describeCodepoints: module.describeCodepoints,
     })).then((result) => { if (!cancelled) setLoaded(result); })
-      .catch((reason) => { if (!cancelled) setError(String(reason)); });
+      .catch((reason) => { if (!cancelled) setError(errMsg(reason)); });
     return () => { cancelled = true; };
   }, [family]);
   let range: Heights.CharacterHeights | null = null;
@@ -29,7 +30,7 @@ export function CharacterHeight({ layer, family, onChange }: {
   let missing: number[] = [];
   if (loaded) {
     try { missing = loaded.missingGlyphs(layer); range = loaded.measure(layer); }
-    catch (reason) { message = String(reason); }
+    catch (reason) { message = errMsg(reason); }
   }
   // Export refuses these characters; say so while the text is being typed.
   const glyphWarning = loaded && missing.length > 0 && <p role="alert" className="text-xs text-warning-text">
