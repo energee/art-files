@@ -5,7 +5,6 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { ScrubField } from "../src/components/ScrubField";
 import { ColorField } from "../src/components/ColorField";
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 it("modifier changes affect only new scrub travel (#303)", async () => {
   // NumberField scrubs by movementX, one step per pixel (Shift = largeStep 10).
   const host = document.createElement("div"); document.body.append(host);

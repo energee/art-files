@@ -11,8 +11,6 @@ import { AssetDropOverlay } from "../src/components/AssetDropOverlay";
 import { FileDrop, FILE_DROP_ATTR } from "../src/components/FileDrop";
 import { fieldWell, fileDrag, label, pdf, png } from "./dom-drag";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 let container: HTMLDivElement;
 let root: Root;
 const onTexture = vi.fn();

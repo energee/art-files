@@ -44,8 +44,6 @@ vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
 vi.mock("@tauri-apps/api/menu", () => native.api);
 import { APP_MENUS, AppMenu, actionsIn } from "@/components/AppMenu";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 afterEach(() => { document.body.replaceChildren(); });
 
 /** Mount AppMenu with every menu command calling `run(id)`; `render` repeats

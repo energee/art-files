@@ -16,10 +16,6 @@ import { SidebarProvider } from "../src/components/ui/sidebar";
 import { lolevMaster } from "../src/model/lolevLayers";
 import type { Layer } from "../src/model/layers";
 
-// React only honours act() when the environment opts in (see
-// tests/layerspanel-dom.test.tsx for the same line).
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 let container: HTMLDivElement;
 let root: Root;
 

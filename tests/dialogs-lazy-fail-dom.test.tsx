@@ -28,8 +28,6 @@ vi.mock("../src/components/MasterSaveReview", () => { throw new Error("chunk loa
 vi.mock("../src/components/CommandPalette", () => { throw new Error("chunk load failed"); });
 import { DocumentEditor } from "../src/App";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 it("a Settings, Save Master review or ⌘K palette that fails to load says so and keeps the editor", async () => {
   const container = document.createElement("div");
   document.body.appendChild(container);

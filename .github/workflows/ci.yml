@@ -19,12 +19,15 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
+          cache: npm
       # poppler's pdftoppm rasterizes the PDF goldens (scripts/golden-diff.mts).
       - run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends poppler-utils
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm run lint
       - run: npm test
+      # The production bundle (vite build) must still build after the tests pass.
+      - run: npm run build
       # Dead code: unused files, exports and dependencies (config in knip.json).
       # After the tests, so a dead-code finding never hides a test result.
       - run: npx --yes knip@6.38.0
@@ -38,10 +41,39 @@ jobs:
         with:
           # Same pin as release.yml; upgrade both together.
           toolchain: "1.98.1"
+          components: rustfmt
       - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: ./src-tauri -> target
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
       - run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  rust-cross:
+    # The rust job builds on macOS only; this type-checks the Linux and Windows
+    # cfg branches (single-instance, argv opens) so they cannot rot unseen.
+    name: rust-cross (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      # Same system packages release.yml installs for the Linux build.
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev \
+            libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
+        with:
+          # Same pin as the rust job and release.yml; upgrade together.
+          toolchain: "1.98.1"
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ./src-tauri -> target
+      - run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets
 
   audit:
     # Fails on known advisories: high/critical in runtime npm deps (--omit=dev skips
@@ -55,6 +87,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
+          cache: npm
       - run: npm audit --omit=dev --audit-level=high
       # Prebuilt, version-pinned cargo-audit (compiling it costs ~5 minutes a run).
       - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
