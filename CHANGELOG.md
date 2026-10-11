@@ -15,6 +15,8 @@ that section to the new version (see .agents/release-steward.md).
 - **Internal cleanup, no visible change.** The layer editing, inspector and preview code is reorganised into smaller files; the app behaves exactly as before.
 
 ### Fixed
+- **Quitting from the Dock a second time always quits.** On macOS, if the unsaved-tabs prompt never appears after Dock → Quit or logout (for example because the window has stopped responding), choosing Quit again within a few seconds now quits instead of being cancelled every time.
+- **Opening the same label from the command line no longer opens it twice.** A `.label` passed as a relative path, or spelled with `./` or `..`, is now recognised as the file that is already open instead of getting a second tab.
 - **A successful export no longer hides other errors.** Exporting a PDF or PSD used to clear the header's error message even when it was about something else, such as an image that failed to load, a refused master or a menu error. An export now only clears a message from an earlier export.
 - **A click right after typing in a field is its own undo step.** An edit made within half a second of finishing a field no longer folds into that field's step, so one ⌘Z undoes only the click instead of both.
 - **Error messages no longer start with a stray "Error:".** Update, restart, native-menu, 3D view, preview, character-height and dialog-load failures now show just the reason, matching the rest of the app.
