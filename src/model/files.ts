@@ -10,7 +10,7 @@ import { FONT_FAMILIES } from "../fontCatalog";
 // stays. Replaces the v1 .master packer and the v2 half of src/labelfile.ts.
 import { strFromU8, strToU8, zipSync, type Zippable } from "fflate";
 import type { LabelFile, Master } from "./layers";
-import { parseMaster, validateLayer, type Layer, type LayerValue } from "./layers";
+import { linesProblem, parseMaster, patchProblem, validateLayer, type Layer, type LayerValue } from "./layers";
 import { applyDiff } from "./resolveLayers";
 import type { LabelFileV2 } from "./types";
 import { parseMaster as parseMasterV1 } from "./types";
@@ -89,14 +89,20 @@ export const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typ
 /** Only the strings of an untrusted array; anything else becomes []. */
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
 
-/** A stored value is a string or text lines whose `text` is a string —
- *  the two shapes resolveLayers' putValue can place (#392). */
+/** What is wrong with one stored value, or undefined. A value is a string or
+ *  text lines — the two shapes resolveLayers' putValue can place (#392) —
+ *  and each line needs string text and a printable fill and ink plate (a
+ *  3-digit hex is widened in place; see layers.ts's styleProblem). */
+function valueProblem(val: unknown): string | undefined {
+  if (typeof val === "string") return undefined;
+  return Array.isArray(val) ? linesProblem(val) : "is not text or a string";
+}
+
 function parseValues(v: unknown): Record<string, LayerValue> {
   if (!isRecord(v)) return {};
   for (const [id, val] of Object.entries(v)) {
-    const ok = typeof val === "string"
-      || (Array.isArray(val) && val.every((ln) => isRecord(ln) && typeof ln.text === "string"));
-    if (!ok) badLabel(`value for "${id}" is not text or a string`);
+    const problem = valueProblem(val);
+    if (problem) badLabel(`value for "${id}" ${problem}`);
   }
   return v as Record<string, LayerValue>;
 }
@@ -118,6 +124,8 @@ function parseOverrides(v: unknown): LabelFile["overrides"] {
     const family = p.fontFamily;
     if (family != null && (typeof family !== "string" || !Object.hasOwn(FONT_FAMILIES, family)))
       throw new Error(`Unknown label font family: ${family}`);
+    const problem = patchProblem(p);
+    if (problem) badLabel(`override "${id}" ${problem}`);
     if (p.kind !== undefined) {
       if (p.id !== id) badLabel(`added layer "${id}" has a mismatched id`);
       try { validateLayer(applyDiff({} as Layer, p as never), "label override"); }
@@ -133,11 +141,16 @@ function parseOverrides(v: unknown): LabelFile["overrides"] {
   return v as LabelFile["overrides"];
 }
 
+/** The bench of values and variants a rebind set aside. A bad benched value is
+ *  dropped, not fatal: nothing draws it, and refusing the whole label over it
+ *  would lose everything else (the v2 parser in labelfile.ts is as lenient). */
 function parseDormant(v: unknown): LabelFile["dormant"] {
   if (!v || typeof v !== "object") return undefined;
   const d = v as Record<string, unknown>;
+  const values = isRecord(d.values)
+    ? Object.fromEntries(Object.entries(d.values).filter(([, val]) => !valueProblem(val))) : {};
   return {
-    values: parseValues(d.values),
+    values: values as Record<string, LayerValue>,
     variants: strings(d.variants),
     ...(Array.isArray(d.variantOrder) && d.variantOrder.every((id) => typeof id === "string")
       ? { variantOrder: d.variantOrder as string[] } : {}),

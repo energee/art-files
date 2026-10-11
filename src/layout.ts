@@ -7,6 +7,7 @@
 // size in inches and the can it wraps (see CAN_DIAM_IN) — because those are
 // facts about the product, not about any one renderer, and the inspector, the
 // render-settings defaults and the 3D scene all have to agree on them.
+import type { Fill } from "./types";
 
 /** The die cut — the label that comes off the press, fixed at 8 x 5in. The
  *  PAGE around it grows and shrinks with the bleed knob; this never does. */
@@ -183,6 +184,17 @@ export const COLORS = {
   white: parseHexFill(WHITE_HEX),
   maskBlue: parseHexFill(MASK_BLUE_HEX),
 };
+
+/** A typed or stored colour as "#rrggbb", or undefined when it is not a 3- or
+ *  6-digit hex. parseHexFill reads exactly six digits, so a "#fff" that
+ *  skipped this would print blue in the PDF while the canvas shows white —
+ *  the hex box and every file parser widen through here (model/layers.ts). */
+export function normalizeHex(value: string): Fill | undefined {
+  const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value.trim());
+  if (!match) return undefined;
+  const hex = match[1].toLowerCase();
+  return `#${hex.length === 3 ? [...hex].map((c) => c + c).join("") : hex}` as Fill;
+}
 
 /** Parse a Fill to rgb 0-1. "none" = no ink = white in the art PDF. */
 export function parseHexFill(fill: `#${string}` | "none"): { r: number; g: number; b: number } {

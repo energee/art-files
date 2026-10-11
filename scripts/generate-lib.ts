@@ -14,7 +14,7 @@ import { setBleed } from "../src/layout";
 import { svgAspect } from "../src/logo";
 import { convertConfigV1, guideLines } from "../src/model/convert";
 import { unpackLabel, unpackMaster, type MasterAssets } from "../src/model/files";
-import { PAGE_ART_ID, validateLayer, type LabelFile, type Layer, type LayerKind, type LayerValue, type Master, type TextLayer, type TextLine } from "../src/model/layers";
+import { linesProblem, PAGE_ART_ID, patchProblem, validateLayer, type LabelFile, type Layer, type LayerKind, type LayerValue, type Master, type TextLayer, type TextLine } from "../src/model/layers";
 import { lolevMaster } from "../src/model/lolevLayers";
 import { applyDiff, exportBase, resolveLayers, titleOf, widenValue } from "../src/model/resolveLayers";
 import type { PlanAssets } from "../src/plan";
@@ -238,12 +238,6 @@ function linesFromText(src: string, base: Style): TextLine[] {
   return out;
 }
 
-function isTextLines(v: unknown): v is TextLine[] {
-  return Array.isArray(v) && v.every((l) =>
-    isPlain(l) && typeof l.text === "string" && typeof l.fill === "string"
-    && (l.layer === "metallic" || l.layer === "white"));
-}
-
 /** Whole layers each variant adds (an id the master already has is just an
  *  override of the master layer, not an addition). */
 function addedLayers(master: Master): { layer: Layer; variant: string }[] {
@@ -266,7 +260,13 @@ function fillableById(
 
 function coerceOne(layer: Layer, raw: unknown): { value: LayerValue } | { error: string } {
   if (layer.kind === "text") {
-    if (isTextLines(raw)) return { value: raw };
+    // Lines get the check a .label's stored lines get (linesProblem): a
+    // "#fff" is widened and a "gold" refused, so the PDF prints what the
+    // preview shows.
+    if (Array.isArray(raw)) {
+      const problem = linesProblem(raw);
+      return problem ? { error: `Text ${problem}.` } : { value: raw as TextLine[] };
+    }
     if (typeof raw === "string" || typeof raw === "number") {
       const s = String(raw);
       if (layer.input === "number" || layer.input === "code") return { value: widenValue(layer, s) };
@@ -360,7 +360,8 @@ export function inspectMaster(master: Master): InspectReport {
  *  layer already has keeps its type. Catches a hand-edited `size: "big"` here,
  *  with the layer id, instead of deep inside planning with no id at all.
  *  Fields the layer lacks pass — resolveLayers merges those as-is. A patch
- *  carrying `kind` for an id the master lacks is a whole label-only layer. */
+ *  carrying `kind` for an id the master lacks is a whole label-only layer.
+ *  Colours get patchProblem's check, which widens a 3-digit hex in place. */
 export function checkOverrides(
   layers: Map<string, Layer>, overrides: LabelFile["overrides"],
 ): string[] {
@@ -378,6 +379,11 @@ export function checkOverrides(
     const layer = layers.get(id) ?? (patch?.kind ? ({} as Layer) : undefined);
     if (!layer) { errors.push(`Unknown layer "${id}".`); continue; }
     walk(id, layer, patch);
+    // The .label rule (files.ts's parseOverrides): a short hex is widened in
+    // the stored patch, not just the merged copy validateLayer sees, so the
+    // PDF prints the colour the preview shows; a "gold" is refused.
+    const problem = patchProblem(patch as Record<string, unknown>);
+    if (problem) { errors.push(`override ${id} ${problem}`); continue; }
     try { validateLayer(applyDiff(layer, patch), `override ${id}`); }
     catch (err) { errors.push(String(err)); }
   }

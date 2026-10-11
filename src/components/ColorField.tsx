@@ -9,7 +9,7 @@ import { HexColorPicker } from "react-colorful";
 import { Pipette } from "lucide-react";
 import type { Fill } from "@/types";
 import { cn } from "@/lib/utils";
-import { GOLD } from "@/layout";
+import { GOLD, normalizeHex } from "@/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -18,12 +18,6 @@ import { addColor, setSwatches, useSwatches } from "@/settings";
 /** "No ink" checkerboard chip background. */
 const CHECKER =
   "repeating-conic-gradient(#3a3d43 0% 25%, #1a1c1f 0% 50%) 0 0 / 8px 8px";
-function normalizeHex(value: string): Fill | undefined {
-  const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value.trim());
-  if (!match) return undefined;
-  const hex = match[1].toLowerCase();
-  return `#${hex.length === 3 ? [...hex].map((c) => c + c).join("") : hex}` as Fill;
-}
 
 // ponytail: EyeDropper is Chromium-only and still absent from lib.dom, so it
 // gets a local type instead of a global Window augmentation. Read once here:

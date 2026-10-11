@@ -5,7 +5,7 @@ import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 import {
   parseGenerateArgs, coerceValues, parseJobs, inspectMaster, assertVariants, buildLabel,
-  runGenerate,
+  runGenerate, checkOverrides,
 } from "../scripts/generate-lib";
 import { PNG } from "pngjs";
 import { defaultConfig } from "../src/defaults";
@@ -140,6 +140,22 @@ describe("coerceValues", () => {
   it("a text-line array without fill/layer is an error", () => {
     const r = coerceValues(m, { name: [{ text: "Hello" }] }, []);
     expect(r.errors.name).toMatch(/text/i);
+  });
+  it("text lines get the .label colour check: short hex widened, named colour refused", () => {
+    const run = { text: "Hi", fill: "#fff", layer: "white" };
+    expect(coerceValues(m, { name: [run] }, []).values.name).toEqual([{ ...run, fill: "#ffffff" }]);
+    expect(coerceValues(m, { name: [{ ...run, fill: "gold" }] }, []).errors.name).toMatch(/fill "gold"/);
+  });
+});
+
+describe("checkOverrides", () => {
+  it("gives a job override's colours the .label check: short hex widened in place, named colour refused", () => {
+    const layers = new Map(lolevMaster().layers.map((l) => [l.id, l]));
+    const overrides = { name: { style: { fill: "#fff", stroke: "#000" } } } as never;
+    expect(checkOverrides(layers, overrides)).toEqual([]);
+    expect((overrides as Record<string, { style: object }>).name.style).toEqual({ fill: "#ffffff", stroke: "#000000" });
+    expect(checkOverrides(layers, { name: { style: { fill: "gold" } } } as never).join())
+      .toMatch(/override name style has fill "gold"/);
   });
 });
 

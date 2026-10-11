@@ -16,8 +16,15 @@ export function validateField(decl: FieldDecl, value: FieldValue): Result {
     case "text":
       return typeof value === "string" ? ok : err("Expected text.");
     case "number": {
-      const n = typeof value === "number" ? value : Number(value);
-      if (typeof value === "boolean" || Number.isNaN(n)) return err("Expected a number.");
+      // Plain decimals only: Number() would also take "1e1", "0x10" and "6.",
+      // which print as typed, not as the number they parse to. Blank is "not
+      // filled yet", like every other field.
+      if (typeof value === "boolean") return err("Expected a number.");
+      const text = String(value).trim();
+      if (!text) return ok;
+      const n = Number(text);
+      if (typeof value === "string" ? !/^-?\d+(\.\d+)?$/.test(text) : !Number.isFinite(n))
+        return err("Expected a number.");
       if (decl.min !== undefined && n < decl.min) return err(`Must be at least ${decl.min}.`);
       if (decl.max !== undefined && n > decl.max) return err(`Must be at most ${decl.max}.`);
       return ok;

@@ -15,6 +15,7 @@ import type { Style, StyledLine } from "../types";
 import type { Anchor } from "./position";
 import { FONT_FAMILIES, type FontFamilyId } from "../fontCatalog";
 import { deepMerge, type DeepPartial } from "./merge";
+import { normalizeHex } from "../layout";
 
 /** Asset ids the page-art slots (texture / mask) ride under in every image
  *  map the PDF and PSD builders key on. Shared by the app and the CLI so a
@@ -279,6 +280,62 @@ function fail(msg: string): never { throw new Error(`Invalid master file: ${msg}
 const KINDS = new Set<LayerKind>(["text", "image", "barcode", "qr"]);
 const SYMBOLOGIES = new Set<Symbology>(["upc-a", "ean-13", "code-128"]);
 const ANCHORS = new Set<Anchor>(["left", "center", "right"]);
+const PLATES = new Set(["white", "metallic"]);
+
+/** What is wrong with the colours and ink plates of a style or a text run,
+ *  or undefined. A 3-digit hex is widened to "#rrggbb" IN PLACE, because the
+ *  PDF and PSD read exactly six digits (layout.ts's parseHexFill) while the
+ *  canvas reads any CSS colour — left alone, "#fff" printed blue and "gold"
+ *  black. `complete` = fill and layer must be there (a whole style or run);
+ *  a label override's partial style may omit them, or null them to unset. */
+function styleProblem(s: Record<string, unknown>, complete: boolean): string | undefined {
+  for (const key of ["fill", "stroke"]) {
+    const v = s[key];
+    if (v == null) {
+      if (key === "fill" && complete) return "is missing fill";
+      continue;
+    }
+    if (v === "none") continue;
+    const hex = typeof v === "string" ? normalizeHex(v) : undefined;
+    if (!hex) return `has ${key} ${JSON.stringify(v)}, which is not a hex colour`;
+    if (!/^#[0-9a-f]{6}$/i.test(v as string)) s[key] = hex;
+  }
+  for (const key of ["layer", "strokeLayer"]) {
+    const v = s[key];
+    if (v == null) {
+      if (key === "layer" && complete) return "is missing layer";
+      continue;
+    }
+    if (!PLATES.has(v as string)) return `has ${key} ${JSON.stringify(v)}, which is not white or metallic`;
+  }
+  return undefined;
+}
+
+/** What is wrong with a partial layer — a variant's diff or a label override —
+ *  or undefined: its style may be partial, but whatever lines it carries
+ *  replace the layer's whole, so they must be complete. Normalizes in place
+ *  like styleProblem, so the stored diff is what prints. */
+export function patchProblem(p: Record<string, unknown>): string | undefined {
+  if (p.style != null) {
+    if (typeof p.style !== "object" || Array.isArray(p.style)) return "has a style that is not an object";
+    const s = styleProblem(p.style as Record<string, unknown>, false);
+    if (s) return `style ${s}`;
+  }
+  return p.lines == null ? undefined : linesProblem(p.lines);
+}
+
+/** What is wrong with a text layer's lines (or a stored value of lines), or
+ *  undefined: each needs string text and a complete, printable style. */
+export function linesProblem(lines: unknown): string | undefined {
+  if (!Array.isArray(lines)) return "has lines that are not a list";
+  for (const [i, ln] of lines.entries()) {
+    if (!ln || typeof ln !== "object" || typeof (ln as { text?: unknown }).text !== "string")
+      return `has line ${i + 1} whose text is not a string`;
+    const problem = styleProblem(ln as Record<string, unknown>, true);
+    if (problem) return `has line ${i + 1} that ${problem}`;
+  }
+  return undefined;
+}
 
 export function validateLayer(l: Layer, ctx: string): void {
   if (!l || typeof l !== "object") fail(`${ctx} layer is not an object`);
@@ -313,6 +370,8 @@ export function validateLayer(l: Layer, ctx: string): void {
     if (l.fontFamily !== undefined && !Object.hasOwn(FONT_FAMILIES, l.fontFamily))
       fail(`text layer "${l.id}" has unknown font family "${l.fontFamily}"`);
     if (!Array.isArray(l.lines)) fail(`text layer "${l.id}" missing lines`);
+    const lines = linesProblem(l.lines);
+    if (lines) fail(`${ctx} layer "${l.id}" ${lines}`);
     if (typeof l.size !== "number") fail(`text layer "${l.id}" missing size`);
     if (!["left", "center", "right", "justify"].includes(l.align)) fail(`text layer "${l.id}" has invalid align`);
     if (l.symbology !== undefined && !SYMBOLOGIES.has(l.symbology))
@@ -344,6 +403,8 @@ export function validateLayer(l: Layer, ctx: string): void {
   if (l.title !== undefined && typeof l.title !== "string")
     fail(`${ctx} layer "${l.id}" has an invalid title`);
   if (!l.style || typeof l.style !== "object") fail(`${ctx} layer "${l.id}" missing style`);
+  const style = styleProblem(l.style as unknown as Record<string, unknown>, true);
+  if (style) fail(`${ctx} layer "${l.id}" style ${style}`);
 }
 
 /** Every `below` reference must name a layer in the list, an enabled layer
@@ -400,6 +461,8 @@ export function parseMaster(json: unknown): Master {
     for (const [id, patch] of Object.entries(v.layers)) {
       if (!patch || typeof patch !== "object" || Array.isArray(patch))
         fail(`variant "${v.id}" has invalid layer patch "${id}"`);
+      const problem = patchProblem(patch as Record<string, unknown>);
+      if (problem) fail(`variant "${v.id}" layer "${id}" ${problem}`);
       const i = merged.findIndex((l) => l.id === id);
       const layer = i >= 0 ? deepMerge(merged[i], patch) : { ...patch, id } as Layer;
       if (layer.id !== id) fail(`variant "${v.id}" cannot change layer id "${id}"`);

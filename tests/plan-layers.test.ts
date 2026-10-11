@@ -241,6 +241,14 @@ describe("planLayers barcode", () => {
   };
   const r2 = (n: number) => Math.round(n * 100) / 100;
 
+  it("draws a UPC stored with its printed spaces exactly as its bare digits", () => {
+    const bare = planLayers([upright], m, assets).find((p): p is PlacedBarcode => p.kind === "barcode")!;
+    const spaced = planLayers([{ ...upright, value: "0 12345-67890 5" }], m, assets)
+      .find((p): p is PlacedBarcode => p.kind === "barcode")!;
+    expect(spaced.geo).toEqual(bare.geo);
+    expect(spaced.digits).toEqual(bare.digits);
+  });
+
   it("upright: matches plan.ts's custom barcode geometry (print-geometry goldens), guards run long into the digit band", () => {
     const item = planLayers([upright], m, assets).find((p): p is PlacedBarcode => p.kind === "barcode")!;
     const ref = customBarcodeItem({
