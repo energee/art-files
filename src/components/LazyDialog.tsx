@@ -3,6 +3,7 @@
 // renders: DialogLoading while the chunk loads, the load-failed message if
 // it never does.
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { errMsg } from "@/lib/utils";
 
 /** The Suspense fallback while an opened dialog's chunk loads. Invisible,
  *  but it carries the dialog-content marker dialogOpen() looks for, so the
@@ -14,7 +15,7 @@ export const DialogLoading = () => <div data-slot="dialog-content" hidden />;
 /** React.lazy keeps a failed load for the rest of the session, so the
  *  message names the way out. */
 export const loadFailedMessage = (what: string, err: unknown) =>
-  `${what} failed to load: ${String(err)}. Save your work and reload Label Lab to try again.`;
+  `${what} failed to load: ${errMsg(err)}. Save your work and reload Label Lab to try again.`;
 
 /** Stands in for a dialog whose chunk failed to load, instead of
  *  unmounting the editor and its unsaved edits. */

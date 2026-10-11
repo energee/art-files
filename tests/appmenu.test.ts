@@ -67,9 +67,15 @@ describe("view menu", () => {
     // The Rendered and Four-Pack views are gone (the four-pack is the Can
     // view's 1 / 4 count, a toolbar control), and Guides is one switch over
     // bleed, margin, center and manual guides — no per-kind items, no Clear.
-    expect(ids).toEqual(["view-label", "view-mask", "view-can", "rulers", "guides"]);
+    expect(ids).toEqual(["view-label", "view-mask", "view-can", "rulers", "guides", "zoom-in", "zoom-out", "zoom-fit"]);
   });
 
+  it("gives the zoom commands native accelerators macOS can show", () => {
+    const run = () => undefined;
+    expect(nativeAccelerator({ id: "zoom-in", label: "Zoom In", key: "=", mods: "⌘", run })).toBe("CmdOrCtrl+=");
+    expect(nativeAccelerator({ id: "zoom-out", label: "Zoom Out", key: "-", mods: "⌘", run })).toBe("CmdOrCtrl+-");
+    expect(nativeAccelerator({ id: "zoom-fit", label: "Zoom to Fit", key: "0", mods: "⌘", run })).toBe("CmdOrCtrl+0");
+  });
 });
 
 describe("native text editing menu", () => {

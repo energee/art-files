@@ -11,8 +11,8 @@
 // overrides with (only those load, #411), so each CSS family resolves — a
 // missing face would silently measure wrong, which is exactly what the gate
 // exists to prevent.
-import { type Mode, type MeasureFace, type PlacedBarcode, type PlacedText, type PlanAssets } from "../plan";
-import type { PlacedLayer, PlacedPage } from "../planLayers";
+import { digitStartX, type Mode, type MeasureFace, type PlacedBarcode, type PlacedText, type PlanAssets } from "../plan";
+import { pageDrawsOn, type PlacedLayer, type PlacedPage } from "../planLayers";
 import type { Fill, Style } from "../types";
 import { bridgeOffsets } from "../strokes";
 import { FACE_WEIGHT, labelFontCss } from "../fonts";
@@ -108,10 +108,14 @@ function pageLayer(bmp: CanvasImageSource, r: PlacedPage, w: number, h: number):
 
 /** Art-mode CSS color for a Fill — "none" is no ink, i.e. white, the same
  *  rule as pdf/build.ts's fillColor via parseHexFill. */
-const cssFill = (fill: Fill) => (fill === "none" ? "#FFFFFF" : fill);
+const cssFill = (fill: Fill) => (fill === "none" ? L.WHITE_HEX : fill);
 /** Mask-mode paint: knockout (white) or white-ink (blue). */
 const cssMask = (layer: Style["layer"]) =>
-  layer === "metallic" ? "#FFFFFF" : L.MASK_BLUE_HEX;
+  layer === "metallic" ? L.WHITE_HEX : L.MASK_BLUE_HEX;
+/** An element's paint for the plate — psd/build.ts's paint() and
+ *  pdf/build.ts's ink(), in CSS. */
+const ink = (mode: Mode, fill: Fill, layer: Style["layer"]) =>
+  mode === "art" ? cssFill(fill) : cssMask(layer);
 
 /** A bitmap repainted in `fill`, keeping its alpha — tintRgba's color
  *  overlay done by the compositor (source-in) instead of a pixel loop, so a
@@ -132,11 +136,6 @@ function tinted(bmp: ImageBitmap, fill: Fill): HTMLCanvasElement {
   tintCache.set(bmp, { fill, canvas });
   return canvas;
 }
-
-/** Which plate a page item belongs to: the background texture is art-only,
- *  the metallic mask is mask-only. */
-const pageDrawsOn = (p: PlacedPage, mode: Mode) =>
-  mode === "art" ? p.role === "background" : p.role === "mask";
 
 /** Paint one plate from the plan. The canvas's pixel size sets the scale
  *  (width / PAGE.w); the caller sizes it. Page items (the texture, the mask)
@@ -170,7 +169,7 @@ export function drawPlate(
   c.fontKerning = "none";
 
   // Plate background — mirrors buildArtPdf / buildMaskPdf.
-  c.fillStyle = "#FFFFFF";
+  c.fillStyle = L.WHITE_HEX;
   c.fillRect(0, 0, L.PAGE.w, L.PAGE.h);
   const bitmapOf = (asset: string) => assets.images?.[asset] ?? null;
   const hasMask = plan.some((r) => r.kind === "page" && r.role === "mask" && bitmapOf(r.asset));
@@ -203,11 +202,11 @@ export function drawPlate(
       // tips never fold the stroke over itself. Re-measure with strokecap
       // before assuming otherwise.
       if (r.stroke) {
-        c.strokeStyle = mode === "art" ? cssFill(r.stroke.fill) : cssMask(r.stroke.layer);
+        c.strokeStyle = ink(mode, r.stroke.fill, r.stroke.layer);
         c.lineWidth = 2 * r.stroke.w;
         for (const p of paths) c.stroke(p);
       }
-      c.fillStyle = mode === "art" ? cssFill(r.fill) : cssMask(r.layer);
+      c.fillStyle = ink(mode, r.fill, r.layer);
       for (const p of paths) c.fill(p);
       c.restore();
     } else if (r.kind === "page") {
@@ -287,16 +286,16 @@ function drawText(ctx: Ctx, r: PlacedText, mode: Mode, fontCss: string, ring: Ri
   ctx.translate(r.x, r.y);
   if (r.rotated) ctx.rotate(-Math.PI / 2); // y-down CCW = PDF's degrees(90)
   if (r.stroke) {
-    const ink = mode === "art" ? cssFill(r.stroke.fill) : cssMask(r.stroke.layer);
+    const strokeInk = ink(mode, r.stroke.fill, r.stroke.layer);
     // Bridge the cavities first, in the stroke's own ink, then stroke over
     // them: the copies sit inside the true envelope, so the stroke keeps the
     // outer edge.
-    ctx.fillStyle = ctx.strokeStyle = ink;
+    ctx.fillStyle = ctx.strokeStyle = strokeInk;
     for (const { dx, dy } of ring(r.stroke.w)) paint("fillText", dx, dy);
     ctx.lineWidth = 2 * r.stroke.w; // outer half is the w-wide stroke; fill covers the inner
     paint("strokeText");
   }
-  ctx.fillStyle = mode === "art" ? cssFill(r.fill) : cssMask(r.layer);
+  ctx.fillStyle = ink(mode, r.fill, r.layer);
   paint("fillText");
   ctx.restore();
   ctx.letterSpacing = "0px";
@@ -315,13 +314,9 @@ function drawBarcode(ctx: Ctx, item: PlacedBarcode, mode: Mode, fontCss: string,
     // grows back toward the bars. Upright (every custom barcode layer, Task
     // 3): ordinary horizontal text — translate to the run's left edge (the
     // plan hands back the run's CENTER, see PlacedBarcode's own doc) and
-    // skip the rotation.
-    if (item.rotated) {
-      ctx.translate(d.x, d.y);
-      ctx.rotate(-Math.PI / 2);
-    } else {
-      ctx.translate(d.x - d.w / 2, d.y);
-    }
+    // skip the rotation. digitStartX picks between the two.
+    ctx.translate(digitStartX(d, item.rotated), d.y);
+    if (item.rotated) ctx.rotate(-Math.PI / 2);
     if (paint === "fill") ctx.fillText(d.text, 0, 0);
     else {
       // Digits are the same tiny-feature case drawText bridges — 0, 6, 8 and
@@ -339,8 +334,8 @@ function drawBarcode(ctx: Ctx, item: PlacedBarcode, mode: Mode, fontCss: string,
   // Same bars and digit glyphs as the PDF. Mask mode only swaps plate
   // colours, so the preview's white-ink shape matches the stroke.
   const bars = item.geo.bars;
-  const strokeInk = mode === "art" ? cssFill(item.stroke) : cssMask(item.strokeLayer);
-  const fillInk = mode === "art" ? cssFill(item.fill) : cssMask(item.fillLayer);
+  const strokeInk = ink(mode, item.stroke, item.strokeLayer);
+  const fillInk = ink(mode, item.fill, item.fillLayer);
   if (item.S > 0 && item.stroke !== "none") {
     // Halo only: the ink pass below repaints every bar body and digit, so
     // this pass strokes without filling (dead paint otherwise).

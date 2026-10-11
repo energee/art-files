@@ -4,7 +4,8 @@ import { isAbort, openPicker, savePicker, writeHandle } from "./filePickers";
 // @tauri-apps/plugin-* imports stay here so the app's native surface is
 // visible in one place. Open and save both live here; the capability
 // scope allows reading, writing, renaming and removing .label and .master
-// paths (rename/remove serve the atomic save).
+// paths (rename/remove serve the atomic save), plus checking for and writing
+// an export pair's `-mask.pdf`/`-mask.psd` beside the art file.
 
 /** Read a file's bytes through Tauri's fs plugin — the read half of this
  *  boundary. The capability scope (src-tauri/capabilities/default.json)
@@ -13,6 +14,15 @@ import { isAbort, openPicker, savePicker, writeHandle } from "./filePickers";
 export async function readNativeFile(path: string): Promise<Uint8Array> {
   const { readFile } = await import("@tauri-apps/plugin-fs");
   return readFile(path);
+}
+
+/** Whether a desktop path already holds a file. Export pairs use it before
+ *  writing the mask beside the art file the dialog chose: that dialog's
+ *  overwrite prompt covered only the art file. Scoped by fs:allow-exists in
+ *  src-tauri/capabilities/default.json. */
+export async function nativePathExists(path: string): Promise<boolean> {
+  const { exists } = await import("@tauri-apps/plugin-fs");
+  return exists(path);
 }
 
 /** Open a native file dialog and return the selected path. Null is an
@@ -54,8 +64,9 @@ export async function openThrough(options: FileOptions): Promise<FileTarget | nu
  *  failures always propagate rather than becoming downloads.
  *  On desktop a dialog-chosen path is writable because the dialog plugin adds
  *  it to the runtime scope; a reused `target.path` (Finder/argv opens,
- *  remembered masters) and the atomic-save temp beside a .label/.master are
- *  writable only through the .label/.master globs in
+ *  remembered masters), an export pair's mask beside its art file, and the
+ *  atomic-save temp beside a .label/.master are writable only through the
+ *  globs in
  *  src-tauri/capabilities/default.json. Dynamic imports keep both plugins out
  *  of the browser's initial chunk. */
 export async function saveThrough(
@@ -95,7 +106,8 @@ export async function saveThrough(
 /** Write a desktop save. .label/.master paths go through the atomic temp +
  *  rename; anything else (PDF/PSD exports) is written directly, because the
  *  dialog scopes only the exact file it returned and the capability globs
- *  cover only .label/.master, so a temp beside an export would be forbidden. */
+ *  cover only .label/.master and `-mask.pdf`/`-mask.psd` (no rename/remove),
+ *  so a temp beside an export would be forbidden. */
 async function writeNative(path: string, bytes: Uint8Array): Promise<void> {
   if (/\.(label|master)$/i.test(path)) return writeNativeAtomic(path, bytes);
   await (await import("@tauri-apps/plugin-fs")).writeFile(path, bytes);

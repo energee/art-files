@@ -11,8 +11,6 @@ import type { TextLayer } from "../src/model/layers";
 import * as L from "../src/layout";
 import { measure } from "./fixtures";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 const GOLD = { fill: "#F3CD80", layer: "metallic" } as const;
 const layer = (text: string): TextLayer => ({
   kind: "text", id: "t", name: "Title", enabled: true, anchor: "left", align: "left",

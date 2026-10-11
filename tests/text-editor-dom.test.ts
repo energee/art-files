@@ -16,10 +16,6 @@ import { TooltipProvider } from "../src/components/ui/tooltip";
 import type { TextLine } from "../src/model/layers";
 import { GOLD } from "./legacy/layout";
 
-// React only honours act() when the environment opts in; without this every
-// act() call still works but logs "not configured to support act(...)".
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 const base = { fill: GOLD, layer: "metallic" } as const;
 const line = (text: string, extra: Partial<TextLine> = {}): TextLine => ({ ...base, text, ...extra });
 

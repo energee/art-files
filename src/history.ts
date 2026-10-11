@@ -24,7 +24,8 @@ export type Stacks<T> = { past: T[]; present: T; future: T[] };
  *  - string — a field session key (an inspector field's id): folds only into
  *    a step the SAME key opened with the immediately preceding edit, so a
  *    field's typing is one step however slowly the user types, yet never
- *    merges into an unrelated earlier edit (#73). */
+ *    merges into an unrelated earlier edit (#73). An unkeyed edit straight
+ *    after a field session opens its own step too, whatever the timing. */
 export type Coalesce = boolean | string;
 
 /** Establish a new document boundary: the value becomes current and neither
@@ -74,13 +75,18 @@ export function useHistory<T>(initial: T | (() => T)) {
     // ref write in there would make the second call see its own key.
     const keyed = typeof coalesce === "string";
     const sameKey = keyed && lastKey.current === coalesce;
+    // An unkeyed edit straight after a field session must not fold into that
+    // field's step via the timing window: one ⌘Z would revert both.
+    const afterKeyed = lastKey.current !== null;
     lastKey.current = keyed ? coalesce : null;
     setH((s) => {
       const value = typeof next === "function" ? (next as (c: T) => T)(s.present) : next;
       // ponytail: reading the clock inside the updater is impure, but the
       // only cost of a double-invoke under StrictMode is one coalesced step.
       const now = performance.now();
-      const fold = keyed ? sameKey : coalesce ?? now - lastEdit.current < COALESCE_MS;
+      const fold = keyed
+        ? sameKey
+        : coalesce ?? (!afterKeyed && now - lastEdit.current < COALESCE_MS);
       if (!Object.is(value, s.present)) lastEdit.current = now;
       return pushed(s, value, fold);
     });

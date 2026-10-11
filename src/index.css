@@ -36,9 +36,9 @@
   --background: light-dark(#fafaf7, #1b1c18);
   --foreground: light-dark(#1e1f1a, #edede6);
   --muted: light-dark(#ece8df, #26261f);
-  /* Contrast ratios below are against --background (#1b1c18 / #fafaf7).
-     Secondary text: 6.83:1 dark, 5.70:1 light — both clear the 4.5:1 body-copy
-     minimum with room for this app's 11-12px labels. */
+  /* Secondary text: 7.69:1 dark / 5.45:1 light on --background, 7.09 / 5.70 on
+     --card (the sidebar) and 6.83 / 4.66 on --accent (hover/selected rows) —
+     all clear the 4.5:1 body-copy minimum for this app's 11-12px labels. */
   --muted-foreground: light-dark(#68675c, #b0aea2);
   /* Structural rules (separators, panel edges): deliberately quiet, warm-grey
      bias to match the neutrals above. */

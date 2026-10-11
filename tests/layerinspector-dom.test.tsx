@@ -17,8 +17,6 @@ import type {
   BarcodeLayer, ImageLayer, Layer, QrLayer, TextLayer,
 } from "../src/model/layers";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 let container: HTMLDivElement;
 let root: Root;
 
@@ -344,6 +342,17 @@ describe("LayerInspector style", () => {
     expect(onChange).toHaveBeenLastCalledWith({ solidBackground: true });
     render(qr({ style: { ...STYLE, stroke: "#FFFFFF" } }));
     expect(byLabel("Solid background")).toBeNull();
+  });
+
+  // Raster art prints on solid white ink whatever its plate says (the mask
+  // paints its whole footprint), so the Metallic toggle would do nothing.
+  it("hides the plate toggle on raster image art, with a note; SVG art keeps it", () => {
+    render(image({ asset: "img-1" }), { rasterArt: true });
+    expect(byLabel("Metallic")).toBeNull();
+    expect(container.textContent).toContain("Raster art always prints on white ink");
+    render(image());
+    expect(byLabel("Metallic")).not.toBeNull();
+    expect(container.textContent).not.toContain("Raster art always prints on white ink");
   });
 
   it("tracking is offered for text only", () => {

@@ -73,6 +73,9 @@ export function LayerInspector(props: {
   content?: ReactNode;
   /** The master's typeface, display only. */
   fontFamily?: string;
+  /** An image layer holding raster art (PNG/JPEG): it always prints on
+   *  white ink, so Style offers no plate toggle. */
+  rasterArt?: boolean;
 }) {
   const { layer } = props;
   const set = props.onChange;
@@ -141,7 +144,7 @@ export function LayerInspector(props: {
           Document layers it carries no Style stack. */}
       <Position layer={layer} layerNames={props.layerNames} onUnbind={props.onUnbind} onBind={props.onBind} {...ctx} />
 
-      {!page && <StyleSection layer={layer} {...ctx} />}
+      {!page && <StyleSection layer={layer} rasterArt={props.rasterArt} {...ctx} />}
       {(layer.kind === "text" || layer.kind === "barcode") && (
         <details className="mt-4 border-t border-border pt-3">
           <summary className="cursor-pointer rounded py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">

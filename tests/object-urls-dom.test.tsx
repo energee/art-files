@@ -32,8 +32,6 @@ vi.mock("../src/fonts", () => ({
 const { DocumentEditor } = await import("../src/App");
 const { packLabel, packMaster } = await import("../src/model/files");
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 let created: string[];
 let revoked: Set<string>;
 beforeEach(() => {

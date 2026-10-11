@@ -9,10 +9,10 @@ import type {
 } from "@tauri-apps/api/menu";
 import {
   Bookmark, BookmarkPlus, BookOpen, Columns2, Contrast, Cylinder, FileImage, Files, FolderOpen,
-  History, Layers, RectangleHorizontal, Redo2, Ruler, Settings, SquareArrowDown,
-  SquareArrowUp, SquarePlus, Undo2, X, type LucideIcon,
+  History, Layers, Maximize2, RectangleHorizontal, Redo2, Ruler, Settings, SquareArrowDown,
+  SquareArrowUp, SquarePlus, Undo2, X, ZoomIn, ZoomOut, type LucideIcon,
 } from "lucide-react";
-import { shortcutOf, type Command } from "@/components/CommandMenu";
+import { shortcutOf, titleOf, type Command } from "@/components/CommandMenu";
 import { dialogOpen, isTypingTarget } from "@/keys";
 import { clearRecent, openRecent, recentLabels, recentTitles, subscribeRecent } from "@/recent";
 import {
@@ -20,6 +20,7 @@ import {
   MenubarSeparator, MenubarShortcut, MenubarSub, MenubarSubContent,
   MenubarSubTrigger, MenubarTrigger,
 } from "@/components/ui/menubar";
+import { errMsg } from "@/lib/utils";
 
 /** SF Symbols, the icons macOS itself uses in menus. The Mac menu shows the
  *  symbol (set natively after install, so it tints with light and dark mode;
@@ -46,6 +47,9 @@ const SYMBOL_GLYPH = {
   "cylinder": Cylinder,
   "ruler": Ruler,
   "rectangle.split.2x1": Columns2,
+  "plus.magnifyingglass": ZoomIn,
+  "minus.magnifyingglass": ZoomOut,
+  "arrow.up.left.and.down.right.magnifyingglass": Maximize2,
 } satisfies Record<string, LucideIcon>;
 type MenuSymbol = keyof typeof SYMBOL_GLYPH;
 
@@ -128,6 +132,10 @@ export const APP_MENUS: SubmenuEntry[] = [
       { kind: "separator", id: "view-modes" },
       { kind: "action", id: "rulers", text: "Rulers", check: true, symbol: "ruler" },
       { kind: "action", id: "guides", text: "Guides", check: true, symbol: "rectangle.split.2x1" },
+      { kind: "separator", id: "view-zoom" },
+      { kind: "action", id: "zoom-in", text: "Zoom In", symbol: "plus.magnifyingglass" },
+      { kind: "action", id: "zoom-out", text: "Zoom Out", symbol: "minus.magnifyingglass" },
+      { kind: "action", id: "zoom-fit", text: "Zoom to Fit", symbol: "arrow.up.left.and.down.right.magnifyingglass" },
       // Ours rather than the row AppKit inserts on first open, which arrives
       // after menu_symbols.rs has run and so would stay without its icon.
       { kind: "predefined", item: "Separator" },
@@ -196,7 +204,7 @@ function WebEntries(props: {
         <MenubarCheckboxItem key={entry.id} checked={!!props.checked[entry.id]}
           disabled={command.disabled} onClick={command.run}>
           <MenuGlyph name={entry.symbol} />
-          {entry.text}
+          {titleOf(command, entry.text)}
           {keys && <MenubarShortcut>{keys}</MenubarShortcut>}
         </MenubarCheckboxItem>
       );
@@ -204,7 +212,7 @@ function WebEntries(props: {
     return (
       <MenubarItem key={entry.id} disabled={command.disabled} onClick={command.run}>
         <MenuGlyph name={entry.symbol} />
-        {entry.text}
+        {titleOf(command, entry.text)}
         {keys && <MenubarShortcut>{keys}</MenubarShortcut>}
       </MenubarItem>
     );
@@ -356,6 +364,8 @@ async function nativeEntry(
   const command = commands[entry.id];
   const options = {
     id: entry.id,
+    // The plain title: menu_symbols.rs finds the row by it. A command's note
+    // goes on afterwards, through the state sync's setText.
     text: entry.text,
     enabled: !command.disabled,
     accelerator: nativeAccelerator(command),
@@ -459,7 +469,7 @@ function useNativeMenu(
           // onCloseRequested sweep prompts for unsaved tabs before exit.
           const quit = () => void import("@tauri-apps/api/window")
             .then((m) => m.getCurrentWindow().close())
-            .catch((error) => errorRef.current(`Could not quit: ${String(error)}`));
+            .catch((error) => errorRef.current(`Could not quit: ${errMsg(error)}`));
           roots.unshift(await macApplicationMenu(api, resources, () => updateRef.current(), quit));
         } else {
           const updater = await api.MenuItem.new({
@@ -532,7 +542,7 @@ function useNativeMenu(
         setItems(actionItems);
       } catch (error) {
         await closeResources(resources);
-        if (live) errorRef.current(`Could not install the native menu: ${String(error)}`);
+        if (live) errorRef.current(`Could not install the native menu: ${errMsg(error)}`);
       }
     })();
 
@@ -551,7 +561,7 @@ function useNativeMenu(
     appliedState.current.set("check-for-updates:text", text);
     if (!updateInstalled) return; // the item is created with the check label
     void item.setText(text).catch((error) => {
-      errorRef.current(`Could not update the native menu: ${String(error)}`);
+      errorRef.current(`Could not update the native menu: ${errMsg(error)}`);
     });
   }, [items, updateInstalled]);
 
@@ -559,6 +569,8 @@ function useNativeMenu(
     id: entry.id,
     enabled: !commands[entry.id].disabled,
     checked: isCheckAction(entry) ? !!checked[entry.id] : null,
+    plain: entry.text,
+    text: titleOf(commands[entry.id], entry.text),
   }));
   const signature = JSON.stringify(snapshot);
 
@@ -569,6 +581,13 @@ function useNativeMenu(
         const item = items.get(state.id);
         if (!item) throw new Error(`Native menu item is missing: ${state.id}`);
         const stateKey = `${state.enabled}:${state.checked ?? "-"}`;
+        // The title is tracked apart, so a check or enable change costs no
+        // setText; an item is installed under its plain title.
+        const textKey = `${state.id}:text`;
+        if ((appliedState.current.get(textKey) ?? state.plain) !== state.text) {
+          await item.setText(state.text);
+          appliedState.current.set(textKey, state.text);
+        }
         if (appliedState.current.get(state.id) === stateKey) return;
         await item.setEnabled(state.enabled);
         if (state.checked !== null && "setChecked" in item) {
@@ -580,7 +599,7 @@ function useNativeMenu(
     // Preserve render order across IPC: a slow prior update must never land
     // after a newer checked/disabled state.
     updateQueue.current = updateQueue.current.then(apply, apply).catch((error) => {
-      errorRef.current(`Could not update the native menu: ${String(error)}`);
+      errorRef.current(`Could not update the native menu: ${errMsg(error)}`);
     });
   // signature is the compact set of native-visible state; ordinary App
   // renders do not produce 26 IPC updates. resync re-runs it after a native

@@ -11,8 +11,6 @@ import type { CanvasRenderSource } from "../src/canvas/draw";
 import { PAGE } from "../src/layout";
 import { boxOfLayer, lolevLayers, logoSvg, measure } from "./fixtures";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 let container: HTMLDivElement;
 let root: Root;
 

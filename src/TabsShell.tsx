@@ -28,7 +28,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
+import { cn, errMsg } from "@/lib/utils";
 
 /** The one spelling of the window-module import its three consumers
  *  (destroy, close-requested, title) share. The registry caches the load. */
@@ -280,7 +280,7 @@ export default function TabsShell() {
       // this is the picker itself failing, before any tab exists — shown in
       // the strip, the shell's one visible surface.
       if (!isAbort(err))
-        setPickError(`Could not open project: ${err instanceof Error ? err.message : String(err)}`);
+        setPickError(`Could not open project: ${errMsg(err)}`);
     }
   }
 
