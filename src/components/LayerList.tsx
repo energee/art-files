@@ -174,7 +174,11 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
         className={cn(
           "flex cursor-pointer items-center gap-0.5 rounded-md pr-1 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           isSelected && "bg-sidebar-accent text-sidebar-accent-foreground",
-          inactive && "opacity-50",
+          // Muted ink, not opacity: row opacity multiplied into every child's
+          // own alpha (the badge's /70 composited to ~/35, 2.15:1). Muted is
+          // 5.70:1 light / 7.09:1 dark on the sidebar and 4.66 / 6.83 on the
+          // hover/selected accent (#440). Listed last so it beats both.
+          inactive && "text-muted-foreground hover:text-muted-foreground",
         )}
       >
         <SidebarMenuButton
@@ -189,7 +193,12 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
           onKeyDown={(e) => { dragHandlers.onKeyDown?.(e); if (!e.defaultPrevented) onKeyDown(e); }}
           aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
           title="Drag to reorder · Alt+↑/↓"
-          className="min-w-0 flex-1 touch-none cursor-grab text-xs hover:bg-transparent active:cursor-grabbing"
+          className={cn(
+            "min-w-0 flex-1 touch-none cursor-grab text-xs hover:bg-transparent active:cursor-grabbing",
+            // The button's own hover/active/selected accent ink would repaint
+            // an inactive row's name at full strength; keep it muted (#440).
+            inactive && "text-muted-foreground hover:text-muted-foreground active:text-muted-foreground data-active:text-muted-foreground data-open:hover:text-muted-foreground",
+          )}
         >
           <Icon />
           {renaming ? (
@@ -216,11 +225,13 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             <span
               title={`${row.variantOverridden ? "Changed" : "Added"} by the ${row.variant.name} variant${
                 row.variant.enabled ? "" : " (off)"}`}
-              // Same /70 ink in both states: /40 for "off" measured 2.47:1
-              // (light) and 3.35:1 (dark), under WCAG AA's 4.5:1 (#440). Off
-              // shows as a strikethrough instead of a fainter colour.
+              // /70 on an active row; an inactive row's badge inherits the
+              // row's muted ink with no extra alpha, since stacking a fainter
+              // colour (or row opacity) under it fell below WCAG AA's 4.5:1
+              // (#440). Off shows as a strikethrough, not a fainter colour.
               className={cn(
-                "shrink-0 rounded-sm border border-sidebar-border px-1 text-[10px] leading-4 text-sidebar-foreground/70",
+                "shrink-0 rounded-sm border border-sidebar-border px-1 text-[10px] leading-4",
+                !inactive && "text-sidebar-foreground/70",
                 !row.variant.enabled && "line-through",
               )}
             >
