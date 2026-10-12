@@ -80,7 +80,7 @@ import { LayerList } from "@/components/LayerList";
 import { LayerInspector } from "@/components/LayerInspector";
 import { ChoiceBox, TextEditor } from "@/components/TextEditor";
 import { FileDrop } from "@/components/FileDrop";
-import { MasterPicker } from "@/components/MasterPicker";
+import { MasterPicker, type LibraryEntry } from "@/components/MasterPicker";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
 import type { RenderSettings } from "@/settings";
 import {
@@ -1612,16 +1612,18 @@ export const DocumentEditor = memo(function DocumentEditor({
   }
 
   /** MasterPicker's library listing: the shipped master plus every master
-   *  the index remembers, id → name only (resolved lazily on pick).
+   *  the index remembers, id → name, file path and lastSeen (resolved
+   *  lazily on pick).
    *  `inLibrary` is an index row, which is what Remove can drop. Re-read
    *  only on a libraryTick bump or when this tab comes to the front — see
    *  refreshLibrary. */
   const library = useMemo(() => {
     const idx = masterIndex();
-    const entries: Record<string, { name: string; inLibrary: boolean }> = {
-      [SHIPPED_MASTER_ID]: { name: lolevMaster().name, inLibrary: !!idx[SHIPPED_MASTER_ID] },
+    const entries: Record<string, LibraryEntry> = {
+      // Always listed; the loop below replaces it when the index has a row.
+      [SHIPPED_MASTER_ID]: { name: lolevMaster().name, builtIn: true },
     };
-    for (const [id, e] of Object.entries(idx)) entries[id] = { name: e.name, inLibrary: true };
+    for (const [id, e] of Object.entries(idx)) entries[id] = { ...entries[id], ...e, inLibrary: true };
     return entries;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the inputs live in localStorage; libraryTick and active say when to re-read
   }, [libraryTick, active]);

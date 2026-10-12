@@ -106,11 +106,17 @@ function SelectLabel({
   )
 }
 
+/** `action` is a row's own button (e.g. a remove ✕), pulled into the check
+ *  mark's gutter at the right edge; meant for rows that are not the selected
+ *  value, though the check still renders if one is. It sits outside ItemText, so it is not part
+ *  of the option's text. ItemText clips at the row, so an over-long label is
+ *  cut before the check mark rather than drawn under it. */
 function SelectItem({
   className,
   children,
+  action,
   ...props
-}: SelectPrimitive.Item.Props) {
+}: SelectPrimitive.Item.Props & { action?: React.ReactNode }) {
   return (
     <SelectPrimitive.Item
       data-slot="select-item"
@@ -120,9 +126,10 @@ function SelectItem({
       )}
       {...props}
     >
-      <SelectPrimitive.ItemText className="flex flex-1 shrink-0 gap-2 whitespace-nowrap">
+      <SelectPrimitive.ItemText className="flex min-w-0 flex-1 gap-2 overflow-hidden whitespace-nowrap">
         {children}
       </SelectPrimitive.ItemText>
+      {action && <span className="-mr-6 flex shrink-0 items-center">{action}</span>}
       <SelectPrimitive.ItemIndicator
         render={
           <span className="pointer-events-none absolute right-2 flex size-4 items-center justify-center" />
