@@ -10,7 +10,7 @@ const DIALOG = '[data-slot="dialog-content"]';
 
 /** Any overlay or panel holding focus: a dialog, a popover, a menu, a Select
  *  (trigger or list), the inspector Sheet (role "dialog"). Every BARE key
- *  belongs to it — "g" in a Select is its typeahead, not Show guides. The ⌘
+ *  belongs to it — "g" in a Select is its typeahead, not the Guides toggle. The ⌘
  *  shortcuts still reach the app unless a MODAL dialog is open (dialogOpen):
  *  the non-modal ones edit the very layer on the canvas. */
 const POPUP = [

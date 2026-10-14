@@ -492,3 +492,10 @@ no status, no attempts, no delta.
 - status: done
 - delta: version set in package.json, package-lock.json, Cargo.toml, Cargo.lock and tauri.conf.json; check-release against origin/main and label-lab-v0.1.105 passed
 - evidence: merged as 0bb506c (#510)
+
+## 2026-10-13 ux-menu-naming
+- finding: [UX/med] UX audit items 6, 7, 8, 19, 20, 21 — Project vs Label and Save Master vs Save to Master… naming; ⌘K palette and View menu name commands differently; layer commands in no menu; Appearance only in Settings; Layers sidebar toggle in no menu or palette; New tab tooltip shows ⌘N on every platform
+- status: in-review
+- delta: Open/Save/Save As Label…, LABEL_DESC "Label"; Save Master… (live: reads Save Variant… on a variant, shared with the picker button); palette grouped from APP_MENUS with leading checks and old wording as keywords; Layer menu; View → Layers (controlled SidebarProvider, ⌘B display-only, no native accelerator); View → Appearance submenu backed by a shared useTheme store; platform-correct New tab title
+- observed-at: 892a272
+- evidence: branch fix/ux-menu-naming; tsc, lint, knip clean; full vitest at load ~64 gave only 5s timeouts, those files rerun with --testTimeout=120000

@@ -19,6 +19,7 @@ import {
   type TabsState,
 } from "@/tabs";
 import { LABEL_EXT } from "@/labelfile";
+import { shortcutLabel } from "@/keys";
 import { dropRecovery, earlierSnapshots, recoveryKey, type Recoverable } from "@/recovery";
 import { loadRenderSettings, saveRenderSettings, type RenderSettings } from "@/settings";
 import { forgetRecent, rememberRecent, setRecentOpener } from "@/recent";
@@ -262,7 +263,7 @@ export default function TabsShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** File → Open Project…: native dialog on desktop (a real path, routed
+  /** File → Open Label…: native dialog on desktop (a real path, routed
    *  exactly like an OS open, so the tab records filePath and ⌘S saves in
    *  place — WKWebView has no FS-Access picker), FS-Access picker in the
    *  browser (yields a writable handle, so Save rewrites the picked file),
@@ -533,7 +534,7 @@ export default function TabsShell() {
           newTab();
         }}
         aria-label="New tab"
-        title="New tab (⌘N)"
+        title={`New tab (${shortcutLabel("⌘N")})`}
         className="shrink-0 rounded-md px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
         +
       </button>

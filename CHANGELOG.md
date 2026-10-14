@@ -6,8 +6,19 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Added
+- **A Layer menu.** Layer → Add Text, Image, Barcode and QR Layer, and Remove Layer (greyed out when nothing removable is selected; Delete / Backspace still does it), so the layer commands are in the menu bar and not only in ⌘K and the sidebar.
+- **Appearance in the View menu and ⌘K.** View → Appearance → System / Light / Dark, and the same three rows in the palette, switch the theme Settings → Appearance sets; the menu checks the current one, and System still follows the operating system.
+- **View → Layers.** Shows or hides the Layers sidebar, checked while it is open, and the palette has it too. The sidebar button's tooltip now names its shortcut, `⌘B` (`Ctrl+B` on Windows and Linux).
+
 ### Changed
+- **Label commands say Label.** File → Open Label…, Save Label and Save Label As… (were Open / Save / Save As Project…), and the file dialogs call the file type "Label". Shortcuts are unchanged.
+- **Save Master… has its ellipsis, and names the variant.** File → Save Master… opens a review, so it now ends in "…", and reads Save Variant… while a variant is the version you are editing, like the button under the master picker (which now uses the same words instead of "Save to Master…" / "Save to Variant…").
+- **⌘K reads like the menus.** The palette groups its commands under File, Export, Edit, Layer, View and Appearance, names each one as its menu does ("Mask", not "Preview: Mask"; "Rulers", not "Hide rulers"), and marks a view or toggle that is on with a check. The old wording still finds them, and New Variant, which is in no menu, is listed under Other.
 - **A clearer master picker.** The menu now heads the master you're using **Current master** and the rest **Other masters**, and each master shows its file name and the day it was last used, so masters with the same name can be told apart. The ✕ that removes a master from the library sits at the right edge of its row.
+
+### Fixed
+- **The New tab button names the right shortcut.** Its tooltip read "⌘N" on Windows and Linux too; it now says Ctrl+N there.
 
 ## [0.1.106] - 2026-10-11
 

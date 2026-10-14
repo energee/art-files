@@ -93,3 +93,23 @@ it("formats modified shortcuts for both platforms (#320)", () => {
   expect(shortcutOf(cmd, true)).toBe("⇧⌘S");
   expect(shortcutOf(cmd, false)).toBe("Ctrl+Shift+S");
 });
+
+it("lists a command no menu names in the trailing Other group, under its own label", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(createElement(CommandMenu, { actions: [
+      { id: "variant-new", label: "New Variant", run: () => undefined },
+    ] }));
+  });
+  await act(async () => {
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
+  });
+  await vi.waitFor(() => expect(document.querySelector("[data-slot=command-item]")).not.toBeNull(), { timeout: 5000 });
+  const group = document.querySelector("[data-slot=command-group]")!;
+  expect(group.querySelector("[cmdk-group-heading]")?.textContent).toBe("Other");
+  expect(group.querySelector("[data-slot=command-item]")?.textContent).toBe("New Variant");
+  await act(async () => root.unmount());
+  container.remove();
+});

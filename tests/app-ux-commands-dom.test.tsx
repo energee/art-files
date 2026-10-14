@@ -238,3 +238,77 @@ it("re-lists a master the picker removed and then put back", async () => {
   await openPicker();
   await vi.waitFor(() => expect(listed()).toBe(true));
 });
+
+/** The palette's rows grouped under their headings, in order. */
+function paletteGroups(): Record<string, string[]> {
+  return Object.fromEntries([...document.querySelectorAll("[data-slot=command-group]")].map((group) => [
+    group.querySelector("[cmdk-group-heading]")?.textContent ?? "",
+    [...group.querySelectorAll("[data-slot=command-item]")].map((el) => el.textContent ?? ""),
+  ]));
+}
+const paletteRow = (text: string) => [...document.querySelectorAll<HTMLElement>("[data-slot=command-item]")]
+  .find((el) => el.textContent?.startsWith(text))!;
+
+it("names palette rows as the menus do, grouped by menu, with a check for what is on", async () => {
+  await mount();
+  await paletteRows();
+  const groups = paletteGroups();
+  expect(Object.keys(groups)).toEqual(["File", "Export", "Edit", "Layer", "View", "Appearance", "Other"]);
+  expect(groups.File.map((r) => r.replace(/(⌘|Ctrl).*$/, ""))).toEqual([
+    "New Tab", "Open Label…", "Close Tab", "Save Label", "Save Label As…",
+    "Open Master…", "Save Master…", "Save Master As…",
+  ]);
+  expect(groups.Layer.map((r) => r.replace(/⌫$/, ""))).toEqual([
+    "Add Text Layer", "Add Image Layer", "Add Barcode Layer", "Add QR Layer", "Remove Layer",
+  ]);
+  expect(groups.View.slice(0, 6).map((r) => r.replace(/(⌘|Ctrl\+)?[0-9A-Z]$/, ""))).toEqual([
+    "Label", "Mask", "Can", "Layers", "Rulers", "Guides",
+  ]);
+  expect(groups.Appearance).toEqual(["System", "Light", "Dark"]);
+  expect(groups.Other).toEqual(["New Variant"]);
+  // State is a leading check, not a Show/Hide verb: the defaults are on.
+  const on = [...document.querySelectorAll("[data-palette-check=on]")]
+    .map((el) => el.closest("[data-slot=command-item]")?.textContent?.replace(/(Ctrl\+)?[0-9A-Z]$/, ""));
+  expect(on).toEqual(["Label", "Layers", "Rulers", "Guides", "System"]);
+});
+
+it("finds a view or theme row by its old palette wording and its menu", async () => {
+  await mount();
+  await paletteRows();
+  const input = document.querySelector("[data-slot=command-input]") as HTMLInputElement;
+  const search = async (text: string) => {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, text);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    return [...document.querySelectorAll("[data-slot=command-item]")].map((el) => el.textContent ?? "");
+  };
+  expect((await search("preview: mask")).some((r) => r.startsWith("Mask"))).toBe(true);
+  expect((await search("hide rulers")).some((r) => r.startsWith("Rulers"))).toBe(true);
+  expect((await search("view can")).some((r) => r.startsWith("Can"))).toBe(true);
+  expect((await search("appearance dark"))).toEqual(["Dark"]);
+  expect((await search("theme")).length).toBe(3);
+});
+
+it("toggles the Layers sidebar from the palette and names ⌘B on its trigger", async () => {
+  const { container } = await mount();
+  const sidebar = () => container.querySelector("[data-slot=sidebar]")!.getAttribute("data-state");
+  expect(sidebar()).toBe("expanded");
+  expect(container.querySelector("[data-slot=sidebar-trigger]")?.getAttribute("title")).toBe("Layers (Ctrl+B)");
+  await paletteRows();
+  await act(async () => { paletteRow("Layers").click(); });
+  expect(sidebar()).toBe("collapsed");
+  // ⌘B still goes through the provider's guarded listener.
+  await press({ key: "b", metaKey: true });
+  expect(sidebar()).toBe("expanded");
+});
+
+it("switches the appearance from the palette", async () => {
+  await mount();
+  await paletteRows();
+  await act(async () => { paletteRow("Dark").click(); });
+  expect(document.documentElement.dataset.theme).toBe("dark");
+  await paletteRows();
+  await act(async () => { paletteRow("System").click(); });
+  expect(document.documentElement.dataset.theme).toBeUndefined();
+});
