@@ -9,6 +9,10 @@ that section to the new version (see .agents/release-steward.md).
 ### Changed
 - **A clearer master picker.** The menu now heads the master you're using **Current master** and the rest **Other masters**, and each master shows its file name and the day it was last used, so masters with the same name can be told apart. The ✕ that removes a master from the library sits at the right edge of its row.
 
+### Fixed
+- **The canvas checks numbers and codes like the sidebar.** Editing an ABV or a code on the preview no longer silently drops characters; what you type stays, and an out-of-range or malformed value shows its error right under the box, the same message the sidebar gives. Number boxes also take decimals such as 5.8 without the browser calling them invalid, and the arrow keys no longer round them to whole numbers.
+- **Fill fields are captioned by what they take.** A number layer's field is captioned **Number** and a code layer's **Code**, instead of every field saying **Text**. A field label set in the master still wins.
+
 ## [0.1.106] - 2026-10-11
 
 ### Added

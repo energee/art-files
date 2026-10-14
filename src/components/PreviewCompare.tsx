@@ -23,6 +23,7 @@ import { hitBoxesFromLayout, hitTestBoxes, type LayerBox } from "@/hittestLayers
 import type { ResizeHandle } from "@/model/edit";
 import type { Layer, TextLine } from "@/model/layers";
 import { uppercaseOf } from "@/model/layers";
+import { validateField } from "@/model/fields";
 import {
   ART, BLEED_SHIFT, PAGE, PREVIEW_MAX_W, PREVIEW_RASTER_MAX_EDGE, previewRasterScale, trackedWidth,
 } from "@/layout";
@@ -672,6 +673,10 @@ export const PreviewCompare = forwardRef<
         const fieldWidth = layer.suffix
           ? `calc(${cqh(trackedWidth(canvasRender.m(typed, size, faces.base, layer.fontFamily), typed, ls) + ls)} + 2px)`
           : "100%";
+        // PlainLineField's check: input kept as typed, a bad value flagged.
+        const check = typed === "" ? { ok: true } : validateField({ id: layer.id, label: layer.name,
+          kind: layer.input, path: "", min: layer.min, max: layer.max, symbology: layer.symbology }, typed);
+        const errorId = `${layer.id}-inplace-error`;
         return (
           <div
             ref={sessionRef}
@@ -709,15 +714,12 @@ export const PreviewCompare = forwardRef<
                 autoFocus
                 value={typed}
                 aria-label={`Edit ${layer.name.toLowerCase()} text`}
+                aria-invalid={!check.ok || undefined} aria-describedby={check.ok ? undefined : errorId}
                 onFocus={(e) => {
                   const end = e.currentTarget.value.length;
                   e.currentTarget.setSelectionRange(end, end);
                 }}
-                onChange={(e) => {
-                  const v = layer.input === "number"
-                    ? e.target.value.replace(/[^0-9.]/g, "") : e.target.value;
-                  apply([{ ...st, text: v }]);
-                }}
+                onChange={(e) => apply([{ ...st, text: e.target.value }])}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") setEditing(null);
                   if (e.key === "Escape") close(true);
@@ -736,6 +738,10 @@ export const PreviewCompare = forwardRef<
                 <span className="whitespace-nowrap">{layer.suffix}</span>
               )}
             </div>
+            {!check.ok && (
+              // Outside the rotated row so it reads level; UI face, clear of the ticks.
+              <p id={errorId} className="absolute top-full left-0 mt-2 whitespace-nowrap rounded-sm bg-popover px-1 font-sans text-xs font-normal leading-4 tracking-normal normal-case text-destructive-text shadow-sm">{check.error}</p>
+            )}
           </div>
         );
       })()}

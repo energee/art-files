@@ -245,6 +245,18 @@ it("keeps a negative ABV in the ABV field, with its error (#129)", async () => {
   });
 });
 
+// UX audit #24 — every text layer's fill field was captioned "Text", even
+// the ABV's number box. The caption now names the input kind.
+it("captions the fill field by input kind", async () => {
+  await withEditor(async () => {
+    const caption = (id: string) => document.querySelector(`label[for="${id}-content"]`)?.textContent;
+    await selectLayer("abv");
+    expect(caption("abv")).toBe("Number");
+    await selectLayer("name");
+    expect(caption("name")).toBe("Text");
+  });
+});
+
 // #171 — the on-canvas editor read the RESOLVED layer too, so after a
 // rejected entry it opened on the master's value (a blank ABV) while the
 // header named the bad one. It must open on what the label holds.
