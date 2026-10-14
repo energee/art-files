@@ -328,6 +328,9 @@ describe("TextEditor", () => {
       expect(box.type).toBe("number");
       expect(box.min).toBe("0");
       expect(box.max).toBe("20");
+      // Decimals like 5.8 are valid to the native control too, and arrow
+      // keys don't snap them to whole numbers (ledger ux-decimal-input).
+      expect(box.step).toBe("any");
       expect(box.placeholder).toBe("");
       expect(container.textContent).toContain("% alc by vol");
       expect(container.querySelector('[role="textbox"]')).toBeNull();

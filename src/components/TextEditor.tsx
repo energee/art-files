@@ -730,6 +730,9 @@ function PlainLineField(props: TextEditorProps) {
           invalid={!check.ok} onCommit={(text) => onChange([{ ...base, text }])} /> :
           <Input id={id} type={input === "number" ? "number" : "text"}
             className="h-7 text-xs" value={value} min={min} max={max}
+            // Any decimal the validator takes is valid to the native box too,
+            // and arrow keys keep the fraction instead of snapping to whole numbers.
+            step={input === "number" ? "any" : undefined}
             aria-invalid={!check.ok || undefined}
             onChange={(e) => onChange([{ ...base, text: e.target.value }])} />}
         {suffix && <span className="shrink-0 text-xs text-muted-foreground">{suffix}</span>}

@@ -2020,7 +2020,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     const id = `${layer.id}-content`;
     if (layer.kind === "text") {
       return (
-        <TextEditor id={id} label="Text" lines={layer.lines} base={layer.style}
+        <TextEditor id={id} label={layer.input === "number" ? "Number" : layer.input === "code" ? "Code" : "Text"}
+          lines={layer.lines} base={layer.style}
           onChange={(lines) => setContent(layer, lines, id)}
           multiline={true} uppercase={uppercaseOf(layer)}
           onUppercase={(uppercase) => patch(layer.id, { style: { uppercase } })}

@@ -317,7 +317,7 @@ no status, no attempts, no delta.
 
 ## 2026-10-05 ux-decimal-input
 - finding: [UX/low] src/components/TextEditor.tsx:731 — ABV decimals conflict with native input validation and stepping
-- status: open
+- status: done
 - attempts: 0/3
 - observed-at: 1b0024900e92d56e90b3f212865e15ecb99fd260
 - evidence: Chrome browser reproduction and DOM/accessibility measurements; full steps and source trace in docs/audits/2026-10-05-ux-decimal-input.md
@@ -325,6 +325,7 @@ no status, no attempts, no delta.
 - release: non-binary-impacting documentation and agent memory only; no release queued
 - evidence: git diff --cached --check and node scripts/check-release.mjs origin/main passed on audit/ux-decimal-input documentation diff based on 1b00249; no application suite run
 - re-check 2026-10-11 @ 0bb506c: still open. TextEditor.tsx:731 still renders type="number" with no step; #509 tightened validateField to plain decimals but the native step grid is unchanged
+- fix 2026-10-13 on fix/ux-canvas-field-validation: PlainLineField's number box sets step="any" (UX audit #17); tests/text-editor-dom.test.ts asserts it
 
 ## 2026-10-08 issue-419-webstorage
 - finding: [maint/med] #419 — Node 26 reportedly needs NODE_OPTIONS=--no-experimental-webstorage for `npm test` (2026-09-27 issue-queue-339 evidence)
