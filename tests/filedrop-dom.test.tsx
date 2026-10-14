@@ -101,6 +101,17 @@ describe("AssetDropOverlay window drops", () => {
     expect(el.style.getPropertyValue("--split")).toBe("300px");
   });
 
+  // A pane that starts right of the window's middle is all mask: the split
+  // clamps to its left edge rather than going negative.
+  it("clamps the split to the pane when the window midpoint falls outside it", () => {
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({ left: 600, width: 400, top: 0, height: 400, right: 1000, bottom: 400, x: 600, y: 0, toJSON: () => ({}) });
+    const width = vi.spyOn(window, "innerWidth", "get").mockReturnValue(1000);
+    onTestFinished(() => { rect.mockRestore(); width.mockRestore(); });
+    fileDrag("dragover", png);
+    expect((overlay() as HTMLElement).style.getPropertyValue("--split")).toBe("0px");
+  });
+
   it("yields field drops to the field", () => {
     const field = fieldWell(FILE_DROP_ATTR);
     expect(fileDrag("dragover", png, field).defaultPrevented).toBe(false);
