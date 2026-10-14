@@ -246,6 +246,10 @@ export function Segmented<T extends string>(props: {
 }
 
 
+/** The lock tooltip, on the inspector switch and the Layers row's lock
+ *  button. The lock is canvas-only (editGestures): typed X/Y still move it. */
+export const LOCK_TITLE = "Locked on canvas: drag, resize and nudge are off. Typed values still apply.";
+
 /** One control per axis: picking a guide anchors that edge of the box ON the
  *  guide (offset 0). Empty selection = a legacy layer placed by an absolute
  *  x/y; choosing any guide converts it. */

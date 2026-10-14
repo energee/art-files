@@ -2485,7 +2485,9 @@ export const DocumentEditor = memo(function DocumentEditor({
                 content={contentFor(inspected.layer)}
                 rasterArt={inspected.layer.kind === "image"
                   && (customImages[inspected.layer.asset]?.image.kind ?? "svg") !== "svg"}
-                fontFamily={family} />
+                fontFamily={family}
+                selectionCount={selected.length}
+                offVariant={inspected.variant && !inspected.variant.enabled ? inspected.variant.name : undefined} />
             )}
           </SheetContent>
         </Sheet>
