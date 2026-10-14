@@ -1935,8 +1935,11 @@ export const DocumentEditor = memo(function DocumentEditor({
               setDirty(true);
               setEdited(true);
               if (recoveredPath?.rebind) bindPath(recoveredPath.path);
-              else if (recoveredPath)
-                setLoadError(`Note: Restored from ${recoveredPath.path}, which moved, changed or is open in another tab, so Save asks where.`);
+              else if (recoveredPath) {
+                // Joins the open's own notes (benched values) rather than replacing them.
+                const note = `Restored from ${recoveredPath.path}, which moved, changed or is open in another tab, so Save asks where`;
+                setLoadError((e) => e.startsWith("Note: ") ? `${e} · ${note}` : `Note: ${note}`);
+              }
               const bytes = new Uint8Array(await file.arrayBuffer());
               // The path rides along only once rebound: with a fresh savedAt,
               // a refused path would pass canRebind after a second crash.

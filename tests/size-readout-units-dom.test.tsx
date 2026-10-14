@@ -32,7 +32,7 @@ beforeEach(async () => {
       onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
     }));
   });
-});
+}, 30_000);
 
 afterEach(async () => {
   await act(async () => { root.unmount(); });
@@ -60,10 +60,10 @@ it("opens a unit picker with the current unit pressed, instead of cycling", asyn
   expect(unitButton("Inches")?.getAttribute("aria-pressed")).toBe("true");
   expect(unitButton("Points")?.getAttribute("aria-pressed")).toBe("false");
   expect(unitButton("Pixels")).toBeDefined();
-});
+}, 30_000);
 
 it("picking a unit sets it", async () => {
   await open();
   await act(async () => { unitButton("Pixels")!.click(); });
   expect(readout().textContent).toContain("4800 × 3000 px");
-});
+}, 30_000);

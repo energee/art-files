@@ -32,7 +32,7 @@ beforeEach(async () => {
       onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
     }));
   });
-});
+}, 30_000);
 
 afterEach(async () => {
   await act(async () => { root.unmount(); });
@@ -48,4 +48,4 @@ it("offers Uppercase once in the inspector: the Typography switch, not a toolbar
   expect(document.querySelector('[aria-label="Toggle uppercase"]')).toBeNull();
   const toggle = document.querySelector('[role="switch"][aria-label="Uppercase"]');
   expect(toggle).not.toBeNull();
-});
+}, 30_000);

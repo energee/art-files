@@ -59,7 +59,8 @@ function RulerSettings(props: {
 }) {
   const { unit, onUnitChange, marginPt, onMarginChange, canAdd } = props;
   // The inset is master geometry, unlike everything else here: locked each
-  // time the popover opens, with LayerList's Lock toggle as the unlock.
+  // time the popover opens (the popover unmounts on close), behind a lock
+  // button shaped like LayerList's per-layer Lock toggle.
   const [marginLocked, setMarginLocked] = useState(true);
   const marginValue = pointToUnit(marginPt, 0, unit);
   const marginMax = pointToUnit(Math.min(ART.w, ART.h) / 2, 0, unit);

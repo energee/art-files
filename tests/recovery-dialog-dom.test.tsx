@@ -9,13 +9,13 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   dropped: [] as string[], opened: [] as unknown[], tauri: false, mtime: 0 as number | null,
+  snaps: [] as Record<string, unknown>[],
 }));
+const ALPHA = { key: "old:1", name: "alpha.label", bytes: new Uint8Array([1]), savedAt: 5, filePath: "/w/alpha.label" };
 vi.mock("../src/recovery", async (importOriginal) => ({
   canRebind: (await importOriginal<typeof import("../src/recovery")>()).canRebind,
   recoveryKey: (id: number) => `now:${id}`,
-  earlierSnapshots: async () => [
-    { key: "old:1", name: "alpha.label", bytes: new Uint8Array([1]), savedAt: 5, filePath: "/w/alpha.label" },
-  ],
+  earlierSnapshots: async () => mocks.snaps,
   dropRecovery: async (key: string) => { mocks.dropped.push(key); },
 }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => mocks.tauri, invoke: vi.fn(async () => null) }));
@@ -40,6 +40,7 @@ beforeEach(async () => {
   mocks.dropped.length = 0;
   mocks.opened.length = 0;
   mocks.tauri = false;
+  mocks.snaps = [ALPHA];
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -96,4 +97,19 @@ it("on desktop, a file written after the snapshot is not rebound", async () => {
   mocks.mtime = 6;
   await press("Restore");
   expect(mocks.opened[0]).toMatchObject({ recoveredPath: { path: "/w/alpha.label", rebind: false } });
+});
+
+it("on desktop, two snapshots of one file rebind only the first", async () => {
+  await act(async () => { root.unmount(); });
+  mocks.snaps = [ALPHA, { ...ALPHA, key: "old:2" }];
+  root = createRoot(container);
+  await act(async () => { root.render(createElement(TabsShell)); });
+  mocks.tauri = true; // after mount, like the tests above: the shell's window wiring stays off
+  mocks.mtime = 4;
+  await press("Restore");
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  // The mock editor records every render, so key the opens by snapshot.
+  const rebind = new Map((mocks.opened as { recovered: string; recoveredPath: { rebind: boolean } }[])
+    .map((o) => [o.recovered, o.recoveredPath.rebind]));
+  expect([...rebind]).toEqual([["old:1", true], ["old:2", false]]);
 });

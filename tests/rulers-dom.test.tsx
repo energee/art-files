@@ -253,6 +253,10 @@ it("locks the master margin inset until it is unlocked", async () => {
   expect(margin.disabled).toBe(true);
   expect(document.body.textContent).toContain("Master");
   expect(document.body.textContent).toMatch(/changes the master/i);
+  await act(async () => {
+    margin.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+  });
+  expect(props.onMarginChange).not.toHaveBeenCalled();
   const lock = document.querySelector<HTMLButtonElement>('button[aria-label="Margin inset: locked"]')!;
   expect(lock.getAttribute("aria-pressed")).toBe("true");
   await act(async () => { lock.click(); });

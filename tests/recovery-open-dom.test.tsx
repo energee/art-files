@@ -50,11 +50,11 @@ async function restore(fileToOpen: ComponentProps<typeof DocumentEditor>["fileTo
   return { meta: () => onMeta.mock.calls.at(-1)![0], container, unmount };
 }
 
-function snapshotFile() {
+function snapshotFile(extra: Record<string, unknown> = {}) {
   const bytes = packLabel({
     formatVersion: 3, masterId: "lolev", enabledVariants: [],
-    values: { name: [{ text: "Alpha", fill: "#F3CD80", layer: "metallic" }] },
-  }, {});
+    values: { name: [{ text: "Alpha", fill: "#F3CD80", layer: "metallic" }], ...extra },
+  } as Parameters<typeof packLabel>[0], {});
   return new File([bytes as BlobPart], "alpha.label");
 }
 
@@ -96,6 +96,21 @@ it("a restore that cannot rebind keeps Save asking where and names the original"
   try {
     expect(meta().filePath).toBeNull();
     expect(container.textContent).toContain("/w/alpha.label");
+  } finally {
+    await unmount();
+  }
+}, 30_000);
+
+// The recovery note joins the open's own notes (a benched layer here) rather
+// than replacing them.
+it("the cannot-rebind note keeps the open's other notes", async () => {
+  const { container, unmount } = await restore({
+    seq: 1, file: snapshotFile({ ghost: "Boo" }), recovered: "old:1",
+    recoveredPath: { path: "/w/alpha.label", rebind: false },
+  });
+  try {
+    expect(container.textContent).toContain("/w/alpha.label");
+    expect(container.textContent).toMatch(/ghost/i);
   } finally {
     await unmount();
   }
