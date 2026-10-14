@@ -717,18 +717,19 @@ it.each([
   });
 }, 60_000);
 
-// Issue #425: the status-bar view button gave a screen reader only its visible
-// text — not that a click cycles the view, nor the 1–3 keys.
-it("names the view-mode button's action and its keyboard shortcuts", async () => {
+// Issue #425: the status-bar view control gave a screen reader only its
+// visible text, not the 1–3 keys. It is now a Label | Mask | Can group whose
+// pressed segment follows the view.
+it("names the view-mode group and its keyboard shortcuts", async () => {
   const { container, unmount } = await mountEditor();
   try {
-    const button = [...container.querySelectorAll("button")]
-      .find((b) => b.textContent?.startsWith("View Mode:")) as HTMLButtonElement;
-    expect(button.getAttribute("aria-label")).toBe("View Mode: Label — switch to Mask");
-    expect(button.getAttribute("aria-keyshortcuts")).toBe("1 2 3");
+    const group = container.querySelector('[role="group"][aria-label="View mode"]')!;
+    expect(group.getAttribute("aria-keyshortcuts")).toBe("1 2 3");
+    const pressed = () => [...group.querySelectorAll('button[aria-pressed="true"]')].map((b) => b.textContent);
+    expect(pressed()).toEqual(["Label"]);
     // PreviewCompare is mocked, so report the divider at the mask end the way
     // its showMask() would.
     await act(async () => perf.preview!.onSplit!(100));
-    expect(button.getAttribute("aria-label")).toBe("View Mode: Mask — switch to Can");
+    expect(pressed()).toEqual(["Mask"]);
   } finally { await unmount(); }
 });

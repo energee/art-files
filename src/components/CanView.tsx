@@ -49,9 +49,12 @@ export const CanView = forwardRef<CanViewHandle, {
    *  reaches the error strip instead of freezing the can on stale textures
    *  with only a console.warn. */
   onRenderError: (message: string) => void;
+  /** An export is running: the host's "Building …" note takes the bottom-left
+   *  corner this view's "rendering…" spinner uses, so the spinner stands down. */
+  exporting?: boolean;
 }>(function CanView({
   layers, source, bleedIn, mode, cornerRadiusPct,
-  edgeSoftnessPct, onZoom, initialView, onRenderError,
+  edgeSoftnessPct, onZoom, initialView, onRenderError, exporting,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<CanScene | null>(null);
@@ -154,7 +157,7 @@ export const CanView = forwardRef<CanViewHandle, {
           the flat colour behind the can comes from the app's own theme token
           (see canScene's note) rather than a hex duplicated in the scene. */}
       <div ref={containerRef} tabIndex={0} role="region" aria-label="3D can view: arrows pan; Shift plus arrows rotates" className="absolute inset-0 overflow-hidden rounded-md bg-background" />
-      {loading && (
+      {loading && !exporting && (
         <span className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className="size-3 animate-spin rounded-full border border-muted-foreground/40 border-t-foreground" />
           rendering…

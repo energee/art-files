@@ -7,7 +7,12 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Changed
+- **One view state for the status bar, View menu and palette.** The status bar's "View Mode" button, which cycled views one click at a time, is now a Label | Mask | Can control you pick from directly. With the divider part-way (Compare), no view shows as current anywhere — before, the status bar said Compare while the View menu checked nothing and the status-bar cycle counted it as Label. View → **One Can** / **Four-Pack** (and the ⌘K palette) choose the can count, as the status bar's 1|4 does, in the Can view. The divider has a visible grip that stays on the sheet at both ends.
+- **Status-bar controls look clickable, and Settings is grouped.** Zoom, trim size and DPI carry a faint border so they read as controls; clicking the DPI readout opens Settings on Resolution. Settings now groups its fields under Output (Resolution, Bleed), Can preview (Corner radius, Edge softness) and Appearance.
 - **A clearer master picker.** The menu now heads the master you're using **Current master** and the rest **Other masters**, and each master shows its file name and the day it was last used, so masters with the same name can be told apart. The ✕ that removes a master from the library sits at the right edge of its row.
+
+### Fixed
+- **Preview messages no longer overlap.** The "drop a texture" hint shows over the 2D sheet only, not on the 3D can (a texture still drops in any view), and the can's "rendering…" spinner steps aside while an export's "Building …" note shows in the same corner.
 
 ## [0.1.106] - 2026-10-11
 
