@@ -335,8 +335,71 @@ it("Open Master's benched-values note survives the master's texture loading (#11
   openMasterFile({ ...base, id: "master-other", name: "Other", layers: base.layers.filter((l) => l.id !== "volume") },
     { texture: { name: "art.png", bytes: new Uint8Array([137, 80, 78, 71]) } });
   await run("master-open");
+  // Opening a master that hides a filled value previews the switch first.
+  await act(async () => (document.querySelector("#master-picker-continue") as HTMLButtonElement).click());
   await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
   expect(document.body.textContent).toContain("1 value(s) benched: volume");
+});
+
+/** A label filling `volume`, and a master without that layer to open over it. */
+async function openHidingMaster() {
+  const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});
+  await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
+  await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  const base = lolevMaster();
+  const handle = openMasterFile({ ...base, id: "master-other", name: "Other", layers: base.layers.filter((l) => l.id !== "volume") });
+  await run("master-open");
+  return handle;
+}
+
+it("Open Master previews a switch that hides values, and Cancel leaves the label on its master", async () => {
+  const other = await openHidingMaster();
+  const preview = document.querySelector("#master-picker-preview");
+  expect(preview?.textContent).toContain('Switching to "Other" hides 1 filled field');
+  // Nothing has switched yet.
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Lolev");
+  const cancel = [...preview!.querySelectorAll("button")].find((b) => b.textContent === "Cancel")!;
+  await act(async () => cancel.click());
+  expect(document.querySelector("#master-picker-preview")).toBeNull();
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Lolev");
+  // The opened master joined the library all the same, but not as the
+  // last-applied master a new untitled tab would start on…
+  expect(localStorage.getItem("labellab.master:master-other")).toContain("Other");
+  expect(localStorage.getItem("labellab.lastMaster")).not.toBe("master-other");
+  // …but Save Master was never bound to its file (#81).
+  const { pick } = picker();
+  await toggle("warning");
+  await run("master-save");
+  const save = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Save Master")!;
+  await act(async () => { save.click(); await new Promise((r) => setTimeout(r, 10)); });
+  expect(other.createWritable).not.toHaveBeenCalled();
+  expect(pick).toHaveBeenCalledOnce();
+});
+
+it("Open Master reopens a collapsed sidebar to show its preview", async () => {
+  const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});
+  await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
+  await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  const sidebar = () => document.querySelector('[data-slot="sidebar"]')!.getAttribute("data-state");
+  act(() => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "b", metaKey: true, bubbles: true, cancelable: true })); });
+  expect(sidebar()).toBe("collapsed");
+  const base = lolevMaster();
+  openMasterFile({ ...base, id: "master-other", name: "Other", layers: base.layers.filter((l) => l.id !== "volume") });
+  await run("master-open");
+  expect(sidebar()).toBe("expanded");
+  expect(document.querySelector("#master-picker-preview")).not.toBeNull();
+  expect(document.activeElement?.textContent).toBe("Cancel");
+});
+
+it("Open Master's Continue switches and binds Save Master to the opened file", async () => {
+  const other = await openHidingMaster();
+  await act(async () => { (document.querySelector("#master-picker-continue") as HTMLButtonElement).click(); await new Promise((r) => setTimeout(r, 10)); });
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
+  await toggle("warning");
+  await run("master-save");
+  const save = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Save Master")!;
+  await act(async () => { save.click(); await new Promise((r) => setTimeout(r, 10)); });
+  expect(other.createWritable).toHaveBeenCalledOnce();
 });
 
 it("a promotion whose layer is deleted during the write doesn't cost the others", async () => {

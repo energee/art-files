@@ -8,6 +8,7 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Changed
 - **A clearer master picker.** The menu now heads the master you're using **Current master** and the rest **Other masters**, and each master shows its file name and the day it was last used, so masters with the same name can be told apart. The ✕ that removes a master from the library sits at the right edge of its row.
+- **Open Master previews the switch, like the master picker.** File → Open Master… now adds the master to the library and, when switching would hide filled fields or variants, shows the picker's preview first (opening the sidebar if it was closed). Cancel leaves the label on its master; the opened master stays in the library. Before, the switch happened at once and the hidden values were only listed afterwards.
 
 ## [0.1.106] - 2026-10-11
 

@@ -4,7 +4,10 @@
 // — the counts of what would move to the bench — before committing: the one
 // confirmation the spec's no-dialogs rule permits, because a rebind is not a
 // single undoable canvas act. A rebind that would bench nothing commits at
-// once, with no preview.
+// once, with no preview. File → Open Master… lands here too (the `offer`
+// prop): App registers the opened file in the library, and a switch that
+// would bench something shows this same card, whose Continue runs App's own
+// commit — the one that binds Save Master to the file (#81).
 //
 // The file verbs stay in the File menu — Open Master…, and forking the
 // template with File → Save Master As…, which mints a new master id, rebinds
@@ -38,7 +41,7 @@
 // Only the middle one resolves a file, so the two sentinels are intercepted
 // in onValueChange before any rebind is considered.
 import { CornerDownRight, X } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { shortcutLabel } from "@/keys";
 import { rebindLabel } from "@/model/rebindLayers";
@@ -57,6 +60,14 @@ const stop = (e: React.SyntheticEvent) => e.stopPropagation();
  *  collide with either — a minted one is always `master-…`. */
 const NEW_VARIANT = "__new-variant";
 const VERSION = "__version:";
+
+/** A switch waiting on the preview card: what it would bench, and — for
+ *  File → Open Master's `offer` — the opener's own commit, which Continue
+ *  runs instead of `onMaster`. */
+export type MasterOffer = {
+  target: Master; assets: MasterAssets; dropped: string[]; disabledVariants: string[];
+  commit?: () => Promise<void>;
+};
 
 /** One dropdown row — just enough to render and pick. The full Master is
  *  resolved lazily (see `resolve`), only once something is actually picked,
@@ -139,15 +150,22 @@ export function MasterPicker(props: {
   onSaveMaster: () => void;
   /** Whether a save would have anything to write (App's masterDirty). */
   masterDirty: boolean;
+  /** File → Open Master…'s switch, when it would bench something: shown in
+   *  the preview card as a library pick's is. A new object opens the card
+   *  (focus moves to its Cancel, since the command came from a menu);
+   *  Cancel commits nothing. */
+  offer?: MasterOffer | null;
   /** Drop a remembered master from this computer's library. The file stays.
    *  Resolves to an undo that puts it back (masters.ts's removeFromLibrary). */
   onForget: (id: string) => Promise<() => Promise<void>>;
 }): React.JSX.Element {
   const previewId = useId();
   const [resolvingId, setResolvingId] = useState<string | null>(null);
-  const [preview, setPreview] = useState<
-    { target: Master; assets: MasterAssets; dropped: string[]; disabledVariants: string[] } | null
-  >(null);
+  const [preview, setPreview] = useState<MasterOffer | null>(null);
+  /** The last `offer` taken into the card, so a re-render with the same one
+   *  doesn't bring a cancelled card back. */
+  const [offered, setOffered] = useState<MasterOffer | null>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const [error, setError] = useState("");
   /** Continue is running onMaster (index write, asset decode): a second press
    *  in that window would rebind the label twice. */
@@ -165,6 +183,12 @@ export function MasterPicker(props: {
   // State adjusted during render, React's pattern for reacting to a prop.
   if (deleted && !deleted.after && !props.master.variants.some((v) => v.id === deleted.id))
     setDeleted({ ...deleted, after: props.master });
+  if (props.offer && props.offer !== offered) {
+    setOffered(props.offer);
+    setPreview(props.offer);
+    setError("");
+  }
+  useEffect(() => { if (props.offer) cancelRef.current?.focus(); }, [props.offer]);
   /** The variant whose name is being edited inline, or null. */
   const [naming, setNaming] = useState<string | null>(null);
 
@@ -240,7 +264,7 @@ export function MasterPicker(props: {
     if (!target || committing) return;
     setCommitting(true);
     try {
-      await props.onMaster(target.target, target.assets);
+      await (target.commit ? target.commit() : props.onMaster(target.target, target.assets));
       closeAll();
     } catch (err) {
       setError(errMsg(err));
@@ -390,7 +414,7 @@ export function MasterPicker(props: {
           <p id={previewId}>{previewLine(preview)}</p>
           <div className="mt-1.5 flex justify-end gap-1.5">
             <Button
-              type="button" onClick={closeAll} variant="outline" size="xs"
+              ref={cancelRef} type="button" onClick={closeAll} variant="outline" size="xs"
             >
               Cancel
             </Button>

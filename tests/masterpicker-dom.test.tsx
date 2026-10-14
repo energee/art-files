@@ -3,7 +3,8 @@
 // selector. Choosing another library master previews the rebind
 // (model/rebindLayers.ts) — the counts of what would move to the bench — and
 // must NOT call onMaster until the inline "Continue" is pressed; a rebind
-// that would bench nothing commits at once.
+// that would bench nothing commits at once. File → Open Master's `offer`
+// shows the same card and runs its own commit on Continue.
 // Scoped to a DOM environment per-file, matching tests/fieldlist-dom.test.ts's
 // setup — no @testing-library/react in this repo, so this drives real DOM
 // nodes through react-dom/client + act, the same as that suite.
@@ -145,6 +146,43 @@ describe("MasterPicker", () => {
     await act(async () => { button().click(); });
     expect(onMaster).toHaveBeenCalledOnce();
     await act(async () => { finish(); });
+  });
+
+  // File → Open Master hands the picker a switch that would hide values:
+  // the same card, but Continue runs the opener's own commit (it binds the
+  // file only then), and Cancel runs nothing.
+  const offer = (commit = vi.fn(async () => {})) =>
+    ({ target: otherMaster, assets: {}, dropped: ["name"], disabledVariants: [], commit });
+
+  it("previews an opened master and runs its own commit on Continue, not onMaster", async () => {
+    const onMaster = vi.fn();
+    const props = renderPicker({ onMaster });
+    const o = offer();
+    act(() => { root.render(createElement(MasterPicker, { ...props, offer: o })); });
+    const preview = container.querySelector("#master-picker-preview");
+    expect(preview?.textContent).toContain('Switching to "Other Brewery" hides 1 filled field');
+    // Focus lands on Cancel: the command ran from a menu, so focus is elsewhere.
+    expect(document.activeElement?.textContent).toBe("Cancel");
+    await act(async () => {
+      (container.querySelector("#master-picker-continue") as HTMLButtonElement).click();
+    });
+    expect(o.commit).toHaveBeenCalledOnce();
+    expect(onMaster).not.toHaveBeenCalled();
+    expect(container.querySelector("#master-picker-preview")).toBeNull();
+  });
+
+  it("Cancel on an opened master commits nothing", () => {
+    const props = renderPicker();
+    const o = offer();
+    act(() => { root.render(createElement(MasterPicker, { ...props, offer: o })); });
+    expect(container.querySelector("#master-picker-preview")).not.toBeNull();
+    act(() => { (document.activeElement as HTMLButtonElement).click(); });
+    expect(container.querySelector("#master-picker-preview")).toBeNull();
+    expect(o.commit).not.toHaveBeenCalled();
+    expect(props.onMaster).not.toHaveBeenCalled();
+    // A re-render with the same offer does not bring the card back.
+    act(() => { root.render(createElement(MasterPicker, { ...props, offer: o })); });
+    expect(container.querySelector("#master-picker-preview")).toBeNull();
   });
 
   it("lists the current master's variants as versions of it", () => {
