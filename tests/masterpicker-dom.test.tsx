@@ -45,7 +45,7 @@ function renderPicker(props: Partial<Parameters<typeof MasterPicker>[0]> = {}) {
     library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery" } },
     resolve: vi.fn().mockResolvedValue({ master: otherMaster, assets: {} }),
     onMaster: vi.fn(), onNewVariant: vi.fn().mockReturnValue("variant-2"),
-    onRenameVersion: vi.fn(), onRemoveVersion: vi.fn(), onSaveMaster: vi.fn(), onForget: vi.fn().mockResolvedValue(vi.fn()),
+    onRenameVersion: vi.fn(), onRemoveVersion: vi.fn(), onSaveMaster: vi.fn(), saveLabel: "Save Master…", onForget: vi.fn().mockResolvedValue(vi.fn()),
     masterDirty: true, version: null, onVersion: vi.fn(),
     ...props,
   };
@@ -237,9 +237,10 @@ describe("MasterPicker", () => {
 
   it("opens the Save Master review from the picker, for the named version", () => {
     const onSaveMaster = vi.fn();
-    renderPicker({ version: "collab", onSaveMaster });
+    renderPicker({ version: "collab", onSaveMaster, saveLabel: "Save Variant…" });
     const save = container.querySelector("#variant-save") as HTMLButtonElement;
-    expect(save.textContent).toContain("Variant");
+    // The File menu's own wording for the same command (App passes it).
+    expect(save.textContent).toBe("Save Variant…");
     act(() => { save.click(); });
     expect(onSaveMaster).toHaveBeenCalled();
   });

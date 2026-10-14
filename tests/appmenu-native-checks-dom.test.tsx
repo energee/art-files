@@ -179,3 +179,34 @@ it("adds and clears a command's note on its native row", async () => {
     container.remove();
   }
 });
+
+// File → Save Master… is a `live` row: installed under its plain title (the
+// SF Symbol lookup's key), it then reads the command's label, which says
+// Save Variant… while a variant is the version.
+it("installs Save Master… under its plain title and shows the command's variant wording", async () => {
+  native.items.clear();
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const render = (label: string) => act(async () => {
+    root.render(createElement(AppMenu, {
+      actions: actionsIn(APP_MENUS).map((entry) => ({
+        id: entry.id, label: entry.id === "master-save" ? label : entry.text, run: () => {},
+      })),
+      checked: {}, onNativeError: (error) => { throw new Error(error); }, onCheckForUpdates: () => undefined,
+    }));
+    await new Promise((r) => setTimeout(r, 0));
+  });
+  try {
+    await render("Save Master…");
+    await render("Save Master…");
+    expect(native.items.get("master-save")!.text).toBe("Save Master…");
+    await render("Save Variant…");
+    expect(native.items.get("master-save")!.text).toBe("Save Variant…");
+    await render("Save Master…");
+    expect(native.items.get("master-save")!.text).toBe("Save Master…");
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+  }
+});

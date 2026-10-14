@@ -94,7 +94,7 @@ it("lists recent labels by name, opens one, rebuilds on change, and clears", asy
   try {
     const file = native.items.get("file-menu")!;
     expect(file.children.map((c) => c.opts.text).slice(0, 3))
-      .toEqual(["New Tab", "Open Project…", "Open Recent"]);
+      .toEqual(["New Tab", "Open Label…", "Open Recent"]);
     expect(rows()).toEqual(["Two.label", "One.label", "—", "Clear Menu"]);
 
     await act(async () => { native.items.get("recent-menu")!.children[1].opts.action!(); });

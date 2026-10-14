@@ -10,7 +10,7 @@
 // template with File → Save Master As…, which mints a new master id, rebinds
 // this document onto it and actually writes the file (the old "Duplicate as
 // new master…" did all of that except the writing). The ONE exception is
-// "Save to Master…/Variant…" below: a save writes into whichever version this
+// "Save Master…/Save Variant…" button below: a save writes into whichever version this
 // Select names, so the picker is where you can see the target while choosing
 // to write it. It runs the File menu's own `master-save` command — same
 // review dialog, same dirty gate, no second path.
@@ -134,9 +134,12 @@ export function MasterPicker(props: {
   onRenameVersion: (id: string, name: string) => void;
   /** Deletes a variant from the master. Undoable, so no confirm. */
   onRemoveVersion: (id: string) => void;
-  /** File → Save Master, next to the version's own verbs: opens the review
+  /** File → Save Master…, next to the version's own verbs: opens the review
    *  that writes into whichever version the Select names. */
   onSaveMaster: () => void;
+  /** The save button's text — File → Save Master…'s own title ("Save
+   *  Master…", or "Save Variant…" on a variant), so the two always match. */
+  saveLabel: string;
   /** Whether a save would have anything to write (App's masterDirty). */
   masterDirty: boolean;
   /** Drop a remembered master from this computer's library. The file stays.
@@ -353,7 +356,7 @@ export function MasterPicker(props: {
           )}
           <Button type="button" id="variant-save" size="xs" variant="attention"
             disabled={!props.masterDirty} onClick={props.onSaveMaster}>
-            Save to {version === null ? "Master" : "Variant"}…
+            {props.saveLabel}
           </Button>
         </div>
       )}

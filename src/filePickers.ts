@@ -16,7 +16,7 @@ import { MASTER_EXT } from "@/model/files";
 
 /** One spelling of the dialog's file-type name, so the browser picker and
  *  the Tauri-native dialog can't drift apart. */
-const LABEL_DESC = "Label project";
+const LABEL_DESC = "Label";
 const MASTER_DESC = "Label master";
 
 /** The .label file picker option, shared by open and save dialogs. */

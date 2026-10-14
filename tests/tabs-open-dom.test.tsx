@@ -1,4 +1,4 @@
-// tabs-open-dom.test.tsx — desktop File → Open Project goes through the
+// tabs-open-dom.test.tsx — desktop File → Open Label… goes through the
 // native dialog and hands the editor a real path (issue #79), so the tab
 // gets a save identity exactly like a Finder/OS open does.
 // @vitest-environment happy-dom
@@ -64,7 +64,7 @@ async function openProject() {
   await act(async () => { await Promise.resolve(); });
 }
 
-it("File → Open Project uses the native dialog and queues the picked path", async () => {
+it("File → Open Label… uses the native dialog and queues the picked path", async () => {
   const inputClick = vi.spyOn(HTMLInputElement.prototype, "click");
   mocks.openNativeFile.mockResolvedValue("/labels/Labradorite.label");
 

@@ -20,8 +20,15 @@ describe("native menu accelerators", () => {
   });
 
   it("translates display-only undo shortcuts", () => {
-    expect(nativeAccelerator(command({ shortcut: "⌘Z" }))).toBe("CmdOrCtrl+Z");
-    expect(nativeAccelerator(command({ shortcut: "⇧⌘Z" }))).toBe("CmdOrCtrl+Shift+Z");
+    expect(nativeAccelerator(command({ id: "undo", shortcut: "⌘Z" }))).toBe("CmdOrCtrl+Z");
+    expect(nativeAccelerator(command({ id: "redo", shortcut: "⇧⌘Z" }))).toBe("CmdOrCtrl+Shift+Z");
+  });
+
+  // ⌘B is owned by the sidebar's guarded listener: a native accelerator
+  // would fire before the webview and take Bold away from a text field.
+  it("leaves every other display-only shortcut off the native menu", () => {
+    expect(nativeAccelerator(command({ id: "layers", shortcut: "⌘B" }))).toBeUndefined();
+    expect(nativeAccelerator(command({ id: "layer-remove", shortcut: "⌫" }))).toBeUndefined();
   });
 
   it("leaves bare-key bindings with the guarded webview listener", () => {
@@ -52,10 +59,31 @@ describe("file menu", () => {
       expect(pairs.find(([title]) => title === action.text), action.id).toBeDefined();
     }
     expect(Object.fromEntries(pairs)).toMatchObject({
-      "New Tab": "plus.square.on.square", "Open Project…": "folder",
-      "Save Project": "square.and.arrow.down", "Export": "square.and.arrow.up",
+      "New Tab": "plus.square.on.square", "Open Label…": "folder",
+      "Save Label": "square.and.arrow.down", "Export": "square.and.arrow.up",
       "Undo": "arrow.uturn.backward", "Settings…": "gear", "Rulers": "ruler",
+      "Add Text Layer": "textformat", "Remove Layer": "trash", "Layers": "sidebar.left",
+      "Appearance": "circle.lefthalf.filled", "Dark": "moon",
     });
+  });
+
+  it("names the .label commands Label and gives Save Master its ellipsis (it opens a review)", () => {
+    const file = APP_MENUS.find((menu) => menu.id === "file-menu")!;
+    const texts = file.items.flatMap((entry) => entry.kind === "action" ? [entry.text] : []);
+    expect(texts).toEqual([
+      "New Tab", "Open Label…", "Close Tab", "Save Label", "Save Label As…",
+      "Open Master…", "Save Master…", "Save Master As…",
+    ]);
+  });
+});
+
+describe("layer menu", () => {
+  it("sits between Edit and View with the four Add rows, a separator, then Remove Layer", () => {
+    expect(APP_MENUS.map((menu) => menu.text)).toEqual(["File", "Edit", "Layer", "View"]);
+    const layer = APP_MENUS.find((menu) => menu.id === "layer-menu")!;
+    expect(layer.items.map((entry) => entry.kind === "action" ? entry.id : entry.kind)).toEqual([
+      "layer-add-text", "layer-add-image", "layer-add-barcode", "layer-add-qr", "separator", "layer-remove",
+    ]);
   });
 });
 
@@ -67,7 +95,17 @@ describe("view menu", () => {
     // The Rendered and Four-Pack views are gone (the four-pack is the Can
     // view's 1 / 4 count, a toolbar control), and Guides is one switch over
     // bleed, margin, center and manual guides — no per-kind items, no Clear.
-    expect(ids).toEqual(["view-label", "view-mask", "view-can", "rulers", "guides", "zoom-in", "zoom-out", "zoom-fit"]);
+    expect(ids).toEqual(["view-label", "view-mask", "view-can", "layers", "rulers", "guides", "zoom-in", "zoom-out", "zoom-fit"]);
+  });
+
+  it("offers Appearance as a submenu of three check rows", () => {
+    const view = APP_MENUS.find((menu) => menu.id === "view-menu")!;
+    const appearance = view.items.find((entry) => entry.kind === "submenu" && entry.id === "appearance-menu");
+    expect(appearance?.kind === "submenu" && appearance.items).toEqual([
+      expect.objectContaining({ id: "theme-system", text: "System", check: true }),
+      expect.objectContaining({ id: "theme-light", text: "Light", check: true }),
+      expect.objectContaining({ id: "theme-dark", text: "Dark", check: true }),
+    ]);
   });
 
   it("gives the zoom commands native accelerators macOS can show", () => {
