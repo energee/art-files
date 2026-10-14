@@ -321,6 +321,11 @@ type DocumentEditorProps = {
   /** Shell-owned slot this editor assigns its save fn into on every render;
    *  resolves false when the user cancels the save dialog. */
   saveSlot: { current: (() => Promise<boolean>) | null };
+  /** Shell-owned slot for the close prompt's Review Master…: opens this
+   *  editor's Save Master review and resolves true only once the master
+   *  file is written (false on Cancel or a failed save). Omitted by tests
+   *  mounting a lone editor. */
+  masterSaveSlot?: { current: (() => Promise<boolean>) | null };
   /** The Document Settings knobs (DPI/bleed/corner/edge) — shell-owned. */
   render: RenderSettings;
   onRenderChange: (render: RenderSettings) => void;
@@ -344,7 +349,7 @@ type DocumentEditorProps = {
 // body would re-run per keystroke. It only holds if the shell passes
 // identity-stable props to inactive editors (see TabsShell's extrasFor).
 export const DocumentEditor = memo(function DocumentEditor({
-  active, fileToOpen, onOpenSettled, onMeta, saveSlot, render, onRenderChange,
+  active, fileToOpen, onOpenSettled, onMeta, saveSlot, masterSaveSlot, render, onRenderChange,
   onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, updateInstalled, tabStripHost, updateStatusHost,
   recoveryKey,
 }: DocumentEditorProps) {
@@ -376,8 +381,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   // with the variant that created it. Last enabled wins, the same rule
   // resolveLayers and the row badges use.
   const version = label.enabledVariants.at(-1) ?? null;
-  /** Which save the review dialog is standing in front of, or null. */
-  const [pendingSave, setPendingSave] = useState<{ as: boolean } | null>(null);
+  /** Which save the review dialog is standing in front of, or null. `done`
+   *  is set when the close prompt asked for it (masterSaveSlot): it hears
+   *  whether the review ended in a written master. */
+  const [pendingSave, setPendingSave] = useState<{ as: boolean; done?: (saved: boolean) => void } | null>(null);
   // What a Save Master would write: the structural and fill-contract edits
   // already in the master, plus this label's overrides offered for promotion.
   // Itemised ONLY while the dialog is up — every property edit is a label
@@ -1401,6 +1408,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, dirty, edited, templateMoved, filePath]);
   saveSlot.current = () => saveProject();
+  if (masterSaveSlot) masterSaveSlot.current = () =>
+    new Promise<boolean>((done) => setPendingSave({ as: false, done }));
 
   // Crash recovery (#394): while this tab holds unsaved work, keep a packed
   // .label of it a moment after each change; drop it once the work is saved.
@@ -2175,11 +2184,11 @@ export const DocumentEditor = memo(function DocumentEditor({
         <Suspense fallback={active ? <DialogLoading /> : null}>
           <MasterSaveReview open={active} as={pendingSave.as} changes={masterChangeList}
             target={master.variants.find((v) => v.id === version)?.name}
-            onCancel={() => setPendingSave(null)}
+            onCancel={() => { pendingSave.done?.(false); setPendingSave(null); }}
             onConfirm={(promote) => {
-              const { as } = pendingSave;
+              const { as, done } = pendingSave;
               setPendingSave(null);
-              void saveMaster(as, promote);
+              void saveMaster(as, promote).then((saved) => done?.(saved));
             }} />
         </Suspense>
       )}
