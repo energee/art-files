@@ -732,3 +732,13 @@ it("names the view-mode button's action and its keyboard shortcuts", async () =>
     expect(button.getAttribute("aria-label")).toBe("View Mode: Mask — switch to Can");
   } finally { await unmount(); }
 });
+
+// UX audit #14: the idle hint named only the texture, so the right-half mask
+// target stayed a secret until mid-drag.
+it("the no-texture hint names both drop targets", async () => {
+  await withCanvasEditor(async (_p, container) => {
+    const text = container.textContent ?? "";
+    expect(text).toContain("left half → background");
+    expect(text).toContain("right half → metallic mask (PNG/WebP)");
+  });
+}, 60_000);

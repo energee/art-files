@@ -5,6 +5,10 @@
 // It only arms itself while a PNG/JPEG is actually being dragged over the
 // window. The overlay is visual-only and the window listener yields to a
 // marked FileDrop, so the inspector's own targets remain reachable mid-drag.
+// The listeners are window-wide, but the overlay draws over its positioned
+// parent only (the preview pane), so the sidebar and the inspector's drop
+// wells stay undimmed while you aim; its divider sits at the window's
+// midpoint, where globalAssetKind splits texture from mask.
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { FILE_DROP_ATTR } from "@/components/FileDrop";
@@ -107,23 +111,35 @@ export function AssetDropOverlay(props: {
 
   if (!active) return null;
 
-  const half = (kind: DropKind, label: string, hint: string) => (
-    <div
-      className={cn(
-        "flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-border transition-colors",
-        over === kind && "border-primary bg-accent",
-      )}
-    >
-      <span className="text-sm font-medium">{label}</span>
-      <span className="text-xs text-muted-foreground">{hint}</span>
+  const half = (kind: DropKind, label: string, hint: string, side: string) => (
+    <div className={cn("absolute inset-y-0 overflow-hidden", side)}>
+      <div
+        className={cn(
+          "absolute inset-3 flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-border text-center transition-colors",
+          over === kind && "border-primary bg-accent",
+        )}
+      >
+        <span className="text-sm font-medium">{label}</span>
+        <span className="text-xs text-muted-foreground">{hint}</span>
+      </div>
     </div>
   );
 
   return (
-    <div aria-hidden="true"
-      className="pointer-events-none fixed inset-0 z-50 flex gap-3 bg-background/85 p-6 backdrop-blur-sm">
-      {half("texture", "Background texture", "PNG, JPG or WebP")}
-      {half("mask", "Metallic mask", "PNG or WebP")}
+    <div aria-hidden="true" data-asset-drop-overlay
+      // --split is the window's midpoint in this element's own coordinates,
+      // clamped to its width: the drop routes by WINDOW half, and the pane
+      // starts right of the sidebar, so its own middle would mislabel the
+      // strip between them. A half clamped to nothing simply isn't drawn.
+      ref={(el) => {
+        const pane = el?.parentElement?.getBoundingClientRect();
+        if (!el || !pane) return;
+        const split = Math.min(Math.max(window.innerWidth / 2 - pane.left, 0), pane.width);
+        el.style.setProperty("--split", `${split}px`);
+      }}
+      className="pointer-events-none absolute inset-0 z-50 bg-background/85 backdrop-blur-sm">
+      {half("texture", "Background texture", "PNG, JPG or WebP", "left-0 w-[var(--split)]")}
+      {half("mask", "Metallic mask", "PNG or WebP", "right-0 left-[var(--split)]")}
     </div>
   );
 }
