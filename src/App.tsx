@@ -80,7 +80,7 @@ import { LayerList } from "@/components/LayerList";
 import { LayerInspector } from "@/components/LayerInspector";
 import { ChoiceBox, TextEditor } from "@/components/TextEditor";
 import { FileDrop } from "@/components/FileDrop";
-import { MasterPicker, type LibraryEntry } from "@/components/MasterPicker";
+import { MasterPicker, type LibraryEntry, type MasterOffer } from "@/components/MasterPicker";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
 import type { RenderSettings } from "@/settings";
 import {
@@ -414,6 +414,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   const { rows, errors, warnings: resolveWarnings } = useMemo(() => layerRows(master, label), [master, label]);
   const rowById = useMemo(() => new Map(rows.map((r) => [r.layer.id, r])), [rows]);
   const [changedOnly, setChangedOnly] = useState(false);
+  /** Controlled so Open Master can reveal its preview card in a collapsed sidebar. */
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  /** File → Open Master…'s pending switch, previewed by MasterPicker (see openMasterBytes). */
+  const [masterOffer, setMasterOffer] = useState<MasterOffer | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const guides = useMemo(
     () => guideLines({ physical: master.physical, guides: master.guides }),
@@ -1575,27 +1579,36 @@ export const DocumentEditor = memo(function DocumentEditor({
     setLoadError(notes.length ? "Note: " + notes.join(" · ") : "");
   }
 
-  /** File → Open Master…: register the newly opened master in the library
-   *  index, then commitRebind onto it. */
-  async function applyOpenedMaster(m: Master, path: string, bytes?: Uint8Array) {
-    await rememberMaster(m, path, bytes);
-    refreshLibrary();
-    commitRebind(m);
-  }
-
   /** Parsed bytes from any Open Master source (native path, FS-Access
-   *  handle, hidden input): bind the source, register, rebind, adopt assets. */
+   *  handle, hidden input). The file joins the library at once; the switch
+   *  previews first, like a picker pick: one that would bench nothing
+   *  happens now, one that would hides behind MasterPicker's Continue. On
+   *  Cancel the master stays in the library and the label is untouched. */
   async function openMasterBytes(
     bytes: Uint8Array, name: string, src: { handle?: FileSystemFileHandle; path?: string },
   ) {
     const r = tryParseMaster(bytes);
     if (!r) return;
-    await applyOpenedMaster(r.master, name, bytes);
-    // Bind Save Master only once the doc is on this master (#81).
-    const id = r.master.id;
-    masterFileHandle.current = src.handle ? { id, target: src.handle } : null;
-    masterFilePath.current = src.path ? { id, target: src.path } : null;
-    await adoptMasterAssets(r.assets);
+    // Not yet applied: a cancelled switch must not become the master the
+    // next untitled tab starts on.
+    await rememberMaster(r.master, name, bytes, { applied: false });
+    refreshLibrary();
+    const commit = async () => {
+      await rememberMaster(r.master, name);
+      refreshLibrary();
+      commitRebind(r.master);
+      // Bind Save Master only once the doc is on this master (#81).
+      const id = r.master.id;
+      masterFileHandle.current = src.handle ? { id, target: src.handle } : null;
+      masterFilePath.current = src.path ? { id, target: src.path } : null;
+      await adoptMasterAssets(r.assets);
+    };
+    const { master: from, label: current } = docRef.current;
+    const { dropped } = rebindLabel(current, from, r.master);
+    if (!dropped.values.length && !dropped.variants.length) { await commit(); return; }
+    // The card lives in the sidebar, so open it if it was collapsed.
+    setSidebarOpen(true);
+    setMasterOffer({ target: r.master, assets: r.assets, dropped: dropped.values, disabledVariants: dropped.variants, commit });
   }
 
   /** MasterPicker's library pick (the preview's Continue). The bytes are
@@ -2185,7 +2198,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       )}
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
           preview center, inspector sheet right. */}
-      <SidebarProvider hotkey={active} className="min-h-0 h-full">
+      <SidebarProvider hotkey={active} open={sidebarOpen} onOpenChange={setSidebarOpen} className="min-h-0 h-full">
         <Sidebar>
           {/* Click on empty sidebar space deselects. React bubbles a
               PORTALED menu's click (Add layer, the master picker) through
@@ -2200,7 +2213,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onMaster={pickLibraryMaster} onNewVariant={onNewVariant}
               onRenameVersion={onRenameVersion} onRemoveVersion={onRemoveVersion}
               onSaveMaster={() => setPendingSave({ as: false })} masterDirty={masterDirty}
-              onForget={forgetLibraryMaster}
+              onForget={forgetLibraryMaster} offer={masterOffer}
               version={version} onVersion={switchVersion} />
             <LayerList rows={rows} selected={selected}
               onSelect={pick}
