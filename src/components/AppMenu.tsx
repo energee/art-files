@@ -608,7 +608,7 @@ function useNativeMenu(
       errorRef.current(`Could not update the native menu: ${errMsg(error)}`);
     });
   // signature is the compact set of native-visible state; ordinary App
-  // renders do not produce 26 IPC updates. resync re-runs it after a native
+  // renders do not produce an IPC update per row. resync re-runs it after a native
   // check click whose command left app state unchanged.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, signature, resync]);
