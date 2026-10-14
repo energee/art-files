@@ -7,6 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Changed
+- **Closing a tab offers to save the master.** When a tab has unsaved master edits, its close prompt now has a **Review Master…** button that opens the Save Master review in place of the prompt. Save the master and you return to the prompt to Save or Discard the `.label` (or the tab closes if the label was already saved); cancel the review and the tab stays open. You no longer have to Cancel and find File → Save Master yourself.
 - **A clearer master picker.** The menu now heads the master you're using **Current master** and the rest **Other masters**, and each master shows its file name and the day it was last used, so masters with the same name can be told apart. The ✕ that removes a master from the library sits at the right edge of its row.
 
 ## [0.1.106] - 2026-10-11
