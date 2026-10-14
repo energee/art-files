@@ -23,7 +23,7 @@ import { hitBoxesFromLayout, hitTestBoxes, type LayerBox } from "@/hittestLayers
 import type { ResizeHandle } from "@/model/edit";
 import type { Layer, TextLine } from "@/model/layers";
 import { uppercaseOf } from "@/model/layers";
-import { validateField } from "@/model/fields";
+import { validateLayerInput } from "@/model/fields";
 import {
   ART, BLEED_SHIFT, PAGE, PREVIEW_MAX_W, PREVIEW_RASTER_MAX_EDGE, previewRasterScale, trackedWidth,
 } from "@/layout";
@@ -673,9 +673,8 @@ export const PreviewCompare = forwardRef<
         const fieldWidth = layer.suffix
           ? `calc(${cqh(trackedWidth(canvasRender.m(typed, size, faces.base, layer.fontFamily), typed, ls) + ls)} + 2px)`
           : "100%";
-        // PlainLineField's check: input kept as typed, a bad value flagged.
-        const check = typed === "" ? { ok: true } : validateField({ id: layer.id, label: layer.name,
-          kind: layer.input, path: "", min: layer.min, max: layer.max, symbology: layer.symbology }, typed);
+        // The sidebar's check: input kept as typed, a bad value flagged.
+        const check = typed === "" ? { ok: true } : validateLayerInput(layer, typed);
         const errorId = `${layer.id}-inplace-error`;
         return (
           <div
