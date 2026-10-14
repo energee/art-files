@@ -362,8 +362,10 @@ it("Open Master previews a switch that hides values, and Cancel leaves the label
   await act(async () => cancel.click());
   expect(document.querySelector("#master-picker-preview")).toBeNull();
   expect(document.querySelector("#master-picker")?.textContent).toContain("Lolev");
-  // The opened master joined the library all the same…
+  // The opened master joined the library all the same, but not as the
+  // last-applied master a new untitled tab would start on…
   expect(localStorage.getItem("labellab.master:master-other")).toContain("Other");
+  expect(localStorage.getItem("labellab.lastMaster")).not.toBe("master-other");
   // …but Save Master was never bound to its file (#81).
   const { pick } = picker();
   await toggle("warning");
@@ -372,6 +374,21 @@ it("Open Master previews a switch that hides values, and Cancel leaves the label
   await act(async () => { save.click(); await new Promise((r) => setTimeout(r, 10)); });
   expect(other.createWritable).not.toHaveBeenCalled();
   expect(pick).toHaveBeenCalledOnce();
+});
+
+it("Open Master reopens a collapsed sidebar to show its preview", async () => {
+  const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});
+  await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
+  await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  const sidebar = () => document.querySelector('[data-slot="sidebar"]')!.getAttribute("data-state");
+  act(() => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "b", metaKey: true, bubbles: true, cancelable: true })); });
+  expect(sidebar()).toBe("collapsed");
+  const base = lolevMaster();
+  openMasterFile({ ...base, id: "master-other", name: "Other", layers: base.layers.filter((l) => l.id !== "volume") });
+  await run("master-open");
+  expect(sidebar()).toBe("expanded");
+  expect(document.querySelector("#master-picker-preview")).not.toBeNull();
+  expect(document.activeElement?.textContent).toBe("Cancel");
 });
 
 it("Open Master's Continue switches and binds Save Master to the opened file", async () => {
