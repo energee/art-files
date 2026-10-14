@@ -143,7 +143,7 @@ export function LayerInspector(props: {
           addon titles). Separate from the ruler unit, which is in/pt/px. */}
       {props.onUnitChange && <Field label="Lengths in">
         <ToggleGroup aria-label="Dimension units" variant="outline" size="sm" spacing={0}
-          title="Shared by all layers: X, Y, width, height and wrap width"
+          title="Shared by all layers: X, Y, gap, width, height, wrap width, module width and QR size"
           value={[ctx.unit]} onValueChange={(values) => {
             const unit = values[0];
             if (unit === "mm" || unit === "pt") props.onUnitChange?.(unit);

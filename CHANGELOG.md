@@ -8,7 +8,7 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Changed
 - **A clearer master picker.** The menu now heads the master you're using **Current master** and the rest **Other masters**, and each master shows its file name and the day it was last used, so masters with the same name can be told apart. The ✕ that removes a master from the library sits at the right edge of its row.
-- **The mm / pt toggle is labelled "Lengths in".** It applies to every layer and converts X, Y, width, height and wrap width; its tooltip says so. Fields with a fixed unit (type size and letter spacing in points, stroke width in pixels, character height in millimetres) say why on hover.
+- **The mm / pt toggle is labelled "Lengths in".** It applies to every layer and converts X, Y, binding gap, width, height, wrap width, barcode module width and QR size; its tooltip says so. Fields with a fixed unit (type size and letter spacing in points, stroke width in pixels, character height in millimetres) say why on hover.
 - **The Lock tooltip says what the lock does.** "Locked on canvas: drag, resize and nudge are off. Typed values still apply." on the Layers row and the inspector switch. Lock behaviour is unchanged.
 - **Character height explains itself behind an info button.** The two paragraphs under Characters per inch moved into the ⓘ beside it, read out by screen readers; the readouts and Minimum height field are unchanged.
 

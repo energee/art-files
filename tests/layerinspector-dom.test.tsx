@@ -145,7 +145,10 @@ describe("LayerInspector header", () => {
   it("labels the unit toggle as shared lengths, and titles the fixed-unit addons", () => {
     render(text({ style: { ...STYLE, stroke: "#000000" } }), { unit: "mm", onUnitChange: vi.fn() });
     expect(container.textContent).toContain("Lengths in");
-    expect(byLabel("Dimension units")!.getAttribute("title")).toMatch(/all layers/);
+    // Every field that takes props.unit is listed, so the title does not
+    // under-promise (binding gap, barcode module width and QR size convert too).
+    expect(byLabel("Dimension units")!.getAttribute("title"))
+      .toBe("Shared by all layers: X, Y, gap, width, height, wrap width, module width and QR size");
     const addonTitle = (id: string) =>
       $(`#${id}`)!.closest("[data-slot=input-group]")!.querySelector("[title]")?.getAttribute("title");
     expect(addonTitle("name-size")).toBe("Type size is always points");
