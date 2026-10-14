@@ -3,7 +3,9 @@
 // guide kind here (margin, center, manual) and for creating new ones; a manual
 // guide is removed from the × that appears in the ruler when its handle is
 // hovered or selected (pressed or tabbed to, so a tap shows it on touch), by
-// dragging it back into a ruler, or with Delete while focused.
+// dragging it back into a ruler, or with Delete while focused. All of that is
+// session view state; the settings popover's margin inset is the exception —
+// it writes the master's guides, so it sits locked under a "Master" heading.
 import {
   useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type RefObject,
 } from "react";
@@ -20,7 +22,8 @@ import { Label } from "@/components/ui/label";
 import {
   Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger,
 } from "@/components/ui/popover";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { RulerUnitPicker } from "@/components/RulerUnitPicker";
+import { Lock, LockOpen } from "lucide-react";
 
 const RULER_SIZE = 20;
 /** The manual-guide × (px) — sits centred in the ruler's thickness. */
@@ -43,7 +46,8 @@ interface Geometry {
  *  releasing back over a ruler is a cancelled drag rather than a click. */
 type Drag = { axis: GuideAxis; id?: number; point: number; pulled?: boolean };
 
-/** The compact form inside the ruler-corner settings popover. */
+/** The compact form inside the ruler-corner settings popover: guide
+ *  buttons and the unit (session), then the master's margin inset. */
 function RulerSettings(props: {
   unit: RulerUnit;
   onUnitChange: (unit: RulerUnit) => void;
@@ -54,6 +58,10 @@ function RulerSettings(props: {
   canAdd: boolean;
 }) {
   const { unit, onUnitChange, marginPt, onMarginChange, canAdd } = props;
+  // The inset is master geometry, unlike everything else here: locked each
+  // time the popover opens (the popover unmounts on close), behind a lock
+  // button shaped like LayerList's per-layer Lock toggle.
+  const [marginLocked, setMarginLocked] = useState(true);
   const marginValue = pointToUnit(marginPt, 0, unit);
   const marginMax = pointToUnit(Math.min(ART.w, ART.h) / 2, 0, unit);
   const marginStep = unit === "in" ? 0.125 : unit === "px" ? 25 : 1;
@@ -63,21 +71,24 @@ function RulerSettings(props: {
       <button type="button" className="text-xs disabled:opacity-50" disabled={!canAdd} onClick={() => props.onAddManual("x", PAGE.w / 2)}>Add vertical guide</button>
       <button type="button" className="text-xs disabled:opacity-50" disabled={!canAdd} onClick={() => props.onAddManual("y", PAGE.h / 2)}>Add horizontal guide</button>
       <Label className="text-xs text-muted-foreground">Measurement</Label>
-      <ToggleGroup value={[unit]} spacing={0} variant="outline"
-        className="w-full" aria-label="Ruler measurement units"
-        onValueChange={(value) => {
-          if (value[0]) onUnitChange(value[0] as RulerUnit);
-        }}>
-        <ToggleGroupItem value="in" size="sm" className="min-w-0 flex-1">Inches</ToggleGroupItem>
-        <ToggleGroupItem value="pt" size="sm" className="min-w-0 flex-1">Points</ToggleGroupItem>
-        <ToggleGroupItem value="px" size="sm" className="min-w-0 flex-1">Pixels</ToggleGroupItem>
-      </ToggleGroup>
+      <RulerUnitPicker unit={unit} onUnitChange={onUnitChange} />
+      <div className="flex items-center justify-between">
+        <Label className="text-xs text-muted-foreground">Master</Label>
+        <button type="button"
+          onClick={() => setMarginLocked((locked) => !locked)}
+          aria-label="Margin inset: locked" aria-pressed={marginLocked}
+          title={marginLocked ? "Locked — unlock to change the master's margin" : "Unlocked"}
+          className="grid size-5 place-items-center rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&>svg]:size-3">
+          {marginLocked ? <Lock /> : <LockOpen />}
+        </button>
+      </div>
       {/* The inspector's numeric field, so the inset scrubs like every other
           number in the app and clamps/rounds the same way (NumberRoot). */}
       <ScrubField id="guide-margin" label="Margin inset" unit={unit}
         value={Number(marginValue.toFixed(unit === "in" ? 3 : 0))}
-        min={0} max={marginMax} step={marginStep}
+        min={0} max={marginMax} step={marginStep} disabled={marginLocked}
         onChange={(value) => onMarginChange(clampMargin(unitToPoint(value, 0, unit)))} />
+      <p className="text-[11px] text-muted-foreground">Changes the master on all four sides; Save Master keeps it.</p>
     </div>
   );
 }

@@ -25,6 +25,16 @@ export async function nativePathExists(path: string): Promise<boolean> {
   return exists(path);
 }
 
+/** When a desktop file was last written (ms since the epoch), or null when it
+ *  no longer exists. Crash recovery uses it to rebind a restored tab only to
+ *  a file not written since the snapshot (recovery.ts canRebind). Scoped by
+ *  fs:allow-stat in src-tauri/capabilities/default.json. */
+export async function nativeModifiedAt(path: string): Promise<number | null> {
+  const { exists, stat } = await import("@tauri-apps/plugin-fs");
+  if (!await exists(path)) return null;
+  return (await stat(path)).mtime?.getTime() ?? null;
+}
+
 /** Open a native file dialog and return the selected path. Null is an
  *  ordinary cancellation, matching saveThrough. */
 export async function openNativeFile(
