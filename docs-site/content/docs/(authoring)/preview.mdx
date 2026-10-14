@@ -3,15 +3,17 @@ title: Preview
 description: Label, mask, can, zoom, pan, rulers, guides
 ---
 
-One preview, centre of the window. View → **Label** / **Mask** / **Can** (keys `1` `2` `3`), or click **View Mode** in the status bar to cycle.
+One preview, centre of the window. View → **Label** / **Mask** / **Can** (keys `1` `2` `3`), or pick one in the **Label | Mask | Can** control in the status bar. With the divider anywhere between its ends the view is **Compare**: neither Label nor Mask is pressed or checked, and the status bar says *Compare*.
 
 ## Label and mask
 
-Both plates draw in place. Drag the divider and the **white-ink layer** slides over the art so you can check registration. View → Label jumps the divider to artwork. View → Mask jumps it to the plate.
+Both plates draw in place. Drag the divider by its grip (or focus it and use the arrow keys, Home and End) and the **white-ink layer** slides over the art so you can check registration. View → Label jumps the divider to artwork. View → Mask jumps it to the plate.
 
 Live preview uses a downscaled texture and mask so typing doesn't churn print-size images. Downloads always rebuild at full resolution.
 
-While export files are being built, the preview blurs under a **Building PDFs…** or **Building PSDs…** note, which screen readers announce. A PSD export can start before the preview finishes loading, and shows its note in place of the loading spinner. Ordinary preview edits do not show this export indicator.
+While export files are being built, the preview blurs under a **Building PDFs…** or **Building PSDs…** note, which screen readers announce. A PSD export can start before the preview finishes loading, and shows its note in place of the loading spinner; on the can, the can's own *rendering…* spinner stands aside for it. Ordinary preview edits do not show this export indicator.
+
+Until you drop a texture, a hint over the 2D sheet says you can. It stays off the can, but a texture still drops in any view.
 
 ## Zoom and pan
 
@@ -24,7 +26,7 @@ In 3D, 100% means "as framed" for that mode. 200% is twice as close. Typing 100 
 
 ## Can
 
-Same plates, wrapped around a can. **1 / 4** in the status bar is one can or a 2×2 four-pack. Orbit with the left button and pan with the right. With the can view focused, arrow keys pan and Shift plus arrows rotates.
+Same plates, wrapped around a can. **1 / 4** in the status bar, or View → **One Can** / **Four-Pack** (also in the ⌘K palette), is one can or a 2×2 four-pack. Both are available only in the Can view. Orbit with the left button and pan with the right. With the can view focused, arrow keys pan and Shift plus arrows rotates.
 
 Settings → corner radius and edge softness are how the die-cut and foil edge read on the can. Preview/press appearance. They don't redraw the 2D plates, aside from bleed and DPI.
 
@@ -33,7 +35,7 @@ Settings → corner radius and edge softness are how the die-cut and foil edge r
 View → **Rulers** (`R`) and **Guides** (`G`). 2D only.
 
 - Ruler zero is the **trimmed** art's top-left, so bleed reads negative
-- Click the trim-size readout in the status bar to cycle inches / points / 600-DPI pixels
+- Click the trim-size readout in the status bar to cycle inches / points / 600-DPI pixels. The status bar's clickable items (zoom, trim size, DPI) carry a faint border; click the **DPI** readout to open Settings on Resolution
 - Locked margin and centre guides come from the trim box. The margin control (ruler corner) sets the safe inset on all four sides
 - Drag from a ruler to add a **manual** guide, or use **Add vertical guide** / **Add horizontal guide** in the ruler-corner settings. Arrow keys move a focused guide by 1 pt (Shift: 10 pt). Kill it with the × in the ruler, by dragging it back into a ruler, or with Delete while it's focused. Manual guides snap to layers as you place them
 - **Guides** is one switch: trim line, margin and centre, and your manual guides, together
