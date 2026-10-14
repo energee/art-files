@@ -4,7 +4,7 @@
 // DeepPartial<Layer> patch through onChange; Position switches between a
 // numeric y (with the "Bind below…" picker) and a `below` binding (gap +
 // Unbind → onUnbind); the Geometry section follows the layer's kind; the
-// page-art image layers (role background/mask) keep only Fit; an overridden
+// page-art image layers (role background/mask) show no Position; an overridden
 // path shows a reset badge that calls onReset with that path. No
 // @testing-library/react in this repo — mounted through react-dom/client +
 // act, matching tests/styleproperties-inspector-dom.test.tsx's convention.
@@ -105,6 +105,52 @@ describe("LayerInspector header", () => {
     click(byLabel("Locked")!);
     expect(onChange).toHaveBeenLastCalledWith({ locked: true });
     expect(byLabel("Fillable")).toBeNull();
+  });
+
+  // #1: the inspector edits the last-picked layer only, while drag, reorder
+  // and delete act on the whole selection — so it says so, without taking focus.
+  it("names the one layer it edits when several are selected", () => {
+    render(text(), { selectionCount: 3 });
+    const note = $("#name-selection-note")!;
+    expect(note.textContent).toBe("Editing Name only (3 selected)");
+    expect(note.getAttribute("tabindex")).toBeNull();
+    render(text(), { selectionCount: 1 });
+    expect($("#name-selection-note")).toBeNull();
+  });
+
+  // #2: a layer only an OFF variant adds is not drawn, and edits to it are
+  // dropped — the switch must read Off, and turning it on enables it.
+  it("reads Off for a layer an off variant adds, and turning it on sends enabled:true", () => {
+    const { onChange } = render(image(), { offVariant: "Collab" });
+    const toggle = byLabel("Enabled")!;
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(container.textContent).toContain("Added by Collab, which is off for this label. Turn on to edit.");
+    click(toggle);
+    expect(onChange).toHaveBeenLastCalledWith({ enabled: true });
+    // Other fields stay editable (no read-only fields).
+    expect(($("#logo-x") as HTMLInputElement).disabled).toBe(false);
+    render(image());
+    expect(byLabel("Enabled")!.getAttribute("aria-checked")).toBe("true");
+    expect(container.textContent).not.toContain("which is off for this label");
+  });
+
+  // #11: the lock is canvas-only; typed values still move the layer.
+  it("explains that the lock is canvas-only", () => {
+    render(text());
+    expect(byLabel("Locked")!.getAttribute("title"))
+      .toBe("Locked on canvas: drag, resize and nudge are off. Typed values still apply.");
+  });
+
+  // #12: the toggle is app-wide and covers lengths only; fixed-unit fields say why.
+  it("labels the unit toggle as shared lengths, and titles the fixed-unit addons", () => {
+    render(text({ style: { ...STYLE, stroke: "#000000" } }), { unit: "mm", onUnitChange: vi.fn() });
+    expect(container.textContent).toContain("Lengths in");
+    expect(byLabel("Dimension units")!.getAttribute("title")).toMatch(/all layers/);
+    const addonTitle = (id: string) =>
+      $(`#${id}`)!.closest("[data-slot=input-group]")!.querySelector("[title]")?.getAttribute("title");
+    expect(addonTitle("name-size")).toBe("Type size is always points");
+    expect(addonTitle("name-tracking")).toBe("Letter spacing is always points");
+    expect(addonTitle("name-stroke-width")).toBe("Stroke width is pixels at 600 DPI");
   });
 
   it("renders the parent's content editor under a Content heading", () => {
@@ -283,6 +329,16 @@ describe("LayerInspector geometry follows the kind", () => {
     expect($("#background-fill")).toBeNull();
   });
 
+  // #10: the renderer ignores x/y on page art, so Position is not offered.
+  it("page art (background and mask) shows no Position", () => {
+    render(image({ id: "background", name: "Background", role: "background", fit: "cover" }));
+    expect(container.textContent).not.toContain("Position");
+    expect($("#background-x")).toBeNull();
+    render(image({ id: "mask", name: "Mask", role: "mask", fit: "cover" }));
+    expect($("#mask-x")).toBeNull();
+    expect($("#mask-y")).toBeNull();
+  });
+
   it("barcode: symbology, module width, height, digits", () => {
     const { onChange } = render(barcode());
     expect(byLabel("Symbology")).not.toBeNull();
@@ -409,6 +465,16 @@ describe("LayerInspector override badges", () => {
     expect(onReset).toHaveBeenLastCalledWith("style.fill", "label");
     click(variantMark);
     expect(onReset).toHaveBeenLastCalledWith("style.fill", "variant");
+  });
+
+  // #22: one reset per state — the heading badge while stroke is off, the
+  // colour-row badge while it is on.
+  it("shows exactly one Stroke reset whether the stroke is on or off", () => {
+    const resets = () => container.querySelectorAll('[aria-label^="Reset Stroke"]:not([aria-label^="Reset Stroke Width"]):not([aria-label^="Reset Stroke Plate"])');
+    render(text(), { overridden: from(["style.stroke"]) });
+    expect(resets()).toHaveLength(1);
+    render(text({ style: { ...STYLE, stroke: "#000000" } }), { overridden: from(["style.stroke"]) });
+    expect(resets()).toHaveLength(1);
   });
 
   it("a label-only change shows just the label mark", () => {

@@ -732,3 +732,20 @@ it("names the view-mode button's action and its keyboard shortcuts", async () =>
     expect(button.getAttribute("aria-label")).toBe("View Mode: Mask — switch to Can");
   } finally { await unmount(); }
 });
+
+// The inspector edits one layer: on a multi-selection it says which (#1), and
+// on a layer only an off variant adds it reads Off like the row does (#2).
+it("the inspector names its one layer in a multi-selection and reads an off variant's layer as Off", async () => {
+  const { container, unmount } = await mountEditor();
+  try {
+    const rowButton = (id: string) =>
+      container.querySelector(`[data-layer-id="${id}"] [data-slot="sidebar-menu-button"]`) as HTMLButtonElement;
+    await act(async () => rowButton("collabLead").click());
+    const enabled = () => document.querySelector('[aria-label="Enabled"]')!;
+    expect(enabled().getAttribute("aria-checked")).toBe("false");
+    expect(document.body.textContent).toMatch(/Added by Collab, which is off for this label\. Turn on to edit\./);
+    expect(document.querySelector('[id$="-selection-note"]')).toBeNull();
+    await act(async () => rowButton("name").dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true })));
+    expect(document.querySelector("#name-selection-note")?.textContent).toBe("Editing Name only (2 selected)");
+  } finally { await unmount(); }
+}, 60_000);

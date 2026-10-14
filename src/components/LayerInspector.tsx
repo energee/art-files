@@ -1,9 +1,10 @@
 // LayerInspector.tsx — the right-hand inspector for ONE resolved v3 layer
 // (spec: docs/superpowers/specs/2026-09-04-master-as-layers-design.md, "UI"
 // and "Relative position"). Sections, top to bottom: header (kind icon,
-// inline rename, enabled/locked), the parent's content editor,
-// kind-specific geometry/typography, Position, Style, and expandable
-// template field settings.
+// inline rename, a "editing one of N" note on a multi-selection, enabled/
+// locked with an off-variant note), the parent's content editor,
+// kind-specific geometry/typography, Position (not on page art), Style, and
+// expandable template field settings.
 //
 // Every control is controlled from `layer` and writes ONLY through
 // `onChange` with a minimal DeepPartial<Layer> patch ({ x }, { y: 12 },
@@ -37,7 +38,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
-  Badge, Field, Heading, useRequiredText, type Ctx, type DimensionUnit, type Patch,
+  Badge, Field, Heading, LOCK_TITLE, useRequiredText, type Ctx, type DimensionUnit, type Patch,
 } from "./LayerInspectorControls";
 import {
   BarcodeGeometry, ImageGeometry, Position, QrGeometry, StyleSection, TextGeometry,
@@ -76,6 +77,14 @@ export function LayerInspector(props: {
   /** An image layer holding raster art (PNG/JPEG): it always prints on
    *  white ink, so Style offers no plate toggle. */
   rasterArt?: boolean;
+  /** How many layers are selected. Above one, the header says only this
+   *  layer is edited — drag, reorder and delete act on all of them. */
+  selectionCount?: number;
+  /** The name of the switched-OFF variant that adds this layer. Such a layer
+   *  does not draw and edits to it are dropped (editLabel's patchLayers), so
+   *  Enabled reads off — matching the Layers row — and turning it on enables
+   *  the variant. */
+  offVariant?: string;
 }) {
   const { layer } = props;
   const set = props.onChange;
@@ -88,6 +97,7 @@ export function LayerInspector(props: {
   const nameProps = useRequiredText(layer.name, (v) => set({ name: v }));
   const Icon = KIND_ICONS[layer.kind];
   const page = layer.kind === "image" && (layer.role === "background" || layer.role === "mask");
+  const enabled = layer.enabled && props.offVariant === undefined;
 
   return (
     <div className="space-y-1 px-4 py-3">
@@ -100,22 +110,40 @@ export function LayerInspector(props: {
           {...nameProps}
         />
       </div>
+      {/* Not focusable: the Sheet keeps focus off the panel so Backspace and
+          the arrows still delete and nudge the whole selection. */}
+      {(props.selectionCount ?? 1) > 1 && (
+        <p id={`${layer.id}-selection-note`} className="text-[11px] text-muted-foreground">
+          Editing {layer.name} only ({props.selectionCount} selected)
+        </p>
+      )}
       {/* The two policy switches read as ordinary Fields (label left, control
           right) like every other row in the panel — crowded onto one line they
           looked like a toolbar, which they are not. */}
       <div className="space-y-1.5 pt-2">
         <Field id={`${layer.id}-enabled`} label="Enabled" badge={badge(["enabled"], "Enabled")}>
-          <Switch id={`${layer.id}-enabled`} aria-label="Enabled" checked={layer.enabled}
+          <Switch id={`${layer.id}-enabled`} aria-label="Enabled" checked={enabled}
             onCheckedChange={(on) => set({ enabled: on === true })} />
         </Field>
+        {props.offVariant !== undefined && (
+          <p className="text-[11px] text-muted-foreground">
+            Added by {props.offVariant}, which is off for this label. Turn on to edit.
+          </p>
+        )}
         <Field id={`${layer.id}-locked`} label="Locked" badge={badge(["locked"], "Locked")}>
+          {/* The lock is canvas-only (editGestures): typed X/Y still move it. */}
           <Switch id={`${layer.id}-locked`} aria-label="Locked" checked={!!layer.locked}
+            title={LOCK_TITLE}
             onCheckedChange={(on) => set({ locked: on === true })} />
         </Field>
       </div>
 
-      {props.onUnitChange && <Field label="Dimensions">
+      {/* App-wide, not this layer's: it converts the length fields only.
+          Type size, tracking and stroke keep their own units (see their
+          addon titles). Separate from the ruler unit, which is in/pt/px. */}
+      {props.onUnitChange && <Field label="Lengths in">
         <ToggleGroup aria-label="Dimension units" variant="outline" size="sm" spacing={0}
+          title="Shared by all layers: X, Y, width, height and wrap width"
           value={[ctx.unit]} onValueChange={(values) => {
             const unit = values[0];
             if (unit === "mm" || unit === "pt") props.onUnitChange?.(unit);
@@ -139,11 +167,13 @@ export function LayerInspector(props: {
           the same vocabulary a style has. */}
       {layer.kind === "qr" && <QrGeometry layer={layer} {...ctx} />}
 
-      {/* The page art has no ink of its own to colour or stroke — the
-          texture IS the colour and the mask IS the plate — so like the old
-          Document layers it carries no Style stack. */}
-      <Position layer={layer} layerNames={props.layerNames} onUnbind={props.onUnbind} onBind={props.onBind} {...ctx} />
+      {/* Page art has no Position: the renderer stretches it over the whole
+          page and ignores x/y (planLayers), so the fields would change nothing. */}
+      {!page && <Position layer={layer} layerNames={props.layerNames} onUnbind={props.onUnbind} onBind={props.onBind} {...ctx} />}
 
+      {/* Nor ink of its own to colour or stroke — the texture IS the colour
+          and the mask IS the plate — so like the old Document layers it
+          carries no Style stack. */}
       {!page && <StyleSection layer={layer} rasterArt={props.rasterArt} {...ctx} />}
       {(layer.kind === "text" || layer.kind === "barcode") && (
         <details className="mt-4 border-t border-border pt-3">
