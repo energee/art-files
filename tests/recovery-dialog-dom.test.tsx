@@ -7,15 +7,22 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ dropped: [] as string[], opened: [] as unknown[] }));
-vi.mock("../src/recovery", () => ({
+const mocks = vi.hoisted(() => ({
+  dropped: [] as string[], opened: [] as unknown[], tauri: false, mtime: 0 as number | null,
+}));
+vi.mock("../src/recovery", async (importOriginal) => ({
+  canRebind: (await importOriginal<typeof import("../src/recovery")>()).canRebind,
   recoveryKey: (id: number) => `now:${id}`,
   earlierSnapshots: async () => [
-    { key: "old:1", name: "alpha.label", bytes: new Uint8Array([1]), savedAt: 1 },
+    { key: "old:1", name: "alpha.label", bytes: new Uint8Array([1]), savedAt: 5, filePath: "/w/alpha.label" },
   ],
   dropRecovery: async (key: string) => { mocks.dropped.push(key); },
 }));
-vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => false, invoke: vi.fn() }));
+vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => mocks.tauri, invoke: vi.fn(async () => null) }));
+vi.mock("../src/files", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../src/files")>(),
+  nativeModifiedAt: async () => mocks.mtime,
+}));
 vi.mock("../src/components/DesktopUpdater", () => ({ DesktopUpdater: () => null }));
 vi.mock("../src/App", () => ({
   DocumentEditor: (p: { fileToOpen: unknown }) => {
@@ -32,6 +39,7 @@ let root: Root;
 beforeEach(async () => {
   mocks.dropped.length = 0;
   mocks.opened.length = 0;
+  mocks.tauri = false;
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -72,4 +80,20 @@ it("Escape hides the dialog but keeps the snapshots", async () => {
   await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
   expect(dialog()).toBeNull();
   expect(mocks.dropped).not.toContain("old:1");
+});
+
+// UX audit 26: on desktop the restored tab takes its file back only when that
+// file has not been written since the snapshot (recovery.ts canRebind).
+it("on desktop, Restore hands the original path back, rebinding only an untouched file", async () => {
+  mocks.tauri = true;
+  mocks.mtime = 4;
+  await press("Restore");
+  expect(mocks.opened[0]).toMatchObject({ recoveredPath: { path: "/w/alpha.label", rebind: true } });
+});
+
+it("on desktop, a file written after the snapshot is not rebound", async () => {
+  mocks.tauri = true;
+  mocks.mtime = 6;
+  await press("Restore");
+  expect(mocks.opened[0]).toMatchObject({ recoveredPath: { path: "/w/alpha.label", rebind: false } });
 });

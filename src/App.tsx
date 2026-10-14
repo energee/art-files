@@ -90,9 +90,12 @@ import { CommandMenu, type Command } from "@/components/CommandMenu";
 import { AppMenu } from "@/components/AppMenu";
 import { PreviewCompare, SNAP_PT, type PreviewCompareHandle, type SnapLines, type SnapMark } from "@/components/PreviewCompare";
 import { Rulers } from "@/components/Rulers";
+import { RulerUnitPicker } from "@/components/RulerUnitPicker";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ChevronDown } from "lucide-react";
 import type { CanViewHandle } from "@/components/CanView";
 import {
-  DEFAULT_MARGIN_PT, nextRulerUnit, sizeLabel,
+  DEFAULT_MARGIN_PT, sizeLabel,
   type GuideAxis, type ManualGuide, type RulerUnit,
 } from "@/rulers";
 import {
@@ -297,13 +300,17 @@ const VIEW_CYCLE: { label: string; id: string; at: (m: ViewMode, split: number) 
  *  of path (Tauri), handle (FS-Access picker), or file (hidden-input
  *  fallback, a window-dropped .label, or a crash-recovery snapshot — no
  *  save identity) is set. `recovered` is that snapshot's recovery.ts key:
- *  the opened tab stays unsaved, and takes the snapshot over from the key. */
+ *  the opened tab stays unsaved, and takes the snapshot over from the key.
+ *  `recoveredPath` is the file that tab was bound to (desktop): Save binds
+ *  back to it when the shell found that safe (recovery.ts canRebind), and
+ *  otherwise a note names it while Save asks where. */
 export type FileToOpen = {
   seq: number;
   path?: string;
   handle?: FileSystemFileHandle;
   file?: File;
   recovered?: string;
+  recoveredPath?: { path: string; rebind: boolean };
 };
 
 /** What the tab strip shows for this document (src/tabs.ts TabMeta — one
@@ -604,6 +611,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [dimensionUnit, setDimensionUnit] = useState<"mm" | "pt">("mm");
   const [rulerUnit, setRulerUnit] = useState<RulerUnit>("in");
   const [showGuides, setShowGuides] = useState(() => loadViewToggles().showGuides);
+  // The one exception: the margin inset is the master's own guides, so an
+  // edit to it is a master edit (Rulers locks it behind an unlock).
   const marginPt = master.guides.top ?? DEFAULT_MARGIN_PT;
   const [manualGuides, setManualGuides] = useState<ManualGuide[]>([]);
   const nextGuideId = useRef(1);
@@ -1413,11 +1422,13 @@ export const DocumentEditor = memo(function DocumentEditor({
     const timer = setTimeout(() => {
       let bytes: Uint8Array;
       try { bytes = packProject(); } catch { return; } // over the size caps: nothing Save could write either
-      void keepRecovery(recoveryKey, { name: exportBase + LABEL_EXT, bytes, savedAt: Date.now() });
+      void keepRecovery(recoveryKey, {
+        name: exportBase + LABEL_EXT, bytes, savedAt: Date.now(), filePath: filePath ?? undefined,
+      });
     }, 2000);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the snapshot reads this render's doc/assets
-  }, [hasUnsaved, doc, texture, mask, customImages, recoveryKey]);
+  }, [hasUnsaved, doc, texture, mask, customImages, recoveryKey, filePath]);
 
   /** The template assets a Save Master captures: the loaded texture/mask
    *  (the art being authored IS the template art) plus the bytes of every
@@ -1903,7 +1914,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (!fileToOpen || fileToOpen.seq === openedSeq.current) return;
     openedSeq.current = fileToOpen.seq;
     const mySeq = fileToOpen.seq;
-    const { path, handle, file, recovered } = fileToOpen;
+    const { path, handle, file, recovered, recoveredPath } = fileToOpen;
     openChain.current = openChain.current.then(async () => {
       if (openedSeq.current !== mySeq) return; // a newer open superseded us
       try {
@@ -1923,8 +1934,16 @@ export const DocumentEditor = memo(function DocumentEditor({
               // a failed copy leaves it for the next launch to offer again.
               setDirty(true);
               setEdited(true);
+              if (recoveredPath?.rebind) bindPath(recoveredPath.path);
+              else if (recoveredPath)
+                setLoadError(`Note: Restored from ${recoveredPath.path}, which moved, changed or is open in another tab, so Save asks where.`);
               const bytes = new Uint8Array(await file.arrayBuffer());
-              if (!recoveryKey || await keepRecovery(recoveryKey, { name: file.name, bytes, savedAt: Date.now() }))
+              // The path rides along only once rebound: with a fresh savedAt,
+              // a refused path would pass canRebind after a second crash.
+              if (!recoveryKey || await keepRecovery(recoveryKey, {
+                name: file.name, bytes, savedAt: Date.now(),
+                filePath: recoveredPath?.rebind ? recoveredPath.path : undefined,
+              }))
                 void dropRecovery(recovered);
             }
           }
@@ -2022,8 +2041,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       return (
         <TextEditor id={id} label="Text" lines={layer.lines} base={layer.style}
           onChange={(lines) => setContent(layer, lines, id)}
-          multiline={true} uppercase={uppercaseOf(layer)}
-          onUppercase={(uppercase) => patch(layer.id, { style: { uppercase } })}
+          uppercase={uppercaseOf(layer)}
           input={layer.input} min={layer.min} max={layer.max} symbology={layer.symbology}
           suffix={layer.suffix} choices={layer.choices} title={layer.title} />
       );
@@ -2396,13 +2414,19 @@ export const DocumentEditor = memo(function DocumentEditor({
               className="w-10 rounded bg-transparent py-0.5 text-right text-xs tabular-nums text-muted-foreground outline-none hover:text-foreground focus:text-foreground" />
             <span className="text-xs text-muted-foreground">%</span>
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
-            <button
-              onClick={() => setRulerUnit(nextRulerUnit(rulerUnit))}
-              title={`Trim size — with bleed the page is ${sizeLabel(PAGE.w, PAGE.h, rulerUnit)}. Click for ${nextRulerUnit(rulerUnit)}`}
-              aria-label={`Artboard size ${sizeLabel(ART.w, ART.h, rulerUnit)}; click to change units`}
-              className="shrink-0 rounded px-1 py-0.5 text-xs tabular-nums whitespace-nowrap text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
-              {sizeLabel(ART.w, ART.h, rulerUnit)}
-            </button>
+            {/* The same unit picker as the ruler corner, over the same unit. */}
+            <Popover>
+              <PopoverTrigger
+                title={`Trim size — with bleed the page is ${sizeLabel(PAGE.w, PAGE.h, rulerUnit)}. Click to choose units`}
+                aria-label={`Artboard size ${sizeLabel(ART.w, ART.h, rulerUnit)}; click to choose units`}
+                className="flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-xs tabular-nums whitespace-nowrap text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+                {sizeLabel(ART.w, ART.h, rulerUnit)}
+                <ChevronDown className="size-3" aria-hidden="true" />
+              </PopoverTrigger>
+              <PopoverContent align="end" side="top" className="w-56">
+                <RulerUnitPicker unit={rulerUnit} onUnitChange={setRulerUnit} />
+              </PopoverContent>
+            </Popover>
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
             <span className="shrink-0 px-1 text-xs tabular-nums whitespace-nowrap text-muted-foreground"
               title="PSD raster resolution and pixel-ruler scale">

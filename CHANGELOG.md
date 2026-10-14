@@ -8,6 +8,12 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Changed
 - **A clearer master picker.** The menu now heads the master you're using **Current master** and the rest **Other masters**, and each master shows its file name and the day it was last used, so masters with the same name can be told apart. The ✕ that removes a master from the library sits at the right edge of its row.
+- **Margin inset is locked as master geometry.** The ruler-corner settings now list Margin inset under a **Master** heading, locked until you unlock it, with a note that it changes the master. Rulers, guides and units stay session-only.
+- **Pick units from the trim-size readout.** Clicking the status-bar size readout opens the same Inches / Points / Pixels choice as the ruler corner, with the current unit selected, instead of silently cycling to the next unit.
+- **One Uppercase control in the inspector.** The text field's toolbar no longer repeats Uppercase; use the Typography **Uppercase** switch, which shows the override badge. The on-canvas toolbar keeps its Uppercase button.
+
+### Fixed
+- **A restored tab saves back to its file.** After crash recovery, a desktop tab that came from a `.label` saves to that file again when the file is unchanged since the recovery copy and not open in another tab. Otherwise Save still asks where, and a note names the original file.
 
 ## [0.1.106] - 2026-10-11
 
