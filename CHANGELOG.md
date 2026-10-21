@@ -7,6 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Changed
+- **Interface library patch updates.** Tauri JS 2.12.3 and its dialog, file-system and updater plugins, Base UI 1.9, Lucide icons 1.56, ag-psd 31.0.3 and react-dropzone 20.1.3, plus newer build tooling; no change in behaviour.
 - **A clearer master picker.** The menu now heads the master you're using **Current master** and the rest **Other masters**, and each master shows its file name and the day it was last used, so masters with the same name can be told apart. The ✕ that removes a master from the library sits at the right edge of its row.
 
 ## [0.1.106] - 2026-10-11
