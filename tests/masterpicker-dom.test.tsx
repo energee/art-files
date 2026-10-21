@@ -151,8 +151,10 @@ describe("MasterPicker", () => {
   // File → Open Master hands the picker a switch that would hide values:
   // the same card, but Continue runs the opener's own commit (it binds the
   // file only then), and Cancel runs nothing.
-  const offer = (commit = vi.fn(async () => {})) =>
-    ({ target: otherMaster, assets: {}, dropped: ["name"], disabledVariants: [], commit });
+  // Keeps the variant, drops the "name" layer: hides exactly 1 filled field.
+  const nameless: Master = { ...lolevMaster(), id: "other", name: "Other Brewery",
+    layers: lolevMaster().layers.filter((l) => l.id !== "name") };
+  const offer = (commit = vi.fn(async () => {})) => ({ target: nameless, assets: {}, commit });
 
   it("previews an opened master and runs its own commit on Continue, not onMaster", async () => {
     const onMaster = vi.fn();
@@ -171,8 +173,9 @@ describe("MasterPicker", () => {
     expect(container.querySelector("#master-picker-preview")).toBeNull();
   });
 
-  it("Cancel on an opened master commits nothing", () => {
-    const props = renderPicker();
+  it("Cancel on an opened master commits nothing and reports the offer done", () => {
+    const onOfferDone = vi.fn();
+    const props = renderPicker({ onOfferDone });
     const o = offer();
     act(() => { root.render(createElement(MasterPicker, { ...props, offer: o })); });
     expect(container.querySelector("#master-picker-preview")).not.toBeNull();
@@ -180,9 +183,48 @@ describe("MasterPicker", () => {
     expect(container.querySelector("#master-picker-preview")).toBeNull();
     expect(o.commit).not.toHaveBeenCalled();
     expect(props.onMaster).not.toHaveBeenCalled();
+    expect(onOfferDone).toHaveBeenCalledOnce();
+    // Cancel unmounted itself: focus goes back to the picker's trigger.
+    expect(document.activeElement).toBe(trigger());
     // A re-render with the same offer does not bring the card back.
     act(() => { root.render(createElement(MasterPicker, { ...props, offer: o })); });
     expect(container.querySelector("#master-picker-preview")).toBeNull();
+  });
+
+  // App withdraws the offer when another switch lands (a second Open Master
+  // that hides nothing): the card must not keep offering the old commit.
+  it("closes an opened master's card when the offer is withdrawn", () => {
+    const props = renderPicker();
+    act(() => { root.render(createElement(MasterPicker, { ...props, offer: offer() })); });
+    expect(container.querySelector("#master-picker-preview")).not.toBeNull();
+    act(() => { root.render(createElement(MasterPicker, { ...props, offer: null })); });
+    expect(container.querySelector("#master-picker-preview")).toBeNull();
+  });
+
+  // The counts follow edits made while the card is open, not the label as
+  // it was when the card opened.
+  it("recounts what the switch hides when the label changes under the card", () => {
+    const props = renderPicker();
+    const o = offer();
+    act(() => { root.render(createElement(MasterPicker, { ...props, offer: o })); });
+    const line = () => container.querySelector("#master-picker-preview")?.textContent;
+    expect(line()).toContain("hides 1 filled field");
+    const cleared = { ...label, values: {} };
+    act(() => { root.render(createElement(MasterPicker, { ...props, label: cleared, offer: o })); });
+    expect(line()).toContain("hides nothing");
+  });
+
+  it("returns focus to the trigger when a pick's preview is cancelled", async () => {
+    renderPicker();
+    openMenu();
+    await act(async () => {
+      itemStarting("Other Brewery")!.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const cancel = [...container.querySelectorAll("#master-picker-preview button")].find((b) => b.textContent === "Cancel") as HTMLButtonElement;
+    act(() => { cancel.click(); });
+    expect(document.activeElement).toBe(trigger());
   });
 
   it("lists the current master's variants as versions of it", () => {

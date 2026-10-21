@@ -41,7 +41,7 @@
 // Only the middle one resolves a file, so the two sentinels are intercepted
 // in onValueChange before any rebind is considered.
 import { CornerDownRight, X } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { shortcutLabel } from "@/keys";
 import { rebindLabel } from "@/model/rebindLayers";
@@ -61,13 +61,11 @@ const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 const NEW_VARIANT = "__new-variant";
 const VERSION = "__version:";
 
-/** A switch waiting on the preview card: what it would bench, and — for
- *  File → Open Master's `offer` — the opener's own commit, which Continue
- *  runs instead of `onMaster`. */
-export type MasterOffer = {
-  target: Master; assets: MasterAssets; dropped: string[]; disabledVariants: string[];
-  commit?: () => Promise<void>;
-};
+/** A switch waiting on the preview card and — for File → Open Master's
+ *  `offer` — the opener's own commit, which Continue runs instead of
+ *  `onMaster`. What it would bench is counted at render from the current
+ *  label, so edits made while the card is open keep the counts true. */
+export type MasterOffer = { target: Master; assets: MasterAssets; commit?: () => Promise<void> };
 
 /** One dropdown row — just enough to render and pick. The full Master is
  *  resolved lazily (see `resolve`), only once something is actually picked,
@@ -153,8 +151,12 @@ export function MasterPicker(props: {
   /** File → Open Master…'s switch, when it would bench something: shown in
    *  the preview card as a library pick's is. A new object opens the card
    *  (focus moves to its Cancel, since the command came from a menu);
-   *  Cancel commits nothing. */
+   *  Cancel commits nothing. Back to null closes the card: App withdraws
+   *  the offer once any switch lands. */
   offer?: MasterOffer | null;
+  /** The card showing `offer` closed (Cancel, Continue, or another pick
+   *  from the menu), so App can drop the offer and its commit. */
+  onOfferDone?: () => void;
   /** Drop a remembered master from this computer's library. The file stays.
    *  Resolves to an undo that puts it back (masters.ts's removeFromLibrary). */
   onForget: (id: string) => Promise<() => Promise<void>>;
@@ -188,11 +190,22 @@ export function MasterPicker(props: {
     setPreview(props.offer);
     setError("");
   }
+  // Withdrawn: close the card if it still shows that offer, never a pick's.
+  if (!props.offer && offered) {
+    setOffered(null);
+    if (preview === offered) setPreview(null);
+  }
+  /** What the card's switch would bench, from the label as it is now. */
+  const hides = useMemo(
+    () => preview && rebindLabel(props.label, props.master, preview.target).dropped,
+    [preview, props.label, props.master],
+  );
   useEffect(() => { if (props.offer) cancelRef.current?.focus(); }, [props.offer]);
   /** The variant whose name is being edited inline, or null. */
   const [naming, setNaming] = useState<string | null>(null);
 
   const closeAll = () => {
+    if (preview && preview === offered) props.onOfferDone?.();
     setPreview(null);
     setResolvingId(null);
     setError("");
@@ -232,10 +245,10 @@ export function MasterPicker(props: {
     setResolvingId(null);
     if (!r) { setError(`Could not open master "${props.library[id]?.name ?? id}".`); return; }
     const { dropped } = rebindLabel(props.label, props.master, r.master);
-    const next = { target: r.master, assets: r.assets, dropped: dropped.values, disabledVariants: dropped.variants };
+    const next = { target: r.master, assets: r.assets };
     // Nothing would be benched, so there is nothing to confirm: switch now.
     // ⌘Z undoes it like any other edit.
-    if (!next.dropped.length && !next.disabledVariants.length) await commit(next);
+    if (!dropped.values.length && !dropped.variants.length) await commit(next);
     else setPreview(next);
   };
 
@@ -408,13 +421,15 @@ export function MasterPicker(props: {
         <p id="master-picker-error" className="mt-1 px-1 text-[11px] text-destructive-text">{error}</p>
       )}
 
-      {preview && (
+      {preview && hides && (
         <div id="master-picker-preview" role="group" aria-labelledby={previewId}
           className="mt-1 rounded-md border border-sidebar-border p-2 text-xs text-sidebar-foreground">
-          <p id={previewId}>{previewLine(preview)}</p>
+          <p id={previewId}>{previewLine(preview.target, hides)}</p>
           <div className="mt-1.5 flex justify-end gap-1.5">
             <Button
-              ref={cancelRef} type="button" onClick={closeAll} variant="outline" size="xs"
+              ref={cancelRef} type="button" variant="outline" size="xs"
+              // Cancel unmounts with the card: hand focus back to the picker.
+              onClick={() => { closeAll(); triggerRef.current?.focus(); }}
             >
               Cancel
             </Button>
@@ -430,11 +445,14 @@ export function MasterPicker(props: {
   );
 }
 
-function previewLine(p: { target: Master; dropped: string[]; disabledVariants: string[] }): string {
+/** The card's sentence. `hides` can empty while the card is open (the
+ *  hidden fields were cleared), and then says so. */
+function previewLine(target: Master, hides: { values: string[]; variants: string[] }): string {
   const parts: string[] = [];
-  if (p.dropped.length)
-    parts.push(`${p.dropped.length} filled field${p.dropped.length === 1 ? "" : "s"}`);
-  if (p.disabledVariants.length)
-    parts.push(`${p.disabledVariants.length} variant${p.disabledVariants.length === 1 ? "" : "s"}`);
-  return `Switching to "${p.target.name}" hides ${parts.join(" and ")} that it cannot display. Their contents are kept if you switch back. Continue?`;
+  if (hides.values.length)
+    parts.push(`${hides.values.length} filled field${hides.values.length === 1 ? "" : "s"}`);
+  if (hides.variants.length)
+    parts.push(`${hides.variants.length} variant${hides.variants.length === 1 ? "" : "s"}`);
+  if (!parts.length) return `Switching to "${target.name}" hides nothing. Continue?`;
+  return `Switching to "${target.name}" hides ${parts.join(" and ")} that it cannot display. Their contents are kept if you switch back. Continue?`;
 }

@@ -402,6 +402,35 @@ it("Open Master's Continue switches and binds Save Master to the opened file", a
   expect(other.createWritable).toHaveBeenCalledOnce();
 });
 
+// A second Open Master while the first one's card is open: the card must
+// follow the label, never offer the first master's stale switch.
+it("a second Open Master that hides nothing closes the first one's card", async () => {
+  await openHidingMaster();
+  expect(document.querySelector("#master-picker-preview")).not.toBeNull();
+  openMasterFile({ ...lolevMaster(), id: "master-same", name: "Same" });
+  await run("master-open");
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Same");
+  expect(document.querySelector("#master-picker-preview")).toBeNull();
+});
+
+it("a second Open Master that hides values replaces the first one's card", async () => {
+  await openHidingMaster();
+  const base = lolevMaster();
+  openMasterFile({ ...base, id: "master-third", name: "Third", layers: base.layers.filter((l) => l.id !== "volume") });
+  await run("master-open");
+  expect(document.querySelector("#master-picker-preview")?.textContent).toContain('Switching to "Third"');
+  await act(async () => { (document.querySelector("#master-picker-continue") as HTMLButtonElement).click(); await new Promise((r) => setTimeout(r, 10)); });
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Third");
+  expect(document.querySelector("#master-picker-preview")).toBeNull();
+});
+
+it("Cancel on Open Master's card hands focus back to the master picker", async () => {
+  await openHidingMaster();
+  await act(async () => (document.activeElement as HTMLButtonElement).click());
+  expect(document.querySelector("#master-picker-preview")).toBeNull();
+  expect(document.activeElement?.id).toBe("master-picker");
+});
+
 it("a promotion whose layer is deleted during the write doesn't cost the others", async () => {
   let finish!: () => void;
   picker(() => new Promise<void>((resolve) => { finish = resolve; }));

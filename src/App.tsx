@@ -1573,6 +1573,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     const { label: next, dropped } = rebindLabel(current, from, target);
     markDirty();
     setDoc({ master: target, label: next });
+    // Any switch retires a pending Open Master card: its commit is stale now.
+    setMasterOffer(null);
     if (clean) { pristineMaster.current = target; repaintMasterDirty((n) => n + 1); }
     clearSelection();
     const notes = benchedNotes(dropped);
@@ -1589,6 +1591,8 @@ export const DocumentEditor = memo(function DocumentEditor({
   ) {
     const r = tryParseMaster(bytes);
     if (!r) return;
+    // A second open supersedes the first one's card, whichever way it goes.
+    setMasterOffer(null);
     // Not yet applied: a cancelled switch must not become the master the
     // next untitled tab starts on.
     await rememberMaster(r.master, name, bytes, { applied: false });
@@ -1608,7 +1612,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (!dropped.values.length && !dropped.variants.length) { await commit(); return; }
     // The card lives in the sidebar, so open it if it was collapsed.
     setSidebarOpen(true);
-    setMasterOffer({ target: r.master, assets: r.assets, dropped: dropped.values, disabledVariants: dropped.variants, commit });
+    setMasterOffer({ target: r.master, assets: r.assets, commit });
   }
 
   /** MasterPicker's library pick (the preview's Continue). The bytes are
@@ -2213,7 +2217,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onMaster={pickLibraryMaster} onNewVariant={onNewVariant}
               onRenameVersion={onRenameVersion} onRemoveVersion={onRemoveVersion}
               onSaveMaster={() => setPendingSave({ as: false })} masterDirty={masterDirty}
-              onForget={forgetLibraryMaster} offer={masterOffer}
+              onForget={forgetLibraryMaster} offer={masterOffer} onOfferDone={() => setMasterOffer(null)}
               version={version} onVersion={switchVersion} />
             <LayerList rows={rows} selected={selected}
               onSelect={pick}
