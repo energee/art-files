@@ -22,6 +22,7 @@ const SPLIT = [
   "src/components/PreviewCompare.tsx",
   "src/components/previewOverlay.ts",
   "src/components/InPlaceRichField.tsx",
+  "src/components/InPlacePlainField.tsx",
 ];
 
 describe("split modules stay under the line budget (#433)", () => {

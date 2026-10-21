@@ -55,8 +55,9 @@ export function validateField(decl: FieldDecl, value: FieldValue): Result {
 
 /** A number/code text layer's typed value, checked as validateField would
  *  check its field — the one spelling of that FieldDecl, shared by the
- *  resolver (a bad value keeps the master's) and the on-canvas editor (it
- *  flags the value as typed). A layer with no `input` takes any text. */
+ *  resolver (a bad value keeps the master's) and both editors, the sidebar
+ *  field and the on-canvas box (they flag the value as typed). A layer with
+ *  no `input` takes any text. */
 export function validateLayerInput(
   layer: Pick<TextLayer, "id" | "name" | "input" | "min" | "max" | "symbology">, text: string,
 ): Result {
