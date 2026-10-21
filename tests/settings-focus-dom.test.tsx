@@ -1,7 +1,8 @@
 // settings-focus-dom.test.tsx — Settings loads its fields on first open
 // (#410). The dialog must still open focused on its first field, as it did
 // when the fields shipped with the editor, not on the Close button that is
-// the only focusable thing while the fields are still loading.
+// the only focusable thing while the fields are still loading. The first
+// field is Resolution (Output leads), which the status bar DPI readout uses.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -36,7 +37,7 @@ it("Settings opens focused on its first field the first time", async () => {
   });
   try {
     await act(async () => { menu.actions.find((c) => c.id === "settings")!.run(); });
-    await vi.waitFor(() => expect(document.activeElement?.id).toBe("doc-corner-radius"), { timeout: 5000 });
+    await vi.waitFor(() => expect(document.activeElement?.id).toBe("doc-dpi"), { timeout: 5000 });
   } finally {
     await act(async () => { root.unmount(); });
     container.remove();

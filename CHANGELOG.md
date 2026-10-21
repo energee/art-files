@@ -7,6 +7,11 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Changed
+- **One view state for the status bar and View menu.** The status bar's "View Mode" button, which cycled views one click at a time, is now a Label | Mask | Can control you pick from directly. With the divider part-way (Compare), no view shows as current anywhere — before, the status bar said Compare while the View menu checked nothing and the status-bar cycle counted it as Label. View → **One Can** / **Four-Pack** (and the ⌘K palette) choose the can count, as the status bar's 1|4 does, in the Can view. The divider has a visible grip that stays on the sheet at both ends.
+- **Status-bar controls look clickable, and Settings is grouped.** Zoom (its "%" inside the border), trim size and DPI carry a faint border so they read as controls; clicking the DPI readout opens Settings on Resolution. Settings now groups its fields under Output (Resolution, Bleed), Can preview (Corner radius, Edge softness) and Appearance.
+
+### Fixed
+- **Preview messages no longer overlap.** The "drop a texture" hint shows over the 2D sheet only, not on the 3D can (a texture still drops in any view), and the can's "rendering…" spinner steps aside while an export's "Building …" note shows in the same corner.
 - **The image-drop hint names both targets, and the drop overlay no longer dims the layer list and menu bar.** Before a texture is loaded, the hint under the preview says the left half of the window takes the background and the right half the metallic mask (PNG/WebP). While an image is dragged over the window, the background/mask chooser now covers the preview only, split where the window's middle falls, so the layer list, menu bar and tab strip stay visible. Drops still work anywhere in the window and still route by window half; dropping on an inspector field still loads that field.
 - **Test tooling update.** happy-dom 21 for the DOM tests; the app itself is unchanged.
 - **Interface library patch updates.** Tauri JS 2.12.3 and its dialog, file-system and updater plugins, Base UI 1.9, Lucide icons 1.56, ag-psd 31.0.3 and react-dropzone 20.1.3, plus newer build tooling; no change in behaviour.

@@ -31,7 +31,7 @@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
-import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import { dialogOpen, isTypingTarget, keyOwner } from "@/keys";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
@@ -283,14 +283,26 @@ const zoomAbout = (
   return clampView(r, z, ax - k * (ax - v.x), ay - k * (ay - v.y));
 };
 
-/** The three preview views in keys-1–3 order. One list, so the readout,
- *  the click-to-cycle, and the commands can't disagree. */
 type ViewMode = "2d" | "can";
-const VIEW_CYCLE: { label: string; id: string; at: (m: ViewMode, split: number) => boolean }[] = [
-  { label: "Label", id: "view-label", at: (m, s) => m === "2d" && s < 100 },
-  { label: "Mask", id: "view-mask", at: (m, s) => m === "2d" && s === 100 },
-  { label: "Can", id: "view-can", at: (m) => m === "can" },
-];
+/** Which view the preview is in. The 2D divider anywhere between its ends is
+ *  "compare": neither Label nor Mask. The status bar and the View menu checks
+ *  both read this, so they can't disagree. Exported for tests. */
+export const viewState = (mode: ViewMode, split: number) =>
+  mode === "can" ? "can" : split === 0 ? "label" : split === 100 ? "mask" : "compare";
+/** The status bar's clickable readouts (zoom, trim size, DPI): a faint idle
+ *  border so they read as controls, not as text like the readouts beside them.
+ *  Zoom puts it on a wrapping label so the "%" sits inside the border. */
+const STATUS_CONTROL = "rounded border border-border/60 bg-transparent text-xs text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring";
+/** One segment of a status-bar segmented control (the view and the 1|4 can count). */
+const segmentClass = (on: boolean) =>
+  `px-2 py-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+    on ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"}`;
+/** The three preview views in keys-1–3 order, as the status bar lists them. */
+const VIEWS = [
+  { state: "label", label: "Label", id: "view-label" },
+  { state: "mask", label: "Mask", id: "view-mask" },
+  { state: "can", label: "Can", id: "view-can" },
+] as const;
 
 /** A file the shell wants this editor to open. seq is monotonic — a new
  *  value triggers the open, so a re-render can never re-open. Exactly one
@@ -488,10 +500,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   // Whole percent, so the camera's per-frame emissions bail out of React.
   const [camZoomPct, setCamZoomPct] = useState(100);
   const shownZoomPct = viewMode === "2d" ? Math.round(zoom.z * 100) : camZoomPct;
-  const viewIndex = VIEW_CYCLE.findIndex((v) => v.at(viewMode, split));
-  const viewLabel = viewMode === "2d" && split > 0 && split < 100
-    ? "Compare" : VIEW_CYCLE[viewIndex].label;
-  const nextView = VIEW_CYCLE[(viewIndex + 1) % VIEW_CYCLE.length];
+  const view = viewState(viewMode, split);
+  // The status bar's "Compare" note, which the view group points at so a
+  // screen reader hears the state too. useId: each open tab has its own.
+  const compareId = useId();
   // Zoom level follows you across views (see CanView's initialView). A ref:
   // only a view change hands it over.
   const carried = useRef({ zoom: 1, pan: { x: 0, y: 0 } });
@@ -2010,6 +2022,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     { id: "view-label", label: "Preview: Label", key: "1", run: () => show2d("art") },
     { id: "view-mask", label: "Preview: Mask", key: "2", run: () => show2d("mask") },
     { id: "view-can", label: "Preview: Can", key: "3", run: () => setViewMode("can") },
+    { id: "view-one-can", label: "Preview: One Can", disabled: viewMode !== "can", run: () => setCans(1) },
+    { id: "view-four-pack", label: "Preview: Four-Pack", disabled: viewMode !== "can", run: () => setCans(4) },
     { id: "rulers", label: showRulers ? "Hide rulers" : "Show rulers", key: "r",
       disabled: !twoD, run: () => setShowRulers((shown) => !shown) },
     { id: "guides", label: showGuides ? "Hide guides" : "Show guides", key: "g",
@@ -2247,9 +2261,11 @@ export const DocumentEditor = memo(function DocumentEditor({
               installs the one native application menu, a singleton. */}
           {active && <AppMenu actions={commands} onNativeError={setBuildError}
             onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={{
-            "view-label": viewMode === "2d" && split === 0,
-            "view-mask": viewMode === "2d" && split === 100,
-            "view-can": viewMode === "can",
+            "view-label": view === "label",
+            "view-mask": view === "mask",
+            "view-can": view === "can",
+            "view-one-can": cans === 1,
+            "view-four-pack": cans === 4,
             rulers: showRulers,
             guides: showGuides,
           }} />}
@@ -2369,7 +2385,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 }}
                 layers={drawLayers} source={canvasSource} bleedIn={render.bleedIn}
                 mode={cans === 4 ? "pack" : "can"} cornerRadiusPct={render.cornerRadius}
-                edgeSoftnessPct={render.edgeSoftness}
+                edgeSoftnessPct={render.edgeSoftness} exporting={!!exporting}
                 onRenderError={setRenderError} />
               </Suspense>
             )}
@@ -2392,7 +2408,9 @@ export const DocumentEditor = memo(function DocumentEditor({
                 {exporting === "pdf" ? "Building PDFs…" : "Building PSDs…"}
               </>}
             </span>
-            {!texture && !exporting && previewReady && (
+            {/* 2D only: over the can it would sit on the label. A texture
+                still drops in every view. */}
+            {!texture && !exporting && previewReady && viewMode === "2d" && (
               <div className="pointer-events-none absolute inset-x-0 bottom-16 flex justify-center">
                 <span className="mx-4 rounded-full border border-dashed border-border bg-background/85 px-3 py-1.5 text-center text-xs text-muted-foreground backdrop-blur-sm">
                   drop an image anywhere: left half of the window → background, right half of the window → metallic mask (PNG/WebP)
@@ -2417,6 +2435,9 @@ export const DocumentEditor = memo(function DocumentEditor({
           </div>
           {/* Preview toolbar, in every view. */}
           <div className="flex h-8 shrink-0 items-center overflow-x-auto border-t border-border bg-sidebar px-2">
+            {/* The "%" sits inside the border so the readout is one control,
+                like the size and DPI buttons; clicking it focuses the input. */}
+            <label className={`flex shrink-0 items-center px-1 py-0.5 focus-within:text-foreground focus-within:ring-2 focus-within:ring-ring ${STATUS_CONTROL}`}>
             <input
               value={zoomDraft ?? String(shownZoomPct)}
               onChange={(e) => setZoomDraft(e.target.value)}
@@ -2428,32 +2449,41 @@ export const DocumentEditor = memo(function DocumentEditor({
               }}
               title="Zoom — type a percentage, 100 fits the view"
               aria-label="Zoom percentage"
-              className="w-10 rounded bg-transparent py-0.5 text-right text-xs tabular-nums text-muted-foreground outline-none hover:text-foreground focus:text-foreground" />
-            <span className="text-xs text-muted-foreground">%</span>
+              className="w-8 bg-transparent text-right tabular-nums outline-none" />
+            %
+            </label>
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
             <button
               onClick={() => setRulerUnit(nextRulerUnit(rulerUnit))}
               title={`Trim size — with bleed the page is ${sizeLabel(PAGE.w, PAGE.h, rulerUnit)}. Click for ${nextRulerUnit(rulerUnit)}`}
               aria-label={`Artboard size ${sizeLabel(ART.w, ART.h, rulerUnit)}; click to change units`}
-              className="shrink-0 rounded px-1 py-0.5 text-xs tabular-nums whitespace-nowrap text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+              className={`shrink-0 px-1 py-0.5 tabular-nums whitespace-nowrap ${STATUS_CONTROL}`}>
               {sizeLabel(ART.w, ART.h, rulerUnit)}
             </button>
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
-            <span className="shrink-0 px-1 text-xs tabular-nums whitespace-nowrap text-muted-foreground"
-              title="PSD raster resolution and pixel-ruler scale">
+            <button type="button" onClick={() => byId("settings").run()}
+              title="PSD raster resolution and pixel-ruler scale. Click to change it in Settings"
+              aria-label={`${render.dpi} DPI; click to change the resolution in Settings`}
+              className={`shrink-0 px-1 py-0.5 tabular-nums whitespace-nowrap ${STATUS_CONTROL}`}>
               {render.dpi} DPI
-            </span>
-            <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
-            {/* The aria-label starts with the visible text (label-in-name) and
-                adds what a click does; keys 1–3 jump straight to a view. */}
-            <button
-              onClick={() => byId(nextView.id).run()}
-              title="Current preview view — click for the next (View menu, keys 1–3)"
-              aria-label={`View Mode: ${viewLabel} — switch to ${nextView.label}`}
-              aria-keyshortcuts="1 2 3"
-              className="shrink-0 rounded px-1 py-0.5 text-xs whitespace-nowrap text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
-              View Mode: {viewLabel}
             </button>
+            <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
+            {/* Pick a view directly; keys 1–3 do the same. Mid-split (Compare)
+                none is pressed and the group is described by the Compare
+                note. Each label starts with its visible text. */}
+            <div role="group" aria-label="View mode" aria-keyshortcuts="1 2 3"
+              aria-describedby={view === "compare" ? compareId : undefined}
+              className="flex shrink-0 overflow-hidden rounded border border-border">
+              {VIEWS.map((v) => (
+                <button key={v.id} type="button" aria-pressed={view === v.state}
+                  title={`${v.label} view (${byId(v.id).key})`}
+                  onClick={() => byId(v.id).run()}
+                  className={segmentClass(view === v.state)}>
+                  {v.label}
+                </button>
+              ))}
+            </div>
+            {view === "compare" && <span id={compareId} className="ml-2 shrink-0 text-xs text-muted-foreground">Compare</span>}
             {viewMode === "can" && (
               <div role="group" aria-label="Cans shown"
                 className="ml-2 flex shrink-0 overflow-hidden rounded border border-border">
@@ -2461,11 +2491,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                   <button key={n} type="button" aria-pressed={cans === n}
                     title={n === 1 ? "One can" : "Four-pack"}
                     onClick={() => setCans(n)}
-                    className={`px-2 py-0.5 text-xs tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                      cans === n
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-                    }`}>
+                    className={`tabular-nums ${segmentClass(cans === n)}`}>
                     {n}
                   </button>
                 ))}

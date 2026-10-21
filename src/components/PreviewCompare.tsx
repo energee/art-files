@@ -528,6 +528,10 @@ export const PreviewCompare = forwardRef<
           e.preventDefault(); e.stopPropagation(); changeSplit(value);
         }}>
         <span className="absolute inset-y-0 left-1/2 w-px bg-border/60" />
+        {/* The grip: slid by -split% of its own width so it stays inside the
+            sheet at both ends (the sheet clips; at 0% a centred grip lost half). */}
+        <span data-divider-grip className="absolute top-1/2 left-1/2 h-8 w-1.5 rounded-full border border-background bg-foreground/70"
+          style={{ transform: `translate(-${split}%, -50%)` }} />
       </div>
       {/* Trim guide: the ART box. Percentages off PAGE so it tracks the
           wrapper at any size, same trick as the selection box below. */}
