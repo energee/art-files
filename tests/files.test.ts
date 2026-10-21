@@ -7,14 +7,38 @@ const writeFile = vi.fn();
 const readFile = vi.fn();
 const rename = vi.fn();
 const remove = vi.fn();
+const exists = vi.fn();
+const stat = vi.fn();
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save, open }));
-vi.mock("@tauri-apps/plugin-fs", () => ({ writeFile, readFile, rename, remove }));
+vi.mock("@tauri-apps/plugin-fs", () => ({ writeFile, readFile, rename, remove, exists, stat }));
 /** Matches the random `<stem>.saving-<uuid>.<ext>` temp path writeNativeAtomic uses. */
 const temp = (stem: string, ext: string) => expect.stringMatching(new RegExp(`^${stem}\\.saving-[0-9a-f-]{36}\\.${ext}$`));
 let tauri = false;
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => tauri }));
 
-import { openNativeFile, saveThrough } from "@/files";
+import { nativeModifiedAt, openNativeFile, saveThrough } from "@/files";
+
+// Crash recovery's rebind check (recovery.ts canRebind) reads this. The
+// desktop stat itself is smoke-tested by hand, not here.
+describe("nativeModifiedAt", () => {
+  beforeEach(() => { exists.mockReset(); stat.mockReset(); });
+  it("returns the file's mtime in ms", async () => {
+    exists.mockResolvedValue(true);
+    stat.mockResolvedValue({ mtime: new Date(1234) });
+    await expect(nativeModifiedAt("/w/a.label")).resolves.toBe(1234);
+    expect(stat).toHaveBeenCalledWith("/w/a.label");
+  });
+  it("is null for a file that no longer exists, without a stat", async () => {
+    exists.mockResolvedValue(false);
+    await expect(nativeModifiedAt("/w/a.label")).resolves.toBeNull();
+    expect(stat).not.toHaveBeenCalled();
+  });
+  it("is null when the platform reports no mtime", async () => {
+    exists.mockResolvedValue(true);
+    stat.mockResolvedValue({ mtime: null });
+    await expect(nativeModifiedAt("/w/a.label")).resolves.toBeNull();
+  });
+});
 
 describe("native file saving", () => {
   const options = {

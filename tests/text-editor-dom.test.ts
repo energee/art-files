@@ -1,8 +1,8 @@
 // text-editor-dom.test.ts — the DOM half of the text-layer field
 // (src/components/TextEditor.tsx): useTextField seeds a TextLine[] into
 // line-divs and run-spans and reads them back on every input, the Bold /
-// White ink / Header toggles edit the live nodes, a single-line field
-// swallows Enter and pasted newlines, and the TextEditor component picks the
+// White ink / Header toggles edit the live nodes, a paste keeps its line
+// breaks but loses control characters, and the TextEditor component picks the
 // number / code / rich widget off `input`. Same harness as
 // tests/description-editor-dom.test.ts (which this file will replace when
 // the old editor is deleted): happy-dom per-file, react-dom/client + act,
@@ -37,12 +37,12 @@ afterEach(() => {
  *  and every TextLine[] onChange emitted. `lines` never changes (the harness
  *  only records), so the seed effect runs once and an edit is never reseeded
  *  out from under the assertions. */
-function mountField(lines: TextLine[], opts: { multiline?: boolean; uppercase?: boolean } = {}) {
+function mountField(lines: TextLine[], opts: { uppercase?: boolean } = {}) {
   const emitted: TextLine[][] = [];
   let api!: ReturnType<typeof useTextField>;
   function Harness(): ReactNode {
     api = useTextField({
-      lines, base, multiline: opts.multiline ?? true, uppercase: opts.uppercase,
+      lines, base, uppercase: opts.uppercase,
       onChange: (out) => { emitted.push(out); },
     });
     return createElement("div", api.fieldProps);
@@ -170,16 +170,8 @@ describe("Bold / White ink / Header toggles over the live field", () => {
   });
 });
 
-describe("single-line fields", () => {
-  it("swallows Enter", () => {
-    const { el } = mountField([line("Peregrine")], { multiline: false });
-    const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
-    el.dispatchEvent(enter);
-    expect(enter.defaultPrevented).toBe(true);
-    expect(el.getAttribute("aria-multiline")).toBe("false");
-  });
-
-  it("lets Enter through on a multiline field", () => {
+describe("Enter and paste", () => {
+  it("lets Enter through", () => {
     const { el } = mountField([line("first")]);
     const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
     el.dispatchEvent(enter);
@@ -187,20 +179,8 @@ describe("single-line fields", () => {
     expect(el.getAttribute("aria-multiline")).toBe("true");
   });
 
-  it("flattens pasted newlines into spaces", () => {
-    const { emitted, el } = mountField([line("Pere")], { multiline: false });
-    // Caret after the existing text: the fallback insert lands there.
-    window.getSelection()!.collapse(el.firstChild!.firstChild, 4);
-    const paste = new Event("paste", { bubbles: true, cancelable: true });
-    Object.defineProperty(paste, "clipboardData", {
-      value: { getData: () => "grine\nFalcon\n" },
-    });
-    act(() => { el.dispatchEvent(paste); });
-    expect(emitted.at(-1)).toStrictEqual([line("Peregrine Falcon ")]);
-  });
-
   it("pastes a tab as a space and drops other control characters (#282)", () => {
-    const { emitted, el } = mountField([line("Pere")], { multiline: false });
+    const { emitted, el } = mountField([line("Pere")]);
     window.getSelection()!.collapse(el.firstChild!.firstChild, 4);
     const paste = new Event("paste", { bubbles: true, cancelable: true });
     Object.defineProperty(paste, "clipboardData", {
@@ -208,15 +188,6 @@ describe("single-line fields", () => {
     });
     act(() => { el.dispatchEvent(paste); });
     expect(emitted.at(-1)).toStrictEqual([line("Peregrine Falcon")]);
-  });
-
-  it("emits only the first line even if the DOM grew a second one", () => {
-    const { emitted, el, input } = mountField([line("one")], { multiline: false });
-    const stray = document.createElement("div");
-    stray.textContent = "two";
-    el.appendChild(stray);
-    input();
-    expect(emitted.at(-1)).toStrictEqual([line("one")]);
   });
 });
 
@@ -241,7 +212,7 @@ type EditorProps = Parameters<typeof TextEditor>[0];
 function renderEditor(props: Partial<EditorProps> & Pick<EditorProps, "lines">) {
   const onChange = vi.fn();
   const full: EditorProps = {
-    id: "layer", label: "Layer", base, multiline: true, onChange, ...props,
+    id: "layer", label: "Layer", base, onChange, ...props,
   };
   act(() => {
     root.render(createElement(TooltipProvider, null, createElement(TextEditor, full)));
@@ -274,8 +245,8 @@ describe("TextEditor", () => {
     expect(box.textContent).toBe("HOPS");
   });
 
-  it("shows the toolbar with Header only while focused on a multiline field", () => {
-    renderEditor({ lines: [line("x")], multiline: true });
+  it("shows the toolbar with Header only while focused", () => {
+    renderEditor({ lines: [line("x")] });
     expect(container.querySelector('[aria-label="Toggle bold"]')).toBeNull();
     focusTextbox();
     expect(container.querySelector('[aria-label="Toggle bold"]')).not.toBeNull();
@@ -288,7 +259,7 @@ describe("TextEditor", () => {
   // toggles must stay mounted while focus is anywhere in the field's row —
   // and still act on the selection the field left behind.
   it("keeps the toolbar reachable by keyboard from the field", () => {
-    const { onChange } = renderEditor({ lines: [line("x")], multiline: true });
+    const { onChange } = renderEditor({ lines: [line("x")] });
     const box = focusTextbox();
     act(() => { window.getSelection()!.selectAllChildren(box.firstElementChild!); });
     const bold = container.querySelector('[aria-label="Toggle bold"]') as HTMLElement;
@@ -298,13 +269,6 @@ describe("TextEditor", () => {
     expect(onChange.mock.lastCall?.[0][0]).toMatchObject({ text: "x", bold: true });
     act(() => { bold.blur(); });
     expect(container.querySelector('[aria-label="Toggle bold"]')).toBeNull();
-  });
-
-  it("hides Header on a single-line field", () => {
-    renderEditor({ lines: [line("x")], multiline: false });
-    focusTextbox();
-    expect(container.querySelector('[aria-label="Toggle bold"]')).not.toBeNull();
-    expect(container.querySelector('[aria-label="Toggle header"]')).toBeNull();
   });
 
   it("never shows the layer's placeholder in the field; the canvas draws it", () => {
@@ -321,13 +285,16 @@ describe("TextEditor", () => {
   describe("input: number", () => {
     it("renders a number box that writes one plain line, with the suffix shown after it", () => {
       const { onChange } = renderEditor({
-        id: "abv", label: "ABV", lines: [line("")], multiline: false,
+        id: "abv", label: "ABV", lines: [line("")],
         input: "number", min: 0, max: 20, suffix: "% alc by vol",
       });
       const box = container.querySelector("#abv") as HTMLInputElement;
       expect(box.type).toBe("number");
       expect(box.min).toBe("0");
       expect(box.max).toBe("20");
+      // Decimals like 5.8 are valid to the native control too, and arrow
+      // keys don't snap them to whole numbers (ledger ux-decimal-input).
+      expect(box.step).toBe("any");
       expect(box.placeholder).toBe("");
       expect(container.textContent).toContain("% alc by vol");
       expect(container.querySelector('[role="textbox"]')).toBeNull();
@@ -337,17 +304,19 @@ describe("TextEditor", () => {
 
     it("shows the current value and flags one outside min/max", () => {
       renderEditor({
-        id: "abv", lines: [line("25")], multiline: false, input: "number", min: 0, max: 20,
+        id: "abv", lines: [line("25")], input: "number", min: 0, max: 20,
       });
-      expect((container.querySelector("#abv") as HTMLInputElement).value).toBe("25");
-      expect(container.textContent).toMatch(/at most 20/);
+      const box = container.querySelector("#abv") as HTMLInputElement;
+      expect(box.value).toBe("25");
+      // The error is tied to the box, as the canvas box's is (#520 review).
+      expect(document.getElementById(box.getAttribute("aria-describedby")!)?.textContent).toMatch(/at most 20/);
     });
   });
 
   describe("input: code", () => {
     it("flags a bad UPC inline", () => {
       renderEditor({
-        id: "upc", label: "UPC", lines: [line("123")], multiline: false,
+        id: "upc", label: "UPC", lines: [line("123")],
         input: "code", symbology: "upc-a",
       });
       const box = container.querySelector("#upc") as HTMLInputElement;
@@ -359,7 +328,7 @@ describe("TextEditor", () => {
 
     it("accepts a real UPC and writes it as one plain line", () => {
       const { onChange } = renderEditor({
-        id: "upc", lines: [line("")], multiline: false, input: "code", symbology: "upc-a",
+        id: "upc", lines: [line("")], input: "code", symbology: "upc-a",
       });
       expect(container.textContent).not.toMatch(/digits/);
       change(container.querySelector("#upc")!, "850051366224");
@@ -367,7 +336,7 @@ describe("TextEditor", () => {
     });
 
     it("does not judge an empty code", () => {
-      renderEditor({ id: "upc", lines: [line("")], multiline: false, input: "code" });
+      renderEditor({ id: "upc", lines: [line("")], input: "code" });
       expect(container.textContent).not.toMatch(/digits/);
     });
   });
@@ -524,7 +493,7 @@ it("toggles uppercase display from the WYSIWYG toolbar without rewriting text", 
   const onChange = vi.fn();
   function Harness() {
     const [uppercase, setUppercase] = useState(false);
-    const field = useTextField({ lines, base, multiline: true, uppercase, onChange });
+    const field = useTextField({ lines, base, uppercase, onChange });
     return createElement(TooltipProvider, null,
       createElement("div", field.fieldProps),
       createElement(TextToolbarButtons, {
@@ -547,31 +516,6 @@ it("toggles uppercase display from the WYSIWYG toolbar without rewriting text", 
   expect(onChange).not.toHaveBeenCalled();
 });
 
-
-it("shows uppercase in the sidebar warning field before focus and emits a style toggle", () => {
-  const onUppercase = vi.fn(), onChange = vi.fn();
-  act(() => { root.render(createElement(TooltipProvider, null,
-    createElement(TextEditor, {
-      id: "warning", label: "Text", lines: [line("Government warning")], base,
-      multiline: true, uppercase: false, onUppercase, onChange,
-    }))); });
-  const button = container.querySelector('[aria-label="Toggle uppercase"]') as HTMLElement;
-  expect(button).not.toBeNull();
-  act(() => { button.click(); });
-  expect(onUppercase).toHaveBeenCalledWith(true);
-  expect(onChange).not.toHaveBeenCalled();
-});
-
-it("keeps the run toggles hidden when Tab lands on Uppercase from outside the field", () => {
-  act(() => { root.render(createElement(TooltipProvider, null,
-    createElement(TextEditor, {
-      id: "warning", label: "Text", lines: [line("x")], base,
-      multiline: true, uppercase: false, onUppercase: vi.fn(), onChange: vi.fn(),
-    }))); });
-  const button = container.querySelector('[aria-label="Toggle uppercase"]') as HTMLElement;
-  act(() => { button.focus(); });
-  expect(container.querySelector('[aria-label="Toggle bold"]')).toBeNull();
-});
 
 it("unstyles a selected mixed-case run even if Selection stringifies uppercase (#285)", () => {
   const { el, emitted, toggle } = mountField([line("A **Hazy** beer")], { uppercase: true });

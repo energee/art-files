@@ -9,9 +9,9 @@ import type {
 } from "@tauri-apps/api/menu";
 import {
   Barcode, Bookmark, BookmarkPlus, BookOpen, Columns2, Contrast, Cylinder, FileImage, Files, FolderOpen,
-  History, ImagePlus, Layers, Maximize2, Monitor, Moon, Palette, PanelLeft, QrCode, RectangleHorizontal, Redo2,
-  Ruler, Settings, SquareArrowDown, SquareArrowUp, SquarePlus, Sun, Trash2, Type, Undo2, X, ZoomIn,
-  ZoomOut, type LucideIcon,
+  Grid2x2, History, ImagePlus, Layers, Maximize2, Monitor, Moon, Palette, PanelLeft, QrCode, RectangleHorizontal,
+  Redo2, Ruler, Settings, Square, SquareArrowDown, SquareArrowUp, SquarePlus, Sun, Trash2, Type, Undo2, X,
+  ZoomIn, ZoomOut, type LucideIcon,
 } from "lucide-react";
 import { shortcutOf, titleOf, type Command } from "@/components/CommandMenu";
 import { dialogOpen, isTypingTarget } from "@/keys";
@@ -46,6 +46,8 @@ const SYMBOL_GLYPH = {
   "gear": Settings,
   "rectangle": RectangleHorizontal,
   "cylinder": Cylinder,
+  "square": Square,
+  "square.grid.2x2": Grid2x2,
   "ruler": Ruler,
   "rectangle.split.2x1": Columns2,
   "plus.magnifyingglass": ZoomIn,
@@ -161,6 +163,10 @@ export const APP_MENUS: SubmenuEntry[] = [
       { kind: "action", id: "view-mask", text: "Mask", check: true, keywords: ["Preview: Mask"], symbol: "circle.lefthalf.filled" },
       { kind: "action", id: "view-can", text: "Can", check: true, keywords: ["Preview: Can"], symbol: "cylinder" },
       { kind: "separator", id: "view-modes" },
+      // The Can view's count, as the status bar's 1|4; disabled in 2D.
+      { kind: "action", id: "view-one-can", text: "One Can", check: true, keywords: ["Preview: One Can"], symbol: "square" },
+      { kind: "action", id: "view-four-pack", text: "Four-Pack", check: true, keywords: ["Preview: Four-Pack"], symbol: "square.grid.2x2" },
+      { kind: "separator", id: "view-cans" },
       // ⌘B is the sidebar provider's own guarded listener, never a native
       // accelerator (that would take Bold from a text field).
       { kind: "action", id: "layers", text: "Layers", check: true, keywords: ["Show sidebar", "Hide sidebar"], symbol: "sidebar.left" },
@@ -666,7 +672,7 @@ function useNativeMenu(
       errorRef.current(`Could not update the native menu: ${errMsg(error)}`);
     });
   // signature is the compact set of native-visible state; ordinary App
-  // renders do not produce 26 IPC updates. resync re-runs it after a native
+  // renders do not produce an IPC update per row. resync re-runs it after a native
   // check click whose command left app state unchanged.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, signature, resync]);

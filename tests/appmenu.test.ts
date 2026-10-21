@@ -88,14 +88,15 @@ describe("layer menu", () => {
 });
 
 describe("view menu", () => {
-  it("offers the three preview views in key 1–3 order, then the two toggles", () => {
+  it("offers the three preview views in key 1–3 order, the can count, then the two toggles", () => {
     const view = APP_MENUS.find((menu) => menu.id === "view-menu")!;
     const ids = view.items.flatMap((entry) =>
       entry.kind === "action" ? [entry.id] : []);
-    // The Rendered and Four-Pack views are gone (the four-pack is the Can
-    // view's 1 / 4 count, a toolbar control), and Guides is one switch over
+    // The four-pack is not a view of its own: One Can / Four-Pack is the Can
+    // view's count, also the status bar's 1|4. Guides is one switch over
     // bleed, margin, center and manual guides — no per-kind items, no Clear.
-    expect(ids).toEqual(["view-label", "view-mask", "view-can", "layers", "rulers", "guides", "zoom-in", "zoom-out", "zoom-fit"]);
+    expect(ids).toEqual(["view-label", "view-mask", "view-can", "view-one-can", "view-four-pack",
+      "layers", "rulers", "guides", "zoom-in", "zoom-out", "zoom-fit"]);
   });
 
   it("offers Appearance as a submenu of three check rows", () => {

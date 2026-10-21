@@ -261,15 +261,15 @@ it("names palette rows as the menus do, grouped by menu, with a check for what i
   expect(groups.Layer.map((r) => r.replace(/⌫$/, ""))).toEqual([
     "Add Text Layer", "Add Image Layer", "Add Barcode Layer", "Add QR Layer", "Remove Layer",
   ]);
-  expect(groups.View.slice(0, 6).map((r) => r.replace(/(⌘|Ctrl\+)?[0-9A-Z]$/, ""))).toEqual([
-    "Label", "Mask", "Can", "Layers", "Rulers", "Guides",
+  expect(groups.View.slice(0, 8).map((r) => r.replace(/(⌘|Ctrl\+)?[0-9A-Z]$/, ""))).toEqual([
+    "Label", "Mask", "Can", "One Can", "Four-Pack", "Layers", "Rulers", "Guides",
   ]);
   expect(groups.Appearance).toEqual(["System", "Light", "Dark"]);
   expect(groups.Other).toEqual(["New Variant"]);
   // State is a leading check, not a Show/Hide verb: the defaults are on.
   const on = [...document.querySelectorAll("[data-palette-check=on]")]
     .map((el) => el.closest("[data-slot=command-item]")?.textContent?.replace(/(Ctrl\+)?[0-9A-Z]$/, ""));
-  expect(on).toEqual(["Label", "Layers", "Rulers", "Guides", "System"]);
+  expect(on).toEqual(["Label", "One Can", "Layers", "Rulers", "Guides", "System"]);
   // A group with check rows reserves the check's space on its plain rows
   // too, so every title in it lines up; a group without them reserves none.
   expect(paletteRow("Zoom In").firstElementChild?.matches("svg.invisible[aria-hidden=true]")).toBe(true);

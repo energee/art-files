@@ -6,6 +6,7 @@ import type { FieldDecl, FieldValue } from "./types";
 import { validateUpc, validateEan13 } from "../upc";
 import { validateCode128 } from "../code128";
 import type { Symbology } from "../barcode";
+import type { TextLayer } from "./layers";
 
 type Result = { ok: boolean; error?: string };
 const ok: Result = { ok: true };
@@ -50,6 +51,19 @@ export function validateField(decl: FieldDecl, value: FieldValue): Result {
     default:
       return err(`Unknown field kind "${decl.kind}".`);
   }
+}
+
+/** A number/code text layer's typed value, checked as validateField would
+ *  check its field — the one spelling of that FieldDecl, shared by the
+ *  resolver (a bad value keeps the master's) and both editors, the sidebar
+ *  field and the on-canvas box (they flag the value as typed). A layer with
+ *  no `input` takes any text. */
+export function validateLayerInput(
+  layer: Pick<TextLayer, "id" | "name" | "input" | "min" | "max" | "symbology">, text: string,
+): Result {
+  if (!layer.input) return ok;
+  return validateField({ id: layer.id, label: layer.name, kind: layer.input, path: "",
+    min: layer.min, max: layer.max, symbology: layer.symbology }, text);
 }
 
 const SYMBOLOGY_LABEL: Record<Symbology, string> = {

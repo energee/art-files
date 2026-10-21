@@ -177,7 +177,7 @@ export function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: strin
       </Row>
       <Row badge={badge(["size"], "Size")}>
         <ScrubField
-          id={`${id}-size`} label="Size" unit="pt" value={layer.size}
+          id={`${id}-size`} label="Size" unit="pt" unitTitle="Type size is always points" value={layer.size}
           min={1} max={300} {...PT}
           onChange={(size) => set({ size })}
         />
@@ -215,6 +215,7 @@ export function TextGeometry(props: Ctx & { layer: TextLayer; fontFamily?: strin
       <Row badge={badge(["style.letterSpacing"], "Letter Spacing")}>
         <ScrubField
           id={`${id}-tracking`} label="Letter spacing" icon={WholeWord} unit="pt"
+          unitTitle="Letter spacing is always points"
           value={layer.style.letterSpacing ?? 0} min={-2} max={20} step={0.01} dragStep={0.1}
           onChange={(letterSpacing) => set({ style: { letterSpacing } })}
         />
@@ -394,7 +395,9 @@ export function StyleSection(props: Ctx & { layer: Layer; rasterArt?: boolean })
               onCheckedChange={(on) =>
                 setStyle({ stroke: on === true ? (isCode ? "#FFFFFF" : "#000000") : "none" })}
             />
-            {badge(["style.stroke"], "Stroke")}
+            {/* One reset per state: here while the stroke is off, beside
+                the colour while it is on. */}
+            {!strokeOn && badge(["style.stroke"], "Stroke")}
           </span>
         </div>
         {strokeOn && (
@@ -419,7 +422,7 @@ export function StyleSection(props: Ctx & { layer: Layer; rasterArt?: boolean })
                 the geometry breaks. */}
             <Row badge={badge(["style.strokeWidth"], "Stroke Width")}>
               <ScrubField
-                id={`${id}-stroke-width`} label="Width" unit="px"
+                id={`${id}-stroke-width`} label="Width" unit="px" unitTitle="Stroke width is pixels at 600 DPI"
                 value={style.strokeWidth ?? DEFAULT_STROKE_PX} min={1} max={60} step={1}
                 onChange={(strokeWidth) => setStyle({ strokeWidth })}
               />
