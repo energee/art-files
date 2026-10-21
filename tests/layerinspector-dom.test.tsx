@@ -114,8 +114,11 @@ describe("LayerInspector header", () => {
     const note = $("#name-selection-note")!;
     expect(note.textContent).toBe("Editing Name only (3 selected)");
     expect(note.getAttribute("tabindex")).toBeNull();
+    // The name input points at the note so it is announced with the field.
+    expect($("#name-name")!.getAttribute("aria-describedby")).toBe("name-selection-note");
     render(text(), { selectionCount: 1 });
     expect($("#name-selection-note")).toBeNull();
+    expect($("#name-name")!.getAttribute("aria-describedby")).toBeNull();
   });
 
   // #2: a layer only an OFF variant adds is not drawn, and edits to it are
@@ -154,6 +157,17 @@ describe("LayerInspector header", () => {
     expect(addonTitle("name-size")).toBe("Type size is always points");
     expect(addonTitle("name-tracking")).toBe("Letter spacing is always points");
     expect(addonTitle("name-stroke-width")).toBe("Stroke width is pixels at 600 DPI");
+  });
+
+  // Page art has no length fields, so the toggle would convert nothing.
+  it("hides the unit toggle on page art", () => {
+    render(image({ id: "background", name: "Background", role: "background", fit: "cover" }),
+      { unit: "mm", onUnitChange: vi.fn() });
+    expect(byLabel("Dimension units")).toBeNull();
+    expect(container.textContent).not.toContain("Lengths in");
+    render(image({ id: "mask", name: "Mask", role: "mask", fit: "cover" }),
+      { unit: "mm", onUnitChange: vi.fn() });
+    expect(byLabel("Dimension units")).toBeNull();
   });
 
   it("renders the parent's content editor under a Content heading", () => {
@@ -478,6 +492,19 @@ describe("LayerInspector override badges", () => {
     expect(resets()).toHaveLength(1);
     render(text({ style: { ...STYLE, stroke: "#000000" } }), { overridden: from(["style.stroke"]) });
     expect(resets()).toHaveLength(1);
+  });
+
+  // Page art hides Position, but a stale x/y override must still be clearable.
+  it("page art with an x/y override still offers the X and Y resets", () => {
+    const bg = image({ id: "background", name: "Background", role: "background", fit: "cover" });
+    const { onReset } = render(bg, { overridden: from(["x"], ["y"]) });
+    expect($("#background-x")).toBeNull();
+    click(byLabel("Reset X to the master")!);
+    expect(onReset).toHaveBeenLastCalledWith("x", "variant");
+    click(byLabel("Reset Y to this label's master value")!);
+    expect(onReset).toHaveBeenLastCalledWith("y", "label");
+    render(bg);
+    expect(container.textContent).not.toContain("Position");
   });
 
   it("a label-only change shows just the label mark", () => {

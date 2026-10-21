@@ -59,14 +59,15 @@ export function CharacterHeight({ layer, family, onChange }: {
     </p>
     <p className="flex items-center gap-1 text-xs">Characters per inch: <strong>{range.cpi.toFixed(1)}</strong>
       {/* The explanation behind an info button, announced through
-          aria-describedby (a bare `title` is not reliably read out). */}
+          aria-describedby (a bare `title` is not reliably read out). The
+          sr-only span is the one accessible copy; the tooltip is visual only. */}
       <Tooltip>
         <TooltipTrigger render={
           <button type="button" aria-label="About character height" aria-describedby={`${layer.id}-height-about`}
             className="inline-flex size-4 items-center justify-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <Info className="size-3" aria-hidden="true" />
           </button>} />
-        <TooltipContent className="block">{HEIGHT_ABOUT}</TooltipContent>
+        <TooltipContent className="block" aria-hidden="true">{HEIGHT_ABOUT}</TooltipContent>
       </Tooltip>
     </p>
     <span id={`${layer.id}-height-about`} className="sr-only">{HEIGHT_ABOUT}</span>

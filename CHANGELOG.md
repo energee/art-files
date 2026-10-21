@@ -18,7 +18,7 @@ that section to the new version (see .agents/release-steward.md).
 ### Fixed
 - **The inspector says which layer it edits in a multi-selection.** With several layers selected it shows "Editing Brand only (3 selected)": the inspector changes the last-picked layer, while drag, reorder and Delete act on all of them.
 - **A layer from a variant that is off reads Off in the inspector.** Its Enabled switch used to show on while the layer did not draw and edits to it were dropped. It now matches the Layers row, notes which variant adds it, and turning it on switches that variant on.
-- **Page art no longer shows Position fields.** The Background and Metallic mask always cover the page, so their X and Y changed nothing but still marked the layer as changed.
+- **Page art no longer shows Position fields.** The Background and Metallic mask always cover the page, so their X and Y changed nothing but still marked the layer as changed. Nor do they show the mm / pt toggle. An X or Y override already on one keeps a reset badge so it can still be cleared.
 - **Stroke shows one reset badge, not two.** The heading badge shows while the stroke is off and the colour row's badge while it is on.
 
 ### Security

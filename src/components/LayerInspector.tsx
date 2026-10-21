@@ -98,6 +98,9 @@ export function LayerInspector(props: {
   const Icon = KIND_ICONS[layer.kind];
   const page = layer.kind === "image" && (layer.role === "background" || layer.role === "mask");
   const enabled = layer.enabled && props.offVariant === undefined;
+  const multi = (props.selectionCount ?? 1) > 1;
+  // Page art hides Position, so an x/y override left on it needs its own reset.
+  const staleXY = page && ["x", "y"].some((p) => props.overridden.variant.has(p) || props.overridden.label.has(p));
 
   return (
     <div className="space-y-1 px-4 py-3">
@@ -106,13 +109,14 @@ export function LayerInspector(props: {
         <Input
           id={`${layer.id}-name`}
           aria-label="Layer name"
+          aria-describedby={multi ? `${layer.id}-selection-note` : undefined}
           className="h-7 flex-1 text-xs font-medium"
           {...nameProps}
         />
       </div>
       {/* Not focusable: the Sheet keeps focus off the panel so Backspace and
           the arrows still delete and nudge the whole selection. */}
-      {(props.selectionCount ?? 1) > 1 && (
+      {multi && (
         <p id={`${layer.id}-selection-note`} className="text-[11px] text-muted-foreground">
           Editing {layer.name} only ({props.selectionCount} selected)
         </p>
@@ -140,8 +144,9 @@ export function LayerInspector(props: {
 
       {/* App-wide, not this layer's: it converts the length fields only.
           Type size, tracking and stroke keep their own units (see their
-          addon titles). Separate from the ruler unit, which is in/pt/px. */}
-      {props.onUnitChange && <Field label="Lengths in">
+          addon titles). Separate from the ruler unit, which is in/pt/px.
+          Page art has no length fields, so it gets no toggle. */}
+      {props.onUnitChange && !page && <Field label="Lengths in">
         <ToggleGroup aria-label="Dimension units" variant="outline" size="sm" spacing={0}
           title="Shared by all layers: X, Y, gap, width, height, wrap width, module width and QR size"
           value={[ctx.unit]} onValueChange={(values) => {
@@ -168,7 +173,14 @@ export function LayerInspector(props: {
       {layer.kind === "qr" && <QrGeometry layer={layer} {...ctx} />}
 
       {/* Page art has no Position: the renderer stretches it over the whole
-          page and ignores x/y (planLayers), so the fields would change nothing. */}
+          page and ignores x/y (planLayers), so the fields would change nothing.
+          An x/y override still left on it keeps its reset badges here. */}
+      {staleXY && (
+        <div className="flex items-center justify-between gap-2 pt-2">
+          <p className="text-[11px] text-muted-foreground">Unused position override</p>
+          <span className="flex items-center">{badge(["x"], "X")}{badge(["y"], "Y")}</span>
+        </div>
+      )}
       {!page && <Position layer={layer} layerNames={props.layerNames} onUnbind={props.onUnbind} onBind={props.onBind} {...ctx} />}
 
       {/* Nor ink of its own to colour or stroke — the texture IS the colour
