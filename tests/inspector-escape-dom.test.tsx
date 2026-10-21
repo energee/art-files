@@ -118,3 +118,18 @@ it("an outside press keeps a multi-selection and the inspector open", async () =
   expect(rowButton().getAttribute("data-active")).not.toBeNull();
   expect(closeButton()).not.toBeNull();
 });
+
+it("closing from the close button by keyboard returns focus to where the layer was selected, like Escape", async () => {
+  // Reopen with the row focused, so there is a place to return to.
+  await escape(document.body);
+  await act(async () => { rowButton().focus(); rowButton().click(); });
+  const close = closeButton()!;
+  await act(async () => {
+    close.focus();
+    close.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    close.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+  });
+  await act(async () => { await Promise.resolve(); });
+  expect(field()).toBeNull();
+  expect(document.activeElement).toBe(rowButton());
+});

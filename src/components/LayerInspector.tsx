@@ -35,6 +35,7 @@ import type { BindingSide, Layer, LayerKind } from "@/model/layers";
 import type { OverrideBadges as Overridden } from "@/model/edit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SheetClose } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -77,9 +78,10 @@ export function LayerInspector(props: {
   /** An image layer holding raster art (PNG/JPEG): it always prints on
    *  white ink, so Style offers no plate toggle. */
   rasterArt?: boolean;
-  /** Closes the inspector: the header's visible close button (the parent
-   *  clears the selection, as Escape does). */
-  onClose?: () => void;
+  /** Shows the header's visible close button. It is a SheetClose, so it
+   *  needs the parent Sheet (whose close-press clears the selection, as
+   *  Escape does) and returns focus on a keyboard close like Escape. */
+  showCloseButton?: boolean;
 }) {
   const { layer } = props;
   const set = props.onChange;
@@ -103,10 +105,10 @@ export function LayerInspector(props: {
           className="h-7 flex-1 text-xs font-medium"
           {...nameProps}
         />
-        {props.onClose && (
-          <Button variant="ghost" size="icon-sm" aria-label="Close inspector" onClick={props.onClose}>
+        {props.showCloseButton && (
+          <SheetClose render={<Button variant="ghost" size="icon-sm" aria-label="Close inspector" />}>
             <XIcon className="size-4.5" aria-hidden="true" />
-          </Button>
+          </SheetClose>
         )}
       </div>
       {/* The two policy switches read as ordinary Fields (label left, control

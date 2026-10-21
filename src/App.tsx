@@ -2486,7 +2486,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 content={contentFor(inspected.layer)}
                 rasterArt={inspected.layer.kind === "image"
                   && (customImages[inspected.layer.asset]?.image.kind ?? "svg") !== "svg"}
-                fontFamily={family} onClose={clearSelection} />
+                fontFamily={family} showCloseButton />
             )}
           </SheetContent>
         </Sheet>
