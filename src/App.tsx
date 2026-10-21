@@ -2118,7 +2118,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     const id = `${layer.id}-content`;
     if (layer.kind === "text") {
       return (
-        <TextEditor id={id} label="Text" lines={layer.lines} base={layer.style}
+        <TextEditor id={id} label={layer.input === "number" ? "Number" : layer.input === "code" ? "Code" : "Text"}
+          lines={layer.lines} base={layer.style}
           onChange={(lines) => setContent(layer, lines, id)}
           uppercase={uppercaseOf(layer)}
           input={layer.input} min={layer.min} max={layer.max} symbology={layer.symbology}

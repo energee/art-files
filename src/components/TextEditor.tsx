@@ -26,7 +26,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CaseUpper, Bold, Droplet, Heading as HeaderIcon } from "lucide-react";
 import type { Style } from "@/types";
 import type { Choice, Symbology, TextLine } from "@/model/layers";
-import { validateField } from "@/model/fields";
+import { validateLayerInput } from "@/model/fields";
 import { markRun, parseRuns, printableText } from "@/description";
 import { GOLD } from "@/layout";
 import { cn } from "@/lib/utils";
@@ -694,8 +694,9 @@ export function ChoiceBox(props: {
 function PlainLineField(props: TextEditorProps) {
   const { id, label, title, lines, onChange, base, input, min, max, symbology, suffix, choices } = props;
   const value = lines[0]?.text ?? "";
-  const check = value === "" || !input ? { ok: true }
-    : validateField({ id, label, kind: input, path: id, min, max, symbology }, value);
+  // The canvas box's check too (InPlacePlainField), so the two can't drift.
+  const check = value === "" ? { ok: true }
+    : validateLayerInput({ id, name: label, input, min, max, symbology }, value);
   return (
     <div className="space-y-1">
       <Label htmlFor={id} className={LABEL_CLASS}>{title ?? label}</Label>
@@ -704,11 +705,14 @@ function PlainLineField(props: TextEditorProps) {
           invalid={!check.ok} onCommit={(text) => onChange([{ ...base, text }])} /> :
           <Input id={id} type={input === "number" ? "number" : "text"}
             className="h-7 text-xs" value={value} min={min} max={max}
-            aria-invalid={!check.ok || undefined}
+            // Any decimal the validator takes is valid to the native box too,
+            // and arrow keys keep the fraction instead of snapping to whole numbers.
+            step={input === "number" ? "any" : undefined}
+            aria-invalid={!check.ok || undefined} aria-describedby={check.ok ? undefined : `${id}-error`}
             onChange={(e) => onChange([{ ...base, text: e.target.value }])} />}
         {suffix && <span className="shrink-0 text-xs text-muted-foreground">{suffix}</span>}
       </div>
-      {!check.ok && <p className="text-xs text-destructive-text">{check.error}</p>}
+      {!check.ok && <p id={`${id}-error`} className="text-xs text-destructive-text">{check.error}</p>}
     </div>
   );
 }

@@ -292,6 +292,9 @@ describe("TextEditor", () => {
       expect(box.type).toBe("number");
       expect(box.min).toBe("0");
       expect(box.max).toBe("20");
+      // Decimals like 5.8 are valid to the native control too, and arrow
+      // keys don't snap them to whole numbers (ledger ux-decimal-input).
+      expect(box.step).toBe("any");
       expect(box.placeholder).toBe("");
       expect(container.textContent).toContain("% alc by vol");
       expect(container.querySelector('[role="textbox"]')).toBeNull();
@@ -303,8 +306,10 @@ describe("TextEditor", () => {
       renderEditor({
         id: "abv", lines: [line("25")], input: "number", min: 0, max: 20,
       });
-      expect((container.querySelector("#abv") as HTMLInputElement).value).toBe("25");
-      expect(container.textContent).toMatch(/at most 20/);
+      const box = container.querySelector("#abv") as HTMLInputElement;
+      expect(box.value).toBe("25");
+      // The error is tied to the box, as the canvas box's is (#520 review).
+      expect(document.getElementById(box.getAttribute("aria-describedby")!)?.textContent).toMatch(/at most 20/);
     });
   });
 

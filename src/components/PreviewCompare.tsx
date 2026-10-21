@@ -18,22 +18,22 @@ import {
   forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from "react";
 import { drawPlate, type CanvasRenderSource } from "@/canvas/draw";
-import { facesOf, planLayerScene } from "@/planLayers";
+import { planLayerScene } from "@/planLayers";
 import { hitBoxesFromLayout, hitTestBoxes, type LayerBox } from "@/hittestLayers";
 import type { ResizeHandle } from "@/model/edit";
 import type { Layer, TextLine } from "@/model/layers";
-import { uppercaseOf } from "@/model/layers";
 import {
-  ART, BLEED_SHIFT, PAGE, PREVIEW_MAX_W, PREVIEW_RASTER_MAX_EDGE, previewRasterScale, trackedWidth,
+  ART, BLEED_SHIFT, PAGE, PREVIEW_MAX_W, PREVIEW_RASTER_MAX_EDGE, previewRasterScale,
 } from "@/layout";
-import { FACE_WEIGHT, labelFontCss } from "@/fonts";
+import { labelFontCss } from "@/fonts";
 import { modsOf, type SelectMods } from "@/selection";
-import { cn, errMsg } from "@/lib/utils";
+import { errMsg } from "@/lib/utils";
 import {
-  BLEED, BLEED_STROKE, cornerRadius, cqh, dieRadius, GROUP_PAD, HANDLES, inches, inkOf, pageBox,
+  BLEED, BLEED_STROKE, cornerRadius, dieRadius, GROUP_PAD, HANDLES, inches, pageBox,
   SEL_PAD,
 } from "./previewOverlay";
 import { InPlaceRichField } from "./InPlaceRichField";
+import { InPlacePlainField } from "./InPlacePlainField";
 
 /** The plates worth painting: the art always (it is the base the mask sits
  *  over), the mask only once the divider reveals any of it (split > 0) — at
@@ -633,11 +633,11 @@ export const PreviewCompare = forwardRef<
           source skips the layer for the session (see onEditSession), so the
           editor's styled text IS the layer while you type. Rich layers get
           the lines field with its pill toolbar; a number/code layer the plain
-          box below, turned with the text for a rotated layer. */}
+          box (InPlacePlainField), turned with the text for a rotated layer. */}
       {editing && editLayer?.kind === "text" && editBox && canvasRender && (() => {
         const layer = editLayer;
         const b = editBox;
-        const st = layer.style;
+        const fontCss = layer.fontFamily ? labelFontCss(layer.fontFamily) : canvasRender.fontCss;
         const apply = (lines: TextLine[]) => {
           onEditText(editing, lines, !edited.current);
           edited.current = true;
@@ -650,7 +650,7 @@ export const PreviewCompare = forwardRef<
           return (
             <InPlaceRichField
               layer={layer}
-              fontCss={layer.fontFamily ? labelFontCss(layer.fontFamily) : canvasRender.fontCss}
+              fontCss={fontCss}
               box={b}
               toolbarPos={toolbarPos}
               onApply={apply}
@@ -664,83 +664,16 @@ export const PreviewCompare = forwardRef<
             />
           );
         }
-        const rotated = layer.rotation === 90;
-        const faces = facesOf(layer);
-        const size = layer.size;
-        const typed = layer.lines[0]?.text ?? "";
-        const ls = st.letterSpacing ?? 0;
-        // A suffixed field (the ABV's unit tail) has to END where its glyphs
-        // end, so the redrawn tail lands where the render will put it: the
-        // same measure the canvas draws with, plus the one trailing gap CSS
-        // letter-spacing adds after the last glyph, plus 2px of caret room.
-        const fieldWidth = layer.suffix
-          ? `calc(${cqh(trackedWidth(canvasRender.m(typed, size, faces.base, layer.fontFamily), typed, ls) + ls)} + 2px)`
-          : "100%";
         return (
-          <div
-            ref={sessionRef}
-            className="absolute"
-            style={{
-              ...pageBox(b.x, b.y, b.w, b.h, SEL_PAD),
-              fontSize: cqh(size),
-              lineHeight: 1,
-              fontFamily: layer.fontFamily ? labelFontCss(layer.fontFamily) : canvasRender.fontCss,
-              fontWeight: FACE_WEIGHT[faces.base],
-              // Unkerned like drawPlate; the input inherits it through
-              // preflight's `font: inherit` (#144).
-              fontKerning: "none",
-              letterSpacing: cqh(ls),
-              color: inkOf(st),
-            }}
-            onClick={(e) => e.stopPropagation()}
-            onDoubleClick={(e) => e.stopPropagation()}
-          >
-            {/* The row the field sits on. Unrotated it just fills the box;
-                rotated it is the SAME row, sized to the drawn column, centred
-                in the (tall, narrow) box and turned -90deg to match the
-                canvas. */}
-            <div
-              className="absolute flex items-center"
-              style={rotated ? {
-                left: "50%",
-                top: "50%",
-                width: cqh(b.h),
-                height: cqh(b.w),
-                transform: "translate(-50%, -50%) rotate(-90deg)",
-              } : { inset: 0 }}
-            >
-              <input
-                autoFocus
-                value={typed}
-                aria-label={`Edit ${layer.name.toLowerCase()} text`}
-                onFocus={(e) => {
-                  const end = e.currentTarget.value.length;
-                  e.currentTarget.setSelectionRange(end, end);
-                }}
-                onChange={(e) => {
-                  const v = layer.input === "number"
-                    ? e.target.value.replace(/[^0-9.]/g, "") : e.target.value;
-                  apply([{ ...st, text: v }]);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") setEditing(null);
-                  if (e.key === "Escape") close(true);
-                }}
-                className={cn("h-full bg-transparent outline-none caret-sky-400",
-                  !layer.suffix && "px-1")}
-                style={{
-                  width: fieldWidth,
-                  textAlign: layer.align === "center" ? "center" : layer.align === "right" ? "right" : "left",
-                  textTransform: uppercaseOf(layer) ? "uppercase" : undefined,
-                }}
-              />
-              {layer.suffix && (
-                // The drawn tail is hidden with its layer for the session, so
-                // the editor redraws it, uneditable, right after the value.
-                <span className="whitespace-nowrap">{layer.suffix}</span>
-              )}
-            </div>
-          </div>
+          <InPlacePlainField
+            layer={layer}
+            fontCss={fontCss}
+            box={b}
+            measure={canvasRender.m}
+            onApply={apply}
+            onClose={close}
+            fieldRef={sessionRef}
+          />
         );
       })()}
     </div>

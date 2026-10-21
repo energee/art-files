@@ -36,6 +36,10 @@ that section to the new version (see .agents/release-steward.md).
 
 - **The inspector has a close button.** A ✕ beside the layer name closes the inspector and clears the selection, the same as Esc, so it can be dismissed with the mouse or keyboard. Clicking elsewhere still keeps a multi-layer selection.
 
+### Fixed
+- **The canvas checks numbers and codes like the sidebar.** Editing an ABV or a code on the preview no longer silently drops characters; what you type stays, and an out-of-range or malformed value shows its error right under the box (above it near the bottom of the sheet, so it isn't cut off), the same message the sidebar gives. The sidebar's number box also takes decimals such as 5.8 without the browser calling them invalid, and the arrow keys no longer round them to whole numbers.
+- **Fill fields are captioned by what they take.** A number layer's field is captioned **Number** and a code layer's **Code**, instead of every field saying **Text**. A field label set in the master still wins.
+
 ### Security
 - **TLS library patches for the update check.** rustls 0.23.46, rustls-webpki 0.103.16 and webpki-root-certs 1.0.10 fix TLS downgrade, certificate-trust and secret-logging advisories (RUSTSEC-2026-0347/0348 and others). No change in behaviour.
 
