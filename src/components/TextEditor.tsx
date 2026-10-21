@@ -507,34 +507,24 @@ function ToolbarToggle(props: {
 
 /** The Header / Bold / White-ink toggles, shared verbatim by the sidebar's
  *  toolbar row and the preview's floating pill so the two surfaces can't
- *  drift. Layout chrome (row vs pill) belongs to the caller. */
+ *  drift; the pill adds the whole-layer Uppercase toggle (`onUppercase`).
+ *  Layout chrome (row vs pill) belongs to the caller. */
 export function TextToolbarButtons(props: {
   caret: ReturnType<typeof useTextField>["caret"];
   toggle: (attr: "bold" | "white") => void;
   toggleHeader: () => void;
-  /** The run toggles (header, bold, white ink) act on the field's SELECTION,
-   *  so they are inert with nothing focused. The sidebar shows them while
-   *  focus is in the field or has moved from it to the toolbar, and passes
-   *  false otherwise rather than offering three buttons that silently do
-   *  nothing (an `onUppercase` toggle, which acts on the whole layer, still
-   *  shows). */
-  showRuns?: boolean;
   uppercase?: boolean;
   onUppercase?: (uppercase: boolean) => void;
 }) {
-  const { caret, toggle, toggleHeader, showRuns = true } = props;
+  const { caret, toggle, toggleHeader } = props;
   return (
     <>
-      {showRuns && (
-        <ToolbarToggle label="Toggle header" tip="Header" pressed={caret.header} onPress={toggleHeader}>
-          <HeaderIcon />
-        </ToolbarToggle>
-      )}
-      {showRuns && (
-        <ToolbarToggle label="Toggle bold" tip="Bold" pressed={caret.bold} onPress={() => toggle("bold")}>
-          <Bold />
-        </ToolbarToggle>
-      )}
+      <ToolbarToggle label="Toggle header" tip="Header" pressed={caret.header} onPress={toggleHeader}>
+        <HeaderIcon />
+      </ToolbarToggle>
+      <ToolbarToggle label="Toggle bold" tip="Bold" pressed={caret.bold} onPress={() => toggle("bold")}>
+        <Bold />
+      </ToolbarToggle>
       {props.onUppercase && (
         <ToolbarToggle label="Toggle uppercase" tip="Uppercase entire text layer"
           pressed={props.uppercase ?? false} onPress={() => props.onUppercase!(!props.uppercase)}>
@@ -544,14 +534,12 @@ export function TextToolbarButtons(props: {
       {/* White ink is a print layer (a separate underlay plate), not a text
           colour, hence the explicit label — Droplet alone reads ambiguously
           next to a colour swatch. */}
-      {showRuns && (
       <ToolbarToggle
         label="Toggle white ink underlay" tip="White ink underlay"
         pressed={caret.white} onPress={() => toggle("white")}
       >
         <Droplet />
       </ToolbarToggle>
-      )}
     </>
   );
 }
@@ -567,10 +555,9 @@ export interface TextEditorProps {
   onChange: (lines: TextLine[]) => void;
   /** The layer's block Style — what a new line takes (see fromEditorLines). */
   base: Style;
+  /** Display transform only; the inspector's Typography switch is the one
+   *  Uppercase control in the sidebar, so this field has no toggle for it. */
   uppercase?: boolean;
-  /** Adds a whole-layer Uppercase toggle to the field's toolbar. The
-   *  inspector omits it: its Typography switch is the one control there. */
-  onUppercase?: (uppercase: boolean) => void;
   /** TextLayer.input: "number" and "code" swap the rich field for a plain
    *  box that writes one plain line; absent = the rich editor. */
   input?: "number" | "code";
@@ -743,11 +730,8 @@ function RichField(props: TextEditorProps) {
       <div className="flex h-7 items-center justify-between gap-1">
         <Label htmlFor={id} className={LABEL_CLASS}>{title ?? label}</Label>
         <div className="flex gap-1">
-          {(focused || props.onUppercase) && (
-            <TextToolbarButtons
-              caret={caret} toggle={toggle} toggleHeader={toggleHeader}
-              showRuns={focused} uppercase={uppercase} onUppercase={props.onUppercase}
-            />
+          {focused && (
+            <TextToolbarButtons caret={caret} toggle={toggle} toggleHeader={toggleHeader} />
           )}
         </div>
       </div>

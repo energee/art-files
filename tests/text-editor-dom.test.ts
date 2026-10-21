@@ -512,31 +512,6 @@ it("toggles uppercase display from the WYSIWYG toolbar without rewriting text", 
 });
 
 
-it("shows uppercase in the sidebar warning field before focus and emits a style toggle", () => {
-  const onUppercase = vi.fn(), onChange = vi.fn();
-  act(() => { root.render(createElement(TooltipProvider, null,
-    createElement(TextEditor, {
-      id: "warning", label: "Text", lines: [line("Government warning")], base,
-      uppercase: false, onUppercase, onChange,
-    }))); });
-  const button = container.querySelector('[aria-label="Toggle uppercase"]') as HTMLElement;
-  expect(button).not.toBeNull();
-  act(() => { button.click(); });
-  expect(onUppercase).toHaveBeenCalledWith(true);
-  expect(onChange).not.toHaveBeenCalled();
-});
-
-it("keeps the run toggles hidden when Tab lands on Uppercase from outside the field", () => {
-  act(() => { root.render(createElement(TooltipProvider, null,
-    createElement(TextEditor, {
-      id: "warning", label: "Text", lines: [line("x")], base,
-      uppercase: false, onUppercase: vi.fn(), onChange: vi.fn(),
-    }))); });
-  const button = container.querySelector('[aria-label="Toggle uppercase"]') as HTMLElement;
-  act(() => { button.focus(); });
-  expect(container.querySelector('[aria-label="Toggle bold"]')).toBeNull();
-});
-
 it("unstyles a selected mixed-case run even if Selection stringifies uppercase (#285)", () => {
   const { el, emitted, toggle } = mountField([line("A **Hazy** beer")], { uppercase: true });
   select(el, "Hazy");
