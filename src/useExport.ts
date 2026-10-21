@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { nativePathExists, saveThrough, type FileTarget } from "@/files";
 import { errMsg } from "@/lib/utils";
+import { useOwnedError } from "@/useOwnedError";
 import type { Fill } from "@/types";
 import { PAGE_ART_ID, type Layer } from "@/model/layers";
 import { planLayers, type PlacedLayer } from "@/planLayers";
@@ -126,13 +127,8 @@ export function useExport({
   }
 
   const exportRunning = useRef(false);
-  // The last message an export put in the shared build-error slot: the only
-  // one a later successful export may clear (#473).
-  const lastExportError = useRef("");
-  function setExportError(message: string) {
-    lastExportError.current = message;
-    setBuildError(message);
-  }
+  // A later successful export clears only the error an export set (#473).
+  const exportError = useOwnedError(setBuildError);
   async function exportPair(
     extension: "pdf" | "psd", type: string,
     build: () => Promise<(Uint8Array | null)[]>,
@@ -159,7 +155,7 @@ export function useExport({
         pending = index && mask ? mask.path : `${exportBase}${index ? "-mask" : ""}.${extension}`;
         const result = await saveVia(bytes, pending, type, index ? mask?.target : undefined);
         if (!result) {
-          setExportError(`Note: ${saved.length ? `Saved ${saved.join(", ")}. ` : ""}Export cancelled before saving ${pending}.`);
+          exportError.set(`Note: ${saved.length ? `Saved ${saved.join(", ")}. ` : ""}Export cancelled before saving ${pending}.`);
           return;
         }
         saved.push(result.name);
@@ -169,12 +165,10 @@ export function useExport({
           mask = { path, target: taken ? undefined : { path } };
         }
       }
-      const own = lastExportError.current;
-      setBuildError((current) => (current === own ? "" : current));
-      lastExportError.current = "";
+      exportError.clear();
       if (exportFresh.current) setExportNote(`Saved ${saved.join(", ")}.`);
     } catch (error) {
-      setExportError(`${saved.length ? `Saved ${saved.join(", ")}. ` : ""}${pending ? `Could not save ${pending}: ` : ""}${errMsg(error)}`);
+      exportError.set(`${saved.length ? `Saved ${saved.join(", ")}. ` : ""}${pending ? `Could not save ${pending}: ` : ""}${errMsg(error)}`);
     } finally {
       exportRunning.current = false;
       setExporting(null);

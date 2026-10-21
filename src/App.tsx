@@ -71,6 +71,7 @@ import {
 } from "@/assets/io";
 import { useExport } from "@/useExport";
 import { useProjectSave } from "@/useProjectSave";
+import { useOwnedError } from "@/useOwnedError";
 // setBleed is aliased so the call site reads as what it writes: the
 // document's actual geometry (layout.ts), not a view option.
 import {
@@ -453,9 +454,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [editSession, setEditSession] = useState<string | null>(null);
   // Two error channels, split by who can clear them: renderError belongs to
   // the renderers (every good frame clears it); buildError to asset
-  // assembly, exports and native menu failures. A successful export or
-  // asset assembly clears it only while it still holds its own message
-  // (#473, #511).
+  // assembly, exports, image loads and native menu failures. A successful
+  // export, asset assembly or image load clears it only while it still holds
+  // its own message (useOwnedError; #473, #511).
   const [buildError, setBuildError] = useState("");
   const [renderError, setRenderError] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -945,6 +946,8 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  and point the layer (its fill value, or the master's own asset) at the
    *  minted id. The previous asset's bytes are deliberately KEPT: undo can
    *  point the layer back at it (#75); see liveImages. */
+  // A good image clears only the load error a bad one set (#511).
+  const imageError = useOwnedError(setBuildError);
   async function onLayerImage(layer: ImageLayer, f: File) {
     const assetId = mintCustomAssetId();
     const mint = previewOnce(await readCustomImage(f), f);
@@ -1018,10 +1021,9 @@ export const DocumentEditor = memo(function DocumentEditor({
     ...decodedAssets, planAssets: { ...decodedAssets.planAssets, guides },
   } : null, [decodedAssets, guides]);
   const bgOn = pageOn("background"), maskOn = pageOn("mask");
-  // The last message asset assembly put in the shared build-error slot: the
-  // only one its next success may clear, so an export or master error
-  // survives a plate toggle (#511, as #473 for exports).
-  const lastAssetError = useRef("");
+  // Asset assembly's next success clears only the error it set, so an export
+  // or master error survives a plate toggle (#511).
+  const assetError = useOwnedError(setBuildError);
   useEffect(() => {
     // Not gated on `blocked`: this only decodes fonts and art, and a rejected
     // value already falls back to the master's, so the preview keeps drawing (#127).
@@ -1058,13 +1060,9 @@ export const DocumentEditor = memo(function DocumentEditor({
         setDecodedAssets({
           m, planAssets: planAssetsOf(), drawAssets: { images: customBitmaps }, fontCss: labelFontCss(family), sources,
         });
-        const own = lastAssetError.current;
-        setBuildError((current) => (current === own ? "" : current));
-        lastAssetError.current = "";
+        assetError.clear();
       })().catch((err) => {
-        if (cancelled) return;
-        lastAssetError.current = errMsg(err);
-        setBuildError(lastAssetError.current);
+        if (!cancelled) assetError.set(errMsg(err));
       });
     }, 150);
     return () => { cancelled = true; clearTimeout(timer); };
@@ -2052,7 +2050,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       const file = customImages[layer.asset];
       return <FileDrop label="Image" accept={{ "image/svg+xml": [".svg"], "image/png": [".png"], "image/jpeg": [".jpg", ".jpeg"] }}
         fileName={file?.name} previewUrl={file?.previewUrl}
-        onFile={(f) => onLayerImage(layer, f).catch((err) => setBuildError(`Could not load image: ${errMsg(err)}`))}
+        onFile={(f) => onLayerImage(layer, f).then(imageError.clear, (err) => imageError.set(`Could not load image: ${errMsg(err)}`))}
         // In history (the well names ⌘Z): returns no undo of its own. Its own
         // step (coalesce false), so ⌘Z right after a fast drop-then-X brings
         // the art back instead of undoing the drop too.
