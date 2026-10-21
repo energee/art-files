@@ -155,6 +155,15 @@ describe("LayerList", () => {
     expect(props.onToggle).toHaveBeenCalledWith("wordmark", "locked", true);
   });
 
+  // #11: the lock is canvas-only, so the row must not promise "cannot be moved".
+  it("titles a locked row's lock as canvas-only", () => {
+    const props = baseProps();
+    props.rows = props.rows.map((r) => r.layer.id === "wordmark" ? { ...r, layer: { ...r.layer, locked: true } } : r);
+    render(props);
+    expect(byLabel("Brand: locked").getAttribute("title"))
+      .toBe("Locked on canvas: drag, resize and nudge are off. Typed values still apply.");
+  });
+
   it("badges a variant-added row with the variant's name and dims it while the variant is off", () => {
     render(baseProps());
     const lead = rowFor("collabLead");

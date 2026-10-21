@@ -5,11 +5,17 @@ description: One layer. Content, type, position, colour
 
 Pick a layer in the list or on the preview and the right-hand inspector opens. The **✕** at the top right, Esc, or a click on the empty pasteboard clears the selection and shuts it. One panel at a time. Esc inside a field, an on-preview text edit, or a drag only cancels that; the inspector stays open.
 
-The mm / pt toggle (**Dimensions**, under the Enabled and Locked switches) is display only. Under the hood it's still PDF points.
+With several layers selected, the inspector edits only the last one you picked and says so ("Editing Brand only (3 selected)"). Drag, reorder and Delete still act on the whole selection.
+
+The mm / pt toggle (**Lengths in**, under the Enabled and Locked switches) is shared by every layer and is display only. Under the hood it's still PDF points. It converts X, Y, binding gap, width, height, wrap width, barcode module width and QR size. Type size and letter spacing stay in points, stroke width in pixels and character height in millimetres; hover a field's unit to see why.
 
 ## Header
 
 Kind icon, inline rename, enabled, locked. Same switches as the list row.
+
+A layer that only a variant adds reads **Off** while that variant is off for this label, with a note naming the variant. Edits to it don't apply until it is on; turning it on switches the variant on too.
+
+**Locked** is canvas-only: drag, resize and nudge are off, but values typed here still apply.
 
 ## Content
 
@@ -23,7 +29,7 @@ Depends on the kind:
 ## Typography (text)
 
 - Font: Poppins or Barlow Condensed, or the master default
-- Size in points, and **printed character height** in millimetres (tallest letter or numeral at export size). A warning names any character the layer's font cannot print; export refuses those until they are replaced or the font changes
+- Size in points, and **printed character height** in millimetres (tallest letter or numeral at export size). The ⓘ beside Characters per inch explains what the measurements count. A warning names any character the layer's font cannot print; export refuses those until they are replaced or the font changes
 - Align: left, centre, right, justify. A last or only justified line falls back to left
 - Wrap width. Blank means no wrap
 - Line spacing and heading scale
@@ -36,7 +42,7 @@ Position is measured from the layer's guides and anchors. **Bind to layer…** t
 
 Text and codes can rotate **90°** (reads bottom to top). Images can't.
 
-Image layers also have width, optional height, contain/cover fit, scale, and "tint raster" for colouring a bitmap with the fill. Page art (texture and mask) always covers the page.
+Image layers also have width, optional height, contain/cover fit, scale, and "tint raster" for colouring a bitmap with the fill. Page art (texture and mask) always covers the page, so it has no Position fields or mm / pt toggle. A position override left on it (X, Y, a guide or a binding) shows a reset badge (**Unused position override**) so you can clear it.
 
 Barcodes: UPC-A, EAN-13, or Code 128. Module width, bar height, show digits. You'll see a warning when the module is too skinny for curved metal.
 
@@ -46,7 +52,7 @@ QR: square size, style (square, rounded, dots), and error correction (L, M, Q, H
 
 - **Fill.** Colour picker (screen eyedropper on Chromium), hex field, and **no ink**, except on barcodes and QR. Those have to scan. Colours are 3- or 6-digit hex (`#fff` reads as `#ffffff`); a hand-edited `.label` or `.master` with a named colour such as `gold` is refused on open, naming the layer.
 - **Metallic.** On knocks out of the white-ink plate (bare stock). Off lays white ink under it. Raster images (PNG, JPEG) always print on white ink, so their inspector has no Metallic toggle; use an SVG for metallic art.
-- **Stroke.** Optional outer stroke with its own colour, metallic flag, and width in px at 600 DPI (15px = 1.8pt). The physical width holds at any export DPI. Codes default the halo to white. Everything else defaults a dark keyline. A barcode can also turn on **Solid background**: the stroke colour fills the whole barcode box, quiet zone included, instead of only outlining the bars and digits.
+- **Stroke.** One reset badge: beside the switch while the stroke is off, beside its colour while it is on. Optional outer stroke with its own colour, metallic flag, and width in px at 600 DPI (15px = 1.8pt). The physical width holds at any export DPI. Codes default the halo to white. Everything else defaults a dark keyline. A barcode can also turn on **Solid background**: the stroke colour fills the whole barcode box, quiet zone included, instead of only outlining the bars and digits.
 
 ## Override badges
 

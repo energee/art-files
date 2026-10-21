@@ -74,7 +74,7 @@ export function FileDrop(props: {
       <div
         {...getRootProps({
           // AssetDropOverlay's window listener yields to marked field targets,
-          // so a PNG aimed here is not diverted into its full-window chooser.
+          // so a PNG aimed here is not diverted into its window-wide chooser.
           [FILE_DROP_ATTR]: "",
           className: cn(
             "flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border p-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
