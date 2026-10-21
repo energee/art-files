@@ -228,6 +228,11 @@ export function MasterPicker(props: {
     const name = props.library[id]?.name ?? id;
     try {
       const undo = await props.onForget(id);
+      // A card still offering the removed master would put it straight back.
+      if (preview?.target.id === id) {
+        if (preview === offered) props.onOfferDone?.();
+        setPreview(null);
+      }
       setDeleted(null);
       setRemoved({ name, undo });
     } finally {

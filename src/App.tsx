@@ -1353,6 +1353,8 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  without one, Save Master binds to the library's path for the id. */
   function resetDocument(next: Doc, masterPath?: string) {
     resetDoc(next);
+    // A pending Open Master switch was offered for the document being replaced.
+    setMasterOffer(null);
     pristineMaster.current = next.master;
     masterFileHandle.current = null;
     const bound = isTauri() ? masterPath ?? masterIndex()[next.master.id]?.path : undefined;
@@ -1545,8 +1547,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Adopt a master's template assets under the label-delta rule: art the
    *  label already loaded wins — only EMPTY slots fall back to the master's,
    *  and image bytes fill in only for ids the store doesn't hold (checked
-   *  again as they commit, so an id filled meanwhile mints no thumbnail). */
+   *  again as they commit, so an id filled meanwhile mints no thumbnail).
+   *  Slots are read from savedAssetsRef, not this render's state: Open
+   *  Master's commit can run long after the render that built it (#516). */
   async function adoptMasterAssets(a: MasterAssets): Promise<void> {
+    const { texture, mask, customImages } = savedAssetsRef.current;
     await Promise.all([
       !texture && a.texture ? onTexture(assetToFile(a.texture)) : null,
       !mask && a.mask ? onMask(assetToFile(a.mask)) : null,
@@ -1582,10 +1587,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   }
 
   /** Parsed bytes from any Open Master source (native path, FS-Access
-   *  handle, hidden input). The file joins the library at once; the switch
-   *  previews first, like a picker pick: one that would bench nothing
-   *  happens now, one that would hides behind MasterPicker's Continue. On
-   *  Cancel the master stays in the library and the label is untouched. */
+   *  handle, hidden input). The switch previews first, like a picker pick:
+   *  one that would bench nothing happens now, one that would joins the
+   *  library and hides behind MasterPicker's Continue. On Cancel the master
+   *  stays in the library and the label is untouched. */
   async function openMasterBytes(
     bytes: Uint8Array, name: string, src: { handle?: FileSystemFileHandle; path?: string },
   ) {
@@ -1593,12 +1598,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     if (!r) return;
     // A second open supersedes the first one's card, whichever way it goes.
     setMasterOffer(null);
-    // Not yet applied: a cancelled switch must not become the master the
-    // next untitled tab starts on.
-    await rememberMaster(r.master, name, bytes, { applied: false });
-    refreshLibrary();
     const commit = async () => {
-      await rememberMaster(r.master, name);
+      // Bytes again: the master may have left the library while its card
+      // was open, and LAST_KEY must not name an id with no cached copy.
+      await rememberMaster(r.master, name, bytes);
       refreshLibrary();
       commitRebind(r.master);
       // Bind Save Master only once the doc is on this master (#81).
@@ -1610,6 +1613,14 @@ export const DocumentEditor = memo(function DocumentEditor({
     const { master: from, label: current } = docRef.current;
     const { dropped } = rebindLabel(current, from, r.master);
     if (!dropped.values.length && !dropped.variants.length) { await commit(); return; }
+    // Into the library now, not yet applied: a cancelled switch must not
+    // become the master the next untitled tab starts on. A file with the
+    // current master's own id is already listed, and caching it now would
+    // make a reload resolve this label to the file Cancel declined.
+    if (r.master.id !== from.id) {
+      await rememberMaster(r.master, name, bytes, { applied: false });
+      refreshLibrary();
+    }
     // The card lives in the sidebar, so open it if it was collapsed.
     setSidebarOpen(true);
     setMasterOffer({ target: r.master, assets: r.assets, commit });

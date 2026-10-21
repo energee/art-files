@@ -41,12 +41,13 @@ async function mount(fileToOpen: FileToOpen | null = null) {
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
   const saveSlot: { current: (() => Promise<boolean>) | null } = { current: null };
   const onMeta = vi.fn();
-  await act(async () => root.render(createElement(DocumentEditor, {
+  const props = {
     active: true, fileToOpen, onOpenSettled: vi.fn(), onMeta, saveSlot,
     render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(), onOpenProject: vi.fn(),
     onNewTab: vi.fn(), onCloseTab: vi.fn(), onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
-  })));
-  return { saveSlot, onMeta };
+  };
+  await act(async () => root.render(createElement(DocumentEditor, props)));
+  return { saveSlot, onMeta, props };
 }
 async function toggle(id: string) {
   const b = document.querySelector(`[data-layer-id="${id}"] button[aria-label$=": enabled"]`) as HTMLButtonElement;
@@ -429,6 +430,70 @@ it("Cancel on Open Master's card hands focus back to the master picker", async (
   await act(async () => (document.activeElement as HTMLButtonElement).click());
   expect(document.querySelector("#master-picker-preview")).toBeNull();
   expect(document.activeElement?.id).toBe("master-picker");
+});
+
+// Continue runs long after the open: it must adopt the master's art against
+// the label's slots as they are then, so art dropped meanwhile wins.
+it("Open Master's Continue keeps art dropped while its card was open", async () => {
+  class FakeBitmap { width = 10; height = 10; close() {} }
+  vi.stubGlobal("ImageBitmap", FakeBitmap);
+  const decoded: string[] = [];
+  vi.stubGlobal("createImageBitmap", async (f: Blob) => { decoded.push((f as File).name); return new FakeBitmap(); });
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage() {} } as never);
+  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((cb) => cb(new Blob(["png"])));
+  const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});
+  await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
+  await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  const base = lolevMaster();
+  openMasterFile({ ...base, id: "master-other", name: "Other", layers: base.layers.filter((l) => l.id !== "volume") },
+    { texture: { name: "master-art.png", bytes: new Uint8Array([137, 80, 78, 71]) } });
+  await run("master-open");
+  expect(document.querySelector("#master-picker-preview")).not.toBeNull();
+  const art = new File(["ok"], "mine.png", { type: "image/png" });
+  const e = new Event("drop", { bubbles: true, cancelable: true });
+  Object.defineProperty(e, "dataTransfer", { value: { types: ["Files"], items: [{ kind: "file", type: art.type }], files: [art] } });
+  Object.defineProperty(e, "clientX", { value: 10 });
+  await act(async () => { document.body.dispatchEvent(e); await new Promise((r) => setTimeout(r, 10)); });
+  expect(decoded).toEqual(["mine.png"]);
+  await act(async () => { (document.querySelector("#master-picker-continue") as HTMLButtonElement).click(); await new Promise((r) => setTimeout(r, 20)); });
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
+  expect(decoded).toEqual(["mine.png"]);
+});
+
+// Opening a .label replaces the whole document: the earlier Open Master's
+// switch is not this document's to make.
+it("opening a label into the tab withdraws a pending Open Master card", async () => {
+  const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});
+  const { props } = await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
+  await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  const base = lolevMaster();
+  openMasterFile({ ...base, id: "master-other", name: "Other", layers: base.layers.filter((l) => l.id !== "volume") });
+  await run("master-open");
+  expect(document.querySelector("#master-picker-preview")).not.toBeNull();
+  await act(async () => {
+    root.render(createElement(DocumentEditor, { ...props, fileToOpen: { seq: 2, file: new File([label as unknown as BlobPart], "second.label") } }));
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  expect(document.querySelector("#master-picker-preview")).toBeNull();
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Lolev");
+});
+
+// A file with the current master's own id: Cancel must leave that id's
+// remembered copy and path alone, or a reload would resolve the label to
+// the file the operator declined.
+it("cancelling Open Master of the current master's id keeps its remembered copy", async () => {
+  const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});
+  await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
+  await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  const before = localStorage.getItem("labellab.master:lolev");
+  const base = lolevMaster();
+  openMasterFile({ ...base, layers: base.layers.filter((l) => l.id !== "volume") });
+  await run("master-open");
+  const preview = document.querySelector("#master-picker-preview");
+  expect(preview?.textContent).toContain("hides 1 filled field");
+  const cancel = [...preview!.querySelectorAll("button")].find((b) => b.textContent === "Cancel")!;
+  await act(async () => cancel.click());
+  expect(localStorage.getItem("labellab.master:lolev")).toBe(before);
 });
 
 it("a promotion whose layer is deleted during the write doesn't cost the others", async () => {

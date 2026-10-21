@@ -201,6 +201,30 @@ describe("MasterPicker", () => {
     expect(container.querySelector("#master-picker-preview")).toBeNull();
   });
 
+  // Removing the card's master from the library withdraws the card: a
+  // Continue would otherwise put the master straight back.
+  it("closes the card when its master is removed from the library", async () => {
+    const onOfferDone = vi.fn();
+    const props = renderPicker({
+      onOfferDone, library: { lolev: { name: "Lolev" }, other: { name: "Other Brewery", inLibrary: true } },
+    });
+    const o = offer();
+    act(() => { root.render(createElement(MasterPicker, { ...props, offer: o })); });
+    expect(container.querySelector("#master-picker-preview")).not.toBeNull();
+    openMenu();
+    const x = document.querySelector('[aria-label="Remove Other Brewery from the library"]') as HTMLButtonElement;
+    await act(async () => {
+      for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+        x.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
+      }
+      await Promise.resolve();
+    });
+    expect(props.onForget).toHaveBeenCalledWith("other");
+    expect(container.querySelector("#master-picker-preview")).toBeNull();
+    expect(onOfferDone).toHaveBeenCalledOnce();
+    expect(o.commit).not.toHaveBeenCalled();
+  });
+
   // The counts follow edits made while the card is open, not the label as
   // it was when the card opened.
   it("recounts what the switch hides when the label changes under the card", () => {
