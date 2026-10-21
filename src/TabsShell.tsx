@@ -644,7 +644,7 @@ export default function TabsShell() {
               Discard
             </Button>
             {confirmTab?.masterUnsaved && (
-              <Button variant="outline" disabled={saving}
+              <Button variant="outline" disabled={saving || reviewing}
                 onClick={() => confirmClose !== null && void reviewMaster(confirmClose)}>
                 Review Master…
               </Button>

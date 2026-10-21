@@ -2210,7 +2210,16 @@ export const DocumentEditor = memo(function DocumentEditor({
             onConfirm={(promote) => {
               const { as } = pendingSave;
               setPendingSave(null);
-              void saveMaster(as, promote).then((saved) => reviewDone.current && setReviewEnded(saved));
+              // Only the review the close prompt is waiting on reports back:
+              // a plain Save Master still writing when a later Review Master…
+              // opens must not settle that newer review. A throw before
+              // saveMaster's own try still ends the review (unsaved), then
+              // rejects as before.
+              const waiting = reviewDone.current;
+              const report = (saved: boolean) => {
+                if (waiting && waiting === reviewDone.current) setReviewEnded(saved);
+              };
+              void saveMaster(as, promote).then(report, (err: unknown) => { report(false); throw err; });
             }} />
         </Suspense>
       )}
