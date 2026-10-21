@@ -3,10 +3,19 @@
 // masterCache's store helper), keyed `<launch id>:<tab id>`. A clean save
 // or a tab close drops its snapshot; a crash, a WebView kill or a forced
 // quit leaves it behind, and the next launch offers it back (TabsShell).
+// A desktop snapshot also records the file its tab was bound to, and that
+// file's mtime when the tab bound or saved it, which canRebind checks before
+// the restored tab may take the file back.
 // Best-effort like masterCache: a failed write just means nothing to offer.
 import { RECOVERY_STORE, run } from "@/masterCache";
 
-export type RecoverySnapshot = { name: string; bytes: Uint8Array; savedAt: number };
+/** `filePath`: the desktop file the tab was bound to, if any. Optional
+ *  because snapshots written before it, and every browser snapshot, have none.
+ *  `fileModifiedAt`: that file's mtime when the tab last bound or saved it —
+ *  the baseline canRebind compares against. */
+export type RecoverySnapshot = {
+  name: string; bytes: Uint8Array; savedAt: number; filePath?: string; fileModifiedAt?: number;
+};
 /** A snapshot an earlier launch left, with the key that drops it. */
 export type Recoverable = RecoverySnapshot & { key: string };
 
@@ -63,3 +72,13 @@ export async function earlierSnapshots(): Promise<Recoverable[]> {
   }));
   return snaps.filter((s) => s !== null).sort((a, b) => a.savedAt - b.savedAt);
 }
+
+/** Whether a restored tab may take its file back, so Save writes there
+ *  instead of asking where. Only when that cannot overwrite newer work: the
+ *  file still exists (`modifiedAt` is null when it is gone), still has the
+ *  mtime the tab recorded when it bound or saved it — so nothing wrote it
+ *  since, even before the snapshot — and no open tab holds it (`openPaths`).
+ *  A snapshot without that baseline never rebinds. */
+export const canRebind = (snap: RecoverySnapshot, modifiedAt: number | null, openPaths: readonly string[]) =>
+  !!snap.filePath && snap.fileModifiedAt !== undefined && modifiedAt === snap.fileModifiedAt
+  && !openPaths.includes(snap.filePath);

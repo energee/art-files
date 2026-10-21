@@ -5,12 +5,26 @@ description: Bleed, DPI, die-cut, appearance
 
 Edit → **Settings…** is the knobs. They stick on this machine. They do not live in the `.label` file.
 
+The dialog groups them in three parts. Clicking the **DPI** readout in the status bar opens it on Resolution.
+
+### Output
+
+| Control | What it does |
+| --- | --- |
+| **Resolution** | PSD raster resolution and pixel-ruler scale (72–1200 DPI, default 600). PDFs keep vector geometry and embed uploaded art at its original resolution. |
+| **Bleed** | Extra around the trim. Geometry for both plates. Ruler zero stays at trim. |
+
+### Can preview
+
 | Control | What it does |
 | --- | --- |
 | **Corner radius** | Die-cut corner radius in inches (house die: 1/16 inch), shown on the 3D can. |
 | **Edge softness** | Foil-edge blur in inches, shown on the can preview. |
-| **Resolution** | PSD raster resolution and pixel-ruler scale (72–1200 DPI, default 600). PDFs keep vector geometry and embed uploaded art at its original resolution. |
-| **Bleed** | Extra around the trim. Geometry for both plates. Ruler zero stays at trim. |
-| **Appearance** | System, Light, or Dark chrome. System follows the operating system. |
+
+### Appearance
+
+| Control | What it does |
+| --- | --- |
+| **Theme** | System, Light, or Dark chrome. System follows the operating system. Also in View → Appearance and the `⌘K` palette. |
 
 Bleed and DPI change what gets built. Corner radius and edge softness are how the can preview presents the press. They don't redraw the 2D plates.

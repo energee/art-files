@@ -1,5 +1,5 @@
 import { isMacOS } from "@/keys";
-// AppMenu.tsx — one File/Edit/View menu layout, rendered as shadcn chrome in
+// AppMenu.tsx — one File/Edit/Layer/View menu layout, rendered as shadcn chrome in
 // the browser and installed as the native application menu under Tauri. The
 // desktop menu also carries File → Open Recent, rebuilt from src/recent.ts.
 import { useEffect, useRef, useState } from "react";
@@ -8,9 +8,10 @@ import type {
   CheckMenuItem, IconMenuItem, MenuItem, PredefinedMenuItem, Submenu,
 } from "@tauri-apps/api/menu";
 import {
-  Bookmark, BookmarkPlus, BookOpen, Columns2, Contrast, Cylinder, FileImage, Files, FolderOpen,
-  History, Layers, Maximize2, RectangleHorizontal, Redo2, Ruler, Settings, SquareArrowDown,
-  SquareArrowUp, SquarePlus, Undo2, X, ZoomIn, ZoomOut, type LucideIcon,
+  Barcode, Bookmark, BookmarkPlus, BookOpen, Columns2, Contrast, Cylinder, FileImage, Files, FolderOpen,
+  Grid2x2, History, ImagePlus, Layers, Maximize2, Monitor, Moon, Palette, PanelLeft, QrCode, RectangleHorizontal,
+  Redo2, Ruler, Settings, Square, SquareArrowDown, SquareArrowUp, SquarePlus, Sun, Trash2, Type, Undo2, X,
+  ZoomIn, ZoomOut, type LucideIcon,
 } from "lucide-react";
 import { shortcutOf, titleOf, type Command } from "@/components/CommandMenu";
 import { dialogOpen, isTypingTarget } from "@/keys";
@@ -45,11 +46,23 @@ const SYMBOL_GLYPH = {
   "gear": Settings,
   "rectangle": RectangleHorizontal,
   "cylinder": Cylinder,
+  "square": Square,
+  "square.grid.2x2": Grid2x2,
   "ruler": Ruler,
   "rectangle.split.2x1": Columns2,
   "plus.magnifyingglass": ZoomIn,
   "minus.magnifyingglass": ZoomOut,
   "arrow.up.left.and.down.right.magnifyingglass": Maximize2,
+  "textformat": Type,
+  "photo.badge.plus": ImagePlus,
+  "barcode": Barcode,
+  "qrcode": QrCode,
+  "trash": Trash2,
+  "sidebar.left": PanelLeft,
+  "desktopcomputer": Monitor,
+  "sun.max": Sun,
+  "moon": Moon,
+  "paintpalette": Palette,
 } satisfies Record<string, LucideIcon>;
 type MenuSymbol = keyof typeof SYMBOL_GLYPH;
 
@@ -59,6 +72,13 @@ type ActionEntry = {
   text: string;
   /** A checkmark row: its state comes from `checked`, not the command. */
   check?: true;
+  /** The row reads the command's label rather than `text`, which is then only
+   *  the title it is installed under (Save Master… reads Save Variant… while
+   *  a variant is the version) — see rowTitle. */
+  live?: true;
+  /** Extra ⌘K search terms (cmdk keywords): the palette's old wording, so a
+   *  search for "Hide rulers" or "Preview: Mask" still finds the row. */
+  keywords?: string[];
   symbol: MenuSymbol;
 };
 type CheckAction = ActionEntry & { check: true };
@@ -71,7 +91,7 @@ type SubmenuEntry = {
   kind: "submenu";
   id: string;
   text: string;
-  /** Absent on the top-level File/Edit/View titles, which carry no icon. */
+  /** Absent on the top-level File/Edit/Layer/View titles, which carry no icon. */
   symbol?: MenuSymbol;
   items: MenuEntry[];
 };
@@ -87,15 +107,16 @@ export const APP_MENUS: SubmenuEntry[] = [
   {
     kind: "submenu", id: "file-menu", text: "File", items: [
       { kind: "action", id: "tab-new", text: "New Tab", symbol: "plus.square.on.square" },
-      { kind: "action", id: "project-open", text: "Open Project…", symbol: "folder" },
+      { kind: "action", id: "project-open", text: "Open Label…", symbol: "folder" },
       { kind: "recent", id: "recent-menu", text: "Open Recent", symbol: "clock.arrow.circlepath" },
       { kind: "action", id: "tab-close", text: "Close Tab", symbol: "xmark" },
       { kind: "separator", id: "file-new" },
-      { kind: "action", id: "project-save", text: "Save Project", symbol: "square.and.arrow.down" },
-      { kind: "action", id: "project-save-as", text: "Save Project As…", symbol: "doc.on.doc" },
+      { kind: "action", id: "project-save", text: "Save Label", symbol: "square.and.arrow.down" },
+      { kind: "action", id: "project-save-as", text: "Save Label As…", symbol: "doc.on.doc" },
       { kind: "separator", id: "file-master" },
       { kind: "action", id: "master-open", text: "Open Master…", symbol: "books.vertical" },
-      { kind: "action", id: "master-save", text: "Save Master", symbol: "bookmark" },
+      // An ellipsis: it opens the review before anything is written.
+      { kind: "action", id: "master-save", text: "Save Master…", live: true, symbol: "bookmark" },
       { kind: "action", id: "master-save-as", text: "Save Master As…", symbol: "doc.badge.plus" },
       { kind: "separator", id: "file-projects" },
       {
@@ -125,17 +146,45 @@ export const APP_MENUS: SubmenuEntry[] = [
     ],
   },
   {
+    // Remove Layer's ⌫ is display-only, like Undo's: Delete/Backspace go
+    // through App's guarded listener, which stands aside in text fields.
+    kind: "submenu", id: "layer-menu", text: "Layer", items: [
+      { kind: "action", id: "layer-add-text", text: "Add Text Layer", symbol: "textformat" },
+      { kind: "action", id: "layer-add-image", text: "Add Image Layer", symbol: "photo.badge.plus" },
+      { kind: "action", id: "layer-add-barcode", text: "Add Barcode Layer", symbol: "barcode" },
+      { kind: "action", id: "layer-add-qr", text: "Add QR Layer", symbol: "qrcode" },
+      { kind: "separator", id: "layer-remove-sep" },
+      { kind: "action", id: "layer-remove", text: "Remove Layer", symbol: "trash" },
+    ],
+  },
+  {
     kind: "submenu", id: "view-menu", text: "View", items: [
-      { kind: "action", id: "view-label", text: "Label", check: true, symbol: "rectangle" },
-      { kind: "action", id: "view-mask", text: "Mask", check: true, symbol: "circle.lefthalf.filled" },
-      { kind: "action", id: "view-can", text: "Can", check: true, symbol: "cylinder" },
+      { kind: "action", id: "view-label", text: "Label", check: true, keywords: ["Preview: Label"], symbol: "rectangle" },
+      { kind: "action", id: "view-mask", text: "Mask", check: true, keywords: ["Preview: Mask"], symbol: "circle.lefthalf.filled" },
+      { kind: "action", id: "view-can", text: "Can", check: true, keywords: ["Preview: Can"], symbol: "cylinder" },
       { kind: "separator", id: "view-modes" },
-      { kind: "action", id: "rulers", text: "Rulers", check: true, symbol: "ruler" },
-      { kind: "action", id: "guides", text: "Guides", check: true, symbol: "rectangle.split.2x1" },
+      // The Can view's count, as the status bar's 1|4; disabled in 2D.
+      { kind: "action", id: "view-one-can", text: "One Can", check: true, keywords: ["Preview: One Can"], symbol: "square" },
+      { kind: "action", id: "view-four-pack", text: "Four-Pack", check: true, keywords: ["Preview: Four-Pack"], symbol: "square.grid.2x2" },
+      { kind: "separator", id: "view-cans" },
+      // ⌘B is the sidebar provider's own guarded listener, never a native
+      // accelerator (that would take Bold from a text field).
+      { kind: "action", id: "layers", text: "Layers", check: true, keywords: ["Show sidebar", "Hide sidebar"], symbol: "sidebar.left" },
+      { kind: "action", id: "rulers", text: "Rulers", check: true, keywords: ["Show rulers", "Hide rulers"], symbol: "ruler" },
+      { kind: "action", id: "guides", text: "Guides", check: true, keywords: ["Show guides", "Hide guides"], symbol: "rectangle.split.2x1" },
       { kind: "separator", id: "view-zoom" },
       { kind: "action", id: "zoom-in", text: "Zoom In", symbol: "plus.magnifyingglass" },
       { kind: "action", id: "zoom-out", text: "Zoom Out", symbol: "minus.magnifyingglass" },
       { kind: "action", id: "zoom-fit", text: "Zoom to Fit", symbol: "arrow.up.left.and.down.right.magnifyingglass" },
+      { kind: "separator", id: "view-appearance" },
+      // The same three choices as Settings → Appearance; one is always checked.
+      {
+        kind: "submenu", id: "appearance-menu", text: "Appearance", symbol: "paintpalette", items: [
+          { kind: "action", id: "theme-system", text: "System", check: true, keywords: ["Theme"], symbol: "desktopcomputer" },
+          { kind: "action", id: "theme-light", text: "Light", check: true, keywords: ["Theme"], symbol: "sun.max" },
+          { kind: "action", id: "theme-dark", text: "Dark", check: true, keywords: ["Theme"], symbol: "moon" },
+        ],
+      },
       // Ours rather than the row AppKit inserts on first open, which arrives
       // after menu_symbols.rs has run and so would stay without its icon.
       { kind: "predefined", item: "Separator" },
@@ -146,6 +195,21 @@ export const APP_MENUS: SubmenuEntry[] = [
 
 function isCheckAction(entry: ActionEntry): entry is CheckAction {
   return !!entry.check;
+}
+
+/** What a row reads on every surface (both menus and the ⌘K palette): its
+ *  own text, or the command's label for a `live` row, plus any note. */
+export const rowTitle = (entry: ActionEntry, command: Command) =>
+  titleOf(command, entry.live ? command.label : entry.text);
+
+/** The ⌘K palette's groups: one per menu and submenu, in menu order, each
+ *  holding that menu's own rows (a submenu's rows are its own group). */
+export function menuGroups(entries: MenuEntry[] = APP_MENUS): { heading: string; rows: ActionEntry[] }[] {
+  return entries.flatMap((entry) => {
+    if (entry.kind !== "submenu") return [];
+    const rows = entry.items.filter((item): item is ActionEntry => item.kind === "action");
+    return [{ heading: entry.text, rows }, ...menuGroups(entry.items)];
+  });
 }
 
 export function actionsIn(entries: MenuEntry[]): ActionEntry[] {
@@ -164,11 +228,14 @@ const MENU_ITEMS =
   "min-w-52 [&_[data-slot=menubar-item]]:text-xs [&_[data-slot=menubar-checkbox-item]]:text-xs [&_[data-slot=menubar-sub-trigger]]:text-xs";
 
 type CommandIndex = Record<string, Command>;
-type CheckedState = Partial<Record<string, boolean>>;
+/** Which check rows are on, by command id: one map for both menus and ⌘K. */
+export type CheckedState = Partial<Record<string, boolean>>;
 
 function MenuGlyph({ name }: { name: MenuSymbol }) {
   const Icon = SYMBOL_GLYPH[name];
-  return <Icon aria-hidden="true" />;
+  // Sized here: MenubarCheckboxItem, unlike MenubarItem, has no svg size
+  // rule, so an unsized glyph drew at Lucide's 24px default on check rows.
+  return <Icon aria-hidden="true" className="size-4" />;
 }
 
 function WebEntries(props: {
@@ -204,7 +271,7 @@ function WebEntries(props: {
         <MenubarCheckboxItem key={entry.id} checked={!!props.checked[entry.id]}
           disabled={command.disabled} onClick={command.run}>
           <MenuGlyph name={entry.symbol} />
-          {titleOf(command, entry.text)}
+          {rowTitle(entry, command)}
           {keys && <MenubarShortcut>{keys}</MenubarShortcut>}
         </MenubarCheckboxItem>
       );
@@ -212,7 +279,7 @@ function WebEntries(props: {
     return (
       <MenubarItem key={entry.id} disabled={command.disabled} onClick={command.run}>
         <MenuGlyph name={entry.symbol} />
-        {titleOf(command, entry.text)}
+        {rowTitle(entry, command)}
         {keys && <MenubarShortcut>{keys}</MenubarShortcut>}
       </MenubarItem>
     );
@@ -242,8 +309,11 @@ type NativeAction = MenuItem | CheckMenuItem | IconMenuItem;
 
 /** Native menus must own modified accelerators so macOS can display them.
  *  Bare 1–3/R/G bindings deliberately stay in App's guarded key listener:
- *  registering those with the OS would fire them while the user is typing. */
+ *  registering those with the OS would fire them while the user is typing.
+ *  So do display-only shortcuts other than Undo/Redo (whose run below hands a
+ *  focused field its own undo): ⌘B would take Bold from a text field. */
 export function nativeAccelerator(command: Command): string | undefined {
+  if (!command.key && command.id !== "undo" && command.id !== "redo") return undefined;
   const glyphs = shortcutOf(command, true);
   if (!glyphs?.includes("⌘")) return undefined;
   const key = glyphs.replace("⇧", "").replace("⌘", "");
@@ -570,7 +640,7 @@ function useNativeMenu(
     enabled: !commands[entry.id].disabled,
     checked: isCheckAction(entry) ? !!checked[entry.id] : null,
     plain: entry.text,
-    text: titleOf(commands[entry.id], entry.text),
+    text: rowTitle(entry, commands[entry.id]),
   }));
   const signature = JSON.stringify(snapshot);
 
@@ -602,7 +672,7 @@ function useNativeMenu(
       errorRef.current(`Could not update the native menu: ${errMsg(error)}`);
     });
   // signature is the compact set of native-visible state; ordinary App
-  // renders do not produce 26 IPC updates. resync re-runs it after a native
+  // renders do not produce an IPC update per row. resync re-runs it after a native
   // check click whose command left app state unchanged.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, signature, resync]);

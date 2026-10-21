@@ -108,3 +108,11 @@ it("Save packs only the image art the document still references (#84)", async ()
   expect(packed.ids.length).toBeGreaterThan(0);
   for (const ids of packed.ids) expect(ids).toHaveLength(1);
 });
+
+it("a good image clears the error a bad one left in the header (#511)", async () => {
+  await act(async () => { await wells.image!.onFile(new File(["not an image"], "bad.svg", { type: "image/svg+xml" })); });
+  expect(document.body.textContent).toContain("Could not load image");
+  await act(async () => { await wells.image!.onFile(svg("a.svg", "M0 0 L10 0 L10 10 Z")); });
+  await settle();
+  expect(document.body.textContent).not.toContain("Could not load image");
+});

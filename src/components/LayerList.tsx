@@ -23,6 +23,7 @@ import {
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { Layer, LayerKind } from "@/model/layers";
 import type { LayerRow } from "@/model/rows";
+import { LOCK_TITLE } from "./LayerInspectorControls";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -321,7 +322,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
           onClick={(e) => { stop(e); p.onToggle(id, "locked", !locked); }}
           aria-label={`${name}: locked`}
           aria-pressed={locked}
-          title={locked ? "Locked — cannot be moved" : "Unlocked"}
+          title={locked ? LOCK_TITLE : "Unlocked"}
           className={control(locked)}
         >
           <Lock />

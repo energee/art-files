@@ -4,6 +4,7 @@
 import { Suspense, lazy, useEffect, useState, type ComponentType } from "react";
 import { dialogOpen, isMacOS, shortcutLabel } from "@/keys";
 import { DialogLoadFailed, DialogLoading } from "@/components/LazyDialog";
+import type { CheckedState } from "@/components/AppMenu";
 
 // A palette chunk that fails to load says so in a dialog ⌘K or Escape closes,
 // instead of unmounting the editor (see App's CanView).
@@ -20,8 +21,9 @@ const CommandPalette = lazy<ComponentType<CommandPaletteProps>>(() => import("@/
  *  bare key that fires it, `shortcut` the glyphs shown to the user — separate
  *  fields because ⌘Z is displayed here but handled by its own listener. */
 export interface Command {
-  /** Stable lookup key. A label can change with state (Show/Hide guides),
-   *  so surfaces address a command by id, never by what it reads. */
+  /** Stable lookup key. A label can change with state (Save Master… reads
+   *  Save Variant… on a variant), so surfaces address a command by id,
+   *  never by what it reads. */
   id: string;
   label: string;
   run: () => void;
@@ -38,8 +40,8 @@ export interface Command {
   note?: string;
 }
 
-/** A command's title as a surface shows it: `text` (the palette's label, or
- *  the menu row's own wording) plus the command's note, if any. */
+/** A command's title as a surface shows it: `text` (the command's label, or
+ *  the menu row's own wording — see AppMenu's rowTitle) plus its note, if any. */
 export const titleOf = (c: Command, text = c.label) => (c.note ? `${text} (${c.note})` : text);
 
 /** The glyphs to show for a command, derived from the key it actually fires
@@ -49,7 +51,7 @@ export const shortcutOf = (c: Command, mac = isMacOS()) => {
   return keys ? (mac ? keys : shortcutLabel(keys, false)) : undefined;
 };
 
-export function CommandMenu(props: { actions: Command[] }) {
+export function CommandMenu(props: { actions: Command[]; checked?: CheckedState }) {
   // null until the first ⌘K, so the palette chunk is not fetched before it is
   // wanted; after that it stays mounted so closing can animate out.
   const [open, setOpen] = useState<boolean | null>(null);
@@ -70,7 +72,7 @@ export function CommandMenu(props: { actions: Command[] }) {
   }, []);
   return open === null ? null : (
     <Suspense fallback={open ? <DialogLoading /> : null}>
-      <CommandPalette open={open} onOpenChange={setOpen} actions={props.actions} />
+      <CommandPalette open={open} onOpenChange={setOpen} actions={props.actions} checked={props.checked} />
     </Suspense>
   );
 }

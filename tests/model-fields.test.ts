@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateField } from "../src/model/fields";
+import { validateField, validateLayerInput } from "../src/model/fields";
 import type { FieldDecl } from "../src/model/types";
 
 const decl = (over: Partial<FieldDecl>): FieldDecl =>
@@ -59,5 +59,23 @@ describe("validateField", () => {
   });
   it("treats a blank number as not filled yet", () => {
     expect(validateField(decl({ kind: "number", min: 1 }), "  ").ok).toBe(true);
+  });
+});
+
+// One spelling of "check a number/code text layer's typed value" for the
+// resolver and the on-canvas editor (UX audit #17 review).
+describe("validateLayerInput", () => {
+  const layer = { id: "abv", name: "ABV", input: "number" as const, min: 0, max: 20 };
+  it("checks a number layer against its min/max", () => {
+    expect(validateLayerInput(layer, "5.8").ok).toBe(true);
+    expect(validateLayerInput(layer, "150").error).toBe("Must be at most 20.");
+  });
+  it("checks a code layer against its symbology", () => {
+    const code = { id: "upc", name: "UPC", input: "code" as const, symbology: "upc-a" as const };
+    expect(validateLayerInput(code, "036000291452").ok).toBe(true);
+    expect(validateLayerInput(code, "123").ok).toBe(false);
+  });
+  it("passes a layer with no input", () => {
+    expect(validateLayerInput({ id: "t", name: "T" }, "anything").ok).toBe(true);
   });
 });

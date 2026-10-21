@@ -37,8 +37,8 @@
     "fileAssociations": [
       {
         "ext": ["label"],
-        "name": "Label Lab Project",
-        "description": "Label Lab project file",
+        "name": "Label Lab Label",
+        "description": "Label Lab label file",
         "role": "Editor"
       }
     ],

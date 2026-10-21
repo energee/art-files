@@ -41,12 +41,13 @@ async function mount(fileToOpen: FileToOpen | null = null) {
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
   const saveSlot: { current: (() => Promise<boolean>) | null } = { current: null };
   const onMeta = vi.fn();
-  await act(async () => root.render(createElement(DocumentEditor, {
+  const props = {
     active: true, fileToOpen, onOpenSettled: vi.fn(), onMeta, saveSlot,
     render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(), onOpenProject: vi.fn(),
     onNewTab: vi.fn(), onCloseTab: vi.fn(), onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
-  })));
-  return { saveSlot, onMeta };
+  };
+  await act(async () => root.render(createElement(DocumentEditor, props)));
+  return { saveSlot, onMeta, props };
 }
 async function toggle(id: string) {
   const b = document.querySelector(`[data-layer-id="${id}"] button[aria-label$=": enabled"]`) as HTMLButtonElement;
@@ -78,7 +79,7 @@ it("reports a refused write without downloading or clearing dirty (#265)", async
   await toggle("warning");
   await act(async () => { expect(await saveSlot.current!()).toBe(false); });
   expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: true });
-  expect(document.body.textContent).toContain("Could not save project: Permission refused");
+  expect(document.body.textContent).toContain("Could not save label: Permission refused");
   expect(download).not.toHaveBeenCalled();
 });
 it("a cancelled Save As preserves the original target (#265)", async () => {
@@ -218,6 +219,11 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psd", "psd"
       await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(2), { timeout: 4000 });
     });
     expect(document.body.textContent).toMatch(new RegExp(`Saved renamed-art\\.${extension}\\. Could not save .+-mask\\.${extension}: Disk full`));
+    // Toggling a plate reruns asset assembly; its success must not wipe the
+    // export's error, which it did not set (#511).
+    await toggle("mask");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 300)); });
+    expect(document.body.textContent).toContain("Disk full");
   });
   it(`${extension}: a finished export names both saved files (#400)`, async () => {
     // Each pick saves under the name the app suggested.
@@ -335,8 +341,164 @@ it("Open Master's benched-values note survives the master's texture loading (#11
   openMasterFile({ ...base, id: "master-other", name: "Other", layers: base.layers.filter((l) => l.id !== "volume") },
     { texture: { name: "art.png", bytes: new Uint8Array([137, 80, 78, 71]) } });
   await run("master-open");
+  // Opening a master that hides a filled value previews the switch first.
+  await act(async () => (document.querySelector("#master-picker-continue") as HTMLButtonElement).click());
   await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
   expect(document.body.textContent).toContain("1 value(s) benched: volume");
+});
+
+/** A label filling `volume`, and a master without that layer to open over it. */
+async function openHidingMaster() {
+  const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});
+  await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
+  await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  const base = lolevMaster();
+  const handle = openMasterFile({ ...base, id: "master-other", name: "Other", layers: base.layers.filter((l) => l.id !== "volume") });
+  await run("master-open");
+  return handle;
+}
+
+it("Open Master previews a switch that hides values, and Cancel leaves the label on its master", async () => {
+  const other = await openHidingMaster();
+  const preview = document.querySelector("#master-picker-preview");
+  expect(preview?.textContent).toContain('Switching to "Other" hides 1 filled field');
+  // Nothing has switched yet.
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Lolev");
+  const cancel = [...preview!.querySelectorAll("button")].find((b) => b.textContent === "Cancel")!;
+  await act(async () => cancel.click());
+  expect(document.querySelector("#master-picker-preview")).toBeNull();
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Lolev");
+  // The opened master joined the library all the same, but not as the
+  // last-applied master a new untitled tab would start on…
+  expect(localStorage.getItem("labellab.master:master-other")).toContain("Other");
+  expect(localStorage.getItem("labellab.lastMaster")).not.toBe("master-other");
+  // …but Save Master was never bound to its file (#81).
+  const { pick } = picker();
+  await toggle("warning");
+  await run("master-save");
+  const save = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Save Master")!;
+  await act(async () => { save.click(); await new Promise((r) => setTimeout(r, 10)); });
+  expect(other.createWritable).not.toHaveBeenCalled();
+  expect(pick).toHaveBeenCalledOnce();
+});
+
+it("Open Master reopens a collapsed sidebar to show its preview", async () => {
+  const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});
+  await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
+  await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  const sidebar = () => document.querySelector('[data-slot="sidebar"]')!.getAttribute("data-state");
+  act(() => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "b", metaKey: true, bubbles: true, cancelable: true })); });
+  expect(sidebar()).toBe("collapsed");
+  const base = lolevMaster();
+  openMasterFile({ ...base, id: "master-other", name: "Other", layers: base.layers.filter((l) => l.id !== "volume") });
+  await run("master-open");
+  expect(sidebar()).toBe("expanded");
+  expect(document.querySelector("#master-picker-preview")).not.toBeNull();
+  expect(document.activeElement?.textContent).toBe("Cancel");
+});
+
+it("Open Master's Continue switches and binds Save Master to the opened file", async () => {
+  const other = await openHidingMaster();
+  await act(async () => { (document.querySelector("#master-picker-continue") as HTMLButtonElement).click(); await new Promise((r) => setTimeout(r, 10)); });
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
+  await toggle("warning");
+  await run("master-save");
+  const save = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Save Master")!;
+  await act(async () => { save.click(); await new Promise((r) => setTimeout(r, 10)); });
+  expect(other.createWritable).toHaveBeenCalledOnce();
+});
+
+// A second Open Master while the first one's card is open: the card must
+// follow the label, never offer the first master's stale switch.
+it("a second Open Master that hides nothing closes the first one's card", async () => {
+  await openHidingMaster();
+  expect(document.querySelector("#master-picker-preview")).not.toBeNull();
+  openMasterFile({ ...lolevMaster(), id: "master-same", name: "Same" });
+  await run("master-open");
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Same");
+  expect(document.querySelector("#master-picker-preview")).toBeNull();
+});
+
+it("a second Open Master that hides values replaces the first one's card", async () => {
+  await openHidingMaster();
+  const base = lolevMaster();
+  openMasterFile({ ...base, id: "master-third", name: "Third", layers: base.layers.filter((l) => l.id !== "volume") });
+  await run("master-open");
+  expect(document.querySelector("#master-picker-preview")?.textContent).toContain('Switching to "Third"');
+  await act(async () => { (document.querySelector("#master-picker-continue") as HTMLButtonElement).click(); await new Promise((r) => setTimeout(r, 10)); });
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Third");
+  expect(document.querySelector("#master-picker-preview")).toBeNull();
+});
+
+it("Cancel on Open Master's card hands focus back to the master picker", async () => {
+  await openHidingMaster();
+  await act(async () => (document.activeElement as HTMLButtonElement).click());
+  expect(document.querySelector("#master-picker-preview")).toBeNull();
+  expect(document.activeElement?.id).toBe("master-picker");
+});
+
+// Continue runs long after the open: it must adopt the master's art against
+// the label's slots as they are then, so art dropped meanwhile wins.
+it("Open Master's Continue keeps art dropped while its card was open", async () => {
+  class FakeBitmap { width = 10; height = 10; close() {} }
+  vi.stubGlobal("ImageBitmap", FakeBitmap);
+  const decoded: string[] = [];
+  vi.stubGlobal("createImageBitmap", async (f: Blob) => { decoded.push((f as File).name); return new FakeBitmap(); });
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage() {} } as never);
+  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((cb) => cb(new Blob(["png"])));
+  const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});
+  await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
+  await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  const base = lolevMaster();
+  openMasterFile({ ...base, id: "master-other", name: "Other", layers: base.layers.filter((l) => l.id !== "volume") },
+    { texture: { name: "master-art.png", bytes: new Uint8Array([137, 80, 78, 71]) } });
+  await run("master-open");
+  expect(document.querySelector("#master-picker-preview")).not.toBeNull();
+  const art = new File(["ok"], "mine.png", { type: "image/png" });
+  const e = new Event("drop", { bubbles: true, cancelable: true });
+  Object.defineProperty(e, "dataTransfer", { value: { types: ["Files"], items: [{ kind: "file", type: art.type }], files: [art] } });
+  Object.defineProperty(e, "clientX", { value: 10 });
+  await act(async () => { document.body.dispatchEvent(e); await new Promise((r) => setTimeout(r, 10)); });
+  expect(decoded).toEqual(["mine.png"]);
+  await act(async () => { (document.querySelector("#master-picker-continue") as HTMLButtonElement).click(); await new Promise((r) => setTimeout(r, 20)); });
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Other");
+  expect(decoded).toEqual(["mine.png"]);
+});
+
+// Opening a .label replaces the whole document: the earlier Open Master's
+// switch is not this document's to make.
+it("opening a label into the tab withdraws a pending Open Master card", async () => {
+  const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});
+  const { props } = await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
+  await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  const base = lolevMaster();
+  openMasterFile({ ...base, id: "master-other", name: "Other", layers: base.layers.filter((l) => l.id !== "volume") });
+  await run("master-open");
+  expect(document.querySelector("#master-picker-preview")).not.toBeNull();
+  await act(async () => {
+    root.render(createElement(DocumentEditor, { ...props, fileToOpen: { seq: 2, file: new File([label as unknown as BlobPart], "second.label") } }));
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  expect(document.querySelector("#master-picker-preview")).toBeNull();
+  expect(document.querySelector("#master-picker")?.textContent).toContain("Lolev");
+});
+
+// A file with the current master's own id: Cancel must leave that id's
+// remembered copy and path alone, or a reload would resolve the label to
+// the file the operator declined.
+it("cancelling Open Master of the current master's id keeps its remembered copy", async () => {
+  const label = packLabel({ formatVersion: 3, masterId: "lolev", enabledVariants: [], values: { volume: "16 FL OZ" } }, {});
+  await mount({ seq: 1, file: new File([label as unknown as BlobPart], "beer.label") });
+  await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  const before = localStorage.getItem("labellab.master:lolev");
+  const base = lolevMaster();
+  openMasterFile({ ...base, layers: base.layers.filter((l) => l.id !== "volume") });
+  await run("master-open");
+  const preview = document.querySelector("#master-picker-preview");
+  expect(preview?.textContent).toContain("hides 1 filled field");
+  const cancel = [...preview!.querySelectorAll("button")].find((b) => b.textContent === "Cancel")!;
+  await act(async () => cancel.click());
+  expect(localStorage.getItem("labellab.master:lolev")).toBe(before);
 });
 
 it("a promotion whose layer is deleted during the write doesn't cost the others", async () => {

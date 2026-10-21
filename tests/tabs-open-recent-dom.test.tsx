@@ -98,6 +98,6 @@ it("a missing recent file shows the open error and leaves the list", async () =>
   expect(mocks.editors[0].fileToOpen).toBeNull();
   // role="alert": the menu click leaves focus elsewhere, so it is announced.
   expect(container.querySelector('[role="alert"]')?.textContent)
-    .toBe("Could not open project: /labels/Gone.label no longer exists.");
+    .toBe("Could not open label: /labels/Gone.label no longer exists.");
   expect(recentLabels()).toEqual(["/labels/Here.label"]);
 });
