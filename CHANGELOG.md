@@ -7,6 +7,9 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Changed
+- **Test tooling update.** happy-dom 21 for the DOM tests; the app itself is unchanged.
+- **Interface library patch updates.** Tauri JS 2.12.3 and its dialog, file-system and updater plugins, Base UI 1.9, Lucide icons 1.56, ag-psd 31.0.3 and react-dropzone 20.1.3, plus newer build tooling; no change in behaviour.
+- **Desktop runtime patch updates.** Tauri 2.12.2 and its dialog, file-system and updater plugins (Rust side); no change in behaviour.
 - **A clearer master picker.** The menu now heads the master you're using **Current master** and the rest **Other masters**, and each master shows its file name and the day it was last used, so masters with the same name can be told apart. The ✕ that removes a master from the library sits at the right edge of its row.
 - **Margin inset is locked as master geometry.** The ruler-corner settings now list Margin inset under a **Master** heading, locked until you unlock it, with a note that it changes the master. Rulers, guides and units stay session-only.
 - **Pick units from the trim-size readout.** Clicking the status-bar size readout opens the same Inches / Points / Pixels choice as the ruler corner, with the current unit selected, instead of silently cycling to the next unit.
@@ -14,6 +17,9 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 - **A restored tab saves back to its file.** After crash recovery, a desktop tab that came from a `.label` saves to that file again when the file is unchanged since the recovery copy and not open in another tab. Otherwise Save still asks where, and a note names the original file.
+
+### Security
+- **TLS library patches for the update check.** rustls 0.23.46, rustls-webpki 0.103.16 and webpki-root-certs 1.0.10 fix TLS downgrade, certificate-trust and secret-logging advisories (RUSTSEC-2026-0347/0348 and others). No change in behaviour.
 
 ## [0.1.106] - 2026-10-11
 
