@@ -2394,11 +2394,18 @@ export const DocumentEditor = memo(function DocumentEditor({
             </span>
             {!texture && !exporting && previewReady && (
               <div className="pointer-events-none absolute inset-x-0 bottom-16 flex justify-center">
-                <span className="rounded-full border border-dashed border-border bg-background/85 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-sm">
-                  drop a texture anywhere to fill the background
+                <span className="mx-4 rounded-full border border-dashed border-border bg-background/85 px-3 py-1.5 text-center text-xs text-muted-foreground backdrop-blur-sm">
+                  drop an image anywhere: left half of the window → background, right half of the window → metallic mask (PNG/WebP)
                 </span>
               </div>
             )}
+            {/* Drop a texture or mask anywhere in the window; the overlay
+                draws over this pane only, so the sidebar and the inspector's
+                drop wells stay visible. Only the active tab mounts the
+                window-level listeners. */}
+            {active && <AssetDropOverlay
+              onTexture={(f) => void onTexture(f)}
+              onMask={(f) => void onMask(f)} />}
             {!previewReady && !exporting && !buildError && !renderError && (
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
@@ -2468,9 +2475,10 @@ export const DocumentEditor = memo(function DocumentEditor({
           </div>
         </section>
         {/* Right inspector: a shadcn Sheet driven by the selection — open
-            while a layer is selected, closed (Esc or a click on the empty pasteboard) by
-            clearing it. Non-modal and overlay-free so the preview and the
-            Layers list stay clickable while inspecting. active gate: the
+            while a layer is selected, closed (Esc, the inspector's close button
+            or a click on the empty pasteboard) by clearing it. Non-modal and
+            overlay-free so the preview and the Layers list stay clickable
+            while inspecting. active gate: the
             sheet portals to document.body, escaping the shell's display:none. */}
         <Sheet open={active && !!inspected} modal={false}
           // Only a deliberate close clears the selection — the sheet has no
@@ -2513,15 +2521,13 @@ export const DocumentEditor = memo(function DocumentEditor({
                 content={contentFor(inspected.layer)}
                 rasterArt={inspected.layer.kind === "image"
                   && (customImages[inspected.layer.asset]?.image.kind ?? "svg") !== "svg"}
-                fontFamily={family} />
+                fontFamily={family}
+                selectionCount={selected.length}
+                offVariant={inspected.variant && !inspected.variant.enabled ? inspected.variant.name : undefined}
+                showCloseButton />
             )}
           </SheetContent>
         </Sheet>
-        {/* Drop a texture or mask anywhere in the window. Only the active
-            tab mounts the window-level listeners. */}
-        {active && <AssetDropOverlay
-          onTexture={(f) => void onTexture(f)}
-          onMask={(f) => void onMask(f)} />}
         {active && <CommandMenu actions={commands} />}
       </div>
         </SidebarInset>

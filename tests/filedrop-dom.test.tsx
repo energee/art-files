@@ -30,7 +30,7 @@ afterEach(() => {
   onMask.mockReset();
 });
 
-const overlay = () => document.querySelector(".fixed");
+const overlay = () => document.querySelector("[data-asset-drop-overlay]");
 
 describe("AssetDropOverlay window drops", () => {
   it("does not route or arm for unclaimed file types", () => {
@@ -82,6 +82,60 @@ describe("AssetDropOverlay window drops", () => {
     expect(overlay()).toBeNull();
     field.remove();
     inner.remove();
+  });
+
+  // UX audit #14: a full-window overlay dimmed the layer list, menu bar and
+  // tab strip. It now fills only its positioned parent (the preview pane), but
+  // its divider still sits at the WINDOW's midpoint, where globalAssetKind
+  // splits texture from mask.
+  it("covers its parent, not the window, and splits at the window midpoint", () => {
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({ left: 200, width: 600, top: 0, height: 400, right: 800, bottom: 400, x: 200, y: 0, toJSON: () => ({}) });
+    const width = vi.spyOn(window, "innerWidth", "get").mockReturnValue(1000);
+    onTestFinished(() => { rect.mockRestore(); width.mockRestore(); });
+    fileDrag("dragover", png);
+    const el = overlay() as HTMLElement;
+    expect(el.className).not.toContain("fixed");
+    expect(el.className).toContain("absolute");
+    // Window midpoint 500 minus the pane's left edge 200.
+    expect(el.style.getPropertyValue("--split")).toBe("300px");
+  });
+
+  // The pane moves under a live drag (a window resize, the inspector's 200 ms
+  // margin transition), so each dragover re-measures, not only a render.
+  it("re-measures the split on every dragover", () => {
+    const box = { left: 200, width: 600, top: 0, height: 400, right: 800, bottom: 400, x: 200, y: 0, toJSON: () => ({}) };
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(() => ({ ...box }));
+    const width = vi.spyOn(window, "innerWidth", "get").mockReturnValue(1000);
+    onTestFinished(() => { rect.mockRestore(); width.mockRestore(); });
+    fileDrag("dragover", png);
+    expect((overlay() as HTMLElement).style.getPropertyValue("--split")).toBe("300px");
+    box.left = 300;
+    fileDrag("dragover", png);
+    expect((overlay() as HTMLElement).style.getPropertyValue("--split")).toBe("200px");
+  });
+
+  // A pane that starts right of the window's middle is all mask: the split
+  // clamps to its left edge rather than going negative.
+  it("clamps the split to the pane when the window midpoint falls outside it", () => {
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({ left: 600, width: 400, top: 0, height: 400, right: 1000, bottom: 400, x: 600, y: 0, toJSON: () => ({}) });
+    const width = vi.spyOn(window, "innerWidth", "get").mockReturnValue(1000);
+    onTestFinished(() => { rect.mockRestore(); width.mockRestore(); });
+    fileDrag("dragover", png);
+    expect((overlay() as HTMLElement).style.getPropertyValue("--split")).toBe("0px");
+  });
+
+  // The preview pane has a 1px left border; an absolute child is placed from
+  // the padding edge, so the border comes off the split too.
+  it("measures the split from the pane's padding edge, past its left border", () => {
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({ left: 200, width: 600, top: 0, height: 400, right: 800, bottom: 400, x: 200, y: 0, toJSON: () => ({}) });
+    const border = vi.spyOn(HTMLElement.prototype, "clientLeft", "get").mockReturnValue(1);
+    const width = vi.spyOn(window, "innerWidth", "get").mockReturnValue(1000);
+    onTestFinished(() => { rect.mockRestore(); border.mockRestore(); width.mockRestore(); });
+    fileDrag("dragover", png);
+    expect((overlay() as HTMLElement).style.getPropertyValue("--split")).toBe("299px");
   });
 
   it("yields field drops to the field", () => {

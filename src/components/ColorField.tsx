@@ -31,20 +31,12 @@ export function ColorField(props: {
   allowNone?: boolean;
   /** id for the hex Input, so an external Label can point at this field. */
   id?: string;
-  /** The selection's elements disagree about this color (multi-select): show
-   *  an empty field rather than one element's value standing in for all of
-   *  them. Typing or picking still writes to the whole selection. */
-  mixed?: boolean;
 }) {
-  // Only "no ink" when the whole selection agrees. A mixed selection whose
-  // first element happens to have none would otherwise disable the hex Input
-  // and the picker for everyone, leaving no way to set a color without first
-  // toggling no-ink off — which stamps GOLD over the lot.
-  const none = !props.mixed && props.value === "none";
+  const none = props.value === "none";
   // Local text state so a half-typed hex doesn't clobber the config.
   const [text, setText] = useState<string | null>(null);
-  // Picker and Save still need a real color when a mixed value reads "none".
-  const hex = props.value === "none" ? "#ffffff" : props.value;
+  // Picker and Save still need a real color while the value reads "none".
+  const hex = none ? "#ffffff" : props.value;
   // Commit a picked color and drop any half-typed hex sitting in the Input.
   const apply = (v: string) => { setText(null); props.onChange(v as Fill); };
   // Blur / Enter: apply a valid typed hex (the 3-digit form lands only here)
@@ -86,9 +78,7 @@ export function ColorField(props: {
               aria-label="Pick color"
               disabled={none}
               className="size-6 rounded-sm"
-              // A mixed selection has no one swatch color to show; the empty
-              // button reads as "not one value" the way the blank hex does.
-              style={none || props.mixed ? undefined : { background: hex }}
+              style={none ? undefined : { background: hex }}
             />
           }
         />
@@ -159,8 +149,7 @@ export function ColorField(props: {
       </Popover>
       <Input
         id={props.id}
-        value={none ? "none" : (text ?? (props.mixed ? "" : props.value))}
-        placeholder={props.mixed ? "Mixed" : undefined}
+        value={none ? "none" : (text ?? props.value)}
         disabled={none}
         // A full #rrggbb applies as it is typed; a 3-digit hex only on
         // commit (blur / Enter) — every 6-digit entry passes through a valid
