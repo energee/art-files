@@ -9,9 +9,9 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   dropped: [] as string[], opened: [] as unknown[], tauri: false, mtime: 0 as number | null,
-  snaps: [] as Record<string, unknown>[],
+  snaps: [] as Record<string, unknown>[], openProject: null as null | (() => void),
 }));
-const ALPHA = { key: "old:1", name: "alpha.label", bytes: new Uint8Array([1]), savedAt: 5, filePath: "/w/alpha.label" };
+const ALPHA = { key: "old:1", name: "alpha.label", bytes: new Uint8Array([1]), savedAt: 5, filePath: "/w/alpha.label", fileModifiedAt: 4 };
 vi.mock("../src/recovery", async (importOriginal) => ({
   canRebind: (await importOriginal<typeof import("../src/recovery")>()).canRebind,
   recoveryKey: (id: number) => `now:${id}`,
@@ -22,11 +22,13 @@ vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => mocks.tauri, invoke: vi.
 vi.mock("../src/files", async (importOriginal) => ({
   ...await importOriginal<typeof import("../src/files")>(),
   nativeModifiedAt: async () => mocks.mtime,
+  openThrough: async () => ({ path: "/w/alpha.label" }),
 }));
 vi.mock("../src/components/DesktopUpdater", () => ({ DesktopUpdater: () => null }));
 vi.mock("../src/App", () => ({
-  DocumentEditor: (p: { fileToOpen: unknown }) => {
+  DocumentEditor: (p: { fileToOpen: unknown; onOpenProject: () => void }) => {
     if (p.fileToOpen) mocks.opened.push(p.fileToOpen);
+    mocks.openProject = p.onOpenProject;
     return null;
   },
 }));
@@ -84,7 +86,7 @@ it("Escape hides the dialog but keeps the snapshots", async () => {
 });
 
 // UX audit 26: on desktop the restored tab takes its file back only when that
-// file has not been written since the snapshot (recovery.ts canRebind).
+// file has not been written since the tab bound or saved it (recovery.ts canRebind).
 it("on desktop, Restore hands the original path back, rebinding only an untouched file", async () => {
   mocks.tauri = true;
   mocks.mtime = 4;
@@ -97,6 +99,26 @@ it("on desktop, a file written after the snapshot is not rebound", async () => {
   mocks.mtime = 6;
   await press("Restore");
   expect(mocks.opened[0]).toMatchObject({ recoveredPath: { path: "/w/alpha.label", rebind: false } });
+});
+
+// Audit: a write after the tab bound the file but before its snapshot is
+// still newer work than the snapshot.
+it("on desktop, a file written after the tab bound it is not rebound", async () => {
+  mocks.tauri = true;
+  mocks.mtime = 5;
+  await press("Restore");
+  expect(mocks.opened[0]).toMatchObject({ recoveredPath: { path: "/w/alpha.label", rebind: false } });
+});
+
+// Audit: until the restored tab's open lands, its queued rebind path still
+// claims the file, so opening that .label focuses it instead of a second tab.
+it("on desktop, opening the file a restore is rebinding focuses that tab", async () => {
+  mocks.tauri = true;
+  mocks.mtime = 4;
+  await press("Restore");
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  await act(async () => { mocks.openProject!(); await new Promise((r) => setTimeout(r, 0)); });
+  expect(mocks.opened.some((o) => (o as { path?: string }).path === "/w/alpha.label")).toBe(false);
 });
 
 it("on desktop, two snapshots of one file rebind only the first", async () => {

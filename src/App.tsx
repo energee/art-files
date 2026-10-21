@@ -91,7 +91,7 @@ import { AppMenu } from "@/components/AppMenu";
 import { PreviewCompare, SNAP_PT, type PreviewCompareHandle, type SnapLines, type SnapMark } from "@/components/PreviewCompare";
 import { Rulers } from "@/components/Rulers";
 import { RulerUnitPicker } from "@/components/RulerUnitPicker";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { ChevronDown } from "lucide-react";
 import type { CanViewHandle } from "@/components/CanView";
 import {
@@ -303,14 +303,15 @@ const VIEW_CYCLE: { label: string; id: string; at: (m: ViewMode, split: number) 
  *  the opened tab stays unsaved, and takes the snapshot over from the key.
  *  `recoveredPath` is the file that tab was bound to (desktop): Save binds
  *  back to it when the shell found that safe (recovery.ts canRebind), and
- *  otherwise a note names it while Save asks where. */
+ *  otherwise a note names it while Save asks where. Its `modifiedAt` is the
+ *  snapshot's baseline mtime, carried into the rebound tab's snapshots. */
 export type FileToOpen = {
   seq: number;
   path?: string;
   handle?: FileSystemFileHandle;
   file?: File;
   recovered?: string;
-  recoveredPath?: { path: string; rebind: boolean };
+  recoveredPath?: { path: string; rebind: boolean; modifiedAt?: number };
 };
 
 /** What the tab strip shows for this document (src/tabs.ts TabMeta — one
@@ -1400,7 +1401,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     // The close-tab caller must not close over edits made during this write.
     return unchanged;
   };
-  const { filePath, bindPath, bindHandle, forgetProjectFile, saveProject } = useProjectSave({
+  const { filePath, bindPath, bindHandle, forgetProjectFile, saveProject, boundModifiedAt } = useProjectSave({
     pack: packProject, exportBase, onSaved: onProjectSaved, setLoadError, startSaveBatch, saveBytes,
   });
   // masterUnsaved is templateMoved, NOT the Save Master `masterDirty` above:
@@ -1423,7 +1424,8 @@ export const DocumentEditor = memo(function DocumentEditor({
       let bytes: Uint8Array;
       try { bytes = packProject(); } catch { return; } // over the size caps: nothing Save could write either
       void keepRecovery(recoveryKey, {
-        name: exportBase + LABEL_EXT, bytes, savedAt: Date.now(), filePath: filePath ?? undefined,
+        name: exportBase + LABEL_EXT, bytes, savedAt: Date.now(),
+        filePath: filePath ?? undefined, fileModifiedAt: filePath ? boundModifiedAt() : undefined,
       });
     }, 2000);
     return () => clearTimeout(timer);
@@ -1934,18 +1936,19 @@ export const DocumentEditor = memo(function DocumentEditor({
               // a failed copy leaves it for the next launch to offer again.
               setDirty(true);
               setEdited(true);
-              if (recoveredPath?.rebind) bindPath(recoveredPath.path);
+              if (recoveredPath?.rebind) bindPath(recoveredPath.path, recoveredPath.modifiedAt);
               else if (recoveredPath) {
                 // Joins the open's own notes (benched values) rather than replacing them.
                 const note = `Restored from ${recoveredPath.path}, which moved, changed or is open in another tab, so Save asks where`;
                 setLoadError((e) => e.startsWith("Note: ") ? `${e} · ${note}` : `Note: ${note}`);
               }
               const bytes = new Uint8Array(await file.arrayBuffer());
-              // The path rides along only once rebound: with a fresh savedAt,
-              // a refused path would pass canRebind after a second crash.
+              // The path (and its baseline mtime) rides along only once
+              // rebound, so a refused path stays refused after a second crash.
+              const rebound = recoveredPath?.rebind ? recoveredPath : undefined;
               if (!recoveryKey || await keepRecovery(recoveryKey, {
                 name: file.name, bytes, savedAt: Date.now(),
-                filePath: recoveredPath?.rebind ? recoveredPath.path : undefined,
+                filePath: rebound?.path, fileModifiedAt: rebound?.modifiedAt,
               }))
                 void dropRecovery(recovered);
             }
@@ -2426,7 +2429,10 @@ export const DocumentEditor = memo(function DocumentEditor({
                 {sizeLabel(ART.w, ART.h, rulerUnit)}
                 <ChevronDown className="size-3" aria-hidden="true" />
               </PopoverTrigger>
-              <PopoverContent align="end" side="top" className="w-56">
+              <PopoverContent align="end" side="top" className="w-56 gap-3">
+                <PopoverHeader>
+                  <PopoverTitle>Units</PopoverTitle>
+                </PopoverHeader>
                 <RulerUnitPicker unit={rulerUnit} onUnitChange={setRulerUnit} />
               </PopoverContent>
             </Popover>

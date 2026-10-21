@@ -173,6 +173,7 @@ export default function TabsShell() {
         // otherwise Save asks where. A failed stat is "not safe", not an error.
         const recoveredPath = isTauri() && r.filePath ? {
           path: r.filePath,
+          modifiedAt: r.fileModifiedAt,
           rebind: canRebind(r, await nativeModifiedAt(r.filePath).catch(() => null), [
             ...stateRef.current.tabs.flatMap((t) => t.filePath ? [t.filePath] : []),
             ...Object.values(pendingRef.current).flatMap((p) => p.path ? [p.path] : []),
@@ -208,8 +209,12 @@ export default function TabsShell() {
       (id) => !!pendingRef.current[id],
       // Dedupe against queued-but-uncompleted opens too: tab.filePath stays
       // null until the async open finishes, and the OS re-delivers rapid
-      // double-clicks (the Rust side queues them).
-      (id) => pendingRef.current[id]?.path,
+      // double-clicks (the Rust side queues them). A restore cleared to
+      // rebind claims its file the same way.
+      (id) => {
+        const p = pendingRef.current[id];
+        return p?.path ?? (p?.recoveredPath?.rebind ? p.recoveredPath.path : undefined);
+      },
     );
     if ("focus" in route) { apply((st) => activateTab(st, route.focus)); return; }
     if ("reuse" in route) {

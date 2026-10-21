@@ -5,7 +5,7 @@
 // a completed save means for the dirty flags (onSaved) stay with the editor
 // state that owns them.
 import { useRef, useState } from "react";
-import { saveThrough } from "@/files";
+import { nativeModifiedAt, saveThrough } from "@/files";
 import { LABEL_FILTER, LABEL_TYPES } from "@/filePickers";
 import { LABEL_EXT } from "@/labelfile";
 import { errMsg } from "@/lib/utils";
@@ -38,11 +38,23 @@ export function useProjectSave({
   const projectPath = useRef<string | null>(null);
   /** State mirror of projectPath (a ref, which can't drive onMeta). */
   const [filePath, setFilePath] = useState<string | null>(null);
+  /** projectPath's mtime when this tab last opened or saved it: the baseline
+   *  crash recovery snapshots, so a restore rebinds only a file nothing else
+   *  has written since (recovery.ts canRebind). Undefined until the stat
+   *  lands, or when it fails — a snapshot without it never rebinds. */
+  const modifiedAt = useRef<number | undefined>(undefined);
 
-  /** Bind Save to a file an Open read from disk (desktop). */
-  function bindPath(path: string) {
+  /** Bind Save to a file an Open read or a Save wrote (desktop), recording
+   *  its mtime — `known` when the caller already has it (a restore cleared
+   *  to rebind), otherwise stat'ed now. */
+  function bindPath(path: string, known?: number) {
     projectPath.current = path;
     setFilePath(path);
+    modifiedAt.current = known;
+    if (known !== undefined) return;
+    void nativeModifiedAt(path).then((t) => {
+      if (projectPath.current === path) modifiedAt.current = t ?? undefined;
+    }, () => {});
   }
   /** Bind Save to a file an Open picked through File System Access. */
   function bindHandle(handle: FileSystemFileHandle) {
@@ -53,6 +65,7 @@ export function useProjectSave({
     projectHandle.current = null;
     projectPath.current = null;
     setFilePath(null);
+    modifiedAt.current = undefined;
   }
 
   /** File → Save / Save As…: the v3 label plus its embedded art, zipped as
@@ -83,5 +96,8 @@ export function useProjectSave({
     }
   }
 
-  return { filePath, bindPath, bindHandle, forgetProjectFile, saveProject };
+  return {
+    filePath, bindPath, bindHandle, forgetProjectFile, saveProject,
+    boundModifiedAt: () => modifiedAt.current,
+  };
 }

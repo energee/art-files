@@ -11,8 +11,13 @@ import { packLabel } from "../src/model/files";
 import { unsaved } from "../src/tabs";
 
 const calls = vi.hoisted(() => [] as string[]);
+const kept = vi.hoisted(() => [] as { key: string; filePath?: string; fileModifiedAt?: number }[]);
 vi.mock("../src/recovery", () => ({
-  keepRecovery: async (key: string) => { calls.push(`keep ${key}`); return true; },
+  keepRecovery: async (key: string, snap: { filePath?: string; fileModifiedAt?: number }) => {
+    calls.push(`keep ${key}`);
+    kept.push({ key, filePath: snap.filePath, fileModifiedAt: snap.fileModifiedAt });
+    return true;
+  },
   dropRecovery: async (key: string) => { calls.push(`drop ${key}`); },
 }));
 vi.mock("../src/masterCache", () => ({
@@ -84,6 +89,40 @@ it("a restore the shell cleared to rebind saves back to the original file", asyn
   try {
     expect(meta().filePath).toBe("/w/alpha.label");
     expect(unsaved(meta())).toBe(true);
+  } finally {
+    await unmount();
+  }
+}, 30_000);
+
+// Audit: what the snapshots record decides the next launch's rebind. A
+// rebound restore re-saves with the file and the baseline mtime it was cleared
+// against, and the tab's later snapshots (bound, still edited) keep both.
+it("a rebound restore's snapshots record the file and its baseline mtime", async () => {
+  kept.length = 0;
+  const { unmount } = await restore({
+    seq: 1, file: snapshotFile(), recovered: "old:1",
+    recoveredPath: { path: "/w/alpha.label", rebind: true, modifiedAt: 4 },
+  });
+  try {
+    expect(kept[0]).toEqual({ key: "now:2", filePath: "/w/alpha.label", fileModifiedAt: 4 });
+    await act(async () => { await new Promise((r) => setTimeout(r, 2500)); }); // the snapshot debounce
+    expect(kept.length).toBeGreaterThan(1);
+    expect(kept.at(-1)).toEqual({ key: "now:2", filePath: "/w/alpha.label", fileModifiedAt: 4 });
+  } finally {
+    await unmount();
+  }
+}, 30_000);
+
+// A refused path must not ride along: with a fresh savedAt it could be
+// rebound after a second crash.
+it("a restore that cannot rebind re-saves its snapshot without the file", async () => {
+  kept.length = 0;
+  const { unmount } = await restore({
+    seq: 1, file: snapshotFile(), recovered: "old:1",
+    recoveredPath: { path: "/w/alpha.label", rebind: false, modifiedAt: 4 },
+  });
+  try {
+    expect(kept[0]).toEqual({ key: "now:2", filePath: undefined, fileModifiedAt: undefined });
   } finally {
     await unmount();
   }

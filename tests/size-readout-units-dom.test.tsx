@@ -60,6 +60,8 @@ it("opens a unit picker with the current unit pressed, instead of cycling", asyn
   expect(unitButton("Inches")?.getAttribute("aria-pressed")).toBe("true");
   expect(unitButton("Points")?.getAttribute("aria-pressed")).toBe("false");
   expect(unitButton("Pixels")).toBeDefined();
+  // Audit: a visible heading, like the ruler corner's "Ruler settings".
+  expect(document.querySelector('[data-slot="popover-title"]')?.textContent).toBe("Units");
 }, 30_000);
 
 it("picking a unit sets it", async () => {

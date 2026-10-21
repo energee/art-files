@@ -50,22 +50,30 @@ it("a drop issued after a snapshot is never overtaken by it", async () => {
 });
 
 // UX audit 26: a restored tab takes its file back only when Save could not
-// overwrite anything newer — the file still exists, was not written after the
-// snapshot, and no other tab holds it. Anything else keeps "Save asks where".
+// overwrite anything newer — the file still exists, still carries the mtime
+// the tab saw when it bound or saved it, and no other tab holds it. Anything
+// else keeps "Save asks where".
 describe("canRebind", () => {
-  const snap = { name: "a.label", bytes: new Uint8Array([1]), savedAt: 1000, filePath: "/w/a.label" };
-  it("rebinds a file untouched since the snapshot", () => {
+  const snap = { name: "a.label", bytes: new Uint8Array([1]), savedAt: 1000, filePath: "/w/a.label", fileModifiedAt: 900 };
+  it("rebinds a file untouched since the tab bound or saved it", () => {
     expect(canRebind(snap, 900, [])).toBe(true);
-    expect(canRebind(snap, 1000, [])).toBe(true);
   });
   it("never rebinds a snapshot that has no path (older snapshots, the browser)", () => {
     expect(canRebind({ ...snap, filePath: undefined }, 900, [])).toBe(false);
+  });
+  it("never rebinds a snapshot with no baseline mtime", () => {
+    expect(canRebind({ ...snap, fileModifiedAt: undefined }, 900, [])).toBe(false);
   });
   it("never rebinds a missing file", () => {
     expect(canRebind(snap, null, [])).toBe(false);
   });
   it("never rebinds a file written after the snapshot", () => {
     expect(canRebind(snap, 1001, [])).toBe(false);
+  });
+  // Audit: a write between the tab's bind/save and its next snapshot is still
+  // newer work, though its mtime predates the snapshot.
+  it("never rebinds a file written after the tab bound it, even before the snapshot", () => {
+    expect(canRebind(snap, 950, [])).toBe(false);
   });
   it("never rebinds a file another tab already holds", () => {
     expect(canRebind(snap, 900, ["/w/a.label"])).toBe(false);
