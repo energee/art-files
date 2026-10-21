@@ -96,7 +96,9 @@ it("a cancelled review aborts the window close and keeps every tab", async () =>
 
 it("a saved review closes a tab with nothing else unsaved and moves the sweep on", async () => {
   await twoTabsClosingWindow();
-  // The editor reports its master saved before the review resolves.
+  // The editor's contract (DocumentEditor's reviewEnded): onMeta reports the
+  // saved master first, then the review resolves — so the shell decides the
+  // close on post-save meta.
   await review(true, () => mocks.editors[0].onMeta(meta("A", false, false)));
   // The sweep only hands the prompt on once A has closed.
   await vi.waitFor(() => expect(prompt()?.textContent).toContain("“B”"));

@@ -364,13 +364,20 @@ export default function TabsShell() {
 
   /** Review Master…: the tab's own Save Master review, in place of the
    *  prompt. A saved master brings the prompt back for the .label (the
-   *  label still needs its Save or Discard); a cancelled or failed review
-   *  cancels the close — and, mid-sweep, the window close. */
+   *  label still needs its Save or Discard), or closes the tab — and moves
+   *  a window-close sweep on — when nothing is left unsaved; a cancelled
+   *  or failed review cancels the close, and mid-sweep the window close.
+   *  The editor resolves only after onMeta has reported the save, so
+   *  stateRef already holds the tab's post-save meta here. */
   const reviewMaster = async (id: number) => {
     apply((s) => activateTab(s, id)); // the review only shows on the active tab
     setReviewing(true);
     try {
       if (!await extras.current.get(id)?.masterSaveSlot.current?.()) cancelClose();
+      else {
+        const tab = stateRef.current.tabs.find((t) => t.id === id);
+        if (tab && !unsaved(tab)) doClose(id);
+      }
     } finally {
       setReviewing(false);
     }
@@ -427,14 +434,6 @@ export default function TabsShell() {
   }, [windowTitle]);
 
   const confirmTab = state.tabs.find((t) => t.id === confirmClose) ?? null;
-  // A review that saved the master can leave the tab with nothing unsaved
-  // (its .label was already saved): then there is nothing left to decide,
-  // so the close goes ahead — and a window-close sweep moves on. Waits out
-  // an in-flight Save or review, whose own outcome decides the close.
-  useEffect(() => {
-    if (confirmTab && !saving && !reviewing && !unsaved(confirmTab)) doClose(confirmTab.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- doClose reads live refs
-  }, [confirmTab, saving, reviewing]);
 
   // Portaled into the ACTIVE editor's slot just under its menubar row (see
   // tabStripHost in App.tsx): the fixed-position sidebar would overlap a
@@ -616,9 +615,8 @@ export default function TabsShell() {
         }} />
       {/* The dirty-close decision, per tab; Save resolves through the
           editor's own save flow (dialog cancel keeps the tab). Hidden, not
-          dismissed, while Review Master… has the review up, and never shown
-          for a tab the review left with nothing unsaved (closing below). */}
-      <Dialog open={confirmTab !== null && !reviewing && unsaved(confirmTab)} onOpenChange={(open) => !open && cancelClose()}>
+          dismissed, while Review Master… has the review up. */}
+      <Dialog open={confirmTab !== null && !reviewing} onOpenChange={(open) => !open && cancelClose()}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>Close “{confirmTab?.title}”?</DialogTitle>

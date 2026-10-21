@@ -5,7 +5,9 @@
 // warning that the master changes will be discarded, driven by the tab's
 // masterUnsaved meta, and a Review Master… button that opens the review in
 // place of the prompt (never both at once): a saved review brings the prompt
-// back for the .label, a cancelled one cancels the close.
+// back for the .label (or closes the tab, leaving no dialog mounted, when the
+// .label was already saved), a cancelled one cancels the close, and an editor
+// that unmounts mid-review resolves it as not saved.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -50,14 +52,15 @@ async function render(el: ReturnType<typeof createElement>) {
 
 async function mountEditor() {
   const saveSlot: { current: (() => Promise<boolean>) | null } = { current: null };
+  const masterSaveSlot: { current: (() => Promise<boolean>) | null } = { current: null };
   const onMeta = vi.fn();
   await render(createElement(DocumentEditor, {
     active: true, fileToOpen: null, onOpenSettled: vi.fn(), onMeta,
-    saveSlot, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
+    saveSlot, masterSaveSlot, render: { ...DEFAULT_RENDER }, onRenderChange: vi.fn(),
     onOpenProject: vi.fn(), onNewTab: vi.fn(), onCloseTab: vi.fn(),
     onCheckForUpdates: vi.fn(), tabStripHost: vi.fn(),
   }));
-  return { saveSlot, onMeta };
+  return { saveSlot, masterSaveSlot, onMeta };
 }
 
 /** base-ui's menu trigger opens on mousedown — send the whole press. */
@@ -175,6 +178,22 @@ it("a saved review closes the tab outright when the .label was already saved", a
   // Nothing left to decide: the tab closes with no prompt, and a fresh
   // Untitled with no layers replaces the last one.
   await vi.waitFor(() => expect(dialogCount()).toBe(0));
+  // Nothing left mounted either: a closed-but-mounted prompt keeps its
+  // blurred backdrop over the window and swallows every click.
+  await vi.waitFor(() => expect(document.querySelectorAll(
+    '[data-slot="dialog-overlay"], [data-slot="dialog-content"]')).toHaveLength(0));
   expect(document.querySelectorAll('[data-layer-id]').length).toBeLessThan(layersBefore);
   expect(savedNames[1]).toMatch(/\.master$/);
 }, 15000);
+
+it("an editor that unmounts mid-review resolves the close prompt's review as not saved", async () => {
+  const { masterSaveSlot } = await mountEditor();
+  await addTextLayer();
+  let result: boolean | undefined;
+  await act(async () => { void masterSaveSlot.current!().then((saved) => { result = saved; }); });
+  await vi.waitFor(() => expect(reviewOpen()).toBe(true), { timeout: 5000 });
+  // A shell still awaiting it would leave `reviewing` set and stall a quit sweep.
+  await act(async () => { root!.unmount(); });
+  root = null;
+  expect(result).toBe(false);
+});
