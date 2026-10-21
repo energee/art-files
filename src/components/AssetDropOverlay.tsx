@@ -44,6 +44,17 @@ export function isFieldDrop(target: EventTarget | null): boolean {
   return target instanceof Element && !!target.closest(`[${FILE_DROP_ATTR}]`);
 }
 
+/** Set the overlay's --split: the window's midpoint in its parent pane's
+ *  coordinates, clamped to the pane's width. The drop routes by WINDOW half,
+ *  and the pane starts right of the sidebar, so its own middle would mislabel
+ *  the strip between them. A half clamped to nothing simply isn't drawn. */
+function measureSplit(el: HTMLElement) {
+  const pane = el.parentElement?.getBoundingClientRect();
+  if (!pane) return;
+  const split = Math.min(Math.max(window.innerWidth / 2 - pane.left, 0), pane.width);
+  el.style.setProperty("--split", `${split}px`);
+}
+
 export function AssetDropOverlay(props: {
   onTexture: (f: File) => void;
   onMask: (f: File) => void;
@@ -52,6 +63,7 @@ export function AssetDropOverlay(props: {
   const [over, setOver] = React.useState<DropKind | null>(null);
   const handlersRef = React.useRef(props);
   handlersRef.current = props;
+  const overlayRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
     // Drag nesting depth: +1 per dragenter, -1 per dragleave, so the overlay
@@ -80,6 +92,10 @@ export function AssetDropOverlay(props: {
       // Same routing rule as the drop itself, so the highlighted half always
       // matches where the file will land (no name mid-drag; type suffices).
       setOver(globalAssetKind({ name: "", type }, e.clientX, window.innerWidth));
+      // dragover keeps firing while the pointer is in the window, so this
+      // tracks a resize or the inspector's margin transition mid-drag; a
+      // re-render alone won't, since an unchanged half doesn't re-render.
+      if (overlayRef.current) measureSplit(overlayRef.current);
     };
     const onDragEnter = () => { depth++; };
     const onDragLeave = () => {
@@ -127,15 +143,10 @@ export function AssetDropOverlay(props: {
 
   return (
     <div aria-hidden="true" data-asset-drop-overlay
-      // --split is the window's midpoint in this element's own coordinates,
-      // clamped to its width: the drop routes by WINDOW half, and the pane
-      // starts right of the sidebar, so its own middle would mislabel the
-      // strip between them. A half clamped to nothing simply isn't drawn.
+      // Measured on mount here, then on every dragover (measureSplit).
       ref={(el) => {
-        const pane = el?.parentElement?.getBoundingClientRect();
-        if (!el || !pane) return;
-        const split = Math.min(Math.max(window.innerWidth / 2 - pane.left, 0), pane.width);
-        el.style.setProperty("--split", `${split}px`);
+        overlayRef.current = el;
+        if (el) measureSplit(el);
       }}
       className="pointer-events-none absolute inset-0 z-50 bg-background/85 backdrop-blur-sm">
       {half("texture", "Background texture", "PNG, JPG or WebP", "left-0 w-[var(--split)]")}

@@ -2367,7 +2367,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             {!texture && !exporting && previewReady && (
               <div className="pointer-events-none absolute inset-x-0 bottom-16 flex justify-center">
                 <span className="mx-4 rounded-full border border-dashed border-border bg-background/85 px-3 py-1.5 text-center text-xs text-muted-foreground backdrop-blur-sm">
-                  drop an image anywhere: left half → background, right half → metallic mask (PNG/WebP)
+                  drop an image anywhere: left half of the window → background, right half of the window → metallic mask (PNG/WebP)
                 </span>
               </div>
             )}

@@ -84,10 +84,10 @@ describe("AssetDropOverlay window drops", () => {
     inner.remove();
   });
 
-  // UX audit #14: a full-window overlay dimmed the sidebar and the
-  // inspector's own drop wells. It now fills only its positioned parent (the
-  // preview pane), but its divider still sits at the WINDOW's midpoint, where
-  // globalAssetKind splits texture from mask.
+  // UX audit #14: a full-window overlay dimmed the layer list, menu bar and
+  // tab strip. It now fills only its positioned parent (the preview pane), but
+  // its divider still sits at the WINDOW's midpoint, where globalAssetKind
+  // splits texture from mask.
   it("covers its parent, not the window, and splits at the window midpoint", () => {
     const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
       .mockReturnValue({ left: 200, width: 600, top: 0, height: 400, right: 800, bottom: 400, x: 200, y: 0, toJSON: () => ({}) });
@@ -99,6 +99,20 @@ describe("AssetDropOverlay window drops", () => {
     expect(el.className).toContain("absolute");
     // Window midpoint 500 minus the pane's left edge 200.
     expect(el.style.getPropertyValue("--split")).toBe("300px");
+  });
+
+  // The pane moves under a live drag (a window resize, the inspector's 200 ms
+  // margin transition), so each dragover re-measures, not only a render.
+  it("re-measures the split on every dragover", () => {
+    const box = { left: 200, width: 600, top: 0, height: 400, right: 800, bottom: 400, x: 200, y: 0, toJSON: () => ({}) };
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(() => ({ ...box }));
+    const width = vi.spyOn(window, "innerWidth", "get").mockReturnValue(1000);
+    onTestFinished(() => { rect.mockRestore(); width.mockRestore(); });
+    fileDrag("dragover", png);
+    expect((overlay() as HTMLElement).style.getPropertyValue("--split")).toBe("300px");
+    box.left = 300;
+    fileDrag("dragover", png);
+    expect((overlay() as HTMLElement).style.getPropertyValue("--split")).toBe("200px");
   });
 
   // A pane that starts right of the window's middle is all mask: the split
