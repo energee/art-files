@@ -295,14 +295,16 @@ no status, no attempts, no delta.
 
 ## 2026-10-05 ux-narrow-inspector
 - finding: [UX/high] src/App.tsx:2326 — Narrow windows lose the preview when the inspector opens
-- status: open
-- attempts: 0/3
+- status: done
+- attempts: 1/3
 - observed-at: 1b0024900e92d56e90b3f212865e15ecb99fd260
 - evidence: Chrome browser reproduction and DOM/accessibility measurements; full steps and source trace in docs/audits/2026-10-05-ux-narrow-inspector.md
 - delta: investigation complete; runtime unchanged, fix remains open
 - release: non-binary-impacting documentation and agent memory only; no release queued
 - evidence: git diff --cached --check and node scripts/check-release.mjs origin/main passed on audit/ux-narrow-inspector documentation diff based on 1b00249; no application suite run
 - re-check 2026-10-11 @ 0bb506c: still open. src/App.tsx:2276 still adds mr-[300px] whenever a layer is inspected and SheetContent stays fixed at w-[300px] (:2470); no narrow-window policy added
+- delta (2026-10-21, branch fix/inspector-close-button): the fix is the close button. LayerInspector's header row gains a visible ✕ (aria-label "Close inspector", a focusable Button) that calls clearSelection, the same path a bare Escape takes; the Sheet stays non-modal and outside presses still keep a multi-selection. tests/inspector-escape-dom.test.tsx adds the close-button and outside-press cases (red before the button existed). The narrow-window layout (375 × 812, 768 × 900) is closed as browser-only: the desktop window's minWidth is 1024 (src-tauri/tauri.conf.json), so the installed app never reaches those widths; no narrow-window panel policy was added
+- evidence: npx tsc --noEmit, npm run lint, npx vitest run --testTimeout=180000 and node scripts/check-release.mjs origin/main green on fix/inspector-close-button
 
 ## 2026-10-05 ux-color-labels
 - finding: [a11y/high] src/components/ColorField.tsx:164 — Fill and stroke hex fields have no accessible names

@@ -1,7 +1,7 @@
 // LayerInspector.tsx — the right-hand inspector for ONE resolved v3 layer
 // (spec: docs/superpowers/specs/2026-09-04-master-as-layers-design.md, "UI"
 // and "Relative position"). Sections, top to bottom: header (kind icon,
-// inline rename, enabled/locked), the parent's content editor,
+// inline rename, close button, enabled/locked), the parent's content editor,
 // kind-specific geometry/typography, Position, Style, and expandable
 // template field settings.
 //
@@ -30,9 +30,10 @@
 // per-kind geometry and Style in LayerInspectorSections.tsx; the template
 // field settings (fill contract, vocabulary) in LayerInspectorTemplate.tsx.
 import type { ReactNode } from "react";
-import { Barcode, Image, QrCode, Type, type LucideIcon } from "lucide-react";
+import { Barcode, Image, QrCode, Type, XIcon, type LucideIcon } from "lucide-react";
 import type { BindingSide, Layer, LayerKind } from "@/model/layers";
 import type { OverrideBadges as Overridden } from "@/model/edit";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -76,6 +77,9 @@ export function LayerInspector(props: {
   /** An image layer holding raster art (PNG/JPEG): it always prints on
    *  white ink, so Style offers no plate toggle. */
   rasterArt?: boolean;
+  /** Closes the inspector: the header's visible close button (the parent
+   *  clears the selection, as Escape does). */
+  onClose?: () => void;
 }) {
   const { layer } = props;
   const set = props.onChange;
@@ -99,6 +103,11 @@ export function LayerInspector(props: {
           className="h-7 flex-1 text-xs font-medium"
           {...nameProps}
         />
+        {props.onClose && (
+          <Button variant="ghost" size="icon-sm" aria-label="Close inspector" onClick={props.onClose}>
+            <XIcon className="size-4.5" aria-hidden="true" />
+          </Button>
+        )}
       </div>
       {/* The two policy switches read as ordinary Fields (label left, control
           right) like every other row in the panel — crowded onto one line they
