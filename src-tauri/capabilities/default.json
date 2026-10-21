@@ -29,6 +29,12 @@
       ]
     },
     {
+      "identifier": "fs:allow-stat",
+      "allow": [
+        { "path": "**/*.[lL][aA][bB][eE][lL]" }
+      ]
+    },
+    {
       "identifier": "fs:allow-write-file",
       "allow": [
         { "path": "**/*.[lL][aA][bB][eE][lL]" },

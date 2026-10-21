@@ -1,7 +1,7 @@
 // useExport.ts — the editor's full-resolution exports, split out of App.tsx
 // (#416): the PDF and PSD pairs built on demand from the same layers the
 // preview draws, the export-in-flight and "Saved …" note state the header
-// shows, and the batch of download URLs every save (exports, Save Project,
+// shows, and the batch of download URLs every save (exports, Save Label,
 // Save Master) hands its plain-download fallback through.
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { nativePathExists, saveThrough, type FileTarget } from "@/files";

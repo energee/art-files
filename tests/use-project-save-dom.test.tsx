@@ -21,7 +21,7 @@ it("saveProject resolves false with a load error when packing throws", async () 
   const root = createRoot(document.createElement("div"));
   await act(async () => { root.render(createElement(Probe)); });
   await expect(save()).resolves.toBe(false);
-  expect(setLoadError).toHaveBeenCalledWith("Could not save project: Archive is too large");
+  expect(setLoadError).toHaveBeenCalledWith("Could not save label: Archive is too large");
   act(() => root.unmount());
 });
 
@@ -35,6 +35,7 @@ it("saveProject packs for the path the label is written to", async () => {
     writeFile: async () => undefined,
     rename: async (_from: string, to: string) => { written.push(to); },
     remove: async () => undefined,
+    exists: async () => true, stat: async () => ({ mtime: new Date(1) }), // bindPath's baseline stat
   }));
   const { useProjectSave: hook } = await import("@/useProjectSave");
   const packedFor: (string | undefined)[] = [];
@@ -49,7 +50,9 @@ it("saveProject packs for the path the label is written to", async () => {
   }
   const root = createRoot(document.createElement("div"));
   await act(async () => { root.render(createElement(Probe)); });
-  act(() => api!.bindPath("/Users/me/beers/a.label"));
+  // Settle bindPath's baseline stat first: vitest can hand a second, overlapping
+  // dynamic import of a doMocked module the real one.
+  await act(async () => { api!.bindPath("/Users/me/beers/a.label"); await new Promise((r) => setTimeout(r, 0)); });
   await expect(api!.saveProject()).resolves.toBe(true);
   expect(packedFor).toEqual(["/Users/me/beers/a.label"]);
   expect(written).toEqual(["/Users/me/beers/a.label"]);
@@ -68,6 +71,7 @@ it("saveProject fails an oversized label before the dialog, and repacks for Save
   vi.doMock("@tauri-apps/plugin-dialog", () => ({ save: dialog }));
   vi.doMock("@tauri-apps/plugin-fs", () => ({
     writeFile: async () => undefined, rename: async () => undefined, remove: async () => undefined,
+    exists: async () => true, stat: async () => ({ mtime: new Date(1) }), // bindPath's baseline stat
   }));
   const { useProjectSave: hook } = await import("@/useProjectSave");
   let tooBig = true;
@@ -96,5 +100,45 @@ it("saveProject fails an oversized label before the dialog, and repacks for Save
   act(() => root.unmount());
   vi.doUnmock("@tauri-apps/api/core");
   vi.doUnmock("@tauri-apps/plugin-dialog");
+  vi.doUnmock("@tauri-apps/plugin-fs");
+});
+
+// Audit: crash recovery rebinds a restored tab only to a file still carrying
+// the mtime this tab saw (recovery.ts canRebind), so binding a path records
+// it, and a save re-records it once the tab's own write has landed.
+it("bindPath and a save record the bound file's mtime as the recovery baseline", async () => {
+  vi.resetModules();
+  vi.doMock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
+  let mtime = 100;
+  vi.doMock("@tauri-apps/plugin-fs", () => ({
+    writeFile: async () => undefined,
+    rename: async () => { mtime = 200; },
+    remove: async () => undefined,
+    exists: async () => true,
+    stat: async () => ({ mtime: new Date(mtime) }),
+  }));
+  const { useProjectSave: hook } = await import("@/useProjectSave");
+  let api: ReturnType<typeof hook> | undefined;
+  function Probe() {
+    api = hook({
+      pack: () => new Uint8Array([1]),
+      exportBase: "x", onSaved: () => true, setLoadError: vi.fn(),
+      startSaveBatch: () => undefined, saveBytes: () => undefined,
+    });
+    return null;
+  }
+  const root = createRoot(document.createElement("div"));
+  await act(async () => { root.render(createElement(Probe)); });
+  await act(async () => { api!.bindPath("/w/a.label"); await new Promise((r) => setTimeout(r, 0)); });
+  expect(api!.boundModifiedAt()).toBe(100);
+  await act(async () => { await api!.saveProject(); await new Promise((r) => setTimeout(r, 0)); });
+  expect(api!.boundModifiedAt()).toBe(200);
+  // A baseline the caller already knows (a restore cleared to rebind) is taken as is.
+  act(() => api!.bindPath("/w/b.label", 42));
+  expect(api!.boundModifiedAt()).toBe(42);
+  act(() => api!.forgetProjectFile());
+  expect(api!.boundModifiedAt()).toBeUndefined();
+  act(() => root.unmount());
+  vi.doUnmock("@tauri-apps/api/core");
   vi.doUnmock("@tauri-apps/plugin-fs");
 });

@@ -26,7 +26,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CaseUpper, Bold, Droplet, Heading as HeaderIcon } from "lucide-react";
 import type { Style } from "@/types";
 import type { Choice, Symbology, TextLine } from "@/model/layers";
-import { validateField } from "@/model/fields";
+import { validateLayerInput } from "@/model/fields";
 import { markRun, parseRuns, printableText } from "@/description";
 import { GOLD } from "@/layout";
 import { cn } from "@/lib/utils";
@@ -298,9 +298,8 @@ const UPPERCASE: React.CSSProperties = { textTransform: "uppercase" };
  *  the contenteditable div itself (spreading `fieldProps` onto it) plus
  *  whatever toolbar chrome fits its surface.
  *
- *  `multiline: false` (the beer name, the Info row) swallows Enter,
- *  flattens pasted newlines to spaces, and emits one line whatever the DOM
- *  holds. `uppercase` is a display transform on the field (the beer name
+ *  Every text layer takes several lines: Enter and pasted newlines start a
+ *  new one. `uppercase` is a display transform on the field (the beer name
  *  renders uppercase): the stored text keeps its typed case, like the
  *  renderer applying the transform at draw time. */
 export function useTextField(opts: {
@@ -308,11 +307,10 @@ export function useTextField(opts: {
   onChange: (lines: TextLine[]) => void;
   /** The layer's block Style — see fromEditorLines. */
   base: Style;
-  multiline: boolean;
   uppercase?: boolean;
   paint?: LinePaint;
 }) {
-  const { lines, onChange, base, multiline, uppercase = false, paint = paintSidebarLine } = opts;
+  const { lines, onChange, base, uppercase = false, paint = paintSidebarLine } = opts;
   const rootRef = useRef<HTMLDivElement>(null);
   const [focused, setFocused] = useState(false);
   // Whether every line the caret/selection touches is bold/white/header —
@@ -356,12 +354,7 @@ export function useTextField(opts: {
   const emitChange = () => {
     const root = rootRef.current;
     if (!root) return;
-    const read = readLines(root);
-    // A single-line layer is one line by contract: Enter is swallowed and
-    // pasted newlines flattened, so a second div only ever arrives through
-    // something like a multi-line drag-drop, and dropping it here is what
-    // keeps the layer's value honest.
-    onChange(fromEditorLines(multiline ? read : read.slice(0, 1), base));
+    onChange(fromEditorLines(readLines(root), base));
   };
 
   /** Bold / White ink over a PART of a line: wraps the selection in a
@@ -454,14 +447,11 @@ export function useTextField(opts: {
     contentEditable: true,
     suppressContentEditableWarning: true,
     role: "textbox",
-    "aria-multiline": multiline,
+    "aria-multiline": true,
     style: uppercase ? UPPERCASE : undefined,
     onInput: emitChange,
     onFocus: () => setFocused(true),
     onBlur: () => setFocused(false),
-    onKeyDown: (e: React.KeyboardEvent) => {
-      if (!multiline && e.key === "Enter") e.preventDefault();
-    },
     onPaste: (e: React.ClipboardEvent) => {
       // Coerce to plain text so pasting off a web page can't drag in that
       // page's markup (which could be misread as our own run markers).
@@ -469,7 +459,7 @@ export function useTextField(opts: {
       // A tab or other control character would be stored verbatim and print
       // differently from the preview (#282): clean each line, keep the breaks.
       const lines = e.clipboardData.getData("text/plain").split(/\r\n?|\n/).map(printableText);
-      const text = lines.join(multiline ? "\n" : " ");
+      const text = lines.join("\n");
       // execCommand is deprecated but still broadly supported, and it's the
       // browser's own caret/undo-aware insert — including splitting embedded
       // newlines into new line-divs the way a native Enter would.
@@ -517,36 +507,24 @@ function ToolbarToggle(props: {
 
 /** The Header / Bold / White-ink toggles, shared verbatim by the sidebar's
  *  toolbar row and the preview's floating pill so the two surfaces can't
- *  drift. Layout chrome (row vs pill) belongs to the caller. */
+ *  drift; the pill adds the whole-layer Uppercase toggle (`onUppercase`).
+ *  Layout chrome (row vs pill) belongs to the caller. */
 export function TextToolbarButtons(props: {
   caret: ReturnType<typeof useTextField>["caret"];
   toggle: (attr: "bold" | "white") => void;
   toggleHeader: () => void;
-  /** Hidden on a single-line layer: one drawn line has nowhere for a header
-   *  to render differently. */
-  showHeader?: boolean;
-  /** The run toggles (header, bold, white ink) act on the field's SELECTION,
-   *  so they are inert with nothing focused. The sidebar shows them while
-   *  focus is in the field or has moved from it to the toolbar, keeps
-   *  the row mounted for the layer-wide Uppercase switch, and passes false
-   *  otherwise rather than offering three buttons that silently do nothing. */
-  showRuns?: boolean;
   uppercase?: boolean;
   onUppercase?: (uppercase: boolean) => void;
 }) {
-  const { caret, toggle, toggleHeader, showHeader = true, showRuns = true } = props;
+  const { caret, toggle, toggleHeader } = props;
   return (
     <>
-      {showRuns && showHeader && (
-        <ToolbarToggle label="Toggle header" tip="Header" pressed={caret.header} onPress={toggleHeader}>
-          <HeaderIcon />
-        </ToolbarToggle>
-      )}
-      {showRuns && (
-        <ToolbarToggle label="Toggle bold" tip="Bold" pressed={caret.bold} onPress={() => toggle("bold")}>
-          <Bold />
-        </ToolbarToggle>
-      )}
+      <ToolbarToggle label="Toggle header" tip="Header" pressed={caret.header} onPress={toggleHeader}>
+        <HeaderIcon />
+      </ToolbarToggle>
+      <ToolbarToggle label="Toggle bold" tip="Bold" pressed={caret.bold} onPress={() => toggle("bold")}>
+        <Bold />
+      </ToolbarToggle>
       {props.onUppercase && (
         <ToolbarToggle label="Toggle uppercase" tip="Uppercase entire text layer"
           pressed={props.uppercase ?? false} onPress={() => props.onUppercase!(!props.uppercase)}>
@@ -556,14 +534,12 @@ export function TextToolbarButtons(props: {
       {/* White ink is a print layer (a separate underlay plate), not a text
           colour, hence the explicit label — Droplet alone reads ambiguously
           next to a colour swatch. */}
-      {showRuns && (
       <ToolbarToggle
         label="Toggle white ink underlay" tip="White ink underlay"
         pressed={caret.white} onPress={() => toggle("white")}
       >
         <Droplet />
       </ToolbarToggle>
-      )}
     </>
   );
 }
@@ -579,11 +555,9 @@ export interface TextEditorProps {
   onChange: (lines: TextLine[]) => void;
   /** The layer's block Style — what a new line takes (see fromEditorLines). */
   base: Style;
-  /** Straight off the layer: a single-line layer gets no Header toggle,
-   *  swallows Enter, and emits one line. */
-  multiline: boolean;
+  /** Display transform only; the inspector's Typography switch is the one
+   *  Uppercase control in the sidebar, so this field has no toggle for it. */
   uppercase?: boolean;
-  onUppercase?: (uppercase: boolean) => void;
   /** TextLayer.input: "number" and "code" swap the rich field for a plain
    *  box that writes one plain line; absent = the rich editor. */
   input?: "number" | "code";
@@ -720,8 +694,9 @@ export function ChoiceBox(props: {
 function PlainLineField(props: TextEditorProps) {
   const { id, label, title, lines, onChange, base, input, min, max, symbology, suffix, choices } = props;
   const value = lines[0]?.text ?? "";
-  const check = value === "" || !input ? { ok: true }
-    : validateField({ id, label, kind: input, path: id, min, max, symbology }, value);
+  // The canvas box's check too (InPlacePlainField), so the two can't drift.
+  const check = value === "" ? { ok: true }
+    : validateLayerInput({ id, name: label, input, min, max, symbology }, value);
   return (
     <div className="space-y-1">
       <Label htmlFor={id} className={LABEL_CLASS}>{title ?? label}</Label>
@@ -730,19 +705,22 @@ function PlainLineField(props: TextEditorProps) {
           invalid={!check.ok} onCommit={(text) => onChange([{ ...base, text }])} /> :
           <Input id={id} type={input === "number" ? "number" : "text"}
             className="h-7 text-xs" value={value} min={min} max={max}
-            aria-invalid={!check.ok || undefined}
+            // Any decimal the validator takes is valid to the native box too,
+            // and arrow keys keep the fraction instead of snapping to whole numbers.
+            step={input === "number" ? "any" : undefined}
+            aria-invalid={!check.ok || undefined} aria-describedby={check.ok ? undefined : `${id}-error`}
             onChange={(e) => onChange([{ ...base, text: e.target.value }])} />}
         {suffix && <span className="shrink-0 text-xs text-muted-foreground">{suffix}</span>}
       </div>
-      {!check.ok && <p className="text-xs text-destructive-text">{check.error}</p>}
+      {!check.ok && <p id={`${id}-error`} className="text-xs text-destructive-text">{check.error}</p>}
     </div>
   );
 }
 
 function RichField(props: TextEditorProps) {
-  const { id, label, title, lines, onChange, base, multiline, uppercase } = props;
+  const { id, label, title, lines, onChange, base, uppercase } = props;
   const { focused, setFocused, caret, toggle, toggleHeader, fieldProps } =
-    useTextField({ lines, onChange, base, multiline, uppercase });
+    useTextField({ lines, onChange, base, uppercase });
   // Focus starts in the field (fieldProps' onFocus) but only ends when it
   // leaves this row, so Shift+Tab from the field lands on the run toggles
   // instead of unmounting them, and the blur reseed doesn't wipe the
@@ -756,11 +734,8 @@ function RichField(props: TextEditorProps) {
       <div className="flex h-7 items-center justify-between gap-1">
         <Label htmlFor={id} className={LABEL_CLASS}>{title ?? label}</Label>
         <div className="flex gap-1">
-          {(focused || props.onUppercase) && (
-            <TextToolbarButtons
-              caret={caret} toggle={toggle} toggleHeader={toggleHeader} showHeader={multiline}
-              showRuns={focused} uppercase={uppercase} onUppercase={props.onUppercase}
-            />
+          {focused && (
+            <TextToolbarButtons caret={caret} toggle={toggle} toggleHeader={toggleHeader} />
           )}
         </div>
       </div>
@@ -770,7 +745,7 @@ function RichField(props: TextEditorProps) {
         id={id}
         aria-label={label}
         className={cn(
-          multiline ? "min-h-[8.5rem]" : "min-h-8",
+          "min-h-[8.5rem]",
           "w-full space-y-0.5 rounded-lg border border-input bg-transparent px-2.5 py-2",
           "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
         )}

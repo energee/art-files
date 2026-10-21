@@ -60,3 +60,20 @@ it("a cancelled drag leaves the next tap to select", () => {
   act(() => { sheet.dispatchEvent(new MouseEvent("click", { bubbles: true, ...at })); });
   expect(onPick).toHaveBeenCalledWith("t", expect.anything());
 });
+
+// The divider's grip is inset by its own width at each end, so the sheet's
+// overflow clip never cuts it in half at 0% or 100% (UX audit item 3).
+it("keeps the divider grip inside the sheet at both ends", () => {
+  const props = {
+    canvasRender: source, layers: [layer], editLayerOf: (l: TextLayer) => l, selected: [],
+    onPick: vi.fn(), onEditText: vi.fn(), onEditUppercase: vi.fn(), onEditCancel: vi.fn(),
+    onDrag: () => ({ x: null, y: null, dx: 0, dy: 0 }), onDragCancel: vi.fn(), onResize: vi.fn(),
+    onEditSession: vi.fn(), cornerRadiusPct: 0, zoom: 1, bleedIn: L.SHIPPED_BLEED_IN,
+  };
+  const handle = { current: null as null | { showMask: () => void } };
+  act(() => { root.render(createElement(PreviewCompare, { ...props, ref: handle } as never)); });
+  const grip = () => container.querySelector("[data-divider-grip]") as HTMLElement;
+  expect(grip().style.transform).toBe("translate(-0%, -50%)");
+  act(() => { handle.current!.showMask(); });
+  expect(grip().style.transform).toBe("translate(-100%, -50%)");
+});

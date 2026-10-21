@@ -10,7 +10,7 @@
 import type { Layer, LayerValue, Master, TextLayer, TextLine } from "./layers";
 import { uppercaseOf } from "./layers";
 import { deepMerge, type DeepPartial } from "./merge";
-import { validateField } from "./fields";
+import { validateLayerInput } from "./fields";
 import { expandFormat, fieldRefs } from "./format";
 import { parseRuns, printableText } from "../description";
 import { machineName } from "../qr";
@@ -63,10 +63,8 @@ function applyValue(l: Layer, v: LayerValue): Result {
   if (!layer) {
     return { error: l.kind === "text" ? "Expected text." : l.kind === "image" ? "Expected an image." : "Expected a code value." };
   }
-  // ponytail: validateField still speaks FieldDecl; build one on the fly.
-  if (layer.kind === "text" && layer.input) {
-    const r = validateField({ id: l.id, label: l.name, kind: layer.input, path: "",
-      min: layer.min, max: layer.max, symbology: layer.symbology }, plainText(layer.lines));
+  if (layer.kind === "text") {
+    const r = validateLayerInput(layer, plainText(layer.lines));
     if (!r.ok) return { error: r.error! };
   }
   // A literal code is checked here so a bad one keeps the master's value; a

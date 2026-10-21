@@ -58,6 +58,12 @@ describe("desktop master-file access", () => {
     expect(scopedPaths("fs:allow-exists")).toEqual(expect.arrayContaining(scopedPaths("fs:allow-read-file")));
   });
 
+  // Crash recovery reads a .label's modified time before handing a restored
+  // tab its file back (recovery.ts canRebind).
+  it("can read when a .label was last written", () => {
+    expect(scopedPaths("fs:allow-stat")).toContain("**/*.[lL][aA][bB][eE][lL]");
+  });
+
   // #112: on unix `**` skips dot-directories unless this is false, so a
   // .label under ~/.something/ was forbidden for both read and write.
   it("matches .label/.master files inside hidden folders", () => {

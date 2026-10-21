@@ -66,15 +66,6 @@ export function unitToPoint(value: number, origin: number, unit: RulerUnit): num
   return origin + value * unitPt(unit);
 }
 
-/** Coarse to fine, and back round — the order the ruler popover lists them in,
- *  so clicking the toolbar's size readout and picking from the popover walk
- *  the same three units. */
-const UNIT_ORDER: readonly RulerUnit[] = ["in", "pt", "px"];
-
-export function nextRulerUnit(unit: RulerUnit): RulerUnit {
-  return UNIT_ORDER[(UNIT_ORDER.indexOf(unit) + 1) % UNIT_ORDER.length];
-}
-
 /**
  * A width x height in the chosen display unit, e.g. `8.127 × 5.127 in`.
  * Trailing zeros are dropped so the trim reads `8 × 5` rather than

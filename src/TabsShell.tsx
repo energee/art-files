@@ -13,13 +13,14 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
 import { DocumentEditor, type DocumentMeta, type FileToOpen } from "@/App";
 import { LABEL_FILTER, LABEL_TYPES, isAbort } from "@/filePickers";
-import { openThrough } from "@/files";
+import { nativeModifiedAt, openThrough } from "@/files";
 import {
   activateTab, addTab, closeTab, initialTabs, routeFileOpen, unsaved, updateTabMeta,
   type TabsState,
 } from "@/tabs";
 import { LABEL_EXT } from "@/labelfile";
-import { dropRecovery, earlierSnapshots, recoveryKey, type Recoverable } from "@/recovery";
+import { shortcutLabel } from "@/keys";
+import { canRebind, dropRecovery, earlierSnapshots, recoveryKey, type Recoverable } from "@/recovery";
 import { loadRenderSettings, saveRenderSettings, type RenderSettings } from "@/settings";
 import { forgetRecent, rememberRecent, setRecentOpener } from "@/recent";
 import { DesktopUpdater } from "@/components/DesktopUpdater";
@@ -36,10 +37,11 @@ const currentWindow = () =>
   import("@tauri-apps/api/window").then((m) => m.getCurrentWindow());
 
 /** The shell-side per-tab objects that must stay identity-stable for the
- *  editor's memo bail to hold (see DocumentEditor): the save slot its
+ *  editor's memo bail to hold (see DocumentEditor): the save slots its
  *  editor assigns into, and the callbacks that close over the tab id. */
 type TabExtras = {
   saveSlot: { current: (() => Promise<boolean>) | null };
+  masterSaveSlot: { current: (() => Promise<boolean>) | null };
   onMeta: (meta: DocumentMeta) => void;
   onCloseTab: () => void;
   onOpenSettled: (seq: number) => void;
@@ -88,6 +90,7 @@ export default function TabsShell() {
     let e = extras.current.get(id);
     if (!e) extras.current.set(id, (e = {
       saveSlot: { current: null },
+      masterSaveSlot: { current: null },
       onMeta: (meta) => {
         // A tab bound to a new path (an open, or a Save As) goes to the top
         // of File → Open Recent; repeat reports of the same path don't.
@@ -118,6 +121,10 @@ export default function TabsShell() {
   // resolves false and leaves this dialog up).
   const [confirmClose, setConfirmClose] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  // The prompt's Review Master… hands the screen to the tab's Save Master
+  // review; the prompt hides until the review closes, so only one dialog
+  // is ever up.
+  const [reviewing, setReviewing] = useState(false);
   // A window close sweeps every unsaved tab through the same dialog; any
   // Cancel aborts the sweep and the close. A ref, not state: nothing
   // renders it — only doClose reads it.
@@ -161,13 +168,29 @@ export default function TabsShell() {
   const [recoverable, setRecoverable] = useState<Recoverable[]>([]);
   useEffect(() => { void earlierSnapshots().then(setRecoverable); }, []);
   const finishRecovery = (restore: boolean) => {
-    for (const r of recoverable) {
-      // Opened like a dropped .label (no save identity, so Save asks where);
-      // the editor drops the old snapshot once the open succeeds.
-      if (restore) openRouted({ file: new File([r.bytes as BlobPart], r.name), recovered: r.key });
-      else void dropRecovery(r.key);
-    }
+    const snaps = recoverable;
     setRecoverable([]);
+    if (!restore) { for (const r of snaps) void dropRecovery(r.key); return; }
+    void (async () => {
+      const rebound: string[] = []; // two snapshots of one file: only the first gets it
+      for (const r of snaps) {
+        // Opened like a dropped .label; the editor drops the old snapshot
+        // once the open succeeds. A desktop tab that was bound to a file
+        // gets it back when canRebind finds that safe, so Save writes there;
+        // otherwise Save asks where. A failed stat is "not safe", not an error.
+        const recoveredPath = isTauri() && r.filePath ? {
+          path: r.filePath,
+          modifiedAt: r.fileModifiedAt,
+          rebind: canRebind(r, await nativeModifiedAt(r.filePath).catch(() => null), [
+            ...stateRef.current.tabs.flatMap((t) => t.filePath ? [t.filePath] : []),
+            ...Object.values(pendingRef.current).flatMap((p) => p.path ? [p.path] : []),
+            ...rebound,
+          ]),
+        } : undefined;
+        if (recoveredPath?.rebind) rebound.push(recoveredPath.path);
+        openRouted({ file: new File([r.bytes as BlobPart], r.name), recovered: r.key, recoveredPath });
+      }
+    })();
   };
 
   // ---- open routing ----
@@ -193,8 +216,12 @@ export default function TabsShell() {
       (id) => !!pendingRef.current[id],
       // Dedupe against queued-but-uncompleted opens too: tab.filePath stays
       // null until the async open finishes, and the OS re-delivers rapid
-      // double-clicks (the Rust side queues them).
-      (id) => pendingRef.current[id]?.path,
+      // double-clicks (the Rust side queues them). A restore cleared to
+      // rebind claims its file the same way.
+      (id) => {
+        const p = pendingRef.current[id];
+        return p?.path ?? (p?.recoveredPath?.rebind ? p.recoveredPath.path : undefined);
+      },
     );
     if ("focus" in route) { apply((st) => activateTab(st, route.focus)); return; }
     if ("reuse" in route) {
@@ -262,7 +289,7 @@ export default function TabsShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** File → Open Project…: native dialog on desktop (a real path, routed
+  /** File → Open Label…: native dialog on desktop (a real path, routed
    *  exactly like an OS open, so the tab records filePath and ⌘S saves in
    *  place — WKWebView has no FS-Access picker), FS-Access picker in the
    *  browser (yields a writable handle, so Save rewrites the picked file),
@@ -280,7 +307,7 @@ export default function TabsShell() {
       // this is the picker itself failing, before any tab exists — shown in
       // the strip, the shell's one visible surface.
       if (!isAbort(err))
-        setPickError(`Could not open project: ${errMsg(err)}`);
+        setPickError(`Could not open label: ${errMsg(err)}`);
     }
   }
 
@@ -292,13 +319,13 @@ export default function TabsShell() {
       const { exists } = await import("@tauri-apps/plugin-fs");
       if (!await exists(path)) {
         forgetRecent(path);
-        setPickError(`Could not open project: ${path} no longer exists.`);
+        setPickError(`Could not open label: ${path} no longer exists.`);
         return;
       }
       setPickError("");
       openRouted({ path });
     } catch (err) {
-      setPickError(`Could not open project: ${err instanceof Error ? err.message : String(err)}`);
+      setPickError(`Could not open label: ${errMsg(err)}`);
     }
   }
   const openRecentRef = useRef(openRecentPath);
@@ -353,6 +380,27 @@ export default function TabsShell() {
       else cancelClose();
     } finally {
       setSaving(false);
+    }
+  };
+
+  /** Review Master…: the tab's own Save Master review, in place of the
+   *  prompt. A saved master brings the prompt back for the .label (the
+   *  label still needs its Save or Discard), or closes the tab — and moves
+   *  a window-close sweep on — when nothing is left unsaved; a cancelled
+   *  or failed review cancels the close, and mid-sweep the window close.
+   *  The editor resolves only after onMeta has reported the save, so
+   *  stateRef already holds the tab's post-save meta here. */
+  const reviewMaster = async (id: number) => {
+    apply((s) => activateTab(s, id)); // the review only shows on the active tab
+    setReviewing(true);
+    try {
+      if (!await extras.current.get(id)?.masterSaveSlot.current?.()) cancelClose();
+      else {
+        const tab = stateRef.current.tabs.find((t) => t.id === id);
+        if (tab && !unsaved(tab)) doClose(id);
+      }
+    } finally {
+      setReviewing(false);
     }
   };
 
@@ -533,7 +581,7 @@ export default function TabsShell() {
           newTab();
         }}
         aria-label="New tab"
-        title="New tab (⌘N)"
+        title={`New tab (${shortcutLabel("⌘N")})`}
         className="shrink-0 rounded-md px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
         +
       </button>
@@ -563,6 +611,7 @@ export default function TabsShell() {
                 onOpenSettled={e.onOpenSettled}
                 onMeta={e.onMeta}
                 saveSlot={e.saveSlot}
+                masterSaveSlot={e.masterSaveSlot}
                 render={render}
                 onRenderChange={setRender}
                 onOpenProject={openProject}
@@ -586,8 +635,9 @@ export default function TabsShell() {
           if (f) openRouted({ file: f });
         }} />
       {/* The dirty-close decision, per tab; Save resolves through the
-          editor's own save flow (dialog cancel keeps the tab). */}
-      <Dialog open={confirmTab !== null} onOpenChange={(open) => !open && cancelClose()}>
+          editor's own save flow (dialog cancel keeps the tab). Hidden, not
+          dismissed, while Review Master… has the review up. */}
+      <Dialog open={confirmTab !== null && !reviewing} onOpenChange={(open) => !open && cancelClose()}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>Close “{confirmTab?.title}”?</DialogTitle>
@@ -595,12 +645,13 @@ export default function TabsShell() {
               This tab has unsaved changes. Save them, discard them, or keep
               the tab open.
               {/* Save writes only the .label (issue #159): name the master
-                  edits it leaves behind rather than prompting a second
-                  time. Inside the description so it is announced with it. */}
+                  edits it leaves behind, and offer the review that writes
+                  them as its own button. Inside the description so it is
+                  announced with it. */}
               {confirmTab?.masterUnsaved && (
                 <>
                   {" "}This tab also has master changes. They'll be discarded
-                  unless you Cancel and use File → Save Master.
+                  unless you choose Review Master… and save them first.
                 </>
               )}
             </DialogDescription>
@@ -613,6 +664,12 @@ export default function TabsShell() {
               onClick={() => confirmClose !== null && doClose(confirmClose)}>
               Discard
             </Button>
+            {confirmTab?.masterUnsaved && (
+              <Button variant="outline" disabled={saving || reviewing}
+                onClick={() => confirmClose !== null && void reviewMaster(confirmClose)}>
+                Review Master…
+              </Button>
+            )}
             <Button disabled={saving}
               onClick={() => confirmClose !== null && void saveAndClose(confirmClose)}>
               {saving ? "Saving…" : "Save"}

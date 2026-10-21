@@ -48,7 +48,7 @@ afterEach(() => { document.body.replaceChildren(); });
 
 /** Mount AppMenu with every menu command calling `run(id)`; `render` repeats
  *  the mount (as an App re-render would) and lets the native sync settle. */
-async function mount(run: (id: string) => void) {
+async function mount(run: (id: string) => void, checked: Record<string, boolean> = { "view-label": true, "view-mask": false, "view-can": false }) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -57,7 +57,7 @@ async function mount(run: (id: string) => void) {
       actions: actionsIn(APP_MENUS).map((entry) => ({
         id: entry.id, label: entry.text, run: () => run(entry.id),
       })),
-      checked: { "view-label": true, "view-mask": false, "view-can": false },
+      checked,
       onNativeError: (message: string) => { throw new Error(message); },
       onCheckForUpdates: () => undefined,
     }));
@@ -75,6 +75,24 @@ it("re-checks View → Label after choosing it while Label is already the view",
     await act(async () => { label.click(); });
     await menu.render();
     expect(label.checked).toBe(true);
+  } finally {
+    await menu.unmount();
+  }
+});
+
+// Mid-split (Compare) App passes every view check false; the native rows
+// follow, and One Can / Four-Pack are check rows of their own.
+it("shows Compare as no view checked, and installs the can-count checks", async () => {
+  const menu = await mount(() => undefined, {
+    "view-label": false, "view-mask": false, "view-can": false,
+    "view-one-can": true, "view-four-pack": false,
+  });
+  try {
+    expect(["view-label", "view-mask", "view-can"].map((id) => native.items.get(id)!.checked))
+      .toEqual([false, false, false]);
+    expect(native.items.get("view-one-can")).toBeInstanceOf(native.api.CheckMenuItem);
+    expect(native.items.get("view-one-can")!.checked).toBe(true);
+    expect(native.items.get("view-four-pack")!.checked).toBe(false);
   } finally {
     await menu.unmount();
   }
@@ -174,6 +192,37 @@ it("adds and clears a command's note on its native row", async () => {
     expect(native.items.get("export-art")!.text).toBe("Export Artwork PDF");
     await render();
     expect(native.items.get("export-both")!.text).toBe("Export PDFs");
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+  }
+});
+
+// File → Save Master… is a `live` row: installed under its plain title (the
+// SF Symbol lookup's key), it then reads the command's label, which says
+// Save Variant… while a variant is the version.
+it("installs Save Master… under its plain title and shows the command's variant wording", async () => {
+  native.items.clear();
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const render = (label: string) => act(async () => {
+    root.render(createElement(AppMenu, {
+      actions: actionsIn(APP_MENUS).map((entry) => ({
+        id: entry.id, label: entry.id === "master-save" ? label : entry.text, run: () => {},
+      })),
+      checked: {}, onNativeError: (error) => { throw new Error(error); }, onCheckForUpdates: () => undefined,
+    }));
+    await new Promise((r) => setTimeout(r, 0));
+  });
+  try {
+    await render("Save Master…");
+    await render("Save Master…");
+    expect(native.items.get("master-save")!.text).toBe("Save Master…");
+    await render("Save Variant…");
+    expect(native.items.get("master-save")!.text).toBe("Save Variant…");
+    await render("Save Master…");
+    expect(native.items.get("master-save")!.text).toBe("Save Master…");
   } finally {
     await act(async () => { root.unmount(); });
     container.remove();

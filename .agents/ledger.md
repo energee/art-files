@@ -295,14 +295,16 @@ no status, no attempts, no delta.
 
 ## 2026-10-05 ux-narrow-inspector
 - finding: [UX/high] src/App.tsx:2326 — Narrow windows lose the preview when the inspector opens
-- status: open
-- attempts: 0/3
+- status: done
+- attempts: 1/3
 - observed-at: 1b0024900e92d56e90b3f212865e15ecb99fd260
 - evidence: Chrome browser reproduction and DOM/accessibility measurements; full steps and source trace in docs/audits/2026-10-05-ux-narrow-inspector.md
 - delta: investigation complete; runtime unchanged, fix remains open
 - release: non-binary-impacting documentation and agent memory only; no release queued
 - evidence: git diff --cached --check and node scripts/check-release.mjs origin/main passed on audit/ux-narrow-inspector documentation diff based on 1b00249; no application suite run
 - re-check 2026-10-11 @ 0bb506c: still open. src/App.tsx:2276 still adds mr-[300px] whenever a layer is inspected and SheetContent stays fixed at w-[300px] (:2470); no narrow-window policy added
+- delta (2026-10-21, branch fix/inspector-close-button): the fix is the close button. LayerInspector's header row gains a visible ✕ (aria-label "Close inspector", a SheetClose rendering a focusable Button) whose close-press clears the selection, as a bare Escape does, and returns focus on a keyboard close like Escape (review round: it first called clearSelection directly, which dropped focus to <body>); the Sheet stays non-modal and outside presses still keep a multi-selection. tests/inspector-escape-dom.test.tsx adds the close-button, keyboard focus-return and outside-press cases (red before the button, and before the SheetClose, existed). The narrow-window layout (375 × 812, 768 × 900) is closed as browser-only: the desktop window's minWidth is 1024 (src-tauri/tauri.conf.json), so the installed app never reaches those widths; no narrow-window panel policy was added
+- evidence: npx tsc --noEmit, npm run lint, npx vitest run --testTimeout=180000 and node scripts/check-release.mjs origin/main green on fix/inspector-close-button
 
 ## 2026-10-05 ux-color-labels
 - finding: [a11y/high] src/components/ColorField.tsx:164 — Fill and stroke hex fields have no accessible names
@@ -317,7 +319,7 @@ no status, no attempts, no delta.
 
 ## 2026-10-05 ux-decimal-input
 - finding: [UX/low] src/components/TextEditor.tsx:731 — ABV decimals conflict with native input validation and stepping
-- status: open
+- status: done
 - attempts: 0/3
 - observed-at: 1b0024900e92d56e90b3f212865e15ecb99fd260
 - evidence: Chrome browser reproduction and DOM/accessibility measurements; full steps and source trace in docs/audits/2026-10-05-ux-decimal-input.md
@@ -325,6 +327,7 @@ no status, no attempts, no delta.
 - release: non-binary-impacting documentation and agent memory only; no release queued
 - evidence: git diff --cached --check and node scripts/check-release.mjs origin/main passed on audit/ux-decimal-input documentation diff based on 1b00249; no application suite run
 - re-check 2026-10-11 @ 0bb506c: still open. TextEditor.tsx:731 still renders type="number" with no step; #509 tightened validateField to plain decimals but the native step grid is unchanged
+- fix 2026-10-13 on fix/ux-canvas-field-validation: PlainLineField's number box sets step="any" (UX audit #17); tests/text-editor-dom.test.ts asserts it
 
 ## 2026-10-08 issue-419-webstorage
 - finding: [maint/med] #419 — Node 26 reportedly needs NODE_OPTIONS=--no-experimental-webstorage for `npm test` (2026-09-27 issue-queue-339 evidence)
@@ -492,3 +495,10 @@ no status, no attempts, no delta.
 - status: done
 - delta: version set in package.json, package-lock.json, Cargo.toml, Cargo.lock and tauri.conf.json; check-release against origin/main and label-lab-v0.1.105 passed
 - evidence: merged as 0bb506c (#510)
+
+## 2026-10-13 ux-menu-naming
+- finding: [UX/med] UX audit items 6, 7, 8, 19, 20, 21 — Project vs Label and Save Master vs Save to Master… naming; ⌘K palette and View menu name commands differently; layer commands in no menu; Appearance only in Settings; Layers sidebar toggle in no menu or palette; New tab tooltip shows ⌘N on every platform
+- status: in-review
+- delta: Open/Save/Save As Label…, LABEL_DESC "Label"; Save Master… (live: reads Save Variant… on a variant, shared with the picker button); palette grouped from APP_MENUS with leading checks and old wording as keywords; Layer menu; View → Layers (controlled SidebarProvider, ⌘B display-only, no native accelerator); View → Appearance submenu backed by a shared useTheme store; platform-correct New tab title
+- observed-at: 892a272
+- evidence: branch fix/ux-menu-naming; tsc, lint, knip clean; full vitest at load ~64 gave only 5s timeouts, those files rerun with --testTimeout=120000
