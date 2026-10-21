@@ -32,7 +32,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from "@/components/ui/button";
 import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
 import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
-import { dialogOpen, isTypingTarget, keyOwner } from "@/keys";
+import { dialogOpen, isTypingTarget, keyOwner, shortcutLabel } from "@/keys";
+import { useTheme } from "@/theme";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
 import { legacyCollabEnabled, parseConfigFile } from "@/defaults";
@@ -450,7 +451,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const { rows, errors, warnings: resolveWarnings } = useMemo(() => layerRows(master, label), [master, label]);
   const rowById = useMemo(() => new Map(rows.map((r) => [r.layer.id, r])), [rows]);
   const [changedOnly, setChangedOnly] = useState(false);
-  /** Controlled so Open Master can reveal its preview card in a collapsed sidebar. */
+  /** Controlled so Open Master can reveal its preview card in a collapsed
+   *  sidebar, and View → Layers and the palette can toggle and check it;
+   *  ⌘B stays the provider's guarded listener. */
   const [sidebarOpen, setSidebarOpen] = useState(true);
   /** File → Open Master…'s pending switch, previewed by MasterPicker (see openMasterBytes). */
   const [masterOffer, setMasterOffer] = useState<MasterOffer | null>(null);
@@ -644,6 +647,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [dimensionUnit, setDimensionUnit] = useState<"mm" | "pt">("mm");
   const [rulerUnit, setRulerUnit] = useState<RulerUnit>("in");
   const [showGuides, setShowGuides] = useState(() => loadViewToggles().showGuides);
+  const [theme, setTheme] = useTheme();
   // The one exception: the margin inset is the master's own guides, so an
   // edit to it is a master edit (Rulers locks it behind an unlock).
   const marginPt = master.guides.top ?? DEFAULT_MARGIN_PT;
@@ -660,7 +664,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   }, [showRulers, showGuides]);
 
   /** Whether the document differs from the last saved/opened project —
-   *  File → Save disables while clean. Clear it ONLY after a completed open
+   *  File → Save Label disables while clean. Clear it ONLY after a completed open
    *  or save: the shell reads false as "holds a file" (tabs.ts isPristine). */
   const [dirty, setDirty] = useState(true);
   /** Whether the user has actually touched this document — the shell
@@ -1498,7 +1502,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     };
   }
 
-  /** File → Save Master / Save Master As…, always downstream of the review
+  /** File → Save Master… / Save Master As…, always downstream of the review
    *  dialog (MasterSaveReview), which is where `promote` comes from: the label
    *  overrides the reviewer ticked to fold into the template.
    *
@@ -1802,7 +1806,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   }, []);
 
   const reportOpenError = (err: unknown) => {
-    if (!isAbort(err)) setLoadError(`Could not open project: ${errMsg(err)}`);
+    if (!isAbort(err)) setLoadError(`Could not open label: ${errMsg(err)}`);
   };
 
   /** A .label's master couldn't be resolved: ask the operator. "Use current"
@@ -1864,7 +1868,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     return false;
   }
 
-  /** File → Open Project…: unzip a .label of any generation (model/files.ts
+  /** File → Open Label…: unzip a .label of any generation (model/files.ts
    *  — v3 label.json direct, v2 through convertLabelV2 against the resolved
    *  master, a v1 config.json through convertConfigV1), then feed each
    *  embedded image through the exact handler a manual drop uses. */
@@ -2043,16 +2047,20 @@ export const DocumentEditor = memo(function DocumentEditor({
   // reason is in the header, like the preview's own spinner gives way to it.
   const pdfNote = previewReady || buildError ? undefined : "rendering…";
   const removable = selected.some((id) => rowById.has(id));
+  /** File → Save Master… and the picker's button: the review writes into the
+   *  version the picker names, and both say which. */
+  const saveLabel = version === null ? "Save Master…" : "Save Variant…";
   const commands: Command[] = [
     { id: "tab-new", label: "New Tab", key: "n", mods: "⌘", run: onNewTab },
     { id: "tab-close", label: "Close Tab", key: "w", mods: "⌘", run: onCloseTab },
-    { id: "project-open", label: "Open Project…", key: "o", mods: "⌘", run: onOpenProject },
-    { id: "project-save", label: "Save Project", key: "s", mods: "⌘",
+    { id: "project-open", label: "Open Label…", key: "o", mods: "⌘", run: onOpenProject },
+    { id: "project-save", label: "Save Label", key: "s", mods: "⌘",
       disabled: !dirty, run: () => void saveProject() },
-    { id: "project-save-as", label: "Save Project As…", key: "s", mods: "⇧⌘",
+    { id: "project-save-as", label: "Save Label As…", key: "s", mods: "⇧⌘",
       run: () => void saveProject(true) },
     { id: "master-open", label: "Open Master…", run: () => void openMasterPicker() },
-    { id: "master-save", label: "Save Master", disabled: !masterDirty,
+    // Names the version it writes into, like the picker's button (saveLabel).
+    { id: "master-save", label: saveLabel, disabled: !masterDirty,
       run: () => setPendingSave({ as: false }) },
     { id: "master-save-as", label: "Save Master As…", run: () => setPendingSave({ as: true }) },
     { id: "export-both", label: "Export PDFs", key: "e", mods: "⌘",
@@ -2075,20 +2083,39 @@ export const DocumentEditor = memo(function DocumentEditor({
     { id: "layer-remove", label: "Remove Layer", shortcut: "⌫", disabled: !removable,
       run: () => onRemoveLayer(selected[selected.length - 1]) },
     { id: "settings", label: "Settings…", run: () => setSettingsOpen(true) },
-    { id: "view-label", label: "Preview: Label", key: "1", run: () => show2d("art") },
-    { id: "view-mask", label: "Preview: Mask", key: "2", run: () => show2d("mask") },
-    { id: "view-can", label: "Preview: Can", key: "3", run: () => setViewMode("can") },
-    { id: "view-one-can", label: "Preview: One Can", disabled: viewMode !== "can", run: () => setCans(1) },
-    { id: "view-four-pack", label: "Preview: Four-Pack", disabled: viewMode !== "can", run: () => setCans(4) },
-    { id: "rulers", label: showRulers ? "Hide rulers" : "Show rulers", key: "r",
+    { id: "view-label", label: "Label", key: "1", run: () => show2d("art") },
+    { id: "view-mask", label: "Mask", key: "2", run: () => show2d("mask") },
+    { id: "view-can", label: "Can", key: "3", run: () => setViewMode("can") },
+    { id: "view-one-can", label: "One Can", disabled: viewMode !== "can", run: () => setCans(1) },
+    { id: "view-four-pack", label: "Four-Pack", disabled: viewMode !== "can", run: () => setCans(4) },
+    // ⌘B is display-only: SidebarProvider's own listener handles the key.
+    { id: "layers", label: "Layers", shortcut: "⌘B", run: () => setSidebarOpen((open) => !open) },
+    { id: "rulers", label: "Rulers", key: "r",
       disabled: !twoD, run: () => setShowRulers((shown) => !shown) },
-    { id: "guides", label: showGuides ? "Hide guides" : "Show guides", key: "g",
+    { id: "guides", label: "Guides", key: "g",
       disabled: !twoD, run: () => setShowGuides((shown) => !shown) },
     // Zoom about the pane centre (the 3D views dolly their camera).
     { id: "zoom-in", label: "Zoom In", key: "=", mods: "⌘", run: () => zoomTo((z) => z * ZOOM_FACTOR) },
     { id: "zoom-out", label: "Zoom Out", key: "-", mods: "⌘", run: () => zoomTo((z) => z / ZOOM_FACTOR) },
     { id: "zoom-fit", label: "Zoom to Fit", key: "0", mods: "⌘", run: () => zoomTo(() => 1) },
+    { id: "theme-system", label: "System", run: () => setTheme("system") },
+    { id: "theme-light", label: "Light", run: () => setTheme("light") },
+    { id: "theme-dark", label: "Dark", run: () => setTheme("dark") },
   ];
+  /** The check rows' state, for the menus and the palette alike. */
+  const checked = {
+    "view-label": view === "label",
+    "view-mask": view === "mask",
+    "view-can": view === "can",
+    "view-one-can": cans === 1,
+    "view-four-pack": cans === 4,
+    layers: sidebarOpen,
+    rulers: showRulers,
+    guides: showGuides,
+    "theme-system": theme === "system",
+    "theme-light": theme === "light",
+    "theme-dark": theme === "dark",
+  };
   const index = Object.fromEntries(commands.map((c) => [c.id, c])) as Record<string, Command>;
   const byId = (id: string): Command => {
     const c = index[id];
@@ -2306,7 +2333,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               library={library} resolve={resolveLibraryMaster}
               onMaster={pickLibraryMaster} onNewVariant={onNewVariant}
               onRenameVersion={onRenameVersion} onRemoveVersion={onRemoveVersion}
-              onSaveMaster={() => setPendingSave({ as: false })} masterDirty={masterDirty}
+              onSaveMaster={() => setPendingSave({ as: false })} saveLabel={saveLabel} masterDirty={masterDirty}
               onForget={forgetLibraryMaster} offer={masterOffer} onOfferDone={() => setMasterOffer(null)}
               version={version} onVersion={switchVersion} />
             <LayerList rows={rows} selected={selected}
@@ -2321,19 +2348,11 @@ export const DocumentEditor = memo(function DocumentEditor({
         </Sidebar>
         <SidebarInset className="flex h-full flex-col overflow-hidden">
         <header className="flex items-center gap-3 bg-sidebar text-sidebar-foreground px-3 py-2">
-          <SidebarTrigger className="size-6" />
+          <SidebarTrigger className="size-6" title={`Layers (${shortcutLabel("⌘B")})`} aria-label="Layers" />
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}
           {active && <AppMenu actions={commands} onNativeError={setBuildError}
-            onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={{
-            "view-label": view === "label",
-            "view-mask": view === "mask",
-            "view-can": view === "can",
-            "view-one-can": cans === 1,
-            "view-four-pack": cans === 4,
-            rulers: showRulers,
-            guides: showGuides,
-          }} />}
+            onCheckForUpdates={onCheckForUpdates} updateInstalled={!!updateInstalled} checked={checked} />}
           {blocked && (
             <HeaderAlert tone="blocked">
               <button type="button" data-blocked-export
@@ -2628,7 +2647,7 @@ export const DocumentEditor = memo(function DocumentEditor({
             )}
           </SheetContent>
         </Sheet>
-        {active && <CommandMenu actions={commands} />}
+        {active && <CommandMenu actions={commands} checked={checked} />}
       </div>
         </SidebarInset>
       </SidebarProvider>

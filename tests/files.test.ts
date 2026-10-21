@@ -43,7 +43,7 @@ describe("nativeModifiedAt", () => {
 describe("native file saving", () => {
   const options = {
     name: "Labradorite.label", type: "application/octet-stream",
-    filter: { name: "Label project", extensions: ["label"] },
+    filter: { name: "Label", extensions: ["label"] },
     types: [],
   };
   const download = vi.fn();
@@ -67,7 +67,7 @@ describe("native file saving", () => {
 
     expect(save).toHaveBeenCalledWith({
       defaultPath: "Labradorite.label",
-      filters: [{ name: "Label project", extensions: ["label"] }],
+      filters: [{ name: "Label", extensions: ["label"] }],
     });
     expect(writeFile).toHaveBeenCalledWith(temp("/labels/Labradorite", "label"), bytes, { createNew: true });
     expect(rename).toHaveBeenCalledWith(temp("/labels/Labradorite", "label"), "/labels/Labradorite.label");

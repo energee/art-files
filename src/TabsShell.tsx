@@ -19,6 +19,7 @@ import {
   type TabsState,
 } from "@/tabs";
 import { LABEL_EXT } from "@/labelfile";
+import { shortcutLabel } from "@/keys";
 import { canRebind, dropRecovery, earlierSnapshots, recoveryKey, type Recoverable } from "@/recovery";
 import { loadRenderSettings, saveRenderSettings, type RenderSettings } from "@/settings";
 import { forgetRecent, rememberRecent, setRecentOpener } from "@/recent";
@@ -288,7 +289,7 @@ export default function TabsShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** File → Open Project…: native dialog on desktop (a real path, routed
+  /** File → Open Label…: native dialog on desktop (a real path, routed
    *  exactly like an OS open, so the tab records filePath and ⌘S saves in
    *  place — WKWebView has no FS-Access picker), FS-Access picker in the
    *  browser (yields a writable handle, so Save rewrites the picked file),
@@ -306,7 +307,7 @@ export default function TabsShell() {
       // this is the picker itself failing, before any tab exists — shown in
       // the strip, the shell's one visible surface.
       if (!isAbort(err))
-        setPickError(`Could not open project: ${errMsg(err)}`);
+        setPickError(`Could not open label: ${errMsg(err)}`);
     }
   }
 
@@ -318,13 +319,13 @@ export default function TabsShell() {
       const { exists } = await import("@tauri-apps/plugin-fs");
       if (!await exists(path)) {
         forgetRecent(path);
-        setPickError(`Could not open project: ${path} no longer exists.`);
+        setPickError(`Could not open label: ${path} no longer exists.`);
         return;
       }
       setPickError("");
       openRouted({ path });
     } catch (err) {
-      setPickError(`Could not open project: ${err instanceof Error ? err.message : String(err)}`);
+      setPickError(`Could not open label: ${errMsg(err)}`);
     }
   }
   const openRecentRef = useRef(openRecentPath);
@@ -580,7 +581,7 @@ export default function TabsShell() {
           newTab();
         }}
         aria-label="New tab"
-        title="New tab (⌘N)"
+        title={`New tab (${shortcutLabel("⌘N")})`}
         className="shrink-0 rounded-md px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
         +
       </button>

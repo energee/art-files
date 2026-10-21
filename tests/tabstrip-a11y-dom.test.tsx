@@ -187,3 +187,8 @@ it("shows the active tab's close button without hover", async () => {
   expect(closeBtns[0].classList.contains("pointer-events-none")).toBe(true);
   expect(closeBtns[1].classList.contains("pointer-events-none")).toBe(false);
 });
+
+it("names the platform's New Tab shortcut on the + button", () => {
+  // happy-dom's user agent is not a Mac's.
+  expect(document.querySelector('[aria-label="New tab"]')?.getAttribute("title")).toBe("New tab (Ctrl+N)");
+});

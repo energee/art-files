@@ -6,12 +6,27 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Added
+- **A Layer menu.** Layer → Add Text, Image, Barcode and QR Layer, and Remove Layer (greyed out when nothing removable is selected; Delete / Backspace still does it), so the layer commands are in the menu bar and not only in ⌘K and the sidebar.
+- **Appearance in the View menu and ⌘K.** View → Appearance (with a palette icon of its own) → System / Light / Dark, and the same three rows in the palette, switch the theme Settings → Appearance sets; the menu checks the current one, and System still follows the operating system.
+- **View → Layers.** Shows or hides the Layers sidebar, checked while it is open, and the palette has it too. The sidebar button's tooltip now names its shortcut, `⌘B` (`Ctrl+B` on Windows and Linux), and screen readers call the button "Layers" too.
+
 ### Changed
+- **Label commands say Label.** File → Open Label…, Save Label and Save Label As… (were Open Project…, Save Project and Save Project As…), the file dialogs call the file type "Label", Finder and Explorer list a `.label` file as a "Label Lab Label", and open and save errors read "Could not open label" / "Could not save label". Shortcuts are unchanged.
+- **Save Master… has its ellipsis, and names the variant.** File → Save Master… opens a review, so it now ends in "…", and reads Save Variant… while a variant is the version you are editing, like the button under the master picker (which now uses the same words instead of "Save to Master…" / "Save to Variant…").
+- **⌘K reads like the menus.** The palette groups its commands under File, Export, Edit, Layer, View and Appearance, names each one as its menu does ("Mask", not "Preview: Mask"; "Rulers", not "Hide rulers"), and marks a view or toggle that is on with a check, keeping that space on the other rows of the group so the names line up. The old wording still finds them, and New Variant, which is in no menu, is listed under Other.
+- **A clearer master picker.** The menu now heads the master you're using **Current master** and the rest **Other masters**, and each master shows its file name and the day it was last used, so masters with the same name can be told apart. The ✕ that removes a master from the library sits at the right edge of its row.
+- **Test tooling update.** happy-dom 21 for the DOM tests; the app itself is unchanged.
+- **Interface library patch updates.** Tauri JS 2.12.3 and its dialog, file-system and updater plugins, Base UI 1.9, Lucide icons 1.56, ag-psd 31.0.3 and react-dropzone 20.1.3, plus newer build tooling; no change in behaviour.
+- **Desktop runtime patch updates.** Tauri 2.12.2 and its dialog, file-system and updater plugins (Rust side); no change in behaviour.
+
+### Fixed
+- **Even icons in the in-window menu.** In the browser, the icons on check rows (View → Label, Rulers and the like) drew about twice the size of the other rows' icons; they now match.
+- **The New tab button names the right shortcut.** Its tooltip read "⌘N" on Windows and Linux too; it now says Ctrl+N there.
 - **Closing a tab offers to save the master.** When a tab has unsaved master edits, its close prompt now has a **Review Master…** button that opens the Save Master review in place of the prompt. Save the master and you return to the prompt to Save or Discard the `.label` (or the tab closes if the label was already saved); cancel the review and the tab stays open. You no longer have to Cancel and find File → Save Master yourself.
 - **One view state for the status bar and View menu.** The status bar's "View Mode" button, which cycled views one click at a time, is now a Label | Mask | Can control you pick from directly. With the divider part-way (Compare), no view shows as current anywhere — before, the status bar said Compare while the View menu checked nothing and the status-bar cycle counted it as Label. View → **One Can** / **Four-Pack** (and the ⌘K palette) choose the can count, as the status bar's 1|4 does, in the Can view. The divider has a visible grip that stays on the sheet at both ends.
 - **Status-bar controls look clickable, and Settings is grouped.** Zoom (its "%" inside the border), trim size and DPI carry a faint border so they read as controls; clicking the DPI readout opens Settings on Resolution. Settings now groups its fields under Output (Resolution, Bleed), Can preview (Corner radius, Edge softness) and Appearance.
 
-### Fixed
 - **Preview messages no longer overlap.** The "drop a texture" hint shows over the 2D sheet only, not on the 3D can (a texture still drops in any view), and the can's "rendering…" spinner steps aside while an export's "Building …" note shows in the same corner.
 - **The image-drop hint names both targets, and the drop overlay no longer dims the layer list and menu bar.** Before a texture is loaded, the hint under the preview says the left half of the window takes the background and the right half the metallic mask (PNG/WebP). While an image is dragged over the window, the background/mask chooser now covers the preview only, split where the window's middle falls, so the layer list, menu bar and tab strip stay visible. Drops still work anywhere in the window and still route by window half; dropping on an inspector field still loads that field.
 - **Test tooling update.** happy-dom 21 for the DOM tests; the app itself is unchanged.
@@ -22,7 +37,6 @@ that section to the new version (see .agents/release-steward.md).
 - **Pick units from the trim-size readout.** Clicking the status-bar size readout opens a **Units** popover with the same Inches / Points / Pixels choice as the ruler corner, with the current unit selected, instead of silently cycling to the next unit.
 - **One Uppercase control in the inspector.** The text field's toolbar no longer repeats Uppercase; use the Typography **Uppercase** switch, which shows the override badge. The on-canvas toolbar keeps its Uppercase button.
 
-### Fixed
 - **A restored tab saves back to its file.** After crash recovery, a desktop tab that came from a `.label` saves to that file again when nothing has changed the file since that tab last opened or saved it and it is not open in another tab. Otherwise Save still asks where, and a note names the original file.
 - **Open Master previews the switch, like the master picker.** File → Open Master… now adds the master to the library and, when switching would hide filled fields or variants, shows the picker's preview first (opening the sidebar if it was closed). Cancel leaves the label on its master; the opened master stays in the library. Before, the switch happened at once and the hidden values were only listed afterwards. The preview's counts (here and for a picker pick) now follow edits made while it is open, a second Open Master replaces or closes the first one's preview, and Cancel returns focus to the master picker.
 - **The mm / pt toggle is labelled "Lengths in".** It applies to every layer and converts X, Y, binding gap, width, height, wrap width, barcode module width and QR size; its tooltip says so. Fields with a fixed unit (type size and letter spacing in points, stroke width in pixels, character height in millimetres) say why on hover.
@@ -36,7 +50,6 @@ that section to the new version (see .agents/release-steward.md).
 
 - **The inspector has a close button.** A ✕ beside the layer name closes the inspector and clears the selection, the same as Esc, so it can be dismissed with the mouse or keyboard. Clicking elsewhere still keeps a multi-layer selection.
 
-### Fixed
 - **The canvas checks numbers and codes like the sidebar.** Editing an ABV or a code on the preview no longer silently drops characters; what you type stays, and an out-of-range or malformed value shows its error right under the box (above it near the bottom of the sheet, so it isn't cut off), the same message the sidebar gives. The sidebar's number box also takes decimals such as 5.8 without the browser calling them invalid, and the arrow keys no longer round them to whole numbers.
 - **Fill fields are captioned by what they take.** A number layer's field is captioned **Number** and a code layer's **Code**, instead of every field saying **Text**. A field label set in the master still wins.
 

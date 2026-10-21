@@ -3,13 +3,13 @@ title: Files
 description: .label, .master, and where dropped images land
 ---
 
-## Projects (`.label`)
+## Labels (`.label`)
 
-File → **Save Project** (`⌘S`) / **Save Project As…** (`⇧⌘S`) writes a zip named from the beer. `<slug>.label`: lowercase, punctuation to dashes, same slug rule as the QR. Inside: the label JSON plus embedded art (texture, mask, image-layer files).
+File → **Save Label** (`⌘S`) / **Save Label As…** (`⇧⌘S`) writes a zip named from the beer. `<slug>.label`: lowercase, punctuation to dashes, same slug rule as the QR. Inside: the label JSON plus embedded art (texture, mask, image-layer files).
 
 On Chromium and in the desktop app, Save is a real dialog and later Save rewrites that file in place. Everywhere else it falls back to a download.
 
-File → **Open Project…** unpacks a `.label`. The file's `masterHint` (the `.master` it was saved with) is tried first, but only when it points inside the label's own folder or the folder of a master already in your library; a hint anywhere else is not read. Save stores that location relative to the label (for example `../Masters/Lolev.master`), so a label you share doesn't carry your computer's folder names. When the label and master share no folder below the top of the disk (or are on different drives), no location is stored and the label finds its master through your library. Labels saved by older versions, which stored the full path, still open. If that file can't be used, the master your library has for the label's id is used. Two `.master` files can share an id, so the label opens, and Save Master writes, the one it names, and your library keeps its own entry. When no master is found, a dialog titled “This label was made with a different master” asks what to do: **Use “…”** (the button names the tab's current master) to open the label on that master as last saved, **Locate .master…** to pick the file (it joins your library; if it can't be read, the error says why), or **Cancel**. Values that no longer match the master sit on a **bench** (dormant) instead of getting dropped, so a rebind can bring them back.
+File → **Open Label…** unpacks a `.label`. The file's `masterHint` (the `.master` it was saved with) is tried first, but only when it points inside the label's own folder or the folder of a master already in your library; a hint anywhere else is not read. Save stores that location relative to the label (for example `../Masters/Lolev.master`), so a label you share doesn't carry your computer's folder names. When the label and master share no folder below the top of the disk (or are on different drives), no location is stored and the label finds its master through your library. Labels saved by older versions, which stored the full path, still open. If that file can't be used, the master your library has for the label's id is used. Two `.master` files can share an id, so the label opens, and Save Master writes, the one it names, and your library keeps its own entry. When no master is found, a dialog titled “This label was made with a different master” asks what to do: **Use “…”** (the button names the tab's current master) to open the label on that master as last saved, **Locate .master…** to pick the file (it joins your library; if it can't be read, the error says why), or **Cancel**. Values that no longer match the master sit on a **bench** (dormant) instead of getting dropped, so a rebind can bring them back.
 
 Double-click a `.label` on desktop and it opens in Label Lab. Details in [Getting started](/docs/getting-started).
 
@@ -32,7 +32,7 @@ Until a texture is loaded, a hint under the preview names both halves. The choos
 
 Dropping on an inspector image field wins and loads that field. Clicking a field still opens its picker.
 
-Background takes PNG, JPEG, or WebP. The mask takes PNG or WebP. The project file keeps the image you dropped, WebP included. Only the PDFs get a PNG copy of a WebP, because the PDF embed handles PNG and JPEG only.
+Background takes PNG, JPEG, or WebP. The mask takes PNG or WebP. The `.label` file keeps the image you dropped, WebP included. Only the PDFs get a PNG copy of a WebP, because the PDF embed handles PNG and JPEG only.
 
 A PNG mask is embedded as-authored, no recoloring. A JPEG aimed at the mask half of the chooser lands on the background instead.
 
