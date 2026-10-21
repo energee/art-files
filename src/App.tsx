@@ -453,8 +453,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [editSession, setEditSession] = useState<string | null>(null);
   // Two error channels, split by who can clear them: renderError belongs to
   // the renderers (every good frame clears it); buildError to asset
-  // assembly, exports and native menu failures. A successful export clears
-  // it only while it still holds that export's own message (#473).
+  // assembly, exports and native menu failures. A successful export or
+  // asset assembly clears it only while it still holds its own message
+  // (#473, #511).
   const [buildError, setBuildError] = useState("");
   const [renderError, setRenderError] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -1017,6 +1018,10 @@ export const DocumentEditor = memo(function DocumentEditor({
     ...decodedAssets, planAssets: { ...decodedAssets.planAssets, guides },
   } : null, [decodedAssets, guides]);
   const bgOn = pageOn("background"), maskOn = pageOn("mask");
+  // The last message asset assembly put in the shared build-error slot: the
+  // only one its next success may clear, so an export or master error
+  // survives a plate toggle (#511, as #473 for exports).
+  const lastAssetError = useRef("");
   useEffect(() => {
     // Not gated on `blocked`: this only decodes fonts and art, and a rejected
     // value already falls back to the master's, so the preview keeps drawing (#127).
@@ -1053,9 +1058,13 @@ export const DocumentEditor = memo(function DocumentEditor({
         setDecodedAssets({
           m, planAssets: planAssetsOf(), drawAssets: { images: customBitmaps }, fontCss: labelFontCss(family), sources,
         });
-        setBuildError("");
+        const own = lastAssetError.current;
+        setBuildError((current) => (current === own ? "" : current));
+        lastAssetError.current = "";
       })().catch((err) => {
-        if (!cancelled) setBuildError(errMsg(err));
+        if (cancelled) return;
+        lastAssetError.current = errMsg(err);
+        setBuildError(lastAssetError.current);
       });
     }, 150);
     return () => { cancelled = true; clearTimeout(timer); };

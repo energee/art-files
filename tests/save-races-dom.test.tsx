@@ -218,6 +218,11 @@ for (const [command, extension] of [["export-both", "pdf"], ["export-psd", "psd"
       await vi.waitFor(() => expect(pick).toHaveBeenCalledTimes(2), { timeout: 4000 });
     });
     expect(document.body.textContent).toMatch(new RegExp(`Saved renamed-art\\.${extension}\\. Could not save .+-mask\\.${extension}: Disk full`));
+    // Toggling a plate reruns asset assembly; its success must not wipe the
+    // export's error, which it did not set (#511).
+    await toggle("mask");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 300)); });
+    expect(document.body.textContent).toContain("Disk full");
   });
   it(`${extension}: a finished export names both saved files (#400)`, async () => {
     // Each pick saves under the name the app suggested.
