@@ -33,6 +33,9 @@ it("edits the minimum through point size, updates the maximum and handles empty 
     expect(input.value).toBe("1");
     expect(container.textContent).toContain("Characters per inch: 24.6");
     expect(container.textContent).toContain("Tallest character: 2.00 mm");
+    // #12: the mm/pt toggle does not convert this field, and its addon says so.
+    expect(input.closest("[data-slot=input-group]")!.querySelector("[title]")?.getAttribute("title"))
+      .toBe("Character height is always millimetres");
     // #23: the explanation sits behind an info button that describes itself,
     // not as two always-visible paragraphs.
     const info = container.querySelector('[aria-label="About character height"]')!;

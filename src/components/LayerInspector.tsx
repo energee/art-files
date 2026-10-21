@@ -51,6 +51,13 @@ const KIND_ICONS: Record<LayerKind, LucideIcon> = {
   text: Type, image: Image, barcode: Barcode, qr: QrCode,
 };
 
+/** Position's badge path groups, for page art that hides Position but may
+ *  still carry an override from before (see `stalePosition`). */
+const STALE_POSITION = [
+  [["x"], "X"], [["y"], "Y"], [["guideX", "anchor"], "Horizontal guide"],
+  [["guideY", "vAnchor"], "Vertical guide"], [["binding"], "Binding"],
+] as const;
+
 export function LayerInspector(props: {
   unit?: DimensionUnit;
   onUnitChange?: (unit: DimensionUnit) => void;
@@ -99,8 +106,9 @@ export function LayerInspector(props: {
   const page = layer.kind === "image" && (layer.role === "background" || layer.role === "mask");
   const enabled = layer.enabled && props.offVariant === undefined;
   const multi = (props.selectionCount ?? 1) > 1;
-  // Page art hides Position, so an x/y override left on it needs its own reset.
-  const staleXY = page && ["x", "y"].some((p) => props.overridden.variant.has(p) || props.overridden.label.has(p));
+  // Page art hides Position, so a position override left on it needs its own reset.
+  const stalePosition = page && STALE_POSITION.some(([paths]) =>
+    paths.some((p) => props.overridden.variant.has(p) || props.overridden.label.has(p)));
 
   return (
     <div className="space-y-1 px-4 py-3">
@@ -146,7 +154,7 @@ export function LayerInspector(props: {
           addon titles). Separate from the ruler unit, which is in/pt/px.
           Page art has no length fields, so it gets no toggle. */}
       {props.onUnitChange && !page && <Field label="Lengths in">
-        <ToggleGroup aria-label="Dimension units" variant="outline" size="sm" spacing={0}
+        <ToggleGroup aria-label="Lengths in" variant="outline" size="sm" spacing={0}
           title="Shared by all layers: X, Y, gap, width, height, wrap width, module width and QR size"
           value={[ctx.unit]} onValueChange={(values) => {
             const unit = values[0];
@@ -173,11 +181,14 @@ export function LayerInspector(props: {
 
       {/* Page art has no Position: the renderer stretches it over the whole
           page and ignores x/y (planLayers), so the fields would change nothing.
-          An x/y override still left on it keeps its reset badges here. */}
-      {staleXY && (
+          A position override still left on it keeps its reset badges here. */}
+      {stalePosition && (
         <div className="flex items-center justify-between gap-2 pt-2">
           <p className="text-[11px] text-muted-foreground">Unused position override</p>
-          <span className="flex items-center">{badge(["x"], "X")}{badge(["y"], "Y")}</span>
+          <span className="flex items-center">
+            {STALE_POSITION.map(([paths, label]) =>
+              <Badge key={label} paths={paths} overridden={props.overridden} label={label} onReset={props.onReset} />)}
+          </span>
         </div>
       )}
       {!page && <Position layer={layer} layerNames={props.layerNames} onUnbind={props.onUnbind} onBind={props.onBind} {...ctx} />}

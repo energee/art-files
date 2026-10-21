@@ -150,7 +150,7 @@ describe("LayerInspector header", () => {
     expect(container.textContent).toContain("Lengths in");
     // Every field that takes props.unit is listed, so the title does not
     // under-promise (binding gap, barcode module width and QR size convert too).
-    expect(byLabel("Dimension units")!.getAttribute("title"))
+    expect(byLabel("Lengths in")!.getAttribute("title"))
       .toBe("Shared by all layers: X, Y, gap, width, height, wrap width, module width and QR size");
     const addonTitle = (id: string) =>
       $(`#${id}`)!.closest("[data-slot=input-group]")!.querySelector("[title]")?.getAttribute("title");
@@ -163,11 +163,11 @@ describe("LayerInspector header", () => {
   it("hides the unit toggle on page art", () => {
     render(image({ id: "background", name: "Background", role: "background", fit: "cover" }),
       { unit: "mm", onUnitChange: vi.fn() });
-    expect(byLabel("Dimension units")).toBeNull();
+    expect(byLabel("Lengths in")).toBeNull();
     expect(container.textContent).not.toContain("Lengths in");
     render(image({ id: "mask", name: "Mask", role: "mask", fit: "cover" }),
       { unit: "mm", onUnitChange: vi.fn() });
-    expect(byLabel("Dimension units")).toBeNull();
+    expect(byLabel("Lengths in")).toBeNull();
   });
 
   it("renders the parent's content editor under a Content heading", () => {
@@ -503,8 +503,15 @@ describe("LayerInspector override badges", () => {
     expect(onReset).toHaveBeenLastCalledWith("x", "variant");
     click(byLabel("Reset Y to this label's master value")!);
     expect(onReset).toHaveBeenLastCalledWith("y", "label");
+    // A guide or binding override, set before Position was hidden, too.
+    const guides = render(bg, { overridden: from(["guideX"], ["binding"]) });
+    click(byLabel("Reset Horizontal guide to the master")!);
+    expect(guides.onReset).toHaveBeenLastCalledWith("guideX", "variant");
+    click(byLabel("Reset Binding to this label's master value")!);
+    expect(guides.onReset).toHaveBeenLastCalledWith("binding", "label");
     render(bg);
     expect(container.textContent).not.toContain("Position");
+    expect(container.textContent).not.toContain("Unused position override");
   });
 
   it("a label-only change shows just the label mark", () => {
