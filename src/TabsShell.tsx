@@ -601,7 +601,7 @@ export default function TabsShell() {
               {confirmTab?.masterUnsaved && (
                 <>
                   {" "}This tab also has master changes. They'll be discarded
-                  unless you Cancel and use File → Save Master.
+                  unless you Cancel and use File → Save Master… first.
                 </>
               )}
             </DialogDescription>

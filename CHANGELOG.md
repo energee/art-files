@@ -12,17 +12,17 @@ that section to the new version (see .agents/release-steward.md).
 - **View → Layers.** Shows or hides the Layers sidebar, checked while it is open, and the palette has it too. The sidebar button's tooltip now names its shortcut, `⌘B` (`Ctrl+B` on Windows and Linux), and screen readers call the button "Layers" too.
 
 ### Changed
-- **Label commands say Label.** File → Open Label…, Save Label and Save Label As… (were Open / Save / Save As Project…), the file dialogs call the file type "Label", Finder and Explorer list a `.label` file as a "Label Lab Label", and open and save errors read "Could not open label" / "Could not save label". Shortcuts are unchanged.
+- **Label commands say Label.** File → Open Label…, Save Label and Save Label As… (were Open Project…, Save Project and Save Project As…), the file dialogs call the file type "Label", Finder and Explorer list a `.label` file as a "Label Lab Label", and open and save errors read "Could not open label" / "Could not save label". Shortcuts are unchanged.
 - **Save Master… has its ellipsis, and names the variant.** File → Save Master… opens a review, so it now ends in "…", and reads Save Variant… while a variant is the version you are editing, like the button under the master picker (which now uses the same words instead of "Save to Master…" / "Save to Variant…").
 - **⌘K reads like the menus.** The palette groups its commands under File, Export, Edit, Layer, View and Appearance, names each one as its menu does ("Mask", not "Preview: Mask"; "Rulers", not "Hide rulers"), and marks a view or toggle that is on with a check, keeping that space on the other rows of the group so the names line up. The old wording still finds them, and New Variant, which is in no menu, is listed under Other.
 - **A clearer master picker.** The menu now heads the master you're using **Current master** and the rest **Other masters**, and each master shows its file name and the day it was last used, so masters with the same name can be told apart. The ✕ that removes a master from the library sits at the right edge of its row.
+- **Test tooling update.** happy-dom 21 for the DOM tests; the app itself is unchanged.
+- **Interface library patch updates.** Tauri JS 2.12.3 and its dialog, file-system and updater plugins, Base UI 1.9, Lucide icons 1.56, ag-psd 31.0.3 and react-dropzone 20.1.3, plus newer build tooling; no change in behaviour.
+- **Desktop runtime patch updates.** Tauri 2.12.2 and its dialog, file-system and updater plugins (Rust side); no change in behaviour.
 
 ### Fixed
 - **Even icons in the in-window menu.** In the browser, the icons on check rows (View → Label, Rulers and the like) drew about twice the size of the other rows' icons; they now match.
 - **The New tab button names the right shortcut.** Its tooltip read "⌘N" on Windows and Linux too; it now says Ctrl+N there.
-- **Test tooling update.** happy-dom 21 for the DOM tests; the app itself is unchanged.
-- **Interface library patch updates.** Tauri JS 2.12.3 and its dialog, file-system and updater plugins, Base UI 1.9, Lucide icons 1.56, ag-psd 31.0.3 and react-dropzone 20.1.3, plus newer build tooling; no change in behaviour.
-- **Desktop runtime patch updates.** Tauri 2.12.2 and its dialog, file-system and updater plugins (Rust side); no change in behaviour.
 
 ### Security
 - **TLS library patches for the update check.** rustls 0.23.46, rustls-webpki 0.103.16 and webpki-root-certs 1.0.10 fix TLS downgrade, certificate-trust and secret-logging advisories (RUSTSEC-2026-0347/0348 and others). No change in behaviour.
