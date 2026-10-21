@@ -333,6 +333,11 @@ type DocumentEditorProps = {
   /** Shell-owned slot this editor assigns its save fn into on every render;
    *  resolves false when the user cancels the save dialog. */
   saveSlot: { current: (() => Promise<boolean>) | null };
+  /** Shell-owned slot for the close prompt's Review Master…: opens this
+   *  editor's Save Master review and resolves true only once the master
+   *  file is written (false on Cancel or a failed save). Omitted by tests
+   *  mounting a lone editor. */
+  masterSaveSlot?: { current: (() => Promise<boolean>) | null };
   /** The Document Settings knobs (DPI/bleed/corner/edge) — shell-owned. */
   render: RenderSettings;
   onRenderChange: (render: RenderSettings) => void;
@@ -356,7 +361,7 @@ type DocumentEditorProps = {
 // body would re-run per keystroke. It only holds if the shell passes
 // identity-stable props to inactive editors (see TabsShell's extrasFor).
 export const DocumentEditor = memo(function DocumentEditor({
-  active, fileToOpen, onOpenSettled, onMeta, saveSlot, render, onRenderChange,
+  active, fileToOpen, onOpenSettled, onMeta, saveSlot, masterSaveSlot, render, onRenderChange,
   onOpenProject, onNewTab, onCloseTab, onCheckForUpdates, updateInstalled, tabStripHost, updateStatusHost,
   recoveryKey,
 }: DocumentEditorProps) {
@@ -390,6 +395,17 @@ export const DocumentEditor = memo(function DocumentEditor({
   const version = label.enabledVariants.at(-1) ?? null;
   /** Which save the review dialog is standing in front of, or null. */
   const [pendingSave, setPendingSave] = useState<{ as: boolean } | null>(null);
+  /** The close prompt's Review Master… waiting on the review (masterSaveSlot):
+   *  told whether it ended in a written master. A ref, so a replaced
+   *  pendingSave or an unmount can't strand it. */
+  const reviewDone = useRef<((saved: boolean) => void) | null>(null);
+  const settleReview = (saved: boolean) => {
+    reviewDone.current?.(saved);
+    reviewDone.current = null;
+  };
+  /** A finished Save Master's outcome, held for one commit so reviewDone
+   *  hears it only after onMeta has reported the new masterUnsaved. */
+  const [reviewEnded, setReviewEnded] = useState<boolean | null>(null);
   // What a Save Master would write: the structural and fill-contract edits
   // already in the master, plus this label's overrides offered for promotion.
   // Itemised ONLY while the dialog is up — every property edit is a label
@@ -1419,6 +1435,21 @@ export const DocumentEditor = memo(function DocumentEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, dirty, edited, templateMoved, filePath]);
   saveSlot.current = () => saveProject();
+  if (masterSaveSlot) masterSaveSlot.current = () => new Promise<boolean>((done) => {
+    settleReview(false);
+    reviewDone.current = done;
+    setPendingSave({ as: false });
+  });
+  // Declared after the onMeta effect, so in a shared commit it runs second:
+  // the shell decides the close on meta that already says the master saved.
+  useEffect(() => {
+    if (reviewEnded === null) return;
+    settleReview(reviewEnded);
+    setReviewEnded(null);
+  }, [reviewEnded]);
+  // An unmounted editor will never finish the review: don't leave the shell
+  // (or a quit sweep) waiting on it.
+  useEffect(() => () => settleReview(false), []);
 
   // Crash recovery (#394): while this tab holds unsaved work, keep a packed
   // .label of it a moment after each change; drop it once the work is saved.
@@ -2217,11 +2248,20 @@ export const DocumentEditor = memo(function DocumentEditor({
         <Suspense fallback={active ? <DialogLoading /> : null}>
           <MasterSaveReview open={active} as={pendingSave.as} changes={masterChangeList}
             target={master.variants.find((v) => v.id === version)?.name}
-            onCancel={() => setPendingSave(null)}
+            onCancel={() => { settleReview(false); setPendingSave(null); }}
             onConfirm={(promote) => {
               const { as } = pendingSave;
               setPendingSave(null);
-              void saveMaster(as, promote);
+              // Only the review the close prompt is waiting on reports back:
+              // a plain Save Master still writing when a later Review Master…
+              // opens must not settle that newer review. A throw before
+              // saveMaster's own try still ends the review (unsaved), then
+              // rejects as before.
+              const waiting = reviewDone.current;
+              const report = (saved: boolean) => {
+                if (waiting && waiting === reviewDone.current) setReviewEnded(saved);
+              };
+              void saveMaster(as, promote).then(report, (err: unknown) => { report(false); throw err; });
             }} />
         </Suspense>
       )}

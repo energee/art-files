@@ -7,6 +7,7 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Changed
+- **Closing a tab offers to save the master.** When a tab has unsaved master edits, its close prompt now has a **Review Master…** button that opens the Save Master review in place of the prompt. Save the master and you return to the prompt to Save or Discard the `.label` (or the tab closes if the label was already saved); cancel the review and the tab stays open. You no longer have to Cancel and find File → Save Master yourself.
 - **One view state for the status bar and View menu.** The status bar's "View Mode" button, which cycled views one click at a time, is now a Label | Mask | Can control you pick from directly. With the divider part-way (Compare), no view shows as current anywhere — before, the status bar said Compare while the View menu checked nothing and the status-bar cycle counted it as Label. View → **One Can** / **Four-Pack** (and the ⌘K palette) choose the can count, as the status bar's 1|4 does, in the Can view. The divider has a visible grip that stays on the sheet at both ends.
 - **Status-bar controls look clickable, and Settings is grouped.** Zoom (its "%" inside the border), trim size and DPI carry a faint border so they read as controls; clicking the DPI readout opens Settings on Resolution. Settings now groups its fields under Output (Resolution, Bleed), Can preview (Corner radius, Edge softness) and Appearance.
 
