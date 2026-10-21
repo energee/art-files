@@ -135,7 +135,6 @@ export function LayerInspector(props: {
           </p>
         )}
         <Field id={`${layer.id}-locked`} label="Locked" badge={badge(["locked"], "Locked")}>
-          {/* The lock is canvas-only (editGestures): typed X/Y still move it. */}
           <Switch id={`${layer.id}-locked`} aria-label="Locked" checked={!!layer.locked}
             title={LOCK_TITLE}
             onCheckedChange={(on) => set({ locked: on === true })} />
