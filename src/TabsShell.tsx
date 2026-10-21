@@ -13,13 +13,13 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
 import { DocumentEditor, type DocumentMeta, type FileToOpen } from "@/App";
 import { LABEL_FILTER, LABEL_TYPES, isAbort } from "@/filePickers";
-import { openThrough } from "@/files";
+import { nativeModifiedAt, openThrough } from "@/files";
 import {
   activateTab, addTab, closeTab, initialTabs, routeFileOpen, unsaved, updateTabMeta,
   type TabsState,
 } from "@/tabs";
 import { LABEL_EXT } from "@/labelfile";
-import { dropRecovery, earlierSnapshots, recoveryKey, type Recoverable } from "@/recovery";
+import { canRebind, dropRecovery, earlierSnapshots, recoveryKey, type Recoverable } from "@/recovery";
 import { loadRenderSettings, saveRenderSettings, type RenderSettings } from "@/settings";
 import { forgetRecent, rememberRecent, setRecentOpener } from "@/recent";
 import { DesktopUpdater } from "@/components/DesktopUpdater";
@@ -167,13 +167,29 @@ export default function TabsShell() {
   const [recoverable, setRecoverable] = useState<Recoverable[]>([]);
   useEffect(() => { void earlierSnapshots().then(setRecoverable); }, []);
   const finishRecovery = (restore: boolean) => {
-    for (const r of recoverable) {
-      // Opened like a dropped .label (no save identity, so Save asks where);
-      // the editor drops the old snapshot once the open succeeds.
-      if (restore) openRouted({ file: new File([r.bytes as BlobPart], r.name), recovered: r.key });
-      else void dropRecovery(r.key);
-    }
+    const snaps = recoverable;
     setRecoverable([]);
+    if (!restore) { for (const r of snaps) void dropRecovery(r.key); return; }
+    void (async () => {
+      const rebound: string[] = []; // two snapshots of one file: only the first gets it
+      for (const r of snaps) {
+        // Opened like a dropped .label; the editor drops the old snapshot
+        // once the open succeeds. A desktop tab that was bound to a file
+        // gets it back when canRebind finds that safe, so Save writes there;
+        // otherwise Save asks where. A failed stat is "not safe", not an error.
+        const recoveredPath = isTauri() && r.filePath ? {
+          path: r.filePath,
+          modifiedAt: r.fileModifiedAt,
+          rebind: canRebind(r, await nativeModifiedAt(r.filePath).catch(() => null), [
+            ...stateRef.current.tabs.flatMap((t) => t.filePath ? [t.filePath] : []),
+            ...Object.values(pendingRef.current).flatMap((p) => p.path ? [p.path] : []),
+            ...rebound,
+          ]),
+        } : undefined;
+        if (recoveredPath?.rebind) rebound.push(recoveredPath.path);
+        openRouted({ file: new File([r.bytes as BlobPart], r.name), recovered: r.key, recoveredPath });
+      }
+    })();
   };
 
   // ---- open routing ----
@@ -199,8 +215,12 @@ export default function TabsShell() {
       (id) => !!pendingRef.current[id],
       // Dedupe against queued-but-uncompleted opens too: tab.filePath stays
       // null until the async open finishes, and the OS re-delivers rapid
-      // double-clicks (the Rust side queues them).
-      (id) => pendingRef.current[id]?.path,
+      // double-clicks (the Rust side queues them). A restore cleared to
+      // rebind claims its file the same way.
+      (id) => {
+        const p = pendingRef.current[id];
+        return p?.path ?? (p?.recoveredPath?.rebind ? p.recoveredPath.path : undefined);
+      },
     );
     if ("focus" in route) { apply((st) => activateTab(st, route.focus)); return; }
     if ("reuse" in route) {

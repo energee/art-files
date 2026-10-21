@@ -5,7 +5,7 @@ import {
   setOutputDpi, WARNING,
 } from "./legacy/layout";
 import {
-  DEFAULT_MARGIN_PT, layoutGuides, majorStep, nextRulerUnit, pointToScreen,
+  DEFAULT_MARGIN_PT, layoutGuides, majorStep, pointToScreen,
   pointToUnit, rulerTicks, screenToPoint, sizeLabel, unitToPoint, withCornerClear,
 } from "../src/rulers";
 
@@ -105,12 +105,6 @@ describe("preview rulers", () => {
       setOutputDpi(DESIGN_DPI);
     }
     expect(PSD_DOC.w).toBe(4876);
-  });
-
-  it("cycles the toolbar's units back to where it started", () => {
-    expect(nextRulerUnit("in")).toBe("pt");
-    expect(nextRulerUnit("pt")).toBe("px");
-    expect(nextRulerUnit("px")).toBe("in");
   });
 
   // The left column and the two code plates were squared to these guides (see

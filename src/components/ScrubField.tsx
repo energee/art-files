@@ -33,6 +33,8 @@ export function NumberRoot(props: {
   /** Whether blank is a value (BlankableField's "none"); otherwise a blank
    *  field reverts on blur, like any other text that isn't a number. */
   blankable?: boolean;
+  /** Greyed out and ignores typing, arrows and scrubbing. */
+  disabled?: boolean;
   onChange: (v: number | null) => void;
   className?: string;
   children: ReactNode;
@@ -45,7 +47,7 @@ export function NumberRoot(props: {
   return (
     <NumberField.Root
       key={epoch}
-      id={props.id} min={props.min} max={props.max}
+      id={props.id} min={props.min} max={props.max} disabled={props.disabled}
       step={inc} smallStep={Math.max(inc / 10, props.step)} largeStep={inc * 10}
       locale="en-US"
       format={{ useGrouping: false, maximumFractionDigits: decimalsOf(props.step) }}
@@ -105,6 +107,8 @@ export function ScrubField(props: {
    *  scrubs in tenths, since 0.01 per pixel would make its full range
    *  ~2200px of travel. Defaults to `step`. */
   dragStep?: number;
+  /** See NumberRoot. */
+  disabled?: boolean;
   onChange: (v: number) => void;
 }) {
   return (

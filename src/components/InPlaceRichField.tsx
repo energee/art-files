@@ -70,7 +70,7 @@ export function InPlaceRichField(props: {
     [faces.base, faces.bold, layer.style.fill, layer.style.layer],
   );
   const { rootRef, caret, toggle, toggleHeader, fieldProps } = useTextField({
-    lines: layer.lines, onChange: onApply, base: layer.style, multiline: true,
+    lines: layer.lines, onChange: onApply, base: layer.style,
     uppercase: uppercaseOf(layer), paint,
   });
 
