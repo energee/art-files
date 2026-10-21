@@ -187,6 +187,7 @@ no status, no attempts, no delta.
 - re-check 2026-10-11 @ 0bb506c: still open, half done. tests/updater-dom.test.tsx covers a rejected downloadAndInstall ("Could not install", Update failed, Try again; #359) and a rejected manual check(). The automatic-check silent path (DesktopUpdater.tsx:164 console.error, checkRequest 0) has no test: no updater test spies on console
 - delta (2026-10-21, branch test/updater-failures): tests/updater-dom.test.tsx adds "logs a failed automatic check without opening the dialog or marking the status bar" (rejected check() at checkRequest 0 → console.error "Automatic update check failed: offline", no dialog, empty status bar; fails when the log is dropped or the dialog opens), and the #318 test now asserts the reopened dialog holds "Could not install the update: offline" after a rejected downloadAndInstall(). Tests only; no source bug found
 - evidence: npx tsc --noEmit, npm run lint, npx vitest run --testTimeout=180000 and node scripts/check-release.mjs origin/main green on test/updater-failures
+- release: non-binary-impacting (tests and agent memory); no release queued
 
 ## 2026-09-05 legacy-oracle-deletion
 - finding: [YAGNI/med] tests/legacy/plan.ts:1 — 1,220-line pre-v3 layout oracle and 8 suites

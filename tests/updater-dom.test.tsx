@@ -278,7 +278,8 @@ it("logs a failed automatic check without opening the dialog or marking the stat
     await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
     await act(async () => { await vi.advanceTimersByTimeAsync(AUTO_CHECK_DELAY_MS); });
     expect(mocks.check).toHaveBeenCalledTimes(1);
-    expect(log).toHaveBeenCalledWith("Automatic update check failed: offline");
+    // Exactly one call: the silenced spy must not hide any other console error.
+    expect(log).toHaveBeenCalledExactlyOnceWith("Automatic update check failed: offline");
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(bar.textContent).toBe("");
   } finally {
