@@ -2366,11 +2366,18 @@ export const DocumentEditor = memo(function DocumentEditor({
             </span>
             {!texture && !exporting && previewReady && (
               <div className="pointer-events-none absolute inset-x-0 bottom-16 flex justify-center">
-                <span className="rounded-full border border-dashed border-border bg-background/85 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-sm">
-                  drop a texture anywhere to fill the background
+                <span className="mx-4 rounded-full border border-dashed border-border bg-background/85 px-3 py-1.5 text-center text-xs text-muted-foreground backdrop-blur-sm">
+                  drop an image anywhere: left half of the window → background, right half of the window → metallic mask (PNG/WebP)
                 </span>
               </div>
             )}
+            {/* Drop a texture or mask anywhere in the window; the overlay
+                draws over this pane only, so the sidebar and the inspector's
+                drop wells stay visible. Only the active tab mounts the
+                window-level listeners. */}
+            {active && <AssetDropOverlay
+              onTexture={(f) => void onTexture(f)}
+              onMask={(f) => void onMask(f)} />}
             {!previewReady && !exporting && !buildError && !renderError && (
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
@@ -2491,11 +2498,6 @@ export const DocumentEditor = memo(function DocumentEditor({
             )}
           </SheetContent>
         </Sheet>
-        {/* Drop a texture or mask anywhere in the window. Only the active
-            tab mounts the window-level listeners. */}
-        {active && <AssetDropOverlay
-          onTexture={(f) => void onTexture(f)}
-          onMask={(f) => void onMask(f)} />}
         {active && <CommandMenu actions={commands} />}
       </div>
         </SidebarInset>
