@@ -269,3 +269,20 @@ it("locks the master margin inset until it is unlocked", async () => {
   });
   expect(props.onMarginChange).toHaveBeenCalled();
 });
+
+it("relocks the margin inset each time the settings reopen", async () => {
+  renderRulers();
+  const corner = container.querySelector<HTMLButtonElement>('[aria-label="Ruler settings, current unit in"]')!;
+  const toggle = () => act(async () => {
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"])
+      corner.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
+    corner.click();
+  });
+  await toggle();
+  await act(async () => { document.querySelector<HTMLButtonElement>('button[aria-label="Margin inset: locked"]')!.click(); });
+  expect(document.querySelector<HTMLInputElement>("#guide-margin")!.disabled).toBe(false);
+  await toggle(); // close
+  await vi.waitFor(() => expect(document.querySelector("#guide-margin")).toBeNull());
+  await toggle(); // reopen
+  expect(document.querySelector<HTMLInputElement>("#guide-margin")!.disabled).toBe(true);
+});

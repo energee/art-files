@@ -8,7 +8,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  dropped: [] as string[], opened: [] as unknown[], tauri: false, mtime: 0 as number | null,
+  dropped: [] as string[], opened: [] as unknown[], tauri: false, mtime: 0 as number | null, statFails: false,
   snaps: [] as Record<string, unknown>[], openProject: null as null | (() => void),
 }));
 const ALPHA = { key: "old:1", name: "alpha.label", bytes: new Uint8Array([1]), savedAt: 5, filePath: "/w/alpha.label", fileModifiedAt: 4 };
@@ -21,7 +21,10 @@ vi.mock("../src/recovery", async (importOriginal) => ({
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => mocks.tauri, invoke: vi.fn(async () => null) }));
 vi.mock("../src/files", async (importOriginal) => ({
   ...await importOriginal<typeof import("../src/files")>(),
-  nativeModifiedAt: async () => mocks.mtime,
+  nativeModifiedAt: async () => {
+    if (mocks.statFails) throw new Error("forbidden path");
+    return mocks.mtime;
+  },
   openThrough: async () => ({ path: "/w/alpha.label" }),
 }));
 vi.mock("../src/components/DesktopUpdater", () => ({ DesktopUpdater: () => null }));
@@ -42,6 +45,7 @@ beforeEach(async () => {
   mocks.dropped.length = 0;
   mocks.opened.length = 0;
   mocks.tauri = false;
+  mocks.statFails = false;
   mocks.snaps = [ALPHA];
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -108,6 +112,15 @@ it("on desktop, a file written after the tab bound it is not rebound", async () 
   mocks.mtime = 5;
   await press("Restore");
   expect(mocks.opened[0]).toMatchObject({ recoveredPath: { path: "/w/alpha.label", rebind: false } });
+});
+
+// A failed stat is "not safe", not an error: the tab still opens, unbound.
+it("on desktop, a failed stat opens the tab without rebinding", async () => {
+  mocks.tauri = true;
+  mocks.statFails = true;
+  await press("Restore");
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  expect(mocks.opened[0]).toMatchObject({ recovered: "old:1", recoveredPath: { path: "/w/alpha.label", rebind: false } });
 });
 
 // Audit: until the restored tab's open lands, its queued rebind path still
