@@ -4,6 +4,7 @@
 import { Suspense, lazy, useEffect, useState, type ComponentType } from "react";
 import { dialogOpen, isMacOS, shortcutLabel } from "@/keys";
 import { DialogLoadFailed, DialogLoading } from "@/components/LazyDialog";
+import type { CheckedState } from "@/components/AppMenu";
 
 // A palette chunk that fails to load says so in a dialog ⌘K or Escape closes,
 // instead of unmounting the editor (see App's CanView).
@@ -50,7 +51,7 @@ export const shortcutOf = (c: Command, mac = isMacOS()) => {
   return keys ? (mac ? keys : shortcutLabel(keys, false)) : undefined;
 };
 
-export function CommandMenu(props: { actions: Command[]; checked?: Partial<Record<string, boolean>> }) {
+export function CommandMenu(props: { actions: Command[]; checked?: CheckedState }) {
   // null until the first ⌘K, so the palette chunk is not fetched before it is
   // wanted; after that it stays mounted so closing can animate out.
   const [open, setOpen] = useState<boolean | null>(null);

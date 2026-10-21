@@ -299,7 +299,7 @@ export default function TabsShell() {
       setPickError("");
       openRouted({ path });
     } catch (err) {
-      setPickError(`Could not open label: ${err instanceof Error ? err.message : String(err)}`);
+      setPickError(`Could not open label: ${errMsg(err)}`);
     }
   }
   const openRecentRef = useRef(openRecentPath);

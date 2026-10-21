@@ -222,7 +222,8 @@ const MENU_ITEMS =
   "min-w-52 [&_[data-slot=menubar-item]]:text-xs [&_[data-slot=menubar-checkbox-item]]:text-xs [&_[data-slot=menubar-sub-trigger]]:text-xs";
 
 type CommandIndex = Record<string, Command>;
-type CheckedState = Partial<Record<string, boolean>>;
+/** Which check rows are on, by command id: one map for both menus and ⌘K. */
+export type CheckedState = Partial<Record<string, boolean>>;
 
 function MenuGlyph({ name }: { name: MenuSymbol }) {
   const Icon = SYMBOL_GLYPH[name];

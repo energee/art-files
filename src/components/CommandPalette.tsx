@@ -6,7 +6,7 @@
 // under Other. A check row shows its state as a leading check mark, and every
 // row in its group keeps that mark's space so the titles line up.
 import { CheckIcon } from "lucide-react";
-import { menuGroups, rowTitle } from "@/components/AppMenu";
+import { menuGroups, rowTitle, type CheckedState } from "@/components/AppMenu";
 import { shortcutOf, titleOf, type Command } from "@/components/CommandMenu";
 import {
   CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut,
@@ -20,7 +20,7 @@ export function CommandPalette(props: {
   onOpenChange: (open: boolean) => void;
   actions: Command[];
   /** Which check rows are on (the same map AppMenu gets). */
-  checked?: Partial<Record<string, boolean>>;
+  checked?: CheckedState;
 }) {
   const index = new Map(props.actions.map((a) => [a.id, a]));
   // cmdk matches the search against value then keywords, in order, so the
