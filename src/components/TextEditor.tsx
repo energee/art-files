@@ -734,11 +734,11 @@ function PlainLineField(props: TextEditorProps) {
             // Any decimal the validator takes is valid to the native box too,
             // and arrow keys keep the fraction instead of snapping to whole numbers.
             step={input === "number" ? "any" : undefined}
-            aria-invalid={!check.ok || undefined}
+            aria-invalid={!check.ok || undefined} aria-describedby={check.ok ? undefined : `${id}-error`}
             onChange={(e) => onChange([{ ...base, text: e.target.value }])} />}
         {suffix && <span className="shrink-0 text-xs text-muted-foreground">{suffix}</span>}
       </div>
-      {!check.ok && <p className="text-xs text-destructive-text">{check.error}</p>}
+      {!check.ok && <p id={`${id}-error`} className="text-xs text-destructive-text">{check.error}</p>}
     </div>
   );
 }

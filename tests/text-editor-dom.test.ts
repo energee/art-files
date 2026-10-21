@@ -342,8 +342,10 @@ describe("TextEditor", () => {
       renderEditor({
         id: "abv", lines: [line("25")], multiline: false, input: "number", min: 0, max: 20,
       });
-      expect((container.querySelector("#abv") as HTMLInputElement).value).toBe("25");
-      expect(container.textContent).toMatch(/at most 20/);
+      const box = container.querySelector("#abv") as HTMLInputElement;
+      expect(box.value).toBe("25");
+      // The error is tied to the box, as the canvas box's is (#520 review).
+      expect(document.getElementById(box.getAttribute("aria-describedby")!)?.textContent).toMatch(/at most 20/);
     });
   });
 
