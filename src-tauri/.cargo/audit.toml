@@ -1,0 +1,10 @@
+# cargo-audit config for the CI `audit` job (cargo audit runs in src-tauri).
+
+[advisories]
+# zip 4.6.1 extraction flaws (SUID bits, symlink targets, permissions through
+# symlinks). zip comes only from tauri-plugin-updater, which extracts Windows
+# update bundles after verifying their minisign signature against our pubkey,
+# so a hostile archive needs our updater signing key. The "zip" feature can't
+# be dropped: it also brings the tar/flate2 that macOS updates need.
+# Remove these once tauri-plugin-updater moves to zip >= 9 (2.14.0 has not).
+ignore = ["RUSTSEC-2026-0367", "RUSTSEC-2026-0368", "RUSTSEC-2026-0369"]

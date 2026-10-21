@@ -7,11 +7,16 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Changed
+- **Test tooling update.** happy-dom 21 for the DOM tests; the app itself is unchanged.
+- **Interface library patch updates.** Tauri JS 2.12.3 and its dialog, file-system and updater plugins, Base UI 1.9, Lucide icons 1.56, ag-psd 31.0.3 and react-dropzone 20.1.3, plus newer build tooling; no change in behaviour.
+- **Desktop runtime patch updates.** Tauri 2.12.2 and its dialog, file-system and updater plugins (Rust side); no change in behaviour.
 - **A clearer master picker.** The menu now heads the master you're using **Current master** and the rest **Other masters**, and each master shows its file name and the day it was last used, so masters with the same name can be told apart. The ✕ that removes a master from the library sits at the right edge of its row.
 
 ### Fixed
 - **The canvas checks numbers and codes like the sidebar.** Editing an ABV or a code on the preview no longer silently drops characters; what you type stays, and an out-of-range or malformed value shows its error right under the box, the same message the sidebar gives. Number boxes also take decimals such as 5.8 without the browser calling them invalid, and the arrow keys no longer round them to whole numbers.
 - **Fill fields are captioned by what they take.** A number layer's field is captioned **Number** and a code layer's **Code**, instead of every field saying **Text**. A field label set in the master still wins.
+### Security
+- **TLS library patches for the update check.** rustls 0.23.46, rustls-webpki 0.103.16 and webpki-root-certs 1.0.10 fix TLS downgrade, certificate-trust and secret-logging advisories (RUSTSEC-2026-0347/0348 and others). No change in behaviour.
 
 ## [0.1.106] - 2026-10-11
 
