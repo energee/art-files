@@ -1,9 +1,10 @@
 // view-state-dom.test.tsx — the preview view has one source of truth. The
-// status bar's Label | Mask | Can control, the View menu's checks and the
-// palette all read viewState(), so mid-split ("Compare") none of them claims
-// Label; the one-can / four-pack choice is a View command as well as the
-// status-bar 1|4 toggle; the status bar's DPI readout opens Settings on
-// Resolution; and the texture-drop hint stays off the 3D can.
+// status bar's Label | Mask | Can control and the View menu's checks both
+// read viewState(), so mid-split ("Compare") neither claims Label; the
+// one-can / four-pack choice is a View command as well as the status-bar 1|4
+// toggle; the zoom readout's "%" sits inside its bordered control; the status
+// bar's DPI readout opens Settings on Resolution; and the texture-drop hint
+// stays off the 3D can.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -107,6 +108,17 @@ it("One Can / Four-Pack are View commands, live only in the Can view", async () 
     expect(probe.checked).toMatchObject({ "view-one-can": false, "view-four-pack": true });
     await run("view-one-can");
     expect(probe.canMode).toBe("can");
+  } finally { await unmount(); }
+});
+
+it("the zoom readout's % sits inside its bordered control", async () => {
+  const { container, unmount } = await mountEditor();
+  try {
+    const zoom = container.querySelector('[aria-label="Zoom percentage"]')!;
+    const control = zoom.closest("label")!;
+    expect(control).not.toBeNull();
+    expect(control.className).toContain("border");
+    expect(control.textContent).toBe("%");
   } finally { await unmount(); }
 });
 

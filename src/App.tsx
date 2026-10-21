@@ -285,12 +285,13 @@ const zoomAbout = (
 
 type ViewMode = "2d" | "can";
 /** Which view the preview is in. The 2D divider anywhere between its ends is
- *  "compare": neither Label nor Mask. The status bar, the View menu checks
- *  and the palette all read this, so they can't disagree. Exported for tests. */
+ *  "compare": neither Label nor Mask. The status bar and the View menu checks
+ *  both read this, so they can't disagree. Exported for tests. */
 export const viewState = (mode: ViewMode, split: number) =>
   mode === "can" ? "can" : split === 0 ? "label" : split === 100 ? "mask" : "compare";
 /** The status bar's clickable readouts (zoom, trim size, DPI): a faint idle
- *  border so they read as controls, not as text like the readouts beside them. */
+ *  border so they read as controls, not as text like the readouts beside them.
+ *  Zoom puts it on a wrapping label so the "%" sits inside the border. */
 const STATUS_CONTROL = "rounded border border-border/60 bg-transparent text-xs text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring";
 /** One segment of a status-bar segmented control (the view and the 1|4 can count). */
 const segmentClass = (on: boolean) =>
@@ -2396,6 +2397,9 @@ export const DocumentEditor = memo(function DocumentEditor({
           </div>
           {/* Preview toolbar, in every view. */}
           <div className="flex h-8 shrink-0 items-center overflow-x-auto border-t border-border bg-sidebar px-2">
+            {/* The "%" sits inside the border so the readout is one control,
+                like the size and DPI buttons; clicking it focuses the input. */}
+            <label className={`flex shrink-0 items-center px-1 py-0.5 focus-within:text-foreground focus-within:ring-2 focus-within:ring-ring ${STATUS_CONTROL}`}>
             <input
               value={zoomDraft ?? String(shownZoomPct)}
               onChange={(e) => setZoomDraft(e.target.value)}
@@ -2407,8 +2411,9 @@ export const DocumentEditor = memo(function DocumentEditor({
               }}
               title="Zoom — type a percentage, 100 fits the view"
               aria-label="Zoom percentage"
-              className={`w-10 py-0.5 text-right tabular-nums focus:text-foreground ${STATUS_CONTROL}`} />
-            <span className="text-xs text-muted-foreground">%</span>
+              className="w-8 bg-transparent text-right tabular-nums outline-none" />
+            %
+            </label>
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
             <button
               onClick={() => setRulerUnit(nextRulerUnit(rulerUnit))}
