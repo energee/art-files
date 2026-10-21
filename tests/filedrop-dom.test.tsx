@@ -126,6 +126,18 @@ describe("AssetDropOverlay window drops", () => {
     expect((overlay() as HTMLElement).style.getPropertyValue("--split")).toBe("0px");
   });
 
+  // The preview pane has a 1px left border; an absolute child is placed from
+  // the padding edge, so the border comes off the split too.
+  it("measures the split from the pane's padding edge, past its left border", () => {
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({ left: 200, width: 600, top: 0, height: 400, right: 800, bottom: 400, x: 200, y: 0, toJSON: () => ({}) });
+    const border = vi.spyOn(HTMLElement.prototype, "clientLeft", "get").mockReturnValue(1);
+    const width = vi.spyOn(window, "innerWidth", "get").mockReturnValue(1000);
+    onTestFinished(() => { rect.mockRestore(); border.mockRestore(); width.mockRestore(); });
+    fileDrag("dragover", png);
+    expect((overlay() as HTMLElement).style.getPropertyValue("--split")).toBe("299px");
+  });
+
   it("yields field drops to the field", () => {
     const field = fieldWell(FILE_DROP_ATTR);
     expect(fileDrag("dragover", png, field).defaultPrevented).toBe(false);

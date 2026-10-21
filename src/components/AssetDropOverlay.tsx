@@ -47,11 +47,14 @@ export function isFieldDrop(target: EventTarget | null): boolean {
 /** Set the overlay's --split: the window's midpoint in its parent pane's
  *  coordinates, clamped to the pane's width. The drop routes by WINDOW half,
  *  and the pane starts right of the sidebar, so its own middle would mislabel
- *  the strip between them. A half clamped to nothing simply isn't drawn. */
+ *  the strip between them. A half clamped to nothing simply isn't drawn.
+ *  An absolute child is placed from the pane's padding edge, so the pane's
+ *  left border (clientLeft) is subtracted too. */
 function measureSplit(el: HTMLElement) {
-  const pane = el.parentElement?.getBoundingClientRect();
-  if (!pane) return;
-  const split = Math.min(Math.max(window.innerWidth / 2 - pane.left, 0), pane.width);
+  const parent = el.parentElement;
+  if (!parent) return;
+  const pane = parent.getBoundingClientRect();
+  const split = Math.min(Math.max(window.innerWidth / 2 - pane.left - parent.clientLeft, 0), pane.width);
   el.style.setProperty("--split", `${split}px`);
 }
 
