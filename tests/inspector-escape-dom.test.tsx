@@ -1,7 +1,8 @@
 // inspector-escape-dom.test.tsx — Escape and the right-hand inspector (#117).
 // Escape that an input already owns (cancel a draft, close suggestions, end an
 // on-canvas edit or drag) must not also close the inspector and clear the
-// selection; a bare Escape with nothing editable focused still closes it.
+// selection; a bare Escape with nothing editable focused still closes it, and
+// so does the inspector's visible close button.
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -90,4 +91,45 @@ it("a bare Escape with nothing editable focused still closes the inspector", asy
   (document.activeElement as HTMLElement | null)?.blur();
   await escape(document.body);
   expect(rowButton().getAttribute("data-active")).toBeNull();
+});
+
+const closeButton = () => document.querySelector('[aria-label="Close inspector"]') as HTMLButtonElement | null;
+
+it("the visible close button closes the inspector and clears the selection, like Escape", async () => {
+  const close = closeButton();
+  expect(close?.tagName).toBe("BUTTON");
+  await act(async () => { close!.focus(); });
+  expect(document.activeElement).toBe(close);
+  await act(async () => { close!.click(); });
+  expect(rowButton().getAttribute("data-active")).toBeNull();
+  expect(field()).toBeNull();
+});
+
+it("an outside press keeps a multi-selection and the inspector open", async () => {
+  const qr = container.querySelector('[data-layer-id="qr"] [data-slot="sidebar-menu-button"]') as HTMLButtonElement;
+  await act(async () => { qr.dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true })); });
+  expect(qr.getAttribute("data-active")).not.toBeNull();
+  expect(rowButton().getAttribute("data-active")).not.toBeNull();
+  await act(async () => {
+    document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    document.body.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  expect(qr.getAttribute("data-active")).not.toBeNull();
+  expect(rowButton().getAttribute("data-active")).not.toBeNull();
+  expect(closeButton()).not.toBeNull();
+});
+
+it("closing from the close button by keyboard returns focus to where the layer was selected, like Escape", async () => {
+  // Reopen with the row focused, so there is a place to return to.
+  await escape(document.body);
+  await act(async () => { rowButton().focus(); rowButton().click(); });
+  const close = closeButton()!;
+  await act(async () => {
+    close.focus();
+    close.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    close.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+  });
+  await act(async () => { await Promise.resolve(); });
+  expect(field()).toBeNull();
+  expect(document.activeElement).toBe(rowButton());
 });

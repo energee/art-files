@@ -80,7 +80,7 @@ import { LayerList } from "@/components/LayerList";
 import { LayerInspector } from "@/components/LayerInspector";
 import { ChoiceBox, TextEditor } from "@/components/TextEditor";
 import { FileDrop } from "@/components/FileDrop";
-import { MasterPicker, type LibraryEntry } from "@/components/MasterPicker";
+import { MasterPicker, type LibraryEntry, type MasterOffer } from "@/components/MasterPicker";
 import { AssetDropOverlay } from "@/components/AssetDropOverlay";
 import type { RenderSettings } from "@/settings";
 import {
@@ -426,6 +426,10 @@ export const DocumentEditor = memo(function DocumentEditor({
   const { rows, errors, warnings: resolveWarnings } = useMemo(() => layerRows(master, label), [master, label]);
   const rowById = useMemo(() => new Map(rows.map((r) => [r.layer.id, r])), [rows]);
   const [changedOnly, setChangedOnly] = useState(false);
+  /** Controlled so Open Master can reveal its preview card in a collapsed sidebar. */
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  /** File → Open Master…'s pending switch, previewed by MasterPicker (see openMasterBytes). */
+  const [masterOffer, setMasterOffer] = useState<MasterOffer | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const guides = useMemo(
     () => guideLines({ physical: master.physical, guides: master.guides }),
@@ -1361,6 +1365,8 @@ export const DocumentEditor = memo(function DocumentEditor({
    *  without one, Save Master binds to the library's path for the id. */
   function resetDocument(next: Doc, masterPath?: string) {
     resetDoc(next);
+    // A pending Open Master switch was offered for the document being replaced.
+    setMasterOffer(null);
     pristineMaster.current = next.master;
     masterFileHandle.current = null;
     const bound = isTauri() ? masterPath ?? masterIndex()[next.master.id]?.path : undefined;
@@ -1553,8 +1559,11 @@ export const DocumentEditor = memo(function DocumentEditor({
   /** Adopt a master's template assets under the label-delta rule: art the
    *  label already loaded wins — only EMPTY slots fall back to the master's,
    *  and image bytes fill in only for ids the store doesn't hold (checked
-   *  again as they commit, so an id filled meanwhile mints no thumbnail). */
+   *  again as they commit, so an id filled meanwhile mints no thumbnail).
+   *  Slots are read from savedAssetsRef, not this render's state: Open
+   *  Master's commit can run long after the render that built it (#516). */
   async function adoptMasterAssets(a: MasterAssets): Promise<void> {
+    const { texture, mask, customImages } = savedAssetsRef.current;
     await Promise.all([
       !texture && a.texture ? onTexture(assetToFile(a.texture)) : null,
       !mask && a.mask ? onMask(assetToFile(a.mask)) : null,
@@ -1581,33 +1590,52 @@ export const DocumentEditor = memo(function DocumentEditor({
     const { label: next, dropped } = rebindLabel(current, from, target);
     markDirty();
     setDoc({ master: target, label: next });
+    // Any switch retires a pending Open Master card: its commit is stale now.
+    setMasterOffer(null);
     if (clean) { pristineMaster.current = target; repaintMasterDirty((n) => n + 1); }
     clearSelection();
     const notes = benchedNotes(dropped);
     setLoadError(notes.length ? "Note: " + notes.join(" · ") : "");
   }
 
-  /** File → Open Master…: register the newly opened master in the library
-   *  index, then commitRebind onto it. */
-  async function applyOpenedMaster(m: Master, path: string, bytes?: Uint8Array) {
-    await rememberMaster(m, path, bytes);
-    refreshLibrary();
-    commitRebind(m);
-  }
-
   /** Parsed bytes from any Open Master source (native path, FS-Access
-   *  handle, hidden input): bind the source, register, rebind, adopt assets. */
+   *  handle, hidden input). The switch previews first, like a picker pick:
+   *  one that would bench nothing happens now, one that would joins the
+   *  library and hides behind MasterPicker's Continue. On Cancel the master
+   *  stays in the library and the label is untouched. */
   async function openMasterBytes(
     bytes: Uint8Array, name: string, src: { handle?: FileSystemFileHandle; path?: string },
   ) {
     const r = tryParseMaster(bytes);
     if (!r) return;
-    await applyOpenedMaster(r.master, name, bytes);
-    // Bind Save Master only once the doc is on this master (#81).
-    const id = r.master.id;
-    masterFileHandle.current = src.handle ? { id, target: src.handle } : null;
-    masterFilePath.current = src.path ? { id, target: src.path } : null;
-    await adoptMasterAssets(r.assets);
+    // A second open supersedes the first one's card, whichever way it goes.
+    setMasterOffer(null);
+    const commit = async () => {
+      // Bytes again: the master may have left the library while its card
+      // was open, and LAST_KEY must not name an id with no cached copy.
+      await rememberMaster(r.master, name, bytes);
+      refreshLibrary();
+      commitRebind(r.master);
+      // Bind Save Master only once the doc is on this master (#81).
+      const id = r.master.id;
+      masterFileHandle.current = src.handle ? { id, target: src.handle } : null;
+      masterFilePath.current = src.path ? { id, target: src.path } : null;
+      await adoptMasterAssets(r.assets);
+    };
+    const { master: from, label: current } = docRef.current;
+    const { dropped } = rebindLabel(current, from, r.master);
+    if (!dropped.values.length && !dropped.variants.length) { await commit(); return; }
+    // Into the library now, not yet applied: a cancelled switch must not
+    // become the master the next untitled tab starts on. A file with the
+    // current master's own id is already listed, and caching it now would
+    // make a reload resolve this label to the file Cancel declined.
+    if (r.master.id !== from.id) {
+      await rememberMaster(r.master, name, bytes, { applied: false });
+      refreshLibrary();
+    }
+    // The card lives in the sidebar, so open it if it was collapsed.
+    setSidebarOpen(true);
+    setMasterOffer({ target: r.master, assets: r.assets, commit });
   }
 
   /** MasterPicker's library pick (the preview's Continue). The bytes are
@@ -2199,7 +2227,7 @@ export const DocumentEditor = memo(function DocumentEditor({
       )}
       {/* Figma-style three-region shell: collapsible left Sidebar (Layers),
           preview center, inspector sheet right. */}
-      <SidebarProvider hotkey={active} className="min-h-0 h-full">
+      <SidebarProvider hotkey={active} open={sidebarOpen} onOpenChange={setSidebarOpen} className="min-h-0 h-full">
         <Sidebar>
           {/* Click on empty sidebar space deselects. React bubbles a
               PORTALED menu's click (Add layer, the master picker) through
@@ -2214,7 +2242,7 @@ export const DocumentEditor = memo(function DocumentEditor({
               onMaster={pickLibraryMaster} onNewVariant={onNewVariant}
               onRenameVersion={onRenameVersion} onRemoveVersion={onRemoveVersion}
               onSaveMaster={() => setPendingSave({ as: false })} masterDirty={masterDirty}
-              onForget={forgetLibraryMaster}
+              onForget={forgetLibraryMaster} offer={masterOffer} onOfferDone={() => setMasterOffer(null)}
               version={version} onVersion={switchVersion} />
             <LayerList rows={rows} selected={selected}
               onSelect={pick}
@@ -2384,11 +2412,18 @@ export const DocumentEditor = memo(function DocumentEditor({
                 still drops in every view. */}
             {!texture && !exporting && previewReady && viewMode === "2d" && (
               <div className="pointer-events-none absolute inset-x-0 bottom-16 flex justify-center">
-                <span className="rounded-full border border-dashed border-border bg-background/85 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-sm">
-                  drop a texture anywhere to fill the background
+                <span className="mx-4 rounded-full border border-dashed border-border bg-background/85 px-3 py-1.5 text-center text-xs text-muted-foreground backdrop-blur-sm">
+                  drop an image anywhere: left half of the window → background, right half of the window → metallic mask (PNG/WebP)
                 </span>
               </div>
             )}
+            {/* Drop a texture or mask anywhere in the window; the overlay
+                draws over this pane only, so the sidebar and the inspector's
+                drop wells stay visible. Only the active tab mounts the
+                window-level listeners. */}
+            {active && <AssetDropOverlay
+              onTexture={(f) => void onTexture(f)}
+              onMask={(f) => void onMask(f)} />}
             {!previewReady && !exporting && !buildError && !renderError && (
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
@@ -2466,9 +2501,10 @@ export const DocumentEditor = memo(function DocumentEditor({
           </div>
         </section>
         {/* Right inspector: a shadcn Sheet driven by the selection — open
-            while a layer is selected, closed (Esc or a click on the empty pasteboard) by
-            clearing it. Non-modal and overlay-free so the preview and the
-            Layers list stay clickable while inspecting. active gate: the
+            while a layer is selected, closed (Esc, the inspector's close button
+            or a click on the empty pasteboard) by clearing it. Non-modal and
+            overlay-free so the preview and the Layers list stay clickable
+            while inspecting. active gate: the
             sheet portals to document.body, escaping the shell's display:none. */}
         <Sheet open={active && !!inspected} modal={false}
           // Only a deliberate close clears the selection — the sheet has no
@@ -2511,15 +2547,13 @@ export const DocumentEditor = memo(function DocumentEditor({
                 content={contentFor(inspected.layer)}
                 rasterArt={inspected.layer.kind === "image"
                   && (customImages[inspected.layer.asset]?.image.kind ?? "svg") !== "svg"}
-                fontFamily={family} />
+                fontFamily={family}
+                selectionCount={selected.length}
+                offVariant={inspected.variant && !inspected.variant.enabled ? inspected.variant.name : undefined}
+                showCloseButton />
             )}
           </SheetContent>
         </Sheet>
-        {/* Drop a texture or mask anywhere in the window. Only the active
-            tab mounts the window-level listeners. */}
-        {active && <AssetDropOverlay
-          onTexture={(f) => void onTexture(f)}
-          onMask={(f) => void onMask(f)} />}
         {active && <CommandMenu actions={commands} />}
       </div>
         </SidebarInset>

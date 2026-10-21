@@ -67,7 +67,7 @@ export function NumberRoot(props: {
 }
 
 /** The input and its unit addon; render inside a NumberRoot. */
-export function UnitInput(props: { unit: string; placeholder?: string }) {
+export function UnitInput(props: { unit: string; unitTitle?: string; placeholder?: string }) {
   return (
     <InputGroup className={props.unit === "mm" ? "h-6 w-28" : "h-6 w-24"}>
       <NumberField.Input
@@ -78,7 +78,7 @@ export function UnitInput(props: { unit: string; placeholder?: string }) {
         onKeyDown={(e) => { if (e.key === "Home" || e.key === "End") e.preventBaseUIHandler(); }}
       />
       <InputGroupAddon align="inline-end">
-        <InputGroupText className="text-[10px]">{props.unit}</InputGroupText>
+        <InputGroupText className="text-[10px]" title={props.unitTitle}>{props.unit}</InputGroupText>
       </InputGroupAddon>
     </InputGroup>
   );
@@ -92,6 +92,9 @@ export function ScrubField(props: {
   icon?: LucideIcon;
   /** Shown as the InputGroup's trailing addon, e.g. "pt" or "px". */
   unit: string;
+  /** The addon's tooltip, for a field whose unit the inspector's mm/pt
+   *  toggle does not convert ("Type size is always points"). */
+  unitTitle?: string;
   value: number;
   min: number;
   max: number;
@@ -123,7 +126,7 @@ export function ScrubField(props: {
           <MoveHorizontal className="size-4" aria-hidden="true" />
         </NumberField.ScrubAreaCursor>
       </NumberField.ScrubArea>
-      <UnitInput unit={props.unit} />
+      <UnitInput unit={props.unit} unitTitle={props.unitTitle} />
     </NumberRoot>
   );
 }
