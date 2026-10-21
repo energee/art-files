@@ -256,7 +256,8 @@ it("keeps failed installs discoverable and offers a fresh check (#318)", async (
     await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
     await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={1} statusHost={bar} />));
     await act(async () => button("Install").click());
-    expect(document.body.textContent).toContain("Could not install");
+    // Install closed the dialog for status-bar progress; the rejection reopens it.
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Could not install the update: offline");
     await act(async () => button("Close").click());
     expect(bar.textContent).toContain("Update failed");
     await act(async () => (bar.querySelector("button") as HTMLButtonElement).click());
@@ -264,6 +265,27 @@ it("keeps failed installs discoverable and offers a fresh check (#318)", async (
     expect(mocks.check).toHaveBeenCalledTimes(2);
     expect(document.body.textContent).toContain("Update available");
   } finally { await act(async () => root.unmount()); host.remove(); bar.remove(); }
+});
+
+it("logs a failed automatic check without opening the dialog or marking the status bar", async () => {
+  vi.useFakeTimers();
+  mocks.invoke.mockResolvedValue(true);
+  mocks.check.mockRejectedValue(new Error("offline"));
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const host = document.createElement("div"); const bar = document.createElement("div"); document.body.append(host, bar);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<DesktopUpdater dirty={false} checkRequest={0} statusHost={bar} />));
+    await act(async () => { await vi.advanceTimersByTimeAsync(AUTO_CHECK_DELAY_MS); });
+    expect(mocks.check).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith("Automatic update check failed: offline");
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(bar.textContent).toBe("");
+  } finally {
+    await act(async () => root.unmount()); host.remove(); bar.remove();
+    log.mockRestore();
+    vi.useRealTimers();
+  }
 });
 
 it("a failed manual check leaves no failure in the status bar once closed", async () => {
