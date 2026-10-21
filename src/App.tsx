@@ -31,7 +31,7 @@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { DialogLoadFailed, DialogLoading, loadFailedMessage } from "@/components/LazyDialog";
-import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { Suspense, lazy, memo, type ComponentPropsWithRef, type ComponentType, useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import { dialogOpen, isTypingTarget, keyOwner } from "@/keys";
 import { isTauri } from "@tauri-apps/api/core";
 import { basename } from "@tauri-apps/api/path";
@@ -497,6 +497,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [camZoomPct, setCamZoomPct] = useState(100);
   const shownZoomPct = viewMode === "2d" ? Math.round(zoom.z * 100) : camZoomPct;
   const view = viewState(viewMode, split);
+  // The status bar's "Compare" note, which the view group points at so a
+  // screen reader hears the state too. useId: each open tab has its own.
+  const compareId = useId();
   // Zoom level follows you across views (see CanView's initialView). A ref:
   // only a view change hands it over.
   const carried = useRef({ zoom: 1, pan: { x: 0, y: 0 } });
@@ -2431,8 +2434,10 @@ export const DocumentEditor = memo(function DocumentEditor({
             </button>
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
             {/* Pick a view directly; keys 1–3 do the same. Mid-split (Compare)
-                none is pressed. Each label starts with its visible text. */}
+                none is pressed and the group is described by the Compare
+                note. Each label starts with its visible text. */}
             <div role="group" aria-label="View mode" aria-keyshortcuts="1 2 3"
+              aria-describedby={view === "compare" ? compareId : undefined}
               className="flex shrink-0 overflow-hidden rounded border border-border">
               {VIEWS.map((v) => (
                 <button key={v.id} type="button" aria-pressed={view === v.state}
@@ -2443,7 +2448,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                 </button>
               ))}
             </div>
-            {view === "compare" && <span className="ml-2 shrink-0 text-xs text-muted-foreground">Compare</span>}
+            {view === "compare" && <span id={compareId} className="ml-2 shrink-0 text-xs text-muted-foreground">Compare</span>}
             {viewMode === "can" && (
               <div role="group" aria-label="Cans shown"
                 className="ml-2 flex shrink-0 overflow-hidden rounded border border-border">

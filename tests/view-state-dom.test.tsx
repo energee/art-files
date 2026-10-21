@@ -79,11 +79,14 @@ it("the status bar and View menu agree on the view, including mid-split", async 
     await act(async () => probe.preview!.onSplit!(40));
     expect(pressed(container)).toEqual([]);
     expect(container.textContent).toContain("Compare");
+    // The group names the state for assistive tech, not just on screen.
+    expect(document.getElementById(group.getAttribute("aria-describedby")!)?.textContent).toBe("Compare");
     expect(probe.checked).toMatchObject({ "view-label": false, "view-mask": false, "view-can": false });
 
     await act(async () => probe.preview!.onSplit!(100));
     expect(pressed(container)).toEqual(["Mask"]);
     expect(container.textContent).not.toContain("Compare");
+    expect(group.hasAttribute("aria-describedby")).toBe(false);
     expect(probe.checked).toMatchObject({ "view-mask": true });
 
     // A segment picks its view directly; Can comes up from any state.
