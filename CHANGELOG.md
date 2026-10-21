@@ -22,6 +22,9 @@ that section to the new version (see .agents/release-steward.md).
 - **Page art no longer shows Position fields.** The Background and Metallic mask always cover the page, so their X and Y changed nothing but still marked the layer as changed. Nor do they show the mm / pt toggle. A position override already on one (X, Y, a guide or a binding) keeps a reset badge so it can still be cleared.
 - **Stroke shows one reset badge, not two.** The heading badge shows while the stroke is off and the colour row's badge while it is on.
 
+### Fixed
+- **The inspector has a close button.** A ✕ beside the layer name closes the inspector and clears the selection, the same as Esc, so it can be dismissed with the mouse or keyboard. Clicking elsewhere still keeps a multi-layer selection.
+
 ### Security
 - **TLS library patches for the update check.** rustls 0.23.46, rustls-webpki 0.103.16 and webpki-root-certs 1.0.10 fix TLS downgrade, certificate-trust and secret-logging advisories (RUSTSEC-2026-0347/0348 and others). No change in behaviour.
 

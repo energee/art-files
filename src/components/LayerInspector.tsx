@@ -1,10 +1,10 @@
 // LayerInspector.tsx — the right-hand inspector for ONE resolved v3 layer
 // (spec: docs/superpowers/specs/2026-09-04-master-as-layers-design.md, "UI"
 // and "Relative position"). Sections, top to bottom: header (kind icon,
-// inline rename, a "editing one of N" note on a multi-selection, enabled/
-// locked with an off-variant note), the parent's content editor,
-// kind-specific geometry/typography, Position (not on page art), Style, and
-// expandable template field settings.
+// inline rename, close button, a "editing one of N" note on a
+// multi-selection, enabled/locked with an off-variant note), the parent's
+// content editor, kind-specific geometry/typography, Position (not on page
+// art), Style, and expandable template field settings.
 //
 // Every control is controlled from `layer` and writes ONLY through
 // `onChange` with a minimal DeepPartial<Layer> patch ({ x }, { y: 12 },
@@ -31,10 +31,12 @@
 // per-kind geometry and Style in LayerInspectorSections.tsx; the template
 // field settings (fill contract, vocabulary) in LayerInspectorTemplate.tsx.
 import type { ReactNode } from "react";
-import { Barcode, Image, QrCode, Type, type LucideIcon } from "lucide-react";
+import { Barcode, Image, QrCode, Type, XIcon, type LucideIcon } from "lucide-react";
 import type { BindingSide, Layer, LayerKind } from "@/model/layers";
 import type { OverrideBadges as Overridden } from "@/model/edit";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SheetClose } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -84,6 +86,10 @@ export function LayerInspector(props: {
   /** An image layer holding raster art (PNG/JPEG): it always prints on
    *  white ink, so Style offers no plate toggle. */
   rasterArt?: boolean;
+  /** Shows the header's visible close button. It is a SheetClose, so it
+   *  needs the parent Sheet (whose close-press clears the selection, as
+   *  Escape does) and returns focus on a keyboard close like Escape. */
+  showCloseButton?: boolean;
   /** How many layers are selected. Above one, the header says only this
    *  layer is edited — drag, reorder and delete act on all of them. */
   selectionCount?: number;
@@ -121,6 +127,11 @@ export function LayerInspector(props: {
           className="h-7 flex-1 text-xs font-medium"
           {...nameProps}
         />
+        {props.showCloseButton && (
+          <SheetClose render={<Button variant="ghost" size="icon-sm" aria-label="Close inspector" />}>
+            <XIcon className="size-4.5" aria-hidden="true" />
+          </SheetClose>
+        )}
       </div>
       {/* Not focusable: the Sheet keeps focus off the panel so Backspace and
           the arrows still delete and nudge the whole selection. */}

@@ -2447,9 +2447,10 @@ export const DocumentEditor = memo(function DocumentEditor({
           </div>
         </section>
         {/* Right inspector: a shadcn Sheet driven by the selection — open
-            while a layer is selected, closed (Esc or a click on the empty pasteboard) by
-            clearing it. Non-modal and overlay-free so the preview and the
-            Layers list stay clickable while inspecting. active gate: the
+            while a layer is selected, closed (Esc, the inspector's close button
+            or a click on the empty pasteboard) by clearing it. Non-modal and
+            overlay-free so the preview and the Layers list stay clickable
+            while inspecting. active gate: the
             sheet portals to document.body, escaping the shell's display:none. */}
         <Sheet open={active && !!inspected} modal={false}
           // Only a deliberate close clears the selection — the sheet has no
@@ -2494,7 +2495,8 @@ export const DocumentEditor = memo(function DocumentEditor({
                   && (customImages[inspected.layer.asset]?.image.kind ?? "svg") !== "svg"}
                 fontFamily={family}
                 selectionCount={selected.length}
-                offVariant={inspected.variant && !inspected.variant.enabled ? inspected.variant.name : undefined} />
+                offVariant={inspected.variant && !inspected.variant.enabled ? inspected.variant.name : undefined}
+                showCloseButton />
             )}
           </SheetContent>
         </Sheet>
