@@ -7,6 +7,9 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Changed
+- **Test tooling update.** happy-dom 21 for the DOM tests; the app itself is unchanged.
+- **Interface library patch updates.** Tauri JS 2.12.3 and its dialog, file-system and updater plugins, Base UI 1.9, Lucide icons 1.56, ag-psd 31.0.3 and react-dropzone 20.1.3, plus newer build tooling; no change in behaviour.
+- **Desktop runtime patch updates.** Tauri 2.12.2 and its dialog, file-system and updater plugins (Rust side); no change in behaviour.
 - **A clearer master picker.** The menu now heads the master you're using **Current master** and the rest **Other masters**, and each master shows its file name and the day it was last used, so masters with the same name can be told apart. The ✕ that removes a master from the library sits at the right edge of its row.
 - **The mm / pt toggle is labelled "Lengths in".** It applies to every layer and converts X, Y, binding gap, width, height, wrap width, barcode module width and QR size; its tooltip says so. Fields with a fixed unit (type size and letter spacing in points, stroke width in pixels, character height in millimetres) say why on hover.
 - **The Lock tooltip says what the lock does.** "Locked on canvas: drag, resize and nudge are off. Typed values still apply." on the Layers row and the inspector switch. Lock behaviour is unchanged.
@@ -17,6 +20,9 @@ that section to the new version (see .agents/release-steward.md).
 - **A layer from a variant that is off reads Off in the inspector.** Its Enabled switch used to show on while the layer did not draw and edits to it were dropped. It now matches the Layers row, notes which variant adds it, and turning it on switches that variant on.
 - **Page art no longer shows Position fields.** The Background and Metallic mask always cover the page, so their X and Y changed nothing but still marked the layer as changed.
 - **Stroke shows one reset badge, not two.** The heading badge shows while the stroke is off and the colour row's badge while it is on.
+
+### Security
+- **TLS library patches for the update check.** rustls 0.23.46, rustls-webpki 0.103.16 and webpki-root-certs 1.0.10 fix TLS downgrade, certificate-trust and secret-logging advisories (RUSTSEC-2026-0347/0348 and others). No change in behaviour.
 
 ## [0.1.106] - 2026-10-11
 
