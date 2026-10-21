@@ -21,7 +21,7 @@ it("saveProject resolves false with a load error when packing throws", async () 
   const root = createRoot(document.createElement("div"));
   await act(async () => { root.render(createElement(Probe)); });
   await expect(save()).resolves.toBe(false);
-  expect(setLoadError).toHaveBeenCalledWith("Could not save project: Archive is too large");
+  expect(setLoadError).toHaveBeenCalledWith("Could not save label: Archive is too large");
   act(() => root.unmount());
 });
 

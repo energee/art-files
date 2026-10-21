@@ -78,7 +78,7 @@ export function useProjectSave({
       else if (saved.target && "handle" in saved.target) bindHandle(saved.target.handle);
       return onSaved();
     } catch (err) {
-      setLoadError(`Could not save project: ${errMsg(err)}`);
+      setLoadError(`Could not save label: ${errMsg(err)}`);
       return false;
     }
   }

@@ -1723,7 +1723,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   }, []);
 
   const reportOpenError = (err: unknown) => {
-    if (!isAbort(err)) setLoadError(`Could not open project: ${errMsg(err)}`);
+    if (!isAbort(err)) setLoadError(`Could not open label: ${errMsg(err)}`);
   };
 
   /** A .label's master couldn't be resolved: ask the operator. "Use current"
@@ -2240,7 +2240,7 @@ export const DocumentEditor = memo(function DocumentEditor({
         </Sidebar>
         <SidebarInset className="flex h-full flex-col overflow-hidden">
         <header className="flex items-center gap-3 bg-sidebar text-sidebar-foreground px-3 py-2">
-          <SidebarTrigger className="size-6" title={`Layers (${shortcutLabel("⌘B")})`} />
+          <SidebarTrigger className="size-6" title={`Layers (${shortcutLabel("⌘B")})`} aria-label="Layers" />
           {/* Only the active tab renders the menu: under Tauri AppMenu
               installs the one native application menu, a singleton. */}
           {active && <AppMenu actions={commands} onNativeError={setBuildError}

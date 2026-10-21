@@ -73,6 +73,9 @@ it("renders a leading svg on Edit → Undo and on the View → Label check", asy
     const label = menuItem("Label");
     // Its own glyph, not only the checkmark indicator.
     expect(label.querySelector("svg.lucide-rectangle-horizontal")).not.toBeNull();
+    // Sized like a plain row's glyph: the checkbox item has no svg size rule
+    // of its own, so an unsized Lucide icon drew at its 24px default.
+    expect(label.querySelector("svg.lucide-rectangle-horizontal")?.classList.contains("size-4")).toBe(true);
   } finally {
     await act(async () => { root.unmount(); });
     container.remove();

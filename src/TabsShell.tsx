@@ -281,7 +281,7 @@ export default function TabsShell() {
       // this is the picker itself failing, before any tab exists — shown in
       // the strip, the shell's one visible surface.
       if (!isAbort(err))
-        setPickError(`Could not open project: ${errMsg(err)}`);
+        setPickError(`Could not open label: ${errMsg(err)}`);
     }
   }
 
@@ -293,13 +293,13 @@ export default function TabsShell() {
       const { exists } = await import("@tauri-apps/plugin-fs");
       if (!await exists(path)) {
         forgetRecent(path);
-        setPickError(`Could not open project: ${path} no longer exists.`);
+        setPickError(`Could not open label: ${path} no longer exists.`);
         return;
       }
       setPickError("");
       openRouted({ path });
     } catch (err) {
-      setPickError(`Could not open project: ${err instanceof Error ? err.message : String(err)}`);
+      setPickError(`Could not open label: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   const openRecentRef = useRef(openRecentPath);

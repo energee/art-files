@@ -9,7 +9,7 @@ import type {
 } from "@tauri-apps/api/menu";
 import {
   Barcode, Bookmark, BookmarkPlus, BookOpen, Columns2, Contrast, Cylinder, FileImage, Files, FolderOpen,
-  History, ImagePlus, Layers, Maximize2, Monitor, Moon, PanelLeft, QrCode, RectangleHorizontal, Redo2,
+  History, ImagePlus, Layers, Maximize2, Monitor, Moon, Palette, PanelLeft, QrCode, RectangleHorizontal, Redo2,
   Ruler, Settings, SquareArrowDown, SquareArrowUp, SquarePlus, Sun, Trash2, Type, Undo2, X, ZoomIn,
   ZoomOut, type LucideIcon,
 } from "lucide-react";
@@ -60,6 +60,7 @@ const SYMBOL_GLYPH = {
   "desktopcomputer": Monitor,
   "sun.max": Sun,
   "moon": Moon,
+  "paintpalette": Palette,
 } satisfies Record<string, LucideIcon>;
 type MenuSymbol = keyof typeof SYMBOL_GLYPH;
 
@@ -172,7 +173,7 @@ export const APP_MENUS: SubmenuEntry[] = [
       { kind: "separator", id: "view-appearance" },
       // The same three choices as Settings → Appearance; one is always checked.
       {
-        kind: "submenu", id: "appearance-menu", text: "Appearance", symbol: "circle.lefthalf.filled", items: [
+        kind: "submenu", id: "appearance-menu", text: "Appearance", symbol: "paintpalette", items: [
           { kind: "action", id: "theme-system", text: "System", check: true, keywords: ["Theme"], symbol: "desktopcomputer" },
           { kind: "action", id: "theme-light", text: "Light", check: true, keywords: ["Theme"], symbol: "sun.max" },
           { kind: "action", id: "theme-dark", text: "Dark", check: true, keywords: ["Theme"], symbol: "moon" },
@@ -225,7 +226,9 @@ type CheckedState = Partial<Record<string, boolean>>;
 
 function MenuGlyph({ name }: { name: MenuSymbol }) {
   const Icon = SYMBOL_GLYPH[name];
-  return <Icon aria-hidden="true" />;
+  // Sized here: MenubarCheckboxItem, unlike MenubarItem, has no svg size
+  // rule, so an unsized glyph drew at Lucide's 24px default on check rows.
+  return <Icon aria-hidden="true" className="size-4" />;
 }
 
 function WebEntries(props: {

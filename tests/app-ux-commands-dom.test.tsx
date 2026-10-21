@@ -270,6 +270,10 @@ it("names palette rows as the menus do, grouped by menu, with a check for what i
   const on = [...document.querySelectorAll("[data-palette-check=on]")]
     .map((el) => el.closest("[data-slot=command-item]")?.textContent?.replace(/(Ctrl\+)?[0-9A-Z]$/, ""));
   expect(on).toEqual(["Label", "Layers", "Rulers", "Guides", "System"]);
+  // A group with check rows reserves the check's space on its plain rows
+  // too, so every title in it lines up; a group without them reserves none.
+  expect(paletteRow("Zoom In").firstElementChild?.matches("svg.invisible[aria-hidden=true]")).toBe(true);
+  expect(paletteRow("New Tab").firstElementChild?.matches("svg")).toBe(false);
 });
 
 it("finds a view or theme row by its old palette wording and its menu", async () => {
@@ -295,6 +299,8 @@ it("toggles the Layers sidebar from the palette and names ⌘B on its trigger", 
   const sidebar = () => container.querySelector("[data-slot=sidebar]")!.getAttribute("data-state");
   expect(sidebar()).toBe("expanded");
   expect(container.querySelector("[data-slot=sidebar-trigger]")?.getAttribute("title")).toBe("Layers (Ctrl+B)");
+  // Its accessible name matches the tooltip, not shadcn's "Toggle Sidebar".
+  expect(container.querySelector("[data-slot=sidebar-trigger]")?.getAttribute("aria-label")).toBe("Layers");
   await paletteRows();
   await act(async () => { paletteRow("Layers").click(); });
   expect(sidebar()).toBe("collapsed");

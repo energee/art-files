@@ -78,7 +78,7 @@ it("reports a refused write without downloading or clearing dirty (#265)", async
   await toggle("warning");
   await act(async () => { expect(await saveSlot.current!()).toBe(false); });
   expect(onMeta.mock.lastCall?.[0]).toMatchObject({ dirty: true });
-  expect(document.body.textContent).toContain("Could not save project: Permission refused");
+  expect(document.body.textContent).toContain("Could not save label: Permission refused");
   expect(download).not.toHaveBeenCalled();
 });
 it("a cancelled Save As preserves the original target (#265)", async () => {

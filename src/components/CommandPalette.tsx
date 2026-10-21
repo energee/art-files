@@ -3,7 +3,8 @@
 // CommandMenu keeps the always-on key listener and the open state.
 // Rows are grouped and named exactly as the menus show them (APP_MENUS), so a
 // command reads the same on every surface; commands no menu names follow
-// under Other. A check row shows its state as a leading check mark.
+// under Other. A check row shows its state as a leading check mark, and every
+// row in its group keeps that mark's space so the titles line up.
 import { CheckIcon } from "lucide-react";
 import { menuGroups, rowTitle } from "@/components/AppMenu";
 import { shortcutOf, titleOf, type Command } from "@/components/CommandMenu";
@@ -24,17 +25,18 @@ export function CommandPalette(props: {
   const index = new Map(props.actions.map((a) => [a.id, a]));
   // cmdk matches the search against value then keywords, in order, so the
   // heading leads the value: bare "Label" or "Dark" is ambiguous, "view
-  // label" and "appearance dark" are not.
+  // label" and "appearance dark" are not. `check` is the row's state, or
+  // false for a plain row in a group that has check rows (space, no mark).
   const item = (a: Command, heading: string, title: string, keywords: string[] = [], check?: boolean) => {
     const glyphs = shortcutOf(a);
     return (
       <CommandItem key={a.id} value={`${heading} ${title}`} keywords={keywords} disabled={a.disabled}
         onSelect={() => { props.onOpenChange(false); a.run(); }}>
         {/* A leading element, not CommandItem's own check: CommandShortcut
-            hides that one on any row with a shortcut. Off rows keep the
-            space so the check rows' titles line up. The on check is named,
-            so a screen reader still hears the state the old "Hide rulers"
-            wording carried. */}
+            hides that one on any row with a shortcut. Off rows, and plain
+            rows beside check rows, keep the space so the titles line up.
+            The on check is named, so a screen reader still hears the
+            state the old "Hide rulers" wording carried. */}
         {check === true && <CheckIcon role="img" aria-label="On" data-palette-check="on" />}
         {check === false && <CheckIcon aria-hidden="true" data-palette-check="off" className="invisible" />}
         {title}
@@ -52,10 +54,12 @@ export function CommandPalette(props: {
       <CommandList>
         <CommandEmpty>No results.</CommandEmpty>
         {GROUPS.map((group) => {
+          const gutter = group.rows.some((row) => row.check);
           const rows = group.rows.flatMap((row) => {
             const a = index.get(row.id);
             if (!a) return [];
-            return [item(a, group.heading, rowTitle(row, a), row.keywords, row.check && !!props.checked?.[row.id])];
+            const check = gutter ? !!(row.check && props.checked?.[row.id]) : undefined;
+            return [item(a, group.heading, rowTitle(row, a), row.keywords, check)];
           });
           return rows.length > 0 && <CommandGroup key={group.heading} heading={group.heading}>{rows}</CommandGroup>;
         })}

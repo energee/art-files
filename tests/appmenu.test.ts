@@ -63,7 +63,7 @@ describe("file menu", () => {
       "Save Label": "square.and.arrow.down", "Export": "square.and.arrow.up",
       "Undo": "arrow.uturn.backward", "Settings…": "gear", "Rulers": "ruler",
       "Add Text Layer": "textformat", "Remove Layer": "trash", "Layers": "sidebar.left",
-      "Appearance": "circle.lefthalf.filled", "Dark": "moon",
+      "Appearance": "paintpalette", "Dark": "moon", "Mask": "circle.lefthalf.filled",
     });
   });
 
