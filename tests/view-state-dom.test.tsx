@@ -138,7 +138,7 @@ it("the DPI readout opens Settings focused on Resolution", async () => {
 
 it("the texture-drop hint shows over the 2D sheet, not on the can", async () => {
   const { container, unmount } = await mountEditor();
-  const hint = "drop a texture anywhere";
+  const hint = "drop an image anywhere";
   try {
     await vi.waitFor(() => expect(container.textContent).toContain(hint), { timeout: 30_000 });
     await press("3");
