@@ -1,6 +1,6 @@
 # UX finding: Narrow windows lose the preview when the inspector opens
 
-- Status: confirmed, open; investigation-only PR.
+- Status: closed 2026-10-21. The inspector's visible close button (aria-label "Close inspector", branch fix/inspector-close-button) is the fix; the 375px and 768px layouts are browser-only, because the desktop window's minWidth is 1024 (src-tauri/tauri.conf.json), and are closed as such.
 - Priority: [UX/high] (repository rubric).
 - Observed revision: `1b0024900e92d56e90b3f212865e15ecb99fd260` (Label Lab 0.1.103).
 - Environment: local Vite app, Chrome on macOS, 2026-10-05.

@@ -8,9 +8,9 @@ import type {
   CheckMenuItem, IconMenuItem, MenuItem, PredefinedMenuItem, Submenu,
 } from "@tauri-apps/api/menu";
 import {
-  Bookmark, BookmarkPlus, BookOpen, Columns2, Contrast, Cylinder, FileImage, Files, FolderOpen,
+  Bookmark, BookmarkPlus, BookOpen, Columns2, Contrast, Cylinder, FileImage, Files, FolderOpen, Grid2x2,
   History, Layers, Maximize2, RectangleHorizontal, Redo2, Ruler, Settings, SquareArrowDown,
-  SquareArrowUp, SquarePlus, Undo2, X, ZoomIn, ZoomOut, type LucideIcon,
+  Square, SquareArrowUp, SquarePlus, Undo2, X, ZoomIn, ZoomOut, type LucideIcon,
 } from "lucide-react";
 import { shortcutOf, titleOf, type Command } from "@/components/CommandMenu";
 import { dialogOpen, isTypingTarget } from "@/keys";
@@ -45,6 +45,8 @@ const SYMBOL_GLYPH = {
   "gear": Settings,
   "rectangle": RectangleHorizontal,
   "cylinder": Cylinder,
+  "square": Square,
+  "square.grid.2x2": Grid2x2,
   "ruler": Ruler,
   "rectangle.split.2x1": Columns2,
   "plus.magnifyingglass": ZoomIn,
@@ -130,6 +132,10 @@ export const APP_MENUS: SubmenuEntry[] = [
       { kind: "action", id: "view-mask", text: "Mask", check: true, symbol: "circle.lefthalf.filled" },
       { kind: "action", id: "view-can", text: "Can", check: true, symbol: "cylinder" },
       { kind: "separator", id: "view-modes" },
+      // The Can view's count, as the status bar's 1|4; disabled in 2D.
+      { kind: "action", id: "view-one-can", text: "One Can", check: true, symbol: "square" },
+      { kind: "action", id: "view-four-pack", text: "Four-Pack", check: true, symbol: "square.grid.2x2" },
+      { kind: "separator", id: "view-cans" },
       { kind: "action", id: "rulers", text: "Rulers", check: true, symbol: "ruler" },
       { kind: "action", id: "guides", text: "Guides", check: true, symbol: "rectangle.split.2x1" },
       { kind: "separator", id: "view-zoom" },
@@ -602,7 +608,7 @@ function useNativeMenu(
       errorRef.current(`Could not update the native menu: ${errMsg(error)}`);
     });
   // signature is the compact set of native-visible state; ordinary App
-  // renders do not produce 26 IPC updates. resync re-runs it after a native
+  // renders do not produce an IPC update per row. resync re-runs it after a native
   // check click whose command left app state unchanged.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, signature, resync]);

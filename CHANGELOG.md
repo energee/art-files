@@ -7,6 +7,13 @@ that section to the new version (see .agents/release-steward.md).
 ## [Unreleased]
 
 ### Changed
+- **Closing a tab offers to save the master.** When a tab has unsaved master edits, its close prompt now has a **Review Master…** button that opens the Save Master review in place of the prompt. Save the master and you return to the prompt to Save or Discard the `.label` (or the tab closes if the label was already saved); cancel the review and the tab stays open. You no longer have to Cancel and find File → Save Master yourself.
+- **One view state for the status bar and View menu.** The status bar's "View Mode" button, which cycled views one click at a time, is now a Label | Mask | Can control you pick from directly. With the divider part-way (Compare), no view shows as current anywhere — before, the status bar said Compare while the View menu checked nothing and the status-bar cycle counted it as Label. View → **One Can** / **Four-Pack** (and the ⌘K palette) choose the can count, as the status bar's 1|4 does, in the Can view. The divider has a visible grip that stays on the sheet at both ends.
+- **Status-bar controls look clickable, and Settings is grouped.** Zoom (its "%" inside the border), trim size and DPI carry a faint border so they read as controls; clicking the DPI readout opens Settings on Resolution. Settings now groups its fields under Output (Resolution, Bleed), Can preview (Corner radius, Edge softness) and Appearance.
+
+### Fixed
+- **Preview messages no longer overlap.** The "drop a texture" hint shows over the 2D sheet only, not on the 3D can (a texture still drops in any view), and the can's "rendering…" spinner steps aside while an export's "Building …" note shows in the same corner.
+- **The image-drop hint names both targets, and the drop overlay no longer dims the layer list and menu bar.** Before a texture is loaded, the hint under the preview says the left half of the window takes the background and the right half the metallic mask (PNG/WebP). While an image is dragged over the window, the background/mask chooser now covers the preview only, split where the window's middle falls, so the layer list, menu bar and tab strip stay visible. Drops still work anywhere in the window and still route by window half; dropping on an inspector field still loads that field.
 - **Test tooling update.** happy-dom 21 for the DOM tests; the app itself is unchanged.
 - **Interface library patch updates.** Tauri JS 2.12.3 and its dialog, file-system and updater plugins, Base UI 1.9, Lucide icons 1.56, ag-psd 31.0.3 and react-dropzone 20.1.3, plus newer build tooling; no change in behaviour.
 - **Desktop runtime patch updates.** Tauri 2.12.2 and its dialog, file-system and updater plugins (Rust side); no change in behaviour.
@@ -17,6 +24,17 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 - **A restored tab saves back to its file.** After crash recovery, a desktop tab that came from a `.label` saves to that file again when nothing has changed the file since that tab last opened or saved it and it is not open in another tab. Otherwise Save still asks where, and a note names the original file.
+- **Open Master previews the switch, like the master picker.** File → Open Master… now adds the master to the library and, when switching would hide filled fields or variants, shows the picker's preview first (opening the sidebar if it was closed). Cancel leaves the label on its master; the opened master stays in the library. Before, the switch happened at once and the hidden values were only listed afterwards. The preview's counts (here and for a picker pick) now follow edits made while it is open, a second Open Master replaces or closes the first one's preview, and Cancel returns focus to the master picker.
+- **The mm / pt toggle is labelled "Lengths in".** It applies to every layer and converts X, Y, binding gap, width, height, wrap width, barcode module width and QR size; its tooltip says so. Fields with a fixed unit (type size and letter spacing in points, stroke width in pixels, character height in millimetres) say why on hover.
+- **The Lock tooltip says what the lock does.** "Locked on canvas: drag, resize and nudge are off. Typed values still apply." on the Layers row and the inspector switch. Lock behaviour is unchanged.
+- **Character height explains itself behind an info button.** The two paragraphs under Characters per inch moved into the ⓘ beside it, read out by screen readers; the readouts and Minimum height field are unchanged.
+
+- **The inspector says which layer it edits in a multi-selection.** With several layers selected it shows "Editing Brand only (3 selected)": the inspector changes the last-picked layer, while drag, reorder and Delete act on all of them.
+- **A layer from a variant that is off reads Off in the inspector.** Its Enabled switch used to show on while the layer did not draw and edits to it were dropped. It now matches the Layers row, notes which variant adds it, and turning it on switches that variant on.
+- **Page art no longer shows Position fields.** The Background and Metallic mask always cover the page, so their X and Y changed nothing but still marked the layer as changed. Nor do they show the mm / pt toggle. A position override already on one (X, Y, a guide or a binding) keeps a reset badge so it can still be cleared.
+- **Stroke shows one reset badge, not two.** The heading badge shows while the stroke is off and the colour row's badge while it is on.
+
+- **The inspector has a close button.** A ✕ beside the layer name closes the inspector and clears the selection, the same as Esc, so it can be dismissed with the mouse or keyboard. Clicking elsewhere still keeps a multi-layer selection.
 
 ### Security
 - **TLS library patches for the update check.** rustls 0.23.46, rustls-webpki 0.103.16 and webpki-root-certs 1.0.10 fix TLS downgrade, certificate-trust and secret-logging advisories (RUSTSEC-2026-0347/0348 and others). No change in behaviour.
