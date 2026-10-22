@@ -27,10 +27,12 @@ import type { Layer, LayerKind } from "@/model/layers";
 import type { LayerRow } from "@/model/rows";
 import { LOCK_TITLE } from "./LayerInspectorControls";
 import { cn } from "@/lib/utils";
-import { ContextMenu } from "@base-ui/react/context-menu";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+// No shadcn wrapper for it; its Popup/Item parts are the Menu ones, so the
+// dropdown's content and items render inside it unchanged.
+import { ContextMenu } from "@base-ui/react/context-menu";
 import {
   SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton,
   SidebarMenuItem,
@@ -43,9 +45,9 @@ export interface LayerListProps {
   rows: LayerRow[];
   selected: readonly string[];
   onSelect: (id: string, mods: SelectMods) => void;
-  /** The two per-row switches. `enabled` off = the layer never draws
+  /** Power (`enabled`) and lock. `enabled` off = the layer never draws
    *  (recorded, undoable — there is no session-only hide); `locked` = fillers
-   *  cannot move it. */
+   *  cannot move it — set from the row menu, cleared by a locked row's lock. */
   onToggle: (id: string, prop: "enabled" | "locked", value: boolean) => void;
   /** Inline rename committed (trimmed, non-empty, changed). */
   onRename: (id: string, name: string) => void;
@@ -56,7 +58,8 @@ export interface LayerListProps {
    *  switched to, the base master otherwise. It used to offer a submenu per
    *  variant; the Select decides now, so there is one Add layer. */
   onAdd: (kind: LayerKind) => void;
-  /** The row menu's Remove, and the Delete/Backspace key on a selected row. */
+  /** The selected row's Remove button, the row menu's Remove, and the
+   *  Delete/Backspace key on a selected row. */
   onRemove: (id: string) => void;
   /** The header filter: show only layers THIS label has changed — a fill
    *  value or an override. Every layer is fillable now, so "what did I
@@ -88,16 +91,15 @@ function iconFor(layer: Layer): LucideIcon {
 }
 
 /** One 24px square control (WCAG 2.2 target size), the idiom every row
- *  control shares. `lit` = the row's exception (off, locked), always
- *  shown. Otherwise hidden until the row is hovered or the control
- *  focused, and faint on a selected row: twenty rows of normal-state icons
+ *  control shares. `lit` = always shown: the row's exception (off,
+ *  locked) or any control on the selected row. Otherwise hidden until the
+ *  row is hovered or the control focused: twenty rows of normal-state icons
  *  hid the few that mattered. */
-const control = (lit: boolean, selected: boolean) => cn(
+const control = (lit: boolean) => cn(
   "grid size-6 shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70",
   "hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
   "disabled:cursor-not-allowed disabled:opacity-20 [&>svg]:size-3.5",
   !lit && "opacity-0 group-hover/menu-item:opacity-100 focus-visible:opacity-100",
-  !lit && selected && "opacity-40",
 );
 
 /** Header chip — the Changed filter's look: a small pill, filled while
@@ -138,6 +140,8 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   const [renaming, setRenaming] = useState(false);
   // A row selected from the canvas may sit below the fold of a short window.
   const itemRef = useRef<HTMLLIElement>(null);
+  // The lock unmounts once unlocked; its focus moves here, not to the body.
+  const powerRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (isSelected) itemRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [isSelected]);
@@ -148,28 +152,34 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
     setRenaming(false);
   };
 
-  // Keyboard equivalents of the selected row's mouse-only affordances, on
-  // the row's focusable (the name button): Delete/Backspace = the menu's
-  // Remove, ⌥↑/⌥↓ = one reorder step. Gated on the row being selected, so
-  // the keys act on exactly the row those controls are showing for.
+  /** The selected row's Remove (its button, or Delete/Backspace), then focus
+   *  to the next unselected row's name, else this list's Add layer — never
+   *  dropped to the page. */
+  const removeSelected = () => {
+    const current = itemRef.current!.querySelector<HTMLElement>('[data-slot="sidebar-menu-button"]')!;
+    const list = current.closest('[data-slot="sidebar-menu"]');
+    const buttons = [...(list?.querySelectorAll<HTMLElement>('[data-slot="sidebar-menu-button"]') ?? [])];
+    const at = buttons.indexOf(current);
+    const keep = (button: HTMLElement) => button.getAttribute("aria-pressed") !== "true";
+    const next = buttons.slice(at + 1).find(keep) ?? buttons.slice(0, at).reverse().find(keep);
+    // This list's own Add layer: every workspace tab mounts a LayerList, so
+    // a document-wide lookup would find the first (hidden) tab's.
+    const addLayer = current.closest('[data-slot="sidebar-group"]')
+      ?.querySelector<HTMLElement>('[aria-label="Add layer"]');
+    p.onRemove(id);
+    queueMicrotask(() => {
+      if (!current.isConnected) (next ?? addLayer)?.focus();
+    });
+  };
+
+  // Keys on the row's name button: Delete/Backspace = the Remove button,
+  // ⌥↑/⌥↓ = one reorder step. Gated on the row being selected, so the keys
+  // act on exactly the row its Rename/Remove buttons are showing for.
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!isSelected) return;
     if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
-      const current = e.currentTarget as HTMLElement;
-      const list = current.closest('[data-slot="sidebar-menu"]');
-      const buttons = [...(list?.querySelectorAll<HTMLElement>('[data-slot="sidebar-menu-button"]') ?? [])];
-      const at = buttons.indexOf(current);
-      const keep = (button: HTMLElement) => button.getAttribute("aria-pressed") !== "true";
-      const next = buttons.slice(at + 1).find(keep) ?? buttons.slice(0, at).reverse().find(keep);
-      // This list's own Add layer: every workspace tab mounts a LayerList, so
-      // a document-wide lookup would find the first (hidden) tab's.
-      const addLayer = current.closest('[data-slot="sidebar-group"]')
-        ?.querySelector<HTMLElement>('[aria-label="Add layer"]');
-      p.onRemove(id);
-      queueMicrotask(() => {
-        if (!current.isConnected) (next ?? addLayer)?.focus();
-      });
+      removeSelected();
     } else if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       const delta = e.key === "ArrowUp" ? 1 : -1;
       if (delta === 1 ? !atFront : !atBack) { e.preventDefault(); p.onReorder(id, delta); }
@@ -184,9 +194,8 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
     )}>
       {/* The whole row is the select target and carries the hover/selected
           highlight end to end; every control inside stops propagation so
-          toggling a switch never changes the selection. The name button is
-          the row's one focusable, named control — Enter on it fires a click
-          that bubbles here the same way. Right-click opens Rename / Lock /
+          toggling a switch never changes the selection. Enter on the name
+          button fires a click that bubbles here the same way. Right-click opens Rename / Lock /
           Remove at the pointer. */}
       <ContextMenu.Root>
         <ContextMenu.Trigger
@@ -199,9 +208,12 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             isSelected && "bg-sidebar-primary/15 text-sidebar-accent-foreground hover:bg-sidebar-primary/20",
             // Muted ink, not opacity: row opacity multiplied into every child's
             // own alpha (the badge's /70 composited to ~/35, 2.15:1). Muted is
-            // 5.70:1 light / 7.09:1 dark on the sidebar and 4.66 / 6.83 on the
-            // hover/selected accent (#440). Listed last so it beats both.
+            // 5.70:1 light / 7.09:1 dark on the sidebar, 4.66 / 6.83 on the
+            // hover accent and 4.62 / 5.64 on the selected tint (#440). Listed
+            // last so it beats both. The tint holds on hover here: primary/20
+            // takes light muted to 4.29:1.
             inactive && "text-muted-foreground hover:text-muted-foreground",
+            inactive && isSelected && "hover:bg-sidebar-primary/15",
           )}
         >
           <SidebarMenuButton
@@ -218,7 +230,8 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             title={`Drag to reorder · Alt+↑/↓ · ${isMacOS() ? "⇧-click for a range, ⌘-click to add" : "Shift-click for a range, Ctrl-click to add"}`}
             className={cn(
               // The row paints hover and selection; the button stays clear, with
-              // no focus ring — keyboard moves select, so the tint follows focus.
+              // no focus ring (a review call): the selected tint is the row's one
+              // mark, so a Tab-focused row shows nothing until Enter selects it.
               "min-w-0 flex-1 touch-none cursor-pointer text-xs hover:bg-transparent data-active:bg-transparent active:bg-transparent active:cursor-grabbing focus-visible:ring-0",
               // The button's own hover/active/selected accent ink would repaint
               // an inactive row's name at full strength; keep it muted (#440).
@@ -232,6 +245,8 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
                 defaultValue={name}
                 aria-label={`Rename ${name}`}
                 onClick={stop}
+                // The row menu would take focus and commit a half-typed name.
+                onContextMenu={stop}
                 onBlur={(e) => commitRename(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") commitRename(e.currentTarget.value);
@@ -295,8 +310,9 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
               you act on the row you picked, and a stray click on a hovered
               row can't remove it. The lock exists only while locked (click
               to unlock; lock from the inspector or the row menu). Power shows
-              PowerOff at all times on an off row and Power only on hover — the
-              icon is the state, so a lit icon never means "off". */}
+              a muted PowerOff at all times on an off row, and a full-ink Power
+              on hover or on the selected row — the icon is the state, and a
+              stronger icon means "on". */}
           {isSelected && (
             <>
               <button
@@ -304,16 +320,16 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
                 onClick={(e) => { stop(e); setRenaming(true); }}
                 aria-label={`${name}: rename`}
                 title="Rename"
-                className={control(true, isSelected)}
+                className={control(true)}
               >
                 <Pencil />
               </button>
               <button
                 type="button"
-                onClick={(e) => { stop(e); p.onRemove(id); }}
+                onClick={(e) => { stop(e); removeSelected(); }}
                 aria-label={`${name}: remove`}
                 title="Remove"
-                className={cn(control(true, isSelected), "hover:text-destructive-text")}
+                className={cn(control(true), "hover:text-destructive-text")}
               >
                 <Trash2 />
               </button>
@@ -322,23 +338,27 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
           {locked && (
             <button
               type="button"
-              onClick={(e) => { stop(e); p.onToggle(id, "locked", false); }}
+              onClick={(e) => { stop(e); p.onToggle(id, "locked", false); powerRef.current?.focus(); }}
               aria-label={`${name}: locked`}
               aria-pressed
-              title={LOCK_TITLE}
-              className={control(true, isSelected)}
+              title={`${LOCK_TITLE} Click to unlock.`}
+              className={control(true)}
             >
               <Lock />
             </button>
           )}
           <button
+            ref={powerRef}
             type="button"
             onClick={(e) => { stop(e); p.onToggle(id, "enabled", inactive); }}
             aria-label={`${name}: enabled`}
             aria-pressed={!inactive}
             data-state={inactive ? "off" : "on"}
             title={inactive ? "Off — turn on to draw this layer and its variant" : "Enabled — turn off to stop it drawing"}
-            className={control(inactive, isSelected)}
+            // Ink strength = on: on is full ink, off the row's muted ink even
+            // under the pointer, so switching a layer off always lightens it.
+            className={cn(control(inactive || isSelected),
+              inactive ? "text-muted-foreground hover:text-muted-foreground" : "text-sidebar-foreground")}
           >
             {inactive ? <PowerOff /> : <Power />}
           </button>

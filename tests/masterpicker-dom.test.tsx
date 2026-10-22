@@ -326,6 +326,19 @@ describe("MasterPicker", () => {
     expect(onRenameVersion).toHaveBeenCalledWith("collab", "Guest");
   });
 
+  // An unchanged name is no edit: committing it anyway left an undo step
+  // and marked the label unsaved.
+  it("closes Rename Variant… with the name unchanged without renaming", () => {
+    const onRenameVersion = vi.fn();
+    renderPicker({ version: "collab", onRenameVersion });
+    openMenu();
+    act(() => { itemStarting("Rename Variant")!.click(); });
+    const input = container.querySelector('input[aria-label="Variant name"]') as HTMLInputElement;
+    act(() => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    expect(onRenameVersion).not.toHaveBeenCalled();
+    expect(container.querySelector('input[aria-label="Variant name"]')).toBeNull();
+  });
+
   it("offers Rename and Delete Variant only while a variant is the version", () => {
     renderPicker({ version: null });
     openMenu();

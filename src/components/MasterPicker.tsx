@@ -148,8 +148,8 @@ export function MasterPicker(props: {
   onRenameVersion: (id: string, name: string) => void;
   /** Deletes a variant from the master. Undoable, so no confirm. */
   onRemoveVersion: (id: string) => void;
-  /** File → Save Master…, next to the version's own verbs: opens the review
-   *  that writes into whichever version the Select names. */
+  /** File → Save Master…, the button under the Select while `masterDirty`:
+   *  opens the review that writes into whichever version the Select names. */
   onSaveMaster: () => void;
   /** The save button's text — File → Save Master…'s own title ("Save
    *  Master…", or "Save Variant…" on a variant), so the two always match. */
@@ -278,11 +278,12 @@ export function MasterPicker(props: {
   ]);
 
   /** Enter or blur on the name field: a trimmed non-empty change lands, an
-   *  empty one just closes — the auto "Variant N" name stands. `id` comes
-   *  from the render that opened the field, so there is no null case. */
+   *  empty or unchanged one just closes — no undo step, nothing unsaved; the
+   *  auto "Variant N" name stands. `id` comes from the render that opened the
+   *  field, so there is no null case. */
   const commitName = (id: string, value: string) => {
     const next = value.trim();
-    if (next) props.onRenameVersion(id, next);
+    if (next && next !== props.master.variants.find((v) => v.id === id)?.name) props.onRenameVersion(id, next);
     setNaming(null);
   };
 
@@ -310,10 +311,13 @@ export function MasterPicker(props: {
           if (!id) return;
           closeAll();
           if (id === NEW_VARIANT) { setNaming(props.onNewVariant()); return; }
-          if (version !== null && id === RENAME_VARIANT) { setNaming(version); return; }
-          if (version !== null && id === DELETE_VARIANT) {
-            setDeleted({ id: version, name: versionName ?? version });
-            props.onRemoveVersion(version);
+          // Shown only on a variant; never fall through to a rebind.
+          if (id === RENAME_VARIANT) { if (version !== null) setNaming(version); return; }
+          if (id === DELETE_VARIANT) {
+            if (version !== null) {
+              setDeleted({ id: version, name: versionName ?? version });
+              props.onRemoveVersion(version);
+            }
             return;
           }
           if (id.startsWith(VERSION)) { props.onVersion(id.slice(VERSION.length)); return; }

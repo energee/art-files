@@ -153,8 +153,11 @@ describe("LayerList", () => {
     const props = baseProps();
     props.rows = props.rows.map((r) => r.layer.id === "wordmark" ? { ...r, layer: { ...r.layer, locked: true } } : r);
     render(props);
+    expect(byLabel("Brand: locked").title).toMatch(/Click to unlock\.$/);
     click(byLabel("Brand: locked"));
     expect(props.onToggle).toHaveBeenCalledWith("wordmark", "locked", false);
+    // The lock goes away once unlocked; focus lands on the row's power.
+    expect(document.activeElement).toBe(byLabel("Brand: enabled"));
     await act(async () => {
       rowFor("name").firstElementChild!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
       await Promise.resolve();
@@ -169,7 +172,7 @@ describe("LayerList", () => {
     props.rows = props.rows.map((r) => r.layer.id === "wordmark" ? { ...r, layer: { ...r.layer, locked: true } } : r);
     render(props);
     expect(byLabel("Brand: locked").getAttribute("title"))
-      .toBe("Locked on canvas: drag, resize and nudge are off. Typed values still apply.");
+      .toBe("Locked on canvas: drag, resize and nudge are off. Typed values still apply. Click to unlock.");
   });
 
   it("badges a variant-added row with the variant's name and dims it while the variant is off", () => {
@@ -438,6 +441,12 @@ describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
     expect(byLabel("Name: locked")).toBeNull();
     // A variant-added row whose variant is off is off too.
     expect(byLabel("Lead-in: enabled").dataset.state).toBe("off");
+    // Ink strength = on: the off icon wears the row's muted ink, even under
+    // the pointer, so switching off never makes the icon darker.
+    expect(offPower.className).toContain("text-muted-foreground");
+    expect(offPower.className).toContain("hover:text-muted-foreground");
+    expect(byLabel("Name: enabled").className).not.toContain("text-muted-foreground");
+    expect(byLabel("Name: enabled").className).toMatch(/(^|\s)text-sidebar-foreground(\s|$)/);
   });
 
   it("sizes every row switch to a 24px target", () => {
@@ -483,6 +492,8 @@ describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
     render(baseProps({ selected: ["name"] }));
     expect(controls("name")).toEqual(["Name: rename", "Name: remove", "Name: enabled"]);
     expect(byLabel("Name: rename").className).not.toContain("opacity-0");
+    // Its power is shown at full ink too, never fainter than an off icon.
+    expect(byLabel("Name: enabled").className).not.toMatch(/opacity-(0|40)(\s|$)/);
     expect(byLabel("Name: remove").className).not.toContain("opacity-0");
     // Hovering any other row shows just its power.
     expect(controls("wordmark")).toEqual(["Brand: enabled"]);
@@ -497,6 +508,43 @@ describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
     expect(menuItem("Rename")).toBeDefined();
     await act(async () => { menuItem("Remove").click(); await Promise.resolve(); });
     expect(props.onRemove).toHaveBeenCalledWith("wordmark");
+  });
+
+  // Light theme: muted on primary/20 is 4.29:1, under #440's 4.5:1 floor.
+  it("holds an off row's selected tint on hover, so its muted ink keeps 4.5:1 (#440)", () => {
+    const props = baseProps({ selected: ["wordmark", "name"] });
+    props.rows = props.rows.map((r) =>
+      r.layer.id === "wordmark" ? { layer: { ...r.layer, enabled: false } } : r);
+    render(props);
+    expect(rowBox("wordmark").className).toContain("hover:bg-sidebar-primary/15");
+    expect(rowBox("wordmark").className).not.toContain("hover:bg-sidebar-primary/20");
+    expect(rowBox("name").className).toContain("hover:bg-sidebar-primary/20");
+  });
+
+  it("the Remove button hands focus on like the Delete key, not to the page", async () => {
+    const { rows } = lolevRows();
+    const two = rows.slice(0, 2);
+    const props = baseProps({ rows: two, selected: [two[1].layer.id] });
+    props.onRemove = vi.fn(() => render({ ...props, rows: [two[0]], selected: [] }));
+    render(props);
+    const remove = byLabel(`${two[1].layer.name}: remove`);
+    remove.focus();
+    click(remove);
+    await act(async () => { await Promise.resolve(); });
+    expect(document.activeElement).toBe(rowFor(two[0].layer.id).querySelector('[data-slot="sidebar-menu-button"]'));
+  });
+
+  it("right-click in the rename field keeps editing; no row menu opens over it", async () => {
+    const props = render(baseProps({ selected: ["wordmark"] }));
+    click(byLabel("Brand: rename"));
+    const input = rowFor("wordmark").querySelector("input")!;
+    await act(async () => {
+      input.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+    expect(menuItem("Rename")).toBeUndefined();
+    expect(rowFor("wordmark").querySelector("input")).not.toBeNull();
+    expect(props.onRename).not.toHaveBeenCalled();
   });
 });
 
