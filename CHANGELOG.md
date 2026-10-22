@@ -11,7 +11,6 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Changed
 - **Can moves to key `4`.** It now sits after Rendered in the status bar and the View menu.
-### Changed
 - **Brighter, cooler colours.** Dark mode's olive-brown greys are now a cool grey with a hint of violet, and the accents are livelier in both themes: blue for the main actions (Save, the view tiles, switches), pink for edits that write the master (Save Master, + Add layer) in place of orange, plus clearer red, yellow, green and teal. Disabled Save Master no longer reads as a brown chip. Text contrast still meets the same minimums.
 
 ## [0.1.107] - 2026-10-21
