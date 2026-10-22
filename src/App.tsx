@@ -533,6 +533,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const canView = useRef<CanViewHandle>(null);
   // Whole percent, so the camera's per-frame emissions bail out of React.
   const [camZoomPct, setCamZoomPct] = useState(100);
+  // The 3D scene's mode: Rendered shows the flat label, Can its count.
+  let canSceneMode: CanViewProps["mode"] = cans === 4 ? "pack" : "can";
+  if (viewMode === "rendered") canSceneMode = "flat";
   const shownZoomPct = viewMode === "2d" ? Math.round(zoom.z * 100) : camZoomPct;
   const view = viewState(viewMode, split);
   // The status bar's "Compare" note, which the view group points at so a
@@ -2482,7 +2485,7 @@ export const DocumentEditor = memo(function DocumentEditor({
                   setCamZoomPct(Math.round(z * 100));
                 }}
                 layers={drawLayers} source={canvasSource} bleedIn={render.bleedIn}
-                mode={viewMode === "rendered" ? "flat" : cans === 4 ? "pack" : "can"} cornerRadiusPct={render.cornerRadius}
+                mode={canSceneMode} cornerRadiusPct={render.cornerRadius}
                 edgeSoftnessPct={render.edgeSoftness} curvePct={curvePct} exporting={!!exporting}
                 onRenderError={setRenderError} />
               </Suspense>

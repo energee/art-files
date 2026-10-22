@@ -120,6 +120,8 @@ function roughnessCanvas(softMask: HTMLCanvasElement): HTMLCanvasElement {
   return out;
 }
 
+type FlatMesh = THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
+
 /**
  * The 3D view of the label — one can, the 2x2 four-pack, or the flat label. Owns a
  * WebGLRenderer inside `container`;
@@ -141,11 +143,11 @@ export class CanScene {
   private cornerRadiusPct = DEFAULTS.cornerRadiusPct;
   private edgeSoftnessRatio = DEFAULTS.edgeSoftnessRatio;
   private shadowMesh: THREE.Mesh | null = null;
-  /** The Rendered view: the label as a plane, sharing the label material. */
-  private flatMesh: THREE.Mesh | null = null;
-  /** Opaque matte backing behind the flat plane, so orbiting past 90° shows
-   *  blank stock instead of the art mirrored through the DoubleSide material. */
-  private flatBackMesh: THREE.Mesh | null = null;
+  /** The Rendered view, built and torn down as a pair: `front` is the label
+   *  as a plane (sharing the label material), `back` an opaque matte backing
+   *  so orbiting past 90° shows blank stock instead of the art mirrored
+   *  through the DoubleSide material. Both share one geometry. */
+  private flat: { front: FlatMesh; back: FlatMesh } | null = null;
   /** The Rendered view's bend, 0 (flat) to 1 (the can's own curvature). */
   private curve = 0;
   private ambient!: THREE.AmbientLight;
@@ -383,13 +385,14 @@ export class CanScene {
   }
 
   private disposeFlatMesh() {
-    if (!this.flatMesh) return;
-    // The backing shares the plane's geometry and the label's alphaMap, so
-    // only its own material is freed here.
-    this.scene.remove(this.flatMesh, this.flatBackMesh!);
-    (this.flatBackMesh!.material as THREE.Material).dispose();
-    this.flatMesh.geometry.dispose();
-    this.flatMesh = this.flatBackMesh = null;
+    if (!this.flat) return;
+    const { front, back } = this.flat;
+    this.scene.remove(front, back);
+    // The shared geometry once. The front's material is the label's and the
+    // back's alphaMap is too, so only the back's own material is freed here.
+    front.geometry.dispose();
+    back.material.dispose();
+    this.flat = null;
   }
 
   /** Blurred copy of the metalness plate — the source for the metalness,
@@ -469,8 +472,10 @@ export class CanScene {
       this.labelMaterial.alphaMap = this.createTexture(this.alphaCanvas(tex));
       this.labelMaterial.needsUpdate = true;
       // The flat view's backing shares the front's die-cut silhouette.
-      const back = this.flatBackMesh?.material as THREE.MeshStandardMaterial | undefined;
-      if (back) { back.alphaMap = this.labelMaterial.alphaMap; back.needsUpdate = true; }
+      if (this.flat) {
+        this.flat.back.material.alphaMap = this.labelMaterial.alphaMap;
+        this.flat.back.material.needsUpdate = true;
+      }
     }
     this.requestRender();
   }
@@ -524,18 +529,19 @@ export class CanScene {
 
     this.disposeFlatMesh();
     const flatGeometry = this.flatGeometry();
-    this.flatMesh = new THREE.Mesh(flatGeometry, this.labelMaterial);
+    const front = new THREE.Mesh(flatGeometry, this.labelMaterial);
     // The back face of the same surface: BackSide, so it only draws from
     // behind, and pulled toward the camera so it wins over the label's own
     // (DoubleSide) back face there. Shares the geometry, so a bend moves both.
     // ponytail: plain matte stock on the back; foil-backed stock if a real
     // label ever needs its back judged.
-    this.flatBackMesh = new THREE.Mesh(flatGeometry, new THREE.MeshStandardMaterial({
+    const back = new THREE.Mesh(flatGeometry, new THREE.MeshStandardMaterial({
       color: 0xffffff, metalness: 0, roughness: 0.9, side: THREE.BackSide,
       transparent: true, alphaTest: 0.5, alphaMap: this.labelMaterial.alphaMap,
       polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
     }));
-    this.scene.add(this.flatMesh, this.flatBackMesh);
+    this.flat = { front, back };
+    this.scene.add(front, back);
 
     // The opening view, once. frontAzimuth only becomes real after the first
     // cylinder exists, so the constructor's guess needs correcting — but only
@@ -562,9 +568,12 @@ export class CanScene {
   setCurve(curve: number) {
     if (curve === this.curve) return;
     this.curve = curve;
-    if (!this.flatMesh) return; // applyTextures builds it with this value
-    this.flatMesh.geometry.dispose();
-    this.flatMesh.geometry = this.flatBackMesh!.geometry = this.flatGeometry();
+    if (!this.flat) return; // applyTextures builds it with this value
+    const { front, back } = this.flat;
+    front.geometry.dispose(); // shared with back
+    const geometry = this.flatGeometry();
+    front.geometry = geometry;
+    back.geometry = geometry;
     this.requestRender();
   }
 
@@ -597,7 +606,10 @@ export class CanScene {
     if (this.canModel) this.canModel.visible = canVisible;
     if (this.labelMesh) this.labelMesh.visible = canVisible;
     if (this.shadowMesh) this.shadowMesh.visible = canVisible;
-    if (this.flatMesh) this.flatMesh.visible = this.flatBackMesh!.visible = mode === "flat";
+    if (this.flat) {
+      this.flat.front.visible = mode === "flat";
+      this.flat.back.visible = mode === "flat";
+    }
 
     if (mode === "pack") this.buildPackGroup();
     this.requestRender();
