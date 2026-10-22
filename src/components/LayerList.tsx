@@ -7,9 +7,10 @@ import { isMacOS } from "@/keys";
 // bottom rows like any other. Each row: kind icon, name (double-click or the
 // row menu to rename inline), a variant badge when a variant ADDS the layer
 // (its row dimmed while that variant is off), a provenance mark when an
-// enabled variant overrides part of it, then lock and power (`enabled`, at
-// the right edge) — plus drag reordering. Rename / Remove: buttons on the
-// selected row, and a right-click menu on any row.
+// enabled variant overrides part of it, a lock while locked, then power
+// (`enabled`, at the right edge) — plus drag reordering. Rename / Remove:
+// buttons on the selected row; right-click any row for Rename, Lock and
+// Remove.
 // The header carries the title, the "Changed" filter that replaced Fill mode,
 // and the "Add layer" menu.
 //
@@ -18,7 +19,7 @@ import { isMacOS } from "@/keys";
 // variant that owns the layer; spec: "Editing target selector" removed).
 import { gestureIds, modsOf, type SelectMods } from "@/selection";
 import {
-  Barcode, Image, Wallpaper, ListFilter, Lock, LockOpen, Pencil, Plus, Power,
+  Barcode, Image, Wallpaper, ListFilter, Lock, Pencil, Plus, Power,
   PowerOff, QrCode, Scan, Trash2, Type, type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -185,8 +186,8 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
           highlight end to end; every control inside stops propagation so
           toggling a switch never changes the selection. The name button is
           the row's one focusable, named control — Enter on it fires a click
-          that bubbles here the same way. Right-click opens Rename / Remove
-          at the pointer. */}
+          that bubbles here the same way. Right-click opens Rename / Lock /
+          Remove at the pointer. */}
       <ContextMenu.Root>
         <ContextMenu.Trigger
           onClick={(e) => p.onSelect(id, modsOf(e))}
@@ -289,13 +290,13 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             )}
           </SidebarMenuButton>
 
-          {/* One fixed cluster at the right edge so the columns line up down
-              the list, power last. Rename and Remove exist on the selected row
-              only — you act on the row you picked, and a stray click on a
-              hovered row can't remove it. Each switch shows its exception
-              (PowerOff, Lock) at all times and its normal state (Power,
-              LockOpen) only on hover — the icon is the state, so a lit icon
-              never means "off". */}
+          {/* One cluster at the right edge, power last so its column lines up
+              down the list. Rename and Remove exist on the selected row only —
+              you act on the row you picked, and a stray click on a hovered
+              row can't remove it. The lock exists only while locked (click
+              to unlock; lock from the inspector or the row menu). Power shows
+              PowerOff at all times on an off row and Power only on hover — the
+              icon is the state, so a lit icon never means "off". */}
           {isSelected && (
             <>
               <button
@@ -318,16 +319,18 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
               </button>
             </>
           )}
-          <button
-            type="button"
-            onClick={(e) => { stop(e); p.onToggle(id, "locked", !locked); }}
-            aria-label={`${name}: locked`}
-            aria-pressed={locked}
-            title={locked ? LOCK_TITLE : "Unlocked"}
-            className={control(locked, isSelected)}
-          >
-            {locked ? <Lock /> : <LockOpen />}
-          </button>
+          {locked && (
+            <button
+              type="button"
+              onClick={(e) => { stop(e); p.onToggle(id, "locked", false); }}
+              aria-label={`${name}: locked`}
+              aria-pressed
+              title={LOCK_TITLE}
+              className={control(true, isSelected)}
+            >
+              <Lock />
+            </button>
+          )}
           <button
             type="button"
             onClick={(e) => { stop(e); p.onToggle(id, "enabled", inactive); }}
@@ -342,6 +345,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
         </ContextMenu.Trigger>
         <DropdownMenuContent>
           <DropdownMenuItem onClick={() => setRenaming(true)}>Rename</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => p.onToggle(id, "locked", !locked)}>{locked ? "Unlock" : "Lock"}</DropdownMenuItem>
           <DropdownMenuItem variant="destructive" onClick={() => p.onRemove(id)}>Remove</DropdownMenuItem>
         </DropdownMenuContent>
       </ContextMenu.Root>

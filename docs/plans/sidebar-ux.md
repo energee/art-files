@@ -16,7 +16,7 @@ One PR, branch `feat/sidebar-ux`. Each task starts with its failing test.
 | 6 | "Changed" chip takes its own row | Move the chip into the Layers header, between the title and Add layer |
 | 7 | "⇧ click for a range · ⌘ click to add" shown whenever something is selected | Remove the line; fold it into the row button's title |
 | 8 | Canvas selection never scrolls the row into view | A row that becomes selected calls `scrollIntoView({ block: "nearest" })` |
-| 9 | Rename/Remove only behind a hover-only "…" | Revised on review: Rename and Remove are buttons (pencil, trash) on the selected row only, and a right-click menu at the pointer on any row; the hover "…" goes. Hover shows lock and power only, power at the right edge — the layers-panel convention, with no one-click trash on a merely hovered row |
+| 9 | Rename/Remove only behind a hover-only "…" | Revised on review: Rename and Remove are buttons (pencil, trash) on the selected row only, and a right-click menu at the pointer on any row; the hover "…" goes. Hover shows power only, at the right edge; the lock exists only while locked (click unlocks; lock via the inspector switch or the row menu) — the layers-panel convention, with no one-click trash on a merely hovered row |
 | 10 | "Text logo" has the image icon | Skip: the icon is by kind, and that layer is an image. Renaming layers is data, not UI |
 | 11 | Grab cursor over every name | Default pointer; `grabbing` only while pressed |
 

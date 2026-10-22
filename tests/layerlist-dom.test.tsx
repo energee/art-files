@@ -149,10 +149,18 @@ describe("LayerList", () => {
     expect(button.className).not.toMatch(/active:text-sidebar-accent-foreground/);
   });
 
-  it("the lock switch reports onToggle with the flipped value", () => {
-    const props = render(baseProps());
+  it("a locked row's lock unlocks it; the row menu locks one", async () => {
+    const props = baseProps();
+    props.rows = props.rows.map((r) => r.layer.id === "wordmark" ? { ...r, layer: { ...r.layer, locked: true } } : r);
+    render(props);
     click(byLabel("Brand: locked"));
-    expect(props.onToggle).toHaveBeenCalledWith("wordmark", "locked", true);
+    expect(props.onToggle).toHaveBeenCalledWith("wordmark", "locked", false);
+    await act(async () => {
+      rowFor("name").firstElementChild!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+    await act(async () => { menuItem("Lock").click(); await Promise.resolve(); });
+    expect(props.onToggle).toHaveBeenCalledWith("name", "locked", true);
   });
 
   // #11: the lock is canvas-only, so the row must not promise "cannot be moved".
@@ -426,14 +434,15 @@ describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
     // A normal row's switches wait for hover or focus.
     expect(byLabel("Name: enabled").dataset.state).toBe("on");
     expect(byLabel("Name: enabled").className).toContain("opacity-0");
-    expect(byLabel("Name: locked").className).toContain("opacity-0");
+    // An unlocked row has no lock at all: lock from the inspector or the row menu.
+    expect(byLabel("Name: locked")).toBeNull();
     // A variant-added row whose variant is off is off too.
     expect(byLabel("Lead-in: enabled").dataset.state).toBe("off");
   });
 
   it("sizes every row switch to a 24px target", () => {
     render(baseProps({ selected: ["name"] }));
-    for (const label of ["Name: enabled", "Name: locked", "Name: rename", "Name: remove"])
+    for (const label of ["Name: enabled", "Name: rename", "Name: remove"])
       expect(byLabel(label).className).toContain("size-6");
   });
 
@@ -472,11 +481,11 @@ describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
 
   it("shows Rename and Remove on the selected row only, always visible there; power at the right edge", () => {
     render(baseProps({ selected: ["name"] }));
-    expect(controls("name")).toEqual(["Name: rename", "Name: remove", "Name: locked", "Name: enabled"]);
+    expect(controls("name")).toEqual(["Name: rename", "Name: remove", "Name: enabled"]);
     expect(byLabel("Name: rename").className).not.toContain("opacity-0");
     expect(byLabel("Name: remove").className).not.toContain("opacity-0");
-    // Hovering any other row shows just its lock and power.
-    expect(controls("wordmark")).toEqual(["Brand: locked", "Brand: enabled"]);
+    // Hovering any other row shows just its power.
+    expect(controls("wordmark")).toEqual(["Brand: enabled"]);
   });
 
   it("opens Rename / Remove on right-click", async () => {
