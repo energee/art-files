@@ -10,7 +10,7 @@ import type {
 import {
   Barcode, Bookmark, BookmarkPlus, BookOpen, Columns2, Contrast, Cylinder, FileImage, Files, FolderOpen,
   Grid2x2, History, ImagePlus, Layers, Maximize2, Monitor, Moon, Palette, PanelLeft, QrCode, RectangleHorizontal,
-  Redo2, Ruler, Settings, Square, SquareArrowDown, SquareArrowUp, SquarePlus, Sun, Trash2, Type, Undo2, X,
+  Redo2, Ruler, Settings, Sparkles, Square, SquareArrowDown, SquareArrowUp, SquarePlus, Sun, Trash2, Type, Undo2, X,
   ZoomIn, ZoomOut, type LucideIcon,
 } from "lucide-react";
 import { shortcutOf, titleOf, type Command } from "@/components/CommandMenu";
@@ -46,6 +46,7 @@ const SYMBOL_GLYPH = {
   "gear": Settings,
   "rectangle": RectangleHorizontal,
   "cylinder": Cylinder,
+  "sparkles": Sparkles,
   "square": Square,
   "square.grid.2x2": Grid2x2,
   "ruler": Ruler,
@@ -161,6 +162,7 @@ export const APP_MENUS: SubmenuEntry[] = [
     kind: "submenu", id: "view-menu", text: "View", items: [
       { kind: "action", id: "view-label", text: "Label", check: true, keywords: ["Preview: Label"], symbol: "rectangle" },
       { kind: "action", id: "view-mask", text: "Mask", check: true, keywords: ["Preview: Mask"], symbol: "circle.lefthalf.filled" },
+      { kind: "action", id: "view-rendered", text: "Rendered", check: true, keywords: ["Preview: Rendered", "Foil", "Metallic"], symbol: "sparkles" },
       { kind: "action", id: "view-can", text: "Can", check: true, keywords: ["Preview: Can"], symbol: "cylinder" },
       { kind: "separator", id: "view-modes" },
       // The Can view's count, as the status bar's 1|4; disabled in 2D.

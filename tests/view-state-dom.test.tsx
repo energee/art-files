@@ -1,5 +1,5 @@
 // view-state-dom.test.tsx — the preview view has one source of truth. The
-// status bar's Label | Mask | Can control and the View menu's checks both
+// status bar's Label | Mask | Rendered | Can control and the View menu's checks both
 // read viewState(), so mid-split ("Compare") neither claims Label; the
 // one-can / four-pack choice is a View command as well as the status-bar 1|4
 // toggle; the zoom readout's "%" sits inside its bordered control; the status
@@ -15,13 +15,15 @@ import type { Command } from "../src/components/CommandMenu";
 type PreviewProps = import("react").ComponentProps<typeof import("../src/components/PreviewCompare").PreviewCompare>;
 const probe = vi.hoisted(() => ({
   actions: [] as Command[], checked: {} as Partial<Record<string, boolean>>,
-  preview: null as PreviewProps | null, canMode: null as string | null,
+  preview: null as PreviewProps | null, canMode: null as string | null, curvePct: null as number | null,
 }));
 vi.mock("../src/components/PreviewCompare", () => ({
   SNAP_PT: 6, PreviewCompare: (props: PreviewProps) => { probe.preview = props; return null; },
 }));
 vi.mock("../src/components/CanView", () => ({
-  CanView: (props: { mode: string }) => { probe.canMode = props.mode; return null; },
+  CanView: (props: { mode: string; curvePct: number }) => {
+    probe.canMode = props.mode; probe.curvePct = props.curvePct; return null;
+  },
 }));
 vi.mock("../src/components/Rulers", () => ({ Rulers: () => null }));
 vi.mock("../src/components/AppMenu", () => ({
@@ -65,14 +67,15 @@ it("viewState names the four states, with Compare its own", () => {
   expect(viewState("2d", 40)).toBe("compare");
   expect(viewState("2d", 100)).toBe("mask");
   expect(viewState("can", 40)).toBe("can");
+  expect(viewState("rendered", 40)).toBe("rendered");
 });
 
 it("the status bar and View menu agree on the view, including mid-split", async () => {
   const { container, unmount } = await mountEditor();
   try {
     const group = viewGroup(container);
-    expect(group.getAttribute("aria-keyshortcuts")).toBe("1 2 3");
-    expect([...group.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Label", "Mask", "Can"]);
+    expect(group.getAttribute("aria-keyshortcuts")).toBe("1 2 3 4");
+    expect([...group.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Label", "Mask", "Rendered", "Can"]);
     expect(pressed(container)).toEqual(["Label"]);
     expect(probe.checked).toMatchObject({ "view-label": true, "view-mask": false, "view-can": false });
 
@@ -94,6 +97,27 @@ it("the status bar and View menu agree on the view, including mid-split", async 
     await act(async () => { can.click(); });
     expect(pressed(container)).toEqual(["Can"]);
     expect(probe.checked).toMatchObject({ "view-can": true, "view-mask": false });
+
+    // Rendered is the flat label in the 3D scene: metallic foil and matte ink.
+    const rendered = [...group.querySelectorAll("button")].find((b) => b.textContent === "Rendered")!;
+    await act(async () => { rendered.click(); });
+    expect(pressed(container)).toEqual(["Rendered"]);
+    expect(probe.checked).toMatchObject({ "view-rendered": true, "view-can": false });
+    await vi.waitFor(() => expect(probe.canMode).toBe("flat"));
+    // The 1|4 count belongs to the Can view only.
+    expect(container.querySelector('[aria-label="Cans shown"]')).toBeNull();
+    expect(command("view-four-pack").disabled).toBe(true);
+    // Rendered has its own Curve knob, a subtle bend by default.
+    const curve = container.querySelector<HTMLInputElement>('input[type="range"][aria-label="Curve"]')!;
+    expect(curve.value).toBe("15");
+    expect(probe.curvePct).toBe(15);
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(curve, "40");
+      curve.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(probe.curvePct).toBe(40);
+    await act(async () => { can.click(); });
+    expect(container.querySelector('[aria-label="Curve"]')).toBeNull();
   } finally { await unmount(); }
 });
 
@@ -102,7 +126,7 @@ it("One Can / Four-Pack are View commands, live only in the Can view", async () 
   try {
     expect(command("view-one-can").disabled).toBe(true);
     expect(command("view-four-pack").disabled).toBe(true);
-    await press("3");
+    await press("4");
     await vi.waitFor(() => expect(probe.canMode).toBe("can"));
     expect(command("view-four-pack").disabled).toBe(false);
     expect(probe.checked).toMatchObject({ "view-one-can": true, "view-four-pack": false });
@@ -141,7 +165,7 @@ it("the texture-drop hint shows over the 2D sheet, not on the can", async () => 
   const hint = "drop an image anywhere";
   try {
     await vi.waitFor(() => expect(container.textContent).toContain(hint), { timeout: 30_000 });
-    await press("3");
+    await press("4");
     expect(container.textContent).not.toContain(hint);
     await press("1");
     expect(container.textContent).toContain(hint);

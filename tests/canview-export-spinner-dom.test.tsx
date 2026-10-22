@@ -12,7 +12,7 @@ import { measure } from "./fixtures";
 vi.mock("../src/three/canScene", () => ({
   CanScene: class {
     onZoomChange?: unknown;
-    setZoom() {} setPan() {} resize() {} dispose() {} setMode() {} setLabelOptions() {} applyTextures() {}
+    setZoom() {} setPan() {} resize() {} dispose() {} setMode() {} setCurve() {} setLabelOptions() {} applyTextures() {}
   },
 }));
 // Never settles, so the view stays "loading" for the whole test.
@@ -32,7 +32,7 @@ it("hides the can's rendering spinner while an export runs", async () => {
   const root = createRoot(container);
   const show = (exporting: boolean) => act(async () => {
     root.render(createElement(CanView, {
-      layers: [], source, bleedIn: 0.125, mode: "can", cornerRadiusPct: 0, edgeSoftnessPct: 0,
+      layers: [], source, bleedIn: 0.125, mode: "can", cornerRadiusPct: 0, edgeSoftnessPct: 0, curvePct: 0,
       onRenderError: () => undefined, exporting,
     }));
   });

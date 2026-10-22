@@ -288,12 +288,13 @@ const zoomAbout = (
   return clampView(r, z, ax - k * (ax - v.x), ay - k * (ay - v.y));
 };
 
-type ViewMode = "2d" | "can";
+/** "rendered" is the flat label in the 3D scene (CanSceneMode "flat"). */
+type ViewMode = "2d" | "can" | "rendered";
 /** Which view the preview is in. The 2D divider anywhere between its ends is
  *  "compare": neither Label nor Mask. The status bar and the View menu checks
  *  both read this, so they can't disagree. Exported for tests. */
 export const viewState = (mode: ViewMode, split: number) =>
-  mode === "can" ? "can" : split === 0 ? "label" : split === 100 ? "mask" : "compare";
+  mode !== "2d" ? mode : split === 0 ? "label" : split === 100 ? "mask" : "compare";
 /** The status bar's clickable readouts (zoom, trim size, DPI): a faint idle
  *  border so they read as controls, not as text like the readouts beside them.
  *  Zoom puts it on a wrapping label so the "%" sits inside the border. */
@@ -302,10 +303,11 @@ const STATUS_CONTROL = "rounded border border-border/60 bg-transparent text-xs t
 const segmentClass = (on: boolean) =>
   `px-2 py-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring ${
     on ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"}`;
-/** The three preview views in keys-1–3 order, as the status bar lists them. */
+/** The four preview views in keys-1–4 order, as the status bar lists them. */
 const VIEWS = [
   { state: "label", label: "Label", id: "view-label" },
   { state: "mask", label: "Mask", id: "view-mask" },
+  { state: "rendered", label: "Rendered", id: "view-rendered" },
   { state: "can", label: "Can", id: "view-can" },
 ] as const;
 
@@ -521,6 +523,9 @@ export const DocumentEditor = memo(function DocumentEditor({
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   // How many cans the 3D view shows — one, or the 2x2 four-pack.
   const [cans, setCans] = useState<1 | 4>(1);
+  // The Rendered view's bend, % of the can's curvature. A subtle default.
+  // ponytail: per-tab and unsaved; move to Settings if it should persist.
+  const [curvePct, setCurvePct] = useState(15);
   // Preview pane zoom: scale `z` about the pane's top-left, then offset by
   // (x, y) screen px. z === 1 is the fitted view.
   const previewPane = useRef<HTMLDivElement>(null);
@@ -2092,7 +2097,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     { id: "settings", label: "Settings…", run: () => setSettingsOpen(true) },
     { id: "view-label", label: "Label", key: "1", run: () => show2d("art") },
     { id: "view-mask", label: "Mask", key: "2", run: () => show2d("mask") },
-    { id: "view-can", label: "Can", key: "3", run: () => setViewMode("can") },
+    { id: "view-rendered", label: "Rendered", key: "3", run: () => setViewMode("rendered") },
+    { id: "view-can", label: "Can", key: "4", run: () => setViewMode("can") },
     { id: "view-one-can", label: "One Can", disabled: viewMode !== "can", run: () => setCans(1) },
     { id: "view-four-pack", label: "Four-Pack", disabled: viewMode !== "can", run: () => setCans(4) },
     // ⌘B is display-only: SidebarProvider's own listener handles the key.
@@ -2114,6 +2120,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     "view-label": view === "label",
     "view-mask": view === "mask",
     "view-can": view === "can",
+    "view-rendered": view === "rendered",
     "view-one-can": cans === 1,
     "view-four-pack": cans === 4,
     layers: sidebarOpen,
@@ -2475,8 +2482,8 @@ export const DocumentEditor = memo(function DocumentEditor({
                   setCamZoomPct(Math.round(z * 100));
                 }}
                 layers={drawLayers} source={canvasSource} bleedIn={render.bleedIn}
-                mode={cans === 4 ? "pack" : "can"} cornerRadiusPct={render.cornerRadius}
-                edgeSoftnessPct={render.edgeSoftness} exporting={!!exporting}
+                mode={viewMode === "rendered" ? "flat" : cans === 4 ? "pack" : "can"} cornerRadiusPct={render.cornerRadius}
+                edgeSoftnessPct={render.edgeSoftness} curvePct={curvePct} exporting={!!exporting}
                 onRenderError={setRenderError} />
               </Suspense>
             )}
@@ -2568,10 +2575,10 @@ export const DocumentEditor = memo(function DocumentEditor({
               {render.dpi} DPI
             </button>
             <span className="mx-2 h-3.5 w-px shrink-0 bg-border" />
-            {/* Pick a view directly; keys 1–3 do the same. Mid-split (Compare)
+            {/* Pick a view directly; keys 1–4 do the same. Mid-split (Compare)
                 none is pressed and the group is described by the Compare
                 note. Each label starts with its visible text. */}
-            <div role="group" aria-label="View mode" aria-keyshortcuts="1 2 3"
+            <div role="group" aria-label="View mode" aria-keyshortcuts="1 2 3 4"
               aria-describedby={view === "compare" ? compareId : undefined}
               className="flex shrink-0 overflow-hidden rounded border border-border">
               {VIEWS.map((v) => (
@@ -2596,6 +2603,16 @@ export const DocumentEditor = memo(function DocumentEditor({
                   </button>
                 ))}
               </div>
+            )}
+            {viewMode === "rendered" && (
+              <label title="Bend the label like it's on a can: 0% flat, 100% the can's curve"
+                className="ml-2 flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                Curve
+                <input type="range" aria-label="Curve" min={0} max={100} step={1}
+                  value={curvePct} onChange={(e) => setCurvePct(Number(e.target.value))}
+                  className="w-24 accent-primary" />
+                <span className="w-8 tabular-nums">{curvePct}%</span>
+              </label>
             )}
             {active && <div ref={updateStatusHost} className="ml-auto shrink-0 pl-3" />}
           </div>

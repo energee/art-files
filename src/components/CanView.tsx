@@ -26,6 +26,8 @@ export const CanView = forwardRef<CanViewHandle, {
   cornerRadiusPct: number;
   /** Foil-mask blur, % of label width (Settings layer). */
   edgeSoftnessPct: number;
+  /** The Rendered view's bend, % of the can's own curvature (0 = flat). */
+  curvePct: number;
   /** The resolved layers that draw, in draw order (the same list the 2D
    *  preview plans from). */
   layers: Layer[];
@@ -54,7 +56,7 @@ export const CanView = forwardRef<CanViewHandle, {
   exporting?: boolean;
 }>(function CanView({
   layers, source, bleedIn, mode, cornerRadiusPct,
-  edgeSoftnessPct, onZoom, initialView, onRenderError, exporting,
+  edgeSoftnessPct, curvePct, onZoom, initialView, onRenderError, exporting,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<CanScene | null>(null);
@@ -133,6 +135,10 @@ export const CanView = forwardRef<CanViewHandle, {
   useEffect(() => {
     sceneRef.current?.setMode(mode);
   }, [mode]);
+
+  useEffect(() => {
+    sceneRef.current?.setCurve(curvePct / 100);
+  }, [curvePct]);
 
   useEffect(() => {
     sceneRef.current?.setLabelOptions({
