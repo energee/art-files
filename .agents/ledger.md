@@ -505,3 +505,9 @@ no status, no attempts, no delta.
 - delta: Open/Save/Save As Label…, LABEL_DESC "Label"; Save Master… (live: reads Save Variant… on a variant, shared with the picker button); palette grouped from APP_MENUS with leading checks and old wording as keywords; Layer menu; View → Layers (controlled SidebarProvider, ⌘B display-only, no native accelerator); View → Appearance submenu backed by a shared useTheme store; platform-correct New tab title
 - observed-at: 892a272
 - evidence: branch fix/ux-menu-naming; tsc, lint, knip clean; full vitest at load ~64 gave only 5s timeouts, those files rerun with --testTimeout=120000
+
+## 2026-10-22 sidebar-ux
+- finding: [UX/high] src/components/LayerList.tsx, MasterPicker.tsx — sidebar audit: selected row ~1.05:1 on the sidebar (same as hover); power lit while OFF; 16px row switches; struck variant badge; permanent Save/Rename/Delete under the picker; Changed chip and multi-select hint each on their own line; canvas selection never scrolled the row into view; Rename/Remove only behind a hover "…"; grab cursor over names
+- status: in-review
+- delta: plan docs/plans/sidebar-ux.md; selected = sidebar-primary/15 + inset left bar; PowerOff/Lock shown as exceptions, Power/LockOpen on hover; size-6 controls; no strikethrough; Rename/Delete Variant as picker sentinels, Save only while masterDirty; Changed in the group label; hint folded into the row title; scrollIntoView nearest; right-click opens the row menu
+- evidence: branch feat/sidebar-ux; layerlist + masterpicker DOM tests 67/67, tsc and lint clean; full vitest 1649 pass, 3 fail only from the worktree lacking node_modules/.bin/tsx (generate-cli, golden-diff); browser-checked dark and light on localhost:5197

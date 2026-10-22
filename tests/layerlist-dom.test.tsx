@@ -180,18 +180,19 @@ describe("LayerList", () => {
     expect(rowFor("wordmark").textContent).not.toContain("Collab");
   });
 
-  it("inks the variant badge with the row's muted colour while off, /70 while on, and strikes off through (#440)", () => {
+  it("inks the variant badge with the row's muted colour while off, /70 while on, never struck through (#440)", () => {
     const badgeClass = () => Array.from(rowFor("collabLead").querySelectorAll("span[title]"))
       .find((el) => el.textContent === "Collab")!.className;
     render(baseProps());
-    // Off: inherits the inactive row's muted ink, no extra alpha on top.
+    // Off: inherits the inactive row's muted ink, no extra alpha on top. The
+    // dimmed row and its power-off icon already say "off"; a struck badge
+    // read as "deleted".
     expect(badgeClass()).not.toContain("text-sidebar-foreground/70");
     expect(badgeClass()).not.toContain("/40");
-    expect(badgeClass()).toContain("line-through");
+    expect(badgeClass()).not.toContain("line-through");
 
     render(baseProps({ rows: lolevRows(true).rows }));
     expect(badgeClass()).toContain("text-sidebar-foreground/70");
-    expect(badgeClass()).not.toContain("line-through");
   });
 
   it("titles the variant chip by what the variant does: adds the layer, or changes a master one", () => {
@@ -400,6 +401,77 @@ describe("LayerList", () => {
       .map((el) => el.getAttribute("aria-label"));
     expect(marks).toContain("Collab changes this layer");
     expect(marks).toContain("Changed in this label");
+  });
+});
+
+describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
+  const rowBox = (id: string) => rowFor(id).firstElementChild as HTMLElement;
+
+  it("marks the selected row with a primary tint and left bar, not the hover grey", () => {
+    render(baseProps({ selected: ["name"] }));
+    expect(rowBox("name").className).toContain("bg-sidebar-primary/15");
+    expect(rowBox("name").className).toContain("shadow-[inset_2px_0_0_var(--sidebar-primary)]");
+    expect(rowBox("wordmark").className).not.toContain("bg-sidebar-primary/15");
+    // The button must not paint the old accent over the row's tint.
+    const button = rowFor("name").querySelector('[data-sidebar="menu-button"]')!;
+    expect(button.className).toContain("data-active:bg-transparent");
+  });
+
+  it("shows the exception: power-off while off, the lock while locked, else only on hover", () => {
+    const props = baseProps();
+    props.rows = props.rows.map((r) =>
+      r.layer.id === "wordmark" ? { layer: { ...r.layer, enabled: false, locked: true } } : r);
+    render(props);
+    const offPower = byLabel("Brand: enabled");
+    expect(offPower.dataset.state).toBe("off");
+    expect(offPower.className).not.toContain("opacity-0");
+    expect(byLabel("Brand: locked").className).not.toContain("opacity-0");
+    // A normal row's switches wait for hover or focus.
+    expect(byLabel("Name: enabled").dataset.state).toBe("on");
+    expect(byLabel("Name: enabled").className).toContain("opacity-0");
+    expect(byLabel("Name: locked").className).toContain("opacity-0");
+    // A variant-added row whose variant is off is off too.
+    expect(byLabel("Lead-in: enabled").dataset.state).toBe("off");
+  });
+
+  it("sizes every row switch to a 24px target", () => {
+    render(baseProps());
+    for (const label of ["Name: enabled", "Name: locked", "Name actions"])
+      expect(byLabel(label).className).toContain("size-6");
+  });
+
+  it("puts the Changed filter in the Layers header and drops the multi-select hint", () => {
+    render(baseProps({ selected: ["name"] }));
+    const header = container.querySelector('[data-slot="sidebar-group-label"]')!;
+    expect(Array.from(header.querySelectorAll("button")).map((b) => b.textContent?.trim()))
+      .toContain("Changed");
+    expect(container.textContent).not.toMatch(/click for a range|Shift-click/);
+  });
+
+  it("scrolls a newly selected row into view", () => {
+    const spy = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = spy;
+    try {
+      const props = render(baseProps());
+      expect(spy).not.toHaveBeenCalled();
+      render({ ...props, selected: ["name"] });
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalledWith({ block: "nearest" });
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
+  it("opens the row menu on right-click", async () => {
+    const props = render(baseProps());
+    await act(async () => {
+      rowBox("wordmark").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+    await act(async () => { menuItem("Remove").click(); await Promise.resolve(); });
+    expect(props.onRemove).toHaveBeenCalledWith("wordmark");
+    expect(props.onSelect).not.toHaveBeenCalled();
   });
 });
 

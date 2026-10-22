@@ -6,10 +6,10 @@ import { isMacOS } from "@/keys";
 // reverses them), no Document group — background and mask are the two
 // bottom rows like any other. Each row: kind icon, name (double-click or the
 // row menu to rename inline), a variant badge when a variant ADDS the layer
-// (struck through, its row dimmed, while that variant is off), a provenance
-// mark when an enabled variant overrides part of it, then power (`enabled`)
-// and lock — plus drag reordering and a "…" menu with Rename / Remove. The
-// header carries the title, the "Changed" filter that replaced Fill mode,
+// (its row dimmed while that variant is off), a provenance mark when an
+// enabled variant overrides part of it, then power (`enabled`) and lock —
+// plus drag reordering and a "…" menu (or right-click) with Rename / Remove.
+// The header carries the title, the "Changed" filter that replaced Fill mode,
 // and the "Add layer" menu.
 //
 // Props-only: no app state, no model imports beyond types. Every write goes
@@ -17,10 +17,10 @@ import { isMacOS } from "@/keys";
 // variant that owns the layer; spec: "Editing target selector" removed).
 import { gestureIds, modsOf, type SelectMods } from "@/selection";
 import {
-  Barcode, Ellipsis, Image, Wallpaper, ListFilter, Lock, Plus, Power,
-  QrCode, Scan, Type, type LucideIcon,
+  Barcode, Ellipsis, Image, Wallpaper, ListFilter, Lock, LockOpen, Plus, Power,
+  PowerOff, QrCode, Scan, Type, type LucideIcon,
 } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Layer, LayerKind } from "@/model/layers";
 import type { LayerRow } from "@/model/rows";
 import { LOCK_TITLE } from "./LayerInspectorControls";
@@ -84,13 +84,17 @@ function iconFor(layer: Layer): LucideIcon {
   }
 }
 
-/** One small square control, the idiom every row switch shares: lit while
- *  `lit`, faded (and brightening on hover) otherwise. */
-const control = (lit: boolean) => cn(
-  "grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70",
+/** One 24px square control (WCAG 2.2 target size), the idiom every row
+ *  switch shares. `lit` = the row's exception (off, locked), always
+ *  shown. Otherwise hidden until the row is hovered or the control
+ *  focused, and faint on a selected row: twenty rows of normal-state icons
+ *  hid the few that mattered. */
+const control = (lit: boolean, selected: boolean) => cn(
+  "grid size-6 shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70",
   "hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-  "disabled:cursor-not-allowed disabled:opacity-20 [&>svg]:size-3",
-  !lit && "opacity-40 hover:opacity-100 focus-visible:opacity-100",
+  "disabled:cursor-not-allowed disabled:opacity-20 [&>svg]:size-3.5",
+  !lit && "opacity-0 group-hover/menu-item:opacity-100 focus-visible:opacity-100",
+  !lit && selected && "opacity-40",
 );
 
 /** Header chip — the Changed filter's look: a small pill, filled while
@@ -129,6 +133,13 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   const inactive = !layer.enabled || (row.variant !== undefined && !row.variant.enabled);
   const locked = !!layer.locked;
   const [renaming, setRenaming] = useState(false);
+  /** The row menu, controlled so a right-click on the row can open it. */
+  const [menuOpen, setMenuOpen] = useState(false);
+  // A row selected from the canvas may sit below the fold of a short window.
+  const itemRef = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (isSelected) itemRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [isSelected]);
 
   const commitRename = (value: string) => {
     const next = value.trim();
@@ -165,7 +176,7 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   };
 
   return (
-    <SidebarMenuItem data-layer-id={id} className={cn("relative",
+    <SidebarMenuItem ref={itemRef} data-layer-id={id} className={cn("relative",
       lifted && "opacity-50 ring-1 ring-sidebar-primary/60 rounded-md",
       dropEdge === "top" && "before:absolute before:inset-x-0 before:top-0 before:z-10 before:border-t-2 before:border-sidebar-primary",
       dropEdge === "bottom" && "after:absolute after:inset-x-0 after:bottom-0 after:z-10 after:border-b-2 after:border-sidebar-primary",
@@ -177,9 +188,14 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
           that bubbles here the same way. */}
       <div
         onClick={(e) => p.onSelect(id, modsOf(e))}
+        // TabsShell already blocks the browser's own menu window-wide.
+        onContextMenu={(e) => { e.preventDefault(); setMenuOpen(true); }}
         className={cn(
           "flex cursor-pointer items-center gap-0.5 rounded-md pr-1 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-          isSelected && "bg-sidebar-accent text-sidebar-accent-foreground",
+          // Selected is a primary tint plus a left bar, not the hover grey:
+          // the accent sat at ~1.05:1 on the sidebar, so a selection was
+          // invisible once the pointer left it.
+          isSelected && "bg-sidebar-primary/15 text-sidebar-accent-foreground shadow-[inset_2px_0_0_var(--sidebar-primary)] hover:bg-sidebar-primary/20",
           // Muted ink, not opacity: row opacity multiplied into every child's
           // own alpha (the badge's /70 composited to ~/35, 2.15:1). Muted is
           // 5.70:1 light / 7.09:1 dark on the sidebar and 4.66 / 6.83 on the
@@ -198,9 +214,10 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
           onDoubleClick={() => setRenaming(true)}
           onKeyDown={(e) => { dragHandlers.onKeyDown?.(e); if (!e.defaultPrevented) onKeyDown(e); }}
           aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-          title="Drag to reorder · Alt+↑/↓"
+          title={`Drag to reorder · Alt+↑/↓ · ${isMacOS() ? "⇧-click for a range, ⌘-click to add" : "Shift-click for a range, Ctrl-click to add"}`}
           className={cn(
-            "min-w-0 flex-1 touch-none cursor-grab text-xs hover:bg-transparent active:cursor-grabbing",
+            // The row paints hover and selection; the button stays clear.
+            "min-w-0 flex-1 touch-none cursor-pointer text-xs hover:bg-transparent data-active:bg-transparent active:bg-transparent active:cursor-grabbing",
             // The button's own hover/active/selected accent ink would repaint
             // an inactive row's name at full strength; keep it muted (#440).
             inactive && "text-muted-foreground hover:text-muted-foreground active:text-muted-foreground data-active:text-muted-foreground data-open:hover:text-muted-foreground",
@@ -234,11 +251,11 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
               // /70 on an active row; an inactive row's badge inherits the
               // row's muted ink with no extra alpha, since stacking a fainter
               // colour (or row opacity) under it fell below WCAG AA's 4.5:1
-              // (#440). Off shows as a strikethrough, not a fainter colour.
+              // (#440). Off is said by the dimmed row and its power-off icon;
+              // a struck-through badge read as "deleted".
               className={cn(
                 "shrink-0 rounded-sm border border-sidebar-border px-1 text-[10px] leading-4",
                 !inactive && "text-sidebar-foreground/70",
-                !row.variant.enabled && "line-through",
               )}
             >
               {row.variant.name}
@@ -272,20 +289,17 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
         </SidebarMenuButton>
 
         {/* Row menu: the keyboard route to rename, and the one place to
-            remove. Faded until the row is hovered, focused or selected, but
-            always in the tab order — a focused trigger shows itself. */}
+            remove; right-click on the row opens it too. Hidden until the row
+            is hovered, focused or selected, but always in the tab order — a
+            focused trigger shows itself. */}
         <span onClick={stop} className="contents">
-          <DropdownMenu>
+          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
             <DropdownMenuTrigger
               render={
                 <button
                   type="button"
                   aria-label={`${name} actions`}
-                  className={cn(
-                    control(false),
-                    "opacity-0 group-hover/menu-item:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100",
-                    isSelected && "opacity-40",
-                  )}
+                  className={cn(control(false, isSelected), "aria-expanded:opacity-100")}
                 >
                   <Ellipsis />
                 </button>
@@ -304,18 +318,20 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
         </span>
 
         {/* The two switches, in one fixed cluster at the right edge so the
-            power and lock columns line up down the whole list. */}
+            power and lock columns line up down the whole list. Each shows
+            its exception (PowerOff, Lock) at all times and its normal state
+            (Power, LockOpen) only on hover — the icon is the state, so a lit
+            icon never means "off". */}
         <button
           type="button"
           onClick={(e) => { stop(e); p.onToggle(id, "enabled", inactive); }}
           aria-label={`${name}: enabled`}
           aria-pressed={!inactive}
-          // Lit while OFF: the exception is what needs pointing at, and the
-          // row is already dimmed around it.
+          data-state={inactive ? "off" : "on"}
           title={inactive ? "Off — turn on to draw this layer and its variant" : "Enabled — turn off to stop it drawing"}
-          className={control(inactive)}
+          className={control(inactive, isSelected)}
         >
-          <Power />
+          {inactive ? <PowerOff /> : <Power />}
         </button>
         <button
           type="button"
@@ -323,9 +339,9 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
           aria-label={`${name}: locked`}
           aria-pressed={locked}
           title={locked ? LOCK_TITLE : "Unlocked"}
-          className={control(locked)}
+          className={control(locked, isSelected)}
         >
-          <Lock />
+          {locked ? <Lock /> : <LockOpen />}
         </button>
       </div>
     </SidebarMenuItem>
@@ -437,8 +453,21 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
   return (
     <SidebarGroup>
       <span role="status" aria-live="polite" className="sr-only">{announcement}</span>
-      <SidebarGroupLabel className="justify-between">
-        <span>Layers</span>
+      {/* Title, the one filter, then Add layer — on one line, so the list
+          starts a row higher. Variants used to sit here as toggle chips; they
+          live in the master Select now, which names the version the canvas
+          is drawing. */}
+      <SidebarGroupLabel className="gap-1.5">
+        <span className="flex-1">Layers</span>
+        <button
+          type="button"
+          aria-pressed={props.changedOnly}
+          onClick={() => props.onChangedOnly(!props.changedOnly)}
+          title="Show only layers changed in this label"
+          className={chip(props.changedOnly)}
+        >
+          <ListFilter /> Changed
+        </button>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -460,21 +489,6 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarGroupLabel>
-
-      {/* The one filter, on its own line: the sidebar is narrow. Variants used
-          to sit here as toggle chips; they live in the master Select now,
-          which names the version the canvas is drawing. */}
-      <div className="flex flex-wrap items-center gap-1 px-2 pb-1.5">
-        <button
-          type="button"
-          aria-pressed={props.changedOnly}
-          onClick={() => props.onChangedOnly(!props.changedOnly)}
-          title="Show only layers changed in this label"
-          className={chip(props.changedOnly)}
-        >
-          <ListFilter /> Changed
-        </button>
-      </div>
 
       <SidebarGroupContent>
         <SidebarMenu>
@@ -503,12 +517,6 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
           </p>
         )}
       </SidebarGroupContent>
-      {selected.length > 0 && (
-        <p className="px-2 pt-1 text-center text-[11px] text-sidebar-foreground/50">
-          {isMacOS() ? "⇧ click for a range · ⌘ click to add" : "Shift-click for a range · Ctrl-click to add"}
-        </p>
-      )}
-
     </SidebarGroup>
   );
 }
