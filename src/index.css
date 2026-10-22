@@ -1,10 +1,11 @@
-/* index.css — Tailwind v4 entry + warm-neutral theme tokens, six accents.
+/* index.css — Tailwind v4 entry + theme tokens (warm neutrals light, cool neutrals dark), six accents.
    Light and dark are one palette: every token is `light-dark(light, dark)`,
    resolved by the `color-scheme` on :root. `data-theme="light"|"dark"` pins
    it; no attribute at all follows the OS (see src/theme.ts). No .dark class is
    involved. tw-animate-css + shadcn/tailwind.css are required by the
    base-nova (Base UI) component style. Headings use the bundled Poppins.
-   Colour scheme: docs/plans/template-switch.md ("The colour scheme"). Six
+   Original colour plan: docs/plans/template-switch.md ("The colour scheme");
+   the values here have since moved on and are the source of truth. Six
    accents (primary/destructive/attention/warning/success/info) each carry a
    raw token — fills, rings, dots, white-on-fill text, ≥3:1 on background and
    card — and a `-text` token for coloured text on tints/plain surfaces
@@ -33,38 +34,38 @@
   /* Both schemes supported → light-dark() resolves, and native widgets
      (scrollbars, form controls) follow along. */
   color-scheme: light dark;
-  --background: light-dark(#fafaf7, #1b1c18);
-  --foreground: light-dark(#1e1f1a, #edede6);
-  --muted: light-dark(#ece8df, #26261f);
+  --background: light-dark(#fafaf7, #18191f);
+  --foreground: light-dark(#1e1f1a, #ececf1);
+  --muted: light-dark(#ece8df, #24252d);
   /* Secondary text: 7.69:1 dark / 5.45:1 light on --background, 7.09 / 5.70 on
      --card (the sidebar) and 6.83 / 4.66 on --accent (hover/selected rows) —
      all clear the 4.5:1 body-copy minimum for this app's 11-12px labels. */
-  --muted-foreground: light-dark(#68675c, #b0aea2);
+  --muted-foreground: light-dark(#68675c, #aeaebb);
   /* Structural rules (separators, panel edges): deliberately quiet, warm-grey
-     bias to match the neutrals above. */
-  --border: light-dark(#ddd8cc, #3a382e);
+     bias (cool in dark) to match the neutrals above. */
+  --border: light-dark(#ddd8cc, #383a46);
   /* Field edges — barely there. The border does not carry the affordance at
      all: the fill rule below separates a field from the panel, so the
      outline only has to close its shape. */
-  --input: light-dark(#e6e1d3, #2c2a22);
+  --input: light-dark(#e6e1d3, #2b2c35);
   /* Field fill: one step AWAY from the canvas (lighter in dark, white in
      light), so a field reads as a raised surface you can type into rather than
      a hole. With --input pulled back to a hairline this is what marks a field
      at all. Set here because the components render bg-transparent and their
      dark: fallbacks never match (no .dark class — the theme is :root-only). */
-  --field: light-dark(#ffffff, #262720);
+  --field: light-dark(#ffffff, #25262e);
 
   /* Six accents. Raw tokens are for fills/rings/dots/white-on-fill text
      (≥3:1 on background and card, ≥4.5:1 for --primary-foreground on
      --primary); the light column alone only reaches 3.3-3.9:1 on white
      (except primary), so coloured TEXT uses the `-text` variant below
      instead, never the raw token. */
-  --primary: light-dark(#7058be, #ab9df2); /* create, edit, finish — Save, Continue, the label-mode accent */
-  --destructive: light-dark(#e14775, #ff6188); /* remove, discard */
-  --attention: light-dark(#e16032, #fc9867); /* edits that write the master: Save Master, promotion review, structural verbs */
-  --warning: light-dark(#cc7a0a, #ffd866); /* validation and resolve warnings */
-  --success: light-dark(#269d69, #a9dc76); /* confirmations, "current" */
-  --info: light-dark(#1c8ca8, #78dce8); /* override badges, learned choice */
+  --primary: light-dark(#2563eb, #60a5fa); /* create, edit, finish — Save, Continue, the label-mode accent */
+  --destructive: light-dark(#dc2626, #f87171); /* remove, discard */
+  --attention: light-dark(#db2777, #f472b6); /* edits that write the master: Save Master, promotion review, structural verbs */
+  --warning: light-dark(#cc7a0a, #fbbf24); /* validation and resolve warnings */
+  --success: light-dark(#059669, #34d399); /* confirmations, "current" */
+  --info: light-dark(#0d9488, #2dd4bf); /* override badges, learned choice */
   /* Coloured text on tints and small labels: darkened toward --foreground in
      light (still legible on white AND on the accent's own -soft tint,
      ≥4.5:1 either way — see the file header for why it's 65%, not 75%) and
@@ -84,25 +85,25 @@
   --success-soft: color-mix(in oklab, var(--success) 14%, transparent);
   --info-soft: color-mix(in oklab, var(--info) 14%, transparent);
 
-  /* White in light (5.5:1 on primary); dark mode's light-purple primary needs
+  /* White in light (5.2:1 on primary); dark mode's light-blue primary needs
      a dark foreground instead (white only manages 2.4:1 there) — reuses the
      light scheme's --foreground hex directly, not var(--foreground) (which
      would resolve to the *dark*-scheme foreground and fail the same way). */
   --primary-foreground: light-dark(#ffffff, #1e1f1a);
-  --accent: light-dark(#ece8df, #26261f);
-  --accent-foreground: light-dark(#1e1f1a, #edede6);
+  --accent: light-dark(#ece8df, #24252d);
+  --accent-foreground: light-dark(#1e1f1a, #ececf1);
   --ring: var(--primary);
-  /* The switch's checked track follows primary — purple reads as "on" at
+  /* The switch's checked track follows primary — the accent reads as "on" at
      full strength, unlike the previous palette's muted accent, so the old
      brighter-blue special case for this token is gone. */
   --switch-on: var(--primary);
   --radius: 0.375rem;
-  --popover: light-dark(#ffffff, #22231f);
-  --popover-foreground: light-dark(#1e1f1a, #edede6);
-  --secondary: light-dark(#ece8df, #26261f);
-  --secondary-foreground: light-dark(#1e1f1a, #edede6);
-  --card: light-dark(#ffffff, #22231f);
-  --card-foreground: light-dark(#1e1f1a, #edede6);
+  --popover: light-dark(#ffffff, #202129);
+  --popover-foreground: light-dark(#1e1f1a, #ececf1);
+  --secondary: light-dark(#ece8df, #24252d);
+  --secondary-foreground: light-dark(#1e1f1a, #ececf1);
+  --card: light-dark(#ffffff, #202129);
+  --card-foreground: light-dark(#1e1f1a, #ececf1);
   /* Sidebar tokens the shadcn sidebar component styles against. Aliased to
      the existing surfaces (not a second palette): without these the
      bg-sidebar/border-sidebar-border utilities don't resolve and the

@@ -59,6 +59,10 @@ deliberate: the switch needs a second accent, and the scheme supplies it.
 
 ## The colour scheme
 
+> Superseded: the dark neutrals are now cool (violet-tinted) and the accents
+> blue-led (blue primary, pink attention). `src/index.css` is the current
+> palette; the table below is the original plan.
+
 Warm neutrals, six accents, each with a light-mode text equivalent. Replaces
 the Linear-indigo palette in `src/index.css`. Same `light-dark()` mechanism.
 
