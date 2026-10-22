@@ -1,9 +1,9 @@
 ---
 title: Preview
-description: Label, mask, can, zoom, pan, rulers, guides
+description: Label, mask, can, rendered, zoom, pan, rulers, guides
 ---
 
-One preview, centre of the window. View → **Label** / **Mask** / **Can** (keys `1` `2` `3`), or pick one in the **Label | Mask | Can** control in the status bar. With the divider anywhere between its ends the view is **Compare**: neither Label nor Mask is pressed or checked, and the status bar says *Compare*.
+One preview, centre of the window. View → **Label** / **Mask** / **Rendered** / **Can** (keys `1` `2` `3` `4`), or pick one in the **Label | Mask | Rendered | Can** control in the status bar. With the divider anywhere between its ends the view is **Compare**: neither Label nor Mask is pressed or checked, and the status bar says *Compare*.
 
 ## Label and mask
 
@@ -24,11 +24,17 @@ Until you drop a texture, a hint over the 2D sheet says you can. It stays off th
 
 In 3D, 100% means "as framed" for that mode. 200% is twice as close. Typing 100 restores framing distance and leaves your orbit alone. Each 3D view frames so the label reads the same on-screen height as the 2D sheet (measured to the label's near face). Switch views and the subject changes, not the scale. The can running off the top and bottom of the frame is the point. You're looking at the label.
 
+## Rendered
+
+The same lit label as the can, laid flat: metallic foil where the mask leaves the stock bare, matte where white ink prints. It frames head-on at the same scale as the 2D sheet. Orbit to tilt it and catch the foil. Past edge-on you see the blank back of the stock. Pan and zoom work as on the can; the 1 / 4 count doesn't apply.
+
+**Curve** in the status bar bends the label around a vertical axis, the way it sits on a can: 0% is flat, 100% is the can's own curvature. It starts at a subtle 15%. The label bends without stretching, and the centre stays the same size on screen. The setting is per tab and isn't saved.
+
 ## Can
 
 Same plates, wrapped around a can. **1 / 4** in the status bar, or View → **One Can** / **Four-Pack** (also in the ⌘K palette), is one can or a 2×2 four-pack. Both are available only in the Can view. Orbit with the left button and pan with the right. With the can view focused, arrow keys pan and Shift plus arrows rotates.
 
-Settings → corner radius and edge softness are how the die-cut and foil edge read on the can. Preview/press appearance. They don't redraw the 2D plates, aside from bleed and DPI.
+Settings → corner radius and edge softness are how the die-cut and foil edge read on the can and in Rendered. Preview/press appearance. They don't redraw the 2D plates, aside from bleed and DPI.
 
 ## Rulers and guides
 

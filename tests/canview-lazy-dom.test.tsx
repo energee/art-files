@@ -40,7 +40,7 @@ it("imports the 3D view only when the Can view opens, then mounts it", async () 
     expect(container.querySelector('[data-testid="can-view"]')).toBeNull();
     // Bare "3" is the Preview: Can shortcut.
     await act(async () => {
-      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "3", bubbles: true }));
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "4", bubbles: true }));
     });
     await vi.waitFor(() => expect(container.querySelector('[data-testid="can-view"]')).not.toBeNull());
     expect(probe.loads).toBe(1);

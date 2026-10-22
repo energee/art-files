@@ -731,13 +731,13 @@ it.each([
 }, 60_000);
 
 // Issue #425: the status-bar view control gave a screen reader only its
-// visible text, not the 1–3 keys. It is now a Label | Mask | Can group whose
+// visible text, not the 1–4 keys. It is now a Label | Mask | Rendered | Can group whose
 // pressed segment follows the view.
 it("names the view-mode group and its keyboard shortcuts", async () => {
   const { container, unmount } = await mountEditor();
   try {
     const group = container.querySelector('[role="group"][aria-label="View mode"]')!;
-    expect(group.getAttribute("aria-keyshortcuts")).toBe("1 2 3");
+    expect(group.getAttribute("aria-keyshortcuts")).toBe("1 2 3 4");
     const pressed = () => [...group.querySelectorAll('button[aria-pressed="true"]')].map((b) => b.textContent);
     expect(pressed()).toEqual(["Label"]);
     // PreviewCompare is mocked, so report the divider at the mask end the way

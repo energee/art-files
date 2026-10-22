@@ -261,8 +261,8 @@ it("names palette rows as the menus do, grouped by menu, with a check for what i
   expect(groups.Layer.map((r) => r.replace(/⌫$/, ""))).toEqual([
     "Add Text Layer", "Add Image Layer", "Add Barcode Layer", "Add QR Layer", "Remove Layer",
   ]);
-  expect(groups.View.slice(0, 8).map((r) => r.replace(/(⌘|Ctrl\+)?[0-9A-Z]$/, ""))).toEqual([
-    "Label", "Mask", "Can", "One Can", "Four-Pack", "Layers", "Rulers", "Guides",
+  expect(groups.View.slice(0, 9).map((r) => r.replace(/(⌘|Ctrl\+)?[0-9A-Z]$/, ""))).toEqual([
+    "Label", "Mask", "Rendered", "Can", "One Can", "Four-Pack", "Layers", "Rulers", "Guides",
   ]);
   expect(groups.Appearance).toEqual(["System", "Light", "Dark"]);
   expect(groups.Other).toEqual(["New Variant"]);

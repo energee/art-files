@@ -6,7 +6,11 @@ that section to the new version (see .agents/release-steward.md).
 
 ## [Unreleased]
 
+### Added
+- **The Rendered view is back.** A new tile in the status bar, **Label | Mask | Rendered | Can** (key `3`, also View → Rendered and ⌘K), shows the label flat with the metallic foil and matte white ink lit the way they'll print, without wrapping it on a can. Orbit and pan it like the can; turned over, it shows blank stock. A **Curve** slider next to the tiles bends it the way it sits on a can, from flat (0%) to the can's own curve (100%), starting at a subtle 15%.
+
 ### Changed
+- **Can moves to key `4`.** It now sits after Rendered in the status bar and the View menu.
 - **Brighter, cooler colours.** Dark mode's olive-brown greys are now a cool grey with a hint of violet, and the accents are livelier in both themes: blue for the main actions (Save, the view tiles, switches), pink for edits that write the master (Save Master, + Add layer) in place of orange, plus clearer red, yellow, green and teal. Disabled Save Master no longer reads as a brown chip. Text contrast still meets the same minimums.
 
 ## [0.1.107] - 2026-10-21
