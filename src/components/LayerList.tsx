@@ -6,10 +6,12 @@ import { isMacOS } from "@/keys";
 // reverses them), no Document group — background and mask are the two
 // bottom rows like any other. Each row: kind icon, name (double-click or the
 // row menu to rename inline), a variant badge when a variant ADDS the layer
-// (struck through, its row dimmed, while that variant is off), a provenance
-// mark when an enabled variant overrides part of it, then power (`enabled`)
-// and lock — plus drag reordering and a "…" menu with Rename / Remove. The
-// header carries the title, the "Changed" filter that replaced Fill mode,
+// (its row dimmed while that variant is off), a provenance mark when an
+// enabled variant overrides part of it, a lock while locked, then power
+// (`enabled`, at the right edge) — plus drag reordering. Rename / Remove:
+// buttons on the selected row; right-click any row for Rename, Lock and
+// Remove.
+// The header carries the title, the "Changed" filter that replaced Fill mode,
 // and the "Add layer" menu.
 //
 // Props-only: no app state, no model imports beyond types. Every write goes
@@ -17,10 +19,10 @@ import { isMacOS } from "@/keys";
 // variant that owns the layer; spec: "Editing target selector" removed).
 import { gestureIds, modsOf, type SelectMods } from "@/selection";
 import {
-  Barcode, Ellipsis, Image, Wallpaper, ListFilter, Lock, Plus, Power,
-  QrCode, Scan, Type, type LucideIcon,
+  Barcode, Image, Wallpaper, ListFilter, Lock, Pencil, Plus, Power,
+  PowerOff, QrCode, Scan, Trash2, Type, type LucideIcon,
 } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Layer, LayerKind } from "@/model/layers";
 import type { LayerRow } from "@/model/rows";
 import { LOCK_TITLE } from "./LayerInspectorControls";
@@ -28,6 +30,9 @@ import { cn } from "@/lib/utils";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+// No shadcn wrapper for it; its Popup/Item parts are the Menu ones, so the
+// dropdown's content and items render inside it unchanged.
+import { ContextMenu } from "@base-ui/react/context-menu";
 import {
   SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton,
   SidebarMenuItem,
@@ -40,9 +45,9 @@ export interface LayerListProps {
   rows: LayerRow[];
   selected: readonly string[];
   onSelect: (id: string, mods: SelectMods) => void;
-  /** The two per-row switches. `enabled` off = the layer never draws
+  /** Power (`enabled`) and lock. `enabled` off = the layer never draws
    *  (recorded, undoable — there is no session-only hide); `locked` = fillers
-   *  cannot move it. */
+   *  cannot move it — set from the row menu, cleared by a locked row's lock. */
   onToggle: (id: string, prop: "enabled" | "locked", value: boolean) => void;
   /** Inline rename committed (trimmed, non-empty, changed). */
   onRename: (id: string, name: string) => void;
@@ -53,7 +58,8 @@ export interface LayerListProps {
    *  switched to, the base master otherwise. It used to offer a submenu per
    *  variant; the Select decides now, so there is one Add layer. */
   onAdd: (kind: LayerKind) => void;
-  /** The row menu's Remove, and the Delete/Backspace key on a selected row. */
+  /** The selected row's Remove button, the row menu's Remove, and the
+   *  Delete/Backspace key on a selected row. */
   onRemove: (id: string) => void;
   /** The header filter: show only layers THIS label has changed — a fill
    *  value or an override. Every layer is fillable now, so "what did I
@@ -84,13 +90,16 @@ function iconFor(layer: Layer): LucideIcon {
   }
 }
 
-/** One small square control, the idiom every row switch shares: lit while
- *  `lit`, faded (and brightening on hover) otherwise. */
+/** One 24px square control (WCAG 2.2 target size), the idiom every row
+ *  control shares. `lit` = always shown: the row's exception (off,
+ *  locked) or any control on the selected row. Otherwise hidden until the
+ *  row is hovered or the control focused: twenty rows of normal-state icons
+ *  hid the few that mattered. */
 const control = (lit: boolean) => cn(
-  "grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70",
+  "grid size-6 shrink-0 cursor-pointer place-items-center rounded-sm text-sidebar-foreground/70",
   "hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-  "disabled:cursor-not-allowed disabled:opacity-20 [&>svg]:size-3",
-  !lit && "opacity-40 hover:opacity-100 focus-visible:opacity-100",
+  "disabled:cursor-not-allowed disabled:opacity-20 [&>svg]:size-3.5",
+  !lit && "opacity-0 group-hover/menu-item:opacity-100 focus-visible:opacity-100",
 );
 
 /** Header chip — the Changed filter's look: a small pill, filled while
@@ -129,6 +138,13 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   const inactive = !layer.enabled || (row.variant !== undefined && !row.variant.enabled);
   const locked = !!layer.locked;
   const [renaming, setRenaming] = useState(false);
+  // A row selected from the canvas may sit below the fold of a short window.
+  const itemRef = useRef<HTMLLIElement>(null);
+  // The lock unmounts once unlocked; its focus moves here, not to the body.
+  const powerRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (isSelected) itemRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [isSelected]);
 
   const commitRename = (value: string) => {
     const next = value.trim();
@@ -136,28 +152,34 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
     setRenaming(false);
   };
 
-  // Keyboard equivalents of the selected row's mouse-only affordances, on
-  // the row's focusable (the name button): Delete/Backspace = the menu's
-  // Remove, ⌥↑/⌥↓ = one reorder step. Gated on the row being selected, so
-  // the keys act on exactly the row those controls are showing for.
+  /** The selected row's Remove (its button, or Delete/Backspace), then focus
+   *  to the next unselected row's name, else this list's Add layer — never
+   *  dropped to the page. */
+  const removeSelected = () => {
+    const current = itemRef.current!.querySelector<HTMLElement>('[data-slot="sidebar-menu-button"]')!;
+    const list = current.closest('[data-slot="sidebar-menu"]');
+    const buttons = [...(list?.querySelectorAll<HTMLElement>('[data-slot="sidebar-menu-button"]') ?? [])];
+    const at = buttons.indexOf(current);
+    const keep = (button: HTMLElement) => button.getAttribute("aria-pressed") !== "true";
+    const next = buttons.slice(at + 1).find(keep) ?? buttons.slice(0, at).reverse().find(keep);
+    // This list's own Add layer: every workspace tab mounts a LayerList, so
+    // a document-wide lookup would find the first (hidden) tab's.
+    const addLayer = current.closest('[data-slot="sidebar-group"]')
+      ?.querySelector<HTMLElement>('[aria-label="Add layer"]');
+    p.onRemove(id);
+    queueMicrotask(() => {
+      if (!current.isConnected) (next ?? addLayer)?.focus();
+    });
+  };
+
+  // Keys on the row's name button: Delete/Backspace = the Remove button,
+  // ⌥↑/⌥↓ = one reorder step. Gated on the row being selected, so the keys
+  // act on exactly the row its Rename/Remove buttons are showing for.
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!isSelected) return;
     if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
-      const current = e.currentTarget as HTMLElement;
-      const list = current.closest('[data-slot="sidebar-menu"]');
-      const buttons = [...(list?.querySelectorAll<HTMLElement>('[data-slot="sidebar-menu-button"]') ?? [])];
-      const at = buttons.indexOf(current);
-      const keep = (button: HTMLElement) => button.getAttribute("aria-pressed") !== "true";
-      const next = buttons.slice(at + 1).find(keep) ?? buttons.slice(0, at).reverse().find(keep);
-      // This list's own Add layer: every workspace tab mounts a LayerList, so
-      // a document-wide lookup would find the first (hidden) tab's.
-      const addLayer = current.closest('[data-slot="sidebar-group"]')
-        ?.querySelector<HTMLElement>('[aria-label="Add layer"]');
-      p.onRemove(id);
-      queueMicrotask(() => {
-        if (!current.isConnected) (next ?? addLayer)?.focus();
-      });
+      removeSelected();
     } else if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       const delta = e.key === "ArrowUp" ? 1 : -1;
       if (delta === 1 ? !atFront : !atBack) { e.preventDefault(); p.onReorder(id, delta); }
@@ -165,169 +187,188 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
   };
 
   return (
-    <SidebarMenuItem data-layer-id={id} className={cn("relative",
+    <SidebarMenuItem ref={itemRef} data-layer-id={id} className={cn("relative",
       lifted && "opacity-50 ring-1 ring-sidebar-primary/60 rounded-md",
       dropEdge === "top" && "before:absolute before:inset-x-0 before:top-0 before:z-10 before:border-t-2 before:border-sidebar-primary",
       dropEdge === "bottom" && "after:absolute after:inset-x-0 after:bottom-0 after:z-10 after:border-b-2 after:border-sidebar-primary",
     )}>
       {/* The whole row is the select target and carries the hover/selected
           highlight end to end; every control inside stops propagation so
-          toggling a switch never changes the selection. The name button is
-          the row's one focusable, named control — Enter on it fires a click
-          that bubbles here the same way. */}
-      <div
-        onClick={(e) => p.onSelect(id, modsOf(e))}
-        className={cn(
-          "flex cursor-pointer items-center gap-0.5 rounded-md pr-1 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-          isSelected && "bg-sidebar-accent text-sidebar-accent-foreground",
-          // Muted ink, not opacity: row opacity multiplied into every child's
-          // own alpha (the badge's /70 composited to ~/35, 2.15:1). Muted is
-          // 5.70:1 light / 7.09:1 dark on the sidebar and 4.66 / 6.83 on the
-          // hover/selected accent (#440). Listed last so it beats both.
-          inactive && "text-muted-foreground hover:text-muted-foreground",
-        )}
-      >
-        <SidebarMenuButton
-          size="sm"
-          isActive={isSelected}
-          aria-pressed={isSelected}
-          {...(!renaming ? dragHandlers : {})}
-          // Rename lives on the button, not the name span: pointerdown's
-          // setPointerCapture (the drag) retargets the follow-up dblclick to
-          // this capture element, so a span handler never fires (#115).
-          onDoubleClick={() => setRenaming(true)}
-          onKeyDown={(e) => { dragHandlers.onKeyDown?.(e); if (!e.defaultPrevented) onKeyDown(e); }}
-          aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-          title="Drag to reorder · Alt+↑/↓"
+          toggling a switch never changes the selection. Enter on the name
+          button fires a click that bubbles here the same way. Right-click opens Rename / Lock /
+          Remove at the pointer. */}
+      <ContextMenu.Root>
+        <ContextMenu.Trigger
+          onClick={(e) => p.onSelect(id, modsOf(e))}
           className={cn(
-            "min-w-0 flex-1 touch-none cursor-grab text-xs hover:bg-transparent active:cursor-grabbing",
-            // The button's own hover/active/selected accent ink would repaint
-            // an inactive row's name at full strength; keep it muted (#440).
-            inactive && "text-muted-foreground hover:text-muted-foreground active:text-muted-foreground data-active:text-muted-foreground data-open:hover:text-muted-foreground",
+            "flex cursor-pointer items-center gap-0.5 rounded-md pr-1 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            // Selected is a primary tint, not the hover grey: the accent sat at
+            // ~1.05:1 on the sidebar, so a selection was invisible once the
+            // pointer left it.
+            isSelected && "bg-sidebar-primary/15 text-sidebar-accent-foreground hover:bg-sidebar-primary/20",
+            // Muted ink, not opacity: row opacity multiplied into every child's
+            // own alpha (the badge's /70 composited to ~/35, 2.15:1). Muted is
+            // 5.70:1 light / 7.09:1 dark on the sidebar, 4.66 / 6.83 on the
+            // hover accent and 4.62 / 5.64 on the selected tint (#440). Listed
+            // last so it beats both. The tint holds on hover here: primary/20
+            // takes light muted to 4.29:1.
+            inactive && "text-muted-foreground hover:text-muted-foreground",
+            inactive && isSelected && "hover:bg-sidebar-primary/15",
           )}
         >
-          <Icon />
-          {renaming ? (
-            <input
-              autoFocus
-              defaultValue={name}
-              aria-label={`Rename ${name}`}
-              onClick={stop}
-              onBlur={(e) => commitRename(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commitRename(e.currentTarget.value);
-                else if (e.key === "Escape") setRenaming(false);
-                // The row's own shortcuts must not see a typed name.
-                e.stopPropagation();
-              }}
-              className="min-w-0 flex-1 rounded-sm border border-sidebar-border bg-transparent px-1 text-xs outline-none"
-            />
-          ) : (
-            <span className="min-w-0 flex-1 truncate">
-              {name}
-            </span>
-          )}
-          {row.variant && (
-            <span
-              title={`${row.variantOverridden ? "Changed" : "Added"} by the ${row.variant.name} variant${
-                row.variant.enabled ? "" : " (off)"}`}
-              // /70 on an active row; an inactive row's badge inherits the
-              // row's muted ink with no extra alpha, since stacking a fainter
-              // colour (or row opacity) under it fell below WCAG AA's 4.5:1
-              // (#440). Off shows as a strikethrough, not a fainter colour.
-              className={cn(
-                "shrink-0 rounded-sm border border-sidebar-border px-1 text-[10px] leading-4",
-                !inactive && "text-sidebar-foreground/70",
-                !row.variant.enabled && "line-through",
-              )}
-            >
-              {row.variant.name}
-            </span>
-          )}
-          {/* Two provenance marks, deliberately different shapes: a FILLED
-              dot for a variant (it lives in the master file and applies to
-              every label with that variant on) and a RING for this label's own
-              change. Same glyph for both is what made the old single dot
-              unreadable — and its title claimed "variant" either way. */}
-          {row.variantOverridden && (
-            <span
-              role="img"
-              aria-label={`${row.variantOverridden.name} changes this layer`}
-              title={`${row.variantOverridden.name} changes this layer — resetting edits the master file`}
-              className="size-1.5 shrink-0 rounded-full bg-current text-info-text"
-            />
-          )}
-          {row.changed && (
-            <span
-              role="img"
-              aria-label="Changed in this label"
-              title="Changed in this label"
-              className="size-1.5 shrink-0 rounded-full border border-current text-info-text"
-            />
-          )}
-          {invalid && (
-            <span role="img" aria-label="Invalid value" title="Invalid value — export is blocked"
-              className="size-1.5 shrink-0 rounded-full bg-destructive" />
-          )}
-        </SidebarMenuButton>
-
-        {/* Row menu: the keyboard route to rename, and the one place to
-            remove. Faded until the row is hovered, focused or selected, but
-            always in the tab order — a focused trigger shows itself. */}
-        <span onClick={stop} className="contents">
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <button
-                  type="button"
-                  aria-label={`${name} actions`}
-                  className={cn(
-                    control(false),
-                    "opacity-0 group-hover/menu-item:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100",
-                    isSelected && "opacity-40",
-                  )}
-                >
-                  <Ellipsis />
-                </button>
-              }
-            />
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setRenaming(true)}>Rename</DropdownMenuItem>
-              <DropdownMenuItem
-                variant="destructive"
-                onClick={() => p.onRemove(id)}
+          <SidebarMenuButton
+            size="sm"
+            isActive={isSelected}
+            aria-pressed={isSelected}
+            {...(!renaming ? dragHandlers : {})}
+            // Rename lives on the button, not the name span: pointerdown's
+            // setPointerCapture (the drag) retargets the follow-up dblclick to
+            // this capture element, so a span handler never fires (#115).
+            onDoubleClick={() => setRenaming(true)}
+            onKeyDown={(e) => { dragHandlers.onKeyDown?.(e); if (!e.defaultPrevented) onKeyDown(e); }}
+            aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+            title={`Drag to reorder · Alt+↑/↓ · ${isMacOS() ? "⇧-click for a range, ⌘-click to add" : "Shift-click for a range, Ctrl-click to add"}`}
+            className={cn(
+              // The row paints hover and selection; the button stays clear, with
+              // no focus ring (a review call): the selected tint is the row's one
+              // mark, so a Tab-focused row shows nothing until Enter selects it.
+              "min-w-0 flex-1 touch-none cursor-pointer text-xs hover:bg-transparent data-active:bg-transparent active:bg-transparent active:cursor-grabbing focus-visible:ring-0",
+              // The button's own hover/active/selected accent ink would repaint
+              // an inactive row's name at full strength; keep it muted (#440).
+              inactive && "text-muted-foreground hover:text-muted-foreground active:text-muted-foreground data-active:text-muted-foreground data-open:hover:text-muted-foreground",
+            )}
+          >
+            <Icon />
+            {renaming ? (
+              <input
+                autoFocus
+                defaultValue={name}
+                aria-label={`Rename ${name}`}
+                onClick={stop}
+                // The row menu would take focus and commit a half-typed name.
+                onContextMenu={stop}
+                onBlur={(e) => commitRename(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitRename(e.currentTarget.value);
+                  else if (e.key === "Escape") setRenaming(false);
+                  // The row's own shortcuts must not see a typed name.
+                  e.stopPropagation();
+                }}
+                className="min-w-0 flex-1 rounded-sm border border-sidebar-border bg-transparent px-1 text-xs outline-none"
+              />
+            ) : (
+              <span className="min-w-0 flex-1 truncate">
+                {name}
+              </span>
+            )}
+            {row.variant && (
+              <span
+                title={`${row.variantOverridden ? "Changed" : "Added"} by the ${row.variant.name} variant${
+                  row.variant.enabled ? "" : " (off)"}`}
+                // /70 on an active row; an inactive row's badge inherits the
+                // row's muted ink with no extra alpha, since stacking a fainter
+                // colour (or row opacity) under it fell below WCAG AA's 4.5:1
+                // (#440). Off is said by the dimmed row and its power-off icon;
+                // a struck-through badge read as "deleted".
+                className={cn(
+                  "shrink-0 rounded-sm border border-sidebar-border px-1 text-[10px] leading-4",
+                  !inactive && "text-sidebar-foreground/70",
+                )}
               >
-                Remove
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </span>
+                {row.variant.name}
+              </span>
+            )}
+            {/* Two provenance marks, deliberately different shapes: a FILLED
+                dot for a variant (it lives in the master file and applies to
+                every label with that variant on) and a RING for this label's own
+                change. Same glyph for both is what made the old single dot
+                unreadable — and its title claimed "variant" either way. */}
+            {row.variantOverridden && (
+              <span
+                role="img"
+                aria-label={`${row.variantOverridden.name} changes this layer`}
+                title={`${row.variantOverridden.name} changes this layer — resetting edits the master file`}
+                className="size-1.5 shrink-0 rounded-full bg-current text-info-text"
+              />
+            )}
+            {row.changed && (
+              <span
+                role="img"
+                aria-label="Changed in this label"
+                title="Changed in this label"
+                className="size-1.5 shrink-0 rounded-full border border-current text-info-text"
+              />
+            )}
+            {invalid && (
+              <span role="img" aria-label="Invalid value" title="Invalid value — export is blocked"
+                className="size-1.5 shrink-0 rounded-full bg-destructive" />
+            )}
+          </SidebarMenuButton>
 
-        {/* The two switches, in one fixed cluster at the right edge so the
-            power and lock columns line up down the whole list. */}
-        <button
-          type="button"
-          onClick={(e) => { stop(e); p.onToggle(id, "enabled", inactive); }}
-          aria-label={`${name}: enabled`}
-          aria-pressed={!inactive}
-          // Lit while OFF: the exception is what needs pointing at, and the
-          // row is already dimmed around it.
-          title={inactive ? "Off — turn on to draw this layer and its variant" : "Enabled — turn off to stop it drawing"}
-          className={control(inactive)}
-        >
-          <Power />
-        </button>
-        <button
-          type="button"
-          onClick={(e) => { stop(e); p.onToggle(id, "locked", !locked); }}
-          aria-label={`${name}: locked`}
-          aria-pressed={locked}
-          title={locked ? LOCK_TITLE : "Unlocked"}
-          className={control(locked)}
-        >
-          <Lock />
-        </button>
-      </div>
+          {/* One cluster at the right edge, power last so its column lines up
+              down the list. Rename and Remove exist on the selected row only —
+              you act on the row you picked, and a stray click on a hovered
+              row can't remove it. The lock exists only while locked (click
+              to unlock; lock from the inspector or the row menu). Power shows
+              a muted PowerOff at all times on an off row, and a full-ink Power
+              on hover or on the selected row — the icon is the state, and a
+              stronger icon means "on". */}
+          {isSelected && (
+            <>
+              <button
+                type="button"
+                onClick={(e) => { stop(e); setRenaming(true); }}
+                aria-label={`${name}: rename`}
+                title="Rename"
+                className={control(true)}
+              >
+                <Pencil />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { stop(e); removeSelected(); }}
+                aria-label={`${name}: remove`}
+                title="Remove"
+                className={cn(control(true), "hover:text-destructive-text")}
+              >
+                <Trash2 />
+              </button>
+            </>
+          )}
+          {locked && (
+            <button
+              type="button"
+              onClick={(e) => { stop(e); p.onToggle(id, "locked", false); powerRef.current?.focus(); }}
+              aria-label={`${name}: locked`}
+              aria-pressed
+              title={`${LOCK_TITLE} Click to unlock.`}
+              className={control(true)}
+            >
+              <Lock />
+            </button>
+          )}
+          <button
+            ref={powerRef}
+            type="button"
+            onClick={(e) => { stop(e); p.onToggle(id, "enabled", inactive); }}
+            aria-label={`${name}: enabled`}
+            aria-pressed={!inactive}
+            data-state={inactive ? "off" : "on"}
+            title={inactive ? "Off — turn on to draw this layer and its variant" : "Enabled — turn off to stop it drawing"}
+            // Ink strength = on: on is full ink, off the row's muted ink even
+            // under the pointer, so switching a layer off always lightens it.
+            className={cn(control(inactive || isSelected),
+              inactive ? "text-muted-foreground hover:text-muted-foreground" : "text-sidebar-foreground")}
+          >
+            {inactive ? <PowerOff /> : <Power />}
+          </button>
+        </ContextMenu.Trigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem onClick={() => setRenaming(true)}>Rename</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => p.onToggle(id, "locked", !locked)}>{locked ? "Unlock" : "Lock"}</DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" onClick={() => p.onRemove(id)}>Remove</DropdownMenuItem>
+        </DropdownMenuContent>
+      </ContextMenu.Root>
     </SidebarMenuItem>
   );
 }
@@ -437,8 +478,21 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
   return (
     <SidebarGroup>
       <span role="status" aria-live="polite" className="sr-only">{announcement}</span>
-      <SidebarGroupLabel className="justify-between">
-        <span>Layers</span>
+      {/* Title, the one filter, then Add layer — on one line, so the list
+          starts a row higher. Variants used to sit here as toggle chips; they
+          live in the master Select now, which names the version the canvas
+          is drawing. */}
+      <SidebarGroupLabel className="gap-1.5">
+        <span className="flex-1">Layers</span>
+        <button
+          type="button"
+          aria-pressed={props.changedOnly}
+          onClick={() => props.onChangedOnly(!props.changedOnly)}
+          title="Show only layers changed in this label"
+          className={chip(props.changedOnly)}
+        >
+          <ListFilter /> Changed
+        </button>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -460,21 +514,6 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarGroupLabel>
-
-      {/* The one filter, on its own line: the sidebar is narrow. Variants used
-          to sit here as toggle chips; they live in the master Select now,
-          which names the version the canvas is drawing. */}
-      <div className="flex flex-wrap items-center gap-1 px-2 pb-1.5">
-        <button
-          type="button"
-          aria-pressed={props.changedOnly}
-          onClick={() => props.onChangedOnly(!props.changedOnly)}
-          title="Show only layers changed in this label"
-          className={chip(props.changedOnly)}
-        >
-          <ListFilter /> Changed
-        </button>
-      </div>
 
       <SidebarGroupContent>
         <SidebarMenu>
@@ -503,12 +542,6 @@ export function LayerList(props: LayerListProps): React.JSX.Element {
           </p>
         )}
       </SidebarGroupContent>
-      {selected.length > 0 && (
-        <p className="px-2 pt-1 text-center text-[11px] text-sidebar-foreground/50">
-          {isMacOS() ? "⇧ click for a range · ⌘ click to add" : "Shift-click for a range · Ctrl-click to add"}
-        </p>
-      )}
-
     </SidebarGroup>
   );
 }

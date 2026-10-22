@@ -13,10 +13,11 @@
 // template with File → Save Master As…, which mints a new master id, rebinds
 // this document onto it and actually writes the file (the old "Duplicate as
 // new master…" did all of that except the writing). The ONE exception is
-// "Save Master…/Save Variant…" button below: a save writes into whichever version this
-// Select names, so the picker is where you can see the target while choosing
-// to write it. It runs the File menu's own `master-save` command — same
-// review dialog, same dirty gate, no second path.
+// "Save Master…/Save Variant…" button below, shown only while there is
+// something to save: a save writes into whichever version this Select names,
+// so the picker is where you can see the target while choosing to write it.
+// It runs the File menu's own `master-save` command — same review dialog,
+// same dirty gate, no second path.
 //
 // The menu answers one question — WHICH VERSION AM I EDITING — in three
 // registers (docs/plans/label-first-editing.md, Task 12):
@@ -29,17 +30,19 @@
 //     row that takes it off the library without picking it. The removal is
 //     said in plain view under the Select — the file stays where it is — with
 //     an Undo, since re-adding it would otherwise mean browsing to the file.
-//   * New Variant, an action at the foot.
+//   * actions at the foot: New Variant, plus Rename Variant… and Delete
+//     Variant while a variant is the version (they were permanent buttons
+//     under the Select; a red Delete always in reach was the wrong default).
 // The first two sit under "Current master" / "Other masters" headings, and
 // every master row carries a second line — its file name and the day it was
 // last opened, saved or picked here (the index's lastSeen) — because two
 // masters can share a name (a fork keeps it until renamed).
-// Deleting a variant (the Delete beside Rename) is one undoable edit, so it
+// Deleting a variant (Delete Variant in the menu) is one undoable edit, so it
 // asks no confirm; the same status line says so, naming ⌘Z, while the master
 // is still the one the delete left — not after an undo, another edit to the
 // master, or an Open — and until the menu is used again (#426).
-// Only the middle one resolves a file, so the two sentinels are intercepted
-// in onValueChange before any rebind is considered.
+// Only the middle one resolves a file, so the sentinels are intercepted in
+// onValueChange before any rebind is considered.
 import { CornerDownRight, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -59,6 +62,8 @@ const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 /** The menu's non-library rows (see the header note). No master id can
  *  collide with either — a minted one is always `master-…`. */
 const NEW_VARIANT = "__new-variant";
+const RENAME_VARIANT = "__rename-variant";
+const DELETE_VARIANT = "__delete-variant";
 const VERSION = "__version:";
 
 /** A switch waiting on the preview card and — for File → Open Master's
@@ -143,8 +148,8 @@ export function MasterPicker(props: {
   onRenameVersion: (id: string, name: string) => void;
   /** Deletes a variant from the master. Undoable, so no confirm. */
   onRemoveVersion: (id: string) => void;
-  /** File → Save Master…, next to the version's own verbs: opens the review
-   *  that writes into whichever version the Select names. */
+  /** File → Save Master…, the button under the Select while `masterDirty`:
+   *  opens the review that writes into whichever version the Select names. */
   onSaveMaster: () => void;
   /** The save button's text — File → Save Master…'s own title ("Save
    *  Master…", or "Save Variant…" on a variant), so the two always match. */
@@ -260,7 +265,7 @@ export function MasterPicker(props: {
     else setPreview(next);
   };
 
-  /** The working version, narrowed once so the verb buttons below need no
+  /** The working version, narrowed once so the variant verbs below need no
    *  non-null assertion in their handlers. */
   const version = props.version;
   /** "Lolev" on the base version, "Lolev / Collab" while editing one. */
@@ -273,11 +278,12 @@ export function MasterPicker(props: {
   ]);
 
   /** Enter or blur on the name field: a trimmed non-empty change lands, an
-   *  empty one just closes — the auto "Variant N" name stands. `id` comes
-   *  from the render that opened the field, so there is no null case. */
+   *  empty or unchanged one just closes — no undo step, nothing unsaved; the
+   *  auto "Variant N" name stands. `id` comes from the render that opened the
+   *  field, so there is no null case. */
   const commitName = (id: string, value: string) => {
     const next = value.trim();
-    if (next) props.onRenameVersion(id, next);
+    if (next && next !== props.master.variants.find((v) => v.id === id)?.name) props.onRenameVersion(id, next);
     setNaming(null);
   };
 
@@ -305,6 +311,15 @@ export function MasterPicker(props: {
           if (!id) return;
           closeAll();
           if (id === NEW_VARIANT) { setNaming(props.onNewVariant()); return; }
+          // Shown only on a variant; never fall through to a rebind.
+          if (id === RENAME_VARIANT) { if (version !== null) setNaming(version); return; }
+          if (id === DELETE_VARIANT) {
+            if (version !== null) {
+              setDeleted({ id: version, name: versionName ?? version });
+              props.onRemoveVersion(version);
+            }
+            return;
+          }
           if (id.startsWith(VERSION)) { props.onVersion(id.slice(VERSION.length)); return; }
           // The current master's own row means "the base version", not a
           // rebind onto itself.
@@ -361,6 +376,10 @@ export function MasterPicker(props: {
           </>)}
           <SelectSeparator />
           <SelectItem value={NEW_VARIANT} className="text-attention-text">New Variant</SelectItem>
+          {version !== null && (<>
+            <SelectItem value={RENAME_VARIANT}>Rename Variant…</SelectItem>
+            <SelectItem value={DELETE_VARIANT} className="text-destructive-text">Delete Variant</SelectItem>
+          </>)}
         </SelectContent>
       </Select>
       {naming !== null ? (
@@ -378,29 +397,11 @@ export function MasterPicker(props: {
             if (e.key === "Escape") setNaming(null);
           }}
         />
-      ) : (
-        <div className="mt-1 flex gap-1.5">
-          {version !== null && (
-            <>
-              <Button type="button" id="variant-rename" size="xs" variant="ghost"
-                onClick={() => setNaming(version)}>
-                Rename
-              </Button>
-              <Button type="button" id="variant-remove" size="xs" variant="destructive"
-                onClick={() => {
-                  setRemoved(null);
-                  setDeleted({ id: version, name: versionName ?? version });
-                  props.onRemoveVersion(version);
-                }}>
-                Delete
-              </Button>
-            </>
-          )}
-          <Button type="button" id="variant-save" size="xs" variant="attention"
-            disabled={!props.masterDirty} onClick={props.onSaveMaster}>
-            {props.saveLabel}
-          </Button>
-        </div>
+      ) : props.masterDirty && (
+        <Button type="button" id="variant-save" size="xs" variant="attention"
+          className="mt-1" onClick={props.onSaveMaster}>
+          {props.saveLabel}
+        </Button>
       )}
       {resolvingId && <p role="status" className="mt-1 text-xs text-muted-foreground">Opening master…</p>}
       {/* Always mounted: screen readers announce a change inside a live

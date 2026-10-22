@@ -61,6 +61,8 @@ const openMenu = () => act(() => { trigger().click(); });
 const itemStarting = (text: string) =>
   Array.from(document.querySelectorAll<HTMLElement>("button, [role=option]"))
     .find((b) => (b.getAttribute("aria-label") ?? b.textContent)?.trim().startsWith(text)) as HTMLButtonElement | undefined;
+/** The menu foot's Delete Variant, the one way to delete the version. */
+const deleteVariant = () => { openMenu(); act(() => { itemStarting("Delete Variant")!.click(); }); };
 
 describe("MasterPicker", () => {
   it("names the current master on the trigger", () => {
@@ -301,11 +303,47 @@ describe("MasterPicker", () => {
     expect(onRenameVersion).toHaveBeenCalledWith("variant-2", "Collab");
   });
 
-  it("deletes the variant being edited from the picker", () => {
+  it("deletes the variant being edited from the menu's foot", () => {
     const onRemoveVersion = vi.fn();
-    renderPicker({ version: "collab", onRemoveVersion });
-    act(() => { (container.querySelector("#variant-remove") as HTMLButtonElement).click(); });
+    const onMaster = vi.fn();
+    renderPicker({ version: "collab", onRemoveVersion, onMaster });
+    deleteVariant();
     expect(onRemoveVersion).toHaveBeenCalledWith("collab");
+    expect(onMaster).not.toHaveBeenCalled();
+    // No permanent Delete button sits in the sidebar any more.
+    expect(container.querySelector("#variant-remove")).toBeNull();
+  });
+
+  it("renames the variant being edited from the menu's foot", () => {
+    const onRenameVersion = vi.fn();
+    renderPicker({ version: "collab", onRenameVersion });
+    openMenu();
+    act(() => { itemStarting("Rename Variant")!.click(); });
+    const input = container.querySelector('input[aria-label="Variant name"]') as HTMLInputElement;
+    expect(input.value).toBe("Collab");
+    input.value = "Guest";
+    act(() => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    expect(onRenameVersion).toHaveBeenCalledWith("collab", "Guest");
+  });
+
+  // An unchanged name is no edit: committing it anyway left an undo step
+  // and marked the label unsaved.
+  it("closes Rename Variant… with the name unchanged without renaming", () => {
+    const onRenameVersion = vi.fn();
+    renderPicker({ version: "collab", onRenameVersion });
+    openMenu();
+    act(() => { itemStarting("Rename Variant")!.click(); });
+    const input = container.querySelector('input[aria-label="Variant name"]') as HTMLInputElement;
+    act(() => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    expect(onRenameVersion).not.toHaveBeenCalled();
+    expect(container.querySelector('input[aria-label="Variant name"]')).toBeNull();
+  });
+
+  it("offers Rename and Delete Variant only while a variant is the version", () => {
+    renderPicker({ version: null });
+    openMenu();
+    expect(itemStarting("Rename Variant")).toBeUndefined();
+    expect(itemStarting("Delete Variant")).toBeUndefined();
   });
 
   it("says a deleted variant comes back with Undo (#426)", () => {
@@ -313,7 +351,7 @@ describe("MasterPicker", () => {
     const ua = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Macintosh");
     onTestFinished(() => ua.mockRestore());
     const props = renderPicker({ version: "collab" });
-    act(() => { (container.querySelector("#variant-remove") as HTMLButtonElement).click(); });
+    deleteVariant();
     // App's delete drops the variant from the master and the version.
     const without = { ...props.master, variants: [] };
     act(() => { root.render(createElement(MasterPicker, { ...props, master: without, version: null })); });
@@ -327,7 +365,7 @@ describe("MasterPicker", () => {
 
   it("drops the delete note once another master replaces the one the delete left (#426)", () => {
     const props = renderPicker({ version: "collab" });
-    act(() => { (container.querySelector("#variant-remove") as HTMLButtonElement).click(); });
+    deleteVariant();
     const without = { ...props.master, variants: [] };
     act(() => { root.render(createElement(MasterPicker, { ...props, master: without, version: null })); });
     const status = () => container.querySelector('[role="status"]')!.textContent!;
@@ -349,9 +387,9 @@ describe("MasterPicker", () => {
     expect(onSaveMaster).toHaveBeenCalled();
   });
 
-  it("cannot save when nothing would be written", () => {
+  it("shows no Save button when nothing would be written", () => {
     renderPicker({ masterDirty: false });
-    expect((container.querySelector("#variant-save") as HTMLButtonElement).disabled).toBe(true);
+    expect(container.querySelector("#variant-save")).toBeNull();
   });
 
   it("removes a remembered master from its own row, without picking it", async () => {
