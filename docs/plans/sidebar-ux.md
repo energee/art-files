@@ -8,7 +8,7 @@ One PR, branch `feat/sidebar-ux`. Each task starts with its failing test.
 
 | # | Finding | Decision |
 |---|---------|----------|
-| 1 | Selected row is `rgb(36,37,45)` on `rgb(32,33,41)` (~1.05:1), same as hover | Selected = `bg-sidebar-primary/15` plus a 2px inset primary bar on the left edge. Hover stays the faint accent |
+| 1 | Selected row is `rgb(36,37,45)` on `rgb(32,33,41)` (~1.05:1), same as hover | Selected = `bg-sidebar-primary/15`. Hover stays the faint accent. (Follow-up: the left bar and the name's focus ring were dropped on review) |
 | 2 | Power is "lit while OFF", so the off rows look the most "on" | Show the state that is the exception: `PowerOff` while the row is off, `Lock` while locked. The normal state (Power, LockOpen) shows only on row hover, focus or selection, the way the "…" menu already does. `aria-pressed` is unchanged |
 | 3 | Row switches are 16×16 | 24×24 (WCAG 2.2 target size), icons 14px |
 | 4 | Off variant row: dimmed name + struck badge + bright power | Drop the strikethrough. The dimmed row and its `PowerOff` say it; the badge title still says "(off)" |
@@ -16,7 +16,7 @@ One PR, branch `feat/sidebar-ux`. Each task starts with its failing test.
 | 6 | "Changed" chip takes its own row | Move the chip into the Layers header, between the title and Add layer |
 | 7 | "⇧ click for a range · ⌘ click to add" shown whenever something is selected | Remove the line; fold it into the row button's title |
 | 8 | Canvas selection never scrolls the row into view | A row that becomes selected calls `scrollIntoView({ block: "nearest" })` |
-| 9 | Rename/Remove only behind a hover-only "…" | Right-click on a row opens that same menu (the window already blocks the browser menu) |
+| 9 | Rename/Remove only behind a hover-only "…" | Rename and Remove become their own row buttons (pencil, trash), shown on hover like the switches; the "…" menu and right-click go. Order: rename, remove, lock, power (power at the right edge) — revised on review |
 | 10 | "Text logo" has the image icon | Skip: the icon is by kind, and that layer is an image. Renaming layers is data, not UI |
 | 11 | Grab cursor over every name | Default pointer; `grabbing` only while pressed |
 

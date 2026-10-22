@@ -284,21 +284,16 @@ describe("LayerList", () => {
     expect(props.onAdd).toHaveBeenCalledWith("text");
   });
 
-  it("the row menu's Remove calls onRemove", async () => {
+  it("the row's Remove button calls onRemove", () => {
     const props = render(baseProps());
-    await openMenu(byLabel("Brand actions"));
-    const item = menuItem("Remove");
-    expect(item).toBeDefined();
-    await act(async () => { item.click(); await Promise.resolve(); });
+    click(byLabel("Brand: remove"));
     expect(props.onRemove).toHaveBeenCalledWith("wordmark");
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
-  it("colours Remove destructive, not a solid fill (docs/plans/template-switch.md, Task 3)", async () => {
+  it("colours Remove destructive, not a solid fill (docs/plans/template-switch.md, Task 3)", () => {
     render(baseProps());
-    await openMenu(byLabel("Brand actions"));
-    const item = menuItem("Remove");
-    expect(item.className).toContain("destructive-text");
+    expect(byLabel("Brand: remove").className).toContain("hover:text-destructive-text");
   });
 
   it("colours the overridden/changed marks info, not primary (docs/plans/template-switch.md, Task 3)", () => {
@@ -407,14 +402,16 @@ describe("LayerList", () => {
 describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
   const rowBox = (id: string) => rowFor(id).firstElementChild as HTMLElement;
 
-  it("marks the selected row with a primary tint and left bar, not the hover grey", () => {
+  it("marks the selected row with a primary tint, not the hover grey and no edge bar", () => {
     render(baseProps({ selected: ["name"] }));
     expect(rowBox("name").className).toContain("bg-sidebar-primary/15");
-    expect(rowBox("name").className).toContain("shadow-[inset_2px_0_0_var(--sidebar-primary)]");
+    expect(rowBox("name").className).not.toContain("shadow-");
     expect(rowBox("wordmark").className).not.toContain("bg-sidebar-primary/15");
     // The button must not paint the old accent over the row's tint.
     const button = rowFor("name").querySelector('[data-sidebar="menu-button"]')!;
     expect(button.className).toContain("data-active:bg-transparent");
+    // Nor ring the name: the tint is the row's one mark.
+    expect(button.className).toContain("focus-visible:ring-0");
   });
 
   it("shows the exception: power-off while off, the lock while locked, else only on hover", () => {
@@ -436,7 +433,7 @@ describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
 
   it("sizes every row switch to a 24px target", () => {
     render(baseProps());
-    for (const label of ["Name: enabled", "Name: locked", "Name actions"])
+    for (const label of ["Name: enabled", "Name: locked", "Name: rename", "Name: remove"])
       expect(byLabel(label).className).toContain("size-6");
   });
 
@@ -463,15 +460,18 @@ describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
     }
   });
 
-  it("opens the row menu on right-click", async () => {
+  it("renames from the row's Rename button without selecting", () => {
     const props = render(baseProps());
-    await act(async () => {
-      rowBox("wordmark").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
-      await Promise.resolve();
-    });
-    await act(async () => { menuItem("Remove").click(); await Promise.resolve(); });
-    expect(props.onRemove).toHaveBeenCalledWith("wordmark");
+    click(byLabel("Brand: rename"));
+    expect(rowFor("wordmark").querySelector('input[aria-label="Rename Brand"]')).not.toBeNull();
     expect(props.onSelect).not.toHaveBeenCalled();
+  });
+
+  it("orders the row controls rename, remove, lock, power — power at the right edge", () => {
+    render(baseProps());
+    const labels = Array.from(rowBox("name").querySelectorAll(":scope > button[aria-label]"))
+      .map((b) => b.getAttribute("aria-label"));
+    expect(labels).toEqual(["Name: rename", "Name: remove", "Name: locked", "Name: enabled"]);
   });
 });
 
