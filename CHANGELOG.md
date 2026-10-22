@@ -25,6 +25,7 @@ that section to the new version (see .agents/release-steward.md).
 
 ### Fixed
 - **Even icons in the in-window menu.** In the browser, the icons on check rows (View → Label, Rulers and the like) drew about twice the size of the other rows' icons; they now match.
+- **Release builds start again.** The updater plugin's JavaScript side now matches its Rust side (2.14), which the desktop build requires.
 - **The New tab button names the right shortcut.** Its tooltip read "⌘N" on Windows and Linux too; it now says Ctrl+N there.
 - **Closing a tab offers to save the master.** When a tab has unsaved master edits, its close prompt now has a **Review Master…** button that opens the Save Master review in place of the prompt. Save the master and you return to the prompt to Save or Discard the `.label` (or the tab closes if the label was already saved); cancel the review and the tab stays open. You no longer have to Cancel and find File → Save Master yourself.
 - **One view state for the status bar and View menu.** The status bar's "View Mode" button, which cycled views one click at a time, is now a Label | Mask | Can control you pick from directly. With the divider part-way (Compare), no view shows as current anywhere — before, the status bar said Compare while the View menu checked nothing and the status-bar cycle counted it as Label. View → **One Can** / **Four-Pack** (and the ⌘K palette) choose the can count, as the status bar's 1|4 does, in the Can view. The divider has a visible grip that stays on the sheet at both ends.
