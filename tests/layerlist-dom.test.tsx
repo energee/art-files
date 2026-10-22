@@ -284,15 +284,15 @@ describe("LayerList", () => {
     expect(props.onAdd).toHaveBeenCalledWith("text");
   });
 
-  it("the row's Remove button calls onRemove", () => {
-    const props = render(baseProps());
+  it("the selected row's Remove button calls onRemove", () => {
+    const props = render(baseProps({ selected: ["wordmark"] }));
     click(byLabel("Brand: remove"));
     expect(props.onRemove).toHaveBeenCalledWith("wordmark");
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
   it("colours Remove destructive, not a solid fill (docs/plans/template-switch.md, Task 3)", () => {
-    render(baseProps());
+    render(baseProps({ selected: ["wordmark"] }));
     expect(byLabel("Brand: remove").className).toContain("hover:text-destructive-text");
   });
 
@@ -432,7 +432,7 @@ describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
   });
 
   it("sizes every row switch to a 24px target", () => {
-    render(baseProps());
+    render(baseProps({ selected: ["name"] }));
     for (const label of ["Name: enabled", "Name: locked", "Name: rename", "Name: remove"])
       expect(byLabel(label).className).toContain("size-6");
   });
@@ -460,18 +460,34 @@ describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
     }
   });
 
-  it("renames from the row's Rename button without selecting", () => {
-    const props = render(baseProps());
+  it("renames from the selected row's Rename button without reselecting", () => {
+    const props = render(baseProps({ selected: ["wordmark"] }));
     click(byLabel("Brand: rename"));
     expect(rowFor("wordmark").querySelector('input[aria-label="Rename Brand"]')).not.toBeNull();
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
-  it("orders the row controls rename, remove, lock, power — power at the right edge", () => {
-    render(baseProps());
-    const labels = Array.from(rowBox("name").querySelectorAll(":scope > button[aria-label]"))
-      .map((b) => b.getAttribute("aria-label"));
-    expect(labels).toEqual(["Name: rename", "Name: remove", "Name: locked", "Name: enabled"]);
+  const controls = (id: string) => Array.from(rowBox(id).querySelectorAll(":scope > button[aria-label]"))
+    .map((b) => b.getAttribute("aria-label"));
+
+  it("shows Rename and Remove on the selected row only, always visible there; power at the right edge", () => {
+    render(baseProps({ selected: ["name"] }));
+    expect(controls("name")).toEqual(["Name: rename", "Name: remove", "Name: locked", "Name: enabled"]);
+    expect(byLabel("Name: rename").className).not.toContain("opacity-0");
+    expect(byLabel("Name: remove").className).not.toContain("opacity-0");
+    // Hovering any other row shows just its lock and power.
+    expect(controls("wordmark")).toEqual(["Brand: locked", "Brand: enabled"]);
+  });
+
+  it("opens Rename / Remove on right-click", async () => {
+    const props = render(baseProps());
+    await act(async () => {
+      rowBox("wordmark").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+      await Promise.resolve();
+    });
+    expect(menuItem("Rename")).toBeDefined();
+    await act(async () => { menuItem("Remove").click(); await Promise.resolve(); });
+    expect(props.onRemove).toHaveBeenCalledWith("wordmark");
   });
 });
 

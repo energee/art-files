@@ -7,8 +7,9 @@ import { isMacOS } from "@/keys";
 // bottom rows like any other. Each row: kind icon, name (double-click or the
 // row menu to rename inline), a variant badge when a variant ADDS the layer
 // (its row dimmed while that variant is off), a provenance mark when an
-// enabled variant overrides part of it, then Rename, Remove, lock and power
-// (`enabled`, at the right edge) — plus drag reordering.
+// enabled variant overrides part of it, then lock and power (`enabled`, at
+// the right edge) — plus drag reordering. Rename / Remove: buttons on the
+// selected row, and a right-click menu on any row.
 // The header carries the title, the "Changed" filter that replaced Fill mode,
 // and the "Add layer" menu.
 //
@@ -25,6 +26,7 @@ import type { Layer, LayerKind } from "@/model/layers";
 import type { LayerRow } from "@/model/rows";
 import { LOCK_TITLE } from "./LayerInspectorControls";
 import { cn } from "@/lib/utils";
+import { ContextMenu } from "@base-ui/react/context-menu";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -183,154 +185,166 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
           highlight end to end; every control inside stops propagation so
           toggling a switch never changes the selection. The name button is
           the row's one focusable, named control — Enter on it fires a click
-          that bubbles here the same way. */}
-      <div
-        onClick={(e) => p.onSelect(id, modsOf(e))}
-        className={cn(
-          "flex cursor-pointer items-center gap-0.5 rounded-md pr-1 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-          // Selected is a primary tint, not the hover grey: the accent sat at
-          // ~1.05:1 on the sidebar, so a selection was invisible once the
-          // pointer left it.
-          isSelected && "bg-sidebar-primary/15 text-sidebar-accent-foreground hover:bg-sidebar-primary/20",
-          // Muted ink, not opacity: row opacity multiplied into every child's
-          // own alpha (the badge's /70 composited to ~/35, 2.15:1). Muted is
-          // 5.70:1 light / 7.09:1 dark on the sidebar and 4.66 / 6.83 on the
-          // hover/selected accent (#440). Listed last so it beats both.
-          inactive && "text-muted-foreground hover:text-muted-foreground",
-        )}
-      >
-        <SidebarMenuButton
-          size="sm"
-          isActive={isSelected}
-          aria-pressed={isSelected}
-          {...(!renaming ? dragHandlers : {})}
-          // Rename lives on the button, not the name span: pointerdown's
-          // setPointerCapture (the drag) retargets the follow-up dblclick to
-          // this capture element, so a span handler never fires (#115).
-          onDoubleClick={() => setRenaming(true)}
-          onKeyDown={(e) => { dragHandlers.onKeyDown?.(e); if (!e.defaultPrevented) onKeyDown(e); }}
-          aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-          title={`Drag to reorder · Alt+↑/↓ · ${isMacOS() ? "⇧-click for a range, ⌘-click to add" : "Shift-click for a range, Ctrl-click to add"}`}
+          that bubbles here the same way. Right-click opens Rename / Remove
+          at the pointer. */}
+      <ContextMenu.Root>
+        <ContextMenu.Trigger
+          onClick={(e) => p.onSelect(id, modsOf(e))}
           className={cn(
-            // The row paints hover and selection; the button stays clear, with
-            // no focus ring — keyboard moves select, so the tint follows focus.
-            "min-w-0 flex-1 touch-none cursor-pointer text-xs hover:bg-transparent data-active:bg-transparent active:bg-transparent active:cursor-grabbing focus-visible:ring-0",
-            // The button's own hover/active/selected accent ink would repaint
-            // an inactive row's name at full strength; keep it muted (#440).
-            inactive && "text-muted-foreground hover:text-muted-foreground active:text-muted-foreground data-active:text-muted-foreground data-open:hover:text-muted-foreground",
+            "flex cursor-pointer items-center gap-0.5 rounded-md pr-1 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            // Selected is a primary tint, not the hover grey: the accent sat at
+            // ~1.05:1 on the sidebar, so a selection was invisible once the
+            // pointer left it.
+            isSelected && "bg-sidebar-primary/15 text-sidebar-accent-foreground hover:bg-sidebar-primary/20",
+            // Muted ink, not opacity: row opacity multiplied into every child's
+            // own alpha (the badge's /70 composited to ~/35, 2.15:1). Muted is
+            // 5.70:1 light / 7.09:1 dark on the sidebar and 4.66 / 6.83 on the
+            // hover/selected accent (#440). Listed last so it beats both.
+            inactive && "text-muted-foreground hover:text-muted-foreground",
           )}
         >
-          <Icon />
-          {renaming ? (
-            <input
-              autoFocus
-              defaultValue={name}
-              aria-label={`Rename ${name}`}
-              onClick={stop}
-              onBlur={(e) => commitRename(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commitRename(e.currentTarget.value);
-                else if (e.key === "Escape") setRenaming(false);
-                // The row's own shortcuts must not see a typed name.
-                e.stopPropagation();
-              }}
-              className="min-w-0 flex-1 rounded-sm border border-sidebar-border bg-transparent px-1 text-xs outline-none"
-            />
-          ) : (
-            <span className="min-w-0 flex-1 truncate">
-              {name}
-            </span>
-          )}
-          {row.variant && (
-            <span
-              title={`${row.variantOverridden ? "Changed" : "Added"} by the ${row.variant.name} variant${
-                row.variant.enabled ? "" : " (off)"}`}
-              // /70 on an active row; an inactive row's badge inherits the
-              // row's muted ink with no extra alpha, since stacking a fainter
-              // colour (or row opacity) under it fell below WCAG AA's 4.5:1
-              // (#440). Off is said by the dimmed row and its power-off icon;
-              // a struck-through badge read as "deleted".
-              className={cn(
-                "shrink-0 rounded-sm border border-sidebar-border px-1 text-[10px] leading-4",
-                !inactive && "text-sidebar-foreground/70",
-              )}
-            >
-              {row.variant.name}
-            </span>
-          )}
-          {/* Two provenance marks, deliberately different shapes: a FILLED
-              dot for a variant (it lives in the master file and applies to
-              every label with that variant on) and a RING for this label's own
-              change. Same glyph for both is what made the old single dot
-              unreadable — and its title claimed "variant" either way. */}
-          {row.variantOverridden && (
-            <span
-              role="img"
-              aria-label={`${row.variantOverridden.name} changes this layer`}
-              title={`${row.variantOverridden.name} changes this layer — resetting edits the master file`}
-              className="size-1.5 shrink-0 rounded-full bg-current text-info-text"
-            />
-          )}
-          {row.changed && (
-            <span
-              role="img"
-              aria-label="Changed in this label"
-              title="Changed in this label"
-              className="size-1.5 shrink-0 rounded-full border border-current text-info-text"
-            />
-          )}
-          {invalid && (
-            <span role="img" aria-label="Invalid value" title="Invalid value — export is blocked"
-              className="size-1.5 shrink-0 rounded-full bg-destructive" />
-          )}
-        </SidebarMenuButton>
+          <SidebarMenuButton
+            size="sm"
+            isActive={isSelected}
+            aria-pressed={isSelected}
+            {...(!renaming ? dragHandlers : {})}
+            // Rename lives on the button, not the name span: pointerdown's
+            // setPointerCapture (the drag) retargets the follow-up dblclick to
+            // this capture element, so a span handler never fires (#115).
+            onDoubleClick={() => setRenaming(true)}
+            onKeyDown={(e) => { dragHandlers.onKeyDown?.(e); if (!e.defaultPrevented) onKeyDown(e); }}
+            aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+            title={`Drag to reorder · Alt+↑/↓ · ${isMacOS() ? "⇧-click for a range, ⌘-click to add" : "Shift-click for a range, Ctrl-click to add"}`}
+            className={cn(
+              // The row paints hover and selection; the button stays clear, with
+              // no focus ring — keyboard moves select, so the tint follows focus.
+              "min-w-0 flex-1 touch-none cursor-pointer text-xs hover:bg-transparent data-active:bg-transparent active:bg-transparent active:cursor-grabbing focus-visible:ring-0",
+              // The button's own hover/active/selected accent ink would repaint
+              // an inactive row's name at full strength; keep it muted (#440).
+              inactive && "text-muted-foreground hover:text-muted-foreground active:text-muted-foreground data-active:text-muted-foreground data-open:hover:text-muted-foreground",
+            )}
+          >
+            <Icon />
+            {renaming ? (
+              <input
+                autoFocus
+                defaultValue={name}
+                aria-label={`Rename ${name}`}
+                onClick={stop}
+                onBlur={(e) => commitRename(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitRename(e.currentTarget.value);
+                  else if (e.key === "Escape") setRenaming(false);
+                  // The row's own shortcuts must not see a typed name.
+                  e.stopPropagation();
+                }}
+                className="min-w-0 flex-1 rounded-sm border border-sidebar-border bg-transparent px-1 text-xs outline-none"
+              />
+            ) : (
+              <span className="min-w-0 flex-1 truncate">
+                {name}
+              </span>
+            )}
+            {row.variant && (
+              <span
+                title={`${row.variantOverridden ? "Changed" : "Added"} by the ${row.variant.name} variant${
+                  row.variant.enabled ? "" : " (off)"}`}
+                // /70 on an active row; an inactive row's badge inherits the
+                // row's muted ink with no extra alpha, since stacking a fainter
+                // colour (or row opacity) under it fell below WCAG AA's 4.5:1
+                // (#440). Off is said by the dimmed row and its power-off icon;
+                // a struck-through badge read as "deleted".
+                className={cn(
+                  "shrink-0 rounded-sm border border-sidebar-border px-1 text-[10px] leading-4",
+                  !inactive && "text-sidebar-foreground/70",
+                )}
+              >
+                {row.variant.name}
+              </span>
+            )}
+            {/* Two provenance marks, deliberately different shapes: a FILLED
+                dot for a variant (it lives in the master file and applies to
+                every label with that variant on) and a RING for this label's own
+                change. Same glyph for both is what made the old single dot
+                unreadable — and its title claimed "variant" either way. */}
+            {row.variantOverridden && (
+              <span
+                role="img"
+                aria-label={`${row.variantOverridden.name} changes this layer`}
+                title={`${row.variantOverridden.name} changes this layer — resetting edits the master file`}
+                className="size-1.5 shrink-0 rounded-full bg-current text-info-text"
+              />
+            )}
+            {row.changed && (
+              <span
+                role="img"
+                aria-label="Changed in this label"
+                title="Changed in this label"
+                className="size-1.5 shrink-0 rounded-full border border-current text-info-text"
+              />
+            )}
+            {invalid && (
+              <span role="img" aria-label="Invalid value" title="Invalid value — export is blocked"
+                className="size-1.5 shrink-0 rounded-full bg-destructive" />
+            )}
+          </SidebarMenuButton>
 
-        {/* Rename and Remove, then the two switches, in one fixed cluster
-            at the right edge so every column lines up down the list, power
-            last. Rename and Remove show on hover or focus only; each switch
-            shows its exception (PowerOff, Lock) at all times and its normal
-            state (Power, LockOpen) only on hover — the icon is the state, so
-            a lit icon never means "off". */}
-        <button
-          type="button"
-          onClick={(e) => { stop(e); setRenaming(true); }}
-          aria-label={`${name}: rename`}
-          title="Rename"
-          className={control(false, isSelected)}
-        >
-          <Pencil />
-        </button>
-        <button
-          type="button"
-          onClick={(e) => { stop(e); p.onRemove(id); }}
-          aria-label={`${name}: remove`}
-          title="Remove"
-          className={cn(control(false, isSelected), "hover:text-destructive-text")}
-        >
-          <Trash2 />
-        </button>
-        <button
-          type="button"
-          onClick={(e) => { stop(e); p.onToggle(id, "locked", !locked); }}
-          aria-label={`${name}: locked`}
-          aria-pressed={locked}
-          title={locked ? LOCK_TITLE : "Unlocked"}
-          className={control(locked, isSelected)}
-        >
-          {locked ? <Lock /> : <LockOpen />}
-        </button>
-        <button
-          type="button"
-          onClick={(e) => { stop(e); p.onToggle(id, "enabled", inactive); }}
-          aria-label={`${name}: enabled`}
-          aria-pressed={!inactive}
-          data-state={inactive ? "off" : "on"}
-          title={inactive ? "Off — turn on to draw this layer and its variant" : "Enabled — turn off to stop it drawing"}
-          className={control(inactive, isSelected)}
-        >
-          {inactive ? <PowerOff /> : <Power />}
-        </button>
-      </div>
+          {/* One fixed cluster at the right edge so the columns line up down
+              the list, power last. Rename and Remove exist on the selected row
+              only — you act on the row you picked, and a stray click on a
+              hovered row can't remove it. Each switch shows its exception
+              (PowerOff, Lock) at all times and its normal state (Power,
+              LockOpen) only on hover — the icon is the state, so a lit icon
+              never means "off". */}
+          {isSelected && (
+            <>
+              <button
+                type="button"
+                onClick={(e) => { stop(e); setRenaming(true); }}
+                aria-label={`${name}: rename`}
+                title="Rename"
+                className={control(true, isSelected)}
+              >
+                <Pencil />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { stop(e); p.onRemove(id); }}
+                aria-label={`${name}: remove`}
+                title="Remove"
+                className={cn(control(true, isSelected), "hover:text-destructive-text")}
+              >
+                <Trash2 />
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={(e) => { stop(e); p.onToggle(id, "locked", !locked); }}
+            aria-label={`${name}: locked`}
+            aria-pressed={locked}
+            title={locked ? LOCK_TITLE : "Unlocked"}
+            className={control(locked, isSelected)}
+          >
+            {locked ? <Lock /> : <LockOpen />}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { stop(e); p.onToggle(id, "enabled", inactive); }}
+            aria-label={`${name}: enabled`}
+            aria-pressed={!inactive}
+            data-state={inactive ? "off" : "on"}
+            title={inactive ? "Off — turn on to draw this layer and its variant" : "Enabled — turn off to stop it drawing"}
+            className={control(inactive, isSelected)}
+          >
+            {inactive ? <PowerOff /> : <Power />}
+          </button>
+        </ContextMenu.Trigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem onClick={() => setRenaming(true)}>Rename</DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" onClick={() => p.onRemove(id)}>Remove</DropdownMenuItem>
+        </DropdownMenuContent>
+      </ContextMenu.Root>
     </SidebarMenuItem>
   );
 }
