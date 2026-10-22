@@ -4,6 +4,11 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Fixed
+- **Release builds start again.** The updater plugin's JavaScript side now matches its Rust side (2.14), which the desktop build requires.
+
 ## [0.1.107] - 2026-10-21
 
 ### Added
