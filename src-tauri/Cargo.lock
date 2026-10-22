@@ -1966,7 +1966,7 @@ dependencies = [
 
 [[package]]
 name = "label-lab"
-version = "0.1.107"
+version = "0.1.108"
 dependencies = [
  "dunce",
  "objc2",
