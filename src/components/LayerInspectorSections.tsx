@@ -355,7 +355,7 @@ export function StyleSection(props: Ctx & { layer: Layer; rasterArt?: boolean })
             {/* "No ink" is only offered where it can't break the layer: a
                 code with no fill cannot scan. */}
             <ColorField
-              id={`${id}-fill`} value={style.fill} allowNone={!isCode}
+              id={`${id}-fill`} label="Fill" value={style.fill} allowNone={!isCode}
               onChange={(fill) => setStyle({ fill })}
             />
           </div>
@@ -405,7 +405,7 @@ export function StyleSection(props: Ctx & { layer: Layer; rasterArt?: boolean })
             <div className="flex items-center gap-1.5">
               <div className="min-w-0 flex-1">
                 <ColorField
-                  id={`${id}-stroke-color`} value={style.stroke!} allowNone={false}
+                  id={`${id}-stroke-color`} label="Stroke" value={style.stroke!} allowNone={false}
                   onChange={(stroke) => setStyle({ stroke })}
                 />
               </div>

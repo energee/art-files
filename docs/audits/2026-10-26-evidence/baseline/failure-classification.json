@@ -1,0 +1,130 @@
+[
+  {
+    "case": "FAIL  tests/app-v3-dom.test.tsx > selects a v3 text layer, edits its content through the inspector, and undoes the label edit",
+    "error": "Error: Test timed out in 5000ms."
+  },
+  {
+    "case": "FAIL  tests/app-v3-dom.test.tsx > still reports an unsaved master edit after the label is saved",
+    "error": "Error: Test timed out in 5000ms."
+  },
+  {
+    "case": "FAIL  tests/app-v3-dom.test.tsx > each arrow nudge has its own undo step (#287)",
+    "error": "Error: Test timed out in 5000ms."
+  },
+  {
+    "case": "FAIL  tests/canview-lazy-fail-dom.test.tsx > a 3D view that fails to load reports an error and keeps the editor",
+    "error": "Error: Test timed out in 5000ms."
+  },
+  {
+    "case": "FAIL  tests/close-save-master-dom.test.tsx > Review Master\u2026 swaps the close prompt for the review; cancelling it cancels the close",
+    "error": "Error: Test timed out in 5000ms."
+  },
+  {
+    "case": "FAIL  tests/generate.test.ts > runGenerate > legacy none none out still writes four files",
+    "error": "Error: Test timed out in 5000ms."
+  },
+  {
+    "case": "FAIL  tests/layerinspector-dom.test.tsx > LayerInspector numeric fields (NumberField) > a scrub moves one step per pixel whatever the event size, so dragging back restores the start",
+    "error": "Error: Test timed out in 5000ms."
+  },
+  {
+    "case": "FAIL  tests/pdf-build.test.ts > PDF timestamp determinism > builds byte-identical output from the same list twice, on both plates",
+    "error": "Error: Test timed out in 5000ms."
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > keeps edits made during a write dirty and refuses close-after-save (#263)",
+    "error": "Error: Test timed out in 5000ms."
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > pdf: a refused mask write reports the saved artwork (#254)",
+    "error": "Error: Test timed out in 5000ms."
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > pdf: a finished export names both saved files (#400)",
+    "error": "AssertionError: expected undefined to be 'status' // Object.is equality"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > psd: a finished export names both saved files (#400)",
+    "error": "AssertionError: expected undefined to be 'status' // Object.is equality"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > pdf: an edit during the export withholds the confirmation (#400)",
+    "error": "AssertionError: expected true to be false // Object.is equality"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > psd: cancelling artwork stops the pair (#254)",
+    "error": "AssertionError: expected 'Master:Lolev\u25bcLayers Changed Add layer\u2026' to contain 'Preview failed: boom'"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > psd: an edit during the export withholds the confirmation (#400)",
+    "error": "AssertionError: expected null not to be null"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > Open Master during a Save Master write keeps the opened master, its baseline and its save target",
+    "error": "AssertionError: expected null not to be null"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > Open Master's benched-values note survives the master's texture loading (#11)",
+    "error": "TypeError: Cannot read properties of null (reading 'click')"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > Open Master previews a switch that hides values, and Cancel leaves the label on its master",
+    "error": "AssertionError: the given combination of arguments (undefined and string) is invalid for this assertion. You can use an array, a map, an object, a set, a string, or a weakset instead of a string"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > Open Master reopens a collapsed sidebar to show its preview",
+    "error": "TypeError: Cannot read properties of null (reading 'getAttribute')"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > Open Master's Continue switches and binds Save Master to the opened file",
+    "error": "TypeError: Cannot read properties of null (reading 'click')"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > a second Open Master that hides nothing closes the first one's card",
+    "error": "AssertionError: expected null not to be null"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > a second Open Master that hides values replaces the first one's card",
+    "error": "AssertionError: the given combination of arguments (undefined and string) is invalid for this assertion. You can use an array, a map, an object, a set, a string, or a weakset instead of a string"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > Cancel on Open Master's card hands focus back to the master picker",
+    "error": "AssertionError: expected '' to be 'master-picker' // Object.is equality"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > Open Master's Continue keeps art dropped while its card was open",
+    "error": "AssertionError: expected null not to be null"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > opening a label into the tab withdraws a pending Open Master card",
+    "error": "AssertionError: expected null not to be null"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > cancelling Open Master of the current master's id keeps its remembered copy",
+    "error": "AssertionError: the given combination of arguments (undefined and string) is invalid for this assertion. You can use an array, a map, an object, a set, a string, or a weakset instead of a string"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > a promotion whose layer is deleted during the write doesn't cost the others",
+    "error": "AssertionError: expected null not to be null"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > Save Master writes a promoted image value's bytes into the .master (base master)",
+    "error": "AssertionError: expected null not to be null"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > Save Master writes a promoted image value's bytes into the .master (Collab variant)",
+    "error": "AssertionError: expected null not to be null"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > Save Master writes a promoted image value's bytes into the .master (Save Master As fork)",
+    "error": "AssertionError: expected null not to be null"
+  },
+  {
+    "case": "FAIL  tests/save-races-dom.test.tsx > Save Master notes a promoted image it has no file for",
+    "error": "AssertionError: expected null not to be null"
+  },
+  {
+    "case": "FAIL  tests/settings-focus-dom.test.tsx > Settings opens focused on its first field the first time",
+    "error": "Error: Test timed out in 5000ms."
+  }
+]

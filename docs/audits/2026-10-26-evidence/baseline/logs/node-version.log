@@ -1,0 +1,5 @@
+$ node --version
+exit=0
+--- stdout ---
+v24.19.0
+--- stderr ---

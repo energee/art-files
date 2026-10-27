@@ -1,0 +1,854 @@
+{
+  "url": "http://127.0.0.1:5197/",
+  "title": "Label Lab",
+  "viewport": {
+    "width": 1440,
+    "height": 1000,
+    "deviceScaleFactor": 1
+  },
+  "scroll": {
+    "x": 0,
+    "y": 0,
+    "width": 1440,
+    "height": 1000,
+    "scrollWidth": 1440,
+    "scrollHeight": 1000
+  },
+  "elements": [
+    {
+      "id": 1,
+      "role": "combobox",
+      "name": "Master",
+      "value": "Master: Lolev",
+      "states": [
+        "expanded=false"
+      ]
+    },
+    {
+      "id": 2,
+      "role": "button",
+      "name": "Changed",
+      "description": "Show only layers changed in this label",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 3,
+      "role": "button",
+      "name": "Add layer",
+      "states": [
+        "expanded=false"
+      ]
+    },
+    {
+      "id": 4,
+      "role": "button",
+      "name": "Graphic logo Collab",
+      "description": "Drag to reorder · Alt+↑/↓ · ⇧-click for a range, ⌘-click to add",
+      "keyshortcuts": "Alt+ArrowUp Alt+ArrowDown",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 5,
+      "role": "button",
+      "name": "Graphic logo: enabled",
+      "description": "Off — turn on to draw this layer and its variant",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 6,
+      "role": "button",
+      "name": "Text logo Collab",
+      "description": "Drag to reorder · Alt+↑/↓ · ⇧-click for a range, ⌘-click to add",
+      "keyshortcuts": "Alt+ArrowUp Alt+ArrowDown",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 7,
+      "role": "button",
+      "name": "Text logo: enabled",
+      "description": "Off — turn on to draw this layer and its variant",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 8,
+      "role": "button",
+      "name": "Lead-in Collab",
+      "description": "Drag to reorder · Alt+↑/↓ · ⇧-click for a range, ⌘-click to add",
+      "keyshortcuts": "Alt+ArrowUp Alt+ArrowDown",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 9,
+      "role": "button",
+      "name": "Lead-in: enabled",
+      "description": "Off — turn on to draw this layer and its variant",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 10,
+      "role": "button",
+      "name": "Barcode",
+      "description": "Drag to reorder · Alt+↑/↓ · ⇧-click for a range, ⌘-click to add",
+      "keyshortcuts": "Alt+ArrowUp Alt+ArrowDown",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 11,
+      "role": "button",
+      "name": "Barcode: enabled",
+      "description": "Enabled — turn off to stop it drawing",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 12,
+      "role": "button",
+      "name": "QR",
+      "description": "Drag to reorder · Alt+↑/↓ · ⇧-click for a range, ⌘-click to add",
+      "keyshortcuts": "Alt+ArrowUp Alt+ArrowDown",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 13,
+      "role": "button",
+      "name": "QR: enabled",
+      "description": "Enabled — turn off to stop it drawing",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 14,
+      "role": "button",
+      "name": "Store cold",
+      "description": "Drag to reorder · Alt+↑/↓ · ⇧-click for a range, ⌘-click to add",
+      "keyshortcuts": "Alt+ArrowUp Alt+ArrowDown",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 15,
+      "role": "button",
+      "name": "Store cold: enabled",
+      "description": "Enabled — turn off to stop it drawing",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 16,
+      "role": "button",
+      "name": "Warning",
+      "description": "Drag to reorder · Alt+↑/↓ · ⇧-click for a range, ⌘-click to add",
+      "keyshortcuts": "Alt+ArrowUp Alt+ArrowDown",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 17,
+      "role": "button",
+      "name": "Warning: locked",
+      "description": "Locked on canvas: drag, resize and nudge are off. Typed values still apply. Click to unlock.",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 18,
+      "role": "button",
+      "name": "Warning: enabled",
+      "description": "Enabled — turn off to stop it drawing",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 19,
+      "role": "button",
+      "name": "Info",
+      "description": "Drag to reorder · Alt+↑/↓ · ⇧-click for a range, ⌘-click to add",
+      "keyshortcuts": "Alt+ArrowUp Alt+ArrowDown",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 20,
+      "role": "button",
+      "name": "Info: enabled",
+      "description": "Enabled — turn off to stop it drawing",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 21,
+      "role": "button",
+      "name": "Style",
+      "description": "Drag to reorder · Alt+↑/↓ · ⇧-click for a range, ⌘-click to add",
+      "keyshortcuts": "Alt+ArrowUp Alt+ArrowDown",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 22,
+      "role": "button",
+      "name": "Style: enabled",
+      "description": "Enabled — turn off to stop it drawing",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 23,
+      "role": "button",
+      "name": "Name",
+      "description": "Drag to reorder · Alt+↑/↓ · ⇧-click for a range, ⌘-click to add",
+      "keyshortcuts": "Alt+ArrowUp Alt+ArrowDown",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 24,
+      "role": "button",
+      "name": "Name: enabled",
+      "description": "Enabled — turn off to stop it drawing",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 25,
+      "role": "button",
+      "name": "Logo",
+      "description": "Drag to reorder · Alt+↑/↓ · ⇧-click for a range, ⌘-click to add",
+      "keyshortcuts": "Alt+ArrowUp Alt+ArrowDown",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 26,
+      "role": "button",
+      "name": "Logo: enabled",
+      "description": "Enabled — turn off to stop it drawing",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 27,
+      "role": "button",
+      "name": "Brand",
+      "description": "Drag to reorder · Alt+↑/↓ · ⇧-click for a range, ⌘-click to add",
+      "keyshortcuts": "Alt+ArrowUp Alt+ArrowDown",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 28,
+      "role": "button",
+      "name": "Brand: enabled",
+      "description": "Enabled — turn off to stop it drawing",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 29,
+      "role": "button",
+      "name": "Description",
+      "description": "Drag to reorder · Alt+↑/↓ · ⇧-click for a range, ⌘-click to add",
+      "keyshortcuts": "Alt+ArrowUp Alt+ArrowDown",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 30,
+      "role": "button",
+      "name": "Description: enabled",
+      "description": "Enabled — turn off to stop it drawing",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 31,
+      "role": "button",
+      "name": "ABV",
+      "description": "Drag to reorder · Alt+↑/↓ · ⇧-click for a range, ⌘-click to add",
+      "keyshortcuts": "Alt+ArrowUp Alt+ArrowDown",
+      "states": [
+        "pressed=true",
+        "focused"
+      ]
+    },
+    {
+      "id": 32,
+      "role": "button",
+      "name": "ABV: rename",
+      "description": "Rename",
+      "states": []
+    },
+    {
+      "id": 33,
+      "role": "button",
+      "name": "ABV: remove",
+      "description": "Remove",
+      "states": []
+    },
+    {
+      "id": 34,
+      "role": "button",
+      "name": "ABV: enabled",
+      "description": "Enabled — turn off to stop it drawing",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 35,
+      "role": "button",
+      "name": "Volume",
+      "description": "Drag to reorder · Alt+↑/↓ · ⇧-click for a range, ⌘-click to add",
+      "keyshortcuts": "Alt+ArrowUp Alt+ArrowDown",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 36,
+      "role": "button",
+      "name": "Volume: enabled",
+      "description": "Enabled — turn off to stop it drawing",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 37,
+      "role": "button",
+      "name": "Metallic mask",
+      "description": "Drag to reorder · Alt+↑/↓ · ⇧-click for a range, ⌘-click to add",
+      "keyshortcuts": "Alt+ArrowUp Alt+ArrowDown",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 38,
+      "role": "button",
+      "name": "Metallic mask: locked",
+      "description": "Locked on canvas: drag, resize and nudge are off. Typed values still apply. Click to unlock.",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 39,
+      "role": "button",
+      "name": "Metallic mask: enabled",
+      "description": "Enabled — turn off to stop it drawing",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 40,
+      "role": "button",
+      "name": "Background",
+      "description": "Drag to reorder · Alt+↑/↓ · ⇧-click for a range, ⌘-click to add",
+      "keyshortcuts": "Alt+ArrowUp Alt+ArrowDown",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 41,
+      "role": "button",
+      "name": "Background: locked",
+      "description": "Locked on canvas: drag, resize and nudge are off. Typed values still apply. Click to unlock.",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 42,
+      "role": "button",
+      "name": "Background: enabled",
+      "description": "Enabled — turn off to stop it drawing",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 43,
+      "role": "button",
+      "name": "Layers",
+      "description": "Layers (⌘B)",
+      "states": []
+    },
+    {
+      "id": 44,
+      "role": "menuitem",
+      "name": "File",
+      "states": [
+        "expanded=false"
+      ]
+    },
+    {
+      "id": 45,
+      "role": "menuitem",
+      "name": "Edit",
+      "states": [
+        "expanded=false"
+      ]
+    },
+    {
+      "id": 46,
+      "role": "menuitem",
+      "name": "Layer",
+      "states": [
+        "expanded=false"
+      ]
+    },
+    {
+      "id": 47,
+      "role": "menuitem",
+      "name": "View",
+      "states": [
+        "expanded=false"
+      ]
+    },
+    {
+      "id": 48,
+      "role": "tab",
+      "name": "Untitled",
+      "states": [
+        "selected=true"
+      ]
+    },
+    {
+      "id": 49,
+      "role": "button",
+      "name": "Close Untitled",
+      "states": []
+    },
+    {
+      "id": 50,
+      "role": "button",
+      "name": "New tab",
+      "description": "New tab (⌘N)",
+      "states": []
+    },
+    {
+      "id": 51,
+      "role": "button",
+      "name": "Ruler settings, current unit in",
+      "description": "Ruler settings — in",
+      "states": [
+        "expanded=false"
+      ]
+    },
+    {
+      "id": 52,
+      "role": "textbox",
+      "name": "Zoom percentage",
+      "value": "100",
+      "description": "Zoom — type a percentage, 100 fits the view",
+      "states": []
+    },
+    {
+      "id": 53,
+      "role": "button",
+      "name": "Artboard size 8 × 5 in; click to choose units",
+      "description": "Trim size — with bleed the page is 8.127 × 5.127 in. Click to choose units",
+      "states": [
+        "expanded=false"
+      ]
+    },
+    {
+      "id": 54,
+      "role": "button",
+      "name": "600 DPI; click to change the resolution in Settings",
+      "description": "PSD raster resolution and pixel-ruler scale. Click to change it in Settings",
+      "states": []
+    },
+    {
+      "id": 55,
+      "role": "button",
+      "name": "Label",
+      "description": "Label view (1)",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 56,
+      "role": "button",
+      "name": "Mask",
+      "description": "Mask view (2)",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 57,
+      "role": "button",
+      "name": "Rendered",
+      "description": "Rendered view (3)",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 58,
+      "role": "button",
+      "name": "Can",
+      "description": "Can view (4)",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 59,
+      "role": "textbox",
+      "name": "Layer name",
+      "value": "ABV",
+      "states": []
+    },
+    {
+      "id": 60,
+      "role": "button",
+      "name": "Close inspector",
+      "states": []
+    },
+    {
+      "id": 61,
+      "role": "switch",
+      "name": "Enabled",
+      "states": [
+        "checked=true"
+      ]
+    },
+    {
+      "id": 62,
+      "role": "switch",
+      "name": "Locked",
+      "description": "Locked on canvas: drag, resize and nudge are off. Typed values still apply.",
+      "states": [
+        "checked=false"
+      ]
+    },
+    {
+      "id": 63,
+      "role": "button",
+      "name": "Millimeters",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 64,
+      "role": "button",
+      "name": "Points",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 65,
+      "role": "spinbutton",
+      "name": "Number",
+      "states": []
+    },
+    {
+      "id": 66,
+      "role": "combobox",
+      "name": "Font",
+      "value": "Default (Poppins)",
+      "states": [
+        "expanded=false"
+      ]
+    },
+    {
+      "id": 67,
+      "role": "textbox",
+      "name": "Size",
+      "value": "9",
+      "states": []
+    },
+    {
+      "id": 68,
+      "role": "textbox",
+      "name": "Minimum height",
+      "value": "1.73",
+      "states": []
+    },
+    {
+      "id": 69,
+      "role": "button",
+      "name": "About character height",
+      "description": "Highest line average, estimated. Counts letters, numbers and punctuation; spaces contribute width. Letters and numbers at print size, excluding outlines. Updates when text changes.",
+      "states": []
+    },
+    {
+      "id": 70,
+      "role": "button",
+      "name": "Align left",
+      "description": "Align left",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 71,
+      "role": "button",
+      "name": "Align center",
+      "description": "Align center",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 72,
+      "role": "button",
+      "name": "Align right",
+      "description": "Align right",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 73,
+      "role": "button",
+      "name": "Justify",
+      "description": "Justify",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 74,
+      "role": "textbox",
+      "name": "Wrap width",
+      "states": []
+    },
+    {
+      "id": 75,
+      "role": "textbox",
+      "name": "Line spacing",
+      "value": "1.2",
+      "states": []
+    },
+    {
+      "id": 76,
+      "role": "textbox",
+      "name": "Heading scale",
+      "value": "1",
+      "states": []
+    },
+    {
+      "id": 77,
+      "role": "textbox",
+      "name": "Letter spacing",
+      "value": "0",
+      "states": []
+    },
+    {
+      "id": 78,
+      "role": "switch",
+      "name": "Uppercase",
+      "states": [
+        "checked=false"
+      ]
+    },
+    {
+      "id": 79,
+      "role": "textbox",
+      "name": "X",
+      "value": "10.118",
+      "states": []
+    },
+    {
+      "id": 80,
+      "role": "button",
+      "name": "Anchor to left guide",
+      "description": "Anchor to left guide",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 81,
+      "role": "button",
+      "name": "Anchor to center guide",
+      "description": "Anchor to center guide",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 82,
+      "role": "button",
+      "name": "Anchor to right guide",
+      "description": "Anchor to right guide",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 83,
+      "role": "textbox",
+      "name": "Y",
+      "value": "12.996",
+      "states": []
+    },
+    {
+      "id": 84,
+      "role": "button",
+      "name": "Anchor to top guide",
+      "description": "Anchor to top guide",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 85,
+      "role": "button",
+      "name": "Anchor to middle guide",
+      "description": "Anchor to middle guide",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 86,
+      "role": "button",
+      "name": "Anchor to bottom guide",
+      "description": "Anchor to bottom guide",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 87,
+      "role": "button",
+      "name": "Bind to layer…",
+      "states": [
+        "expanded=false"
+      ]
+    },
+    {
+      "id": 88,
+      "role": "button",
+      "name": "Rotate 90°",
+      "description": "Rotate 90° counter-clockwise (reads bottom to top)",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 89,
+      "role": "button",
+      "name": "No ink (\"none\")",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 90,
+      "role": "button",
+      "name": "Pick color",
+      "states": [
+        "expanded=false"
+      ]
+    },
+    {
+      "id": 91,
+      "role": "textbox",
+      "name": "",
+      "value": "#F3CD80",
+      "states": []
+    },
+    {
+      "id": 92,
+      "role": "button",
+      "name": "Metallic",
+      "states": [
+        "pressed=true"
+      ]
+    },
+    {
+      "id": 93,
+      "role": "switch",
+      "name": "Outer stroke",
+      "states": [
+        "checked=true"
+      ]
+    },
+    {
+      "id": 94,
+      "role": "button",
+      "name": "Pick color",
+      "states": [
+        "expanded=false"
+      ]
+    },
+    {
+      "id": 95,
+      "role": "textbox",
+      "name": "",
+      "value": "#000000",
+      "states": []
+    },
+    {
+      "id": 96,
+      "role": "button",
+      "name": "Stroke: metallic",
+      "states": [
+        "pressed=false"
+      ]
+    },
+    {
+      "id": 97,
+      "role": "textbox",
+      "name": "Width",
+      "value": "15",
+      "states": []
+    },
+    {
+      "id": 98,
+      "role": "DisclosureTriangle",
+      "name": "Template field settings",
+      "states": [
+        "expanded=false"
+      ]
+    }
+  ]
+}

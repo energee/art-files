@@ -1,0 +1,255 @@
+- generic [ref=e4]:
+  - generic [ref=e8]:
+    - generic [ref=e9]:
+      - combobox "Master" [ref=e10]:
+        - generic [ref=e11]: "Master:"
+        - generic [ref=e12]: Lolev
+        - img: ▼
+      - textbox [ref=e13]: lolev
+      - status
+    - generic [ref=e14]:
+      - status [ref=e15]
+      - generic [ref=e16]:
+        - generic [ref=e17]: Layers
+        - button "Changed" [ref=e18]:
+          - img [ref=e19]
+          - text: Changed
+        - button "Add layer" [ref=e20]:
+          - img [ref=e21]
+          - text: Add layer
+      - list [ref=e23]:
+        - listitem [ref=e24]:
+          - generic [ref=e25] [cursor=pointer]:
+            - button "Graphic logo Collab" [ref=e26]:
+              - img [ref=e27]
+              - generic [ref=e31]: Graphic logo
+              - generic "Added by the Collab variant (off)" [ref=e32]: Collab
+            - 'button "Graphic logo: enabled" [ref=e33]':
+              - img [ref=e34]
+        - listitem [ref=e38]:
+          - generic [ref=e39] [cursor=pointer]:
+            - button "Text logo Collab" [ref=e40]:
+              - img [ref=e41]
+              - generic [ref=e45]: Text logo
+              - generic "Added by the Collab variant (off)" [ref=e46]: Collab
+            - 'button "Text logo: enabled" [ref=e47]':
+              - img [ref=e48]
+        - listitem [ref=e52]:
+          - generic [ref=e53] [cursor=pointer]:
+            - button "Lead-in Collab" [ref=e54]:
+              - img [ref=e55]
+              - generic [ref=e57]: Lead-in
+              - generic "Added by the Collab variant (off)" [ref=e58]: Collab
+            - 'button "Lead-in: enabled" [ref=e59]':
+              - img [ref=e60]
+        - listitem [ref=e64]:
+          - generic [ref=e65] [cursor=pointer]:
+            - button "Barcode" [ref=e66]:
+              - img [ref=e67]
+              - generic [ref=e68]: Barcode
+            - 'button "Barcode: enabled" [pressed] [ref=e69]':
+              - img [ref=e70]
+        - listitem [ref=e72]:
+          - generic [ref=e73] [cursor=pointer]:
+            - button "QR" [ref=e74]:
+              - img [ref=e75]
+              - generic [ref=e81]: QR
+            - 'button "QR: enabled" [pressed] [ref=e82]':
+              - img [ref=e83]
+        - listitem [ref=e85]:
+          - generic [ref=e86] [cursor=pointer]:
+            - button "Store cold" [ref=e87]:
+              - img [ref=e88]
+              - generic [ref=e90]: Store cold
+            - 'button "Store cold: enabled" [pressed] [ref=e91]':
+              - img [ref=e92]
+        - listitem [ref=e94]:
+          - generic [ref=e95] [cursor=pointer]:
+            - button "Warning" [ref=e96]:
+              - img [ref=e97]
+              - generic [ref=e99]: Warning
+            - 'button "Warning: locked" [pressed] [ref=e100]':
+              - img [ref=e101]
+            - 'button "Warning: enabled" [pressed] [ref=e104]':
+              - img [ref=e105]
+        - listitem [ref=e107]:
+          - generic [ref=e108] [cursor=pointer]:
+            - button "Info" [ref=e109]:
+              - img [ref=e110]
+              - generic [ref=e112]: Info
+            - 'button "Info: enabled" [pressed] [ref=e113]':
+              - img [ref=e114]
+        - listitem [ref=e116]:
+          - generic [ref=e117] [cursor=pointer]:
+            - button "Style" [ref=e118]:
+              - img [ref=e119]
+              - generic [ref=e121]: Style
+            - 'button "Style: enabled" [pressed] [ref=e122]':
+              - img [ref=e123]
+        - listitem [ref=e125]:
+          - generic [ref=e126] [cursor=pointer]:
+            - button "Name" [ref=e127]:
+              - img [ref=e128]
+              - generic [ref=e130]: Name
+            - 'button "Name: enabled" [pressed] [ref=e131]':
+              - img [ref=e132]
+        - listitem [ref=e134]:
+          - generic [ref=e135] [cursor=pointer]:
+            - button "Logo" [ref=e136]:
+              - img [ref=e137]
+              - generic [ref=e141]: Logo
+            - 'button "Logo: enabled" [pressed] [ref=e142]':
+              - img [ref=e143]
+        - listitem [ref=e145]:
+          - generic [ref=e146] [cursor=pointer]:
+            - button "Brand" [ref=e147]:
+              - img [ref=e148]
+              - generic [ref=e150]: Brand
+            - 'button "Brand: enabled" [pressed] [ref=e151]':
+              - img [ref=e152]
+        - listitem [ref=e154]:
+          - generic [ref=e155] [cursor=pointer]:
+            - button "Description" [ref=e156]:
+              - img [ref=e157]
+              - generic [ref=e159]: Description
+            - 'button "Description: enabled" [pressed] [ref=e160]':
+              - img [ref=e161]
+        - listitem [ref=e163]:
+          - generic [ref=e164] [cursor=pointer]:
+            - button "ABV" [ref=e165]:
+              - img [ref=e166]
+              - generic [ref=e168]: ABV
+            - 'button "ABV: enabled" [pressed] [ref=e169]':
+              - img [ref=e170]
+        - listitem [ref=e172]:
+          - generic [ref=e173] [cursor=pointer]:
+            - button "Volume" [ref=e174]:
+              - img [ref=e175]
+              - generic [ref=e177]: Volume
+            - 'button "Volume: enabled" [pressed] [ref=e178]':
+              - img [ref=e179]
+        - listitem [ref=e181]:
+          - generic [ref=e182] [cursor=pointer]:
+            - button "Metallic mask" [pressed] [ref=e183]:
+              - img [ref=e184]
+              - generic [ref=e189]: Metallic mask
+            - 'button "Metallic mask: rename" [ref=e190]':
+              - img [ref=e191]
+            - 'button "Metallic mask: remove" [ref=e194]':
+              - img [ref=e195]
+            - 'button "Metallic mask: locked" [pressed] [ref=e198]':
+              - img [ref=e199]
+            - 'button "Metallic mask: enabled" [pressed] [ref=e202]':
+              - img [ref=e203]
+        - listitem [ref=e205]:
+          - generic [ref=e206] [cursor=pointer]:
+            - button "Background" [ref=e207]:
+              - img [ref=e208]
+              - generic [ref=e212]: Background
+            - 'button "Background: locked" [pressed] [ref=e213]':
+              - img [ref=e214]
+            - 'button "Background: enabled" [pressed] [ref=e217]':
+              - img [ref=e218]
+  - main [ref=e221]:
+    - generic [ref=e222]:
+      - button "Layers" [ref=e223]:
+        - img
+        - generic [ref=e224]: Toggle Sidebar
+      - menubar [ref=e225]:
+        - menuitem "File" [ref=e226]
+        - menuitem "Edit" [ref=e227]
+        - menuitem "Layer" [ref=e228]
+        - menuitem "View" [ref=e229]
+      - status [ref=e230]
+      - status [ref=e231]
+    - generic [ref=e233]:
+      - tablist "Open documents" [ref=e234]:
+        - tab "Untitled" [selected] [ref=e235]
+        - button "Close Untitled (unsaved changes)" [ref=e236]:
+          - generic [ref=e237]: •
+      - button "New tab" [ref=e238]: +
+    - generic [ref=e239]:
+      - generic [ref=e240]:
+        - generic [ref=e241]:
+          - separator "White ink comparison" [ref=e247]
+          - generic:
+            - img:
+              - generic:
+                - generic: "1"
+              - generic:
+                - generic: "2"
+              - generic:
+                - generic: "3"
+              - generic:
+                - generic: "4"
+              - generic:
+                - generic: "5"
+              - generic:
+                - generic: "6"
+              - generic:
+                - generic: "7"
+              - generic:
+                - generic: "8"
+              - generic:
+                - generic: "-1"
+              - generic:
+                - generic: "0"
+              - generic:
+                - generic: "1"
+              - generic:
+                - generic: "2"
+              - generic:
+                - generic: "3"
+              - generic:
+                - generic: "4"
+              - generic:
+                - generic: "5"
+              - generic:
+                - generic: "6"
+            - generic "Drag down to create a horizontal guide" [ref=e250]
+            - generic "Drag right to create a vertical guide" [ref=e251]
+            - button "Ruler settings, current unit in" [ref=e252]: in
+          - status
+        - generic [ref=e253]:
+          - generic [ref=e254]:
+            - textbox "Zoom percentage" [ref=e255]: "100"
+            - text: "%"
+          - button "Artboard size 8 × 5 in; click to choose units" [ref=e257]:
+            - text: 8 × 5 in
+            - img [ref=e258]
+          - button "600 DPI; click to change the resolution in Settings" [ref=e261]: 600 DPI
+          - group "View mode" [ref=e263]:
+            - button "Label" [pressed] [ref=e264]
+            - button "Mask" [ref=e265]
+            - button "Rendered" [ref=e266]
+            - button "Can" [ref=e267]
+      - dialog [ref=e270]:
+        - generic [ref=e271]:
+          - generic [ref=e272]:
+            - img [ref=e273]
+            - textbox "Layer name" [ref=e277]: Metallic mask
+            - button "Close inspector" [ref=e278]:
+              - img
+          - generic [ref=e279]:
+            - generic [ref=e280]:
+              - generic [ref=e281]: Enabled
+              - generic [ref=e282]:
+                - switch "Enabled" [checked] [ref=e283] [cursor=pointer]
+                - checkbox [checked] [ref=e284]
+            - generic [ref=e285]:
+              - generic [ref=e286]: Locked
+              - generic [ref=e287]:
+                - switch "Locked" [checked] [ref=e288] [cursor=pointer]
+                - checkbox [checked] [ref=e289]
+          - generic [ref=e290]:
+            - heading "Content" [level=2] [ref=e291]
+            - generic [ref=e292]:
+              - generic [active] [ref=e293] [cursor=pointer]:
+                - generic [ref=e294]:
+                  - generic [ref=e295]: Metallic mask
+                  - generic [ref=e296]: audit-mask.png
+                - button "Remove Metallic mask" [ref=e297]:
+                  - img
+                - button "file upload"
+              - status
+          - paragraph [ref=e298]: Page art always covers the full page.

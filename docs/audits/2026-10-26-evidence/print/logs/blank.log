@@ -1,0 +1,5 @@
+--set needs id=value
+usage: npm run generate -- [master.master] [values.json|-] <outDir> [--variant id] [--asset layerId=path] [--set id=value] [--format pdf|psd|all] [--label file.label]
+       npm run generate -- [master.master] [values.json|-] --check [same flags; writes nothing]
+       npm run generate -- [master.master] --inspect
+       npm run generate -- <texture|none> <mask.png|none> <outDir> [config.json] [--collab-left=file] [--collab-center=file]

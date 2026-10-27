@@ -229,10 +229,10 @@ function Row({ row, isSelected, atFront, atBack, dragHandlers, dropEdge, lifted,
             aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
             title={`Drag to reorder · Alt+↑/↓ · ${isMacOS() ? "⇧-click for a range, ⌘-click to add" : "Shift-click for a range, Ctrl-click to add"}`}
             className={cn(
-              // The row paints hover and selection; the button stays clear, with
-              // no focus ring (a review call): the selected tint is the row's one
-              // mark, so a Tab-focused row shows nothing until Enter selects it.
-              "min-w-0 flex-1 touch-none cursor-pointer text-xs hover:bg-transparent data-active:bg-transparent active:bg-transparent active:cursor-grabbing focus-visible:ring-0",
+              // The row paints hover and selection; its keyboard-focused name
+              // keeps the sidebar ring. Focus identifies the next target;
+              // selection identifies the active row, so they remain distinct.
+              "min-w-0 flex-1 touch-none cursor-pointer text-xs hover:bg-transparent data-active:bg-transparent active:bg-transparent active:cursor-grabbing",
               // The button's own hover/active/selected accent ink would repaint
               // an inactive row's name at full strength; keep it muted (#440).
               inactive && "text-muted-foreground hover:text-muted-foreground active:text-muted-foreground data-active:text-muted-foreground data-open:hover:text-muted-foreground",

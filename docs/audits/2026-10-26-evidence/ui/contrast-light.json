@@ -1,0 +1,698 @@
+[
+  {
+    "tag": "BUTTON",
+    "text": "Label",
+    "color": "rgb(255, 255, 255)",
+    "bg": [
+      37,
+      99,
+      235
+    ],
+    "fg": [
+      255,
+      255,
+      255
+    ],
+    "contrast": 5.168555560022562,
+    "fontSize": "9.75px",
+    "fontWeight": "400",
+    "className": "px-2 py-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring bg-primary text-primary-foreground",
+    "rect": {
+      "x": 451.3046875,
+      "y": 979.375,
+      "width": 38.6015625,
+      "height": 16.25,
+      "top": 979.375,
+      "right": 489.90625,
+      "bottom": 995.625,
+      "left": 451.3046875
+    }
+  },
+  {
+    "tag": "BUTTON",
+    "text": "in",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      250,
+      250,
+      247
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.452280502695825,
+    "fontSize": "8px",
+    "fontWeight": "400",
+    "className": "pointer-events-auto absolute top-0 left-0 z-10 grid place-items-center rounded-none bg-transparent p-0 text-[8px] leading-none font-normal text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+    "rect": {
+      "x": 257,
+      "y": 61.75,
+      "width": 20,
+      "height": 20,
+      "top": 61.75,
+      "right": 277,
+      "bottom": 81.75,
+      "left": 257
+    }
+  },
+  {
+    "tag": "SPAN",
+    "text": "Master:",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "11.375px",
+    "fontWeight": "400",
+    "className": "text-muted-foreground",
+    "rect": {
+      "x": 15.625,
+      "y": 9.75,
+      "width": 40.671875,
+      "height": 16.25,
+      "top": 9.75,
+      "right": 56.296875,
+      "bottom": 26,
+      "left": 15.625
+    }
+  },
+  {
+    "tag": "svg",
+    "text": "▼",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "11.375px",
+    "fontWeight": "400",
+    "className": "",
+    "rect": {
+      "x": 229,
+      "y": 11.375,
+      "width": 13,
+      "height": 13,
+      "top": 11.375,
+      "right": 242,
+      "bottom": 24.375,
+      "left": 229
+    }
+  },
+  {
+    "tag": "SPAN",
+    "text": "Graphic logo",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "9.75px",
+    "fontWeight": "400",
+    "className": "min-w-0 flex-1 truncate",
+    "rect": {
+      "x": 32.5,
+      "y": 73.125,
+      "width": 140.6328125,
+      "height": 13,
+      "top": 73.125,
+      "right": 173.1328125,
+      "bottom": 86.125,
+      "left": 32.5
+    }
+  },
+  {
+    "tag": "SPAN",
+    "text": "Collab",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "10px",
+    "fontWeight": "400",
+    "className": "shrink-0 rounded-sm border border-sidebar-border px-1 text-[10px] leading-4",
+    "rect": {
+      "x": 179.6328125,
+      "y": 72.125,
+      "width": 38.9921875,
+      "height": 15,
+      "top": 72.125,
+      "right": 218.625,
+      "bottom": 87.125,
+      "left": 179.6328125
+    }
+  },
+  {
+    "tag": "SPAN",
+    "text": "Text logo",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "9.75px",
+    "fontWeight": "400",
+    "className": "min-w-0 flex-1 truncate",
+    "rect": {
+      "x": 32.5,
+      "y": 95.875,
+      "width": 140.6328125,
+      "height": 13,
+      "top": 95.875,
+      "right": 173.1328125,
+      "bottom": 108.875,
+      "left": 32.5
+    }
+  },
+  {
+    "tag": "SPAN",
+    "text": "Collab",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "10px",
+    "fontWeight": "400",
+    "className": "shrink-0 rounded-sm border border-sidebar-border px-1 text-[10px] leading-4",
+    "rect": {
+      "x": 179.6328125,
+      "y": 94.875,
+      "width": 38.9921875,
+      "height": 15,
+      "top": 94.875,
+      "right": 218.625,
+      "bottom": 109.875,
+      "left": 179.6328125
+    }
+  },
+  {
+    "tag": "SPAN",
+    "text": "Lead-in",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "9.75px",
+    "fontWeight": "400",
+    "className": "min-w-0 flex-1 truncate",
+    "rect": {
+      "x": 32.5,
+      "y": 118.625,
+      "width": 140.6328125,
+      "height": 13,
+      "top": 118.625,
+      "right": 173.1328125,
+      "bottom": 131.625,
+      "left": 32.5
+    }
+  },
+  {
+    "tag": "SPAN",
+    "text": "Collab",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "10px",
+    "fontWeight": "400",
+    "className": "shrink-0 rounded-sm border border-sidebar-border px-1 text-[10px] leading-4",
+    "rect": {
+      "x": 179.6328125,
+      "y": 117.625,
+      "width": 38.9921875,
+      "height": 15,
+      "top": 117.625,
+      "right": 218.625,
+      "bottom": 132.625,
+      "left": 179.6328125
+    }
+  },
+  {
+    "tag": "BUTTON",
+    "text": "+",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "11.375px",
+    "fontWeight": "400",
+    "className": "shrink-0 rounded-md px-2 py-0.5 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+    "rect": {
+      "x": 330.8203125,
+      "y": 36.875,
+      "width": 20.2109375,
+      "height": 19.5,
+      "top": 36.875,
+      "right": 351.03125,
+      "bottom": 56.375,
+      "left": 330.8203125
+    }
+  },
+  {
+    "tag": "LABEL",
+    "text": "%",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "9.75px",
+    "fontWeight": "400",
+    "className": "flex shrink-0 items-center px-1 py-0.5 focus-within:text-foreground focus-within:ring-2 focus-within:ring-ring rounded border border-border/60 bg-transparent text-xs text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+    "rect": {
+      "x": 262.5,
+      "y": 978.375,
+      "width": 43.65625,
+      "height": 18.25,
+      "top": 978.375,
+      "right": 306.15625,
+      "bottom": 996.625,
+      "left": 262.5
+    }
+  },
+  {
+    "tag": "BUTTON",
+    "text": "8 × 5 in",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "9.75px",
+    "fontWeight": "400",
+    "className": "flex shrink-0 items-center gap-0.5 px-1 py-0.5 tabular-nums whitespace-nowrap rounded border border-border/60 bg-transparent text-xs text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+    "rect": {
+      "x": 320.15625,
+      "y": 978.375,
+      "width": 55.671875,
+      "height": 18.25,
+      "top": 978.375,
+      "right": 375.828125,
+      "bottom": 996.625,
+      "left": 320.15625
+    }
+  },
+  {
+    "tag": "BUTTON",
+    "text": "600 DPI",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "9.75px",
+    "fontWeight": "400",
+    "className": "shrink-0 px-1 py-0.5 tabular-nums whitespace-nowrap rounded border border-border/60 bg-transparent text-xs text-muted-foreground outline-none hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+    "rect": {
+      "x": 389.828125,
+      "y": 978.375,
+      "width": 46.4765625,
+      "height": 18.25,
+      "top": 978.375,
+      "right": 436.3046875,
+      "bottom": 996.625,
+      "left": 389.828125
+    }
+  },
+  {
+    "tag": "BUTTON",
+    "text": "Mask",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "9.75px",
+    "fontWeight": "400",
+    "className": "px-2 py-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+    "rect": {
+      "x": 489.90625,
+      "y": 979.375,
+      "width": 37.828125,
+      "height": 16.25,
+      "top": 979.375,
+      "right": 527.734375,
+      "bottom": 995.625,
+      "left": 489.90625
+    }
+  },
+  {
+    "tag": "BUTTON",
+    "text": "Rendered",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "9.75px",
+    "fontWeight": "400",
+    "className": "px-2 py-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+    "rect": {
+      "x": 527.734375,
+      "y": 979.375,
+      "width": 58.2265625,
+      "height": 16.25,
+      "top": 979.375,
+      "right": 585.9609375,
+      "bottom": 995.625,
+      "left": 527.734375
+    }
+  },
+  {
+    "tag": "BUTTON",
+    "text": "Can",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "9.75px",
+    "fontWeight": "400",
+    "className": "px-2 py-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+    "rect": {
+      "x": 585.9609375,
+      "y": 979.375,
+      "width": 31.4453125,
+      "height": 16.25,
+      "top": 979.375,
+      "right": 617.40625,
+      "bottom": 995.625,
+      "left": 585.9609375
+    }
+  },
+  {
+    "tag": "LABEL",
+    "text": "Enabled",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "9.75px",
+    "fontWeight": "500",
+    "className": "flex items-center gap-2 font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 text-xs text-muted-foreground",
+    "rect": {
+      "x": 1153,
+      "y": 43.21875,
+      "width": 38.6328125,
+      "height": 13,
+      "top": 43.21875,
+      "right": 1191.6328125,
+      "bottom": 56.21875,
+      "left": 1153
+    }
+  },
+  {
+    "tag": "LABEL",
+    "text": "Locked",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "9.75px",
+    "fontWeight": "500",
+    "className": "flex items-center gap-2 font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 text-xs text-muted-foreground",
+    "rect": {
+      "x": 1153,
+      "y": 63.0390625,
+      "width": 34.5703125,
+      "height": 13,
+      "top": 63.0390625,
+      "right": 1187.5703125,
+      "bottom": 76.0390625,
+      "left": 1153
+    }
+  },
+  {
+    "tag": "LABEL",
+    "text": "Lengths in",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "9.75px",
+    "fontWeight": "500",
+    "className": "flex items-center gap-2 font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 text-xs text-muted-foreground",
+    "rect": {
+      "x": 1153,
+      "y": 83.515625,
+      "width": 50.1171875,
+      "height": 13,
+      "top": 83.515625,
+      "right": 1203.1171875,
+      "bottom": 96.515625,
+      "left": 1153
+    }
+  },
+  {
+    "tag": "LABEL",
+    "text": "Number",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "9.75px",
+    "fontWeight": "500",
+    "className": "flex items-center gap-2 font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 text-xs text-muted-foreground",
+    "rect": {
+      "x": 1153,
+      "y": 143.015625,
+      "width": 274,
+      "height": 13,
+      "top": 143.015625,
+      "right": 1427,
+      "bottom": 156.015625,
+      "left": 1153
+    }
+  },
+  {
+    "tag": "SPAN",
+    "text": "% alc by vol",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "9.75px",
+    "fontWeight": "400",
+    "className": "shrink-0 text-xs text-muted-foreground",
+    "rect": {
+      "x": 1370.4609375,
+      "y": 164.140625,
+      "width": 56.5390625,
+      "height": 13,
+      "top": 164.140625,
+      "right": 1427,
+      "bottom": 177.140625,
+      "left": 1370.4609375
+    }
+  },
+  {
+    "tag": "LABEL",
+    "text": "Font",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "9.75px",
+    "fontWeight": "500",
+    "className": "flex items-center gap-2 font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 text-xs text-muted-foreground",
+    "rect": {
+      "x": 1153,
+      "y": 230.140625,
+      "width": 21.578125,
+      "height": 13,
+      "top": 230.140625,
+      "right": 1174.578125,
+      "bottom": 243.140625,
+      "left": 1153
+    }
+  },
+  {
+    "tag": "svg",
+    "text": "▼",
+    "color": "rgb(104, 103, 92)",
+    "bg": [
+      255,
+      255,
+      255
+    ],
+    "fg": [
+      104,
+      103,
+      92
+    ],
+    "contrast": 5.701483772957946,
+    "fontSize": "9.75px",
+    "fontWeight": "400",
+    "className": "",
+    "rect": {
+      "x": 1406.5,
+      "y": 230.140625,
+      "width": 13,
+      "height": 13,
+      "top": 230.140625,
+      "right": 1419.5,
+      "bottom": 243.140625,
+      "left": 1406.5
+    }
+  }
+]

@@ -1,0 +1,11 @@
+$ cargo tree --target all -i zbus_names@4.3.4
+cwd=/Users/tedslesinski/Repos/art-files/src-tauri
+exit=0
+--- stdout ---
+zbus_names v4.3.4
+├── zbus v5.19.0
+│   └── tauri-plugin-single-instance v2.5.4
+│       └── label-lab v0.1.108 (/Users/tedslesinski/Repos/art-files/src-tauri)
+└── zbus_macros v5.19.0 (proc-macro)
+    └── zbus v5.19.0 (*)
+--- stderr ---

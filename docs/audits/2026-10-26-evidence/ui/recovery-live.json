@@ -1,0 +1,52 @@
+{
+  "recoveryRecord": [
+    {
+      "name": "recovered-aurora.label",
+      "savedAt": 1793070878904,
+      "bytes": 372
+    }
+  ],
+  "recoveryPrompt": {
+    "url": "http://127.0.0.1:5197/",
+    "title": "Label Lab",
+    "viewport": {
+      "width": 1440,
+      "height": 1000,
+      "deviceScaleFactor": 1
+    },
+    "scroll": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 1000,
+      "scrollWidth": 1440,
+      "scrollHeight": 1000
+    },
+    "elements": [
+      {
+        "id": 1,
+        "role": "button",
+        "name": "Discard",
+        "states": [
+          "focused"
+        ]
+      },
+      {
+        "id": 2,
+        "role": "button",
+        "name": "Restore",
+        "states": []
+      }
+    ]
+  },
+  "dismissedThenOfferedAgain": true,
+  "restored": {
+    "tabs": [
+      "Recovered Aurora"
+    ],
+    "dirty": [
+      "Close Recovered Aurora (unsaved changes)"
+    ],
+    "master": "Master:Audit Stress 200▼"
+  }
+}

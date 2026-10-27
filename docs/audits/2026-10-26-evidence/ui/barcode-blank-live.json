@@ -1,0 +1,20 @@
+{
+  "blankLive": {
+    "input": "",
+    "text": "Master:\nAudit Stress 200\nLayers\nChanged\nAdd layer\nStress 199\nStress 198\nStress 197\nStress 196\nStress 195\nStress 194\nStress 193\nStress 192\nStress 191\nStress 190\nStress 189\nStress 188\nStress 187\nStress 186\nStress 185\nStress 184\nStress 183\nStress 182\nStress 181\nStress 180\nStress 179\nStress 178\nStress 177\nStress 176\nStress 175\nStress 174\nStress 173\nStress 172\nStress 171\nStress 170\nStress 169\nStress 168\nStress 167\nStress 166\nStress 165\nStress 164\nStress 163\nStress 162\nStress 161\nStress 160\nStress 159\nStress 158\nStress 157\nStress 156\nStress 155\nStress 154\nStress 153\nStress 152\nStress 151\nStress 150\nStress 149\nStress 148\nStress 147\nStress 146\nStress 145\nStress 144\nStress 143\nStress 142\nStress 141\nS",
+    "regions": [
+      "",
+      "",
+      "",
+      "Export blocked: Barcode: \"\" is not a valid UPC-A code (12 digits).",
+      ""
+    ]
+  },
+  "blankDisabled": {
+    "enabled": null,
+    "text": "1\nStress 020\nStress 019\nStress 018\nStress 017\nStress 016\nStress 015\nStress 014\nStress 013\nStress 012\nStress 011\nStress 010\nStress 009\nStress 008\nStress 007\nStress 006\nStress 005\nStress 004\nStress 003\nStress 002\nStress 001\nStress 000\nAudit SVG\nBarcode\nQR\nStore cold\nWarning\nInfo\nStyle\nName\nLogo\nBrand\nDescription\nABV\nVolume\nMetallic mask\nBackground\nToggle Sidebar\nFile\nEdit\nLayer\nView\nBarcode: \"\" is not a valid UPC-A code (12 digits).\nExport blocked: Barcode: \"\" is not a valid UPC-A code (12 digits).\nAurora12\n•\n+\n1\n2\n3\n4\n5\n6\n7\n8\n-1\n0\n1\n2\n3\n4\n5\n6\nin\ndrop an image anywhere: left half of the window → background, right half of the window → metallic mask (PNG/WebP)\n%\n8 × 5 in\n600 DPI\nLabel\nMask\nRendered\nCan\nEnabled\nLocked\nLengths in\nmm\npt\nContent\nCode\n\n\"\" is not a valid UPC-A code (12 digits).\n\nBarcode\nSymbology\nUPC-A\nModule width\nmm\nHeight\nmm\nShow digits\nPosition\nX\nmm\nHorizontal guide\nY\nmm\nVertical guide\nBind to layer…\nRotation\n90°\nColor\nStroke\nWidth\npx\nSolid background\nTemplate field settings",
+    "blocked": [
+      "Export blocked: Barcode: \"\" is not a valid UPC-A code (12 digits)."
+    ]
+  }
+}

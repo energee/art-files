@@ -1,0 +1,8 @@
+$ cargo tree -i zvariant@5.15.0
+cwd=/Users/tedslesinski/Repos/art-files/src-tauri
+exit=0
+--- stdout ---
+--- stderr ---
+warning: nothing to print.
+
+To find dependencies that require specific target platforms, try to use option `--target all` first, and then narrow your search scope accordingly.

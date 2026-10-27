@@ -67,10 +67,10 @@ function applyValue(l: Layer, v: LayerValue): Result {
     const r = validateLayerInput(layer, plainText(layer.lines));
     if (!r.ok) return { error: r.error! };
   }
-  // A literal code is checked here so a bad one keeps the master's value; a
-  // template ("{textId}") can only be judged once expanded — resolveLayers'
-  // post-expansion check covers it, and every other tier's value too.
-  if (layer.kind === "barcode" && !fieldRefs(layer.value).length) {
+  // Enabled, nonblank literals are checked here so a bad one keeps the
+  // master's value. Templates can only be judged after expansion below;
+  // blank and disabled codes must reach that same non-blocking guard.
+  if (layer.kind === "barcode" && layer.enabled !== false && layer.value.trim() && !fieldRefs(layer.value).length) {
     const r = validateFor(layer.symbology, layer.value);
     if (!r.ok) return { error: r.error! };
   }

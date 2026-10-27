@@ -311,14 +311,16 @@ no status, no attempts, no delta.
 
 ## 2026-10-05 ux-color-labels
 - finding: [a11y/high] src/components/ColorField.tsx:164 — Fill and stroke hex fields have no accessible names
-- status: open
-- attempts: 0/3
+- status: done
+- attempts: 1/3
 - observed-at: 1b0024900e92d56e90b3f212865e15ecb99fd260
 - evidence: Chrome browser reproduction and DOM/accessibility measurements; full steps and source trace in docs/audits/2026-10-05-ux-color-labels.md
 - delta: investigation complete; runtime unchanged, fix remains open
 - release: non-binary-impacting documentation and agent memory only; no release queued
 - evidence: git diff --cached --check and node scripts/check-release.mjs origin/main passed on audit/ux-color-labels documentation diff based on 1b00249; no application suite run
 - re-check 2026-10-11 @ 0bb506c: still open. ColorField's hex Input (ColorField.tsx:160) has an id but no aria-label, and LayerInspectorSections.tsx:351/386 label the groups with an h2 Heading, not a <label htmlFor>
+- re-check 2026-10-26 @ eac33714bbfbc7df704fb4959d32ab7a0793cb1b: confirmed in real Chrome inspector; unnamed fill/stroke textboxes and two generic Pick color buttons remain. AUD-05 in docs/audits/2026-10-26-audit-results.md; retained accessibility observation under 2026-10-26-evidence/ui/. Existing finding remains open, not duplicated.
+- follow-up 2026-10-27 @ eac33714 + uncommitted audit fixes: #546 corrected in the existing finding, not duplicated. Required ColorField context names Fill color / Stroke color and contextual picker/no-ink actions; inspector and direct component test callers migrated. Real Chrome ABV inspector exposes both distinct input and picker names; actual screen-reader speech remains unverified. Full suite 1668/1668, tsc/lint/build/knip pass; binary-impacting, Unreleased note queued.
 
 ## 2026-10-05 ux-decimal-input
 - finding: [UX/low] src/components/TextEditor.tsx:731 — ABV decimals conflict with native input validation and stepping
@@ -511,3 +513,82 @@ no status, no attempts, no delta.
 - status: in-review
 - delta: plan docs/plans/sidebar-ux.md; selected = sidebar-primary/15 (no edge bar, no name focus ring); PowerOff/Lock shown as exceptions, Power/LockOpen on hover; size-6 controls; no strikethrough; Rename/Delete Variant as picker sentinels, Save only while masterDirty; Changed in the group label; hint folded into the row title; scrollIntoView nearest; follow-up: "…" menu replaced by Pencil/Trash2 buttons on the selected row only + Base UI ContextMenu (Rename/Remove at the pointer) on every row (Rename / Lock|Unlock / Remove); lock button only while locked (click unlocks), so hover shows power only; power ink = on (off PowerOff muted even on hover, on/selected Power full ink, selected-row opacity-40 branch removed); lock title says click to unlock and focus moves to power after unlocking
 - evidence: branch feat/sidebar-ux; layerlist + masterpicker DOM tests 78/78 after review fixes (/code-review xhigh: 16 findings, 11 fixed), tsc and lint clean; full vitest 1655 pass, 3 fail only from the worktree lacking node_modules/.bin/tsx (generate-cli, golden-diff); browser-checked dark and light on localhost:5197
+
+## 2026-10-26 risk-based-audit-plan
+- finding: [user request] create an application audit plan from the recommended ten-area risk matrix
+- status: done
+- attempts: 1/3
+- observed-at: d0d1ad513dc15b4a4065b3d41d5f0ba7c00abc11
+- delta: docs/audits/2026-10-26-audit-plan.md defines 41 scenarios across work preservation, print output, UPC/QR, document handling, desktop integration, editing consistency, accessibility, CLI, performance and engineering health; includes execution waves, acceptance authorities, fixture/environment manifests, evidence requirements and explicit physical/native proof gaps
+- evidence: planning document validated against the working tree based on d0d1ad5: 41 unique sequential scenario IDs across ten areas, 14 resolving local links, three shell blocks passing bash -n and every referenced npm run script present in its package.json. Audit commands and application tests were not executed; no application pass is claimed.
+- evidence: release handoff check `node scripts/check-release.mjs origin/main` failed because this checkout is version 0.1.107 while origin/main is 0.1.108. No release metadata was changed for this documentation-only task; the version mismatch remains outside this plan's scope.
+- release: non-binary-impacting (audit plan and agent memory only); no Unreleased entry, version bump or release operation
+
+## 2026-10-26 application-audit-execution
+- finding: [user request] execute the ten-area, 41-scenario risk-based application audit
+- status: done
+- attempts: 1/3
+- observed-at: eac33714bbfbc7df704fb4959d32ab7a0793cb1b
+- delta: docs/audits/2026-10-26-audit-results.md accounts for all 41 scenarios, seven confirmed findings (including the existing color-label finding), runtime/browser/CLI/print evidence, baseline failures and explicit native/Photoshop/physical proof gaps; no application fix applied
+- evidence: real browser save/reopen, delayed-save snapshot and failed/cancelled Save As, recovery reload/restore/discard, text undo/redo, export/edit snapshot, image routing, accessibility/layout and 215-layer resource probes; actual CLI mode/error matrix, 600-DPI QR controls and CMYK conversion; macOS source-matched package build/process launch; 183 retained artifacts indexed with hashes
+- evidence: Node 24.19.0, macOS arm64; tsc/lint/build/knip/npm runtime audit/docs checks pass; Rust fmt/check and 13 tests pass on 1.99.0 (CI pin 1.98.1 unverified); cargo audit exits 0 with six warnings; npm test fails 32/1658 (11 timeouts, 21 assertion/type failures), not rerun. Report validation checks all 41 scenario rows exactly once and 57 resolving local links.
+- evidence: execution-revision release metadata gate passes for 0.1.108; earlier planning-revision 0.1.107 mismatch is historical, not the current result. External source transition during preparation recorded in report; no audit edits to application source.
+- ruling: completed investigation with outstanding defects/proof gaps, not a clean application/production-print certification. Native AX trust false; Windows/Linux runtime, signed updater install, Photoshop rendered parity, physical print/scans, screen-reader speech and agreed performance budgets remain unverified.
+- release: non-binary-impacting (audit documents/evidence and agent memory only); no Unreleased entry, version bump, release publication or public-feed change
+
+## 2026-10-26 audit-dots-qr-payload
+- finding: [correctness/high] src/qr.ts:48-58, src/planLayers.ts:391-393 — ordinary name-derived default dots QR does not decode from the actual 600-DPI PDF in any rotation; square styling with the same payload/geometry decodes in all four rotations
+- status: parked(authority)
+- attempts: 1/3
+- observed-at: eac33714bbfbc7df704fb4959d32ab7a0793cb1b
+- evidence: AUD-01; payload https://lolev.beer/beer/audit-labradorite; retained source PDF, dots/square crops, crop coordinates and ZXing decoder observations in docs/audits/2026-10-26-evidence/print/
+- acceptance: intended payload decodes from supported styled exports and representative physical stock; preserve the existing printed-Lupula approval gate before changing the approved artwork
+- follow-up 2026-10-27 @ eac33714: independent retained-crop ZXing smoke reconfirms dots 0/4 vs square 4/4 exact payloads. No QR artwork changed. Styling/keyline topology is implicated by the matched control, not a payload encoding defect.
+- ruling: printed-Lupula iOS Camera and stock Android approval/proof is absent; obtain that gate before altering approved geometry, polarity, backing, quiet zone or default style. Physical scans remain unverified.
+
+## 2026-10-26 audit-cmyk-qr-decode
+- finding: [correctness/high] tools/to-cmyk.sh:10-15 — documented Ghostscript conversion exits 0 but loses the previously available short-reference QR decode at all four rotations
+- status: done
+- attempts: 1/3
+- observed-at: eac33714bbfbc7df704fb4959d32ab7a0793cb1b
+- evidence: AUD-02; RGB Labradorite reference decodes at rotation 270 degrees, converted copy nowhere; UPC survives. Original/converted PDFs and 600-DPI crops retained in docs/audits/2026-10-26-evidence/print/. No physical scan certificate claimed.
+- acceptance: documented printer conversion preserves exact code payloads on matched digital/physical proofs; investigate styling/color and conversion together rather than assuming one flag is the cause
+- correction 2026-10-27: #543 decode-loss claim disproved. Retained CMYK Page rot 90 vs RGB 0; original crop sampled text. Correct transformed crop x=156,y=156 at 600 DPI decodes the exact Labradorite URL in one rotation. tools/to-cmyk.sh now passes -dAutoRotatePages=/None; fresh conversion retains 585.12×369.12pt, rotation 0, and original-position crop x=156,y=2262 decodes at 270°. No QR design change; digital fragility remains #542. Historical artifacts untouched; audit report carries explicit erratum.
+
+## 2026-10-26 audit-blank-disabled-barcode
+- finding: [correctness/high] src/model/resolveLayers.ts:61-76,153-162,174-181 — stored empty barcode fails applyValue before the later blank/disabled guard, blocking CLI and live editor export even after the layer is disabled
+- status: done
+- attempts: 1/3
+- observed-at: eac33714bbfbc7df704fb4959d32ab7a0793cb1b
+- evidence: AUD-03; values JSON barcode empty exits 1; actual browser blank Code reports export blocked, Enabled checked=false retains that error. Retained CLI and browser observations under docs/audits/2026-10-26-evidence/. This is a shared resolver defect, not CLI coercion alone.
+- acceptance: blank/disabled stored barcode values follow the documented non-blocking rule while enabled invalid literals and expanded references still block export
+- follow-up 2026-10-27 @ eac33714 + uncommitted audit fixes: applyValue validates only enabled, nonblank literal barcodes; shape validation and enabled invalid-code fallback remain. CLI blank fixture --check failed exit 1 before, passes after and generates both PDFs; disabled garbage override also passes. Chrome blank/off has no export block; enabled 12345 blocks, disabling clears the error. Deterministic tests cover whitespace, disabled values, variant/override enablement and invalid expanded refs. Full suite 1668/1668, tsc/lint/build/knip/release gate pass; binary-impacting Unreleased note, no version bump.
+
+## 2026-10-26 audit-layer-focus-invisible
+- finding: [a11y/high] src/components/LayerList.tsx:231-235 — unselected layer-name button has no visible keyboard focus indication
+- status: done
+- attempts: 1/3
+- observed-at: eac33714bbfbc7df704fb4959d32ab7a0793cb1b
+- evidence: AUD-04; actual Style button focus-visible=true, aria-pressed=false, outline none, 0px ring/shadows and transparent row; screenshot and computed measurements retained. Enter and keyboard reorder work; activation failure is not alleged.
+- acceptance: keyboard focus is identifiable before activation on selected/unselected names in both themes; resolve conflict with prior sidebar no-name-focus-ring design without silently changing it in this investigation
+- follow-up 2026-10-27 @ eac33714 + uncommitted audit fixes: inherited keyboard-only sidebar ring restored; selected-row tint unchanged. docs/plans/sidebar-ux.md explicitly supersedes the earlier no-name-ring decision because focus and selection serve different purposes. Real Tab/Shift+Tab and Enter show unselected/selected focus; light ring rgb(37,99,235), dark rgb(96,165,250), 2px shadow. Both themes visually inspected. Removed obsolete class-only styling test rather than re-pinning it.
+
+## 2026-10-26 audit-file-target-semantics
+- finding: [a11y/med] src/components/FileDrop.tsx:74-83,95-99,121 — click-to-browse drop well is a focusable presentation/generic node; nested file input is only named file upload, without slot context
+- status: done
+- attempts: 1/3
+- observed-at: eac33714bbfbc7df704fb4959d32ab7a0793cb1b
+- evidence: AUD-06; mounted Metallic mask root DOM and Chrome accessibility tree retained at docs/audits/2026-10-26-evidence/ui/file-target-aria.txt. Keyboard handlers exist; missing semantics/context is the finding.
+- acceptance: empty/loaded texture, mask and custom-image selection actions expose meaningful contextual names and roles without nested interactive-control conflicts
+- follow-up 2026-10-27 @ eac33714 + uncommitted audit fixes: passive drop target plus sibling Browse/Remove buttons, contextual file input name, retained drop routing. Chrome empty/loaded Texture, Metallic mask and custom Image expose Browse <slot>; Remove mask/texture focuses Undo and Undo returns to Browse; custom image removal returns to Browse with document-undo hint. DOM regressions cover slot names, sibling controls, drop routing and removal focus. Native chooser and screen-reader speech remain unverified.
+
+## 2026-10-26 audit-default-suite-red
+- finding: [evidence/high] package.json:16, tests/save-races-dom.test.tsx and seven other suites — default npm test exits 1, leaving no green full-suite evidence for the audited environment
+- status: done
+- attempts: 1/3
+- observed-at: eac33714bbfbc7df704fb4959d32ab7a0793cb1b
+- evidence: AUD-07; 150/158 files and 1626/1658 tests pass; 32 fail (11 timeouts, 21 assertion/type diagnostics). Full compressed log and classification retained in docs/audits/2026-10-26-evidence/baseline/. Functional audit work was concurrent; resource contention/cascading failures are hypotheses, not established causes.
+- acceptance: diagnose the earliest failed transition/timeout under controlled resources and provide explicitly new evidence for any correction; do not infer 32 independent product defects or suppress checks to manufacture a pass
+- follow-up 2026-10-27 @ eac33714 + uncommitted audit fixes: retained diagnostics inspected before experiment. Earliest completed failed suite included generate's 5.817s legacy export; save-races timeouts precede the missing-DOM cascade. Audited Vitest default concurrent ceiling was 9 on 10 CPUs (158 workers spawned is cumulative, not simultaneous). maxWorkers:4 preserves isolation and 5s timeout. Controlled 1-worker four-suite experiment passes 140/140; final default npm test passes 158 files / 1668 tests in 26.71s without concurrent build/print/browser work. Original resource contention/cascade causality remains a supported hypothesis, not a proven independent product bug. Happy-dom teardown AbortError diagnostics remain visible, not suppressed.
+- correction 2026-10-27 @ eac33714 + branch fix/audit-2026-10-26: maxWorkers:4 dropped. With the default ceiling (--maxWorkers=9) at load average ~10 the full suite passes 158 files / 1668 tests in 19.3s (vs 32.1s capped), so the cap is not needed for green and the audit's red run is attributed to its own concurrent build/print/browser work. No config change ships for #548.
+- integration evidence: an intermediate new-code run exposed missing ColorField labels in direct test callers and a config-test closing-delimiter error introduced during agent cleanup; both corrected before final green run. Final targeted six suites 156/156, tsc, lint, production build, knip and release metadata gate pass. Docs typecheck passes; docs build compiled/generated 48 pages but exited 1 on Next.js SecurityFatalError upgrade gate. No dependency upgrade or gate bypass attempted.

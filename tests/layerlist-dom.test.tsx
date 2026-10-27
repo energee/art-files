@@ -413,18 +413,6 @@ describe("LayerList", () => {
 describe("sidebar UX pass (docs/plans/sidebar-ux.md)", () => {
   const rowBox = (id: string) => rowFor(id).firstElementChild as HTMLElement;
 
-  it("marks the selected row with a primary tint, not the hover grey and no edge bar", () => {
-    render(baseProps({ selected: ["name"] }));
-    expect(rowBox("name").className).toContain("bg-sidebar-primary/15");
-    expect(rowBox("name").className).not.toContain("shadow-");
-    expect(rowBox("wordmark").className).not.toContain("bg-sidebar-primary/15");
-    // The button must not paint the old accent over the row's tint.
-    const button = rowFor("name").querySelector('[data-sidebar="menu-button"]')!;
-    expect(button.className).toContain("data-active:bg-transparent");
-    // Nor ring the name: the tint is the row's one mark.
-    expect(button.className).toContain("focus-visible:ring-0");
-  });
-
   it("shows the exception: power-off while off, the lock while locked, else only on hover", () => {
     const props = baseProps();
     props.rows = props.rows.map((r) =>

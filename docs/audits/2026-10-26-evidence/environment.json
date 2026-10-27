@@ -1,0 +1,90 @@
+{
+  "git rev-parse HEAD": {
+    "code": 0,
+    "stdout": "d0d1ad513dc15b4a4065b3d41d5f0ba7c00abc11",
+    "stderr": ""
+  },
+  "git status --short": {
+    "code": 0,
+    "stdout": "M .agents/ledger.md\n?? docs/audits/2026-10-26-audit-plan.md",
+    "stderr": ""
+  },
+  "git branch --show-current": {
+    "code": 0,
+    "stdout": "main",
+    "stderr": ""
+  },
+  "node --version": {
+    "code": 0,
+    "stdout": "v24.19.0",
+    "stderr": ""
+  },
+  "npm --version": {
+    "code": 0,
+    "stdout": "11.17.0",
+    "stderr": ""
+  },
+  "rustc --version": {
+    "code": 0,
+    "stdout": "rustc 1.99.0 (b940084d7 2026-09-28) (Homebrew)",
+    "stderr": ""
+  },
+  "cargo --version": {
+    "code": 0,
+    "stdout": "cargo 1.99.0 (5f94df478 2026-08-27) (Homebrew)",
+    "stderr": ""
+  },
+  "sw_vers": {
+    "code": 0,
+    "stdout": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0.1\nBuildVersion:\t\t26A434",
+    "stderr": ""
+  },
+  "uname -m": {
+    "code": 0,
+    "stdout": "arm64",
+    "stderr": ""
+  },
+  "sysctl -n hw.memsize": {
+    "code": 0,
+    "stdout": "34359738368",
+    "stderr": ""
+  },
+  "sysctl -n hw.ncpu": {
+    "code": 0,
+    "stdout": "10",
+    "stderr": ""
+  },
+  "tools": {
+    "pdftoppm": "/opt/homebrew/bin/pdftoppm",
+    "pdfinfo": "/opt/homebrew/bin/pdfinfo",
+    "gs": "/opt/homebrew/bin/gs",
+    "cargo-audit": "/Users/tedslesinski/.cargo/bin/cargo-audit",
+    "nvm": "/opt/homebrew/bin/nvm",
+    "zbarimg": null
+  },
+  "locks": {
+    "/Users/tedslesinski/Repos/art-files/package-lock.json": "e0bbc5fef9f93dd6c8f20352974ed17006b702608267cb4afe7de9eaf3a42a1a",
+    "/Users/tedslesinski/Repos/art-files/src-tauri/Cargo.lock": "08ce79c5bf0396f8a315e9f6d88f84378371cb09ad7d5b9318cf27daeea1ed83",
+    "/Users/tedslesinski/Repos/art-files/docs-site/package-lock.json": "d014a10190afcfbc114335eb17c7cfdea127c4aebfbb0dc04c2759b0b1453385"
+  },
+  "apps": {
+    "/Applications/Adobe Photoshop 2026/Adobe Photoshop 2026.app": true,
+    "/Applications/Google Chrome.app": true,
+    "src-tauri/target/release/bundle/macos/Label Lab.app": true
+  },
+  "node24_candidates": [
+    "/Users/tedslesinski/.nvm/versions/node/v24.19.0/bin/node"
+  ],
+  "execution_revision": "eac33714bbfbc7df704fb4959d32ab7a0793cb1b",
+  "execution_version": "0.1.108",
+  "execution_locks": {
+    "package-lock.json": "e51b4327c565395d2232a68a9e21e9738c55c19a38d2df3b5630a0bcb5f18090",
+    "src-tauri/Cargo.lock": "3682e315d7254792df1953a4b4e98a3a67a81b5168f76bf61c99e944d0452d6c",
+    "docs-site/package-lock.json": "d014a10190afcfbc114335eb17c7cfdea127c4aebfbb0dc04c2759b0b1453385"
+  },
+  "native_accessibility": {
+    "AXIsProcessTrusted": false,
+    "SystemEventsQuery": "osascript timed out after20seconds"
+  },
+  "release_gate_execution_revision": "node scripts/check-release.mjs origin/main: passed for0.1.108, no binary-impacting changes detected"
+}

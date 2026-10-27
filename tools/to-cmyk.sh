@@ -7,7 +7,10 @@ set -eu
 command -v gs >/dev/null || { echo "ghostscript not found: brew install ghostscript" >&2; exit 1; }
 for f in "$@"; do
   out="${f%.pdf}-cmyk.pdf"
+  # pdfwrite's default PageByPage auto-rotation turned the landscape label
+  # into a portrait page; preserve the generated PDF's authored orientation.
   gs -q -dNOPAUSE -dBATCH -sDEVICE=pdfwrite \
+    -dAutoRotatePages=/None \
     -dColorConversionStrategy=/CMYK \
     -dProcessColorModel=/DeviceCMYK \
     -dDownsampleColorImages=false -dDownsampleGrayImages=false \

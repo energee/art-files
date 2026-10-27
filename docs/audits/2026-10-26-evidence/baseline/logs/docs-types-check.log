@@ -1,0 +1,13 @@
+$ npm run types:check --prefix docs-site
+cwd=/Users/tedslesinski/Repos/art-files
+exit=0
+elapsed_seconds=7.437
+timed_out=False
+--- stdout ---
+
+> docs-site@0.0.26 types:check
+> next typegen && tsc --noEmit
+
+Generating route types...
+✓ Types generated successfully
+--- stderr ---

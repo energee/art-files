@@ -4,6 +4,12 @@ User-facing changes to the Label Lab desktop application are recorded here.
 Merged changes collect under [Unreleased] until a release is cut, which renames
 that section to the new version (see .agents/release-steward.md).
 
+## [Unreleased]
+
+### Fixed
+- **Blank and disabled barcodes no longer block export.** Clearing a label's barcode or switching its layer off now follows the same rule as a blank or disabled master barcode. Enabled, nonblank invalid codes still block export, including references and variant overrides.
+- **Accessible inspector and layer controls.** Keyboard focus is visible on layer names without changing selection styling; fill and stroke color controls and image-selection actions have contextual accessible names.
+
 ## [0.1.108] - 2026-10-22
 
 ### Added
